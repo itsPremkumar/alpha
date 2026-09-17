@@ -1,0 +1,19 @@
+{{- if .Values.postgresql.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "agent-workspace.postgresFullname" . }}
+  namespace: {{ include "agent-workspace.namespace" . }}
+  labels:
+    {{- include "agent-workspace.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  type: ClusterIP
+  ports:
+    - name: tcp-postgres
+      port: 5432
+      targetPort: tcp-postgres
+  selector:
+    {{- include "agent-workspace.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+{{- end -}}

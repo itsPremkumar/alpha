@@ -1,0 +1,43 @@
+# Additive orchestrator config (OpenClaw 2.0-inspired). Copy needed blocks
+# into your local config.yaml. All blocks are optional; omission preserves
+# current DeerFlow behavior. Restart Gateway after changing automations or
+# approval mode.
+#
+# 2-3. Provider routing: flagship + cheap utility model + fallbacks + per-channel pins
+# provider_routing:
+#   flagship_model: gpt-4o
+#   utility_model: gpt-4o-mini   # title/memory/summarization only
+#   fallbacks: [claude-sonnet-4, deepseek-v4]
+#   by_channel: {telegram: gpt-4o-mini}
+#   by_user: {"123456": vip-model}
+#
+# 4-5+9. Approvals: custody ledger + policy-first auto-mode + approve-once TTL
+# approvals:
+#   auto_mode: false             # true = low-risk auto-allow with audit log
+#   approve_once_ttl_seconds: 604800
+#
+# 7+12+13. Durability / delivery / governors (mirror existing scheduler/token_budget keys)
+# durable_tasks:
+#   base_poll_seconds: 5.0
+#   max_poll_seconds: 300.0
+#   delivery_queue_maxsize: 1000
+# concurrency:
+#   max_running: 3
+#   max_queued: 64
+#   burst_limit: 0
+#   policy: wait               # wait | burst | reject
+#
+# 8. Automations unify cron/interval/event kinds (execution stays in app scheduler)
+# automations: []
+# # - name: nightly-dreaming
+# #   kind: cron
+# #   cron: "0 3 * * *"
+# #   agent_name: lead_agent
+# #   non_interactive: true
+#
+# 10. Cross-thread recall (default off = current per-thread isolation)
+# recall:
+#   enabled: false
+#   max_threads: 5
+#   max_facts: 20
+#   min_confidence: 0.7

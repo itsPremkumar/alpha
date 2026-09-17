@@ -1,0 +1,15 @@
+[project]
+name = "agent-workspace-extension-api"
+version = "0.2.0"
+description = "Public contracts for Agent Workspace extensions"
+requires-python = ">=3.12"
+# Keep the contract package import-light and independent from the host. Public
+# values are stdlib-based; concrete middleware types are validated by Agent Workspace.
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["agent_workspace_extension_api"]

@@ -1,0 +1,15 @@
+{
+  "name": "deer-flow-monorepo",
+  "version": "2.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.26.2",
+  "scripts": {
+    "start": "powershell -ExecutionPolicy Bypass -File ./start.ps1",
+    "dev": "powershell -ExecutionPolicy Bypass -File ./start.ps1",
+    "stop": "powershell -ExecutionPolicy Bypass -File ./stop.ps1",
+    "install:all": "powershell -ExecutionPolicy Bypass -File ./install.ps1",
+    "doctor": "uv run --project backend python scripts/doctor.py",
+    "prod-check": "uv run --project backend python scripts/prod_check.py",
+    "verify": "pnpm -C frontend verify"
+  }
+}

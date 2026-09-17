@@ -1,0 +1,96 @@
+# electron-builder configuration for the Agent Workspace Windows desktop app.
+#
+# Build order on Windows (run from the `electron/` directory):
+#   1. npm install            # installs electron + electron-builder
+#   2. npm run build:frontend # standalone Next.js production build
+#   3. npm run dist            # rebuilds frontend, then produces the NSIS installer
+#
+# The installer bundles:
+#   - the Electron shell (main.js / preload.js / splash.html)
+#   - the Next.js standalone server  -> <resources>/frontend-standalone
+#   - the Python backend sources      -> <resources>/backend
+#   - config templates                -> <resources>/config-templates
+#
+# At runtime the app spawns the backend via `uv` and the frontend via `node`
+# (both must be installed on the machine — see README.md). The backend venv
+# is created on first launch inside the installed backend directory.
+
+appId: ai.agent-workspace.desktop
+productName: Agent Workspace
+copyright: Copyright © 2026 Prem Kumar
+
+directories:
+  output: dist
+
+files:
+  - main.js
+  - lib/**/*.js
+  - preload.js
+  - splash.html
+  - package.json
+  - desktop-config.json
+
+extraResources:
+  # Self-contained runtime so end-user machines need nothing pre-installed.
+  # Produced by `npm run fetch-runtime` (see scripts/fetch-runtime.mjs).
+  - from: build/runtime
+    to: runtime
+  - from: ../frontend/.next/standalone
+    to: frontend-standalone
+  # Next.js traces its runtime deps into .next/standalone/node_modules, but
+  # electron-builder skips node_modules inside extraResources by default, so
+  # the traced modules are copied via this explicit entry (without it the
+  # packaged server crashes with "Cannot find module 'next'").
+  - from: ../frontend/.next/standalone/node_modules
+    to: frontend-standalone/node_modules
+    filter:
+      - "**/*"
+  - from: ../frontend/.next/static
+    to: frontend-standalone/.next/static
+  - from: ../frontend/public
+    to: frontend-standalone/public
+    # Showcase fixtures (public/demo) are web-marketing content and are left
+    # out of the desktop bundle to keep the installer lean.
+    filter:
+      - "**/*"
+      - "!demo/**"
+  - from: ../backend
+    to: backend
+    filter:
+      - "**/*"
+      - "!**/.venv/**"
+      - "!**/__pycache__/**"
+      - "!**/*.pyc"
+      - "!**/*.pyo"
+      - "!tests/**"
+      - "!extension_test_fixtures/**"
+      - "!samples/**"
+      - "!docs/**"
+      - "!sandbox/**"
+      - "!**/.agent-workspace/**"
+      - "!**/.deer-flow/**"
+      - "!.vscode/**"
+      - "!Dockerfile*"
+  - from: ../config.example.yaml
+    to: config-templates/config.example.yaml
+  - from: ../extensions_config.example.json
+    to: config-templates/extensions_config.example.json
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  # Generated from shapes-only SVG via `node scripts/make-icon.mjs`
+  # (the repo's deer.svg illustration does not rasterize outside a browser).
+  icon: build/icon-512.png
+  requestedExecutionLevel: asInvoker
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Agent Workspace
+  artifactName: Agent-Workspace-Setup-${version}.exe

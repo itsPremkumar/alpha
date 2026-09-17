@@ -1,0 +1,216 @@
+"""Role-Based Tool Permission Rings and Least-Privilege Gate.
+
+Prevents specialist bots (e.g. Researcher) from executing unintended destructive actions
+(e.g. file writing, code refactoring, production bash commands) as highlighted in
+recent MetaGPT security audits and OWASP Agentic AI guidelines.
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class RolePermissionRing:
+    role_name: str
+    allowed_tools: set[str] = field(default_factory=set)
+    denied_tools: set[str] = field(default_factory=set)
+    approval_required_tools: set[str] = field(default_factory=set)
+    allow_all: bool = False
+
+
+DEFAULT_ROLE_RINGS: dict[str, RolePermissionRing] = {
+    "researcher": RolePermissionRing(
+        role_name="researcher",
+        allowed_tools={
+            "web_search",
+            "read_url_content",
+            "view_file",
+            "grep_search",
+            "find_by_name",
+            "list_dir",
+            "message_agent",
+            "ask_question",
+            "execute_slash_command",
+            "identify_autonomous_command",
+        },
+        denied_tools={
+            "write_to_file",
+            "replace_file_content",
+            "run_command",
+            "delete_file",
+            "git_push",
+        },
+    ),
+    "architect": RolePermissionRing(
+        role_name="architect",
+        allowed_tools={
+            "view_file",
+            "grep_search",
+            "find_by_name",
+            "list_dir",
+            "message_agent",
+            "ask_question",
+            "execute_slash_command",
+            "identify_autonomous_command",
+        },
+        denied_tools={
+            "replace_file_content",
+            "run_command",
+        },
+    ),
+    "coder": RolePermissionRing(
+        role_name="coder",
+        allowed_tools={
+            "view_file",
+            "replace_file_content",
+            "write_to_file",
+            "run_command",
+            "grep_search",
+            "find_by_name",
+            "list_dir",
+            "message_agent",
+            "ask_question",
+            "execute_slash_command",
+            "identify_autonomous_command",
+        },
+        approval_required_tools={
+            "deploy_production",
+            "drop_database",
+        },
+    ),
+    "developer": RolePermissionRing(
+        role_name="developer",
+        allowed_tools={
+            "view_file",
+            "replace_file_content",
+            "write_to_file",
+            "run_command",
+            "grep_search",
+            "find_by_name",
+            "list_dir",
+            "message_agent",
+            "ask_question",
+            "execute_slash_command",
+        },
+    ),
+    "tester": RolePermissionRing(
+        role_name="tester",
+        allowed_tools={
+            "view_file",
+            "run_command",
+            "grep_search",
+            "find_by_name",
+            "list_dir",
+            "message_agent",
+            "ask_question",
+            "execute_slash_command",
+            "identify_autonomous_command",
+        },
+        denied_tools={
+            "replace_file_content",
+        },
+    ),
+    "qa": RolePermissionRing(
+        role_name="qa",
+        allowed_tools={
+            "view_file",
+            "run_command",
+            "grep_search",
+            "find_by_name",
+            "list_dir",
+            "message_agent",
+            "ask_question",
+            "execute_slash_command",
+        },
+        denied_tools={
+            "replace_file_content",
+        },
+    ),
+    "lead": RolePermissionRing(role_name="lead", allow_all=True),
+    "supervisor": RolePermissionRing(role_name="supervisor", allow_all=True),
+    "admin": RolePermissionRing(role_name="admin", allow_all=True),
+}
+
+ROLE_PERMISSION_RINGS = DEFAULT_ROLE_RINGS
+
+
+class ToolPermissionGate:
+    """Evaluates whether an agent with a given role is authorized to execute a tool."""
+
+    def __init__(self, custom_rings: dict[str, RolePermissionRing] | None = None) -> None:
+        self.rings = dict(DEFAULT_ROLE_RINGS)
+        if custom_rings:
+            self.rings.update(custom_rings)
+
+    def _resolve_ring(self, role: str) -> RolePermissionRing:
+        r = (role or "").lower().strip()
+        for k, ring in self.rings.items():
+            if k in r:
+                return ring
+        # Fallback default: general worker (can read, message, ask)
+        return RolePermissionRing(
+            role_name=r,
+            allowed_tools={
+                "view_file",
+                "grep_search",
+                "find_by_name",
+                "list_dir",
+                "message_agent",
+                "ask_question",
+                "execute_slash_command",
+            },
+        )
+
+    def check_permission(
+        self,
+        bot_role: str,
+        tool_name: str,
+        arguments: dict[str, Any] | None = None,
+    ) -> tuple[bool, str | None, bool]:
+        """Check if bot_role is permitted to call tool_name.
+
+        Returns: (is_allowed, denial_reason, requires_human_approval)
+        """
+        ring = self._resolve_ring(bot_role)
+        if ring.allow_all:
+            return True, None, False
+
+        clean_tool = tool_name.lower().strip()
+
+        # Check approval requirement
+        if clean_tool in ring.approval_required_tools:
+            return False, f"Tool '{tool_name}' requires human operator approval for role '{bot_role}'.", True
+
+        # Check explicit denial
+        if clean_tool in ring.denied_tools:
+            return (
+                False,
+                f"Permission Denied: Role '{bot_role}' is not authorized to execute tool '{tool_name}'. "
+                f"Please delegate this task to an authorized specialist (e.g. coder or DevOps).",
+                False,
+            )
+
+        # If allowed_tools is configured, enforce whitelist
+        if ring.allowed_tools and clean_tool not in ring.allowed_tools:
+            return (
+                False,
+                f"Permission Denied: Tool '{tool_name}' is not within the authorized toolset for role '{bot_role}'.",
+                False,
+            )
+
+        return True, None, False
+
+
+_DEFAULT_GATE: ToolPermissionGate | None = None
+
+
+def get_permission_gate() -> ToolPermissionGate:
+    global _DEFAULT_GATE
+    if _DEFAULT_GATE is None:
+        _DEFAULT_GATE = ToolPermissionGate()
+    return _DEFAULT_GATE
