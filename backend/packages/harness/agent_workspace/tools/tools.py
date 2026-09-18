@@ -60,6 +60,7 @@ from agent_workspace.tools.builtins import (
     consult_plan_gap_analysis,
     create_workflow_checkpoint,
     cronjob_manage,
+    delegate_to_deep_agent,
     deliberation_tool,
     deliberate_artifact_quality,
     dispatch_discipline_worker,
@@ -80,12 +81,14 @@ from agent_workspace.tools.builtins import (
     hashline_edit,
     hashline_read,
     hyperplan_review_manage,
+    inspect_deep_agent_telemetry,
     invoke_python_skill_tool,
     inspect_repo_twin,
     job_tool,
     kanban_board_tool,
     kibitzer_nudge_manage,
     learning_graph_manage,
+    list_available_deep_agents,
     list_background_tasks,
     list_uploaded_files,
     manage_code_checkpoint,
@@ -277,6 +280,10 @@ BUILTIN_TOOLS = [
     reconcile_structural_ast_conflicts,
     query_contrastive_memory,
     record_trajectory_outcome,
+    # Deep Agent Fleet with clean-context isolation:
+    delegate_to_deep_agent,
+    list_available_deep_agents,
+    inspect_deep_agent_telemetry,
 ]
 
 SUBAGENT_TOOLS = [

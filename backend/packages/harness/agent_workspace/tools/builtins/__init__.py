@@ -59,6 +59,7 @@ from .cronjob_manage_tool import cronjob_manage
 from .curriculum_tool import generate_curriculum_plan
 from .deliberation_tool import deliberation_tool
 from .delta_checkpoint_tool import create_workflow_checkpoint
+from .deep_agent_tool import delegate_to_deep_agent, inspect_deep_agent_telemetry, list_available_deep_agents
 from .deep_research_tool import deep_research
 
 # Strategic Discipline Council (Multi-Perspective Governance Profile)
@@ -286,6 +287,9 @@ __all__ = [
     "reconcile_structural_ast_conflicts",
     "query_contrastive_memory",
     "record_trajectory_outcome",
+    "delegate_to_deep_agent",
+    "list_available_deep_agents",
+    "inspect_deep_agent_telemetry",
 ]
 
 
