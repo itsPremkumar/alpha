@@ -46,6 +46,7 @@ from .cronjob_manage_tool import cronjob_manage
 from .curriculum_tool import generate_curriculum_plan
 from .deliberation_tool import deliberation_tool
 from .delta_checkpoint_tool import create_workflow_checkpoint
+from .deep_research_tool import deep_research
 
 # Strategic Discipline Council (Multi-Perspective Governance Profile)
 from .discipline_team_tool import (
@@ -238,6 +239,7 @@ __all__ = [
     "execute_slash_command_tool",
     "identify_autonomous_command_tool",
     "cognitive_memory_tool",
+    "deep_research",
 ]
 
 

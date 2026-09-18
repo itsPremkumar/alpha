@@ -196,3 +196,36 @@ After completing research, you should have:
 5. Current trends and relevant context
 
 **Only then proceed to content generation**, using the gathered information to create high-quality, well-informed content.
+
+## Autonomous Deep Research Engine & Tool
+
+For automated multi-hop research, the platform provides a built-in `deep_research` engine and tool inspired by advanced deep agent architectures:
+
+### The `deep_research` Tool
+```python
+deep_research(
+    topic="Quantum Computing Scalability in 2026",
+    depth=3,                  # 1 (brief) to 5 (exhaustive)
+    max_sources=15,           # Maximum evidence sources to compile
+    include_adversarial=True, # Run explicit counter-hypothesis queries
+    output_path="deep_research_report.md" # Optional markdown artifact destination
+)
+```
+
+### 5-Pass Autonomous Research Pipeline
+1. **Pass 1: Discovery & Landscape Mapping** - Broad exploration of core architecture and fundamentals.
+2. **Pass 2: Specific Evidence & Metrics** - Extraction of quantitative benchmarks, citations, and primary evidence.
+3. **Pass 3: Adversarial Contradiction & Edge Cases** - Direct counter-arguments, failure modes, and dissenting expert analysis.
+4. **Pass 4: Fact Verification & Source Cross-Checking** - Multi-source corroborate, origin URL attribution, confidence scoring.
+5. **Pass 5: Strategic Synthesis & Gap Resolution** - Recursive resolution of unanswered gaps and final publication-ready cited Markdown compilation.
+
+### Delegation via Subagent Category Preset
+When delegating deep research tasks to subagents, use the `deep-research` intent category:
+```python
+task(
+    prompt="Investigate next-generation energy storage technologies for aerospace applications",
+    category="deep-research"
+)
+```
+This automatically allocates a 150-turn budget, binds the 5-pass research tools, and enforces rigorous citation compliance.
+
