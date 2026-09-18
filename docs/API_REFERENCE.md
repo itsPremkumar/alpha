@@ -536,6 +536,130 @@ Content-Type: application/json
 
 ---
 
+## Bot Direct Messaging API
+
+### Send Direct Message to Bot
+```http
+POST /api/bots/{bot_name}/dm
+Content-Type: application/json
+
+{
+  "content": "Analyze performance logs for service latency spikes",
+  "thread_id": "optional-thread-id",
+  "context": { "priority": "high" }
+}
+```
+
+### Get Bot Inbox
+```http
+GET /api/bots/{bot_name}/inbox?unread_only=true
+```
+
+---
+
+## Project Workforce API
+
+### Create Project
+```http
+POST /api/projects
+Content-Type: application/json
+
+{
+  "name": "Cloud Infrastructure Migration",
+  "description": "Cross-region Kubernetes cluster migration",
+  "constitution": "1. Zero downtime\n2. Mandatory rollback scripts\n3. Evidence-backed signoff"
+}
+```
+
+### Acquire Resource Lock
+```http
+POST /api/projects/{project_id}/locks
+Content-Type: application/json
+
+{
+  "resource": "terraform/production.tfstate",
+  "lock_type": "exclusive",
+  "ttl_seconds": 3600,
+  "reason": "Applying state updates"
+}
+```
+
+### Submit Evidence
+```http
+POST /api/projects/{project_id}/evidence
+Content-Type: application/json
+
+{
+  "task_id": "task-uuid",
+  "type": "test_result",
+  "content": "All 120 regression tests passed.",
+  "verdict": "pass"
+}
+```
+
+---
+
+## Swarms & Group Chat API
+
+### Run Multi-Agent Team Objective
+```http
+POST /api/groups/{group_name}/runs
+Content-Type: application/json
+
+{
+  "objective": "Perform multi-angle security assessment of auth flow",
+  "context": { "project_id": "proj-uuid" },
+  "config": {
+    "max_rounds": 5,
+    "parallel_execution": true
+  }
+}
+```
+
+### Stream Group Run Events
+```http
+GET /api/groups/{group_name}/runs/{run_id}/stream
+```
+
+---
+
+## Missions & Work Queue API
+
+### Compile Mission DAG
+```http
+POST /api/missions/compile
+Content-Type: application/json
+
+{
+  "macro_goal": "Migrate database from Postgres 14 to Postgres 17",
+  "constraints": ["No customer data loss", "Maintenance window: 2 hours"]
+}
+```
+
+---
+
+## Scheduled Tasks & Blueprints API
+
+### List Blueprints
+```http
+GET /api/scheduled-tasks/blueprints
+```
+
+### Create Scheduled Automation
+```http
+POST /api/scheduled-tasks
+Content-Type: application/json
+
+{
+  "name": "Daily Deep Research Digest",
+  "cron_expression": "0 8 * * *",
+  "prompt": "Run deep research on quantum key distribution breakthroughs",
+  "bot_name": "researcher"
+}
+```
+
+---
+
 ## Operator Endpoints (Authenticated)
 
 ### Get Version

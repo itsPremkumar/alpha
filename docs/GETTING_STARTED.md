@@ -37,11 +37,11 @@ npm run dist
 ```
 
 #### Install and Run
-1. Run `electron/dist/Agent-Workspace-Setup-2.1.0.exe`
+1. Run `electron/dist/Alpha-Setup-2.1.0.exe`
 2. SmartScreen warning → "More info" → "Run anyway"
 3. Per-user install (no admin rights needed)
 4. First launch: Auto-provisions Python and backend (splash screen shows progress)
-5. Add model API key to `%APPDATA%\agent-workspace-desktop\project\config.yaml`
+5. Add model API key to `%APPDATA%\alpha-desktop\project\config.yaml`
 6. Restart app and start chatting
 
 ### Method 2: Docker Deployment (Recommended for Servers)
@@ -49,8 +49,8 @@ npm run dist
 #### Quick Start
 ```bash
 # Clone repository
-git clone https://github.com/itsPremkumar/agent-workspace-desktop.git
-cd agent-workspace-desktop
+git clone https://github.com/itsPremkumar/alpha.git
+cd alpha
 
 # Configure environment
 cp .env.production.example .env
@@ -85,8 +85,8 @@ make docker-stop  # Stop containers
 #### Setup
 ```bash
 # Clone and enter
-git clone https://github.com/itsPremkumar/agent-workspace-desktop.git
-cd agent-workspace-desktop
+git clone https://github.com/itsPremkumar/alpha.git
+cd alpha
 
 # Generate local config (REQUIRED before first boot)
 make config

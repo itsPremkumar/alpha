@@ -38,8 +38,32 @@ The skills system provides extensible capabilities for agents. Skills are Python
 - **Location**: `skills/public/`
 - **Version controlled**: Yes
 - **Distribution**: Built into repository
-- **Review**: Required (skill-reviewer skill)
-- **Examples**: `skill-reviewer`, `web-search`, `code-execution`, `file-operations`
+- **Review**: Required (`skill-reviewer` skill)
+- **Included Skills (24 Public Packages)**:
+  1. `academic-paper-review`: Peer review evaluation, methodology assessment, and synthesis of research papers.
+  2. `bootstrap`: Full repository scaffolding, boilerplate generation, and project environment setup.
+  3. `chart-visualization`: Interactive charts, telemetry graphs, and visual dashboards.
+  4. `claude-to-agent-workspace`: Adapter and converter for importing skills and prompts from Claude Code/Codex formats.
+  5. `code-documentation`: Automated generation of architecture guides, docstrings, API references, and comments.
+  6. `consulting-analysis`: Strategic management frameworks (SWOT, Porter's Five Forces, BCG Matrix, MECE trees).
+  7. `data-analysis`: Tabular processing, statistical data modeling, pattern recognition, and trend forecasting.
+  8. `deep-research`: Autonomous 5-pass web research, recursive knowledge gap filling, and publication-ready cited briefs.
+  9. `find-skills`: Semantic discovery engine locating skills across local and public registries.
+  10. `frontend-design`: High-fidelity, accessible UI component generation and modern styling systems.
+  11. `github-deep-research`: Repository audits, commit history investigations, and issue triage.
+  12. `image-generation`: Multi-modal image prompt synthesis, style matching, and pipeline execution.
+  13. `music-generation`: Musical structure design, BPM/key configuration, and audio prompt formulation.
+  14. `newsletter-generation`: Curated industry digests, executive summaries, and publication-grade newsletters.
+  15. `podcast-generation`: Multi-speaker dialogue scriptwriting and audio storyboarding.
+  16. `ppt-generation`: Presentation slide decks, visual outlines, and speaker note generation.
+  17. `project-cartographer`: Codebase structural mapping, dependency graphing, and architectural cartography.
+  18. `skill-creator`: Autonomous skill synthesis creating reusable skills from successful agent trajectories.
+  19. `skill-reviewer`: Security auditing, compliance testing, and trust-tier classification for agent skills.
+  20. `surprise-me`: Open-ended creative problem solving, generative ideas, and unexpected technical exploration.
+  21. `systematic-literature-review`: PRISMA-compliant academic research reviews with formal citation matrices.
+  22. `vercel-deploy-claimable`: One-click instant cloud deployment to Vercel with automated claim URLs.
+  23. `video-generation`: Scene-by-scene scriptwriting, camera angle prompts, and video storyboarding.
+  24. `web-design-guidelines`: Modern web design heuristics, responsive layouts, and WCAG accessibility standards.
 
 ### 2. Custom Skills
 - **Location**: `skills/custom/` (gitignored)

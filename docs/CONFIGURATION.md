@@ -457,6 +457,35 @@ memory:
 - Skill learning
 - Automatic curation
 
+## Subagent Workforce & Intent Presets
+
+Subagents are configured in `config.yaml` with global timeout defaults, delegation caps, and intent presets (`categories`):
+
+```yaml
+subagents:
+  timeout_seconds: 1800           # Global default timeout (30 minutes)
+  max_total_per_run: 6            # Maximum subagent delegations per turn (1-50)
+  token_budget:
+    enabled: true
+    max_tokens: 2000000           # 2M tokens per run ceiling
+  categories:
+    general:
+      description: "Default intent preset (identity no-op)."
+    research:
+      description: "Thorough multi-source investigation with verified claims."
+      max_turns: 100
+      prompt_append: "Be thorough: consult multiple sources, verify load-bearing claims."
+    quick:
+      description: "Terse low-latency execution for small bounded tasks."
+      max_turns: 30
+      prompt_append: "Optimize for latency: be terse, skip exhaustive verification."
+    deep-research:
+      description: "Autonomous multi-hop deep research with 5-pass search and citation verification."
+      tools: ["deep_research", "web_search", "web_fetch", "compile_five_pass_search"]
+      max_turns: 150
+      prompt_append: "Execute an exhaustive multi-hop deep research investigation."
+```
+
 ## Runtime Configuration Updates
 
 ### Via Gateway API

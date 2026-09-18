@@ -1,285 +1,156 @@
-# System Architecture
+# Alpha System Architecture 🐺
 
-## Overview
+## 1. Overview
 
-Agent Workspace (Agent Workspace) is a full-stack AI agent platform built on LangGraph, featuring a multi-agent orchestration system with sandboxed execution, persistent memory, and extensible tool integration. The system operates in per-thread isolated environments with a unified gateway API and Next.js frontend.
+**Alpha** is a unified, production-grade Autonomous Multi-Agent Operating System engineered on LangGraph, FastAPI, Next.js 15, and an Electron Windows desktop shell. It delivers long-horizon task execution, frontier cognitive reasoning, multi-model swarms, and exhaustive multi-hop research across sandboxed, thread-isolated environments.
 
-## High-Level Architecture
+---
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           AGENT WORKSPACE ARCHITECTURE                        │
-└─────────────────────────────────────────────────────────────────────────────┘
+## 2. High-Level Architectural Planes
 
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│   Client     │     │   Client     │     │   Client     │     │   Client     │
-│  (Browser)   │     │  (Electron)  │     │  (Telegram)  │     │   (Slack)    │
-└──────┬───────┘     └──────┬───────┘     └──────┬───────┘     └──────┬───────┘
-       │                    │                    │                    │
-       └────────────────────┼────────────────────┼────────────────────┘
-                            ▼
-                   ┌──────────────────┐
-                   │    Nginx         │
-                   │  (Port 2026)     │
-                   │  Reverse Proxy   │
-                   └────────┬─────────┘
-                            │
-         ┌──────────────────┼──────────────────┐
-         ▼                  ▼                  ▼
-┌──────────────────┐ ┌──────────────┐ ┌──────────────────┐
-│   Frontend       │ │  Gateway API │ │   Provisioner    │
-│  (Next.js)       │ │  (FastAPI)   │ │  (Port 8002)     │
-│  (Port 3000)     │ │  (Port 8001) │ │  (K8s Sandbox)   │
-└──────────────────┘ └──────┬───────┘ └──────────────────┘
-                            │
-         ┌──────────────────┼──────────────────┐
-         ▼                  ▼                  ▼
-┌──────────────────┐ ┌──────────────┐ ┌──────────────────┐
-│  Lead Agent      │ │  Subagent    │ │   Memory         │
-│  (LangGraph)     │ │  Executor    │ │   System         │
-└──────────────────┘ └──────────────┘ └──────────────────┘
-         │                  │                  │
-         ▼                  ▼                  ▼
-┌──────────────────┐ ┌──────────────┐ ┌──────────────────┐
-│  Sandbox         │ │  Tools       │ │   Persistence    │
-│  Providers       │ │  (MCP/Skills)│ │   (SQLite/       │
-│  (Local/Docker)  │ │              │ │    PostgreSQL)   │
-└──────────────────┘ └──────────────┘ └──────────────────┘
-```
+Alpha is structured into eight core architectural planes:
 
-## Service Topology
+```mermaid
+flowchart TB
+    subgraph ClientPlane ["1. Presentation & Omnichannel Layer"]
+        Electron["Alpha Desktop App (Electron · Windows)"]
+        NextJS["Next.js 15 Web Workspace (Port 3000)"]
+        OmniHub["Omnichannel Messaging (Slack, Discord, Telegram, Lark, DingTalk, WeChat, Buzz)"]
+        OpenAICompat["OpenAI Drop-In API (/api/compat/openai/chat/completions)"]
+    end
 
-| Service | Port | Role |
-|---------|------|------|
-| **Nginx** | `2026` | Unified reverse proxy entry point — single public port |
-| **Gateway API** | `8001` | FastAPI REST API + embedded LangGraph agent runtime |
-| **Frontend** | `3000` | Next.js chat UI (App Router) |
-| **Provisioner** | `8002` | Optional — Kubernetes sandbox mode only |
-| **Desktop Gateway** | `8201` | Electron-spawned Gateway (Windows app) |
+    subgraph IngressPlane ["2. Ingress & Edge Proxy"]
+        Nginx["Nginx Reverse Proxy & Load Balancer (Port 2026)"]
+        FastAPI["FastAPI Gateway REST & SSE Streaming (Port 8001 / 8201)"]
+    end
 
-## Request Routing (Nginx)
+    subgraph PlanningPlane ["3. Autonomous Planning & Decision Fabric"]
+        AutoPlan["One-Prompt Autonomous Planner"]
+        CognitivePlan["8-Dimensional Cognitive Planning Engine"]
+        MissionTree["Mission Hierarchy & Work Queue DAG"]
+        GoalEngine["Continuous Goal Engine & Integrity Gate"]
+    end
 
-```
-Nginx (2026)
-├── /api/langgraph/*  → Gateway embedded runtime (rewritten to /api/*)
-├── /api/* (other)    → Gateway REST API
-└── / (non-API)       → Frontend (Next.js)
-```
+    subgraph AgenticPlane ["4. Execution Harness & Swarm Orchestration"]
+        LeadAgent["Lead Agent LangGraph Runtime"]
+        SubagentPool["Concurrent Subagent Pool (Category Presets)"]
+        SwarmEngine["Autonomous Swarm & Group Chat Engine"]
+        Workforce["Project Workforce Layer & Kanban Coordinator"]
+        RalphLoop["Ralph Loop Test-Driven Repair & RSI Cycle"]
+        Boulder["Boulder Checkpointing & Durable Replay"]
+    end
 
-## Core Components
+    subgraph ResearchPlane ["5. Deep Research & Knowledge Extraction"]
+        FivePass["5-Pass Search Strategy Compiler"]
+        GapAnalyzer["Recursive Knowledge Gap Filling"]
+        ContradictionEngine["Contradiction Detection & Nuance Synthesis"]
+        CitationVerifier["Strict Deterministic Citation Verifier"]
+    end
 
-### 1. Gateway API (FastAPI)
+    subgraph CognitivePlane ["6. Frontier Cognitive Intelligence"]
+        AVO["Agentic Variation Operators (NVIDIA AVO Step)"]
+        MoA["Mixture of Agents (MoA) Multi-Model Deliberation"]
+        ToM["Theory of Mind (ToM) Consult"]
+        Epistemic["Epistemic Belief Tracker"]
+        Dreaming["Cognitive Memory & Dreaming Consolidation"]
+    end
 
-The Gateway is the central orchestration layer providing:
-- **REST API** for frontend integration
-- **Embedded LangGraph Runtime** for agent execution
-- **WebSocket/SSE** streaming for real-time updates
-- **Authentication & Authorization** (Better Auth)
-- **File Upload/Download** with thread isolation
-- **MCP Server Management** (stdio, SSE, HTTP transports)
-- **Skill Lifecycle Management** (install, enable, review)
-- **Memory System API** (extraction, retrieval, configuration)
-- **Operator Endpoints** (`/api/ops/*` for health, status, resources)
+    subgraph CodePlane ["7. Code Agentic Core & Developer Workspaces"]
+        AutoRepair["Automated Test & Code Repair Engine"]
+        RepoMap["Repository AST Map Generator"]
+        ASTGrep["AST-Grep Semantic Code Search & Rewrite"]
+        RepoTwin["Repo Twin Preview Sandbox"]
+        Hashline["Hashline Collision-Safe Line Editor"]
+    end
 
-### 2. Lead Agent (LangGraph)
+    subgraph EnclavePlane ["8. Security Enclave & Governance"]
+        AstraEnclave["Astra Security Enclave & Scoped Vault"]
+        ApprovalGate["Smart Command Approval Gate & Estop"]
+        Recorder["Trajectory Flight Recorder & Lineage Graph"]
+        TokenBudget["Token Budget Ceilings & Cost Telemetry"]
+    end
 
-Single LangGraph agent (`lead_agent`) created via `make_lead_agent(config)`:
-
-```
-Lead Agent
-├── Dynamic Model Selection (thinking/vision support)
-├── Middleware Chain (9 middlewares in strict order)
-├── Tool System (sandbox, MCP, community, built-in, skills)
-├── Subagent Delegation (parallel task execution)
-└── System Prompt (skills injection, memory context, workspace guidance)
+    ClientPlane --> IngressPlane
+    IngressPlane --> PlanningPlane
+    PlanningPlane --> AgenticPlane
+    AgenticPlane --> ResearchPlane
+    AgenticPlane --> CognitivePlane
+    AgenticPlane --> CodePlane
+    AgenticPlane --> EnclavePlane
 ```
 
-#### Middleware Chain (Execution Order)
+---
 
-| # | Middleware | Purpose |
-|---|-----------|---------|
-| 1 | **ThreadDataMiddleware** | Creates per-thread isolated directories (workspace, uploads, outputs) |
-| 2 | **UploadsMiddleware** | Injects newly uploaded files into conversation context |
-| 3 | **SandboxMiddleware** | Acquires sandbox environment for code execution |
-| 4 | **SummarizationMiddleware** | Reduces context when approaching token limits (optional) |
-| 5 | **TodoListMiddleware** | Tracks multi-step tasks in plan mode (optional) |
-| 6 | **TitleMiddleware** | Auto-generates conversation titles from first user request |
-| 7 | **MemoryMiddleware** | Queues conversations for async memory extraction |
-| 8 | **ViewImageMiddleware** | Injects image data for vision-capable models (conditional) |
-| 9 | **ClarificationMiddleware** | Intercepts clarification requests (must be last) |
+## 3. Service Topology & Port Mapping
 
-### 3. Sandbox System
+| Service | Port | Protocol | Architectural Role |
+| :--- | :--- | :--- | :--- |
+| **Nginx Ingress** | `2026` | HTTP / WS | Unified reverse proxy entry point routing `/api/*` to Gateway and `/` to Next.js. |
+| **FastAPI Gateway** | `8001` | HTTP / SSE | Core agent runtime, tool execution, REST endpoints, and WebSocket event stream. |
+| **Next.js Web UI** | `3000` | HTTP | Client workspace dashboard (Chat, Workforce, Projects, Kanban, Skills, Settings). |
+| **Desktop Gateway** | `8201` | HTTP / SSE | Isolated Gateway spawned internally by the Windows Electron desktop application. |
+| **Sandbox Provisioner**| `8002` | HTTP / gRPC | Optional microservice managing Kubernetes pod-based execution sandboxes. |
 
-Per-thread isolated execution with virtual path translation:
+---
 
-```
-Providers:
-├── LocalSandboxProvider    → Filesystem isolation (default)
-└── AioSandboxProvider      → Docker containers (async, warm pools)
+## 4. Subsystem Deep-Dive
 
-Virtual Paths:
-├── /mnt/user-data/workspace    → Thread workspace directory
-├── /mnt/user-data/uploads      → Thread uploads directory
-├── /mnt/user-data/outputs      → Thread outputs directory
-└── /mnt/skills                 → Skills directory (skills/public + skills/custom)
+### 4.1 Autonomous Deep Research Subsystem
+The deep research pipeline solves shallow web-search limitations by executing an autonomous 5-pass investigation:
+1. **Pass 1: Discovery & Landscape**: Identifies foundational themes, key terminology, and high-level boundaries.
+2. **Pass 2: Specific Evidence & Benchmarks**: Extracts empirical numbers, percentages, speedups, and verified metrics.
+3. **Pass 3: Adversarial Contradiction & Edge Cases**: Formulates falsification queries hunting for bugs, failure modes, and dissenting views.
+4. **Pass 4: Fact Verification & Cross-Checking**: Corroborates claims across diverse domains to eliminate hallucinations.
+5. **Pass 5: Strategic Synthesis & Gap Resolution**: Recursively resolves knowledge gaps and compiles publication-grade Markdown briefs with deterministic citations (`[S1]`, `[S2]`).
 
-Tools:
-├── bash (disabled by default in LocalSandboxProvider)
-├── ls
-├── read_file
-├── write_file (overwrite + append modes)
-└── str_replace (serialized read-modify-write per sandbox+path)
-```
+### 4.2 Swarm & Multi-Agent Workforce Layer
+- **Bot Roster & SOUL Protocol**: Maintains registered bots with distinct operational personalities, isolated prompts, and private inboxes.
+- **Bot Mode Direct Messaging**: Fire-and-forget asynchronous inter-bot and user-to-bot messaging (`POST /api/bots/{name}/dm`) with server-side attribution.
+- **Collaborative Kanban Board**: Real-time project boards where agents create, assign, transition, and audit task cards.
+- **Agent-to-Agent (A2A)**: Structured messaging protocol enabling peer delegation, observation, and state querying.
+- **Workforce Project Governance**: Tracks active agent presence, enforces resource locks, project constitutions, and architectural decision records (ADRs).
 
-### 4. Subagent System
+### 4.3 Continuous Execution Harness & Planners
+- **Autonomous One-Prompt Planner**: Converts ambiguous natural language requests into fully decided multi-step execution graphs.
+- **8-Dimensional Cognitive Planning**: Evaluates tasks across clarity, safety, feasibility, reversibility, resource intensity, architectural impact, empirical evidence, and mission alignment.
+- **Continuous Goal Engine**: Enforces verifiable completion criteria, auditing evidence matrices before allowing an agent to exit.
+- **Ralph Loop (Self-Healing Code Loop)**: Runs test-driven iterative repair cycles until code passes all unit tests and invariant gates.
+- **Boulder Multi-Session Checkpoints**: Persists complete agent state graphs to PostgreSQL/SQLite, allowing interrupted tasks to resume seamlessly.
 
-Async task delegation with concurrent execution:
+### 4.4 Frontier Cognitive Intelligence
+- **Agentic Variation Operators (AVO)**: Mutates reasoning prompts and execution strategies using evolutionary algorithms (inspired by NVIDIA AVO).
+- **Mixture of Agents (MoA)**: Dispatches queries across multiple heterogeneous LLMs simultaneously and aggregates consensus.
+- **Theory of Mind (ToM)**: Simulates user expectations and downstream stakeholder reactions before finalizing outputs.
+- **Cognitive Memory & Dreaming**: Periodically consolidates ephemeral episodic interaction traces into high-level semantic knowledge.
 
-- **Built-in Agents**: `general-purpose` (full toolset), `bash` (shell specialist)
-- **Concurrency**: Max 3 subagents per turn, 15-minute timeout
-- **Execution**: Background thread pools with status tracking + SSE events
-- **Flow**: Agent calls `task()` tool → executor runs subagent → polls completion → returns result
+### 4.5 Code Agentic Core
+- **Automated Test & Repair**: Autonomously invokes unit tests, captures failure tracebacks, diagnoses root causes, and edits source code.
+- **Repository Map AST Generator**: Generates structural abstract syntax tree dependency maps across entire codebases.
+- **AST-Grep**: Executes semantic syntax-tree search and replacement across Python, TypeScript, Go, Rust, and C++.
+- **Repo Twin Sandbox**: Evaluates code modifications in an isolated shadow directory before applying them to the working tree.
+- **Hashline Line Editing**: Line-level reading and editing preventing edit collisions.
 
-### 5. Memory System
+### 4.6 Enterprise Security Enclave & Governance
+- **Astra Security Enclave**: Enforces task boundaries and encrypts sensitive API tokens and credentials.
+- **Smart Command Approval**: Scores the blast radius of terminal commands and prompts the operator for approval when necessary.
+- **Emergency Stop (Estop)**: Instant hard-stop mechanism halting runaway loops, swarms, and background jobs.
+- **Trajectory Flight Recorder**: Cryptographically logs every reasoning step, tool call, and state transition for forensic audits.
+- **Token Budget Ceilings**: Enforces deterministic token spend limits per run with real-cost provider pricing telemetry.
 
-LLM-powered persistent context retention:
+---
 
-- **Automatic Extraction**: Analyzes conversations for user context, facts, preferences
-- **Scope-Safe Writes**: Middleware extracts only durable, descriptive user-level facts
-- **Atomic Replacements**: Contradiction removal linked to replacement survives gates
-- **Structured Storage**: User context (work, personal, top-of-mind), history, confidence-scored facts
-- **Debounced Updates**: Batches updates to minimize LLM calls
-- **System Prompt Injection**: Top facts + context injected into agent prompts
-- **Storage**: JSON file with mtime-based cache invalidation
+## 5. Middleware Execution Pipeline
 
-### 6. Tool Ecosystem
+Every agent invocation passes through a deterministic sequence of middleware layers:
 
-| Category | Tools |
-|----------|-------|
-| **Sandbox** | `bash`, `ls`, `read_file`, `write_file`, `str_replace` |
-| **Built-in** | `present_files`, `ask_clarification`, `view_image`, `task` (subagent) |
-| **Community** | Tavily (web search), Jina AI (web fetch), Crawl4AI, Firecrawl, fastCRW, DuckDuckGo (images) |
-| **MCP** | Any MCP server (stdio, SSE, HTTP transports) |
-| **Skills** | Domain-specific workflows injected via system prompt |
-
-### 7. IM Channel Integrations
-
-| Platform | Streaming | Features |
-|----------|-----------|----------|
-| **Feishu/Lark** | Full streaming | Card updates, typing indicators, topic serialization |
-| **Slack** | Final response | Runs.wait() response path |
-| **Telegram** | Final response | Runs.wait() response path |
-| **Discord** | Typing indicators | Dedicated event loop, bounded cancellation |
-| **WeChat/WeCom/DingTalk/Buzz** | Varies | Platform-specific adapters |
-
-### 8. Persistence Layer
-
-- **Checkpointer**: LangGraph-compatible checkpoint storage
-- **Store Engines**: SQLite (default) / PostgreSQL (shared use)
-- **Schema Migrations**: Alembic (auto-run on Gateway startup)
-- **Thread Data**: Isolated per-thread directories under `users/{user_id}/threads/{thread_id}/`
-
-## Data Flow
-
-### Chat Request Flow
-
-```
-User Message
-    │
-    ▼
-Nginx (2026) → /api/langgraph/runs/stream
-    │
-    ▼
-Gateway Router → RunManager.run_agent()
-    │
-    ▼
-StreamBridge → Lead Agent (LangGraph)
-    │
-    ├── Middleware Chain (1-9)
-    ├── Model Call (with tools)
-    ├── Tool Execution (sandbox/MCP/skills)
-    ├── Subagent Delegation (parallel)
-    └── Memory Extraction (async)
-    │
-    ▼
-SSE Stream → Frontend → User
-```
-
-### File Upload Flow
-
-```
-POST /api/threads/{id}/uploads
-    │
-    ▼
-UploadsMiddleware
-    │
-    ├── Validate file type (PDF/PPT/Excel/Word → Markdown via markitdown)
-    ├── Reject directories (all-or-nothing)
-    ├── Stage as .upload-*.part (atomic replace after validation)
-    ├── Store in thread-isolated directory
-    ├── Handle duplicates (_N suffix)
-    └── Return upload metadata
-    │
-    ▼
-Next Turn → UploadsMiddleware injects files into context
-```
-
-## Configuration Architecture
-
-```
-config.yaml (gitignored, root)
-├── models[]              # LLM configurations
-├── tools[]               # Tool definitions
-├── tool_groups[]         # Logical tool groupings
-├── sandbox               # Execution provider config
-├── skills                # Skills directory paths
-├── title                 # Auto-title generation
-├── summarization         # Context summarization
-├── subagents             # Subagent system config
-├── memory                # Memory system settings
-├── scheduler             # Scheduled tasks
-├── channels              # IM channel configs
-├── tracing               # LangSmith/Langfuse
-└── extensions            # Third-party extensions
-
-extensions_config.json (gitignored, root, API-writable)
-├── mcpServers{}          # MCP server configurations
-└── skills{}              # Skill enable/disable state
-```
-
-## Security Architecture
-
-- **Task Boundaries**: Per-thread isolation prevents cross-contamination
-- **Encrypted Checkpoints**: AES-GCM encryption for sensitive data
-- **Credential Vault**: Scoped secret management
-- **Security Headers**: HSTS, CSP, X-Frame-Options on all responses
-- **Operator Authentication**: Better Auth for `/api/ops/*` endpoints
-- **Input Validation**: All API inputs validated and sanitized
-- **Sandbox Isolation**: Docker containers or filesystem jails
-
-## Scalability Considerations
-
-- **Horizontal Scaling**: Gateway stateless (except scheduler multi-instance mode)
-- **Database**: PostgreSQL required for multi-instance scheduler
-- **Redis**: Optional for distributed caching (not currently implemented)
-- **Load Balancing**: Nginx handles connection distribution
-- **Connection Pooling**: SQLAlchemy async pools for database
-
-## Technology Stack
-
-| Layer | Technology |
-|-------|------------|
-| **Agent Framework** | LangGraph 1.0.6+ |
-| **LLM Abstraction** | LangChain 1.2.3+ |
-| **API Framework** | FastAPI 0.115.0+ |
-| **MCP Support** | langchain-mcp-adapters |
-| **Sandbox** | agent-sandbox |
-| **Document Conversion** | markitdown |
-| **Web Search** | tavily-python, firecrawl-py |
-| **Frontend** | Next.js 15 (App Router), React 19 |
-| **Styling** | Tailwind CSS |
-| **Desktop** | Electron |
-| **Container** | Docker, Docker Compose |
-| **Orchestration** | Kubernetes (Helm chart) |
-| **Database** | SQLite / PostgreSQL (SQLAlchemy + Alembic) |
-| **Package Mgmt** | uv (Python), pnpm (Node.js) |
+| Sequence | Middleware | Enforcement Role |
+| :---: | :--- | :--- |
+| **1** | `SecurityEnclaveMiddleware` | Validates session authorization, credential boundaries, and tenant isolation. |
+| **2** | `DynamicContextMiddleware` | Prunes context tokens, compacts running histories, and prevents prompt injection. |
+| **3** | `SubagentDateContextMiddleware`| Injects current temporal context (year, month, day, timezone). |
+| **4** | `SubagentCapacityMiddleware` | Enforces concurrency limits and delegation quotas. |
+| **5** | `TokenBudgetMiddleware` | Tracks cumulative token consumption against enforced budget ceilings. |
+| **6** | `ToolPolicyMiddleware` | Enforces whitelists, blacklists, and sticky tool denials. |
+| **7** | `ToolAssemblyMiddleware` | Assembles native tools, MCP server tools, and enabled skills. |
+| **8** | `TrajectoryAuditMiddleware` | Logs every event to the cryptographic flight recorder. |
+| **9** | `RunJournalCallback` | Emits real-time SSE step events to the UI and WebSocket channels. |

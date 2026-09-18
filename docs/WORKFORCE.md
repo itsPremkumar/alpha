@@ -277,6 +277,43 @@ Events:
 - run_completed: {output: "Final specification..."}
 ```
 
+## Collaborative Real-Time Kanban Board
+*Tool: `kanban_board_tool`*
+
+The shared Kanban board enables multi-agent teams and human operators to coordinate asynchronously across complex deliverables:
+- **Columns**: `Backlog` → `To Do` → `In Progress` → `Review / Audit` → `Done`.
+- **Card Lifecycle**:
+  - `action="create_card"`: Generates new tasks with priority, description, and required evidence artifacts.
+  - `action="assign_card"`: Assigns specific bots from the roster.
+  - `action="move_card"`: Transitions cards across columns while updating execution logs.
+  - `action="complete_card"`: Finalizes cards gated by empirical evidence submission.
+- **Audit Trails**: Every transition records timestamp, responsible bot name, and artifact links.
+
+## Agent-to-Agent (A2A) Messaging Protocol
+*Tools: `a2a_tool`, `agent_message_tool`, `agent_observe_tool`*
+
+Structured inter-agent protocol enabling distributed micro-teams:
+- **Peer Delegation**: Agents dispatch bounded subtasks directly to peers without involving the lead orchestrator for every minor step.
+- **Peer Observation**: Agents subscribe to and observe execution progress and intermediate thought vectors of collaborating agents.
+- **Direct Mailboxes**: Dedicated inbox queues ensure no communication loss during high-concurrency turns.
+
+## Autonomous Swarms & Dynamic Topologies
+*Tool: `swarm_tool`*
+
+For emergent, self-organizing problem solving:
+- **Leader Election**: Evaluates bot agency and domain competence to elect an optimal swarm leader.
+- **Dynamic Work Partitioning**: Breaks massive jobs (e.g. multi-repo migrations, vulnerability scanning) across worker swarms.
+- **Barrier Synchronization**: Enforces phase gates where all swarm workers must complete their slice before merging into the final deliverable.
+
+## Subagent Delegation with Intent Category Presets
+*Tool: `task(category="...")`*
+
+Delegation is guided by intent categories that configure model chains, turn budgets, and tool whitelists:
+- **`general`**: Default identity preset with standard turn budgets.
+- **`research`**: High-rigor multi-source investigation (`max_turns=100`).
+- **`quick`**: Low-latency, terse execution for small tasks (`max_turns=30`).
+- **`deep-research`**: Autonomous 5-pass research, recursive gap filling, contradiction detection, and publication-ready citations (`max_turns=150`).
+
 ## Workforce Frontend (WorkforceSection)
 
 ### Tabs

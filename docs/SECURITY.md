@@ -398,9 +398,37 @@ make support-bundle  # Collect evidence
 # Export user data
 python scripts/export_user_data.py --user-id <id> --output /tmp/export
 
-# Delete user data
-python scripts/delete_user_data.py --user-id <id> --confirm
-```
+## Enterprise Security Enclave & Governance Plane
+
+### Astra Security Enclave
+*Tools: `astra_security_manage`, `enterprise_security_manage`*
+- **Hardware & Software Isolation**: Enforces tenant-level hardware and software isolation boundaries.
+- **Scoped Credential Vault**: Subagents only receive explicitly scoped, short-lived tokens required for their delegated tasks.
+- **Data Perimeter**: Blocks egress traffic to unauthorized IPs or unapproved domains.
+
+### Smart Command Approval Gate
+*Tool: `verify_command_approval`*
+- **Static Blast Radius Analysis**: Terminal commands evaluated across file mutation, network egress, privilege escalation, and deletion risk tiers.
+- **Human-in-the-Loop Interception**: High-risk actions (`rm -rf`, schema drops, git force-pushes) block until explicitly approved by the operator in the UI.
+
+### Emergency Stop (Estop)
+*Tool: `emergency_stop_manage`*
+- **Sub-50ms Global Halt**: Instantly cancels active agent runs, terminates child subprocesses, and closes network connections.
+- **Fail-Safe Rollback**: Reverts uncommitted git checkpoints and releases acquired project locks.
+
+### Trajectory Flight Recorder
+*Tool: `trajectory_audit_tool`*
+- **Cryptographic Audit Trail**: Records step-by-step reasoning tokens, tool invocations, inputs, outputs, and timestamps.
+- **Tamper-Resistant Storage**: Stored alongside AES-GCM encrypted checkpoints for forensic post-incident reviews.
+
+### Universal Artifact Lineage Tracing
+*Tool: `trace_artifact_lineage`*
+- **Provenance Graph**: Tracks every file, diff, and document back to the exact parent prompt, source data, and generating agent.
+- **Integrity Hashes**: SHA-256 content hashes generated upon creation and validated prior to execution.
+
+### Token Budget Ceilings & Real-Cost Telemetry
+- **Deterministic Token Backstops**: Sets hard caps per run (e.g. 1M or 2M tokens) to prevent infinite hallucination loops and unexpected API billing.
+- **Cache-Aware Telemetry**: Dynamically factors in provider prompt caching discounts (e.g. Anthropic/OpenAI prompt cache hits).
 
 ## Security Testing
 
