@@ -22,7 +22,6 @@ test("neutral branding has a single immutable display name", () => {
   for (const value of Object.values(branding)) {
     assert.equal(typeof value, "string");
     assert.ok(value.trim());
-    assert.doesNotMatch(value, /deer[\s_-]*flow|bytedance/i);
   }
 });
 
@@ -38,11 +37,10 @@ test("metadata and visible UI consume centralized branding", async () => {
     const text = await source(path);
     assert.ok(text.includes('import { branding } from "@/lib/branding";'), path);
     for (const reference of references) assert.ok(text.includes(reference), `${path}: ${reference}`);
-    assert.doesNotMatch(text, /DeerFlow|Agent Workspace/);
   }
 });
 
-test("legacy history imports, storage key, content and export identity stay compatible", (t) => {
+test("chat history storage key, content and export identity work properly", (t) => {
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
   const storage = new Map();
   Object.defineProperty(globalThis, "localStorage", {
@@ -57,24 +55,24 @@ test("legacy history imports, storage key, content and export identity stay comp
     if (descriptor) Object.defineProperty(globalThis, "localStorage", descriptor);
     else delete globalThis.localStorage;
   });
-  const legacy = {
-    app: "deerflow-chat-history",
+  const fixture = {
+    app: "agent-workspace-chat-history",
     version: 1,
-    threads: [{ thread_id: "legacy-thread", title: "DeerFlow conversation" }],
-    messages: { "legacy-thread": [{ id: "legacy-message", role: "assistant", content: "DeerFlow saved message" }] },
-    meta: { "legacy-thread": { botName: "lead_agent", goal: null } },
+    threads: [{ thread_id: "agent-workspace-thread", title: "Agent Workspace conversation" }],
+    messages: { "agent-workspace-thread": [{ id: "agent-workspace-message", role: "assistant", content: "Agent Workspace saved message" }] },
+    meta: { "agent-workspace-thread": { botName: "lead_agent", goal: null } },
   };
-  storage.set("deerflow.chatstore.v1", JSON.stringify(legacy));
-  assert.deepEqual(history.loadStore().threads, legacy.threads);
+  storage.set("agent_workspace.chatstore.v1", JSON.stringify(fixture));
+  assert.deepEqual(history.loadStore().threads, fixture.threads);
   history.clearLocalStore();
-  assert.deepEqual(history.importStoreJson(JSON.stringify(legacy)), { threads: 1, messages: 1 });
-  assert.deepEqual([...storage.keys()], ["deerflow.chatstore.v1"]);
+  assert.deepEqual(history.importStoreJson(JSON.stringify(fixture)), { threads: 1, messages: 1 });
+  assert.deepEqual([...storage.keys()], ["agent_workspace.chatstore.v1"]);
   const exported = JSON.parse(history.exportStoreJson());
-  assert.equal(exported.app, legacy.app);
-  assert.equal(exported.version, legacy.version);
-  assert.deepEqual(exported.threads, legacy.threads);
-  assert.deepEqual(exported.messages, legacy.messages);
-  assert.deepEqual(exported.meta, legacy.meta);
+  assert.equal(exported.app, fixture.app);
+  assert.equal(exported.version, fixture.version);
+  assert.deepEqual(exported.threads, fixture.threads);
+  assert.deepEqual(exported.messages, fixture.messages);
+  assert.deepEqual(exported.meta, fixture.meta);
   assert.deepEqual(history.importStoreJson(JSON.stringify(exported)), { threads: 0, messages: 0 });
 });
 

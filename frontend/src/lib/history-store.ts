@@ -9,7 +9,7 @@ import { ChatMessage, Thread } from "@/types/chat";
  * reloads and offline gaps. Export/import moves history between browsers.
  */
 
-const KEY = "deerflow.chatstore.v1";
+const KEY = "agent_workspace.chatstore.v1";
 const MAX_THREADS = 100;
 const MAX_MSGS_PER_THREAD = 300;
 const MAX_CONTENT_CHARS = 20000;
@@ -211,7 +211,7 @@ export function storageInfo(): { threads: number; messages: number; kb: number }
 }
 
 export function exportStoreJson(): string {
-  return JSON.stringify({ app: "deerflow-chat-history", ...loadStore(), exportedAt: new Date().toISOString() }, null, 2);
+  return JSON.stringify({ app: "agent-workspace-chat-history", ...loadStore(), exportedAt: new Date().toISOString() }, null, 2);
 }
 
 /** Merge an exported file into the store. Returns counts for user feedback. */
