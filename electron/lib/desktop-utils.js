@@ -3,7 +3,7 @@
 function resolveStartUrl(frontendUrl, env = process.env) {
   if (!frontendUrl || !/^https?:\/\//i.test(frontendUrl)) return frontendUrl;
   try {
-    return new URL(env.AGENT_WORKSPACE_START_PATH || env.DEERFLOW_START_PATH || '/', frontendUrl).toString();
+    return new URL(env.AGENT_WORKSPACE_START_PATH || '/', frontendUrl).toString();
   } catch {
     return frontendUrl;
   }

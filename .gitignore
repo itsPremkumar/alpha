@@ -81,6 +81,4 @@ config.yaml.bak
 # Local project runtime stores
 .agent_workspace_projects/
 backend/.agent_workspace_projects/
-.deerflow_projects/
-backend/.deerflow_projects/
 
