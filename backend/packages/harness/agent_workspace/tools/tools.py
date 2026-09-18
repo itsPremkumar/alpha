@@ -25,6 +25,16 @@ from agent_workspace.tools.builtins import (
     batch_task,
     blackboard_query,
     blackboard_record_evidence,
+    # Frontier autonomous software engineering engines:
+    emit_stigmergic_event,
+    query_stigmergic_traces,
+    query_language_server_symbol,
+    synthesize_runtime_tool,
+    list_dynamic_tools,
+    run_autonomous_benchmark_eval,
+    analyze_semantic_git_delta,
+    consolidate_cognitive_memory,
+    recall_agent_memory,
     bot_roster_tool,
     boulder_checkpoint_manage,
     browser_navigate_and_inspect,
@@ -117,6 +127,13 @@ from agent_workspace.tools.builtins import (
     visual_verify_artifact,
     manage_reflexion_memory,
     workflow_dag_manage,
+    run_introspective_tree_search,
+    compute_program_slice,
+    run_differential_regression_oracle,
+    diagnose_and_heal_environment,
+    reconcile_structural_ast_conflicts,
+    query_contrastive_memory,
+    record_trajectory_outcome,
 )
 from agent_workspace.tools.mcp_metadata import tag_mcp_tool
 from agent_workspace.tools.sync import make_sync_tool_wrapper
@@ -185,6 +202,16 @@ BUILTIN_TOOLS = [
     self_heal_diagnose,
     blackboard_record_evidence,
     blackboard_query,
+    # Frontier Autonomous Software Engineering Engines:
+    query_language_server_symbol,
+    emit_stigmergic_event,
+    query_stigmergic_traces,
+    synthesize_runtime_tool,
+    list_dynamic_tools,
+    run_autonomous_benchmark_eval,
+    analyze_semantic_git_delta,
+    consolidate_cognitive_memory,
+    recall_agent_memory,
     # High-End Cognitive, Deliberation, Epistemics & Evolution Engines:
     execute_transactional_action,
     evaluate_epistemic_claim,
@@ -236,6 +263,14 @@ BUILTIN_TOOLS = [
     visual_verify_artifact,
     manage_reflexion_memory,
     compile_problem_model,
+    # SOTA Frontier Agentic Software Engineering Tools:
+    run_introspective_tree_search,
+    compute_program_slice,
+    run_differential_regression_oracle,
+    diagnose_and_heal_environment,
+    reconcile_structural_ast_conflicts,
+    query_contrastive_memory,
+    record_trajectory_outcome,
 ]
 
 SUBAGENT_TOOLS = [

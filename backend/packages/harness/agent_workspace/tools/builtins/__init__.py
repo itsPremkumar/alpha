@@ -19,6 +19,19 @@ from .batch_task_tool import batch_status, batch_task, cancel_batch
 
 # Enterprise Operating System & Cognitive Collaboration Tools
 from .blackboard_tool import blackboard_query, blackboard_record_evidence
+
+# Frontier autonomous engineering engines: stigmergic mesh, LSP intelligence,
+# dynamic tool metacompiler, autonomous benchmarking, semantic git delta and
+# tiered cognitive memory.
+from .stigmergic_mesh_tool import emit_stigmergic_event, query_stigmergic_traces
+from .lsp_intelligence_tool import query_language_server_symbol
+from .dynamic_tool_synthesizer_tool import list_dynamic_tools, synthesize_runtime_tool
+from .autonomous_benchmark_tool import run_autonomous_benchmark_eval
+from .semantic_git_delta_tool import analyze_semantic_git_delta
+from .cognitive_memory_tiering_tool import (
+    consolidate_cognitive_memory,
+    recall_agent_memory,
+)
 from .bot_roster_tool import bot_roster_tool
 from .boulder_checkpoint_tool import boulder_checkpoint_manage
 from .browser_supervisor_tool import browser_navigate_and_inspect
@@ -129,6 +142,17 @@ from .view_image_tool import view_image_tool
 from .visual_verification_tool import visual_verify_artifact
 from .workflow_dag_tool import workflow_dag_manage
 
+# Frontier Autonomous Software Engineering Suite Tools
+from .introspective_tree_search_tool import run_introspective_tree_search
+from .program_slicing_tool import compute_program_slice
+from .differential_invariant_fuzzer_tool import run_differential_regression_oracle
+from .environment_auto_healer_tool import diagnose_and_heal_environment
+from .structural_ast_reconciler_tool import reconcile_structural_ast_conflicts
+from .contrastive_trajectory_replay_tool import (
+    query_contrastive_memory,
+    record_trajectory_outcome,
+)
+
 __all__ = [
     "setup_agent",
     "update_agent",
@@ -190,6 +214,15 @@ __all__ = [
     "self_heal_diagnose",
     "blackboard_record_evidence",
     "blackboard_query",
+    "emit_stigmergic_event",
+    "query_stigmergic_traces",
+    "query_language_server_symbol",
+    "synthesize_runtime_tool",
+    "list_dynamic_tools",
+    "run_autonomous_benchmark_eval",
+    "analyze_semantic_git_delta",
+    "consolidate_cognitive_memory",
+    "recall_agent_memory",
     "compile_cognitive_plan",
     "execute_transactional_action",
     "run_avo_variation",
@@ -240,6 +273,13 @@ __all__ = [
     "identify_autonomous_command_tool",
     "cognitive_memory_tool",
     "deep_research",
+    "run_introspective_tree_search",
+    "compute_program_slice",
+    "run_differential_regression_oracle",
+    "diagnose_and_heal_environment",
+    "reconcile_structural_ast_conflicts",
+    "query_contrastive_memory",
+    "record_trajectory_outcome",
 ]
 
 
