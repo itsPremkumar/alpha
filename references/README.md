@@ -36,6 +36,7 @@ High-level architectural blueprints, unified runtimes, and system topology desig
 - **[The Keel Architecture](./01-architectures/keel-architecture-rsi-conceptual-design.md)**: Conceptual framework for resilient, self-stabilizing agent loops under high operational uncertainty.
 - **[Swarm Agent Harness Architecture](./01-architectures/swarm-agent-harness-architecture.md)**: Decentralized multi-agent swarm coordination, consensus voting, and distributed task routing.
 - **[Zero-Cost High-End Architecture](./01-architectures/zero-cost-high-end-architecture.md)**: Blueprint for building enterprise-grade agent capabilities using open-weights models and local infrastructure.
+- **[Alpha Next-Gen Harness Innovations & Design Proposals](./01-architectures/alpha-nextgen-agent-harness-innovations-and-design-proposals.md)**: Proprietary architectural innovations synthesizing Dual-Scale AST Repo Twins, Speculative Multi-Drafting, Canary Shadow Execution, and L0-L8 Cognitive Memory Dreaming.
 
 ---
 
@@ -84,6 +85,7 @@ Competitive intelligence, deep research methodologies, and comparative harness a
 - **[Exa Intelligence Harness](./04-frontier-benchmarks-and-deep-research/exa-intelligence-harness.md)**: Neural search integration, semantic web gathering, and automated evidence retrieval.
 - **[Notable Open-Source Agent Projects Study](./04-frontier-benchmarks-and-deep-research/notable-oss-agent-projects.md)**: Curated survey of top open-source agent projects and their respective architectural strengths.
 - **[Memory Architecture Benchmarks & Taxonomy](./04-frontier-benchmarks-and-deep-research/memory-architecture-benchmarks.md)**: Comprehensive evaluation of vector stores, graph stores, full-text search, and multi-tier memory backends.
+- **[SOTA Coding Agents & Frontier Harness Comparative Study (2026)](./04-frontier-benchmarks-and-deep-research/sota-coding-agents-and-harness-comparative-study-2026.md)**: Exhaustive comparative analysis of Claude Code, Devin, OpenHands, Aider, Cursor, and Deep Agents with SWE-bench benchmarks and architectural matrices.
 
 ---
 
