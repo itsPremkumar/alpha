@@ -45,7 +45,7 @@ foreach ($port in $targetPorts) {
 # `next dev` whose listener died but whose compile loop is still running).
 try {
     $stale = Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
-        Where-Object { $_.CommandLine -like "*agent-workspace*frontend*" -or $_.CommandLine -like "*alpha*frontend*" -or $_.CommandLine -like "*agent-workspace*frontend*" }
+        Where-Object { $_.CommandLine -like "*agent-workspace*frontend*" -or $_.CommandLine -like "*alpha*frontend*" }
     foreach ($p in $stale) {
         if (Get-Process -Id $p.ProcessId -ErrorAction SilentlyContinue) {
             Write-Host "  -> Terminating stale Agent Workspace frontend process (PID: $($p.ProcessId))" -ForegroundColor Gray

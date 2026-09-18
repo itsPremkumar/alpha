@@ -180,7 +180,7 @@ if (-not (Test-Path "$RepoRoot\.env")) {
     } else {
         New-Item -ItemType File -Path "$RepoRoot\.env" -Force | Out-Null
     }
-    Add-Content -Path "$RepoRoot\.env" -Value "`nBETTER_AUTH_SECRET=$secret`nAGENT_WORKSPACE_AUTH_DISABLED=1`nAGENT_WORKSPACE_AUTH_DISABLED=1`n"
+    Add-Content -Path "$RepoRoot\.env" -Value "`nBETTER_AUTH_SECRET=$secret`nAGENT_WORKSPACE_AUTH_DISABLED=1`n"
 }
 
 
@@ -213,8 +213,6 @@ Write-Host "  Ports $GatewayPort and $FrontendPort are free." -ForegroundColor G
 
 # -- 4. Set Environment for Single-User Direct Chat --------------------------
 $env:AGENT_WORKSPACE_AUTH_DISABLED = "1"
-$env:AGENT_WORKSPACE_AUTH_DISABLED = "1"
-$env:AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL = "http://127.0.0.1:$GatewayPort"
 $env:AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL = "http://127.0.0.1:$GatewayPort"
 $env:PORT = "$FrontendPort"
 $env:PYTHONPATH = "."

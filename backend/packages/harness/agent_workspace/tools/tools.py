@@ -286,6 +286,30 @@ BUILTIN_TOOLS = [
     inspect_deep_agent_telemetry,
 ]
 
+
+def _deduplicate_tools(tools: list[BaseTool]) -> list[BaseTool]:
+    """Return ``tools`` with repeated declarations removed, preserving order.
+
+    Several builtin modules export backwards-compatible aliases (for example
+    ``run_nvidia_avo_step`` re-exports ``run_variation_operator_step``), so the
+    literal above can name a single tool object more than once.
+    ``get_available_tools`` de-duplicates by name before binding, but keeping the
+    registry itself unique makes the reported built-in count accurate and
+    protects any caller that consumes ``BUILTIN_TOOLS`` directly.
+    """
+    seen: set = set()
+    unique: list[BaseTool] = []
+    for item in tools:
+        key = getattr(item, "name", None) or id(item)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(item)
+    return unique
+
+
+BUILTIN_TOOLS = _deduplicate_tools(BUILTIN_TOOLS)
+
 SUBAGENT_TOOLS = [
     task_tool,
     subagent_control,
