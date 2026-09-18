@@ -657,3 +657,56 @@ def run_surgical_program_repair(
     )
     return json.dumps(result.to_dict(), indent=2)
 
+
+# ---------------------------------------------------------------------------
+# 5. Programmatic Tool Calling & Long-Term Memory Recall Tools
+# ---------------------------------------------------------------------------
+
+@tool("execute_code_programmatic", parse_docstring=True)
+def execute_code_programmatic(
+    script_code: str,
+    root_path: str = ".",
+    timeout_seconds: int = 30,
+) -> str:
+    """Execute a Python script that calls agent tools programmatically via loopback RPC.
+
+    Collapses multi-step tool calls (e.g. read_file, search_files, write_file) into a single
+    inference turn; handles output truncation and automatically spills large outputs (>50KB)
+    to disk with a paging pointer.
+
+    Args:
+        script_code: Python code to run. Use `tools.read_file(path, offset, limit)`,
+            `tools.write_file(path, content)`, or `tools.search_files(pattern, directory)`.
+        root_path: Project root directory for filesystem operations (default ".").
+        timeout_seconds: Maximum script execution timeout in seconds (default 30).
+    """
+    from agent_workspace.tools.programmatic_calling import ProgrammaticCallingEngine
+
+    root = Path(root_path).resolve()
+    engine = ProgrammaticCallingEngine(workspace_root=root)
+    result = engine.execute_script(script_code=script_code, timeout_seconds=timeout_seconds)
+    return json.dumps(result.to_dict(), indent=2)
+
+
+@tool("search_session_memory", parse_docstring=True)
+def search_session_memory(
+    query: str,
+    db_path: str = ":memory:",
+    limit: int = 10,
+) -> str:
+    """Search long-term conversation history using SQLite FTS5 full-text indexing with BM25 ranking.
+
+    Applies cron session demotion to prevent vocabulary starvation ('recall blindness') and
+    surfaces relevant conversation context from past sessions.
+
+    Args:
+        query: Full-text search query or keywords to look up in past conversations.
+        db_path: SQLite session database path (default in-memory ':memory:').
+        limit: Maximum number of search results to return (default 10).
+    """
+    from agent_workspace.memory.session_search import SessionSearchEngine
+
+    engine = SessionSearchEngine(db_path=db_path)
+    results = engine.search_discovery(query=query, limit=limit)
+    return json.dumps([{"session_id": r.session_id, "snippet": r.snippet, "source": r.source, "score": r.score} for r in results], indent=2)
+
