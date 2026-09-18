@@ -3,7 +3,7 @@
 not asyncio.gather, not threading) hitting the SAME users table at the same
 time, comparing SQLite vs Postgres at 2/4/8/16 workers.
 
-This tests exactly the scenario DeerFlow's own docs describe
+This tests exactly the scenario Agent Workspace's own docs describe
 (CONFIGURATION.md line 325): "Multi-worker deployments (GATEWAY_WORKERS > 1)
 must use the Postgres database backend... SQLite silently ignores row-level
 locks" -- multiple Gateway PROCESSES, each with its own connection, not
@@ -16,7 +16,7 @@ Usage:
 
     uv run python scripts/benchmark/concurrency/run_concurrency_bench.py \
         --backend postgres --workers 2,4,8,16 --ops-per-worker 50 --read-ratio 0.7 \
-        --pg-url postgresql+asyncpg://deerflow_test:deerflow_test_pw@localhost/deerflow_test
+        --pg-url postgresql+asyncpg://agent_workspace_test:agent_workspace_test_pw@localhost/agent_workspace_test
 """
 
 from __future__ import annotations
@@ -60,7 +60,7 @@ SQLITE_BENCH_DIR = str(BACKEND_DIR / ".agent-workspace" / "bench_data")
 # The orchestrator itself is already running under the correct interpreter
 # (`uv run python ...`, per this file's own usage docstring above) -- reuse
 # it for workers instead of a second hard-coded venv path that silently
-# assumes deer-flow is checked out at /opt/deer-flow.
+# assumes agent-workspace is checked out at /opt/agent-workspace.
 PYTHON = [sys.executable]
 
 

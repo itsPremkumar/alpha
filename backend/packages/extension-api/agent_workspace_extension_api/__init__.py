@@ -1,6 +1,6 @@
-"""Public contracts for DeerFlow extensions.
+"""Public contracts for Agent Workspace extensions.
 
-This package MUST NOT import `deerflow`. Every host contract an extension
+This package MUST NOT import `agent_workspace`. Every host contract an extension
 needs lives here, while framework imports remain direct extension dependencies;
 extensions can therefore be released independently of the host.
 """

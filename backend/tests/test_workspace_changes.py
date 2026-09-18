@@ -733,7 +733,7 @@ async def test_workspace_changes_route_forwards_include_files_flag():
 
     class FakeRequest:
         app = FakeApp()
-        _deerflow_test_bypass_auth = True
+        _agent_workspace_test_bypass_auth = True
 
     response = await get_run_workspace_changes(
         thread_id="thread-1",

@@ -20,7 +20,7 @@ from agent_workspace.harness.continuous.models import (
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_GOAL_DIR = ".deerflow/goals"
+_DEFAULT_GOAL_DIR = ".agent_workspace/goals"
 
 
 class GoalStore:

@@ -1,6 +1,6 @@
 """SkillStorage singleton + reflection-based factory.
 
-Mirrors the pattern used by ``deerflow/sandbox/sandbox_provider.py``.
+Mirrors the pattern used by ``agent_workspace/sandbox/sandbox_provider.py``.
 """
 
 from __future__ import annotations

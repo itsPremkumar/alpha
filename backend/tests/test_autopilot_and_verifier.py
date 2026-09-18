@@ -20,7 +20,7 @@ from agent_workspace.tools.builtins.code_agentic_core import (
 class TestAutopilotAndVerifier(unittest.TestCase):
     def setUp(self):
         self.autopilot = ExecutiveAutopilot()
-        self.test_dir = tempfile.mkdtemp(prefix="deerflow_ap_test_")
+        self.test_dir = tempfile.mkdtemp(prefix="agent_workspace_ap_test_")
 
     def tearDown(self):
         shutil.rmtree(self.test_dir, ignore_errors=True)

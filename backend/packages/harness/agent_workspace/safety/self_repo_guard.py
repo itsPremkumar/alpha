@@ -24,7 +24,7 @@ class SelfRepoGuard:
 
     def __init__(self, running_repo_root: Path | str | None = None, allow_self_mutation: bool = False):
         if running_repo_root is None:
-            # Running repo root of deerflow
+            # Running repo root of agent_workspace
             running_repo_root = Path(__file__).resolve().parent.parent.parent.parent.parent
         self.running_repo_root = Path(running_repo_root).resolve()
         self.allow_self_mutation = allow_self_mutation

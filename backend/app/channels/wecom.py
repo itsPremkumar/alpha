@@ -194,7 +194,7 @@ class WeComChannel(Channel):
         if inspect.iscoroutinefunction(async_disconnect) and callable(stop_heartbeat) and callable(clear_pending_messages):
             # wecom-aibot-python-sdk 1.0.2 makes disconnect() synchronous and
             # discards the task created for _async_disconnect(). Perform its
-            # synchronous bookkeeping here so DeerFlow can own and await the
+            # synchronous bookkeeping here so Agent Workspace can own and await the
             # actual SDK shutdown operation without scheduling a duplicate.
             try:
                 if hasattr(ws_client, "_started"):

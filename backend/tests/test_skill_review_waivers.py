@@ -105,7 +105,7 @@ def test_committed_manifest_matches_schema_and_strict_parser() -> None:
 def test_skill_creator_waivers_match_current_error_findings() -> None:
     package = REPO_ROOT / "skills/public/skill-creator"
     manifest = parse_manifest((REPO_ROOT / ".github/skill-review-waivers.v1.json").read_bytes(), source="committed manifest")
-    facts = analyze_skill_package(LocalDirectoryReader(package).read(), profile="deerflow")
+    facts = analyze_skill_package(LocalDirectoryReader(package).read(), profile="agent_workspace")
 
     validation_errors = validate_manifest_against_facts(
         manifest,

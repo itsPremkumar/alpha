@@ -6,7 +6,7 @@ NOT a unit test. Run manually with DEEPSEEK_API_KEY in the environment:
 
 It:
   1. serves a tiny local HTML form,
-  2. builds an isolated DeerFlow config (DeepSeek model + browser tool group),
+  2. builds an isolated Agent Workspace config (DeepSeek model + browser tool group),
   3. runs a real agent turn that must navigate, type, submit, and read the result,
   4. asserts the agent-visible tool trace shows the browser loop actually ran.
 """
@@ -19,7 +19,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
-FORM_PAGE = """<!doctype html><html><head><title>DeerFlow Browser Test</title></head>
+FORM_PAGE = """<!doctype html><html><head><title>Agent Workspace Browser Test</title></head>
 <body>
 <h1>Sign-in demo</h1>
 <form method="GET" action="/welcome">
@@ -72,7 +72,7 @@ data_dir: {tmp / "data"}
 models:
   - name: deepseek-chat
     display_name: DeepSeek Chat
-    use: deerflow.models.patched_deepseek:PatchedChatDeepSeek
+    use: agent_workspace.models.patched_deepseek:PatchedChatDeepSeek
     model: deepseek-chat
     api_key: $DEEPSEEK_API_KEY
     timeout: 120.0
@@ -80,7 +80,7 @@ models:
     max_tokens: 4096
 
 sandbox:
-  use: deerflow.sandbox.local:LocalSandboxProvider
+  use: agent_workspace.sandbox.local:LocalSandboxProvider
 
 tool_groups:
   - name: browser
@@ -88,24 +88,24 @@ tool_groups:
 tools:
   - name: browser_navigate
     group: browser
-    use: deerflow.community.browser_automation.tools:browser_navigate_tool
+    use: agent_workspace.community.browser_automation.tools:browser_navigate_tool
     headless: true
     allow_private_addresses: true
   - name: browser_snapshot
     group: browser
-    use: deerflow.community.browser_automation.tools:browser_snapshot_tool
+    use: agent_workspace.community.browser_automation.tools:browser_snapshot_tool
   - name: browser_click
     group: browser
-    use: deerflow.community.browser_automation.tools:browser_click_tool
+    use: agent_workspace.community.browser_automation.tools:browser_click_tool
   - name: browser_type
     group: browser
-    use: deerflow.community.browser_automation.tools:browser_type_tool
+    use: agent_workspace.community.browser_automation.tools:browser_type_tool
   - name: browser_get_text
     group: browser
-    use: deerflow.community.browser_automation.tools:browser_get_text_tool
+    use: agent_workspace.community.browser_automation.tools:browser_get_text_tool
   - name: browser_close
     group: browser
-    use: deerflow.community.browser_automation.tools:browser_close_tool
+    use: agent_workspace.community.browser_automation.tools:browser_close_tool
 
 memory:
   enabled: false
@@ -125,16 +125,16 @@ def main() -> int:
 
     server, port = _start_server()
     base = f"http://127.0.0.1:{port}/"
-    tmpdir = Path(tempfile.mkdtemp(prefix="deerflow-browser-live-"))
+    tmpdir = Path(tempfile.mkdtemp(prefix="agent_workspace-browser-live-"))
     try:
-        from agent_workspace.client import DeerFlowClient
+        from agent_workspace.client import AgentWorkspaceClient
 
         config_path = _write_config(tmpdir)
         # Make config resolution deterministic: get_available_tools() re-resolves
         # via get_app_config(), which would otherwise pick up a project-root
         # config.yaml. AGENT_WORKSPACE_CONFIG_PATH is resolution priority #2.
         os.environ["AGENT_WORKSPACE_CONFIG_PATH"] = str(config_path)
-        client = DeerFlowClient(config_path=str(config_path))
+        client = AgentWorkspaceClient(config_path=str(config_path))
 
         prompt = (
             f"Use the browser tools to complete this task. "

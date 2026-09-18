@@ -1,7 +1,7 @@
 """Configuration for SafetyFinishReasonMiddleware.
 
 Mirrors the shape of GuardrailsConfig: detectors are loaded by class path
-through ``deerflow.reflection.resolve_variable`` (same loader the
+through ``agent_workspace.reflection.resolve_variable`` (same loader the
 ``guardrails.provider`` config uses) so users can drop in custom provider
 detectors without modifying core code.
 """

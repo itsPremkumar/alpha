@@ -200,7 +200,7 @@ def get_avo_runner(project_id: str = "default") -> WorkspaceAVORunner:
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}", project_id):
         raise ValueError("Invalid AVO project id")
     with _WORKSPACE_LOCK:
-        base = Path(os.environ.get("AGENT_WORKSPACE_PROJECTS_DIR", ".deerflow_projects")).resolve()
+        base = Path(os.environ.get("AGENT_WORKSPACE_PROJECTS_DIR", ".agent_workspace_projects")).resolve()
         project = base / project_id
         if project.resolve() != project:
             raise ValueError("AVO project path escapes project root")

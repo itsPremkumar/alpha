@@ -15,7 +15,7 @@ filesystem**, so a compromised or prompt-injected agent can no longer
 Dispatched by the first CLI argument:
 
 - `install-shim <dest>` — **init container**: writes the launcher + Python shim +
-  `.deerflow-lark-cli-runtime.json` (`kind: "shim"`) into the shared `emptyDir`
+  `.agent-workspace-lark-cli-runtime.json` (`kind: "shim"`) into the shared `emptyDir`
   at `<dest>` (default `/mnt/integrations/lark-cli/runtime`), then exits `0`. The
   sandbox then finds `bin/lark-cli` exactly where
   `lark_cli_env_overlay(sandbox_paths=True)` points `PATH` — same layout the
@@ -29,7 +29,7 @@ resolves a Python 3 interpreter and execs the **shim body** (`bin/lark-cli-shim.
 beside it (by its baked-in absolute path, since `$0` is the bare command name
 when run off `PATH`); both are written from the in-process
 `LARK_CLI_BROKER_LAUNCHER_TEMPLATE` / `LARK_CLI_BROKER_SHIM_SCRIPT`
-(`deerflow.integrations.lark_broker`), so the image's copies can never drift from
+(`agent_workspace.integrations.lark_broker`), so the image's copies can never drift from
 the Gateway's. Splitting the sh launcher from the Python body means broker mode
 does **not** hard-depend on `python3` resolving via a `#!/usr/bin/env python3`
 shebang: if no `python3`/`python` is on the sandbox `PATH`, the launcher exits
@@ -42,7 +42,7 @@ image ships Python 3, so the default path needs no configuration.
 Build context is the **repo root** (the broker module lives under `backend/`):
 
 ```bash
-docker build -t deer-flow/lark-cli-broker:v1.0.65 \
+docker build -t agent-workspace/lark-cli-broker:v1.0.65 \
   --build-arg LARK_CLI_VERSION=v1.0.65 \
   -f docker/lark-cli-broker/Dockerfile .
 ```
@@ -51,9 +51,9 @@ The tag should encode the lark-cli version so it can be bumped independently of
 the upstream `all-in-one-sandbox` image.
 
 CI publishes multi-arch (`linux/amd64,linux/arm64`) images to
-`ghcr.io/<owner>/deer-flow-lark-cli-broker:<lark-cli-version>` via
+`ghcr.io/<owner>/agent-workspace-lark-cli-broker:<lark-cli-version>` via
 `.github/workflows/lark-cli-images.yaml` (run it with a `lark_cli_version` input,
-or push a `lark-cli-v*` tag). This is decoupled from the DeerFlow `v*` release
+or push a `lark-cli-v*` tag). This is decoupled from the Agent Workspace `v*` release
 because the image tracks the upstream `larksuite/cli` version.
 
 ## Wiring it into the provisioner

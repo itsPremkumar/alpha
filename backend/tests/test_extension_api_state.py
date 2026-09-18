@@ -94,9 +94,9 @@ def test_stores_are_independent():
     assert b.get(_Counter) is None
 
 
-def test_api_package_does_not_import_deerflow():
+def test_api_package_does_not_import_agent_workspace():
     """The API package must stay independent of the host so extensions can
-    depend on it alone. A `deerflow` import here would silently couple every
+    depend on it alone. A `agent_workspace` import here would silently couple every
     extension to the harness release cadence."""
     import pathlib
 
@@ -108,6 +108,6 @@ def test_api_package_does_not_import_deerflow():
         text = path.read_text(encoding="utf-8")
         for lineno, line in enumerate(text.splitlines(), start=1):
             stripped = line.strip()
-            if stripped.startswith(("import deerflow", "from deerflow", "import agent_workspace", "from agent_workspace")) and not stripped.startswith(("import agent_workspace_extension_api", "from agent_workspace_extension_api")):
+            if stripped.startswith(("import agent_workspace", "from agent_workspace", "import agent_workspace", "from agent_workspace")) and not stripped.startswith(("import agent_workspace_extension_api", "from agent_workspace_extension_api")):
                 offenders.append(f"{path.name}:{lineno}: {stripped}")
     assert offenders == [], "agent-workspace-extension-api must not import harness: " + "; ".join(offenders)

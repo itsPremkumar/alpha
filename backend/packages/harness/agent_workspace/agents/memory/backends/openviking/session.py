@@ -9,7 +9,7 @@ from typing import Any
 
 from .config import GENERATED_PEER_PREFIX, is_safe_peer_id
 
-_SESSION_NAMESPACE = "deerflow-openviking-adapter-v1"
+_SESSION_NAMESPACE = "agent_workspace-openviking-adapter-v1"
 _DEFAULT_AGENT_SCOPE = "__default__"
 _CURSOR_SCHEMA_VERSION = 1
 
@@ -18,7 +18,7 @@ def _canonical_peer_id(
     agent_name: str | None,
     default_peer_id: str,
 ) -> str:
-    """Map DeerFlow's case-insensitive agent names to disjoint peer IDs."""
+    """Map Agent Workspace's case-insensitive agent names to disjoint peer IDs."""
 
     if agent_name is None:
         return default_peer_id
@@ -41,7 +41,7 @@ def _session_id(
     peer_id: str,
     thread_id: str,
 ) -> str:
-    """Derive one stable OpenViking session for one DeerFlow thread."""
+    """Derive one stable OpenViking session for one Agent Workspace thread."""
 
     digest = hashlib.sha256(f"{_SESSION_NAMESPACE}\0{owner_user_id}\0{peer_id}\0{thread_id}".encode()).hexdigest()
     return f"df_{digest[:48]}"
@@ -60,7 +60,7 @@ def _captureable_messages(
     messages: list[Any],
     should_keep_hidden_message: Any,
 ) -> list[Any]:
-    """Drop DeerFlow-only injected context before handing messages to OpenViking."""
+    """Drop Agent Workspace-only injected context before handing messages to OpenViking."""
 
     selected: list[Any] = []
     for message in messages:

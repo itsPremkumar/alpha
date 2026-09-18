@@ -65,14 +65,14 @@ def _config() -> dict:
 def test_inject_delta_mode_sets_internal_key_and_metadata_marker() -> None:
     config = _config()
     inject_checkpoint_mode(config, "delta")
-    assert config["configurable"]["__deerflow_checkpoint_channel_mode"] == "delta"
+    assert config["configurable"]["__agent_workspace_checkpoint_channel_mode"] == "delta"
     assert config["metadata"][CHECKPOINT_MODE_METADATA_KEY] == "delta"
 
 
 def test_inject_full_mode_does_not_claim_delta_metadata() -> None:
     config = _config()
     inject_checkpoint_mode(config, "full")
-    assert config["configurable"]["__deerflow_checkpoint_channel_mode"] == "full"
+    assert config["configurable"]["__agent_workspace_checkpoint_channel_mode"] == "full"
     assert CHECKPOINT_MODE_METADATA_KEY not in config.get("metadata", {})
 
 
@@ -161,7 +161,7 @@ def test_yaml_mode_change_is_rejected_when_graph_is_reconstructed(tmp_path, monk
             "\n".join(
                 (
                     "sandbox:",
-                    "  use: deerflow.sandbox.local.provider:LocalSandboxProvider",
+                    "  use: agent_workspace.sandbox.local.provider:LocalSandboxProvider",
                     "database:",
                     f"  checkpoint_channel_mode: {mode}",
                 )
@@ -200,7 +200,7 @@ def test_yaml_snapshot_frequency_change_is_rejected_when_graph_is_reconstructed(
             "\n".join(
                 (
                     "sandbox:",
-                    "  use: deerflow.sandbox.local.provider:LocalSandboxProvider",
+                    "  use: agent_workspace.sandbox.local.provider:LocalSandboxProvider",
                     "database:",
                     "  checkpoint_channel_mode: delta",
                     "  checkpoint_delta:",

@@ -2,11 +2,11 @@
 
 The read methods are the pre-refactor bodies of ``load_agent_config`` /
 ``load_agent_soul`` / ``list_custom_agents`` (so the free functions in
-:mod:`deerflow.config.agents_config` dispatch here without changing behaviour).
+:mod:`agent_workspace.config.agents_config` dispatch here without changing behaviour).
 Writes use a staged temp-file + atomic ``os.replace`` commit — the crash-safety
 the ``update_agent`` tool already had, applied uniformly to create/update.
 
-Path/user resolution is done through the :mod:`deerflow.config.agents_config`
+Path/user resolution is done through the :mod:`agent_workspace.config.agents_config`
 module object (``_ac.get_paths`` / ``_ac.get_effective_user_id``) rather than
 direct imports, so it honours the same monkeypatch seams the existing agent
 tests target.

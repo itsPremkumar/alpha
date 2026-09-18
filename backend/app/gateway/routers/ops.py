@@ -5,7 +5,7 @@ routes expose no secrets, only the build/runtime metadata operators need for
 deploy verification, dashboards, and monitoring gates beyond ``/health`` and
 ``/health/ready`` (which stay public for orchestrator probes).
 
-* ``GET /api/ops/version`` - service name plus the installed ``deer-flow``
+* ``GET /api/ops/version`` - service name plus the installed ``agent-workspace``
   package version (``"unknown"`` when package metadata is unavailable, e.g. an
   unpackaged source checkout).
 * ``GET /api/ops/status`` - liveness plus process uptime, current UTC time,
@@ -39,8 +39,8 @@ _PROCESS_START_MONOTONIC = time.monotonic()
 
 
 def _resolve_gateway_version() -> str:
-    """Return the installed agent-workspace / deer-flow version, or "unknown" without metadata."""
-    for name in ("agent-workspace", "deer-flow"):
+    """Return the installed agent-workspace / agent-workspace version, or "unknown" without metadata."""
+    for name in ("agent-workspace", "agent-workspace"):
         try:
             return metadata.version(name)
         except metadata.PackageNotFoundError:
@@ -52,7 +52,7 @@ class VersionResponse(BaseModel):
     """Deployed Gateway build identity."""
 
     service: str = Field(..., description="Gateway service name")
-    version: str = Field(..., description='Installed deer-flow version, or "unknown" without package metadata')
+    version: str = Field(..., description='Installed agent-workspace version, or "unknown" without package metadata')
 
 
 class StatusResponse(BaseModel):
@@ -73,7 +73,7 @@ class StatusResponse(BaseModel):
 )
 async def ops_version() -> VersionResponse:
     """Return the deployed Gateway build identity."""
-    return VersionResponse(service="deer-flow-gateway", version=_resolve_gateway_version())
+    return VersionResponse(service="agent-workspace-gateway", version=_resolve_gateway_version())
 
 
 @router.get(
@@ -85,7 +85,7 @@ async def ops_version() -> VersionResponse:
 async def ops_status() -> StatusResponse:
     """Return Gateway runtime status."""
     return StatusResponse(
-        service="deer-flow-gateway",
+        service="agent-workspace-gateway",
         status="ok",
         uptime_seconds=int(time.monotonic() - _PROCESS_START_MONOTONIC),
         time_utc=datetime.now(UTC).isoformat(),

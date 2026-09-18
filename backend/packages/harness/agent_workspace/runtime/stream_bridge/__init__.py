@@ -12,12 +12,12 @@ from .base import END_SENTINEL, HEARTBEAT_SENTINEL, StreamBridge, StreamEvent, S
 from .memory import MemoryStreamBridge
 
 # NOTE: ``RedisStreamBridge`` is intentionally NOT imported here. ``redis`` is an
-# optional extra, and this package is pulled in transitively by ``deerflow.runtime``
+# optional extra, and this package is pulled in transitively by ``agent_workspace.runtime``
 # at process startup everywhere. Importing ``.redis`` eagerly would import
 # ``redis.asyncio`` in every process (even memory-only/single-process ones) and
 # couple every install to the redis package. It is imported lazily inside
 # ``make_stream_bridge`` only when ``stream_bridge.type == "redis"``. Import it
-# directly from ``deerflow.runtime.stream_bridge.redis`` if you need the class.
+# directly from ``agent_workspace.runtime.stream_bridge.redis`` if you need the class.
 
 __all__ = [
     "END_SENTINEL",

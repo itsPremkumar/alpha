@@ -1123,7 +1123,7 @@ def test_create_summarization_middleware_uses_configured_model_alias(monkeypatch
 
     monkeypatch.setattr(summarization_middleware_module, "get_app_config", _raise_get_app_config)
     monkeypatch.setattr(summarization_middleware_module, "create_chat_model", _fake_create_chat_model)
-    monkeypatch.setattr(summarization_middleware_module, "DeerFlowSummarizationMiddleware", lambda **kwargs: kwargs)
+    monkeypatch.setattr(summarization_middleware_module, "AgentWorkspaceSummarizationMiddleware", lambda **kwargs: kwargs)
 
     middleware = lead_agent_module._create_summarization_middleware(app_config=app_config)
 
@@ -1151,7 +1151,7 @@ def test_create_summarization_middleware_uses_default_when_unconfigured(monkeypa
         return fake_model
 
     monkeypatch.setattr(summarization_middleware_module, "create_chat_model", _fake_create_chat_model)
-    monkeypatch.setattr(summarization_middleware_module, "DeerFlowSummarizationMiddleware", lambda **kwargs: kwargs)
+    monkeypatch.setattr(summarization_middleware_module, "AgentWorkspaceSummarizationMiddleware", lambda **kwargs: kwargs)
 
     middleware = lead_agent_module._create_summarization_middleware(app_config=app_config)
 
@@ -1178,7 +1178,7 @@ def test_create_summarization_middleware_threads_run_model_name(monkeypatch):
     fake_model = MagicMock()
     fake_model.with_config.return_value = fake_model
     monkeypatch.setattr(summarization_middleware_module, "create_chat_model", lambda **kwargs: fake_model)
-    monkeypatch.setattr(summarization_middleware_module, "DeerFlowSummarizationMiddleware", lambda **kwargs: kwargs)
+    monkeypatch.setattr(summarization_middleware_module, "AgentWorkspaceSummarizationMiddleware", lambda **kwargs: kwargs)
 
     middleware = lead_agent_module._create_summarization_middleware(app_config=app_config, run_model_name="custom-agent-model")
 
@@ -1201,7 +1201,7 @@ def test_create_summarization_middleware_uses_frontend_supported_update_key(monk
 
     assert middleware is not None
     update_key = f"{type(middleware).__name__}.before_model"
-    assert update_key == "DeerFlowSummarizationMiddleware.before_model"
+    assert update_key == "AgentWorkspaceSummarizationMiddleware.before_model"
 
 
 def test_create_summarization_middleware_threads_resolved_app_config_to_model(monkeypatch):
@@ -1221,7 +1221,7 @@ def test_create_summarization_middleware_threads_resolved_app_config_to_model(mo
 
     monkeypatch.setattr(summarization_middleware_module, "get_app_config", lambda: fallback_app_config)
     monkeypatch.setattr(summarization_middleware_module, "create_chat_model", _fake_create_chat_model)
-    monkeypatch.setattr(summarization_middleware_module, "DeerFlowSummarizationMiddleware", lambda **kwargs: kwargs)
+    monkeypatch.setattr(summarization_middleware_module, "AgentWorkspaceSummarizationMiddleware", lambda **kwargs: kwargs)
 
     lead_agent_module._create_summarization_middleware()
 

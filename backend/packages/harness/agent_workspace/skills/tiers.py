@@ -27,7 +27,7 @@ def _default_storage_path() -> Path:
 
         return runtime_home() / "skills" / "tiers.json"
     except Exception:
-        return Path.cwd() / ".deerflow" / "skills" / "tiers.json"
+        return Path.cwd() / ".agent_workspace" / "skills" / "tiers.json"
 
 
 def quarantine_dir() -> Path:
@@ -36,7 +36,7 @@ def quarantine_dir() -> Path:
 
         return runtime_home() / "skills" / "quarantine"
     except Exception:
-        return Path.cwd() / ".deerflow" / "skills" / "quarantine"
+        return Path.cwd() / ".agent_workspace" / "skills" / "quarantine"
 
 
 @dataclass

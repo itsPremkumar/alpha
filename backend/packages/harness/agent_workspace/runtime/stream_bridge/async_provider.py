@@ -1,7 +1,7 @@
 """Async stream bridge factory.
 
 Provides an **async context manager** aligned with
-:func:`deerflow.runtime.checkpointer.async_provider.make_checkpointer`.
+:func:`agent_workspace.runtime.checkpointer.async_provider.make_checkpointer`.
 
 Usage (e.g. FastAPI lifespan)::
 

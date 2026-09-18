@@ -1,6 +1,6 @@
-# Contributing to DeerFlow
+# Contributing to Agent Workspace
 
-Thank you for your interest in contributing to DeerFlow! This guide will help you set up your development environment and understand our development workflow.
+Thank you for your interest in contributing to Agent Workspace! This guide will help you set up your development environment and understand our development workflow.
 
 ## Development Environment Setup
 
@@ -113,11 +113,11 @@ Use these as practical starting points for development and review environments:
 
 | Scenario | Starting point | Recommended | Notes |
 |---------|-----------|------------|-------|
-| `make dev` on one machine | 4 vCPU, 8 GB RAM | 8 vCPU, 16 GB RAM | Best when DeerFlow uses hosted model APIs. |
+| `make dev` on one machine | 4 vCPU, 8 GB RAM | 8 vCPU, 16 GB RAM | Best when Agent Workspace uses hosted model APIs. |
 | `make docker-start` review environment | 4 vCPU, 8 GB RAM | 8 vCPU, 16 GB RAM | Docker image builds and sandbox containers need extra headroom. |
 | Shared Linux test server | 8 vCPU, 16 GB RAM | 16 vCPU, 32 GB RAM | Prefer this for heavier multi-agent runs or multiple reviewers. |
 
-`2 vCPU / 4 GB` environments often fail to start reliably or become unresponsive under normal DeerFlow workloads.
+`2 vCPU / 4 GB` environments often fail to start reliably or become unresponsive under normal Agent Workspace workloads.
 
 #### Linux: Docker daemon permission denied
 
@@ -145,7 +145,7 @@ Recommended fix: add your current user to the `docker` group so Docker commands 
    ```bash
    docker ps
    ```
-5. Retry the DeerFlow command:
+5. Retry the Agent Workspace command:
    ```bash
    make docker-stop
    make docker-start
@@ -158,7 +158,7 @@ If `docker ps` still reports a permission error after `usermod`, fully log out a
 ```
 Host Machine
   ↓
-Docker Compose (deer-flow-dev)
+Docker Compose (agent-workspace-dev)
   ├→ nginx (port 2026) ← Reverse proxy
   ├→ web (port 3000) ← Frontend with hot-reload
   ├→ gateway (port 8001) ← Gateway API + LangGraph-compatible runtime with hot-reload
@@ -248,7 +248,7 @@ The nginx configuration provides:
 ## Project Structure
 
 ```
-deer-flow/
+agent-workspace/
 ├── config.example.yaml      # Configuration template
 ├── extensions_config.example.json  # MCP and Skills configuration template
 ├── Makefile                 # Build and development commands
@@ -319,7 +319,7 @@ Nginx (port 2026) ← Unified entry point
 
 ## AI assistance disclosure
 
-DeerFlow is an AI project and we welcome AI-assisted contributions. To help
+Agent Workspace is an AI project and we welcome AI-assisted contributions. To help
 reviewers calibrate how closely to read a change, **every pull request must
 complete the "AI assistance" section of the
 [PR template](.github/pull_request_template.md)**:
@@ -342,7 +342,7 @@ make test
 # Strict blocking-I/O tests
 make test-blocking-io
 
-# Live DeerFlowClient integration tests (explicit opt-in)
+# Live AgentWorkspaceClient integration tests (explicit opt-in)
 # Requires a valid root config.yaml and API credentials.
 make test-live
 

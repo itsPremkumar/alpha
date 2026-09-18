@@ -45,7 +45,7 @@ def test_default_runtime_paths_resolve_from_current_project(tmp_path: Path, monk
     assert get_or_new_skill_storage(skills_path=SkillsConfig().get_skills_path()).get_skills_root_path() == tmp_path / "skills"
 
 
-def test_deer_flow_project_root_overrides_current_directory(tmp_path: Path, monkeypatch):
+def test_agent_workspace_project_root_overrides_current_directory(tmp_path: Path, monkeypatch):
     _clear_path_env(monkeypatch)
     project_root = tmp_path / "project"
     other_cwd = tmp_path / "other"
@@ -66,7 +66,7 @@ def test_deer_flow_project_root_overrides_current_directory(tmp_path: Path, monk
     assert SkillsConfig(path="custom-skills").get_skills_path() == project_root / "custom-skills"
 
 
-def test_deer_flow_skills_path_overrides_project_default(tmp_path: Path, monkeypatch):
+def test_agent_workspace_skills_path_overrides_project_default(tmp_path: Path, monkeypatch):
     _clear_path_env(monkeypatch)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("AGENT_WORKSPACE_SKILLS_PATH", "team-skills")
@@ -75,7 +75,7 @@ def test_deer_flow_skills_path_overrides_project_default(tmp_path: Path, monkeyp
     assert get_or_new_skill_storage(skills_path=SkillsConfig().get_skills_path()).get_skills_root_path() == tmp_path / "team-skills"
 
 
-def test_deer_flow_project_root_must_exist(tmp_path: Path, monkeypatch):
+def test_agent_workspace_project_root_must_exist(tmp_path: Path, monkeypatch):
     _clear_path_env(monkeypatch)
     missing_root = tmp_path / "missing"
     monkeypatch.setenv("AGENT_WORKSPACE_PROJECT_ROOT", str(missing_root))
@@ -84,7 +84,7 @@ def test_deer_flow_project_root_must_exist(tmp_path: Path, monkeypatch):
         project_root()
 
 
-def test_deer_flow_project_root_must_be_directory(tmp_path: Path, monkeypatch):
+def test_agent_workspace_project_root_must_be_directory(tmp_path: Path, monkeypatch):
     _clear_path_env(monkeypatch)
     project_root_file = tmp_path / "project-root"
     project_root_file.write_text("", encoding="utf-8")
@@ -172,7 +172,7 @@ def test_extensions_config_falls_back_to_legacy_when_project_root_lacks_file(tmp
     legacy_extensions = fake_backend / "extensions_config.json"
     legacy_extensions.write_text('{"mcpServers": {}, "skills": {}}', encoding="utf-8")
 
-    fake_paths_module_file = fake_backend / "packages" / "harness" / "deerflow" / "config" / "extensions_config.py"
+    fake_paths_module_file = fake_backend / "packages" / "harness" / "agent_workspace" / "config" / "extensions_config.py"
     fake_paths_module_file.parent.mkdir(parents=True)
     fake_paths_module_file.write_text("", encoding="utf-8")
 
@@ -219,7 +219,7 @@ def test_extensions_config_env_var_missing_file_raises(tmp_path: Path, monkeypat
     fancyboi999 [P1]) instead of silently starting with every MCP server and
     skill absent.
 
-    ``deerflow.mcp.cache._resolve_config_path`` calls
+    ``agent_workspace.mcp.cache._resolve_config_path`` calls
     ``ExtensionsConfig.resolve_config_path()`` with no args and therefore
     hits this exact branch whenever the env var is set; that module has its
     own narrower catch around this specific exception so the MCP tools-cache
@@ -255,7 +255,7 @@ def test_extensions_config_search_finds_nothing_returns_none(tmp_path: Path, mon
     condition (see ``test_extensions_config_explicit_path_missing_file_raises``
     and ``test_extensions_config_env_var_missing_file_raises`` above).
     Regression guard for the original #4124 fix:
-    ``deerflow.mcp.cache._is_cache_stale`` depends on this fallback ``None``
+    ``agent_workspace.mcp.cache._is_cache_stale`` depends on this fallback ``None``
     to treat "never configured" as "not stale".
     """
     _clear_path_env(monkeypatch)
@@ -270,7 +270,7 @@ def test_extensions_config_search_finds_nothing_returns_none(tmp_path: Path, mon
     # No extensions_config.json / mcp_config.json anywhere: not in cwd, not in
     # the legacy backend dir, not in the legacy repo root.
 
-    fake_paths_module_file = fake_backend / "packages" / "harness" / "deerflow" / "config" / "extensions_config.py"
+    fake_paths_module_file = fake_backend / "packages" / "harness" / "agent_workspace" / "config" / "extensions_config.py"
     fake_paths_module_file.parent.mkdir(parents=True)
     fake_paths_module_file.write_text("", encoding="utf-8")
 

@@ -44,8 +44,8 @@ async def test_executable_skill_runner_async():
         callable_name="sample_async_validator",
     )
 
-    res = await runner.execute(ref, {"name": "deerflow"})
-    assert res == {"validated": True, "target": "DEERFLOW"}
+    res = await runner.execute(ref, {"name": "agent_workspace"})
+    assert res == {"validated": True, "target": "AGENT_WORKSPACE"}
 
 
 def test_executable_skill_reference_validation():

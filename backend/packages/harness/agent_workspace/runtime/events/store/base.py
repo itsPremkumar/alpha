@@ -257,7 +257,7 @@ class RunEventStore(abc.ABC):
         exists here; this exposes it without paging the whole feed.
 
         *identities* are the values produced by
-        ``deerflow.runtime.events.message_identity.message_identity`` — the same
+        ``agent_workspace.runtime.events.message_identity.message_identity`` — the same
         rule the frontend applies — so both sides agree on what "same message"
         means. Identities that are not persisted (or not `category="message"`)
         are simply absent from the result: callers degrade to their own

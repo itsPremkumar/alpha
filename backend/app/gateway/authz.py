@@ -1,4 +1,4 @@
-"""Authorization decorators and context for DeerFlow.
+"""Authorization decorators and context for Agent Workspace.
 
 Inspired by LangGraph Auth system: https://github.com/langchain-ai/langgraph/blob/main/libs/sdk-py/langgraph_sdk/auth/__init__.py
 
@@ -165,7 +165,7 @@ def _make_test_request_stub() -> Any:
     Used when decorated route handlers are invoked without FastAPI's
     request injection. Includes fields accessed by auth helpers.
     """
-    return SimpleNamespace(state=SimpleNamespace(), cookies={}, _deerflow_test_bypass_auth=True)
+    return SimpleNamespace(state=SimpleNamespace(), cookies={}, _agent_workspace_test_bypass_auth=True)
 
 
 def _get_route_authorization_config() -> AuthorizationConfig:
@@ -383,7 +383,7 @@ def authorize_sandbox_for_request(
     builds the Principal from the request-scoped ``user`` — the same identity
     construction as ``resolve_model_authorization`` (including the
     ``INTERNAL_SYSTEM_ROLE → None`` pop). Raises
-    :class:`~deerflow.sandbox.exceptions.SandboxAuthorizationError` on deny or
+    :class:`~agent_workspace.sandbox.exceptions.SandboxAuthorizationError` on deny or
     on provider-resolution failure under ``fail_closed``; callers translate
     that into skipping the sandbox sync (not an HTTP error, since the primary
     operation — e.g. file upload — can proceed without it).
@@ -586,7 +586,7 @@ def require_auth[**P, T](func: Callable[P, T]) -> Callable[P, T]:
                 raise ValueError("require_auth decorator requires 'request' parameter")
             request = kwargs["request"]
 
-        if getattr(request, "_deerflow_test_bypass_auth", False):
+        if getattr(request, "_agent_workspace_test_bypass_auth", False):
             return await func(*args, **kwargs)
 
         # Authenticate and set context
@@ -663,7 +663,7 @@ def require_permission(
                 else:
                     return await func(*args, **kwargs)
 
-            if getattr(request, "_deerflow_test_bypass_auth", False):
+            if getattr(request, "_agent_workspace_test_bypass_auth", False):
                 return await func(*args, **kwargs)
 
             auth: AuthContext = getattr(request.state, "auth", None)
@@ -707,7 +707,7 @@ def require_permission(
                 )
                 if not allowed and getattr(auth.user, "system_role", None) == INTERNAL_SYSTEM_ROLE:
                     # Trusted internal callers (channel workers) also act for
-                    # the connection owner carried in X-DeerFlow-Owner-User-Id.
+                    # the connection owner carried in X-Agent-Workspace-Owner-User-Id.
                     # Scope the check to that owner instead of bypassing it; a
                     # leaked internal token must not grant cross-user thread
                     # access. The header is honored only after ``auth`` proved

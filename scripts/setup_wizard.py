@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""DeerFlow Setup Wizard (interactive + unattended).
+"""Agent Workspace Setup Wizard (interactive + unattended).
 
 Usage:
     uv run python scripts/setup_wizard.py                    # interactive (TTY)
@@ -7,7 +7,7 @@ Usage:
 
 The unattended mode reads scripts/wizard/noninteractive.py environment
 variables (AGENT_WORKSPACE_SETUP_PROVIDER, AGENT_WORKSPACE_SETUP_API_KEY, ...) so
-Docker, Electron automation, and CI can provision DeerFlow with zero prompts.
+Docker, Electron automation, and CI can provision Agent Workspace with zero prompts.
 """
 
 from __future__ import annotations
@@ -45,7 +45,7 @@ def _ensure_auth_secret(env_path: Path) -> bool:
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="DeerFlow setup wizard")
+    parser = argparse.ArgumentParser(description="Agent Workspace setup wizard")
     parser.add_argument(
         "--non-interactive",
         action="store_true",
@@ -160,7 +160,7 @@ def _persist_configuration(
     print()
     print("Next steps:")
     print(f"  {cyan('make install')}    # Install dependencies (first time only)")
-    print(f"  {cyan('make dev')}        # Start DeerFlow")
+    print(f"  {cyan('make dev')}        # Start Agent Workspace")
     print()
     print(f"Run {cyan('make doctor')} to verify your setup at any time.")
     print()
@@ -180,8 +180,8 @@ def _run_interactive() -> int:
     env_path = project_root / ".env"
 
     print()
-    print(bold("Welcome to DeerFlow Setup!"))
-    print("This wizard will help you configure DeerFlow in a few minutes.")
+    print(bold("Welcome to Agent Workspace Setup!"))
+    print("This wizard will help you configure Agent Workspace in a few minutes.")
     print()
 
     if config_path.exists():

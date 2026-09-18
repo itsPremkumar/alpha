@@ -15,7 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DETECT_SCRIPT_PATH = REPO_ROOT / "scripts" / "detect_uv_extras.py"
 
 
-spec = importlib.util.spec_from_file_location("deerflow_detect_uv_extras", DETECT_SCRIPT_PATH)
+spec = importlib.util.spec_from_file_location("agent_workspace_detect_uv_extras", DETECT_SCRIPT_PATH)
 assert spec is not None and spec.loader is not None
 detect = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(detect)
@@ -152,7 +152,7 @@ def test_detect_from_config_redis_via_stream_bridge(tmp_path):
 def test_detect_from_config_browser_via_browser_navigate_tool(tmp_path):
     cfg = tmp_path / "config.yaml"
     cfg.write_text(
-        "tools:\n  - name: browser_navigate\n    group: browser\n    use: deerflow.community.browser_automation.tools:browser_navigate_tool\n",
+        "tools:\n  - name: browser_navigate\n    group: browser\n    use: agent_workspace.community.browser_automation.tools:browser_navigate_tool\n",
     )
     assert detect.detect_from_config(cfg) == ["browser"]
 
@@ -239,7 +239,7 @@ def test_detect_from_config_ignores_use_in_nested_model_mapping(tmp_path):
     """
     cfg = tmp_path / "config.yaml"
     cfg.write_text(
-        "models:\n  - name: doubao\n    use: deerflow.models.patched_deepseek:PatchedChatDeepSeek\n    when_thinking_enabled:\n      use: langchain_ollama:ChatOllama\n",
+        "models:\n  - name: doubao\n    use: agent_workspace.models.patched_deepseek:PatchedChatDeepSeek\n    when_thinking_enabled:\n      use: langchain_ollama:ChatOllama\n",
     )
     assert detect.detect_from_config(cfg) == []
 
@@ -285,7 +285,7 @@ def test_detect_from_config_ignores_use_in_nested_indentless_sequence(tmp_path):
     """A `- use:` item inside a model option is not that model's provider."""
     cfg = tmp_path / "config.yaml"
     cfg.write_text(
-        "models:\n- name: x\n  use: deerflow.models.patched_deepseek:PatchedChatDeepSeek\n  fallbacks:\n  - use: langchain_ollama:ChatOllama\n",
+        "models:\n- name: x\n  use: agent_workspace.models.patched_deepseek:PatchedChatDeepSeek\n  fallbacks:\n  - use: langchain_ollama:ChatOllama\n",
     )
     assert detect.detect_from_config(cfg) == []
 

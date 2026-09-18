@@ -1,4 +1,4 @@
-"""Tests for ``deerflow.utils.llm_text``."""
+"""Tests for ``agent_workspace.utils.llm_text``."""
 
 from __future__ import annotations
 

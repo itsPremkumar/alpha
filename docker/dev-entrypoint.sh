@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 #
-# DeerFlow gateway dev entrypoint — runs inside the docker-compose-dev gateway
+# Agent Workspace gateway dev entrypoint — runs inside the docker-compose-dev gateway
 # container. Extracted from docker/docker-compose-dev.yaml's inline `command:`
 # (PR #2767, addressing review on Issue #2754).
 #
@@ -10,7 +10,7 @@
 #   2. Validate each extra against [A-Za-z][A-Za-z0-9_-]* so a stray shell
 #      metacharacter in `.env` cannot reach `uv sync`.
 #   3. `uv sync --locked --all-packages` so the declared extension group and
-#      workspace member extras (deerflow-harness's
+#      workspace member extras (agent_workspace-harness's
 #      postgres extra in particular) are installed — see PR #2584.
 #   4. Self-heal: if the first sync fails, recreate .venv and retry once. The
 #      retry stays `--locked`, so it repairs a broken .venv but not a stale

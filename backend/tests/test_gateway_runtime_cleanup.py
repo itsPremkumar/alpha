@@ -216,7 +216,7 @@ def test_smoke_test_docs_do_not_expect_standalone_langgraph_server():
     for path, content in smoke_files.items():
         assert "localhost:2024" not in content, path
         assert "127.0.0.1:2024" not in content, path
-        assert "deer-flow-langgraph" not in content, path
+        assert "agent-workspace-langgraph" not in content, path
         assert "langgraph.log" not in content, path
         assert "LangGraph service" not in content, path
         assert "langgraph dev" not in content, path

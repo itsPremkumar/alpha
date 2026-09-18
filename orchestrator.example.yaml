@@ -1,6 +1,6 @@
 # Additive orchestrator config (OpenClaw 2.0-inspired). Copy needed blocks
 # into your local config.yaml. All blocks are optional; omission preserves
-# current DeerFlow behavior. Restart Gateway after changing automations or
+# current Agent Workspace behavior. Restart Gateway after changing automations or
 # approval mode.
 #
 # 2-3. Provider routing: flagship + cheap utility model + fallbacks + per-channel pins

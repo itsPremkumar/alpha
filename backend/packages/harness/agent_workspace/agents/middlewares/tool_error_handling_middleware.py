@@ -221,7 +221,7 @@ def _build_runtime_middlewares(
     # SandboxAudit, ReadBeforeWrite, and ToolProgress can all short-circuit a
     # call with their own ToolMessage, and SandboxAudit rebuilds medium-risk
     # results — an inner receipt layer would miss those results and silently
-    # gap the ledger. Stamping out here still sees deerflow_tool_meta on
+    # gap the ledger. Stamping out here still sees agent_workspace_tool_meta on
     # normal results (ToolErrorHandling stamps it on the inner return path)
     # and on self-stamped short-circuit messages; the remainder fall back to
     # message.status (see make_tool_receipt).
@@ -274,7 +274,7 @@ def _build_runtime_middlewares(
             try:
                 sig = inspect.signature(provider_cls.__init__)
                 if "framework" in sig.parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
-                    provider_kwargs["framework"] = "deerflow"
+                    provider_kwargs["framework"] = "agent_workspace"
             except (ValueError, TypeError):
                 pass
         provider = provider_cls(**provider_kwargs)
@@ -287,7 +287,7 @@ def _build_runtime_middlewares(
     # ReadBeforeWriteMiddleware is the outermost write gate: it blocks writes to files
     # the model hasn't read in their current version.  It must sit outside ToolProgress
     # and ToolErrorHandling so that a blocked write returns immediately without consuming
-    # a ToolProgress slot.  The middleware stamps deerflow_tool_meta on the blocked
+    # a ToolProgress slot.  The middleware stamps agent_workspace_tool_meta on the blocked
     # ToolMessage itself so downstream callers receive a well-formed result, and its
     # wrap_model_call elides the dead payload of blocked calls from model-bound
     # requests (config-gated, state untouched).
@@ -305,7 +305,7 @@ def _build_runtime_middlewares(
         tail.append(build_review_guard_middleware(review_guard_config=app_config.review_guard))
 
     # ToolProgressMiddleware must be outer (lower index) so its wrap_tool_call handler
-    # chain includes ToolErrorHandlingMiddleware (inner), which stamps deerflow_tool_meta
+    # chain includes ToolErrorHandlingMiddleware (inner), which stamps agent_workspace_tool_meta
     # on every result before ToolProgressMiddleware reads it in _update_state_from_result.
     # Framework rule: first in list = outermost (types.py: "compose with first in list as outermost layer").
     tool_progress_config = app_config.tool_progress
@@ -329,7 +329,7 @@ def _build_runtime_middlewares(
 
     middlewares = [*outer_wrappers, *thread_hooks, *tail]
 
-    # Ordering invariants are declared in deerflow.extensions.ordering and
+    # Ordering invariants are declared in agent_workspace.extensions.ordering and
     # validated once at the end of the composing builder, after extension
     # contributions are merged in — otherwise a contribution could silently
     # reverse an invariant this builder had already checked.
@@ -529,7 +529,7 @@ def build_subagent_runtime_middlewares(
         )
     )
 
-    # DeerFlowSummarizationMiddleware — subagents inherit none of the lead's
+    # AgentWorkspaceSummarizationMiddleware — subagents inherit none of the lead's
     # context compaction today (#3875 Phase 3): a deep-research subagent
     # (``max_turns`` up to 150) can accumulate >1M cumulative input before
     # max_turns/timeout/token_budget engage, even though Phase 2's budget now

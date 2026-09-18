@@ -244,7 +244,7 @@ class TestStateWritesCannotForgeServerOwnedMetadata:
         cleaned = strip_server_owned_state_metadata(values)["messages"][0]
 
         assert not (PROVENANCE_KEYS & set(cleaned.additional_kwargs))
-        assert "deerflow_tool_transforms" not in cleaned.additional_kwargs
+        assert "agent_workspace_tool_transforms" not in cleaned.additional_kwargs
         # Caller-owned keys must survive — this strips forgeries, not payload.
         assert cleaned.additional_kwargs["hide_from_ui"] is True
         assert cleaned.content == "looks recalled"
@@ -257,7 +257,7 @@ class TestStateWritesCannotForgeServerOwnedMetadata:
         cleaned = strip_server_owned_state_metadata(values)["messages"][0]
 
         assert not (PROVENANCE_KEYS & set(cleaned["additional_kwargs"]))
-        assert "deerflow_tool_transforms" not in cleaned["additional_kwargs"]
+        assert "agent_workspace_tool_transforms" not in cleaned["additional_kwargs"]
         assert cleaned["additional_kwargs"]["hide_from_ui"] is True
 
     def test_a_forged_delegation_verdict_is_stripped(self):

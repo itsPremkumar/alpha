@@ -143,7 +143,7 @@ def _sqlite_disk_uri(conn_str: str) -> str:
     readiness probe can never resurrect a checkpointer/Store file that was
     deleted or lost after startup - absence must surface as unreachable. Plain
     filesystem paths (already absolute after
-    ``deerflow.runtime.store._sqlite_utils.resolve_sqlite_conn_str``) are
+    ``agent_workspace.runtime.store._sqlite_utils.resolve_sqlite_conn_str``) are
     converted with ``Path.as_uri`` for correct percent-encoding; existing
     ``file:`` URIs keep their path bytes and get ``mode=rw`` merged into the
     query, replacing any pinned mode.
@@ -275,7 +275,7 @@ async def readiness_payload(checkpointer_config: CheckpointerConfig | None = Non
     degraded = DATABASE_UNREACHABLE in (database, checkpointer)
     payload = {
         "status": "degraded" if degraded else "ready",
-        "service": "deer-flow-gateway",
+        "service": "agent-workspace-gateway",
         "database": database,
         "checkpointer": checkpointer,
     }

@@ -21,7 +21,7 @@ def test_summarize_unknown_tool_falls_back_to_humanized_name():
 def test_format_tool_detail_extracts_salient_arg():
     assert format_tool_detail("read_file", {"path": "src/app.py"}) == "src/app.py"
     assert format_tool_detail("bash", {"command": "ls -la"}) == "ls -la"
-    assert format_tool_detail("web_search", {"query": "deerflow tui"}) == "deerflow tui"
+    assert format_tool_detail("web_search", {"query": "agent_workspace tui"}) == "agent_workspace tui"
 
 
 def test_format_tool_detail_unknown_args_compact_json():

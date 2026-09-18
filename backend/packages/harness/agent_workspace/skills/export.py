@@ -235,7 +235,7 @@ def _revision(name, entries):
         digest.update(struct.pack(">Q", len(value)))
         digest.update(value)
 
-    field(b"deerflow-skill-export-v1")
+    field(b"agent_workspace-skill-export-v1")
     field(name.encode("utf-8"))
     for entry in entries:
         for value in (entry.path.encode("utf-8"), entry.type.encode("ascii"), str(entry.size).encode("ascii"), entry.digest, b"1" if entry.executable else b"0"):

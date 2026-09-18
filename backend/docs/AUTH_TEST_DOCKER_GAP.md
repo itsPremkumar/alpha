@@ -24,7 +24,7 @@ All other test plan sections were executed against either:
 
 | Case | Title | What it covers | Why not run |
 |---|---|---|---|
-| TC-DOCKER-01 | `deerflow.db` volume persistence | Verify the `AGENT_WORKSPACE_HOME` bind mount survives container restart | needs `docker compose up` |
+| TC-DOCKER-01 | `agent_workspace.db` volume persistence | Verify the `AGENT_WORKSPACE_HOME` bind mount survives container restart | needs `docker compose up` |
 | TC-DOCKER-02 | Session persistence across container restart | `AUTH_JWT_SECRET` env var keeps cookies valid after `docker compose down && up` | needs `docker compose down/up` |
 | TC-DOCKER-03 | Per-worker rate limiter divergence | Confirms in-process `_login_attempts` dict doesn't share state across `gunicorn` workers (4 by default in the compose file); known limitation, documented | needs multi-worker container |
 | TC-DOCKER-04 | IM channels use internal Gateway auth | Verify Feishu/Slack/Telegram dispatchers attach the process-local internal auth header plus CSRF cookie/header when calling Gateway-compatible LangGraph APIs | needs `docker logs` |
@@ -60,7 +60,7 @@ echo "AUTH_JWT_SECRET=$(python3 -c 'import secrets; print(secrets.token_urlsafe(
   >> .env
 
 # Optional: pin AGENT_WORKSPACE_HOME to a stable host path
-echo "AGENT_WORKSPACE_HOME=$HOME/deer-flow-data" >> .env
+echo "AGENT_WORKSPACE_HOME=$HOME/agent-workspace-data" >> .env
 ```
 
 Then run TC-DOCKER-01..06 from the test plan as written.

@@ -222,9 +222,9 @@ def test_db_hash_stable_across_credential_rotation():
     """Same database, rotated user/password -> same cache namespace."""
     from agent_workspace.config.database_config import DatabaseConfig
 
-    before = DatabaseConfig.model_validate({"backend": "postgres", "postgres_url": "postgresql://alice:secret1@pg.internal:5432/deerflow"})
-    rotated = DatabaseConfig.model_validate({"backend": "postgres", "postgres_url": "postgresql://bob:secret2@pg.internal:5432/deerflow"})
-    driver_suffix = DatabaseConfig.model_validate({"backend": "postgres", "postgres_url": "postgresql+asyncpg://alice:secret1@pg.internal:5432/deerflow"})
+    before = DatabaseConfig.model_validate({"backend": "postgres", "postgres_url": "postgresql://alice:secret1@pg.internal:5432/agent_workspace"})
+    rotated = DatabaseConfig.model_validate({"backend": "postgres", "postgres_url": "postgresql://bob:secret2@pg.internal:5432/agent_workspace"})
+    driver_suffix = DatabaseConfig.model_validate({"backend": "postgres", "postgres_url": "postgresql+asyncpg://alice:secret1@pg.internal:5432/agent_workspace"})
     other_db = DatabaseConfig.model_validate({"backend": "postgres", "postgres_url": "postgresql://alice:secret1@pg.internal:5432/other"})
     assert checkpoint_cache_db_hash(before) == checkpoint_cache_db_hash(rotated)
     assert checkpoint_cache_db_hash(before) == checkpoint_cache_db_hash(driver_suffix)

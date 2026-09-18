@@ -996,7 +996,7 @@ async def oauth_callback(
 
     Handles the OIDC provider's redirect after user authorization.
     Validates the state cookie, exchanges the code for tokens, validates
-    the ID token, provisions/links the DeerFlow user, and sets the
+    the ID token, provisions/links the Agent Workspace user, and sets the
     session cookie.
     """
     from agent_workspace.config.app_config import get_app_config
@@ -1081,7 +1081,7 @@ async def oauth_callback(
 
     user = result["user"]
 
-    # ── Issue DeerFlow session ───────────────────────────────────────
+    # ── Issue Agent Workspace session ───────────────────────────────────────
     token = create_access_token(str(user.id), token_version=user.token_version)
 
     # Revalidate as defense-in-depth if future state writers populate this target.

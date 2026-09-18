@@ -57,7 +57,7 @@ async def test_discord_inbound_attaches_owner_identity_from_user_level_connectio
 async def test_discord_connect_command_binds_gateway_identity(repo):
     state = "discord-bind-code"
     await repo.create_oauth_state(
-        owner_user_id="deerflow-user-1",
+        owner_user_id="agent-workspace-user-1",
         provider="discord",
         state=state,
         expires_at=datetime.now(UTC) + timedelta(minutes=5),
@@ -76,7 +76,7 @@ async def test_discord_connect_command_binds_gateway_identity(repo):
 
     handled = await channel._bind_connection_from_connect_code(message, state)
 
-    connections = await repo.list_connections("deerflow-user-1")
+    connections = await repo.list_connections("agent-workspace-user-1")
     assert handled is True
     assert len(connections) == 1
     assert connections[0]["provider"] == "discord"

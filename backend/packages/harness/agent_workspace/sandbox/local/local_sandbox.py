@@ -125,7 +125,7 @@ class LocalSandbox(Sandbox):
         The blanket conversion disable introduced for #2765 also affects child
         processes launched by Git Bash, including Windows-native CLI shims that
         need normal MSYS path conversion for their own installation paths.
-        Excluding only the configured virtual roots preserves DeerFlow path
+        Excluding only the configured virtual roots preserves Agent Workspace path
         arguments without changing unrelated child-process behavior. Root and
         values containing MSYS exclusion syntax are omitted because they would
         broaden the exclusion beyond one virtual path prefix.
@@ -578,13 +578,13 @@ class LocalSandbox(Sandbox):
         encoding = locale.getpreferredencoding(False)
         stdout_capture, stdout_thread = LocalSandbox._start_pipe_drain(
             stdout_read_fd,
-            "deerflow-bash-stdout-drain",
+            "agent_workspace-bash-stdout-drain",
             encoding=encoding,
             normalize_newlines=True,
         )
         stderr_capture, stderr_thread = LocalSandbox._start_pipe_drain(
             stderr_read_fd,
-            "deerflow-bash-stderr-drain",
+            "agent_workspace-bash-stderr-drain",
             encoding=encoding,
             normalize_newlines=True,
         )
@@ -691,8 +691,8 @@ class LocalSandbox(Sandbox):
                     # The write fd may already be closed by the exception cleanup above.
                     pass
 
-        stdout_capture, stdout_thread = LocalSandbox._start_pipe_drain(stdout_read_fd, "deerflow-bash-stdout-drain")
-        stderr_capture, stderr_thread = LocalSandbox._start_pipe_drain(stderr_read_fd, "deerflow-bash-stderr-drain")
+        stdout_capture, stdout_thread = LocalSandbox._start_pipe_drain(stdout_read_fd, "agent_workspace-bash-stdout-drain")
+        stderr_capture, stderr_thread = LocalSandbox._start_pipe_drain(stderr_read_fd, "agent_workspace-bash-stderr-drain")
         try:
             process_group_id = os.getpgid(process.pid)
         except OSError:

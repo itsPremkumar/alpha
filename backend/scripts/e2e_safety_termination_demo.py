@@ -1,8 +1,8 @@
-"""End-to-end demo: SafetyFinishReasonMiddleware on the real DeerFlow lead-agent.
+"""End-to-end demo: SafetyFinishReasonMiddleware on the real Agent Workspace lead-agent.
 
 What it proves
 --------------
-- The real ``make_lead_agent`` / ``DeerFlowClient`` pipeline is built (full
+- The real ``make_lead_agent`` / ``AgentWorkspaceClient`` pipeline is built (full
   18-middleware chain, sandbox, tools, etc.).
 - A model that returns ``finish_reason='content_filter'`` + ``tool_calls``
   triggers SafetyFinishReasonMiddleware.
@@ -104,10 +104,10 @@ def main() -> int:
     lead_agent_module.create_chat_model = fake_create_chat_model
     client_module.create_chat_model = fake_create_chat_model
 
-    from agent_workspace.client import DeerFlowClient
+    from agent_workspace.client import AgentWorkspaceClient
 
     try:
-        client = DeerFlowClient()
+        client = AgentWorkspaceClient()
 
         print("\n=== Streaming a turn through the real lead-agent ===")
         events: list[dict[str, Any]] = []

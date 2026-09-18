@@ -19,7 +19,7 @@ Build a persistent, model-agnostic, multimodal, computer-native autonomous agent
 - safely deploying better versions of its own harness
 - functioning entirely with self-hosted/open-source components when required
 
-The architecture is inspired by the strongest public principles from OpenClaw, Hermes, DeerFlow, Deep Agents, OpenAI Astra, Anthropic Fable/Mythos, NVIDIA AVO and large-model systems such as Kimi, but is intentionally a new synthesis rather than a claimed reproduction of proprietary internal systems.
+The architecture is inspired by the strongest public principles from OpenClaw, Hermes, Agent Workspace, Deep Agents, OpenAI Astra, Anthropic Fable/Mythos, NVIDIA AVO and large-model systems such as Kimi, but is intentionally a new synthesis rather than a claimed reproduction of proprietary internal systems.
 
 ---
 
@@ -750,7 +750,7 @@ Executive
           └── Red Team
 ```
 
-DeerFlow, Deep Agents and Hermes all reinforce the usefulness of subagent isolation and hierarchical delegation.
+Agent Workspace, Deep Agents and Hermes all reinforce the usefulness of subagent isolation and hierarchical delegation.
 
 ---
 
@@ -1438,7 +1438,7 @@ AVO's results demonstrate why preserving long-horizon state and execution feedba
 
 # 35. AVO-Style Evolution Factory
 
-This is your biggest addition beyond ordinary OpenClaw/Hermes/DeerFlow.
+This is your biggest addition beyond ordinary OpenClaw/Hermes/Agent Workspace.
 
 ```text
 REAL TASKS
@@ -1712,7 +1712,7 @@ KPIs
 
 The Executive coordinates them.
 
-This is where OpenClaw Bot Mode, Hermes profiles, agent teams and DeerFlow-style subagent orchestration become useful building blocks.
+This is where OpenClaw Bot Mode, Hermes profiles, agent teams and Agent Workspace-style subagent orchestration become useful building blocks.
 
 ---
 
@@ -2260,7 +2260,7 @@ Hermes
 → checkpoints
 → trajectories
 
-DeerFlow 2.0
+Agent Workspace 2.0
 → super-agent runtime
 → sandbox
 → long-horizon orchestration

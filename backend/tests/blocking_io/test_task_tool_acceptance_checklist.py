@@ -6,7 +6,7 @@ on the LangGraph event loop. The whole check is offloaded with
 ``asyncio.to_thread`` in ``task_tool``; this anchor locks that offload.
 
 Under the strict Blockbuster context (this directory's conftest), any blocking
-IO reached from ``deerflow.*`` while on the event loop raises
+IO reached from ``agent_workspace.*`` while on the event loop raises
 ``BlockingError``.
 
 The content reader is injected here as a **blocking probe**: it does real
@@ -30,7 +30,7 @@ from langchain_core.messages import ToolMessage
 from agent_workspace.subagents.config import SubagentConfig
 
 # importlib.import_module binds the real module: the package attribute
-# ``deerflow.tools.builtins.task_tool`` is shadowed by the StructuredTool.
+# ``agent_workspace.tools.builtins.task_tool`` is shadowed by the StructuredTool.
 task_tool_module = importlib.import_module("agent_workspace.tools.builtins.task_tool")
 
 pytestmark = pytest.mark.asyncio

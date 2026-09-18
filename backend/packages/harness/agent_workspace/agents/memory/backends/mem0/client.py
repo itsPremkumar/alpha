@@ -22,7 +22,7 @@ class Mem0AuthError(Mem0APIError):
 
 
 class Mem0Client:
-    """Thin wrapper over the mem0 endpoints DeerFlow uses."""
+    """Thin wrapper over the mem0 endpoints Agent Workspace uses."""
 
     def __init__(
         self,
@@ -125,4 +125,4 @@ class Mem0Client:
         Proves the API key works without touching real data (the sentinel
         bucket is always empty).
         """
-        self.list_memories(filters={"user_id": "__deerflow_startup_check__"}, page_size=1, max_items=1)
+        self.list_memories(filters={"user_id": "__agent_workspace_startup_check__"}, page_size=1, max_items=1)

@@ -202,7 +202,7 @@ def load_extensions(specs: Sequence[ExtensionSpec]) -> tuple[LoadedExtensions, l
             continue
 
         try:
-            declared = getattr(install, "__deerflow_api__", None)
+            declared = getattr(install, "__agent_workspace_api__", None)
         except Exception as exc:
             message = f"could not inspect extension-api version marker: {type(exc).__name__}"
             diagnostics.append(Diagnostic.error(spec.use, message))

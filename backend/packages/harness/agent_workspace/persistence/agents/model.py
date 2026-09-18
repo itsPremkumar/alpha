@@ -1,7 +1,7 @@
 """ORM model for custom agent definitions.
 
 One row per ``(user_id, name)`` custom agent. ``config`` holds the full
-:class:`~deerflow.config.agents_config.AgentConfig` document *minus* ``name``
+:class:`~agent_workspace.config.agents_config.AgentConfig` document *minus* ``name``
 (which is the natural key, carried by the ``name`` column). Storing the config
 as a single JSON document — rather than a column per field — is deliberate: the
 codebase already declares, via ``preserve_non_managed_fields``, that any field

@@ -26,7 +26,7 @@ def _skills_root() -> Path:
 
         return runtime_home() / "skills"
     except Exception:
-        return Path.cwd() / ".deerflow" / "skills"
+        return Path.cwd() / ".agent_workspace" / "skills"
 
 
 def _usage_file() -> Path:

@@ -43,13 +43,13 @@ def test_host_disabled_required_extension_is_skipped_before_resolution(monkeypat
 def test_manager_metadata_is_accepted_without_reaching_the_install_hook():
     spec = ExtensionSpec(
         name="demo",
-        package="deerflow-extension-demo",
+        package="agent-workspace-extension-demo",
         use=f"{_FIXTURE}:install_ok",
         enabled=False,
     )
 
     assert spec.name == "demo"
-    assert spec.package == "deerflow-extension-demo"
+    assert spec.package == "agent-workspace-extension-demo"
 
 
 def test_successful_install_registers_and_attributes():
@@ -158,7 +158,7 @@ def test_incompatible_declared_api_is_refused_with_actionable_message():
 
 
 def test_optional_extension_with_non_string_api_marker_is_skipped_with_a_diagnostic(monkeypatch):
-    monkeypatch.setattr(demo_extensions.install_ok, "__deerflow_api__", 101, raising=False)
+    monkeypatch.setattr(demo_extensions.install_ok, "__agent_workspace_api__", 101, raising=False)
     spec = ExtensionSpec(use=f"{_FIXTURE}:install_ok")
 
     loaded, diagnostics = load_extensions([spec])
@@ -182,7 +182,7 @@ def test_required_extension_with_non_string_iterable_api_marker_fails_closed(mon
 
     monkeypatch.setattr(
         demo_extensions.install_ok,
-        "__deerflow_api__",
+        "__agent_workspace_api__",
         _IterableAPIMarker(),
         raising=False,
     )
@@ -204,7 +204,7 @@ def test_optional_extension_with_unrenderable_api_marker_still_returns_a_diagnos
 
     monkeypatch.setattr(
         demo_extensions.install_ok,
-        "__deerflow_api__",
+        "__agent_workspace_api__",
         _UnrenderableAPIMarker(),
         raising=False,
     )
@@ -224,7 +224,7 @@ def test_optional_extension_with_unrenderable_api_marker_still_returns_a_diagnos
 def test_extension_api_marker_getter_failure_obeys_required_policy(monkeypatch, required):
     class _ExplodingMarkerInstall:
         @property
-        def __deerflow_api__(self):
+        def __agent_workspace_api__(self):
             raise RuntimeError("API marker getter exploded")
 
         def __call__(self, registry, config):
@@ -260,7 +260,7 @@ def test_string_subclass_api_marker_cannot_break_incompatibility_diagnostics(mon
 
     monkeypatch.setattr(
         demo_extensions.install_ok,
-        "__deerflow_api__",
+        "__agent_workspace_api__",
         _HostileString("99.0"),
         raising=False,
     )
@@ -287,7 +287,7 @@ def test_compatible_string_subclass_api_marker_can_load(monkeypatch):
 
     monkeypatch.setattr(
         demo_extensions.install_ok,
-        "__deerflow_api__",
+        "__agent_workspace_api__",
         _HostileString("0.2.0"),
         raising=False,
     )

@@ -52,7 +52,7 @@ checkpointer = PostgresSaver.from_conn_string(
 ```json
 {
   "graphs": {
-    "lead_agent": "deerflow.agents:lead_agent"
+    "lead_agent": "agent_workspace.agents:lead_agent"
   },
   "checkpointer": "checkpointer:checkpointer"
 }

@@ -238,8 +238,8 @@ def test_extension_decorator_stamps_api_requirement():
     def install(registry, config):
         return None
 
-    assert install.__deerflow_api__ == "0.1"
-    assert install.__deerflow_name__ == "demo"
+    assert install.__agent_workspace_api__ == "0.1"
+    assert install.__agent_workspace_name__ == "demo"
 
 
 def test_task_outcome_members():

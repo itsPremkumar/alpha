@@ -30,7 +30,7 @@ def test_visual_qa_verifier_lifecycle():
     with tempfile.TemporaryDirectory() as tmpdir:
         test_html = Path(tmpdir) / "index.html"
         test_html.write_text(
-            "<!DOCTYPE html><html><body><div id='root'><h1>DeerFlow Studio</h1><button class='btn-primary'>Deploy</button></div></body></html>",
+            "<!DOCTYPE html><html><body><div id='root'><h1>Agent Workspace Studio</h1><button class='btn-primary'>Deploy</button></div></body></html>",
             encoding="utf-8",
         )
 

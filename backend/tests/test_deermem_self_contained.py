@@ -4,7 +4,7 @@ Covers: DI construction (owns storage/updater/queue/llm), zero-config defaults,
 ``trace_id`` threading to the optional ``callbacks`` hook, langfuse being
 optional, ``hide_from_ui`` default-skip + hook-keep, empty ``storage_class``
 (portable default), and portability -- ``backends/deermem/`` has exactly one
-``from deerflow`` line (the ABC contract) and can be vendored into another agent
+``from agent_workspace`` line (the ABC contract) and can be vendored into another agent
 by copying the folder and repointing that one line.
 
 Storage is isolated via ``$DEERMEM_DATA_DIR`` -> ``tmp_path``; the LLM is a fake
@@ -142,7 +142,7 @@ def test_get_context_injects_facts_only_in_middleware_mode(deermem_data_dir):
     middleware.import_memory(
         {
             "user": {
-                "workContext": {"summary": "Works on DeerFlow memory."},
+                "workContext": {"summary": "Works on Agent Workspace memory."},
             },
             "history": {
                 "recentMonths": {"summary": "Recently redesigned storage."},
@@ -163,10 +163,10 @@ def test_get_context_injects_facts_only_in_middleware_mode(deermem_data_dir):
     middleware_context = middleware.get_context(user_id="u")
     tool_context = DeerMem(backend_config=backend_config, mode="tool").get_context(user_id="u")
 
-    assert "Works on DeerFlow memory." in middleware_context
+    assert "Works on Agent Workspace memory." in middleware_context
     assert "Recently redesigned storage." in middleware_context
     assert "Use FTS5 for active fact recall." in middleware_context
-    assert "Works on DeerFlow memory." in tool_context
+    assert "Works on Agent Workspace memory." in tool_context
     assert "Recently redesigned storage." in tool_context
     assert "Use FTS5 for active fact recall." not in tool_context
     assert "Facts:" not in tool_context
@@ -325,7 +325,7 @@ def test_storage_class_empty_uses_filememorystorage():
     assert isinstance(dm._storage, FileMemoryStorage)
 
 
-def test_portability_only_abc_contract_imports_deerflow():
+def test_portability_only_abc_contract_imports_agent_workspace():
     """backends/deermem/ has exactly ONE host harness import line: the ABC contract in deer_mem.py."""
     import agent_workspace.agents.memory.backends.deermem as pkg
 
@@ -334,7 +334,7 @@ def test_portability_only_abc_contract_imports_deerflow():
     for p in root.rglob("*.py"):
         for line in p.read_text(encoding="utf-8").splitlines():
             s = line.strip()
-            if s.startswith(("from deerflow", "import deerflow", "from agent_workspace", "import agent_workspace")):
+            if s.startswith(("from agent_workspace", "import agent_workspace", "from agent_workspace", "import agent_workspace")):
                 harness_imports.append((p.relative_to(root).as_posix(), s))
     assert len(harness_imports) == 1, harness_imports
     assert harness_imports[0][0] == "deer_mem.py"
@@ -421,7 +421,7 @@ class MemoryCorruptionError(RuntimeError): ...
 def test_portability_vendor_to_other_agent(tmp_path, monkeypatch):
     """Copy backends/deermem/ into a temp package, repoint the ONE ABC import to
     a vendored manager, import, and run a round-trip -- proves copy + 1-line +
-    run portability (zero deerflow dependency at runtime)."""
+    run portability (zero agent_workspace dependency at runtime)."""
     import importlib
     import shutil
 

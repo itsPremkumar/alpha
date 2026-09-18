@@ -4,7 +4,7 @@ Enable via operator config only::
 
     extensions:
       middlewares:
-        - deerflow.agents.middlewares.metacognitive_middleware:MetacognitiveMiddleware
+        - agent_workspace.agents.middlewares.metacognitive_middleware:MetacognitiveMiddleware
 
 Observe-only: assesses recent tool history with MetacognitiveMonitor and logs
 the recommendation. Never blocks, never mutates state, never changes prompts —

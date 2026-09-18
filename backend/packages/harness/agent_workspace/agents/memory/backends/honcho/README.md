@@ -1,6 +1,6 @@
 # Honcho memory backend
 
-Uses Honcho (self-hosted or hosted, v3 API) as DeerFlow's
+Uses Honcho (self-hosted or hosted, v3 API) as Agent Workspace's
 user-model memory store. Honcho covers the user dimension of memory — long-term
 user modeling, preferences, and a cross-session working representation — built
 by Honcho's own server-side deriver. Ingestion is cheap plain message writes;
@@ -17,10 +17,10 @@ memory:
   backend_config:
     base_url: http://localhost:8000
     # api_key: $HONCHO_API_KEY   # hosted Honcho; plain-http + api_key needs allow_insecure_http: true
-    workspace_prefix: deerflow-u-   # one isolated workspace per user id
+    workspace_prefix: agent-workspace-u-   # one isolated workspace per user id
     # workspace_overrides: {}    # map specific user ids to custom workspaces
     # user_peer_overrides: {}    # map specific user ids to custom peer names
-    assistant_peer: deerflow
+    assistant_peer: agent_workspace
     message_char_limit: 8000
     max_injection_chars: 6000
     timeout_seconds: 10
@@ -81,7 +81,7 @@ cannot see each other's memory by construction.
 ## Async execution and failure behavior
 
 The Honcho HTTP client is synchronous for compatibility with the
-`MemoryManager` contract. DeerFlow offloads it at every async boundary via
+`MemoryManager` contract. Agent Workspace offloads it at every async boundary via
 `asyncio.to_thread` (the manager's `a*` methods), so a slow Honcho request
 never blocks ASGI handlers or SSE heartbeats.
 

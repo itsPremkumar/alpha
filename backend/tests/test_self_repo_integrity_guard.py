@@ -4,7 +4,7 @@ from agent_workspace.safety.self_repo_guard import SelfRepoGuard
 
 
 def test_self_repo_guard_blocks_mutations(tmp_path: Path):
-    harness_repo = tmp_path / "deer-flow"
+    harness_repo = tmp_path / "agent-workspace"
     harness_repo.mkdir()
 
     guard = SelfRepoGuard(running_repo_root=harness_repo)
@@ -22,7 +22,7 @@ def test_self_repo_guard_blocks_mutations(tmp_path: Path):
 
 
 def test_self_repo_guard_permits_safe_and_worktrees(tmp_path: Path):
-    harness_repo = tmp_path / "deer-flow"
+    harness_repo = tmp_path / "agent-workspace"
     harness_repo.mkdir()
     worktree_dir = harness_repo / ".worktrees" / "subagent-1"
     worktree_dir.mkdir(parents=True)
@@ -45,7 +45,7 @@ def test_self_repo_guard_permits_safe_and_worktrees(tmp_path: Path):
 
 
 def test_self_repo_guard_override_mode(tmp_path: Path):
-    harness_repo = tmp_path / "deer-flow"
+    harness_repo = tmp_path / "agent-workspace"
     harness_repo.mkdir()
     guard = SelfRepoGuard(running_repo_root=harness_repo, allow_self_mutation=True)
 

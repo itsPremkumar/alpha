@@ -1,4 +1,4 @@
-"""Executable Python Skills Protocol for DeerFlow (inspired by Prime Agent rlm/skill.py).
+"""Executable Python Skills Protocol for Agent Workspace (inspired by Prime Agent rlm/skill.py).
 
 Enables skills to be importable, executable Python packages or callables
 with input validation and deterministic programmatic execution.

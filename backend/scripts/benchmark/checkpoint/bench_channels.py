@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Benchmark DeerFlow's full and DeltaChannel checkpoint message storage.
+"""Benchmark Agent Workspace's full and DeltaChannel checkpoint message storage.
 
 The public CLI is a controller. Every benchmark case runs in a fresh child
 process and, for SQLite, a fresh database. This mirrors the restart-required
@@ -761,7 +761,7 @@ def _worker_main(encoded_case: str, *, profile_path: Path | None = None) -> int:
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
         print(json.dumps({"schema_version": SCHEMA_VERSION, "benchmark_version": BENCHMARK_VERSION, "success": False, "error": _safe_error(exc)}, separators=(",", ":")))
         return 2
-    with tempfile.TemporaryDirectory(prefix="deerflow-checkpoint-benchmark-") as temp_dir:
+    with tempfile.TemporaryDirectory(prefix="agent_workspace-checkpoint-benchmark-") as temp_dir:
         if profile_path is None:
             row = _run_case(case, work_dir=Path(temp_dir))
         else:

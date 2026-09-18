@@ -4,7 +4,7 @@ Combines the existing thread-local filesystem cleanup with LangGraph
 Platform-compatible thread management backed by the checkpointer.
 
 Channel values returned in state responses are serialized through
-:func:`deerflow.runtime.serialization.serialize_channel_values` to
+:func:`agent_workspace.runtime.serialization.serialize_channel_values` to
 ensure LangChain message objects are converted to JSON-safe dicts
 matching the LangGraph Platform wire format expected by the
 ``useStream`` React hook.
@@ -112,8 +112,8 @@ def _checkpoint_mode_http_error(exc: Exception, thread_id: str) -> HTTPException
 # row-level invariant is still ``threads_meta.user_id`` populated from
 # the auth contextvar; this list closes the metadata-blob echo gap.
 _SERVER_RESERVED_METADATA_KEYS: frozenset[str] = frozenset({"owner_id", "user_id", THREAD_PROJECT_METADATA_KEY})
-_SIDECAR_METADATA_KEY = "deerflow_sidecar"
-_BRANCH_METADATA_KEY = "deerflow_branch"
+_SIDECAR_METADATA_KEY = "agent_workspace_sidecar"
+_BRANCH_METADATA_KEY = "agent_workspace_branch"
 _BRANCH_TITLE_SEQUENCE_METADATA_KEY = "branch_title_sequence"
 # Thread-scoped runtime channels a branch must NOT inherit from its parent:
 # ``sandbox.sandbox_id`` binds path mappings and the release lifecycle to the
@@ -488,7 +488,7 @@ class ThreadSearchRequest(BaseModel):
         """Reject filter entries the SQL backend cannot compile.
 
         Enforces consistent behaviour across SQL and memory backends.
-        See ``deerflow.persistence.json_compat`` for the shared validators.
+        See ``agent_workspace.persistence.json_compat`` for the shared validators.
         """
         if not v:
             return v
@@ -529,7 +529,7 @@ class ThreadPatchRequest(BaseModel):
     @classmethod
     def validate_archive_flag(cls, value: dict[str, Any]) -> dict[str, Any]:
         if THREAD_ARCHIVED_METADATA_KEY in value and not isinstance(value[THREAD_ARCHIVED_METADATA_KEY], bool):
-            raise ValueError("deerflow_archived must be a boolean")
+            raise ValueError("agent_workspace_archived must be a boolean")
         return value
 
 
@@ -723,7 +723,7 @@ async def _ensure_thread_for_goal(thread_id: str, request: Request) -> None:
 async def delete_thread_data(thread_id: str, request: Request) -> ThreadDeleteResponse:
     """Delete local persisted filesystem data for a thread.
 
-    Cleans DeerFlow-managed thread directories, removes checkpoint data,
+    Cleans Agent Workspace-managed thread directories, removes checkpoint data,
     and removes the thread_meta row from the configured ThreadMetaStore
     (sqlite or memory).
     """
@@ -903,7 +903,7 @@ async def create_thread(body: ThreadCreateRequest, request: Request) -> ThreadRe
 
     logger.info("Thread created: %s", sanitize_log_param(thread_id))
     # Respond from the persisted record — the store stamps
-    # ``metadata.deerflow_project_id`` from the assigned project_id column, so
+    # ``metadata.agent_workspace_project_id`` from the assigned project_id column, so
     # echoing ``body.metadata`` here would omit the membership the retry path
     # (``_existing_thread_response``) reports.
     return _existing_thread_response(thread_id, created_record)

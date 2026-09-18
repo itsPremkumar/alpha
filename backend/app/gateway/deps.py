@@ -4,7 +4,7 @@
 missing, except ``get_store`` which returns ``None``.
 
 ``AppConfig`` is intentionally *not* cached on ``app.state``. Routers and the
-run path resolve it through :func:`deerflow.config.app_config.get_app_config`,
+run path resolve it through :func:`agent_workspace.config.app_config.get_app_config`,
 which performs mtime-based hot reload, so edits to ``config.yaml`` take
 effect on the next request without a process restart. The engines created in
 :func:`langgraph_runtime` (stream bridge, persistence, checkpointer, store,
@@ -332,21 +332,21 @@ async def _terminalize_recovered_runs(
 def get_config() -> AppConfig:
     """Return the freshest ``AppConfig`` for the current request.
 
-    Routes through :func:`deerflow.config.app_config.get_app_config`, which
+    Routes through :func:`agent_workspace.config.app_config.get_app_config`, which
     honours runtime ``ContextVar`` overrides and reloads ``config.yaml`` from
     disk when its mtime changes. ``AppConfig`` is not cached on ``app.state``
     at all — the only startup-time snapshot lives as a local
     ``startup_config`` variable inside ``lifespan()`` and is passed
     explicitly into :func:`langgraph_runtime` for the engines that are
     restart-required by design. Routing every request through
-    :func:`get_app_config` closes the bytedance/deer-flow issue #3107 BUG-001
+    :func:`get_app_config` closes the bytedance/agent-workspace issue #3107 BUG-001
     split-brain where the worker / lead-agent thread saw a stale startup
     snapshot.
 
     Hot-reload boundary: fields backed by startup-time singletons
     (engines, sandbox provider, IM channels, logging handler) require a
     process restart to change at runtime. The authoritative list lives in
-    :mod:`deerflow.config.reload_boundary` and is mirrored by the
+    :mod:`agent_workspace.config.reload_boundary` and is mirrored by the
     standardised ``"startup-only:"`` prefix on the matching
     ``Field(description=...)`` in :class:`AppConfig` — IDE hover on those
     fields will surface the boundary inline. See

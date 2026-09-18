@@ -13,7 +13,7 @@ from collections.abc import Mapping
 from agent_workspace_extension_api.state import ExtensionData
 
 #: Host-owned key. Extensions must not write to the runtime context directly.
-EXTENSION_TASK_STORE_KEY = "__deerflow_extension_task_store"
+EXTENSION_TASK_STORE_KEY = "__agent_workspace_extension_task_store"
 
 
 def task_store_from_runtime(runtime: object) -> ExtensionData | None:

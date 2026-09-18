@@ -8,7 +8,7 @@ nothing and exited 0, exactly like a genuine "no matches" (#5376).
 
 :func:`remote_search_command` checks the root first and records the search
 command's own status after the bounded output, the same technique as
-:mod:`deerflow.sandbox.remote_list_dir`. The script always exits 0 so SDKs that
+:mod:`agent_workspace.sandbox.remote_list_dir`. The script always exits 0 so SDKs that
 raise on a non-zero exit still return the marker; the marker alone decides.
 """
 

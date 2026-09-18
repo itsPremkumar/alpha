@@ -80,7 +80,7 @@ _REMINDER_DATE_KEY = "reminder_date"
 _SUMMARY_MESSAGE_NAME = "summary"
 
 # ``INJECTED_USER_MESSAGE_ID_SUFFIX`` / ``strip_injected_user_message_id_suffix``
-# are defined in ``deerflow.utils.messages`` and re-exported here, where the
+# are defined in ``agent_workspace.utils.messages`` and re-exported here, where the
 # ID-swap they describe actually happens. Existing importers keep working.
 __all__ = [
     "INJECTED_USER_MESSAGE_ID_SUFFIX",

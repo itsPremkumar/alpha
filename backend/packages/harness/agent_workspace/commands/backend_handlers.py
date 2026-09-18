@@ -1,10 +1,10 @@
 """Concrete Backend Handlers for Master Slash Commands.
 
 Binds top slash commands to real backend subsystems:
-- Skill Creator & Manager -> deerflow.skills.storage (LocalSkillStorage / UserScopedSkillStorage)
-- Loop & Ralph Loop -> deerflow.harness.continuous.runner (ContinuousGoalRunner)
-- Goal Management -> deerflow.harness.continuous.store (GoalStore) & CognitiveMetaPlanner
-- Subagent Hierarchy -> deerflow.subagents.lifecycle (SubagentLifecycleManager)
+- Skill Creator & Manager -> agent_workspace.skills.storage (LocalSkillStorage / UserScopedSkillStorage)
+- Loop & Ralph Loop -> agent_workspace.harness.continuous.runner (ContinuousGoalRunner)
+- Goal Management -> agent_workspace.harness.continuous.store (GoalStore) & CognitiveMetaPlanner
+- Subagent Hierarchy -> agent_workspace.subagents.lifecycle (SubagentLifecycleManager)
 - Context & Compact -> token accounting & durable context
 - Doctor & Security Review -> health checks & security guardrails
 """
@@ -54,7 +54,7 @@ def handle_skill_create(args: str, context: Optional[Dict[str, Any]] = None) -> 
 name: {skill_name}
 description: {description}
 version: 1.0.0
-author: Autonomous DeerFlow Agent
+author: Autonomous Agent Workspace Agent
 tags: [custom, autonomous, workflow]
 ---
 
@@ -402,7 +402,7 @@ def handle_doctor(args: str, context: Optional[Dict[str, Any]] = None) -> Comman
         ("Sandbox Provider", f"{config.sandbox.use.split('.')[-1]}", True),
     ]
 
-    out = ["=== DeerFlow System Doctor ==="]
+    out = ["=== Agent Workspace System Doctor ==="]
     for name, val, ok in checks:
         icon = "[OK]" if ok else "[FAIL]"
         out.append(f"{icon} {name:<22}: {val}")

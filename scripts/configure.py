@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cross-platform config bootstrap script for DeerFlow."""
+"""Cross-platform config bootstrap script for Agent Workspace."""
 
 from __future__ import annotations
 

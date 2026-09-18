@@ -1,4 +1,4 @@
-"""Tests for deerflow.config.tracing_config."""
+"""Tests for agent_workspace.config.tracing_config."""
 
 from __future__ import annotations
 
@@ -100,7 +100,7 @@ def test_defaults_when_project_not_set(monkeypatch):
     _reset_tracing_cache()
     cfg = tracing_module.get_tracing_config()
 
-    assert cfg.langsmith.project == "deer-flow"
+    assert cfg.langsmith.project == "agent-workspace"
 
 
 def test_langfuse_config_is_loaded(monkeypatch):

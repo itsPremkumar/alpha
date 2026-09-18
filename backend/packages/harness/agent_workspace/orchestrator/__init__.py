@@ -1,16 +1,16 @@
 """Core orchestrator additions (OpenClaw 2.0-inspired), additive-only.
 
 This package unifies 15 advanced orchestrator capabilities on top of the
-existing DeerFlow harness modules. It never replaces existing owners:
+existing Agent Workspace harness modules. It never replaces existing owners:
 
-- context engine -> wraps deerflow.context.engine.ContextEngine
-- provider routing -> builds on deerflow.models.fallback / failover
+- context engine -> wraps agent_workspace.context.engine.ContextEngine
+- provider routing -> builds on agent_workspace.models.fallback / failover
 - approvals -> new custody store, consumed by guardrails/authz
 - secrets -> resolves secretRef:// on top of runtime.secret_context
 - durable tasks / automations / governor -> wraps runtime.runs + scheduler
 - memory recall / dreaming trigger -> wraps memory.dreaming + active_memory
 - sessions catalog -> sqlite-backed thread bindings + branch/rewind helpers
-- tracing -> re-exports deerflow.trace_context with subagent/memory helpers
+- tracing -> re-exports agent_workspace.trace_context with subagent/memory helpers
 - acp binding -> thread-scoped ACP agent registry
 """
 

@@ -51,7 +51,7 @@ class GitHubChannel(Channel):
         - ``enabled`` (bool): set to ``true`` to activate.
         - ``default_mention_login`` (str, optional): bot handle used by
           ``require_mention`` when the agent binding does not set one.
-          Falls back to ``"deerflow-bot"``.
+          Falls back to ``"agent-workspace-bot"``.
     """
 
     def __init__(self, bus: MessageBus, config: dict[str, Any]) -> None:

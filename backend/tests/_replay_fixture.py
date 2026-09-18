@@ -63,7 +63,7 @@ log_level: warning
 models:
 {model_block}
 sandbox:
-  use: deerflow.sandbox.local:LocalSandboxProvider
+  use: agent_workspace.sandbox.local:LocalSandboxProvider
 skills:
   path: {home / "skills"}
   container_path: /mnt/skills
@@ -73,13 +73,13 @@ tool_groups:
 tools:
   - name: ls
     group: file:read
-    use: deerflow.sandbox.tools:ls_tool
+    use: agent_workspace.sandbox.tools:ls_tool
   - name: read_file
     group: file:read
-    use: deerflow.sandbox.tools:read_file_tool
+    use: agent_workspace.sandbox.tools:read_file_tool
   - name: write_file
     group: file:write
-    use: deerflow.sandbox.tools:write_file_tool
+    use: agent_workspace.sandbox.tools:write_file_tool
 # Memory + summarization make background / debounced model calls whose timing is
 # non-deterministic; disable them so record and replay see the same model-call
 # set. Title stays enabled, but the default title.model_name: null path is a

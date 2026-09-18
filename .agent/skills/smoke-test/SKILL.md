@@ -1,11 +1,11 @@
 ---
 name: smoke-test
-description: End-to-end smoke test skill for DeerFlow. Guides through: 1) Pulling latest code, 2) Docker OR Local installation and deployment (user preference, default to Local if Docker network issues), 3) Service availability verification, 4) Health check, 5) Final test report. Use when the user says "run smoke test", "smoke test deployment", "verify installation", "test service availability", "end-to-end test", or similar.
+description: End-to-end smoke test skill for Agent Workspace. Guides through: 1) Pulling latest code, 2) Docker OR Local installation and deployment (user preference, default to Local if Docker network issues), 3) Service availability verification, 4) Health check, 5) Final test report. Use when the user says "run smoke test", "smoke test deployment", "verify installation", "test service availability", "end-to-end test", or similar.
 ---
 
-# DeerFlow Smoke Test Skill
+# Agent Workspace Smoke Test Skill
 
-This skill guides the Agent through DeerFlow's full end-to-end smoke test workflow, including code updates, deployment (supporting both Docker and local installation modes), service availability verification, and health checks.
+This skill guides the Agent through Agent Workspace's full end-to-end smoke test workflow, including code updates, deployment (supporting both Docker and local installation modes), service availability verification, and health checks.
 
 ## Deployment Mode Selection
 
@@ -43,7 +43,7 @@ smoke-test/
 
 ### Phase 1: Code Update Check
 
-1. **Confirm current directory** - Verify that the current working directory is the DeerFlow project root
+1. **Confirm current directory** - Verify that the current working directory is the Agent Workspace project root
 2. **Check Git status** - See whether there are uncommitted changes
 3. **Pull the latest code** - Use `git pull origin main` to get the latest updates
 4. **Confirm code update** - Verify that the latest code was pulled successfully
@@ -136,7 +136,7 @@ smoke-test/
 The following warnings can appear during smoke testing and do not block a successful result:
 - Feishu/Lark SSL errors in Gateway logs (certificate verification failure) can be ignored if that channel is not enabled
 - Warnings in Gateway logs about missing methods in the custom checkpointer, such as `adelete_for_runs` or `aprune`, do not affect the core functionality
-- The `frontend_check.sh` script automatically handles authentication. When auth is enabled it registers / logs in a smoke-test user (`smoke-test@deerflow.dev` by default) to verify the real `/workspace/*` pages. The registration may produce a log entry from the auth provider, which is expected and harmless.
+- The `frontend_check.sh` script automatically handles authentication. When auth is enabled it registers / logs in a smoke-test user (`smoke-test@agent_workspace.dev` by default) to verify the real `/workspace/*` pages. The registration may produce a log entry from the auth provider, which is expected and harmless.
 
 ## Key Tools
 

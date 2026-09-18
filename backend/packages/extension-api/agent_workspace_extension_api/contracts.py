@@ -232,8 +232,8 @@ def extension(*, api: str, name: str | None = None) -> Callable[[F], F]:
     """
 
     def _decorate(func: F) -> F:
-        func.__deerflow_api__ = api  # type: ignore[attr-defined]
-        func.__deerflow_name__ = name  # type: ignore[attr-defined]
+        func.__agent_workspace_api__ = api  # type: ignore[attr-defined]
+        func.__agent_workspace_name__ = name  # type: ignore[attr-defined]
         return func
 
     return _decorate

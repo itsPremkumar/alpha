@@ -1,4 +1,4 @@
-"""Native Autonomous Kanban Engine & Audit Activity Logging for DeerFlow Organizations."""
+"""Native Autonomous Kanban Engine & Audit Activity Logging for Agent Workspace Organizations."""
 
 from __future__ import annotations
 

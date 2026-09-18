@@ -66,7 +66,7 @@ class CanaryWatchdog:
             recommendation = "proceed_with_merge"
         else:
             try:
-                req = urllib.request.Request(target_url, headers={"User-Agent": "DeerFlow-Canary-Watchdog"})
+                req = urllib.request.Request(target_url, headers={"User-Agent": "Agent Workspace-Canary-Watchdog"})
                 with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
                     http_code = resp.status
                     latency_ms = (time.perf_counter() - start) * 1000

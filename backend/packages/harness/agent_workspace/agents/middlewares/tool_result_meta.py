@@ -1,7 +1,7 @@
 """Unified tool result semantics for structured signal production.
 
 Every tool result that passes through ToolErrorHandlingMiddleware gets a
-``deerflow_tool_meta`` entry in additional_kwargs. Downstream consumers
+``agent_workspace_tool_meta`` entry in additional_kwargs. Downstream consumers
 (ToolProgressMiddleware, etc.) read this key instead of parsing text.
 """
 
@@ -15,7 +15,7 @@ from typing import Literal
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
-TOOL_META_KEY = "deerflow_tool_meta"
+TOOL_META_KEY = "agent_workspace_tool_meta"
 
 _ERROR_PREFIX = "Error:"
 _PARTIAL_MARKERS = (
@@ -230,7 +230,7 @@ def _make_meta(*, status: str, source: str, error_type: str | None = None, recov
 
 
 def stamp_exception_meta(msg: ToolMessage, exc_info: str) -> ToolMessage:
-    """Stamp deerflow_tool_meta with source='exception' onto an exception-derived ToolMessage.
+    """Stamp agent_workspace_tool_meta with source='exception' onto an exception-derived ToolMessage.
 
     Unlike normalize_tool_message (which preserves existing stamps), this function always
     overwrites any pre-existing TOOL_META_KEY entry.  Exception-derived classification is
@@ -252,7 +252,7 @@ _SUBAGENT_FAILURE_STATUSES = frozenset({"failed", "cancelled", "timed_out", "pol
 
 
 def normalize_tool_message(msg: ToolMessage) -> ToolMessage:
-    """Attach deerflow_tool_meta to a ToolMessage if not already present."""
+    """Attach agent_workspace_tool_meta to a ToolMessage if not already present."""
     existing = (msg.additional_kwargs or {}).get(TOOL_META_KEY)
     if existing is not None:
         return msg
@@ -335,7 +335,7 @@ def normalize_tool_result(result: ToolMessage | Command, *, tool_call_id: str = 
 
     When ``tool_call_id`` is provided, only the matching ``ToolMessage`` inside a
     Command is stamped. Other Command fields and unrelated messages are left intact.
-    Producer-supplied ``deerflow_tool_meta`` is preserved by ``normalize_tool_message``.
+    Producer-supplied ``agent_workspace_tool_meta`` is preserved by ``normalize_tool_message``.
     """
     if isinstance(result, ToolMessage):
         return normalize_tool_message(result)

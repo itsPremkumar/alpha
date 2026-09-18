@@ -1,4 +1,4 @@
-"""Allow ``python -m deerflow.tui`` to launch the workbench."""
+"""Allow ``python -m agent_workspace.tui`` to launch the workbench."""
 
 from .cli import main
 

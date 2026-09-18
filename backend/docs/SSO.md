@@ -1,6 +1,6 @@
 # SSO / OIDC Authentication
 
-DeerFlow supports single sign-on (SSO) via any OpenID Connect (OIDC) 2.0 compliant provider. This includes Keycloak, Google Workspace, Azure AD, Okta, and many others.
+Agent Workspace supports single sign-on (SSO) via any OpenID Connect (OIDC) 2.0 compliant provider. This includes Keycloak, Google Workspace, Azure AD, Okta, and many others.
 
 ## Architecture
 
@@ -49,7 +49,7 @@ Browser                      Gateway                    OIDC Provider
 - **State via signed cookie** — No server-side session store or Redis needed. The OIDC state (provider, nonce, code_verifier, next path) is signed with the JWT secret and stored in an HttpOnly cookie.
 - **PKCE + nonce enabled by default** — Even though confidential clients could use `client_secret`, PKCE provides an extra layer of security.
 - **No email auto-linking** — a pre-existing local (email/password) account is never auto-linked to an SSO identity. If the IdP-reported email collides with an existing local account, the SSO login is blocked with a 409 so an SSO login can never seize a password account.
-- **Existing DeerFlow JWT** — After successful OIDC authentication, DeerFlow creates its own JWT session cookie. The OIDC provider's tokens are never exposed to the browser.
+- **Existing Agent Workspace JWT** — After successful OIDC authentication, Agent Workspace creates its own JWT session cookie. The OIDC provider's tokens are never exposed to the browser.
 
 ## Configuration
 
@@ -63,8 +63,8 @@ auth:
     providers:
       keycloak:
         display_name: Keycloak
-        issuer: http://localhost:8080/realms/deerflow
-        client_id: deerflow
+        issuer: http://localhost:8080/realms/agent_workspace
+        client_id: agent_workspace
         client_secret: $KEYCLOAK_CLIENT_SECRET
         redirect_uri: http://localhost:8001/api/v1/auth/callback/keycloak
         scopes:
@@ -109,7 +109,7 @@ providers:
     token_endpoint_auth_method: "client_secret_post"  # client_secret_post, client_secret_basic, or none
 
     # User provisioning
-    auto_create_users: true         # Auto-create DeerFlow account on first SSO login (default: true)
+    auto_create_users: true         # Auto-create Agent Workspace account on first SSO login (default: true)
     require_verified_email: true    # Reject logins without verified email (default: true)
     allowed_email_domains: []       # Restrict to specific domains (default: no restriction)
     admin_emails: []                # Auto-grant admin role to these emails (default: none)
@@ -173,10 +173,10 @@ docker run -d \
 
 1. Open the Keycloak admin console: http://localhost:8080
 2. Log in with `admin` / `admin`
-3. Create a new realm called `deerflow`
-4. In the `deerflow` realm, go to **Clients** → **Create client**
+3. Create a new realm called `agent_workspace`
+4. In the `agent_workspace` realm, go to **Clients** → **Create client**
 5. Configure:
-   - **Client ID**: `deerflow`
+   - **Client ID**: `agent_workspace`
    - **Client authentication**: On (makes it a confidential client)
    - **Standard flow**: Enabled
    - **Valid redirect URIs**: `http://localhost:8001/api/v1/auth/callback/keycloak`
@@ -187,7 +187,7 @@ docker run -d \
 
 ### 3. Create a Test User
 
-1. In the `deerflow` realm, go to **Users** → **Add user**
+1. In the `agent_workspace` realm, go to **Users** → **Add user**
 2. Set **Username**: `testuser`
 3. Set **Email**: `testuser@example.com`
 4. Set **Email verified**: On
@@ -195,7 +195,7 @@ docker run -d \
 6. Set a password (e.g. `testpass123`)
 7. Set **Temporary**: Off
 
-### 4. Configure DeerFlow
+### 4. Configure Agent Workspace
 
 Add to `config.yaml`:
 
@@ -207,8 +207,8 @@ auth:
     providers:
       keycloak:
         display_name: Keycloak
-        issuer: http://localhost:8080/realms/deerflow
-        client_id: deerflow
+        issuer: http://localhost:8080/realms/agent_workspace
+        client_id: agent_workspace
         client_secret: $KEYCLOAK_CLIENT_SECRET
         redirect_uri: http://localhost:8001/api/v1/auth/callback/keycloak
         scopes:
@@ -233,7 +233,7 @@ cd backend && make dev
 2. On the login page, click **Login with Keycloak**
 3. You'll be redirected to Keycloak's login page
 4. Log in with `testuser` / `testpass123`
-5. After successful authentication, you'll be redirected back to the DeerFlow workspace
+5. After successful authentication, you'll be redirected back to the Agent Workspace workspace
 
 ## Account Settings for SSO Users
 
@@ -241,7 +241,7 @@ When a user logs in via SSO, the account settings page detects this (via the `oa
 
 - Displays the SSO provider name (e.g. "Keycloak") in the profile section
 - Replaces the password change form with an informational message
-- Password changes must be done through the SSO provider, not DeerFlow
+- Password changes must be done through the SSO provider, not Agent Workspace
 
 The backend also rejects password change requests for OAuth users:
 

@@ -2,7 +2,7 @@
 
 Distilled from `backend/docs/BLOCKING_IO_DETECTION.md`. An anchor lives in
 `backend/tests/blocking_io/`; the suite's conftest runs each test under the
-strict Blockbuster gate scoped to `app.*` / `deerflow.*`.
+strict Blockbuster gate scoped to `app.*` / `agent_workspace.*`.
 
 The examples in this file and in `templates/` are all filesystem-flavored.
 They demonstrate how to *write* the test, not what the SOP covers: the same

@@ -99,7 +99,7 @@ def test_doctor_and_security_handlers():
     # Doctor check
     res_doc = command_registry.execute("/doctor")
     assert res_doc.status == "success"
-    assert "DeerFlow System Doctor" in res_doc.output
+    assert "Agent Workspace System Doctor" in res_doc.output
     assert res_doc.data.get("status") == "ready"
 
     # Security review

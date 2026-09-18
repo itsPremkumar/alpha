@@ -3,7 +3,7 @@
 > Sources merged: (1) local deep-dives — Hermes Agent v0.20.2 (NousResearch),
 > OpenClaw 2026.9.4, Oh My OpenAgent v5.0.0-beta.18, Grok Bot (xAI docs), and
 > the operator's own harness lineage (`hermes-asi-master`, `hermes-harness-repo`,
-> `hermes-agi-asi-harness`); (2) `deerflow_ultimate_agent_harness_research_plan.docx`
+> `hermes-agi-asi-harness`); (2) `agent_workspace_ultimate_agent_harness_research_plan.docx`
 > (ChatGPT deep research, ~25 references: Prime Agent RLM, Agent Prime council,
 > AlphaEvolve/AVO, AI Scientist-v2, Astra, Fable/Mythos, Kimi K3, Letta, Agent Zero,
 > OpenHands, Browser Use/Skyvern, Deep Agents, Goose, OpenAI SDK, Google ADK,
@@ -17,12 +17,12 @@
 
 ## 0. Foundation decision (merged verdict — both analyses agree)
 
-DeerFlow 2.0 stays the canonical execution kernel. Do NOT merge repositories.
+Agent Workspace 2.0 stays the canonical execution kernel. Do NOT merge repositories.
 Borrow patterns through adapters, plugins, skills, worker services, contracts:
 
 | Layer | Decision | Donor pattern |
 |---|---|---|
-| Core runtime (runs, streams, checkpoints, sandbox) | KEEP DeerFlow | — |
+| Core runtime (runs, streams, checkpoints, sandbox) | KEEP Agent Workspace | — |
 | Orchestration (planner/router/team policies) | ADD as policies | OmO categories + Claude Code teams |
 | Memory/learning | ADD as pluggable subsystem | Hermes loop + Letta layers |
 | Gateway/channels | EXTEND (pairing, scoping) | OpenClaw + Hermes adapters |
@@ -41,7 +41,7 @@ Redis is an existing extra; S3 artifacts new and optional). SQLite-first local
 operation is preserved. Its 13 phases are compressed below into an executable
 sequence ordered by dependency, risk, and visible value.
 
-## 1. Target architecture (DeerFlow-grounded)
+## 1. Target architecture (Agent Workspace-grounded)
 
 ```
 USER / EVENTS / CHANNELS (existing app/channels + pairing/scope extensions)
@@ -72,7 +72,7 @@ run-admission core.
 
 **A1. Mission entity (durable, above threads).** New `missions` store
 (SQLAlchemy model + alembic revision via `make migrate-rev`; reuse
-`deerflow/persistence` engine patterns): id, owner, objective, constraints
+`agent_workspace/persistence` engine patterns): id, owner, objective, constraints
 JSON, budget, schedule, status, linked thread_ids, artifact manifest.
 Gateway router `app/gateway/routers/missions.py` (CRUD + `POST /launch` →
 `launch_scheduled_thread_run` path reuse). Frontend: workspace missions page
@@ -82,7 +82,7 @@ Acceptance: mission survives restart; runs launched from it journal back to it.
 
 **A2. Capability registry.** Static + measured capabilities: agent/subagent
 specs advertise `{name, domain, risk_class, models, tools, cost_class, envs}`.
-Fit: new `harness/deerflow/capabilities/` (registry + Pydantic schema) fed by
+Fit: new `harness/agent_workspace/capabilities/` (registry + Pydantic schema) fed by
 `subagents/registry.py` + `extensions_config` tool surface; Gateway
 `GET /api/capabilities`; console UI badges (extend `routers/console.py`).
 Reuse operator's `capability_registry.py` shape (domains × criticality).
@@ -90,7 +90,7 @@ Acceptance: orchestrator selects worker by capability query, never by
 hard-coded name, in at least one path (researcher selection).
 
 **A3. Policy/risk engine + adaptive autonomy.** Per-call `allow|deny|approval`
-from risk class × impact (new `harness/deerflow/policy/`); config
+from risk class × impact (new `harness/agent_workspace/policy/`); config
 `policy:` section (default fail-closed, matching current posture).
 Acceptance: low-risk reads auto-pass, deletes/shell prompt approval cards.
 
@@ -277,7 +277,7 @@ Union Alpha model configuration (`README.md`), Display-Identity contract
 (`backend/AGENTS.md`), owner-scoped goals contract
 (`backend/packages/harness/agent_workspace/goals/AGENTS.md`, verified identical to ULT
 source so no copy was needed), root `verify` script (`package.json`), and
-recovery-policy scope notes. Sources: `deer-flow-ultimate-harness` (ULT) and
+recovery-policy scope notes. Sources: `agent-workspace-ultimate-harness` (ULT) and
 `rebrand-wt` (REBRAND Display-Identity hunk).
 
 Deferred (not ported in this docs pass): profile.py / templates.py /

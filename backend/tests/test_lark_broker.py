@@ -226,7 +226,7 @@ def test_install_shim_writes_runtime_layout(tmp_path: Path) -> None:
     assert os.access(dest / "bin" / "lark-cli", os.X_OK)
     assert shim_body.read_text(encoding="utf-8") == lark_broker.LARK_CLI_BROKER_SHIM_SCRIPT
     assert os.access(shim_body, os.X_OK)
-    marker = json.loads((dest / ".deerflow-lark-cli-runtime.json").read_text())
+    marker = json.loads((dest / ".agent-workspace-lark-cli-runtime.json").read_text())
     assert marker == {"version": "v1.0.65", "kind": "shim"}
 
 

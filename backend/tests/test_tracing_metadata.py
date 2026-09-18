@@ -1,4 +1,4 @@
-"""Tests for deerflow.tracing.metadata.build_langfuse_trace_metadata."""
+"""Tests for agent_workspace.tracing.metadata.build_langfuse_trace_metadata."""
 
 from __future__ import annotations
 
@@ -138,7 +138,7 @@ def test_thread_id_none_still_produces_metadata(monkeypatch):
     assert result["langfuse_user_id"] == "u-1"
 
 
-def test_deerflow_trace_id_comes_from_current_trace_context(monkeypatch):
+def test_agent_workspace_trace_id_comes_from_current_trace_context(monkeypatch):
     _enable_langfuse(monkeypatch)
 
     with request_trace_context("gateway-trace-1"):
@@ -150,7 +150,7 @@ def test_deerflow_trace_id_comes_from_current_trace_context(monkeypatch):
     assert result["agent_workspace_trace_id"] == "gateway-trace-1"
 
 
-def test_deerflow_trace_id_explicit_argument_wins(monkeypatch):
+def test_agent_workspace_trace_id_explicit_argument_wins(monkeypatch):
     _enable_langfuse(monkeypatch)
 
     with request_trace_context("ambient-trace"):

@@ -283,7 +283,7 @@ async def test_run_agent_preserves_caller_metadata_overrides(monkeypatch):
         config={
             "configurable": {"thread_id": "thread-default"},
             "metadata": {
-                AGENT_WORKSPACE_TRACE_METADATA_KEY: "explicit-deerflow-trace",
+                AGENT_WORKSPACE_TRACE_METADATA_KEY: "explicit-agent_workspace-trace",
                 "langfuse_session_id": "custom-session-id",
                 "langfuse_user_id": "explicit-user",
             },
@@ -297,7 +297,7 @@ async def test_run_agent_preserves_caller_metadata_overrides(monkeypatch):
     # ...except agent_workspace_trace_id, which the server issues. Honouring the
     # caller here would let the persisted run point at an id that matches
     # neither the response header nor the log lines for the same request.
-    assert metadata[AGENT_WORKSPACE_TRACE_METADATA_KEY] != "explicit-deerflow-trace"
+    assert metadata[AGENT_WORKSPACE_TRACE_METADATA_KEY] != "explicit-agent_workspace-trace"
     assert metadata[AGENT_WORKSPACE_TRACE_METADATA_KEY] == fake_agent.captured_config["context"][AGENT_WORKSPACE_TRACE_METADATA_KEY]
     # Worker still fills in keys that the caller didn't set.
     assert metadata["langfuse_trace_name"] == "lead-agent"

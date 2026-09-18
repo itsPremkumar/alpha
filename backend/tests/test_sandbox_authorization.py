@@ -881,7 +881,7 @@ def test_composed_sync_file_tool_authorizes_once(monkeypatch, tool_name):
         sandbox.read_file.return_value = "v1"
         args = {"description": "edit report", "path": path, "old_str": "v1", "new_str": "v2"}
         read_mark = ToolMessage(content="v1", tool_call_id="prior-read", name="read_file")
-        read_mark.additional_kwargs["deerflow_read_mark"] = {
+        read_mark.additional_kwargs["agent_workspace_read_mark"] = {
             "path": path,
             "hash": hashlib.sha256(b"v1").hexdigest(),
         }
@@ -935,7 +935,7 @@ def test_composed_async_file_tool_authorizes_once(monkeypatch, tool_name):
         sandbox.read_file.return_value = "v1"
         args = {"description": "edit report", "path": path, "old_str": "v1", "new_str": "v2"}
         read_mark = ToolMessage(content="v1", tool_call_id="prior-read", name="read_file")
-        read_mark.additional_kwargs["deerflow_read_mark"] = {
+        read_mark.additional_kwargs["agent_workspace_read_mark"] = {
             "path": path,
             "hash": hashlib.sha256(b"v1").hexdigest(),
         }

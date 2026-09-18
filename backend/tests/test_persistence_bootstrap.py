@@ -1,11 +1,11 @@
-"""Tests for ``deerflow.persistence.bootstrap.bootstrap_schema``.
+"""Tests for ``agent_workspace.persistence.bootstrap.bootstrap_schema``.
 
 Covers the three-branch decision table:
 
 | DB state                              | Action                                  |
 |---------------------------------------|-----------------------------------------|
 | empty                                 | create_all + stamp head                 |
-| legacy (DeerFlow tables, no alembic_version) | create_all (baseline tables only, backfill) + stamp baseline + upgrade head |
+| legacy (Agent Workspace tables, no alembic_version) | create_all (baseline tables only, backfill) + stamp baseline + upgrade head |
 | versioned                             | upgrade head                            |
 
 Each test seeds a temp SQLite to the relevant pre-state, runs
@@ -208,7 +208,7 @@ async def test_legacy_missing_channel_tables_get_backfilled(tmp_path: Path) -> N
         await _seed_legacy_missing_channel_tables(engine)
         tables = await _table_names(engine)
         # Sanity-check the seeded pre-state: ``runs`` triggers the legacy
-        # branch (has_deerflow_tables=True, no alembic_version) while the
+        # branch (has_agent_workspace_tables=True, no alembic_version) while the
         # channel_* tables are absent.
         assert "runs" in tables
         assert "alembic_version" not in tables
@@ -570,7 +570,7 @@ async def test_baseline_table_names_constant_matches_0001(tmp_path: Path) -> Non
         async with engine.connect() as conn:
             reflected = await conn.run_sync(lambda c: set(sa.inspect(c).get_table_names()))
         # ``alembic_version`` is alembic's bookkeeping table, not part of
-        # our schema -- the constant is about DeerFlow-owned baseline tables.
+        # our schema -- the constant is about Agent Workspace-owned baseline tables.
         reflected.discard("alembic_version")
 
         assert reflected == _BASELINE_TABLE_NAMES, f"_BASELINE_TABLE_NAMES drifted from 0001_baseline.upgrade()'s output: only-in-0001={sorted(reflected - _BASELINE_TABLE_NAMES)} only-in-constant={sorted(_BASELINE_TABLE_NAMES - reflected)}"
@@ -838,27 +838,27 @@ async def test_legacy_backfill_duplicate_channel_connections_does_not_crash(
 
 class TestDecideState:
     def test_empty(self):
-        assert _decide_state({"has_alembic_version": False, "has_deerflow_tables": False}) == "empty"
+        assert _decide_state({"has_alembic_version": False, "has_agent_workspace_tables": False}) == "empty"
 
     def test_empty_with_unrelated_tables(self):
-        # LangGraph checkpointer tables present but DeerFlow has nothing yet.
-        # ``has_deerflow_tables`` is derived from the metadata intersection in
+        # LangGraph checkpointer tables present but Agent Workspace has nothing yet.
+        # ``has_agent_workspace_tables`` is derived from the metadata intersection in
         # production, so the only thing the decision function needs is the
         # bool itself.
-        assert _decide_state({"has_alembic_version": False, "has_deerflow_tables": False}) == "empty"
+        assert _decide_state({"has_alembic_version": False, "has_agent_workspace_tables": False}) == "empty"
 
     def test_legacy(self):
-        assert _decide_state({"has_alembic_version": False, "has_deerflow_tables": True}) == "legacy"
+        assert _decide_state({"has_alembic_version": False, "has_agent_workspace_tables": True}) == "legacy"
 
     def test_versioned(self):
-        assert _decide_state({"has_alembic_version": True, "has_deerflow_tables": True}) == "versioned"
+        assert _decide_state({"has_alembic_version": True, "has_agent_workspace_tables": True}) == "versioned"
 
     def test_versioned_takes_precedence_over_empty(self):
         # Pathological: alembic_version row exists but no managed tables yet
         # (e.g. someone restored only the alembic_version table from backup).
         # We still go versioned -> upgrade head, which is the right thing:
         # alembic will run every revision from base.
-        assert _decide_state({"has_alembic_version": True, "has_deerflow_tables": False}) == "versioned"
+        assert _decide_state({"has_alembic_version": True, "has_agent_workspace_tables": False}) == "versioned"
 
 
 # ---------------------------------------------------------------------------

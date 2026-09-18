@@ -3509,7 +3509,7 @@ async def test_start_run_rejects_invalid_thread_id_before_resolving_dependencies
 
 
 def test_normalize_input_strips_the_server_owned_message_seq():
-    """`deerflow_seq` is display metadata the Gateway attaches on the way out.
+    """`agent_workspace_seq` is display metadata the Gateway attaches on the way out.
 
     A client replaying messages (regenerate / edit-and-rerun) would otherwise
     write it into the checkpoint, where it becomes wrong the moment the thread

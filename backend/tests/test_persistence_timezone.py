@@ -3,7 +3,7 @@
 SQLAlchemy's ``DateTime(timezone=True)`` is a no-op on SQLite because the
 backend has no native timezone type, so values read back are naive
 ``datetime`` instances. The four SQL ``_row_to_dict`` helpers therefore
-have to normalize through :func:`deerflow.utils.time.coerce_iso` instead
+have to normalize through :func:`agent_workspace.utils.time.coerce_iso` instead
 of calling ``.isoformat()`` directly; otherwise the API ships
 timezone-less strings (e.g. ``"2026-05-20T06:10:22.970977"``) and the
 frontend's ``new Date(...)`` parses them as local time, shifting recent

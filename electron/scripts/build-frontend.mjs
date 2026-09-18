@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Build the DeerFlow frontend as a Next.js standalone server for Electron.
+ * Build the Agent Workspace frontend as a Next.js standalone server for Electron.
  *
  * Steps:
  *   1. Ensure frontend dependencies are installed (corepack pnpm).
@@ -64,7 +64,7 @@ function buildStandalone() {
       // production launch needs no manifest patching. Custom ports are still
       // handled at startup by main.js (patchStandaloneGatewayUrl).
       AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL: `http://127.0.0.1:${desktopConfig.gatewayPort}`,
-      DEER_FLOW_INTERNAL_GATEWAY_BASE_URL: `http://127.0.0.1:${desktopConfig.gatewayPort}`,
+      AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL: `http://127.0.0.1:${desktopConfig.gatewayPort}`,
     },
   });
 }

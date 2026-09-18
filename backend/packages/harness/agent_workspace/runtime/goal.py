@@ -1,7 +1,7 @@
 """Thread-scoped goal state and evaluator helpers.
 
 This module implements the Claude Code-style goal loop primitives used by
-Gateway runs and thin API surfaces. It intentionally lives in ``deerflow`` so
+Gateway runs and thin API surfaces. It intentionally lives in ``agent_workspace`` so
 the harness can evaluate and continue runs without importing the FastAPI app.
 """
 
@@ -232,7 +232,7 @@ def create_goal_evaluator_model(
 
     The evaluator runs from ``runtime/runs/worker.py`` after the main graph
     run has already completed, so — unlike ``make_lead_agent``/
-    ``DeerFlowClient.stream``, which attach ``build_tracing_callbacks()`` at
+    ``AgentWorkspaceClient.stream``, which attach ``build_tracing_callbacks()`` at
     the graph root and correctly pass ``attach_tracing=False`` to avoid
     double-attaching — there is no graph root here for the evaluator's model
     call to inherit tracing from. It must attach its own model-level tracing
@@ -405,7 +405,7 @@ def make_goal_continuation_message(goal: GoalState, evaluation: GoalEvaluation) 
         content=content,
         additional_kwargs={
             "hide_from_ui": True,
-            "deerflow_goal_continuation": True,
+            "agent_workspace_goal_continuation": True,
         },
     )
 

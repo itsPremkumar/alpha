@@ -651,7 +651,7 @@ class McpTaskService:
         if self._task is not None:
             return
         self._stop.clear()
-        self._task = asyncio.create_task(self._run_loop(), name="deerflow-mcp-task-poller")
+        self._task = asyncio.create_task(self._run_loop(), name="agent_workspace-mcp-task-poller")
 
     async def stop(self) -> None:
         task = self._task

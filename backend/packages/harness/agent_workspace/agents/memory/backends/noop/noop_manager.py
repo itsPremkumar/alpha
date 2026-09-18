@@ -5,15 +5,15 @@ switch) and doubles as the **template** for a new backend.
 
 Portability golden rule (see ``config.py`` for the full version): a backend
 receives ALL host info through (1) the ABC method args and (2) the
-``backend_config`` dict. The ONLY ``from deerflow`` import allowed in this
+``backend_config`` dict. The ONLY ``from agent_workspace`` import allowed in this
 folder is the ABC contract line below -- change that one line to port the
-backend to another agent. Do NOT import deer-flow path helpers, config
+backend to another agent. Do NOT import agent-workspace path helpers, config
 singletons, or models; get everything from ``backend_config``.
 
 Writing a new backend:
   1. Copy this folder to ``backends/<yourname>/``.
   2. ``config.py``: declare your config knobs + ``from_backend_config`` (parse
-     ``backend_config``; read ``storage_path`` from it, NOT from deer-flow).
+     ``backend_config``; read ``storage_path`` from it, NOT from agent-workspace).
   3. ``<yourname>_manager.py``: rename the class; declare your deps as
      ``PrivateAttr``; ``model_post_init`` parses ``self.backend_config`` into
      your config; implement the ABC methods against your memory system.
@@ -43,7 +43,7 @@ from typing import Any, ClassVar, Literal
 
 from pydantic import PrivateAttr
 
-# ABC contract -- the ONE allowed `from deerflow` in this backend folder.
+# ABC contract -- the ONE allowed `from agent_workspace` in this backend folder.
 # Change this single line (to the other agent's MemoryManager) to port.
 from agent_workspace.agents.memory.manager import MemoryManager
 
@@ -71,7 +71,7 @@ class NoopMemoryManager(MemoryManager):
     # Parsed config (PrivateAttr: not a validated/serialized field). Noop ignores
     # every field; a real backend uses self._config.* for storage root, model,
     # etc. storage_path comes from here (host-injected) -- never import a
-    # deer-flow path helper.
+    # agent-workspace path helper.
     _config: Any = PrivateAttr(default=None)
 
     # noop overrides search() to return [] (its "store/recall nothing" design --

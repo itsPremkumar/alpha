@@ -14,7 +14,7 @@ from agent_workspace.trajectory.models import StepRecord, TrajectoryTrace
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_TRAJECTORY_DB = ".deerflow/trajectory/audit.db"
+_DEFAULT_TRAJECTORY_DB = ".agent_workspace/trajectory/audit.db"
 
 
 class TrajectoryStore:
@@ -199,7 +199,7 @@ def get_trajectory_store(project_id: str = "default") -> TrajectoryStore:
     """Project-scoped singleton accessor for TrajectoryStore."""
     import os
     if project_id not in _PROJECT_TRAJECTORY_STORES:
-        base_dir = os.environ.get("AGENT_WORKSPACE_PROJECTS_DIR", ".deerflow_projects")
+        base_dir = os.environ.get("AGENT_WORKSPACE_PROJECTS_DIR", ".agent_workspace_projects")
         db_file = Path(base_dir) / project_id / "trajectory" / "audit.db"
         store = TrajectoryStore(db_path=db_file)
         # Seed initial baseline trajectory if empty

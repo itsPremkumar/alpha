@@ -145,7 +145,7 @@ class TerminalResponseMiddleware(AgentMiddleware[AgentState]):
         additional_kwargs = dict(last.additional_kwargs or {})
         additional_kwargs.update(
             {
-                "deerflow_error_fallback": True,
+                "agent_workspace_error_fallback": True,
                 "error_reason": "Model returned an empty terminal response after one retry",
             }
         )

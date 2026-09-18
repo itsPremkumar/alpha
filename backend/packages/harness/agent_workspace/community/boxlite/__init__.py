@@ -1,10 +1,10 @@
-"""BoxLite micro-VM backend for DeerFlow sandboxes.
+"""BoxLite micro-VM backend for Agent Workspace sandboxes.
 
 Integrates `BoxLite <https://github.com/boxlite-ai/boxlite>`_ — a daemonless,
 OCI-native micro-VM runtime (libkrun/KVM on Linux, Hypervisor.framework on
-macOS) — behind DeerFlow's :class:`Sandbox` / :class:`SandboxProvider` contract.
+macOS) — behind Agent Workspace's :class:`Sandbox` / :class:`SandboxProvider` contract.
 Each sandbox is a hardware-isolated VM with its own kernel that runs any OCI
-image unchanged. See https://github.com/bytedance/deer-flow/issues/3936.
+image unchanged. See https://github.com/bytedance/agent-workspace/issues/3936.
 
 The full contract is implemented: ``execute_command`` plus ``read_file`` /
 ``write_file`` / ``update_file`` / ``download_file`` / ``list_dir`` / ``glob`` /
@@ -13,7 +13,7 @@ The full contract is implemented: ``execute_command`` plus ``read_file`` /
 Configuration example (``config.yaml``)::
 
     sandbox:
-      use: deerflow.community.boxlite:BoxliteProvider
+      use: agent_workspace.community.boxlite:BoxliteProvider
       image: python:3.12-slim      # any OCI image; runs unchanged
       memory_mib: 1024             # per-box memory cap (optional)
       cpus: 2                      # per-box vCPUs (optional)
@@ -27,7 +27,7 @@ Install the optional runtime before selecting this provider::
     pip install "agent-workspace-harness[boxlite]"
 
 Host requirement: BoxLite boots micro-VMs, so a Linux host needs KVM (nested
-virtualization when DeerFlow itself runs inside a cloud VM); macOS uses
+virtualization when Agent Workspace itself runs inside a cloud VM); macOS uses
 Hypervisor.framework.
 """
 

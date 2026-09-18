@@ -25,7 +25,7 @@ def test_sandbox_info_does_not_serialize_or_repr_relay_credentials():
     info = SandboxInfo(
         sandbox_id="sandbox-id",
         sandbox_url="http://localhost:8080",
-        request_headers={"X-DeerFlow-Relay-Token": "secret-token"},
+        request_headers={"X-Agent-Workspace-Relay-Token": "secret-token"},
         requires_replacement=True,
     )
 
@@ -35,11 +35,11 @@ def test_sandbox_info_does_not_serialize_or_repr_relay_credentials():
 
 
 def test_format_container_mount_uses_mount_syntax_for_docker_windows_paths():
-    args = _format_container_mount("docker", "D:/deer-flow/backend/.agent-workspace/threads", "/mnt/threads", False)
+    args = _format_container_mount("docker", "D:/agent-workspace/backend/.agent-workspace/threads", "/mnt/threads", False)
 
     assert args == [
         "--mount",
-        "type=bind,src=D:/deer-flow/backend/.agent-workspace/threads,dst=/mnt/threads",
+        "type=bind,src=D:/agent-workspace/backend/.agent-workspace/threads,dst=/mnt/threads",
     ]
 
 
@@ -225,7 +225,7 @@ def test_darwin_open_keeps_docker_to_reconcile_restricted_sandbox(monkeypatch):
                     "agent_workspace.network_mode": "allowlist",
                 },
                 "sandbox:latest",
-                frozenset({"deer-flow-sandbox-net-old"}),
+                frozenset({"agent-workspace-sandbox-net-old"}),
             )
         },
     )
@@ -236,7 +236,7 @@ def test_darwin_open_keeps_docker_to_reconcile_restricted_sandbox(monkeypatch):
     assert [info.sandbox_id for info in infos] == ["transition"]
     assert infos[0].requires_replacement is True
     assert ["container", "--version"] in commands
-    assert any("label=deerflow.role=sandbox" in command for command in commands)
+    assert any("label=agent_workspace.role=sandbox" in command for command in commands)
 
 
 def test_darwin_open_uses_apple_container_without_managed_docker_sandboxes(monkeypatch):
@@ -263,7 +263,7 @@ def test_darwin_open_uses_apple_container_without_managed_docker_sandboxes(monke
     )
 
     assert backend.runtime == "container"
-    assert any("label=deerflow.role=sandbox" in command for command in commands)
+    assert any("label=agent_workspace.role=sandbox" in command for command in commands)
 
 
 def _restricted_backend() -> LocalContainerBackend:
@@ -451,15 +451,15 @@ def test_restricted_sandbox_has_no_published_port_and_forces_proxy_env(monkeypat
     backend._start_container(
         "sandbox-test",
         18080,
-        network_override="deer-flow-sandbox-net-test",
+        network_override="agent-workspace-sandbox-net-test",
         publish_port=False,
-        extra_environment={"HTTP_PROXY": "http://deer-flow-netproxy-test:3128"},
+        extra_environment={"HTTP_PROXY": "http://agent-workspace-netproxy-test:3128"},
     )
 
     assert "-p" not in captured_cmd
-    assert captured_cmd[captured_cmd.index("--network") + 1] == "deer-flow-sandbox-net-test"
+    assert captured_cmd[captured_cmd.index("--network") + 1] == "agent-workspace-sandbox-net-test"
     proxy_values = [captured_cmd[index + 1] for index, value in enumerate(captured_cmd) if value == "-e" and captured_cmd[index + 1].startswith("HTTP_PROXY=")]
-    assert proxy_values[-1] == "HTTP_PROXY=http://deer-flow-netproxy-test:3128"
+    assert proxy_values[-1] == "HTTP_PROXY=http://agent-workspace-netproxy-test:3128"
 
 
 def test_restricted_start_configures_shell_and_aio_browser_proxy(monkeypatch):
@@ -1026,12 +1026,12 @@ def test_start_container_passes_through_user_and_network(monkeypatch):
     )
     _clear_hardening_env(monkeypatch)
     monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_CONTAINER_USER", "1000:1000")
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_NETWORK", "deer-flow-sandbox-egress")
+    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_NETWORK", "agent-workspace-sandbox-egress")
 
     captured_cmd = _capture_start_container_command(monkeypatch, backend)
 
     assert captured_cmd[captured_cmd.index("--user") + 1] == "1000:1000"
-    assert captured_cmd[captured_cmd.index("--network") + 1] == "deer-flow-sandbox-egress"
+    assert captured_cmd[captured_cmd.index("--network") + 1] == "agent-workspace-sandbox-egress"
 
 
 def test_start_container_rejects_host_networking(monkeypatch):
@@ -1218,7 +1218,7 @@ def test_restricted_discovery_uses_proxy_relay_port(monkeypatch):
     assert info is not None
     assert info.container_name == "sandbox-existing"
     assert info.sandbox_url == "http://localhost:18080"
-    assert info.request_headers == {"X-DeerFlow-Relay-Token": "test-relay-token-that-is-at-least-32-bytes"}
+    assert info.request_headers == {"X-Agent-Workspace-Relay-Token": "test-relay-token-that-is-at-least-32-bytes"}
     assert readiness == [{"timeout": 5, "headers": info.request_headers}]
 
 
@@ -1336,7 +1336,7 @@ def test_open_discovery_reports_restricted_sandbox_for_fenced_replacement(monkey
                     "agent_workspace.network_mode": "allowlist",
                 },
                 "sandbox:latest",
-                frozenset({"deer-flow-sandbox-net-old"}),
+                frozenset({"agent-workspace-sandbox-net-old"}),
             )
         },
     )
@@ -1482,7 +1482,7 @@ def test_restricted_list_reports_legacy_open_sandbox_for_fenced_replacement(monk
     assert len(infos) == 1
     assert infos[0].requires_replacement is True
     assert infos[0].sandbox_url == ""
-    assert "label=deerflow.role=sandbox" not in commands[0]
+    assert "label=agent_workspace.role=sandbox" not in commands[0]
 
 
 def test_open_list_reports_restricted_sandbox_for_fenced_replacement(monkeypatch):
@@ -1504,7 +1504,7 @@ def test_open_list_reports_restricted_sandbox_for_fenced_replacement(monkeypatch
                     "agent_workspace.network_mode": "isolated",
                 },
                 "sandbox:latest",
-                frozenset({"deer-flow-sandbox-net-old"}),
+                frozenset({"agent-workspace-sandbox-net-old"}),
             )
         },
     )
@@ -1519,9 +1519,9 @@ def test_open_list_reports_restricted_sandbox_for_fenced_replacement(monkeypatch
 def test_restricted_list_running_excludes_sidecars_for_overlapping_custom_prefix(monkeypatch):
     backend = _backend_for_inspect_tests()
     backend._network_mode = "allowlist"
-    backend._container_prefix = "deer-flow"
+    backend._container_prefix = "agent-workspace"
     sandbox_id = "live"
-    sandbox_name = "deer-flow-live"
+    sandbox_name = "agent-workspace-live"
     proxy_name, _ = backend._resource_names(sandbox_id)
     commands: list[list[str]] = []
 
@@ -1573,7 +1573,7 @@ def test_restricted_list_running_excludes_sidecars_for_overlapping_custom_prefix
 
     assert [info.sandbox_id for info in infos] == [sandbox_id]
     assert checked == [sandbox_id]
-    assert "label=deerflow.role=sandbox" not in commands[0]
+    assert "label=agent_workspace.role=sandbox" not in commands[0]
     sidecar_as_sandbox_id = proxy_name[len(backend._container_prefix) + 1 :]
     fabricated_proxy_name, _ = backend._resource_names(sidecar_as_sandbox_id)
     assert fabricated_proxy_name not in {name for batch in inspected_batches for name in batch}
@@ -1749,11 +1749,11 @@ def test_start_container_passes_extended_network_syntax_for_custom_networks(monk
     """The legit name=<custom-net> long form (and network IDs) keep working."""
     backend = _backend_for_inspect_tests()
     _clear_hardening_env(monkeypatch)
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_NETWORK", "name=deer-flow-sandbox-egress")
+    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_NETWORK", "name=agent-workspace-sandbox-egress")
 
     captured_cmd = _capture_start_container_command(monkeypatch, backend)
 
-    assert captured_cmd[captured_cmd.index("--network") + 1] == "name=deer-flow-sandbox-egress"
+    assert captured_cmd[captured_cmd.index("--network") + 1] == "name=agent-workspace-sandbox-egress"
 
 
 @pytest.mark.parametrize("sandbox_host", ["fd00::1", "[fd00::1]"])
@@ -2115,7 +2115,7 @@ def test_restricted_network_proxy_enforces_and_approves_real_traffic(monkeypatch
                     "--max-time",
                     "2",
                     "-H",
-                    f"X-DeerFlow-Relay-Token: {relay_token}",
+                    f"X-Agent-Workspace-Relay-Token: {relay_token}",
                     sandbox_url,
                 ],
                 capture_output=True,

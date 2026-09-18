@@ -57,7 +57,7 @@ def test_run_request_rejects_each_unsupported_option_with_exact_422(
             {
                 "type": "unsupported_run_option",
                 "loc": ["body", field],
-                "msg": f"Run option '{field}' is not supported by DeerFlow",
+                "msg": f"Run option '{field}' is not supported by Agent Workspace",
                 "input": value,
                 "ctx": {"option": field},
             }
@@ -156,10 +156,10 @@ def _sdk_default_payload(method: str) -> dict[str, Any]:
         client.runs.http.stream = capture  # type: ignore[method-assign]
         # ``stream()`` is a sync factory: the payload is built and handed to the
         # transport before the returned async iterator is consumed.
-        client.runs.stream("thread-id", "deerflow", input={"messages": []})
+        client.runs.stream("thread-id", "agent_workspace", input={"messages": []})
     else:
         client.runs.http.post = capture_post  # type: ignore[method-assign]
-        asyncio.run(client.runs.create("thread-id", "deerflow", input={"messages": []}))
+        asyncio.run(client.runs.create("thread-id", "agent_workspace", input={"messages": []}))
     return captured
 
 

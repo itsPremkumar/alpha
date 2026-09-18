@@ -26,7 +26,7 @@ def _make_request(name, args, messages=(), tool_call_id="call-1"):
 
 def _read_marked_message(path, content, tool_call_id="r1"):
     msg = ToolMessage(content=content[:20], tool_call_id=tool_call_id, name="read_file")
-    msg.additional_kwargs["deerflow_read_mark"] = {"path": path, "hash": _sha(content)}
+    msg.additional_kwargs["agent_workspace_read_mark"] = {"path": path, "hash": _sha(content)}
     return msg
 
 
@@ -80,7 +80,7 @@ class TestReadMarkStamping:
         request = _make_request("read_file", {"description": "d", "path": "/mnt/user-data/outputs/report.md"})
         handler = MagicMock(return_value=ToolMessage(content="v1", tool_call_id="call-1", name="read_file"))
         result = mw.wrap_tool_call(request, handler)
-        mark = result.additional_kwargs["deerflow_read_mark"]
+        mark = result.additional_kwargs["agent_workspace_read_mark"]
         assert mark == {"path": "/mnt/user-data/outputs/report.md", "hash": _sha("v1")}
 
     def test_ranged_read_stamps_full_file_hash(self):
@@ -91,21 +91,21 @@ class TestReadMarkStamping:
         )
         handler = MagicMock(return_value=ToolMessage(content="line3", tool_call_id="call-1", name="read_file"))
         result = mw.wrap_tool_call(request, handler)
-        assert result.additional_kwargs["deerflow_read_mark"]["hash"] == _sha("line1\nline2\nline3")
+        assert result.additional_kwargs["agent_workspace_read_mark"]["hash"] == _sha("line1\nline2\nline3")
 
     def test_error_tool_message_gets_no_mark(self):
         mw = _middleware({"/mnt/user-data/outputs/report.md": "v1"})
         request = _make_request("read_file", {"description": "d", "path": "/mnt/user-data/outputs/report.md"})
         handler = MagicMock(return_value=ToolMessage(content="boom", tool_call_id="call-1", name="read_file", status="error"))
         result = mw.wrap_tool_call(request, handler)
-        assert "deerflow_read_mark" not in result.additional_kwargs
+        assert "agent_workspace_read_mark" not in result.additional_kwargs
 
     def test_reader_failure_means_no_mark(self):
         mw = _middleware({"/mnt/user-data/outputs/report.md": RuntimeError("sandbox down")})
         request = _make_request("read_file", {"description": "d", "path": "/mnt/user-data/outputs/report.md"})
         handler = MagicMock(return_value=ToolMessage(content="v1", tool_call_id="call-1", name="read_file"))
         result = mw.wrap_tool_call(request, handler)
-        assert "deerflow_read_mark" not in result.additional_kwargs
+        assert "agent_workspace_read_mark" not in result.additional_kwargs
 
     def test_non_file_tools_untouched(self):
         mw = _middleware({})
@@ -213,14 +213,14 @@ class TestWriteGate:
         handler.assert_called_once()
         assert result.status != "error"
 
-    def test_blocked_write_has_deerflow_tool_meta(self):
+    def test_blocked_write_has_agent_workspace_tool_meta(self):
         from agent_workspace.agents.middlewares.tool_result_meta import TOOL_META_KEY
 
         mw = _middleware({self.PATH: "v1"})
         request = _make_request("write_file", {"description": "d", "path": self.PATH, "content": "v2"})
         result = mw.wrap_tool_call(request, MagicMock())
         meta = (result.additional_kwargs or {}).get(TOOL_META_KEY)
-        assert meta is not None, "blocked write must carry deerflow_tool_meta"
+        assert meta is not None, "blocked write must carry agent_workspace_tool_meta"
         assert meta["recoverable_by_model"] is True
 
 
@@ -239,7 +239,7 @@ class TestAsyncPaths:
         result = asyncio.run(mw.awrap_tool_call(request, handler))
         assert result.status == "error"
 
-    def test_async_blocked_write_has_deerflow_tool_meta(self):
+    def test_async_blocked_write_has_agent_workspace_tool_meta(self):
         import asyncio
 
         from agent_workspace.agents.middlewares.tool_result_meta import TOOL_META_KEY
@@ -252,7 +252,7 @@ class TestAsyncPaths:
 
         result = asyncio.run(mw.awrap_tool_call(request, handler))
         meta = (result.additional_kwargs or {}).get(TOOL_META_KEY)
-        assert meta is not None, "async blocked write must carry deerflow_tool_meta"
+        assert meta is not None, "async blocked write must carry agent_workspace_tool_meta"
         assert meta["recoverable_by_model"] is True
 
     def test_async_read_stamps_mark(self):
@@ -265,7 +265,7 @@ class TestAsyncPaths:
             return ToolMessage(content="v1", tool_call_id="call-1", name="read_file")
 
         result = asyncio.run(mw.awrap_tool_call(request, handler))
-        assert result.additional_kwargs["deerflow_read_mark"]["hash"] == _sha("v1")
+        assert result.additional_kwargs["agent_workspace_read_mark"]["hash"] == _sha("v1")
 
     def test_async_allowed_write_calls_handler(self):
         import asyncio
@@ -345,7 +345,7 @@ class TestErrorStringSandboxes:
         request = _make_request("read_file", {"description": "d", "path": self.PATH})
         handler = MagicMock(return_value=ToolMessage(content="v1", tool_call_id="call-1", name="read_file"))
         result = mw.wrap_tool_call(request, handler)
-        assert "deerflow_read_mark" not in result.additional_kwargs
+        assert "agent_workspace_read_mark" not in result.additional_kwargs
 
     def test_existing_file_still_gated(self):
         mw = self._error_string_middleware({self.PATH: "v1"})
@@ -360,7 +360,7 @@ class TestErrorStringSandboxes:
         read_request = _make_request("read_file", {"description": "d", "path": self.PATH})
         read_handler = MagicMock(return_value=ToolMessage(content="v1", tool_call_id="r1", name="read_file"))
         read_result = mw.wrap_tool_call(read_request, read_handler)
-        assert read_result.additional_kwargs["deerflow_read_mark"]["hash"] == _sha("v1")
+        assert read_result.additional_kwargs["agent_workspace_read_mark"]["hash"] == _sha("v1")
 
         write_request = _make_request("write_file", {"description": "d", "path": self.PATH, "content": "v2"}, [read_result])
         write_handler = MagicMock(return_value=ToolMessage(content="OK", tool_call_id="call-1", name="write_file"))
@@ -434,7 +434,7 @@ class TestSamePathSerialization:
             return await asyncio.gather(read_task, write_task)
 
         read_result, _write_result = asyncio.run(run())
-        mark = read_result.additional_kwargs.get("deerflow_read_mark")
+        mark = read_result.additional_kwargs.get("agent_workspace_read_mark")
         assert mark is not None
         assert mark["hash"] == _sha(read_result.content)
 

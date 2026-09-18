@@ -21,8 +21,8 @@ from typing import Any
 from agent_workspace.config import get_enabled_tracing_providers
 from agent_workspace.trace_context import AGENT_WORKSPACE_TRACE_METADATA_KEY, resolve_trace_id
 
-# Lazy-imported below to avoid a circular import: ``deerflow.runtime`` eagerly
-# imports the run worker, which in turn needs ``deerflow.tracing``.
+# Lazy-imported below to avoid a circular import: ``agent_workspace.runtime`` eagerly
+# imports the run worker, which in turn needs ``agent_workspace.tracing``.
 _DEFAULT_TRACE_NAME = "lead-agent"
 
 
@@ -49,7 +49,7 @@ def build_langfuse_trace_metadata(
         model_name: Model name; emitted as ``model:<name>`` in ``langfuse_tags``.
         environment: Deployment env (e.g. ``"production"``); emitted as
             ``env:<value>`` in ``langfuse_tags``.
-        agent_workspace_trace_id: Optional DeerFlow request trace id; falls back to
+        agent_workspace_trace_id: Optional Agent Workspace request trace id; falls back to
             the current request trace context when omitted. Always emitted --
             it is what ties a Langfuse trace back to the log lines and the
             ``X-Trace-Id`` the same request returned.

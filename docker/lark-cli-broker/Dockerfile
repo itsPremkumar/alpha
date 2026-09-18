@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 #
-# DeerFlow "lark-cli broker" image (Pattern B, issue #4338).
+# Agent Workspace "lark-cli broker" image (Pattern B, issue #4338).
 #
 # Purpose: hold `lark-cli` + the per-user Lark credentials in a long-running
 # sidecar and expose only the command surface over loopback, so the plaintext
@@ -23,11 +23,11 @@
 # from docker/lark-cli-init) into /opt/lark-cli, so the sidecar has a real binary.
 #
 # The shim itself is written from the in-process constant
-# LARK_CLI_BROKER_SHIM_SCRIPT (deerflow.integrations.lark_broker), so the image's
+# LARK_CLI_BROKER_SHIM_SCRIPT (agent_workspace.integrations.lark_broker), so the image's
 # shim can never drift from the Gateway's copy.
 #
 # Build (defaults to the pinned version below):
-#   docker build -t deer-flow/lark-cli-broker:v1.0.65 \
+#   docker build -t agent-workspace/lark-cli-broker:v1.0.65 \
 #     --build-arg LARK_CLI_VERSION=v1.0.65 \
 #     -f docker/lark-cli-broker/Dockerfile .
 #

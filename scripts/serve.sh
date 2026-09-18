@@ -85,7 +85,7 @@ done
 
 # ── Stop helper ──────────────────────────────────────────────────────────────
 
-# Every deer-flow worktree (the main checkout + each linked worktree) hardcodes
+# Every agent-workspace worktree (the main checkout + each linked worktree) hardcodes
 # the same dev ports (8001/3000/2026), so a service started from ANY of them
 # must be reclaimable from here — otherwise `make stop`/`make dev` in this
 # worktree can neither kill nor take over a port held by a sibling worktree.
@@ -124,7 +124,7 @@ _is_agent_workspace_pid() {
     done <<< "$AGENT_WORKSPACE_ROOTS"
     return 1
 }
-_is_deerflow_pid() { _is_agent_workspace_pid "$@"; }
+_is_agent_workspace_pid() { _is_agent_workspace_pid "$@"; }
 
 # Report ports about to be reclaimed from a *different* worktree, so stopping
 # (or starting, which stops first) isn't silently killing someone else's run.
@@ -269,13 +269,13 @@ stop_all() {
     sleep 1
     _kill_repo_nginx
     # Force-kill any survivors still holding the service ports. 2026 is included
-    # so a lingering nginx (or any deer-flow process) that _kill_repo_nginx did
+    # so a lingering nginx (or any agent-workspace process) that _kill_repo_nginx did
     # not match by name still gets reclaimed — otherwise `make dev` fails its
     # nginx port preflight.
     _kill_repo_port 8001
     _kill_repo_port 3000
     _kill_repo_port 2026
-    bash ./scripts/cleanup-containers.sh deer-flow-sandbox 2>/dev/null || true
+    bash ./scripts/cleanup-containers.sh agent-workspace-sandbox 2>/dev/null || true
     echo "✓ All services stopped"
 }
 
@@ -472,7 +472,7 @@ run_service() {
     if $DAEMON_MODE; then
         # Tag the daemon so every descendant (pnpm → next → next-server)
         # carries AGENT_WORKSPACE_DAEMON_ROOT in its environment, letting
-        # _is_deerflow_pid recognize it at stop time.
+        # _is_agent_workspace_pid recognize it at stop time.
         nohup env AGENT_WORKSPACE_DAEMON_ROOT="$REPO_ROOT" sh -c "$cmd" > /dev/null 2>&1 &
     else
         sh -c "$cmd" &
@@ -511,7 +511,7 @@ run_service "Nginx" \
 
 echo ""
 echo "=========================================="
-echo "  ✓ DeerFlow is running!  [$MODE_LABEL]"
+echo "  ✓ Agent Workspace is running!  [$MODE_LABEL]"
 echo "=========================================="
 echo ""
 echo "  🌐 http://localhost:2026"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Load the Memory Settings review sample into a local DeerFlow runtime."""
+"""Load the Memory Settings review sample into a local Agent Workspace runtime."""
 
 from __future__ import annotations
 

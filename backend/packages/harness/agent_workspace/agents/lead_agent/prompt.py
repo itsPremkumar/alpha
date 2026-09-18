@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 # distinct user (and per app_config injection), bounded only by the
 # number of distinct identities the process has ever seen. 256 is
 # generous for realistic traffic and matches the cap used for
-# ``_user_scoped_storages`` in ``deerflow.skills.storage``; the
+# ``_user_scoped_storages`` in ``agent_workspace.skills.storage``; the
 # least-recently-used entry is evicted on overflow and re-computed on
 # the next miss.
 _ENABLED_SKILLS_BY_CONFIG_CACHE_MAXSIZE = 256
@@ -67,7 +67,7 @@ def _load_enabled_skills_sync() -> list[Skill]:
 def _start_enabled_skills_refresh_thread() -> None:
     threading.Thread(
         target=_refresh_enabled_skills_cache_worker,
-        name="deerflow-enabled-skills-loader",
+        name="agent_workspace-enabled-skills-loader",
         daemon=True,
     ).start()
 

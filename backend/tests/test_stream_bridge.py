@@ -804,7 +804,7 @@ async def test_redis_cleanup_deletes_stream(redis_bridge: RedisStreamBridge):
     await redis_bridge.publish(run_id, "event", {})
     await redis_bridge.cleanup(run_id)
 
-    assert fake.deleted == ["deerflow:stream_bridge:redis-run-cleanup"]
+    assert fake.deleted == ["agent_workspace:stream_bridge:redis-run-cleanup"]
 
 
 @pytest.mark.anyio
@@ -818,7 +818,7 @@ async def test_redis_publish_refreshes_stream_ttl():
         client=fake,
     )
     run_id = "redis-run-ttl"
-    key = "deerflow:stream_bridge:redis-run-ttl"
+    key = "agent_workspace:stream_bridge:redis-run-ttl"
 
     await bridge.publish(run_id, "event-1", {"n": 1})
     await bridge.publish(run_id, "event-2", {"n": 2})
@@ -1295,7 +1295,7 @@ async def real_redis_bridge():
     from redis.asyncio import Redis
 
     client = Redis.from_url(REDIS_TEST_URL, decode_responses=True)
-    key_prefix = f"deerflow:test:{uuid.uuid4().hex}"
+    key_prefix = f"agent_workspace:test:{uuid.uuid4().hex}"
     bridge = RedisStreamBridge(redis_url=REDIS_TEST_URL, queue_maxsize=2, key_prefix=key_prefix, client=client)
     try:
         yield bridge
@@ -1469,7 +1469,7 @@ async def test_redis_integration_stream_ttl_reclaims_key():
     from redis.asyncio import Redis
 
     client = Redis.from_url(REDIS_TEST_URL, decode_responses=True)
-    key_prefix = f"deerflow:test:{uuid.uuid4().hex}"
+    key_prefix = f"agent_workspace:test:{uuid.uuid4().hex}"
     bridge = RedisStreamBridge(
         redis_url=REDIS_TEST_URL,
         queue_maxsize=2,

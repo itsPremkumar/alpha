@@ -1,11 +1,11 @@
 """Stamp deterministic tool receipts and render the receipt ledger to the model.
 
 Ordering contract (enforced by the build-time constraints in
-``deerflow.extensions.ordering.core_ordering_constraints``): this is the
+``agent_workspace.extensions.ordering.core_ordering_constraints``): this is the
 outermost ``wrap_tool_call`` layer — Guardrail, SandboxAudit, ReadBeforeWrite,
 and ToolProgress can short-circuit or rebuild results, and an inner receipt
 layer would silently gap the ledger on those. Normal results still carry a
-normalized ``deerflow_tool_meta`` status when stamped (ToolErrorHandling runs
+normalized ``agent_workspace_tool_meta`` status when stamped (ToolErrorHandling runs
 on the inner return path); short-circuit messages either self-stamp the meta
 or fall back to ``message.status`` in ``make_tool_receipt``.
 
@@ -39,7 +39,7 @@ from agent_workspace.agents.middlewares.tool_receipt import (
 
 logger = logging.getLogger(__name__)
 
-_RECEIPT_CONTEXT_KEY = "deerflow_tool_receipt_context"
+_RECEIPT_CONTEXT_KEY = "agent_workspace_tool_receipt_context"
 
 
 class ToolReceiptMiddleware(AgentMiddleware[AgentState]):

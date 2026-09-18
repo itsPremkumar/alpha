@@ -93,7 +93,7 @@ def build_static_report(
         },
         "review": {
             "scope": scope,
-            "profile": facts.get("profile", "deerflow"),
+            "profile": facts.get("profile", "agent_workspace"),
             "facts_schema_version": facts.get("schema_version"),
             "reviewer_model": reviewer_model,
             "completed_at": completed_at or datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),

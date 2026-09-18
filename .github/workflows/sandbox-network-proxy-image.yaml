@@ -15,7 +15,7 @@ on:
       - ".github/workflows/sandbox-network-proxy-image.yaml"
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: bytedance/deer-flow-sandbox-network-proxy
+  IMAGE_NAME: bytedance/agent-workspace-sandbox-network-proxy
 
 jobs:
   validate:
@@ -39,7 +39,7 @@ jobs:
           push: false
 
   publish:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'bytedance/deer-flow'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'bytedance/agent-workspace'
     runs-on: ubuntu-latest
     permissions:
       contents: read

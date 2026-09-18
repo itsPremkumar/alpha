@@ -1,4 +1,4 @@
-# DeerFlow Development Environment
+# Agent Workspace Development Environment
 #
 # Requires Docker Compose >= 2.24. The env_file entries below use the long-form
 # path/required syntax so a missing ../.env or ../frontend/.env does not abort
@@ -66,10 +66,10 @@ services:
     volumes:
       - ~/.kube/config:/root/.kube/config:ro
     environment:
-      - K8S_NAMESPACE=deer-flow
+      - K8S_NAMESPACE=agent-workspace
       - SANDBOX_IMAGE=enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest
       # Optional lark-cli init image (Pattern A). Empty ⇒ legacy runtime mount.
-      # Set to a published tag (e.g. deer-flow/lark-cli-init:v1.0.65) to provision
+      # Set to a published tag (e.g. agent-workspace/lark-cli-init:v1.0.65) to provision
       # the sandbox lark-cli runtime via an init container + emptyDir.
       - LARK_CLI_INIT_IMAGE=${LARK_CLI_INIT_IMAGE:-}
       # Optional lark-cli broker image (Pattern B, issue #4338). Empty ⇒ broker
@@ -78,7 +78,7 @@ services:
       # Host paths for K8s HostPath volumes (must be absolute paths accessible by K8s node)
       # On Docker Desktop/OrbStack, use your actual host paths like /Users/username/...
       # Set these in your shell before running docker-compose:
-      #   export AGENT_WORKSPACE_ROOT=/absolute/path/to/deer-flow
+      #   export AGENT_WORKSPACE_ROOT=/absolute/path/to/agent-workspace
       # Deliberately left without a ${AGENT_WORKSPACE_ROOT:-...} fallback. The obvious
       # candidate, $PWD, is exported by POSIX shells but not by PowerShell or
       # cmd, so the default would resolve to an empty string on Windows — the
@@ -90,9 +90,9 @@ services:
       - AGENT_WORKSPACE_HOST_BASE_DIR=${AGENT_WORKSPACE_ROOT}/backend/.agent-workspace
       # Production: use PVC instead of hostPath to avoid data loss on node failure.
       # When set, hostPath vars above are ignored for the corresponding volume.
-      # USERDATA_PVC_NAME uses subPath (deer-flow/users/{user_id}/threads/{thread_id}/user-data) automatically.
-      # - SKILLS_PVC_NAME=deer-flow-skills-pvc
-      # - USERDATA_PVC_NAME=deer-flow-userdata-pvc
+      # USERDATA_PVC_NAME uses subPath (agent-workspace/users/{user_id}/threads/{thread_id}/user-data) automatically.
+      # - SKILLS_PVC_NAME=agent-workspace-skills-pvc
+      # - USERDATA_PVC_NAME=agent-workspace-userdata-pvc
       - KUBECONFIG_PATH=/root/.kube/config
       - NODE_HOST=host.docker.internal
       # Override K8S API server URL since kubeconfig uses 127.0.0.1
@@ -263,7 +263,7 @@ volumes:
   redis-data:
 
 networks:
-  deer-flow-dev:
+  agent-workspace-dev:
     driver: bridge
     ipam:
       config:

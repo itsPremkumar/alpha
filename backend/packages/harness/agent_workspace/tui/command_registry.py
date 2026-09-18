@@ -1,9 +1,9 @@
-"""Slash-command registry for the DeerFlow TUI (pure).
+"""Slash-command registry for the Agent Workspace TUI (pure).
 
 Normalizes two command sources into one searchable list:
 
 * **Built-ins** — TUI-owned affordances (``/help``, ``/model``, ``/threads`` …).
-* **Skills** — one ``/<skill-name>`` per enabled skill, preserving DeerFlow's
+* **Skills** — one ``/<skill-name>`` per enabled skill, preserving Agent Workspace's
   existing slash-skill activation semantics.
 
 The picker filters this list; :func:`resolve` classifies a submitted line as a

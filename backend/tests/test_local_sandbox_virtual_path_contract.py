@@ -3,7 +3,7 @@
 
 Today AIO sandbox already accepts /mnt/user-data/... paths directly because the
 container has those paths bind-mounted per-thread. LocalSandbox, however,
-externalises that translation to ``deerflow.sandbox.tools`` via ``thread_data``,
+externalises that translation to ``agent_workspace.sandbox.tools`` via ``thread_data``,
 so any caller that bypasses tools.py (e.g. ``uploads.py`` syncing files into a
 remote sandbox via ``sandbox.update_file(virtual_path, ...)``) sees inconsistent
 behaviour.

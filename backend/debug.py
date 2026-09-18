@@ -71,8 +71,8 @@ async def main():
     app_config = get_app_config()
     apply_logging_level(app_config.log_level)
 
-    # Delay the rest of the deerflow imports until *after* logging is installed
-    # so that any import-time side effects (e.g. deerflow.agents starts a
+    # Delay the rest of the agent_workspace imports until *after* logging is installed
+    # so that any import-time side effects (e.g. agent_workspace.agents starts a
     # background skill-loader thread on import) emit logs to debug.log instead
     # of leaking onto the interactive terminal via Python's lastResort handler.
     from langchain_core.messages import HumanMessage

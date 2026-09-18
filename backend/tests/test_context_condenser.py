@@ -35,7 +35,7 @@ def test_head_tail_truncator():
     truncator = HeadTailBudgetTruncator(max_budget_chars=500, keep_head_turns=2, keep_tail_turns=2)
 
     messages = [
-        {"role": "system", "content": "You are DeerFlow."},
+        {"role": "system", "content": "You are Agent Workspace."},
         {"role": "user", "content": "Fix bug in payment logic."},
     ]
     # Add 10 bulky middle messages
@@ -48,7 +48,7 @@ def test_head_tail_truncator():
     truncated = truncator.truncate(messages)
     # Should contain: 2 head + 1 notice + 2 tail = 5 messages
     assert len(truncated) == 5
-    assert truncated[0]["content"] == "You are DeerFlow."
+    assert truncated[0]["content"] == "You are Agent Workspace."
     assert truncated[1]["content"] == "Fix bug in payment logic."
     assert truncated[2].get("truncated") is True
     assert "intermediate historical turns were truncated" in truncated[2]["content"]

@@ -36,7 +36,7 @@ async def test_list_run_events_forwards_task_id_and_after_seq():
 
     class FakeRequest:
         app = FakeApp()
-        _deerflow_test_bypass_auth = True
+        _agent_workspace_test_bypass_auth = True
 
     result = await list_run_events(
         thread_id="t1",
@@ -80,7 +80,7 @@ async def test_list_run_events_redacts_historical_run_start_metadata():
 
     class FakeRequest:
         app = FakeApp()
-        _deerflow_test_bypass_auth = True
+        _agent_workspace_test_bypass_auth = True
 
     events = await list_run_events(
         thread_id="legacy-thread",
@@ -129,7 +129,7 @@ async def test_effective_memory_flows_from_injection_to_the_existing_debug_api()
 
     class FakeRequest:
         app = FakeApp()
-        _deerflow_test_bypass_auth = True
+        _agent_workspace_test_bypass_auth = True
 
     events = await list_run_events(
         thread_id="t1",

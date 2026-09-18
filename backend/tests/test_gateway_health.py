@@ -272,7 +272,7 @@ async def test_probe_checkpointer_postgres_without_psycopg_is_unreachable(monkey
     result = await _probe_checkpointer_backend(
         CheckpointerConfig(
             type="postgres",
-            connection_string="postgresql://user:pass@localhost:5432/deerflow",
+            connection_string="postgresql://user:pass@localhost:5432/agent_workspace",
         )
     )
 

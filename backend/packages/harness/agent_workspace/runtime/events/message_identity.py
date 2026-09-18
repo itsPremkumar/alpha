@@ -26,7 +26,7 @@ __all__ = ["MESSAGE_SEQ_KEY", "attach_message_seq", "message_identity"]
 #: Server-owned display metadata: it is attached when a frame is serialized and
 #: must be stripped from anything a client sends back, or a replayed message
 #: would write it into the checkpoint (where a fork re-seeds and reassigns seq).
-MESSAGE_SEQ_KEY = "deerflow_seq"
+MESSAGE_SEQ_KEY = "agent_workspace_seq"
 
 
 def message_identity(message: Mapping[str, Any]) -> str | None:

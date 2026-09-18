@@ -22,7 +22,7 @@ from agent_workspace.kanban.models import (
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_KANBAN_DIR = ".deerflow/kanban"
+_DEFAULT_KANBAN_DIR = ".agent_workspace/kanban"
 
 
 class KanbanStore:

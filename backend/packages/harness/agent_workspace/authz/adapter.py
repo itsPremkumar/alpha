@@ -1,16 +1,16 @@
 """Adapter that presents an AuthorizationProvider as a GuardrailProvider.
 
-This lets the existing :class:`~deerflow.guardrails.middleware.GuardrailMiddleware`
-enforce :class:`~deerflow.authz.provider.AuthorizationProvider` decisions at
+This lets the existing :class:`~agent_workspace.guardrails.middleware.GuardrailMiddleware`
+enforce :class:`~agent_workspace.authz.provider.AuthorizationProvider` decisions at
 tool-call time — no new middleware class required (see RFC §6.1).
 
-The adapter maps :class:`~deerflow.guardrails.provider.GuardrailRequest`
-fields to :class:`~deerflow.authz.provider.AuthzRequest` fields, calls the
-authorization provider, and converts the :class:`~deerflow.authz.provider.AuthzDecision`
-back to a :class:`~deerflow.guardrails.provider.GuardrailDecision`.
+The adapter maps :class:`~agent_workspace.guardrails.provider.GuardrailRequest`
+fields to :class:`~agent_workspace.authz.provider.AuthzRequest` fields, calls the
+authorization provider, and converts the :class:`~agent_workspace.authz.provider.AuthzDecision`
+back to a :class:`~agent_workspace.guardrails.provider.GuardrailDecision`.
 
 Principal construction delegates to
-:func:`~deerflow.authz.principal.build_principal_from_context` so Layer 1
+:func:`~agent_workspace.authz.principal.build_principal_from_context` so Layer 1
 (tool assembly) and Layer 2 (this adapter) share a single identity builder
 with consistent ``default_role`` and ``attributes`` semantics.
 """
@@ -115,7 +115,7 @@ class GuardrailAuthorizationAdapter:
         """Synchronous evaluation: delegate to ``provider.authorize``.
 
         Provider exceptions are intentionally allowed to propagate. The
-        adapter is consumed by :class:`~deerflow.guardrails.middleware.GuardrailMiddleware`,
+        adapter is consumed by :class:`~agent_workspace.guardrails.middleware.GuardrailMiddleware`,
         whose ``wrap_tool_call`` / ``awrap_tool_call`` already applies
         fail-closed semantics based on its ``fail_closed`` parameter
         (backed by ``AuthorizationConfig.fail_closed``). Catching exceptions

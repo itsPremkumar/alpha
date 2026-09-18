@@ -1,4 +1,4 @@
-"""Live integration tests for DeerFlowClient with real external APIs.
+"""Live integration tests for AgentWorkspaceClient with real external APIs.
 
 These tests require a working config.yaml with valid API credentials.
 They can incur API costs and create local sandboxes, artifacts, or files.
@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from agent_workspace.client import DeerFlowClient, StreamEvent
+from agent_workspace.client import AgentWorkspaceClient, StreamEvent
 from agent_workspace.sandbox.security import is_host_bash_allowed
 from agent_workspace.uploads.manager import PathTraversalError
 
@@ -44,8 +44,8 @@ if _skip_reason:
 
 @pytest.fixture(scope="module")
 def client():
-    """Create a real DeerFlowClient (no mocks)."""
-    return DeerFlowClient(thinking_enabled=False)
+    """Create a real AgentWorkspaceClient (no mocks)."""
+    return AgentWorkspaceClient(thinking_enabled=False)
 
 
 @pytest.fixture

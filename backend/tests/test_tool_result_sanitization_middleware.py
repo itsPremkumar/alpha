@@ -1,6 +1,6 @@
 """Tests for ToolResultSanitizationMiddleware (remote tool-result injection guard).
 
-DeerFlow neutralizes framework/injection tags in the genuine user message. These
+Agent Workspace neutralizes framework/injection tags in the genuine user message. These
 tests pin the same neutralization onto remote tool results (web_fetch /
 web_search / image_search / web_capture), and confirm local tool output is left
 untouched.
@@ -191,7 +191,7 @@ class TestKnownScopeBoundary:
     """Pin the documented coverage scope so any change is deliberate."""
 
     def test_untagged_mcp_named_tool_is_not_sanitized(self):
-        # An MCP-registered tool that never got the deerflow_mcp metadata tag
+        # An MCP-registered tool that never got the agent_workspace_mcp metadata tag
         # (e.g. loaded through a path that does not tag) is still passed through
         # unchanged. Coverage follows the tag, not the name. The tool object is
         # present here with a non-empty metadata dict, so the untagged branch of
@@ -214,7 +214,7 @@ class TestMcpTaggedToolResults:
     def _mcp_request(tool_name: str) -> SimpleNamespace:
         return SimpleNamespace(
             tool_call={"name": tool_name, "id": "tc-1"},
-            tool=SimpleNamespace(metadata={"deerflow_mcp": True}),
+            tool=SimpleNamespace(metadata={"agent_workspace_mcp": True}),
         )
 
     def test_mcp_tagged_tool_result_sanitized(self):

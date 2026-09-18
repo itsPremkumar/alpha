@@ -1,16 +1,16 @@
 # Setup Guide
 
-Quick setup instructions for DeerFlow.
+Quick setup instructions for Agent Workspace.
 
 ## Configuration Setup
 
-DeerFlow uses a YAML configuration file that should be placed in the **project root directory**.
+Agent Workspace uses a YAML configuration file that should be placed in the **project root directory**.
 
 ### Steps
 
 1. **Navigate to project root**:
    ```bash
-   cd /path/to/deer-flow
+   cd /path/to/agent-workspace
    ```
 
 2. **Copy example configuration**:
@@ -24,7 +24,7 @@ DeerFlow uses a YAML configuration file that should be placed in the **project r
    export OPENAI_API_KEY="your-key-here"
 
    # Optional: pin the project root when running from another directory
-   export AGENT_WORKSPACE_PROJECT_ROOT="/path/to/deer-flow"
+   export AGENT_WORKSPACE_PROJECT_ROOT="/path/to/agent-workspace"
 
    # Option B: Edit config.yaml directly
    vim config.yaml  # or your preferred editor
@@ -38,9 +38,9 @@ DeerFlow uses a YAML configuration file that should be placed in the **project r
 
 ## Important Notes
 
-- **Location**: `config.yaml` should be in `deer-flow/` (project root)
+- **Location**: `config.yaml` should be in `agent-workspace/` (project root)
 - **Git**: `config.yaml` is automatically ignored by git (contains secrets)
-- **Runtime root**: Set `AGENT_WORKSPACE_PROJECT_ROOT` if DeerFlow may start from outside the project root
+- **Runtime root**: Set `AGENT_WORKSPACE_PROJECT_ROOT` if Agent Workspace may start from outside the project root
 - **Runtime data**: State defaults to `.agent-workspace` under the project root; set `AGENT_WORKSPACE_HOME` to move it
 - **Skills**: Skills default to `skills/` under the project root; set `AGENT_WORKSPACE_SKILLS_PATH` or `skills.path` to move them
 
@@ -53,11 +53,11 @@ The backend searches for `config.yaml` in this order:
 3. `config.yaml` under `AGENT_WORKSPACE_PROJECT_ROOT`, or the current working directory when `AGENT_WORKSPACE_PROJECT_ROOT` is unset
 4. Legacy backend/repository-root locations for monorepo compatibility
 
-**Recommended**: Place `config.yaml` in project root (`deer-flow/config.yaml`).
+**Recommended**: Place `config.yaml` in project root (`agent-workspace/config.yaml`).
 
 ## Sandbox Setup (Optional but Recommended)
 
-If you plan to use Docker/Container-based sandbox (configured in `config.yaml` under `sandbox.use: deerflow.community.aio_sandbox:AioSandboxProvider`), it's highly recommended to pre-pull the container image:
+If you plan to use Docker/Container-based sandbox (configured in `config.yaml` under `sandbox.use: agent_workspace.community.aio_sandbox:AioSandboxProvider`), it's highly recommended to pre-pull the container image:
 
 ```bash
 # From project root
@@ -77,7 +77,7 @@ If you skip this step, the image will be automatically pulled on first agent exe
 
 ```bash
 # Check where the backend is looking
-cd deer-flow/backend
+cd agent-workspace/backend
 python -c "from agent_workspace.config.app_config import AppConfig; print(AppConfig.resolve_config_path())"
 ```
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""DeerFlow Health Check (make doctor).
+"""Agent Workspace Health Check (make doctor).
 
 Checks system requirements, configuration, LLM provider, and optional
 components, then prints an actionable report.
@@ -750,7 +750,7 @@ def main() -> int:
         pass
 
     print()
-    print(bold("DeerFlow Health Check"))
+    print(bold("Agent Workspace Health Check"))
     print("═" * 40)
 
     sections: list[tuple[str, list[CheckResult]]] = []
@@ -815,10 +815,10 @@ def main() -> int:
     print("═" * 40)
     if total_fails == 0 and total_warns == 0:
         print(f"Status: {green('Ready')}")
-        print(f"Run {cyan('make dev')} to start DeerFlow")
+        print(f"Run {cyan('make dev')} to start Agent Workspace")
     elif total_fails == 0:
         print(f"Status: {yellow(f'Ready ({total_warns} warning(s))')}")
-        print(f"Run {cyan('make dev')} to start DeerFlow")
+        print(f"Run {cyan('make dev')} to start Agent Workspace")
     else:
         print(f"Status: {red(f'{total_fails} error(s), {total_warns} warning(s)')}")
         print("Fix the errors above, then run 'make doctor' again.")

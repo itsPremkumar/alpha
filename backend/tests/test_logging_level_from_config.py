@@ -29,14 +29,14 @@ def test_logging_level_from_config_unknown_falls_back_to_info() -> None:
 
 
 class TestApplyLoggingLevel:
-    """Tests for ``apply_logging_level`` — verifies deerflow/app logger and handler levels."""
+    """Tests for ``apply_logging_level`` — verifies agent_workspace/app logger and handler levels."""
 
     def setup_method(self) -> None:
         root = logging.root
         self._original_root_level = root.level
         self._original_root_handlers = list(root.handlers)
         self._original_handler_levels = {handler: handler.level for handler in self._original_root_handlers}
-        self._original_deerflow_level = logging.getLogger("deerflow").level
+        self._original_agent_workspace_level = logging.getLogger("agent_workspace").level
         self._original_app_level = logging.getLogger("app").level
 
     def teardown_method(self) -> None:
@@ -56,12 +56,12 @@ class TestApplyLoggingLevel:
             root.addHandler(handler)
 
         root.setLevel(self._original_root_level)
-        logging.getLogger("deerflow").setLevel(self._original_deerflow_level)
+        logging.getLogger("agent_workspace").setLevel(self._original_agent_workspace_level)
         logging.getLogger("app").setLevel(self._original_app_level)
 
-    def test_sets_deerflow_app_logger_levels(self) -> None:
+    def test_sets_agent_workspace_app_logger_levels(self) -> None:
         apply_logging_level("debug")
-        assert logging.getLogger("deerflow").level == logging.DEBUG
+        assert logging.getLogger("agent_workspace").level == logging.DEBUG
         assert logging.getLogger("app").level == logging.DEBUG
 
     def test_lowers_handler_level(self) -> None:
@@ -87,5 +87,5 @@ class TestApplyLoggingLevel:
 
     def test_defaults_to_info(self) -> None:
         apply_logging_level(None)
-        assert logging.getLogger("deerflow").level == logging.INFO
+        assert logging.getLogger("agent_workspace").level == logging.INFO
         assert logging.getLogger("app").level == logging.INFO

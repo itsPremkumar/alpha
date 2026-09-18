@@ -115,7 +115,7 @@ class TestPreToolUse:
         assert "no shell today" in result.content
         assert result.name == "bash"
         assert calls == []
-        trail = result.additional_kwargs.get("deerflow_tool_transforms", [])
+        trail = result.additional_kwargs.get("agent_workspace_tool_transforms", [])
         assert trail and trail[-1]["kind"] == "hooks_bridge_blocked"
 
     def test_stdout_json_block_decision(self, tmp_path):

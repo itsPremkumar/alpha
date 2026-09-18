@@ -1,7 +1,7 @@
 """Process-local cumulative token ledger (DeepSeek-Harness-style token meter).
 
 ``ctx.tokenMeter`` in DeepSeek Harness is the central usage vocabulary that
-budgets and benchmarks build on. DeerFlow already enforces per-run limits
+budgets and benchmarks build on. Agent Workspace already enforces per-run limits
 (:class:`TokenBudgetMiddleware`) and attributes usage per message
 (:class:`TokenUsageMiddleware`), but nothing accumulates spend across the
 turns of a thread or the runs of a user inside the process. This module is

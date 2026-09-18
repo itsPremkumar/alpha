@@ -2,7 +2,7 @@
 
 OpenClaw 2.0 moved sessions/transcripts into SQLite with searchable,
 branchable, rewindable conversations + durable channel/topic bindings.
-DeerFlow persists checkpoints in sqlite/postgres via LangGraph; this adds
+Agent Workspace persists checkpoints in sqlite/postgres via LangGraph; this adds
 the missing lightweight catalog index (sqlite) that maps
 (session_id -> thread_id, agent, channel, topic) without touching the
 checkpointer schema. Branch = copy catalog entry pointing at a parent

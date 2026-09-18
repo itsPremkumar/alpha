@@ -4,13 +4,13 @@ Importing this module ensures all ORM models are registered with
 ``Base.metadata`` so Alembic autogenerate detects every table.
 
 The actual ORM classes have moved to entity-specific subpackages:
-- ``deerflow.persistence.thread_meta``
-- ``deerflow.persistence.run``
-- ``deerflow.persistence.feedback``
-- ``deerflow.persistence.user``
+- ``agent_workspace.persistence.thread_meta``
+- ``agent_workspace.persistence.run``
+- ``agent_workspace.persistence.feedback``
+- ``agent_workspace.persistence.user``
 
-``RunEventRow`` remains in ``deerflow.persistence.models.run_event`` because
-its storage implementation lives in ``deerflow.runtime.events.store.db`` and
+``RunEventRow`` remains in ``agent_workspace.persistence.models.run_event`` because
+its storage implementation lives in ``agent_workspace.runtime.events.store.db`` and
 there is no matching entity directory.
 """
 

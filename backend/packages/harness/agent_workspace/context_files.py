@@ -1,7 +1,7 @@
 """Repository context files: project files that shape every conversation.
 
 Walks up from a working directory looking for conventional context files
-(``AGENTS.md``, ``CONTEXT.md``, ``.deerflow/CONTEXT.md``) and returns a
+(``AGENTS.md``, ``CONTEXT.md``, ``.agent_workspace/CONTEXT.md``) and returns a
 bounded excerpt. Pure filesystem reads with hard caps — safe to call from
 per-turn paths; callers decide where the excerpt rides.
 """
@@ -14,7 +14,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 CONTEXT_FILENAMES = ("AGENTS.md", "CONTEXT.md")
-CONTEXT_SUBPATHS = (".deerflow/CONTEXT.md", ".deerflow/AGENTS.md")
+CONTEXT_SUBPATHS = (".agent_workspace/CONTEXT.md", ".agent_workspace/AGENTS.md")
 MAX_FILE_CHARS = 6000
 MAX_TOTAL_CHARS = 12000
 MAX_SEARCH_DEPTH = 6

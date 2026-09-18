@@ -140,7 +140,7 @@ def _apply_stream_chunk_timeout_default(model_class: type, model_settings_from_c
     """Inject a generous ``stream_chunk_timeout`` for OpenAI-compatible clients.
 
     ``stream_chunk_timeout`` is a field of langchain-openai's ``BaseChatOpenAI``, so
-    it is accepted by ``ChatOpenAI`` and by every DeerFlow provider that subclasses
+    it is accepted by ``ChatOpenAI`` and by every Agent Workspace provider that subclasses
     it: ``PatchedChatOpenAI`` plus the self-hosted / reasoning adapters
     ``VllmChatModel``, ``MindIEChatModel``, ``PatchedChatDeepSeek``,
     ``PatchedChatMiMo``, ``PatchedChatStepFun`` and ``PatchedChatMiniMax``. We gate on
@@ -173,7 +173,7 @@ def _apply_stream_chunk_timeout_default(model_class: type, model_settings_from_c
     model_settings_from_config["stream_chunk_timeout"] = _DEFAULT_STREAM_CHUNK_TIMEOUT_SECONDS
 
 
-# Constructor settings that are DeerFlow metadata, never provider arguments.
+# Constructor settings that are Agent Workspace metadata, never provider arguments.
 # ``provider``/``fallbacks`` join the long-standing presentation-only set:
 # they steer factory resolution and must not reach the model client (which
 # would divert unknown kwargs into the request payload — see
@@ -350,7 +350,7 @@ def _build_single_model(
     name = model_config.name
     model_class = resolve_class(_resolve_effective_use(model_config, config), BaseChatModel)
     model_settings_from_config = _effective_model_settings(model_config, config)
-    # Drop DeerFlow metadata keys the provider constructor must never see
+    # Drop Agent Workspace metadata keys the provider constructor must never see
     # (they would divert into request payloads — see _warn_unknown_model_settings).
     for metadata_key in _NON_CONSTRUCTOR_MODEL_KEYS:
         model_settings_from_config.pop(metadata_key, None)

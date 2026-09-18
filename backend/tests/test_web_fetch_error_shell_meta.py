@@ -1,7 +1,7 @@
 """web_fetch error-page classification (issue #4273).
 
 Fetching a missing URL succeeds at the transport layer, so the server's error page
-reached the model stamped ``deerflow_tool_meta.status="success"``: none of the existing
+reached the model stamped ``agent_workspace_tool_meta.status="success"``: none of the existing
 error branches (tool ``status="error"``, an ``Error:`` prefix, a JSON ``error`` field)
 apply to a 200-with-an-error-body, and it fell through to success. ToolProgress then
 counted the shell as evidence.

@@ -1,16 +1,16 @@
-# DeerFlow Desktop (Windows · Electron)
+# Agent Workspace Desktop (Windows · Electron)
 
-A one-click Windows app for DeerFlow. It opens **straight into the 2.0 chat**
+A one-click Windows app for Agent Workspace. It opens **straight into the 2.0 chat**
 — no login screen, no setup wizard, no landing page — and runs everything
 locally: the AI Gateway API plus the chat UI inside a single native window.
 
 ## Install (end users)
 
-1. Run **`DeerFlow-Setup-2.1.0.exe`** (in `electron/dist/` after a build).
+1. Run **`Agent-Workspace-Setup-2.1.0.exe`** (in `electron/dist/` after a build).
 2. If Windows SmartScreen warns about an unrecognized app (the installer is
    unsigned), choose **More info → Run anyway**. The installer works
    per-user — no administrator rights needed.
-3. Launch **DeerFlow** from the Start menu or desktop shortcut.
+3. Launch **Agent Workspace** from the Start menu or desktop shortcut.
 
 **You need nothing pre-installed.** The installer bundles its own Node.js
 and `uv` runtimes; on first launch the app automatically provisions Python
@@ -23,20 +23,20 @@ First launch in short:
 2. The app opens on a fresh chat composer.
 3. If no AI model is configured yet, the app says so and offers to open the
    config folder: add at least one model API key to
-   `%APPDATA%\deerflow-desktop\project\config.yaml`, restart the app, and chat.
+   `%APPDATA%\agent-workspace-desktop\project\config.yaml`, restart the app, and chat.
 
 Your data (config, threads, memory, logs) lives per-user under
-`%APPDATA%\deerflow-desktop\`:
+`%APPDATA%\agent-workspace-desktop\`:
 
 | Location | Contents |
 | -------- | -------- |
 | `project\` | `config.yaml`, `extensions_config.json` — edit your keys here |
-| `deerflow-home\` | threads, memory, SQLite state |
+| `agent_workspace-home\` | threads, memory, SQLite state |
 | `backend-venv\`, `python\` | auto-provisioned backend environment (do not touch) |
 | `logs\` | `main.log`, `gateway.log`, `frontend.log` |
 
 To uninstall, use Windows **Settings → Apps** (per-user install, removes the
-app; your `%APPDATA%\deerflow-desktop\` data folder is kept — delete it
+app; your `%APPDATA%\agent-workspace-desktop\` data folder is kept — delete it
 manually for a full wipe).
 
 ## Share it with the world
@@ -45,12 +45,12 @@ The installer is verified end-to-end: silent `/S` install, first launch on a
 virgin machine profile (bundled Node + `uv`, auto-provisioned Python and
 venv, no login, chat opens), and silent uninstall. To publish:
 
-1. `npm run dist` and take `electron/dist/DeerFlow-Setup-<ver>.exe`.
+1. `npm run dist` and take `electron/dist/Agent-Workspace-Setup-<ver>.exe`.
 2. Create a GitHub Release (e.g. tag `desktop-v2.1.0`) and attach the exe.
    Anything that serves the file works too (company drive, S3, …).
 3. Tell users: download → **More info → Run anyway** (unsigned) → launch →
    when prompted, add one model API key to
-   `%APPDATA%\deerflow-desktop\project\config.yaml` → restart → chat.
+   `%APPDATA%\agent-workspace-desktop\project\config.yaml` → restart → chat.
    Internet is required on first launch (one-time Python/package download).
 
 ## Build from source (developers)
@@ -59,8 +59,8 @@ Prerequisites (build machine only): **Node.js 22+**, **uv**, and Git.
 `uv` provisions Python automatically; end users never need any of this.
 
 ```powershell
-git clone <repo-url> deer-flow
-cd deer-flow\electron
+git clone <repo-url> agent-workspace
+cd agent-workspace\electron
 npm install              # electron + electron-builder
 
 # Desktop Gateway (same files `make dev` needs, at the repo root):
@@ -100,7 +100,7 @@ npx electron . -- --verbose                              # mirror service logs t
 ### Make the installer
 
 ```powershell
-npm run dist       # fetch-runtime → build:frontend → DeerFlow-Setup-<ver>.exe into dist/
+npm run dist       # fetch-runtime → build:frontend → Agent-Workspace-Setup-<ver>.exe into dist/
 npm run dist:dir   # unpacked folder instead (faster smoke test)
 ```
 
@@ -126,7 +126,7 @@ geometric mark. Re-run the script after editing it, then rebuild.
 
 1. Single-instance lock — a second launch just focuses the open window.
 2. Per-user data dir prepared; default configs seeded (never overwritten).
-3. Gateway: a **verified** DeerFlow health endpoint on the preferred port is
+3. Gateway: a **verified** Agent Workspace health endpoint on the preferred port is
    reused, otherwise the next free port is taken and the Gateway spawned.
    A service that crashes during startup aborts boot immediately with the
    exit code and a pointer to `gateway.log` (no silent 10-minute hangs).
@@ -141,7 +141,7 @@ geometric mark. Re-run the script after editing it, then rebuild.
 
 ## Troubleshooting
 
-- **Stuck on splash** — open `%APPDATA%\deerflow-desktop\logs\gateway.log`.
+- **Stuck on splash** — open `%APPDATA%\agent-workspace-desktop\logs\gateway.log`.
   First launch downloads Python + ~200 packages; slow connections take
   several minutes (progress is in the log). The usual real failure is a
   missing/invalid model API key in `project\config.yaml`.
@@ -151,7 +151,7 @@ geometric mark. Re-run the script after editing it, then rebuild.
   (e.g. your own `:8001`), or a machine-wide `AGENT_WORKSPACE_ENV`/`ENVIRONMENT`
   is set to production (the app warns about this), or you passed
   `--require-login`.
-- **Port already in use** — the app reuses a verified-healthy DeerFlow
+- **Port already in use** — the app reuses a verified-healthy Agent Workspace
   service and otherwise moves to the next free port. `Tools → Copy app URLs`
   shows the actual URLs.
 - **“frontend build missing”** (on `npm start`) — run `npm run build:frontend`.

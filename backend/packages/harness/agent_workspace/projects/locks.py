@@ -28,7 +28,7 @@ def _default_storage_path() -> Path:
 
         return runtime_home() / "projects" / "locks.json"
     except Exception:
-        return Path.cwd() / ".deerflow" / "projects" / "locks.json"
+        return Path.cwd() / ".agent_workspace" / "projects" / "locks.json"
 
 
 @dataclass

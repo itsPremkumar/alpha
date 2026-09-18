@@ -1,6 +1,6 @@
 # Tenki backend
 
-Runs each DeerFlow sandbox as a [Tenki](https://tenki.cloud) cloud sandbox — an
+Runs each Agent Workspace sandbox as a [Tenki](https://tenki.cloud) cloud sandbox — an
 isolated microVM created from a stock base image, with no daemon or local
 virtualization to manage. A cloud-hosted alternative to the container-based AIO
 sandbox and the local-virtualization BoxLite backend.
@@ -9,7 +9,7 @@ sandbox and the local-virtualization BoxLite backend.
 
 ```yaml
 sandbox:
-  use: deerflow.community.tenki:TenkiSandboxProvider
+  use: agent_workspace.community.tenki:TenkiSandboxProvider
   api_key: $TENKI_API_KEY   # falls back to TENKI_API_KEY / TENKI_AUTH_TOKEN env var
   base_url: https://tenki.cloud  # optional; SDK default when omitted
   image: my-base-image      # optional; Tenki account default base image when omitted
@@ -32,7 +32,7 @@ pip install "agent-workspace-harness[tenki]"
 ```
 
 The `tenki` package (which provides the `tenki_sandbox` module) is an optional
-DeerFlow harness extra, not part of the default install. Get an API key from
+Agent Workspace harness extra, not part of the default install. Get an API key from
 <https://tenki.cloud/docs/sandbox/sdk>.
 
 ## Design
@@ -57,7 +57,7 @@ lose its sandbox to Tenki's default lifetime mid-conversation.
 ## Contract coverage
 
 The full `Sandbox` surface is implemented. File transport uses Tenki's native `sandbox.fs`
-API; directory and content search shell out and reuse `deerflow.sandbox.search`,
+API; directory and content search shell out and reuse `agent_workspace.sandbox.search`,
 mirroring `e2b_sandbox`:
 
 - `execute_command` — `sh -lc`, with per-call env and timeout.
@@ -66,7 +66,7 @@ mirroring `e2b_sandbox`:
 - `list_dir` / `glob` / `grep` — `find` / `grep` with busybox-portable flags (the fs API is single-level and has no content search); results filtered/capped in Python and reported back under `/mnt/user-data`.
 
 Tenki sandboxes run as the unprivileged `tenki` user with `/mnt` root-owned, so
-DeerFlow's `/mnt/user-data` virtual prefix is remapped under the writable
+Agent Workspace's `/mnt/user-data` virtual prefix is remapped under the writable
 `home_dir` (like `e2b_sandbox`). The provider also best-effort `sudo`-symlinks
 `/mnt/user-data` → `home_dir` at create time so agent shell commands using the
 literal `/mnt/...` path still work; if `sudo` is unavailable the file APIs keep

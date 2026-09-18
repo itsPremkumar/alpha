@@ -289,7 +289,7 @@ def test_postgresql_ci_url_is_normalized_for_asyncpg() -> None:
 @pytest.mark.asyncio
 @pytest.mark.skipif(not _POSTGRES_URL, reason="set TEST_POSTGRES_URI or AGENT_WORKSPACE_TEST_POSTGRES_URL to run live PostgreSQL tests")
 async def test_postgresql_0019_accepts_default_null_and_legacy_writer_omission() -> None:
-    schema = f"deerflow_0019_{uuid.uuid4().hex[:12]}"
+    schema = f"agent_workspace_0019_{uuid.uuid4().hex[:12]}"
     engine = create_async_engine(_POSTGRES_URL or "")
     cfg = _get_alembic_config(engine, postgres_schema=schema)
     try:

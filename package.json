@@ -1,5 +1,5 @@
 {
-  "name": "deer-flow-monorepo",
+  "name": "agent-workspace-monorepo",
   "version": "2.1.0",
   "private": true,
   "packageManager": "pnpm@10.26.2",

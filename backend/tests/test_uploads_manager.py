@@ -1,4 +1,4 @@
-"""Tests for deerflow.uploads.manager — shared upload management logic."""
+"""Tests for agent_workspace.uploads.manager — shared upload management logic."""
 
 import errno
 import os

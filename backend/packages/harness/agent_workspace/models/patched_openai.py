@@ -43,7 +43,7 @@ class PatchedChatOpenAI(ChatOpenAI):
 
         - name: gemini-2.5-pro-thinking
           display_name: Gemini 2.5 Pro (Thinking)
-          use: deerflow.models.patched_openai:PatchedChatOpenAI
+          use: agent_workspace.models.patched_openai:PatchedChatOpenAI
           model: google/gemini-2.5-pro-preview
           api_key: $GEMINI_API_KEY
           base_url: https://<your-openai-compat-gateway>/v1

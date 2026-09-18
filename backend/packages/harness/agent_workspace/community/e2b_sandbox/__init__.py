@@ -1,12 +1,12 @@
-"""E2B cloud sandbox provider for DeerFlow.
+"""E2B cloud sandbox provider for Agent Workspace.
 
-This package implements DeerFlow's :class:`Sandbox` / :class:`SandboxProvider`
+This package implements Agent Workspace's :class:`Sandbox` / :class:`SandboxProvider`
 contract on top of the `e2b` / `e2b_code_interpreter` cloud sandbox SDK.
 
 Configuration example (``config.yaml``)::
 
     sandbox:
-      use: deerflow.community.e2b_sandbox:E2BSandboxProvider
+      use: agent_workspace.community.e2b_sandbox:E2BSandboxProvider
       # E2B specific options (read via SandboxConfig's ``extra="allow"``):
       api_key: $E2B_API_KEY            # falls back to E2B_API_KEY env var
       template: code-interpreter-v1     # e2b template id; defaults to e2b code-interpreter

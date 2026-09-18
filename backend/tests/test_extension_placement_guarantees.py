@@ -77,7 +77,7 @@ def test_model_physical_sees_the_final_request():
     index = _index_of_probe(stack, "physical")
     offenders = [type(_unwrap(m)).__name__ for m in stack[index + 1 :] if middleware_implements(_unwrap(m), "wrap_model_call")]
     assert offenders == [], (
-        f"these middlewares sit inner of the MODEL_PHYSICAL anchor and wrap model calls, breaking its documented guarantee: {offenders}. Either move them outer of the anchor or update the anchor table in deerflow/extensions/stack.py."
+        f"these middlewares sit inner of the MODEL_PHYSICAL anchor and wrap model calls, breaking its documented guarantee: {offenders}. Either move them outer of the anchor or update the anchor table in agent_workspace/extensions/stack.py."
     )
 
 
@@ -183,7 +183,7 @@ def test_tool_raw_is_adjacent_to_the_callable_boundary():
     assert offenders == [], (
         f"these middlewares sit inner of TOOL_RAW and wrap tool calls: {offenders}. "
         "Either move them outer of the anchor or update the anchor table in "
-        "deerflow/extensions/stack.py — do not add them to the carve-out without "
+        "agent_workspace/extensions/stack.py — do not add them to the carve-out without "
         "an argument for why TOOL_RAW still sees raw results."
     )
 

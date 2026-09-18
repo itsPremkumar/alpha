@@ -61,7 +61,7 @@ def build_report_contract_section(*, receipts_enabled: bool = True) -> str:
     ]
     if receipts_enabled:
         # Lazy import: the executor package is imported in cycles with
-        # ``deerflow.agents``; resolving the citation format at call time keeps
+        # ``agent_workspace.agents``; resolving the citation format at call time keeps
         # module init order-independent (same pattern as the receipt harvest).
         # The fallback literals only serve contexts where that module is not
         # importable at all (e.g. cycle-breaking test doubles).
@@ -122,7 +122,7 @@ def normalize_acceptance_criteria(acceptance_criteria: list[str] | None) -> list
     if not acceptance_criteria:
         return []
     # Lazy import: the executor package is imported in cycles with
-    # ``deerflow.agents``; resolving the sanitizer at call time keeps module
+    # ``agent_workspace.agents``; resolving the sanitizer at call time keeps module
     # init order-independent (same pattern as build_report_contract_section).
     from agent_workspace.agents.middlewares.input_sanitization_middleware import neutralize_untrusted_tags
 

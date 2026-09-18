@@ -24,7 +24,7 @@ from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import InMemorySaver
 
 from agent_workspace.agents.middlewares.durable_context_middleware import DurableContextMiddleware
-from agent_workspace.agents.middlewares.summarization_middleware import DeerFlowSummarizationMiddleware
+from agent_workspace.agents.middlewares.summarization_middleware import AgentWorkspaceSummarizationMiddleware
 from agent_workspace.agents.task_continuity import archive
 from agent_workspace.agents.task_continuity.tools import history_read, history_search, task_note
 from agent_workspace.agents.thread_state import ThreadState
@@ -36,7 +36,7 @@ async def run(args):
     private = json.loads(Path(args.endpoints).read_text())
     model = ChatOpenAI(model=private["llm_model"], base_url=private["llm_base"], api_key=private.get("llm_key", "unused"), temperature=0, max_tokens=2048, timeout=180, max_retries=1, extra_body={"reasoning_effort": "none"})
     results = []
-    with tempfile.TemporaryDirectory(prefix="deerflow-continuity-") as directory:
+    with tempfile.TemporaryDirectory(prefix="agent_workspace-continuity-") as directory:
         root = Path(directory)
         original_paths = archive.get_paths
         archive.get_paths = lambda: Paths(base_dir=root)
@@ -55,7 +55,7 @@ async def run(args):
                 saver = InMemorySaver()
                 context = {"thread_id": f"live-{index}", "user_id": "continuity-check"}
                 config = {"configurable": {"thread_id": context["thread_id"]}, "recursion_limit": 30}
-                middleware = DeerFlowSummarizationMiddleware(
+                middleware = AgentWorkspaceSummarizationMiddleware(
                     model=model,
                     trigger=("messages", 4),
                     keep=("messages", 2),

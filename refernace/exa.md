@@ -2,7 +2,7 @@ Yes. What you are describing is a step beyond a normal coding agent:
 
 > **The harness itself continuously observes its behavior, discovers where it is weak or wasting effort, proposes changes to its own code/config/prompts/skills/tools/workflows, creates isolated candidate versions, evaluates them against real workloads and regression suites, and promotes only changes that produce measured improvement.**
 
-That architecture is now supported by several important research/codebases, but the pieces are fragmented. The best approach for your DeerFlow-based harness is to combine them into a dedicated **Recursive Self-Development Engine (RSDE)** rather than letting the main agent arbitrarily rewrite itself.
+That architecture is now supported by several important research/codebases, but the pieces are fragmented. The best approach for your Agent Workspace-based harness is to combine them into a dedicated **Recursive Self-Development Engine (RSDE)** rather than letting the main agent arbitrarily rewrite itself.
 
 The most directly relevant work I found is **Darwin Gödel Machine**, which iteratively modifies its own agent code and evaluates the resulting agents; **Live-SWE-agent**, which evolves its scaffold during runtime while solving software tasks; **AlphaEvolve**, which combines LLM-generated program mutations with automated evaluators and evolutionary selection; and **Exo**, which explicitly treats the entire agent harness—including prompts, memory, tools and policies—as an evolutionary object. ([GitHub][1])
 
@@ -206,7 +206,7 @@ add verification procedure
 deprecate bad skill
 ```
 
-DeerFlow already has a strong foundation for this: skills are modular capability packages loaded progressively, and its 2.0 architecture includes memory, skills, tools, sandboxes and subagents. ([GitHub][2])
+Agent Workspace already has a strong foundation for this: skills are modular capability packages loaded progressively, and its 2.0 architecture includes memory, skills, tools, sandboxes and subagents. ([GitHub][2])
 
 ### Evolution Layer D — Tools
 
@@ -1044,7 +1044,7 @@ CPU/memory quota
 execution timeout
 ```
 
-OpenAI's current agent tooling exposes sandboxed workspaces and tool/guardrail mechanisms, while DeerFlow explicitly treats sandboxed execution as a core part of its long-horizon architecture. ([OpenAI GitHub][9])
+OpenAI's current agent tooling exposes sandboxed workspaces and tool/guardrail mechanisms, while Agent Workspace explicitly treats sandboxed execution as a core part of its long-horizon architecture. ([OpenAI GitHub][9])
 
 ---
 
@@ -1296,7 +1296,7 @@ evaluate
 install skill
 ```
 
-This is especially compatible with the modular skill systems in DeerFlow and DeepAgents, where skills are explicit capability packages and are dynamically discovered/loaded rather than hardcoding everything into the base prompt. ([GitHub][2])
+This is especially compatible with the modular skill systems in Agent Workspace and DeepAgents, where skills are explicit capability packages and are dynamically discovered/loaded rather than hardcoding everything into the base prompt. ([GitHub][2])
 
 ---
 
@@ -1682,16 +1682,16 @@ That is the core of what I would build.
 
 ---
 
-# 33. The architecture inside your existing DeerFlow-based harness
+# 33. The architecture inside your existing Agent Workspace-based harness
 
-Since your project is already based on DeerFlow 2.0, you don't need to throw away the existing foundation.
+Since your project is already based on Agent Workspace 2.0, you don't need to throw away the existing foundation.
 
-DeerFlow already provides the pieces that are especially useful here: subagents, persistent memory, sandbox execution, skills, tools, context management and long-horizon orchestration. Its current architecture also explicitly separates the reusable harness layer from the application layer, which is useful for making your self-development system a clean subsystem rather than coupling it to UI/channel code. ([GitHub][2])
+Agent Workspace already provides the pieces that are especially useful here: subagents, persistent memory, sandbox execution, skills, tools, context management and long-horizon orchestration. Its current architecture also explicitly separates the reusable harness layer from the application layer, which is useful for making your self-development system a clean subsystem rather than coupling it to UI/channel code. ([GitHub][2])
 
 I would add:
 
 ```text
-deerflow/
+agent_workspace/
 │
 ├── harness/
 │
@@ -2086,7 +2086,7 @@ Worth studying for the architecture idea of treating the **whole harness**—pro
 
 Useful for your modular substrate: planning, filesystem, subagents, permissions, skills and context management. ([GitHub][15])
 
-### DeerFlow 2.0
+### Agent Workspace 2.0
 
 Useful because it is already your base and provides the long-horizon harness infrastructure you need. ([GitHub][2])
 
@@ -2258,16 +2258,16 @@ What did I learn from this experiment?
 What should I improve next?
 ```
 
-That is the architecture I would target for your **deerflow-desktop next generation**.
+That is the architecture I would target for your **agent-workspace-desktop next generation**.
 
 One especially important design principle is to make **the evaluator harder to modify than the agent being evaluated**. Otherwise your system can evolve toward becoming better at convincing itself that it improved rather than actually improving.
 
-The current research landscape strongly supports combining recursive self-modification (DGM/Live-SWE), evolutionary candidate search (AlphaEvolve), runtime feedback/memory (Reflexion), modular skills/subagents/sandboxes (DeerFlow/DeepAgents), and deterministic automation/security gates (GitHub/OpenRewrite/Dependabot) rather than relying on a single RSI technique. ([GitHub][1])
+The current research landscape strongly supports combining recursive self-modification (DGM/Live-SWE), evolutionary candidate search (AlphaEvolve), runtime feedback/memory (Reflexion), modular skills/subagents/sandboxes (Agent Workspace/DeepAgents), and deterministic automation/security gates (GitHub/OpenRewrite/Dependabot) rather than relying on a single RSI technique. ([GitHub][1])
 
 I would make this **RSDE layer a first-class subsystem of your harness**, not just another agent/skill.
 
 [1]: https://github.com/jennyzzt/dgm?utm_source=chatgpt.com "GitHub - jennyzzt/dgm: Darwin Gödel Machine: Open-Ended Evolution of Self-Improving Agents · GitHub"
-[2]: https://github.com/bytedance/deer-flow/blob/main/README.md?utm_source=chatgpt.com "deer-flow/README.md at main · bytedance/deer-flow · GitHub"
+[2]: https://github.com/bytedance/agent-workspace/blob/main/README.md?utm_source=chatgpt.com "agent-workspace/README.md at main · bytedance/agent-workspace · GitHub"
 [3]: https://arxiv.org/abs/2303.11366?utm_source=chatgpt.com "Reflexion: Language Agents with Verbal Reinforcement Learning"
 [4]: https://openai.github.io/openai-agents-python/tracing/?utm_source=chatgpt.com "Tracing - OpenAI Agents SDK"
 [5]: https://deepmind.google/blog/alphaevolve-a-gemini-powered-coding-agent-for-designing-advanced-algorithms/?utm_source=chatgpt.com "AlphaEvolve: A Gemini-powered coding agent for designing advanced algorithms — Google DeepMind"

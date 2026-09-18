@@ -27,7 +27,7 @@ def _projects_root() -> Path:
 
         return runtime_home() / "projects"
     except Exception:
-        return Path.cwd() / ".deerflow" / "projects"
+        return Path.cwd() / ".agent_workspace" / "projects"
 
 
 @dataclass

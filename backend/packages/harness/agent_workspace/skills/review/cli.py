@@ -15,7 +15,7 @@ from agent_workspace.skills.review.readers import ArchivePackageReader, LocalDir
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Analyze a skill package without executing it.")
     parser.add_argument("target", help="Skill directory or .skill archive to review")
-    parser.add_argument("--profile", choices=["deerflow", "agentskills"], default="deerflow")
+    parser.add_argument("--profile", choices=["agent_workspace", "agentskills"], default="agent_workspace")
     parser.add_argument("--format", choices=["json", "text"], default="json")
     parser.add_argument(
         "--fail-on",

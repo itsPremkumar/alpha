@@ -563,9 +563,9 @@ async def test_require_mention_uses_bot_login_when_trigger_omits_mention_login(b
     Mention gating must default to ``github.bot_login`` (the App's
     @-handle, the same identity used by the self-event gate), not to the
     agent's directory name. Previously this fell back to ``agent.name``,
-    so an operator who set ``github.bot_login: deerflow-bot`` on an agent
+    so an operator who set ``github.bot_login: agent-workspace-bot`` on an agent
     whose directory was named ``coder`` would see every legitimate
-    ``@deerflow-bot`` mention rejected with ``mention required for @coder``
+    ``@agent-workspace-bot`` mention rejected with ``mention required for @coder``
     — the two gates disagreed on identity.
     """
     bus = MessageBus()
@@ -576,7 +576,7 @@ async def test_require_mention_uses_bot_login_when_trigger_omits_mention_login(b
         {
             "name": "coder",
             "github": {
-                "bot_login": "deerflow-bot",
+                "bot_login": "agent-workspace-bot",
                 "bindings": [
                     {
                         "repo": "a/b",
@@ -593,7 +593,7 @@ async def test_require_mention_uses_bot_login_when_trigger_omits_mention_login(b
     mention_payload = {
         "action": "created",
         "issue": {"number": 7, "pull_request": {"url": "..."}},
-        "comment": {"body": "hey @deerflow-bot please look at this", "user": {"login": "alice"}},
+        "comment": {"body": "hey @agent-workspace-bot please look at this", "user": {"login": "alice"}},
         "repository": {"full_name": "a/b"},
         "sender": {"login": "alice"},
     }
@@ -612,7 +612,7 @@ async def test_require_mention_uses_bot_login_when_trigger_omits_mention_login(b
     result_2 = await fanout_event(bus_2, "issue_comment", "del-dir-mention", dirname_payload)
     assert result_2["fired_agents"] == [], result_2
     assert len(result_2["skipped"]) == 1
-    assert "mention required for @deerflow-bot" in result_2["skipped"][0]["reason"]
+    assert "mention required for @agent-workspace-bot" in result_2["skipped"][0]["reason"]
 
 
 @pytest.mark.asyncio
@@ -666,7 +666,7 @@ async def test_operator_default_mention_login_used_when_agent_omits_bot_login(ba
     operator-set default must be used as the fallback — *before* the
     agent's directory name. Previously the chain skipped this step
     entirely, so an operator setting ``default_mention_login:
-    deerflow-bot`` saw mentions still gated on ``@coder`` (the agent's
+    agent-workspace-bot`` saw mentions still gated on ``@coder`` (the agent's
     directory name).
     """
     bus = MessageBus()
@@ -685,11 +685,11 @@ async def test_operator_default_mention_login_used_when_agent_omits_bot_login(ba
         },
     )
 
-    # @deerflow-bot (the configured operator default) must fire.
+    # @agent-workspace-bot (the configured operator default) must fire.
     fire_payload = {
         "action": "created",
         "issue": {"number": 7, "pull_request": {"url": "..."}},
-        "comment": {"body": "hey @deerflow-bot please look", "user": {"login": "alice"}},
+        "comment": {"body": "hey @agent-workspace-bot please look", "user": {"login": "alice"}},
         "repository": {"full_name": "a/b"},
         "sender": {"login": "alice"},
     }
@@ -698,7 +698,7 @@ async def test_operator_default_mention_login_used_when_agent_omits_bot_login(ba
         "issue_comment",
         "del-opdef-fire",
         fire_payload,
-        operator_default_mention_login="deerflow-bot",
+        operator_default_mention_login="agent-workspace-bot",
     )
     assert result["fired_agents"] == ["coder"], result
 
@@ -714,10 +714,10 @@ async def test_operator_default_mention_login_used_when_agent_omits_bot_login(ba
         "issue_comment",
         "del-opdef-skip",
         skip_payload,
-        operator_default_mention_login="deerflow-bot",
+        operator_default_mention_login="agent-workspace-bot",
     )
     assert result_2["fired_agents"] == [], result_2
-    assert "mention required for @deerflow-bot" in result_2["skipped"][0]["reason"]
+    assert "mention required for @agent-workspace-bot" in result_2["skipped"][0]["reason"]
 
 
 @pytest.mark.asyncio
@@ -758,7 +758,7 @@ async def test_agent_bot_login_outranks_operator_default(base_dir: Path) -> None
         "issue_comment",
         "del-perbot",
         fire_payload,
-        operator_default_mention_login="deerflow-bot",
+        operator_default_mention_login="agent-workspace-bot",
     )
     assert result["fired_agents"] == ["reviewer"], result
 
@@ -767,14 +767,14 @@ async def test_agent_bot_login_outranks_operator_default(base_dir: Path) -> None
     bus_2 = MessageBus()
     miss_payload = {
         **fire_payload,
-        "comment": {"body": "hey @deerflow-bot review please", "user": {"login": "alice"}},
+        "comment": {"body": "hey @agent-workspace-bot review please", "user": {"login": "alice"}},
     }
     result_2 = await fanout_event(
         bus_2,
         "issue_comment",
         "del-perbot-skip",
         miss_payload,
-        operator_default_mention_login="deerflow-bot",
+        operator_default_mention_login="agent-workspace-bot",
     )
     assert result_2["fired_agents"] == [], result_2
     assert "mention required for @reviewer-bot" in result_2["skipped"][0]["reason"]
@@ -821,7 +821,7 @@ async def test_trigger_mention_login_outranks_operator_default(base_dir: Path) -
         "issue_comment",
         "del-trigger-override",
         payload,
-        operator_default_mention_login="deerflow-bot",
+        operator_default_mention_login="agent-workspace-bot",
     )
     assert result["fired_agents"] == ["agent-x"], result
 
@@ -932,7 +932,7 @@ async def test_trigger_mention_login_whitespace_only_treated_as_none(base_dir: P
         {
             "name": "coder",
             "github": {
-                "bot_login": "deerflow-bot",  # the real, working fallback handle
+                "bot_login": "agent-workspace-bot",  # the real, working fallback handle
                 "bindings": [
                     {
                         "repo": "a/b",
@@ -950,7 +950,7 @@ async def test_trigger_mention_login_whitespace_only_treated_as_none(base_dir: P
     payload = {
         "action": "created",
         "issue": {"number": 7, "pull_request": {"url": "..."}},
-        "comment": {"body": "hey @deerflow-bot please look", "user": {"login": "alice"}},
+        "comment": {"body": "hey @agent-workspace-bot please look", "user": {"login": "alice"}},
         "repository": {"full_name": "a/b"},
         "sender": {"login": "alice"},
     }

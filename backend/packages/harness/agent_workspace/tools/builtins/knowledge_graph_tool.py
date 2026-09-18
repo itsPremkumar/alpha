@@ -31,7 +31,7 @@ def query_knowledge_graph(
 
     Args:
         action: 'add_entity', 'add_relation', 'query_dependencies', 'impact_analysis', 'find_path', 'get_summary'.
-        entity_id: Unique entity identifier (e.g. 'service:payment', 'repo:deerflow', 'vendor:stripe').
+        entity_id: Unique entity identifier (e.g. 'service:payment', 'repo:agent_workspace', 'vendor:stripe').
         entity_name: Human-readable name of entity.
         entity_type: Entity category ('service', 'repository', 'database', 'tool', 'person', 'vendor', 'product').
         source_id: Source entity ID when creating relationships or finding paths.

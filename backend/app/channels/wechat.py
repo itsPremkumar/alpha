@@ -323,7 +323,7 @@ class WechatChannel(Channel):
             chat_id=msg.chat_id,
             context_token=context_token,
             text=text,
-            client_id_prefix="deerflow",
+            client_id_prefix="agent_workspace",
             max_retries=_max_retries,
         )
 
@@ -435,7 +435,7 @@ class WechatChannel(Channel):
                 "msg": {
                     "from_user_id": "",
                     "to_user_id": msg.chat_id,
-                    "client_id": f"deerflow_img_{int(time.time() * 1000)}",
+                    "client_id": f"agent_workspace_img_{int(time.time() * 1000)}",
                     "message_type": 2,
                     "message_state": 2,
                     "context_token": context_token,
@@ -525,7 +525,7 @@ class WechatChannel(Channel):
                 "msg": {
                     "from_user_id": "",
                     "to_user_id": msg.chat_id,
-                    "client_id": f"deerflow_file_{int(time.time() * 1000)}",
+                    "client_id": f"agent_workspace_file_{int(time.time() * 1000)}",
                     "message_type": 2,
                     "message_state": 2,
                     "context_token": context_token,
@@ -714,7 +714,7 @@ class WechatChannel(Channel):
             chat_id=chat_id,
             context_token=context_token,
             text=text,
-            client_id_prefix="deerflow-connect",
+            client_id_prefix="agent_workspace-connect",
             max_retries=1,
         )
 

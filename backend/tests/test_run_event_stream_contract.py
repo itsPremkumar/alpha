@@ -77,7 +77,7 @@ def _subagent_batch() -> list[dict]:
             "message": {
                 "type": "ai",
                 "content": "searching",
-                "tool_calls": [{"name": "web_search", "args": {"query": "deerflow"}}],
+                "tool_calls": [{"name": "web_search", "args": {"query": "agent_workspace"}}],
             },
             "message_index": 1,
         },
@@ -155,7 +155,7 @@ def test_runtime_catalog_rejects_categories_that_do_not_fit_persistence(definiti
     ],
 )
 def test_lower_level_run_event_modules_do_not_import_runtime(relative_path):
-    module_path = REPO_ROOT / "backend" / "packages" / "harness" / "deerflow" / relative_path
+    module_path = REPO_ROOT / "backend" / "packages" / "harness" / "agent_workspace" / relative_path
     tree = ast.parse(module_path.read_text(encoding="utf-8"), filename=str(module_path))
     imports = [node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom) and node.module is not None]
     imports.extend(alias.name for node in ast.walk(tree) if isinstance(node, ast.Import) for alias in node.names)
@@ -388,7 +388,7 @@ def test_subagent_observed_events_exactly_match_its_catalog_and_payloads():
             "message": {
                 "type": "ai",
                 "content": "searching",
-                "tool_calls": [{"name": "web_search", "args": {"query": "deerflow"}}],
+                "tool_calls": [{"name": "web_search", "args": {"query": "agent_workspace"}}],
             },
             "message_index": 1,
         },
@@ -450,7 +450,7 @@ def test_captured_subagent_message_survives_task_running_conversion():
         AIMessage(
             content="searching",
             id="ai-step-1",
-            tool_calls=[{"id": "call-1", "name": "web_search", "args": {"query": "deerflow"}}],
+            tool_calls=[{"id": "call-1", "name": "web_search", "args": {"query": "agent_workspace"}}],
         ),
         captured,
         set(),
@@ -470,7 +470,7 @@ def test_captured_subagent_message_survives_task_running_conversion():
     assert event["content"]["task_id"] == "task-1"
     assert event["content"]["message_index"] == 0
     assert event["content"]["text"] == "searching"
-    assert event["content"]["tool_calls"] == [{"name": "web_search", "args": {"query": "deerflow"}}]
+    assert event["content"]["tool_calls"] == [{"name": "web_search", "args": {"query": "agent_workspace"}}]
     _assert_fixed_event_valid(event)
 
 

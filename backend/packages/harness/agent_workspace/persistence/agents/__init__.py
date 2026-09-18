@@ -1,7 +1,7 @@
 """Custom agent definition persistence — abstract store + file/db backends.
 
 The public entry point is :func:`get_agent_store`, which the free functions in
-:mod:`deerflow.config.agents_config` dispatch to. ``file`` (default) preserves
+:mod:`agent_workspace.config.agents_config` dispatch to. ``file`` (default) preserves
 today's on-disk layout; ``db`` shares definitions across nodes via the SQL
 persistence layer.
 """

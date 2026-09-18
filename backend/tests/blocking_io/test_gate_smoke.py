@@ -24,7 +24,7 @@ from support.detectors.blocking_io_runtime import detect_blocking_io_strict
 pytestmark = pytest.mark.asyncio
 
 
-async def test_gate_catches_unoffloaded_blocking_io_in_deerflow_module(tmp_path: Path) -> None:
+async def test_gate_catches_unoffloaded_blocking_io_in_agent_workspace_module(tmp_path: Path) -> None:
     from agent_workspace.runtime.store._sqlite_utils import ensure_sqlite_parent_dir
 
     db_file = tmp_path / "subdir" / "store.db"

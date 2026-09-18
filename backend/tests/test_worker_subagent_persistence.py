@@ -22,10 +22,10 @@ from agent_workspace.runtime.runs.worker import _SubagentEventBuffer
 
 def test_worker_imports_first_without_circular_import():
     """Gateway startup imports worker early; importing it first must not trigger
-    a circular import through deerflow.subagents (regression for the #3779 fix).
+    a circular import through agent_workspace.subagents (regression for the #3779 fix).
 
     pytest preloads many modules, so the cycle only reproduces when worker is the
-    first deerflow import — hence a clean subprocess.
+    first agent_workspace import — hence a clean subprocess.
     """
     repo_backend = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     env = {**os.environ, "PYTHONPATH": repo_backend}

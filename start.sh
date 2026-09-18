@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# DeerFlow — Unified Super-Agent Platform launcher for Linux / macOS / WSL
+# Agent Workspace — Unified Super-Agent Platform launcher for Linux / macOS / WSL
 # Usage: ./start.sh
 
 set -e
@@ -8,7 +8,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$REPO_ROOT"
 
 echo -e "\033[1;36m========================================================\033[0m"
-echo -e "\033[1;36m       DeerFlow — Unified Super-Agent Platform         \033[0m"
+echo -e "\033[1;36m    Agent Workspace — Unified Super-Agent Platform     \033[0m"
 echo -e "\033[1;36m========================================================\033[0m"
 
 # 1. Check prerequisites
@@ -32,9 +32,7 @@ fi
 mkdir -p logs
 
 export AGENT_WORKSPACE_AUTH_DISABLED=1
-export DEER_FLOW_AUTH_DISABLED=1
 export AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL=http://127.0.0.1:8001
-export DEER_FLOW_INTERNAL_GATEWAY_BASE_URL=http://127.0.0.1:8001
 export PORT=3000
 export PYTHONPATH=.
 
@@ -55,7 +53,7 @@ node scripts/dev.mjs > "$REPO_ROOT/logs/frontend.log" 2>&1 &
 FRONTEND_PID=$!
 
 cleanup() {
-    echo -e "\nShutting down DeerFlow..."
+    echo -e "\nShutting down Agent Workspace..."
     kill $GATEWAY_PID $FRONTEND_PID 2>/dev/null || true
     exit 0
 }
@@ -72,7 +70,7 @@ for i in {1..45}; do
 done
 
 echo -e "\033[1;32m========================================================\033[0m"
-echo -e "\033[1;32m   DeerFlow is LIVE! Access at: http://localhost:3000   \033[0m"
+echo -e "\033[1;32m   Agent Workspace is LIVE! Access at: http://localhost:3000   \033[0m"
 echo -e "\033[1;32m========================================================\033[0m"
 echo "Press [Ctrl+C] to stop all services."
 

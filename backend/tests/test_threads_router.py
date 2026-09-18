@@ -1285,7 +1285,7 @@ def test_get_thread_preserves_metadata_status_without_checkpoint(stored_status: 
     assert response.json()["status"] == stored_status
 
 
-@pytest.mark.parametrize("key", [THREAD_PINNED_METADATA_KEY, "deerflow_archived"])
+@pytest.mark.parametrize("key", [THREAD_PINNED_METADATA_KEY, "agent_workspace_archived"])
 def test_patch_thread_pin_returns_iso_and_preserves_updated_at(key) -> None:
     """A pin/unpin PATCH must not bump ``updated_at``.
 
@@ -3024,7 +3024,7 @@ def test_branch_thread_real_mutation_graph_finishes_without_scheduling(monkeypat
     branch_snapshot = asyncio.run(accessor.aget(config))
     assert [message.id for message in branch_snapshot.values["messages"]] == ["h1", "a1"]
     assert branch_snapshot.next == ()
-    assert branch_snapshot.metadata["deerflow_branch"] is True
+    assert branch_snapshot.metadata["agent_workspace_branch"] is True
     assert branch_snapshot.metadata["branch_parent_checkpoint_id"] == "ckpt-1"
 
 
@@ -3522,7 +3522,7 @@ def test_branch_thread_rejects_sidecar_threads() -> None:
     with TestClient(app) as client:
         created = client.post(
             "/api/threads",
-            json={"thread_id": "sidecar-thread", "metadata": {"deerflow_sidecar": True}},
+            json={"thread_id": "sidecar-thread", "metadata": {"agent_workspace_sidecar": True}},
         )
         assert created.status_code == 200, created.text
 
@@ -3991,7 +3991,7 @@ class TestRestReadsCarryMessageSeq:
 
         assert response.status_code == 200, response.text
         messages = response.json()["values"]["messages"]
-        assert messages[0]["additional_kwargs"]["deerflow_seq"] == 1
+        assert messages[0]["additional_kwargs"]["agent_workspace_seq"] == 1
 
     def test_history_carries_the_seq_of_a_persisted_message(self) -> None:
         app = self._app_with_feed("thread-seq-history")
@@ -4001,7 +4001,7 @@ class TestRestReadsCarryMessageSeq:
 
         assert response.status_code == 200, response.text
         messages = response.json()[0]["values"]["messages"]
-        assert messages[0]["additional_kwargs"]["deerflow_seq"] == 1
+        assert messages[0]["additional_kwargs"]["agent_workspace_seq"] == 1
 
     def test_a_message_the_feed_does_not_know_is_left_unstamped(self) -> None:
         """Only persisted messages get a seq; the rest keep the weaving path."""
@@ -4016,14 +4016,14 @@ class TestRestReadsCarryMessageSeq:
 
         assert response.status_code == 200, response.text
         messages = response.json()["values"]["messages"]
-        assert "deerflow_seq" not in (messages[0].get("additional_kwargs") or {})
+        assert "agent_workspace_seq" not in (messages[0].get("additional_kwargs") or {})
 
 
 def test_archive_search_filter_and_restore_through_api():
     app, store, _ = _build_thread_app()
 
     async def seed():
-        for name, metadata in [("active", {}), ("archived", {"deerflow_archived": True})]:
+        for name, metadata in [("active", {}), ("archived", {"agent_workspace_archived": True})]:
             await store.aput(THREADS_NS, name, {"metadata": metadata, "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"})
 
     asyncio.run(seed())
@@ -4034,7 +4034,7 @@ def test_archive_search_filter_and_restore_through_api():
         archived = client.post("/api/threads/search", json={"archived": True})
         assert [r["thread_id"] for r in archived.json()] == ["archived"]
         assert len(client.post("/api/threads/search", json={}).json()) == 2
-        restored = client.patch("/api/threads/archived", json={"metadata": {"deerflow_archived": False}})
+        restored = client.patch("/api/threads/archived", json={"metadata": {"agent_workspace_archived": False}})
         assert restored.status_code == 200
         assert client.post("/api/threads/search", json={"archived": True}).json() == []
 
@@ -4043,7 +4043,7 @@ def test_archive_search_filter_and_restore_through_api():
 def test_archive_patch_rejects_non_boolean(value):
     app, _, _ = _build_thread_app()
     with TestClient(app) as client:
-        result = client.patch("/api/threads/invalid", json={"metadata": {"deerflow_archived": value}})
+        result = client.patch("/api/threads/invalid", json={"metadata": {"agent_workspace_archived": value}})
     assert result.status_code == 422
 
 
@@ -4061,7 +4061,7 @@ def test_archived_chat_keeps_original_link_and_artifact_download(tmp_path, monke
 
     asyncio.run(seed())
     with TestClient(app) as client:
-        response = client.patch("/api/threads/report", json={"metadata": {"deerflow_archived": True}})
+        response = client.patch("/api/threads/report", json={"metadata": {"agent_workspace_archived": True}})
         assert response.status_code == 200
         assert client.get("/api/threads/report").status_code == 200
         download = client.get("/api/threads/report/artifacts/mnt/user-data/outputs/report.txt?download=true")
@@ -4080,7 +4080,7 @@ def test_archive_patch_cannot_modify_another_users_thread():
 
     asyncio.run(seed())
     with TestClient(app) as client:
-        response = client.patch("/api/threads/private", json={"metadata": {"deerflow_archived": True}})
+        response = client.patch("/api/threads/private", json={"metadata": {"agent_workspace_archived": True}})
         assert response.status_code == 404
     assert asyncio.run(store.aget(THREADS_NS, "private")).value["metadata"] == {}
 
@@ -4160,7 +4160,7 @@ def test_create_thread_with_project_assigns(tmp_path):
 def test_create_thread_response_includes_persisted_project_membership(tmp_path):
     """The create response must echo the persisted record, not body.metadata.
 
-    The store stamps ``metadata.deerflow_project_id`` from the assigned
+    The store stamps ``metadata.agent_workspace_project_id`` from the assigned
     ``project_id`` column; a response built from ``body.metadata`` omits it
     and disagrees with the idempotent-retry response for the same thread.
     """
@@ -4218,7 +4218,7 @@ def test_create_thread_with_project_in_memory_mode_404():
         assert plain.status_code == 200, plain.text
 
 
-def test_create_and_patch_strip_deerflow_project_id_metadata_key(tmp_path):
+def test_create_and_patch_strip_agent_workspace_project_id_metadata_key(tmp_path):
     app = _build_project_threads_app(tmp_path)
     with TestClient(app) as client:
         created = client.post("/api/threads", json={"metadata": {THREAD_PROJECT_METADATA_KEY: "forged", "keep": "v"}})

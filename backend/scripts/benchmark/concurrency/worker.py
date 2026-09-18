@@ -53,7 +53,7 @@ from agent_workspace.config.database_config import DatabaseConfig  # noqa: E402
 SQLITE_BENCH_DIR = str(BACKEND_DIR / ".agent-workspace" / "bench_data")
 
 # The exact per-connection PRAGMAs the app sets on every SQLite connection
-# (deerflow/persistence/engine.py::_enable_sqlite_wal). journal_mode is
+# (agent_workspace/persistence/engine.py::_enable_sqlite_wal). journal_mode is
 # persistent so WAL would be picked up incidentally from the seeder's engine,
 # but synchronous and foreign_keys are per-connection: without this a worker
 # runs at SQLite's synchronous=FULL / foreign_keys=OFF defaults and its write

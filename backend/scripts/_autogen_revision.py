@@ -2,7 +2,7 @@
 
 Used by ``make migrate-rev MSG="..."``. Avoids two pitfalls:
 
-1. ``alembic.ini``'s default ``sqlalchemy.url`` (``sqlite:///./data/deerflow.db``)
+1. ``alembic.ini``'s default ``sqlalchemy.url`` (``sqlite:///./data/agent_workspace.db``)
    points at a path that doesn't exist in a clean checkout, so a bare
    ``alembic revision --autogenerate`` fails with ``unable to open database file``.
 2. A persistent DB might be at an unknown revision (or at no revision at all),
@@ -55,7 +55,7 @@ def _alembic_config(url: str) -> Config:
 
 
 def _build_temp_db_at_head() -> str:
-    tmpdir = tempfile.mkdtemp(prefix="deerflow-autogen-")
+    tmpdir = tempfile.mkdtemp(prefix="agent_workspace-autogen-")
     db_path = os.path.join(tmpdir, "autogen.db").replace(os.sep, "/")
     url = f"sqlite+aiosqlite:///{db_path}"
     command.upgrade(_alembic_config(url), "head")

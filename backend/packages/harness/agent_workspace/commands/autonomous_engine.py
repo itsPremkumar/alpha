@@ -1,4 +1,4 @@
-"""Autonomous Command Lifecycle Engine for DeerFlow.
+"""Autonomous Command Lifecycle Engine for Agent Workspace.
 
 Automatically identifies the exact required slash command based on:
 1. User intent & semantic task requirements

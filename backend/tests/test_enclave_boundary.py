@@ -25,7 +25,7 @@ def test_boundary_validates_network_target():
     policy = TaskBoundaryPolicy(allowed_domains=["github.com", "pypi.org"])
 
     # Allowed domain
-    assert policy.validate_network_target("https://github.com/bytedance/deer-flow") is True
+    assert policy.validate_network_target("https://github.com/bytedance/agent-workspace") is True
     assert policy.validate_network_target("pypi.org") is True
 
     # Cloud metadata endpoint -> strictly blocked with error

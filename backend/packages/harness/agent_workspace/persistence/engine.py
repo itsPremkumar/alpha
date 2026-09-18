@@ -193,7 +193,7 @@ async def init_engine(
     # in-process asyncio.Lock plus a 30s PRAGMA busy_timeout (also set on
     # alembic's own connections in env.py) -- multi-process SQLite bootstrap
     # is best-effort, gated by SQLite's natural file-level write lock.
-    # See deerflow.persistence.bootstrap for the full state machine.
+    # See agent_workspace.persistence.bootstrap for the full state machine.
     from agent_workspace.persistence.bootstrap import bootstrap_schema
 
     async def _ensure_postgres_schema() -> None:

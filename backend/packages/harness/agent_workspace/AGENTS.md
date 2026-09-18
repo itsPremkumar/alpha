@@ -1,14 +1,14 @@
 ### Request Trace Context (`packages/harness/agent_workspace/trace_context.py`)
 
-DeerFlow's request-level correlation id — the `X-Trace-Id` header and the `deerflow_trace_id` key. Not Langfuse's trace id, not `run_id`, not the short subagent `trace_id` log label.
+Agent Workspace's request-level correlation id — the `X-Trace-Id` header and the `agent_workspace_trace_id` key. Not Langfuse's trace id, not `run_id`, not the short subagent `trace_id` log label.
 
 **The ContextVar is the only source.** Every path that reaches a run binds one first; downstream treats the id as a plain `str`, no `if trace_id:` guards.
 
-Entry points and binders: Gateway HTTP — `TraceMiddleware`; scheduled occurrence — `ScheduledTaskService._attempt_queued_run` → `launch_scheduled_thread_run`; MCP task notification — `launch_mcp_task_notification_run`; IM inbound — `ChannelManager._worker_loop`; embedded / TUI / CLI turn — `DeerFlowClient.stream()`.
+Entry points and binders: Gateway HTTP — `TraceMiddleware`; scheduled occurrence — `ScheduledTaskService._attempt_queued_run` → `launch_scheduled_thread_run`; MCP task notification — `launch_mcp_task_notification_run`; IM inbound — `ChannelManager._worker_loop`; embedded / TUI / CLI turn — `AgentWorkspaceClient.stream()`.
 
 Only the first is HTTP; the rest run outside ASGI, so the binding cannot live in middleware alone. Each scopes **one unit of work**, never a poller loop — a leaked binding on a reused worker task would tag later occurrences with the first id. `ensure_trace_context` inherits, keeping layered scheduled bindings and a manual trigger inside a Gateway request on one trace.
 
-**Every other carrier is a derived output, never read back as an input.** `worker._bind_trace_id` stamps the runtime context and `config["metadata"]`; `services.start_run` stamps the run record; a caller-sent `deerflow_trace_id` (`body.metadata`, `body.config.context`) is replaced — honouring it would let the persisted run disagree with the header and the logs. `_SERVER_OWNED_RUNTIME_CONTEXT_KEYS` covers the embedded path and also rejects caller-supplied sandbox lease/scope identities, `redact_config_secrets` scrubs the kwargs echo (`runs.kwargs_json`), and `build_run_config` merges metadata onto a copy so the stamp cannot reach `body.config`. Callers pin an id with `X-Trace-Id`.
+**Every other carrier is a derived output, never read back as an input.** `worker._bind_trace_id` stamps the runtime context and `config["metadata"]`; `services.start_run` stamps the run record; a caller-sent `agent_workspace_trace_id` (`body.metadata`, `body.config.context`) is replaced — honouring it would let the persisted run disagree with the header and the logs. `_SERVER_OWNED_RUNTIME_CONTEXT_KEYS` covers the embedded path and also rejects caller-supplied sandbox lease/scope identities, `redact_config_secrets` scrubs the kwargs echo (`runs.kwargs_json`), and `build_run_config` merges metadata onto a copy so the stamp cannot reach `body.config`. Callers pin an id with `X-Trace-Id`.
 
 Accepted divergence: a crash-recovered scheduled launch reuses its run via the idempotency key without restamping — the record keeps the first attempt's id, the retry's logs a fresh one; restamping would rewrite an existing record. Not a bug. Thread metadata omits the key entirely — a thread spans many runs.
 
@@ -21,7 +21,7 @@ Accepted divergence: a crash-recovered scheduled launch reuses its run via the i
 
 `get_current_trace_id()` stays nullable only for the logging filter (pre-entry-point records render as `trace_id=-`); everything else uses `ensure_trace_id()`/`resolve_trace_id()`.
 
-`DeerFlowClient.stream()` binds per `next()` step and around `inner.close()`, never across a `yield`: a sync generator shares the caller's context, so a scope held across yields would leak the id and break on cross-context GC finalization.
+`AgentWorkspaceClient.stream()` binds per `next()` step and around `inner.close()`, never across a `yield`: a sync generator shares the caller's context, so a scope held across yields would leak the id and break on cross-context GC finalization.
 
 `logging.enhance.enabled` gates **log output only** (`trace_id` field presence and format) — not the id, the header, or the run metadata — so `TraceMiddleware` reads no `AppConfig`; `logging` stays restart-required (`STARTUP_ONLY_FIELDS["logging"]`). `X-Trace-Id` is in `CORS_EXPOSED_HEADERS` (not safelisted). Unhandled-exception 500s keep the header — `TraceMiddleware` sends its own plain 500 (CORS-opaque, see its docstring) before re-raising; mid-stream failures propagate unchanged.
 
@@ -48,21 +48,21 @@ drift.
 
 ### Embedded Client (`packages/harness/agent_workspace/client.py`)
 
-`DeerFlowClient` provides in-process access without HTTP or a FastAPI dependency. It shares Gateway's `deerflow` modules, config files, data directories, and response schemas for compatible consumers.
+`AgentWorkspaceClient` provides in-process access without HTTP or a FastAPI dependency. It shares Gateway's `agent_workspace` modules, config files, data directories, and response schemas for compatible consumers.
 
 **Agent Conversation**:
 - `chat(message, thread_id)` — synchronous, accumulates streaming deltas per message-id and returns the final AI text
 - `stream(message, thread_id)` — subscribes to LangGraph `stream_mode=["values", "messages", "custom"]` and yields `StreamEvent`:
   - `"values"` — state snapshot (title, messages, artifacts, summary_text); `summary_text` is the current summary or `None` when absent and is forwarded on every snapshot, including unchanged summaries and resets. AI text already delivered via `messages` mode is **not** re-synthesized here to avoid duplicate deliveries; serialized `ToolMessage` entries preserve a non-`None` native `artifact`
   - `"messages-tuple"` — per-chunk update: for AI text this is a **delta** (concat per `id` to rebuild the full message); tool calls and tool results are emitted once each, and tool results preserve a non-`None` native `artifact`
-  - `"custom"` — forwarded from `StreamWriter`; DeerFlow-built-in custom events are dual-emitted through `deerflow.utils.custom_events`, so `astream_events(version="v2")` consumers also receive one `on_custom_event` with `name=payload["type"]` and the unchanged payload as `data`
+  - `"custom"` — forwarded from `StreamWriter`; Agent Workspace-built-in custom events are dual-emitted through `agent_workspace.utils.custom_events`, so `astream_events(version="v2")` consumers also receive one `on_custom_event` with `name=payload["type"]` and the unchanged payload as `data`
   - `"end"` — stream finished (carries cumulative `usage` counted once per message id)
-- **Custom-event invariant** — production DeerFlow emitters must use `emit_custom_event` / `aemit_custom_event`, not call `StreamWriter` alone. Every built-in payload must carry a non-empty string `type`; typeless payloads remain writer-only and are intentionally absent from `astream_events`. The writer runs first and remains authoritative for Gateway, Web UI, and embedded-client compatibility; callback dispatch is best-effort and must not break that path. Async graph hooks must await the async helper rather than invoking synchronous dispatch on a running event loop.
+- **Custom-event invariant** — production Agent Workspace emitters must use `emit_custom_event` / `aemit_custom_event`, not call `StreamWriter` alone. Every built-in payload must carry a non-empty string `type`; typeless payloads remain writer-only and are intentionally absent from `astream_events`. The writer runs first and remains authoritative for Gateway, Web UI, and embedded-client compatibility; callback dispatch is best-effort and must not break that path. Async graph hooks must await the async helper rather than invoking synchronous dispatch on a running event loop.
 - Agent created lazily via `create_agent()` + `build_middlewares()`, same as `make_lead_agent`
 - Cache graphs by effective storage `user_id` in every auth mode because prompts and middleware bind user SOUL, skills, and storage. `stream()` must materialize it before worker or isolated-loop boundaries.
 - Supports `checkpointer` parameter for state persistence across turns
 - `reset_agent()` forces agent recreation (e.g. after memory or skill changes)
-- See [docs/STREAMING.md](../../../docs/STREAMING.md) for the full design: why Gateway and DeerFlowClient are parallel paths, LangGraph's `stream_mode` semantics, the per-id dedup invariants, and regression testing strategy
+- See [docs/STREAMING.md](../../../docs/STREAMING.md) for the full design: why Gateway and AgentWorkspaceClient are parallel paths, LangGraph's `stream_mode` semantics, the per-id dedup invariants, and regression testing strategy
 
 **Gateway Equivalent Methods** (replaces Gateway API):
 

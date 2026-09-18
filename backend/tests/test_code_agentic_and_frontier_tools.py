@@ -24,7 +24,7 @@ from agent_workspace.tools.builtins.mission_hierarchy_tool import (
 
 class TestCodeAgenticAndFrontierTools(unittest.TestCase):
     def setUp(self):
-        self.test_dir = tempfile.mkdtemp(prefix="deerflow_test_")
+        self.test_dir = tempfile.mkdtemp(prefix="agent_workspace_test_")
 
     def tearDown(self):
         shutil.rmtree(self.test_dir, ignore_errors=True)

@@ -54,7 +54,7 @@ def test_internal_auth_headers_can_carry_owner_user_id(monkeypatch):
 
 
 def test_get_internal_user_normalises_unsafe_owner_user_id():
-    """P2-3: X-DeerFlow-Owner-User-Id is at the trust boundary, so the
+    """P2-3: X-Agent-Workspace-Owner-User-Id is at the trust boundary, so the
     synthetic internal user must use a path-safe id. ``make_safe_user_id``
     is lossy but deterministic; two distinct raw inputs never collide.
     """

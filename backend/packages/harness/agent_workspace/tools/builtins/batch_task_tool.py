@@ -33,11 +33,11 @@ class BatchTaskItem(BaseModel):
 
 _NO_EXPLICIT_BATCH_SUBMITTER = object()
 _explicit_batch_submitter: ContextVar[SubagentBatchSubmitter | None | object] = ContextVar(
-    "deerflow_explicit_subagent_batch_submitter",
+    "agent_workspace_explicit_subagent_batch_submitter",
     default=_NO_EXPLICIT_BATCH_SUBMITTER,
 )
 _explicit_batch_app_config: ContextVar[Any | None] = ContextVar(
-    "deerflow_explicit_subagent_batch_app_config",
+    "agent_workspace_explicit_subagent_batch_app_config",
     default=None,
 )
 
@@ -142,7 +142,7 @@ async def batch_task(
     max_live_items: int | None = None,
     max_running_items: int | None = None,
 ) -> Command:
-    """Submit many independent items to DeerFlow's explicit durable batch mode.
+    """Submit many independent items to Agent Workspace's explicit durable batch mode.
 
     Use this only when every item is independent, idempotent or read-only, and
     can be completed without another item's output. This tool returns a batch

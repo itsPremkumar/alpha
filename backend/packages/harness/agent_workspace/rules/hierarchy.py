@@ -82,7 +82,7 @@ def init_deep_scaffold(project_root: Path, subdirs: list[str] | None = None) -> 
     if not root_agents.exists():
         root_agents.write_text(
             "# Project Guidelines & Global Architecture\n\n"
-            "- Architecture: DeerFlow Autonomous Mega-Agent Harness\n"
+            "- Architecture: Agent Workspace Autonomous Mega-Agent Harness\n"
             "- Code Quality: 100% test passing required before commits\n",
             encoding="utf-8",
         )

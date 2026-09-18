@@ -12,7 +12,7 @@ VALIDATOR_PATH = SCRIPTS_DIR / "quick_validate.py"
 
 
 def _load_validator():
-    spec = importlib.util.spec_from_file_location("deerflow_skill_creator_quick_validate", VALIDATOR_PATH)
+    spec = importlib.util.spec_from_file_location("agent_workspace_skill_creator_quick_validate", VALIDATOR_PATH)
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -22,7 +22,7 @@ def _load_validator():
 
 def _load_script(name: str):
     path = SCRIPTS_DIR / f"{name}.py"
-    spec = importlib.util.spec_from_file_location(f"deerflow_skill_creator_{name}", path)
+    spec = importlib.util.spec_from_file_location(f"agent_workspace_skill_creator_{name}", path)
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)

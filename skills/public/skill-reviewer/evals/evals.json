@@ -1,5 +1,5 @@
 {
-  "schema_version": "deerflow.skill-reviewer.eval.v1",
+  "schema_version": "agent_workspace.skill-reviewer.eval.v1",
   "skill_name": "skill-reviewer",
   "cases": [
     {

@@ -146,7 +146,7 @@ def test_build_servers_config_drops_only_the_server_with_an_illegal_header(caplo
 def test_mcp_server_config_accepts_transport_alias(transport: str):
     """The MCP-spec ``transport`` field should be accepted as an alias for ``type``.
 
-    Regression test for https://github.com/bytedance/deer-flow/issues/3238 — a
+    Regression test for https://github.com/bytedance/agent-workspace/issues/3238 — a
     remote MCP server configured with only ``transport: sse`` was previously
     misidentified as ``stdio`` (the default for ``type``).
     """

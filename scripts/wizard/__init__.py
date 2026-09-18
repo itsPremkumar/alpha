@@ -1,1 +1,1 @@
-# DeerFlow Setup Wizard package
+# Agent Workspace Setup Wizard package

@@ -85,7 +85,7 @@ class GroupRunService:
 
                 self.storage_path = runtime_home() / "groups" / "runs.json"
             except Exception:
-                self.storage_path = Path.cwd() / ".deerflow" / "groups" / "runs.json"
+                self.storage_path = Path.cwd() / ".agent_workspace" / "groups" / "runs.json"
         self._runs: dict[str, GroupRun] = {}
         self._tasks: dict[str, asyncio.Task] = {}
         self._cancel_events: dict[str, threading.Event] = {}

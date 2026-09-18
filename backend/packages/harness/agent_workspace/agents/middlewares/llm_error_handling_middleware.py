@@ -679,7 +679,7 @@ class LLMErrorHandlingMiddleware(AgentMiddleware[AgentState]):
         return AIMessage(
             content=content,
             additional_kwargs={
-                "deerflow_error_fallback": True,
+                "agent_workspace_error_fallback": True,
                 "error_type": error_type,
                 "error_reason": reason,
                 "error_detail": detail,

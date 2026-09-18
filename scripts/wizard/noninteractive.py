@@ -1,6 +1,6 @@
-"""Non-interactive (env-driven) setup resolution for the DeerFlow wizard.
+"""Non-interactive (env-driven) setup resolution for the Agent Workspace wizard.
 
-Lets operators, Docker/Electron automation, and CI configure DeerFlow without
+Lets operators, Docker/Electron automation, and CI configure Agent Workspace without
 a TTY. Every value comes from the environment; nothing prompts:
 
     LLM provider upright:

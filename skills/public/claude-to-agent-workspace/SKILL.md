@@ -1,16 +1,16 @@
 ---
-name: claude-to-deerflow
-description: "Interact with DeerFlow AI agent platform via its HTTP API. Use this skill when the user wants to send messages or questions to DeerFlow for research/analysis, start a DeerFlow conversation thread, check DeerFlow status or health, list available models/skills/agents in DeerFlow, manage DeerFlow memory, upload files to DeerFlow threads, or delegate complex research tasks to DeerFlow. Also use when the user mentions deerflow, deer flow, or wants to run a deep research task that DeerFlow can handle."
+name: claude-to-agent-workspace
+description: "Interact with Agent Workspace AI agent platform via its HTTP API. Use this skill when the user wants to send messages or questions to Agent Workspace for research/analysis, start a Agent Workspace conversation thread, check Agent Workspace status or health, list available models/skills/agents in Agent Workspace, manage Agent Workspace memory, upload files to Agent Workspace threads, or delegate complex research tasks to Agent Workspace. Also use when the user mentions agent workspace or wants to run a deep research task that Agent Workspace can handle."
 ---
 
-# DeerFlow Skill
+# Agent Workspace Skill
 
-Communicate with a running DeerFlow instance via its HTTP API. DeerFlow is an AI agent platform
+Communicate with a running Agent Workspace instance via its HTTP API. Agent Workspace is an AI agent platform
 built on LangGraph that orchestrates sub-agents for research, code execution, web browsing, and more.
 
 ## Architecture
 
-DeerFlow exposes two API surfaces behind an Nginx reverse proxy:
+Agent Workspace exposes two API surfaces behind an Nginx reverse proxy:
 
 | Service        | Direct Port | Via Proxy                        | Purpose                          |
 |----------------|-------------|----------------------------------|----------------------------------|
@@ -40,7 +40,7 @@ AGENT_WORKSPACE_LANGGRAPH_URL="${AGENT_WORKSPACE_LANGGRAPH_URL:-$AGENT_WORKSPACE
 
 ### 1. Health Check
 
-Verify DeerFlow is running:
+Verify Agent Workspace is running:
 
 ```bash
 curl -s "$AGENT_WORKSPACE_GATEWAY_URL/health"
@@ -186,7 +186,7 @@ curl -s -X POST "$AGENT_WORKSPACE_LANGGRAPH_URL/threads/search" \
 For sending messages and collecting the full response, use the helper script:
 
 ```bash
-bash /path/to/skills/claude-to-deerflow/scripts/chat.sh "Your question here"
+bash /path/to/skills/claude-to-agent-workspace/scripts/chat.sh "Your question here"
 ```
 
 See `scripts/chat.sh` for the implementation. The script:
@@ -205,7 +205,7 @@ The stream returns SSE events. To extract the final AI response from a `values` 
 
 ## Error Handling
 
-- If health check fails, DeerFlow is not running. Inform the user they need to start it.
+- If health check fails, Agent Workspace is not running. Inform the user they need to start it.
 - If the stream returns an error event, extract and display the error message.
 - Common issues: port not open, services still starting up, config errors.
 

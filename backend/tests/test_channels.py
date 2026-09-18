@@ -717,7 +717,7 @@ class TestChannelManager:
         csrf_token = headers["X-CSRF-Token"]
         assert csrf_token
         assert headers["Cookie"] == f"csrf_token={csrf_token}"
-        assert headers["X-DeerFlow-Internal-Token"]
+        assert headers["X-Agent-Workspace-Internal-Token"]
 
     def test_concurrent_inbound_for_same_chat_reuses_single_thread(self):
         # Each inbound message is dispatched on its own task, so two messages
@@ -807,7 +807,7 @@ class TestChannelManager:
             assert reply == "Available models:\n• default"
             assert calls[0]["url"] == "http://gateway:8001/api/models"
             assert calls[0]["timeout"] == 10
-            assert calls[0]["headers"]["X-DeerFlow-Internal-Token"]
+            assert calls[0]["headers"]["X-Agent-Workspace-Internal-Token"]
 
         _run(go())
 
@@ -850,7 +850,7 @@ class TestChannelManager:
                 channel_name="slack",
                 chat_id="C123",
                 user_id="U-platform",
-                owner_user_id="deerflow-user-1",
+                owner_user_id="agent-workspace-user-1",
                 connection_id="connection-1",
                 text="/memory",
                 msg_type=InboundMessageType.COMMAND,
@@ -859,7 +859,7 @@ class TestChannelManager:
             reply = await manager._fetch_gateway("/api/memory", "memory", msg=msg)
 
             assert reply == "Memory contains 1 fact(s)."
-            assert calls[0]["headers"][INTERNAL_OWNER_USER_ID_HEADER_NAME] == "deerflow-user-1"
+            assert calls[0]["headers"][INTERNAL_OWNER_USER_ID_HEADER_NAME] == "agent-workspace-user-1"
 
         _run(go())
 
@@ -3184,13 +3184,13 @@ class TestChannelManager:
                     channel_name="test",
                     chat_id="chat1",
                     user_id="platform-user",
-                    owner_user_id="deerflow-user-1",
+                    owner_user_id="agent-workspace-user-1",
                     text="/agent list",
                     msg_type=InboundMessageType.COMMAND,
                 )
             )
 
-            assert seen_user_ids == ["deerflow-user-1"]
+            assert seen_user_ids == ["agent-workspace-user-1"]
             assert outbound_received[0].text == ("Available agents:\n• lead_agent — Default agent\n• researcher — Researches sources\n• writer")
 
         _run(go())
@@ -3220,14 +3220,14 @@ class TestChannelManager:
                 channel_name="test",
                 chat_id="chat1",
                 user_id="platform-user",
-                owner_user_id="deerflow-user-1",
+                owner_user_id="agent-workspace-user-1",
                 text="/agent use Researcher",
                 msg_type=InboundMessageType.COMMAND,
             )
 
             reply = await manager._handle_agent_command(msg, "use Researcher")
 
-            assert loaded == [("researcher", "deerflow-user-1")]
+            assert loaded == [("researcher", "agent-workspace-user-1")]
             assert store.get_thread_id("test", "chat1") == "research-thread"
             create_kwargs = mock_client.threads.create.call_args.kwargs
             assert create_kwargs["metadata"]["channel_agent_name"] == "researcher"
@@ -3271,7 +3271,7 @@ class TestChannelManager:
                 channel_name="test",
                 chat_id="chat1",
                 user_id="platform-user",
-                owner_user_id="deerflow-user-1",
+                owner_user_id="agent-workspace-user-1",
                 text="/agent use researcher",
                 msg_type=InboundMessageType.COMMAND,
             )
@@ -3317,7 +3317,7 @@ class TestChannelManager:
                 channel_name="test",
                 chat_id="chat1",
                 user_id="platform-user",
-                owner_user_id="deerflow-user-1",
+                owner_user_id="agent-workspace-user-1",
                 text="Continue",
             )
 
@@ -3402,7 +3402,7 @@ class TestChannelManager:
         _run(go())
 
     def test_each_topic_creates_new_thread(self):
-        """Messages with distinct topic_ids should each create a new DeerFlow thread."""
+        """Messages with distinct topic_ids should each create a new Agent Workspace thread."""
         from app.channels.manager import ChannelManager
 
         async def go():
@@ -3454,7 +3454,7 @@ class TestChannelManager:
         _run(go())
 
     def test_same_topic_reuses_thread(self, monkeypatch):
-        """Messages with the same topic_id should reuse the same DeerFlow thread."""
+        """Messages with the same topic_id should reuse the same Agent Workspace thread."""
         from app.channels.manager import ChannelManager
 
         monkeypatch.delenv("AGENT_WORKSPACE_AUTH_DISABLED", raising=False)
@@ -3870,7 +3870,7 @@ class TestResolveRunParamsUserId:
     @pytest.mark.parametrize(
         "kwargs",
         [
-            {"user_id": "U-platform", "owner_user_id": "deerflow-user-1"},  # bound
+            {"user_id": "U-platform", "owner_user_id": "agent-workspace-user-1"},  # bound
             {"user_id": "U-platform"},  # unbound auth-enabled
             {"user_id": "feishu|ou_AbC/123"},  # unbound needing sanitization
         ],
@@ -3899,14 +3899,14 @@ class TestResolveRunParamsUserId:
             channel_name="slack",
             chat_id="C123",
             user_id="U-platform",
-            owner_user_id="deerflow-user-1",
+            owner_user_id="agent-workspace-user-1",
             connection_id="connection-1",
             text="hi",
         )
 
         _, _, run_context = manager._resolve_run_params(msg, "thread-1")
 
-        assert run_context["user_id"] == "deerflow-user-1"
+        assert run_context["user_id"] == "agent-workspace-user-1"
         assert run_context["channel_user_id"] == "U-platform"
 
     def test_github_channel_gets_raised_recursion_limit(self):
@@ -5114,7 +5114,7 @@ class TestChannelManagerBoundIdentityPolicy:
                     channel_name="slack",
                     chat_id="C123",
                     user_id="U-platform",
-                    owner_user_id="deerflow-user-1",
+                    owner_user_id="agent-workspace-user-1",
                     connection_id="connection-1",
                     workspace_id="T123",
                     text="hi",
@@ -5180,7 +5180,7 @@ class TestChannelManagerBoundIdentityPolicy:
                 [
                     {
                         "id": "connection-1",
-                        "owner_user_id": "deerflow-user-1",
+                        "owner_user_id": "agent-workspace-user-1",
                         "provider": "slack",
                         "external_account_id": "U-platform",
                         "workspace_id": "T123",
@@ -5196,7 +5196,7 @@ class TestChannelManagerBoundIdentityPolicy:
                     channel_name="slack",
                     chat_id="C123",
                     user_id="U-platform",
-                    owner_user_id="deerflow-user-1",
+                    owner_user_id="agent-workspace-user-1",
                     connection_id="connection-1",
                     workspace_id="T123",
                     text="hi",
@@ -5206,7 +5206,7 @@ class TestChannelManagerBoundIdentityPolicy:
             mock_client.threads.create.assert_called_once()
             mock_client.runs.wait.assert_called_once()
             run_context = mock_client.runs.wait.call_args.kwargs["context"]
-            assert run_context["user_id"] == "deerflow-user-1"
+            assert run_context["user_id"] == "agent-workspace-user-1"
             assert run_context["channel_user_id"] == "U-platform"
 
         _run(go())
@@ -5223,7 +5223,7 @@ class TestChannelManagerBoundIdentityPolicy:
                 [
                     {
                         "id": "connection-1",
-                        "owner_user_id": "deerflow-user-1",
+                        "owner_user_id": "agent-workspace-user-1",
                         "provider": "slack",
                         "external_account_id": "U-platform",
                         "workspace_id": "T123",
@@ -5240,7 +5240,7 @@ class TestChannelManagerBoundIdentityPolicy:
                         channel_name="slack",
                         chat_id="C123",
                         user_id="U-platform",
-                        owner_user_id="deerflow-user-1",
+                        owner_user_id="agent-workspace-user-1",
                         connection_id="connection-1",
                         workspace_id="T123",
                         text="hi",
@@ -5417,7 +5417,7 @@ class TestChannelManagerBoundIdentityPolicy:
                 [
                     {
                         "id": "connection-1",
-                        "owner_user_id": "deerflow-user-1",
+                        "owner_user_id": "agent-workspace-user-1",
                         "provider": "slack",
                         "external_account_id": "U-platform",
                         "workspace_id": "T123",
@@ -5433,7 +5433,7 @@ class TestChannelManagerBoundIdentityPolicy:
                     channel_name="slack",
                     chat_id="C123",
                     user_id="U-platform",
-                    owner_user_id="deerflow-user-1",
+                    owner_user_id="agent-workspace-user-1",
                     connection_id="connection-1",
                     workspace_id="T123",
                     text="/new",
@@ -5450,7 +5450,7 @@ class TestChannelManagerBoundIdentityPolicy:
         is exempt from the per-sender bound-identity gate, even when
         ``require_bound_identity=True`` is on for interactive IM channels in the
         same deployment. This is what lets GitHub webhook deliveries reach the
-        agent: they are HMAC-authenticated at the route, and the sender→DeerFlow
+        agent: they are HMAC-authenticated at the route, and the sender→Agent Workspace
         binding lives in the agent's config.yaml ownership, not in the
         channel-connections table.
         """
@@ -7986,7 +7986,7 @@ class TestChannelService:
             channel_connections=ChannelConnectionsConfig.model_validate(
                 {
                     "enabled": True,
-                    "telegram": {"enabled": True, "bot_username": "deerflow_bot"},
+                    "telegram": {"enabled": True, "bot_username": "agent_workspace_bot"},
                     "slack": {"enabled": True},
                     "discord": {"enabled": True},
                 }
@@ -8028,7 +8028,7 @@ class TestChannelService:
             channel_connections=ChannelConnectionsConfig.model_validate(
                 {
                     "enabled": True,
-                    "telegram": {"enabled": True, "bot_username": "deerflow_bot"},
+                    "telegram": {"enabled": True, "bot_username": "agent_workspace_bot"},
                     "slack": {"enabled": True},
                     "discord": {"enabled": True},
                 }
@@ -8345,7 +8345,7 @@ class TestChannelService:
         def mock_get_app_config():
             return SimpleNamespace(
                 model_extra={"channels": {}},
-                channel_connections=ChannelConnectionsConfig.model_validate({"enabled": True, "telegram": {"enabled": True, "bot_username": "deerflow_bot"}}),
+                channel_connections=ChannelConnectionsConfig.model_validate({"enabled": True, "telegram": {"enabled": True, "bot_username": "agent_workspace_bot"}}),
             )
 
         monkeypatch.setattr("agent_workspace.config.app_config.get_app_config", mock_get_app_config)
@@ -8671,7 +8671,7 @@ class TestSlackAllowedUsers:
         event = {
             "type": "app_mention",
             "user": "U123456",
-            "text": "<@UBOT|deerflow> /help",
+            "text": "<@UBOT|agent_workspace> /help",
             "channel": "C123",
             "ts": "1710000000.000100",
         }
@@ -9671,9 +9671,9 @@ class TestTelegramInboundMessages:
             update = _make_telegram_update(
                 "group",
                 message_id=13,
-                text="/data-analysis@DeerFlowBot analyze uploads/foo.csv",
+                text="/data-analysis@Agent WorkspaceBot analyze uploads/foo.csv",
             )
-            context = SimpleNamespace(bot=SimpleNamespace(username="DeerFlowBot"))
+            context = SimpleNamespace(bot=SimpleNamespace(username="Agent WorkspaceBot"))
             await ch._on_text(update, context)
 
             msg = await asyncio.wait_for(bus.get_inbound(), timeout=2)
@@ -9806,8 +9806,8 @@ class TestTelegramInboundMessages:
             ch = TelegramChannel(bus=bus, config={"bot_token": "test-token"})
             ch._main_loop = asyncio.get_running_loop()
 
-            update = _make_telegram_update("group", message_id=33, text="/status@DeerFlowBot")
-            context = SimpleNamespace(bot=SimpleNamespace(username="DeerFlowBot"))
+            update = _make_telegram_update("group", message_id=33, text="/status@Agent WorkspaceBot")
+            context = SimpleNamespace(bot=SimpleNamespace(username="Agent WorkspaceBot"))
             await ch._cmd_generic(update, context)
 
             msg = await asyncio.wait_for(bus.get_inbound(), timeout=2)
@@ -9945,8 +9945,8 @@ class TestSlackTextEscaping:
         # syntax for a real markdown link must survive untouched -- if
         # escaping ran after conversion instead, this would corrupt into
         # `&lt;url|label&gt;` and Slack would render a dead link.
-        sent = self._sent_text("See [DeerFlow docs](https://example.com/docs) for more.")
-        assert "<https://example.com/docs|DeerFlow docs>" in sent
+        sent = self._sent_text("See [Agent Workspace docs](https://example.com/docs) for more.")
+        assert "<https://example.com/docs|Agent Workspace docs>" in sent
         assert "&lt;" not in sent
         assert "&gt;" not in sent
 
@@ -10770,7 +10770,7 @@ def test_merge_stream_text_normal_append():
 # ---------------------------------------------------------------------------
 # LIVE-TEST FINDING 1 (critical, data disclosure): _accumulate_stream_text
 # decided what streamed payloads become displayable assistant text by REJECTING
-# only payloads whose ``type`` contained "tool".  DeerFlow injects hidden
+# only payloads whose ``type`` contained "tool".  Agent Workspace injects hidden
 # context -- memory facts (DynamicContextMiddleware) and durable context
 # (DurableContextMiddleware) -- as hidden HumanMessages whose ``type`` is
 # "human", and DynamicContextMiddleware also rewrites the user's own turn into
@@ -10793,7 +10793,7 @@ def _get_accumulate_stream_text():
     return _accumulate_stream_text
 
 
-_MEMORY_LEAK_TEXT = "<memory>\nFacts:\n- [context | 0.70] User interacts with the assistant through the DeerFlow chat channel.\n</memory>"
+_MEMORY_LEAK_TEXT = "<memory>\nFacts:\n- [context | 0.70] User interacts with the assistant through the Agent Workspace chat channel.\n</memory>"
 
 
 def test_accumulate_stream_text_rejects_hidden_memory_human_message():

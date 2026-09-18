@@ -14,20 +14,20 @@ from unittest.mock import MagicMock
 
 import pytest
 
-# Make 'app' and 'deerflow' importable from any working directory
+# Make 'app' and 'agent_workspace' importable from any working directory
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 # Break the circular import chain that exists in production code:
-#   deerflow.subagents.__init__
+#   agent_workspace.subagents.__init__
 #     -> .executor (SubagentExecutor, SubagentResult)
-#       -> deerflow.agents.thread_state
-#         -> deerflow.agents.__init__
+#       -> agent_workspace.agents.thread_state
+#         -> agent_workspace.agents.__init__
 #           -> lead_agent.agent
 #             -> subagent_limit_middleware
-#               -> deerflow.subagents.executor  <-- circular!
+#               -> agent_workspace.subagents.executor  <-- circular!
 #
-# By injecting a mock for deerflow.subagents.executor *before* any test module
+# By injecting a mock for agent_workspace.subagents.executor *before* any test module
 # triggers the import, __init__.py's "from .executor import ..." succeeds
 # immediately without running the real executor module.
 _executor_mock = MagicMock()
@@ -71,7 +71,7 @@ def provisioner_module():
 # ---------------------------------------------------------------------------
 #
 # Repository methods read ``user_id`` from a contextvar by default
-# (see ``deerflow.runtime.user_context``). Without this fixture, every
+# (see ``agent_workspace.runtime.user_context``). Without this fixture, every
 # pre-existing persistence test would raise RuntimeError because the
 # contextvar is unset. The fixture sets a default test user on every
 # test; tests that explicitly want to verify behaviour *without* a user

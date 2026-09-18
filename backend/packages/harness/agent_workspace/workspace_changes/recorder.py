@@ -45,7 +45,7 @@ def _prepare_capture(thread_id: str, *, user_id: str | None, include_text: bool)
     # creates the text cache directory — both blocking IO that must stay off the
     # event loop.
     roots = build_thread_workspace_roots(thread_id, user_id=user_id)
-    text_cache_dir = Path(tempfile.mkdtemp(prefix="deerflow-workspace-changes-")) if include_text else None
+    text_cache_dir = Path(tempfile.mkdtemp(prefix="agent_workspace-workspace-changes-")) if include_text else None
     return roots, text_cache_dir
 
 

@@ -42,7 +42,7 @@ from agent_workspace.agents.middlewares.memory_middleware import MemoryMiddlewar
 from agent_workspace.agents.middlewares.model_length_finish_reason_middleware import ModelLengthFinishReasonMiddleware
 from agent_workspace.agents.middlewares.safety_finish_reason_middleware import SafetyFinishReasonMiddleware
 from agent_workspace.agents.middlewares.subagent_limit_middleware import SubagentLimitMiddleware
-from agent_workspace.agents.middlewares.summarization_middleware import DeerFlowSummarizationMiddleware, create_summarization_middleware
+from agent_workspace.agents.middlewares.summarization_middleware import AgentWorkspaceSummarizationMiddleware, create_summarization_middleware
 from agent_workspace.agents.middlewares.terminal_response_middleware import TerminalResponseMiddleware
 from agent_workspace.agents.middlewares.title_middleware import TitleMiddleware
 from agent_workspace.agents.middlewares.todo_middleware import TodoMiddleware
@@ -317,7 +317,7 @@ def _create_summarization_middleware(
     app_config: AppConfig | None = None,
     run_model_name: str | None = None,
     extensions=None,
-) -> DeerFlowSummarizationMiddleware | None:
+) -> AgentWorkspaceSummarizationMiddleware | None:
     """Create and configure the summarization middleware from config.
 
     ``run_model_name`` is the resolved run model; it is the source of truth for
@@ -343,7 +343,7 @@ def _create_todo_list_middleware(is_plan_mode: bool) -> TodoMiddleware | None:
     if not is_plan_mode:
         return None
 
-    # Custom prompts matching DeerFlow's style
+    # Custom prompts matching Agent Workspace's style
     system_prompt = """
 <todo_list_system>
 You have access to the `write_todos` tool to help you manage and track complex multi-step objectives.
@@ -475,7 +475,7 @@ def build_middlewares(
     """Build the lead-agent middleware chain based on runtime configuration.
 
     Public entry point for the lead agent's full middleware composition. Used by
-    ``make_lead_agent`` and by the embedded ``DeerFlowClient`` (a lead-agent variant
+    ``make_lead_agent`` and by the embedded ``AgentWorkspaceClient`` (a lead-agent variant
     that needs the identical chain). Keep this name stable: it is imported across a
     module boundary, so renames/signature changes ripple into ``client.py``.
 
@@ -1114,7 +1114,7 @@ def _assemble_lead_agent(config: RunnableConfig, *, app_config: AppConfig) -> Le
         return _complete_assembly(
             config=config,
             graph=graph,
-            namespace="deerflow",
+            namespace="agent_workspace",
             agent_name="bootstrap",
             requested_model=requested_model_name or agent_model_name,
             effective_model=model_name,
@@ -1239,7 +1239,7 @@ def _assemble_lead_agent(config: RunnableConfig, *, app_config: AppConfig) -> Le
     return _complete_assembly(
         config=config,
         graph=graph,
-        namespace="deerflow",
+        namespace="agent_workspace",
         agent_name=agent_name or "lead-agent",
         requested_model=requested_model_name or agent_model_name,
         effective_model=model_name,

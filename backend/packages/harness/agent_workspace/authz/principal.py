@@ -40,7 +40,7 @@ def build_principal_from_context(
 
     Args:
         context: The runtime context (``config["context"]`` or a dict assembled
-            from a :class:`~deerflow.guardrails.provider.GuardrailRequest`).
+            from a :class:`~agent_workspace.guardrails.provider.GuardrailRequest`).
         default_role: Role used when ``user_role`` is ``None`` or empty string.
             Unknown but non-empty roles are **not** replaced — only missing ones.
 

@@ -675,7 +675,7 @@ class _SubagentEventBuffer:
         """Buffer one custom stream chunk; flush on a terminal event or threshold."""
         if self._event_store is None:
             return
-        # Lazy import: importing deerflow.subagents at module load triggers its
+        # Lazy import: importing agent_workspace.subagents at module load triggers its
         # package __init__ (executor → agents → tools → task_tool), which imports
         # back from agent_workspace.subagents and deadlocks at gateway startup. Deferring
         # it to call time (after all modules are loaded) breaks that cycle.
@@ -808,7 +808,7 @@ async def run_agent(
     llm_error_fallback_message: str | None = None
     checkpoint_rollback_completed = False
     # Message ids checkpointed *before* this run started. The stream loop uses
-    # this set to mask out ``deerflow_error_fallback`` markers that belong to
+    # this set to mask out ``agent_workspace_error_fallback`` markers that belong to
     # earlier runs on the same thread — without it, one stale fallback in
     # history would mark every subsequent run on this thread as ``error``.
     pre_existing_message_ids: set[str] = set()
@@ -1059,7 +1059,7 @@ async def run_agent(
 
         # Inject Langfuse trace-attribute metadata so the langchain CallbackHandler
         # can lift session_id / user_id / trace_name / tags onto the root trace.
-        # Shared helper with ``DeerFlowClient.stream`` so both entry points stay
+        # Shared helper with ``AgentWorkspaceClient.stream`` so both entry points stay
         # in sync; caller-provided metadata wins via setdefault inside the helper.
         inject_langfuse_metadata(
             config,
@@ -2691,12 +2691,12 @@ def _try_extract_from_message(obj: Any, pre_existing_ids: set[str] | None = None
             return None
 
     additional_kwargs = getattr(obj, "additional_kwargs", None)
-    if isinstance(additional_kwargs, dict) and additional_kwargs.get("deerflow_error_fallback"):
+    if isinstance(additional_kwargs, dict) and additional_kwargs.get("agent_workspace_error_fallback"):
         return _error_fallback_message_from_metadata(additional_kwargs, getattr(obj, "content", None))
 
     if isinstance(obj, dict):
         nested_kwargs = obj.get("additional_kwargs")
-        if isinstance(nested_kwargs, dict) and nested_kwargs.get("deerflow_error_fallback"):
+        if isinstance(nested_kwargs, dict) and nested_kwargs.get("agent_workspace_error_fallback"):
             return _error_fallback_message_from_metadata(nested_kwargs, obj.get("content"))
     return None
 

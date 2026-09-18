@@ -55,7 +55,7 @@ MCP_TASK_POLL_AFTER_MAX_SECONDS = 86_400
 
 # Persisted run-event envelope limits. Runtime definitions and the ORM both
 # import these from this dependency-free module so lower layers never need to
-# initialize deerflow.runtime just to validate storage constraints.
+# initialize agent_workspace.runtime just to validate storage constraints.
 RUN_EVENT_TYPE_MAX_LENGTH = 32
 RUN_EVENT_CATEGORY_MAX_LENGTH = 16
 

@@ -11,7 +11,7 @@ class HooksConfig(BaseModel):
     Points at a ``hooks.json`` file in the Claude ``hooks`` shape so teams
     can reuse their existing hook ecosystems (``PreToolUse`` /
     ``PostToolUse`` / ``SessionStart`` / ``SessionEnd`` / ``Stop`` with
-    ``{"type": "command", "command": ...}`` entries) inside DeerFlow runs.
+    ``{"type": "command", "command": ...}`` entries) inside Agent Workspace runs.
     Only ``command`` hooks are executed; anything else is skipped with a
     debug log. The file is operator-trusted configuration: hook commands run
     with Gateway privileges, so it belongs next to ``config.yaml``, never in

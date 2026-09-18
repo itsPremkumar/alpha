@@ -16,7 +16,7 @@ from agent_workspace.subagents.config import SubagentConfig
 ralph_module = importlib.import_module("agent_workspace.tools.builtins.self_improvement_tool")
 
 
-# NOTE: backend/tests/conftest.py pre-mocks ``deerflow.subagents.executor``
+# NOTE: backend/tests/conftest.py pre-mocks ``agent_workspace.subagents.executor``
 # with a MagicMock class (breaks the subagents->thread_state import cycle),
 # so the ``SubagentStatus`` name is unusable in tests. Mirror what
 # test_task_tool_core_logic.py does: a local fake with the same members, and

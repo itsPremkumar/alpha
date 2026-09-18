@@ -1,4 +1,4 @@
-"""Tests for deerflow.skills.installer — shared skill installation logic."""
+"""Tests for agent_workspace.skills.installer — shared skill installation logic."""
 
 import asyncio
 import shutil

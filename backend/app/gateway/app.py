@@ -69,13 +69,13 @@ from app.gateway.routers import (
 from app.gateway.security_headers_middleware import SecurityHeadersMiddleware
 from app.gateway.trace_middleware import TraceMiddleware
 from agent_workspace.branding import DISPLAY_NAME
-from agent_workspace.config import app_config as deerflow_app_config
+from agent_workspace.config import app_config as agent_workspace_app_config
 from agent_workspace.logging_config import DEFAULT_LOG_DATE_FORMAT, DEFAULT_LOG_FORMAT, configure_logging
 from agent_workspace.tracing.monocle import setup_monocle_tracing_if_enabled
 from agent_workspace.uploads.manager import cleanup_stale_upload_staging_files
 
-AppConfig = deerflow_app_config.AppConfig
-get_app_config = deerflow_app_config.get_app_config
+AppConfig = agent_workspace_app_config.AppConfig
+get_app_config = agent_workspace_app_config.get_app_config
 
 # Default logging; lifespan overrides from config.yaml log_level.
 logging.basicConfig(
@@ -101,7 +101,7 @@ async def _ensure_admin_user(app: FastAPI) -> None:
 
     After admin creation, migrate orphan threads from the LangGraph
     store (metadata.user_id unset) to the admin account. This is the
-    "no-auth → with-auth" upgrade path: users who ran DeerFlow without
+    "no-auth → with-auth" upgrade path: users who ran Agent Workspace without
     authentication have existing LangGraph thread data that needs an
     owner assigned.
         First boot (no admin exists):
@@ -956,7 +956,7 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
         Returns:
             Service health status information.
         """
-        return {"status": "healthy", "service": "deer-flow-gateway"}
+        return {"status": "healthy", "service": "agent-workspace-gateway"}
 
     @app.get("/health/ready", tags=["health"])
     async def readiness_check(request: Request, response: Response) -> dict[str, str]:

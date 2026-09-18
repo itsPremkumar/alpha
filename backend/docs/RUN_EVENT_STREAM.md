@@ -1,12 +1,12 @@
 # Run Event Stream
 
-The run event stream is DeerFlow's append-only record of what happened during
+The run event stream is Agent Workspace's append-only record of what happened during
 an agent run. Producers write through `RunEventStore`; history, debug, subtask,
 memory-audit, and workspace-review consumers read projections of the same rows.
 
 The machine-readable contract is
 `contracts/run_event_stream_contract.json`. Canonical event names and
-categories live in `deerflow.runtime.events.catalog`; conformance tests require
+categories live in `agent_workspace.runtime.events.catalog`; conformance tests require
 the runtime catalog and JSON contract to match exactly.
 
 ## Record Envelope

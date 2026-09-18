@@ -1,7 +1,7 @@
 """PostgreSQL schema helpers (Issue #3380).
 
 Centralizes the driver-specific ways of pinning a connection's
-``search_path`` to a target schema. The two PostgreSQL drivers DeerFlow
+``search_path`` to a target schema. The two PostgreSQL drivers Agent Workspace
 uses expect different mechanisms:
 
 - **asyncpg** (app ORM engine): only honours ``server_settings`` passed
@@ -12,7 +12,7 @@ uses expect different mechanisms:
   kwarg or encoded into the DSN query string.
 
 Schema names are validated upstream by
-:class:`deerflow.config.database_config.DatabaseConfig` to be plain
+:class:`agent_workspace.config.database_config.DatabaseConfig` to be plain
 identifiers. SQL-emitting helpers re-validate at the boundary as
 defense-in-depth; connection-argument helpers only assemble driver payloads.
 """

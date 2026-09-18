@@ -1,6 +1,6 @@
-# Contributing to DeerFlow Backend
+# Contributing to Agent Workspace Backend
 
-Thank you for your interest in contributing to DeerFlow! This document provides guidelines and instructions for contributing to the backend codebase.
+Thank you for your interest in contributing to Agent Workspace! This document provides guidelines and instructions for contributing to the backend codebase.
 
 ## Table of Contents
 
@@ -27,8 +27,8 @@ Thank you for your interest in contributing to DeerFlow! This document provides 
 1. Fork the repository on GitHub
 2. Clone your fork locally:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/deer-flow.git
-   cd deer-flow
+   git clone https://github.com/YOUR_USERNAME/agent-workspace.git
+   cd agent-workspace
    ```
 
 ## Development Setup
@@ -86,7 +86,7 @@ backend/
 │   ├── guardrails/             # Pre-tool-call authorization providers
 │   ├── tracing/                # Tracer factory & trace metadata
 │   ├── uploads/                # Uploads manager
-│   ├── tui/                    # Terminal UI (`deerflow` console script)
+│   ├── tui/                    # Terminal UI (`agent_workspace` console script)
 │   ├── community/              # Community tools (tavily/, jina_ai/, firecrawl/, …)
 │   ├── reflection/             # Dynamic module loading
 │   └── utils/                  # Utilities
@@ -267,7 +267,7 @@ def my_tool(param: str) -> str:
 tools:
   - name: my_tool
     group: my_group
-    use: deerflow.tools.builtins.my_tool:my_tool
+    use: agent_workspace.tools.builtins.my_tool:my_tool
 ```
 
 ### Adding New Middleware
@@ -307,8 +307,8 @@ into the agent state, or `None` when they only observe state.
 ```yaml
 extensions:
   middlewares:
-    - deerflow.agents.middlewares.my_middleware:MyMiddleware
-    - class: deerflow.agents.middlewares.my_middleware:MyMiddleware
+    - agent_workspace.agents.middlewares.my_middleware:MyMiddleware
+    - class: agent_workspace.agents.middlewares.my_middleware:MyMiddleware
       kwargs:
         max_tool_calls: 5
 ```
@@ -321,10 +321,10 @@ followed by the optional safety guard, `DurableContextMiddleware`, optional
 `SummarizationMiddleware`, then `SubagentDateContextMiddleware` and
 `SystemMessageCoalescingMiddleware`. Treat middleware class paths as trusted
 operator configuration because loading one executes Python code.
-Embedded callers can instead use `DeerFlowClient(middlewares=[...])`, which
+Embedded callers can instead use `AgentWorkspaceClient(middlewares=[...])`, which
 builds the full lead-agent chain and places middleware before its
 terminal-response, model-length, safety, and clarification tail.
-`create_deerflow_agent(extra_middleware=[...])` instead builds a smaller
+`create_agent_workspace_agent(extra_middleware=[...])` instead builds a smaller
 feature-based lead-agent chain; unanchored extras are placed immediately before
 `ClarificationMiddleware` (anchored extras follow their `@Next`/`@Prev`
 placement, but the anchor must be present in this smaller chain). Neither API
@@ -437,4 +437,4 @@ If you have questions about contributing:
 2. Look for similar issues or PRs on GitHub
 3. Open a discussion or issue on GitHub
 
-Thank you for contributing to DeerFlow!
+Thank you for contributing to Agent Workspace!

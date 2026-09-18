@@ -1,4 +1,4 @@
-# DeerFlow - One-Click Installer for Windows (PowerShell)
+# Agent Workspace - One-Click Installer for Windows (PowerShell)
 # Usage: .\install.ps1
 
 [CmdletBinding()]
@@ -11,7 +11,7 @@ $RepoRoot = $PSScriptRoot
 Set-Location $RepoRoot
 
 Write-Host "`n========================================================" -ForegroundColor Cyan
-Write-Host "       DeerFlow - Automated Setup & Installation        " -ForegroundColor Cyan
+Write-Host "    Agent Workspace - Automated Setup & Installation    " -ForegroundColor Cyan
 Write-Host "========================================================`n" -ForegroundColor Cyan
 
 # 1. Check & locate uv
@@ -69,7 +69,7 @@ if (-not (Test-Path "$RepoRoot\.env")) {
     } else {
         New-Item -ItemType File -Path "$RepoRoot\.env" -Force | Out-Null
     }
-    Add-Content -Path "$RepoRoot\.env" -Value "`nBETTER_AUTH_SECRET=$secret`nAGENT_WORKSPACE_AUTH_DISABLED=1`nDEER_FLOW_AUTH_DISABLED=1`n"
+    Add-Content -Path "$RepoRoot\.env" -Value "`nBETTER_AUTH_SECRET=$secret`nAGENT_WORKSPACE_AUTH_DISABLED=1`n"
 }
 
 # frontend/.env
@@ -127,6 +127,6 @@ if (-not $SkipFrontend) {
 Write-Host "`n========================================================" -ForegroundColor Green
 Write-Host "           Installation Completed Successfully!          " -ForegroundColor Green
 Write-Host "========================================================" -ForegroundColor Green
-Write-Host "`nTo start DeerFlow and open the web browser, simply run:" -ForegroundColor Cyan
+Write-Host "`nTo start Agent Workspace and open the web browser, simply run:" -ForegroundColor Cyan
 Write-Host "   .\start.ps1" -ForegroundColor White
 Write-Host "or double-click start.bat`n" -ForegroundColor White

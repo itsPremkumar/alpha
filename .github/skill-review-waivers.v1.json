@@ -1,5 +1,5 @@
 {
-  "schema_version": "deerflow.skill-review-waivers.v1",
+  "schema_version": "agent_workspace.skill-review-waivers.v1",
   "waivers": [
     {
       "package": "skills/public/skill-creator",

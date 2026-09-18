@@ -6,7 +6,7 @@ methods read the contextvar via a sentinel default parameter, letting
 routers stay free of ``user_id`` boilerplate.
 
 Three-state semantics for the repository ``user_id`` parameter (the
-consumer side of this module lives in ``deerflow.persistence.*``):
+consumer side of this module lives in ``agent_workspace.persistence.*``):
 
 - ``_AUTO`` (module-private sentinel, default): read from contextvar;
   raise :class:`RuntimeError` if unset.
@@ -50,7 +50,7 @@ class CurrentUser(Protocol):
     id: str
 
 
-_current_user: Final[ContextVar[CurrentUser | None]] = ContextVar("deerflow_current_user", default=None)
+_current_user: Final[ContextVar[CurrentUser | None]] = ContextVar("agent_workspace_current_user", default=None)
 
 
 def set_current_user(user: CurrentUser) -> Token[CurrentUser | None]:
@@ -116,7 +116,7 @@ def _storage_user_id_from_auth_identity(identity: object | None) -> str | None:
         return None
 
     # LangGraph permits arbitrary strings (commonly email addresses) for
-    # BaseUser.identity, while DeerFlow's user directories require a narrower
+    # BaseUser.identity, while Agent Workspace's user directories require a narrower
     # charset. Keep the normalization at the auth boundary so graph
     # construction and runtime middleware always select the same bucket.
     from agent_workspace.config.paths import make_safe_user_id
@@ -151,7 +151,7 @@ def resolve_config_user_id(config: object | None) -> str:
     Server-owned LangGraph authentication fields take precedence over ordinary
     ``user_id`` values because Agent Server reserves and overwrites the auth
     fields, while a standalone client may supply regular configurable/context
-    values. Gateway runtime context remains the next source for DeerFlow's
+    values. Gateway runtime context remains the next source for Agent Workspace's
     embedded run path, followed by the legacy configurable channel and the
     request ContextVar/default fallback.
     """

@@ -1,4 +1,4 @@
-"""Tests for DeerFlowClient."""
+"""Tests for AgentWorkspaceClient."""
 
 import asyncio
 import concurrent.futures
@@ -22,7 +22,7 @@ from app.gateway.routers.threads import ThreadGoalResponse
 from app.gateway.routers.uploads import UploadResponse
 from agent_workspace.agents.middlewares.view_image_middleware import ViewImageMiddleware
 from agent_workspace.agents.thread_state import DeltaThreadState, ThreadState
-from agent_workspace.client import DeerFlowClient
+from agent_workspace.client import AgentWorkspaceClient
 from agent_workspace.config.authorization_config import AuthorizationConfig, AuthorizationProviderConfig
 from agent_workspace.config.extensions_config import ExtensionsConfig, McpServerConfig
 from agent_workspace.config.paths import Paths
@@ -62,13 +62,13 @@ def mock_app_config():
 
 @pytest.fixture
 def client(mock_app_config, tmp_path):
-    """Create a DeerFlowClient with mocked config loading."""
+    """Create a AgentWorkspaceClient with mocked config loading."""
     import agent_workspace.skills.storage as _storage_mod
     from agent_workspace.skills.storage.local_skill_storage import LocalSkillStorage
 
     _storage_mod._default_skill_storage = LocalSkillStorage(host_path=str(tmp_path))
     with patch("agent_workspace.client.get_app_config", return_value=mock_app_config):
-        return DeerFlowClient()
+        return AgentWorkspaceClient()
 
 
 @pytest.fixture
@@ -101,7 +101,7 @@ class TestClientInit:
     def test_custom_params(self, mock_app_config):
         mock_middleware = MagicMock()
         with patch("agent_workspace.client.get_app_config", return_value=mock_app_config):
-            c = DeerFlowClient(model_name="gpt-4", thinking_enabled=False, subagent_enabled=True, plan_mode=True, agent_name="test-agent", available_skills={"skill1", "skill2"}, middlewares=[mock_middleware])
+            c = AgentWorkspaceClient(model_name="gpt-4", thinking_enabled=False, subagent_enabled=True, plan_mode=True, agent_name="test-agent", available_skills={"skill1", "skill2"}, middlewares=[mock_middleware])
         assert c._model_name == "gpt-4"
         assert c._thinking_enabled is False
         assert c._subagent_enabled is True
@@ -113,16 +113,16 @@ class TestClientInit:
     def test_invalid_agent_name(self, mock_app_config):
         with patch("agent_workspace.client.get_app_config", return_value=mock_app_config):
             with pytest.raises(ValueError, match="Invalid agent name"):
-                DeerFlowClient(agent_name="invalid name with spaces!")
+                AgentWorkspaceClient(agent_name="invalid name with spaces!")
             with pytest.raises(ValueError, match="Invalid agent name"):
-                DeerFlowClient(agent_name="../path/traversal")
+                AgentWorkspaceClient(agent_name="../path/traversal")
 
     def test_custom_config_path(self, mock_app_config):
         with (
             patch("agent_workspace.client.reload_app_config") as mock_reload,
             patch("agent_workspace.client.get_app_config", return_value=mock_app_config),
         ):
-            DeerFlowClient(config_path="/tmp/custom.yaml")
+            AgentWorkspaceClient(config_path="/tmp/custom.yaml")
             mock_reload.assert_called_once_with("/tmp/custom.yaml")
 
     def test_installs_process_subagent_capacity_from_frozen_config(self, mock_app_config):
@@ -132,13 +132,13 @@ class TestClientInit:
             patch("agent_workspace.client.get_app_config", return_value=mock_app_config),
             patch("agent_workspace.client.configure_subagent_execution_capacity") as configure,
         ):
-            DeerFlowClient()
+            AgentWorkspaceClient()
         configure.assert_called_once_with(runtime_config)
 
     def test_checkpointer_stored(self, mock_app_config):
         cp = MagicMock()
         with patch("agent_workspace.client.get_app_config", return_value=mock_app_config):
-            c = DeerFlowClient(checkpointer=cp)
+            c = AgentWorkspaceClient(checkpointer=cp)
         assert c._checkpointer is cp
 
     def test_process_mode_is_frozen_from_app_config(self, mock_app_config, monkeypatch: pytest.MonkeyPatch):
@@ -146,7 +146,7 @@ class TestClientInit:
 
         monkeypatch.setattr(checkpoint_mode, "_frozen_checkpoint_channel_mode", None)
         with patch("agent_workspace.client.get_app_config", return_value=mock_app_config):
-            client = DeerFlowClient()
+            client = AgentWorkspaceClient()
         assert client._checkpoint_channel_mode == "full"
 
         mock_app_config.database.checkpoint_channel_mode = "delta"
@@ -157,7 +157,7 @@ class TestClientInit:
                 match="restart",
             ),
         ):
-            DeerFlowClient()
+            AgentWorkspaceClient()
 
     def test_delta_snapshot_frequency_is_frozen_from_app_config(self, mock_app_config):
         from typing import get_type_hints
@@ -169,7 +169,7 @@ class TestClientInit:
         mock_app_config.database.checkpoint_channel_mode = "delta"
         mock_app_config.database.checkpoint_delta.snapshot_frequency = 7
         with patch("agent_workspace.client.get_app_config", return_value=mock_app_config):
-            DeerFlowClient()
+            AgentWorkspaceClient()
 
         schema = thread_state.get_thread_state_schema("delta")
         hint = get_type_hints(schema, include_extras=True)["messages"]
@@ -312,7 +312,7 @@ class TestStream:
         agent.stream.assert_called_once()
         call_kwargs = agent.stream.call_args.kwargs
         # ``messages`` enables token-level streaming of AI text deltas;
-        # see DeerFlowClient.stream() docstring and GitHub issue #1969.
+        # see AgentWorkspaceClient.stream() docstring and GitHub issue #1969.
         assert call_kwargs["stream_mode"] == ["values", "messages", "custom"]
 
         assert events[0].type == "custom"
@@ -557,7 +557,7 @@ class TestStream:
     def test_messages_mode_emits_token_deltas(self, client):
         """stream() forwards LangGraph ``messages`` mode chunks as delta events.
 
-        Regression for bytedance/deer-flow#1969 — before the fix the client
+        Regression for bytedance/agent-workspace#1969 — before the fix the client
         only subscribed to ``values`` mode, so LLM output was delivered as
         a single cumulative dump after each graph node finished instead of
         token-by-token deltas as the model generated them.
@@ -1102,7 +1102,7 @@ class TestChat:
 
 class TestExtractText:
     def test_string(self):
-        assert DeerFlowClient._extract_text("hello") == "hello"
+        assert AgentWorkspaceClient._extract_text("hello") == "hello"
 
     def test_list_text_blocks(self):
         content = [
@@ -1110,16 +1110,16 @@ class TestExtractText:
             {"type": "thinking", "thinking": "skip"},
             {"type": "text", "text": "second"},
         ]
-        assert DeerFlowClient._extract_text(content) == "first\nsecond"
+        assert AgentWorkspaceClient._extract_text(content) == "first\nsecond"
 
     def test_list_plain_strings(self):
-        assert DeerFlowClient._extract_text(["a", "b"]) == "a\nb"
+        assert AgentWorkspaceClient._extract_text(["a", "b"]) == "a\nb"
 
     def test_empty_list(self):
-        assert DeerFlowClient._extract_text([]) == ""
+        assert AgentWorkspaceClient._extract_text([]) == ""
 
     def test_other_type(self):
-        assert DeerFlowClient._extract_text(42) == "42"
+        assert AgentWorkspaceClient._extract_text(42) == "42"
 
 
 # ---------------------------------------------------------------------------
@@ -3252,7 +3252,7 @@ class TestScenarioEdgeCases:
 
 
 class TestGatewayConformance:
-    """Validate that DeerFlowClient return dicts conform to Gateway Pydantic response models.
+    """Validate that AgentWorkspaceClient return dicts conform to Gateway Pydantic response models.
 
     Each test calls a client method, then parses the result through the
     corresponding Gateway response model. If the client drifts (missing or
@@ -3271,7 +3271,7 @@ class TestGatewayConformance:
         mock_app_config.token_usage.enabled = True
 
         with patch("agent_workspace.client.get_app_config", return_value=mock_app_config):
-            client = DeerFlowClient()
+            client = AgentWorkspaceClient()
 
         result = client.list_models()
         parsed = ModelsListResponse(**result)
@@ -3291,7 +3291,7 @@ class TestGatewayConformance:
         mock_app_config.get_model_config.return_value = model
 
         with patch("agent_workspace.client.get_app_config", return_value=mock_app_config):
-            client = DeerFlowClient()
+            client = AgentWorkspaceClient()
 
         result = client.get_model("test-model")
         assert result is not None
@@ -3702,7 +3702,7 @@ class TestAtomicWriteJson:
             bad_data = {"key": object()}
 
             with pytest.raises(TypeError):
-                DeerFlowClient._atomic_write_json(target, bad_data)
+                AgentWorkspaceClient._atomic_write_json(target, bad_data)
 
             # Target should not have been created.
             assert not target.exists()
@@ -3716,7 +3716,7 @@ class TestAtomicWriteJson:
             target = Path(tmp) / "out.json"
             data = {"key": "value", "nested": [1, 2, 3]}
 
-            DeerFlowClient._atomic_write_json(target, data)
+            AgentWorkspaceClient._atomic_write_json(target, data)
 
             assert target.exists()
             with open(target) as f:
@@ -3733,7 +3733,7 @@ class TestAtomicWriteJson:
 
             bad_data = {"key": object()}
             with pytest.raises(TypeError):
-                DeerFlowClient._atomic_write_json(target, bad_data)
+                AgentWorkspaceClient._atomic_write_json(target, bad_data)
 
             # Original content must survive.
             with open(target) as f:
@@ -3958,7 +3958,7 @@ class TestStreamHardening:
 class TestSerializeMessage:
     def test_system_message(self):
         msg = SystemMessage(content="You are a helpful assistant.", id="sys-1")
-        result = DeerFlowClient._serialize_message(msg)
+        result = AgentWorkspaceClient._serialize_message(msg)
         assert result["type"] == "system"
         assert result["content"] == "You are a helpful assistant."
         assert result["id"] == "sys-1"
@@ -3970,7 +3970,7 @@ class TestSerializeMessage:
         msg.content = "something"
         # Not an instance of AIMessage/ToolMessage/HumanMessage/SystemMessage
         type(msg).__name__ = "CustomMessage"
-        result = DeerFlowClient._serialize_message(msg)
+        result = AgentWorkspaceClient._serialize_message(msg)
         assert result["type"] == "unknown"
         assert result["id"] == "unk-1"
 
@@ -3980,14 +3980,14 @@ class TestSerializeMessage:
             id="ai-tc",
             tool_calls=[{"name": "bash", "args": {"cmd": "ls"}, "id": "tc-1"}],
         )
-        result = DeerFlowClient._serialize_message(msg)
+        result = AgentWorkspaceClient._serialize_message(msg)
         assert result["type"] == "ai"
         assert len(result["tool_calls"]) == 1
         assert result["tool_calls"][0]["name"] == "bash"
 
     def test_tool_message_non_string_content(self):
         msg = ToolMessage(content={"key": "value"}, id="tm-1", tool_call_id="tc-1", name="tool")
-        result = DeerFlowClient._serialize_message(msg)
+        result = AgentWorkspaceClient._serialize_message(msg)
         assert result["type"] == "tool"
         assert isinstance(result["content"], str)
         assert "artifact" not in result
@@ -4002,7 +4002,7 @@ class TestSerializeMessage:
             artifact={"payload": marker},
         )
 
-        result = DeerFlowClient._tool_message_event(msg)
+        result = AgentWorkspaceClient._tool_message_event(msg)
 
         assert result.data["artifact"] is msg.artifact
 
@@ -4016,7 +4016,7 @@ class TestSerializeMessage:
             artifact={"payload": marker},
         )
 
-        result = DeerFlowClient._serialize_message(msg)
+        result = AgentWorkspaceClient._serialize_message(msg)
 
         assert result["artifact"] is msg.artifact
 

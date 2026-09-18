@@ -300,7 +300,7 @@ def test_denylist_covers_framework_authority_blocks():
 
     import agent_workspace
 
-    harness_root = pathlib.Path(deerflow.__file__).parent
+    harness_root = pathlib.Path(agent_workspace.__file__).parent
     # Mirrors the tolerance of the production pattern (_BLOCKED_TAG_PATTERN):
     # attributes and surrounding whitespace must not hide a block from the scan.
     open_re = re.compile(r"<\s*([a-z][a-z0-9_-]*)\b[^>]*>")

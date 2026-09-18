@@ -1,10 +1,10 @@
 """Compatibility patches for third-party checkpoint machinery.
 
-Lives at the top-level package (not ``deerflow.runtime``) so it can be
-imported from ``deerflow.agents.thread_state`` without pulling in the heavy
-``deerflow.runtime`` package __init__ (which eagerly imports the runs
-machinery). Anchored from ``deerflow.agents.thread_state`` so every process
-that builds a DeerFlow graph (gateway, workers, in-process LangGraph
+Lives at the top-level package (not ``agent_workspace.runtime``) so it can be
+imported from ``agent_workspace.agents.thread_state`` without pulling in the heavy
+``agent_workspace.runtime`` package __init__ (which eagerly imports the runs
+machinery). Anchored from ``agent_workspace.agents.thread_state`` so every process
+that builds a Agent Workspace graph (gateway, workers, in-process LangGraph
 runtime, tests) runs with the fixes in place.
 """
 
@@ -24,7 +24,7 @@ from packaging.version import Version
 
 logger = logging.getLogger(__name__)
 
-_PATCH_FLAG = "_deerflow_delta_history_patched"
+_PATCH_FLAG = "_agent_workspace_delta_history_patched"
 # The patch was authored and verified against langgraph 1.2.9
 # (langgraph/checkpoint/memory/__init__.py::InMemorySaver.get_delta_channel_history).
 # On any newer LangGraph the override must be re-inspected before keeping the
@@ -100,7 +100,7 @@ def ensure_inmemory_delta_history_patch() -> None:
         logger.warning("Failed to apply the InMemorySaver delta-history patch; leaving the upstream implementation untouched.", exc_info=True)
 
 
-_BINOP_PATCH_FLAG = "_deerflow_overwrite_first_write_patched"
+_BINOP_PATCH_FLAG = "_agent_workspace_overwrite_first_write_patched"
 _unpatched_binop_update = BinaryOperatorAggregate.update
 
 
@@ -108,13 +108,13 @@ def _as_overwrite(value: Any) -> tuple[bool, Any]:
     """Local stand-in for langgraph's private ``_get_overwrite``.
 
     Matches only the public ``Overwrite`` *class* form - the sole form
-    DeerFlow's write paths produce for these Union channels (the branch and
+    Agent Workspace's write paths produce for these Union channels (the branch and
     ``/state`` routes wrap replace-style writes in ``Overwrite(...)``).
     Avoiding the underscored ``_get_overwrite`` import keeps an upstream
     refactor that drops it - plausibly the very release that fixes the bug -
     from failing this module's import and crashing startup before the probe
     can stand the patch down. The dict sentinel form upstream also accepts is
-    an internal serialization detail DeerFlow never emits into these channels.
+    an internal serialization detail Agent Workspace never emits into these channels.
     """
     if isinstance(value, Overwrite):
         return True, value.value
@@ -129,7 +129,7 @@ def _binop_first_write_stores_overwrite_wrapper() -> bool:
     ``todos`` / ``promoted`` channels.
     """
     channel = BinaryOperatorAggregate(dict | None, lambda existing, new: new)
-    channel.key = "deerflow-overwrite-probe"
+    channel.key = "agent_workspace-overwrite-probe"
     channel.update([Overwrite({"probe": True})])
     return isinstance(channel.get(), Overwrite)
 

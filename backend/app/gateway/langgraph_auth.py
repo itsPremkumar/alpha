@@ -1,6 +1,6 @@
 """LangGraph compatibility auth handler — shares JWT logic with Gateway.
 
-The default DeerFlow runtime is embedded in the FastAPI Gateway; scripts and
+The default Agent Workspace runtime is embedded in the FastAPI Gateway; scripts and
 Docker deployments do not load this module.  It is retained for LangGraph
 tooling, Studio, or direct LangGraph Server compatibility through
 ``langgraph.json``'s ``auth.path``.
@@ -25,7 +25,7 @@ from app.gateway.deps import get_local_provider
 
 auth = Auth()
 
-# StudioUser was added after DeerFlow's historical langgraph-sdk floor. Resolve
+# StudioUser was added after Agent Workspace's historical langgraph-sdk floor. Resolve
 # it once so older compatible SDK installs keep ordinary owner scoping instead
 # of failing every request with an AttributeError.
 _STUDIO_USER_TYPE = getattr(Auth.types, "StudioUser", None)

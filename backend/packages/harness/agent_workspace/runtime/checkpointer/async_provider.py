@@ -12,7 +12,7 @@ Usage (e.g. FastAPI lifespan)::
     async with make_checkpointer() as checkpointer:
         app.state.checkpointer = checkpointer  # InMemorySaver if not configured
 
-For sync usage see :mod:`deerflow.runtime.checkpointer.provider`.
+For sync usage see :mod:`agent_workspace.runtime.checkpointer.provider`.
 """
 
 from __future__ import annotations

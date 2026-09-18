@@ -1,6 +1,6 @@
-"""Tenki cloud sandbox provider for DeerFlow.
+"""Tenki cloud sandbox provider for Agent Workspace.
 
-Integrates `Tenki <https://tenki.cloud>`_ cloud sandboxes behind DeerFlow's
+Integrates `Tenki <https://tenki.cloud>`_ cloud sandboxes behind Agent Workspace's
 :class:`Sandbox` / :class:`SandboxProvider` contract. Each sandbox is an
 isolated cloud microVM created from a stock base image; the full contract is
 implemented — ``execute_command`` plus ``read_file`` / ``write_file`` /
@@ -11,7 +11,7 @@ transport uses Tenki's native ``sandbox.fs`` API; search shells out to
 Configuration example (``config.yaml``)::
 
     sandbox:
-      use: deerflow.community.tenki:TenkiSandboxProvider
+      use: agent_workspace.community.tenki:TenkiSandboxProvider
       # Tenki-specific options (read via SandboxConfig's ``extra="allow"``):
       api_key: $TENKI_API_KEY          # falls back to TENKI_API_KEY / TENKI_AUTH_TOKEN env var
       base_url: https://tenki.cloud    # optional; SDK default when omitted

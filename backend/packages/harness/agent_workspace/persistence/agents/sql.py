@@ -1,7 +1,7 @@
 """SQL-backed agent store (synchronous).
 
 Serves the ``agent_storage.backend: db`` path. It is intentionally synchronous
-and uses its own small engine (see :mod:`deerflow.persistence.agents.base` for
+and uses its own small engine (see :mod:`agent_workspace.persistence.agents.base` for
 why the store is sync). The engine points at the same database the async
 persistence layer manages — the ``agents`` table is created by that layer's
 Alembic bootstrap (migration ``0006``); this store only reads and writes rows.

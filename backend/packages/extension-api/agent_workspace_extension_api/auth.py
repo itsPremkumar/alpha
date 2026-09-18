@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
-EXTENSION_PRINCIPAL_RESOLVER_KEY = "deerflow_extension_principal_resolver"
+EXTENSION_PRINCIPAL_RESOLVER_KEY = "agent_workspace_extension_principal_resolver"
 
 
 @dataclass(frozen=True)

@@ -55,7 +55,7 @@ async def _index_predicate(engine, schema: str) -> str | None:
 
 
 async def test_0018_adds_partial_predicate_and_downgrade_restores_full_index() -> None:
-    schema = f"deerflow_test_{uuid.uuid4().hex[:12]}"
+    schema = f"agent_workspace_test_{uuid.uuid4().hex[:12]}"
     engine = create_async_engine(POSTGRES_URL or "")
     cfg = _get_alembic_config(engine, postgres_schema=schema)
 

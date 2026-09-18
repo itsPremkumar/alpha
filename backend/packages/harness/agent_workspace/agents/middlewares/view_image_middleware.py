@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 # case the file grew between view and injection.
 _MAX_IMAGE_BYTES = 20 * 1024 * 1024
 _IMAGE_CONTEXT_MESSAGE_ID_PREFIX = "view-image-context:"
-_IMAGE_CONTEXT_MESSAGE_MARKER_KEY = "deerflow_view_image_context"
+_IMAGE_CONTEXT_MESSAGE_MARKER_KEY = "agent_workspace_view_image_context"
 
 
 class ViewImageMiddlewareState(ThreadState):

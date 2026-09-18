@@ -1,6 +1,6 @@
 # Architecture Overview
 
-This document provides a comprehensive overview of the DeerFlow backend architecture.
+This document provides a comprehensive overview of the Agent Workspace backend architecture.
 
 ## System Architecture
 
@@ -70,7 +70,7 @@ It is not the default service entrypoint; scripts and Docker deployments run the
 {
   "agent": {
     "type": "agent",
-    "path": "deerflow.agents:make_lead_agent"
+    "path": "agent_workspace.agents:make_lead_agent"
   }
 }
 ```
@@ -87,11 +87,11 @@ FastAPI application providing REST endpoints plus the public LangGraph-compatibl
 - `mcp.py` - `/api/mcp` - MCP server configuration
 - `skills.py` - `/api/skills` - Skills management
 - `uploads.py` - `/api/threads/{id}/uploads` - File upload
-- `threads.py` - `/api/threads/{id}` - Local DeerFlow thread data cleanup after LangGraph deletion
+- `threads.py` - `/api/threads/{id}` - Local Agent Workspace thread data cleanup after LangGraph deletion
 - `artifacts.py` - `/api/threads/{id}/artifacts` - Artifact serving
 - `suggestions.py` - `/api/threads/{id}/suggestions` - Follow-up suggestion generation
 
-The web conversation delete flow first deletes Gateway-managed thread state through the LangGraph-compatible route, then the Gateway `threads.py` router removes DeerFlow-managed filesystem data via `Paths.delete_thread_dir()`.
+The web conversation delete flow first deletes Gateway-managed thread state through the LangGraph-compatible route, then the Gateway `threads.py` router removes Agent Workspace-managed filesystem data via `Paths.delete_thread_dir()`.
 
 ### Agent Architecture
 
@@ -135,7 +135,7 @@ class ThreadState(AgentState):
     # Core state from AgentState
     messages: list[BaseMessage]
 
-    # DeerFlow extensions
+    # Agent Workspace extensions
     sandbox: dict             # Sandbox environment info
     artifacts: list[str]      # Generated file paths
     thread_data: dict         # {workspace, uploads, outputs} paths
@@ -186,7 +186,7 @@ class ThreadState(AgentState):
 | `/mnt/user-data/workspace` | `backend/.agent-workspace/threads/{thread_id}/user-data/workspace` |
 | `/mnt/user-data/uploads` | `backend/.agent-workspace/threads/{thread_id}/user-data/uploads` |
 | `/mnt/user-data/outputs` | `backend/.agent-workspace/threads/{thread_id}/user-data/outputs` |
-| `/mnt/skills` | `deer-flow/skills/` |
+| `/mnt/skills` | `agent-workspace/skills/` |
 
 ### Tool System
 
@@ -418,7 +418,7 @@ SKILL.md Format:
 2. Web UI follows up with Gateway cleanup
    DELETE /api/threads/{thread_id}
 
-3. Gateway removes local DeerFlow-managed files
+3. Gateway removes local Agent Workspace-managed files
    - Deletes .agent-workspace/threads/{thread_id}/ recursively
    - Missing directories are treated as a no-op
    - Invalid thread IDs are rejected before filesystem access

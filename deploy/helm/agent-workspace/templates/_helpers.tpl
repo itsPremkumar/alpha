@@ -1,5 +1,5 @@
 {{/*
-Common helpers for the DeerFlow chart.
+Common helpers for the Agent Workspace chart.
 */}}
 
 {{- define "agent-workspace.name" -}}
@@ -37,9 +37,9 @@ imagePullSecrets:
 {{- end }}
 {{- end -}}
 
-{{/* Fully-qualified image refs for the three DeerFlow images.
+{{/* Fully-qualified image refs for the three Agent Workspace images.
      When `image.registry` is empty, omit the prefix so the ref is
-     `deer-flow-gateway:latest` (local-image mode, imagePullPolicy: Never). */}}
+     `agent-workspace-gateway:latest` (local-image mode, imagePullPolicy: Never). */}}
 {{- define "agent-workspace.gatewayImage" -}}
 {{- if .Values.image.registry -}}{{- printf "%s/%s:%s" .Values.image.registry .Values.image.gatewayImage .Values.image.tag -}}
 {{- else -}}{{- printf "%s:%s" .Values.image.gatewayImage .Values.image.tag -}}{{- end -}}

@@ -1119,7 +1119,7 @@ def test_from_config_default_exempt_tools_round_trip():
 
 
 def test_wrap_tool_call_malformed_meta_passthrough():
-    """Malformed deerflow_tool_meta dict must not crash the middleware."""
+    """Malformed agent_workspace_tool_meta dict must not crash the middleware."""
     mw = _make_mw()
     rt = _make_runtime()
     req = _make_tool_request(runtime=rt)
@@ -1141,7 +1141,7 @@ def test_wrap_tool_call_malformed_meta_passthrough():
 
 
 def test_missing_meta_on_non_exempt_tool_emits_warning(caplog):
-    """When deerflow_tool_meta is completely absent for a non-exempt tool,
+    """When agent_workspace_tool_meta is completely absent for a non-exempt tool,
     the middleware must emit a warning pointing to the likely ordering misconfiguration.
     """
     import logging
@@ -1160,7 +1160,7 @@ def test_missing_meta_on_non_exempt_tool_emits_warning(caplog):
     with caplog.at_level(logging.WARNING, logger="agent_workspace.agents.middlewares.tool_progress_middleware"):
         mw.wrap_tool_call(req, lambda _r: no_meta_msg)
 
-    assert any("deerflow_tool_meta missing" in r.message for r in caplog.records), "Expected a warning about missing meta for non-exempt tool"
+    assert any("agent_workspace_tool_meta missing" in r.message for r in caplog.records), "Expected a warning about missing meta for non-exempt tool"
 
 
 # ---------------------------------------------------------------------------
@@ -1251,7 +1251,7 @@ async def test_awrap_tool_call_command_result_passthrough():
 
 @pytest.mark.anyio
 async def test_awrap_tool_call_malformed_meta_passthrough():
-    """Malformed deerflow_tool_meta dict must not crash the middleware."""
+    """Malformed agent_workspace_tool_meta dict must not crash the middleware."""
     mw = _make_mw()
     rt = _make_runtime()
     req = _make_tool_request(runtime=rt)

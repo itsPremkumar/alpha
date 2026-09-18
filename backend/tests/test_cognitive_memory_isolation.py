@@ -129,7 +129,7 @@ ROUTES = [
 @pytest.mark.no_auto_user
 @pytest.mark.parametrize("method,path,payload", ROUTES)
 def test_all_routes_require_owner(client, method, path, payload):
-    response = client.request(method, f"/api/memory/cognitive/{path}", json=payload, headers={"X-DeerFlow-Owner-User-Id": "alice"}, params={"user_id": "alice"})
+    response = client.request(method, f"/api/memory/cognitive/{path}", json=payload, headers={"X-Agent-Workspace-Owner-User-Id": "alice"}, params={"user_id": "alice"})
     assert response.status_code == 401
     assert not engine._owner_systems
 
@@ -145,7 +145,7 @@ def test_api_owners_cannot_read_mutate_or_delete_each_other(client):
         assert client.get("/api/memory/cognitive/episodic").json() == []
         assert client.get("/api/memory/cognitive/episodic?mode=episode").json() == []
         for path in ("semantic", "procedural", "overview"):
-            result = client.get(f"/api/memory/cognitive/{path}", headers={"X-DeerFlow-Owner-User-Id": "alice"}, params={"user_id": "alice"})
+            result = client.get(f"/api/memory/cognitive/{path}", headers={"X-Agent-Workspace-Owner-User-Id": "alice"}, params={"user_id": "alice"})
             assert result.status_code == 200
             assert "AliceUnique" not in result.text
         recalled = client.post("/api/memory/cognitive/recall", json={"query": "AliceUnique"})
@@ -176,7 +176,7 @@ def test_internal_owner_requires_server_stamped_internal_principal(tmp_path):
     app.include_router(memory.router)
     with TestClient(app) as client:
         assert client.get("/api/memory/cognitive/overview").status_code == 401
-        response = client.post("/api/memory/cognitive/episodic", headers={"X-DeerFlow-Owner-User-Id": "owner@example.test"}, json={"action": "test", "observation": "ok"})
+        response = client.post("/api/memory/cognitive/episodic", headers={"X-Agent-Workspace-Owner-User-Id": "owner@example.test"}, json={"action": "test", "observation": "ok"})
         assert response.status_code == 200
     assert (tmp_path / "users" / make_safe_user_id("owner@example.test") / "cognitive_memory" / "cognitive_state.json").exists()
 

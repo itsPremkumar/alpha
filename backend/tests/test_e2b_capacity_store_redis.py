@@ -31,7 +31,7 @@ def make_store():
         probe.close()
         pytest.skip(f"Redis not reachable at {REDIS_URL}")
 
-    prefix = f"deerflow:test:{uuid.uuid4().hex}"
+    prefix = f"agent_workspace:test:{uuid.uuid4().hex}"
     stores = []
 
     def make(hard_limit: int = 1):

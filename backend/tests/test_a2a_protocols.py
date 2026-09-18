@@ -136,10 +136,10 @@ def test_os_subsystems_boundary_integrity():
     """Verify that jobs, supervision, planning/integrity, and protocols NEVER import app.*."""
     backend_root = Path(__file__).resolve().parent.parent
     subsystems = [
-        backend_root / "packages" / "harness" / "deerflow" / "jobs",
-        backend_root / "packages" / "harness" / "deerflow" / "supervision",
-        backend_root / "packages" / "harness" / "deerflow" / "protocols",
-        backend_root / "packages" / "harness" / "deerflow" / "planning" / "integrity.py",
+        backend_root / "packages" / "harness" / "agent_workspace" / "jobs",
+        backend_root / "packages" / "harness" / "agent_workspace" / "supervision",
+        backend_root / "packages" / "harness" / "agent_workspace" / "protocols",
+        backend_root / "packages" / "harness" / "agent_workspace" / "planning" / "integrity.py",
     ]
 
     violations: list[str] = []

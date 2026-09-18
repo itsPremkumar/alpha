@@ -1,4 +1,4 @@
-"""Autonomous Command Middleware for DeerFlow.
+"""Autonomous Command Middleware for Agent Workspace.
 
 Automatically identifies and initiates slash command workflows at the exact correct time in the lifecycle:
 1. Pre-turn: Identifies user goal/architecture/research intents and injects autonomous slash directives.

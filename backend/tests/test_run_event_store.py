@@ -1450,14 +1450,14 @@ class TestAttachMessageSeq:
 
         stamped = attach_message_seq({"type": "human", "id": "u1"}, 7)
 
-        assert stamped["additional_kwargs"] == {"deerflow_seq": 7}
+        assert stamped["additional_kwargs"] == {"agent_workspace_seq": 7}
 
     def test_existing_additional_kwargs_are_preserved(self):
         from agent_workspace.runtime.events.message_identity import attach_message_seq
 
         stamped = attach_message_seq({"type": "ai", "id": "a1", "additional_kwargs": {"run_id": "r1"}}, 3)
 
-        assert stamped["additional_kwargs"] == {"run_id": "r1", "deerflow_seq": 3}
+        assert stamped["additional_kwargs"] == {"run_id": "r1", "agent_workspace_seq": 3}
 
     def test_the_input_message_is_not_mutated(self):
         from agent_workspace.runtime.events.message_identity import attach_message_seq
@@ -1493,7 +1493,7 @@ class TestStampMessagesWithSeq:
 
         stamped = await stamp_messages_with_seq(store, "t1", [{"type": "human", "id": "u1__user", "content": "MARK-FIRST"}])
 
-        assert stamped[0]["additional_kwargs"]["deerflow_seq"] == 1
+        assert stamped[0]["additional_kwargs"]["agent_workspace_seq"] == 1
 
     @pytest.mark.anyio
     async def test_a_message_absent_from_the_feed_is_left_alone(self, store):
@@ -1503,7 +1503,7 @@ class TestStampMessagesWithSeq:
 
         stamped = await stamp_messages_with_seq(store, "t1", messages)
 
-        assert "deerflow_seq" not in (stamped[0].get("additional_kwargs") or {})
+        assert "agent_workspace_seq" not in (stamped[0].get("additional_kwargs") or {})
 
     @pytest.mark.anyio
     async def test_the_input_list_is_not_mutated(self, store):

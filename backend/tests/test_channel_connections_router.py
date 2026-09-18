@@ -79,7 +79,7 @@ def _enabled_connections_config() -> ChannelConnectionsConfig:
     return ChannelConnectionsConfig.model_validate(
         {
             "enabled": True,
-            "telegram": {"enabled": True, "bot_username": "deerflow_bot"},
+            "telegram": {"enabled": True, "bot_username": "agent_workspace_bot"},
             "slack": {"enabled": True},
             "discord": {"enabled": True},
             "feishu": {"enabled": True},
@@ -160,7 +160,7 @@ def test_get_providers_uses_existing_channels_config(tmp_path):
     assert by_provider["telegram"]["auth_mode"] == "deep_link"
     assert by_provider["telegram"]["credential_values"] == {
         "bot_token": "********",
-        "bot_username": "deerflow_bot",
+        "bot_username": "agent_workspace_bot",
     }
     assert by_provider["slack"]["configured"] is True
     assert by_provider["slack"]["auth_mode"] == "binding_code"
@@ -467,7 +467,7 @@ def test_connect_telegram_returns_deep_link_and_persists_state(tmp_path):
     body = response.json()
     assert body["provider"] == "telegram"
     assert body["mode"] == "deep_link"
-    assert body["url"].startswith("https://t.me/deerflow_bot?start=")
+    assert body["url"].startswith("https://t.me/agent_workspace_bot?start=")
     assert body["code"]
     assert "/start" in body["instruction"]
 
@@ -1093,7 +1093,7 @@ def test_configure_provider_runtime_does_not_clobber_concurrent_config_update(tm
         {
             "enabled": True,
             "slack": {"enabled": True},
-            "telegram": {"enabled": True, "bot_username": "deerflow_bot"},
+            "telegram": {"enabled": True, "bot_username": "agent_workspace_bot"},
         }
     )
     runtime_config_store = ChannelRuntimeConfigStore(tmp_path / "channels" / "runtime-config.json")

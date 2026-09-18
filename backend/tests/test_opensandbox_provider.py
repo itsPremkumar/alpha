@@ -1,7 +1,7 @@
 """Unit tests for the optional OpenSandbox community provider.
 
 The real ``opensandbox`` SDK is deliberately not required for this suite.  The
-tests pin DeerFlow's adapter contract with a small synchronous fake: lazy
+tests pin Agent Workspace's adapter contract with a small synchronous fake: lazy
 dependency loading, scoped lifecycle reuse, command forwarding, native file
 transport, search parsing, path guards, and terminal-session eviction.
 """
@@ -338,9 +338,9 @@ def test_create_passes_connection_lifetime_scope_and_environment(monkeypatch: py
     assert call["ready_timeout"] == timedelta(seconds=18)
     assert call["env"] == {"BASE": "1", "FROM_ENV": "resolved", "MISSING_ENV": ""}
     assert call["metadata"] == {
-        "deer_flow_provider": "opensandbox",
-        "deer_flow_thread": "thread-1",
-        "deer_flow_user": "user-1",
+        "agent_workspace_provider": "opensandbox",
+        "agent_workspace_thread": "thread-1",
+        "agent_workspace_user": "user-1",
     }
     assert call["connection_config"].kwargs == {
         "api_key": "secret",

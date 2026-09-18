@@ -2,7 +2,7 @@
 
 Run explicitly with real credentials:
 
-    RUN_DEERFLOW_LEDGER_LIVE=1 PYTHONPATH=. uv run pytest tests/test_delegation_ledger_live.py -v -s
+    RUN_AGENT_WORKSPACE_LEDGER_LIVE=1 PYTHONPATH=. uv run pytest tests/test_delegation_ledger_live.py -v -s
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.runtime import Runtime
 
 from agent_workspace.agents.middlewares.durable_context_middleware import DurableContextMiddleware
-from agent_workspace.client import DeerFlowClient, StreamEvent
+from agent_workspace.client import AgentWorkspaceClient, StreamEvent
 from agent_workspace.config.app_config import reload_app_config, reset_app_config, set_app_config
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -33,8 +33,8 @@ _ROOT_CONFIG = _REPO_ROOT / "config.yaml"
 _skip_reason = None
 if os.environ.get("CI"):
     _skip_reason = "Live delegation ledger test skipped in CI"
-elif os.environ.get("RUN_DEERFLOW_LEDGER_LIVE") != "1":
-    _skip_reason = "Set RUN_DEERFLOW_LEDGER_LIVE=1 to run this real-model test"
+elif os.environ.get("RUN_AGENT_WORKSPACE_LEDGER_LIVE") != "1":
+    _skip_reason = "Set RUN_AGENT_WORKSPACE_LEDGER_LIVE=1 to run this real-model test"
 elif not _ROOT_CONFIG.exists():
     _skip_reason = "No config.yaml found; live test requires real MiMo config"
 
@@ -155,7 +155,7 @@ def live_client(live_config_path, real_subagent_executor, monkeypatch):
         return updated
 
     monkeypatch.setattr(DurableContextMiddleware, "_inject", recording_inject)
-    client = DeerFlowClient(
+    client = AgentWorkspaceClient(
         checkpointer=InMemorySaver(),
         thinking_enabled=False,
         subagent_enabled=True,
@@ -179,7 +179,7 @@ def _message_text(message: BaseMessage) -> str:
     return str(content)
 
 
-def _stream_events(client: DeerFlowClient, thread_id: str, prompt: str) -> list[StreamEvent]:
+def _stream_events(client: AgentWorkspaceClient, thread_id: str, prompt: str) -> list[StreamEvent]:
     events: list[StreamEvent] = []
     for event in client.stream(
         prompt,
@@ -225,7 +225,7 @@ def _task_ids_in_state(values: dict[str, Any], task_ids: set[str]) -> set[str]:
     return present
 
 
-def _state_values(client: DeerFlowClient, thread_id: str) -> dict[str, Any]:
+def _state_values(client: AgentWorkspaceClient, thread_id: str) -> dict[str, Any]:
     assert client._agent is not None
     config = client._get_runnable_config(
         thread_id,

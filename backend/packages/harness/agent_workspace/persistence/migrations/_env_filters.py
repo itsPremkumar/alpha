@@ -1,4 +1,4 @@
-"""Object filters used by ``env.py`` to scope alembic to DeerFlow tables.
+"""Object filters used by ``env.py`` to scope alembic to Agent Workspace tables.
 
 LangGraph checkpointer tables live in the same database but are owned by
 LangGraph. Without this filter, ``alembic revision --autogenerate`` would
@@ -16,7 +16,7 @@ builds a throwaway SQLite from the migration chain and diffs against that, so
 neither LangGraph's tables nor an extension's are ever reflected. What is not
 safe is running ``alembic revision --autogenerate`` directly from this
 directory, where ``alembic.ini`` points ``sqlalchemy.url`` at a real
-``./data/deerflow.db``. That is the path both exclusions cover, and it is why
+``./data/agent_workspace.db``. That is the path both exclusions cover, and it is why
 ``LANGGRAPH_OWNED_TABLES`` exists despite the throwaway-DB script landing in
 the same commit.
 

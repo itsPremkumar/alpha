@@ -272,7 +272,7 @@ def test_context_aware_hybrid_retrieval(tmp_path: Path):
 
     # Add specific test facts and procedures
     sys.semantic_graph.add_belief(
-        subject="DeerFlowStreaming",
+        subject="Agent WorkspaceStreaming",
         predicate="uses_protocol",
         object_val="ServerSentEvents_SSE",
         confidence=0.95,
@@ -292,7 +292,7 @@ def test_context_aware_hybrid_retrieval(tmp_path: Path):
 
     assert len(results) > 0
     top = results[0]
-    assert "ServerSentEvents" in top.snippet or "DeerFlowStreaming" in top.title
+    assert "ServerSentEvents" in top.snippet or "Agent WorkspaceStreaming" in top.title
     assert top.composite_score > 0.1
     assert top.bm25_score >= 0.0
     assert top.vector_score > 0.0

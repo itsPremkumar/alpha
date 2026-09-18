@@ -16,7 +16,7 @@ SENTINEL_NAME = "ESTOP"
 def _get_runtime_home(root_dir: Path | str | None = None) -> Path:
     if root_dir is not None:
         return Path(root_dir)
-    return Path.cwd() / ".deerflow"
+    return Path.cwd() / ".agent_workspace"
 
 
 class EmergencyStopManager:

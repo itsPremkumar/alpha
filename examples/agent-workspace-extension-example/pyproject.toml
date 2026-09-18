@@ -1,7 +1,7 @@
 [project]
-name = "deerflow-extension-example"
+name = "agent-workspace-extension-example"
 version = "0.1.0"
-description = "A compact standalone example covering every DeerFlow extension contribution kind"
+description = "A compact standalone example covering every Agent Workspace extension contribution kind"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -12,10 +12,10 @@ dependencies = [
 ]
 
 [project.entry-points."agent_workspace.extensions"]
-example = "deerflow_extension_example:install"
+example = "agent_workspace_extension_example:install"
 
-[project.entry-points."deerflow.extensions"]
-example = "deerflow_extension_example:install"
+[project.entry-points."agent_workspace.extensions"]
+example = "agent_workspace_extension_example:install"
 
 [project.optional-dependencies]
 dev = [
@@ -29,7 +29,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["deerflow_extension_example"]
+packages = ["agent_workspace_extension_example"]
 
 [tool.ruff]
 line-length = 240
@@ -39,7 +39,7 @@ target-version = "py312"
 select = ["E", "F", "I", "UP"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["deerflow_extension_example"]
+known-first-party = ["agent_workspace_extension_example"]
 
 [tool.ruff.format]
 quote-style = "double"

@@ -57,7 +57,7 @@ def records(messages, cap: int = 16000) -> list[dict]:
             continue
         # Framework injections are data for the current call, not source history.
         hidden_injection = message.additional_kwargs.get("hide_from_ui") and not (isinstance(message, HumanMessage) and read_human_input_response(message.additional_kwargs) is not None)
-        if hidden_injection or any(message.additional_kwargs.get(key) for key in ("deerflow_content_kind", "dynamic_context_reminder")) or (message.name or "").startswith("__"):
+        if hidden_injection or any(message.additional_kwargs.get(key) for key in ("agent_workspace_content_kind", "dynamic_context_reminder")) or (message.name or "").startswith("__"):
             continue
         content = message.content
         # Mixed LangChain content may contain plain strings. Filter typed blocks

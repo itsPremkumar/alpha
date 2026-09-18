@@ -190,7 +190,7 @@ def _worker_main(encoded_case: str, *, profile_path: Path | None = None) -> int:
     except (TypeError, ValueError) as exc:
         print(json.dumps({"schema_version": SCHEMA_VERSION, "benchmark_version": BENCHMARK_VERSION, "benchmark": BENCHMARK_NAME, "success": False, "error": common.safe_error(exc)}, separators=(",", ":")))
         return 2
-    with tempfile.TemporaryDirectory(prefix="deerflow-checkpoint-production-") as temp_dir:
+    with tempfile.TemporaryDirectory(prefix="agent_workspace-checkpoint-production-") as temp_dir:
         if profile_path is None:
             row = _run_case(case, work_dir=Path(temp_dir))
         else:
@@ -420,7 +420,7 @@ async def _run_phase(case: ProductionCase, saver: Any, timing: _TimingSaver, wor
     with patch("agent_workspace.agents.lead_agent.agent.create_chat_model", _fake_create_chat_model):
         graph = make_lead_agent({"configurable": {}})
     # Attach the timed saver post-construction, mirroring the run worker
-    # (deerflow.runs.worker assigns ``agent.checkpointer`` the same way), so
+    # (agent_workspace.runs.worker assigns ``agent.checkpointer`` the same way), so
     # every checkpoint write flows through ``timing``.
     graph.checkpointer = timing
 

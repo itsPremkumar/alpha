@@ -24,7 +24,7 @@ from agent_workspace.subagents.status_contract import SUBAGENT_STATUS_VALUES
 
 def _resolve_snapshot_frequency(snapshot_frequency: int | None) -> int:
     """Resolve the effective cadence: explicit value, else process-frozen,
-    else default. Imported lazily — ``deerflow.runtime.__init__`` reaches this
+    else default. Imported lazily — ``agent_workspace.runtime.__init__`` reaches this
     module via ``checkpoint_state``, so a top-level import would cycle."""
     if snapshot_frequency is not None:
         return snapshot_frequency

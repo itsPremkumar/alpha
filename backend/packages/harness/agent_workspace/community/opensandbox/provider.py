@@ -1,4 +1,4 @@
-"""OpenSandbox-backed community ``SandboxProvider`` for DeerFlow."""
+"""OpenSandbox-backed community ``SandboxProvider`` for Agent Workspace."""
 
 from __future__ import annotations
 
@@ -288,11 +288,11 @@ class OpenSandboxProvider(WarmPoolLifecycleMixin[OpenSandboxSandbox], SandboxPro
 
         sandbox_cls, connection_config_cls, run_command_opts_cls = self._get_sdk()
         connection_config = self._new_connection_config(connection_config_cls)
-        metadata = {"deer_flow_provider": "opensandbox"}
+        metadata = {"agent_workspace_provider": "opensandbox"}
         if thread_id is not None:
-            metadata["deer_flow_thread"] = thread_id
+            metadata["agent_workspace_thread"] = thread_id
         if user_id is not None:
-            metadata["deer_flow_user"] = user_id
+            metadata["agent_workspace_user"] = user_id
         remote = sandbox_cls.create(
             self._config["image"],
             timeout=None if self._config["sandbox_timeout"] is None else timedelta(seconds=self._config["sandbox_timeout"]),

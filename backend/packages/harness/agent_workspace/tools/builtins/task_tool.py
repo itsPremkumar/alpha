@@ -70,11 +70,11 @@ _UNEXPECTED_EXIT_GRACE_SECONDS = 5.0
 _STATUS_UNREADABLE = object()
 
 _explicit_execution_capacity: ContextVar[SubagentExecutionCapacity | None] = ContextVar(
-    "deerflow_explicit_subagent_execution_capacity",
+    "agent_workspace_explicit_subagent_execution_capacity",
     default=None,
 )
 _explicit_app_config: ContextVar[Any | None] = ContextVar(
-    "deerflow_explicit_subagent_app_config",
+    "agent_workspace_explicit_subagent_app_config",
     default=None,
 )
 
@@ -298,7 +298,7 @@ def _deliver_final_usage_report(
 ) -> None:
     """Schedule the FINAL usage report onto the loop that owns the RunJournal.
 
-    ``RunJournal`` is deliberately ``deerflow_loop_bound``: its accumulators
+    ``RunJournal`` is deliberately ``agent_workspace_loop_bound``: its accumulators
     are unlocked read-modify-write fields and ``_tokens_by_model`` is iterated
     by ``get_completion_data()``, so reporting from any other thread races the
     parent run's own journal writes (lost token updates, ``dictionary changed
@@ -574,7 +574,7 @@ def _report_subagent_usage(runtime: Any, result: Any, *, final: bool = False) ->
     delivered, and the journal dedupes per ``source_run_id`` so nothing is
     double-counted. Both call sites run on the parent run's loop — directly
     from the poller, or via ``call_soon_threadsafe`` from the deferred
-    cleaner — preserving the journal's ``deerflow_loop_bound`` contract.
+    cleaner — preserving the journal's ``agent_workspace_loop_bound`` contract.
     """
     _report_usage_records(_find_usage_recorder(runtime), result, final=final)
 

@@ -1,7 +1,7 @@
 """Fail-loud runtime self-checks (DeepSeek-Harness-style invariant registry).
 
 ``ctx.invariants`` in DeepSeek Harness is a live registry of self-checks that
-raise on breach instead of limping on. This module is the DeerFlow equivalent:
+raise on breach instead of limping on. This module is the Agent Workspace equivalent:
 small, dependency-free, and safe to import from anywhere in the harness
 (it imports stdlib only, so factory modules can use it without cycles).
 

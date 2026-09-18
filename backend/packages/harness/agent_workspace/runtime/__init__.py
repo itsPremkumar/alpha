@@ -1,8 +1,8 @@
 """LangGraph-compatible runtime — runs, streaming, and lifecycle management.
 
-Re-exports the public API of :mod:`~deerflow.runtime.runs` and
-:mod:`~deerflow.runtime.stream_bridge` so that consumers can import
-directly from ``deerflow.runtime``.
+Re-exports the public API of :mod:`~agent_workspace.runtime.runs` and
+:mod:`~agent_workspace.runtime.stream_bridge` so that consumers can import
+directly from ``agent_workspace.runtime``.
 """
 
 from .checkpoint_state import CheckpointStateAccessor, build_state_mutation_graph
@@ -13,7 +13,7 @@ from .store import get_store, make_store, reset_store, store_context
 
 # NOTE: ``RedisStreamBridge`` is intentionally not re-exported — ``redis`` is an
 # optional extra and importing it here would load ``redis.asyncio`` in every
-# process. Import it from ``deerflow.runtime.stream_bridge.redis`` when needed.
+# process. Import it from ``agent_workspace.runtime.stream_bridge.redis`` when needed.
 from .stream_bridge import END_SENTINEL, HEARTBEAT_SENTINEL, MemoryStreamBridge, StreamBridge, StreamEvent, StreamGap, StreamItem, make_stream_bridge
 
 __all__ = [

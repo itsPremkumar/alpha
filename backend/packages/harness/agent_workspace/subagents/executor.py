@@ -62,7 +62,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _EXTENSION_TASK_NOTIFY_TIMEOUT_SECONDS = 3.0
-# Kept as wire keys here instead of importing ``deerflow.sandbox`` at module
+# Kept as wire keys here instead of importing ``agent_workspace.sandbox`` at module
 # load: executor tests and extension embedders replace that package while
 # breaking agent/tool import cycles.
 _SANDBOX_LEASE_OWNER_CONTEXT_KEY = "sandbox_lease_owner_id"
@@ -71,7 +71,7 @@ _SANDBOX_COMMAND_SCOPE_CONTEXT_KEY = "sandbox_command_scope_id"
 
 def _utcnow() -> datetime:
     # SubagentResult timestamp writers must stamp UTC-aware datetimes so
-    # lifecycle metadata never depends on the host wall clock (see deerflow.utils.time).
+    # lifecycle metadata never depends on the host wall clock (see agent_workspace.utils.time).
     return datetime.now(UTC)
 
 
@@ -330,7 +330,7 @@ def _extract_llm_error_fallback(final_state: Any) -> str | None:
             continue
 
         metadata = message.additional_kwargs
-        if metadata.get("deerflow_error_fallback") is not True:
+        if metadata.get("agent_workspace_error_fallback") is not True:
             return None
 
         content = message_content_to_text(message.content).strip()
@@ -364,7 +364,7 @@ def _harvest_tool_receipts(
     """Harvest the child's tool receipts from its terminal message stream.
 
     Lazy import: the executor package is imported in cycles with
-    ``deerflow.agents``; resolving ``tool_receipt`` at call time keeps module
+    ``agent_workspace.agents``; resolving ``tool_receipt`` at call time keeps module
     init order-independent. Failure-isolated: a harvest error can never
     change the run's outcome — the parent simply gets no receipts.
     """
@@ -425,7 +425,7 @@ def _bash_evidence_status(content: str, meta_status: str) -> tuple[str, str | No
     Returns ``(status, marker)``: the marker text actually seen (e.g. ``Exit
     Code: 5``), so consumers can report it instead of asserting a failure the
     harness cannot distinguish from the command's own trailing text. The
-    explicit marker is authoritative: ``deerflow_tool_meta`` reports the
+    explicit marker is authoritative: ``agent_workspace_tool_meta`` reports the
     generic ToolMessage status, which stays ``success`` for a nonzero exit
     rendered as ordinary output text.
     """
@@ -484,7 +484,7 @@ def _harvest_bash_executions(
     carries the test-summary shape. The recorded status is the **actual shell
     exit status**: a nonzero bash exit comes back as ordinary output text
     (local: a trailing ``Exit Code: N``; e2b/opensandbox with empty output:
-    ``Command exited with code N``), which ``deerflow_tool_meta`` still reports
+    ``Command exited with code N``), which ``agent_workspace_tool_meta`` still reports
     as success — so an explicit exit marker wins, and the meta status is only
     the fallback when no marker exists. Every entry is stamped with
     ``shell_persistent`` — the producing sandbox's
@@ -715,11 +715,11 @@ def _copy_isolated_subagent_context() -> Context:
     callbacks = inherited_config.get("callbacks")
     if isinstance(callbacks, BaseCallbackManager):
         isolated_callbacks = callbacks.copy()
-        isolated_callbacks.handlers = [handler for handler in callbacks.handlers if not getattr(handler, "deerflow_loop_bound", False)]
-        isolated_callbacks.inheritable_handlers = [handler for handler in callbacks.inheritable_handlers if not getattr(handler, "deerflow_loop_bound", False)]
+        isolated_callbacks.handlers = [handler for handler in callbacks.handlers if not getattr(handler, "agent_workspace_loop_bound", False)]
+        isolated_callbacks.inheritable_handlers = [handler for handler in callbacks.inheritable_handlers if not getattr(handler, "agent_workspace_loop_bound", False)]
     elif isinstance(callbacks, (list, tuple)):
-        isolated_callbacks = [handler for handler in callbacks if not getattr(handler, "deerflow_loop_bound", False)]
-    elif getattr(callbacks, "deerflow_loop_bound", False):
+        isolated_callbacks = [handler for handler in callbacks if not getattr(handler, "agent_workspace_loop_bound", False)]
+    elif getattr(callbacks, "agent_workspace_loop_bound", False):
         isolated_callbacks = None
     else:
         isolated_callbacks = callbacks
@@ -817,7 +817,7 @@ class SubagentExecutor:
             oauth_id: Subject id at the external identity provider.
             run_id: Parent run id, so delegated guardrail decisions attribute to
                 the same run as the lead agent.
-            agent_workspace_trace_id: DeerFlow request-level correlation id propagated
+            agent_workspace_trace_id: Agent Workspace request-level correlation id propagated
                 from the parent run for Langfuse metadata correlation. Falls
                 back to the ambient trace so the attribute is always a real
                 id, never ``None``.
@@ -826,7 +826,7 @@ class SubagentExecutor:
                 standalone LangGraph Server), ``_aexecute`` falls back to the
                 process-wide singleton.
             execution_capacity: Optional explicitly shared admission controller.
-                Direct ``create_deerflow_agent`` callers pass one through their
+                Direct ``create_agent_workspace_agent`` callers pass one through their
                 ``SubagentRuntime``; application factories fall back to the
                 startup-configured process singleton.
             acceptance_criteria: Optional lead-supplied completion requirements
@@ -1044,7 +1044,7 @@ class SubagentExecutor:
                 )
             deferred_names = deferred_setup.deferred_names if deferred_setup is not None else frozenset()
             descriptor = build_assembly_descriptor(
-                namespace="deerflow",
+                namespace="agent_workspace",
                 agent_name=self.config.name,
                 requested_model=(self.config.model if self.config.model != "inherit" else self.parent_model),
                 effective_model=self.model_name,
@@ -1052,7 +1052,7 @@ class SubagentExecutor:
                 thinking_enabled=False,
                 reasoning_effort=None,
                 rendered_base_prompt=self._assembled_system_prompt,
-                prompt_template_id="deerflow-subagent-v1",
+                prompt_template_id="agent_workspace-subagent-v1",
                 tools=tools,
                 middlewares=middlewares,
                 deferred_names=deferred_names,

@@ -30,7 +30,7 @@ def test_slack_connect_command_binds_socket_mode_identity(tmp_path):
         repo = await _make_repo(tmp_path)
         state = "slack-bind-code"
         await repo.create_oauth_state(
-            owner_user_id="deerflow-user-1",
+            owner_user_id="agent-workspace-user-1",
             provider="slack",
             state=state,
             expires_at=datetime.now(UTC) + timedelta(minutes=5),
@@ -51,7 +51,7 @@ def test_slack_connect_command_binds_socket_mode_identity(tmp_path):
             code=state,
         )
 
-        connections = await repo.list_connections("deerflow-user-1")
+        connections = await repo.list_connections("agent-workspace-user-1")
         assert handled is True
         assert len(connections) == 1
         assert connections[0]["provider"] == "slack"

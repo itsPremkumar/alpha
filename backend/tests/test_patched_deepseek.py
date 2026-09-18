@@ -1,4 +1,4 @@
-"""Tests for deerflow.models.patched_deepseek.PatchedChatDeepSeek.
+"""Tests for agent_workspace.models.patched_deepseek.PatchedChatDeepSeek.
 
 Covers:
 - LangChain serialization protocol: is_lc_serializable, lc_secrets, to_json

@@ -1,6 +1,6 @@
 name: Publish Helm Chart
 
-# Publishes the DeerFlow Helm chart as an OCI artifact to GHCR alongside the
+# Publishes the Agent Workspace Helm chart as an OCI artifact to GHCR alongside the
 # container images (see container.yaml). Triggers on the same `v*` tags.
 #
 # On pull requests touching the chart or config.example.yaml, `validate-chart`
@@ -9,7 +9,7 @@ name: Publish Helm Chart
 # config.example.yaml) so a broken or stale chart fails the PR, not the release.
 #
 # Users then install with:
-#   helm install deer-flow oci://ghcr.io/${{ owner }}/charts/deer-flow --version <ver>
+#   helm install agent-workspace oci://ghcr.io/${{ owner }}/charts/agent-workspace --version <ver>
 
 on:
   push:

@@ -1756,7 +1756,7 @@ class RunManager:
                 await self._persist_status(interrupted_record, RunStatus.interrupted)
         except asyncio.CancelledError:
             cleanup = asyncio.create_task(self._close_cancelled_admission(record))
-            cleanup.set_name(f"deerflow-close-cancelled-admission-{record.run_id}")
+            cleanup.set_name(f"agent_workspace-close-cancelled-admission-{record.run_id}")
             while not cleanup.done():
                 try:
                     await asyncio.shield(cleanup)
@@ -2028,7 +2028,7 @@ class RunManager:
             return
         self._heartbeat_stop = asyncio.Event()
         task = asyncio.create_task(self._heartbeat_loop())
-        task.set_name("deerflow-run-lease-heartbeat")
+        task.set_name("agent_workspace-run-lease-heartbeat")
         self._heartbeat_task = task
         logger.info("Run lease heartbeat started for worker %s", self._worker_id)
 
@@ -2241,7 +2241,7 @@ class RunManager:
             logger.debug("Skipping periodic orphan reconciliation: previous pass is still running")
             return
         task = asyncio.create_task(self._reconcile_orphans_periodic())
-        task.set_name("deerflow-periodic-orphan-recovery")
+        task.set_name("agent_workspace-periodic-orphan-recovery")
         self._orphan_recovery_task = task
         task.add_done_callback(self._orphan_reconciliation_done)
 
@@ -2287,7 +2287,7 @@ class RunManager:
         that put runs in a langgraph-internal task (not on ``run_agent``'s call
         stack), the resulting ``psycopg_pool.PoolClosed`` is not catchable by the
         worker and surfaces as an unhandled exception during ``asyncio.run()``
-        shutdown (bytedance/deer-flow issue #3373).
+        shutdown (bytedance/agent-workspace issue #3373).
 
         Draining in-flight runs *before* the checkpointer is closed lets each
         run that settles within ``timeout`` flush its final checkpoint while

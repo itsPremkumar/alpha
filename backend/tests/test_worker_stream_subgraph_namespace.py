@@ -275,8 +275,8 @@ _THREAD_ID = "thread-subgraph-stream-integration"
 def real_executor_module():
     """Swap the conftest MagicMock for the real subagent executor module.
 
-    conftest.py mocks ``deerflow.subagents.executor`` to break a package-init
-    import cycle; by the time this fixture runs every other deerflow module is
+    conftest.py mocks ``agent_workspace.subagents.executor`` to break a package-init
+    import cycle; by the time this fixture runs every other agent_workspace module is
     already imported, so a fresh import of the real module is safe.
     """
     original = sys.modules.get("agent_workspace.subagents.executor")
@@ -371,7 +371,7 @@ def _build_delegating_parent_graph(executor_module, monkeypatch, *, child_emits_
     production task tool does (root-graph ``get_stream_writer``).
 
     With ``child_emits_error_fallback`` the child stream contains an assistant
-    message carrying the ``deerflow_error_fallback`` marker (not as its final
+    message carrying the ``agent_workspace_error_fallback`` marker (not as its final
     message, so the delegation itself still completes) — the shape whose leak
     would mark the *parent* run as errored (#4399).
     """
@@ -404,7 +404,7 @@ def _build_delegating_parent_graph(executor_module, monkeypatch, *, child_emits_
                 AIMessage(
                     content="child provider failed after retries",
                     id="child-fallback-sentinel",
-                    additional_kwargs={"deerflow_error_fallback": True},
+                    additional_kwargs={"agent_workspace_error_fallback": True},
                 )
             ]
         },
@@ -608,7 +608,7 @@ class TestMessageSeqStamping:
         )
 
         _run, _event, payload = bridge.published[0]
-        assert payload["messages"][0]["additional_kwargs"]["deerflow_seq"] == 1
+        assert payload["messages"][0]["additional_kwargs"]["agent_workspace_seq"] == 1
 
     @pytest.mark.asyncio
     async def test_a_message_not_in_the_feed_is_left_unstamped(self):
@@ -629,7 +629,7 @@ class TestMessageSeqStamping:
         )
 
         _run, _event, payload = bridge.published[0]
-        assert "deerflow_seq" not in (payload["messages"][0].get("additional_kwargs") or {})
+        assert "agent_workspace_seq" not in (payload["messages"][0].get("additional_kwargs") or {})
 
     @pytest.mark.asyncio
     async def test_subgraph_frames_are_not_stamped(self):
@@ -649,7 +649,7 @@ class TestMessageSeqStamping:
         )
 
         _run, _event, payload = bridge.published[0]
-        assert "deerflow_seq" not in (payload["messages"][0].get("additional_kwargs") or {})
+        assert "agent_workspace_seq" not in (payload["messages"][0].get("additional_kwargs") or {})
 
     @pytest.mark.asyncio
     async def test_no_stamper_publishes_the_frame_unchanged(self):
@@ -665,7 +665,7 @@ class TestMessageSeqStamping:
         )
 
         _run, _event, payload = bridge.published[0]
-        assert "deerflow_seq" not in (payload["messages"][0].get("additional_kwargs") or {})
+        assert "agent_workspace_seq" not in (payload["messages"][0].get("additional_kwargs") or {})
 
     @pytest.mark.asyncio
     async def test_a_resolved_identity_is_not_looked_up_twice(self):
@@ -718,7 +718,7 @@ class TestMessageSeqStamping:
         frame = {"messages": [{"type": "ai", "id": "a1", "content": "…"}]}
 
         first = await stamper.stamp(dict(frame))
-        assert "deerflow_seq" not in (first["messages"][0].get("additional_kwargs") or {})
+        assert "agent_workspace_seq" not in (first["messages"][0].get("additional_kwargs") or {})
 
         await store.put(
             thread_id="t1",
@@ -730,7 +730,7 @@ class TestMessageSeqStamping:
         generation += 1
 
         second = await stamper.stamp(dict(frame))
-        assert second["messages"][0]["additional_kwargs"]["deerflow_seq"] == 2
+        assert second["messages"][0]["additional_kwargs"]["agent_workspace_seq"] == 2
 
     @pytest.mark.asyncio
     async def test_a_miss_is_not_retried_while_the_feed_is_unchanged(self):
@@ -785,11 +785,11 @@ class TestMessageSeqStamping:
         frame = {"messages": [{"type": "human", "id": "u1__user", "content": "MARK-FIRST"}]}
 
         first = await stamper.stamp(dict(frame))
-        assert "deerflow_seq" not in (first["messages"][0].get("additional_kwargs") or {})
+        assert "agent_workspace_seq" not in (first["messages"][0].get("additional_kwargs") or {})
 
         generation += 1
         second = await stamper.stamp(dict(frame))
-        assert second["messages"][0]["additional_kwargs"]["deerflow_seq"] == 1
+        assert second["messages"][0]["additional_kwargs"]["agent_workspace_seq"] == 1
 
     @pytest.mark.asyncio
     async def test_a_resolved_identity_survives_a_feed_advance(self):
@@ -818,7 +818,7 @@ class TestMessageSeqStamping:
         stamped = await stamper.stamp(dict(frame))
 
         assert len(calls) == 1
-        assert stamped["messages"][0]["additional_kwargs"]["deerflow_seq"] == 1
+        assert stamped["messages"][0]["additional_kwargs"]["agent_workspace_seq"] == 1
 
     @pytest.mark.asyncio
     async def test_the_run_stamper_re_asks_after_the_journal_writes(self):
@@ -837,7 +837,7 @@ class TestMessageSeqStamping:
         frame = {"messages": [{"type": "ai", "id": "a1", "content": "…"}]}
 
         first = await stamper.stamp(dict(frame))
-        assert "deerflow_seq" not in (first["messages"][0].get("additional_kwargs") or {})
+        assert "agent_workspace_seq" not in (first["messages"][0].get("additional_kwargs") or {})
 
         journal._put(
             event_type="llm.ai.response",
@@ -847,7 +847,7 @@ class TestMessageSeqStamping:
         await journal.flush()
 
         second = await stamper.stamp(dict(frame))
-        assert second["messages"][0]["additional_kwargs"]["deerflow_seq"] == 2
+        assert second["messages"][0]["additional_kwargs"]["agent_workspace_seq"] == 2
 
     @pytest.mark.asyncio
     async def test_a_run_without_a_journal_still_builds_a_stamper(self):
@@ -857,7 +857,7 @@ class TestMessageSeqStamping:
         stamper = _build_seq_stamper(await self._seeded_store(), "t1", None)
 
         stamped = await stamper.stamp({"messages": [{"type": "human", "id": "u1__user", "content": "MARK-FIRST"}]})
-        assert stamped["messages"][0]["additional_kwargs"]["deerflow_seq"] == 1
+        assert stamped["messages"][0]["additional_kwargs"]["agent_workspace_seq"] == 1
 
     @pytest.mark.asyncio
     @pytest.mark.no_auto_user
@@ -902,6 +902,6 @@ class TestMessageSeqStamping:
             )
 
             _run, _event, payload = bridge.published[0]
-            assert payload["messages"][0]["additional_kwargs"]["deerflow_seq"] == 1
+            assert payload["messages"][0]["additional_kwargs"]["agent_workspace_seq"] == 1
         finally:
             await close_engine()

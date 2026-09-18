@@ -125,7 +125,7 @@ class SkillStorage(ABC):
     def get_skills_root_path(self) -> Path:
         """Absolute host path to the skills root, used for sandbox mounts.
 
-        Origin: ``deerflow.skills.loader.get_skills_root_path``.
+        Origin: ``agent_workspace.skills.loader.get_skills_root_path``.
         """
 
     def validate_skill_file_path(self, skill_file: Path) -> Path:
@@ -164,21 +164,21 @@ class SkillStorage(ABC):
         """Yield ``(category, category_root, skill_md_path)`` for every SKILL.md.
 
         Origin: extracted from directory-walk logic inside
-        ``deerflow.skills.loader.load_skills``.
+        ``agent_workspace.skills.loader.load_skills``.
         """
 
     @abstractmethod
     def read_custom_skill(self, name: str) -> str:
         """Read SKILL.md content for a custom skill.
 
-        Origin: ``deerflow.skills.manager.read_custom_skill_content``.
+        Origin: ``agent_workspace.skills.manager.read_custom_skill_content``.
         """
 
     @abstractmethod
     def write_custom_skill(self, name: str, relative_path: str, content: str) -> None:
         """Atomically write a text file under ``custom/<name>/<relative_path>``.
 
-        Origin: ``deerflow.skills.manager.atomic_write``.
+        Origin: ``agent_workspace.skills.manager.atomic_write``.
         """
 
     def remove_custom_skill_file(self, name: str, relative_path: str) -> str:
@@ -194,7 +194,7 @@ class SkillStorage(ABC):
     async def ainstall_skill_from_archive(self, archive_path: str | Path) -> dict:
         """Async install of a skill from a ``.skill`` ZIP archive.
 
-        Origin: ``deerflow.skills.installer.ainstall_skill_from_archive``.
+        Origin: ``agent_workspace.skills.installer.ainstall_skill_from_archive``.
         """
 
     def install_skill_from_archive(self, archive_path: str | Path) -> dict:
@@ -212,24 +212,24 @@ class SkillStorage(ABC):
 
     @abstractmethod
     def custom_skill_exists(self, name: str) -> bool:
-        """Origin: ``deerflow.skills.manager.custom_skill_exists``."""
+        """Origin: ``agent_workspace.skills.manager.custom_skill_exists``."""
 
     @abstractmethod
     def public_skill_exists(self, name: str) -> bool:
-        """Origin: ``deerflow.skills.manager.public_skill_exists``."""
+        """Origin: ``agent_workspace.skills.manager.public_skill_exists``."""
 
     @abstractmethod
     def append_history(self, name: str, record: dict) -> None:
         """Append a JSONL history entry for ``name``.
 
-        Origin: ``deerflow.skills.manager.append_history``.
+        Origin: ``agent_workspace.skills.manager.append_history``.
         """
 
     @abstractmethod
     def read_history(self, name: str) -> list[dict]:
         """Return all history records for ``name``, oldest first.
 
-        Origin: ``deerflow.skills.manager.read_history``.
+        Origin: ``agent_workspace.skills.manager.read_history``.
         """
 
     # ------------------------------------------------------------------
@@ -237,13 +237,13 @@ class SkillStorage(ABC):
     # ------------------------------------------------------------------
 
     def get_container_root(self) -> str:
-        """Origin: ``deerflow.config.skills_config.SkillsConfig.container_path`` accessor."""
+        """Origin: ``agent_workspace.config.skills_config.SkillsConfig.container_path`` accessor."""
         return self._container_root
 
     def get_custom_skill_dir(self, name: str) -> Path:
         """Path to ``custom/<name>``. Does not create the directory.
 
-        Origin: ``deerflow.skills.manager.get_custom_skill_dir``.
+        Origin: ``agent_workspace.skills.manager.get_custom_skill_dir``.
         """
         normalized_name = self.validate_skill_name(name)
         return self.get_skills_root_path() / SkillCategory.CUSTOM.value / normalized_name
@@ -251,7 +251,7 @@ class SkillStorage(ABC):
     def get_custom_skill_file(self, name: str) -> Path:
         """Path to ``custom/<name>/SKILL.md``.
 
-        Origin: ``deerflow.skills.manager.get_custom_skill_file``.
+        Origin: ``agent_workspace.skills.manager.get_custom_skill_file``.
         """
         normalized_name = self.validate_skill_name(name)
         return self.get_custom_skill_dir(normalized_name) / SKILL_MD_FILE
@@ -265,7 +265,7 @@ class SkillStorage(ABC):
         redirect custom skill paths must override this method (as
         ``UserScopedSkillStorage`` already does).
 
-        Origin: ``deerflow.skills.manager.get_skill_history_file``.
+        Origin: ``agent_workspace.skills.manager.get_skill_history_file``.
         """
         normalized_name = self.validate_skill_name(name)
         return self.get_skills_root_path() / SkillCategory.CUSTOM.value / ".history" / f"{normalized_name}.jsonl"
@@ -277,7 +277,7 @@ class SkillStorage(ABC):
     def load_skills(self, *, enabled_only: bool = False) -> list[Skill]:
         """Discover all skills, merge enabled state, sort and optionally filter.
 
-        Origin: ``deerflow.skills.loader.load_skills``.
+        Origin: ``agent_workspace.skills.loader.load_skills``.
         """
         from agent_workspace.skills.parser import parse_skill_file
 
@@ -314,7 +314,7 @@ class SkillStorage(ABC):
         return skills
 
     def ensure_custom_skill_is_editable(self, name: str) -> None:
-        """Origin: ``deerflow.skills.manager.ensure_custom_skill_is_editable``.
+        """Origin: ``agent_workspace.skills.manager.ensure_custom_skill_is_editable``.
 
         Only CUSTOM-category skills are editable. PUBLIC (built-in) and
         LEGACY (shared pre-migration) skills are read-only; attempting to

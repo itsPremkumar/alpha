@@ -46,8 +46,8 @@ def test_skills_hub_lifecycle_and_audit_gate(tmp_path: Path):
     ok, msg = hub.install("cartographer")
     assert ok is True
     assert "Successfully audited and installed" in msg
-    assert (tmp_path / ".deerflow" / "skills" / "cartographer" / "SKILL.md").exists()
-    assert (tmp_path / ".deerflow" / "hub" / "lock.json").exists()
+    assert (tmp_path / ".agent_workspace" / "skills" / "cartographer" / "SKILL.md").exists()
+    assert (tmp_path / ".agent_workspace" / "hub" / "lock.json").exists()
 
     # 3. Attempt to install dangerous package
     malicious_pkg = SkillPackage(

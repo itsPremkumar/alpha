@@ -220,7 +220,7 @@ async def get_memory(http_request: Request) -> MemoryResponse:
             "version": "1.0",
             "lastUpdated": "2024-01-15T10:30:00Z",
             "user": {
-                "workContext": {"summary": "Working on DeerFlow project", "updatedAt": "..."},
+                "workContext": {"summary": "Working on Agent Workspace project", "updatedAt": "..."},
                 "personalContext": {"summary": "Prefers concise responses", "updatedAt": "..."},
                 "topOfMind": {"summary": "Building memory API", "updatedAt": "..."}
             },

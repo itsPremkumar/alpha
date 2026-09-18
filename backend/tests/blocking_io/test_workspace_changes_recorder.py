@@ -84,7 +84,7 @@ async def test_capture_workspace_snapshot_cleanup_does_not_block_event_loop(tmp_
 
     # The cache dir was really created, then really removed — cleanup still runs,
     # it merely moved off the loop.
-    leftovers = await asyncio.to_thread(lambda: sorted(cache_root.glob("deerflow-workspace-changes-*")))
+    leftovers = await asyncio.to_thread(lambda: sorted(cache_root.glob("agent_workspace-workspace-changes-*")))
     assert leftovers == [], f"text cache dir leaked on the failure branch: {leftovers}"
 
 
@@ -147,7 +147,7 @@ async def test_capture_workspace_snapshot_cancelled_handoff_leaks_no_text_cache(
 
     task = asyncio.ensure_future(recorder.capture_workspace_snapshot("t1", include_text=True))
     await asyncio.to_thread(entered.wait, 5)  # mkdtemp created the dir; worker is parked
-    parked = await asyncio.to_thread(lambda: sorted(cache_root.glob("deerflow-workspace-changes-*")))
+    parked = await asyncio.to_thread(lambda: sorted(cache_root.glob("agent_workspace-workspace-changes-*")))
     assert parked, "text cache dir should exist while the worker is parked mid-handoff"
 
     task.cancel()
@@ -155,7 +155,7 @@ async def test_capture_workspace_snapshot_cancelled_handoff_leaks_no_text_cache(
     with pytest.raises(asyncio.CancelledError):
         await task
 
-    leftovers = await asyncio.to_thread(lambda: sorted(cache_root.glob("deerflow-workspace-changes-*")))
+    leftovers = await asyncio.to_thread(lambda: sorted(cache_root.glob("agent_workspace-workspace-changes-*")))
     assert leftovers == [], f"cancelled capture leaked a text cache dir: {leftovers}"
 
 
@@ -193,7 +193,7 @@ async def test_capture_workspace_snapshot_repeated_cancellation_leaks_no_text_ca
 
     task = asyncio.ensure_future(recorder.capture_workspace_snapshot("t1", include_text=True))
     await asyncio.to_thread(entered.wait, 5)  # mkdtemp created the dir; worker is parked
-    parked = await asyncio.to_thread(lambda: sorted(cache_root.glob("deerflow-workspace-changes-*")))
+    parked = await asyncio.to_thread(lambda: sorted(cache_root.glob("agent_workspace-workspace-changes-*")))
     assert parked, "text cache dir should exist while the worker is parked mid-handoff"
 
     task.cancel()  # cancel #1 -> enters reclaim, awaits the shielded cleanup task
@@ -207,7 +207,7 @@ async def test_capture_workspace_snapshot_repeated_cancellation_leaks_no_text_ca
     with pytest.raises(asyncio.CancelledError):
         await task
 
-    leftovers = await asyncio.to_thread(lambda: sorted(cache_root.glob("deerflow-workspace-changes-*")))
+    leftovers = await asyncio.to_thread(lambda: sorted(cache_root.glob("agent_workspace-workspace-changes-*")))
     assert leftovers == [], f"repeated-cancel capture leaked a text cache dir: {leftovers}"
 
 
@@ -248,7 +248,7 @@ async def test_capture_workspace_snapshot_cancelled_scan_drains_before_cleanup(t
     with pytest.raises(asyncio.CancelledError):
         await task
 
-    leftovers = await asyncio.to_thread(lambda: sorted(cache_root.glob("deerflow-workspace-changes-*")))
+    leftovers = await asyncio.to_thread(lambda: sorted(cache_root.glob("agent_workspace-workspace-changes-*")))
     assert leftovers == [], f"cancelled scan leaked a text cache dir: {leftovers}"
 
 
@@ -294,7 +294,7 @@ async def test_capture_workspace_snapshot_repeated_cancel_during_scan_still_clea
     with pytest.raises(asyncio.CancelledError):
         await task
 
-    leftovers = await asyncio.to_thread(lambda: sorted(cache_root.glob("deerflow-workspace-changes-*")))
+    leftovers = await asyncio.to_thread(lambda: sorted(cache_root.glob("agent_workspace-workspace-changes-*")))
     assert leftovers == [], f"repeated-cancel scan leaked a text cache dir: {leftovers}"
 
 
@@ -345,12 +345,12 @@ async def test_capture_workspace_snapshot_repeated_cancel_during_cleanup_still_c
     for _ in range(5):
         await asyncio.sleep(0)
     assert not task.done(), "second cancellation abandoned the in-progress cache cleanup"
-    parked = await asyncio.to_thread(lambda: sorted(cache_root.glob("deerflow-workspace-changes-*")))
+    parked = await asyncio.to_thread(lambda: sorted(cache_root.glob("agent_workspace-workspace-changes-*")))
     assert parked, "cache should remain until the owned cleanup task is released"
 
     cleanup_release.set()
     with pytest.raises(asyncio.CancelledError):
         await task
 
-    leftovers = await asyncio.to_thread(lambda: sorted(cache_root.glob("deerflow-workspace-changes-*")))
+    leftovers = await asyncio.to_thread(lambda: sorted(cache_root.glob("agent_workspace-workspace-changes-*")))
     assert leftovers == [], f"repeated cancellation during cleanup leaked a text cache dir: {leftovers}"

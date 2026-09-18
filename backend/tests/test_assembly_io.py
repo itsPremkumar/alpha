@@ -1,6 +1,6 @@
 """Unit tests for the assembly pool's pending counter.
 
-The starvation warning in :func:`deerflow.utils.assembly_io.run_assembly`
+The starvation warning in :func:`agent_workspace.utils.assembly_io.run_assembly`
 fires once the pending (submitted, unfinished) count exceeds the worker
 count. Nothing else in the suite reads ``_pending_assemblies``, so a drift
 in the decrement would silently ratchet the count up and eventually fire

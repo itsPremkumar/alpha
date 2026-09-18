@@ -1,7 +1,7 @@
 """2-3. Provider fallback chain + auth rotation + UtilityModel + per-channel override.
 
-DeerFlow already ships deerflow.models.fallback.FallbackChatModel (per-call
-failover) and deerflow.models.failover (multi-key rotation). This module
+Agent Workspace already ships agent_workspace.models.fallback.FallbackChatModel (per-call
+failover) and agent_workspace.models.failover (multi-key rotation). This module
 adds the missing routing layer OpenClaw 2.0 has:
 
 - build_fallback_chain(names): ordered chain from config model names

@@ -22,8 +22,8 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 MAX_HEADER_BYTES = 65_536
-POLICY_DB = Path(os.environ.get("AGENT_WORKSPACE_POLICY_DB", "/tmp/deerflow-network-policy.sqlite3"))
-RELAY_AUTH_HEADER = "X-DeerFlow-Relay-Token"
+POLICY_DB = Path(os.environ.get("AGENT_WORKSPACE_POLICY_DB", "/tmp/agent_workspace-network-policy.sqlite3"))
+RELAY_AUTH_HEADER = "X-Agent-Workspace-Relay-Token"
 RELAY_TOKEN_ENV = "AGENT_WORKSPACE_RELAY_TOKEN"
 
 

@@ -2,7 +2,7 @@
 
 ## 概述
 
-DeerFlow 后端提供了完整的文件上传功能，支持多文件上传，并可选地将 Office 文档和 PDF 转换为 Markdown 格式。
+Agent Workspace 后端提供了完整的文件上传功能，支持多文件上传，并可选地将 Office 文档和 PDF 转换为 Markdown 格式。
 
 ## 功能特性
 

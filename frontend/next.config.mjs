@@ -6,7 +6,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // The Gateway API runs on port 8001 by default (see start.ps1 -GatewayPort).
 // Override with AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL when the backend lives elsewhere.
-const gatewayBase = (process.env.AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL || process.env.DEER_FLOW_INTERNAL_GATEWAY_BASE_URL || "http://127.0.0.1:8001").replace(/\/+$/, "");
+const gatewayBase = (process.env.AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL || process.env.AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL || "http://127.0.0.1:8001").replace(/\/+$/, "");
 
 const nextConfig = {
   reactStrictMode: true,

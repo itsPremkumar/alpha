@@ -126,14 +126,14 @@ title:
 # checkpointer.py
 from langgraph.checkpoint.sqlite import SqliteSaver
 
-checkpointer = SqliteSaver.from_conn_string("deerflow.db")
+checkpointer = SqliteSaver.from_conn_string("agent_workspace.db")
 ```
 
 ```json
 // langgraph.json
 {
   "graphs": {
-    "lead_agent": "deerflow.agents:lead_agent"
+    "lead_agent": "agent_workspace.agents:lead_agent"
   },
   "checkpointer": "checkpointer:checkpointer"
 }

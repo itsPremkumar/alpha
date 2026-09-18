@@ -6,7 +6,7 @@ if TYPE_CHECKING:
     from langchain_core.runnables import RunnableConfig
 
 __all__ = [
-    "create_deerflow_agent",
+    "create_agent_workspace_agent",
     "RuntimeFeatures",
     "Next",
     "Prev",
@@ -32,11 +32,11 @@ def make_lead_agent(config: "RunnableConfig") -> Any:
 
 
 def __getattr__(name: str):
-    if name == "create_deerflow_agent":
-        from .factory import create_deerflow_agent
+    if name == "create_agent_workspace_agent":
+        from .factory import create_agent_workspace_agent
 
-        globals()[name] = create_deerflow_agent
-        return create_deerflow_agent
+        globals()[name] = create_agent_workspace_agent
+        return create_agent_workspace_agent
     if name in {"DeltaThreadState", "SandboxState", "ThreadState"}:
         from .thread_state import DeltaThreadState, SandboxState, ThreadState
 

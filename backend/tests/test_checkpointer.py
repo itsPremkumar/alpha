@@ -147,8 +147,8 @@ class TestCheckpointerConfig:
         assert config.postgres_schema == ""
 
     def test_postgres_schema_accepts_valid_identifier(self):
-        config = CheckpointerConfig(type="postgres", connection_string="postgresql://localhost/db", postgres_schema="deerflow")
-        assert config.postgres_schema == "deerflow"
+        config = CheckpointerConfig(type="postgres", connection_string="postgresql://localhost/db", postgres_schema="agent_workspace")
+        assert config.postgres_schema == "agent_workspace"
 
     @pytest.mark.parametrize("schema", ["1abc", "a b", "a;b", "a-b", "a" * 64, 'a"b', "MySchema", "Orders", "Public"])
     def test_postgres_schema_rejects_invalid_identifier(self, schema):
@@ -407,7 +407,7 @@ class TestGetCheckpointer:
 
     def test_postgres_schema_creates_schema_and_sets_search_path(self):
         """Sync Postgres checkpointer should create schema before setup."""
-        load_checkpointer_config_from_dict({"type": "postgres", "connection_string": "postgresql://localhost/db", "postgres_schema": "deerflow"})
+        load_checkpointer_config_from_dict({"type": "postgres", "connection_string": "postgresql://localhost/db", "postgres_schema": "agent_workspace"})
 
         mock_saver_instance = MagicMock()
         mock_cm = MagicMock()
@@ -433,16 +433,16 @@ class TestGetCheckpointer:
 
         assert cp is mock_saver_instance
         mock_psycopg.connect.assert_called_once_with("postgresql://localhost/db", autocommit=True)
-        mock_conn.execute.assert_called_once_with('CREATE SCHEMA IF NOT EXISTS "deerflow"')
+        mock_conn.execute.assert_called_once_with('CREATE SCHEMA IF NOT EXISTS "agent_workspace"')
         # psycopg 3 __exit__ does not close(); the sync path must close explicitly.
         mock_conn.close.assert_called_once_with()
         called_dsn = mock_saver_cls.from_conn_string.call_args.args[0]
-        assert "options=-c%20search_path%3Ddeerflow" in called_dsn
+        assert "options=-c%20search_path%3Dagent_workspace" in called_dsn
         mock_saver_instance.setup.assert_called_once()
 
     def test_store_postgres_schema_creates_schema_and_sets_search_path(self):
         """Sync Postgres store should use the legacy checkpointer schema."""
-        load_checkpointer_config_from_dict({"type": "postgres", "connection_string": "postgresql://localhost/db", "postgres_schema": "deerflow"})
+        load_checkpointer_config_from_dict({"type": "postgres", "connection_string": "postgresql://localhost/db", "postgres_schema": "agent_workspace"})
 
         mock_store_instance = MagicMock()
         mock_cm = MagicMock()
@@ -468,11 +468,11 @@ class TestGetCheckpointer:
 
         assert store is mock_store_instance
         mock_psycopg.connect.assert_called_once_with("postgresql://localhost/db", autocommit=True)
-        mock_conn.execute.assert_called_once_with('CREATE SCHEMA IF NOT EXISTS "deerflow"')
+        mock_conn.execute.assert_called_once_with('CREATE SCHEMA IF NOT EXISTS "agent_workspace"')
         # psycopg 3 __exit__ does not close(); the sync path must close explicitly.
         mock_conn.close.assert_called_once_with()
         called_dsn = mock_store_cls.from_conn_string.call_args.args[0]
-        assert "options=-c%20search_path%3Ddeerflow" in called_dsn
+        assert "options=-c%20search_path%3Dagent_workspace" in called_dsn
         mock_store_instance.setup.assert_called_once()
 
 
@@ -658,7 +658,7 @@ class TestAsyncCheckpointer:
         from agent_workspace.runtime.checkpointer.async_provider import make_checkpointer
 
         mock_config = MagicMock()
-        mock_config.checkpointer = CheckpointerConfig(type="postgres", connection_string="postgresql://localhost/db", postgres_schema="deerflow")
+        mock_config.checkpointer = CheckpointerConfig(type="postgres", connection_string="postgresql://localhost/db", postgres_schema="agent_workspace")
 
         mock_saver = AsyncMock()
 
@@ -699,10 +699,10 @@ class TestAsyncCheckpointer:
         call_kwargs = mock_pool_cls.call_args
         # search_path is injected into the DSN (merged with any existing libpq
         # options), not via kwargs["options"] which would clobber DSN options.
-        assert "options=-c%20search_path%3Ddeerflow" in call_kwargs[0][0]
+        assert "options=-c%20search_path%3Dagent_workspace" in call_kwargs[0][0]
         assert call_kwargs[1]["check"] is mock_pool_cls.check_connection
         assert "options" not in call_kwargs[1]["kwargs"]
-        mock_conn.execute.assert_awaited_once_with('CREATE SCHEMA IF NOT EXISTS "deerflow"')
+        mock_conn.execute.assert_awaited_once_with('CREATE SCHEMA IF NOT EXISTS "agent_workspace"')
 
         # Verify saver was constructed with the pool (not via from_conn_string)
         mock_saver_cls.assert_called_once_with(conn=mock_pool_instance)
@@ -714,7 +714,7 @@ class TestAsyncCheckpointer:
         from agent_workspace.config.database_config import DatabaseConfig
         from agent_workspace.runtime.checkpointer.async_provider import make_checkpointer
 
-        db_config = DatabaseConfig(backend="postgres", postgres_url="postgresql://localhost/db", postgres_schema="deerflow")
+        db_config = DatabaseConfig(backend="postgres", postgres_url="postgresql://localhost/db", postgres_schema="agent_workspace")
         mock_config = MagicMock()
         mock_config.checkpointer = None
         mock_config.database = db_config
@@ -753,10 +753,10 @@ class TestAsyncCheckpointer:
 
         mock_pool_cls.assert_called_once()
         call_kwargs = mock_pool_cls.call_args
-        assert "options=-c%20search_path%3Ddeerflow" in call_kwargs[0][0]
+        assert "options=-c%20search_path%3Dagent_workspace" in call_kwargs[0][0]
         assert call_kwargs[1]["check"] is mock_pool_cls.check_connection
         assert "options" not in call_kwargs[1]["kwargs"]
-        mock_conn.execute.assert_awaited_once_with('CREATE SCHEMA IF NOT EXISTS "deerflow"')
+        mock_conn.execute.assert_awaited_once_with('CREATE SCHEMA IF NOT EXISTS "agent_workspace"')
 
         mock_saver_cls.assert_called_once_with(conn=mock_pool_instance)
         mock_saver.setup.assert_awaited_once()
@@ -789,7 +789,7 @@ class TestAsyncCheckpointer:
             patch(
                 "agent_workspace.runtime.checkpointer.async_provider.asyncio.to_thread",
                 new_callable=AsyncMock,
-                return_value="/tmp/data/deerflow.db",
+                return_value="/tmp/data/agent_workspace.db",
             ) as mock_to_thread,
         ):
             async with make_checkpointer() as saver:
@@ -799,7 +799,7 @@ class TestAsyncCheckpointer:
         called_fn, called_db_config = mock_to_thread.await_args.args
         assert called_fn is _prepare_database_sqlite_checkpointer_path
         assert called_db_config is db_config
-        mock_saver_cls.from_conn_string.assert_called_once_with("/tmp/data/deerflow.db")
+        mock_saver_cls.from_conn_string.assert_called_once_with("/tmp/data/agent_workspace.db")
         mock_saver.setup.assert_awaited_once()
 
 
@@ -810,7 +810,7 @@ class TestAsyncStore:
         from agent_workspace.runtime.store.async_provider import make_store
 
         mock_config = MagicMock()
-        mock_config.checkpointer = CheckpointerConfig(type="postgres", connection_string="postgresql://localhost/db", postgres_schema="deerflow")
+        mock_config.checkpointer = CheckpointerConfig(type="postgres", connection_string="postgresql://localhost/db", postgres_schema="agent_workspace")
 
         mock_store = AsyncMock()
         mock_cm = AsyncMock()
@@ -837,10 +837,10 @@ class TestAsyncStore:
                 assert store is mock_store
 
         mock_async_connection.connect.assert_awaited_once_with("postgresql://localhost/db", autocommit=True)
-        mock_conn.execute.assert_awaited_once_with('CREATE SCHEMA IF NOT EXISTS "deerflow"')
+        mock_conn.execute.assert_awaited_once_with('CREATE SCHEMA IF NOT EXISTS "agent_workspace"')
         mock_conn.close.assert_awaited_once()
         called_dsn = mock_store_cls.from_conn_string.call_args.args[0]
-        assert "options=-c%20search_path%3Ddeerflow" in called_dsn
+        assert "options=-c%20search_path%3Dagent_workspace" in called_dsn
         mock_store.setup.assert_awaited_once()
 
     @pytest.mark.anyio
@@ -851,7 +851,7 @@ class TestAsyncStore:
 
         mock_config = MagicMock()
         mock_config.checkpointer = None
-        mock_config.database = DatabaseConfig(backend="postgres", postgres_url="postgresql://localhost/db", postgres_schema="deerflow")
+        mock_config.database = DatabaseConfig(backend="postgres", postgres_url="postgresql://localhost/db", postgres_schema="agent_workspace")
 
         mock_store = AsyncMock()
         mock_cm = AsyncMock()
@@ -878,10 +878,10 @@ class TestAsyncStore:
                 assert store is mock_store
 
         mock_async_connection.connect.assert_awaited_once_with("postgresql://localhost/db", autocommit=True)
-        mock_conn.execute.assert_awaited_once_with('CREATE SCHEMA IF NOT EXISTS "deerflow"')
+        mock_conn.execute.assert_awaited_once_with('CREATE SCHEMA IF NOT EXISTS "agent_workspace"')
         mock_conn.close.assert_awaited_once()
         called_dsn = mock_store_cls.from_conn_string.call_args.args[0]
-        assert "options=-c%20search_path%3Ddeerflow" in called_dsn
+        assert "options=-c%20search_path%3Dagent_workspace" in called_dsn
         mock_store.setup.assert_awaited_once()
 
 
@@ -892,7 +892,7 @@ class TestCheckpointerDatabaseConfig:
 
     Regression: ``get_checkpointer`` / ``checkpointer_context`` previously read
     only the legacy ``checkpointer`` section and fell back to ``InMemorySaver``,
-    silently ignoring ``database``. Embedded callers (``DeerFlowClient``) and the
+    silently ignoring ``database``. Embedded callers (``AgentWorkspaceClient``) and the
     TUI then persisted Store rows to sqlite/postgres while checkpoints went to an
     in-memory saver and were lost on exit.
     """
@@ -1047,7 +1047,7 @@ class TestStoreDatabaseConfig:
 
     @pytest.mark.anyio
     async def test_async_sqlite_store_uses_unified_database_path(self, tmp_path):
-        """Unified database SQLite config must use the shared deerflow.db path."""
+        """Unified database SQLite config must use the shared agent_workspace.db path."""
         from agent_workspace.runtime.store.async_provider import make_store
         from agent_workspace.runtime.store.provider import ensure_sqlite_parent_dir
 
@@ -1173,16 +1173,16 @@ class TestAppConfigLoadsCheckpointer:
 
 
 # ---------------------------------------------------------------------------
-# DeerFlowClient falls back to config checkpointer
+# AgentWorkspaceClient falls back to config checkpointer
 # ---------------------------------------------------------------------------
 
 
 class TestClientCheckpointerFallback:
     def test_client_uses_config_checkpointer_when_none_provided(self):
-        """DeerFlowClient._ensure_agent falls back to get_checkpointer() when checkpointer=None."""
+        """AgentWorkspaceClient._ensure_agent falls back to get_checkpointer() when checkpointer=None."""
         from langgraph.checkpoint.memory import InMemorySaver
 
-        from agent_workspace.client import DeerFlowClient
+        from agent_workspace.client import AgentWorkspaceClient
 
         load_checkpointer_config_from_dict({"type": "memory"})
 
@@ -1210,9 +1210,9 @@ class TestClientCheckpointerFallback:
             patch("agent_workspace.client.build_middlewares", return_value=[]),
             patch("agent_workspace.client.apply_prompt_template", return_value=""),
             patch("agent_workspace.client.get_enabled_skills_for_config", return_value=[]),
-            patch("agent_workspace.client.DeerFlowClient._get_tools", return_value=[]),
+            patch("agent_workspace.client.AgentWorkspaceClient._get_tools", return_value=[]),
         ):
-            client = DeerFlowClient(checkpointer=None)
+            client = AgentWorkspaceClient(checkpointer=None)
             config = client._get_runnable_config("test-thread")
             client._ensure_agent(config)
 
@@ -1221,7 +1221,7 @@ class TestClientCheckpointerFallback:
 
     def test_client_explicit_checkpointer_takes_precedence(self):
         """An explicitly provided checkpointer is used even when config checkpointer is set."""
-        from agent_workspace.client import DeerFlowClient
+        from agent_workspace.client import AgentWorkspaceClient
 
         load_checkpointer_config_from_dict({"type": "memory"})
 
@@ -1250,9 +1250,9 @@ class TestClientCheckpointerFallback:
             patch("agent_workspace.client.build_middlewares", return_value=[]),
             patch("agent_workspace.client.apply_prompt_template", return_value=""),
             patch("agent_workspace.client.get_enabled_skills_for_config", return_value=[]),
-            patch("agent_workspace.client.DeerFlowClient._get_tools", return_value=[]),
+            patch("agent_workspace.client.AgentWorkspaceClient._get_tools", return_value=[]),
         ):
-            client = DeerFlowClient(checkpointer=explicit_cp)
+            client = AgentWorkspaceClient(checkpointer=explicit_cp)
             config = client._get_runnable_config("test-thread")
             client._ensure_agent(config)
 

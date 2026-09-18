@@ -1,9 +1,9 @@
 """Embedded session wiring for the TUI.
 
-Owns construction of the ``DeerFlowClient`` (with a persistent checkpointer),
+Owns construction of the ``AgentWorkspaceClient`` (with a persistent checkpointer),
 thread resolution for ``--continue`` / ``--resume`` (by id **or** title), and the
 shared-persistence writer that makes terminal sessions visible in the Web UI (see
-``deerflow.tui.persistence``).
+``agent_workspace.tui.persistence``).
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # avoid importing the heavy client during pure planning
-    from agent_workspace.client import DeerFlowClient
+    from agent_workspace.client import AgentWorkspaceClient
 
     from .cli import LaunchPlan
     from .persistence import ThreadMetaWriter, _LoopThread
@@ -20,7 +20,7 @@ if TYPE_CHECKING:  # avoid importing the heavy client during pure planning
 
 @dataclass
 class Session:
-    client: DeerFlowClient
+    client: AgentWorkspaceClient
     writer: ThreadMetaWriter | None = None
     _loop: _LoopThread | None = None
 
@@ -89,11 +89,11 @@ def open_session(persistence: bool = True) -> Session:
     ``persistence=False`` to avoid standing up an event loop + connection pool only
     to discard it.
     """
-    from agent_workspace.client import DeerFlowClient
+    from agent_workspace.client import AgentWorkspaceClient
     from agent_workspace.runtime.checkpointer.provider import get_checkpointer
 
     checkpointer = get_checkpointer()
-    client = DeerFlowClient(checkpointer=checkpointer)
+    client = AgentWorkspaceClient(checkpointer=checkpointer)
     if not persistence:
         return Session(client=client)
 

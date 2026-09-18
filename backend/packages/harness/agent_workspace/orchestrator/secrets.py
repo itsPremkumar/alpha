@@ -1,6 +1,6 @@
 """6. SecretRef resolution at transport layer.
 
-DeerFlow already carries request secrets via config.context.secrets
+Agent Workspace already carries request secrets via config.context.secrets
 (runtime.secret_context.SECRETS_CONTEXT_KEY) and strips them from traces.
 OpenClaw 2.0 goes one step further: SecretRefs never enter model-visible
 text at all — they are resolved at the transport (tool/MCP destination).

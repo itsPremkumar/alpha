@@ -1045,7 +1045,7 @@ def test_resolve_lark_cli_path_prefers_managed_gateway_cli(monkeypatch, tmp_path
     assert lark_cli._resolve_lark_cli_path() == str(managed_bin)
 
 
-def test_install_managed_gateway_lark_cli_uses_deerflow_prefix(monkeypatch, tmp_path):
+def test_install_managed_gateway_lark_cli_uses_agent_workspace_prefix(monkeypatch, tmp_path):
     _patch_paths(monkeypatch, tmp_path / "home")
     captured: dict[str, object] = {}
 
@@ -2612,7 +2612,7 @@ def _status_with_host_paths() -> lark_cli.LarkIntegrationStatus:
         skills_installed=27,
         installed_skills=("lark-doc",),
         enabled_skills=("lark-doc",),
-        install_path="/home/deer-flow/.agent-workspace/integrations/skills/lark-cli",
+        install_path="/home/agent-workspace/.agent-workspace/integrations/skills/lark-cli",
         cli=lark_cli.LarkCliProbe(available=True, path="/usr/bin/lark-cli", version="1.0.65"),
         auth=lark_cli.LarkAuthProbe(status="authenticated", user="alice"),
     )
@@ -2641,7 +2641,7 @@ def test_lark_status_exposes_host_paths_for_admin(monkeypatch, tmp_path):
     with TestClient(app) as client:
         body = client.get("/api/integrations/lark/status").json()
 
-    assert body["install_path"] == "/home/deer-flow/.agent-workspace/integrations/skills/lark-cli"
+    assert body["install_path"] == "/home/agent-workspace/.agent-workspace/integrations/skills/lark-cli"
     assert body["cli"]["path"] == "/usr/bin/lark-cli"
 
 

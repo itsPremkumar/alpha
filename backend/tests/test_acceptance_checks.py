@@ -491,7 +491,7 @@ class TestProbeFileSize:
         assert command.startswith("/usr/bin/env -i /bin/sh -c ")
         assert " wc " not in command and "wc -c" not in command  # metadata only: a FIFO cannot block the probe
         assert "/usr/bin/stat" in command and "/usr/bin/realpath" in command
-        assert kwargs.get("env") == {"_DEERFLOW_SIZE_PROBE": "1"}  # routes AIO to a fresh per-call session
+        assert kwargs.get("env") == {"_AGENT_WORKSPACE_SIZE_PROBE": "1"}  # routes AIO to a fresh per-call session
 
     @pytest.mark.parametrize("output", ("NONREGULAR", "ESCAPED"))
     def test_rejected_renderings_are_not_a_size(self, monkeypatch, output):
@@ -722,7 +722,7 @@ class TestProbeInnerScriptRealLayouts:
 
         class _RealShellSandbox:
             def execute_command(self, command, **kwargs):
-                assert kwargs.get("env") == {"_DEERFLOW_SIZE_PROBE": "1"}
+                assert kwargs.get("env") == {"_AGENT_WORKSPACE_SIZE_PROBE": "1"}
                 for virtual, host in sorted(mapping.items(), key=lambda kv: -len(kv[0])):
                     command = command.replace(virtual, host)
                 return subprocess.run(command, shell=True, capture_output=True, text=True, check=True).stdout

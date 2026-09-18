@@ -34,22 +34,22 @@ matches the release tag without the leading `v` (tag `v0.1.0` → `--version
 0.1.0`).
 
 > **Note:** the helm chart is new in 2.1.0 - no chart was published before it.
-> It publishes to `oci://ghcr.io/<owner>/charts/deer-flow` (the `charts/` prefix
-> keeps it distinct from the `deer-flow-{backend,frontend,provisioner}` image
+> It publishes to `oci://ghcr.io/<owner>/charts/agent-workspace` (the `charts/` prefix
+> keeps it distinct from the `agent-workspace-{backend,frontend,provisioner}` image
 > packages).
 
 Point the chart at the published images:
 
 ```yaml
 image:
-  registry: ghcr.io/<owner>     # owner prefix; images are <owner>/deer-flow-<name>
+  registry: ghcr.io/<owner>     # owner prefix; images are <owner>/agent-workspace-<name>
   tag: "<version>"              # match the release tag (sans leading `v`)
   pullSecrets:
     - { name: regcred }         # only if the GHCR package is private
 ```
 
 The chart's `gatewayImage` / `frontendImage` / `provisionerImage` defaults
-already match the published image names (`deer-flow-backend`,
+already match the published image names (`agent-workspace-backend`,
 `agent-workspace-frontend`, `agent-workspace-provisioner`), so only `registry` and `tag`
 are required. New GHCR packages default to **private** — flip the package to
 public in its GHCR settings page for unauthenticated pulls, otherwise create a
@@ -70,13 +70,13 @@ TAG=latest
 
 # backend - build with the `postgres` extra so multi-replica deploys can use
 # shared Postgres (matches the published image)
-docker build -t $REGISTRY/deer-flow-backend:$TAG --build-arg UV_EXTRAS=postgres -f backend/Dockerfile .
+docker build -t $REGISTRY/agent-workspace-backend:$TAG --build-arg UV_EXTRAS=postgres -f backend/Dockerfile .
 # frontend
 docker build -t $REGISTRY/agent-workspace-frontend:$TAG -f frontend/Dockerfile .
 # provisioner
 docker build -t $REGISTRY/agent-workspace-provisioner:$TAG -f docker/provisioner/Dockerfile docker/provisioner
 
-docker push $REGISTRY/deer-flow-backend:$TAG
+docker push $REGISTRY/agent-workspace-backend:$TAG
 docker push $REGISTRY/agent-workspace-frontend:$TAG
 docker push $REGISTRY/agent-workspace-provisioner:$TAG
 ```
@@ -92,7 +92,7 @@ kubectl create secret docker-registry regcred \
   --docker-server=ghcr.io \
   --docker-username=youruser \
   --docker-password=yourtoken \
-  -n deer-flow
+  -n agent-workspace
 ```
 
 ## 2. Configure values
@@ -109,10 +109,10 @@ image:
 ingress:
   enabled: true
   className: nginx
-  host: deer-flow.example.com
+  host: agent-workspace.example.com
   tls:
     enabled: true
-    secretName: deer-flow-tls
+    secretName: agent-workspace-tls
 
 secrets:
   OPENAI_API_KEY: sk-...
@@ -206,16 +206,16 @@ and is reseeded whenever the Pod is replaced.
 For a custom build or local development, install from the chart directory:
 
 ```bash
-helm install deer-flow deploy/helm/agent-workspace \
-  -n deer-flow --create-namespace \
+helm install agent-workspace deploy/helm/agent-workspace \
+  -n agent-workspace --create-namespace \
   -f my-values.yaml
 ```
 
 ## 4. Verify
 
 ```bash
-kubectl -n deer-flow get pods
-kubectl -n deer-flow port-forward svc/nginx 2026:2026
+kubectl -n agent-workspace get pods
+kubectl -n agent-workspace port-forward svc/nginx 2026:2026
 curl http://localhost:2026/health          # gateway health via nginx
 ```
 
@@ -224,7 +224,7 @@ Hit the Ingress host (map it in `/etc/hosts` for local clusters) to load the UI.
 Provisioner sanity check:
 
 ```bash
-kubectl -n deer-flow exec deploy/agent-workspace-provisioner -- curl -s localhost:8002/health
+kubectl -n agent-workspace exec deploy/agent-workspace-provisioner -- curl -s localhost:8002/health
 ```
 
 ## Architecture notes
@@ -253,7 +253,7 @@ kubectl -n deer-flow exec deploy/agent-workspace-provisioner -- curl -s localhos
   `gateway.replicas` past 1 yet.** Run control — `create_or_reject` dedup,
   `cancel`, and orphan reconciliation — is still worker-local (in-process
   `asyncio.Lock` + in-memory `record.task`), tracked by [issue
-  #3948](https://github.com/bytedance/deer-flow/issues/3948). With >1 replica a
+  #3948](https://github.com/bytedance/agent-workspace/issues/3948). With >1 replica a
   double-submit can create two runs on one thread (checkpoint corruption), a
   cancel can land on a non-owner pod (409), and a crashed pod's runs stay
   `pending`/`running` forever. Stay on 1 replica until that work lands.
@@ -278,7 +278,7 @@ kubectl -n deer-flow exec deploy/agent-workspace-provisioner -- curl -s localhos
   bundled instance and point at it via `redis.external`.
 - **Persistence.** A PVC (`<release>-home`) backs `/app/backend/.agent-workspace`
   (sqlite DB, memory, custom agents, per-thread user-data). The gateway mounts
-  it with `subPath: deer-flow` so the layout matches the provisioner's PVC
+  it with `subPath: agent-workspace` so the layout matches the provisioner's PVC
   user-data mode. Default `ReadWriteOnce`; use `ReadWriteMany` (NFS) on
   multi-node clusters so sandbox Pods on other nodes can mount it.
 - **Provisioner RBAC.** The provisioner gets a ServiceAccount with a namespaced
@@ -376,26 +376,26 @@ To fix an existing root-written PVC, run a one-shot root pod that chowns the
 volume to the gateway uid (1000), then restart the gateway:
 
 ```bash
-cat <<'EOF' | kubectl apply -n deer-flow -f -
+cat <<'EOF' | kubectl apply -n agent-workspace -f -
 apiVersion: v1
 kind: Pod
-metadata: { name: fix-home-perms, namespace: deer-flow }
+metadata: { name: fix-home-perms, namespace: agent-workspace }
 spec:
   restartPolicy: Never
   containers:
     - name: chown
       image: busybox:1.36
       command: ["sh", "-c"]
-      args: ["chown -R 1000:1000 /home-pvc/deer-flow && chmod -R g+rwX /home-pvc/deer-flow"]
+      args: ["chown -R 1000:1000 /home-pvc/agent-workspace && chmod -R g+rwX /home-pvc/agent-workspace"]
       volumeMounts:
         - { name: home, mountPath: /home-pvc }
   volumes:
     - name: home
-      persistentVolumeClaim: { claimName: deer-flow-deer-flow-home }
+      persistentVolumeClaim: { claimName: agent-workspace-agent-workspace-home }
 EOF
-kubectl -n deer-flow wait --for=condition=Ready pod/fix-home-perms --timeout=30s
-kubectl -n deer-flow delete pod fix-home-perms
-kubectl -n deer-flow rollout restart deploy/deer-flow-agent-workspace-gateway
+kubectl -n agent-workspace wait --for=condition=Ready pod/fix-home-perms --timeout=30s
+kubectl -n agent-workspace delete pod fix-home-perms
+kubectl -n agent-workspace rollout restart deploy/agent-workspace-agent-workspace-gateway
 ```
 
 (On a single-node cluster the fix pod can mount the RWO PVC concurrently with the
@@ -445,14 +445,14 @@ sandbox Pod can be scheduled on a node other than the gateway's).
 
 ```bash
 helm lint deploy/helm/agent-workspace
-helm template agent-workspace deploy/helm/agent-workspace -n deer-flow -f my-values.yaml | \
+helm template agent-workspace deploy/helm/agent-workspace -n agent-workspace -f my-values.yaml | \
   kubectl apply --dry-run=client -f -
 ```
 
 ## Uninstall
 
 ```bash
-helm uninstall deer-flow -n deer-flow
+helm uninstall agent-workspace -n agent-workspace
 # the PVC is NOT deleted by default — remove it manually if desired:
-kubectl -n deer-flow delete pvc -l app.kubernetes.io/instance=deer-flow
+kubectl -n agent-workspace delete pvc -l app.kubernetes.io/instance=agent-workspace
 ```

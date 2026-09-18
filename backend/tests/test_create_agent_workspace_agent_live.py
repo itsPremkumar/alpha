@@ -1,4 +1,4 @@
-"""Live integration tests for create_deerflow_agent.
+"""Live integration tests for create_agent_workspace_agent.
 
 Verifies the factory produces a working LangGraph agent that can actually
 process messages end-to-end with a real LLM.
@@ -36,11 +36,11 @@ def _make_model():
 # ---------------------------------------------------------------------------
 @requires_llm
 def test_minimal_agent_responds():
-    """create_deerflow_agent(model) produces a graph that returns a response."""
-    from agent_workspace.agents.factory import create_deerflow_agent
+    """create_agent_workspace_agent(model) produces a graph that returns a response."""
+    from agent_workspace.agents.factory import create_agent_workspace_agent
 
     model = _make_model()
-    graph = create_deerflow_agent(model, features=None, middleware=[])
+    graph = create_agent_workspace_agent(model, features=None, middleware=[])
 
     result = graph.invoke(
         {"messages": [("user", "Say exactly: pong")]},
@@ -60,7 +60,7 @@ def test_minimal_agent_responds():
 @requires_llm
 def test_agent_with_custom_tool():
     """Agent can invoke a user-provided tool and return the result."""
-    from agent_workspace.agents.factory import create_deerflow_agent
+    from agent_workspace.agents.factory import create_agent_workspace_agent
 
     @tool
     def add(a: int, b: int) -> int:
@@ -68,7 +68,7 @@ def test_agent_with_custom_tool():
         return a + b
 
     model = _make_model()
-    graph = create_deerflow_agent(model, tools=[add], middleware=[])
+    graph = create_agent_workspace_agent(model, tools=[add], middleware=[])
 
     result = graph.invoke(
         {"messages": [("user", "Use the add tool to compute 3 + 7. Return only the result.")]},
@@ -88,12 +88,12 @@ def test_agent_with_custom_tool():
 @requires_llm
 def test_features_mode_middleware_chain():
     """RuntimeFeatures assembles a working middleware chain that executes."""
-    from agent_workspace.agents.factory import create_deerflow_agent
+    from agent_workspace.agents.factory import create_agent_workspace_agent
     from agent_workspace.agents.features import RuntimeFeatures
 
     model = _make_model()
     feat = RuntimeFeatures(sandbox=False, auto_title=False, memory=False)
-    graph = create_deerflow_agent(model, features=feat)
+    graph = create_agent_workspace_agent(model, features=feat)
 
     result = graph.invoke(
         {"messages": [("user", "What is 2+2?")]},

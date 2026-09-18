@@ -9,7 +9,7 @@ We intentionally exercise the full pipeline:
 
     HTTP body shape (mimics LangGraph SDK wire format)
       -> app.gateway.services.start_run config-assembly chain
-      -> deerflow.runtime.runs.worker._build_runtime_context
+      -> agent_workspace.runtime.runs.worker._build_runtime_context
       -> langchain.agents.create_agent graph
       -> ToolNode dispatch
       -> setup_agent tool

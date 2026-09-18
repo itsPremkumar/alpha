@@ -32,12 +32,12 @@ one version (verified by `scripts/verify_versions.sh`).
 
 ### Desktop app (Windows · Electron)
 
-- Installer (`DeerFlow-Setup-<ver>.exe`) bundles its own Node.js and `uv`
+- Installer (`Agent-Workspace-Setup-<ver>.exe`) bundles its own Node.js and `uv`
   runtimes — end users install nothing else.
 - Opens directly into the chat composer; first launch auto-provisions Python
   and the backend environment with splash-screen progress.
 - Desktop Gateway defaults to port **8201** so it never fights a dev stack;
-  per-user data under `%APPDATA%\deerflow-desktop\`.
+  per-user data under `%APPDATA%\agent-workspace-desktop\`.
 - Full details: [electron/README.md](./electron/README.md).
 
 ### Agent capabilities
@@ -130,16 +130,16 @@ The source-backed improvement roadmap is in
 ### Option 1: Windows desktop app (end users)
 
 1. Build the installer once: `cd electron && npm install && npm run dist`.
-2. Run `electron/dist/DeerFlow-Setup-2.1.0.exe` (unsigned → SmartScreen
+2. Run `electron/dist/Agent-Workspace-Setup-2.1.0.exe` (unsigned → SmartScreen
    **More info → Run anyway**; per-user install, no admin rights needed).
 3. On first prompt, add one model API key to
-   `%APPDATA%\deerflow-desktop\project\config.yaml`, restart, and chat.
+   `%APPDATA%\agent-workspace-desktop\project\config.yaml`, restart, and chat.
 
 ### Option 2: Docker (recommended for servers)
 
 ```bash
-git clone https://github.com/itsPremkumar/deerflow-desktop.git
-cd deerflow-desktop
+git clone https://github.com/itsPremkumar/agent-workspace-desktop.git
+cd agent-workspace-desktop
 cp .env.production.example .env   # fill in real secrets
 make config                       # generate config.yaml + extensions_config.json
 make install                      # backend + frontend dependencies
@@ -208,7 +208,7 @@ tracing (LangSmith / Langfuse / Monocle), and token budgets.
 ## Repository map
 
 ```
-deerflow-desktop/
+agent-workspace-desktop/
 ├── electron/            # Windows desktop app (Electron shell + installer)
 ├── backend/             # FastAPI Gateway + agent harness (Python)
 ├── frontend/            # Next.js chat UI

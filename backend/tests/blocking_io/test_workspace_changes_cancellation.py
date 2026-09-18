@@ -115,6 +115,6 @@ async def test_text_scan_cancel_logs_drain_and_late_failure(tmp_path: Path, monk
     with pytest.raises(asyncio.CancelledError):
         await task
 
-    leftovers = await asyncio.to_thread(lambda: sorted(cache_root.glob("deerflow-workspace-changes-*")))
+    leftovers = await asyncio.to_thread(lambda: sorted(cache_root.glob("agent_workspace-workspace-changes-*")))
     assert leftovers == [], f"cancelled text scan leaked a cache dir: {leftovers}"
     assert any("Workspace scan failed after snapshot cancellation" in record.getMessage() for record in caplog.records), "a scan failure during cancellation drain must retain diagnostics"

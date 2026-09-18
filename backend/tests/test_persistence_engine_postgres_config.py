@@ -58,7 +58,7 @@ def test_postgres_engine_kwargs_allow_command_timeout_opt_out() -> None:
 async def test_configured_command_timeout_ends_stalled_command() -> None:
     config = DatabaseConfig(
         backend="postgres",
-        postgres_url="postgresql://user:password@localhost/deerflow",
+        postgres_url="postgresql://user:password@localhost/agent_workspace",
         command_timeout=0.01,
     )
 
@@ -104,7 +104,7 @@ async def test_configured_command_timeout_ends_stalled_command() -> None:
 async def test_init_engine_from_config_preserves_longer_command_timeout_override() -> None:
     config = DatabaseConfig(
         backend="postgres",
-        postgres_url="postgresql://user:password@localhost/deerflow",
+        postgres_url="postgresql://user:password@localhost/agent_workspace",
         pool_recycle=120,
         command_timeout=90,
     )
@@ -130,7 +130,7 @@ async def test_init_engine_from_config_preserves_longer_command_timeout_override
 
 @pytest.mark.asyncio
 async def test_init_engine_postgres_uses_hardened_kwargs() -> None:
-    url = "postgresql+asyncpg://user:password@localhost/deerflow"
+    url = "postgresql+asyncpg://user:password@localhost/agent_workspace"
     mock_engine = MagicMock()
     mock_engine.dispose = AsyncMock()
     bootstrap_schema = AsyncMock()
@@ -152,7 +152,7 @@ async def test_init_engine_postgres_uses_hardened_kwargs() -> None:
 
 @pytest.mark.asyncio
 async def test_init_engine_postgres_retry_uses_hardened_kwargs() -> None:
-    url = "postgresql+asyncpg://user:password@localhost/deerflow"
+    url = "postgresql+asyncpg://user:password@localhost/agent_workspace"
     initial_engine = MagicMock()
     initial_engine.dispose = AsyncMock()
     retry_engine = MagicMock()

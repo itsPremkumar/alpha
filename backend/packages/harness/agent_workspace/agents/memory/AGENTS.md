@@ -106,7 +106,7 @@ It adopts an old `lead-agent` bucket only when no custom-agent config exists.
 Unexpected files stop migration and remain on disk.
 
 The v1-to-v2 migration is one-way during application operation.
-Operators must stop DeerFlow and snapshot the storage root before migration.
+Operators must stop Agent Workspace and snapshot the storage root before migration.
 Every destructive migration first writes a verified `{manifest_filename}.v1.bak` file.
 Missing or mismatched backups abort migration without changing v1 data.
 Delete legacy agent JSON only after safe summary adoption or equality checks.
@@ -216,12 +216,12 @@ other settings remain permissive unless the backend overrides the resolver.
 
 OpenViking uses the maintained `langchain-openviking` package.
 Keep it in middleware mode.
-One API key is bound to one configured DeerFlow owner.
+One API key is bound to one configured Agent Workspace owner.
 Reject another owner before remote access.
 
-DeerFlow owns capture timing, the recall query, and the transcript cursor.
+Agent Workspace owns capture timing, the recall query, and the transcript cursor.
 The package owns transport, message conversion, batching, and Session commits.
-One DeerFlow thread maps to one stable OpenViking Session.
+One Agent Workspace thread maps to one stable OpenViking Session.
 Store bounded hash-only cursors below `{storage_path}/openviking/sessions/`.
 
 Async OpenViking entry points must offload synchronous SDK and file operations.
@@ -257,7 +257,7 @@ Set `memory.token_counting: char` to prevent network access.
 
 #### Configuration
 
-The schema lives in `deerflow/config/memory_config.py`.
+The schema lives in `agent_workspace/config/memory_config.py`.
 Do not duplicate its complete field list here.
 
 Keep these cross-component constraints in sync:

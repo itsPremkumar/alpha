@@ -1,9 +1,9 @@
 """Configuration for fine-grained resource authorization.
 
-When enabled, a pluggable :class:`~deerflow.authz.provider.AuthorizationProvider`
+When enabled, a pluggable :class:`~agent_workspace.authz.provider.AuthorizationProvider`
 becomes the policy brain for resource-level authorization, enforced at two
 layers: assembly-time capability filtering (tools the agent can never see) and
-run-time execution deny (reuses :class:`~deerflow.guardrails.middleware.GuardrailMiddleware`
+run-time execution deny (reuses :class:`~agent_workspace.guardrails.middleware.GuardrailMiddleware`
 via an adapter). Default ``enabled: false`` preserves today's behavior where
 every authenticated user has access to all tools, models, skills, and sandbox.
 """
@@ -21,7 +21,7 @@ class AuthorizationProviderConfig(BaseModel):
 class AuthorizationConfig(BaseModel):
     """Configuration for fine-grained resource authorization.
 
-    Mirrors :class:`~deerflow.config.guardrails_config.GuardrailsConfig` in
+    Mirrors :class:`~agent_workspace.config.guardrails_config.GuardrailsConfig` in
     shape: a provider loaded by class path, a fail-closed default, and a
     live-reloadable singleton.
     """

@@ -24,7 +24,7 @@ class Mem0OssConfig:
     embedder_provider: str = "ollama"
     embed_model: str = "nomic-embed-text:latest"
     embedding_dims: int = 768
-    vector_collection: str = "deerflow_memory"
+    vector_collection: str = "agent_workspace_memory"
     top_k: int = 8
     score_threshold: float = 0.1
     max_injection_chars: int = 12000
@@ -67,7 +67,7 @@ class Mem0OssConfig:
             embedder_provider=str(cfg.get("embedder_provider", "ollama")),
             embed_model=str(cfg.get("embed_model", "nomic-embed-text:latest")),
             embedding_dims=int(cfg.get("embedding_dims", 768)),
-            vector_collection=str(cfg.get("vector_collection", "deerflow_memory")),
+            vector_collection=str(cfg.get("vector_collection", "agent_workspace_memory")),
             top_k=int(cfg.get("top_k", 8)),
             score_threshold=float(cfg.get("score_threshold", 0.1)),
             max_injection_chars=int(cfg.get("max_injection_chars", 12000)),

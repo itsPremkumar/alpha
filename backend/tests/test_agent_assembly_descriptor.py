@@ -383,7 +383,7 @@ class TestBuildIdentityIsOutsideTheFingerprint:
 
         def make():
             return build_assembly_descriptor(
-                namespace="deerflow",
+                namespace="agent_workspace",
                 agent_name="lead-agent",
                 requested_model=None,
                 effective_model="gpt-x",
@@ -495,7 +495,7 @@ class TestModelParametersProjectEffectiveSettings:
         from agent_workspace.agents.assembly_descriptor import build_assembly_descriptor
 
         return build_assembly_descriptor(
-            namespace="deerflow",
+            namespace="agent_workspace",
             agent_name="lead-agent",
             requested_model=None,
             effective_model="gpt-x",
@@ -624,7 +624,7 @@ class TestSkillCatalogHashesContent:
         from agent_workspace.agents.assembly_descriptor import build_assembly_descriptor
 
         return build_assembly_descriptor(
-            namespace="deerflow",
+            namespace="agent_workspace",
             agent_name="lead-agent",
             requested_model=None,
             effective_model="gpt-x",

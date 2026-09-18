@@ -1,4 +1,4 @@
-# DeerFlow Production Environment
+# Agent Workspace Production Environment
 # Usage: make up
 #
 # Services:
@@ -45,7 +45,7 @@ services:
   nginx:
     image: nginx:alpine
     container_name: agent-workspace-nginx
-    # Loopback-only by default: DeerFlow's agent can execute commands, so the
+    # Loopback-only by default: Agent Workspace's agent can execute commands, so the
     # documented default deployment is a local trusted environment. A bare
     # "${PORT}:2026" would bind 0.0.0.0 instead, which does not match that.
     # Set BIND_HOST=0.0.0.0 only behind your own TLS/auth front door, and
@@ -173,10 +173,10 @@ services:
     volumes:
       - ~/.kube/config:/root/.kube/config:ro
     environment:
-      - K8S_NAMESPACE=deer-flow
+      - K8S_NAMESPACE=agent-workspace
       - SANDBOX_IMAGE=enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest
       # Optional lark-cli init image (Pattern A). Empty ⇒ legacy runtime mount.
-      # Set to a published tag (e.g. deer-flow/lark-cli-init:v1.0.65) to provision
+      # Set to a published tag (e.g. agent-workspace/lark-cli-init:v1.0.65) to provision
       # the sandbox lark-cli runtime via an init container + emptyDir.
       - LARK_CLI_INIT_IMAGE=${LARK_CLI_INIT_IMAGE:-}
       # Optional lark-cli broker image (Pattern B, issue #4338). When set, the

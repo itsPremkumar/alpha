@@ -1,4 +1,4 @@
-"""Explicit runtime dependencies for direct ``create_deerflow_agent`` use."""
+"""Explicit runtime dependencies for direct ``create_agent_workspace_agent`` use."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ class SubagentRuntime:
 
     When ``batch_repository`` is supplied, the runtime owns a durable batch
     worker. Start it before constructing the graph (or use ``async with``) so
-    ``create_deerflow_agent`` can expose the bound batch tools, and stop it
+    ``create_agent_workspace_agent`` can expose the bound batch tools, and stop it
     during application shutdown.
     """
 

@@ -27,7 +27,7 @@ empty read, never a shared fallback workspace. Session ids reuse the same deriva
 (``df-`` + ``_stable_id(thread_id)``) — bare ``sanitize_id`` would merge
 threads like ``"t.1"`` and ``"t-1"`` into one Honcho session.
 
-Portability golden rule: the only ``from deerflow`` import is the contract line
+Portability golden rule: the only ``from agent_workspace`` import is the contract line
 below. Everything else arrives via ``backend_config``.
 """
 
@@ -40,7 +40,7 @@ from typing import Any, ClassVar, Literal
 
 from pydantic import PrivateAttr
 
-# ABC contract -- the ONE allowed `from deerflow` import in this backend folder.
+# ABC contract -- the ONE allowed `from agent_workspace` import in this backend folder.
 from agent_workspace.agents.memory.manager import MemoryManager, MemoryManagerError, MemoryReadError
 
 from .client import HonchoClient

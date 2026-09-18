@@ -146,7 +146,7 @@ async function fetchTarget(target) {
   }
 
   console.log(`${target.name}: fetching ${target.version}…`);
-  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), `deerflow-${target.name}-`));
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), `agent_workspace-${target.name}-`));
   try {
     const zipFile = path.join(tmpRoot, `${target.name}.zip`);
     await downloadToFile(target.url, zipFile);

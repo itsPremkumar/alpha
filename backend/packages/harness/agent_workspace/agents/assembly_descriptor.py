@@ -212,7 +212,7 @@ def _tool_source(tool: object) -> str:
         return f"mcp:{source['server_name']}" if source is not None else "mcp:unknown"
     metadata = getattr(tool, "metadata", None)
     if isinstance(metadata, dict):
-        declared = metadata.get("deerflow_tool_source")
+        declared = metadata.get("agent_workspace_tool_source")
         if isinstance(declared, str) and declared:
             return declared
     callable_object = getattr(tool, "func", None) or getattr(tool, "coroutine", None)
@@ -299,7 +299,7 @@ def _unwrap_middleware(middleware: object) -> tuple[object, str | None]:
     policy change inside them.
 
     Duck-typed on ``inner``/``source`` rather than importing the wrapper type:
-    ``deerflow.extensions`` sits below this layer, so importing it here would
+    ``agent_workspace.extensions`` sits below this layer, so importing it here would
     point the dependency backwards, and any future wrapper of the same shape
     is handled for free.
     """
@@ -449,7 +449,7 @@ def build_assembly_descriptor(
     thinking_enabled: bool,
     reasoning_effort: object,
     rendered_base_prompt: str,
-    prompt_template_id: str = "deerflow-lead-agent-v1",
+    prompt_template_id: str = "agent_workspace-lead-agent-v1",
     tools: list[object],
     middlewares: list[object],
     deferred_names: frozenset[str],

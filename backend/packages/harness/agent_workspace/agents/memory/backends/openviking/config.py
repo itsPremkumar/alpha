@@ -26,7 +26,7 @@ _REMOVED_CUSTOM_HTTP_FIELDS = frozenset(
 
 @dataclass(frozen=True, slots=True)
 class OpenVikingConfig:
-    """Credential-bound connection settings and existing DeerFlow policy."""
+    """Credential-bound connection settings and existing Agent Workspace policy."""
 
     base_url: str
     storage_path: str
@@ -73,7 +73,7 @@ class OpenVikingConfig:
             owner_user_id=str(cfg.pop("owner_user_id", "")).strip(),
             api_key=os.environ.get(api_key_env, "").strip(),
             api_key_env=api_key_env,
-            default_peer_id=str(cfg.pop("default_peer_id", "deerflow")).strip(),
+            default_peer_id=str(cfg.pop("default_peer_id", "agent_workspace")).strip(),
             timeout_seconds=float(cfg.pop("timeout_seconds", 30.0)),
             search_top_k=int(retrieval.pop("top_k", 8)),
             score_threshold=_optional_float(retrieval.pop("score_threshold", None)),

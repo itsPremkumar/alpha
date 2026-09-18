@@ -1,4 +1,4 @@
-"""Declarative feature flags and middleware positioning for create_deerflow_agent.
+"""Declarative feature flags and middleware positioning for create_agent_workspace_agent.
 
 Pure data classes and decorators — no I/O, no side effects.
 """
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 @dataclass
 class RuntimeFeatures:
-    """Declarative feature flags for ``create_deerflow_agent``.
+    """Declarative feature flags for ``create_agent_workspace_agent``.
 
     Most features accept:
     - ``True``: use the built-in default middleware
@@ -29,7 +29,7 @@ class RuntimeFeatures:
 
     sandbox: bool | AgentMiddleware = True
     memory: bool | AgentMiddleware = False
-    # Explicit memory config for direct create_deerflow_agent(features=...) callers.
+    # Explicit memory config for direct create_agent_workspace_agent(features=...) callers.
     # The lead-agent AppConfig path passes resolved_app_config.memory directly.
     memory_config: MemoryConfig | None = None
     summarization: Literal[False] | AgentMiddleware = False

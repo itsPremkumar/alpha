@@ -1,6 +1,6 @@
 # Antigravity 2.0-Inspired Advanced Architecture for an Agentic Harness
 
-**Target:** DeerFlow-based, Windows-first autonomous agent harness
+**Target:** Agent Workspace-based, Windows-first autonomous agent harness
 **Purpose:** Extract the strongest architectural patterns from Google Antigravity 2.0 and combine them with a production-oriented long-horizon agent runtime, multi-agent orchestration, verification, recovery, observability, and recursive self-development.
 **Status:** Architecture / implementation guide
 **Date:** 2026-09-16
@@ -34,7 +34,7 @@ Goal
 
 The intended final system is therefore not merely a chatbot and not merely a workflow graph. It is a **persistent agent operating system/runtime** around models.
 
-DeerFlow is a strong base because its current architecture already frames the harness as the runtime layer for long-horizon agents, with planning, subagents, sandboxed execution, modular skills/tools, memory and context engineering. Antigravity adds a particularly useful interaction and orchestration vocabulary that can be translated into reusable harness modes.
+Agent Workspace is a strong base because its current architecture already frames the harness as the runtime layer for long-horizon agents, with planning, subagents, sandboxed execution, modular skills/tools, memory and context engineering. Antigravity adds a particularly useful interaction and orchestration vocabulary that can be translated into reusable harness modes.
 
 ---
 
@@ -62,7 +62,7 @@ This document deliberately separates three categories:
 - Fine-grained permission controls.
 - Agent management and task monitoring.
 
-### B. DeerFlow-aligned patterns
+### B. Agent Workspace-aligned patterns
 
 - Long-horizon runtime harness.
 - Tool access.
@@ -3068,7 +3068,7 @@ rollback plan
 
 # 82. Recommended Repo Architecture
 
-For `deerflow-desktop`, add a harness layer around the existing DeerFlow capability boundary.
+For `agent-workspace-desktop`, add a harness layer around the existing Agent Workspace capability boundary.
 
 ```text
 src/
@@ -3208,7 +3208,7 @@ src/
     +-- settings/
 ```
 
-Keep actual DeerFlow internals isolated where possible. New functionality should preferably sit above, beside, or behind stable interfaces rather than creating a giant fork of the entire core.
+Keep actual Agent Workspace internals isolated where possible. New functionality should preferably sit above, beside, or behind stable interfaces rather than creating a giant fork of the entire core.
 
 ---
 
@@ -4110,11 +4110,11 @@ Use these as the authoritative starting points and re-check them before implemen
 9. Google Antigravity feature deep dive  
    https://antigravity.google/blog/google-io-2026-feature-deep-dive
 
-10. DeerFlow introduction / harness concepts  
-    https://github.com/bytedance/deer-flow/blob/main/frontend/src/content/en/introduction/index.mdx
+10. Agent Workspace introduction / harness concepts  
+    https://github.com/bytedance/agent-workspace/blob/main/frontend/src/content/en/introduction/index.mdx
 
-11. DeerFlow core concepts  
-    https://deerflow.tech/en/docs/introduction/core-concepts
+11. Agent Workspace core concepts  
+    https://agent_workspace.tech/en/docs/introduction/core-concepts
 
 12. Hermes Agent tools and orchestration  
     https://github.com/hermes-agent-org/hermes/blob/main/website/docs/user-guide/features/tools.md
@@ -4124,13 +4124,13 @@ Use these as the authoritative starting points and re-check them before implemen
 
 ---
 
-# 106. Implementation Interpretation for `deerflow-desktop`
+# 106. Implementation Interpretation for `agent-workspace-desktop`
 
 Recommended strategy:
 
 ```text
 KEEP
-  DeerFlow runtime strengths
+  Agent Workspace runtime strengths
   + existing tool/skill/sandbox/memory infrastructure
 
 ADD
@@ -4152,7 +4152,7 @@ AVOID
   a monolithic supervisor that performs every task
 ```
 
-The intended result is a **DeerFlow-based universal harness with an Antigravity-inspired orchestration layer and a stronger verification/resilience/RSI subsystem**.
+The intended result is a **Agent Workspace-based universal harness with an Antigravity-inspired orchestration layer and a stronger verification/resilience/RSI subsystem**.
 
 ---
 

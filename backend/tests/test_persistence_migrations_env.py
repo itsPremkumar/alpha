@@ -1,7 +1,7 @@
 """Tests for the ``include_object`` filter used by ``migrations/env.py``.
 
 LangGraph checkpointer tables (``checkpoints`` and friends) live alongside
-DeerFlow's own tables in the same database. Alembic must NEVER emit DDL for
+Agent Workspace's own tables in the same database. Alembic must NEVER emit DDL for
 them or a future ``alembic revision --autogenerate`` would propose
 ``drop_table('checkpoints')`` whenever LangGraph's tables are reflected from
 a live DB.
@@ -51,7 +51,7 @@ def test_filter_excludes_fts_auxiliary_tables_but_not_run_events() -> None:
     assert include_object(_table("run_events"), "run_events", "table", True, None) is True
 
 
-def test_filter_includes_deerflow_tables() -> None:
+def test_filter_includes_agent_workspace_tables() -> None:
     for owned in ("runs", "threads_meta", "feedback", "users", "channel_connections"):
         assert include_object(_table(owned), owned, "table", True, None) is True
 
@@ -66,7 +66,7 @@ def test_filter_excludes_indexes_on_langgraph_tables() -> None:
     assert include_object(idx, idx.name, "index", True, None) is False
 
 
-def test_filter_includes_indexes_on_deerflow_tables() -> None:
+def test_filter_includes_indexes_on_agent_workspace_tables() -> None:
     md = sa.MetaData()
     parent = sa.Table("runs", md, sa.Column("run_id", sa.String, primary_key=True))
     idx = sa.Index("ix_runs_something", parent.c.run_id)
@@ -118,7 +118,7 @@ class TestExtensionOwnedTables:
     `_autogen_revision.py` diffs against a throwaway SQLite built from the
     migration chain, where no extension table exists. The exposed path is a
     direct `alembic revision --autogenerate` from the migrations directory,
-    whose `alembic.ini` points at a real `./data/deerflow.db` — the same path
+    whose `alembic.ini` points at a real `./data/agent_workspace.db` — the same path
     `LANGGRAPH_OWNED_TABLES` covers.
     """
 

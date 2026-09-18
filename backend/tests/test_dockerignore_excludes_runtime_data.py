@@ -2,7 +2,7 @@
 
 ``backend/Dockerfile`` copies the backend tree wholesale (``COPY backend ./backend``),
 so every path under ``backend/`` that ``.dockerignore`` does not exclude is shipped
-into the image. The runtime directories are written by a *running* DeerFlow, not by
+into the image. The runtime directories are written by a *running* Agent Workspace, not by
 a build or local deployment:
 
 - Exact ``.env`` files hold deployment secrets at the repository root and in
@@ -13,7 +13,7 @@ a build or local deployment:
   ``backend/Makefile`` and written by agent runs.
 
 Leaving them in the context has two consequences. Anyone who builds an image on a
-host that has run DeerFlow bakes that state — including the JWT secret and the user
+host that has run Agent Workspace bakes that state — including the JWT secret and the user
 database — into the image. And because the Gateway container creates some of those
 directories as root, the build client eventually cannot read them and the build
 fails outright::
@@ -40,7 +40,7 @@ HOST_LOCAL_PATHS = [
     "backend/.env",
     "frontend/.env",
     ".agent-workspace/integrations/skills/provider/pack/SKILL.md",
-    "backend/.agent-workspace/data/deerflow.db",
+    "backend/.agent-workspace/data/agent_workspace.db",
     "backend/.agent-workspace/.jwt_secret",
     "backend/.agent-workspace/users/some-user/agents/my-agent/config.yaml",
     "backend/sandbox/some-thread/scratch.py",

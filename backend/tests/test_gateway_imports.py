@@ -32,7 +32,7 @@ def test_title_middleware_imports_without_message_identity_cycle() -> None:
     """A middleware module must be importable as the process's first import.
 
     ``message_identity`` reaching back into ``agents.middlewares`` closed a cycle
-    (middleware -> deerflow.runtime -> worker -> events -> middleware) that only
+    (middleware -> agent_workspace.runtime -> worker -> events -> middleware) that only
     stayed hidden while some earlier import happened to break it first. Running
     ``tests/test_title_generation.py`` on its own was enough to hit it.
     """

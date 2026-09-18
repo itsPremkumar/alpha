@@ -94,7 +94,7 @@ def test_metadata_user_id_added_when_missing(model):
     user_id = json.loads(payload["metadata"]["user_id"])
     assert "device_id" in user_id
     assert "session_id" in user_id
-    assert user_id["account_uuid"] == "deerflow"
+    assert user_id["account_uuid"] == "agent_workspace"
 
 
 def test_metadata_user_id_not_overwritten_if_present(model):

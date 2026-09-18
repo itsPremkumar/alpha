@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://deerflow.dev/contracts/skill_review/waiver_manifest.v1.schema.json",
-  "title": "DeerFlow Skill Review Waiver Manifest v1",
+  "$id": "https://agent_workspace.dev/contracts/skill_review/waiver_manifest.v1.schema.json",
+  "title": "Agent Workspace Skill Review Waiver Manifest v1",
   "type": "object",
   "required": ["schema_version", "waivers"],
   "properties": {
-    "schema_version": { "const": "deerflow.skill-review-waivers.v1" },
+    "schema_version": { "const": "agent_workspace.skill-review-waivers.v1" },
     "waivers": {
       "type": "array",
       "maxItems": 256,

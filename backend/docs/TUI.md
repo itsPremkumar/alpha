@@ -1,11 +1,11 @@
-# DeerFlow Terminal Workbench (TUI)
+# Agent Workspace Terminal Workbench (TUI)
 
-`deerflow` is a terminal-native workbench for the DeerFlow harness. It runs
-**embedded** over `DeerFlowClient` — no Gateway, frontend, nginx, or Docker
+`agent_workspace` is a terminal-native workbench for the Agent Workspace harness. It runs
+**embedded** over `AgentWorkspaceClient` — no Gateway, frontend, nginx, or Docker
 services required — while honoring the same `config.yaml`, checkpointer, skills,
-memory, MCP, and sandbox settings as the rest of DeerFlow.
+memory, MCP, and sandbox settings as the rest of Agent Workspace.
 
-![DeerFlow TUI](../../docs/tui/tui-preview.svg)
+![Agent Workspace TUI](../../docs/tui/tui-preview.svg)
 
 ## Install & run
 
@@ -19,24 +19,24 @@ Launch modes:
 
 | Command | Behavior |
 |---|---|
-| `deerflow` | Launch the TUI when stdin/stdout are TTYs |
-| `deerflow --tui` | Force the TUI (clear diagnostic if `textual` is missing) |
-| `deerflow --tui-transparent` | Use the terminal's default background when launching the TUI |
-| `deerflow --cli` | Force headless/classic mode for one invocation |
-| `deerflow chat` | Same TUI conversation surface |
-| `deerflow --continue` | Resume the most recent thread |
-| `deerflow --resume THREAD` | Resume a thread by id |
-| `deerflow --print "question"` | Headless one-shot answer to stdout |
-| `deerflow --json "question"` | Headless newline-delimited `StreamEvent`s |
-| `deerflow --recursion-limit 250 --print "question"` | Set the headless agent-loop super-step limit |
-| `echo "q" \| deerflow --print` | Read the message from stdin |
-| `AGENT_WORKSPACE_TUI=1 deerflow` | Force the TUI via environment |
-| `AGENT_WORKSPACE_TUI_TRANSPARENT=1 deerflow` | Persist terminal-background rendering via environment |
+| `agent_workspace` | Launch the TUI when stdin/stdout are TTYs |
+| `agent_workspace --tui` | Force the TUI (clear diagnostic if `textual` is missing) |
+| `agent_workspace --tui-transparent` | Use the terminal's default background when launching the TUI |
+| `agent_workspace --cli` | Force headless/classic mode for one invocation |
+| `agent_workspace chat` | Same TUI conversation surface |
+| `agent_workspace --continue` | Resume the most recent thread |
+| `agent_workspace --resume THREAD` | Resume a thread by id |
+| `agent_workspace --print "question"` | Headless one-shot answer to stdout |
+| `agent_workspace --json "question"` | Headless newline-delimited `StreamEvent`s |
+| `agent_workspace --recursion-limit 250 --print "question"` | Set the headless agent-loop super-step limit |
+| `echo "q" \| agent_workspace --print` | Read the message from stdin |
+| `AGENT_WORKSPACE_TUI=1 agent_workspace` | Force the TUI via environment |
+| `AGENT_WORKSPACE_TUI_TRANSPARENT=1 agent_workspace` | Persist terminal-background rendering via environment |
 
-If no TTY is available and no headless flag is given, `deerflow` prints guidance
+If no TTY is available and no headless flag is given, `agent_workspace` prints guidance
 instead of hanging.
 
-Transparent rendering is opt-in; the solid DeerFlow palette remains the default.
+Transparent rendering is opt-in; the solid Agent Workspace palette remains the default.
 The transparent mode uses Textual's `ansi_default` background for the main
 screen, header, transcript, status, palette, composer, and modal surfaces while
 keeping truecolor foregrounds and selection highlights. Combine
@@ -85,7 +85,7 @@ return to the bottom with `PageDown`.
 `/help` `/new` `/clear` `/goal` `/threads` (`/switch`) `/model` `/skills` `/tools`
 `/mcp` `/memory` `/uploads` `/usage` `/config` `/quit`, plus
 `/<skill-name> task` to activate any enabled skill for the current turn (same
-semantics as elsewhere in DeerFlow). `/model` and `/threads` open modal pickers.
+semantics as elsewhere in Agent Workspace). `/model` and `/threads` open modal pickers.
 
 `/clear` removes the current transcript rows from the terminal display only; it keeps the active thread and persisted conversation intact. During an active run, `/new` and `/clear` ask you to wait for the run to finish instead of resetting in-flight display state.
 Use `/goal <condition>` to set the active thread goal, `/goal` to show it, and
@@ -98,7 +98,7 @@ agent behavior.
 
 ```
 cli.py          launch-mode planning (pure) + headless print/json + entry point
-session.py      builds DeerFlowClient (+ checkpointer) and the persistence writer
+session.py      builds AgentWorkspaceClient (+ checkpointer) and the persistence writer
 runtime.py      StreamEvent  ->  reducer actions  (pure translate + threaded driver)
 view_state.py   ViewState + reduce(state, action)  (pure, the testable heart)
 message_format  compact tool summaries / truncation (pure)
@@ -111,7 +111,7 @@ app.py          Textual App: composes widgets, drives runs on a worker thread,
 persistence.py  writes threads_meta so sessions appear in the Web UI (below)
 ```
 
-`DeerFlowClient.stream()` is a **synchronous** generator, so the app runs it on a
+`AgentWorkspaceClient.stream()` is a **synchronous** generator, so the app runs it on a
 Textual worker *thread* and marshals each yielded action back to the UI thread
 via `call_from_thread`. The pure layers (everything except `app.py`) have no
 Textual dependency and are unit-tested directly with synthetic `StreamEvent`s.
@@ -126,7 +126,7 @@ checkpointer, so a TUI thread would otherwise be invisible in the sidebar.
 `threads_meta` row — owned by the local default user (`"default"`) — into the
 **same** database the Gateway reads, and syncs the generated title afterward.
 This requires only the shared `threads_meta` store (built via
-`deerflow.persistence.engine.init_engine_from_config`), **not** the Gateway
+`agent_workspace.persistence.engine.init_engine_from_config`), **not** the Gateway
 process. When the database backend is `memory` (no SQL store) the writer
 degrades to a silent no-op and the TUI still works.
 

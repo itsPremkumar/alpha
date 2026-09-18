@@ -75,7 +75,7 @@ class TestDatabaseConfig:
         c = DatabaseConfig()
         assert c.postgres_schema == ""
 
-    @pytest.mark.parametrize("schema", ["deerflow", "my_schema", "_private", "s", "a" * 63])
+    @pytest.mark.parametrize("schema", ["agent_workspace", "my_schema", "_private", "s", "a" * 63])
     def test_postgres_schema_accepts_valid_identifier(self, schema):
         c = DatabaseConfig(backend="postgres", postgres_url="postgresql://u:p@h:5432/db", postgres_schema=schema)
         assert c.postgres_schema == schema
@@ -94,13 +94,13 @@ class TestDatabaseConfig:
             "Public",
             # Trailing/leading whitespace must be rejected: a ``$``-anchored
             # ``re.match`` accepts a single trailing ``\n``, which would create a
-            # quoted schema literally named ``deerflow\n`` while the unquoted
-            # search_path folds to ``deerflow`` and misses it (tables land in
+            # quoted schema literally named ``agent_workspace\n`` while the unquoted
+            # search_path folds to ``agent_workspace`` and misses it (tables land in
             # ``public``). ``re.fullmatch`` on an unanchored pattern rejects it.
-            "deerflow\n",
-            "deerflow\t",
-            "\ndeerflow",
-            "deerflow ",
+            "agent_workspace\n",
+            "agent_workspace\t",
+            "\nagent_workspace",
+            "agent_workspace ",
         ],
     )
     def test_postgres_schema_rejects_invalid_identifier(self, schema):
@@ -110,9 +110,9 @@ class TestDatabaseConfig:
             DatabaseConfig(backend="postgres", postgres_url="postgresql://u:p@h:5432/db", postgres_schema=schema)
 
     def test_postgres_schema_does_not_pollute_url(self):
-        c = DatabaseConfig(backend="postgres", postgres_url="postgresql://u:p@h:5432/db", postgres_schema="deerflow")
+        c = DatabaseConfig(backend="postgres", postgres_url="postgresql://u:p@h:5432/db", postgres_schema="agent_workspace")
         url = c.app_sqlalchemy_url
-        assert "deerflow" not in url.replace("/db", "")
+        assert "agent_workspace" not in url.replace("/db", "")
         assert url.startswith("postgresql+asyncpg://")
 
 
@@ -434,12 +434,12 @@ class TestPostgresSchemaInit:
         await engine_module.init_engine(
             "postgres",
             url="postgresql+asyncpg://u:p@h:5432/db",
-            postgres_schema="deerflow",
+            postgres_schema="agent_workspace",
         )
 
         assert captured["connect_args"] == {
             "command_timeout": engine_module.POSTGRES_COMMAND_TIMEOUT_SECONDS,
-            "server_settings": {"search_path": "deerflow"},
+            "server_settings": {"search_path": "agent_workspace"},
         }
         await engine_module.close_engine()
 
@@ -456,7 +456,7 @@ class TestPostgresSchemaInit:
         await engine_module.init_engine(
             "postgres",
             url="postgresql+asyncpg://u:p@h:5432/db",
-            postgres_schema="deerflow",
+            postgres_schema="agent_workspace",
         )
 
         names = [c[0] for c in calls.mock_calls]
@@ -467,7 +467,7 @@ class TestPostgresSchemaInit:
         assert names.index("execute") < names.index("bootstrap_schema")
         # The DDL passed to execute must be a CreateSchema for the target schema.
         execute_arg = calls.execute.call_args[0][0]
-        assert "deerflow" in str(execute_arg)
+        assert "agent_workspace" in str(execute_arg)
         await engine_module.close_engine()
 
     @pytest.mark.anyio

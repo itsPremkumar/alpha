@@ -54,8 +54,8 @@ def _build_fake_create_chat_model(agent_name: str):
 
 
 @pytest.fixture
-def isolated_deer_flow_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """Stand up an isolated DeerFlow data root + config under tmp_path.
+def isolated_agent_workspace_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Stand up an isolated Agent Workspace data root + config under tmp_path.
 
     - Sets ``AGENT_WORKSPACE_HOME`` so paths land under tmp_path, not the real
       ``.agent-workspace`` directory.
@@ -67,7 +67,7 @@ def isolated_deer_flow_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
       ``$OPENAI_API_KEY`` that gets resolved at parse time; the LLM itself is
       mocked, so any non-empty value works.
     """
-    home = tmp_path / "deer-flow-home"
+    home = tmp_path / "agent-workspace-home"
     home.mkdir()
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(home))
     monkeypatch.setenv("OPENAI_API_KEY", "sk-fake-key-not-used-because-llm-is-mocked")
@@ -101,7 +101,7 @@ models:
     api_key: $OPENAI_API_KEY
     base_url: $OPENAI_API_BASE
 sandbox:
-  use: deerflow.sandbox.local:LocalSandboxProvider
+  use: agent_workspace.sandbox.local:LocalSandboxProvider
 agents_api:
   enabled: true
 database:
@@ -117,10 +117,10 @@ def _reset_process_singletons(monkeypatch: pytest.MonkeyPatch) -> None:
     a handful of module-level caches that production normally never resets,
     so they pick up our test-only ``AGENT_WORKSPACE_HOME`` and sqlite path:
 
-    - ``deerflow.config.app_config`` caches the parsed ``config.yaml``.
-    - ``deerflow.config.paths`` caches the ``Paths`` singleton derived from
+    - ``agent_workspace.config.app_config`` caches the parsed ``config.yaml``.
+    - ``agent_workspace.config.paths`` caches the ``Paths`` singleton derived from
       ``AGENT_WORKSPACE_HOME`` at first access.
-    - ``deerflow.persistence.engine`` caches the SQLAlchemy engine and
+    - ``agent_workspace.persistence.engine`` caches the SQLAlchemy engine and
       session factory after the first call to ``init_engine_from_config``.
 
     ``raising=False`` keeps the fixture resilient if upstream renames or
@@ -145,7 +145,7 @@ def _reset_process_singletons(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture
-def isolated_app(isolated_deer_flow_home: Path, monkeypatch: pytest.MonkeyPatch):
+def isolated_app(isolated_agent_workspace_home: Path, monkeypatch: pytest.MonkeyPatch):
     """Build a fresh FastAPI app inside a clean AGENT_WORKSPACE_HOME.
 
     Each test gets its own sqlite DB and checkpoint store under ``tmp_path``,
@@ -158,7 +158,7 @@ def isolated_app(isolated_deer_flow_home: Path, monkeypatch: pytest.MonkeyPatch)
     from agent_workspace.config import app_config as app_config_module
 
     cfg = app_config_module.get_app_config()
-    cfg.database.sqlite_dir = str(isolated_deer_flow_home / "db")
+    cfg.database.sqlite_dir = str(isolated_agent_workspace_home / "db")
 
     from app.gateway.app import create_app
 
@@ -210,7 +210,7 @@ def _wait_for_file(path: Path, *, timeout: float = 10.0) -> bool:
 @pytest.mark.no_auto_user
 def test_real_http_create_agent_lands_in_authenticated_user_dir(
     isolated_app: Any,
-    isolated_deer_flow_home: Path,
+    isolated_agent_workspace_home: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
     """The full real-server contract test.
@@ -222,11 +222,11 @@ def test_real_http_create_agent_lands_in_authenticated_user_dir(
     4. Assert SOUL.md exists under users/<authenticated_uid>/agents/<name>/.
     5. Assert NOTHING exists under users/default/agents/<name>/.
     """
-    # ``deerflow.agents.lead_agent.agent`` imports ``create_chat_model`` with
+    # ``agent_workspace.agents.lead_agent.agent`` imports ``create_chat_model`` with
     # ``from agent_workspace.models import create_chat_model`` at module load time,
     # rebinding the symbol into its own namespace. So the only patch that
     # intercepts the call is the bound name on ``lead_agent.agent`` — patching
-    # ``deerflow.models.create_chat_model`` would be too late.
+    # ``agent_workspace.models.create_chat_model`` would be too late.
     agent_name = "real-http-agent"
 
     from starlette.testclient import TestClient
@@ -306,8 +306,8 @@ def test_real_http_create_agent_lands_in_authenticated_user_dir(
         assert "event:" in transcript, f"no SSE events in response: {transcript[:500]!r}"
 
         # --- 4. Verify filesystem outcome ---
-        expected_dir = isolated_deer_flow_home / "users" / auth_uid / "agents" / agent_name
-        default_dir = isolated_deer_flow_home / "users" / "default" / "agents" / agent_name
+        expected_dir = isolated_agent_workspace_home / "users" / auth_uid / "agents" / agent_name
+        default_dir = isolated_agent_workspace_home / "users" / "default" / "agents" / agent_name
 
         # The setup_agent tool runs inside the background asyncio task spawned
         # by start_run; SSE-drain typically waits for it, but we add a bounded
@@ -315,7 +315,7 @@ def test_real_http_create_agent_lands_in_authenticated_user_dir(
         assert _wait_for_file(expected_dir / "SOUL.md", timeout=15.0), (
             "SOUL.md did not appear under users/<auth_uid>/agents/. "
             f"Expected: {expected_dir / 'SOUL.md'}. "
-            f"tmp tree: {sorted(str(p.relative_to(isolated_deer_flow_home)) for p in isolated_deer_flow_home.rglob('SOUL.md'))}. "
+            f"tmp tree: {sorted(str(p.relative_to(isolated_agent_workspace_home)) for p in isolated_agent_workspace_home.rglob('SOUL.md'))}. "
             f"SSE transcript tail: {transcript[-1000:]!r}"
         )
 

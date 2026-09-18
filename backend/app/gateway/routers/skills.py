@@ -200,7 +200,7 @@ def _copy_uploaded_skill_archive(source: BinaryIO) -> Path:
     """Copy an uploaded archive to a bounded temporary file off the event loop."""
     destination: Path | None = None
     try:
-        with tempfile.NamedTemporaryFile(prefix="deerflow-skill-", suffix=".skill", delete=False) as target:
+        with tempfile.NamedTemporaryFile(prefix="agent_workspace-skill-", suffix=".skill", delete=False) as target:
             destination = Path(target.name)
             total = 0
             while chunk := source.read(_UPLOAD_COPY_CHUNK_BYTES):
@@ -534,7 +534,7 @@ async def create_skill_proposal(request: Request, body: SkillProposalCreateReque
 
 def _stage_proposal_archive(proposal: SkillProposal) -> Path:
     """Materialize a proposal as a `.skill` archive directory layout for install."""
-    staging = Path(tempfile.mkdtemp(prefix="deerflow-proposal-install-"))
+    staging = Path(tempfile.mkdtemp(prefix="agent_workspace-proposal-install-"))
     skill_dir = staging / proposal.name
     skill_dir.mkdir(parents=True)
     (skill_dir / SKILL_MD_FILE).write_text(proposal.skill_md, encoding="utf-8")

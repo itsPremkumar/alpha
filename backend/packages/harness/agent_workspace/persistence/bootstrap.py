@@ -1,4 +1,4 @@
-"""Hybrid schema bootstrap for DeerFlow's application tables.
+"""Hybrid schema bootstrap for Agent Workspace's application tables.
 
 Replaces the unconditional ``Base.metadata.create_all`` at Gateway startup.
 Combines two ideas:
@@ -15,14 +15,14 @@ Three-branch decision (see ``_decide_state``)
 
 | DB state                                      | Action                                  |
 |-----------------------------------------------|-----------------------------------------|
-| empty (no DeerFlow tables)                    | ``create_all`` + ``alembic stamp head`` |
-| legacy (DeerFlow tables, no alembic)          | ``create_all`` (baseline tables only, as backfill) + ``stamp 0001_baseline`` + ``upgrade head`` |
+| empty (no Agent Workspace tables)                    | ``create_all`` + ``alembic stamp head`` |
+| legacy (Agent Workspace tables, no alembic)          | ``create_all`` (baseline tables only, as backfill) + ``stamp 0001_baseline`` + ``upgrade head`` |
 | versioned (one locally known revision)        | ``alembic upgrade head``                |
 | reviewed forward revision with local columns | warn and skip migration                 |
 | unknown, empty, or multiple revision rows     | refuse to start                         |
 
 The legacy branch handles pre-alembic databases that already have at least one
-DeerFlow-owned table. ``create_all`` runs first because stamping at
+Agent Workspace-owned table. ``create_all`` runs first because stamping at
 ``0001_baseline`` makes alembic skip the baseline's own ``create_table`` DDL on
 the subsequent upgrade -- so any baseline table introduced into
 ``Base.metadata`` after the user's DB was first provisioned (e.g. the
@@ -311,7 +311,7 @@ def _get_alembic_config(engine: AsyncEngine, *, postgres_schema: str = "") -> Al
     depend on a working-directory-relative file lookup. The ``script_location``
     is anchored at the package path on disk.
 
-    When *postgres_schema* is set it is forwarded as the ``deerflow_pg_schema``
+    When *postgres_schema* is set it is forwarded as the ``agent_workspace_pg_schema``
     main option so ``env.py`` can pin its alembic-spawned engine's
     ``search_path`` to the same schema the app engine uses. Without it,
     alembic's own engine -- built from the bare URL -- would create
@@ -322,7 +322,7 @@ def _get_alembic_config(engine: AsyncEngine, *, postgres_schema: str = "") -> Al
     cfg.set_main_option("script_location", str(_MIGRATIONS_DIR))
     cfg.set_main_option("sqlalchemy.url", _alembic_safe_url(engine))
     if postgres_schema:
-        cfg.set_main_option("deerflow_pg_schema", postgres_schema)
+        cfg.set_main_option("agent_workspace_pg_schema", postgres_schema)
     return cfg
 
 
@@ -395,7 +395,7 @@ def _reflect_state(sync_conn: Any) -> dict[str, bool]:
     """Inspect *sync_conn* (sync connection inside ``run_sync``) and return:
 
     - ``has_alembic_version``: bool
-    - ``has_deerflow_tables``: True iff at least one table that ``Base.metadata``
+    - ``has_agent_workspace_tables``: True iff at least one table that ``Base.metadata``
       knows about is present in the DB. Computed as ``reflected ∩ metadata`` so
       the bootstrap layer never hardcodes a specific table or column name --
       adding a new ORM model only changes ``Base.metadata``, not this module.
@@ -414,7 +414,7 @@ def _reflect_state(sync_conn: Any) -> dict[str, bool]:
     metadata_tables = set(Base.metadata.tables)
     return {
         "has_alembic_version": "alembic_version" in reflected,
-        "has_deerflow_tables": bool(reflected & metadata_tables),
+        "has_agent_workspace_tables": bool(reflected & metadata_tables),
     }
 
 
@@ -428,7 +428,7 @@ def _decide_state(state: dict[str, bool]) -> str:
     """
     if state["has_alembic_version"]:
         return "versioned"
-    if not state["has_deerflow_tables"]:
+    if not state["has_agent_workspace_tables"]:
         # Either a brand-new DB or a DB containing only tables we don't own
         # (e.g. LangGraph's checkpointer tables on a fresh deployment). The
         # empty branch provisions the tables alembic owns, then stamps head.
@@ -437,7 +437,7 @@ def _decide_state(state: dict[str, bool]) -> str:
 
 
 def _run_create_all_sync(sync_conn: Any) -> None:
-    """Create all DeerFlow-owned tables on *sync_conn*."""
+    """Create all Agent Workspace-owned tables on *sync_conn*."""
     # Import here to ensure all model classes are registered with Base.metadata.
     from agent_workspace.persistence.base import Base
 
@@ -574,7 +574,7 @@ async def _sqlite_lock(engine: AsyncEngine):
     Why not a cross-process OS file lock? It would work, but it adds a hard
     dependency on platform-specific ``fcntl`` / ``msvcrt`` calls for a
     deployment shape (multi-process SQLite) that's already discouraged for
-    DeerFlow. The 30s ``busy_timeout`` plus idempotent revisions cover the
+    Agent Workspace. The 30s ``busy_timeout`` plus idempotent revisions cover the
     realistic case; truly multi-instance deployments should use Postgres.
 
     Note: the 30s ``busy_timeout`` is set by the engine event hooks in

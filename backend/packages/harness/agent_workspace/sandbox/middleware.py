@@ -486,7 +486,7 @@ class SandboxMiddleware(AgentMiddleware[SandboxMiddlewareState]):
     # graph state via Command(update=...).
     #
     # Background:
-    #   ``ensure_sandbox_initialized*`` in ``deerflow.sandbox.tools`` mutates
+    #   ``ensure_sandbox_initialized*`` in ``agent_workspace.sandbox.tools`` mutates
     #   ``runtime.state["sandbox"]`` directly. That mutation is local to the
     #   current tool invocation and is NOT picked up by LangGraph's channel
     #   reducer, so subsequent graph steps (and downstream consumers such as

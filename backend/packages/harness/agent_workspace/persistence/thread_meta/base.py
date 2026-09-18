@@ -5,7 +5,7 @@ Implementations:
 - MemoryThreadMetaStore: wraps LangGraph BaseStore (memory mode)
 
 All mutating and querying methods accept a ``user_id`` parameter with
-three-state semantics (see :mod:`deerflow.runtime.user_context`):
+three-state semantics (see :mod:`agent_workspace.runtime.user_context`):
 
 - ``AUTO`` (default): resolve from the request-scoped contextvar.
 - Explicit ``str``: use the provided value verbatim.
@@ -22,13 +22,13 @@ from agent_workspace.runtime.user_context import AUTO, _AutoSentinel
 # Cross-component metadata key. Keep in sync with
 # ``frontend/src/core/threads/utils.ts`` and
 # ``frontend/tests/e2e/utils/mock-api.ts``.
-THREAD_PINNED_METADATA_KEY = "deerflow_pinned"
-THREAD_ARCHIVED_METADATA_KEY = "deerflow_archived"
+THREAD_PINNED_METADATA_KEY = "agent_workspace_pinned"
+THREAD_ARCHIVED_METADATA_KEY = "agent_workspace_archived"
 
 # Cross-component metadata key. Keep in sync with
 # ``frontend/src/core/threads/utils.ts`` and
 # ``frontend/tests/e2e/utils/mock-api.ts``.
-THREAD_PROJECT_METADATA_KEY = "deerflow_project_id"
+THREAD_PROJECT_METADATA_KEY = "agent_workspace_project_id"
 
 
 class _ProjectFilterUnset:
@@ -110,7 +110,7 @@ class ThreadMetaStore(abc.ABC):
         without a true archive flag. Filtering precedes pagination.
 
         Results are ordered with pinned threads first
-        (``metadata.deerflow_pinned is True``), then by ``updated_at`` and
+        (``metadata.agent_workspace_pinned is True``), then by ``updated_at`` and
         ``thread_id`` descending within each group.
         """
         pass

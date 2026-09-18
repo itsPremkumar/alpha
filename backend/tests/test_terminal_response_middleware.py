@@ -128,7 +128,7 @@ def test_second_empty_post_tool_response_becomes_visible_error_fallback():
     final = result["messages"][-1]
     assert isinstance(final, AIMessage)
     assert "returned no final response" in str(final.content)
-    assert final.additional_kwargs["deerflow_error_fallback"] is True
+    assert final.additional_kwargs["agent_workspace_error_fallback"] is True
     assert _empty_terminal_messages(result["messages"]) == []
     assert _extract_llm_error_fallback_message(result) == ("Model returned an empty terminal response after one retry")
 
@@ -170,7 +170,7 @@ def test_recovery_budget_is_once_per_run_even_when_retry_calls_another_tool():
 
     assert model.call_count == 4
     final = result["messages"][-1]
-    assert final.additional_kwargs["deerflow_error_fallback"] is True
+    assert final.additional_kwargs["agent_workspace_error_fallback"] is True
     assert _empty_terminal_messages(result["messages"]) == []
     recovery_prompt_count = sum(1 for request_messages in model.observed_messages for message in request_messages if isinstance(message, HumanMessage) and message.name == "terminal_response_recovery")
     assert recovery_prompt_count == 1

@@ -222,7 +222,7 @@ class RunJournal(BaseCallbackHandler):
     # handler owns loop-local tasks and a store/pool created for the parent run,
     # so the isolated-loop context copier must not inherit it. LangGraph's own
     # stream callbacks remain inheritable and keep child token frames flowing.
-    deerflow_loop_bound = True
+    agent_workspace_loop_bound = True
 
     # Every callback only updates in-memory run state or schedules async IO.
     # Keeping callbacks on the run's event-loop thread serializes mutations
@@ -483,7 +483,7 @@ class RunJournal(BaseCallbackHandler):
             # callback returns, including nested token-detail mappings.
             usage_dict = deepcopy(dict(usage)) if usage else {}
             additional_kwargs = getattr(message, "additional_kwargs", None) or {}
-            if is_canonical_callback and isinstance(additional_kwargs, dict) and additional_kwargs.get("deerflow_error_fallback"):
+            if is_canonical_callback and isinstance(additional_kwargs, dict) and additional_kwargs.get("agent_workspace_error_fallback"):
                 self._had_llm_error_fallback = True
                 detail = additional_kwargs.get("error_detail")
                 reason = additional_kwargs.get("error_reason")

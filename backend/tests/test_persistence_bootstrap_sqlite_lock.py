@@ -1,6 +1,6 @@
 """Regression tests for the per-engine SQLite bootstrap lock cache.
 
-The cache (``deerflow.persistence.bootstrap._SQLITE_LOCKS``) maps an engine
+The cache (``agent_workspace.persistence.bootstrap._SQLITE_LOCKS``) maps an engine
 to the ``asyncio.Lock`` that serialises its in-process bootstrap. It is keyed
 by the engine object itself via ``WeakKeyDictionary`` -- not ``id(engine)`` --
 to avoid two failure modes that are silent in production (one long-lived

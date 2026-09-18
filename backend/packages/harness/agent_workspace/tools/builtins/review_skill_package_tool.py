@@ -17,7 +17,7 @@ from agent_workspace.skills.review.renderer import build_static_report, render_r
 from agent_workspace.skills.storage import get_or_new_skill_storage, get_or_new_user_skill_storage
 from agent_workspace.tools.types import Runtime
 
-Profile = Literal["deerflow", "agentskills"]
+Profile = Literal["agent_workspace", "agentskills"]
 IncludeContent = Literal["none", "facts-only", "semantic-review"]
 
 _MAX_SEMANTIC_ARTIFACT_CHARS = 80_000
@@ -27,7 +27,7 @@ _MAX_SEMANTIC_ARTIFACT_CHARS = 80_000
 def review_skill_package(
     target: str,
     runtime: Runtime,
-    profile: Profile = "deerflow",
+    profile: Profile = "agent_workspace",
     include_content: IncludeContent = "semantic-review",
     scope: list[str] | None = None,
     inline_content: str | None = None,

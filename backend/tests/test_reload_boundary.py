@@ -1,9 +1,9 @@
 """Regression tests for the config reload boundary registry.
 
-Bytedance/deer-flow issue #3144: the hot-reload boundary is the contract
+Bytedance/agent-workspace issue #3144: the hot-reload boundary is the contract
 between gateway dependencies that resolve ``AppConfig`` every request and the
 infrastructure that captures the snapshot once at startup. The registry in
-``deerflow.config.reload_boundary`` is the machine-readable source of truth;
+``agent_workspace.config.reload_boundary`` is the machine-readable source of truth;
 these tests pin the registry against the actual Pydantic schema so a future
 field rename / addition / boundary change cannot silently drift.
 """

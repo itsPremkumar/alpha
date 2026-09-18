@@ -1,4 +1,4 @@
-"""Summarization middleware extensions for DeerFlow."""
+"""Summarization middleware extensions for Agent Workspace."""
 
 from __future__ import annotations
 
@@ -103,7 +103,7 @@ def _resolve_agent_name(runtime: Runtime) -> str | None:
     return agent_name
 
 
-class DeerFlowSummarizationMiddleware(SummarizationMiddleware):
+class AgentWorkspaceSummarizationMiddleware(SummarizationMiddleware):
     """Summarization middleware with pre-compression hook dispatch."""
 
     def __init__(
@@ -607,7 +607,7 @@ class DeerFlowSummarizationMiddleware(SummarizationMiddleware):
         than reconstructed later.
 
         Hashes ``message.content`` directly, never ``str(message.content)``:
-        DeerFlow messages are routinely multimodal (``list[dict]`` content, e.g.
+        Agent Workspace messages are routinely multimodal (``list[dict]`` content, e.g.
         ``view_image_middleware``'s injected image payloads), and ``str()`` on a
         dict renders insertion order, so pre-stringifying would make two
         logically identical messages hash differently. ``canonical_hash`` exists
@@ -911,7 +911,7 @@ def create_summarization_middleware(
     archive_task_history: bool = True,
     run_model_name: str | None = None,
     extensions=None,
-) -> DeerFlowSummarizationMiddleware | None:
+) -> AgentWorkspaceSummarizationMiddleware | None:
     """Create the configured summarization middleware.
 
     Both the lead-agent automatic path and the manual context-compaction path
@@ -1003,7 +1003,7 @@ def create_summarization_middleware(
 
         hooks.append(memory_flush_hook)
 
-    return DeerFlowSummarizationMiddleware(
+    return AgentWorkspaceSummarizationMiddleware(
         **kwargs,
         before_summarization=hooks,
         task_continuity_config=(resolved_app_config.task_continuity if archive_task_history and getattr(getattr(resolved_app_config, "task_continuity", None), "enabled", False) is True else None),

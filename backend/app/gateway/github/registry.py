@@ -3,13 +3,13 @@
 Indexes every custom agent that declares a ``github:`` block by the
 ``(repo, event)`` pairs it is interested in, across all owners. Agent discovery
 and change detection go through the configured agent store
-(:mod:`deerflow.persistence.agents`), so both the ``file`` backend (per-user
+(:mod:`agent_workspace.persistence.agents`), so both the ``file`` backend (per-user
 directories + the legacy shared layout) and the ``db`` backend (the shared
 ``agents`` table) are covered by the same code.
 
 The dispatcher calls :func:`build_github_agent_registry` once per webhook
 delivery. We avoid re-loading every agent on each call via a small cache keyed
-on the store's :meth:`~deerflow.persistence.agents.base.AgentStore.signature`
+on the store's :meth:`~agent_workspace.persistence.agents.base.AgentStore.signature`
 change token: the file backend derives it from ``config.yaml`` mtimes (any
 edit, addition, or deletion invalidates the cache transparently); the db backend
 derives it from a deterministic digest of each agent's owner, name, config, and

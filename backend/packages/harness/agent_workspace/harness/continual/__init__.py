@@ -1,4 +1,4 @@
-"""Continual Harness package for DeerFlow."""
+"""Continual Harness package for Agent Workspace."""
 
 from agent_workspace.harness.continual.state import (
     HarnessEntry,

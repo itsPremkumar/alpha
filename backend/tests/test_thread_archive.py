@@ -6,7 +6,7 @@ from langgraph.store.memory import InMemoryStore
 from agent_workspace.persistence.thread_meta.memory import MemoryThreadMetaStore
 from agent_workspace.persistence.thread_meta.sql import ThreadMetaRepository
 
-ARCHIVED = "deerflow_archived"
+ARCHIVED = "agent_workspace_archived"
 
 
 @pytest.fixture(params=["memory", "sqlite"])
@@ -45,7 +45,7 @@ async def test_archive_filter_precedes_pagination_and_includes_legacy(archive_st
 @pytest.mark.anyio
 async def test_restore_preserves_thread_metadata_status_and_timestamps(archive_store):
     store = archive_store
-    original = await store.create("chat", user_id="owner", display_name="Report", metadata={"deerflow_pinned": True})
+    original = await store.create("chat", user_id="owner", display_name="Report", metadata={"agent_workspace_pinned": True})
     await store.update_metadata("chat", {ARCHIVED: True}, touch=False, user_id="owner")
     assert await store.search(archived=False, user_id="owner") == []
     await store.update_metadata("chat", {ARCHIVED: False}, touch=False, user_id="other")
@@ -55,5 +55,5 @@ async def test_restore_preserves_thread_metadata_status_and_timestamps(archive_s
     assert restored["updated_at"] == original["updated_at"]
     assert restored["display_name"] == "Report"
     assert restored["status"] == original["status"]
-    assert restored["metadata"] == {"deerflow_pinned": True, ARCHIVED: False}
+    assert restored["metadata"] == {"agent_workspace_pinned": True, ARCHIVED: False}
     assert len(await store.search(archived=False, user_id="owner")) == 1

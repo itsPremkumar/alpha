@@ -1,10 +1,10 @@
 """Unit tests for the shared config-file content-signature helper.
 
-``deerflow.config.file_signature.get_config_signature`` was extracted from
+``agent_workspace.config.file_signature.get_config_signature`` was extracted from
 verbatim-duplicate implementations that used to live independently in
-``deerflow.config.app_config`` and ``deerflow.mcp.cache`` (flagged in review
+``agent_workspace.config.app_config`` and ``agent_workspace.mcp.cache`` (flagged in review
 on PR #4124: "now a verbatim duplicate of
-``deerflow/config/app_config.py::_get_config_signature`` / ``_ConfigSignature``
+``agent_workspace/config/app_config.py::_get_config_signature`` / ``_ConfigSignature``
 ... worth a follow-up to extract both into a small shared helper"). These
 tests cover the shared implementation directly, and pin that both former
 call sites now delegate to it instead of maintaining independent copies that

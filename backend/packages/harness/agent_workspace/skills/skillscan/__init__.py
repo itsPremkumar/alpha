@@ -1,4 +1,4 @@
-"""Native deterministic safety scanner for DeerFlow skills."""
+"""Native deterministic safety scanner for Agent Workspace skills."""
 
 from agent_workspace.skills.skillscan.models import (
     FindingSeverity,

@@ -16,7 +16,7 @@ from app.gateway.auth.session_cookie_state import (
 from app.gateway.csrf_middleware import is_secure_request
 
 ACCESS_TOKEN_COOKIE_NAME = "access_token"
-SESSION_PERSISTENCE_COOKIE_NAME = "deerflow_session_persistent"
+SESSION_PERSISTENCE_COOKIE_NAME = "agent_workspace_session_persistent"
 ALLOW_INSECURE_PERSISTENT_COOKIE_ENV = "AGENT_WORKSPACE_AUTH_ALLOW_INSECURE_PERSISTENT_COOKIE"
 
 logger = logging.getLogger(__name__)

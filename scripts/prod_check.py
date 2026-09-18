@@ -1,4 +1,4 @@
-"""Production readiness pre-flight check for DeerFlow.
+"""Production readiness pre-flight check for Agent Workspace.
 
 Validates the things that most often break a production deployment, before
 you deploy it. Run from the repository root:
@@ -30,7 +30,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-CHART = ROOT / "deploy" / "helm" / "deer-flow" / "Chart.yaml"
+CHART = ROOT / "deploy" / "helm" / "agent-workspace" / "Chart.yaml"
 PYPROJECT = ROOT / "backend" / "pyproject.toml"
 PACKAGE_JSON = ROOT / "frontend" / "package.json"
 CONFIG = ROOT / "config.yaml"
@@ -129,7 +129,7 @@ def check_env(failures: list[str], warnings: list[str]) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="DeerFlow production readiness pre-flight check")
+    parser = argparse.ArgumentParser(description="Agent Workspace production readiness pre-flight check")
     parser.add_argument("--strict", action="store_true", help="treat warnings as failures (CI gate)")
     args = parser.parse_args()
 

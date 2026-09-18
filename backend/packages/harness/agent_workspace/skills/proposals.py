@@ -309,7 +309,7 @@ def scan_proposal_markdown(
 
     from agent_workspace.skills.skillscan.orchestrator import enforce_static_scan
 
-    with tempfile.TemporaryDirectory(prefix="deerflow-proposal-scan-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="agent_workspace-proposal-scan-") as tmp:
         skill_dir = Path(tmp) / skill_name
         skill_dir.mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text(content, encoding="utf-8")

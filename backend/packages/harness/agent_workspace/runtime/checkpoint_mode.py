@@ -15,8 +15,8 @@ from typing import Any
 
 from agent_workspace.config.database_config import DEFAULT_CHECKPOINT_SNAPSHOT_FREQUENCY, CheckpointChannelMode
 
-INTERNAL_CHECKPOINT_MODE_KEY = "__deerflow_checkpoint_channel_mode"
-CHECKPOINT_MODE_METADATA_KEY = "deerflow_checkpoint_channel_mode"
+INTERNAL_CHECKPOINT_MODE_KEY = "__agent_workspace_checkpoint_channel_mode"
+CHECKPOINT_MODE_METADATA_KEY = "agent_workspace_checkpoint_channel_mode"
 
 
 class CheckpointModeMismatchError(RuntimeError):

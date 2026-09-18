@@ -1,4 +1,4 @@
-"""Logging setup helpers for DeerFlow."""
+"""Logging setup helpers for Agent Workspace."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from agent_workspace.trace_context import get_current_trace_id
 DEFAULT_LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 DEFAULT_LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 TRACE_TEXT_LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - [trace_id=%(trace_id)s] - %(message)s"
-_TRACE_FILTER_NAME = "deerflow_trace_context_filter"
+_TRACE_FILTER_NAME = "agent_workspace_trace_context_filter"
 
 
 class TraceContextFilter(logging.Filter):
@@ -29,7 +29,7 @@ class TraceContextFilter(logging.Filter):
 class JsonTraceFormatter(logging.Formatter):
     """Small JSON formatter used when ``logging.enhance.format=json``."""
 
-    _deerflow_trace_formatter = True
+    _agent_workspace_trace_formatter = True
 
     def format(self, record: logging.LogRecord) -> str:
         if not hasattr(record, "trace_id"):
@@ -51,7 +51,7 @@ class JsonTraceFormatter(logging.Formatter):
 class TraceTextFormatter(logging.Formatter):
     """Marker subclass so trace formatting can be reverted cleanly in tests."""
 
-    _deerflow_trace_formatter = True
+    _agent_workspace_trace_formatter = True
 
 
 def _ensure_root_handler() -> None:
@@ -84,7 +84,7 @@ def _trace_formatter(format_name: str | None) -> logging.Formatter:
 
 
 def configure_logging(config: object) -> None:
-    """Configure DeerFlow logging from an AppConfig-like object.
+    """Configure Agent Workspace logging from an AppConfig-like object.
 
     With logging enhancement disabled this preserves the previous
     ``basicConfig + apply_logging_level`` behavior. With enhancement enabled,
@@ -103,7 +103,7 @@ def configure_logging(config: object) -> None:
             handler.setFormatter(_trace_formatter(getattr(enhance, "format", "text")))
         else:
             _remove_trace_filter(handler)
-            if getattr(handler.formatter, "_deerflow_trace_formatter", False):
+            if getattr(handler.formatter, "_agent_workspace_trace_formatter", False):
                 handler.setFormatter(_default_formatter())
 
     apply_logging_level(getattr(config, "log_level", None))

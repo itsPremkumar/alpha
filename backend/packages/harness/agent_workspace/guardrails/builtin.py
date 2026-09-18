@@ -1,4 +1,4 @@
-"""Built-in guardrail providers that ship with DeerFlow."""
+"""Built-in guardrail providers that ship with Agent Workspace."""
 
 from agent_workspace.guardrails.provider import GuardrailDecision, GuardrailReason, GuardrailRequest
 

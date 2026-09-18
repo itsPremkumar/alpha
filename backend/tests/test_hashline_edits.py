@@ -142,7 +142,7 @@ def test_stale_anchor_rejected_for_both_write_tools(tool_name):
     assert result.status == "error"
     assert "stale" in result.content
     assert "hashline" in result.content
-    assert result.additional_kwargs["deerflow_write_block"] == {"path": PATH, "tool": tool_name}
+    assert result.additional_kwargs["agent_workspace_write_block"] == {"path": PATH, "tool": tool_name}
 
 
 @pytest.mark.parametrize("anchor", ["", 12345, ["abc"]])
@@ -161,7 +161,7 @@ def test_null_anchor_falls_back_to_legacy_path():
     content = "v1"
     mw = _middleware({PATH: content})
     marked = ToolMessage(content="v1", tool_call_id="r1", name="read_file")
-    marked.additional_kwargs["deerflow_read_mark"] = {"path": PATH, "hash": _sha(content)}
+    marked.additional_kwargs["agent_workspace_read_mark"] = {"path": PATH, "hash": _sha(content)}
     request = _make_request(
         "write_file",
         {"path": PATH, "content": "v2", "anchor_hash": None},
@@ -184,7 +184,7 @@ def test_absent_anchor_keeps_legacy_mark_behavior():
     assert "have not read its current version" in result.content
     # Matching mark -> still passes.
     marked = ToolMessage(content="v1", tool_call_id="r1", name="read_file")
-    marked.additional_kwargs["deerflow_read_mark"] = {"path": PATH, "hash": _sha(content)}
+    marked.additional_kwargs["agent_workspace_read_mark"] = {"path": PATH, "hash": _sha(content)}
     passed = _make_request("write_file", {"path": PATH, "content": "v2"}, messages=[marked])
     handler2 = MagicMock(return_value=_ok_result())
     assert mw.wrap_tool_call(passed, handler2).status != "error"
@@ -215,7 +215,7 @@ def test_stale_anchor_beats_valid_mark():
     old, new = "v1", "v2"
     mw = _middleware({PATH: new})
     marked = ToolMessage(content="v1", tool_call_id="r1", name="read_file")
-    marked.additional_kwargs["deerflow_read_mark"] = {"path": PATH, "hash": _sha(new)}
+    marked.additional_kwargs["agent_workspace_read_mark"] = {"path": PATH, "hash": _sha(new)}
     request = _make_request(
         "write_file",
         {"path": PATH, "content": "v3", "anchor_hash": revision_token(old)},

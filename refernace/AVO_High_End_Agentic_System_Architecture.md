@@ -107,9 +107,9 @@ OpenAI's public agent work emphasizes that useful agents need more than a strong
 
 Hermes Agent publicly exposes a broad tool registry, persistent memory, session search, skills, multiple execution backends, plugins, scheduled tasks, and multi-platform entry points. Its skill documentation distinguishes **procedural memory** (how to do something) from **factual/personal memory** (what is known), while its architecture emphasizes profile isolation, context compression, provider resolution, tool registries, and persistent session state. These are useful patterns for a self-improving AVO harness. [7][8][9]
 
-### 3.5 DeerFlow-style harness decomposition
+### 3.5 Agent Workspace-style harness decomposition
 
-DeerFlow presents a runtime harness with a lead agent, middleware, sandbox, subagent registry/executor, MCP integration, extensions, skills, memory, model factory, and thread state. This reinforces the value of keeping the agent core small while making capabilities modular and dynamically loadable. [10][11]
+Agent Workspace presents a runtime harness with a lead agent, middleware, sandbox, subagent registry/executor, MCP integration, extensions, skills, memory, model factory, and thread state. This reinforces the value of keeping the agent core small while making capabilities modular and dynamically loadable. [10][11]
 
 ### 3.6 Reflexion and lifelong skill learning
 
@@ -3058,11 +3058,11 @@ That is the strongest generalization of the AVO idea for a world-class agent har
 9. **Hermes Agent, “Architecture,” 2026.**
    https://github.com/NousResearch/hermes-agent/blob/main/website/docs/developer-guide/architecture.md
 
-10. **ByteDance, DeerFlow architecture / repository documentation, 2026.**
-    https://github.com/bytedance/deer-flow
+10. **ByteDance, Agent Workspace architecture / repository documentation, 2026.**
+    https://github.com/bytedance/agent-workspace
 
-11. **DeerFlow, “Introduction / Core Concepts,” 2026.**
-    https://github.com/bytedance/deer-flow/tree/main/frontend/src/content/en/introduction
+11. **Agent Workspace, “Introduction / Core Concepts,” 2026.**
+    https://github.com/bytedance/agent-workspace/tree/main/frontend/src/content/en/introduction
 
 12. **Noah Shinn et al., “Reflexion: Language Agents with Verbal Reinforcement Learning,” arXiv:2303.11366, 2023.**
     https://arxiv.org/abs/2303.11366

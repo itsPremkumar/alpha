@@ -321,7 +321,7 @@ async def test_non_delta_writers_preserve_delta_messages_and_markers(saver_env: 
 
 
 # ---------------------------------------------------------------------------
-# InMemorySaver delta-history patch guards (deerflow.checkpoint_patches)
+# InMemorySaver delta-history patch guards (agent_workspace.checkpoint_patches)
 # ---------------------------------------------------------------------------
 
 

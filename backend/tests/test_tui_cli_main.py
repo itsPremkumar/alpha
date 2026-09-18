@@ -86,4 +86,4 @@ def test_main_headless_help_returns_2_and_prints_usage(monkeypatch, capsys):
     monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
     rc = cli.main(["--cli"])
     assert rc == 2
-    assert "deerflow" in capsys.readouterr().err
+    assert "agent_workspace" in capsys.readouterr().err

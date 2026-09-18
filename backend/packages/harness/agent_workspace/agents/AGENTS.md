@@ -7,7 +7,7 @@
 - `assemble_lead_agent(config, *, app_config=None) -> LeadAgentAssembly(graph, descriptor)`
   is the richer entry point the Gateway uses; `make_lead_agent` is a thin wrapper returning
   `.graph`. The descriptor is built by
-  `deerflow/agents/assembly_descriptor.py::build_assembly_descriptor()` and captures what
+  `agent_workspace/agents/assembly_descriptor.py::build_assembly_descriptor()` and captures what
   only the factory knows — the model resolved after runtime overrides, the rendered prompt
   hash, the tool list left by authorization, and the composed middleware stack in order.
   Consumers of a factory result must unwrap `.graph` defensively (see
@@ -39,8 +39,8 @@
 - `subagent_enabled` - Enable task delegation tool
 - `max_concurrent_subagents` - Per-response `task` call concurrency limit (clamped by `SubagentLimitMiddleware`)
 - `max_total_subagents` - Optional per-run total delegation cap override (falls back to `subagents.max_total_per_run`, clamped to 1-50)
-  Gateway and `DeerFlowClient.stream()` always provide the runtime `run_id`; custom
+  Gateway and `AgentWorkspaceClient.stream()` always provide the runtime `run_id`; custom
   graph integrations must do the same. If it is absent, enforcement deliberately
   counts the thread's full delegation ledger (fail-restrictive) and emits a warning.
 
-**Direct subagent runtime**: `create_deerflow_agent(..., subagent_runtime=runtime)` is the explicit dependency-injection path for direct graph callers. Reuse one `deerflow.subagents.SubagentRuntime` across every graph that belongs to the same application capacity boundary. With the default subagent feature it binds middleware concurrency/total limits, the ordinary `task` tool, one real execution controller, and any active durable-batch submitter to the same snapshot. A caller-owned batch repository requires `await runtime.start()` (or `async with runtime`) before graph construction and `stop()` at shutdown; the factory fails closed while that worker is stopped, and already-built bound batch tools must fail unavailable after it stops rather than falling through to another process-global submitter. The factory never creates SQL infrastructure, renders the caller-owned `system_prompt`, or mounts Gateway API/UI routes. Full middleware takeover cannot be combined with this runtime; direct callers and custom subagent middleware remain responsible for model-visible call-policy wording.
+**Direct subagent runtime**: `create_agent_workspace_agent(..., subagent_runtime=runtime)` is the explicit dependency-injection path for direct graph callers. Reuse one `agent_workspace.subagents.SubagentRuntime` across every graph that belongs to the same application capacity boundary. With the default subagent feature it binds middleware concurrency/total limits, the ordinary `task` tool, one real execution controller, and any active durable-batch submitter to the same snapshot. A caller-owned batch repository requires `await runtime.start()` (or `async with runtime`) before graph construction and `stop()` at shutdown; the factory fails closed while that worker is stopped, and already-built bound batch tools must fail unavailable after it stops rather than falling through to another process-global submitter. The factory never creates SQL infrastructure, renders the caller-owned `system_prompt`, or mounts Gateway API/UI routes. Full middleware takeover cannot be combined with this runtime; direct callers and custom subagent middleware remain responsible for model-visible call-policy wording.

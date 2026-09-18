@@ -1,10 +1,10 @@
-"""Command-line entry point and launch-mode planning for the DeerFlow TUI.
+"""Command-line entry point and launch-mode planning for the Agent Workspace TUI.
 
 ``plan_launch`` is a pure decision function (fully unit-tested): given argv, TTY
 state and the environment, it decides whether to open the terminal UI or run a
-headless one-shot. ``main`` wires that decision to the embedded ``DeerFlowClient``
+headless one-shot. ``main`` wires that decision to the embedded ``AgentWorkspaceClient``
 and lazily imports the Textual app only when actually launching the UI, so the
-``deerflow`` console script still runs headless commands without Textual present.
+``agent_workspace`` console script still runs headless commands without Textual present.
 """
 
 from __future__ import annotations
@@ -48,8 +48,8 @@ def _positive_int(value: str) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="agent-workspace",
-        description="DeerFlow terminal workbench — a TUI over the embedded DeerFlow harness.",
-        epilog="Extension management: deerflow extensions --help",
+        description="Agent Workspace terminal workbench — a TUI over the embedded Agent Workspace harness.",
+        epilog="Extension management: agent_workspace extensions --help",
         add_help=True,
     )
     parser.add_argument("message", nargs="*", help="initial prompt for the TUI, or message in --cli mode")
@@ -165,7 +165,7 @@ def plan_launch(
             )
         return LaunchPlan(
             mode="headless-help",
-            reason='--cli needs a message. Try: deerflow --print "your question".',
+            reason='--cli needs a message. Try: agent_workspace --print "your question".',
         )
 
     forced_tui = bool(args.tui)
@@ -194,19 +194,19 @@ def plan_launch(
 # --------------------------------------------------------------------------- #
 
 _HEADLESS_HELP = """\
-deerflow — DeerFlow terminal workbench
+agent_workspace — Agent Workspace terminal workbench
 
-  deerflow                      launch the terminal UI (TTY required)
-  deerflow --tui                force the terminal UI
-  deerflow --tui-transparent    use the terminal's default background
-  deerflow --continue           resume the most recent thread in the UI
-  deerflow --resume THREAD      resume a thread by id or title
-  deerflow --print "question"   one-shot answer to stdout
-  deerflow --json "question"    stream newline-delimited JSON events
-  deerflow --recursion-limit N --print "question"
+  agent_workspace                      launch the terminal UI (TTY required)
+  agent_workspace --tui                force the terminal UI
+  agent_workspace --tui-transparent    use the terminal's default background
+  agent_workspace --continue           resume the most recent thread in the UI
+  agent_workspace --resume THREAD      resume a thread by id or title
+  agent_workspace --print "question"   one-shot answer to stdout
+  agent_workspace --json "question"    stream newline-delimited JSON events
+  agent_workspace --recursion-limit N --print "question"
                               set the headless agent-loop super-step limit
-  deerflow extensions --help  install and manage trusted Python extensions
-  echo "question" | deerflow --print
+  agent_workspace extensions --help  install and manage trusted Python extensions
+  echo "question" | agent_workspace --print
 """
 
 
@@ -289,7 +289,7 @@ def _run_tui(plan: LaunchPlan) -> int:
     try:
         # Absolute import (not `from .app`) so the harness import-boundary check,
         # which records relative module names verbatim, doesn't mistake the sibling
-        # `deerflow.tui.app` module for the forbidden top-level `app` package.
+        # `agent_workspace.tui.app` module for the forbidden top-level `app` package.
         from agent_workspace.tui.app import run_tui
     except ModuleNotFoundError as exc:  # textual missing
         if getattr(exc, "name", "") == "textual" or "textual" in str(exc):

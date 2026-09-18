@@ -286,7 +286,7 @@ def test_swarm_advanced_harness_boundary():
     """Validates that all newly added swarm engines contain zero imports from app.*."""
     import pathlib
 
-    swarm_dir = pathlib.Path(__file__).parent.parent / "packages" / "harness" / "deerflow" / "swarm"
+    swarm_dir = pathlib.Path(__file__).parent.parent / "packages" / "harness" / "agent_workspace" / "swarm"
     for py_file in swarm_dir.glob("*.py"):
         content = py_file.read_text(encoding="utf-8")
         assert "from app." not in content, f"Boundary violation in {py_file}: contains 'from app.'"

@@ -56,7 +56,7 @@ logging.basicConfig(
 
 # ── Configuration (all tuneable via environment variables) ───────────────
 
-K8S_NAMESPACE = os.environ.get("K8S_NAMESPACE", "deer-flow")
+K8S_NAMESPACE = os.environ.get("K8S_NAMESPACE", "agent-workspace")
 SANDBOX_IMAGE = os.environ.get(
     "SANDBOX_IMAGE",
     "enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest",
@@ -348,7 +348,7 @@ def _extra_mount_pvc_sub_path(host_path: str) -> str:
     rel_parts = [part for part in rel_path.replace(os.sep, "/").split("/") if part and part != "."]
     if not rel_parts or any(part == ".." for part in rel_parts):
         raise HTTPException(status_code=400, detail=f"Invalid extra mount host path: {host_path}")
-    return posixpath.join("deer-flow", *rel_parts)
+    return posixpath.join("agent-workspace", *rel_parts)
 
 
 # ── K8s client setup ────────────────────────────────────────────────────
@@ -419,7 +419,7 @@ def _ensure_namespace() -> None:
                 metadata=k8s_client.V1ObjectMeta(
                     name=K8S_NAMESPACE,
                     labels={
-                        "app.kubernetes.io/name": "deer-flow",
+                        "app.kubernetes.io/name": "agent-workspace",
                         "app.kubernetes.io/component": "sandbox",
                     },
                 )
@@ -811,7 +811,7 @@ def _build_volume_mounts(
         read_only=False,
     )
     if USERDATA_PVC_NAME:
-        userdata_mount.sub_path = f"deer-flow/users/{user_id}/threads/{thread_id}/user-data"
+        userdata_mount.sub_path = f"agent-workspace/users/{user_id}/threads/{thread_id}/user-data"
     mounts.append(userdata_mount)
     mounts.extend(
         _build_extra_volume_mounts(
@@ -968,9 +968,9 @@ def _build_pod(
             name=_pod_name(sandbox_id),
             namespace=K8S_NAMESPACE,
             labels={
-                "app": "deer-flow-sandbox",
+                "app": "agent-workspace-sandbox",
                 "sandbox-id": sandbox_id,
-                "app.kubernetes.io/name": "deer-flow",
+                "app.kubernetes.io/name": "agent-workspace",
                 "app.kubernetes.io/component": "sandbox",
             },
         ),
@@ -1066,9 +1066,9 @@ def _build_service(sandbox_id: str) -> k8s_client.V1Service:
             name=_svc_name(sandbox_id),
             namespace=K8S_NAMESPACE,
             labels={
-                "app": "deer-flow-sandbox",
+                "app": "agent-workspace-sandbox",
                 "sandbox-id": sandbox_id,
-                "app.kubernetes.io/name": "deer-flow",
+                "app.kubernetes.io/name": "agent-workspace",
                 "app.kubernetes.io/component": "sandbox",
             },
         ),
@@ -1288,7 +1288,7 @@ def list_sandboxes():
     try:
         services = core_v1.list_namespaced_service(
             K8S_NAMESPACE,
-            label_selector="app=deer-flow-sandbox",
+            label_selector="app=agent-workspace-sandbox",
         )
     except ApiException as exc:
         raise HTTPException(status_code=500, detail=f"Failed to list services: {exc.reason}")

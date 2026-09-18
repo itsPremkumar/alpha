@@ -29,7 +29,7 @@ class CheckpointCrypto:
     def __init__(self, master_key_or_passphrase: str | None = None) -> None:
         passphrase = master_key_or_passphrase or os.getenv("AGENT_WORKSPACE_CHECKPOINT_KEY", "astra_default_secure_vault_key_2026")
         # Standard salt for deterministic derivation of engine master key
-        salt = b"deerflow_astra_salt_v1"
+        salt = b"agent_workspace_astra_salt_v1"
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,

@@ -46,7 +46,7 @@ class CheckpointEngine:
         if storage_dir:
             self.storage_dir = Path(storage_dir)
         else:
-            base_dir = os.environ.get("AGENT_WORKSPACE_PROJECTS_DIR", ".deerflow_projects")
+            base_dir = os.environ.get("AGENT_WORKSPACE_PROJECTS_DIR", ".agent_workspace_projects")
             self.storage_dir = Path(base_dir) / project_id / "checkpoints"
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         self._memory_index: dict[str, WorkspaceCheckpoint] = {}

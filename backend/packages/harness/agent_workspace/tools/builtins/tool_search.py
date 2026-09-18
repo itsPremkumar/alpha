@@ -13,7 +13,7 @@ The agent sees deferred tool names in <available-deferred-tools> but cannot
 call them until it fetches their full schema via the tool_search tool. The
 deferred set rides on a build-time closure and promotion lives in per-thread
 graph state — there is no ContextVar. Source-agnostic: a tool is "deferred"
-when it carries the ``deerflow_mcp`` metadata tag.
+when it carries the ``agent_workspace_mcp`` metadata tag.
 """
 
 import hashlib

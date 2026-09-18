@@ -14,7 +14,7 @@ from typing import Any, ClassVar, Literal
 
 from pydantic import PrivateAttr
 
-# ABC contract -- the ONE allowed `from deerflow` import in this backend folder.
+# ABC contract -- the ONE allowed `from agent_workspace` import in this backend folder.
 from agent_workspace.agents.memory.manager import MemoryManager, MemoryManagerError, MemoryReadError
 
 from .client import Mem0APIError, Mem0Client

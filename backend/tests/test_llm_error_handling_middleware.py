@@ -167,7 +167,7 @@ def test_async_model_call_returns_user_message_for_quota_errors() -> None:
 
     assert isinstance(result, AIMessage)
     assert "out of quota" in str(result.content)
-    assert result.additional_kwargs["deerflow_error_fallback"] is True
+    assert result.additional_kwargs["agent_workspace_error_fallback"] is True
     assert result.additional_kwargs["error_reason"] == "quota"
     assert result.additional_kwargs["error_type"] == "FakeError"
 
@@ -189,7 +189,7 @@ def test_async_model_call_marks_transient_retry_exhaustion_as_error_fallback(
 
     assert isinstance(result, AIMessage)
     assert "temporarily unavailable" in str(result.content)
-    assert result.additional_kwargs["deerflow_error_fallback"] is True
+    assert result.additional_kwargs["agent_workspace_error_fallback"] is True
     assert result.additional_kwargs["error_reason"] == "transient"
     assert result.additional_kwargs["error_detail"] == "Connection error."
 
@@ -1030,7 +1030,7 @@ def test_async_index_error_exhausted_returns_user_fallback(
 ) -> None:
     """If every retry hits the same empty-``generations`` IndexError, the
     middleware must still produce a user-facing fallback AIMessage (with
-    ``deerflow_error_fallback=True``) instead of letting the IndexError
+    ``agent_workspace_error_fallback=True``) instead of letting the IndexError
     propagate out of the agent loop and ending the run in ``error``
     status with no GitHub-side reply.
     """
@@ -1047,7 +1047,7 @@ def test_async_index_error_exhausted_returns_user_fallback(
     result = asyncio.run(middleware.awrap_model_call(SimpleNamespace(), handler))
 
     assert isinstance(result, AIMessage)
-    assert result.additional_kwargs["deerflow_error_fallback"] is True
+    assert result.additional_kwargs["agent_workspace_error_fallback"] is True
     assert result.additional_kwargs["error_reason"] == "transient"
     assert result.additional_kwargs["error_type"] == "IndexError"
     assert "temporarily unavailable" in str(result.content)
@@ -1228,7 +1228,7 @@ async def test_limiter_releases_slot_during_backoff_sleep(
     result_a = await task_a
     result_b = await task_b
     assert result_b.content == "b-ok"
-    assert result_a.additional_kwargs.get("deerflow_error_fallback") is True
+    assert result_a.additional_kwargs.get("agent_workspace_error_fallback") is True
 
 
 # ---------- Decorrelated jitter ----------
@@ -1501,7 +1501,7 @@ async def test_async_burst_rate_uses_tight_budget_and_longer_base(
     assert len(waits) == 1
     # Longer burst base: delay in [burst_base, cap] = [0.1s, 0.2s]
     assert 0.1 <= waits[0] <= 0.2
-    assert result.additional_kwargs.get("deerflow_error_fallback") is True
+    assert result.additional_kwargs.get("agent_workspace_error_fallback") is True
     assert result.additional_kwargs.get("error_reason") == "burst_rate"
 
 

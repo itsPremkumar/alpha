@@ -1,5 +1,5 @@
 #!/bin/sh
-# Stage the DeerFlow sandbox lark-cli runtime layout from official release
+# Stage the Agent Workspace sandbox lark-cli runtime layout from official release
 # binaries. Runs at image BUILD time (network available).
 #
 # Usage: LARK_CLI_VERSION=v1.0.65 build-runtime.sh /opt/lark-cli
@@ -8,7 +8,7 @@
 #   <dest>/bin/lark-cli            arch-dispatch launcher (uname -m)
 #   <dest>/linux-amd64/lark-cli
 #   <dest>/linux-arm64/lark-cli
-#   <dest>/.deerflow-lark-cli-runtime.json   {"version": "vX.Y.Z"}
+#   <dest>/.agent-workspace-lark-cli-runtime.json   {"version": "vX.Y.Z"}
 #
 # The layout mirrors the Gateway writer (_write_lark_cli_sandbox_launcher) and
 # satisfies _validate_lark_cli_sandbox_runtime, so the sandbox PATH contract is
@@ -81,7 +81,7 @@ exec "$script_dir/../linux-$arch/lark-cli" "$@"
 LAUNCHER
 chmod 0755 "${DEST}/bin/lark-cli"
 
-printf '{\n  "version": "%s"\n}\n' "$TAG" > "${DEST}/.deerflow-lark-cli-runtime.json"
+printf '{\n  "version": "%s"\n}\n' "$TAG" > "${DEST}/.agent-workspace-lark-cli-runtime.json"
 
 echo "Staged lark-cli ${TAG} runtime at ${DEST}:"
 ls -R "${DEST}"

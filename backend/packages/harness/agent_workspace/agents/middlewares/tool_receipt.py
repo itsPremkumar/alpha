@@ -42,8 +42,8 @@ from langchain_core.messages import AIMessage, ToolMessage
 
 from agent_workspace.agents.middlewares.tool_result_meta import TOOL_META_KEY
 
-TOOL_RECEIPT_KEY = "deerflow_tool_receipt"
-TOOL_RECEIPT_LEDGER_KEY = "deerflow_tool_receipt_ledger"
+TOOL_RECEIPT_KEY = "agent_workspace_tool_receipt"
+TOOL_RECEIPT_LEDGER_KEY = "agent_workspace_tool_receipt_ledger"
 
 _HASH_LEN = 16
 _RENDER_CHAR_BUDGET = 2000
@@ -94,7 +94,7 @@ class ToolReceipt(TypedDict):
     id: str  # display id, assigned by extract_tool_receipts ("r1"..)
     tool_call_id: str
     tool_name: str
-    status: str  # success | error | partial_success (from deerflow_tool_meta)
+    status: str  # success | error | partial_success (from agent_workspace_tool_meta)
     args_sha256: str
     output_sha256: str
     output_bytes: int

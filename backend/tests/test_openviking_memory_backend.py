@@ -507,7 +507,7 @@ async def test_unreachable_context_read_raise_aborts_async_dynamic_context_injec
     assert exc_info.value.__cause__ is not None
 
 
-def test_manager_refuses_to_share_single_user_key_across_deerflow_users(
+def test_manager_refuses_to_share_single_user_key_across_agent_workspace_users(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     official_integration: None,
@@ -780,18 +780,18 @@ def test_corrupt_cursor_fails_closed_instead_of_replaying_history(
 
 
 def test_peer_mapping_is_stable_and_namespaces_are_disjoint() -> None:
-    assert _canonical_peer_id(None, "deerflow") == "deerflow"
-    assert _canonical_peer_id("Research", "deerflow") == "research"
-    assert _canonical_peer_id("deerflow", "deerflow").startswith("df-agent-")
-    assert _canonical_peer_id("-research", "deerflow").startswith("df-agent-")
-    assert _canonical_peer_id("df-agent-custom", "deerflow").startswith("df-agent-")
+    assert _canonical_peer_id(None, "agent_workspace") == "agent_workspace"
+    assert _canonical_peer_id("Research", "agent_workspace") == "research"
+    assert _canonical_peer_id("agent_workspace", "agent_workspace").startswith("df-agent-")
+    assert _canonical_peer_id("-research", "agent_workspace").startswith("df-agent-")
+    assert _canonical_peer_id("df-agent-custom", "agent_workspace").startswith("df-agent-")
     assert (
         len(
             {
-                _canonical_peer_id(None, "deerflow"),
-                _canonical_peer_id("deerflow", "deerflow"),
-                _canonical_peer_id("-research", "deerflow"),
-                _canonical_peer_id("df-agent-custom", "deerflow"),
+                _canonical_peer_id(None, "agent_workspace"),
+                _canonical_peer_id("agent_workspace", "agent_workspace"),
+                _canonical_peer_id("-research", "agent_workspace"),
+                _canonical_peer_id("df-agent-custom", "agent_workspace"),
             }
         )
         == 4

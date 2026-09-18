@@ -136,7 +136,7 @@ class RemoteSandboxBackend(SandboxBackend):
     Typical config.yaml::
 
         sandbox:
-          use: deerflow.community.aio_sandbox:AioSandboxProvider
+          use: agent_workspace.community.aio_sandbox:AioSandboxProvider
           provisioner_url: http://provisioner:8002
           provisioner_api_key: $PROVISIONER_API_KEY
     """

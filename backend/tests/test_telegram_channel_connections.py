@@ -78,7 +78,7 @@ async def _await_reply(reply_text, *, timeout: float = 2.0) -> None:
 async def test_start_with_deep_link_state_binds_telegram_chat(repo):
     state = "telegram-bind-state"
     await repo.create_oauth_state(
-        owner_user_id="deerflow-user-1",
+        owner_user_id="agent-workspace-user-1",
         provider="telegram",
         state=state,
         expires_at=datetime.now(UTC) + timedelta(minutes=5),
@@ -93,7 +93,7 @@ async def test_start_with_deep_link_state_binds_telegram_chat(repo):
     context.args = [state]
 
     await channel._cmd_start(update, context)
-    connections = await _await_connections(repo, "deerflow-user-1")
+    connections = await _await_connections(repo, "agent-workspace-user-1")
     await _await_reply(update.message.reply_text)
 
     assert len(connections) == 1
@@ -113,7 +113,7 @@ async def test_start_token_bypasses_allowed_users_filter(repo):
     # in allowed_users. The allowed_users gate must run after token handling.
     state = "telegram-bind-state"
     await repo.create_oauth_state(
-        owner_user_id="deerflow-user-1",
+        owner_user_id="agent-workspace-user-1",
         provider="telegram",
         state=state,
         expires_at=datetime.now(UTC) + timedelta(minutes=5),
@@ -132,7 +132,7 @@ async def test_start_token_bypasses_allowed_users_filter(repo):
     context.args = [state]
 
     await channel._cmd_start(update, context)
-    connections = await _await_connections(repo, "deerflow-user-1")
+    connections = await _await_connections(repo, "agent-workspace-user-1")
     await _await_reply(update.message.reply_text)
 
     assert len(connections) == 1
@@ -143,7 +143,7 @@ async def test_start_token_bypasses_allowed_users_filter(repo):
 @pytest.mark.anyio
 async def test_bound_telegram_message_publishes_connection_identity(repo):
     connection = await repo.upsert_connection(
-        owner_user_id="deerflow-user-1",
+        owner_user_id="agent-workspace-user-1",
         provider="telegram",
         external_account_id="42",
         external_account_name="Alice Example",
@@ -162,7 +162,7 @@ async def test_bound_telegram_message_publishes_connection_identity(repo):
     inbound = await bus.get_inbound()
 
     assert inbound.connection_id == connection["id"]
-    assert inbound.owner_user_id == "deerflow-user-1"
+    assert inbound.owner_user_id == "agent-workspace-user-1"
     assert inbound.workspace_id == "100"
     assert inbound.user_id == "42"
     assert inbound.chat_id == "100"
@@ -197,7 +197,7 @@ async def test_bind_dispatcher_uses_submit_threadsafe_when_main_loop_running(rep
 async def test_bind_on_main_replies_via_telegram_loop(repo):
     state = "telegram-bind-state"
     await repo.create_oauth_state(
-        owner_user_id="deerflow-user-1",
+        owner_user_id="agent-workspace-user-1",
         provider="telegram",
         state=state,
         expires_at=datetime.now(UTC) + timedelta(minutes=5),
@@ -218,5 +218,5 @@ async def test_bind_on_main_replies_via_telegram_loop(repo):
     channel._run_on_telegram_loop.assert_awaited_once()
     update.message.reply_text.assert_called_once()
     assert "connected" in update.message.reply_text.call_args.args[0].lower()
-    connections = await repo.list_connections("deerflow-user-1")
+    connections = await repo.list_connections("agent-workspace-user-1")
     assert len(connections) == 1

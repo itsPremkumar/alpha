@@ -48,7 +48,7 @@ _NULLISH_STRINGS = frozenset({"null", "none", "undefined"})
 # Channels whose inbound messages come from untrusted external commenters
 # (anyone on a GitHub repo, etc.). The lead-agent factory already drops
 # this tool for runs on these channels (see ``_WEBHOOK_CHANNELS`` in
-# ``deerflow.agents.lead_agent.agent``); this set is the in-tool mirror
+# ``agent_workspace.agents.lead_agent.agent``); this set is the in-tool mirror
 # so a custom factory that re-attaches ``update_agent`` cannot silently
 # expose self-mutation over a webhook.
 _UNTRUSTED_CHANNELS: frozenset[str] = frozenset({"github"})
@@ -117,7 +117,7 @@ def update_agent(
 
     # Defence in depth — the lead-agent factory already withholds this
     # tool from webhook-channel runs (see ``_WEBHOOK_CHANNELS`` in
-    # ``deerflow.agents.lead_agent.agent``). The same channel set is
+    # ``agent_workspace.agents.lead_agent.agent``). The same channel set is
     # mirrored here so a future code path that re-attaches the tool
     # without going through ``_make_lead_agent`` (custom factories,
     # tests, etc.) does not silently accept untrusted self-mutation

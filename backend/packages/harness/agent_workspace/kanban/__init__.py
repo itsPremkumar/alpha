@@ -1,4 +1,4 @@
-"""Collaborative Kanban Board Engine for DeerFlow."""
+"""Collaborative Kanban Board Engine for Agent Workspace."""
 
 from agent_workspace.kanban.bridge import KanbanGroupBridge
 from agent_workspace.kanban.dependency import DependencyGraph

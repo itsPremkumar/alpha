@@ -12,9 +12,9 @@ SUMMARY_MESSAGE_NAME = "summary"
 #: Suffix ``DynamicContextMiddleware``'s ID-swap gives the real user message; the
 #: reminder SystemMessage takes the original id so ``add_messages`` can replace it
 #: in place.  It lives here rather than beside the middleware because the message
-#: identity rule in ``deerflow.runtime.events.message_identity`` needs it too, and
+#: identity rule in ``agent_workspace.runtime.events.message_identity`` needs it too, and
 #: importing the middleware from there closes a cycle
-#: (middleware -> deerflow.runtime -> worker -> events -> middleware).
+#: (middleware -> agent_workspace.runtime -> worker -> events -> middleware).
 INJECTED_USER_MESSAGE_ID_SUFFIX = "__user"
 
 

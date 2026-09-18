@@ -27,7 +27,7 @@ def _default_storage_path() -> Path:
 
         return runtime_home() / _DEFAULT_GROUPS_DIR / "rooms.json"
     except Exception:
-        return Path.cwd() / ".deerflow" / _DEFAULT_GROUPS_DIR / "rooms.json"
+        return Path.cwd() / ".agent_workspace" / _DEFAULT_GROUPS_DIR / "rooms.json"
 
 
 class GroupChatService:

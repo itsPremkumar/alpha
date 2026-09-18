@@ -1,12 +1,12 @@
 """SQLAlchemy-backed UserRepository implementation.
 
 Uses the shared async session factory from
-``deerflow.persistence.engine`` — the ``users`` table lives in the
+``agent_workspace.persistence.engine`` — the ``users`` table lives in the
 same database as ``threads_meta``, ``runs``, ``run_events``, and
 ``feedback``.
 
 Constructor takes the session factory directly (same pattern as the
-other four repositories in ``deerflow.persistence.*``). Callers
+other four repositories in ``agent_workspace.persistence.*``). Callers
 construct this after ``init_engine_from_config()`` has run.
 """
 

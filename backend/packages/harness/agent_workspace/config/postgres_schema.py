@@ -9,10 +9,10 @@ import re
 # *unquoted* ``search_path`` token, which PostgreSQL folds to lowercase. Allowing
 # uppercase here would let the two diverge so tables silently land in ``public``.
 # No anchors: validation uses ``re.fullmatch`` so the whole value must match.
-# A ``$``-anchored ``re.match`` would accept a trailing newline (``"deerflow\n"``):
+# A ``$``-anchored ``re.match`` would accept a trailing newline (``"agent_workspace\n"``):
 # Python's ``$`` matches just before a single trailing ``\n``, which then
-# creates a *quoted* schema literally named ``deerflow\n`` while the *unquoted*
-# ``search_path`` folds to ``deerflow`` and misses it, silently landing tables
+# creates a *quoted* schema literally named ``agent_workspace\n`` while the *unquoted*
+# ``search_path`` folds to ``agent_workspace`` and misses it, silently landing tables
 # in ``public``.
 POSTGRES_SCHEMA_PATTERN = r"[a-z_][a-z0-9_]{0,62}"
 _POSTGRES_SCHEMA_RE = re.compile(POSTGRES_SCHEMA_PATTERN)

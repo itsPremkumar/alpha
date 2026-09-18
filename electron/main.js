@@ -1,9 +1,9 @@
 'use strict';
 
 /**
- * DeerFlow Desktop — Electron main process.
+ * Agent Workspace Desktop — Electron main process.
  *
- * Windows-stable orchestration for the DeerFlow stack:
+ * Windows-stable orchestration for the Agent Workspace stack:
  *   Gateway API (FastAPI/uvicorn, default `127.0.0.1:8201`) + Next.js frontend
  *   (default `127.0.0.1:3000`) inside a single native window. No nginx is used
  *   here: the Next.js server rewrites /api/* directly to the Gateway
@@ -25,7 +25,7 @@
  *   --skip-backend         Do not spawn the Gateway (attach to an existing one).
  *   --skip-frontend        Do not spawn the frontend (attach to an existing one).
  *   --require-login        Keep the Gateway/frontend login + admin-setup screens.
- *                          By default the desktop app sets DEER_FLOW_AUTH_DISABLED=1
+ *                          By default the desktop app sets AGENT_WORKSPACE_AUTH_DISABLED=1
  *                          (upstream's local single-user mode) so it opens straight
  *                          into the workspace with a synthetic admin user.
  *   --verbose              Mirror child-process output to the console.
@@ -110,8 +110,8 @@ const configTemplatesDir = isPackaged
 
 const userDataRoot = app.getPath('userData');
 const projectDir = path.join(userDataRoot, 'project');
-const deerflowHomeDir = fs.existsSync(path.join(userDataRoot, 'deerflow-home'))
-  ? path.join(userDataRoot, 'deerflow-home')
+const agent_workspaceHomeDir = fs.existsSync(path.join(userDataRoot, 'agent_workspace-home'))
+  ? path.join(userDataRoot, 'agent_workspace-home')
   : path.join(userDataRoot, 'agent-workspace-home');
 const logsDir = path.join(userDataRoot, 'logs');
 const mainLogFile = path.join(logsDir, 'main.log');
@@ -227,7 +227,7 @@ function broadcastStatus(message, detail) {
   for (const win of BrowserWindow.getAllWindows()) {
     try {
       win.webContents.send('agent-workspace:status', payload);
-      win.webContents.send('deerflow:status', payload);
+      win.webContents.send('agent_workspace:status', payload);
     } catch {
       // Window may be closing; ignore.
     }
@@ -291,7 +291,7 @@ function httpGetStatus(url, timeoutMs) {
   });
 }
 
-async function isDeerFlowGateway(gatewayBaseUrl) {
+async function isAgentWorkspaceGateway(gatewayBaseUrl) {
   // Verify identity, not just liveness: a foreign service on the same port
   // must never be mistaken for our Gateway.
   try {
@@ -306,13 +306,13 @@ async function isDeerFlowGateway(gatewayBaseUrl) {
       clearTimeout(timer);
     }
     // Service identity as reported by app/gateway/app.py health_check.
-    return !!data && (data.service === 'agent-workspace-gateway' || data.service === 'deer-flow-gateway');
+    return !!data && (data.service === 'agent-workspace-gateway' || data.service === 'agent-workspace-gateway');
   } catch {
     return false;
   }
 }
 
-async function isDeerFlowFrontend(frontendUrl) {
+async function isAgentWorkspaceFrontend(frontendUrl) {
   // Same identity rule for the frontend: only reuse a port when it actually
   // serves this app (Next.js marker), never a foreign occupant.
   const status = await httpGetStatus(frontendUrl, 3000);
@@ -328,7 +328,7 @@ async function isDeerFlowFrontend(frontendUrl) {
     } finally {
       clearTimeout(timer);
     }
-    return text.includes('__next') || text.includes('Agent Workspace') || text.includes('DeerFlow');
+    return text.includes('__next') || text.includes('Agent Workspace') || text.includes('Agent Workspace');
   } catch {
     return false;
   }
@@ -377,14 +377,14 @@ async function waitForHealthy(label, checkFn, timeoutMs, progressFn, abortIf) {
 /**
  * Desktop single-user mode: open straight into the workspace without the
  * login / admin-setup screens. Both the Gateway and the Next.js server honor
- * DEER_FLOW_AUTH_DISABLED=1 at runtime (synthetic admin user), and both bind
+ * AGENT_WORKSPACE_AUTH_DISABLED=1 at runtime (synthetic admin user), and both bind
  * to loopback only, so this stays a local-machine trust boundary.
  * Pass --require-login to keep the normal auth screens.
  */
 function applyDesktopAuthMode(env) {
   if (!args.requireLogin) {
     env.AGENT_WORKSPACE_AUTH_DISABLED = '1';
-    env.DEER_FLOW_AUTH_DISABLED = '1';
+    env.AGENT_WORKSPACE_AUTH_DISABLED = '1';
   }
   return env;
 }
@@ -514,18 +514,18 @@ function killTree(kind) {
 // ---------------------------------------------------------------------------
 
 function isExplicitProdEnv() {
-  const value = (process.env.AGENT_WORKSPACE_ENV || process.env.DEER_FLOW_ENV || process.env.ENVIRONMENT || '').trim().toLowerCase();
+  const value = (process.env.AGENT_WORKSPACE_ENV || process.env.AGENT_WORKSPACE_ENV || process.env.ENVIRONMENT || '').trim().toLowerCase();
   return value === 'prod' || value === 'production';
 }
 
 /**
  * Warn when a machine-wide production marker would silently switch the
- * direct-open behavior off: both services ignore DEER_FLOW_AUTH_DISABLED in
+ * direct-open behavior off: both services ignore AGENT_WORKSPACE_AUTH_DISABLED in
  * an explicit production environment, so the login screen would appear.
  */
 async function warnIfProdEnvDisablesDirectOpen() {
   if (args.requireLogin || !isExplicitProdEnv()) return;
-  log('Warning: DEER_FLOW_ENV/ENVIRONMENT marks production; services will ignore DEER_FLOW_AUTH_DISABLED');
+  log('Warning: AGENT_WORKSPACE_ENV/ENVIRONMENT marks production; services will ignore AGENT_WORKSPACE_AUTH_DISABLED');
   const choice = await dialog.showMessageBox({
     type: 'warning',
     buttons: ['Continue anyway', 'Quit'],
@@ -534,7 +534,7 @@ async function warnIfProdEnvDisablesDirectOpen() {
     title: `${APP_NAME} — production environment detected`,
     message: 'This machine declares a production environment.',
     detail:
-      'DEER_FLOW_ENV (or ENVIRONMENT) is set to a production value, so the ' +
+      'AGENT_WORKSPACE_ENV (or ENVIRONMENT) is set to a production value, so the ' +
       'Gateway and frontend will IGNORE the desktop single-user mode and show ' +
       'the login screen.\n\nUnset that variable (or start with --require-login) ' +
       'to keep the direct-open behavior.',
@@ -639,10 +639,10 @@ function spawnBackend(gatewayPort) {
     GATEWAY_PORT: String(gatewayPort),
     AGENT_WORKSPACE_PROJECT_ROOT: projectDir,
     AGENT_WORKSPACE_CONFIG_PATH: path.join(projectDir, 'config.yaml'),
-    AGENT_WORKSPACE_HOME: deerflowHomeDir,
-    DEER_FLOW_PROJECT_ROOT: projectDir,
-    DEER_FLOW_CONFIG_PATH: path.join(projectDir, 'config.yaml'),
-    DEER_FLOW_HOME: deerflowHomeDir,
+    AGENT_WORKSPACE_HOME: agent_workspaceHomeDir,
+    AGENT_WORKSPACE_PROJECT_ROOT: projectDir,
+    AGENT_WORKSPACE_CONFIG_PATH: path.join(projectDir, 'config.yaml'),
+    AGENT_WORKSPACE_HOME: agent_workspaceHomeDir,
     // Keep all uv-managed writes (downloaded Python, project venv) under the
     // per-user data folder: the install directory may be read-only
     // (per-machine installs) and must never be written at runtime.
@@ -677,7 +677,7 @@ function spawnFrontendDev(nodeExe, frontendPort, gatewayBaseUrl) {
     ...process.env,
     PORT: String(frontendPort),
     AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL: gatewayBaseUrl,
-    DEER_FLOW_INTERNAL_GATEWAY_BASE_URL: gatewayBaseUrl,
+    AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL: gatewayBaseUrl,
   });
   const fArgs = [nextBin, 'dev', '--port', String(frontendPort)];
   log(`Starting frontend (dev): ${nodeExe} ${fArgs.join(' ')}`, `cwd=${frontendDir}`);
@@ -692,7 +692,7 @@ function spawnFrontendDev(nodeExe, frontendPort, gatewayBaseUrl) {
  *
  * Next.js resolves `rewrites()` from next.config.js at BUILD time and bakes
  * the concrete URLs into `.next/routes-manifest.json`, so the runtime
- * DEER_FLOW_INTERNAL_GATEWAY_BASE_URL env var alone cannot steer a production
+ * AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL env var alone cannot steer a production
  * server (it only affects dev SSR paths). The desktop app picks its Gateway
  * port dynamically, so it rewrites the baked loopback destinations to the
  * effective Gateway URL just before spawning the frontend. Only loopback
@@ -723,7 +723,7 @@ function patchStandaloneGatewayUrl(standaloneDir, gatewayBaseUrl) {
     if (!allMatch) {
       throw new Error(
         `Cannot point the bundled frontend at the Gateway: no loopback /api rewrite destinations found in ${manifestPath}. ` +
-          `Expected /api rewrites to http://127.0.0.1:<port> (built with DEER_FLOW_INTERNAL_GATEWAY_BASE_URL). Rebuild the frontend.`,
+          `Expected /api rewrites to http://127.0.0.1:<port> (built with AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL). Rebuild the frontend.`,
       );
     }
     log(`Rewrite destinations already point at Gateway ${gatewayBaseUrl}`);
@@ -748,7 +748,7 @@ function spawnFrontendProd(nodeExe, frontendPort, gatewayBaseUrl) {
     PORT: String(frontendPort),
     HOSTNAME: '127.0.0.1',
     AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL: gatewayBaseUrl,
-    DEER_FLOW_INTERNAL_GATEWAY_BASE_URL: gatewayBaseUrl,
+    AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL: gatewayBaseUrl,
   });
   // Remove split-origin overrides if the user exported them globally: the
   // desktop app always talks to the Gateway through Next.js rewrites.
@@ -912,7 +912,7 @@ function buildMenu() {
 
 async function boot() {
   ensureDir(projectDir);
-  ensureDir(deerflowHomeDir);
+  ensureDir(agent_workspaceHomeDir);
   ensureDir(logsDir);
   runStartupDiagnostics();
   fileLoggingReady = true;
@@ -942,7 +942,7 @@ async function boot() {
   log(
     args.requireLogin
       ? 'Auth: login/setup screens enabled (--require-login)'
-      : 'Auth: local single-user mode, app opens directly (DEER_FLOW_AUTH_DISABLED=1)',
+      : 'Auth: local single-user mode, app opens directly (AGENT_WORKSPACE_AUTH_DISABLED=1)',
   );
   await warnIfProdEnvDisablesDirectOpen();
 
@@ -959,10 +959,10 @@ async function boot() {
   let gatewayBaseUrl = `http://127.0.0.1:${gatewayPort}`;
   let gatewayReused = false;
 
-  if (!args.skipBackend && (await isDeerFlowGateway(gatewayBaseUrl))) {
+  if (!args.skipBackend && (await isAgentWorkspaceGateway(gatewayBaseUrl))) {
     gatewayReused = true;
     log(`Reusing existing Gateway at ${gatewayBaseUrl}`);
-  } else if (args.skipBackend && (await isDeerFlowGateway(gatewayBaseUrl))) {
+  } else if (args.skipBackend && (await isAgentWorkspaceGateway(gatewayBaseUrl))) {
     // Explicit attach mode: still prefer the live Gateway on the preferred port.
     gatewayReused = true;
     log(`Attaching to existing Gateway at ${gatewayBaseUrl}`);
@@ -974,7 +974,7 @@ async function boot() {
       spawnBackend(gatewayPort);
       await waitForHealthy(
         'Gateway API',
-        () => isDeerFlowGateway(gatewayBaseUrl),
+        () => isAgentWorkspaceGateway(gatewayBaseUrl),
         BACKEND_STARTUP_TIMEOUT_MS,
         () =>
           broadcastStatus('Starting Gateway API…', 'installing Python deps on first launch can take a few minutes'),
@@ -992,7 +992,7 @@ async function boot() {
     log(`Using explicit frontend URL (no spawn): ${frontendUrl}`);
   } else {
     const preferredUrl = `http://127.0.0.1:${args.frontendPort}`;
-    if (await isDeerFlowFrontend(preferredUrl)) {
+    if (await isAgentWorkspaceFrontend(preferredUrl)) {
       frontendUrl = preferredUrl;
       log(`${args.skipFrontend ? 'Attaching to' : 'Reusing'} existing frontend at ${frontendUrl}`);
     } else {
@@ -1018,7 +1018,7 @@ async function boot() {
         }
         await waitForHealthy(
           'Frontend',
-          () => isDeerFlowFrontend(frontendUrl),
+          () => isAgentWorkspaceFrontend(frontendUrl),
           FRONTEND_STARTUP_TIMEOUT_MS,
           () =>
             broadcastStatus('Starting frontend…', 'first launch can take a while — check logs/frontend.log'),
@@ -1071,13 +1071,13 @@ if (!gotLock) {
   });
 
   ipcMain.handle('agent-workspace:status', () => runtimeStatus);
-  ipcMain.handle('deerflow:status', () => runtimeStatus);
+  ipcMain.handle('agent_workspace:status', () => runtimeStatus);
   ipcMain.handle('agent-workspace:open-user-data', () => shell.openPath(userDataRoot));
-  ipcMain.handle('deerflow:open-user-data', () => shell.openPath(userDataRoot));
+  ipcMain.handle('agent_workspace:open-user-data', () => shell.openPath(userDataRoot));
   ipcMain.handle('agent-workspace:get-auto-start', () => getAutoStartState());
-  ipcMain.handle('deerflow:get-auto-start', () => getAutoStartState());
+  ipcMain.handle('agent_workspace:get-auto-start', () => getAutoStartState());
   ipcMain.handle('agent-workspace:set-auto-start', (_event, enabled) => applyAutoStartSetting(enabled));
-  ipcMain.handle('deerflow:set-auto-start', (_event, enabled) => applyAutoStartSetting(enabled));
+  ipcMain.handle('agent_workspace:set-auto-start', (_event, enabled) => applyAutoStartSetting(enabled));
 
   app.whenReady().then(() => {
     createSplash();

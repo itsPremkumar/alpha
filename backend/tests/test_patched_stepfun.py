@@ -1,4 +1,4 @@
-"""Tests for deerflow.models.patched_stepfun.PatchedChatStepFun."""
+"""Tests for agent_workspace.models.patched_stepfun.PatchedChatStepFun."""
 
 from __future__ import annotations
 

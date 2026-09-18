@@ -1,6 +1,6 @@
 AGENT_WORKSPACE_HOME ?= $(CURDIR)/.agent-workspace
 AGENT_WORKSPACE_HOME := $(abspath $(AGENT_WORKSPACE_HOME))
-DEER_FLOW_HOME ?= $(AGENT_WORKSPACE_HOME)
+AGENT_WORKSPACE_HOME ?= $(AGENT_WORKSPACE_HOME)
 BACKEND_SANDBOX_HOME := $(abspath $(CURDIR)/sandbox)
 
 install:
@@ -8,7 +8,7 @@ install:
 
 dev:
 	mkdir -p "$(AGENT_WORKSPACE_HOME)" "$(BACKEND_SANDBOX_HOME)"
-	PYTHONPATH=. PYTHONIOENCODING=utf-8 PYTHONUTF8=1 AGENT_WORKSPACE_HOME="$(AGENT_WORKSPACE_HOME)" DEER_FLOW_HOME="$(AGENT_WORKSPACE_HOME)" uv run --locked uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001 \
+	PYTHONPATH=. PYTHONIOENCODING=utf-8 PYTHONUTF8=1 AGENT_WORKSPACE_HOME="$(AGENT_WORKSPACE_HOME)" AGENT_WORKSPACE_HOME="$(AGENT_WORKSPACE_HOME)" uv run --locked uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001 \
 		--reload \
 		--reload-include='*.yaml' \
 		--reload-include='.env' \
@@ -24,7 +24,7 @@ test:
 	PYTHONPATH=. PYTHONIOENCODING=utf-8 PYTHONUTF8=1 uv run pytest -m "not live" --ignore=tests/blocking_io tests/ -v
 
 test-live:
-	AGENT_WORKSPACE_RUN_LIVE_TESTS=1 DEER_FLOW_RUN_LIVE_TESTS=1 PYTHONPATH=. PYTHONIOENCODING=utf-8 PYTHONUTF8=1 uv run pytest -m live tests/ -v -s
+	AGENT_WORKSPACE_RUN_LIVE_TESTS=1 AGENT_WORKSPACE_RUN_LIVE_TESTS=1 PYTHONPATH=. PYTHONIOENCODING=utf-8 PYTHONUTF8=1 uv run pytest -m live tests/ -v -s
 
 test-blocking-io:
 	PYTHONPATH=. PYTHONIOENCODING=utf-8 PYTHONUTF8=1 uv run pytest tests/blocking_io -q --tb=short
@@ -67,7 +67,7 @@ detect-blocking-io:
 # `bootstrap_schema`, so there is intentionally no `migrate` / `migrate-stamp`
 # target -- the single execution path keeps ops mistakes off the table.
 # The script builds a fresh temp SQLite at head, then diffs the live models
-# against it, so a clean checkout does NOT need a pre-existing ./data/deerflow.db.
+# against it, so a clean checkout does NOT need a pre-existing ./data/agent_workspace.db.
 migrate-rev:
 	@if [ -z "$(MSG)" ]; then echo 'usage: make migrate-rev MSG="describe the change"'; exit 1; fi
 	PYTHONPATH=. PYTHONIOENCODING=utf-8 PYTHONUTF8=1 uv run python scripts/_autogen_revision.py "$(MSG)"

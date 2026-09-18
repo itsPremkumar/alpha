@@ -1,1 +1,1 @@
-"""Harness root package for DeerFlow extensions."""
+"""Harness root package for Agent Workspace extensions."""

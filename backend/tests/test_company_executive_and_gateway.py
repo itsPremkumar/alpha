@@ -156,7 +156,7 @@ def test_company_gateway_rest_api():
 
 def test_company_boundary_firewall_integrity():
     """Verify that packages/harness/agent_workspace/company/ strictly avoids importing app.*."""
-    company_dir = Path(__file__).resolve().parent.parent / "packages" / "harness" / "deerflow" / "company"
+    company_dir = Path(__file__).resolve().parent.parent / "packages" / "harness" / "agent_workspace" / "company"
     assert company_dir.exists(), f"Directory not found: {company_dir}"
 
     for py_file in company_dir.glob("*.py"):

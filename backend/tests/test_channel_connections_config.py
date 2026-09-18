@@ -23,7 +23,7 @@ def test_enabled_channel_connections_do_not_require_public_url_or_encryption_key
             "enabled": True,
             "telegram": {
                 "enabled": True,
-                "bot_username": "deerflow_bot",
+                "bot_username": "agent_workspace_bot",
             },
             "slack": {"enabled": True},
             "discord": {"enabled": True},

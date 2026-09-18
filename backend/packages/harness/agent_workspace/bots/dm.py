@@ -150,7 +150,7 @@ def canonical_bot_chat_id(bot_name: str) -> str:
     return f"bot-chat-{slug}"
 
 
-PROTOCOL_MARKER = "<!-- deerflow:dm-protocol -->"
+PROTOCOL_MARKER = "<!-- agent_workspace:dm-protocol -->"
 
 
 def messaging_protocol_section(bot_name: str) -> str:

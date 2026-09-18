@@ -1,6 +1,6 @@
 name: Nightly Build
 
-# Nightly build of the three DeerFlow container images (backend, frontend,
+# Nightly build of the three Agent Workspace container images (backend, frontend,
 # provisioner) and the Helm chart, published to GHCR from the default branch.
 #
 # This mirrors the tag-driven release workflows (container.yaml + chart.yaml)
@@ -10,16 +10,16 @@ name: Nightly Build
 # release. Images are amd64-only to match the release builds.
 #
 # Artifacts (under the running repo's owner):
-#   ghcr.io/<owner>/deer-flow-{backend,frontend,provisioner}:nightly
-#   ghcr.io/<owner>/deer-flow-{backend,frontend,provisioner}:nightly-YYYYMMDD
-#   oci://ghcr.io/<owner>/charts/deer-flow   chart version <base>-nightly.YYYYMMDD-<sha>
+#   ghcr.io/<owner>/agent-workspace-{backend,frontend,provisioner}:nightly
+#   ghcr.io/<owner>/agent-workspace-{backend,frontend,provisioner}:nightly-YYYYMMDD
+#   oci://ghcr.io/<owner>/charts/agent-workspace   chart version <base>-nightly.YYYYMMDD-<sha>
 #
 # The nightly chart defaults image.tag=nightly and image.registry=ghcr.io/<owner>
 # (patched in-workflow, never committed), so installing it pulls the matching
 # nightly images with no values overrides.
 #
 # Restricted to the upstream repo: every job is gated on
-# `github.repository == 'bytedance/deer-flow'`, so a scheduled run or manual
+# `github.repository == 'bytedance/agent-workspace'`, so a scheduled run or manual
 # dispatch on a fork skips all jobs rather than pushing to the fork's own GHCR
 # namespace. Scheduled workflows also only fire on the default branch.
 
@@ -38,7 +38,7 @@ env:
 
 jobs:
   prepare:
-    if: github.repository == 'bytedance/deer-flow'
+    if: github.repository == 'bytedance/agent-workspace'
     runs-on: ubuntu-latest
     outputs:
       date: ${{ steps.date.outputs.date }}
@@ -75,7 +75,7 @@ jobs:
           echo "Nightly version: ${NIGHTLY}"
 
   validate-chart:
-    if: github.repository == 'bytedance/deer-flow'
+    if: github.repository == 'bytedance/agent-workspace'
     # Catch a broken render or a stale config_version before publish. A broken
     # chart published under an OCI version is immutable (GHCR won't let you
     # overwrite --version), so a regression must fail here, not on install.
@@ -99,7 +99,7 @@ jobs:
 
   build-images:
     needs: prepare
-    if: github.repository == 'bytedance/deer-flow'
+    if: github.repository == 'bytedance/agent-workspace'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -176,7 +176,7 @@ jobs:
     # failed image build withholds the chart rather than publishing one that
     # would fail to pull in-cluster.
     needs: [prepare, validate-chart, build-images]
-    if: github.repository == 'bytedance/deer-flow'
+    if: github.repository == 'bytedance/agent-workspace'
     runs-on: ubuntu-latest
     permissions:
       contents: read

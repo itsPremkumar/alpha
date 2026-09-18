@@ -150,7 +150,7 @@ def test_generate_suggestions_respects_configured_max(monkeypatch):
     assert result.suggestions == ["Q1", "Q2"]
 
 
-def test_generate_suggestions_injects_deerflow_trace_metadata_when_langfuse_enabled(monkeypatch):
+def test_generate_suggestions_injects_agent_workspace_trace_metadata_when_langfuse_enabled(monkeypatch):
     monkeypatch.setenv("LANGFUSE_TRACING", "true")
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")

@@ -1,7 +1,7 @@
 """Stateful, loop-affine browser sessions backed by Playwright.
 
 Playwright's async objects (``Browser``/``BrowserContext``/``Page``) are affine
-to the event loop that created them. DeerFlow tools may be awaited on the
+to the event loop that created them. Agent Workspace tools may be awaited on the
 Gateway loop, the TUI loop, or a fresh test loop, and a browser session must
 survive across turns of the same thread. To decouple Playwright's loop from the
 caller's loop, every Playwright operation runs on one private daemon event loop
@@ -186,7 +186,7 @@ class _PlaywrightLoopThread:
 
     def __init__(self) -> None:
         self._loop = asyncio.new_event_loop()
-        self._thread = threading.Thread(target=self._run, name="deerflow-browser-loop", daemon=True)
+        self._thread = threading.Thread(target=self._run, name="agent_workspace-browser-loop", daemon=True)
         self._thread.start()
 
     def _run(self) -> None:
@@ -901,7 +901,7 @@ class BrowserSessionManager:
     ) -> BrowserSession:
         ensure_browser_worker_compatibility()
         if cdp_url and not allow_unguarded_cdp:
-            raise RuntimeError("cdp_url uses a browser context where DeerFlow cannot enforce its SSRF request guard; set allow_unguarded_cdp: true only for an explicitly trusted local Chrome session")
+            raise RuntimeError("cdp_url uses a browser context where Agent Workspace cannot enforce its SSRF request guard; set allow_unguarded_cdp: true only for an explicitly trusted local Chrome session")
         key = thread_id or "default"
         now = time.monotonic()
         evicted: list[BrowserSession] = []

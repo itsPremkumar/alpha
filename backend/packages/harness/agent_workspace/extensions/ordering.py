@@ -94,12 +94,12 @@ def core_ordering_constraints() -> tuple[OrderingConstraint, ...]:
         OrderingConstraint(
             outer=ToolProgressMiddleware,
             inner=ToolErrorHandlingMiddleware,
-            reason=("ToolProgressMiddleware reads deerflow_tool_meta in _update_state_from_result, so its wrap_tool_call chain must enclose the ToolErrorHandlingMiddleware step that stamps it"),
+            reason=("ToolProgressMiddleware reads agent_workspace_tool_meta in _update_state_from_result, so its wrap_tool_call chain must enclose the ToolErrorHandlingMiddleware step that stamps it"),
         ),
         OrderingConstraint(
             outer=ToolReceiptMiddleware,
             inner=ToolErrorHandlingMiddleware,
-            reason=("ToolReceiptMiddleware reads the deerflow_tool_meta status stamped by ToolErrorHandlingMiddleware when building each receipt, so its wrap_tool_call chain must enclose the stamping step"),
+            reason=("ToolReceiptMiddleware reads the agent_workspace_tool_meta status stamped by ToolErrorHandlingMiddleware when building each receipt, so its wrap_tool_call chain must enclose the stamping step"),
         ),
         *(
             OrderingConstraint(

@@ -31,7 +31,7 @@ from agent_workspace.subagents.status_contract import (
 )
 
 # Use module import so tests can patch the exact symbols referenced inside task_tool().
-# NOTE: conftest.py replaces deerflow.subagents.executor with a MagicMock, so the
+# NOTE: conftest.py replaces agent_workspace.subagents.executor with a MagicMock, so the
 # executor-bound names inside task_tool are mocks; tests patch them explicitly.
 task_tool_module = importlib.import_module("agent_workspace.tools.builtins.task_tool")
 
@@ -2152,7 +2152,7 @@ def test_deferred_final_usage_reported_on_parent_loop_with_real_recorder(monkeyp
     ``_report_subagent_usage`` → ``journal.record_external_llm_usage_records``)
     instead of stubbing ``_report_subagent_usage``: the journal captures the
     running loop of every call, so a cross-thread report would surface here as
-    a wrong-loop (or no-loop) entry — the exact hazard ``deerflow_loop_bound``
+    a wrong-loop (or no-loop) entry — the exact hazard ``agent_workspace_loop_bound``
     exists to prevent."""
     config = _make_subagent_config()
     cleanup_calls: list[str] = []

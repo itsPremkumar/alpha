@@ -28,7 +28,7 @@ def _resolve_events_path() -> Path:
 
         return runtime_home() / _DEFAULT_EVENT_FILE
     except Exception:
-        return Path.cwd() / ".deerflow" / _DEFAULT_EVENT_FILE
+        return Path.cwd() / ".agent_workspace" / _DEFAULT_EVENT_FILE
 
 
 class OrgEventStore:

@@ -13,7 +13,7 @@ FACTS_SCHEMA_VERSION = "agent_workspace.skill-review.facts.v1"
 REPORT_SCHEMA_VERSION = "agent_workspace.skill-review.report.v1"
 
 Severity = Literal["blocker", "error", "warning", "info"]
-ProfileName = Literal["deerflow", "agentskills"]
+ProfileName = Literal["agent_workspace", "agentskills"]
 
 SEVERITY_RANK: dict[str, int] = {
     "blocker": 0,
@@ -76,7 +76,7 @@ def make_finding(
     message: str,
     remediation: str,
     source: str = "review-core",
-    profile: str = "deerflow",
+    profile: str = "agent_workspace",
     path: str | None = None,
     line: int | None = None,
     evidence: Any | None = None,

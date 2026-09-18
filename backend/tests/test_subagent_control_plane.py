@@ -359,7 +359,7 @@ def test_subagent_control_plane_boundary_integrity():
     """Confirms packages/harness/agent_workspace/subagents contains zero forbidden imports from app.*."""
     import pathlib
 
-    subagents_dir = pathlib.Path(__file__).parent.parent / "packages" / "harness" / "deerflow" / "subagents"
+    subagents_dir = pathlib.Path(__file__).parent.parent / "packages" / "harness" / "agent_workspace" / "subagents"
     for py_file in subagents_dir.rglob("*.py"):
         content = py_file.read_text(encoding="utf-8")
         assert "from app." not in content, f"Boundary violation in {py_file}: contains 'from app.'"

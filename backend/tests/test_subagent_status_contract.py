@@ -1,4 +1,4 @@
-"""Contract tests for ``deerflow.subagents.status_contract``."""
+"""Contract tests for ``agent_workspace.subagents.status_contract``."""
 
 from __future__ import annotations
 

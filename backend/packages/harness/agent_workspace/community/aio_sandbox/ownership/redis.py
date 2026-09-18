@@ -128,7 +128,7 @@ class RedisOwnershipStore(SandboxOwnershipStore):
         owner_id: str,
         redis_url: str,
         ttl_seconds: float,
-        key_prefix: str = "deerflow:sandbox:owner",
+        key_prefix: str = "agent_workspace:sandbox:owner",
         client: Redis | None = None,
     ) -> None:
         self._owner_id = owner_id

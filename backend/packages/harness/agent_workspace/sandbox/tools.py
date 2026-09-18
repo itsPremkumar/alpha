@@ -53,7 +53,7 @@ logger = logging.getLogger(__name__)
 # those entries share one live provider decision. Context variables are copied
 # into ``asyncio.to_thread`` workers, keeping the handoff task-local.
 _SANDBOX_AUTHORIZATION_CHECKED: ContextVar[bool] = ContextVar(
-    "deerflow_sandbox_authorization_checked",
+    "agent_workspace_sandbox_authorization_checked",
     default=False,
 )
 
@@ -773,7 +773,7 @@ def _mask_source_roots(host_base: str) -> tuple[str, ...]:
     """Return lexical and filesystem-resolved spellings without ``pathlib``.
 
     ``PurePath`` interns every path component. That is useful for long-lived
-    paths but wasteful for one-off thread IDs, because evicting DeerFlow's LRU
+    paths but wasteful for one-off thread IDs, because evicting Agent Workspace's LRU
     does not shrink the interpreter's intern/allocator high-water mark. The
     bounded cache avoids repeating ``realpath`` walks for every glob/grep match
     without retaining an unbounded set of thread roots.
@@ -791,7 +791,7 @@ def _compiled_mask_patterns(sources: tuple[tuple[str, str], ...]) -> tuple[tuple
     by the non-retaining scanner in ``replace_output_path_matches``.
     """
     # The segment boundary and path tail are owned by
-    # ``deerflow.sandbox.path_patterns`` so the static regex path and dynamic
+    # ``agent_workspace.sandbox.path_patterns`` so the static regex path and dynamic
     # scanner cannot drift.
     #
     # ``separator_agnostic=True`` is the one thing this site does differently:
@@ -1980,7 +1980,7 @@ _LARK_CLI_COMMAND_RE = re.compile(r"(?<![A-Za-z0-9_.-])lark-cli(?![A-Za-z0-9_.-]
 def _lark_cli_env_from_runtime(runtime: Runtime, command: str, *, sandbox_paths: bool) -> dict[str, str] | None:
     """Expose Settings-page Lark auth to sandbox ``lark-cli`` commands.
 
-    Settings authorizes ``lark-cli`` under DeerFlow's per-user integration
+    Settings authorizes ``lark-cli`` under Agent Workspace's per-user integration
     config/data directories. Agent conversations invoke ``lark-cli`` through the
     sandbox, so lark commands must receive those same directories or they see an
     unrelated unauthenticated profile. Keep this scoped to commands that

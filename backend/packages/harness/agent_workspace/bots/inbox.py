@@ -30,7 +30,7 @@ def _inbox_dir() -> Path:
 
         return runtime_home() / "bots" / "inbox"
     except Exception:
-        return Path.cwd() / ".deerflow" / "bots" / "inbox"
+        return Path.cwd() / ".agent_workspace" / "bots" / "inbox"
 
 
 def _bot_file(bot_name: str) -> Path:

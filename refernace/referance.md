@@ -1,8 +1,8 @@
 Yes. For **your harness project**, I would think beyond “agent + tools + memory + subagents.” A serious long-horizon harness needs an entire **agent operating system/runtime** around the model.
 
-I checked current architectures from DeerFlow 2.0, Hermes Agent, OpenAI Agents SDK, and recent harness/evaluation work. DeerFlow explicitly treats the harness as the runtime containing tools, skills, sandbox, memory, subagents and context management; Hermes adds persistent memory, agent-managed skills, checkpoints, scheduling, browser/terminal capabilities and delegation; OpenAI's current agent architecture emphasizes handoffs, guardrails, sessions, human-in-the-loop and tracing. ([GitHub][1])
+I checked current architectures from Agent Workspace 2.0, Hermes Agent, OpenAI Agents SDK, and recent harness/evaluation work. Agent Workspace explicitly treats the harness as the runtime containing tools, skills, sandbox, memory, subagents and context management; Hermes adds persistent memory, agent-managed skills, checkpoints, scheduling, browser/terminal capabilities and delegation; OpenAI's current agent architecture emphasizes handoffs, guardrails, sessions, human-in-the-loop and tracing. ([GitHub][1])
 
-For **your DeerFlow-based project**, I would target the following architecture.
+For **your Agent Workspace-based project**, I would target the following architecture.
 
 # 🧠 Complete AI Harness Capability Map
 
@@ -231,7 +231,7 @@ Also:
 * escalation
 * resource limits
 
-DeerFlow's newer runtime work is already moving toward persisted runs, interrupted-run hydration and explicit cancellation semantics, which is exactly the kind of infrastructure your project should have. ([GitHub][2])
+Agent Workspace's newer runtime work is already moving toward persisted runs, interrupted-run hydration and explicit cancellation semantics, which is exactly the kind of infrastructure your project should have. ([GitHub][2])
 
 ---
 
@@ -364,7 +364,7 @@ What does the agent need RIGHT NOW?
 
 rather than dumping everything into the context window.
 
-DeerFlow explicitly treats context engineering as a core part of its long-horizon architecture. ([GitHub][3])
+Agent Workspace explicitly treats context engineering as a core part of its long-horizon architecture. ([GitHub][3])
 
 ---
 
@@ -643,7 +643,7 @@ delete
 sudo/admin
 ```
 
-DeerFlow identifies sandboxed execution as one of the fundamental capabilities that separates a real long-horizon harness from a simple LLM application. ([GitHub][1])
+Agent Workspace identifies sandboxed execution as one of the fundamental capabilities that separates a real long-horizon harness from a simple LLM application. ([GitHub][1])
 
 ---
 
@@ -825,7 +825,7 @@ network failure
 authentication failure
 ```
 
-DeerFlow itself has configurable loop detection, and its maintainers have identified trajectory-level evaluation as necessary beyond ordinary unit testing. ([GitHub][2])
+Agent Workspace itself has configurable loop detection, and its maintainers have identified trajectory-level evaluation as necessary beyond ordinary unit testing. ([GitHub][2])
 
 ---
 
@@ -1107,7 +1107,7 @@ Did it get stuck?
 Did it produce unnecessary work?
 ```
 
-This is directly aligned with current DeerFlow evaluation discussions, where maintainers note that final-answer tests alone cannot capture trajectory quality. ([GitHub][8])
+This is directly aligned with current Agent Workspace evaluation discussions, where maintainers note that final-answer tests alone cannot capture trajectory quality. ([GitHub][8])
 
 ---
 
@@ -2928,20 +2928,20 @@ Build:
 
 **That is the architecture I think you should be aiming for:** not merely a better agent, but an **agent runtime that can create, operate, verify, recover, learn, and safely improve agents.**
 
-The current DeerFlow architecture already gives you a very useful foundation—its separation between the reusable Harness and application layer is especially relevant to your project. ([GitHub][11])
+The current Agent Workspace architecture already gives you a very useful foundation—its separation between the reusable Harness and application layer is especially relevant to your project. ([GitHub][11])
 
 And Hermes provides another important design lesson: keep the **core/narrow waist small**, while capabilities such as skills, tools, memory and integrations remain modular and extensible. ([GitHub][10])
 
-For your `deerflow-desktop`, I would therefore **avoid turning the DeerFlow core into one enormous codebase**. Build your new capabilities as independent subsystems/plugins around the harness boundary wherever possible.
+For your `agent-workspace-desktop`, I would therefore **avoid turning the Agent Workspace core into one enormous codebase**. Build your new capabilities as independent subsystems/plugins around the harness boundary wherever possible.
 
-[1]: https://github.com/bytedance/deer-flow/blob/main/frontend/src/content/en/introduction/core-concepts.mdx?utm_source=chatgpt.com "deer-flow/frontend/src/content/en/introduction/core-concepts.mdx at main · bytedance/deer-flow · GitHub"
-[2]: https://github.com/bytedance/deer-flow/blob/main/CHANGELOG.md?utm_source=chatgpt.com "deer-flow/CHANGELOG.md at main · bytedance/deer-flow · GitHub"
-[3]: https://github.com/bytedance/deer-flow/blob/main/frontend/src/content/en/introduction/index.mdx?utm_source=chatgpt.com "deer-flow/frontend/src/content/en/introduction/index.mdx at main · bytedance/deer-flow · GitHub"
+[1]: https://github.com/bytedance/agent-workspace/blob/main/frontend/src/content/en/introduction/core-concepts.mdx?utm_source=chatgpt.com "agent-workspace/frontend/src/content/en/introduction/core-concepts.mdx at main · bytedance/agent-workspace · GitHub"
+[2]: https://github.com/bytedance/agent-workspace/blob/main/CHANGELOG.md?utm_source=chatgpt.com "agent-workspace/CHANGELOG.md at main · bytedance/agent-workspace · GitHub"
+[3]: https://github.com/bytedance/agent-workspace/blob/main/frontend/src/content/en/introduction/index.mdx?utm_source=chatgpt.com "agent-workspace/frontend/src/content/en/introduction/index.mdx at main · bytedance/agent-workspace · GitHub"
 [4]: https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/skills.md?utm_source=chatgpt.com "hermes-agent/website/docs/user-guide/features/skills.md at main · NousResearch/hermes-agent · GitHub"
 [5]: https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/tools.md?utm_source=chatgpt.com "hermes-agent/website/docs/user-guide/features/tools.md at main · NousResearch/hermes-agent · GitHub"
 [6]: https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/overview.md?utm_source=chatgpt.com "hermes-agent/website/docs/user-guide/features/overview.md at main · NousResearch/hermes-agent · GitHub"
 [7]: https://github.com/openai/openai-agents-python/blob/main/docs/tracing.md?utm_source=chatgpt.com "openai-agents-python/docs/tracing.md at main · openai/openai-agents-python · GitHub"
-[8]: https://github.com/bytedance/deer-flow/issues/3804?utm_source=chatgpt.com "[RFC] Agent eval harness for replay, trajectory, safety, and outcome regression · Issue #3804 · bytedance/deer-flow · GitHub"
+[8]: https://github.com/bytedance/agent-workspace/issues/3804?utm_source=chatgpt.com "[RFC] Agent eval harness for replay, trajectory, safety, and outcome regression · Issue #3804 · bytedance/agent-workspace · GitHub"
 [9]: https://github.com/openai/openai-agents-js/blob/main/docs/src/content/docs/index.mdx?utm_source=chatgpt.com "openai-agents-js/docs/src/content/docs/index.mdx at main · openai/openai-agents-js · GitHub"
 [10]: https://github.com/NousResearch/hermes-agent/blob/main/AGENTS.md?utm_source=chatgpt.com "hermes-agent/AGENTS.md at main · NousResearch/hermes-agent · GitHub"
-[11]: https://github.com/bytedance/deer-flow/blob/main/backend/AGENTS.md?utm_source=chatgpt.com "deer-flow/backend/AGENTS.md at main · bytedance/deer-flow · GitHub"
+[11]: https://github.com/bytedance/agent-workspace/blob/main/backend/AGENTS.md?utm_source=chatgpt.com "agent-workspace/backend/AGENTS.md at main · bytedance/agent-workspace · GitHub"

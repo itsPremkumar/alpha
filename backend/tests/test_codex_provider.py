@@ -1,4 +1,4 @@
-"""Tests for deerflow.models.openai_codex_provider.CodexChatModel.
+"""Tests for agent_workspace.models.openai_codex_provider.CodexChatModel.
 
 Covers:
 - LangChain serialization: is_lc_serializable, to_json kwargs, no token leakage

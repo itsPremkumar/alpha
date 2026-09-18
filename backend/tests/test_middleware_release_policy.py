@@ -162,9 +162,9 @@ def _make_safety_finish_reason_middleware():
 
 
 def _make_summarization_middleware():
-    from agent_workspace.agents.middlewares.summarization_middleware import DeerFlowSummarizationMiddleware
+    from agent_workspace.agents.middlewares.summarization_middleware import AgentWorkspaceSummarizationMiddleware
 
-    return DeerFlowSummarizationMiddleware(
+    return AgentWorkspaceSummarizationMiddleware(
         model=_StaticChatModel(),
         trigger=("messages", 4),
         keep=("messages", 2),
@@ -219,13 +219,13 @@ _MIDDLEWARE_DECLARATIONS = [
     ("agent_workspace.agents.middlewares.loop_detection_middleware", "LoopDetectionMiddleware", _make_loop_detection_middleware),
     ("agent_workspace.agents.middlewares.subagent_limit_middleware", "SubagentLimitMiddleware", _make_subagent_limit_middleware),
     ("agent_workspace.agents.middlewares.terminal_response_middleware", "TerminalResponseMiddleware", _make_terminal_response_middleware),
-    # DeerFlow's own subclass, not the LangChain base class re-exported into
+    # Agent Workspace's own subclass, not the LangChain base class re-exported into
     # this module under the same import path (TodoListMiddleware).
     ("agent_workspace.agents.middlewares.todo_middleware", "TodoMiddleware", _make_todo_middleware),
     ("agent_workspace.agents.middlewares.token_budget_middleware", "TokenBudgetMiddleware", _make_token_budget_middleware),
     ("agent_workspace.agents.middlewares.deferred_tool_filter_middleware", "DeferredToolFilterMiddleware", _make_deferred_tool_filter_middleware),
     ("agent_workspace.agents.middlewares.safety_finish_reason_middleware", "SafetyFinishReasonMiddleware", _make_safety_finish_reason_middleware),
-    ("agent_workspace.agents.middlewares.summarization_middleware", "DeerFlowSummarizationMiddleware", _make_summarization_middleware),
+    ("agent_workspace.agents.middlewares.summarization_middleware", "AgentWorkspaceSummarizationMiddleware", _make_summarization_middleware),
     ("agent_workspace.agents.middlewares.durable_context_middleware", "DurableContextMiddleware", _make_durable_context_middleware),
     ("agent_workspace.agents.middlewares.tool_output_budget_middleware", "ToolOutputBudgetMiddleware", _make_tool_output_budget_middleware),
     ("agent_workspace.agents.middlewares.skill_activation_middleware", "SkillActivationMiddleware", _make_skill_activation_middleware),
@@ -284,9 +284,9 @@ def _middleware_fingerprint(middleware):
 
 
 def _continuity_summarizer(config):
-    from agent_workspace.agents.middlewares.summarization_middleware import DeerFlowSummarizationMiddleware
+    from agent_workspace.agents.middlewares.summarization_middleware import AgentWorkspaceSummarizationMiddleware
 
-    return DeerFlowSummarizationMiddleware(model=_StaticChatModel(), trigger=("messages", 4), keep=("messages", 2), task_continuity_config=config)
+    return AgentWorkspaceSummarizationMiddleware(model=_StaticChatModel(), trigger=("messages", 4), keep=("messages", 2), task_continuity_config=config)
 
 
 @pytest.mark.parametrize("field,value", [("enabled", False), ("max_batches", 1), ("max_records_per_batch", 1), ("max_record_chars", 1000)])

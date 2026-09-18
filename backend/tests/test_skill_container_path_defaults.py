@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 def test_mnt_skills_literal_is_owned_by_skill_constants_module():
-    package_root = Path(__file__).parents[1] / "packages" / "harness" / "deerflow"
+    package_root = Path(__file__).parents[1] / "packages" / "harness" / "agent_workspace"
     allowed = {package_root / "constants.py"}
     offenders: list[str] = []
 
@@ -23,7 +23,7 @@ def test_mnt_skills_literal_is_owned_by_skill_constants_module():
 
 
 def test_runtime_middlewares_use_top_level_skills_container_constant():
-    package_root = Path(__file__).parents[1] / "packages" / "harness" / "deerflow"
+    package_root = Path(__file__).parents[1] / "packages" / "harness" / "agent_workspace"
     offenders: list[str] = []
 
     for relative_path in (

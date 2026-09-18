@@ -39,7 +39,7 @@ EXPECTED_GUIDANCE_PATHS = {
 
 def _load_checker():
     assert CHECKER_PATH.exists(), f"{CHECKER_PATH} must exist"
-    spec = importlib.util.spec_from_file_location("deerflow_agent_guidance_check", CHECKER_PATH)
+    spec = importlib.util.spec_from_file_location("agent_workspace_agent_guidance_check", CHECKER_PATH)
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)

@@ -38,9 +38,9 @@ def _isolated_home(tmp_path, monkeypatch):
     monkeypatch.setattr(runner, "_global_runner_path", None)
     # Deterministic: no chat models, so background execution fails fast with
     # a clear room receipt instead of calling providers.
-    import agent_workspace.config as deerflow_config
+    import agent_workspace.config as agent_workspace_config
 
-    monkeypatch.setattr(deerflow_config, "get_app_config", lambda: _NoModelConfig())
+    monkeypatch.setattr(agent_workspace_config, "get_app_config", lambda: _NoModelConfig())
     yield
 
 

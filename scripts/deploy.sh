@@ -45,9 +45,9 @@ cd "$REPO_ROOT"
 ENV_FILE="$REPO_ROOT/.env"
 DOCKER_DIR="$REPO_ROOT/docker"
 if [ -f "$ENV_FILE" ]; then
-    COMPOSE_CMD=(docker compose --env-file "$ENV_FILE" -p deer-flow -f "$DOCKER_DIR/docker-compose.yaml")
+    COMPOSE_CMD=(docker compose --env-file "$ENV_FILE" -p agent-workspace -f "$DOCKER_DIR/docker-compose.yaml")
 else
-    COMPOSE_CMD=(docker compose -p deer-flow -f "$DOCKER_DIR/docker-compose.yaml")
+    COMPOSE_CMD=(docker compose -p agent-workspace -f "$DOCKER_DIR/docker-compose.yaml")
 fi
 
 load_uv_extras_from_dotenv() {
@@ -293,7 +293,7 @@ detect_sandbox_mode() {
         }
     ' "$AGENT_WORKSPACE_CONFIG_PATH")
 
-    if [[ "$sandbox_use" == *"agent_workspace.community.aio_sandbox:AioSandboxProvider"* ]] || [[ "$sandbox_use" == *"deerflow.community.aio_sandbox:AioSandboxProvider"* ]]; then
+    if [[ "$sandbox_use" == *"agent_workspace.community.aio_sandbox:AioSandboxProvider"* ]] || [[ "$sandbox_use" == *"agent_workspace.community.aio_sandbox:AioSandboxProvider"* ]]; then
         if [ -n "$provisioner_url" ]; then
             echo "provisioner"
         else

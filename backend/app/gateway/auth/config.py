@@ -1,4 +1,4 @@
-"""Authentication configuration for DeerFlow."""
+"""Authentication configuration for Agent Workspace."""
 
 import logging
 import os
@@ -17,7 +17,7 @@ class AuthConfig(BaseModel):
     """JWT and auth-related configuration. Parsed once at startup.
 
     Note: the ``users`` table now lives in the shared persistence
-    database managed by ``deerflow.persistence.engine``. The old
+    database managed by ``agent_workspace.persistence.engine``. The old
     ``users_db_path`` config key has been removed — user storage is
     configured through ``config.database`` like every other table.
     """

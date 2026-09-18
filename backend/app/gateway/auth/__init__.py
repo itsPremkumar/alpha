@@ -1,4 +1,4 @@
-"""Authentication module for DeerFlow.
+"""Authentication module for Agent Workspace.
 
 This module provides:
 - JWT-based authentication

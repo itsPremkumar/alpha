@@ -64,7 +64,7 @@ def test_fast_recon_worker():
     # Librarian mode (docs)
     docs = {
         "architecture.md": "Discipline teams map specific AI model families to specialized reasoning disciplines.",
-        "readme.md": "DeerFlow Agent Harness overview and quickstart.",
+        "readme.md": "Agent Workspace Agent Harness overview and quickstart.",
     }
     res_doc = worker.search_documentation("discipline", available_docs=docs)
     assert res_doc.recon_type == "librarian"

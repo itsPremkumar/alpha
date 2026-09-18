@@ -1,4 +1,4 @@
-"""Tests for MCP tools cache staleness detection (``deerflow.mcp.cache``).
+"""Tests for MCP tools cache staleness detection (``agent_workspace.mcp.cache``).
 
 Regression coverage for the content-signature invalidation fix. The cache used
 to invalidate on a strict extensions-config *mtime* ``>`` comparison and tracked
@@ -12,7 +12,7 @@ tools serving in the LangGraph-embedded runtime and every non-writer worker:
 3. a resolved-path switch to a different config file whose mtime is <= the one
    recorded at initialization.
 
-The fix mirrors ``deerflow.config.app_config``'s ``(path, (mtime, size,
+The fix mirrors ``agent_workspace.config.app_config``'s ``(path, (mtime, size,
 sha256))`` detection so both runtime-editable config files share one staleness
 signal. These tests fail on the pre-fix code (cases 1-3 return ``False``) and
 pass afterwards.
@@ -60,7 +60,7 @@ def _server(command: str = "npx") -> dict:
 
 @pytest.fixture()
 def cache_globals():
-    """Snapshot/restore ``deerflow.mcp.cache`` module globals and reset the lock."""
+    """Snapshot/restore ``agent_workspace.mcp.cache`` module globals and reset the lock."""
     saved = {name: getattr(cache_module, name, _MISSING) for name in _TRACKED_GLOBALS}
 
     cache_module._mcp_tools_cache = None

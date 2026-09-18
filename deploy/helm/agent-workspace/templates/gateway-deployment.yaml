@@ -44,7 +44,7 @@ spec:
       initContainers:
         - name: init-home
           image: busybox:1.36
-          command: ["sh", "-c", "mkdir -p /home-pvc/deer-flow/data /home-pvc/deer-flow/extensions-config"]
+          command: ["sh", "-c", "mkdir -p /home-pvc/agent-workspace/data /home-pvc/agent-workspace/extensions-config"]
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -71,7 +71,7 @@ spec:
               readOnly: true
             - name: home
               mountPath: /extensions-runtime
-              subPath: deer-flow/extensions-config
+              subPath: agent-workspace/extensions-config
       containers:
         - name: gateway
           image: {{ include "agent-workspace.gatewayImage" . }}
@@ -193,7 +193,7 @@ spec:
               readOnly: true
             - name: home
               mountPath: /app/backend/.agent-workspace
-              subPath: deer-flow
+              subPath: agent-workspace
       volumes:
         - name: config
           configMap:

@@ -3,7 +3,7 @@
 Rejects unauthenticated requests to non-public paths with 401. When a
 request passes the cookie check, resolves the JWT payload to a real
 ``User`` object and stamps it into both ``request.state.user`` and the
-``deerflow.runtime.user_context`` contextvar so that repository-layer
+``agent_workspace.runtime.user_context`` contextvar so that repository-layer
 owner filtering works automatically via the sentinel pattern.
 
 Fine-grained permission checks remain in authz.py decorators.
@@ -80,7 +80,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
        signed user does not exist / is stale
 
     On success, stamps ``request.state.user`` and the
-    ``deerflow.runtime.user_context`` contextvar so that repository-layer
+    ``agent_workspace.runtime.user_context`` contextvar so that repository-layer
     owner filters work downstream without every route needing a
     ``@require_auth`` decorator. Routes that need per-resource
     authorization (e.g. "user A cannot read user B's thread by guessing

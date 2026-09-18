@@ -15,10 +15,10 @@ Async HTTP routes call the store via ``asyncio.to_thread`` (the same pattern the
 agents router already uses for filesystem work).
 
 ``user_id`` semantics (kept identical to the pre-refactor free functions in
-:mod:`deerflow.config.agents_config`, which is what makes the file backend a
+:mod:`agent_workspace.config.agents_config`, which is what makes the file backend a
 behaviour-neutral move): ``None`` resolves to the effective user from the
 request context — ``"default"`` in no-auth mode — via
-:func:`deerflow.runtime.user_context.get_effective_user_id`. This is filesystem
+:func:`agent_workspace.runtime.user_context.get_effective_user_id`. This is filesystem
 bucket semantics, distinct from the AUTO/None sentinel used by the async
 ``thread_meta`` repositories.
 """

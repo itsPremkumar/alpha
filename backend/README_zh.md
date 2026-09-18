@@ -1,8 +1,8 @@
-# DeerFlow 后端
+# Agent Workspace 后端
 
 **语言：** [English](README.md) | 简体中文
 
-DeerFlow 是一个基于 LangGraph 的 AI 超级智能体，具备沙箱执行、持久记忆和可扩展工具集成能力。后端使 AI 智能体能够执行代码、浏览网页、管理文件、将任务委派给子智能体，并在多轮对话之间保留上下文——所有操作都在按线程隔离的环境中进行。
+Agent Workspace 是一个基于 LangGraph 的 AI 超级智能体，具备沙箱执行、持久记忆和可扩展工具集成能力。后端使 AI 智能体能够执行代码、浏览网页、管理文件、将任务委派给子智能体，并在多轮对话之间保留上下文——所有操作都在按线程隔离的环境中进行。
 
 ---
 
@@ -74,7 +74,7 @@ DeerFlow 是一个基于 LangGraph 的 AI 超级智能体，具备沙箱执行�
 - **抽象接口**：`execute_command`、`read_file`、`write_file`、`list_dir`
 - **提供程序**：`LocalSandboxProvider`（文件系统）和 `AioSandboxProvider`（Docker，位于 `community/`）。异步运行时路径使用异步沙箱生命周期钩子，使启动、就绪轮询和释放操作不会阻塞事件循环。`AioSandboxProvider` 会在获取或复用期间验证活跃缓存和预热池中的容器，移除已确定失效的条目，使线程能够在容器意外退出后创建新沙箱，同时让 `get()` 保持为内存查询。后端健康检查失败会被视为状态未知，而不是容器已失效；在发现过程中无法验证的容器不会被采用，获取流程会继续创建容器，而不是直接失败。
 - **虚拟路径**：`/mnt/user-data/{workspace,uploads,outputs}` → 线程专属的物理目录
-- **技能路径**：`/mnt/skills` → `deer-flow/skills/` 目录
+- **技能路径**：`/mnt/skills` → `agent-workspace/skills/` 目录
 - **技能加载**：递归发现 `skills/{public,custom}` 下嵌套的 `SKILL.md` 文件，并保留其嵌套容器路径
 - **SkillScan**：安装技能或由智能体写入技能时，原生离线确定性扫描会先于 LLM 技能扫描器执行；`CRITICAL` 级别的问题会阻止操作，警告则会成为 LLM 上下文
 - **文件写入安全**：`str_replace` 按照 `(sandbox.id, path)` 对“读取—修改—写入”操作进行串行化，因此即使虚拟路径相同，彼此隔离的沙箱仍能保持并发
@@ -130,14 +130,14 @@ FastAPI 应用程序，为前端集成提供 REST 接口：
 | `GET /api/threads/{id}/runs/{run_id}/events` | 获取某次运行的调试或审计事件；可使用 `event_types=context:memory` 筛选实际记忆标识 |
 | `POST /api/threads/{id}/uploads` | 上传文件（自动将 PDF、PPT、Excel、Word 转换为 Markdown；拒绝目录路径；自动重命名单次请求中的重复文件名） |
 | `GET /api/threads/{id}/uploads/list` | 列出已上传的文件 |
-| `DELETE /api/threads/{id}` | 删除 LangGraph 线程后，清除由 DeerFlow 管理的本地线程数据；意外错误会记录在服务端，并返回通用的 500 错误信息 |
+| `DELETE /api/threads/{id}` | 删除 LangGraph 线程后，清除由 Agent Workspace 管理的本地线程数据；意外错误会记录在服务端，并返回通用的 500 错误信息 |
 | `GET /api/threads/{id}/artifacts/{path}` | 提供生成产物的访问 |
 
 ### 即时通信渠道
 
 即时通信桥接支持飞书、Slack 和 Telegram。Slack 和 Telegram 仍然使用最终的 `runs.wait()` 响应路径；飞书现在通过 `runs.stream(["messages-tuple", "values"])` 进行流式传输，在渠道管理器内部对同一线程中快速连续到达的请求进行串行化，并针对每条源消息原地更新线程内的同一张卡片。
 
-对于飞书卡片更新，DeerFlow 会按每条入站消息保存运行中卡片的 `message_id`，并持续更新同一张卡片直到运行结束，同时保留现有的 `OK` / `DONE` 表情回应流程。当现有飞书话题中的上一轮仍在运行时收到后续消息，新消息会在映射的 DeerFlow `thread_id` 上等待，在对应的源消息上显示排队中或运行中的卡片，并在后续更新中保留简洁的源消息引用块，使快速连续提出的问题仍然容易区分。
+对于飞书卡片更新，Agent Workspace 会按每条入站消息保存运行中卡片的 `message_id`，并持续更新同一张卡片直到运行结束，同时保留现有的 `OK` / `DONE` 表情回应流程。当现有飞书话题中的上一轮仍在运行时收到后续消息，新消息会在映射的 Agent Workspace `thread_id` 上等待，在对应的源消息上显示排队中或运行中的卡片，并在后续更新中保留简洁的源消息引用块，使快速连续提出的问题仍然容易区分。
 
 ---
 
@@ -152,7 +152,7 @@ FastAPI 应用程序，为前端集成提供 REST 接口：
 ### 安装
 
 ```bash
-cd deer-flow
+cd agent-workspace
 
 # 复制配置文件
 cp config.example.yaml config.yaml
@@ -216,9 +216,9 @@ make dev
 
 ```bash
 uv pip install 'agent-workspace-harness[tui]'   # 可选的 textual 依赖
-deerflow                                 # 启动 TUI
-deerflow --print "summarize this repo"   # 无界面的单次运行
-deerflow --recursion-limit 250 --print "run a longer task"
+agent_workspace                                 # 启动 TUI
+agent_workspace --print "summarize this repo"   # 无界面的单次运行
+agent_workspace --recursion-limit 250 --print "run a longer task"
 ```
 
 在 TUI 中打开的会话会出现在 Web UI 侧边栏中（它会在本地默认用户下写入共享的 `threads_meta` 存储）。详见 [docs/TUI.md](docs/TUI.md)。
@@ -229,8 +229,8 @@ deerflow --recursion-limit 250 --print "run a longer task"
 
 ```
 backend/
-├── packages/harness/           # agent-workspace-harness 包（导入路径：deerflow.*）
-│   └── deerflow/
+├── packages/harness/           # agent-workspace-harness 包（导入路径：agent_workspace.*）
+│   └── agent_workspace/
 │       ├── agents/             # 智能体系统
 │       │   ├── lead_agent/     # 主智能体（工厂、提示词）
 │       │   ├── middlewares/    # 中间件组件
@@ -255,7 +255,7 @@ backend/
 │       ├── guardrails/         # 工具调用前的授权提供程序
 │       ├── tracing/            # Tracer 工厂和追踪元数据
 │       ├── uploads/            # 上传管理器
-│       ├── tui/                # 终端 UI（`deerflow` 控制台脚本）
+│       ├── tui/                # 终端 UI（`agent_workspace` 控制台脚本）
 │       ├── community/          # 社区工具和提供程序
 │       ├── reflection/         # 动态模块加载
 │       └── utils/              # 工具函数
@@ -297,7 +297,7 @@ backend/
 提供商说明：
 
 - `models[*].use` 通过模块路径引用提供商类，例如 `langchain_openai:ChatOpenAI`。
-- 如果缺少某个提供商模块，DeerFlow 会返回包含安装指导的可操作错误信息，例如 `uv add langchain-google-genai`。
+- 如果缺少某个提供商模块，Agent Workspace 会返回包含安装指导的可操作错误信息，例如 `uv add langchain-google-genai`。
 
 ### 扩展配置（`extensions_config.json`）
 
@@ -363,7 +363,7 @@ backend/
 
 ### LangSmith 追踪
 
-DeerFlow 内置了 [LangSmith](https://smith.langchain.com) 可观测性集成。启用后，所有 LLM 调用、智能体运行、工具执行和中间件处理过程都会被追踪，并可在 LangSmith 控制台中查看。
+Agent Workspace 内置了 [LangSmith](https://smith.langchain.com) 可观测性集成。启用后，所有 LLM 调用、智能体运行、工具执行和中间件处理过程都会被追踪，并可在 LangSmith 控制台中查看。
 
 **配置步骤：**
 
@@ -381,7 +381,7 @@ LANGSMITH_PROJECT=xxx
 
 ### Langfuse 追踪
 
-DeerFlow 同样支持使用 [Langfuse](https://langfuse.com) 观察与 LangChain 兼容的运行过程。
+Agent Workspace 同样支持使用 [Langfuse](https://langfuse.com) 观察与 LangChain 兼容的运行过程。
 
 将以下内容添加到 `.env` 文件：
 
@@ -396,9 +396,9 @@ LANGFUSE_BASE_URL=https://cloud.langfuse.com
 
 ### 同时使用两个提供商时的行为
 
-如果同时启用了 LangSmith 和 Langfuse，DeerFlow 会初始化并附加两者的回调，使相同的运行数据同时上报给两个系统。
+如果同时启用了 LangSmith 和 Langfuse，Agent Workspace 会初始化并附加两者的回调，使相同的运行数据同时上报给两个系统。
 
-如果明确启用了某个提供商，但缺少必要凭据，或者无法初始化该提供商的回调，DeerFlow 会在模型创建期间初始化追踪时抛出错误，而不是静默禁用追踪。
+如果明确启用了某个提供商，但缺少必要凭据，或者无法初始化该提供商的回调，Agent Workspace 会在模型创建期间初始化追踪时抛出错误，而不是静默禁用追踪。
 
 **Docker：**在 `docker-compose.yaml` 中，追踪默认处于禁用状态（`LANGSMITH_TRACING=false`）。如需在容器化部署中启用追踪，请在 `.env` 中设置 `LANGSMITH_TRACING=true` 和/或 `LANGFUSE_TRACING=true`，并同时提供所需凭据。
 
@@ -420,7 +420,7 @@ make migrate-rev MSG="..."  # 根据当前 ORM 模型自动生成新的 Alembic 
 
 ### 数据库结构迁移
 
-DeerFlow 的应用程序表（`runs`、`threads_meta`、`feedback`、`users`、`run_events` 和 `channel_*` 表）由 Alembic 管理。Gateway 启动时会通过 `bootstrap_schema(engine, backend=...)` 自动运行 `alembic upgrade head`，因此运维人员不需要在生产环境中手动运行 `alembic`。初始化过程支持并发安全（跨进程使用 PostgreSQL advisory lock；单个 SQLite 进程内按引擎使用 `asyncio.Lock`），并能针对已有数据库结构（空数据库、旧版数据库或已带版本的数据库）保持幂等。
+Agent Workspace 的应用程序表（`runs`、`threads_meta`、`feedback`、`users`、`run_events` 和 `channel_*` 表）由 Alembic 管理。Gateway 启动时会通过 `bootstrap_schema(engine, backend=...)` 自动运行 `alembic upgrade head`，因此运维人员不需要在生产环境中手动运行 `alembic`。初始化过程支持并发安全（跨进程使用 PostgreSQL advisory lock；单个 SQLite 进程内按引擎使用 `asyncio.Lock`），并能针对已有数据库结构（空数据库、旧版数据库或已带版本的数据库）保持幂等。
 
 添加或修改 ORM 模型时，请在 `packages/harness/agent_workspace/persistence/migrations/versions/` 下提交新的迁移版本：
 
@@ -428,7 +428,7 @@ DeerFlow 的应用程序表（`runs`、`threads_meta`、`feedback`、`users`、`
 make migrate-rev MSG="add foo column to runs"
 ```
 
-该目标会调用 `scripts/_autogen_revision.py`。脚本先在一个新的临时 SQLite 数据库上迁移到 `head`，然后将当前模型与其进行比较，因此全新检出的代码不需要预先存在的 `./data/deerflow.db`。提交前请检查生成的文件，并将原始的 `op.add_column` / `op.drop_column` 调用替换为 `migrations/_helpers.py` 中的幂等辅助函数。项目有意不提供 `make migrate` / `make migrate-stamp` 目标——Gateway 启动是唯一的迁移执行路径，从而避免运维误操作。完整设计请参阅 `backend/CLAUDE.md` 中的“Schema Migrations”部分。
+该目标会调用 `scripts/_autogen_revision.py`。脚本先在一个新的临时 SQLite 数据库上迁移到 `head`，然后将当前模型与其进行比较，因此全新检出的代码不需要预先存在的 `./data/agent_workspace.db`。提交前请检查生成的文件，并将原始的 `op.add_column` / `op.drop_column` 调用替换为 `migrations/_helpers.py` 中的幂等辅助函数。项目有意不提供 `make migrate` / `make migrate-stamp` 目标——Gateway 启动是唯一的迁移执行路径，从而避免运维误操作。完整设计请参阅 `backend/CLAUDE.md` 中的“Schema Migrations”部分。
 
 ### 代码风格
 
@@ -447,7 +447,7 @@ make test
 # 严格的阻塞式 I/O 测试套件
 make test-blocking-io
 
-# 显式运行使用真实 API 的 DeerFlowClient 集成测试套件
+# 显式运行使用真实 API 的 AgentWorkspaceClient 集成测试套件
 make test-live
 ```
 

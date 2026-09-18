@@ -13,7 +13,7 @@ class LearningGraphStore:
 
     def __init__(self, root_dir: Path | str | None = None):
         root = Path(root_dir or Path.cwd())
-        self.file_path = root / ".deerflow" / "learning" / "graph.json"
+        self.file_path = root / ".agent_workspace" / "learning" / "graph.json"
         self._graph: KnowledgeGraph | None = None
 
     def get_graph(self) -> KnowledgeGraph:

@@ -1,4 +1,4 @@
-# DeerFlow - Unified System Launcher for Windows (PowerShell)
+# Agent Workspace - Unified System Launcher for Windows (PowerShell)
 # Usage:
 #   .\start.ps1               # Start full stack and open web browser
 #   .\start.ps1 -NoBrowser    # Start full stack without auto-opening browser
@@ -17,7 +17,7 @@ $RepoRoot = $PSScriptRoot
 Set-Location $RepoRoot
 
 Write-Host "`n========================================================" -ForegroundColor Cyan
-Write-Host "       DeerFlow - Unified Super-Agent Platform          " -ForegroundColor Cyan
+Write-Host "    Agent Workspace - Unified Super-Agent Platform      " -ForegroundColor Cyan
 Write-Host "========================================================`n" -ForegroundColor Cyan
 
 # -- Helpers ---------------------------------------------------------------
@@ -180,7 +180,7 @@ if (-not (Test-Path "$RepoRoot\.env")) {
     } else {
         New-Item -ItemType File -Path "$RepoRoot\.env" -Force | Out-Null
     }
-    Add-Content -Path "$RepoRoot\.env" -Value "`nBETTER_AUTH_SECRET=$secret`nAGENT_WORKSPACE_AUTH_DISABLED=1`nDEER_FLOW_AUTH_DISABLED=1`n"
+    Add-Content -Path "$RepoRoot\.env" -Value "`nBETTER_AUTH_SECRET=$secret`nAGENT_WORKSPACE_AUTH_DISABLED=1`nAGENT_WORKSPACE_AUTH_DISABLED=1`n"
 }
 
 
@@ -213,9 +213,9 @@ Write-Host "  Ports $GatewayPort and $FrontendPort are free." -ForegroundColor G
 
 # -- 4. Set Environment for Single-User Direct Chat --------------------------
 $env:AGENT_WORKSPACE_AUTH_DISABLED = "1"
-$env:DEER_FLOW_AUTH_DISABLED = "1"
+$env:AGENT_WORKSPACE_AUTH_DISABLED = "1"
 $env:AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL = "http://127.0.0.1:$GatewayPort"
-$env:DEER_FLOW_INTERNAL_GATEWAY_BASE_URL = "http://127.0.0.1:$GatewayPort"
+$env:AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL = "http://127.0.0.1:$GatewayPort"
 $env:PORT = "$FrontendPort"
 $env:PYTHONPATH = "."
 
@@ -270,7 +270,7 @@ if ($Prod) {
 
 # -- Helper for Graceful Shutdown --------------------------------------------
 function Cleanup-Stack {
-    Write-Host "`nShutting down DeerFlow services gracefully..." -ForegroundColor Yellow
+    Write-Host "`nShutting down Agent Workspace services gracefully..." -ForegroundColor Yellow
     if ($gatewayProcess -and -not $gatewayProcess.HasExited) {
         Write-Host "  -> Stopping Gateway API tree (PID: $($gatewayProcess.Id))..." -ForegroundColor Gray
         & taskkill /PID $($gatewayProcess.Id) /T /F 2>&1 | Out-Null
@@ -285,7 +285,7 @@ function Cleanup-Stack {
             & taskkill /PID $id /T /F 2>&1 | Out-Null
         }
     }
-    Write-Host "[OK] All DeerFlow services stopped cleanly.`n" -ForegroundColor Green
+    Write-Host "[OK] All Agent Workspace services stopped cleanly.`n" -ForegroundColor Green
 }
 
 # -- 7. Wait for Services to be Ready ----------------------------------------
@@ -370,7 +370,7 @@ if (-not $gatewayReady -or -not $frontendReady) {
 $appUrl = "http://localhost:$FrontendPort"
 
 Write-Host "`n========================================================" -ForegroundColor Green
-Write-Host "   DeerFlow is LIVE and running as ONE unified system!   " -ForegroundColor Green
+Write-Host "Agent Workspace is LIVE and running as ONE unified system!" -ForegroundColor Green
 Write-Host "========================================================" -ForegroundColor Green
 Write-Host "  Web Application:  " -NoNewline
 Write-Host "$appUrl" -ForegroundColor Cyan
@@ -382,7 +382,7 @@ Write-Host "========================================================" -Foregroun
 Write-Host "Press [Ctrl+C] to stop all services cleanly.`n" -ForegroundColor Yellow
 
 if (-not $NoBrowser) {
-    Write-Host "Opening DeerFlow in your default web browser..." -ForegroundColor Cyan
+    Write-Host "Opening Agent Workspace in your default web browser..." -ForegroundColor Cyan
     Start-Process $appUrl
 }
 

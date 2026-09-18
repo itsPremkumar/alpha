@@ -8,7 +8,7 @@ Architecture:
   ToolProgressMiddleware (outer)
     └── handler → ToolErrorHandlingMiddleware (inner) → actual tool
                                                               ↓
-  ToolProgressMiddleware reads deerflow_tool_meta from the normalized result
+  ToolProgressMiddleware reads agent_workspace_tool_meta from the normalized result
 
 State machine transitions per (thread_id, tool_name):
   ACTIVE → WARNED (at stagnation_threshold problems)
@@ -331,7 +331,7 @@ class ToolProgressMiddleware(AgentMiddleware[AgentState]):
         if meta is None:
             if tool_name not in self._exempt_tools:
                 logger.warning(
-                    "tool_progress: deerflow_tool_meta missing for non-exempt tool %s — verify ToolProgressMiddleware is outer of ToolErrorHandlingMiddleware",
+                    "tool_progress: agent_workspace_tool_meta missing for non-exempt tool %s — verify ToolProgressMiddleware is outer of ToolErrorHandlingMiddleware",
                     tool_name,
                 )
             return result

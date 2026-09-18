@@ -78,7 +78,7 @@ except ImportError:
             if params:
                 query = urllib.parse.urlencode(params, quote_via=urllib.parse.quote_plus)
                 url = f"{url}?{query}"
-            req = urllib.request.Request(url, headers={"User-Agent": "deerflow-slr-skill/0.1"})
+            req = urllib.request.Request(url, headers={"User-Agent": "agent_workspace-slr-skill/0.1"})
             try:
                 with urllib.request.urlopen(req, timeout=timeout) as resp:
                     return _UrllibResponse(resp.read(), resp.status)

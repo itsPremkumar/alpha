@@ -114,7 +114,7 @@ def _serply_get(path: str, api_key: str, query: str, params: dict[str, object]) 
     headers = {
         "X-Api-Key": api_key,
         "Accept": "application/json",
-        "User-Agent": "deerflow",
+        "User-Agent": "agent_workspace",
     }
     try:
         with httpx.Client(timeout=30) as client:

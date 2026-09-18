@@ -1,4 +1,4 @@
-# DeerFlow docker image cache
+# Docker image cache
 docker/.cache/
 # oh-my-claudecode state
 .omc/
@@ -41,8 +41,10 @@ extensions_config.json
 # Coverage report
 coverage.xml
 coverage/
-.deer-flow/
-.deerflow/
+.agent-workspace/
+.agent_workspace/
+.agent-workspace/
+.agent_workspace/
 .claude/
 skills/custom/*
 logs/
@@ -77,5 +79,8 @@ config.yaml.bak
 /electron/build/
 
 # Local project runtime stores
+.agent_workspace_projects/
+backend/.agent_workspace_projects/
 .deerflow_projects/
 backend/.deerflow_projects/
+

@@ -21,7 +21,7 @@ COMPOSE_FILE="docker-compose-dev.yaml"
 COMPOSE_BIN=(docker compose)
 
 _refresh_compose_cmd() {
-    COMPOSE_CMD="${COMPOSE_BIN[*]} -p deer-flow-dev -f ${COMPOSE_FILE}"
+    COMPOSE_CMD="${COMPOSE_BIN[*]} -p agent-workspace-dev -f ${COMPOSE_FILE}"
 }
 _refresh_compose_cmd
 
@@ -123,7 +123,7 @@ require_compose_version() {
 # (AGENT_WORKSPACE_HOST_BASE_DIR, THREADS_HOST_PATH) that AIO/provisioner sandbox
 # modes bind-mount. Unset, those render as /backend/.agent-workspace — a plausible
 # looking absolute path on the wrong root, so mounts silently miss the checkout.
-ensure_deer_flow_root() {
+ensure_agent_workspace_root() {
     if [ -z "$AGENT_WORKSPACE_ROOT" ]; then
         export AGENT_WORKSPACE_ROOT="$PROJECT_ROOT"
     fi
@@ -133,7 +133,7 @@ ensure_deer_flow_root() {
 compose_preflight() {
     require_compose_file
     require_compose_version
-    ensure_deer_flow_root
+    ensure_agent_workspace_root
 }
 
 # Only `start` may create files. Compose env_file entries fail closed on Windows
@@ -202,9 +202,9 @@ detect_sandbox_mode() {
         }
     ' "$config_file")
 
-    if [[ "$sandbox_use" == *"agent_workspace.sandbox.local:LocalSandboxProvider"* ]] || [[ "$sandbox_use" == *"deerflow.sandbox.local:LocalSandboxProvider"* ]]; then
+    if [[ "$sandbox_use" == *"agent_workspace.sandbox.local:LocalSandboxProvider"* ]] || [[ "$sandbox_use" == *"agent_workspace.sandbox.local:LocalSandboxProvider"* ]]; then
         echo "local"
-    elif [[ "$sandbox_use" == *"agent_workspace.community.aio_sandbox:AioSandboxProvider"* ]] || [[ "$sandbox_use" == *"deerflow.community.aio_sandbox:AioSandboxProvider"* ]]; then
+    elif [[ "$sandbox_use" == *"agent_workspace.community.aio_sandbox:AioSandboxProvider"* ]] || [[ "$sandbox_use" == *"agent_workspace.community.aio_sandbox:AioSandboxProvider"* ]]; then
         if [ -n "$provisioner_url" ]; then
             echo "provisioner"
         else

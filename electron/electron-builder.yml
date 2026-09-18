@@ -68,7 +68,7 @@ extraResources:
       - "!docs/**"
       - "!sandbox/**"
       - "!**/.agent-workspace/**"
-      - "!**/.deer-flow/**"
+      - "!**/.agent-workspace/**"
       - "!.vscode/**"
       - "!Dockerfile*"
   - from: ../config.example.yaml

@@ -93,7 +93,7 @@ async def _make_repo(tmp_path, name: str):
     return ChannelConnectionRepository(get_session_factory())
 
 
-async def _seed_state(repo, provider: str, state: str, owner_user_id: str = "deerflow-user-1") -> None:
+async def _seed_state(repo, provider: str, state: str, owner_user_id: str = "agent-workspace-user-1") -> None:
     await repo.create_oauth_state(
         owner_user_id=owner_user_id,
         provider=provider,
@@ -124,7 +124,7 @@ def test_feishu_connect_command_binds_identity(tmp_path):
             code=state,
         )
 
-        connections = await repo.list_connections("deerflow-user-1")
+        connections = await repo.list_connections("agent-workspace-user-1")
         assert handled is True
         assert len(connections) == 1
         assert connections[0]["provider"] == "feishu"
@@ -159,7 +159,7 @@ def test_dingtalk_connect_command_binds_identity(tmp_path):
             code=state,
         )
 
-        connections = await repo.list_connections("deerflow-user-1")
+        connections = await repo.list_connections("agent-workspace-user-1")
         assert handled is True
         assert len(connections) == 1
         assert connections[0]["provider"] == "dingtalk"
@@ -193,7 +193,7 @@ def test_wechat_connect_command_binds_identity(tmp_path):
             code=state,
         )
 
-        connections = await repo.list_connections("deerflow-user-1")
+        connections = await repo.list_connections("agent-workspace-user-1")
         assert handled is True
         assert len(connections) == 1
         assert connections[0]["provider"] == "wechat"
@@ -228,7 +228,7 @@ def test_wecom_connect_command_binds_identity(tmp_path):
             code=state,
         )
 
-        connections = await repo.list_connections("deerflow-user-1")
+        connections = await repo.list_connections("agent-workspace-user-1")
         assert handled is True
         assert len(connections) == 1
         assert connections[0]["provider"] == "wecom"
@@ -251,25 +251,25 @@ def test_additional_channels_attach_owner_identity(tmp_path):
     async def go():
         repo = await _make_repo(tmp_path, "additional-identity")
         await repo.upsert_connection(
-            owner_user_id="deerflow-user-1",
+            owner_user_id="agent-workspace-user-1",
             provider="feishu",
             external_account_id="ou-user-1",
             workspace_id="oc-chat-1",
         )
         await repo.upsert_connection(
-            owner_user_id="deerflow-user-1",
+            owner_user_id="agent-workspace-user-1",
             provider="dingtalk",
             external_account_id="staff-user-1",
             workspace_id="cid-group-1",
         )
         await repo.upsert_connection(
-            owner_user_id="deerflow-user-1",
+            owner_user_id="agent-workspace-user-1",
             provider="wechat",
             external_account_id="wx-user-1",
             workspace_id="wx-user-1",
         )
         await repo.upsert_connection(
-            owner_user_id="deerflow-user-1",
+            owner_user_id="agent-workspace-user-1",
             provider="wecom",
             external_account_id="wecom-user-1",
             workspace_id="bot-1",
@@ -311,7 +311,7 @@ def test_additional_channels_attach_owner_identity(tmp_path):
 
         for channel, inbound in cases:
             attached = await channel._attach_connection_identity(inbound)
-            assert attached.owner_user_id == "deerflow-user-1"
+            assert attached.owner_user_id == "agent-workspace-user-1"
             assert attached.connection_id
             assert (
                 attached.workspace_id

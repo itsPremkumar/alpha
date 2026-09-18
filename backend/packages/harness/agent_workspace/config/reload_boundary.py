@@ -1,6 +1,6 @@
 """Single source of truth for the config hot-reload boundary.
 
-Bytedance/deer-flow issue #3144: gateway request dependencies resolve
+Bytedance/agent-workspace issue #3144: gateway request dependencies resolve
 ``AppConfig`` through ``get_app_config()`` on every request, so per-run
 fields take effect on the next message without restarting the gateway.
 The fields listed in this module are the **infrastructure** subset that
@@ -55,7 +55,7 @@ STARTUP_ONLY_FIELDS: dict[str, str] = {
         "sandbox identity, mounts, remote metadata, and skill synchronization must keep using that one root until the Gateway restarts."
     ),
     "log_level": (
-        "apply_logging_level() runs only during app.py startup; it sets the deerflow/app logger levels and may lower root handler thresholds so configured messages can propagate. A freshly reloaded AppConfig does not retrigger it."
+        "apply_logging_level() runs only during app.py startup; it sets the agent_workspace/app logger levels and may lower root handler thresholds so configured messages can propagate. A freshly reloaded AppConfig does not retrigger it."
     ),
     "logging": (
         "configure_logging() runs only during app.py startup; it installs/removes the trace-context filter and the enhanced formatter on root handlers, "

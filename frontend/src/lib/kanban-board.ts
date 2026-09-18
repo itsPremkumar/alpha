@@ -59,7 +59,7 @@ export interface Card {
   serverId: string | null;
 }
 
-const KEY = "deerflow.kanban.v1";
+const KEY = "agent_workspace.kanban.v1";
 const MAX_CARDS = 300;
 
 function uid(): string {

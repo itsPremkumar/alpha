@@ -1,6 +1,6 @@
-"""Alembic environment for DeerFlow application tables.
+"""Alembic environment for Agent Workspace application tables.
 
-ONLY manages DeerFlow's tables (runs, threads_meta, feedback, users,
+ONLY manages Agent Workspace's tables (runs, threads_meta, feedback, users,
 run_events, channel_connections, channel_credentials, channel_oauth_states,
 channel_conversations).
 
@@ -89,7 +89,7 @@ async def run_migrations_online() -> None:
     # migration's DDL would land in the default (``public``) schema while the
     # ORM tables land in the custom schema. ``init_engine`` has already created
     # the schema (``CREATE SCHEMA IF NOT EXISTS``) before bootstrap runs.
-    pg_schema = config.get_main_option("deerflow_pg_schema")
+    pg_schema = config.get_main_option("agent_workspace_pg_schema")
     connect_args: dict = {}
     # Accept both the canonical ``postgresql`` scheme and libpq's ``postgres``
     # short scheme (with or without a SQLAlchemy ``+driver`` suffix) so a
@@ -106,7 +106,7 @@ async def run_migrations_online() -> None:
     # opens needs a wide ``busy_timeout`` so that when another process holds
     # the file write lock (e.g. mid-bootstrap), our writes wait instead of
     # raising ``database is locked``. The production engine in
-    # ``deerflow.persistence.engine`` sets this on its own connections, but
+    # ``agent_workspace.persistence.engine`` sets this on its own connections, but
     # alembic spawns its OWN engine here -- those connections wouldn't inherit
     # anything unless we wire the same hook on this one.
     if connectable.url.drivername.startswith("sqlite"):

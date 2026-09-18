@@ -227,7 +227,7 @@ def test_planning_harness_boundary_integrity():
     """Confirms packages/harness/agent_workspace/planning contains zero forbidden imports from app.*."""
     import pathlib
 
-    planning_dir = pathlib.Path(__file__).parent.parent / "packages" / "harness" / "deerflow" / "planning"
+    planning_dir = pathlib.Path(__file__).parent.parent / "packages" / "harness" / "agent_workspace" / "planning"
     for py_file in planning_dir.rglob("*.py"):
         content = py_file.read_text(encoding="utf-8")
         assert "from app." not in content, f"Boundary violation in {py_file}: contains 'from app.'"

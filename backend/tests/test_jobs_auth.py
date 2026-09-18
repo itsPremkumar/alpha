@@ -84,7 +84,7 @@ async def test_config_failure_denies_submission(jobs_app, monkeypatch):
 async def test_synthetic_admin_and_internal_cannot_submit(jobs_app, monkeypatch):
     monkeypatch.setattr("app.gateway.auth_middleware.is_auth_disabled", lambda: True)
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=jobs_app.app), base_url="http://test") as client:
-        for headers in ({}, {"X-DeerFlow-Internal-Token": "test-internal"}):
+        for headers in ({}, {"X-Agent-Workspace-Internal-Token": "test-internal"}):
             response = await client.post("/api/jobs", headers=headers, json={"command": ["must-not-run"]})
             assert response.status_code == 403
     assert jobs_app.queue.list_jobs() == []

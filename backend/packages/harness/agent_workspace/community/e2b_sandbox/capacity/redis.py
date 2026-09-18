@@ -183,7 +183,7 @@ class RedisE2BCapacityStore:
         *,
         redis_url: str,
         hard_limit: int,
-        key_prefix: str = "deerflow:sandbox:owner",
+        key_prefix: str = "agent_workspace:sandbox:owner",
     ) -> None:
         if hard_limit < 1:
             raise ValueError("hard_limit must be at least 1")

@@ -780,7 +780,7 @@ def test_operator_default_mention_login_is_threaded_to_fanout(client: TestClient
     ``operator_default_mention_login`` to ``fanout_event``. Without this,
     the documented operator default is never honoured: an agent named
     ``coder`` with ``require_mention: true`` silently requires ``@coder``
-    mentions instead of the configured ``@deerflow-bot``.
+    mentions instead of the configured ``@agent-workspace-bot``.
     """
     bus = MessageBus()
 
@@ -793,7 +793,7 @@ def test_operator_default_mention_login_is_threaded_to_fanout(client: TestClient
 
         def get_channel_config(self, name: str) -> dict | None:
             if name == "github":
-                return {"enabled": True, "default_mention_login": "deerflow-bot"}
+                return {"enabled": True, "default_mention_login": "agent-workspace-bot"}
             return None
 
     import app.channels.service as service_module
@@ -827,7 +827,7 @@ def test_operator_default_mention_login_is_threaded_to_fanout(client: TestClient
     assert fake_fanout.await_count == 1
     # The kwarg must have been passed through with the configured value.
     _, kwargs = fake_fanout.await_args
-    assert kwargs["operator_default_mention_login"] == "deerflow-bot"
+    assert kwargs["operator_default_mention_login"] == "agent-workspace-bot"
 
 
 def test_operator_default_mention_login_absent_passes_none(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:

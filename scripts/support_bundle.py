@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create a redacted DeerFlow support bundle for community troubleshooting."""
+"""Create a redacted Agent Workspace support bundle for community troubleshooting."""
 
 from __future__ import annotations
 
@@ -63,7 +63,7 @@ SECRET_FLAG_RE = re.compile(r"(?i)^--?[\w.-]*(?:api[_-]?key|token|secret|passwor
 HEADER_KEY_RE = re.compile(r"(?i)header")
 POSIX_HOME_RE = re.compile(r"(?<![\w.-])(/Users|/home)/([^/\s:]+)")
 WINDOWS_HOME_RE = re.compile(r"(?i)([A-Z]:\\Users\\)([^\\\s:]+)")
-# Must stay byte-identical to deerflow.utils.thread_id.THREAD_ID_PATTERN
+# Must stay byte-identical to agent_workspace.utils.thread_id.THREAD_ID_PATTERN
 # (canonical thread ID contract); pinned by a parity test in backend/tests.
 # Kept as a local copy because this script must run even in environments
 # where the backend venv is broken.
@@ -569,7 +569,7 @@ def render_issue_summary(triage: dict[str, Any]) -> str:
     doctor = triage["doctor"]
     versions = triage["versions"]
     lines = [
-        "## DeerFlow support bundle summary",
+        "## Agent Workspace support bundle summary",
         "",
         f"- Triage status: {triage['status']}",
         f"- Active signals: {', '.join(triage['active_signals']) or 'none'}",
@@ -650,7 +650,7 @@ def render_ai_issue_draft(triage: dict[str, Any], issue_summary: str, doctor: di
     lines = [
         "# AI issue draft",
         "",
-        "Use this when a coding agent or AI assistant files a DeerFlow bug report.",
+        "Use this when a coding agent or AI assistant files a Agent Workspace bug report.",
         "Do not file this issue until every REQUIRED placeholder is replaced.",
         "Do not invent if unknown; ask the reporter for missing reproduction facts instead.",
         "",
@@ -660,7 +660,7 @@ def render_ai_issue_draft(triage: dict[str, Any], issue_summary: str, doctor: di
         "",
         "### Before you start",
         "",
-        "- [ ] I searched [existing issues](https://github.com/bytedance/deer-flow/issues?q=is%3Aissue) and this is not a duplicate.",
+        "- [ ] I searched [existing issues](https://github.com/bytedance/agent-workspace/issues?q=is%3Aissue) and this is not a duplicate.",
         "- [ ] I can reproduce this on the latest `main`.",
         "",
         "### Problem summary",
@@ -696,7 +696,7 @@ def render_ai_issue_draft(triage: dict[str, Any], issue_summary: str, doctor: di
         _doctor_excerpt(doctor),
         "```",
         "",
-        "### How are you running DeerFlow?",
+        "### How are you running Agent Workspace?",
         "",
         "<REQUIRED: choose Local, Docker, CI, or Other>",
         "",
@@ -746,7 +746,7 @@ def render_ai_issue_draft(triage: dict[str, Any], issue_summary: str, doctor: di
 def render_bundle_readme(triage: dict[str, Any]) -> str:
     """Render the support bundle README."""
     lines = [
-        "# DeerFlow Support Bundle",
+        "# Agent Workspace Support Bundle",
         "",
         "## Start here",
         "",
@@ -787,7 +787,7 @@ def render_bundle_readme(triage: dict[str, Any]) -> str:
 
 def _default_out_path(project_root: Path) -> Path:
     timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-    return project_root / ".agent-workspace" / "support-bundles" / f"deer-flow-support-bundle-{timestamp}.zip"
+    return project_root / ".agent-workspace" / "support-bundles" / f"agent-workspace-support-bundle-{timestamp}.zip"
 
 
 def _write_json(zf: zipfile.ZipFile, name: str, data: Any) -> None:
@@ -881,7 +881,7 @@ def create_support_bundle(
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     repo_root = Path(__file__).resolve().parents[1]
-    parser.add_argument("--project-root", type=Path, default=repo_root, help="DeerFlow project root")
+    parser.add_argument("--project-root", type=Path, default=repo_root, help="Agent Workspace project root")
     parser.add_argument("--config", type=Path, default=None, help="Path to config.yaml")
     parser.add_argument("--extensions-config", type=Path, default=None, help="Path to extensions_config.json")
     parser.add_argument("--thread-id", default=None, help="Optional thread id to include file manifests for")

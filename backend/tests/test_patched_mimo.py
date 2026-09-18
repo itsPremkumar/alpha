@@ -1,4 +1,4 @@
-"""Tests for deerflow.models.patched_mimo.PatchedChatMiMo."""
+"""Tests for agent_workspace.models.patched_mimo.PatchedChatMiMo."""
 
 from __future__ import annotations
 

@@ -32,7 +32,7 @@ def _default_storage_path() -> Path:
 
         return runtime_home() / _DEFAULT_BOT_DIR / "roster.json"
     except Exception:
-        return Path.cwd() / ".deerflow" / _DEFAULT_BOT_DIR / "roster.json"
+        return Path.cwd() / ".agent_workspace" / _DEFAULT_BOT_DIR / "roster.json"
 
 
 def _infer_role_from_name(name: str) -> str:
@@ -158,7 +158,7 @@ class BotRegistry:
     ) -> BotProfile:
         """Fetch an existing bot or instantly auto-provision a new one.
 
-        A ``template`` slug (see :mod:`deerflow.bots.templates`) supplies the
+        A ``template`` slug (see :mod:`agent_workspace.bots.templates`) supplies the
         role/display/avatar/department/reports_to/skills/toolsets defaults for
         brand-new bots; explicit arguments always win over the template.
         Existing bots are returned untouched.

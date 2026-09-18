@@ -52,7 +52,7 @@ async def _ensure_postgres_schema(conn_string: str, schema: str) -> None:
 async def _async_store(config) -> AsyncIterator[BaseStore]:
     """Async context manager that constructs and tears down a Store.
 
-    The ``config`` argument is a :class:`deerflow.config.checkpointer_config.CheckpointerConfig`
+    The ``config`` argument is a :class:`agent_workspace.config.checkpointer_config.CheckpointerConfig`
     instance — the same object used by the checkpointer factory.
     """
     if config.type == "memory":
@@ -108,7 +108,7 @@ async def make_store(app_config: AppConfig | None = None) -> AsyncIterator[BaseS
 
     The legacy ``checkpointer`` section takes precedence when configured;
     otherwise the unified ``database`` section selects the backend, matching
-    :func:`deerflow.runtime.checkpointer.async_provider.make_checkpointer`::
+    :func:`agent_workspace.runtime.checkpointer.async_provider.make_checkpointer`::
 
         async with make_store(app_config) as store:
             app.state.store = store

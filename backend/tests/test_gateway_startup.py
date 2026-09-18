@@ -31,7 +31,7 @@ def _deploy_fixture(tmp_path: Path, *, docker_script: str) -> tuple[Path, dict[s
     shutil.copytree(REPO_ROOT / "scripts", worktree / "scripts")
     shutil.copytree(REPO_ROOT / "docker", worktree / "docker")
     (worktree / "backend").mkdir()
-    (worktree / "config.yaml").write_text("sandbox:\n  use: deerflow.sandbox:LocalSandboxProvider\n", encoding="utf-8")
+    (worktree / "config.yaml").write_text("sandbox:\n  use: agent_workspace.sandbox:LocalSandboxProvider\n", encoding="utf-8")
     (worktree / "extensions_config.json").write_text('{"mcpServers":{},"skills":{}}\n', encoding="utf-8")
 
     bin_dir = tmp_path / "bin"
@@ -95,7 +95,7 @@ def test_deploy_waits_for_gateway_readiness_before_success(tmp_path: Path) -> No
     args = capture.read_text(encoding="utf-8").splitlines()
     assert "--wait" in args
     assert "--wait-timeout" in args
-    assert "DeerFlow is running!" in result.stdout
+    assert "Agent Workspace is running!" in result.stdout
 
 
 def test_deploy_failure_prints_gateway_diagnostics_and_never_claims_success(tmp_path: Path) -> None:
@@ -116,8 +116,8 @@ def test_deploy_failure_prints_gateway_diagnostics_and_never_claims_success(tmp_
     )
 
     assert result.returncode != 0
-    assert "DeerFlow is running!" not in result.stdout
-    assert "DeerFlow services failed to become ready" in result.stderr
+    assert "Agent Workspace is running!" not in result.stdout
+    assert "Agent Workspace services failed to become ready" in result.stderr
     assert "supports `docker compose up --wait`" in result.stderr
     calls = capture.read_text(encoding="utf-8")
     assert any(call.endswith(" ps") for call in calls.splitlines())

@@ -28,7 +28,7 @@ def test_ai_message_becomes_ai_step_with_tool_calls():
         "id": "ai-1",
         "content": "Let me search the web.",
         "tool_calls": [
-            {"name": "web_search", "args": {"query": "deerflow"}, "id": "call_1", "type": "tool_call"},
+            {"name": "web_search", "args": {"query": "agent_workspace"}, "id": "call_1", "type": "tool_call"},
         ],
     }
 
@@ -39,7 +39,7 @@ def test_ai_message_becomes_ai_step_with_tool_calls():
     assert step["kind"] == "ai"
     assert step["text"] == "Let me search the web."
     assert step["truncated"] is False
-    assert step["tool_calls"] == [{"name": "web_search", "args": {"query": "deerflow"}}]
+    assert step["tool_calls"] == [{"name": "web_search", "args": {"query": "agent_workspace"}}]
     assert "tool_name" not in step
 
 
@@ -49,14 +49,14 @@ def test_tool_message_becomes_tool_step_with_output():
         "id": "tool-1",
         "name": "web_search",
         "tool_call_id": "call_1",
-        "content": "Result: DeerFlow is a LangGraph super-agent.",
+        "content": "Result: Agent Workspace is a LangGraph super-agent.",
     }
 
     step = build_subagent_step(message, task_id="call_task", message_index=2)
 
     assert step["kind"] == "tool"
     assert step["tool_name"] == "web_search"
-    assert step["text"] == "Result: DeerFlow is a LangGraph super-agent."
+    assert step["text"] == "Result: Agent Workspace is a LangGraph super-agent."
     assert step["truncated"] is False
     assert "tool_calls" not in step
 
@@ -188,13 +188,13 @@ def test_ai_step_keeps_small_tool_call_args_structured():
     message = {
         "type": "ai",
         "content": "searching",
-        "tool_calls": [{"name": "web_search", "args": {"query": "deerflow"}}],
+        "tool_calls": [{"name": "web_search", "args": {"query": "agent_workspace"}}],
     }
 
     step = build_subagent_step(message, task_id="t", message_index=1)
 
     call = step["tool_calls"][0]
-    assert call["args"] == {"query": "deerflow"}
+    assert call["args"] == {"query": "agent_workspace"}
     assert "args_truncated" not in call
 
 
@@ -244,7 +244,7 @@ def test_capture_new_step_messages_is_noop_on_values_reyield():
 
 
 def test_capture_new_step_messages_handles_history_contraction():
-    # Regression for #3875 Phase 3: DeerFlowSummarizationMiddleware rewrites the
+    # Regression for #3875 Phase 3: AgentWorkspaceSummarizationMiddleware rewrites the
     # messages channel via RemoveMessage(id=REMOVE_ALL_MESSAGES), which shrinks
     # len(messages) below the cursor we were tracking. Without a contraction
     # reset, every step appended AFTER the compaction is dropped until total

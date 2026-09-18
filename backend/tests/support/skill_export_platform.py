@@ -1,6 +1,6 @@
 """The platform boundary shared by the skill-export test suites.
 
-``deerflow.skills.export._capture`` feature-detects fd-based directory
+``agent_workspace.skills.export._capture`` feature-detects fd-based directory
 walking and otherwise rejects every export with ``422
 skill_export_unsupported`` (Windows is the main such platform). Every
 suite that drives the real exporter must skip exactly where that guard

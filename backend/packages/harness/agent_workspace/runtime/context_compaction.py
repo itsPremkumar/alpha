@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 from langgraph.types import Overwrite
 
-from agent_workspace.agents.middlewares.summarization_middleware import DeerFlowSummarizationMiddleware, SummaryGenerationError, create_summarization_middleware
+from agent_workspace.agents.middlewares.summarization_middleware import AgentWorkspaceSummarizationMiddleware, SummaryGenerationError, create_summarization_middleware
 from agent_workspace.config.app_config import AppConfig, get_app_config
 from agent_workspace.runtime.checkpoint_state import CheckpointStateAccessor
 
@@ -43,7 +43,7 @@ def _create_compaction_middleware(
     app_config: AppConfig,
     keep: tuple[str, int | float] | None,
     run_model_name: str | None = None,
-) -> DeerFlowSummarizationMiddleware:
+) -> AgentWorkspaceSummarizationMiddleware:
     middleware = create_summarization_middleware(app_config=app_config, keep=keep, run_model_name=run_model_name)
     if middleware is None:
         raise ContextCompactionDisabled("Context compaction is disabled.")

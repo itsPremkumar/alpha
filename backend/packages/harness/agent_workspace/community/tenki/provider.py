@@ -1,6 +1,6 @@
-"""``TenkiSandboxProvider`` — DeerFlow :class:`SandboxProvider` backed by Tenki.
+"""``TenkiSandboxProvider`` — Agent Workspace :class:`SandboxProvider` backed by Tenki.
 
-Integrates `Tenki <https://tenki.cloud>`_ cloud sandboxes as a DeerFlow sandbox
+Integrates `Tenki <https://tenki.cloud>`_ cloud sandboxes as a Agent Workspace sandbox
 backend. Each sandbox is an isolated cloud microVM created from a stock base
 image; the provider creates one per ``(user, thread)`` and reuses it within the
 process, parking released sandboxes in a warm pool (shared
@@ -40,9 +40,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_SANDBOX_NAME_PREFIX = "deer-flow-tenki-"
+_SANDBOX_NAME_PREFIX = "agent-workspace-tenki-"
 # Tenki terminates a sandbox at its max lifetime (~30 min by default), which
-# would silently drop a long-running thread's state mid-conversation. DeerFlow
+# would silently drop a long-running thread's state mid-conversation. Agent Workspace
 # owns the lifecycle here — the warm pool's idle_timeout reaps unused sandboxes
 # — so ask for a lifetime that comfortably outlives a research run. Override
 # with sandbox.max_duration (seconds); 0 falls back to the Tenki account default.
@@ -55,7 +55,7 @@ _BOOTSTRAP_TIMEOUT = 30.0
 
 
 def _bootstrap_script(home_dir: str) -> str:
-    """Materialise DeerFlow's virtual path layout inside the sandbox.
+    """Materialise Agent Workspace's virtual path layout inside the sandbox.
 
     Tenki sandboxes run as the unprivileged ``tenki`` user with ``/mnt``
     root-owned, so ``mkdir -p /mnt/user-data/...`` fails with Permission denied.
@@ -96,7 +96,7 @@ def _import_client() -> type[Client]:
 
 
 class TenkiSandboxProvider(WarmPoolLifecycleMixin[TenkiSandbox], SandboxProvider):
-    """Run each DeerFlow sandbox as a Tenki cloud microVM."""
+    """Run each Agent Workspace sandbox as a Tenki cloud microVM."""
 
     uses_thread_data_mounts = False
     needs_upload_permission_adjustment = True
@@ -323,7 +323,7 @@ class TenkiSandboxProvider(WarmPoolLifecycleMixin[TenkiSandbox], SandboxProvider
             self._terminate_orphan(sandbox_id, remote)
             raise
 
-        # Materialise DeerFlow's virtual path layout under the writable HOME.
+        # Materialise Agent Workspace's virtual path layout under the writable HOME.
         # Best-effort: on failure the file APIs still work via the home remap.
         try:
             result = remote.exec("sh", "-lc", _bootstrap_script(self._config["home_dir"]), timeout=_BOOTSTRAP_TIMEOUT)

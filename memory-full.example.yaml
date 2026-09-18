@@ -5,7 +5,7 @@
 #
 # Prerequisites for full quality (else graceful stub mode):
 #   ollama pull llama3.1 nomic-embed-text
-#   cd backend && uv pip install 'deerflow-harness[mem0oss]'
+#   cd backend && uv pip install 'agent_workspace-harness[mem0oss]'
 #   # mem0oss extra = ["mem0ai", "ollama", "qdrant-client"]
 #
 # memory:
@@ -14,7 +14,7 @@
 #   manager_class: fullmemory
 #   mode: middleware
 #   backend_config:
-#     storage_path: .deer-flow/data
+#     storage_path: .agent-workspace/data
 #     top_k: 8
 #     max_injection_chars: 12000
 #     wiki_enabled: true
@@ -27,7 +27,7 @@
 #       embedder_provider: ollama
 #       embed_model: nomic-embed-text:latest
 #       embedding_dims: 768
-#       vector_collection: deerflow_memory
+#       vector_collection: agent_workspace_memory
 #       startup_policy: tolerate
 #       failure_policy: {read: fail_open, write: log_and_drop}
 #

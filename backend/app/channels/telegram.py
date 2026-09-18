@@ -764,7 +764,7 @@ class TelegramChannel(Channel):
             },
             status="connected",
         )
-        logger.info("[Telegram] bound chat=%s user=%s to DeerFlow user=%s connection=%s", chat_id, user_id, owner_user_id, connection["id"])
+        logger.info("[Telegram] bound chat=%s user=%s to Agent Workspace user=%s connection=%s", chat_id, user_id, owner_user_id, connection["id"])
         await self._run_on_telegram_loop(update.message.reply_text(f"Telegram connected to {DISPLAY_NAME}."))
         return True
 
@@ -949,7 +949,7 @@ class TelegramChannel(Channel):
         user_id = str(update.effective_user.id)
         msg_id = str(update.message.message_id)
 
-        # topic_id determines which DeerFlow thread the message maps to.
+        # topic_id determines which Agent Workspace thread the message maps to.
         # In private chats, use None so that all messages share a single
         # thread (the store key becomes "channel:chat_id").
         # In group chats, use the reply-to message id or the current

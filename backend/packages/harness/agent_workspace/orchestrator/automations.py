@@ -1,6 +1,6 @@
 """8. Unified automation scheduler (cron + heartbeat + event trigger).
 
-DeerFlow ships scheduler/schedules (cron parsing) + app/scheduler service.
+Agent Workspace ships scheduler/schedules (cron parsing) + app/scheduler service.
 OpenClaw 2.0 unifies scheduled work under one name across agent/UI/CLI
 with heartbeat monitoring + event (IMAP-style) triggers + non-interactive
 runs (clarification disabled). This module is the additive unification

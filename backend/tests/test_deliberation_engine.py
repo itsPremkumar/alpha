@@ -189,7 +189,7 @@ def test_deliberation_boundary_integrity():
     """Confirms packages/harness/agent_workspace/deliberation contains zero forbidden imports from app.*."""
     import pathlib
 
-    delib_dir = pathlib.Path(__file__).parent.parent / "packages" / "harness" / "deerflow" / "deliberation"
+    delib_dir = pathlib.Path(__file__).parent.parent / "packages" / "harness" / "agent_workspace" / "deliberation"
     for py_file in delib_dir.rglob("*.py"):
         content = py_file.read_text(encoding="utf-8")
         assert "from app." not in content, f"Boundary violation in {py_file}: contains 'from app.'"

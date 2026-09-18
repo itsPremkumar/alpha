@@ -34,7 +34,7 @@ class CronManager:
 
     def __init__(self, root_dir: Path | str | None = None):
         root = Path(root_dir or Path.cwd())
-        self.cron_file = root / ".deerflow" / "cron" / "jobs.json"
+        self.cron_file = root / ".agent_workspace" / "cron" / "jobs.json"
         self._jobs: dict[str, CronJob] = {}
         self._load()
 

@@ -10,7 +10,7 @@ def plan(argv, *, stdin_tty=True, stdout_tty=True, env=None):
 
 
 def test_top_level_help_points_to_extension_management():
-    assert "deerflow extensions --help" in build_parser().format_help()
+    assert "agent_workspace extensions --help" in build_parser().format_help()
 
 
 def test_bare_command_on_tty_launches_tui():

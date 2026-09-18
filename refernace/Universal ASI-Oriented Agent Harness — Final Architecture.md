@@ -816,7 +816,7 @@ EXECUTIVE
           └── Security Review
 ```
 
-DeerFlow, Hermes, Deep Agents and OpenHands all provide useful patterns for subagent isolation and orchestration.
+Agent Workspace, Hermes, Deep Agents and OpenHands all provide useful patterns for subagent isolation and orchestration.
 
 ---
 
@@ -2839,7 +2839,7 @@ OpenClaw
 Hermes
 → procedural memory / profiles / delegation / cron / trajectories
 
-DeerFlow
+Agent Workspace
 → super-agent / sandbox / persistent memory / subagents
 
 Deep Agents

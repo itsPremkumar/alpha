@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://deerflow.dev/contracts/skill_review/package_snapshot.v1.schema.json",
-  "title": "DeerFlow Skill Package Snapshot v1",
+  "$id": "https://agent_workspace.dev/contracts/skill_review/package_snapshot.v1.schema.json",
+  "title": "Agent Workspace Skill Package Snapshot v1",
   "type": "object",
   "required": ["schema_version", "subject", "limits", "files", "truncated", "reader_errors"],
   "properties": {
-    "schema_version": { "const": "deerflow.skill-package-snapshot.v1" },
+    "schema_version": { "const": "agent_workspace.skill-package-snapshot.v1" },
     "subject": {
       "type": "object",
       "required": ["source", "display_ref"],

@@ -432,7 +432,7 @@ class EnterpriseHierarchyEngine:
         dept_list = [d.model_dump() for d in self._departments.values()]
         total_workers = len(self._nodes_by_bot)
         return {
-            "enterprise_name": "DeerFlow Autonomous AI Software Enterprise",
+            "enterprise_name": "Agent Workspace Autonomous AI Software Enterprise",
             "csuite": csuite_list,
             "departments": dept_list,
             "total_headcount": total_workers,

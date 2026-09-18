@@ -7,7 +7,7 @@ lookup. A prior change renewed the cross-process lease inside ``get()``
 — reported on PR #4221.
 
 Under the strict Blockbuster context (this directory's conftest), any blocking IO
-reached from ``deerflow.*`` while on the event loop raises ``BlockingError``.
+reached from ``agent_workspace.*`` while on the event loop raises ``BlockingError``.
 
 The ownership store is injected here as a **blocking probe**: every store method
 does real file IO. That keeps the anchor honest across backends — the configured
@@ -140,7 +140,7 @@ async def test_async_acquire_offloads_ownership_publish(tmp_path, monkeypatch):
     info = SandboxInfo(
         sandbox_id="sb-async",
         sandbox_url="http://localhost:8080",
-        container_name="deer-flow-sandbox-sb-async",
+        container_name="agent-workspace-sandbox-sb-async",
         created_at=1.0,
     )
     provider._backend.discover = MagicMock(return_value=info)

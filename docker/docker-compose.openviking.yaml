@@ -3,7 +3,7 @@
 # First-time initialization:
 #   docker compose -f docker/docker-compose.yaml \
 #     -f docker/docker-compose.openviking.yaml up -d openviking
-#   docker exec -it deer-flow-openviking openviking-server init
+#   docker exec -it agent-workspace-openviking openviking-server init
 #
 # Full stack:
 #   docker compose -f docker/docker-compose.yaml \

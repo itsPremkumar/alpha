@@ -33,7 +33,7 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.mark.anyio
 async def test_oauth_identity_index_is_partial_on_postgres():
-    schema = f"deerflow_test_{uuid.uuid4().hex[:12]}"
+    schema = f"agent_workspace_test_{uuid.uuid4().hex[:12]}"
     db_config = DatabaseConfig(backend="postgres", postgres_url=POSTGRES_URL or "", postgres_schema=schema)
 
     await init_engine_from_config(db_config)
@@ -64,7 +64,7 @@ async def test_oauth_identity_uniqueness_enforced_end_to_end():
     a genuine duplicate (provider, oauth_id) pair is rejected, and
     multiple plain-password accounts (both fields NULL) are allowed to
     coexist -- the two behaviours the index exists to guarantee."""
-    schema = f"deerflow_test_{uuid.uuid4().hex[:12]}"
+    schema = f"agent_workspace_test_{uuid.uuid4().hex[:12]}"
     db_config = DatabaseConfig(backend="postgres", postgres_url=POSTGRES_URL or "", postgres_schema=schema)
 
     await init_engine_from_config(db_config)

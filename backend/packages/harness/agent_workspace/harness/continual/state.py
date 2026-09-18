@@ -1,4 +1,4 @@
-"""Persistent Continual Harness State for DeerFlow (inspired by Prime Agent).
+"""Persistent Continual Harness State for Agent Workspace (inspired by Prime Agent).
 
 The state model records supplemental prompt notes, memories, skill descriptors,
 and reusable subagent configurations in session-local and global stores.
@@ -19,7 +19,7 @@ HarnessKind = Literal["prompt", "memory", "skill", "subagent"]
 HarnessScope = Literal["local", "global"]
 
 _DEFAULT_FILE_NAME = "harness_state.json"
-_DEFAULT_DIR_NAME = ".deerflow"
+_DEFAULT_DIR_NAME = ".agent_workspace"
 _KINDS: tuple[HarnessKind, ...] = ("prompt", "memory", "skill", "subagent")
 
 
@@ -37,7 +37,7 @@ def get_default_global_dir() -> Path:
     env_dir = os.environ.get("AGENT_WORKSPACE_GLOBAL_HARNESS_DIR")
     if env_dir and env_dir.strip():
         return Path(env_dir.strip()).expanduser().resolve()
-    return Path.home() / ".deerflow" / "harness"
+    return Path.home() / ".agent_workspace" / "harness"
 
 
 @dataclass

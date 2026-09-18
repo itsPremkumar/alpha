@@ -14,7 +14,7 @@ in `tests/test_workforce_intelligence.py`.
 
 ## Project Overview
 
-DeerFlow is a LangGraph-based AI super agent system with a full-stack architecture. The backend provides a "super agent" with sandbox execution, persistent memory, subagent delegation, and extensible tool integration - all operating in per-thread isolated environments.
+Agent Workspace is a LangGraph-based AI super agent system with a full-stack architecture. The backend provides a "super agent" with sandbox execution, persistent memory, subagent delegation, and extensible tool integration - all operating in per-thread isolated environments.
 
 **Architecture**:
 - **Gateway API** (port 8001): REST API plus embedded LangGraph-compatible agent runtime
@@ -37,7 +37,7 @@ DeerFlow is a LangGraph-based AI super agent system with a full-stack architectu
 
 **Project Structure**:
 ```
-deer-flow/
+agent-workspace/
 ├── Makefile                    # Root commands (check, install, dev, stop)
 ├── config.yaml                 # Main application configuration
 ├── extensions_config.json      # MCP servers and skills configuration
@@ -73,7 +73,7 @@ deer-flow/
 │   │           ├── community/         # Community tools (search/fetch/scrape, image search, AIO sandbox)
 │   │           ├── reflection/        # Dynamic module loading (resolve_variable, resolve_class)
 │   │           ├── utils/             # Utilities (network, readability)
-│   │           └── client.py          # Embedded Python client (DeerFlowClient)
+│   │           └── client.py          # Embedded Python client (AgentWorkspaceClient)
 │   ├── app/                   # Application layer (import: app.*)
 │   │   ├── gateway/           # FastAPI Gateway API
 │   │   │   ├── app.py         # FastAPI application
@@ -214,10 +214,10 @@ More specific `AGENTS.md` files in backend code directories contain the subsyste
 
 The backend is split into two layers with a strict dependency direction:
 
-- **Harness** (`packages/harness/agent_workspace/`): Publishable agent framework package (`agent-workspace-harness`). Import prefix: `deerflow.*`. Contains agent orchestration, tools, sandbox, models, MCP, skills, config — everything needed to build and run agents.
+- **Harness** (`packages/harness/agent_workspace/`): Publishable agent framework package (`agent-workspace-harness`). Import prefix: `agent_workspace.*`. Contains agent orchestration, tools, sandbox, models, MCP, skills, config — everything needed to build and run agents.
 - **App** (`app/`): Unpublished application code. Import prefix: `app.*`. Contains the FastAPI Gateway API and IM channel integrations (Feishu, Slack, Telegram, DingTalk).
 
-**Dependency rule**: App imports deerflow, but deerflow never imports app. This boundary is enforced by `tests/test_harness_boundary.py` which runs in CI.
+**Dependency rule**: App imports agent_workspace, but agent_workspace never imports app. This boundary is enforced by `tests/test_harness_boundary.py` which runs in CI.
 
 **Import conventions**:
 ```python
@@ -236,9 +236,9 @@ from agent_workspace.config import get_app_config
 # from app.gateway.routers.uploads import ...  # ← will fail CI
 ```
 
-Package import hygiene: the `deerflow.agents` and `deerflow.subagents` package
+Package import hygiene: the `agent_workspace.agents` and `agent_workspace.subagents` package
 roots expose heavyweight graph/executor entrypoints lazily. The
-`deerflow.agents:make_lead_agent` LangGraph Server entrypoint is a concrete thin
+`agent_workspace.agents:make_lead_agent` LangGraph Server entrypoint is a concrete thin
 module-level function because the server resolves graph factories directly from
 the module dictionary; the wrapper keeps the lead-agent and skill-cache imports
 inside the function so importing the package remains lightweight. Internal
@@ -269,7 +269,7 @@ decisions — and `disable_clarification` is no milder than `non_interactive`.
 - Run both offline targets before and after your change: `make test` and `make test-blocking-io`
 - Tests must pass before a feature is considered complete
 - For lightweight config/utility modules, prefer pure unit tests with no external dependencies
-- If a module causes circular import issues in tests, add a `sys.modules` mock in `tests/conftest.py` (see existing example for `deerflow.subagents.executor`)
+- If a module causes circular import issues in tests, add a `sys.modules` mock in `tests/conftest.py` (see existing example for `agent_workspace.subagents.executor`)
 
 ```bash
 # Run default offline tests
@@ -365,7 +365,7 @@ Outlines use ATX syntax (1–6 hashes, space/tab separator, ≤3 leading spaces)
 - Files stored in thread-isolated directories under the resolving user's bucket (`users/{user_id}/threads/{thread_id}/user-data/uploads`). For IM channels the owner is threaded explicitly via the `user_id=` kwarg (see IM Channels → Owner-scoped file storage); HTTP/embedded callers resolve it from `get_effective_user_id()`
 - Duplicate filenames within one request get `_N` suffixes to prevent overwrites.
 - Gateway HTTP uploads stage bytes as `.upload-*.part` files and atomically replace the destination only after size validation. These staging files are hidden from upload listings, agent upload context, and sandbox listing/search tools, and swept on Gateway startup if a hard crash leaves one behind.
-- Gateway HTTP upload/list/delete handlers offload filesystem work through `deerflow.utils.file_io.run_file_io`, a dedicated ContextVar-preserving file IO executor. Non-mounted sandbox uploads acquire sandboxes with `SandboxProvider.acquire_async()` and offload `read_bytes()` plus `sandbox.update_file()` together.
+- Gateway HTTP upload/list/delete handlers offload filesystem work through `agent_workspace.utils.file_io.run_file_io`, a dedicated ContextVar-preserving file IO executor. Non-mounted sandbox uploads acquire sandboxes with `SandboxProvider.acquire_async()` and offload `read_bytes()` plus `sandbox.update_file()` together.
 - Mounted uploads skip sandbox acquire/sync. AIO remote/provisioner requires accurate `sandbox.thread_data_mounts: true`; omission keeps backend auto-detection.
 - `UploadsMiddleware` caps outline titles at 200 characters and previews at 2000 including markers. Titles use `original_user_content`, not upload-prefixed content; attachment-only titles use a sanitized, bounded filename or count.
 
@@ -387,7 +387,7 @@ Automatic conversation summarization when approaching token limits:
 - Trigger types: tokens, messages, or fraction of max input
 - Keeps recent messages while summarizing older ones
 - Manual compaction uses `POST /api/threads/{id}/compact`, reuses the same
-  `DeerFlowSummarizationMiddleware`, writes a new checkpoint with updated
+  `AgentWorkspaceSummarizationMiddleware`, writes a new checkpoint with updated
   `messages` and `summary_text`, and bumps only those channel versions.
   The route uses the shared `reserve_checkpoint_write()` boundary (also used by
   manual state updates). Its short-lived `checkpoint_write` thread operation

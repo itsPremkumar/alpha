@@ -14,8 +14,8 @@ EXAMPLE="$REPO_ROOT/config.example.yaml"
 # Resolve config.yaml location: env var > backend/ > repo root
 if [ -n "$AGENT_WORKSPACE_CONFIG_PATH" ] && [ -f "$AGENT_WORKSPACE_CONFIG_PATH" ]; then
     CONFIG="$AGENT_WORKSPACE_CONFIG_PATH"
-elif [ -n "$DEER_FLOW_CONFIG_PATH" ] && [ -f "$DEER_FLOW_CONFIG_PATH" ]; then
-    CONFIG="$DEER_FLOW_CONFIG_PATH"
+elif [ -n "$AGENT_WORKSPACE_CONFIG_PATH" ] && [ -f "$AGENT_WORKSPACE_CONFIG_PATH" ]; then
+    CONFIG="$AGENT_WORKSPACE_CONFIG_PATH"
 elif [ -f "$REPO_ROOT/backend/config.yaml" ]; then
     CONFIG="$REPO_ROOT/backend/config.yaml"
 elif [ -f "$REPO_ROOT/config.yaml" ]; then
@@ -85,10 +85,10 @@ MIGRATIONS = {
             ('src.sandbox.', 'agent_workspace.sandbox.'),
             ('src.models.', 'agent_workspace.models.'),
             ('src.tools.', 'agent_workspace.tools.'),
-            ('deerflow.community.', 'agent_workspace.community.'),
-            ('deerflow.sandbox.', 'agent_workspace.sandbox.'),
-            ('deerflow.models.', 'agent_workspace.models.'),
-            ('deerflow.tools.', 'agent_workspace.tools.'),
+            ('agent_workspace.community.', 'agent_workspace.community.'),
+            ('agent_workspace.sandbox.', 'agent_workspace.sandbox.'),
+            ('agent_workspace.models.', 'agent_workspace.models.'),
+            ('agent_workspace.tools.', 'agent_workspace.tools.'),
         ],
     },
     # Future migrations go here:

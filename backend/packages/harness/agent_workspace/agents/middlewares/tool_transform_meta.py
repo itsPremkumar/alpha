@@ -9,7 +9,7 @@ final visible bytes.
 
 from __future__ import annotations
 
-TOOL_TRANSFORMS_KEY = "deerflow_tool_transforms"
+TOOL_TRANSFORMS_KEY = "agent_workspace_tool_transforms"
 
 
 def append_tool_transform(additional_kwargs: dict, kind: str, *, by: str, version: str = "1") -> None:

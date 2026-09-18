@@ -1,8 +1,8 @@
 """Three-Level Memory and Context Isolation Router (Hermes Bot Mode & Agent OS Architecture).
 
 Enforces:
-1. Level 1: Global Bot Memory (~/.deerflow/bots/<bot>/memory.json) - Persona, habits, style, learned lessons
-2. Level 2: Shared Project Memory (~/.deerflow/projects/<project>/context.json) - Architecture, ADRs, constitution, active locks
+1. Level 1: Global Bot Memory (~/.agent_workspace/bots/<bot>/memory.json) - Persona, habits, style, learned lessons
+2. Level 2: Shared Project Memory (~/.agent_workspace/projects/<project>/context.json) - Architecture, ADRs, constitution, active locks
 3. Level 3: Task-Scoped Memory - Ephemeral scratchpad, active thread messages, recent tool results, diffs
 
 Strict Project Isolation:

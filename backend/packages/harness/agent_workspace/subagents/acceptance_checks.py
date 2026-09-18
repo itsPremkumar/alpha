@@ -188,7 +188,7 @@ def _resolve_scoped_path(path: str, thread_data: Mapping[str, Any] | None, *, re
     if not candidate:
         return None
     # Lazy import: sandbox.tools pulls the provider stack, and this package is
-    # imported in cycles with deerflow.tools (same pattern as report_contract).
+    # imported in cycles with agent_workspace.tools (same pattern as report_contract).
     from agent_workspace.sandbox.tools import replace_virtual_path
 
     candidate = replace_virtual_path(candidate, thread_data)  # type: ignore[arg-type]
@@ -292,7 +292,7 @@ def _probe_file_size(runtime: Any, resolved: str, thread_data: Mapping[str, Any]
         root = "/".join(resolved.split("/")[:4])  # the /mnt/user-data/{workspace|outputs} mount root
         output = sandbox.execute_command(
             f"/usr/bin/env -i /bin/sh -c {shlex.quote(_SIZE_PROBE_INNER_SCRIPT)} probe {shlex.quote(resolved)} {shlex.quote(root)}",
-            env={"_DEERFLOW_SIZE_PROBE": "1"},
+            env={"_AGENT_WORKSPACE_SIZE_PROBE": "1"},
         )
     except FileNotFoundError:
         raise
@@ -364,7 +364,7 @@ def _probe_file_readable(runtime: Any, resolved: str, thread_data: Mapping[str, 
         root = "/".join(resolved.split("/")[:4])  # the /mnt/user-data/{workspace|outputs} mount root
         output = sandbox.execute_command(
             f"/usr/bin/env -i /bin/sh -c {shlex.quote(_READ_PROBE_INNER_SCRIPT)} probe {shlex.quote(resolved)} {shlex.quote(root)}",
-            env={"_DEERFLOW_SIZE_PROBE": "1"},
+            env={"_AGENT_WORKSPACE_SIZE_PROBE": "1"},
         )
     except Exception:
         # Same failure-isolation precedent as _probe_file_size: best-effort
@@ -390,7 +390,7 @@ def _check_file_leaf(
 ) -> AcceptanceLeaf:
     criterion_path = path.strip()
     # Lazy imports: the sandbox helpers pull the provider stack, and this
-    # package is imported in cycles with deerflow.tools (same pattern as
+    # package is imported in cycles with agent_workspace.tools (same pattern as
     # report_contract).
     from agent_workspace.sandbox.exceptions import SandboxError, SandboxFileNotFoundError
     from agent_workspace.sandbox.tools import is_local_sandbox

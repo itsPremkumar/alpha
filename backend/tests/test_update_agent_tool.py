@@ -539,7 +539,7 @@ def test_update_agent_refuses_on_webhook_channel(tmp_path, patched_paths):
 
     The lead-agent factory already withholds ``update_agent`` from runs
     on webhook channels (see ``_WEBHOOK_CHANNELS`` in
-    ``deerflow.agents.lead_agent.agent``). The same set is mirrored
+    ``agent_workspace.agents.lead_agent.agent``). The same set is mirrored
     here so a future code path that re-attaches the tool without going
     through ``_make_lead_agent`` (custom factories, ad-hoc tests, etc.)
     does not silently accept untrusted self-mutation requests routed

@@ -61,7 +61,7 @@ def _resolve_checkpointer_config(app_config: AppConfig) -> CheckpointerConfig:
     The legacy ``checkpointer`` section remains authoritative when present so
     Checkpointer and Store keep using the same backend. Otherwise the unified
     ``database`` section drives the checkpointer, matching the async
-    :func:`~deerflow.runtime.checkpointer.async_provider.make_checkpointer`
+    :func:`~agent_workspace.runtime.checkpointer.async_provider.make_checkpointer`
     factory and the sync Store provider's ``_resolve_store_config``.
     """
     if app_config.checkpointer is not None:

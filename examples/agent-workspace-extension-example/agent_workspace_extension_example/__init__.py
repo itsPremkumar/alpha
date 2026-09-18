@@ -1,4 +1,4 @@
-"""A compact, standalone DeerFlow extension exercising every contribution kind."""
+"""A compact, standalone Agent Workspace extension exercising every contribution kind."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import Any
 
 from agent_workspace_extension_api import ExtensionInstall, ExtensionRegistry, extension
 
-from deerflow_extension_example.plugin import (
+from agent_workspace_extension_example.plugin import (
     ExampleMiddlewareContributor,
     ExampleService,
     ExampleSystemObserver,

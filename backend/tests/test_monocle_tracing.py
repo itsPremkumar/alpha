@@ -3,7 +3,7 @@
 Covers the config gate (``MONOCLE_TRACING`` default off / toggle on), the setup
 helper's behavior (off-box exporter warning, exporter validation, idempotency,
 Langfuse coexistence), the Gateway-lifespan wiring, and the regression that
-importing ``deerflow.agents`` no longer sets up telemetry at import time.
+importing ``agent_workspace.agents`` no longer sets up telemetry at import time.
 """
 
 from __future__ import annotations
@@ -75,7 +75,7 @@ def test_toggles_on_and_sets_up(monkeypatch):
 
     assert is_monocle_tracing_enabled() is True
     assert setup_monocle_tracing_if_enabled() is True
-    assert captured == {"workflow_name": "deer-flow", "monocle_exporters_list": "file"}
+    assert captured == {"workflow_name": "agent-workspace", "monocle_exporters_list": "file"}
 
 
 def test_custom_exporters(monkeypatch):
@@ -221,7 +221,7 @@ def test_okahu_exporter_with_api_key_ok(monkeypatch):
 def test_embedded_hint_when_enabled_but_uninitialized(monkeypatch, caplog):
     """``build_tracing_callbacks()`` hints when Monocle is enabled but setup never ran.
 
-    The embedded ``DeerFlowClient`` and the TUI never hit the Gateway lifespan,
+    The embedded ``AgentWorkspaceClient`` and the TUI never hit the Gateway lifespan,
     so this debug line is the only in-process signal explaining why no Monocle
     traces appear.
     """
@@ -256,9 +256,9 @@ def test_no_embedded_hint_after_setup(monkeypatch, caplog):
 
 
 def test_no_import_time_setup():
-    """Regression: importing deerflow.agents must not install telemetry.
+    """Regression: importing agent_workspace.agents must not install telemetry.
 
-    The setup call used to live at module import in ``deerflow/agents/__init__``.
+    The setup call used to live at module import in ``agent_workspace/agents/__init__``.
     It now happens only via the gateway lifespan, so a plain import must neither
     expose ``setup_monocle_telemetry`` nor install a global OTel
     ``TracerProvider`` (which is what ``setup_monocle_telemetry`` does). Runs in

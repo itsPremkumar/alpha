@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 _MAX_RECOVERY_ERROR_DETAIL_LEN = 500
 _UNKNOWN_TOOL_NAME = "unknown_tool"
 _EMPTY_TOOL_NAME_ERROR = "Tool call could not be executed because its name was missing or empty."
-_SYNTHETIC_TOOL_CALL_ID_PREFIX = "deerflow_synthetic_tool_call_"
+_SYNTHETIC_TOOL_CALL_ID_PREFIX = "agent_workspace_synthetic_tool_call_"
 
 
 def _valid_tool_name(name: object) -> bool:

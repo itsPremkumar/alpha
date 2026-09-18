@@ -89,7 +89,7 @@
           if (payload.message) statusEl.textContent = payload.message;
           detailEl.textContent = payload.detail || "";
         }
-        var api = window.agentWorkspace || window.deerflow;
+        var api = window.agentWorkspace || window.agent_workspace;
         if (api && api.onStatus) {
           api.onStatus(render);
           api.getStatus().then(render).catch(function () {});

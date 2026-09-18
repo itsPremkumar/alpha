@@ -1,4 +1,4 @@
-"""Autonomous Agent Swarm Subsystem for DeerFlow 2.0.
+"""Autonomous Agent Swarm Subsystem for Agent Workspace 2.0.
 
 Provides critical-path-optimized swarm decomposition, dependency DAGs,
 hybrid workforce scheduling (Permanent Specialist Bots + Ephemeral Subagents),

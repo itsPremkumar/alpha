@@ -16,7 +16,7 @@ The most important finding is that there is **no single open-source “ASI archi
 | **8**  | **OpenHands V1**               | Agent + runtime + control-plane separation                                | ⭐⭐⭐⭐⭐                  |
 | **9**  | **OpenClaw**                   | Persistent Gateway + runtime + context + skills + sessions + automation   | ⭐⭐⭐⭐⭐                  |
 | **10** | **Hermes Agent**               | Skills-as-procedural-memory + delegation + profiles + cron + trajectories | ⭐⭐⭐⭐⭐                  |
-| **11** | **DeerFlow 2.0**               | Super-agent orchestration + sandbox + persistent memory + subagents       | ⭐⭐⭐⭐⭐                  |
+| **11** | **Agent Workspace 2.0**               | Super-agent orchestration + sandbox + persistent memory + subagents       | ⭐⭐⭐⭐⭐                  |
 | **12** | **Deep Agents**                | Planning + filesystem context + subagents + persistence                   | ⭐⭐⭐⭐⭐                  |
 | **13** | **Voyager**                    | Lifelong skill acquisition + automatic curriculum                         | ⭐⭐⭐⭐⭐                  |
 | **14** | **Agent Zero**                 | Full computer + GUI + browser DOM + live document work                    | ⭐⭐⭐⭐                   |
@@ -435,9 +435,9 @@ For your architecture, Hermes is a strong **runtime/workspace foundation**.
 
 ---
 
-# 11. DeerFlow 2.0
+# 11. Agent Workspace 2.0
 
-DeerFlow is valuable because it packages many of the pieces into a super-agent:
+Agent Workspace is valuable because it packages many of the pieces into a super-agent:
 
 ```text
 super-agent
@@ -807,7 +807,7 @@ If you don't have time to study 20+ projects, study these **10 deeply**:
 Then layer in:
 
 ```text
-DeerFlow
+Agent Workspace
 Deep Agents
 Agent Zero
 CAMEL
@@ -919,7 +919,7 @@ HERMES
 → trajectories
 → background execution
 
-DEERFLOW
+AGENT_WORKSPACE
 → super-agent
 → sandbox
 → subagents
@@ -1097,7 +1097,7 @@ Put those together and the conceptual target is:
 
 That is the **most interesting AGI/ASI-oriented architecture direction I would recommend studying in September 2026**. The critical caveat is that recursive self-improvement is an active research area and can produce benchmark overfitting, regressions, or unsafe behavior; the current research itself emphasizes held-out evaluation, isolation and controlled promotion. ([GitHub][25])
 
-For your specific project, the strongest combination is **OpenClaw/Hermes for the persistent agent kernel, OpenHands/DeerFlow/Deep Agents for execution and orchestration, Letta/Voyager for learning and memory, and A-Evolve/HyperAgents/DGM/Continual Harness/CORAL/MOSS for the recursive evolution layer**.
+For your specific project, the strongest combination is **OpenClaw/Hermes for the persistent agent kernel, OpenHands/Agent Workspace/Deep Agents for execution and orchestration, Letta/Voyager for learning and memory, and A-Evolve/HyperAgents/DGM/Continual Harness/CORAL/MOSS for the recursive evolution layer**.
 
 [1]: https://github.com/A-EVO-Lab/a-evolve?utm_source=chatgpt.com "GitHub - A-EVO-Lab/a-evolve: The official repository of \"Position: Agentic Evolution is the Path to Evolving LLMs\". · GitHub"
 [2]: https://github.com/facebookresearch/hyperagents?utm_source=chatgpt.com "GitHub - facebookresearch/HyperAgents: Self-referential self-improving agents that can optimize for any computable task · GitHub"
@@ -1112,7 +1112,7 @@ For your specific project, the strongest combination is **OpenClaw/Hermes for th
 [11]: https://docs.openhands.dev/sdk/arch/design?utm_source=chatgpt.com "Design Principles - OpenHands Docs"
 [12]: https://github.com/openclaw/openclaw/blob/main/docs/agent-runtime-architecture.md?utm_source=chatgpt.com "openclaw/docs/agent-runtime-architecture.md at main · openclaw/openclaw · GitHub"
 [13]: https://github.com/NousResearch/hermes-agent/blob/main/website/docs/developer-guide/architecture.md?utm_source=chatgpt.com "hermes-agent/website/docs/developer-guide/architecture.md at main · NousResearch/hermes-agent · GitHub"
-[14]: https://github.com/bytedance/deer-flow/blob/main/backend/AGENTS.md?utm_source=chatgpt.com "deer-flow/backend/AGENTS.md at main · bytedance/deer-flow · GitHub"
+[14]: https://github.com/bytedance/agent-workspace/blob/main/backend/AGENTS.md?utm_source=chatgpt.com "agent-workspace/backend/AGENTS.md at main · bytedance/agent-workspace · GitHub"
 [15]: https://github.com/langchain-ai/deepagents/blob/main/libs/ARCHITECTURE.md?utm_source=chatgpt.com "deepagents/libs/ARCHITECTURE.md at main · langchain-ai/deepagents · GitHub"
 [16]: https://github.com/MineDojo/Voyager?utm_source=chatgpt.com "GitHub - MineDojo/Voyager: An Open-Ended Embodied Agent with Large Language Models · GitHub"
 [17]: https://github.com/agent0ai/agent-zero?utm_source=chatgpt.com "GitHub - agent0ai/agent-zero: Agent Zero AI framework · GitHub"

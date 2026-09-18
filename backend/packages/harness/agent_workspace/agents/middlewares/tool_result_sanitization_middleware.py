@@ -1,6 +1,6 @@
 """Neutralize prompt-injection control tokens in untrusted tool results.
 
-DeerFlow already treats the genuine user message as untrusted and neutralizes
+Agent Workspace already treats the genuine user message as untrusted and neutralizes
 framework/injection tags in it (see ``InputSanitizationMiddleware``). Remote
 content that the agent *fetches* — web page bodies and search snippets returned
 by ``web_fetch`` / ``web_search`` / ``image_search``, plus the target site's
@@ -18,7 +18,7 @@ file reads) is left untouched so legitimate code/log content is never mangled.
 
 Scope: the built-in network tools are matched by name
 (``_REMOTE_CONTENT_TOOL_NAMES``), and MCP-sourced tools are matched by their
-``deerflow_mcp`` metadata tag (third-party remote code, untrusted by default).
+``agent_workspace_mcp`` metadata tag (third-party remote code, untrusted by default).
 Local tool output (bash, file reads) is left untouched so legitimate code/log
 content is never mangled.
 """
@@ -49,7 +49,7 @@ logger = logging.getLogger(__name__)
 # free-form reason phrase controlled by whatever server is being captured) into
 # its result message, so it is untrusted remote content too and belongs here.
 # The gate is name-based for the first-party web tools; MCP-sourced tools are
-# covered by their ``deerflow_mcp`` metadata tag instead (every MCP server is
+# covered by their ``agent_workspace_mcp`` metadata tag instead (every MCP server is
 # third-party remote code, so its results are untrusted regardless of what the
 # tool is named). A name heuristic for MCP tools (matching fetch/search/crawl
 # substrings) is intentionally avoided because it would also mangle legitimate
@@ -128,7 +128,7 @@ class ToolResultSanitizationMiddleware(AgentMiddleware[AgentState]):
     content and untrusted user input receive the same structural neutralization.
 
     Scope: the built-in web tools are covered by name (``_REMOTE_CONTENT_TOOL_NAMES``),
-    and every MCP-sourced tool is covered via its ``deerflow_mcp`` metadata tag —
+    and every MCP-sourced tool is covered via its ``agent_workspace_mcp`` metadata tag —
     an MCP server is third-party remote code, so its results are untrusted by
     default. Neutralization only touches structural control tokens, so benign MCP
     content passes through unchanged.

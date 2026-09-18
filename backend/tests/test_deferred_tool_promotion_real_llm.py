@@ -4,7 +4,7 @@ Drives a real ``langchain.agents.create_agent`` graph against a real OpenAI-
 compatible LLM (one-api gateway), bound through ``DeferredToolFilterMiddleware``
 and the production ``get_available_tools`` pipeline. The only thing we mock is
 the MCP tool source — we hand-roll two ``@tool``s and inject them through
-``deerflow.mcp.cache.get_cached_mcp_tools``.
+``agent_workspace.mcp.cache.get_cached_mcp_tools``.
 
 The flow exercised:
   1. Turn 1: agent sees ``tool_search`` (plus a ``fake_subagent_trigger``

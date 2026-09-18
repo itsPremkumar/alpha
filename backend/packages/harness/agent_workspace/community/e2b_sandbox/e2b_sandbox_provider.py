@@ -1,4 +1,4 @@
-"""``E2BSandboxProvider`` — DeerFlow :class:`SandboxProvider` for e2b cloud.
+"""``E2BSandboxProvider`` — Agent Workspace :class:`SandboxProvider` for e2b cloud.
 
 Configuration is read from :class:`SandboxConfig`. E2B reports unknown
 provider fields during startup.
@@ -6,7 +6,7 @@ provider fields during startup.
 .. code-block:: yaml
 
     sandbox:
-      use: deerflow.community.e2b_sandbox:E2BSandboxProvider
+      use: agent_workspace.community.e2b_sandbox:E2BSandboxProvider
       api_key: $E2B_API_KEY            # required (or via E2B_API_KEY env var)
       template: code-interpreter-v1     # default: e2b code-interpreter template
       domain: e2b.dev                  # optional; for self-hosted e2b
@@ -238,14 +238,14 @@ class _MountUploadBudget:
 
 # Metadata keys we attach to every sandbox so we can discover ours via
 # ``Sandbox.list(query={...})`` from any gateway process.
-META_KEY_USER = "deer_flow_user"
-META_KEY_THREAD = "deer_flow_thread"
-META_KEY_PROVIDER = "deer_flow_provider"
-META_KEY_GATEWAY = "deer_flow_gateway"
-META_KEY_CREATED_AT = "deer_flow_created_at"
-META_KEY_CAPACITY_LEDGER = "deer_flow_capacity_ledger"
-META_KEY_CAPACITY_RESERVATION = "deer_flow_capacity_reservation"
-META_KEY_SKILLS_ROOT = "deer_flow_skills_root"
+META_KEY_USER = "agent_workspace_user"
+META_KEY_THREAD = "agent_workspace_thread"
+META_KEY_PROVIDER = "agent_workspace_provider"
+META_KEY_GATEWAY = "agent_workspace_gateway"
+META_KEY_CREATED_AT = "agent_workspace_created_at"
+META_KEY_CAPACITY_LEDGER = "agent_workspace_capacity_ledger"
+META_KEY_CAPACITY_RESERVATION = "agent_workspace_capacity_reservation"
+META_KEY_SKILLS_ROOT = "agent_workspace_skills_root"
 META_VAL_PROVIDER = "e2b_sandbox_provider"
 E2B_EXTRA_CONFIG_KEYS = frozenset(
     {
@@ -291,7 +291,7 @@ class E2BSandboxProvider(SandboxProvider):
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        # Active sandboxes, keyed by DeerFlow-side sandbox id (== e2b id).
+        # Active sandboxes, keyed by Agent Workspace-side sandbox id (== e2b id).
         self._sandboxes: dict[str, E2BSandbox] = {}
         # (user_id, thread_id, skills_root) -> sandbox id for fast in-process
         # lookup. The provider snapshots the root at startup, but keeping it in
@@ -1281,7 +1281,7 @@ class E2BSandboxProvider(SandboxProvider):
             self._complete_reserved_remote_op(sandbox_id, remote_destroyed=remote_destroyed)
             raise
 
-        # Materialise DeerFlow's virtual path layout (/mnt/user-data/...) inside
+        # Materialise Agent Workspace's virtual path layout (/mnt/user-data/...) inside
         # the e2b VM. Without this step shell commands the agent emits — which
         # use the same /mnt/user-data prefix as LocalSandbox / AioSandbox — fail
         # with PermissionError because /mnt is owned by root in the e2b
@@ -1882,7 +1882,7 @@ class E2BSandboxProvider(SandboxProvider):
         return None, True
 
     def _bootstrap_sandbox_paths(self, client: E2BClientSandbox) -> None:
-        """Materialise DeerFlow's virtual path layout inside the e2b VM.
+        """Materialise Agent Workspace's virtual path layout inside the e2b VM.
 
         The local / docker sandboxes expose ``/mnt/user-data/{workspace,uploads,
         outputs}`` and ``/mnt/acp-workspace`` as writable directories, and the
@@ -2119,7 +2119,7 @@ class E2BSandboxProvider(SandboxProvider):
         # modify the marker and replace category directories between turns.
         # Rebuild on every policy sync so the no-follow root check and managed
         # directory replacement always run before the sandbox is handed out.
-        marker_path = f"{skills_root}/.deerflow-projection-signature"
+        marker_path = f"{skills_root}/.agent_workspace-projection-signature"
 
         category_paths = [
             f"{skills_root}/public",
@@ -2238,7 +2238,7 @@ class E2BSandboxProvider(SandboxProvider):
     ) -> None:
         """Mirror agent artifacts from the e2b VM back to host thread dirs.
 
-        DeerFlow's ``/api/threads/{tid}/artifacts/...`` endpoint resolves
+        Agent Workspace's ``/api/threads/{tid}/artifacts/...`` endpoint resolves
         files against the host-side per-thread ``user-data/`` tree (see
         :meth:`Paths.sandbox_outputs_dir`). LocalSandbox writes there
         directly via path mappings, so the endpoint just works for the

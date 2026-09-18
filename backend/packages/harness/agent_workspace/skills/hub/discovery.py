@@ -47,9 +47,9 @@ class SkillsHub:
 
     def __init__(self, root_dir: Path | str | None = None):
         root = Path(root_dir or Path.cwd())
-        self.hub_dir = root / ".deerflow" / "hub"
+        self.hub_dir = root / ".agent_workspace" / "hub"
         self.lock_file = self.hub_dir / "lock.json"
-        self.installed_skills_dir = root / ".deerflow" / "skills"
+        self.installed_skills_dir = root / ".agent_workspace" / "skills"
         self._catalog: dict[str, SkillPackage] = {pkg.name: pkg for pkg in self.DEFAULT_CATALOG}
         self._auditor = get_skill_ast_auditor()
 

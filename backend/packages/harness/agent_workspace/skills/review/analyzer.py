@@ -24,7 +24,7 @@ from agent_workspace.skills.review.resource_graph import build_resource_graph
 from agent_workspace.skills.skillscan.orchestrator import scan_skill_dir
 
 
-def analyze_skill_package(snapshot: dict[str, Any], *, profile: ProfileName = "deerflow") -> dict[str, Any]:
+def analyze_skill_package(snapshot: dict[str, Any], *, profile: ProfileName = "agent_workspace") -> dict[str, Any]:
     """Produce review-facts.v1 from a PackageSnapshot."""
     findings: list[dict[str, Any]] = []
     analyzer_errors: list[dict[str, Any]] = []
@@ -168,7 +168,7 @@ def _analyze_skill_md(content: str, *, profile: ProfileName, findings: list[dict
                 severity="warning",
                 path="SKILL.md",
                 message=f"Unknown frontmatter field(s): {', '.join(unexpected)}",
-                remediation="Remove unsupported fields or add them to the shared DeerFlow frontmatter schema.",
+                remediation="Remove unsupported fields or add them to the shared Agent Workspace frontmatter schema.",
                 evidence=unexpected,
             )
         )
@@ -214,7 +214,7 @@ def _analyze_skill_md(content: str, *, profile: ProfileName, findings: list[dict
                 "structure.description-too-long",
                 severity="error",
                 path="SKILL.md",
-                message="Description exceeds DeerFlow's 1024 character limit.",
+                message="Description exceeds Agent Workspace's 1024 character limit.",
                 remediation="Shorten the description and move detailed guidance into the body.",
             )
         )
@@ -321,7 +321,7 @@ def _scan_with_skillscan(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
             make_finding(
                 str(finding.get("rule_id")),
                 source="skillscan",
-                profile="deerflow",
+                profile="agent_workspace",
                 severity=severity,
                 path=finding.get("file"),
                 line=finding.get("line"),

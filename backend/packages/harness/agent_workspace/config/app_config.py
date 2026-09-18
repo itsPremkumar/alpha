@@ -169,9 +169,9 @@ def logging_level_from_config(name: str | None) -> int:
 
 
 def apply_logging_level(name: str | None) -> None:
-    """Resolve *name* to a logging level and apply it to the ``deerflow``/``app`` logger hierarchies.
+    """Resolve *name* to a logging level and apply it to the ``agent_workspace``/``app`` logger hierarchies.
 
-    Only the ``deerflow`` and ``app`` logger levels are changed so that
+    Only the ``agent_workspace`` and ``app`` logger levels are changed so that
     third-party library verbosity (e.g. uvicorn, sqlalchemy) is not
     affected. Root handler levels are lowered (never raised) so that
     messages from the configured loggers can propagate through without
@@ -187,13 +187,13 @@ def apply_logging_level(name: str | None) -> None:
 
 
 class AppConfig(BaseModel):
-    """Config for the DeerFlow application"""
+    """Config for the Agent Workspace application"""
 
     log_level: str = Field(
         default="info",
         description=format_field_description(
             "log_level",
-            field_doc="Logging level for deerflow and app modules (debug/info/warning/error); third-party libraries are not affected.",
+            field_doc="Logging level for agent_workspace and app modules (debug/info/warning/error); third-party libraries are not affected.",
         ),
     )
     logging: LoggingConfig = Field(
@@ -668,8 +668,8 @@ _app_config_path: Path | None = None
 _app_config_mtime: float | None = None
 _app_config_signature: _ConfigSignature | None = None
 _app_config_is_custom = False
-_current_app_config: ContextVar[AppConfig | None] = ContextVar("deerflow_current_app_config", default=None)
-_current_app_config_stack: ContextVar[tuple[AppConfig | None, ...]] = ContextVar("deerflow_current_app_config_stack", default=())
+_current_app_config: ContextVar[AppConfig | None] = ContextVar("agent_workspace_current_app_config", default=None)
+_current_app_config_stack: ContextVar[tuple[AppConfig | None, ...]] = ContextVar("agent_workspace_current_app_config_stack", default=())
 
 
 def _get_config_mtime(config_path: Path) -> float | None:
@@ -694,7 +694,7 @@ def _load_and_cache_app_config(config_path: str | None = None) -> AppConfig:
 
 
 def get_app_config() -> AppConfig:
-    """Get the DeerFlow config instance.
+    """Get the Agent Workspace config instance.
 
     Returns a cached singleton instance and automatically reloads it when the
     underlying config file path or content signature changes. Use

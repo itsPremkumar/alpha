@@ -8,7 +8,7 @@ package top only carries the contract + factory + thin entry points.
 
 from .deer_mem import DeerMem
 
-#: The :class:`~deerflow.agents.memory.manager.MemoryManager` subclass this
+#: The :class:`~agent_workspace.agents.memory.manager.MemoryManager` subclass this
 #: backend exposes. Discovered by the factory's ``_scan_backends`` drop-in
 #: mechanism under the folder name ``deermem``.
 MANAGER_CLASS = DeerMem

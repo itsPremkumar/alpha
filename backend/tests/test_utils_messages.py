@@ -1,4 +1,4 @@
-"""Tests for deerflow.utils.messages text extraction.
+"""Tests for agent_workspace.utils.messages text extraction.
 
 ``message_to_text`` is the shared extractor that ``RunJournal._message_text``
 (BaseMessage, with ``.text`` fallback) and the gateway thread-messages helper

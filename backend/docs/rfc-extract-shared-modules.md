@@ -2,7 +2,7 @@
 
 ## 1. Problem
 
-Gateway (`app/gateway/routers/skills.py`, `uploads.py`) and Client (`deerflow/client.py`) each independently implement the same business logic:
+Gateway (`app/gateway/routers/skills.py`, `uploads.py`) and Client (`agent_workspace/client.py`) each independently implement the same business logic:
 
 ### Skill Installation
 
@@ -36,11 +36,11 @@ Gateway (`app/gateway/routers/skills.py`, `uploads.py`) and Client (`deerflow/cl
 
 ```
 app.gateway.routers.skills  ──┐
-app.gateway.routers.uploads ──┤── calls ──→  deerflow.skills.installer
-deerflow.client             ──┘              deerflow.uploads.manager
+app.gateway.routers.uploads ──┤── calls ──→  agent_workspace.skills.installer
+agent_workspace.client             ──┘              agent_workspace.uploads.manager
 ```
 
-- Shared modules live in the harness layer (`deerflow.*`), pure business logic, no FastAPI dependency
+- Shared modules live in the harness layer (`agent_workspace.*`), pure business logic, no FastAPI dependency
 - Gateway handles HTTP adaptation (`UploadFile` → bytes, exceptions → `HTTPException`)
 - Client handles local adaptation (`Path` → copy, exceptions → Python exceptions)
 - Satisfies `test_harness_boundary.py` constraint: harness never imports app
@@ -58,7 +58,7 @@ Replaces stringly-typed routing (`"already exists" in str(e)`) with typed except
 
 ## 3. New Modules
 
-### 3.1 `deerflow.skills.installer`
+### 3.1 `agent_workspace.skills.installer`
 
 ```python
 # Safety checks
@@ -84,7 +84,7 @@ install_skill_from_archive(zip_path, *, skills_root=None) -> dict
 class SkillAlreadyExistsError(ValueError)
 ```
 
-### 3.2 `deerflow.uploads.manager`
+### 3.2 `agent_workspace.uploads.manager`
 
 ```python
 # Directory management
@@ -132,7 +132,7 @@ enrich_file_listing(result, thread_id) -> dict     # Adds URLs, stringifies size
 
 ### 4.2 Client Slimming
 
-**`deerflow/client.py`**:
+**`agent_workspace/client.py`**:
 - Remove `_get_uploads_dir` static method
 - Remove ~50 lines of inline zip handling in `install_skill`
 - `install_skill` delegates to `install_skill_from_archive()`
@@ -169,14 +169,14 @@ Read paths no longer have `mkdir` side effects — non-existent directories retu
 
 | Alternative | Why Not |
 |-------------|---------|
-| Keep logic in Gateway, Client calls Gateway via HTTP | Adds network dependency to embedded Client; defeats the purpose of `DeerFlowClient` as an in-process API |
+| Keep logic in Gateway, Client calls Gateway via HTTP | Adds network dependency to embedded Client; defeats the purpose of `AgentWorkspaceClient` as an in-process API |
 | Abstract base class with Gateway/Client subclasses | Over-engineered for what are pure functions; no polymorphism needed |
 | Move everything into `client.py` and have Gateway import it | Violates harness/app boundary — Client is in harness, but Gateway-specific models (Pydantic response types) should stay in app layer |
 | Merge Gateway and Client into one module | They serve different consumers (HTTP vs in-process) with different adaptation needs |
 
 ## 7. Breaking Changes
 
-**None.** All public APIs (Gateway HTTP endpoints, `DeerFlowClient` methods) retain their existing signatures and return formats. The `SkillAlreadyExistsError` is a subclass of `ValueError`, so existing `except ValueError` handlers still catch it.
+**None.** All public APIs (Gateway HTTP endpoints, `AgentWorkspaceClient` methods) retain their existing signatures and return formats. The `SkillAlreadyExistsError` is a subclass of `ValueError`, so existing `except ValueError` handlers still catch it.
 
 ## 8. Tests
 

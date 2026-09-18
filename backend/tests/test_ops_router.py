@@ -24,7 +24,7 @@ def test_ops_version_returns_service_and_version(monkeypatch) -> None:
         response = client.get("/api/ops/version")
 
     assert response.status_code == 200
-    assert response.json() == {"service": "deer-flow-gateway", "version": "2.1.0"}
+    assert response.json() == {"service": "agent-workspace-gateway", "version": "2.1.0"}
 
 
 def test_ops_version_falls_back_to_unknown_without_package_metadata(monkeypatch) -> None:
@@ -44,7 +44,7 @@ def test_ops_status_returns_runtime_health(monkeypatch) -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["service"] == "deer-flow-gateway"
+    assert payload["service"] == "agent-workspace-gateway"
     assert payload["status"] == "ok"
     assert isinstance(payload["uptime_seconds"], int)
     assert payload["uptime_seconds"] >= 0

@@ -24,7 +24,7 @@ export async function fetchThreads(limit = 100): Promise<Thread[]> {
       // Backend-owned bot association (thread metadata + assistant link).
       botName: t.metadata?.bot_name || t.bot_name || null,
       assistantId: t.assistant_id || null,
-      projectId: t.metadata?.deerflow_project_id || t.project_id || null,
+      projectId: t.metadata?.agent_workspace_project_id || t.project_id || null,
     }));
   } catch (err) {
     console.error("Failed to fetch threads:", err);

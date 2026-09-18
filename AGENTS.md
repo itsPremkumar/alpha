@@ -12,9 +12,9 @@ guide rather than expecting full detail here:
 - **[frontend/AGENTS.md](frontend/AGENTS.md)** — frontend depth: Next.js App Router layout,
   thread/streaming data flow, code style, commands.
 
-## What is DeerFlow
+## What is Agent Workspace
 
-DeerFlow is a LangGraph-based AI super-agent system with a full-stack architecture. The
+Agent Workspace is a LangGraph-based AI super-agent system with a full-stack architecture. The
 backend runs a "super agent" with sandboxed execution, persistent memory, subagent
 delegation, and extensible tools (built-in, MCP, community), all per-thread isolated. The
 frontend is a Next.js chat UI. External IM platforms (Feishu, Slack, Telegram, Discord,
@@ -60,7 +60,7 @@ both compose files.
 ## Repository Map
 
 ```
-deer-flow/
+agent-workspace/
 ├── Makefile                        # Root orchestration: drives the full stack (dev/start/stop, docker, setup)
 ├── config.example.yaml             # Template → copy to config.yaml (gitignored) at repo root
 ├── extensions_config.example.json  # Template → copy to extensions_config.json (gitignored): MCP servers + skills
@@ -76,7 +76,7 @@ deer-flow/
 │                                    # Managed integration skill packs are global at .agent-workspace/integrations/skills/{provider}/
 │                                    # Integration credentials and enabled state remain per-user
 ├── contracts/                      # Cross-component JSON contracts (e.g. subagent status, skill review)
-├── examples/deerflow-extension-example/ # Standalone package demonstrating all extension contribution kinds
+├── examples/agent-workspace-extension-example/ # Standalone package demonstrating all extension contribution kinds
 ├── scripts/                        # Root orchestration scripts invoked by the Makefile (check, configure, doctor, support_bundle, serve, nginx, docker, deploy, setup_wizard)
 ├── tests/                          # Root-level tests (currently tests/skills/ — public skill tests)
 └── docs/                           # Cross-cutting docs, plans, and design notes
@@ -86,8 +86,8 @@ Third-party extensions are loaded from a top-level `plugins:` list in `config.ya
 (operator-controlled on purpose — that list causes code to be imported, so it is deliberately
 kept out of the API-writable `extensions_config.json`). Packaged extensions can contribute
 middleware, task lifecycle, system-model observers, Gateway services, and FastAPI HTTP
-routers; the [reference extension](examples/deerflow-extension-example/) demonstrates all
-five. Manage them with `deerflow extensions install/upgrade/list/enable/disable/remove` or the root
+routers; the [reference extension](examples/agent-workspace-extension-example/) demonstrates all
+five. Manage them with `agent_workspace extensions install/upgrade/list/enable/disable/remove` or the root
 `make extension-*` wrappers. Every mutation requires a Gateway restart, and both build
 hooks and extension code execute with Gateway privileges, so only trusted operator sources
 belong in this path. The manager transaction, accepted source forms, lock discipline, and

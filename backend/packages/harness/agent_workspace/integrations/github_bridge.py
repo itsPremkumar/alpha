@@ -122,7 +122,7 @@ class GitHubWorkforceBridge:
         elif event_type in ("issue_comment", "pull_request_review_comment") and action in ("created", "opened"):
             comment = payload.get("comment", {})
             body = comment.get("body", "")
-            if "@deerflow" in body.lower():
+            if "@agent_workspace" in body.lower():
                 record.update({
                     "status": "workforce_mention_dispatched",
                     "comment_author": comment.get("user", {}).get("login"),

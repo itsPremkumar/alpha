@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Generate the DeerFlow desktop icon (512x512 PNG) from pure SVG shapes.
+ * Generate the Agent Workspace desktop icon (512x512 PNG) from pure SVG shapes.
  *
  * The repo's deer.svg illustration does not rasterize usefully outside a
  * browser, so the desktop icon is a geometric "flow orbit" mark on the app's

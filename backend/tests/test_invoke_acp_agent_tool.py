@@ -128,7 +128,7 @@ def test_missing_mcode_command_returns_install_and_login_guidance():
 
     assert "npm install --global @minimax-ai/code" in result
     assert "mcode login" in result
-    assert "restart DeerFlow" in result
+    assert "restart Agent Workspace" in result
 
 
 @pytest.mark.anyio

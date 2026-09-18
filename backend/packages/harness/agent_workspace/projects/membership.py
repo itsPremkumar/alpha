@@ -31,7 +31,7 @@ def _default_storage_path() -> Path:
 
         return runtime_home() / _DEFAULT_DIR / "membership.json"
     except Exception:
-        return Path.cwd() / ".deerflow" / _DEFAULT_DIR / "membership.json"
+        return Path.cwd() / ".agent_workspace" / _DEFAULT_DIR / "membership.json"
 
 
 @dataclass

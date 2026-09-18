@@ -1,6 +1,6 @@
 """Who produced a message, declared by the producer.
 
-DeerFlow's middleware chain injects and rewrites messages: a date reminder, a
+Agent Workspace's middleware chain injects and rewrites messages: a date reminder, a
 recalled-memory block, a compaction summary, a durable-context data block, an
 image payload, an activated skill body. By the time any of those reach the
 model-call boundary, the component that produced them is no longer recoverable
@@ -21,9 +21,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-MESSAGE_CONTENT_KIND_KEY = "deerflow_content_kind"
-MESSAGE_PRODUCER_KIND_KEY = "deerflow_producer_kind"
-MESSAGE_PRODUCER_ENTITY_ID_KEY = "deerflow_producer_entity_id"
+MESSAGE_CONTENT_KIND_KEY = "agent_workspace_content_kind"
+MESSAGE_PRODUCER_KIND_KEY = "agent_workspace_producer_kind"
+MESSAGE_PRODUCER_ENTITY_ID_KEY = "agent_workspace_producer_entity_id"
 
 #: Every key this contract owns. The host treats all of them as server-owned and
 #: strips caller-supplied values from untrusted input.

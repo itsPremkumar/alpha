@@ -2,7 +2,7 @@
 
 Checks ``authorize("sandbox", "execute")`` before sandbox use so a role-scoped
 policy can deny sandbox execution entirely. On deny, a
-:class:`~deerflow.sandbox.exceptions.SandboxAuthorizationError` propagates up
+:class:`~agent_workspace.sandbox.exceptions.SandboxAuthorizationError` propagates up
 through the tool's execution; the agent's tool-error handling converts it to a
 friendly ``ToolMessage`` ("sandbox not permitted for your role") rather than
 crashing the run (RFC §9).

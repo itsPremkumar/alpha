@@ -1,11 +1,11 @@
 """Unified database backend configuration.
 
-Controls BOTH the LangGraph checkpointer and the DeerFlow application
+Controls BOTH the LangGraph checkpointer and the Agent Workspace application
 persistence layer (runs, threads metadata, users, etc.). The user
 configures one backend; the system handles physical separation details.
 
 SQLite mode: checkpointer and app share a single .db file
-({sqlite_dir}/deerflow.db) with WAL journal mode enabled on every
+({sqlite_dir}/agent_workspace.db) with WAL journal mode enabled on every
 connection. WAL allows concurrent readers and a single writer without
 blocking, making a unified file safe for both workloads.  Writers
 that contend for the lock wait via the default 5-second sqlite3
@@ -167,14 +167,14 @@ class DatabaseConfig(BaseModel):
     )
     sqlite_dir: str = Field(
         default=".agent-workspace/data",
-        description=("Directory for the SQLite database file. Both checkpointer and application data share {sqlite_dir}/deerflow.db."),
+        description=("Directory for the SQLite database file. Both checkpointer and application data share {sqlite_dir}/agent_workspace.db."),
     )
     postgres_url: str = Field(
         default="",
         description=(
             "PostgreSQL connection URL, shared by checkpointer and app. "
             "Use $DATABASE_URL in config.yaml to reference .env. "
-            "Example: postgresql://user:pass@host:5432/deerflow "
+            "Example: postgresql://user:pass@host:5432/agent_workspace "
             "(the +asyncpg driver suffix is added automatically where needed)."
         ),
     )

@@ -115,13 +115,11 @@ install:
 	@echo ""
 
 extension-install: export AGENT_WORKSPACE_EXTENSION_SOURCE := $(value SOURCE)
-extension-install: export DEER_FLOW_EXTENSION_SOURCE := $(value SOURCE)
 extension-install:
 	$(if $(and $(filter command line,$(origin SOURCE)),$(strip $(value SOURCE))),,$(error usage: make extension-install SOURCE=<package|git-url|dir>))
 	@cd backend && uv run --frozen --no-group extensions agent-workspace extensions install --source-env __agent_workspace_extension_source__
 
 extension-upgrade: export AGENT_WORKSPACE_EXTENSION_SOURCE := $(value SOURCE)
-extension-upgrade: export DEER_FLOW_EXTENSION_SOURCE := $(value SOURCE)
 extension-upgrade:
 	$(if $(and $(filter command line,$(origin SOURCE)),$(strip $(value SOURCE))),,$(error usage: make extension-upgrade SOURCE=<package|git-url|dir>))
 	@cd backend && uv run --frozen --no-group extensions agent-workspace extensions upgrade --source-env __agent_workspace_extension_source__
@@ -130,19 +128,16 @@ extension-list:
 	@cd backend && uv run --frozen --no-group extensions agent-workspace extensions list
 
 extension-enable: export AGENT_WORKSPACE_EXTENSION_NAME := $(value NAME)
-extension-enable: export DEER_FLOW_EXTENSION_NAME := $(value NAME)
 extension-enable:
 	$(if $(and $(filter command line,$(origin NAME)),$(strip $(value NAME))),,$(error usage: make extension-enable NAME=<extension>))
 	@cd backend && uv run --frozen --no-group extensions agent-workspace extensions enable --name-env __agent_workspace_extension_name__
 
 extension-disable: export AGENT_WORKSPACE_EXTENSION_NAME := $(value NAME)
-extension-disable: export DEER_FLOW_EXTENSION_NAME := $(value NAME)
 extension-disable:
 	$(if $(and $(filter command line,$(origin NAME)),$(strip $(value NAME))),,$(error usage: make extension-disable NAME=<extension>))
 	@cd backend && uv run --frozen --no-group extensions agent-workspace extensions disable --name-env __agent_workspace_extension_name__
 
 extension-remove: export AGENT_WORKSPACE_EXTENSION_NAME := $(value NAME)
-extension-remove: export DEER_FLOW_EXTENSION_NAME := $(value NAME)
 extension-remove:
 	$(if $(and $(filter command line,$(origin NAME)),$(strip $(value NAME))),,$(error usage: make extension-remove NAME=<extension>))
 	@cd backend && uv run --frozen --no-group extensions agent-workspace extensions remove --name-env __agent_workspace_extension_name__
@@ -184,7 +179,7 @@ stop:
 # Clean up
 clean: stop
 	@echo "Cleaning up..."
-	@-rm -rf backend/.agent-workspace backend/.deer-flow 2>/dev/null || true
+	@-rm -rf backend/.agent-workspace 2>/dev/null || true
 	@-rm -rf logs/*.log 2>/dev/null || true
 	@echo "✓ Cleanup complete"
 

@@ -20,7 +20,7 @@ def test_compaction_watchdog_prefix_preservation():
     watchdog = CompactionWatchdog()
 
     messages = [
-        {"role": "system", "content": "You are DeerFlow.", "pinned": True},
+        {"role": "system", "content": "You are Agent Workspace.", "pinned": True},
         {"role": "user", "content": "Turn 1 request"},
         {"role": "assistant", "content": "Turn 1 answer"},
         {"role": "user", "content": "Turn 2 request"},
@@ -35,7 +35,7 @@ def test_compaction_watchdog_prefix_preservation():
 
     # Prefix preserved
     assert compacted[0]["role"] == "system"
-    assert compacted[0]["content"] == "You are DeerFlow."
+    assert compacted[0]["content"] == "You are Agent Workspace."
 
     # Compacted middle summary message inserted
     assert compacted[1]["role"] == "system"

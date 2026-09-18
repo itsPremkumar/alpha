@@ -21,8 +21,8 @@ _cache_generation = 0
 
 # Cache-invalidation key for the resolved extensions config file. We track the
 # resolved path *and* a ``(mtime, size, sha256)`` content signature — via the
-# shared ``deerflow.config.file_signature`` helper also used by
-# ``deerflow.config.app_config`` for the sibling runtime-editable config file —
+# shared ``agent_workspace.config.file_signature`` helper also used by
+# ``agent_workspace.config.app_config`` for the sibling runtime-editable config file —
 # rather than only the mtime. A strict mtime ``>`` comparison misses same-second
 # edits and mtime that stays put or moves backward (object-store / network
 # mounts, ``git checkout``, ``cp -p`` / backup restore, ``tar`` / ``rsync`` that

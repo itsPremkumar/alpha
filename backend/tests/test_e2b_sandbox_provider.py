@@ -281,7 +281,7 @@ def _make_provider(
     provider._ownership_config = SimpleNamespace(
         renewal_interval_seconds=60.0,
         ttl_multiplier=4.0,
-        key_prefix="deerflow:test",
+        key_prefix="agent_workspace:test",
     )
     provider._deployment_capacity = None
     provider._owned_sandbox_ids = set()
@@ -318,7 +318,7 @@ def _install_shared_deployment_capacity(
     reserve_results: list[ReserveStatus] | None = None,
 ) -> MagicMock:
     store = MagicMock()
-    store.key = "deerflow:test:e2b-capacity"
+    store.key = "agent_workspace:test:e2b-capacity"
     store.revision.return_value = 0
     store.reserve.return_value = ReserveStatus.GRANTED
     store.reconcile.return_value = True
@@ -438,7 +438,7 @@ def test_sync_agent_skills_rebuilds_managed_remote_tree_despite_matching_legacy_
     files = FakeFilesAPI(
         {
             "/mnt/skills/public/excluded-skill/SKILL.md": b"excluded",
-            "/mnt/skills/.deerflow-projection-signature": legacy_signature.encode(),
+            "/mnt/skills/.agent_workspace-projection-signature": legacy_signature.encode(),
             "/mnt/skills/unmanaged.txt": b"keep",
         }
     )
@@ -452,7 +452,7 @@ def test_sync_agent_skills_rebuilds_managed_remote_tree_despite_matching_legacy_
             "/mnt/skills/custom",
             "/mnt/skills/legacy",
             "/mnt/skills/integrations",
-            "/mnt/skills/.deerflow-projection-signature",
+            "/mnt/skills/.agent_workspace-projection-signature",
         )
         for managed_path in managed_paths:
             assert managed_path in command
@@ -485,7 +485,7 @@ def test_sync_agent_skills_rebuilds_managed_remote_tree_despite_matching_legacy_
     assert "/mnt/skills/public/excluded-skill/SKILL.md" not in files.store
     assert files.store["/mnt/skills/public/allowed-skill/SKILL.md"].startswith(b"---")
     assert files.store["/mnt/skills/unmanaged.txt"] == b"keep"
-    assert "/mnt/skills/.deerflow-projection-signature" not in files.store
+    assert "/mnt/skills/.agent_workspace-projection-signature" not in files.store
     assert files.read_calls == []
     first_command_count = len(commands.calls)
     first_write_count = len(files.write_calls)
@@ -626,7 +626,7 @@ def test_sync_agent_skills_serializes_reset_and_upload_for_same_thread(
         "/boot",
         "/dev",
         "/etc",
-        "/etc/deerflow-skills",
+        "/etc/agent-workspace-skills",
         "/lib",
         "/lib32",
         "/lib64",
@@ -643,9 +643,9 @@ def test_sync_agent_skills_serializes_reset_and_upload_for_same_thread(
         "/sys",
         "/tmp",
         "/usr",
-        "/usr/local/deerflow-skills",
+        "/usr/local/agent-workspace-skills",
         "/var",
-        "/var/lib/deerflow-skills",
+        "/var/lib/agent-workspace-skills",
     ],
 )
 def test_sync_agent_skills_rejects_unsafe_reset_roots_before_remote_access(
@@ -767,7 +767,7 @@ def test_sync_agent_skills_rejects_symlinked_remote_root_before_deleting(
         commands=FakeCommandsAPI([reject_symlinked_root]),
         files=FakeFilesAPI(
             {
-                "/mnt/skills/.deerflow-projection-signature": legacy_signature.encode(),
+                "/mnt/skills/.agent_workspace-projection-signature": legacy_signature.encode(),
             }
         ),
     )
@@ -844,7 +844,7 @@ def test_sync_agent_skills_leaves_no_signature_after_upload_failure(
             projection=projection,
         )
 
-    assert "/mnt/skills/.deerflow-projection-signature" not in client.files.store
+    assert "/mnt/skills/.agent_workspace-projection-signature" not in client.files.store
 
 
 def test_upload_tree_streams_file_contents(tmp_path):
@@ -2136,10 +2136,10 @@ def _info(
     return SimpleNamespace(
         sandbox_id=sandbox_id,
         metadata={
-            "deer_flow_provider": "e2b_sandbox_provider",
-            "deer_flow_user": user_id,
-            "deer_flow_thread": thread_id,
-            "deer_flow_skills_root": skills_container_path,
+            "agent_workspace_provider": "e2b_sandbox_provider",
+            "agent_workspace_user": user_id,
+            "agent_workspace_thread": thread_id,
+            "agent_workspace_skills_root": skills_container_path,
         },
     )
 
@@ -2159,7 +2159,7 @@ def test_create_metadata_records_the_snapshotted_skills_root(monkeypatch):
 
     provider.acquire("t1", user_id="u1")
 
-    assert fake_cls.create_calls[0]["metadata"]["deer_flow_skills_root"] == "/custom-skills"
+    assert fake_cls.create_calls[0]["metadata"]["agent_workspace_skills_root"] == "/custom-skills"
 
 
 def test_discover_remote_sandbox_walks_paginator(monkeypatch):
@@ -2418,7 +2418,7 @@ def test_reconcile_kills_metadata_orphan_only_after_ttl(monkeypatch):
     fake_cls.list_return = [
         SimpleNamespace(
             sandbox_id="sb-orphan",
-            metadata={"deer_flow_provider": "e2b_sandbox_provider"},
+            metadata={"agent_workspace_provider": "e2b_sandbox_provider"},
         )
     ]
     client = FakeClient(sandbox_id="sb-orphan")
@@ -3684,11 +3684,11 @@ def test_deployment_capacity_reserves_commits_and_rejects_globally(monkeypatch) 
         gateway_b.acquire("thread-b", user_id="user-b")
 
     metadata = sdk_a.create_calls[0]["metadata"]
-    assert metadata["deer_flow_capacity_ledger"] == store.key
-    assert metadata["deer_flow_capacity_reservation"]
+    assert metadata["agent_workspace_capacity_ledger"] == store.key
+    assert metadata["agent_workspace_capacity_reservation"]
     store.track.assert_called_once_with(
         sandbox_id,
-        reservation_token=metadata["deer_flow_capacity_reservation"],
+        reservation_token=metadata["agent_workspace_capacity_reservation"],
     )
     assert len(sdk_a.create_calls) == 1
     assert sdk_b.create_calls == []
@@ -3717,20 +3717,20 @@ def test_discovery_uses_sdk_query_and_tracks_without_reserving(monkeypatch) -> N
     entry = SimpleNamespace(
         sandbox_id="sandbox-existing",
         metadata={
-            "deer_flow_provider": "e2b_sandbox_provider",
-            "deer_flow_user": "user-a",
-            "deer_flow_thread": "thread-a",
-            "deer_flow_skills_root": "/mnt/skills",
-            "deer_flow_capacity_ledger": store.key,
+            "agent_workspace_provider": "e2b_sandbox_provider",
+            "agent_workspace_user": "user-a",
+            "agent_workspace_thread": "thread-a",
+            "agent_workspace_skills_root": "/mnt/skills",
+            "agent_workspace_capacity_ledger": store.key,
         },
     )
     expected_query = {
         key: entry.metadata[key]
         for key in (
-            "deer_flow_provider",
-            "deer_flow_user",
-            "deer_flow_thread",
-            "deer_flow_skills_root",
+            "agent_workspace_provider",
+            "agent_workspace_user",
+            "agent_workspace_thread",
+            "agent_workspace_skills_root",
         )
     }
     sdk.list_return = SimpleNamespace(
@@ -3754,16 +3754,16 @@ def test_reconciliation_repairs_crash_and_uses_safe_reservation_age(monkeypatch)
         {
             "sandbox_id": "sandbox-existing",
             "metadata": {
-                "deer_flow_provider": "e2b_sandbox_provider",
-                "deer_flow_capacity_ledger": store.key,
-                "deer_flow_capacity_reservation": "reservation-crashed",
+                "agent_workspace_provider": "e2b_sandbox_provider",
+                "agent_workspace_capacity_ledger": store.key,
+                "agent_workspace_capacity_reservation": "reservation-crashed",
             },
         },
         {
             "sandbox_id": "sandbox-other-deployment",
             "metadata": {
-                "deer_flow_provider": "e2b_sandbox_provider",
-                "deer_flow_capacity_ledger": "deerflow:other:e2b-capacity",
+                "agent_workspace_provider": "e2b_sandbox_provider",
+                "agent_workspace_capacity_ledger": "agent_workspace:other:e2b-capacity",
             },
         },
     ]
@@ -4873,10 +4873,10 @@ def test_discovery_reports_busy_capacity_without_killing_remote_vm(monkeypatch):
         SimpleNamespace(
             sandbox_id="sb-remote",
             metadata={
-                "deer_flow_provider": "e2b_sandbox_provider",
-                "deer_flow_user": "u2",
-                "deer_flow_thread": "t2",
-                "deer_flow_skills_root": "/mnt/skills",
+                "agent_workspace_provider": "e2b_sandbox_provider",
+                "agent_workspace_user": "u2",
+                "agent_workspace_thread": "t2",
+                "agent_workspace_skills_root": "/mnt/skills",
             },
         )
     ]
@@ -4899,10 +4899,10 @@ def test_discovery_reports_shutdown_without_killing_remote_vm(monkeypatch, caplo
         SimpleNamespace(
             sandbox_id=client.sandbox_id,
             metadata={
-                "deer_flow_provider": "e2b_sandbox_provider",
-                "deer_flow_user": "u1",
-                "deer_flow_thread": "t1",
-                "deer_flow_skills_root": "/mnt/skills",
+                "agent_workspace_provider": "e2b_sandbox_provider",
+                "agent_workspace_user": "u1",
+                "agent_workspace_thread": "t1",
+                "agent_workspace_skills_root": "/mnt/skills",
             },
         )
     ]
@@ -4937,10 +4937,10 @@ def test_discovery_bootstrap_kill_failure_retains_reserved_slot(monkeypatch):
         SimpleNamespace(
             sandbox_id=client.sandbox_id,
             metadata={
-                "deer_flow_provider": "e2b_sandbox_provider",
-                "deer_flow_user": "u1",
-                "deer_flow_thread": "t1",
-                "deer_flow_skills_root": "/mnt/skills",
+                "agent_workspace_provider": "e2b_sandbox_provider",
+                "agent_workspace_user": "u1",
+                "agent_workspace_thread": "t1",
+                "agent_workspace_skills_root": "/mnt/skills",
             },
         )
     ]
@@ -4972,10 +4972,10 @@ def test_shutdown_does_not_retry_kill_for_unowned_discovery_vm(monkeypatch):
         SimpleNamespace(
             sandbox_id=client.sandbox_id,
             metadata={
-                "deer_flow_provider": "e2b_sandbox_provider",
-                "deer_flow_user": "u1",
-                "deer_flow_thread": "t1",
-                "deer_flow_skills_root": "/mnt/skills",
+                "agent_workspace_provider": "e2b_sandbox_provider",
+                "agent_workspace_user": "u1",
+                "agent_workspace_thread": "t1",
+                "agent_workspace_skills_root": "/mnt/skills",
             },
         )
     ]
@@ -5017,10 +5017,10 @@ def test_shutdown_during_discovery_does_not_kill_unowned_vm(monkeypatch):
         SimpleNamespace(
             sandbox_id=client.sandbox_id,
             metadata={
-                "deer_flow_provider": "e2b_sandbox_provider",
-                "deer_flow_user": "u1",
-                "deer_flow_thread": "t1",
-                "deer_flow_skills_root": "/mnt/skills",
+                "agent_workspace_provider": "e2b_sandbox_provider",
+                "agent_workspace_user": "u1",
+                "agent_workspace_thread": "t1",
+                "agent_workspace_skills_root": "/mnt/skills",
             },
         )
     ]

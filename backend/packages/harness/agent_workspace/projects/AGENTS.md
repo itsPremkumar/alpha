@@ -1,4 +1,4 @@
-# `deerflow.projects` — project workforce layer
+# `agent_workspace.projects` — project workforce layer
 
 Agents are reusable workers; projects are shared workspaces; assignment is a
 temporary relationship (`membership.py`). One canonical state per project is
