@@ -37,6 +37,9 @@ High-level architectural blueprints, unified runtimes, and system topology desig
 - **[Swarm Agent Harness Architecture](./01-architectures/swarm-agent-harness-architecture.md)**: Decentralized multi-agent swarm coordination, consensus voting, and distributed task routing.
 - **[Zero-Cost High-End Architecture](./01-architectures/zero-cost-high-end-architecture.md)**: Blueprint for building enterprise-grade agent capabilities using open-weights models and local infrastructure.
 - **[Alpha Next-Gen Harness Innovations & Design Proposals](./01-architectures/alpha-nextgen-agent-harness-innovations-and-design-proposals.md)**: Proprietary architectural innovations synthesizing Dual-Scale AST Repo Twins, Speculative Multi-Drafting, Canary Shadow Execution, and L0-L8 Cognitive Memory Dreaming.
+- **[Swarm Intelligence, Blackboard Federation, and Consensus for 1,000+ Agent Networks](./01-architectures/swarm-consensus-and-blackboard-federation.md)**: Scaling multi-agent coordination beyond small teams using partitioned blackboards, Contract Net Protocol (CNP) auctions, Bayesian expertise consensus, and digital stigmergy.
+- **[Enterprise Model Context Protocol (MCP) Architecture & Secure Tool Orchestration](./01-architectures/enterprise-mcp-and-secure-tool-orchestration.md)**: Universal open protocol for tools and resources, zero-trust RBAC, mTLS remote transport, semantic tool retrieval, and audit logging.
+- **[Advanced Tree-Sitter AST Codebase Indexing, Symbol Graphs, and PageRank Retrieval](./01-architectures/advanced-tree-sitter-ast-codebase-indexing.md)**: Concrete syntax tree (CST) extraction, cross-file symbol dependency graphs, Personalized PageRank (PPR), and compact context-budget repo map packing.
 
 ---
 
@@ -67,6 +70,9 @@ Safe, bounded self-modification, mutation verification gates, and recursive opti
 - **[Self-Improving Agent Harness — Reference Specification](./03-rsi-and-self-improvement/self-improving-agent-harness-architecture.md)**: Reference schemas, event payloads, and interface contracts for self-improvement components.
 - **[Self-Improvement System for Your Harness](./03-rsi-and-self-improvement/self-improvement-system.md)**: Practical implementation guide for integrating safe self-improvement into existing agent runtimes.
 - **[Recursive Self-Development Engine (RSD Engine)](./03-rsi-and-self-improvement/recursive-self-development-engine.md)**: Concrete code patterns and reference execution engines for iterative self-development.
+- **[Promptbreeder & Darwinian Self-Evolution for Self-Improving Agents](./03-rsi-and-self-improvement/promptbreeder-and-darwinian-self-evolution.md)**: Google DeepMind Promptbreeder self-referential evolutionary architecture, evolving both task prompts and mutation prompts via tournament selection and genetic crossover.
+- **[Automated Program Repair (APR) & Test-Driven Self-Healing Harnesses](./03-rsi-and-self-improvement/automated-program-repair-and-test-driven-healing.md)**: Spectrum-Based Fault Localization (Ochiai SBFL), compiler error reflection, AST-guided surgical patch synthesis, and test-driven regression healing.
+- **[Formal Verification & Canary Sandboxing for Recursive Self-Improvement (RSI)](./03-rsi-and-self-improvement/formal-verification-and-canary-sandboxing-for-rsi.md)**: Safety boundaries for self-modifying agents, AST static invariant visitors, ephemeral microVM isolation, shadow parallel benchmarking, and deterministic rollback trees.
 
 ---
 
@@ -86,6 +92,9 @@ Competitive intelligence, deep research methodologies, and comparative harness a
 - **[Notable Open-Source Agent Projects Study](./04-frontier-benchmarks-and-deep-research/notable-oss-agent-projects.md)**: Curated survey of top open-source agent projects and their respective architectural strengths.
 - **[Memory Architecture Benchmarks & Taxonomy](./04-frontier-benchmarks-and-deep-research/memory-architecture-benchmarks.md)**: Comprehensive evaluation of vector stores, graph stores, full-text search, and multi-tier memory backends.
 - **[SOTA Coding Agents & Frontier Harness Comparative Study (2026)](./04-frontier-benchmarks-and-deep-research/sota-coding-agents-and-harness-comparative-study-2026.md)**: Exhaustive comparative analysis of Claude Code, Devin, OpenHands, Aider, Cursor, and Deep Agents with SWE-bench benchmarks and architectural matrices.
+- **[Princeton SWE-agent & Agent-Computer Interface (ACI) Architecture Study](./04-frontier-benchmarks-and-deep-research/swe-agent-and-aci-architecture-study.md)**: Analysis of SWE-agent's ACI, 100-line viewport navigation, pre-commit syntax linter guards, SWEEnv / SWE-ReX sandboxing, and SWE-bench Verified failure taxonomy.
+- **[Roo Code, Cline, and Goose: Open-Source IDE Extensions & Terminal Developer Harnesses](./04-frontier-benchmarks-and-deep-research/roo-code-cline-and-goose-terminal-harnesses.md)**: Comparative architecture study of VS Code webview extensions (Cline/Roo Code XML block parsing, git shadow checkpoints) and Block's Goose terminal MCP agent.
+- **[Microsoft AutoGen Studio vs. CrewAI: Multi-Agent Orchestration Patterns & Workflows](./04-frontier-benchmarks-and-deep-research/autogen-studio-vs-crewai-orchestration-patterns.md)**: Event-driven asynchronous actor model (AutoGen v0.4) vs. process-driven sequential/hierarchical workflows (CrewAI), memory systems, and telemetry.
 
 ---
 
@@ -101,6 +110,8 @@ Autonomous enterprise operations, business goal trees, multi-agent workflows, an
 - **[Complete AI Harness Capability Map](./05-autonomous-operations-and-execution/ai-harness-capability-map.md)**: Exhaustive capability matrix mapping cognitive engines, safety guards, and tool interfaces across the Alpha platform.
 - **[AI Agent Harness Consolidated Project Discussion](./05-autonomous-operations-and-execution/AI_AGENT_HARNESS_CONSOLIDATED_DISCUSSION.md)**: Architectural decisions, rationale, and consolidated technical design records.
 - **[Ultimate Harness Implementation Plan](./05-autonomous-operations-and-execution/ultimate-harness-implementation-plan.md)**: Phased delivery roadmap for implementing the complete world-class autonomous agent harness.
+- **[MetaGPT & ChatDev Multi-Agent SDLC Architectures](./05-autonomous-operations-and-execution/metagpt-and-chatdev-multi-agent-sdlc.md)**: Role specialization, Standard Operating Procedures (SOPs), publish/subscribe message bus document handoffs (MetaGPT) vs. communicative waterfall chat chains (ChatDev).
+- **[Human-in-the-Loop Collaborative Co-Work Patterns: Beyond Chat and Autonomy](./05-autonomous-operations-and-execution/human-in-the-loop-collaborative-cowork-patterns.md)**: Real-time collaborative co-work, bidirectional mid-flight steering, streaming partial visual diffs, shared canvas, and granular permission boundaries.
 
 ---
 
