@@ -44,6 +44,7 @@ from agent_workspace.sandbox.sandbox import Sandbox
 from agent_workspace.sandbox.sandbox_provider import SandboxProvider, get_sandbox_provider
 from agent_workspace.sandbox.search import GrepMatch
 from agent_workspace.sandbox.security import LOCAL_HOST_BASH_DISABLED_MESSAGE, is_host_bash_allowed
+from agent_workspace.safety.ast_syntax_guard import validate_syntax_precommit
 from agent_workspace.tools.types import Runtime
 
 logger = logging.getLogger(__name__)
@@ -2512,6 +2513,7 @@ def write_file_tool(
     description: str = "",
     append: bool = False,
     anchor_hash: str | None = None,
+    bypass_syntax_check: bool = False,
 ) -> str:
     """Write text content to a file. By default this overwrites the target file; set append=True to add content to the end without replacing existing content.
 
@@ -2577,6 +2579,19 @@ def write_file_tool(
                 path = _resolve_and_validate_user_data_path(path, thread_data)
             # Custom mount paths are resolved by LocalSandbox._resolve_path()
         with get_file_operation_lock(sandbox, path):
+            # Pre-commit AST Syntax Guardrail
+            if not append:
+                is_valid, err_msg = validate_syntax_precommit(requested_path, content, bypass=bypass_syntax_check)
+                if not is_valid:
+                    return err_msg
+            else:
+                try:
+                    existing = sandbox.read_file(path)
+                    is_valid, err_msg = validate_syntax_precommit(requested_path, existing + content, bypass=bypass_syntax_check)
+                    if not is_valid:
+                        return err_msg
+                except Exception:
+                    pass
             sandbox.write_file(path, content, append)
         return "OK"
     except SandboxError as e:
@@ -2604,8 +2619,9 @@ async def _write_file_tool_async(
     description: str = "",
     append: bool = False,
     anchor_hash: str | None = None,
+    bypass_syntax_check: bool = False,
 ) -> str:
-    return await _run_sync_tool_after_async_sandbox_init(write_file_tool.func, runtime, path, content, description, append, anchor_hash)
+    return await _run_sync_tool_after_async_sandbox_init(write_file_tool.func, runtime, path, content, description, append, anchor_hash, bypass_syntax_check)
 
 
 write_file_tool.coroutine = _write_file_tool_async
@@ -2620,6 +2636,7 @@ def str_replace_tool(
     description: str = "",
     replace_all: bool = False,
     anchor_hash: str | None = None,
+    bypass_syntax_check: bool = False,
 ) -> str:
     """Replace a substring in a file with another substring.
     If `replace_all` is False (default), the substring to replace must appear **exactly once** in the file.
@@ -2659,10 +2676,14 @@ def str_replace_tool(
             if not content or old_str not in content:
                 return f"Error: String to replace not found in file: {requested_path}"
             if replace_all:
-                content = content.replace(old_str, new_str)
+                new_content = content.replace(old_str, new_str)
             else:
-                content = content.replace(old_str, new_str, 1)
-            sandbox.write_file(path, content)
+                new_content = content.replace(old_str, new_str, 1)
+            # Pre-commit AST Syntax Guardrail
+            is_valid, err_msg = validate_syntax_precommit(requested_path, new_content, bypass=bypass_syntax_check)
+            if not is_valid:
+                return err_msg
+            sandbox.write_file(path, new_content)
         return "OK"
     except SandboxError as e:
         return f"Error: {e}"
@@ -2682,6 +2703,7 @@ async def _str_replace_tool_async(
     description: str = "",
     replace_all: bool = False,
     anchor_hash: str | None = None,
+    bypass_syntax_check: bool = False,
 ) -> str:
     return await _run_sync_tool_after_async_sandbox_init(
         str_replace_tool.func,
@@ -2692,6 +2714,7 @@ async def _str_replace_tool_async(
         description,
         replace_all,
         anchor_hash,
+        bypass_syntax_check,
     )
 
 

@@ -142,6 +142,8 @@ Every advanced feature in Alpha is engineered for production-grade reliability a
 - **Consequence Simulation & Problem Modeling**: Simulates potential negative outcomes, side-effects, and blast radiuses before executing irreversible actions.
 
 ### 3.5 Code Agentic Core & Developer Tooling
+- **Pre-Commit AST Syntax & Linter Guardrail**: Intercepts file writes across `write_file`, `str_replace`, and `hashline_edit` prior to disk commit; statically verifies AST syntax (`ast.parse`, `json.loads`, `yaml.safe_load`) and automatically rejects syntactically broken edits with compiler feedback.
+- **Git Shadow Checkpoint & 1-Click Rollback Engine**: Captures lightweight Git shadow references (`refs/alpha-checkpoints/<cid>`) before risky mutations with full REST endpoints (`GET/POST /api/checkpoints`, `POST /api/checkpoints/{id}/rollback`, `GET /api/checkpoints/{id}/diff`) for instant workspace state restoration.
 - **Automated Test & Repair**: Autonomously executes test commands, parses tracebacks, isolates root causes, and applies verified fixes.
 - **Repository Map AST Generator**: Analyzes entire codebases to construct visual and structural abstract syntax tree dependency maps.
 - **Code Checkpoint Management**: Manages temporary Git checkpoints, commits, stashes, and branch rollbacks during experimental refactors.

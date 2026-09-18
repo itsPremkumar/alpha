@@ -17,6 +17,7 @@ from agent_workspace.editing.hashline import (
     format_hash_lines,
 )
 from agent_workspace.safety.comment_guard import check_for_lazy_comments
+from agent_workspace.safety.ast_syntax_guard import validate_syntax_precommit
 
 
 @tool
@@ -49,6 +50,9 @@ def hashline_edit(
 
         content = p.read_text(encoding="utf-8")
         updated = apply_hashline_edit(content, start_ref, end_ref, replacement)
+        is_valid, err_msg = validate_syntax_precommit(str(p), updated)
+        if not is_valid:
+            return err_msg
         p.write_text(updated, encoding="utf-8")
         return f"Successfully updated '{file_path}' from {start_ref} to {end_ref}."
     except HashlineMismatchError as e:

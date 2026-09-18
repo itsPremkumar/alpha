@@ -26,6 +26,7 @@ from app.gateway.routers import (
     browser,
     channel_connections,
     channels,
+    checkpoints,
     commands,
     company,
     console,

@@ -295,14 +295,159 @@ class CodeCheckpoint:
     test_passed: bool | None = None
     failure_count: int = 0
     root_path: str = ""
+    git_ref: str | None = None
 
 
 _ACTIVE_CHECKPOINTS: dict[str, CodeCheckpoint] = {}
 
 
+def create_shadow_checkpoint(
+    label: str = "",
+    root_path: str = ".",
+    target_files: list[str] | None = None,
+) -> CodeCheckpoint:
+    """Programmatic API to create a lightweight workspace checkpoint."""
+    root = Path(root_path).resolve()
+    cid = f"chk_{uuid.uuid4().hex[:8]}"
+    snap: dict[str, str] = {}
+    git_ref = None
+
+    if target_files:
+        for tf in target_files:
+            fp = root / tf
+            if fp.is_file():
+                snap[tf] = fp.read_text(encoding="utf-8", errors="ignore")
+    else:
+        try:
+            git_status = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=str(root),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=5,
+            )
+            if git_status.returncode == 0:
+                for line in git_status.stdout.splitlines():
+                    parts = line.strip().split()
+                    if len(parts) >= 2:
+                        rel_path = parts[-1]
+                        fp = root / rel_path
+                        if fp.is_file():
+                            snap[rel_path] = fp.read_text(encoding="utf-8", errors="ignore")
+                # Record git shadow reference tag if inside git repo
+                ref_name = f"refs/alpha-checkpoints/{cid}"
+                try:
+                    head_res = subprocess.run(
+                        ["git", "rev-parse", "HEAD"],
+                        cwd=str(root),
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        timeout=5,
+                    )
+                    if head_res.returncode == 0 and head_res.stdout.strip():
+                        commit_hash = head_res.stdout.strip()
+                        subprocess.run(
+                            ["git", "update-ref", ref_name, commit_hash],
+                            cwd=str(root),
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            timeout=5,
+                        )
+                        git_ref = ref_name
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    cp = CodeCheckpoint(
+        checkpoint_id=cid,
+        label=label or "Manual checkpoint",
+        created_at=time.time(),
+        files_snapshot=snap,
+        root_path=str(root),
+        git_ref=git_ref,
+    )
+    _ACTIVE_CHECKPOINTS[cid] = cp
+    return cp
+
+
+def get_all_checkpoints() -> list[dict]:
+    """Return list of all recorded checkpoints."""
+    return [
+        {
+            "checkpoint_id": c.checkpoint_id,
+            "label": c.label,
+            "created_at": c.created_at,
+            "files_count": len(c.files_snapshot),
+            "test_passed": c.test_passed,
+            "failure_count": c.failure_count,
+            "git_ref": c.git_ref,
+        }
+        for c in _ACTIVE_CHECKPOINTS.values()
+    ]
+
+
+def rollback_to_checkpoint(checkpoint_id: str, root_path: str = ".") -> dict:
+    """Restore workspace files to the specified checkpoint state."""
+    root = Path(root_path).resolve()
+    cp = _ACTIVE_CHECKPOINTS.get(checkpoint_id)
+    if not cp:
+        return {
+            "status": "error",
+            "error": f"Checkpoint '{checkpoint_id}' not found. Available: {list(_ACTIVE_CHECKPOINTS.keys())}",
+        }
+
+    restored_files: list[str] = []
+    for rel_path, content in cp.files_snapshot.items():
+        target = root / rel_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+        restored_files.append(rel_path)
+
+    return {
+        "status": "rolled_back",
+        "checkpoint_id": checkpoint_id,
+        "label": cp.label,
+        "restored_files_count": len(restored_files),
+        "restored_files": restored_files,
+        "git_ref": cp.git_ref,
+    }
+
+
+def get_checkpoint_diff(checkpoint_id: str, root_path: str = ".") -> dict:
+    """Generate unified diff between checkpoint and current workspace files."""
+    import difflib
+    root = Path(root_path).resolve()
+    cp = _ACTIVE_CHECKPOINTS.get(checkpoint_id)
+    if not cp:
+        return {"error": f"Checkpoint '{checkpoint_id}' not found."}
+
+    diffs: dict[str, str] = {}
+    for rel_path, old_content in cp.files_snapshot.items():
+        target = root / rel_path
+        current_content = target.read_text(encoding="utf-8", errors="ignore") if target.exists() else ""
+        file_diff = list(difflib.unified_diff(
+            old_content.splitlines(keepends=True),
+            current_content.splitlines(keepends=True),
+            fromfile=f"checkpoint/{rel_path}",
+            tofile=f"workspace/{rel_path}",
+        ))
+        if file_diff:
+            diffs[rel_path] = "".join(file_diff)
+
+    return {
+        "checkpoint_id": checkpoint_id,
+        "label": cp.label,
+        "diff_count": len(diffs),
+        "diffs": diffs,
+    }
+
+
 @tool("manage_code_checkpoint", parse_docstring=True)
 def manage_code_checkpoint(
-    action: Literal["create", "rollback", "list", "auto_rollback_on_failure"],
+    action: Literal["create", "rollback", "list", "diff", "auto_rollback_on_failure"],
     label: str = "",
     checkpoint_id: str = "",
     target_files: list[str] | None = None,
@@ -431,18 +576,17 @@ def manage_code_checkpoint(
             "restored_files": restored_files,
         }, indent=2)
 
+    elif act == "diff":
+        if not checkpoint_id:
+            if _ACTIVE_CHECKPOINTS:
+                checkpoint_id = list(_ACTIVE_CHECKPOINTS.keys())[-1]
+            else:
+                return json.dumps({"status": "error", "error": "checkpoint_id is required for diff and no checkpoints exist."})
+        diff_res = get_checkpoint_diff(checkpoint_id=checkpoint_id, root_path=root_path)
+        return json.dumps(diff_res, indent=2)
+
     elif act == "list":
-        res = [
-            {
-                "checkpoint_id": c.checkpoint_id,
-                "label": c.label,
-                "created_at": c.created_at,
-                "files_count": len(c.files_snapshot),
-                "test_passed": c.test_passed,
-                "failure_count": c.failure_count,
-            }
-            for c in _ACTIVE_CHECKPOINTS.values()
-        ]
+        res = get_all_checkpoints()
         return json.dumps({"checkpoints": res, "total": len(res)}, indent=2)
 
     return json.dumps({"status": "error", "error": f"Unsupported action '{action}'"})
