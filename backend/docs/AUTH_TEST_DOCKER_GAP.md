@@ -1,4 +1,4 @@
-# Docker Test Gap (Section 七 7.4)
+# Docker Test Gap (Section 7 (7.4))
 
 This file documents the only **un-executed** test cases from
 `backend/docs/AUTH_TEST_PLAN.md` after the full release validation pass.
@@ -43,7 +43,7 @@ the test cases that ran on sg_dev or local:
 | TC-DOCKER-03 (per-worker rate limit) | TC-GW-04 + TC-REENT-09 (single-worker rate limit + 5min expiry). The cross-worker divergence is an architectural property of the in-memory dict; no auth code path differs |
 | TC-DOCKER-04 (IM channels use internal auth) | Code-level: `app/channels/manager.py` creates the `langgraph_sdk` client with `create_internal_auth_headers()` plus CSRF cookie/header, so channel workers do not rely on browser cookies |
 | TC-DOCKER-05 (credential surfacing) | `reset_admin` writes `.agent-workspace/admin_initial_credentials.txt` with mode 0600 and logs only the path — the only Docker-unique step is whether the bind mount projects this path onto the host, which is a `docker compose` config check, not a runtime behavior change |
-| TC-DOCKER-06 (Gateway embedded runtime container) | Section 七 7.2 covered by TC-GW-01..05 + Section 二 (Gateway auth flow on sg_dev) — same Gateway code, container is just a packaging change |
+| TC-DOCKER-06 (Gateway embedded runtime container) | Section 7 (7.2) covered by TC-GW-01..05 + Section 2 (Gateway auth flow on sg_dev) — same Gateway code, container is just a packaging change |
 
 ## Reproduction steps when Docker becomes available
 

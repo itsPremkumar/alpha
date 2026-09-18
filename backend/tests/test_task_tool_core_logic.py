@@ -339,7 +339,7 @@ def test_task_tool_returns_error_for_unknown_subagent(monkeypatch):
 
     result = _run_task_tool(
         runtime=None,
-        description="执行任务",
+        description="Execute task",
         prompt="do work",
         subagent_type="general-purpose",
         tool_call_id="tc-1",
@@ -571,7 +571,7 @@ def test_task_tool_forwards_channel_user_id_to_executor(monkeypatch):
 
     output = _run_task_tool(
         runtime=runtime,
-        description="运行子任务",
+        description="Run subtask",
         prompt="collect diagnostics",
         subagent_type="general-purpose",
         tool_call_id="tc-channel-id",
@@ -701,7 +701,7 @@ def test_task_tool_rejects_bash_subagent_when_host_bash_disabled(monkeypatch):
 
     result = _run_task_tool(
         runtime=_make_runtime(),
-        description="执行任务",
+        description="Execute task",
         prompt="run commands",
         subagent_type="bash",
         tool_call_id="tc-bash",
@@ -761,7 +761,7 @@ def test_task_tool_threads_runtime_app_config_to_subagent_dependencies(monkeypat
 
     output = _run_task_tool(
         runtime=runtime,
-        description="运行命令",
+        description="Run command",
         prompt="inspect files",
         subagent_type="bash",
         tool_call_id="tc-explicit-config",
@@ -1044,7 +1044,7 @@ def test_task_tool_propagates_tool_groups_to_subagent(monkeypatch):
 
     output = _run_task_tool(
         runtime=runtime,
-        description="执行任务",
+        description="Execute task",
         prompt="file work only",
         subagent_type="general-purpose",
         tool_call_id="tc-groups",
@@ -1138,7 +1138,7 @@ def test_task_tool_inherits_parent_skill_allowlist_for_default_subagent(monkeypa
 
     output = _run_task_tool(
         runtime=runtime,
-        description="执行任务",
+        description="Execute task",
         prompt="use skills",
         subagent_type="general-purpose",
         tool_call_id="tc-skills",
@@ -1184,7 +1184,7 @@ def test_task_tool_intersects_parent_and_subagent_skill_allowlists(monkeypatch):
 
     output = _run_task_tool(
         runtime=runtime,
-        description="执行任务",
+        description="Execute task",
         prompt="use skills",
         subagent_type="general-purpose",
         tool_call_id="tc-skills-intersection",
@@ -1223,7 +1223,7 @@ def test_task_tool_no_tool_groups_passes_none(monkeypatch):
 
     output = _run_task_tool(
         runtime=runtime,
-        description="执行任务",
+        description="Execute task",
         prompt="normal work",
         subagent_type="general-purpose",
         tool_call_id="tc-no-groups",
@@ -1263,7 +1263,7 @@ def test_task_tool_runtime_none_passes_groups_none(monkeypatch):
 
     output = _run_task_tool(
         runtime=None,
-        description="执行任务",
+        description="Execute task",
         prompt="no runtime",
         subagent_type="general-purpose",
         tool_call_id="tc-no-runtime",
@@ -1301,7 +1301,7 @@ def test_task_tool_runtime_none_passes_groups_none(monkeypatch):
 
     output = _run_task_tool(
         runtime=_make_runtime(),
-        description="执行任务",
+        description="Execute task",
         prompt="do fail",
         subagent_type="general-purpose",
         tool_call_id="tc-fail",
@@ -1338,7 +1338,7 @@ def test_task_tool_returns_timed_out_message(monkeypatch):
 
     output = _run_task_tool(
         runtime=_make_runtime(),
-        description="执行任务",
+        description="Execute task",
         prompt="do timeout",
         subagent_type="general-purpose",
         tool_call_id="tc-timeout",
@@ -1373,7 +1373,7 @@ def test_task_tool_surfaces_stop_reason_for_capped_run(monkeypatch):
 
     output = _run_task_tool(
         runtime=_make_runtime(),
-        description="执行任务",
+        description="Execute task",
         prompt="do capped work",
         subagent_type="general-purpose",
         tool_call_id="tc-capped",
@@ -1428,7 +1428,7 @@ def test_task_tool_polling_safety_timeout(monkeypatch):
 
     output = _run_task_tool(
         runtime=_make_runtime(),
-        description="执行任务",
+        description="Execute task",
         prompt="never finish",
         subagent_type="general-purpose",
         tool_call_id="tc-safety-timeout",
@@ -1474,7 +1474,7 @@ def test_cleanup_called_on_completed(monkeypatch):
 
     output = _run_task_tool(
         runtime=_make_runtime(),
-        description="执行任务",
+        description="Execute task",
         prompt="complete task",
         subagent_type="general-purpose",
         tool_call_id="tc-cleanup-completed",
@@ -1514,7 +1514,7 @@ def test_cleanup_called_on_failed(monkeypatch):
 
     output = _run_task_tool(
         runtime=_make_runtime(),
-        description="执行任务",
+        description="Execute task",
         prompt="fail task",
         subagent_type="general-purpose",
         tool_call_id="tc-cleanup-failed",
@@ -1554,7 +1554,7 @@ def test_cleanup_called_on_timed_out(monkeypatch):
 
     output = _run_task_tool(
         runtime=_make_runtime(),
-        description="执行任务",
+        description="Execute task",
         prompt="timeout task",
         subagent_type="general-purpose",
         tool_call_id="tc-cleanup-timedout",
@@ -1617,7 +1617,7 @@ def test_cleanup_not_called_on_polling_safety_timeout(monkeypatch):
 
     output = _run_task_tool(
         runtime=_make_runtime(),
-        description="执行任务",
+        description="Execute task",
         prompt="never finish",
         subagent_type="general-purpose",
         tool_call_id="tc-no-cleanup-safety-timeout",
@@ -1678,7 +1678,7 @@ def test_cleanup_scheduled_on_cancellation(monkeypatch):
     with pytest.raises(asyncio.CancelledError):
         _run_task_tool(
             runtime=_make_runtime(),
-            description="执行任务",
+            description="Execute task",
             prompt="cancel task",
             subagent_type="general-purpose",
             tool_call_id="tc-cancelled-cleanup",
@@ -2502,7 +2502,7 @@ def test_cancelled_cleanup_stops_after_timeout(monkeypatch):
     with pytest.raises(asyncio.CancelledError):
         _run_task_tool(
             runtime=_make_runtime(),
-            description="执行任务",
+            description="Execute task",
             prompt="cancel task",
             subagent_type="general-purpose",
             tool_call_id="tc-cancelled-timeout",
@@ -2567,7 +2567,7 @@ def test_cancellation_wait_uses_subagent_polling_budget(monkeypatch):
     with pytest.raises(asyncio.CancelledError):
         _run_task_tool(
             runtime=_make_runtime(),
-            description="执行任务",
+            description="Execute task",
             prompt="cancel task",
             subagent_type="general-purpose",
             tool_call_id="tc-cancel-budget",
@@ -2616,7 +2616,7 @@ def test_cancellation_calls_request_cancel(monkeypatch):
     with pytest.raises(asyncio.CancelledError):
         _run_task_tool(
             runtime=_make_runtime(),
-            description="执行任务",
+            description="Execute task",
             prompt="cancel me",
             subagent_type="general-purpose",
             tool_call_id="tc-cancel-request",
@@ -2659,7 +2659,7 @@ def test_task_tool_returns_cancelled_message(monkeypatch):
 
     output = _run_task_tool(
         runtime=_make_runtime(),
-        description="执行任务",
+        description="Execute task",
         prompt="some task",
         subagent_type="general-purpose",
         tool_call_id="tc-poll-cancelled",
@@ -2693,7 +2693,7 @@ def test_task_tool_emits_completed_metadata(monkeypatch):
     message = _task_tool_message(
         _run_task_tool(
             runtime=_make_runtime(),
-            description="执行任务",
+            description="Execute task",
             prompt="do work",
             subagent_type="general-purpose",
             tool_call_id="tc-completed-metadata",
@@ -2725,7 +2725,7 @@ def test_task_tool_emits_disappeared_task_metadata(monkeypatch):
     message = _task_tool_message(
         _run_task_tool(
             runtime=_make_runtime(),
-            description="执行任务",
+            description="Execute task",
             prompt="missing task",
             subagent_type="general-purpose",
             tool_call_id="tc-missing",
@@ -2759,7 +2759,7 @@ def test_task_tool_bounds_large_result_metadata(monkeypatch):
     message = _task_tool_message(
         _run_task_tool(
             runtime=_make_runtime(),
-            description="执行任务",
+            description="Execute task",
             prompt="large result",
             subagent_type="general-purpose",
             tool_call_id="tc-large-result",
@@ -2835,7 +2835,7 @@ def test_cancellation_reports_subagent_usage(monkeypatch):
     with pytest.raises(asyncio.CancelledError):
         _run_task_tool(
             runtime=_make_runtime(),
-            description="执行任务",
+            description="Execute task",
             prompt="cancel me",
             subagent_type="general-purpose",
             tool_call_id="tc-cancel-report",

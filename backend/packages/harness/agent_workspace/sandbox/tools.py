@@ -1220,7 +1220,7 @@ def _is_non_path_literal_fragment(fragment: str) -> bool:
 
     The absolute-path scan runs over the raw command string, so it also matches
     ``/segment`` sequences sitting inside string literals, f-strings, and
-    templates (e.g. ``python -c "print(f'/端口{port}')"`` or a REST template
+    templates (e.g. non-ASCII text or a REST template
     like ``/devices/{id}/port``). Non-ASCII characters and single identifier-like
     ``{placeholder}`` braces do not appear in real host filesystem paths a command
     would open, so treating such fragments as text removes those false positives.

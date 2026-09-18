@@ -1393,7 +1393,7 @@ def test_str_replace_parallel_updates_should_preserve_both_edits(monkeypatch) ->
         try:
             result = str_replace_tool.func(
                 runtime=runtime,
-                description="并发替换同一文件",
+                description="concurrent replacement in same file",
                 path="/mnt/user-data/workspace/shared.txt",
                 old_str=old_str,
                 new_str=new_str,
@@ -1477,7 +1477,7 @@ def test_str_replace_parallel_updates_in_isolated_sandboxes_should_not_share_pat
         try:
             result = str_replace_tool.func(
                 runtime=runtime,
-                description="隔离 sandbox 并发替换同一路径",
+                description="isolated sandbox concurrent replacement on same path",
                 path="/mnt/user-data/workspace/shared.txt",
                 old_str=old_str,
                 new_str=new_str,
@@ -1546,7 +1546,7 @@ def test_str_replace_and_append_on_same_path_should_preserve_both_updates(monkey
         try:
             result = str_replace_tool.func(
                 runtime=runtimes[0],
-                description="替换旧内容",
+                description="replace old content",
                 path="/mnt/user-data/workspace/shared.txt",
                 old_str="alpha",
                 new_str="ALPHA",
@@ -1560,7 +1560,7 @@ def test_str_replace_and_append_on_same_path_should_preserve_both_updates(monkey
             sandbox.str_replace_has_snapshot.wait(0.05)
             result = write_file_tool.func(
                 runtime=runtimes[1],
-                description="追加新内容",
+                description="append new content",
                 path="/mnt/user-data/workspace/shared.txt",
                 content="tail\n",
                 append=True,
@@ -1604,7 +1604,7 @@ def test_write_file_tool_bounds_large_oserror_and_masks_local_paths(monkeypatch)
 
     result = write_file_tool.func(
         runtime=runtime,
-        description="写入大文件失败",
+        description="write large file failure",
         path="/mnt/user-data/workspace/output.txt",
         content="report body",
     )
@@ -1633,7 +1633,7 @@ def test_write_file_tool_preserves_short_oserror_without_truncation(monkeypatch)
 
     result = write_file_tool.func(
         runtime=runtime,
-        description="写入失败",
+        description="write failure",
         path="/mnt/user-data/workspace/output.txt",
         content="tiny payload",
     )
@@ -1658,7 +1658,7 @@ def test_write_file_tool_bounds_large_sandbox_error(monkeypatch) -> None:
 
     result = write_file_tool.func(
         runtime=runtime,
-        description="远端写入失败",
+        description="remote write failure",
         path="/mnt/user-data/workspace/output.txt",
         content="tiny payload",
     )
@@ -1710,7 +1710,7 @@ def test_write_file_tool_formats_all_other_failure_branches(
 
     result = write_file_tool.func(
         runtime=runtime,
-        description="验证错误分支格式化",
+        description="verify error branch formatting",
         path="/mnt/user-data/workspace/output.txt",
         content="tiny payload",
     )
@@ -1735,7 +1735,7 @@ def test_write_file_tool_handles_sandbox_init_failure(monkeypatch) -> None:
 
     result = write_file_tool.func(
         runtime=runtime,
-        description="sandbox 初始化失败",
+        description="sandbox initialization failure",
         path="/mnt/user-data/workspace/output.txt",
         content="tiny payload",
     )
@@ -1761,7 +1761,7 @@ def test_file_operation_lock_memory_cleanup() -> None:
     test_path = "/tmp/agent-workspace/memory_leak_test_file.txt"
     lock_key = (MockSandbox.id, test_path)
 
-    # 确保测试开始前 key 不存在
+    # Ensure key does not exist before test begins
     assert lock_key not in _FILE_OPERATION_LOCKS
 
     def _use_lock_and_release() -> None:
@@ -1777,5 +1777,5 @@ def test_file_operation_lock_memory_cleanup() -> None:
     # Force a garbage collection to be absolutely sure
     gc.collect()
 
-    # 检查特定 key 是否被清理（而不是检查总长度）
+    # Verify specific key was cleaned up (instead of checking total length)
     assert lock_key not in _FILE_OPERATION_LOCKS

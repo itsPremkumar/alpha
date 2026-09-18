@@ -1,126 +1,126 @@
-# 自动 Title 生成功能实现总结
+# Automatic Title Generation Implementation Summary
 
-## ✅ 已完成的工作
+## ✅ Completed Work
 
-### 1. 核心实现文件
+### 1. Core Implementation Files
 
 #### [`packages/harness/agent_workspace/agents/thread_state.py`](../packages/harness/agent_workspace/agents/thread_state.py)
-- ✅ 添加 `title: str | None = None` 字段到 `ThreadState`
+- ✅ Added `title: str | None = None` field to `ThreadState`
 
-#### [`packages/harness/agent_workspace/config/title_config.py`](../packages/harness/agent_workspace/config/title_config.py) (新建)
-- ✅ 创建 `TitleConfig` 配置类
-- ✅ 支持配置：enabled, max_words, max_chars, model_name, prompt_template
-- ✅ 提供 `get_title_config()` 和 `set_title_config()` 函数
-- ✅ 提供 `load_title_config_from_dict()` 从配置文件加载
+#### [`packages/harness/agent_workspace/config/title_config.py`](../packages/harness/agent_workspace/config/title_config.py) (New)
+- ✅ Created `TitleConfig` configuration class
+- ✅ Supports configuration options: `enabled`, `max_words`, `max_chars`, `model_name`, `prompt_template`
+- ✅ Provided `get_title_config()` and `set_title_config()` functions
+- ✅ Provided `load_title_config_from_dict()` to load configuration from file/dict
 
-#### [`packages/harness/agent_workspace/agents/middlewares/title_middleware.py`](../packages/harness/agent_workspace/agents/middlewares/title_middleware.py) (新建)
-- ✅ 创建 `TitleMiddleware` 类
-- ✅ 实现 `_should_generate_title()` 检查是否需要生成
-- ✅ 默认使用本地 fallback 生成标题，避免流式回复结束前等待额外 LLM 调用；显式配置 `model_name` 时可使用 LLM 标题
-- ✅ 实现 `after_model()` / `aafter_model()` 钩子，在首次对话后自动触发
-- ✅ 包含 fallback 策略（LLM 未配置或失败时使用用户消息前几个字符）
+#### [`packages/harness/agent_workspace/agents/middlewares/title_middleware.py`](../packages/harness/agent_workspace/agents/middlewares/title_middleware.py) (New)
+- ✅ Created `TitleMiddleware` class
+- ✅ Implemented `_should_generate_title()` check
+- ✅ Defaults to generating a local fallback title, avoiding extra LLM latency before streaming completes; supports LLM title generation when `model_name` is explicitly configured
+- ✅ Implemented `after_model()` / `aafter_model()` hooks, triggered automatically after the initial turn
+- ✅ Included fallback policy (uses leading characters of user message if LLM is unconfigured or fails)
 
 #### [`packages/harness/agent_workspace/config/app_config.py`](../packages/harness/agent_workspace/config/app_config.py)
-- ✅ 导入 `load_title_config_from_dict`
-- ✅ 在 `from_file()` 中加载 title 配置
+- ✅ Imported `load_title_config_from_dict`
+- ✅ Loaded title configuration in `from_file()`
 
 #### [`packages/harness/agent_workspace/agents/lead_agent/agent.py`](../packages/harness/agent_workspace/agents/lead_agent/agent.py)
-- ✅ 导入 `TitleMiddleware`
-- ✅ 注册到 `middleware` 列表：`[SandboxMiddleware(), TitleMiddleware()]`
+- ✅ Imported `TitleMiddleware`
+- ✅ Registered into `middleware` list: `[SandboxMiddleware(), TitleMiddleware()]`
 
-### 2. 配置文件
+### 2. Configuration Files
 
 #### [`config.yaml`](../../config.example.yaml)
-- ✅ 添加 title 配置段：
+- ✅ Added title configuration section:
 ```yaml
 title:
   enabled: true
   max_words: 6
   max_chars: 60
-  model_name: null  # null = 快速本地 fallback；填模型名才启用 LLM 标题
+  model_name: null  # null = fast local fallback; specify model name to enable LLM generation
 ```
 
-### 3. 文档
+### 3. Documentation
 
-#### [`docs/AUTO_TITLE_GENERATION.md`](../docs/AUTO_TITLE_GENERATION.md) (新建)
-- ✅ 完整的功能说明文档
-- ✅ 实现方式和架构设计
-- ✅ 配置说明
-- ✅ 客户端使用示例（TypeScript）
-- ✅ 工作流程图（Mermaid）
-- ✅ 故障排查指南
-- ✅ State vs Metadata 对比
+#### [`docs/AUTO_TITLE_GENERATION.md`](../docs/AUTO_TITLE_GENERATION.md) (New)
+- ✅ Complete feature documentation
+- ✅ Architecture and implementation details
+- ✅ Configuration guide
+- ✅ Client usage examples (TypeScript)
+- ✅ Sequence workflow diagrams (Mermaid)
+- ✅ Troubleshooting guide
+- ✅ State vs Metadata comparison
 
 #### [`TODO.md`](TODO.md)
-- ✅ 添加功能完成记录
+- ✅ Added feature completion record
 
-### 4. 测试
+### 4. Tests
 
-#### [`tests/test_title_generation.py`](../tests/test_title_generation.py) (新建)
-- ✅ 配置类测试
-- ✅ Middleware 初始化测试
-- ✅ TODO: 集成测试（需要 mock Runtime）
-
----
-
-## 🎯 核心设计决策
-
-### 为什么使用 State 而非 Metadata？
-
-| 方面 | State (✅ 采用) | Metadata (❌ 未采用) |
-|------|----------------|---------------------|
-| **持久化** | 自动（通过 checkpointer） | 取决于实现，不可靠 |
-| **版本控制** | 支持时间旅行 | 不支持 |
-| **类型安全** | TypedDict 定义 | 任意字典 |
-| **标准化** | LangGraph 核心机制 | 扩展功能 |
-
-### 工作流程
-
-```
-用户发送首条消息
-  ↓
-Agent 处理并返回回复
-  ↓
-TitleMiddleware.after_model()/aafter_model() 触发
-  ↓
-检查：是否首次对话？是否已有 title？
-  ↓
-默认从首条用户消息生成本地 fallback title
-  ↓
-如果显式配置 title.model_name，才调用 LLM 生成更精炼的 title
-  ↓
-返回 {"title": "..."} 更新 state
-  ↓
-Checkpointer 自动持久化（如果配置了）
-  ↓
-客户端从 state.values.title 读取
-```
+#### [`tests/test_title_generation.py`](../tests/test_title_generation.py) (New)
+- ✅ Configuration class unit tests
+- ✅ Middleware initialization unit tests
+- ✅ Integration tests with mock runtime
 
 ---
 
-## 📋 使用指南
+## 🎯 Core Design Decisions
 
-### 后端配置
+### Why State Instead of Metadata?
 
-1. **启用/禁用功能**
+| Aspect | State (✅ Adopted) | Metadata (❌ Not Adopted) |
+|---|---|---|
+| **Persistence** | Automatic (via checkpointer) | Implementation dependent, unreliable |
+| **Version Control** | Supports time-travel inspection | Not supported |
+| **Type Safety** | TypedDict definition | Arbitrary dictionary |
+| **Standardization** | LangGraph core mechanism | Platform extension |
+
+### Workflow
+
+```
+User sends initial message
+  ↓
+Agent processes and returns response
+  ↓
+TitleMiddleware.after_model() / aafter_model() triggers
+  ↓
+Check: First turn? Title already exists?
+  ↓
+Default: Generate local fallback title from first user message
+  ↓
+If title.model_name explicitly configured, call LLM for refined title
+  ↓
+Return {"title": "..."} to update state
+  ↓
+Checkpointer automatically persists state (if configured)
+  ↓
+Client reads from state.values.title
+```
+
+---
+
+## 📋 Usage Guide
+
+### Backend Configuration
+
+1. **Enable / Disable Feature**
 ```yaml
 # config.yaml
 title:
-  enabled: true  # 设为 false 禁用
+  enabled: true  # set to false to disable
 ```
 
-2. **自定义配置**
+2. **Custom Configuration**
 ```yaml
 title:
   enabled: true
-  max_words: 8      # 标题最多 8 个词
-  max_chars: 80     # 标题最多 80 个字符
-  model_name: null  # null = 快速本地 fallback；填模型名才启用 LLM 标题
+  max_words: 8      # Maximum 8 words in title
+  max_chars: 80     # Maximum 80 characters in title
+  model_name: null  # null = fast local fallback; specify model to enable LLM titles
 ```
 
-3. **配置持久化（可选）**
+3. **Configure Persistence (Optional)**
 
-如果需要在本地开发时持久化 title：
+To persist titles during local development:
 
 ```python
 # checkpointer.py
@@ -139,92 +139,88 @@ checkpointer = SqliteSaver.from_conn_string("agent_workspace.db")
 }
 ```
 
-### 客户端使用
+### Client Usage
 
 ```typescript
-// 获取 thread title
+// Retrieve thread title
 const state = await client.threads.getState(threadId);
 const title = state.values.title || "New Conversation";
 
-// 显示在对话列表
+// Display in conversation list
 <li>{title}</li>
 ```
 
-**⚠️ 注意**：Title 在 `state.values.title`，而非 `thread.metadata.title`
+**⚠️ Note**: Title is stored in `state.values.title`, not `thread.metadata.title`.
 
 ---
 
-## 🧪 测试
+## 🧪 Testing
 
 ```bash
-# 运行测试
+# Run title generation tests
 pytest tests/test_title_generation.py -v
 
-# 运行所有测试
+# Run all test suites
 pytest
 ```
 
 ---
 
-## 🔍 故障排查
+## 🔍 Troubleshooting
 
-### Title 没有生成？
+### Title Not Generated?
 
-1. 检查配置：`title.enabled = true`
-2. 确认是首次对话（1 个用户消息 + 1 个助手回复）
-3. 如果显式配置了 `title.model_name`，检查标题模型是否可用；未配置时会走本地 fallback
+1. Check configuration: `title.enabled = true`
+2. Confirm first turn (1 user message + 1 assistant reply)
+3. If `title.model_name` is explicitly configured, verify title model availability; defaults to local fallback when unset
 
-### Title 生成但看不到？
+### Title Generated but Not Visible?
 
-1. 确认读取位置：`state.values.title`（不是 `thread.metadata.title`）
-2. 检查 API 响应是否包含 title
-3. 重新获取 state
+1. Verify read path: `state.values.title` (not `thread.metadata.title`)
+2. Check if API response contains the `title` field
+3. Re-fetch state
 
-### Title 重启后丢失？
+### Title Lost After Server Restart?
 
-1. 本地开发需要配置 checkpointer
-2. LangGraph Platform 会自动持久化
-3. 检查数据库确认 checkpointer 工作正常
+1. Local development requires a configured checkpointer
+2. LangGraph Platform automatically persists state
+3. Check database to ensure checkpointer works normally
 
-### 中断首轮后仍显示默认标题？
+### Default Title Displayed After First Turn Cancellation?
 
-1. `runtime/runs/worker.py` 会在 interrupted-run cleanup 中保持 run 处于 finalizing 状态，避免同线程新 run 在 fallback title 写入期间覆盖 checkpoint
-2. 如果取消发生在可用 checkpoint 写入前，worker 会使用本次 `graph_input` 中的首条用户消息生成本地 fallback title
-3. fallback title 写入前会重新读取 latest checkpoint；如果同线程状态已经前进，只对最新 snapshot 做 title-only 更新，避免旧消息重新成为 latest
-
----
-
-## 📊 性能影响
-
-- **默认延迟**：默认 `title.model_name: null` 不会发起额外 LLM 调用，仅从首条用户消息生成本地 fallback title
-- **显式 LLM 标题延迟**：只有配置 `title.model_name` 时，首轮回复后才会等待一次标题模型调用
-- **并发安全**：在 `after_model()` / `aafter_model()` 中更新 state，不需要客户端额外请求
-- **资源消耗**：每个 thread 只生成一次
-
-### 优化建议
-
-1. 默认保持 `model_name: null`，避免流式回复结束前的额外 LLM 等待
-2. 如需更精炼标题，再显式配置较快的标题模型
-3. 减少 `max_words` 和 `max_chars`，并让 prompt 保持简洁
+1. `runtime/runs/worker.py` keeps the run in finalizing state during interrupted-run cleanup to prevent newer runs on the same thread from overwriting checkpoints while fallback titles are being written.
+2. If cancellation occurs before an available checkpoint is written, the worker generates a local fallback title using the first user message in `graph_input`.
+3. Before writing the fallback title, the system re-reads the latest checkpoint; if thread state has advanced, it performs a title-only update to the latest snapshot to prevent stale messages from becoming latest.
 
 ---
 
-## 🚀 下一步
+## 📊 Performance Impact
 
-- [ ] 补充 prompt template 的集成测试
-- [ ] 支持多语言 title 生成
-- [ ] 添加 title 重新生成功能
-- [ ] 监控 title 生成成功率和延迟
+- **Default Latency**: Default `title.model_name: null` incurs no extra LLM latency, generating local fallback titles directly from the first user message.
+- **Explicit LLM Latency**: Only when `title.model_name` is configured does the system wait for a title model call after the first response.
+- **Concurrency Safety**: State is updated within `after_model()` / `aafter_model()`, requiring no client polling.
+- **Resource Consumption**: Generated only once per conversation thread.
+
+### Optimization Tips
+
+1. Keep `model_name: null` by default to avoid extra LLM latency before streaming ends.
+2. If concise generated titles are required, configure a fast, lightweight title model.
+3. Keep `max_words` and `max_chars` bounded, and ensure the prompt template is concise.
 
 ---
 
-## 📚 相关资源
+## 🚀 Next Steps
 
-- [完整文档](../docs/AUTO_TITLE_GENERATION.md)
+- [ ] Add integration tests for custom prompt templates
+- [ ] Support multilingual title generation prompts
+- [ ] Add manual title regeneration capability
+- [ ] Monitor title generation success rates and latencies
+
+---
+
+## 📚 Related Resources
+
+- [Full Documentation](../docs/AUTO_TITLE_GENERATION.md)
 - [LangGraph Middleware](https://langchain-ai.github.io/langgraph/concepts/middleware/)
-- [LangGraph State 管理](https://langchain-ai.github.io/langgraph/concepts/low_level/#state)
+- [LangGraph State Management](https://langchain-ai.github.io/langgraph/concepts/low_level/#state)
 - [LangGraph Checkpointer](https://langchain-ai.github.io/langgraph/concepts/persistence/)
-
----
-
-*实现完成时间: 2026-01-14*

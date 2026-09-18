@@ -134,7 +134,7 @@ Save report as: `research_{topic}_{YYYYMMDD}.md`
 
 ### Formatting Rules
 
-- Chinese content: Use full-width punctuation（，。：；！？）
+- Formatting: Use standard punctuation throughout the report
 - Technical terms: Provide Wiki/doc URL on first mention
 - Tables: Use for metrics, comparisons
 - Code blocks: For technical examples

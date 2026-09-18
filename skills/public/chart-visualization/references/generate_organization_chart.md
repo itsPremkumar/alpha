@@ -1,21 +1,18 @@
-# generate_organization_chart — 组织架构图
+# generate_organization_chart — Organization Chart
 
-## 功能概述
-展示公司、团队或项目的层级关系，并可在节点上描述角色职责。
+## Overview
+Displays formal hierarchical organizational structures, reporting lines, and departmental trees.
 
-## 输入字段
-### 必填
-- `data`: object，必填，节点至少含 `name`（string），可选 `description`（string），子节点通过 `children`（array<object>）嵌套，最大深度建议为 3。
+## Input Fields
+### Required
+- data: object, hierarchical tree containing employee or departmental nodes.
 
-### 可选
-- `orient`: string，默认 `vertical`，可选 `horizontal`/`vertical`。
-- `style.texture`: string，默认 `default`，可选 `default`/`rough`。
-- `theme`: string，默认 `default`，可选 `default`/`academy`/`dark`。
-- `width`: number，默认 `600`。
-- `height`: number，默认 `400`。
+### Optional
+- 	heme: string, default default.
+- 	itle: string, org chart title.
 
-## 使用建议
-节点名称使用岗位/角色，`description` 简要说明职责或人数；若组织较大可拆分多个子图或按部门分批展示。
+## Usage Recommendations
+Include role titles alongside names to clarify departmental hierarchy.
 
-## 返回结果
-- 返回组织架构图 URL，并在 `_meta.spec` 保存结构便于日后迭代。
+## Output
+- Returns organization chart image URL and spec in _meta.spec.

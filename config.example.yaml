@@ -505,7 +505,7 @@ models:
   #       thinking:
   #         type: disabled
 
-  # Example: StepFun (阶跃星辰) reasoning models
+  # Example: StepFun reasoning models
   # StepFun provides OpenAI-compatible API with reasoning models.
   # With reasoning_format: deepseek-style, the API returns reasoning_content
   # (same field as DeepSeek), which must be replayed on historical assistant
@@ -595,7 +595,7 @@ models:
   #   supports_vision: false  # M2.7 is text-only; M3 supports vision
   #   supports_thinking: true
 
-  # Example: MiniMax (OpenAI-compatible) - CN 中国区用户
+  # Example: MiniMax (OpenAI-compatible) - China Region users
   # MiniMax provides high-performance models with 512K context window and 128K max output
   # Docs: https://platform.minimaxi.com/docs/api-reference/text-openai-api
   # - name: minimax-m3

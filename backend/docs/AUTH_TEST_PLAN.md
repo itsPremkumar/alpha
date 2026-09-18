@@ -1,66 +1,66 @@
-# Auth 模块测试计划
+# Auth Module Test Plan
 
-## 测试矩阵
+## Test Matrix
 
-| 模式 | 启动命令 | Auth 层 | 端口 |
+| Mode | Launch Command | Auth Layer | Port |
 |------|---------|---------|------|
-| 标准模式 | `make dev` | Gateway AuthMiddleware（全量） | 2026 (nginx) |
-| 直连 Gateway | `cd backend && make gateway` | Gateway AuthMiddleware | 8001 |
-| 直连 LangGraph 兼容性 | 手动运行 LangGraph 工具链时使用 | LangGraph auth | 2024 |
+| Standard Mode | `make dev` | Gateway AuthMiddleware (Full) | 2026 (nginx) |
+| Direct Gateway | `cd backend && make gateway` | Gateway AuthMiddleware | 8001 |
+| Direct LangGraph Compatibility | Used when manually running LangGraph toolchain | LangGraph auth | 2024 |
 
-`make dev`、Docker dev 和生产部署默认都运行 Gateway embedded runtime。
-`app.gateway.langgraph_auth` 仅用于保留的直连 LangGraph 工具链 / Studio 兼容性测试，不是标准服务启动路径。
+`make dev`, Docker dev, and production deployments all run Gateway embedded runtime by default.
+`app.gateway.langgraph_auth` is only used for preserved direct LangGraph toolchain / Studio compatibility tests, not standard service startup.
 
-每种模式下都需执行以下测试。
+The following tests must be executed under each mode.
 
 ---
 
-## 一、环境准备
+## 1. Environment Preparation
 
-### 1.1 首次启动（干净数据库）
+### 1.1 First Boot (Clean Database)
 
 ```bash
-# 清除已有数据
+# Clear existing data
 rm -f backend/.agent-workspace/data/agent_workspace.db
 
-# 启动标准模式（Gateway embedded runtime）
+# Start standard mode (Gateway embedded runtime)
 make dev
 ```
 
-**验证点：**
-- [ ] 控制台不输出 admin 邮箱或明文密码
-- [ ] 控制台提示 `First boot detected — no admin account exists.`
-- [ ] 控制台提示访问 `/setup` 完成 admin 创建
-- [ ] `GET /api/v1/auth/setup-status` 返回 `{"needs_setup": true}`
-- [ ] 前端访问 `/login` 会跳转 `/setup`
+**Verification Points:**
+- [ ] Console does not print admin email or plaintext password
+- [ ] Console displays `First boot detected — no admin account exists.`
+- [ ] Console prompts to visit `/setup` to complete admin creation
+- [ ] `GET /api/v1/auth/setup-status` returns `{"needs_setup": true}`
+- [ ] Visiting `/login` redirects to `/setup`
 
-### 1.2 非首次启动
+### 1.2 Non-First Boot
 
 ```bash
-# 不清除数据库，直接启动
+# Start directly without clearing database
 make dev
 ```
 
-**验证点：**
-- [ ] 控制台不输出密码
-- [ ] `GET /api/v1/auth/setup-status` 返回 `{"needs_setup": false}`
-- [ ] 已登录用户如果 `needs_setup=True`，访问 workspace 会被引导到 `/setup` 完成改邮箱 / 改密码流程
+**Verification Points:**
+- [ ] Console does not print password
+- [ ] `GET /api/v1/auth/setup-status` returns `{"needs_setup": false}`
+- [ ] Logged-in users with `needs_setup=True` visiting workspace are redirected to `/setup` to complete email/password setup
 
-### 1.3 环境变量配置
+### 1.3 Environment Variable Configuration
 
-| 变量 | 验证 |
+| Variable | Verification |
 |------|------|
-| `AUTH_JWT_SECRET` 未设 | 启动时 warning，自动生成临时密钥 |
-| `AUTH_JWT_SECRET` 已设 | 无 warning，重启后 session 保持 |
+| `AUTH_JWT_SECRET` unconfigured | Startup warning, automatically generates ephemeral key |
+| `AUTH_JWT_SECRET` configured | No warning, sessions persist across restart |
 
 ---
 
-## 二、接口流程测试
+## 2. API Flow Tests
 
-> 以下用 `BASE=http://localhost:2026` 为例。标准模式经 nginx 暴露此地址。
-> 直连测试替换为对应端口。
+> Below uses `BASE=http://localhost:2026` as an example. Standard mode exposes this address through nginx.
+> Direct connection tests should substitute the corresponding port.
 >
-> **CSRF token 提取**：多处用到从 cookie jar 提取 CSRF token，统一使用：
+> **CSRF Token Extraction**: Multiple places require extracting the CSRF token from the cookie jar; uniformly use:
 > ```bash
 > CSRF=$(python3 -c "
 > import http.cookiejar
@@ -68,21 +68,21 @@ make dev
 > print(next(c.value for c in cj if c.name == 'csrf_token'))
 > ")
 > ```
-> 或简写（多数场景够用）：`CSRF=$(grep csrf_token cookies.txt | awk '{print $NF}')`
+> Or shorthand (sufficient for most scenarios): `CSRF=$(grep csrf_token cookies.txt | awk '{print $NF}')`
 
-### 2.1 注册 + 登录 + 会话
+### 2.1 Registration + Login + Session
 
-#### TC-API-01: Setup 状态查询
+#### TC-API-01: Setup Status Query
 
 ```bash
 curl -s $BASE/api/v1/auth/setup-status | jq .
 ```
 
-**预期：**
-- 干净数据库且尚未初始化 admin：返回 `{"needs_setup": true}`
-- 已存在 admin：返回 `{"needs_setup": false}`
+**Expected:**
+- Clean database with no admin initialized: returns `{"needs_setup": true}`
+- Admin already exists: returns `{"needs_setup": false}`
 
-#### TC-API-02: 首次初始化 Admin
+#### TC-API-02: Initial Admin Account Creation
 
 ```bash
 curl -s -X POST $BASE/api/v1/auth/initialize \
@@ -91,20 +91,20 @@ curl -s -X POST $BASE/api/v1/auth/initialize \
   -c cookies.txt | jq .
 ```
 
-**预期：**
-- 状态码 201
+**Expected:**
+- Status code 201
 - Body: `{"id": "...", "email": "admin@example.com", "system_role": "admin", "needs_setup": false}`
-- `cookies.txt` 包含 `access_token`（HttpOnly）和 `csrf_token`（非 HttpOnly）
+- `cookies.txt` contains `access_token` (HttpOnly) and `csrf_token` (non-HttpOnly)
 
-#### TC-API-03: 获取当前用户
+#### TC-API-03: Get Current User Profile
 
 ```bash
 curl -s $BASE/api/v1/auth/me -b cookies.txt | jq .
 ```
 
-**预期：** `{"id": "...", "email": "admin@example.com", "system_role": "admin", "needs_setup": false}`
+**Expected:** `{"id": "...", "email": "admin@example.com", "system_role": "admin", "needs_setup": false}`
 
-#### TC-API-04: 改密码流程
+#### TC-API-04: Password Change Flow
 
 ```bash
 CSRF=$(grep csrf_token cookies.txt | awk '{print $NF}')
@@ -115,20 +115,20 @@ curl -s -X POST $BASE/api/v1/auth/change-password \
   -d '{"current_password":"AdminPass1!","new_password":"NewPass123!"}' | jq .
 ```
 
-**预期：**
-- 状态码 200
+**Expected:**
+- Status code 200
 - `{"message": "Password changed successfully"}`
-- 再调 `/auth/me` 仍为 `admin@example.com`，`needs_setup` 仍为 `false`
+- Calling `/auth/me` again still returns `admin@example.com`, `needs_setup` is still `false`
 
-#### TC-API-04a: reset_admin 后的 Setup 流程（改邮箱 + 改密码）
+#### TC-API-04a: Setup Flow After reset_admin (Change Email + Password)
 
 ```bash
 cd backend
 python -m app.gateway.auth.reset_admin --email admin@example.com
-# 从 .agent-workspace/admin_initial_credentials.txt 读取 reset 后密码
+# Read reset password from .agent-workspace/admin_initial_credentials.txt
 
 curl -s -X POST $BASE/api/v1/auth/login/local \
-  -d "username=admin@example.com&password=<凭据文件密码>" \
+  -d "username=admin@example.com&password=<credential_file_password>" \
   -c cookies.txt | jq .
 
 CSRF=$(grep csrf_token cookies.txt | awk '{print $NF}')
@@ -136,14 +136,14 @@ curl -s -X POST $BASE/api/v1/auth/change-password \
   -b cookies.txt \
   -H "Content-Type: application/json" \
   -H "X-CSRF-Token: $CSRF" \
-  -d '{"current_password":"<凭据文件密码>","new_password":"AdminPass2!","new_email":"admin2@example.com"}' | jq .
+  -d '{"current_password":"<credential_file_password>","new_password":"AdminPass2!","new_email":"admin2@example.com"}' | jq .
 ```
 
-**预期：**
-- 登录返回 `{"expires_in": 604800, "needs_setup": true}`
-- `change-password` 后 `/auth/me` 邮箱变为 `admin2@example.com`，`needs_setup` 变为 `false`
+**Expected:**
+- Login returns `{"expires_in": 604800, "needs_setup": true}`
+- After `change-password`, `/auth/me` email changes to `admin2@example.com`, `needs_setup` becomes `false`
 
-#### TC-API-05: 普通用户注册
+#### TC-API-05: Standard User Registration
 
 ```bash
 curl -s -X POST $BASE/api/v1/auth/register \
@@ -152,53 +152,53 @@ curl -s -X POST $BASE/api/v1/auth/register \
   -c user_cookies.txt | jq .
 ```
 
-**预期：** 状态码 201，`system_role` 为 `"user"`，自动登录（cookie 已设）
+**Expected:** Status code 201, `system_role` is `"user"`, automatically logged in (cookies set)
 
-#### TC-API-06: 登出
+#### TC-API-06: Logout
 
 ```bash
 curl -s -X POST $BASE/api/v1/auth/logout -b cookies.txt | jq .
 ```
 
-**预期：** `{"message": "Successfully logged out"}`，后续用 cookies.txt 访问 `/auth/me` 返回 401
+**Expected:** `{"message": "Successfully logged out"}`, subsequent access to `/auth/me` with cookies.txt returns 401
 
-### 2.2 多租户隔离
+### 2.2 Multi-Tenant Isolation
 
-#### TC-API-07: 用户 A 创建 Thread
+#### TC-API-07: User A Creates Thread
 
 ```bash
-# 以 user1 登录
+# Login as user1
 curl -s -X POST $BASE/api/v1/auth/login/local \
   -d "username=user1@example.com&password=UserPass1!" \
   -c user1.txt
 
 CSRF1=$(grep csrf_token user1.txt | awk '{print $NF}')
 
-# 创建 thread
+# Create thread
 curl -s -X POST $BASE/api/threads \
   -b user1.txt \
   -H "Content-Type: application/json" \
   -H "X-CSRF-Token: $CSRF1" \
   -d '{"metadata":{}}' | jq .thread_id
-# 记录 THREAD_ID
+# Record THREAD_ID
 ```
 
-#### TC-API-08: 用户 B 无法访问用户 A 的 Thread
+#### TC-API-08: User B Cannot Access User A's Thread
 
 ```bash
-# 注册并登录 user2
+# Register and login user2
 curl -s -X POST $BASE/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email":"user2@example.com","password":"UserPass2!"}' \
   -c user2.txt
 
-# 尝试访问 user1 的 thread
+# Attempt to access user1's thread
 curl -s $BASE/api/threads/$THREAD_ID -b user2.txt
 ```
 
-**预期：** 状态码 404（不是 403，避免泄露 thread 存在性）
+**Expected:** Status code 404 (not 403, preventing leakage of thread existence)
 
-#### TC-API-09: 用户 B 搜索 Thread 看不到用户 A 的
+#### TC-API-09: User B Searching Threads Cannot See User A's
 
 ```bash
 CSRF2=$(grep csrf_token user2.txt | awk '{print $NF}')
@@ -209,45 +209,45 @@ curl -s -X POST $BASE/api/threads/search \
   -d '{}' | jq length
 ```
 
-**预期：** 返回 0 或仅包含 user2 自己的 thread
+**Expected:** Returns 0 or only contains user2's own threads
 
-### 2.3 LangGraph-compatible Gateway 路由隔离
+### 2.3 LangGraph-Compatible Gateway Route Isolation
 
-#### TC-API-10: LangGraph-compatible 端点需要 cookie
+#### TC-API-10: LangGraph-Compatible Endpoints Require Cookie
 
 ```bash
-# 不带 cookie 访问 LangGraph-compatible 接口
+# Access LangGraph-compatible endpoint without cookie
 curl -s -w "%{http_code}" $BASE/api/langgraph/threads
 ```
 
-**预期：** 401
+**Expected:** 401
 
-#### TC-API-11: LangGraph-compatible 路由带 cookie 可访问
+#### TC-API-11: LangGraph-Compatible Routes Accessible With Cookie
 
 ```bash
 curl -s $BASE/api/langgraph/threads -b user1.txt | jq length
 ```
 
-**预期：** 200，返回 user1 的 thread 列表
+**Expected:** 200, returns user1's thread list
 
-#### TC-API-12: LangGraph-compatible 路由隔离 — 用户只看到自己的
+#### TC-API-12: LangGraph-Compatible Route Isolation — Users Only See Their Own
 
 ```bash
-# user2 查 threads
+# user2 queries threads
 curl -s $BASE/api/langgraph/threads -b user2.txt | jq length
 ```
 
-**预期：** 不包含 user1 的 thread
+**Expected:** Does not contain user1's threads
 
-### 2.4 Token 失效
+### 2.4 Token Invalidation
 
-#### TC-API-13: 改密码后旧 token 立即失效
+#### TC-API-13: Old Token Immediately Invalidated After Password Change
 
 ```bash
-# 保存当前 cookie
+# Save current cookie
 cp user1.txt user1_old.txt
 
-# 改密码
+# Change password
 CSRF1=$(grep csrf_token user1.txt | awk '{print $NF}')
 curl -s -X POST $BASE/api/v1/auth/change-password \
   -b user1.txt \
@@ -256,36 +256,36 @@ curl -s -X POST $BASE/api/v1/auth/change-password \
   -d '{"current_password":"UserPass1!","new_password":"NewUserPass1!"}' \
   -c user1.txt
 
-# 用旧 cookie 访问
+# Access using old cookie
 curl -s -w "%{http_code}" $BASE/api/v1/auth/me -b user1_old.txt
 ```
 
-**预期：** 401（token_version 不匹配）
+**Expected:** 401 (token_version mismatch)
 
-#### TC-API-14: 改密码后新 cookie 可用
+#### TC-API-14: New Cookie Valid After Password Change
 
 ```bash
 curl -s $BASE/api/v1/auth/me -b user1.txt | jq .email
 ```
 
-**预期：** 200，返回用户信息
+**Expected:** 200, returns user info
 
-### 2.5 错误响应格式
+### 2.5 Error Response Formatting
 
-#### TC-API-15: 结构化错误响应
+#### TC-API-15: Structured Error Response Format
 
 ```bash
-# 错误密码登录
+# Login with wrong password
 curl -s -X POST $BASE/api/v1/auth/login/local \
   -d "username=admin@example.com&password=wrong" | jq .detail
 ```
 
-**预期：**
+**Expected:**
 ```json
 {"code": "invalid_credentials", "message": "Incorrect email or password"}
 ```
 
-#### TC-API-16: 重复邮箱注册
+#### TC-API-16: Duplicate Email Registration
 
 ```bash
 curl -s -X POST $BASE/api/v1/auth/register \
@@ -293,18 +293,18 @@ curl -s -X POST $BASE/api/v1/auth/register \
   -d '{"email":"user1@example.com","password":"AnyPass123"}' -w "\n%{http_code}"
 ```
 
-**预期：** 400，`{"code": "email_already_exists", ...}`
+**Expected:** 400, `{"code": "email_already_exists", ...}`
 
 ---
 
-## 三、攻击测试
+## 3. Attack & Penetration Tests
 
-### 3.1 暴力破解防护
+### 3.1 Brute-Force Protection
 
-#### TC-ATK-01: IP 限速
+#### TC-ATK-01: IP Rate Limiting
 
 ```bash
-# 连续 6 次错误密码
+# 6 consecutive wrong password attempts
 for i in $(seq 1 6); do
   echo "Attempt $i:"
   curl -s -X POST $BASE/api/v1/auth/login/local \
@@ -312,31 +312,31 @@ for i in $(seq 1 6); do
 done
 ```
 
-**预期：** 前 5 次返回 401，第 6 次返回 429 `"Too many login attempts. Try again later."`
+**Expected:** First 5 attempts return 401, 6th attempt returns 429 `"Too many login attempts. Try again later."`
 
-#### TC-ATK-02: 限速后正确密码也被拒
-
-```bash
-# 紧接上一步
-curl -s -X POST $BASE/api/v1/auth/login/local \
-  -d "username=admin@example.com&password=正确密码" -w " HTTP %{http_code}\n"
-```
-
-**预期：** 429（锁定 5 分钟）
-
-#### TC-ATK-03: 成功登录清除限速
+#### TC-ATK-02: Correct Password Rejected During Lockout
 
 ```bash
-# 等待锁定过期后（或重启服务），用正确密码登录
+# Follow up from previous step
 curl -s -X POST $BASE/api/v1/auth/login/local \
-  -d "username=admin@example.com&password=正确密码" -w " HTTP %{http_code}\n"
+  -d "username=admin@example.com&password=CorrectPassword" -w " HTTP %{http_code}\n"
 ```
 
-**预期：** 200，计数器重置
+**Expected:** 429 (locked out for 5 minutes)
 
-### 3.2 CSRF 防护
+#### TC-ATK-03: Successful Login Resets Rate Limit Counter
 
-#### TC-ATK-04: 无 CSRF token 的 POST 请求
+```bash
+# After lockout expires (or restart), login with correct password
+curl -s -X POST $BASE/api/v1/auth/login/local \
+  -d "username=admin@example.com&password=CorrectPassword" -w " HTTP %{http_code}\n"
+```
+
+**Expected:** 200, counter reset
+
+### 3.2 CSRF Protection
+
+#### TC-ATK-04: POST Request Without CSRF Token
 
 ```bash
 curl -s -X POST $BASE/api/threads \
@@ -345,9 +345,9 @@ curl -s -X POST $BASE/api/threads \
   -d '{"metadata":{}}' -w "\nHTTP %{http_code}"
 ```
 
-**预期：** 403 `"CSRF token missing"`
+**Expected:** 403 `"CSRF token missing"`
 
-#### TC-ATK-05: 错误 CSRF token
+#### TC-ATK-05: Mismatched CSRF Token
 
 ```bash
 curl -s -X POST $BASE/api/threads \
@@ -357,66 +357,66 @@ curl -s -X POST $BASE/api/threads \
   -d '{"metadata":{}}' -w "\nHTTP %{http_code}"
 ```
 
-**预期：** 403 `"CSRF token mismatch"`
+**Expected:** 403 `"CSRF token mismatch"`
 
-### 3.3 Cookie 安全
+### 3.3 Cookie Security
 
-> HTTP 与 HTTPS 行为差异通过 `X-Forwarded-Proto: https` 模拟。
-> **注意：** 经 nginx 代理时，nginx 的 `proxy_set_header X-Forwarded-Proto $scheme` 会覆盖
-> 客户端发的值（`$scheme` = nginx 监听端口的 scheme），因此 HTTPS 模拟必须**直连 Gateway（端口 8001）**。
-> 每个 case 需在 **login** 和 **register** 两个端点各验证一次。
+> HTTP vs HTTPS behavioral differences are simulated via `X-Forwarded-Proto: https`.
+> **Note:** When proxied through nginx, nginx's `proxy_set_header X-Forwarded-Proto $scheme` will overwrite
+> the client-sent value (`$scheme` = nginx listener scheme), so HTTPS simulation must **directly connect to Gateway (Port 8001)**.
+> Each case needs to be validated once on both the **login** and **register** endpoints.
 
-#### TC-ATK-06: HTTP 模式 Cookie 属性
+#### TC-ATK-06: HTTP Mode Cookie Attributes
 
 ```bash
-# 登录
+# Login
 curl -s -D - -X POST $BASE/api/v1/auth/login/local \
-  -d "username=admin@example.com&password=正确密码" 2>/dev/null | grep -i set-cookie
+  -d "username=admin@example.com&password=CorrectPassword" 2>/dev/null | grep -i set-cookie
 ```
 
-**预期：**
-- `access_token`: `HttpOnly; Path=/; SameSite=lax`，无 `Secure`，无 `Max-Age`
-- `csrf_token`: `Path=/; SameSite=strict`，无 `HttpOnly`（JS 需要读取），无 `Secure`
+**Expected:**
+- `access_token`: `HttpOnly; Path=/; SameSite=lax`, no `Secure`, no `Max-Age`
+- `csrf_token`: `Path=/; SameSite=strict`, no `HttpOnly` (JS needs to read it), no `Secure`
 
 ```bash
-# 注册
+# Register
 curl -s -D - -X POST $BASE/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email":"cookie-http@example.com","password":"CookieTest1!"}' 2>/dev/null | grep -i set-cookie
 ```
 
-**预期：** 同上
+**Expected:** Same as above
 
-#### TC-ATK-07: HTTPS 模式 Cookie 属性
+#### TC-ATK-07: HTTPS Mode Cookie Attributes
 
-> **必须直连 Gateway**（`GW=http://localhost:8001`），经 nginx 会被 `$scheme` 覆盖。
+> **Must directly connect to Gateway** (`GW=http://localhost:8001`); going through nginx will be overwritten by `$scheme`.
 
 ```bash
 GW=http://localhost:8001
 
-# 登录（模拟 HTTPS）
+# Login (simulate HTTPS)
 curl -s -D - -X POST $GW/api/v1/auth/login/local \
   -H "X-Forwarded-Proto: https" \
-  -d "username=admin@example.com&password=正确密码" 2>/dev/null | grep -i set-cookie
+  -d "username=admin@example.com&password=CorrectPassword" 2>/dev/null | grep -i set-cookie
 ```
 
-**预期：**
+**Expected:**
 - `access_token`: `HttpOnly; Secure; Path=/; SameSite=lax; Max-Age=604800`
-- `csrf_token`: `Secure; Path=/; SameSite=strict`，无 `HttpOnly`
+- `csrf_token`: `Secure; Path=/; SameSite=strict`, no `HttpOnly`
 
 ```bash
-# 注册（模拟 HTTPS）
+# Register (simulate HTTPS)
 curl -s -D - -X POST $GW/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -H "X-Forwarded-Proto: https" \
   -d '{"email":"cookie-https@example.com","password":"CookieTest1!"}' 2>/dev/null | grep -i set-cookie
 ```
 
-**预期：** 同上
+**Expected:** Same as above
 
-#### TC-ATK-07a: HTTP/HTTPS 差异对比
+#### TC-ATK-07a: HTTP vs HTTPS Cookie Differences
 
-> 直连 Gateway 执行，避免 nginx 覆盖 `X-Forwarded-Proto`。
+> Execute directly against Gateway to prevent nginx from overwriting `X-Forwarded-Proto`.
 
 ```bash
 GW=http://localhost:8001
@@ -450,18 +450,18 @@ for proto in "" "https"; do
 done
 ```
 
-**预期对比表：**
+**Expected Comparison Table:**
 
-| 属性 | HTTP access_token | HTTPS access_token | HTTP csrf_token | HTTPS csrf_token |
+| Attribute | HTTP access_token | HTTPS access_token | HTTP csrf_token | HTTPS csrf_token |
 |------|------|------|------|------|
 | HttpOnly | Yes | Yes | No | No |
 | Secure | No | **Yes** | No | **Yes** |
 | SameSite | Lax | Lax | Strict | Strict |
-| Max-Age | 无（session cookie） | **604800**（7天） | 无 | 无 |
+| Max-Age | None (session cookie) | **604800** (7 days) | None | None |
 
-### 3.4 越权访问
+### 3.4 Unauthorized Access Prevention
 
-#### TC-ATK-08: 无 cookie 访问受保护接口
+#### TC-ATK-08: Access Protected Endpoints Without Cookie
 
 ```bash
 for path in /api/models /api/mcp/config /api/memory /api/skills \
@@ -470,12 +470,12 @@ for path in /api/models /api/mcp/config /api/memory /api/skills \
 done
 ```
 
-**预期：** 全部 401
+**Expected:** All return 401
 
-#### TC-ATK-09: 伪造 JWT
+#### TC-ATK-09: Forged JWT Signature
 
 ```bash
-# 用不同 secret 签名的 token
+# Token signed with different secret
 FAKE_TOKEN=$(python3 -c "
 import jwt
 print(jwt.encode({'sub':'admin-id','ver':0,'exp':9999999999}, 'wrong-secret', algorithm='HS256'))
@@ -485,13 +485,13 @@ curl -s -w "%{http_code}" $BASE/api/v1/auth/me \
   --cookie "access_token=$FAKE_TOKEN"
 ```
 
-**预期：** 401（签名验证失败）
+**Expected:** 401 (signature verification failed)
 
-#### TC-ATK-10: 过期 JWT
+#### TC-ATK-10: Expired JWT
 
 ```bash
-# 不依赖环境变量，直接用一个已过期的、随机 secret 签名的 token
-# 无论 secret 是否匹配，过期 token 都会被拒绝
+# Standalone test with expired token signed by random secret
+# Expired tokens are rejected regardless of secret matching
 EXPIRED_TOKEN=$(python3 -c "
 import jwt, time
 print(jwt.encode({'sub':'x','ver':0,'exp':int(time.time())-100}, 'any-secret-32chars-placeholder!!', algorithm='HS256'))
@@ -501,11 +501,11 @@ curl -s -w "%{http_code}" -o /dev/null $BASE/api/v1/auth/me \
   --cookie "access_token=$EXPIRED_TOKEN"
 ```
 
-**预期：** 401（过期 or 签名不匹配，均被拒绝）
+**Expected:** 401 (expired or signature mismatch, both rejected)
 
-### 3.5 密码安全
+### 3.5 Password Security
 
-#### TC-ATK-11: 密码长度不足
+#### TC-ATK-11: Password Too Short
 
 ```bash
 curl -s -X POST $BASE/api/v1/auth/register \
@@ -513,140 +513,140 @@ curl -s -X POST $BASE/api/v1/auth/register \
   -d '{"email":"short@example.com","password":"1234567"}' -w "\nHTTP %{http_code}"
 ```
 
-**预期：** 422（Pydantic validation: min_length=8）
+**Expected:** 422 (Pydantic validation: min_length=8)
 
-#### TC-ATK-12: 密码不以明文存储
+#### TC-ATK-12: Passwords Not Stored In Plaintext
 
 ```bash
-# 检查数据库
+# Inspect database
 sqlite3 backend/.agent-workspace/data/agent_workspace.db "SELECT email, password_hash FROM users LIMIT 3;"
 ```
 
-**预期：** `password_hash` 以 `$2b$` 开头（bcrypt 格式）
+**Expected:** `password_hash` starts with `$2b$` (bcrypt format)
 
 ---
 
-## 四、UI 操作测试
+## 4. UI Operation Tests
 
-> 浏览器中操作，验证前后端联动。
+> Operated in the browser to verify frontend-backend linkage.
 
-### 4.1 首次登录流程
+### 4.1 Initial Login Flow
 
-#### TC-UI-01: 无 admin 时访问 workspace 跳转 setup
+#### TC-UI-01: Visiting Workspace Without Admin Redirects to /setup
 
-1. 打开 `http://localhost:2026/workspace`
-2. **预期：** 自动跳转到 `/setup`
+1. Navigate to `http://localhost:2026/workspace`
+2. **Expected:** Automatically redirects to `/setup`
 
-#### TC-UI-02: Setup 页面创建 admin
+#### TC-UI-02: Create Admin on Setup Page
 
-1. 输入 admin 邮箱、密码、确认密码
-2. 点击 Create Admin Account
-3. **预期：** 跳转到 `/workspace`
-4. 刷新页面不跳回 `/setup`
+1. Enter admin email, password, and password confirmation
+2. Click Create Admin Account
+3. **Expected:** Redirects to `/workspace`
+4. Refresh page does not redirect back to `/setup`
 
-#### TC-UI-03: 已初始化后 Login 页面
+#### TC-UI-03: Login Page When Already Initialized
 
-1. 退出登录后访问 `/login`
-2. 输入 admin 邮箱和密码
-3. 点击 Login
-4. **预期：** 跳转到 `/workspace`
+1. Log out and visit `/login`
+2. Enter admin email and password
+3. Click Login
+4. **Expected:** Redirects to `/workspace`
 
-#### TC-UI-04: Setup 密码不匹配
+#### TC-UI-04: Password Mismatch on Setup Page
 
-1. 新密码和确认密码不一致
-2. 点击 Complete Setup
-3. **预期：** 显示 "Passwords do not match" 错误
+1. New password and confirmation do not match
+2. Click Complete Setup
+3. **Expected:** Displays "Passwords do not match" error
 
-### 4.2 日常使用
+### 4.2 Routine Usage
 
-#### TC-UI-05: 创建对话
+#### TC-UI-05: Create Conversation
 
-1. 在 workspace 发送一条消息
-2. **预期：** 左侧栏出现新 thread
+1. Send a message in workspace
+2. **Expected:** New thread appears in left sidebar
 
-#### TC-UI-06: 对话持久化
+#### TC-UI-06: Conversation Persistence
 
-1. 创建对话后刷新页面
-2. **预期：** 对话列表和内容仍然存在
+1. Create conversation and refresh page
+2. **Expected:** Conversation list and message history persist
 
-#### TC-UI-07: 登出
+#### TC-UI-07: Logout
 
-1. 点击头像 → Logout
-2. **预期：** 跳转到首页 `/`
-3. 直接访问 `/workspace` → 跳转到 `/login`
+1. Click avatar → Logout
+2. **Expected:** Redirects to landing page `/`
+3. Directly visit `/workspace` → redirects to `/login`
 
-### 4.3 多用户隔离
+### 4.3 Multi-User Isolation
 
-#### TC-UI-08: 用户 A 看不到用户 B 的对话
+#### TC-UI-08: User A Cannot See User B's Conversations
 
-1. 用户 A 在浏览器 1 登录，创建一个对话并发消息
-2. 用户 B 在浏览器 2（或隐身窗口）注册并登录
-3. **预期：** 用户 B 的 workspace 左侧栏为空，看不到用户 A 的对话
+1. User A logs in on Browser 1, creates a thread, and sends a message
+2. User B registers and logs in on Browser 2 (or incognito)
+3. **Expected:** User B's left sidebar is empty; User A's conversations are not visible
 
-#### TC-UI-09: 直接 URL 访问他人 Thread
+#### TC-UI-09: Direct URL Access to Another User's Thread
 
-1. 复制用户 A 的 thread URL
-2. 在用户 B 的浏览器中访问
-3. **预期：** 404 或空白页，不显示对话内容
+1. Copy User A's thread URL
+2. Visit in User B's browser
+3. **Expected:** 404 or empty page; conversation content not displayed
 
-### 4.4 Session 管理
+### 4.4 Session Management
 
-#### TC-UI-10: Tab 切换 Session 检查
+#### TC-UI-10: Tab Switching Session Validation
 
-1. 登录 workspace
-2. 切换到其他 tab 等待 60+ 秒
-3. 切回 workspace tab
-4. **预期：** 静默检查 session，页面正常（控制台无 401 刷屏）
+1. Log in to workspace
+2. Switch to another tab and wait 60+ seconds
+3. Switch back to workspace tab
+4. **Expected:** Silently validates session; page behaves normally (no 401 console spam)
 
-#### TC-UI-11: Session 过期后 Tab 切回
+#### TC-UI-11: Switch Back to Tab After Session Expiration
 
-1. 登录 workspace
-2. 在另一个 tab 改密码（使当前 session 失效）
-3. 切回 workspace tab
-4. **预期：** 自动跳转到 `/login`
+1. Log in to workspace
+2. Change password in another tab (invalidates current session)
+3. Switch back to workspace tab
+4. **Expected:** Automatically redirects to `/login`
 
-#### TC-UI-12: 改密码后 Settings 页面
+#### TC-UI-12: Settings Page After Password Change
 
-1. 进入 Settings → Account
-2. 修改密码
-3. **预期：** 成功提示，页面不需要重新登录（cookie 已自动更新）
+1. Navigate to Settings → Account
+2. Change password
+3. **Expected:** Success notification, no re-login required (cookies updated automatically)
 
-### 4.5 注册流程
+### 4.5 Registration Flow
 
-#### TC-UI-13: 从登录页跳转注册
+#### TC-UI-13: Navigate to Registration from Login Page
 
-1. 在 `/login` 页面点击注册链接
-2. 输入邮箱和密码
-3. **预期：** 注册成功后自动跳转 `/workspace`
+1. Click register link on `/login` page
+2. Enter email and password
+3. **Expected:** Automatically redirects to `/workspace` upon successful registration
 
-#### TC-UI-14: 重复邮箱注册
+#### TC-UI-14: Duplicate Email Registration
 
-1. 用已注册的邮箱尝试注册
-2. **预期：** 显示 "Email already registered" 错误
+1. Attempt registration using an already-registered email
+2. **Expected:** Displays "Email already registered" error
 
-### 4.6 密码重置（CLI）
+### 4.6 Password Reset (CLI)
 
-#### TC-UI-15: reset_admin 后重新登录
+#### TC-UI-15: Re-login After reset_admin
 
-1. 执行 `cd backend && python -m app.gateway.auth.reset_admin`
-2. 从 `.agent-workspace/admin_initial_credentials.txt` 读取新密码并登录
-3. **预期：** 跳转到 `/setup` 页面（`needs_setup` 被重置为 true）
-4. 旧 session 已失效
+1. Execute `cd backend && python -m app.gateway.auth.reset_admin`
+2. Read new password from `.agent-workspace/admin_initial_credentials.txt` and log in
+3. **Expected:** Redirects to `/setup` page (`needs_setup` reset to true)
+4. Old session is invalidated
 
 ---
 
-## 五、升级测试
+## 5. Upgrade Tests
 
-> 模拟从无 auth 版本（main 分支）升级到 auth 版本（feat/rfc-001-auth-module）。
+> Simulates upgrade from non-auth version (main branch) to auth version (feat/rfc-001-auth-module).
 
-### 5.1 准备旧版数据
+### 5.1 Prepare Legacy Data
 
 ```bash
-# 1. 切到 main 分支，启动服务
+# 1. Switch to main branch and start service
 git stash && git checkout main
 make dev
 
-# 2. 创建一些对话数据（无 auth，直接访问）
+# 2. Create conversation data (no auth, direct access)
 curl -s -X POST http://localhost:2026/api/langgraph/threads \
   -H "Content-Type: application/json" \
   -d '{"metadata":{"title":"old-thread-1"}}' | jq .thread_id
@@ -655,48 +655,48 @@ curl -s -X POST http://localhost:2026/api/langgraph/threads \
   -H "Content-Type: application/json" \
   -d '{"metadata":{"title":"old-thread-2"}}' | jq .thread_id
 
-# 3. 记录 thread 数量
+# 3. Record thread count
 curl -s http://localhost:2026/api/langgraph/threads | jq length
-# 预期: 2+
+# Expected: 2+
 
-# 4. 停止服务
+# 4. Stop service
 make stop
 ```
 
-### 5.2 升级并启动
+### 5.2 Upgrade and Start
 
 ```bash
-# 5. 切到 auth 分支
+# 5. Switch to auth branch
 git checkout feat/rfc-001-auth-module && git stash pop
 make install
 make dev
 ```
 
-#### TC-UPG-01: 首次启动等待 admin 初始化
+#### TC-UPG-01: First Boot Awaiting Admin Setup
 
-**预期：**
-- [ ] 控制台不输出 admin 邮箱或随机密码
-- [ ] 访问 `/setup` 可创建第一个 admin
-- [ ] 无报错，正常启动
+**Expected:**
+- [ ] Console does not print admin email or random password
+- [ ] Visiting `/setup` allows creating initial admin
+- [ ] Normal startup without errors
 
-#### TC-UPG-02: 旧 Thread 迁移到 admin
+#### TC-UPG-02: Legacy Threads Migrated to Admin
 
 ```bash
-# 创建第一个 admin
+# Create initial admin
 curl -s -X POST http://localhost:2026/api/v1/auth/initialize \
   -H "Content-Type: application/json" \
   -d '{"email":"admin@example.com","password":"AdminPass1!"}' \
   -c cookies.txt
 
-# 重启一次：启动迁移只在已有 admin 的启动路径执行
+# Restart once: startup migration only runs when admin exists
 make stop && make dev
 
-# 登录 admin
+# Login as admin
 curl -s -X POST http://localhost:2026/api/v1/auth/login/local \
   -d "username=admin@example.com&password=AdminPass1!" \
   -c cookies.txt
 
-# 查看 thread 列表
+# View thread list
 CSRF=$(grep csrf_token cookies.txt | awk '{print $NF}')
 curl -s -X POST http://localhost:2026/api/threads/search \
   -b cookies.txt \
@@ -705,27 +705,27 @@ curl -s -X POST http://localhost:2026/api/threads/search \
   -d '{}' | jq length
 ```
 
-**预期：**
-- [ ] 返回的 thread 数量 ≥ 旧版创建的数量
-- [ ] 控制台日志有 `Migrated N orphan LangGraph thread(s) to admin`
-- [ ] 旧 thread 只对 admin 可见
+**Expected:**
+- [ ] Returned thread count >= pre-upgrade created count
+- [ ] Console logs `Migrated N orphan LangGraph thread(s) to admin`
+- [ ] Legacy threads are visible only to admin
 
-#### TC-UPG-03: 旧 Thread 内容完整
+#### TC-UPG-03: Legacy Thread Content Integrity
 
 ```bash
-# 检查某个旧 thread 的内容
+# Verify content of legacy thread
 curl -s http://localhost:2026/api/threads/<old-thread-id> \
   -b cookies.txt | jq .metadata
 ```
 
-**预期：**
-- [ ] `metadata.title` 保留原值（如 `old-thread-1`）
-- [ ] 响应不回显服务端保留的 `user_id` / `owner_id`
+**Expected:**
+- [ ] `metadata.title` preserves original value (e.g. `old-thread-1`)
+- [ ] Response does not echo server-reserved `user_id` / `owner_id`
 
-#### TC-UPG-04: 新用户看不到旧 Thread
+#### TC-UPG-04: New Users Cannot See Legacy Threads
 
 ```bash
-# 注册新用户
+# Register new user
 curl -s -X POST http://localhost:2026/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email":"newuser@example.com","password":"NewPass123!"}' \
@@ -739,65 +739,65 @@ curl -s -X POST http://localhost:2026/api/threads/search \
   -d '{}' | jq length
 ```
 
-**预期：** 返回 0（旧 thread 属于 admin，新用户不可见）
+**Expected:** Returns 0 (old threads belong to admin, invisible to new users)
 
-### 5.3 数据库 Schema 兼容
+### 5.3 Database Schema Compatibility
 
-#### TC-UPG-05: 无 agent_workspace.db 时创建 schema 但不创建默认用户
+#### TC-UPG-05: Empty agent_workspace.db Initializes Schema Without Default Users
 
 ```bash
 ls -la backend/.agent-workspace/data/agent_workspace.db
 sqlite3 backend/.agent-workspace/data/agent_workspace.db "SELECT COUNT(*) FROM users;"
 ```
 
-**预期：** 文件存在，`sqlite3` 可查到 `users` 表含 `needs_setup`、`token_version` 列；未调用 `/initialize` 前用户数为 0
+**Expected:** File exists, `sqlite3` shows `users` table with `needs_setup` and `token_version` columns; before calling `/initialize`, user count is 0
 
-#### TC-UPG-06: agent_workspace.db WAL 模式
+#### TC-UPG-06: agent_workspace.db WAL Mode
 
 ```bash
 sqlite3 backend/.agent-workspace/data/agent_workspace.db "PRAGMA journal_mode;"
 ```
 
-**预期：** 返回 `wal`
+**Expected:** Returns `wal`
 
-### 5.4 配置兼容
+### 5.4 Configuration Compatibility
 
-#### TC-UPG-07: 无 AUTH_JWT_SECRET 的旧 .env 文件
+#### TC-UPG-07: Legacy .env Without AUTH_JWT_SECRET
 
 ```bash
-# 确认 .env 中没有 AUTH_JWT_SECRET
+# Verify AUTH_JWT_SECRET is unset in .env
 grep AUTH_JWT_SECRET backend/.env || echo "NOT SET"
 ```
 
-**预期：**
-- [ ] 启动时 warning：`AUTH_JWT_SECRET is not set — using auto-generated ephemeral secret`
-- [ ] 服务正常可用
-- [ ] 重启后旧 session 失效（临时密钥变了）
+**Expected:**
+- [ ] Startup warning: `AUTH_JWT_SECRET is not set — using auto-generated ephemeral secret`
+- [ ] Service operates normally
+- [ ] Stale sessions invalidated after restart (ephemeral secret changed)
 
-#### TC-UPG-08: 旧 config.yaml 无 auth 相关配置
+#### TC-UPG-08: Legacy config.yaml Without Auth Section
 
 ```bash
-# 检查 config.yaml 没有 auth 段
+# Verify config.yaml has no auth section
 grep -c "auth" config.yaml || echo "0"
 ```
 
-**预期：** auth 模块不依赖 config.yaml（配置走环境变量），旧 config.yaml 不影响启动
+**Expected:** auth module does not depend on config.yaml (configured via environment variables), old config.yaml does not affect startup
 
-### 5.5 前端兼容
+### 5.5 Frontend Compatibility
 
-#### TC-UPG-09: 旧前端缓存
+#### TC-UPG-09: Legacy Frontend Cache
 
-1. 用旧版前端的浏览器缓存访问升级后的服务
-2. **预期：** 被 AuthMiddleware 拦截返回 401（旧前端无 cookie），页面自然刷新后加载新前端
+1. Access upgraded service with cached legacy frontend assets
+2. **Expected:** Intercepted by AuthMiddleware returning 401 (no cookie), page refreshes and loads new frontend
 
-#### TC-UPG-10: 书签 URL
+#### TC-UPG-10: Bookmarked URLs
 
-1. 用升级前保存的 workspace URL（如 `localhost:2026/workspace/chats/xxx`）直接访问
-2. **预期：** 跳转到 `/login`，登录后跳回原 URL（`?next=` 参数）
+1. Directly visit a pre-upgrade bookmarked workspace URL (e.g. `localhost:2026/workspace/chats/xxx`)
+2. **Expected:** Redirects to `/login`, redirects back to original URL after login (`?next=` parameter)
 
-### 5.6 降级回滚
+### 5.6 Downgrade and Rollback
 
-#### TC-UPG-11: 回退到 main 分支
+#### TC-UPG-11: Rollback to main Branch
 
 ```bash
 make stop
@@ -805,12 +805,12 @@ git checkout main
 make dev
 ```
 
-**预期：**
-- [ ] 服务正常启动（忽略 `agent_workspace.db`，无 auth 相关代码不报错）
-- [ ] 旧对话数据仍然可访问
-- [ ] `agent_workspace.db` 文件残留但不影响运行
+**Expected:**
+- [ ] Service starts up normally (ignores `agent_workspace.db`, unauthenticated code does not error)
+- [ ] Legacy conversation data remains accessible
+- [ ] Existing `agent_workspace.db` file does not impact operation
 
-#### TC-UPG-12: 再次升级到 auth 分支
+#### TC-UPG-12: Upgrade to Auth Branch Again
 
 ```bash
 make stop
@@ -818,15 +818,15 @@ git checkout feat/rfc-001-auth-module
 make dev
 ```
 
-**预期：**
-- [ ] 识别已有 `agent_workspace.db`，不重新创建 admin
-- [ ] 旧的 admin 账号仍可登录（如果回退期间未删 `agent_workspace.db`）
+**Expected:**
+- [ ] Recognizes existing `agent_workspace.db`, does not duplicate admin
+- [ ] Legacy admin account can still log in (if `agent_workspace.db` was preserved)
 
-### 5.7 Admin 初始化与 reset_admin
+### 5.7 Admin Initialization & reset_admin
 
-> 首次启动不生成默认 admin，也不在日志输出密码。忘记密码时走 `reset_admin`，新密码写入 0600 凭据文件。
+> First startup does not generate a default admin or log passwords. For forgotten passwords, run `reset_admin`; the new password is saved to a 0600 credential file.
 
-#### TC-UPG-13: 未初始化 admin 时重启不创建默认账号
+#### TC-UPG-13: Restart Without Initialized Admin Does Not Create Defaults
 
 ```bash
 rm -f backend/.agent-workspace/data/agent_workspace.db
@@ -837,12 +837,12 @@ make dev
 curl -s $BASE/api/v1/auth/setup-status | jq .
 ```
 
-**预期：**
-- [ ] 控制台不输出密码
-- [ ] `setup-status` 仍为 `{"needs_setup": true}`
-- [ ] 访问 `/setup` 仍可创建第一个 admin
+**Expected:**
+- [ ] Console does not print password
+- [ ] `setup-status` remains `{"needs_setup": true}`
+- [ ] Visiting `/setup` still allows creating initial admin
 
-#### TC-UPG-14: 密码丢失 — reset_admin 写入凭据文件
+#### TC-UPG-14: Lost Password — reset_admin Writes to Credentials File
 
 ```bash
 python -m app.gateway.auth.reset_admin --email admin@example.com
@@ -850,31 +850,31 @@ ls -la backend/.agent-workspace/admin_initial_credentials.txt
 cat backend/.agent-workspace/admin_initial_credentials.txt
 ```
 
-**预期：**
-- [ ] 命令行只输出凭据文件路径，不输出明文密码
-- [ ] 凭据文件权限为 `0600`
-- [ ] 凭据文件包含 email + password 行
-- [ ] 该用户下次登录返回 `needs_setup=true`
+**Expected:**
+- [ ] CLI only outputs credentials file path, not plaintext password
+- [ ] Credentials file permissions are `0600`
+- [ ] Credentials file contains email + password lines
+- [ ] Subsequent login for this user returns `needs_setup=true`
 
-#### TC-UPG-15: 未初始化 admin 期间普通用户注册策略边界
+#### TC-UPG-15: Registration Policy Boundary Before Admin Initialization
 
 ```bash
-# admin 尚不存在，普通用户尝试注册
+# Admin does not yet exist; standard user attempts registration
 curl -s -X POST $BASE/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email":"earlybird@example.com","password":"EarlyPass1!"}' \
   -c early.txt -w "\nHTTP %{http_code}"
 ```
 
-**预期：**
-- [ ] 当前代码允许注册普通用户并自动登录（201，角色为 `user`）
-- [ ] 但 `setup-status` 仍为 `{"needs_setup": true}`，因为 admin 仍不存在
-- [ ] 这是一个产品策略边界：若要求“必须先有 admin”，需要在 `/register` 增加 admin-exists gate
+**Expected:**
+- [ ] Code allows standard user registration and auto-login (201, role `user`)
+- [ ] But `setup-status` remains `{"needs_setup": true}` because admin does not exist
+- [ ] Product policy boundary: if admin is required first, add admin-exists gate to `/register`
 
-#### TC-UPG-16: 普通用户数据与后续 admin 隔离
+#### TC-UPG-16: User Data Isolated From Subsequent Admin
 
 ```bash
-# 普通用户正常创建 thread、发消息
+# Standard user creates thread and sends messages normally
 CSRF=$(grep csrf_token early.txt | awk '{print $NF}')
 curl -s -X POST $BASE/api/threads \
   -b early.txt \
@@ -883,76 +883,76 @@ curl -s -X POST $BASE/api/threads \
   -d '{"metadata":{}}' | jq .thread_id
 ```
 
-**预期：** 普通用户正常创建 thread；后续 admin 创建后，搜索不到该普通用户 thread
+**Expected:** Regular users create threads normally; subsequently created admin cannot search or access that regular user's thread
 
-#### TC-UPG-17: reset_admin 后完成 Setup
+#### TC-UPG-17: Complete Setup After reset_admin
 
 ```bash
 curl -s -X POST $BASE/api/v1/auth/login/local \
-  -d "username=admin@example.com&password=<凭据文件密码>" \
+  -d "username=admin@example.com&password=<credential_file_password>" \
   -c admin.txt | jq .needs_setup
-# 预期: true
+# Expected: true
 
-# 完成 setup
+# Complete setup
 CSRF=$(grep csrf_token admin.txt | awk '{print $NF}')
 curl -s -X POST $BASE/api/v1/auth/change-password \
   -b admin.txt \
   -H "Content-Type: application/json" \
   -H "X-CSRF-Token: $CSRF" \
-  -d '{"current_password":"<凭据文件密码>","new_password":"AdminFinal1!","new_email":"admin@real.com"}' \
+  -d '{"current_password":"<credential_file_password>","new_password":"AdminFinal1!","new_email":"admin@real.com"}' \
   -c admin.txt
 
-# 验证
+# Verification
 curl -s $BASE/api/v1/auth/me -b admin.txt | jq '{email, needs_setup}'
 ```
 
-**预期：**
-- [ ] `email` 变为 `admin@real.com`
-- [ ] `needs_setup` 变为 `false`
-- [ ] 后续登录使用新密码
+**Expected:**
+- [ ] `email` updated to `admin@real.com`
+- [ ] `needs_setup` becomes `false`
+- [ ] Subsequent logins use the new password
 
-#### TC-UPG-18: 长期未用后 JWT 密钥轮换
+#### TC-UPG-18: JWT Secret Rotation After Inactivity
 
 ```bash
-# 场景：admin 未登录期间，运维更换了 AUTH_JWT_SECRET
-# 1. 首次启动用自动生成的临时密钥
-# 2. 某天运维在 .env 设置了固定密钥
+# Scenario: Operator rotated AUTH_JWT_SECRET while admin was inactive
+# 1. Initial boot uses auto-generated ephemeral secret
+# 2. Operator sets persistent secret in .env
 echo "AUTH_JWT_SECRET=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')" >> .env
 make stop && make dev
 ```
 
-**预期：**
-- [ ] 服务正常启动
-- [ ] 账号密码仍可登录（密码存在 DB，与 JWT 密钥无关）
-- [ ] 旧的 JWT token 失效（密钥变了签名不匹配）
+**Expected:**
+- [ ] Service starts up normally
+- [ ] Email/password login still works (passwords stored in DB independent of JWT secret)
+- [ ] Stale JWT tokens invalidated (signature mismatch due to changed secret)
 
 ---
 
-## 六、可重入测试
+## 6. Reentrancy & Idempotency Tests
 
-> 验证 auth 模块在重复操作、并发、中断恢复等场景下行为正确，无竞态条件。
+> Verifies that the auth module behaves correctly without race conditions under repeated operations, concurrency, and interrupted recovery.
 
-### 6.1 启动可重入
+### 6.1 Startup Reentrancy
 
-#### TC-REENT-01: 连续重启不重复创建 admin
+#### TC-REENT-01: Consecutive Restarts Do Not Duplicate Admin
 
 ```bash
-# 连续启动 3 次（daemon 模式，避免前台阻塞）
+# Start 3 consecutive times (daemon mode)
 for i in 1 2 3; do
   make dev-daemon && sleep 10 && make stop
 done
 
-# 检查 admin 数量
+# Check admin count
 sqlite3 backend/.agent-workspace/data/agent_workspace.db \
   "SELECT COUNT(*) FROM users WHERE system_role='admin';"
 ```
 
-**预期：** 始终为 1。不会因重启创建多个 admin。
+**Expected:** Always 1. Multiple admins will not be created due to restart.
 
-#### TC-REENT-02: 多进程同时启动
+#### TC-REENT-02: Multi-Process Concurrent Startup
 
 ```bash
-# 模拟两个 gateway 进程同时启动（竞争 admin 创建）
+# Simulate concurrent startup of two gateway processes
 cd backend
 PYTHONPATH=. uv run python -c "
 import asyncio
@@ -960,7 +960,7 @@ from app.gateway.app import create_app, _ensure_admin_user
 
 async def boot():
     app = create_app()
-    # 模拟两个并发 ensure_admin
+    # Simulate concurrent ensure_admin calls
     await asyncio.gather(
         _ensure_admin_user(app),
         _ensure_admin_user(app),
@@ -970,68 +970,68 @@ asyncio.run(boot())
 " 2>&1 | grep -i "admin\|error\|duplicate"
 ```
 
-**预期：**
-- [ ] 不报错（SQLite UNIQUE 约束捕获竞争，第二个静默跳过）
-- [ ] 最终只有 1 个 admin
+**Expected:**
+- [ ] No error raised (SQLite UNIQUE constraint catches race; second skips silently)
+- [ ] Exactly 1 admin exists in the end
 
-#### TC-REENT-03: Thread 迁移幂等
+#### TC-REENT-03: Thread Migration Idempotency
 
 ```bash
-# 连续调用 _migrate_orphaned_threads 两次
-# 第二次应无 thread 需要迁移（已有 user_id）
+# Call _migrate_orphaned_threads twice consecutively
+# Second run should migrate 0 threads (already have user_id)
 ```
 
-**预期：** 第二次 `migrated = 0`，无副作用
+**Expected:** Second run yields `migrated = 0`, no side effects
 
-### 6.2 登录可重入
+### 6.2 Login Reentrancy
 
-#### TC-REENT-04: 重复登录获取新 cookie
+#### TC-REENT-04: Repeat Login Obtains New Cookie
 
 ```bash
-# 同一用户连续登录 3 次
+# Same user logs in 3 consecutive times
 for i in 1 2 3; do
   curl -s -X POST $BASE/api/v1/auth/login/local \
-    -d "username=admin@example.com&password=正确密码" \
+    -d "username=admin@example.com&password=CorrectPassword" \
     -c "cookies_$i.txt" -o /dev/null
 done
 
-# 三个 cookie 都有效
+# All three cookies remain valid
 for i in 1 2 3; do
   echo "Cookie $i: $(curl -s -w '%{http_code}' -o /dev/null $BASE/api/v1/auth/me -b cookies_$i.txt)"
 done
 ```
 
-**预期：** 三个 cookie 都返回 200（未改密码，token_version 相同，多 session 共存）
+**Expected:** All three cookies return 200 (password unchanged, token_version identical, multi-session coexistence)
 
-#### TC-REENT-05: 登录-登出-登录
+#### TC-REENT-05: Login-Logout-Login Cycle
 
 ```bash
-# 登录
+# Login
 curl -s -X POST $BASE/api/v1/auth/login/local \
-  -d "username=admin@example.com&password=正确密码" \
+  -d "username=admin@example.com&password=CorrectPassword" \
   -c cookies.txt -o /dev/null
 
-# 登出
+# Logout
 curl -s -X POST $BASE/api/v1/auth/logout -b cookies.txt -o /dev/null
 
-# 再次登录
+# Login again
 curl -s -X POST $BASE/api/v1/auth/login/local \
-  -d "username=admin@example.com&password=正确密码" \
+  -d "username=admin@example.com&password=CorrectPassword" \
   -c cookies.txt
 
 curl -s -w "%{http_code}" $BASE/api/v1/auth/me -b cookies.txt
 ```
 
-**预期：** 200。登出→再登录流程无状态残留。
+**Expected:** 200. Logout -> re-login flow leaves no residual state.
 
-### 6.3 改密码可重入
+### 6.3 Password Change Reentrancy
 
-#### TC-REENT-06: 连续两次改密码
+#### TC-REENT-06: Consecutive Password Changes
 
 ```bash
 CSRF=$(grep csrf_token cookies.txt | awk '{print $NF}')
 
-# 第一次改密码
+# First password change
 curl -s -X POST $BASE/api/v1/auth/change-password \
   -b cookies.txt \
   -H "Content-Type: application/json" \
@@ -1039,7 +1039,7 @@ curl -s -X POST $BASE/api/v1/auth/change-password \
   -d '{"current_password":"Pass1","new_password":"Pass2"}' \
   -c cookies.txt
 
-# 用新 cookie 的 CSRF 再改一次
+# Update again using CSRF token from new cookie
 CSRF=$(grep csrf_token cookies.txt | awk '{print $NF}')
 curl -s -X POST $BASE/api/v1/auth/change-password \
   -b cookies.txt \
@@ -1051,34 +1051,34 @@ curl -s -X POST $BASE/api/v1/auth/change-password \
 curl -s -w "%{http_code}" $BASE/api/v1/auth/me -b cookies.txt
 ```
 
-**预期：**
-- [ ] 两次改密码都成功
-- [ ] 最终密码为 Pass3
-- [ ] `token_version` 递增两次（+2）
-- [ ] 最新 cookie 有效
+**Expected:**
+- [ ] Both password changes succeed
+- [ ] Final password is Pass3
+- [ ] `token_version` incremented twice (+2)
+- [ ] Latest cookie is valid
 
-#### TC-REENT-07: 改密码后旧 cookie 全部失效
+#### TC-REENT-07: Old Cookies Expire After Password Change
 
 ```bash
-# 保存三个时间点的 cookie
-# t1: 初始登录 → cookies_t1.txt
-# t2: 第一次改密码后 → cookies_t2.txt
-# t3: 第二次改密码后 → cookies_t3.txt
+# Save cookies across three points in time
+# t1: Initial login → cookies_t1.txt
+# t2: After first password change → cookies_t2.txt
+# t3: After second password change → cookies_t3.txt
 
-# 用 t1 和 t2 的 cookie 访问
-curl -s -w "%{http_code}" $BASE/api/v1/auth/me -b cookies_t1.txt  # 预期 401
-curl -s -w "%{http_code}" $BASE/api/v1/auth/me -b cookies_t2.txt  # 预期 401
-curl -s -w "%{http_code}" $BASE/api/v1/auth/me -b cookies_t3.txt  # 预期 200
+# Access using cookies from t1 and t2
+curl -s -w "%{http_code}" $BASE/api/v1/auth/me -b cookies_t1.txt  # Expected 401
+curl -s -w "%{http_code}" $BASE/api/v1/auth/me -b cookies_t2.txt  # Expected 401
+curl -s -w "%{http_code}" $BASE/api/v1/auth/me -b cookies_t3.txt  # Expected 200
 ```
 
-**预期：** 只有最新的 cookie 有效，历史 cookie 因 token_version 不匹配全部 401
+**Expected:** Only the latest cookie is valid; older cookies all return 401 due to token_version mismatch
 
-### 6.4 注册可重入
+### 6.4 Registration Reentrancy
 
-#### TC-REENT-08: 同一邮箱并发注册
+#### TC-REENT-08: Concurrent Registration with Same Email
 
 ```bash
-# 并发发送两个相同邮箱的注册请求
+# Send concurrent registration requests with identical email
 curl -s -X POST $BASE/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email":"race@example.com","password":"RacePass1!"}' &
@@ -1087,72 +1087,72 @@ curl -s -X POST $BASE/api/v1/auth/register \
   -d '{"email":"race@example.com","password":"RacePass1!"}' &
 wait
 
-# 检查用户数
+# Verify user count
 sqlite3 backend/.agent-workspace/data/agent_workspace.db \
   "SELECT COUNT(*) FROM users WHERE email='race@example.com';"
 ```
 
-**预期：**
-- [ ] 一个成功（201），一个失败（400 `email_already_exists`）
-- [ ] 数据库中只有 1 条记录（UNIQUE 约束保护）
+**Expected:**
+- [ ] One succeeds (201), one fails (400 `email_already_exists`)
+- [ ] Database has only 1 record (protected by UNIQUE constraint)
 
-### 6.5 Rate Limiter 可重入
+### 6.5 Rate Limiter Reentrancy
 
-#### TC-REENT-09: 限速过期后重新计数
+#### TC-REENT-09: Rate Limiter Resets After Lockout Expiry
 
 ```bash
-# 触发锁定（5 次错误）
+# Trigger lockout (5 consecutive errors)
 for i in $(seq 1 5); do
   curl -s -o /dev/null -X POST $BASE/api/v1/auth/login/local \
     -d "username=admin@example.com&password=wrong"
 done
 
-# 确认被锁定
+# Verify account lockout
 curl -s -w "%{http_code}" -o /dev/null -X POST $BASE/api/v1/auth/login/local \
   -d "username=admin@example.com&password=wrong"
-# 预期: 429
+# Expected: 429
 
-# 等待锁定过期（5 分钟）或重启服务清除内存计数器
+# Wait for lockout to expire (5 min) or restart service to clear counters
 make stop && make dev
 
-# 重新尝试 — 计数器应已重置
+# Retry — counter should be reset
 curl -s -w "%{http_code}" -o /dev/null -X POST $BASE/api/v1/auth/login/local \
   -d "username=admin@example.com&password=wrong"
-# 预期: 401（不是 429）
+# Expected: 401 (not 429)
 ```
 
-**预期：** 锁定过期后恢复正常限速（从 0 开始计数），而非累积
+**Expected:** After lockout expires, normal rate limiting resumes (counting restarts from 0) rather than accumulating
 
-#### TC-REENT-10: 成功登录重置计数后再次失败
+#### TC-REENT-10: Success Resets Counter Followed by New Failures
 
 ```bash
-# 3 次失败
+# 3 failed attempts
 for i in $(seq 1 3); do
   curl -s -o /dev/null -X POST $BASE/api/v1/auth/login/local \
     -d "username=admin@example.com&password=wrong"
 done
 
-# 1 次成功（重置计数）
+# 1 successful attempt (resets counter)
 curl -s -o /dev/null -X POST $BASE/api/v1/auth/login/local \
-  -d "username=admin@example.com&password=正确密码"
+  -d "username=admin@example.com&password=CorrectPassword"
 
-# 再 4 次失败（从 0 重新计数，未达阈值 5）
+# Another 4 failures (recounting from 0, threshold 5 not reached)
 for i in $(seq 1 4); do
   curl -s -w "attempt $i: %{http_code}\n" -o /dev/null -X POST $BASE/api/v1/auth/login/local \
     -d "username=admin@example.com&password=wrong"
 done
 ```
 
-**预期：** 4 次全部返回 401（未锁定），因为成功登录已重置计数器
+**Expected:** All 4 attempts return 401 (not locked out), because successful login reset the counter
 
-### 6.6 CSRF Token 可重入
+### 6.6 CSRF Token Reentrancy
 
-#### TC-REENT-11: 登录后多次 POST 使用同一 CSRF token
+#### TC-REENT-11: Reusable CSRF Token for Multiple POSTs
 
 ```bash
 CSRF=$(grep csrf_token cookies.txt | awk '{print $NF}')
 
-# 同一 CSRF token 多次使用
+# Multiple requests using the same CSRF token
 for i in 1 2 3; do
   echo "Request $i: $(curl -s -w '%{http_code}' -o /dev/null \
     -X POST $BASE/api/threads \
@@ -1163,37 +1163,37 @@ for i in 1 2 3; do
 done
 ```
 
-**预期：** 三次都成功（CSRF token 是 Double Submit Cookie，不是一次性 nonce）
+**Expected:** All three attempts succeed (CSRF token is a Double Submit Cookie, not a one-time nonce)
 
-### 6.7 Thread 操作可重入
+### 6.7 Thread Operations Reentrancy
 
-#### TC-REENT-12: 重复删除同一 Thread
+#### TC-REENT-12: Repeat Deletion of Same Thread
 
 ```bash
 CSRF=$(grep csrf_token cookies.txt | awk '{print $NF}')
 
-# 创建 thread
+# Create thread
 TID=$(curl -s -X POST $BASE/api/threads \
   -b cookies.txt \
   -H "Content-Type: application/json" \
   -H "X-CSRF-Token: $CSRF" \
   -d '{"metadata":{}}' | jq -r .thread_id)
 
-# 第一次删除
+# First deletion
 curl -s -w "%{http_code}" -X DELETE "$BASE/api/threads/$TID" \
   -b cookies.txt -H "X-CSRF-Token: $CSRF"
-# 预期: 200
+# Expected: 200
 
-# 第二次删除（幂等）
+# Second deletion (idempotent)
 curl -s -w "%{http_code}" -X DELETE "$BASE/api/threads/$TID" \
   -b cookies.txt -H "X-CSRF-Token: $CSRF"
 ```
 
-**预期：** 第二次返回 200 或 404，不报 500
+**Expected:** Second call returns 200 or 404, does not report 500
 
-### 6.8 reset_admin 可重入
+### 6.8 reset_admin Reentrancy
 
-#### TC-REENT-13: 连续两次 reset_admin
+#### TC-REENT-13: Consecutive reset_admin Invocations
 
 ```bash
 cd backend
@@ -1206,64 +1206,64 @@ cp .agent-workspace/admin_initial_credentials.txt /tmp/agent_workspace-reset-p2.
 P2=$(awk -F': ' '/^password:/ {print $2}' /tmp/agent_workspace-reset-p2.txt)
 ```
 
-**预期：**
-- [ ] `.agent-workspace/admin_initial_credentials.txt` 每次都会被重写，文件权限为 `0600`
-- [ ] P1 ≠ P2（每次生成新随机密码）
-- [ ] P1 不可用，只有 P2 有效
-- [ ] `token_version` 递增了 2
-- [ ] `needs_setup` 为 True
+**Expected:**
+- [ ] `.agent-workspace/admin_initial_credentials.txt` is overwritten each time with mode `0600`
+- [ ] P1 != P2 (new random password generated each time)
+- [ ] P1 is invalid; only P2 is valid
+- [ ] `token_version` incremented by 2
+- [ ] `needs_setup` is True
 
-### 6.9 Setup 流程可重入
+### 6.9 Setup Flow Reentrancy
 
-#### TC-REENT-14: 完成 Setup 后再访问 /setup 页面
+#### TC-REENT-14: Revisit /setup Page After Setup Completed
 
-1. 完成 admin setup（改邮箱 + 改密码）
-2. 直接访问 `/setup`
-3. **预期：** 应跳转到 `/workspace`（`needs_setup` 已为 false，SSR guard 不会返回 `needs_setup` tag）
+1. Complete admin setup (change email + password)
+2. Directly visit `/setup`
+3. **Expected:** Redirects to `/workspace` (`needs_setup` is false, SSR guard does not return `needs_setup` tag)
 
-#### TC-REENT-15: Setup 中途刷新页面
+#### TC-REENT-15: Refresh Page Mid-Setup
 
-1. 在 `/setup` 页面填写一半
-2. 刷新页面
-3. **预期：** 仍在 `/setup`（`needs_setup` 仍为 true），表单清空但不报错
+1. Fill form halfway on `/setup` page
+2. Refresh page
+3. **Expected:** Remains on `/setup` (`needs_setup` remains true), form cleared with no errors
 
 ---
 
-## 七、模式差异测试
+## 7. Mode Differences Tests
 
-> 以下用 `GW=http://localhost:8001` 表示直连 Gateway，`BASE=http://localhost:2026` 表示经 nginx。
-> 标准启动命令：`make dev`（或 `./scripts/serve.sh --dev`）。
+> Below uses `GW=http://localhost:8001` for direct Gateway connection, and `BASE=http://localhost:2026` for proxied via nginx.
+> Standard launch command: `make dev` (or `./scripts/serve.sh --dev`).
 
-### 7.1 标准启动模式
+### 7.1 Standard Startup Mode
 
-#### TC-MODE-01: Gateway AuthMiddleware 的 token_version 检查
+#### TC-MODE-01: Gateway AuthMiddleware token_version Check
 
 ```bash
-# 登录拿 cookie
+# Login and capture cookie
 curl -s -X POST $BASE/api/v1/auth/login/local \
-  -d "username=admin@example.com&password=正确密码" -c cookies.txt
+  -d "username=admin@example.com&password=CorrectPassword" -c cookies.txt
 
-# 改密码（bumps token_version）
+# Change password (bumps token_version)
 CSRF=$(grep csrf_token cookies.txt | awk '{print $NF}')
 curl -s -X POST $BASE/api/v1/auth/change-password \
   -b cookies.txt -H "Content-Type: application/json" -H "X-CSRF-Token: $CSRF" \
-  -d '{"current_password":"正确密码","new_password":"NewPass1!"}' -c new_cookies.txt
+  -d '{"current_password":"CorrectPassword","new_password":"NewPass1!"}' -c new_cookies.txt
 
-# 用旧 cookie 访问 LangGraph-compatible 路由
+# Access LangGraph-compatible route with stale cookie
 curl -s -w "%{http_code}" $BASE/api/langgraph/threads/search -b cookies.txt
-# 预期: 401（token_version 不匹配）
+# Expected: 401 (token_version mismatch)
 
-# 用新 cookie 访问
+# Access using new cookie
 CSRF2=$(grep csrf_token new_cookies.txt | awk '{print $NF}')
 curl -s -w "%{http_code}" -X POST $BASE/api/langgraph/threads/search \
   -b new_cookies.txt -H "Content-Type: application/json" -H "X-CSRF-Token: $CSRF2" -d '{}'
-# 预期: 200
+# Expected: 200
 ```
 
-#### TC-MODE-02: Gateway owner filter 隔离
+#### TC-MODE-02: Gateway Owner Filter Isolation
 
 ```bash
-# user1 创建 thread
+# user1 creates thread
 curl -s -X POST $BASE/api/v1/auth/login/local \
   -d "username=user1@example.com&password=UserPass1!" -c u1.txt
 CSRF1=$(grep csrf_token u1.txt | awk '{print $NF}')
@@ -1271,7 +1271,7 @@ TID=$(curl -s -X POST $BASE/api/langgraph/threads \
   -b u1.txt -H "Content-Type: application/json" -H "X-CSRF-Token: $CSRF1" \
   -d '{"metadata":{}}' | python3 -c "import sys,json; print(json.load(sys.stdin)['thread_id'])")
 
-# user2 搜索 — 应看不到 user1 的 thread
+# user2 searches — must not see user1's thread
 curl -s -X POST $BASE/api/v1/auth/login/local \
   -d "username=user2@example.com&password=UserPass2!" -c u2.txt
 CSRF2=$(grep csrf_token u2.txt | awk '{print $NF}')
@@ -1285,46 +1285,46 @@ print('OK: user2 sees', len(threads), 'threads, none belong to user1')
 "
 ```
 
-#### TC-MODE-03: 所有请求经 AuthMiddleware
+#### TC-MODE-03: All Requests Pass Through AuthMiddleware
 
 ```bash
-# Gateway API 受保护
+# Gateway API protected
 curl -s -w "%{http_code}" -o /dev/null $BASE/api/models
-# 预期: 401
+# Expected: 401
 
-# LangGraph 兼容路由（rewrite 到 Gateway）也受保护
+# LangGraph-compatible routes (rewritten to Gateway) are also protected
 curl -s -w "%{http_code}" -o /dev/null -X POST $BASE/api/langgraph/threads/search \
   -H "Content-Type: application/json" -d '{}'
-# 预期: 401
+# Expected: 401
 ```
 
-#### TC-MODE-04: 标准模式下完整 auth 流程
+#### TC-MODE-04: Full Auth Flow in Standard Mode
 
 ```bash
-# 登录
+# Login
 curl -s -X POST $BASE/api/v1/auth/login/local \
-  -d "username=admin@example.com&password=正确密码" -c cookies.txt
+  -d "username=admin@example.com&password=CorrectPassword" -c cookies.txt
 
 CSRF=$(grep csrf_token cookies.txt | awk '{print $NF}')
 
-# 创建 thread（走 Gateway 内嵌 runtime）
+# Create thread (via Gateway embedded runtime)
 curl -s -X POST $BASE/api/langgraph/threads \
   -b cookies.txt -H "Content-Type: application/json" -H "X-CSRF-Token: $CSRF" \
   -d '{"metadata":{}}' | python3 -c "import sys,json; print(json.load(sys.stdin)['thread_id'])"
-# 预期: 返回 thread_id
+# Expected: returns thread_id
 
-# CSRF 保护（CSRFMiddleware 覆盖所有 Gateway 路由）
+# CSRF protection (CSRFMiddleware covers all Gateway routes)
 curl -s -w "%{http_code}" -o /dev/null -X POST $BASE/api/langgraph/threads \
   -b cookies.txt -H "Content-Type: application/json" -d '{"metadata":{}}'
-# 预期: 403（CSRF token missing）
+# Expected: 403 (CSRF token missing)
 ```
 
-### 7.3 直连 Gateway（无 nginx）
+### 7.3 Direct Gateway (No Nginx)
 
-> 启动命令：`cd backend && make gateway`（端口 8001）
-> 不经过 nginx，直接测试 Gateway 的 auth 层。
+> Launch command: `cd backend && make gateway` (Port 8001)
+> Directly test the Gateway auth layer without passing through nginx.
 
-#### TC-GW-01: AuthMiddleware 保护所有非 public 路由
+#### TC-GW-01: AuthMiddleware Protects All Non-Public Routes
 
 ```bash
 GW=http://localhost:8001
@@ -1333,10 +1333,10 @@ for path in /api/models /api/mcp/config /api/memory /api/skills \
             /api/v1/auth/me /api/v1/auth/change-password; do
   echo "$path: $(curl -s -w '%{http_code}' -o /dev/null $GW$path)"
 done
-# 预期: 全部 401
+# Expected: All 401
 ```
 
-#### TC-GW-02: Public 路由不需要 cookie
+#### TC-GW-02: Public Routes Do Not Require Cookie
 
 ```bash
 GW=http://localhost:8001
@@ -1345,133 +1345,133 @@ for path in /health /api/v1/auth/setup-status /api/v1/auth/login/local \
             /api/v1/auth/register /api/v1/auth/initialize /api/v1/auth/logout; do
   echo "$path: $(curl -s -w '%{http_code}' -o /dev/null $GW$path)"
 done
-# 预期: 200 或 405/422（方法不对但不是 401）
+# Expected: 200 or 405/422 (method mismatch, but not 401)
 ```
 
-#### TC-GW-03: 直连 Gateway 注册 + 登录 + CSRF 完整流程
+#### TC-GW-03: Direct Gateway Register + Login + CSRF Flow
 
 ```bash
 GW=http://localhost:8001
 
-# 注册
+# Register
 curl -s -X POST $GW/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email":"gwtest@example.com","password":"GwTest123!"}' \
   -c gw_cookies.txt -w "\nHTTP %{http_code}"
-# 预期: 201
+# Expected: 201
 
-# 登录
+# Login
 curl -s -X POST $GW/api/v1/auth/login/local \
   -d "username=gwtest@example.com&password=GwTest123!" \
   -c gw_cookies.txt -w "\nHTTP %{http_code}"
-# 预期: 200
+# Expected: 200
 
-# GET（不需要 CSRF）
+# GET (no CSRF required)
 curl -s -w "%{http_code}" $GW/api/models -b gw_cookies.txt
-# 预期: 200
+# Expected: 200
 
-# POST 无 CSRF
+# POST without CSRF
 curl -s -w "%{http_code}" -o /dev/null -X POST $GW/api/memory/reload -b gw_cookies.txt
-# 预期: 403（CSRF token missing）
+# Expected: 403 (CSRF token missing)
 
-# POST 有 CSRF
+# POST with CSRF
 CSRF=$(grep csrf_token gw_cookies.txt | awk '{print $NF}')
 curl -s -w "%{http_code}" -o /dev/null -X POST $GW/api/memory/reload \
   -b gw_cookies.txt -H "X-CSRF-Token: $CSRF"
-# 预期: 200
+# Expected: 200
 ```
 
-#### TC-GW-04: 直连 Gateway 的 Rate Limiter
+#### TC-GW-04: Direct Gateway Rate Limiter
 
 ```bash
 GW=http://localhost:8001
 
-# 直连时 request.client.host 是真实 IP（无 nginx 代理），不读 X-Real-IP
+# On direct connect, client.host is the real TCP peer IP; ignores X-Real-IP
 for i in $(seq 1 6); do
   echo -n "attempt $i: "
   curl -s -w "%{http_code}\n" -o /dev/null -X POST $GW/api/v1/auth/login/local \
     -d "username=admin@example.com&password=wrong"
 done
-# 预期: 前 5 次 401，第 6 次 429
+# Expected: First 5 return 401, 6th returns 429
 ```
 
-#### TC-GW-05: 直连 Gateway 不受 X-Real-IP 欺骗
+#### TC-GW-05: Direct Gateway Not Deceived by X-Real-IP Spoofing
 
 ```bash
 GW=http://localhost:8001
 
-# 直连时 client.host 不是 trusted proxy，X-Real-IP 被忽略
+# On direct connect, client.host is not a trusted proxy; X-Real-IP ignored
 for i in $(seq 1 6); do
   echo -n "attempt $i (X-Real-IP spoofed): "
   curl -s -w "%{http_code}\n" -o /dev/null -X POST $GW/api/v1/auth/login/local \
     -H "X-Real-IP: 10.0.0.$i" \
     -d "username=admin@example.com&password=wrong"
 done
-# 预期: 前 5 次 401，第 6 次 429（伪造的 X-Real-IP 无效，所有请求共享真实 IP 的桶）
+# Expected: First 5 return 401, 6th returns 429 (spoofed IP ignored, all share real bucket)
 ```
 
-### 7.4 Docker 部署
+### 7.4 Docker Deployment
 
-> 启动命令：`./scripts/deploy.sh`
-> Docker Compose 文件：`docker/docker-compose.yaml`
+> Launch command: `./scripts/deploy.sh`
+> Docker Compose file: `docker/docker-compose.yaml`
 >
-> 前置条件：
-> - `.env` 中设置 `AUTH_JWT_SECRET`（否则每次容器重启 session 全部失效）
-> - `AGENT_WORKSPACE_HOME` 挂载到宿主机目录（持久化 `agent_workspace.db`）
+> Prerequisites:
+> - Set `AUTH_JWT_SECRET` in `.env` (otherwise sessions are invalidated on every container restart)
+> - Mount `AGENT_WORKSPACE_HOME` to a host directory (persisting `agent_workspace.db`)
 
-#### TC-DOCKER-01: agent_workspace.db 通过 volume 持久化
+#### TC-DOCKER-01: agent_workspace.db Volume Persistence
 
 ```bash
-# 启动容器
+# Start container
 ./scripts/deploy.sh
 
-# 等待启动完成
+# Wait for startup completion
 sleep 15
 BASE=http://localhost:2026
 
-# 注册用户
+# Register user
 curl -s -X POST $BASE/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email":"docker-test@example.com","password":"DockerTest1!"}' -w "\nHTTP %{http_code}"
 
-# 检查宿主机上的 agent_workspace.db
+# Verify agent_workspace.db on host filesystem
 ls -la ${AGENT_WORKSPACE_HOME:-backend/.agent-workspace}/data/agent_workspace.db
 sqlite3 ${AGENT_WORKSPACE_HOME:-backend/.agent-workspace}/data/agent_workspace.db \
   "SELECT email FROM users WHERE email='docker-test@example.com';"
 ```
 
-**预期：** agent_workspace.db 在宿主机 `AGENT_WORKSPACE_HOME` 目录中，查询可见刚注册的用户。
+**Expected:** agent_workspace.db resides in the host `AGENT_WORKSPACE_HOME` directory, query shows newly registered users.
 
-#### TC-DOCKER-02: 重启容器后 session 保持
+#### TC-DOCKER-02: Session Persistence Across Container Restarts
 
 ```bash
-# 登录拿 cookie
+# Login and capture cookie
 curl -s -X POST $BASE/api/v1/auth/login/local \
   -d "username=docker-test@example.com&password=DockerTest1!" \
   -c docker_cookies.txt -o /dev/null
 
-# 验证 cookie 有效
+# Verify cookie is valid
 curl -s -w "%{http_code}" -o /dev/null $BASE/api/v1/auth/me -b docker_cookies.txt
-# 预期: 200
+# Expected: 200
 
-# 重启容器（不删 volume）
+# Restart container (preserving volume)
 ./scripts/deploy.sh down && ./scripts/deploy.sh
 sleep 15
 
-# 用旧 cookie 访问
+# Access using old cookie
 curl -s -w "%{http_code}" -o /dev/null $BASE/api/v1/auth/me -b docker_cookies.txt
 ```
 
-**预期：**
-- 有 `AUTH_JWT_SECRET` → 200（session 保持）
-- 无 `AUTH_JWT_SECRET` → 401（每次启动生成新临时密钥，旧 JWT 签名失效）
+**Expected:**
+- With `AUTH_JWT_SECRET` -> 200 (session persists)
+- Without `AUTH_JWT_SECRET` -> 401 (new ephemeral secret generated on each startup, old JWT signature invalid)
 
-#### TC-DOCKER-03: 多 Worker 下 Rate Limiter 独立
+#### TC-DOCKER-03: Independent Rate Limiters Across Workers
 
 ```bash
-# docker-compose.yaml 中 gateway 默认 4 workers
-# 每个 worker 有独立的 _login_attempts dict
-# 限速可能不精确（请求分散到不同 worker），但不会完全失效
+# gateway defaults to 4 workers in docker-compose.yaml
+# Each worker maintains an independent _login_attempts dict
+# Rate limit may be approximate across workers but still enforces bounds
 
 for i in $(seq 1 20); do
   echo -n "attempt $i: "
@@ -1480,72 +1480,72 @@ for i in $(seq 1 20); do
 done
 ```
 
-**预期：** 在某个点开始返回 429（每个 worker 独立计数，阈值可能在 5~20 之间触发，取决于负载均衡分布）。
+**Expected:** Starts returning 429 at some point (each worker counts independently; threshold may trigger between 5~20 depending on load balancer distribution).
 
-**已知限制：** In-process rate limiter 不跨 worker 共享。生产环境如需精确限速，需要 Redis 等外部存储。
+**Known Limitation:** In-process rate limiter is not shared across workers. In production, precise rate limiting requires external storage such as Redis.
 
-#### TC-DOCKER-04: IM 渠道使用内部认证
+#### TC-DOCKER-04: IM Channels Use Internal Auth
 
 ```bash
-# IM 渠道（Feishu/Slack/Telegram）在 gateway 容器内部通过 LangGraph SDK 调 Gateway
-# 请求携带 process-local internal auth header，并带匹配的 CSRF cookie/header
+# IM channels (Feishu/Slack/Telegram) invoke Gateway via LangGraph SDK inside gateway container
+# Request attaches process-local internal auth header and CSRF token
 
-# 验证方式：检查 gateway 日志中 channel manager 的请求不包含 auth 错误
+# Verification: inspect gateway logs to verify channel manager requests contain no auth errors
 docker logs agent-workspace-gateway 2>&1 | grep -E "ChannelManager|channel" | head -10
 ```
 
-**预期：** 无 auth 相关错误。渠道不依赖浏览器 cookie；服务端通过内部认证头把请求归入 `default` 用户桶。
+**Expected:** No auth-related errors. Channels do not depend on browser cookies; the server routes requests into the `default` user bucket via internal auth headers.
 
-#### TC-DOCKER-05: reset_admin 密码写入 0600 凭证文件（不再走日志）
+#### TC-DOCKER-05: reset_admin Credentials Written to 0600 File (Not Logged)
 
 ```bash
-# 首次启动不会自动生成 admin 密码。先重置已有 admin，凭据文件写在挂载到宿主机的 AGENT_WORKSPACE_HOME 下。
+# First boot does not generate admin password automatically. Reset admin to write credentials file.
 docker exec agent-workspace-gateway python -m app.gateway.auth.reset_admin --email docker-test@example.com
 
 ls -la ${AGENT_WORKSPACE_HOME:-backend/.agent-workspace}/admin_initial_credentials.txt
-# 预期文件权限: -rw------- (0600)
+# Expected file permissions: -rw------- (0600)
 
 cat ${AGENT_WORKSPACE_HOME:-backend/.agent-workspace}/admin_initial_credentials.txt
-# 预期内容: email + password 行
+# Expected content: email + password lines
 
-# 容器日志只输出文件路径，不输出密码本身
+# Container log prints credentials file path, not plaintext password
 docker logs agent-workspace-gateway 2>&1 | grep -E "Credentials written to|Admin account"
-# 预期看到: "Credentials written to: /...../admin_initial_credentials.txt (mode 0600)"
+# Expected output: "Credentials written to: /...../admin_initial_credentials.txt (mode 0600)"
 
-# 反向验证: 日志里 NEVER 出现明文密码
+# Negative check: Plaintext password NEVER appears in logs
 docker logs agent-workspace-gateway 2>&1 | grep -iE "Password: .{15,}" && echo "FAIL: leaked" || echo "OK: not leaked"
 ```
 
-**预期：**
-- 凭证文件存在于 `AGENT_WORKSPACE_HOME` 下，权限 `0600`
-- 容器日志输出**路径**（不是密码本身），符合 CodeQL `py/clear-text-logging-sensitive-data` 规则
-- `grep "Password:"` 在日志中**应当无匹配**（旧行为已废弃，simplify pass 移除了日志泄露路径）
+**Expected:**
+- Credential file exists under `AGENT_WORKSPACE_HOME`, permissions `0600`
+- Container logs output the **path** (not the password itself), conforming to CodeQL `py/clear-text-logging-sensitive-data` rule
+- `grep "Password:"` in logs **should have no match** (legacy behavior deprecated; simplify pass removed log leakage paths)
 
-#### TC-DOCKER-06: Docker 部署
+#### TC-DOCKER-06: Docker Deployment
 
 ```bash
-# 标准 Docker 模式：runtime 嵌入 gateway 容器
+# Standard Docker mode: runtime embedded inside gateway container
 ./scripts/deploy.sh
 sleep 15
 
-# 确认 gateway 容器存在
+# Verify gateway container is running
 docker ps --filter name=agent-workspace-gateway --format '{{.Names}}'
-# 预期: agent-workspace-gateway
+# Expected: agent-workspace-gateway
 
-# auth 流程正常：未登录受保护接口返回 401
+# Normal auth flow: unauthenticated protected endpoints return 401
 curl -s -w "%{http_code}" -o /dev/null $BASE/api/models
-# 预期: 401
+# Expected: 401
 
 curl -s -X POST $BASE/api/v1/auth/initialize \
   -H "Content-Type: application/json" \
   -d '{"email":"admin@example.com","password":"AdminPass1!"}' \
   -c cookies.txt -w "\nHTTP %{http_code}"
-# 预期: 201
+# Expected: 201
 ```
 
-### 7.4 补充边界用例
+### 7.4 Additional Edge Cases
 
-#### TC-EDGE-01: 格式正确但随机 JWT
+#### TC-EDGE-01: Well-Formed But Random JWT
 
 ```bash
 RANDOM_JWT=$(python3 -c "
@@ -1555,9 +1555,9 @@ print(jwt.encode({'sub':str(uuid.uuid4()),'ver':0,'exp':int(time.time())+3600}, 
 curl -s --cookie "access_token=$RANDOM_JWT" $BASE/api/v1/auth/me | jq .detail
 ```
 
-**预期：** `{"code": "token_invalid", "message": "Token error: invalid_signature"}`
+**Expected:** `{"code": "token_invalid", "message": "Token error: invalid_signature"}`
 
-#### TC-EDGE-02: 注册时传 system_role=admin
+#### TC-EDGE-02: Pass system_role=admin During Registration
 
 ```bash
 curl -s -X POST $BASE/api/v1/auth/register \
@@ -1565,12 +1565,12 @@ curl -s -X POST $BASE/api/v1/auth/register \
   -d '{"email":"hacker@example.com","password":"HackPass1!","system_role":"admin"}' | jq .system_role
 ```
 
-**预期：** `"user"`（`system_role` 字段被忽略）
+**Expected:** `"user"` (`system_role` field is ignored)
 
-#### TC-EDGE-03: 并发改密码
+#### TC-EDGE-03: Concurrent Password Changes
 
 ```bash
-# 注册用户，登录两个 session
+# Register user and establish two sessions
 curl -s -X POST $BASE/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email":"edge03@example.com","password":"EdgePass3!"}' -o /dev/null
@@ -1582,7 +1582,7 @@ curl -s -X POST $BASE/api/v1/auth/login/local \
 CSRF1=$(grep csrf_token s1.txt | awk '{print $NF}')
 CSRF2=$(grep csrf_token s2.txt | awk '{print $NF}')
 
-# 并发改密码
+# Concurrent password changes
 curl -s -w "S1: %{http_code}\n" -o /dev/null -X POST $BASE/api/v1/auth/change-password \
   -b s1.txt -H "Content-Type: application/json" -H "X-CSRF-Token: $CSRF1" \
   -d '{"current_password":"EdgePass3!","new_password":"NewEdge3a!"}' &
@@ -1592,39 +1592,39 @@ curl -s -w "S2: %{http_code}\n" -o /dev/null -X POST $BASE/api/v1/auth/change-pa
 wait
 ```
 
-**预期：** 一个 200、一个 400（current_password 已变导致验证失败）。极端并发下可能两个都 200（SQLite 串行写），但最终只有一个密码生效。
+**Expected:** One 200, one 400 (current_password already changed causing verification failure). Under extreme concurrency both might return 200 (SQLite serialized writes), but only one password ultimately takes effect.
 
-#### TC-EDGE-04: Cookie SameSite 验证
+#### TC-EDGE-04: Cookie SameSite Verification
 
-> 完整的 HTTP/HTTPS cookie 属性对比见 §3.3 TC-ATK-06/07/07a。
+> See §3.3 TC-ATK-06/07/07a for the full HTTP/HTTPS cookie attribute comparison.
 
 ```bash
 curl -s -D - -X POST $BASE/api/v1/auth/login/local \
-  -d "username=admin@example.com&password=正确密码" 2>/dev/null | grep -i set-cookie
+  -d "username=admin@example.com&password=CorrectPassword" 2>/dev/null | grep -i set-cookie
 ```
 
-**预期：** `access_token` → `SameSite=lax`，`csrf_token` → `SameSite=strict`
+**Expected:** `access_token` -> `SameSite=lax`, `csrf_token` -> `SameSite=strict`
 
-#### TC-EDGE-05: HTTP 无 max_age / HTTPS 有 max_age
+#### TC-EDGE-05: HTTP Has No max_age / HTTPS Has max_age
 
 ```bash
 GW=http://localhost:8001
 
 # HTTP
 curl -s -D - -X POST $GW/api/v1/auth/login/local \
-  -d "username=admin@example.com&password=正确密码" 2>/dev/null \
+  -d "username=admin@example.com&password=CorrectPassword" 2>/dev/null \
   | grep "access_token=" | grep -oi "max-age=[0-9]*" || echo "NO max-age (HTTP session cookie)"
 
-# HTTPS：直连 Gateway 才能用 X-Forwarded-Proto 模拟 HTTPS；nginx 会覆盖该 header
+# HTTPS: Direct Gateway access required to simulate HTTPS via X-Forwarded-Proto; nginx overwrites header
 curl -s -D - -X POST $GW/api/v1/auth/login/local \
   -H "X-Forwarded-Proto: https" \
-  -d "username=admin@example.com&password=正确密码" 2>/dev/null \
+  -d "username=admin@example.com&password=CorrectPassword" 2>/dev/null \
   | grep "access_token=" | grep -oi "max-age=[0-9]*"
 ```
 
-**预期：** HTTP 无 `Max-Age`（session cookie，浏览器关闭即失效），HTTPS 有 `Max-Age=604800`（7 天）
+**Expected:** HTTP has no `Max-Age` (session cookie, expires when browser closes), HTTPS has `Max-Age=604800` (7 days)
 
-#### TC-EDGE-06: public 路径 trailing slash
+#### TC-EDGE-06: Public Path Trailing Slash
 
 ```bash
 for path in /api/v1/auth/login/local/ /api/v1/auth/register/ \
@@ -1633,16 +1633,16 @@ for path in /api/v1/auth/login/local/ /api/v1/auth/register/ \
 done
 ```
 
-**预期：** 全部 307（redirect 去掉 trailing slash）或 200/405，不是 401
+**Expected:** All return 307 (redirect stripping trailing slash) or 200/405, not 401
 
-### 7.5 红队对抗测试
+### 7.5 Red Team Adversarial Tests
 
-> 模拟攻击者视角，验证防线没有可利用的缝隙。
+> Simulates an attacker perspective to verify defenses have no exploitable gaps.
 
-#### 7.5.1 路径混淆绕过
+#### 7.5.1 Path Obfuscation Bypass
 
 ```bash
-# 通过编码/双斜杠/路径穿越尝试绕过 AuthMiddleware 公开路径判断
+# Attempt bypass via encoding, double slashes, and traversal
 for path in \
   "//api/v1/auth/me" \
   "/api/v1/auth/login/local/../me" \
@@ -1653,83 +1653,83 @@ for path in \
 done
 ```
 
-**预期：** 全部 401 或 404。不应有路径混淆导致跳过 auth 检查。
+**Expected:** All return 401 or 404. Path confusion must not bypass auth checks.
 
-#### 7.5.2 CSRF 对抗矩阵
+#### 7.5.2 CSRF Adversarial Matrix
 
 ```bash
-# 登录拿 cookie
+# Login and capture cookie
 curl -s -X POST $BASE/api/v1/auth/login/local \
-  -d "username=admin@example.com&password=正确密码" -c cookies.txt
+  -d "username=admin@example.com&password=CorrectPassword" -c cookies.txt
 
 CSRF=$(grep csrf_token cookies.txt | awk '{print $NF}')
 
-# Case 1: 有 cookie 无 header → 403
+# Case 1: Cookie present, header missing → 403
 curl -s -w "%{http_code}" -o /dev/null \
   -X POST $BASE/api/threads -b cookies.txt \
   -H "Content-Type: application/json" -d '{"metadata":{}}'
 
-# Case 2: 有 header 无 cookie → 403（删除 cookie 中的 csrf_token）
+# Case 2: Header present, cookie missing → 403 (delete csrf_token from cookie)
 curl -s -w "%{http_code}" -o /dev/null \
   -X POST $BASE/api/threads \
   -b cookies.txt \
   -H "X-CSRF-Token: $CSRF" \
   -H "Content-Type: application/json" -d '{"metadata":{}}'
 
-# Case 3: header 和 cookie 不匹配 → 403
+# Case 3: Mismatched header and cookie → 403
 curl -s -w "%{http_code}" -o /dev/null \
   -X POST $BASE/api/threads -b cookies.txt \
   -H "X-CSRF-Token: wrong-token" \
   -H "Content-Type: application/json" -d '{"metadata":{}}'
 
-# Case 4: 旧 CSRF token（登出再登录后） → 旧 token 应失效
+# Case 4: Stale CSRF token (after logout and re-login) → stale token invalidated
 curl -s -X POST $BASE/api/v1/auth/logout -b cookies.txt
 curl -s -X POST $BASE/api/v1/auth/login/local \
-  -d "username=admin@example.com&password=正确密码" -c cookies.txt
-# 用旧 CSRF 发请求
+  -d "username=admin@example.com&password=CorrectPassword" -c cookies.txt
+# Send request with stale CSRF token
 curl -s -w "%{http_code}" -o /dev/null \
   -X POST $BASE/api/threads -b cookies.txt \
   -H "X-CSRF-Token: $CSRF" \
   -H "Content-Type: application/json" -d '{"metadata":{}}'
 ```
 
-**预期：** Case 1-3 全部 403。Case 4 应 403（旧 CSRF 与新 cookie 不匹配）。
+**Expected:** Cases 1-3 all return 403. Case 4 should return 403 (old CSRF does not match new cookie).
 
-#### 7.5.3 Token Replay（登出后旧 token 重放）
+#### 7.5.3 Token Replay (Replaying Old Token After Logout)
 
 ```bash
-# 登录，保存 cookie
+# Login and save cookies
 curl -s -X POST $BASE/api/v1/auth/login/local \
-  -d "username=admin@example.com&password=正确密码" -c cookies.txt
+  -d "username=admin@example.com&password=CorrectPassword" -c cookies.txt
 
-# 提取 access_token 值
+# Extract access_token value
 TOKEN=$(grep access_token cookies.txt | awk '{print $NF}')
 
-# 登出
+# Logout
 curl -s -X POST $BASE/api/v1/auth/logout -b cookies.txt
 
-# 手工注入旧 token（模拟攻击者窃取了 token）
+# Manually inject stale token (simulating stolen token)
 curl -s -w "%{http_code}" -o /dev/null \
   $BASE/api/v1/auth/me --cookie "access_token=$TOKEN"
 ```
 
-**预期：** 200（已知限制：登出只清客户端 cookie，不 bump `token_version`。旧 token 在过期前仍有效）。
-**安全备注：** 如需严格防重放，需在登出时 `token_version += 1`。当前设计选择不做，因为成本是所有设备的 session 全部失效。
+**Expected:** 200 (Known limitation: logout only clears client cookies without bumping `token_version`. Old tokens remain valid until expiration).
+**Security Note:** For strict replay prevention, `token_version += 1` would be needed on logout. The current design chooses not to do this because the cost is invalidating sessions across all devices.
 
-#### 7.5.4 跨站强制登出
+#### 7.5.4 Cross-Site Forced Logout
 
 ```bash
-# 攻击者从第三方站点 POST /logout（无需认证、无需 CSRF）
+# Attacker posts to /logout from third-party site (public + CSRF-exempt)
 curl -s -X POST $BASE/api/v1/auth/logout -w "%{http_code}"
 ```
 
-**预期：** 200（logout 是 public + CSRF 豁免）。
-**风险评估：** 低——只影响可用性（被强制登出），不泄露数据。浏览器 `SameSite=Lax` 限制了真实跨站场景下 cookie 不会被带上，所以实际上第三方站点的 POST 不会清除用户 cookie。
+**Expected:** 200 (logout is public + CSRF exempt).
+**Risk Assessment:** Low — only impacts availability (forced logout), does not leak data. Browser `SameSite=Lax` restricts cookies from being attached in actual cross-site scenarios, so third-party POSTs will not actually clear user cookies.
 
-#### 7.5.5 Metadata 注入攻击（所有权伪造）
+#### 7.5.5 Metadata Injection Attack (Ownership Forgery)
 
 ```bash
-# 尝试在创建 thread 时注入其他用户的 user_id
+# Attempt to inject another user's user_id during thread creation
 CSRF=$(grep csrf_token cookies.txt | awk '{print $NF}')
 curl -s -X POST $BASE/api/threads \
   -b cookies.txt \
@@ -1738,23 +1738,23 @@ curl -s -X POST $BASE/api/threads \
   -d '{"metadata":{"owner_id":"victim-user-id","user_id":"victim-user-id"}}' | jq .metadata
 ```
 
-**预期：** 返回的 `metadata` 不包含 `owner_id` 或 `user_id`。真实所有权写入 `threads_meta.user_id`，不从客户端 metadata 接收，也不通过 metadata 回显。
+**Expected:** Returned `metadata` does not contain `owner_id` or `user_id`. True ownership is stored in `threads_meta.user_id`, neither accepted from client metadata nor echoed back in metadata.
 
-#### 7.5.6 HTTP Method 探测
+#### 7.5.6 HTTP Method Probing
 
 ```bash
-# HEAD/OPTIONS 不应泄露受保护资源信息
+# HEAD/OPTIONS must not leak protected resource info
 for method in HEAD OPTIONS TRACE; do
   echo "$method /api/models: $(curl -s -w '%{http_code}' -o /dev/null -X $method $BASE/api/models)"
 done
 ```
 
-**预期：** HEAD/OPTIONS 返回 401 或 405。TRACE 应返回 405。
+**Expected:** HEAD/OPTIONS return 401 or 405. TRACE should return 405.
 
-#### 7.5.7 Rate Limiter IP 维度缺陷验证
+#### 7.5.7 Rate Limiter IP Dimension Defect Verification
 
 ```bash
-# 通过不同的 X-Forwarded-For 绕过限速（验证是否用 client.host 而非 header）
+# Attempt rate limit bypass via different X-Forwarded-For headers
 for i in $(seq 1 6); do
   curl -s -w "attempt $i: %{http_code}\n" -o /dev/null \
     -X POST $BASE/api/v1/auth/login/local \
@@ -1763,24 +1763,24 @@ for i in $(seq 1 6); do
 done
 ```
 
-**预期：** 如果 rate limiter 基于 `request.client.host`（实际 TCP 连接 IP），所有请求来自同一 IP，第 6 个应返回 429。X-Forwarded-For 不应影响限速判断。
+**Expected:** If rate limiter is based on `request.client.host` (actual TCP connection IP), all requests come from the same IP, so the 6th should return 429. X-Forwarded-For must not influence rate limit evaluation.
 
-#### 7.5.8 Junk Cookie 穿透验证
+#### 7.5.8 Junk Cookie Penetration Verification
 
 ```bash
-# middleware 只检查 cookie 存在性，不验证 JWT
-# 确认 junk cookie 能过 middleware 但被下游 @require_auth 拦截
+# Middleware checks cookie presence; downstream validates JWT
+# Confirm junk cookie passes middleware but is rejected by downstream @require_auth
 curl -s -w "%{http_code}" $BASE/api/v1/auth/me \
   --cookie "access_token=not-a-jwt"
 ```
 
-**预期：** 401（middleware 放行，`get_current_user_from_request` 解码失败返回 401）。
-**安全备注：** middleware 是 presence-only 检查，有意设计。完整验证交给 `@require_auth`。
+**Expected:** 401 (middleware allows request through, `get_current_user_from_request` decode fails and returns 401).
+**Security Note:** Middleware performs a presence-only check by intentional design. Full validation is deferred to `@require_auth`.
 
-#### 7.5.9 路由覆盖审计
+#### 7.5.9 Route Coverage Audit
 
 ```bash
-# 列出所有注册的路由，检查哪些没有 @require_auth
+# List all registered routes to verify @require_auth coverage
 cd backend && PYTHONPATH=. python3 -c "
 from app.gateway.app import create_app
 app = create_app()
@@ -1797,16 +1797,16 @@ for route in app.routes:
 " 2>/dev/null
 ```
 
-**预期：** 列出的所有路由都应由 AuthMiddleware（cookie 存在性）+ `@require_auth`/`@require_permission`（JWT 验证）双层保护。检查是否有遗漏。
+**Expected:** All listed routes should have dual-layer protection from AuthMiddleware (cookie presence) + `@require_auth`/`@require_permission` (JWT validation). Verify no routes are missed.
 
 ---
 
-## 八、回归清单
+## 8. Regression Checklist
 
-每次 auth 相关代码变更后必须通过：
+Must pass after every auth-related code change:
 
 ```bash
-# 单元测试（168 个）
+# Unit tests
 cd backend && PYTHONPATH=. uv run pytest \
   tests/test_auth.py \
   tests/test_auth_config.py \
@@ -1816,9 +1816,9 @@ cd backend && PYTHONPATH=. uv run pytest \
   tests/test_langgraph_auth.py \
   -v
 
-# 核心接口冒烟
+# Core endpoint smoke tests
 curl -s $BASE/health                              # 200
-curl -s $BASE/api/models                          # 401 (无 cookie)
+curl -s $BASE/api/models                          # 401 (no cookie)
 curl -s $BASE/api/v1/auth/setup-status            # 200
-curl -s $BASE/api/v1/auth/me -b cookies.txt       # 200 (有 cookie)
+curl -s $BASE/api/v1/auth/me -b cookies.txt       # 200 (with cookie)
 ```

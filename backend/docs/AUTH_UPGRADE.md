@@ -1,34 +1,34 @@
 # Authentication Upgrade Guide
 
-Agent Workspace 内置了认证模块。本文档面向从无认证版本升级的用户。
+Agent Workspace includes a built-in authentication module. This document is intended for users upgrading from an unauthenticated version.
 
-完整设计见 [AUTH_DESIGN.md](AUTH_DESIGN.md)。
+For the complete design, see [AUTH_DESIGN.md](AUTH_DESIGN.md).
 
-## 核心概念
+## Core Concepts
 
-认证模块采用**始终强制**策略：
+The authentication module employs an **always-enforced** policy:
 
-- 首次启动时不会自动创建账号；首次访问 `/setup` 时由操作者创建第一个 admin 账号
-- 认证从一开始就是强制的，无竞争窗口
-- 已有 admin 后，服务启动时会把历史对话（升级前创建且缺少 `user_id` 的 thread）迁移到 admin 名下
-- 新数据按用户隔离：thread、workspace/uploads/outputs、memory、自定义 agent 都归属当前用户
+- No account is automatically generated on first boot; when accessing `/setup` for the first time, the operator creates the initial admin account.
+- Authentication is strictly enforced from the start, with no race windows.
+- Once an admin exists, server startup migrates legacy conversations (threads created before authentication that lack a `user_id`) under the admin account.
+- New data is isolated by user: threads, workspace/uploads/outputs, memories, and custom agents all belong to the current authenticated user.
 
-## 升级步骤
+## Upgrade Steps
 
-### 1. 更新代码
+### 1. Update Code
 
 ```bash
 git pull origin main
 cd backend && make install
 ```
 
-### 2. 首次启动
+### 2. First Boot
 
 ```bash
 make dev
 ```
 
-如果没有 admin 账号，控制台只会提示：
+If no admin account exists, the console will only display:
 
 ```
 ============================================================
@@ -37,104 +37,104 @@ make dev
 ============================================================
 ```
 
-首次启动不会在日志里打印随机密码，也不会写入默认 admin。这样避免启动日志泄露凭据，也避免在操作者创建账号前出现可被猜测的默认身份。
+First boot will not print random passwords in logs or create a default admin. This avoids credential leaks in startup logs and prevents guessable default credentials before the operator sets up the account.
 
-### 3. 创建 admin
+### 3. Create Admin
 
-访问 `http://localhost:2026/setup`，填写邮箱和密码创建第一个 admin 账号。创建成功后会自动登录并进入 workspace。
+Visit `http://localhost:2026/setup` and provide an email and password to create the first admin account. Upon creation, you will be automatically logged in and redirected to the workspace.
 
-如果这是从无认证版本升级，创建 admin 后重启一次服务，让启动迁移把缺少 `user_id` 的历史 thread 归属到 admin。
+If upgrading from an unauthenticated version, restart the service once after creating the admin so that startup migration reassigns legacy threads without a `user_id` to the admin.
 
-### 4. 登录
+### 4. Login
 
-后续访问 `http://localhost:2026/login`，使用已创建的邮箱和密码登录。
+Subsequently, visit `http://localhost:2026/login` and sign in using the configured email and password.
 
-### 5. 添加用户（可选）
+### 5. Add Users (Optional)
 
-其他用户通过 `/login` 页面注册，自动获得 **user** 角色。每个用户只能看到自己的对话、上传文件、输出文件、memory 和自定义 agent。
+Other users register via the `/login` page and automatically receive the **user** role. Each user can only view their own conversations, uploaded files, output files, memory, and custom agents.
 
-## 安全机制
+## Security Mechanisms
 
-| 机制 | 说明 |
-|------|------|
-| JWT HttpOnly Cookie | Token 不暴露给 JavaScript，防止 XSS 窃取 |
-| CSRF Double Submit Cookie | 受保护的 POST/PUT/PATCH/DELETE 请求需携带 `X-CSRF-Token`；登录/注册/初始化/登出走 auth 端点 Origin 校验 |
-| bcrypt 密码哈希 | 密码不以明文存储 |
-| Thread owner filter | `threads_meta.user_id` 由服务端认证上下文写入，搜索、读取、更新、删除默认按当前用户过滤 |
-| 文件系统隔离 | 线程数据写入 `{base_dir}/users/{user_id}/threads/{thread_id}/user-data/`，sandbox 内统一映射为 `/mnt/user-data/` |
-| Memory / agent 隔离 | 用户 memory 和自定义 agent 写入 `{base_dir}/users/{user_id}/...`；旧共享 agent 只作为只读兼容回退 |
-| HTTPS 自适应 | 检测 `x-forwarded-proto`，自动设置 `Secure` cookie 标志 |
+| Mechanism | Description |
+|---|---|
+| JWT HttpOnly Cookie | Tokens are not accessible to JavaScript, protecting against XSS token theft. |
+| CSRF Double Submit Cookie | Protected POST/PUT/PATCH/DELETE requests must carry `X-CSRF-Token`; login/register/init/logout verify Origin headers on auth endpoints. |
+| bcrypt Password Hashing | Passwords are never stored in plaintext. |
+| Thread Owner Filter | `threads_meta.user_id` is set by the server auth context; searching, reading, updating, and deleting filter by the current user by default. |
+| Filesystem Isolation | Thread data is written to `{base_dir}/users/{user_id}/threads/{thread_id}/user-data/`, mapped consistently inside the sandbox to `/mnt/user-data/`. |
+| Memory / Agent Isolation | User memory and custom agents are written to `{base_dir}/users/{user_id}/...`; legacy shared agents remain as read-only compatibility fallbacks. |
+| Adaptive HTTPS | Detects `x-forwarded-proto` and automatically applies the `Secure` cookie flag. |
 
-## 常见操作
+## Common Operations
 
-### 忘记密码
+### Password Reset
 
 ```bash
 cd backend
 
-# 重置 admin 密码
+# Reset admin password
 python -m app.gateway.auth.reset_admin
 
-# 重置指定用户密码
+# Reset specific user password
 python -m app.gateway.auth.reset_admin --email user@example.com
 ```
 
-会把新的随机密码写入 `.agent-workspace/admin_initial_credentials.txt`，文件权限为 `0600`。命令行只输出文件路径，不输出明文密码。
+This writes a newly generated random password to `.agent-workspace/admin_initial_credentials.txt` with file permissions `0600`. The CLI only outputs the file path, never plaintext credentials.
 
-### 完全重置
+### Full Reset
 
-删除统一 SQLite 数据库，重启后重新访问 `/setup` 创建新 admin：
+Delete the unified SQLite database, restart, and revisit `/setup` to create a fresh admin:
 
 ```bash
 rm -f backend/.agent-workspace/data/agent_workspace.db
-# 重启服务后访问 http://localhost:2026/setup
+# Restart service and visit http://localhost:2026/setup
 ```
 
-## 数据存储
+## Data Storage
 
-| 文件 | 内容 |
-|------|------|
-| `.agent-workspace/data/agent_workspace.db` | 统一 SQLite 数据库（users、threads_meta、runs、feedback 等应用数据） |
-| `.agent-workspace/users/{user_id}/threads/{thread_id}/user-data/` | 用户线程的 workspace、uploads、outputs |
-| `.agent-workspace/users/{user_id}/memory.json` | 用户级 memory |
-| `.agent-workspace/users/{user_id}/agents/{agent_name}/` | 用户自定义 agent 配置、SOUL 和 agent memory |
-| `.agent-workspace/admin_initial_credentials.txt` | `reset_admin` 生成的新凭据文件（0600，读完应删除） |
-| `.env` 中的 `AUTH_JWT_SECRET` | JWT 签名密钥（未设置时自动生成并持久化到 `.agent-workspace/.jwt_secret`，重启后 session 保持） |
+| File | Content |
+|---|---|
+| `.agent-workspace/data/agent_workspace.db` | Unified SQLite database (users, threads_meta, runs, feedback, and application data) |
+| `.agent-workspace/users/{user_id}/threads/{thread_id}/user-data/` | User thread workspace, uploads, and outputs |
+| `.agent-workspace/users/{user_id}/memory.json` | User-level memory |
+| `.agent-workspace/users/{user_id}/agents/{agent_name}/` | User custom agent configuration, SOUL prompt, and agent memory |
+| `.agent-workspace/admin_initial_credentials.txt` | New credentials file generated by `reset_admin` (0600 permissions, should be deleted after reading) |
+| `AUTH_JWT_SECRET` in `.env` | JWT signing secret (if unset, automatically generated and persisted to `.agent-workspace/.jwt_secret` across restarts) |
 
-### 生产环境建议
+### Production Recommendations
 
 ```bash
-# 生成持久化 JWT 密钥，避免重启后所有用户需重新登录
+# Generate a persistent JWT secret to prevent session invalidation on restart
 python -c "import secrets; print(secrets.token_urlsafe(32))"
-# 将输出添加到 .env：
-# AUTH_JWT_SECRET=<生成的密钥>
+# Add the output to .env:
+# AUTH_JWT_SECRET=<generated_secret>
 ```
 
-## API 端点
+## API Endpoints
 
-| 端点 | 方法 | 说明 |
-|------|------|------|
-| `/api/v1/auth/login/local` | POST | 邮箱密码登录（OAuth2 form） |
-| `/api/v1/auth/register` | POST | 注册新用户（user 角色） |
-| `/api/v1/auth/logout` | POST | 登出（清除 cookie） |
-| `/api/v1/auth/me` | GET | 获取当前用户信息 |
-| `/api/v1/auth/change-password` | POST | 修改密码 |
-| `/api/v1/auth/setup-status` | GET | 检查 admin 是否存在 |
-| `/api/v1/auth/initialize` | POST | 首次初始化第一个 admin（仅无 admin 时可调用） |
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/v1/auth/login/local` | POST | Email and password login (OAuth2 form) |
+| `/api/v1/auth/register` | POST | Register new user (`user` role) |
+| `/api/v1/auth/logout` | POST | Logout (clears session cookies) |
+| `/api/v1/auth/me` | GET | Retrieve current authenticated user profile |
+| `/api/v1/auth/change-password` | POST | Update password |
+| `/api/v1/auth/setup-status` | GET | Check whether an admin account exists |
+| `/api/v1/auth/initialize` | POST | Initial setup of the first admin (callable only when no admin exists) |
 
-## 兼容性
+## Compatibility
 
-- **本地开发**（`make dev`）：Gateway embedded runtime 完全兼容；无 admin 时访问 `/setup` 初始化
-- **Gateway embedded runtime**：标准脚本、Docker dev 和生产部署均通过 Gateway 提供认证与 LangGraph-compatible API
-- **Docker 部署**：完全兼容，`.agent-workspace/data/agent_workspace.db` 需持久化卷挂载
-- **IM 渠道**（Feishu/Slack/Telegram）：通过 Gateway 内部认证通信，使用 `default` 用户桶
-- **AgentWorkspaceClient**（嵌入式）：不经过 HTTP，不受认证影响
+- **Local Development** (`make dev`): Gateway embedded runtime is fully compatible; if no admin exists, visit `/setup` to initialize.
+- **Gateway Embedded Runtime**: Standard scripts, Docker dev, and production deployments all serve auth and LangGraph-compatible APIs via the Gateway.
+- **Docker Deployment**: Fully compatible; `.agent-workspace/data/agent_workspace.db` requires a persistent volume mount.
+- **IM Channels** (Feishu/Slack/Telegram): Communicate via internal Gateway authentication using the `default` user namespace.
+- **AgentWorkspaceClient** (Embedded): In-process execution does not go through HTTP and is unaffected by HTTP auth.
 
-## 故障排查
+## Troubleshooting
 
-| 症状 | 原因 | 解决 |
-|------|------|------|
-| 启动后没看到密码 | 当前实现不在启动日志输出密码 | 首次安装访问 `/setup`；忘记密码用 `reset_admin` |
-| `/login` 自动跳到 `/setup` | 系统还没有 admin | 在 `/setup` 创建第一个 admin |
-| 登录后 POST 返回 403 | CSRF token 缺失 | 确认前端已更新 |
-| 重启后需要重新登录 | `.jwt_secret` 文件被删除且 `.env` 未设置 `AUTH_JWT_SECRET` | 在 `.env` 中设置固定密钥 |
+| Symptom | Cause | Solution |
+|---|---|---|
+| No password displayed on startup | Passwords are no longer printed to startup logs | On initial setup, visit `/setup`; if password forgotten, use `reset_admin` |
+| `/login` redirects automatically to `/setup` | System has no admin account yet | Create the first admin on `/setup` |
+| POST returns 403 after login | Missing CSRF token | Ensure frontend client is up to date |
+| Required to log in again after server restart | `.jwt_secret` file was removed and `AUTH_JWT_SECRET` is not configured in `.env` | Set a persistent `AUTH_JWT_SECRET` in `.env` |

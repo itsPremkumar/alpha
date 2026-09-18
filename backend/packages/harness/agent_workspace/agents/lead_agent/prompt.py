@@ -796,9 +796,9 @@ combined with a FastAPI gateway for REST API access [citation:FastAPI](https://f
 - Every item in the Sources section MUST be a clickable markdown link with URL
 - Use standard markdown link `[Title](URL) - Description` format (NOT `[citation:...]` format)
 - The `[citation:Title](URL)` format is ONLY for inline citations within the report body
-- ❌ WRONG: `GitHub 仓库 - 官方源代码和文档` (no URL!)
+- ❌ WRONG: `GitHub Repository - Official source code and documentation` (no URL!)
 - ❌ WRONG in Sources: `[citation:GitHub Repository](url)` (citation prefix is for inline only!)
-- ✅ RIGHT in Sources: `[FastAPI](https://fastapi.tiangolo.com) - 官方文档`
+- ✅ RIGHT in Sources: `[FastAPI](https://fastapi.tiangolo.com) - Official documentation`
 
 **WORKFLOW for Research Tasks:**
 1. Use web_search to find sources → Extract {{title, url, snippet}} from results

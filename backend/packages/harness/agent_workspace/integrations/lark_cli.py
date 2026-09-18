@@ -2801,16 +2801,16 @@ def _append_agent_workspace_lark_shared_guidance(root: Path) -> None:
 
 {_AGENT_WORKSPACE_LARK_SHARED_GUIDANCE_MARKER}
 
-## Agent Workspace 授权入口
+## Agent Workspace Authorization Entry
 
-在 Agent Workspace 中，如果 `lark-cli auth status` 或业务命令提示未配置、未登录、token 过期或缺少用户授权：
+In Agent Workspace, if `lark-cli auth status` or a business command indicates unconfigured, not logged in, expired token, or missing user authorization:
 
-1. 不要要求用户在终端执行 `lark-cli config init`、`lark-cli auth login` 或 `lark-cli auth login --device-code`。
-2. 回复用户这个可点击链接：[打开飞书授权设置](?settings=integrations)。
-3. 告诉用户在 **Settings → Integrations → Lark / Feishu CLI** 点击“连接飞书”，在浏览器里完成授权后再回来继续当前任务。
-4. 如果错误中包含缺失的 `scope`、`permission_violations` 或建议的 `--domain`，告诉用户在该设置页选择对应权限域（例如日历选择 Calendar），或把具体 scope 填入“Exact OAuth scope / 具体 OAuth scope”后重新授权。
+1. Do not ask the user to run `lark-cli config init`, `lark-cli auth login`, or `lark-cli auth login --device-code` in the terminal.
+2. Reply to the user with this clickable link: [Open Lark / Feishu Authorization Settings](?settings=integrations).
+3. Inform the user to click "Connect Lark / Feishu" under **Settings → Integrations → Lark / Feishu CLI**, complete authorization in the browser, and then return to proceed with the task.
+4. If the error mentions a missing `scope`, `permission_violations`, or a suggested `--domain`, instruct the user to select the appropriate permission domain on that settings page (e.g. Calendar for calendar operations), or enter the specific scope into "Exact OAuth scope" before re-authorizing.
 
-只有在用户明确说明已经完成授权后，才继续调用具体的 `lark-cli` 业务命令。
+Only proceed with specific `lark-cli` commands after the user explicitly confirms authorization is complete.
 """
     skill_file.write_text(content.rstrip() + guidance + "\n", encoding="utf-8")
 

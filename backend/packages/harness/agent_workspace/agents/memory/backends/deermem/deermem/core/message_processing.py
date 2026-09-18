@@ -293,7 +293,7 @@ def detect_signals(
 
 
 # Trailing characters stripped before a whole-message trivial match: a pure
-# acknowledgment with trailing punctuation ("ok.", "好的！") is still trivial.
+# acknowledgment with trailing punctuation ("ok.", "yes!") is still trivial.
 _TRIVIAL_TRAIL = " \t\n\r.。,，!！?？;；"
 
 
@@ -306,7 +306,7 @@ def filter_trivial(
     """Drop pure-acknowledgment human turns and their AI replies.
 
     A human turn is "trivial" when its whole (stripped) text matches a trivial
-    pattern (e.g. "嗯", "ok", "好的", "谢谢") -- matched via ``fullmatch`` so a
+    pattern (e.g. "ok", "thanks", "got it") -- matched via ``fullmatch`` so a
     substantive turn containing "ok" is never dropped. The matched human turn
     and its following assistant reply are both removed (reusing the
     ``skip_next_ai`` discipline from :func:`filter_messages_for_memory`). When

@@ -1,6 +1,4 @@
-# Agent Workspace Backend
-
-**Language:** English | [简体中文](README_zh.md)
+# Alpha Gateway & Agent Harness Backend
 
 Agent Workspace is a LangGraph-based AI super agent with sandbox execution, persistent memory, and extensible tool integration. The backend enables AI agents to execute code, browse the web, manage files, delegate tasks to subagents, and retain context across conversations - all in isolated, per-thread environments.
 

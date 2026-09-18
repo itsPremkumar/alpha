@@ -4,8 +4,7 @@ This is the policy brain for resource-level authorization (RBAC and beyond),
 deliberately kept as a sibling to :mod:`agent_workspace.guardrails` rather than folded
 into it. PR #3665 (which added ``user_role``/``user_id`` to
 ``GuardrailRequest``) explicitly scoped guardrails to *execution-time* checks
-only — *"保持 Guardrail 的职责边界不变：不新增 policy engine、RBAC 系统、
-governance 子系统"*. This module is the RBAC brain that #3665 deferred.
+only — *"Keep Guardrail's scope of responsibility unchanged: do not add a policy engine, RBAC system, or governance subsystem"*. This module is the RBAC brain that #3665 deferred.
 
 The provider is enforced at **two layers** from one policy:
 

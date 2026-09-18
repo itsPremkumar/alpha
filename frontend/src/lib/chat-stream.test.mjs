@@ -98,6 +98,6 @@ test("ChatView wires structured fields and a truthful replay-gap notice separate
   const source = readFileSync(new URL("../components/ChatView.tsx", import.meta.url), "utf8");
   assert.match(source, /thinking: message.thinking/);
   assert.match(source, /toolCalls: message.toolCalls/);
-  assert.match(source, /onEvent:.*\n.*replay-gap.*flash\("Some streamed events could not be replayed\. This response is incomplete\."\)/);
+  assert.match(source, /onEvent:[\s\S]*?replay-gap[\s\S]*?flash\("Some streamed events could not be replayed\. This response is incomplete\."\)/);
   assert.match(source, /<ErrorBox\s+message=\{requestError.message\}/);
 });

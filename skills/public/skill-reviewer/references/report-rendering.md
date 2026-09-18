@@ -36,10 +36,10 @@ Do not translate enum values in structured output:
 
 Localized labels may appear next to enums:
 
-- `blocked`: Not ready / 不可发布
-- `revise`: Needs revision / 需修订
-- `publish_candidate`: Publish candidate / 可作为发布候选
-- `static_only`: Static review only / 仅静态审查
+- `blocked`: Not ready
+- `revise`: Needs revision
+- `publish_candidate`: Publish candidate
+- `static_only`: Static review only
 
 ## Finding Format
 

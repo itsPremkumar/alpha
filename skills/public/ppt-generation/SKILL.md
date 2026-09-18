@@ -162,7 +162,7 @@ Parameters:
 [!NOTE]
 Do NOT read the python file, just call it with the parameters.
 
-## Complete Example: Glassmorphism Style (最现代前卫)
+## Complete Example: Glassmorphism Style (Ultra-Modern & Cutting-Edge)
 
 User request: "Create a presentation about AI product launch"
 
@@ -289,7 +289,7 @@ python /mnt/skills/public/ppt-generation/scripts/generate.py \
 
 ## Style-Specific Guidelines
 
-### Glassmorphism Style (推荐 - 最现代前卫)
+### Glassmorphism Style (Recommended - Ultra-Modern & Cutting-Edge)
 ```json
 {
   "style": "glassmorphism",
@@ -394,7 +394,7 @@ python /mnt/skills/public/ppt-generation/scripts/generate.py \
 }
 ```
 
-### Keynote Style (Apple风格)
+### Keynote Style (Apple-Style Minimalist)
 ```json
 {
   "style": "keynote",

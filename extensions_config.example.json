@@ -53,8 +53,8 @@
           "database",
           "SQL",
           "table",
-          "订单",
-          "用户"
+          "orders",
+          "users"
         ]
       },
       "tools": {
@@ -63,9 +63,9 @@
             "mode": "prefer",
             "priority": 100,
             "keywords": [
-              "查库",
-              "订单表",
-              "指标"
+              "query_db",
+              "orders_table",
+              "metrics"
             ]
           }
         }

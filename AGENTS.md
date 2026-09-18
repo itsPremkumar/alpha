@@ -239,8 +239,7 @@ cd frontend && pnpm rstest run <pattern>     # e.g. pnpm rstest run my-component
 - Backend work → **[backend/AGENTS.md](backend/AGENTS.md)**
 - Frontend work → **[frontend/AGENTS.md](frontend/AGENTS.md)**
 - Setup & install → **[Install.md](Install.md)**, **[CONTRIBUTING.md](CONTRIBUTING.md)**
-- Project overview & usage → **[README.md](README.md)** (translations: `README_zh.md`,
-  `README_ja.md`, `README_fr.md`, `README_ru.md`)
+- Project overview & usage → **[README.md](README.md)**
 - Security policy → **[SECURITY.md](SECURITY.md)**
 - Changes → **[CHANGELOG.md](CHANGELOG.md)**
 - Cutting a release → **[RELEASING.md](RELEASING.md)**

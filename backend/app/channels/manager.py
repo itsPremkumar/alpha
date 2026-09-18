@@ -537,7 +537,7 @@ def _merge_stream_text(existing: str, chunk: str) -> str:
         return chunk
     # Everything else is a delta — always append, even when the delta
     # happens to match the buffer suffix (e.g. 'hel' + 'l') or equals
-    # the buffer (CJK reduplication: '谢' + '谢' = '谢谢'). Channels feed
+    # the buffer (character reduplication: 'thanks' + ' thanks'). Channels feed
     # only delta ('messages-tuple') events to this function; 'values'
     # snapshots are consumed via a separate branch, so a same-content
     # delta (chunk == existing) still represents a fresh token to keep.
@@ -726,7 +726,7 @@ def _format_artifact_text(artifacts: list[str]) -> str:
     filenames = [posixpath.basename(p) for p in artifacts]
     if len(filenames) == 1:
         return f"Created File: 📎 {filenames[0]}"
-    return "Created Files: 📎 " + "、".join(filenames)
+    return "Created Files: 📎 " + ", ".join(filenames)
 
 
 def _unknown_command_reply(command: str | None = None) -> str:

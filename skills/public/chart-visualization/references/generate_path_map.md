@@ -1,20 +1,18 @@
-# generate_path_map — 路径地图（中国）
+# generate_path_map — Path / Route Map
 
-## 功能概述
-基于高德地图展示中国境内的路线或行程，按顺序连接一系列 POI，适用于物流路线、旅游规划、配送轨迹等。
+## Overview
+Renders geographic journey paths, flight routes, logistics tracks, and navigation routes connecting multiple coordinates.
 
-## 输入字段
-### 必填
-- `title`: string，必填且≤16 字，描述路线主题。
-- `data`: array<object>，至少 1 个路线对象。
-- `data[].data`: string[]，必填，包含该路线上按顺序排列的中国境内 POI 名称。
+## Input Fields
+### Required
+- paths: array<object>, list of routes with coordinates (origin, destination, waypoints).
 
-### 可选
-- `width`: number，默认 `1600`。
-- `height`: number，默认 `1000`。
+### Optional
+- 	heme: string, default default.
+- 	itle: string, path map title.
 
-## 使用建议
-POI 名称必须具体且位于中国（如“西安市钟楼”“杭州西湖苏堤春晓”）；若需多条线路，可在 `data` 中添加多段对象。
+## Usage Recommendations
+Highlight directionality and transit checkpoints along routes.
 
-## 返回结果
-- 返回路径地图 URL，并在 `_meta.spec` 中保留标题与 POI 列表；若配置 `SERVICE_ID`，还会记录到“我的地图”。
+## Output
+- Returns path map image URL and spec in _meta.spec.

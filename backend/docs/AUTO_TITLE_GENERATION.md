@@ -1,24 +1,24 @@
-# 自动 Thread Title 生成功能
+# Automatic Thread Title Generation
 
-## 功能说明
+## Overview
 
-自动为对话线程生成标题，在用户首次提问并收到回复后自动触发。
+Automatically generates descriptive titles for conversation threads after the user asks an initial question and receives a response.
 
-## 实现方式
+## Implementation
 
-使用 `TitleMiddleware` 在 `after_model` 钩子中：
-1. 检测是否是首次对话（1个用户消息 + 1个助手回复）
-2. 检查 state 是否已有 title
-3. 默认从首条用户消息生成本地 fallback 标题，避免在流式回复结束前额外等待一次 LLM 调用；显式配置 `model_name` 时才调用 LLM 生成标题（默认最多6个词）
-4. 将 title 存储到 `ThreadState` 中（会被 checkpointer 持久化）
+Using `TitleMiddleware` within the `after_model` hook:
+1. Detects whether this is the first turn in the conversation (1 user message + 1 assistant reply).
+2. Checks whether state already contains a title.
+3. By default, generates a fast local fallback title from the initial user message, avoiding an extra LLM call before streaming completes; calls an LLM to generate titles (maximum 6 words by default) only when `model_name` is explicitly configured.
+4. Stores the generated title in `ThreadState` (persisted by checkpointer).
 
-TitleMiddleware 会先把 LangChain message content 里的结构化 block/list 内容归一化为纯文本，再拼到 title prompt 里，避免把 Python/JSON 的原始 repr 泄漏到标题生成模型。
+TitleMiddleware normalizes structured block/list contents from LangChain messages into plain text before interpolating into the title prompt, avoiding leaking raw Python/JSON representations into the title generation model.
 
-## ⚠️ 重要：存储机制
+## ⚠️ Important: Storage Mechanism
 
-### Title 存储位置
+### Title Storage Location
 
-Title 存储在 **`ThreadState.title`** 中，而非 thread metadata：
+Title is stored in **`ThreadState.title`**, rather than thread metadata:
 
 ```python
 class ThreadState(AgentState):
@@ -26,20 +26,20 @@ class ThreadState(AgentState):
     title: str | None = None  # ✅ Title stored here
 ```
 
-### 持久化说明
+### Persistence Notes
 
-| 部署方式 | 持久化 | 说明 |
-|---------|--------|------|
-| **LangGraph Studio (本地)** | ❌ 否 | 仅内存存储，重启后丢失 |
-| **LangGraph Platform** | ✅ 是 | 自动持久化到数据库 |
-| **自定义 + Checkpointer** | ✅ 是 | 需配置 PostgreSQL/SQLite checkpointer |
+| Deployment Mode | Persistent | Notes |
+|---|---|---|
+| **LangGraph Studio (Local)** | ❌ No | In-memory only, lost on restart |
+| **LangGraph Platform** | ✅ Yes | Persisted automatically to database |
+| **Custom + Checkpointer** | ✅ Yes | Requires PostgreSQL / SQLite checkpointer configuration |
 
-### 如何启用持久化
+### How to Enable Persistence
 
-如果需要在本地开发时也持久化 title，需要配置 checkpointer：
+To persist titles during local development, configure a checkpointer:
 
 ```python
-# 在 langgraph.json 同级目录创建 checkpointer.py
+# Create checkpointer.py alongside langgraph.json
 from langgraph.checkpoint.postgres import PostgresSaver
 
 checkpointer = PostgresSaver.from_conn_string(
@@ -47,7 +47,7 @@ checkpointer = PostgresSaver.from_conn_string(
 )
 ```
 
-然后在 `langgraph.json` 中引用：
+Then reference it in `langgraph.json`:
 
 ```json
 {
@@ -58,19 +58,19 @@ checkpointer = PostgresSaver.from_conn_string(
 }
 ```
 
-## 配置
+## Configuration
 
-在 `config.yaml` 中添加（可选）：
+In `config.yaml` (optional):
 
 ```yaml
 title:
   enabled: true
   max_words: 6
   max_chars: 60
-  model_name: null  # null = 快速本地 fallback；填模型名才启用 LLM 标题
+  model_name: null  # null = fast local fallback; specify model name to enable LLM generation
 ```
 
-或在代码中配置：
+Or programmatically in Python:
 
 ```python
 from agent_workspace.config.title_config import TitleConfig, set_title_config
@@ -82,16 +82,16 @@ set_title_config(TitleConfig(
 ))
 ```
 
-## 客户端使用
+## Client Usage
 
-### 获取 Thread Title
+### Fetching Thread Title
 
 ```typescript
-// 方式1: 从 thread state 获取
+// Approach 1: Read from thread state
 const state = await client.threads.getState(threadId);
 const title = state.values.title || "New Conversation";
 
-// 方式2: 监听 stream 事件
+// Approach 2: Listen to stream events
 for await (const chunk of client.runs.stream(threadId, assistantId, {
   input: { messages: [{ role: "user", content: "Hello" }] }
 })) {
@@ -101,10 +101,10 @@ for await (const chunk of client.runs.stream(threadId, assistantId, {
 }
 ```
 
-### 显示 Title
+### Displaying Title
 
 ```typescript
-// 在对话列表中显示
+// Render in conversation list
 function ConversationList() {
   const [threads, setThreads] = useState([]);
 
@@ -112,7 +112,7 @@ function ConversationList() {
     async function loadThreads() {
       const allThreads = await client.threads.list();
       
-      // 获取每个 thread 的 state 来读取 title
+      // Fetch each thread state to read title
       const threadsWithTitles = await Promise.all(
         allThreads.map(async (t) => {
           const state = await client.threads.getState(t.thread_id);
@@ -141,7 +141,7 @@ function ConversationList() {
 }
 ```
 
-## 工作流程
+## Workflow
 
 ```mermaid
 sequenceDiagram
@@ -152,83 +152,83 @@ sequenceDiagram
     participant TitleModel as Title model (optional)
     participant Checkpointer
 
-    User->>Client: 发送首条消息
+    User->>Client: Send first message
     Client->>LangGraph: POST /threads/{id}/runs
-    LangGraph->>Agent: 处理消息
-    Agent-->>LangGraph: 返回回复
-    LangGraph->>TitleMiddleware: after_model()/aafter_model()
-    TitleMiddleware->>TitleMiddleware: 检查是否需要生成 title
-    alt title.model_name 为空（默认）
-        TitleMiddleware->>TitleMiddleware: 从首条用户消息生成本地 fallback title
-    else 显式配置 title.model_name
-        TitleMiddleware->>TitleModel: 生成 LLM title
-        TitleModel-->>TitleMiddleware: 返回 title
+    LangGraph->>Agent: Process message
+    Agent-->>LangGraph: Return response
+    LangGraph->>TitleMiddleware: after_model() / aafter_model()
+    TitleMiddleware->>TitleMiddleware: Check if title generation needed
+    alt title.model_name is null (default)
+        TitleMiddleware->>TitleMiddleware: Generate local fallback title from first user message
+    else explicitly configured title.model_name
+        TitleMiddleware->>TitleModel: Generate LLM title
+        TitleModel-->>TitleMiddleware: Return title
     end
     TitleMiddleware->>LangGraph: return {"title": "..."}
-    LangGraph->>Checkpointer: 保存 state (含 title)
-    LangGraph-->>Client: 返回响应
-    Client->>Client: 从 state.values.title 读取
+    LangGraph->>Checkpointer: Save state (including title)
+    LangGraph-->>Client: Return response
+    Client->>Client: Read from state.values.title
 ```
 
-## 优势
+## Benefits
 
-✅ **可靠持久化** - 使用 LangGraph 的 state 机制，自动持久化  
-✅ **完全后端处理** - 客户端无需额外逻辑  
-✅ **自动触发** - 首次对话后自动生成  
-✅ **可配置** - 支持自定义长度、模型等  
-✅ **容错性强** - 失败时使用 fallback 策略  
-✅ **架构一致** - 与现有 SandboxMiddleware 保持一致  
+✅ **Reliable Persistence** - Uses LangGraph state mechanisms, automatically persisted  
+✅ **Fully Backend-Managed** - Zero client-side logic required  
+✅ **Automatic Triggering** - Generates automatically after first turn  
+✅ **Configurable** - Supports customizable length, models, and prompts  
+✅ **Robust Fault Tolerance** - Falls back to local truncation when LLM unavailable  
+✅ **Architectural Consistency** - Aligns with SandboxMiddleware and harness patterns  
 
-## 注意事项
+## Important Considerations
 
-1. **读取方式不同**：Title 在 `state.values.title` 而非 `thread.metadata.title`
-2. **性能考虑**：默认配置不调用标题模型；只有显式配置 `title.model_name` 时，才会在首轮回复后额外等待一次 LLM title 生成
-3. **并发安全**：middleware 在 agent 首次完整回复后更新 state，不需要客户端额外请求
-4. **Fallback 策略**：默认使用用户消息前几个字符作为 title；如果显式启用的 LLM 调用失败，也会回退到该策略
+1. **Access Pattern**: Title is stored in `state.values.title`, not in `thread.metadata.title`.
+2. **Performance**: Default configuration does not call an LLM; only when `title.model_name` is explicitly set does the system wait for an LLM title generation after the first turn.
+3. **Concurrency Safety**: The middleware updates state upon completing the first turn, requiring no auxiliary client requests.
+4. **Fallback Policy**: Defaults to using the leading characters of the user message; when an explicit LLM call fails, the system automatically falls back to this local strategy.
 
-## 测试
+## Testing
 
 ```bash
 cd backend
 uv run pytest tests/test_title_middleware_core_logic.py tests/test_title_generation.py
 ```
 
-## 故障排查
+## Troubleshooting
 
-### Title 没有生成
+### Title is Not Generated
 
-1. 检查配置是否启用：`get_title_config().enabled == True`
-2. 确认是首次对话：只有 1 个用户消息和 1 个助手回复时才会触发
-3. 如果显式配置了 `title.model_name`，检查标题模型是否可用；未配置时会走本地 fallback
+1. Check configuration: `get_title_config().enabled == True`.
+2. Confirm first turn: Title only triggers when there is exactly 1 user message and 1 assistant reply.
+3. If `title.model_name` is configured, verify title model accessibility; when unset, it falls back to local title generation.
 
-### Title 生成但客户端看不到
+### Title Generated but Not Visible on Client
 
-1. 确认读取位置：应该从 `state.values.title` 读取，而非 `thread.metadata.title`
-2. 检查 API 响应：确认 state 中包含 title 字段
-3. 尝试重新获取 state：`client.threads.getState(threadId)`
+1. Verify read path: Read from `state.values.title`, not `thread.metadata.title`.
+2. Check API response: Confirm the state payload includes the `title` field.
+3. Refetch state: Call `client.threads.getState(threadId)`.
 
-### Title 重启后丢失
+### Title Lost After Server Restart
 
-1. 检查是否配置了 checkpointer（本地开发需要）
-2. 确认部署方式：LangGraph Platform 会自动持久化
-3. 查看数据库：确认 checkpointer 正常工作
+1. Verify checkpointer configuration (required for local persistence).
+2. Check deployment mode: LangGraph Platform automatically persists state.
+3. Inspect database: Confirm checkpointer tables are functioning properly.
 
-## 架构设计
+## Architecture Design
 
-### 为什么使用 State 而非 Metadata？
+### Why State Instead of Metadata?
 
-| 特性 | State | Metadata |
-|------|-------|----------|
-| **持久化** | ✅ 自动（通过 checkpointer） | ⚠️ 取决于实现 |
-| **版本控制** | ✅ 支持时间旅行 | ❌ 不支持 |
-| **类型安全** | ✅ TypedDict 定义 | ❌ 任意字典 |
-| **可追溯** | ✅ 每次更新都记录 | ⚠️ 只有最新值 |
-| **标准化** | ✅ LangGraph 核心机制 | ⚠️ 扩展功能 |
+| Feature | State | Metadata |
+|---|---|---|
+| **Persistence** | ✅ Automatic (via checkpointer) | ⚠️ Depends on implementation |
+| **Version Control** | ✅ Supports time-travel inspection | ❌ Not supported |
+| **Type Safety** | ✅ Defined via TypedDict | ❌ Arbitrary dictionary |
+| **Traceability** | ✅ Recorded with each snapshot update | ⚠️ Only latest value available |
+| **Standardization** | ✅ LangGraph core mechanism | ⚠️ Platform extension |
 
-### 实现细节
+### Implementation Details
 
 ```python
-# TitleMiddleware 核心逻辑
+# TitleMiddleware Core Logic
 @override
 async def aafter_model(self, state: TitleMiddlewareState, runtime: Runtime) -> dict | None:
     return await self._agenerate_title_result(state)
@@ -241,20 +241,20 @@ async def _agenerate_title_result(self, state: TitleMiddlewareState) -> dict | N
     if not config.model_name:
         return self._generate_title_result(state)
 
-    # 显式配置 title.model_name 时才调用标题模型；失败会回退到本地 title。
+    # Call title model only when title.model_name is explicitly configured; fall back on error.
     ...
 ```
 
-## 相关文件
+## Related Files
 
-- [`packages/harness/agent_workspace/agents/thread_state.py`](../packages/harness/agent_workspace/agents/thread_state.py) - ThreadState 定义
-- [`packages/harness/agent_workspace/agents/middlewares/title_middleware.py`](../packages/harness/agent_workspace/agents/middlewares/title_middleware.py) - TitleMiddleware 实现
-- [`packages/harness/agent_workspace/config/title_config.py`](../packages/harness/agent_workspace/config/title_config.py) - 配置管理
-- [`config.yaml`](../../config.example.yaml) - 配置文件
-- [`packages/harness/agent_workspace/agents/lead_agent/agent.py`](../packages/harness/agent_workspace/agents/lead_agent/agent.py) - Middleware 注册
+- [`packages/harness/agent_workspace/agents/thread_state.py`](../packages/harness/agent_workspace/agents/thread_state.py) - ThreadState definition
+- [`packages/harness/agent_workspace/agents/middlewares/title_middleware.py`](../packages/harness/agent_workspace/agents/middlewares/title_middleware.py) - TitleMiddleware implementation
+- [`packages/harness/agent_workspace/config/title_config.py`](../packages/harness/agent_workspace/config/title_config.py) - Configuration management
+- [`config.yaml`](../../config.example.yaml) - Configuration file
+- [`packages/harness/agent_workspace/agents/lead_agent/agent.py`](../packages/harness/agent_workspace/agents/lead_agent/agent.py) - Middleware registration
 
-## 参考资料
+## References
 
-- [LangGraph Checkpointer 文档](https://langchain-ai.github.io/langgraph/concepts/persistence/)
-- [LangGraph State 管理](https://langchain-ai.github.io/langgraph/concepts/low_level/#state)
+- [LangGraph Checkpointer Documentation](https://langchain-ai.github.io/langgraph/concepts/persistence/)
+- [LangGraph State Management](https://langchain-ai.github.io/langgraph/concepts/low_level/#state)
 - [LangGraph Middleware](https://langchain-ai.github.io/langgraph/concepts/middleware/)

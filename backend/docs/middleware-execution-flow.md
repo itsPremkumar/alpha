@@ -1,61 +1,61 @@
-# Middleware 执行流程
+# Middleware Execution Flow
 
-## Middleware 列表
+## Middleware List
 
-`create_agent_workspace_agent` 通过 `RuntimeFeatures` 组装的完整 middleware 链（默认全开时）：
+The complete middleware chain assembled by `create_agent_workspace_agent` via `RuntimeFeatures` (when all features are enabled by default):
 
-| # | Middleware | `before_agent` | `before_model` | `after_model` | `after_agent` | `wrap_model_call` | `wrap_tool_call` | 主 Agent | Subagent | 来源 |
-|---|-----------|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|------|
+| # | Middleware | `before_agent` | `before_model` | `after_model` | `after_agent` | `wrap_model_call` | `wrap_tool_call` | Lead Agent | Subagent | Source |
+|---|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|---|
 | 0 | ThreadDataMiddleware | ✓ | | | | | | ✓ | ✓ | `sandbox` |
 | 1 | UploadsMiddleware | ✓ | | | | | | ✓ | ✗ | `sandbox` |
 | 2 | SandboxMiddleware | ✓ | | | ✓ | | | ✓ | ✓ | `sandbox` |
-| 3 | DanglingToolCallMiddleware | | | | | ✓ | | ✓ | ✗ | 始终开启 |
-| 4 | GuardrailMiddleware | | | | | | ✓ | ✓ | ✓ | *Phase 2 纳入* |
-| 5 | ToolErrorHandlingMiddleware | | | | | | ✓ | ✓ | ✓ | 始终开启 |
+| 3 | DanglingToolCallMiddleware | | | | | ✓ | | ✓ | ✗ | Always on |
+| 4 | GuardrailMiddleware | | | | | | ✓ | ✓ | ✓ | *Phase 2 inclusion* |
+| 5 | ToolErrorHandlingMiddleware | | | | | | ✓ | ✓ | ✓ | Always on |
 | 6 | SummarizationMiddleware | | ✓ | | | | | ✓ | ✗ | `summarization` |
-| 7 | TodoMiddleware | | ✓ | ✓ | | ✓ | | ✓ | ✗ | `plan_mode` 参数 |
+| 7 | TodoMiddleware | | ✓ | ✓ | | ✓ | | ✓ | ✗ | `plan_mode` param |
 | 8 | TitleMiddleware | | | ✓ | | | | ✓ | ✗ | `auto_title` |
 | 9 | MemoryMiddleware | | | | ✓ | | | ✓ | ✗ | `memory` |
 | 10 | ViewImageMiddleware | | | | | ✓ | | ✓ | ✗ | `vision` |
 | 11 | SubagentLimitMiddleware | | | ✓ | | | | ✓ | ✗ | `subagent` |
-| 12 | LoopDetectionMiddleware | ✓ | | ✓ | ✓ | ✓ | | ✓ | ✗ | 始终开启 |
-| 13 | ClarificationMiddleware | | | | | | ✓ | ✓ | ✗ | 始终最后 |
+| 12 | LoopDetectionMiddleware | ✓ | | ✓ | ✓ | ✓ | | ✓ | ✗ | Always on |
+| 13 | ClarificationMiddleware | | | | | | ✓ | ✓ | ✗ | Always last |
 
-主 agent **14 个** middleware（`make_lead_agent`），subagent **4 个**（ThreadData、Sandbox、Guardrail、ToolErrorHandling）。`create_agent_workspace_agent` Phase 1 实现 **13 个**（Guardrail 仅支持自定义实例，无内置默认）。
+The lead agent has **14** middlewares (`make_lead_agent`), while subagents have **4** (ThreadData, Sandbox, Guardrail, ToolErrorHandling). `create_agent_workspace_agent` implements **13** in Phase 1 (Guardrail supports custom instances only, with no built-in default).
 
-## 执行流程
+## Execution Flow
 
-LangChain `create_agent` 的规则：
-- **`before_*` 正序执行**（列表位置 0 → N）
-- **`after_*` 反序执行**（列表位置 N → 0）
+LangChain `create_agent` rules:
+- **`before_*` executes in forward order** (list index 0 → N)
+- **`after_*` executes in reverse order** (list index N → 0)
 
 ```mermaid
 graph TB
     START(["invoke"]) --> TD
 
-    subgraph BA ["<b>before_agent</b> 正序 0→N"]
+    subgraph BA ["<b>before_agent</b> Forward Order 0→N"]
         direction TB
-        TD["[0] ThreadData<br/>创建线程目录"] --> UL["[1] Uploads<br/>扫描上传文件"] --> SB["[2] Sandbox<br/>获取沙箱"] --> LD_BA["[12] LoopDetection<br/>清理 stale warning"]
+        TD["[0] ThreadData<br/>Create thread directory"] --> UL["[1] Uploads<br/>Scan uploaded files"] --> SB["[2] Sandbox<br/>Acquire sandbox"] --> LD_BA["[12] LoopDetection<br/>Clean stale warning"]
     end
 
-    subgraph WM ["<b>wrap_model_call</b> 外→内 0→N"]
+    subgraph WM ["<b>wrap_model_call</b> Outer→Inner 0→N"]
         direction TB
-        DTC_WM["[3] DanglingToolCall<br/>补悬空 ToolMessage"] --> VI["[10] ViewImage<br/>注入图片 base64（仅请求内）"] --> LD_WM["[12] LoopDetection<br/>注入当前 run warning"]
+        DTC_WM["[3] DanglingToolCall<br/>Fill dangling ToolMessage"] --> VI["[10] ViewImage<br/>Inject image base64 (request-scoped)"] --> LD_WM["[12] LoopDetection<br/>Inject current run warning"]
     end
 
     LD_BA --> DTC_WM
     LD_WM --> M["<b>MODEL</b>"]
 
-    subgraph AM ["<b>after_model</b> 反序 N→0"]
+    subgraph AM ["<b>after_model</b> Reverse Order N→0"]
         direction TB
-        LD["[12] LoopDetection<br/>检测循环/排队 warning"] --> SL["[11] SubagentLimit<br/>截断多余 task"] --> TI["[8] Title<br/>生成标题"]
+        LD["[12] LoopDetection<br/>Detect loop/queue warning"] --> SL["[11] SubagentLimit<br/>Truncate excess tasks"] --> TI["[8] Title<br/>Generate title"]
     end
 
     M --> LD
 
-    subgraph AA ["<b>after_agent</b> 反序 N→0"]
+    subgraph AA ["<b>after_agent</b> Reverse Order N→0"]
         direction TB
-        LD_CLEAN["[12] LoopDetection<br/>清理 pending warning"] --> MEM["[9] Memory<br/>入队记忆"] --> SBR["[2] Sandbox<br/>释放沙箱"]
+        LD_CLEAN["[12] LoopDetection<br/>Clean pending warning"] --> MEM["[9] Memory<br/>Enqueue memory"] --> SBR["[2] Sandbox<br/>Release sandbox"]
     end
 
     TI --> LD_CLEAN
@@ -76,7 +76,7 @@ graph TB
     class START,END terminalNode
 ```
 
-## 时序图
+## Sequence Diagram
 
 ```mermaid
 sequenceDiagram
@@ -94,44 +94,44 @@ sequenceDiagram
 
     U ->> TD: invoke
     activate TD
-    Note right of TD: before_agent 创建目录
+    Note right of TD: before_agent: create directory
 
     TD ->> UL: before_agent
     activate UL
-    Note right of UL: before_agent 扫描上传文件
+    Note right of UL: before_agent: scan uploaded files
 
     UL ->> SB: before_agent
     activate SB
-    Note right of SB: before_agent 获取沙箱
+    Note right of SB: before_agent: acquire sandbox
 
     SB ->> LD: before_agent
     activate LD
-    Note right of LD: before_agent 清理同 thread 旧 run 的 pending warning
+    Note right of LD: before_agent: clean pending warnings from old runs on same thread
     LD ->> DTC: wrap_model_call
     activate DTC
-    Note right of DTC: wrap_model_call 补悬空 ToolMessage
+    Note right of DTC: wrap_model_call: fill dangling ToolMessages
 
     DTC ->> VI: wrap_model_call
     activate VI
-    Note right of VI: wrap_model_call 把图片 base64 追加到请求（不写入 state）
+    Note right of VI: wrap_model_call: append image base64 to request (ephemeral)
     VI ->> LD: wrap_model_call
-    Note right of LD: wrap_model_call drain 当前 run warning 并追加到末尾
+    Note right of LD: wrap_model_call: drain current run warnings and append to end
     LD ->> M: messages + tools
     activate M
     M -->> LD: AI response
     deactivate M
 
-    Note right of LD: after_model 检测循环；warning 入队，hard-stop 清 tool_calls
+    Note right of LD: after_model: detect loop; enqueue warning, hard-stop clears tool_calls
     LD -->> SL: after_model
     deactivate LD
 
     activate SL
-    Note right of SL: after_model 截断多余 task
+    Note right of SL: after_model: truncate excess subagent tasks
     SL -->> TI: after_model
     deactivate SL
 
     activate TI
-    Note right of TI: after_model 生成标题
+    Note right of TI: after_model: generate title
     TI -->> VI: done
     deactivate TI
 
@@ -140,11 +140,11 @@ sequenceDiagram
     DTC -->> SB: done
     deactivate DTC
 
-    Note right of LD: after_agent 清理当前 run 未消费 warning
+    Note right of LD: after_agent: clean unconsumed warnings for current run
 
-    Note right of MEM: after_agent 入队记忆
+    Note right of MEM: after_agent: enqueue memory update
 
-    Note right of SB: after_agent 释放沙箱
+    Note right of SB: after_agent: release sandbox
     SB -->> UL: done
     deactivate SB
 
@@ -155,26 +155,26 @@ sequenceDiagram
     deactivate TD
 ```
 
-## 洋葱模型
+## Onion Model Comparison
 
-列表位置决定在洋葱中的层级 — 位置 0 最外层，位置 N 最内层：
+List position determines nesting depth within the onion model — index 0 is outermost, index N is innermost:
 
 ```
-进入 before_*：   [0] → [1] → [2] → ... → [7] → MODEL
-进入 wrap_model_call： [3] → [10] → [12] → MODEL（外→内，同样正序）
-退出 after_*：    MODEL → [13] → [11] → ... → [6] → [3] → [2] → [0]
-                          ↑ 最内层最先执行
+Entering before_*:       [0] → [1] → [2] → ... → [7] → MODEL
+Entering wrap_model_call: [3] → [10] → [12] → MODEL (outer→inner, forward order)
+Exiting after_*:         MODEL → [13] → [11] → ... → [6] → [3] → [2] → [0]
+                                  ↑ Innermost executes first
 ```
 
-> [!important] 核心规则
-> 列表最后的 middleware，其 `after_model` **最先执行**。
-> ClarificationMiddleware 在列表末尾，所以它第一个拦截 model 输出。
+> [!important] Core Rule
+> The last middleware in the list executes its `after_model` **first**.
+> `ClarificationMiddleware` resides at the end of the list, ensuring it intercepts model output before all other hooks.
 
-## 对比：真正的洋葱 vs Agent Workspace 的实际情况
+## Comparison: True Onion vs Agent Workspace Pipeline
 
-### 真正的洋葱（如 Koa/Express）
+### True Onion Model (e.g. Koa / Express)
 
-每个 middleware 同时负责 before 和 after，形成对称嵌套：
+Each middleware handles symmetrical before/after lifecycle actions with full nesting:
 
 ```mermaid
 sequenceDiagram
@@ -186,40 +186,37 @@ sequenceDiagram
 
     U ->> A: request
     activate A
-    Note right of A: before: 校验 token
+    Note right of A: before: validate token
 
     A ->> L: next()
     activate L
-    Note right of L: before: 记录请求时间
+    Note right of L: before: record start time
 
     L ->> R: next()
     activate R
-    Note right of R: before: 检查频率
+    Note right of R: before: rate limit check
 
     R ->> H: next()
     activate H
     H -->> R: result
     deactivate H
 
-    Note right of R: after: 更新计数器
+    Note right of R: after: increment counters
     R -->> L: result
     deactivate R
 
-    Note right of L: after: 记录耗时
+    Note right of L: after: record duration
     L -->> A: result
     deactivate L
 
-    Note right of A: after: 清理上下文
+    Note right of A: after: clean context
     A -->> U: response
     deactivate A
 ```
 
-> [!tip] 洋葱特征
-> 每个 middleware 都有 before/after 对称操作，`activate` 跨越整个内层执行，形成完美嵌套。
+### Agent Workspace Pipeline Reality
 
-### Agent Workspace 的实际情况
-
-不是洋葱，是管道。大部分 middleware 只用一个钩子，不存在对称嵌套。多轮对话时 before_model / after_model 循环执行：
+Agent Workspace is structured as a pipeline rather than a strict onion. Most middlewares implement only a single hook with no symmetrical wrapping. In multi-turn tool calling, `before_model` and `after_model` execute in a loop:
 
 ```mermaid
 sequenceDiagram
@@ -236,65 +233,65 @@ sequenceDiagram
     participant MEM as Memory
 
     U ->> TD: invoke
-    Note right of TD: before_agent 创建目录
+    Note right of TD: before_agent: create directory
     TD ->> UL: .
-    Note right of UL: before_agent 扫描文件
+    Note right of UL: before_agent: scan files
     UL ->> SB: .
-    Note right of SB: before_agent 获取沙箱
+    Note right of SB: before_agent: acquire sandbox
     SB ->> LD: .
-    Note right of LD: before_agent 清理 stale pending warning
+    Note right of LD: before_agent: clean stale pending warnings
 
-    loop 每轮对话（tool call 循环）
+    loop Multi-turn Tool Call Loop
         SB ->> DTC: .
-        Note right of DTC: wrap_model_call 补悬空工具结果
+        Note right of DTC: wrap_model_call: fill dangling tool results
         DTC ->> VI: .
-        Note right of VI: wrap_model_call 把图片追加到请求
+        Note right of VI: wrap_model_call: append image to request
         VI ->> LD: .
-        Note right of LD: wrap_model_call 注入当前 run warning
+        Note right of LD: wrap_model_call: inject current run warning
         LD ->> M: messages + tools
         M -->> LD: AI response
-        Note right of LD: after_model 检测循环/排队 warning
+        Note right of LD: after_model: detect loop / queue warning
         LD -->> SL: .
-        Note right of SL: after_model 截断多余 task
+        Note right of SL: after_model: truncate excess tasks
         SL -->> TI: .
-        Note right of TI: after_model 生成标题
+        Note right of TI: after_model: generate title
     end
 
-    Note right of LD: after_agent 清理当前 run pending warning
+    Note right of LD: after_agent: clean current run pending warning
     LD -->> MEM: .
-    Note right of MEM: after_agent 入队记忆
+    Note right of MEM: after_agent: enqueue memory
     MEM -->> SB: .
-    Note right of SB: after_agent 释放沙箱
+    Note right of SB: after_agent: release sandbox
     SB -->> U: response
 ```
 
-> [!warning] 不是洋葱
-> 大部分 middleware 只用一个阶段。SandboxMiddleware 使用 `before_agent`/`after_agent` 做资源获取/释放；LoopDetectionMiddleware 也使用这两个钩子，但用途是清理 run-scoped pending warnings，不是资源生命周期对称。`before_agent` / `after_agent` 只跑一次，`before_model` / `after_model` / `wrap_model_call` 每轮循环都跑。
+> [!warning] Pipeline vs Onion
+> Most middlewares execute only in a single lifecycle phase. `SandboxMiddleware` uses `before_agent`/`after_agent` for resource acquisition and release; `LoopDetectionMiddleware` also uses these hooks to manage run-scoped warning queues. `before_agent` and `after_agent` run once per execution, whereas `before_model`, `after_model`, and `wrap_model_call` run on every tool turn.
 
-硬依赖只有 2 处：
+Hard dependencies exist in only 2 locations:
 
-1. **ThreadData 在 Sandbox 之前** — sandbox 需要线程目录
-2. **Clarification 在列表最后** — `wrap_tool_call` 处理 `ask_clarification` 时优先拦截，并通过 `Command(goto=END)` 中断执行
+1. **ThreadData precedes Sandbox** — the sandbox requires a valid thread directory.
+2. **Clarification is placed last in the list** — `wrap_tool_call` intercepts `ask_clarification` first, interrupting execution via `Command(goto=END)`.
 
-### 结论
+### Summary Comparison
 
-| | 真正的洋葱 | Agent Workspace 实际 |
+| | True Onion | Agent Workspace Pipeline |
 |---|---|---|
-| 每个 middleware | before + after 对称 | 大多只用一个钩子 |
-| 激活条 | 嵌套（外长内短） | 不嵌套（串行） |
-| 反序的意义 | 清理与初始化配对 | 影响 `after_model` / `after_agent` 的执行优先级 |
-| 典型例子 | Auth: 校验 token / 清理上下文 | ThreadData: 只创建目录，没有清理 |
+| Middleware Structure | Symmetrical before + after | Mostly single-phase hooks |
+| Activation Lifetime | Nested (outer spans inner) | Linear / Pipeline steps |
+| Reverse Order Purpose | Teardown paired with setup | Determines `after_model` / `after_agent` priority |
+| Typical Example | Auth: validate token / clear context | ThreadData: creates directory, no teardown |
 
-## 关键设计点
+## Key Design Considerations
 
-### ClarificationMiddleware 为什么在列表最后？
+### Why is ClarificationMiddleware Placed Last?
 
-位置最后使它在工具调用包装链中优先拦截 `ask_clarification`。如果命中，它返回 `Command(goto=END)`，把格式化后的澄清问题写成 `ToolMessage` 并中断执行。
+Its position at the end of the list allows it to intercept `ask_clarification` ahead of any standard tool execution handlers. When matched, it returns `Command(goto=END)`, writing the formatted clarification query into a `ToolMessage` and terminating execution.
 
-### SandboxMiddleware 的对称性
+### SandboxMiddleware Symmetry
 
-`before_agent`（正序第 3 个）获取沙箱，`after_agent`（反序第 1 个）释放沙箱。外层进入 → 外层退出，天然的洋葱对称。
+`before_agent` (3rd in list) acquires the sandbox environment, and `after_agent` (1st in reverse order) releases it. This forms natural, symmetrical boundary management.
 
-### LoopDetectionMiddleware 为什么同时用多个钩子？
+### Why Does LoopDetectionMiddleware Use Multiple Hooks?
 
-`after_model` 只做检测：重复工具调用达到 warning 阈值时，把 warning 放入 `(thread_id, run_id)` 作用域的 pending 队列。真正注入发生在下一次 `wrap_model_call`：此时上一轮 `AIMessage(tool_calls)` 对应的 `ToolMessage` 已经在请求里，warning 追加在末尾，不会破坏 OpenAI/Moonshot 的 tool-call pairing。`before_agent` 清理同一 thread 下旧 run 的残留 warning，`after_agent` 清理当前 run 没被消费的 warning。
+`after_model` performs detection only: when repeated tool calls cross the warning threshold, it queues a warning scoped to `(thread_id, run_id)`. The warning is actually injected during the subsequent `wrap_model_call`: by this time, `ToolMessage` entries corresponding to previous tool calls are present in the request, and the warning is appended to the end, preserving OpenAI/Moonshot tool-call message pairing invariants. `before_agent` cleans up residual warnings from older runs on the same thread, while `after_agent` purges unconsumed warnings for the completed run.

@@ -49,14 +49,14 @@ class _ContentFilteredFakeModel(BaseChatModel):
         self.call_count += 1
         if self.call_count == 1:
             msg = AIMessage(
-                content="# 政经周报\n- **会晤时间**：2026年5月12日—13日，特朗普访问中国，与",
+                content="# Weekly Political & Economic Report\n- **Meeting Time**: May 12-13, 2026, bilateral visit to",
                 tool_calls=[
                     {
                         "id": "call_truncated_write",
                         "name": "write_file",
                         "args": {
                             "path": "/mnt/user-data/outputs/political-economic-news-weekly-may-16-2026.md",
-                            "content": "# 政经周报\n- **会晤时间**：2026年5月12日—13日，特朗普访问中国，与",
+                            "content": "# Weekly Political & Economic Report\n- **Meeting Time**: May 12-13, 2026, bilateral visit to",
                         },
                     }
                 ],
@@ -112,7 +112,7 @@ def main() -> int:
         print("\n=== Streaming a turn through the real lead-agent ===")
         events: list[dict[str, Any]] = []
         for event in client.stream(
-            "帮我整理一下最近一周政经新闻，写到 /mnt/user-data/outputs/political-economic-news-weekly-may-16-2026.md",
+            "Help me organize the political and economic news from the past week and write it to /mnt/user-data/outputs/political-economic-news-weekly-may-16-2026.md",
             thread_id="e2e-safety-1",
         ):
             events.append({"type": event.type, "data": event.data})

@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 # Regex for bold structural headings produced by pymupdf4llm when it can't
 # promote bold text to a Markdown # heading (common in SEC filings).
 #
-# Chinese headings (第三节...) are already captured as standard # headings
+# Non-Latin headings are already captured as standard # headings
 # by pymupdf4llm, so they don't need this pattern.
 _BOLD_HEADING_RE = re.compile(r"^\*\*((ITEM|PART|SECTION|SCHEDULE|EXHIBIT|APPENDIX|ANNEX|CHAPTER)\b[A-Z0-9 .,\-]*)\*\*\s*$")
 
@@ -27,7 +27,7 @@ _BOLD_HEADING_RE = re.compile(r"^\*\*((ITEM|PART|SECTION|SCHEDULE|EXHIBIT|APPEND
 #   2. First block is a section number (digits and dots, e.g. "1", "3.2", "A.1")
 #   3. Second block must not be purely numeric/punctuation — excludes financial table
 #      headers like **2023** **2022** **2021** while allowing non-ASCII titles such as
-#      **1** **概述** or accented words (negative lookahead instead of [A-Za-z])
+#      **1** **Summary** or accented words (negative lookahead instead of [A-Za-z])
 #   4. At most two additional blocks (four total) with [^*]+ (no * inside) to keep
 #      the regex linear and avoid ReDoS on attacker-controlled content
 _SPLIT_BOLD_HEADING_RE = re.compile(r"^\*\*[\dA-Z][\d\.]*\*\*\s+\*\*(?!\d[\d\s.,\-–—/:()%]*\*\*)[^*]+\*\*(?:\s+\*\*[^*]+\*\*){0,2}\s*$")

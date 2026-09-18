@@ -1,30 +1,30 @@
-# 文件上传功能
+# File Upload Feature
 
-## 概述
+## Overview
 
-Agent Workspace 后端提供了完整的文件上传功能，支持多文件上传，并可选地将 Office 文档和 PDF 转换为 Markdown 格式。
+The Agent Workspace backend provides comprehensive file upload capabilities, supporting multi-file uploads and optional automated conversion of Office documents and PDFs into Markdown.
 
-## 功能特性
+## Feature Highlights
 
-- ✅ 支持多文件同时上传
-- ✅ 可选地转换文档为 Markdown（PDF、PPT、Excel、Word）
-- ✅ 文件存储在线程隔离的目录中
-- ✅ Agent 自动感知当前消息中附带的文件
-- ✅ 支持文件列表查询和删除
+- ✅ Multi-file simultaneous uploads
+- ✅ Optional document-to-Markdown conversion (PDF, PowerPoint, Excel, Word)
+- ✅ Thread-isolated file storage directories
+- ✅ Agent automatic awareness of files uploaded in the current message
+- ✅ Endpoints for querying file listings and deleting files
 
-## API 端点
+## API Endpoints
 
-### 1. 上传文件
+### 1. Upload Files
 ```
 POST /api/threads/{thread_id}/uploads
 ```
 
-**请求体：** `multipart/form-data`
-- `files`: 一个或多个文件
+**Request Body:** `multipart/form-data`
+- `files`: One or more files
 
-网关会在应用层限制上传规模，默认最多 10 个文件、单文件 50 MiB、单次请求总计 100 MiB。可通过 `config.yaml` 的 `uploads.max_files`、`uploads.max_file_size`、`uploads.max_total_size` 调整；前端会读取同一组限制并在选择文件时提示，超过限制时后端返回 `413 Payload Too Large`。
+The Gateway enforces application-layer limits on upload payloads: by default, a maximum of 10 files, 50 MiB per file, and 100 MiB total per request. These can be adjusted via `uploads.max_files`, `uploads.max_file_size`, and `uploads.max_total_size` in `config.yaml`. The frontend queries these exact limits to provide pre-selection validation, and the backend returns `413 Payload Too Large` when exceeded.
 
-**响应：**
+**Response:**
 ```json
 {
   "success": true,
@@ -45,19 +45,19 @@ POST /api/threads/{thread_id}/uploads
 }
 ```
 
-**路径说明：**
-- `path`: 实际文件系统路径（相对于 `backend/` 目录）
-- `virtual_path`: Agent 在沙箱中使用的虚拟路径
-- `artifact_url`: 前端通过 HTTP 访问文件的 URL
+**Path Explanations:**
+- `path`: Actual filesystem path (relative to `backend/` directory)
+- `virtual_path`: Virtual path inside the agent sandbox
+- `artifact_url`: Frontend HTTP download / preview URL
 
-### 2. 查询上传限制
+### 2. Query Upload Limits
 ```
 GET /api/threads/{thread_id}/uploads/limits
 ```
 
-返回网关当前生效的上传限制，供前端在用户选择文件前提示和拦截。
+Returns the active Gateway upload constraints for frontend validation prior to file selection.
 
-**响应：**
+**Response:**
 ```json
 {
   "max_files": 10,
@@ -66,12 +66,12 @@ GET /api/threads/{thread_id}/uploads/limits
 }
 ```
 
-### 3. 列出已上传文件
+### 3. List Uploaded Files
 ```
 GET /api/threads/{thread_id}/uploads/list
 ```
 
-**响应：**
+**Response:**
 ```json
 {
   "files": [
@@ -89,12 +89,12 @@ GET /api/threads/{thread_id}/uploads/list
 }
 ```
 
-### 4. 删除文件
+### 4. Delete File
 ```
 DELETE /api/threads/{thread_id}/uploads/{filename}
 ```
 
-**响应：**
+**Response:**
 ```json
 {
   "success": true,
@@ -102,25 +102,23 @@ DELETE /api/threads/{thread_id}/uploads/{filename}
 }
 ```
 
-## 支持的文档格式
+## Supported Document Formats
 
-以下格式在显式启用 `uploads.auto_convert_documents: true` 时会自动转换为 Markdown：
+When `uploads.auto_convert_documents: true` is explicitly enabled, the following formats are automatically converted to Markdown:
 - PDF (`.pdf`)
 - PowerPoint (`.ppt`, `.pptx`)
 - Excel (`.xls`, `.xlsx`)
 - Word (`.doc`, `.docx`)
 
-转换后的 Markdown 文件会保存在同一目录下，文件名为原文件名 + `.md` 扩展名。
+Converted Markdown files are saved in the same directory, using the original filename with the `.md` extension.
 
-默认情况下，自动转换是关闭的，以避免在网关主机上对不受信任的 Office/PDF 上传执行解析。只有在受信任部署中明确接受此风险时，才应将 `uploads.auto_convert_documents` 设置为 `true`。
+By default, automatic conversion is disabled to avoid parsing untrusted Office/PDF uploads on the host machine. Only enable `uploads.auto_convert_documents: true` in trusted environments where this risk is acknowledged.
 
-## Agent 集成
+## Agent Integration
 
-### 当前消息中的文件上下文
+### File Context in Current Message
 
-发送消息时，前端会把该消息附带的上传文件元数据放入
-`HumanMessage.additional_kwargs.files`。`UploadsMiddleware` 只把当前消息中的文件
-注入 Agent 上下文，格式如下：
+When sending a message, the frontend includes metadata for newly uploaded files in `HumanMessage.additional_kwargs.files`. `UploadsMiddleware` injects file context into the Agent's prompt for the current message:
 
 ```xml
 <current_uploads>
@@ -136,58 +134,55 @@ To work with these files:
 </current_uploads>
 ```
 
-以前轮次上传的文件不会在每次请求中重复注入。Agent 可按需调用
-`list_uploaded_files` 查询历史上传（可选 `query` 按文件名子串过滤、
-`extensions` 按类型过滤；过滤发生在默认 20 条上限之前）。如果已知文件名，也可直接使用
-`read_file` 或 `grep` 访问 `/mnt/user-data/uploads/` 下的文件。
+Files uploaded in earlier turns are not reinjected every turn. The Agent can query historical uploads via `list_uploaded_files` on demand (with optional `query` and `extensions` filtering prior to truncation). If the filename is known, the Agent can directly access files under `/mnt/user-data/uploads/` with `read_file` or `grep`.
 
-### 使用上传的文件
+### Accessing Uploaded Files
 
-Agent 在沙箱中运行，使用虚拟路径访问文件。Agent 可以直接使用 `read_file` 工具读取上传的文件：
+The Agent runs inside a sandbox using virtual paths. The Agent reads uploaded files using the `read_file` tool:
 
 ```python
-# 读取原始 PDF（如果支持）
+# Read original PDF (if supported)
 read_file(path="/mnt/user-data/uploads/document.pdf")
 
-# 读取转换后的 Markdown（推荐）
+# Read converted Markdown (recommended)
 read_file(path="/mnt/user-data/uploads/document.md")
 ```
 
-**路径映射关系：**
-- Agent 使用：`/mnt/user-data/uploads/document.pdf`（虚拟路径）
-- 实际存储：`backend/.agent-workspace/threads/{thread_id}/user-data/uploads/document.pdf`
-- 前端访问：`/api/threads/{thread_id}/artifacts/mnt/user-data/uploads/document.pdf`（HTTP URL）
+**Path Relationships:**
+- Agent usage: `/mnt/user-data/uploads/document.pdf` (Virtual Path)
+- Physical storage: `backend/.agent-workspace/threads/{thread_id}/user-data/uploads/document.pdf`
+- Frontend access: `/api/threads/{thread_id}/artifacts/mnt/user-data/uploads/document.pdf` (HTTP URL)
 
-上传流程采用“线程目录优先”策略：
-- 先写入 `backend/.agent-workspace/threads/{thread_id}/user-data/uploads/` 作为权威存储
-- 本地沙箱（`sandbox_id=local`）直接使用线程目录内容
-- 默认情况下，非本地沙箱通过 `acquire_async` 获取后，再额外同步到 `/mnt/user-data/uploads/*`，确保运行时可见
-- 如果 Gateway 与远端沙箱保证挂载同一份线程 user-data（例如正确对齐的共享 PVC、NFS 或 hostPath），可设置 `sandbox.thread_data_mounts: true`；上传路由会跳过 sandbox acquire 和逐文件同步
-- 不确定挂载关系时应省略该配置并保留自动检测。错误地设为 `true` 会导致文件只存在于 Gateway 存储、沙箱内不可见
+The upload workflow follows a "thread directory first" strategy:
+- Writes first to `backend/.agent-workspace/threads/{thread_id}/user-data/uploads/` as the authoritative store.
+- Local sandbox (`sandbox_id=local`) uses the thread directory content directly.
+- By default, non-local sandboxes synchronize uploaded files to `/mnt/user-data/uploads/*` upon acquisition via `acquire_async` to ensure runtime visibility.
+- If Gateway and remote sandboxes share the same mounted storage (e.g. aligned PVC, NFS, or hostPath), set `sandbox.thread_data_mounts: true` to skip per-file synchronization.
+- If unsure about mount topology, omit this setting to retain automatic detection. Setting it to `true` erroneously will result in files existing on the Gateway host while remaining invisible in the sandbox.
 
-## 测试示例
+## Testing Examples
 
-### 使用 curl 测试
+### Using curl
 
 ```bash
-# 1. 上传单个文件
+# 1. Upload single file
 curl -X POST http://localhost:2026/api/threads/test-thread/uploads \
   -F "files=@/path/to/document.pdf"
 
-# 2. 上传多个文件
+# 2. Upload multiple files
 curl -X POST http://localhost:2026/api/threads/test-thread/uploads \
   -F "files=@/path/to/document.pdf" \
   -F "files=@/path/to/presentation.pptx" \
   -F "files=@/path/to/spreadsheet.xlsx"
 
-# 3. 列出已上传文件
+# 3. List uploaded files
 curl http://localhost:2026/api/threads/test-thread/uploads/list
 
-# 4. 删除文件
+# 4. Delete file
 curl -X DELETE http://localhost:2026/api/threads/test-thread/uploads/document.pdf
 ```
 
-### 使用 Python 测试
+### Using Python
 
 ```python
 import requests
@@ -195,7 +190,7 @@ import requests
 thread_id = "test-thread"
 base_url = "http://localhost:2026"
 
-# 上传文件
+# Upload files
 files = [
     ("files", open("document.pdf", "rb")),
     ("files", open("presentation.pptx", "rb")),
@@ -206,119 +201,78 @@ response = requests.post(
 )
 print(response.json())
 
-# 列出文件
+# List files
 response = requests.get(f"{base_url}/api/threads/{thread_id}/uploads/list")
 print(response.json())
 
-# 删除文件
+# Delete file
 response = requests.delete(
     f"{base_url}/api/threads/{thread_id}/uploads/document.pdf"
 )
 print(response.json())
 ```
 
-## 文件存储结构
+## Storage Directory Structure
 
 ```
 backend/.agent-workspace/threads/
 └── {thread_id}/
     └── user-data/
         └── uploads/
-            ├── document.pdf          # 原始文件
-            ├── document.md           # 转换后的 Markdown
+            ├── document.pdf          # Original document
+            ├── document.md           # Converted Markdown
             ├── presentation.pptx
             ├── presentation.md
             └── ...
 ```
 
-## 限制
+## Constraints & Security
 
-- 最大文件大小：100MB（可在 nginx.conf 中配置 `client_max_body_size`）
-- 文件名安全性：系统会自动验证文件路径，防止目录遍历攻击
-- 线程隔离：每个线程的上传文件相互隔离，无法跨线程访问
-- 自动文档转换默认关闭；如需启用，需在 `config.yaml` 中显式设置 `uploads.auto_convert_documents: true`
+- Maximum file size: 100MB (configurable in `nginx.conf` via `client_max_body_size`)
+- Filename sanitization: Paths are validated to prevent directory traversal
+- Thread isolation: Uploads are partitioned strictly by thread ID
+- Automatic document conversion is disabled by default; enable via `uploads.auto_convert_documents: true` in `config.yaml`
 
-## 技术实现
+## Technical Architecture
 
-### 组件
+### Components
 
 1. **Upload Router** (`app/gateway/routers/uploads.py`)
-   - 处理文件上传、列表、删除请求
-   - 使用 markitdown 转换文档
+   - Handles upload, listing, and deletion requests
+   - Executes optional document conversion via markitdown
 
 2. **Uploads Middleware** (`packages/harness/agent_workspace/agents/middlewares/uploads_middleware.py`)
-   - 读取当前消息的 `additional_kwargs.files`
-   - 在 Agent 请求前生成并注入 `<current_uploads>` 文件上下文
-   - 历史上传由 `list_uploaded_files` 按需查询（可按文件名/扩展名过滤后再截断），不会每轮自动注入
+   - Inspects `additional_kwargs.files` on the incoming message
+   - Injects `<current_uploads>` context into the Agent's turn
+   - Historical uploads queried on-demand via `list_uploaded_files`
 
-3. **Nginx 配置** (`nginx.conf`)
-   - 路由上传请求到 Gateway API
-   - 配置大文件上传支持
+3. **Nginx Configuration** (`nginx.conf`)
+   - Routes upload requests to Gateway API
+   - Sets body size constraints for uploads
 
-### 依赖
+### Dependencies
 
-- `markitdown>=0.0.1a2` - 文档转换
-- `python-multipart>=0.0.20` - 文件上传处理
+- `markitdown>=0.0.1a2` - Document conversion
+- `python-multipart>=0.0.20` - Multipart form processing
 
-## 故障排查
+## Troubleshooting
 
-### 文件上传失败
+### Upload Fails
 
-1. 检查文件大小是否超过限制
-2. 检查 Gateway API 是否正常运行
-3. 检查磁盘空间是否充足
-4. 查看 Gateway 日志：`make gateway`
+1. Check file size against configured limit.
+2. Confirm Gateway API service is running.
+3. Verify host disk space is sufficient.
+4. Check Gateway logs: `make gateway`.
 
-### 文档转换失败
+### Document Conversion Fails
 
-1. 检查 markitdown 是否正确安装：`uv run python -c "import markitdown"`
-2. 查看日志中的具体错误信息
-3. 某些损坏或加密的文档可能无法转换，但原文件仍会保存
+1. Check if markitdown is installed: `uv run python -c "import markitdown"`.
+2. Inspect server logs for extraction tracebacks.
+3. Encrypted or malformed files may fail conversion; the original binary is still preserved.
 
-### Agent 看不到上传的文件
+### Agent Cannot See Uploaded Files
 
-1. 确认 UploadsMiddleware 已在 agent.py 中注册
-2. 检查 thread_id 是否正确
-3. 确认文件确实已上传到 `backend/.agent-workspace/threads/{thread_id}/user-data/uploads/`
-4. 非本地沙箱场景下，确认上传接口没有报错（需要成功完成 sandbox 同步）
-
-## 开发建议
-
-### 前端集成
-
-```typescript
-// 上传文件示例
-async function uploadFiles(threadId: string, files: File[]) {
-  const formData = new FormData();
-  files.forEach(file => {
-    formData.append('files', file);
-  });
-
-  const response = await fetch(
-    `/api/threads/${threadId}/uploads`,
-    {
-      method: 'POST',
-      body: formData,
-    }
-  );
-
-  return response.json();
-}
-
-// 列出文件
-async function listFiles(threadId: string) {
-  const response = await fetch(
-    `/api/threads/${threadId}/uploads/list`
-  );
-  return response.json();
-}
-```
-
-### 扩展功能建议
-
-1. **文件预览**：添加预览端点，支持在浏览器中直接查看文件
-2. **批量删除**：支持一次删除多个文件
-3. **文件搜索**：支持按文件名或类型搜索
-4. **版本控制**：保留文件的多个版本
-5. **压缩包支持**：自动解压 zip 文件
-6. **图片 OCR**：对上传的图片进行 OCR 识别
+1. Confirm UploadsMiddleware is registered in `agent.py`.
+2. Verify `thread_id` matches across requests.
+3. Confirm file exists in `backend/.agent-workspace/threads/{thread_id}/user-data/uploads/`.
+4. For non-local sandboxes, ensure upload route completes sandbox synchronization without errors.

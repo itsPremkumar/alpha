@@ -1,22 +1,20 @@
-# generate_network_graph — 网络关系图
+# generate_network_graph — Network Graph
 
-## 功能概述
-以节点与连线呈现实体之间的连接关系，适合社交网络、系统依赖、知识图谱等场景。
+## Overview
+Visualizes relationships, node clustering, and topological linkages across complex relational datasets.
 
-## 输入字段
-### 必填
-- `data`: object，必填，包含节点与连线。
-- `data.nodes`: array<object>，至少 1 条，需提供唯一 `name`。
-- `data.edges`: array<object>，至少 1 条，包含 `source` 与 `target`（string），可选 `name` 说明关系。
+## Input Fields
+### Required
+- 
+odes: array<object>, list of entities with id and label.
+- edges: array<object>, connections with source and 	arget.
 
-### 可选
-- `style.texture`: string，默认 `default`，可选 `default`/`rough`。
-- `theme`: string，默认 `default`，可选 `default`/`academy`/`dark`。
-- `width`: number，默认 `600`。
-- `height`: number，默认 `400`。
+### Optional
+- 	heme: string, default default.
+- 	itle: string, graph title.
 
-## 使用建议
-节点数量保持在 10~50 之间以避免拥挤；确保 `edges` 中的 `source/target` 对应已存在的节点；可在 `label` 中注明关系含义。
+## Usage Recommendations
+Use node coloring and edge thickness to encode community groupings and connection weights.
 
-## 返回结果
-- 返回网络图 URL，并提供 `_meta.spec` 以便后续增删节点。
+## Output
+- Returns network graph image URL and spec in _meta.spec.

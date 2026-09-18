@@ -40,7 +40,7 @@
     },
     {
       "id": "zh-output",
-      "prompt": "请用中文审查这个技能是否可以发布。",
+      "prompt": "Review whether this skill is ready to publish.",
       "fixture": "fixtures/zh-output",
       "expected_language": "zh",
       "required_machine_enums": ["blocked", "revise", "publish_candidate", "static_only"],

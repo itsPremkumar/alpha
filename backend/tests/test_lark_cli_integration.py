@@ -488,7 +488,7 @@ def test_install_lark_integration_installs_one_readonly_pack_for_all_users(monke
     assert (root / lark_cli.LARK_CLI_MANIFEST_FILE).is_file()
     shared_content = (root / "lark-shared" / "SKILL.md").read_text(encoding="utf-8")
     assert "?settings=integrations" in shared_content
-    assert "不要要求用户在终端执行" in shared_content
+    assert "Do not ask the user to run" in shared_content
     assert "Exact OAuth scope" in shared_content
 
     storage = UserScopedSkillStorage("alice", host_path=str(skills_root), app_config=config)
