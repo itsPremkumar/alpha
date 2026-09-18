@@ -1,10 +1,6 @@
-Yes. For **your harness project**, I would think beyond “agent + tools + memory + subagents.” A serious long-horizon harness needs an entire **agent operating system/runtime** around the model.
+# 🧠 Complete Autonomous Agent Harness Capability Map & Architecture Reference
 
-I checked current architectures from Agent Workspace 2.0, Hermes Agent, OpenAI Agents SDK, and recent harness/evaluation work. Agent Workspace explicitly treats the harness as the runtime containing tools, skills, sandbox, memory, subagents and context management; Hermes adds persistent memory, agent-managed skills, checkpoints, scheduling, browser/terminal capabilities and delegation; OpenAI's current agent architecture emphasizes handoffs, guardrails, sessions, human-in-the-loop and tracing. ([GitHub][1])
-
-For **your Agent Workspace-based project**, I would target the following architecture.
-
-# 🧠 Complete AI Harness Capability Map
+This specification defines the complete architectural capability map for the **Alpha Autonomous Agent Harness**, providing a unified reference model for long-horizon autonomous agency. Beyond simple LLM prompt-tool loops, this architecture articulates a full-lifecycle **Agent Operating System & Execution Runtime** spanning intent formalization, dynamic subagent delegation, a 9-tier cognitive memory plane, grounded sandboxed execution, and safe recursive self-improvement.
 
 ```text
                          ┌──────────────────────────────┐
@@ -2926,13 +2922,11 @@ Build:
                           DEPLOY / ROLLBACK
 ```
 
-**That is the architecture I think you should be aiming for:** not merely a better agent, but an **agent runtime that can create, operate, verify, recover, learn, and safely improve agents.**
+## 🎯 Key Architectural Principles
 
-The current Agent Workspace architecture already gives you a very useful foundation—its separation between the reusable Harness and application layer is especially relevant to your project. ([GitHub][11])
-
-And Hermes provides another important design lesson: keep the **core/narrow waist small**, while capabilities such as skills, tools, memory and integrations remain modular and extensible. ([GitHub][10])
-
-For your `agent-workspace-desktop`, I would therefore **avoid turning the Agent Workspace core into one enormous codebase**. Build your new capabilities as independent subsystems/plugins around the harness boundary wherever possible.
+1. **Agent Operating System vs. Model**: An advanced autonomous harness is not merely an LLM with tool bindings, but an end-to-end agent operating system that creates, coordinates, verifies, recovers, and safely improves autonomous workflows.
+2. **Narrow-Waist Core Architecture**: Maintain a minimal, robust core runtime engine while delegating capabilities (tools, cognitive memory backends, domain skills, and protocols) to modular, decoupled subsystems.
+3. **Pluggable Subsystem Boundaries**: Implement capabilities as independent modules with strict schema contracts, allowing rapid evolution without monolithic codebase coupling.
 
 [1]: https://github.com/bytedance/agent-workspace/blob/main/frontend/src/content/en/introduction/core-concepts.mdx?utm_source=chatgpt.com "agent-workspace/frontend/src/content/en/introduction/core-concepts.mdx at main · bytedance/agent-workspace · GitHub"
 [2]: https://github.com/bytedance/agent-workspace/blob/main/CHANGELOG.md?utm_source=chatgpt.com "agent-workspace/CHANGELOG.md at main · bytedance/agent-workspace · GitHub"

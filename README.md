@@ -43,7 +43,8 @@
   - [Option D: Non-Interactive / CI Headless Setup](#option-d-non-interactive--ci-headless-setup)
 - [9. Configuration Essentials](#9-configuration-essentials)
 - [10. Quality Assurance & Verification Commands](#10-quality-assurance--verification-commands)
-- [11. Upstream Credits & Open-Source Provenance](#11-upstream-credits--open-source-provenance)
+- [11. Reference Architecture & Research Library](#11-reference-architecture--research-library)
+- [12. Upstream Credits & Open-Source Provenance](#12-upstream-credits--open-source-provenance)
 
 ---
 
@@ -557,7 +558,21 @@ python scripts/prod_check.py
 
 ---
 
-## 11. Upstream Credits & Open-Source Provenance
+## 11. Reference Architecture & Research Library
+
+Alpha maintains an extensive library of formal architectural blueprints, evolutionary search operators, and competitive research in the [`references/`](./references/README.md) directory:
+
+- **[01. Core Architectures & Frameworks](./references/01-architectures/)**: Universal ASI harness specs, Keel architecture, Swarm coordination, and zero-cost local runtimes.
+- **[02. Agentic Variation Operators (AVO)](./references/02-avo-and-evolution/)**: NVIDIA AVO loop specifications, prompt genome mutation, compiler-grounded feedback, and evolutionary search.
+- **[03. Recursive Self-Improvement (RSI)](./references/03-rsi-and-self-improvement/)**: Safe self-evolution, AST invariant enforcement, sandboxed canary verification, and rollback mechanics.
+- **[04. Frontier Benchmarks & Deep Research](./references/04-frontier-benchmarks-and-deep-research/)**: Comparative harness analyses, 1,393-agent swarm post-mortems, OpenClaw/Hermes/Fable studies, and L0-L8 memory benchmarks.
+- **[05. Autonomous Operations & Execution](./references/05-autonomous-operations-and-execution/)**: Long-term autonomous company runbooks, goal decomposition trees, and complete harness capability maps.
+
+For a full breakdown of the 2026 SOTA paradigms (3-tier agent stack, AVO loop, 9-tier cognitive memory plane, and RSI safety bounds), consult the [References Master Guide](./references/README.md).
+
+---
+
+## 12. Upstream Credits & Open-Source Provenance
 
 Alpha incorporates and builds upon foundational breakthroughs across the open-source agentic AI ecosystem:
 
