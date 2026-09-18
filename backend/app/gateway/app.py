@@ -904,6 +904,7 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     app.include_router(benchmarks.router)
     app.include_router(evolution.router)
     app.include_router(deliveries.router)
+    app.include_router(checkpoints.router)
 
     # Suggestions API is mounted at /api/threads/{thread_id}/suggestions
     app.include_router(suggestions.router)

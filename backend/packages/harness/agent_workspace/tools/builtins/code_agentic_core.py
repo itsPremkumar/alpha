@@ -590,3 +590,70 @@ def manage_code_checkpoint(
         return json.dumps({"checkpoints": res, "total": len(res)}, indent=2)
 
     return json.dumps({"status": "error", "error": f"Unsupported action '{action}'"})
+
+
+# ---------------------------------------------------------------------------
+# 4. Tier 2 & Tier 4 Advanced Code Intelligence & Self-Healing Tools
+# ---------------------------------------------------------------------------
+
+@tool("generate_personalized_repo_map", parse_docstring=True)
+def generate_personalized_repo_map(
+    root_path: str = ".",
+    active_files: str = "",
+    query: str = "",
+    token_budget: int = 1500,
+) -> str:
+    """Generate a high-density, ~1,500 token structural repository map using Personalized PageRank (PPR).
+
+    Parses polyglot codebases (Python, TS/JS, Go, Rust, Java, C/C++) into Concrete Syntax Trees (CST)
+    and constructs a directed symbol dependency graph (DEFINES, CALLS, IMPORTS, INHERITS).
+    Biases symbol ranking toward active files and task query tokens using power-iteration PPR.
+
+    Args:
+        root_path: Root directory of the repository to index (default ".").
+        active_files: Comma-separated list of active/open file paths to bias Personalized PageRank toward.
+        query: Active task prompt or search keywords to teleport PageRank mass toward relevant symbols.
+        token_budget: Maximum token budget for the compact repo map (default 1500 tokens).
+    """
+    from agent_workspace.coding.structural_intelligence.symbol_dependency_graph import SymbolDependencyGraph
+    from agent_workspace.coding.structural_intelligence.repo_map import RepoMapGenerator
+
+    root = Path(root_path).resolve()
+    if not root.is_dir():
+        return f"Error: '{root_path}' is not a valid directory."
+
+    graph = SymbolDependencyGraph()
+    graph.parse_directory(root, max_files=400)
+
+    active_list = [f.strip() for f in active_files.split(",") if f.strip()] if active_files else []
+    generator = RepoMapGenerator(token_budget=token_budget)
+    return generator.generate_repo_map(graph, active_files=active_list, query=query.strip() or None)
+
+
+@tool("run_surgical_program_repair", parse_docstring=True)
+def run_surgical_program_repair(
+    test_output: str,
+    root_path: str = ".",
+    total_passing_tests: int = 1,
+) -> str:
+    """Execute Automated Program Repair (APR) using Spectrum-Based Fault Localization (Ochiai SBFL).
+
+    Pinpoints suspicious bug locations from test execution traces, verifies test assertion
+    immutability (ensuring tests are never weakened or gamed), performs AST pre-commit syntax
+    validation, and synthesizes minimal targeted surgical fixes.
+
+    Args:
+        test_output: Raw terminal output, traceback, or failure logs from pytest or npm test.
+        root_path: Project root directory containing source code (default ".").
+        total_passing_tests: Estimated count of passing tests in suite for Ochiai SBFL calculation.
+    """
+    from agent_workspace.selfrepair.surgical_apr import SurgicalProgramRepairEngine
+
+    root = Path(root_path).resolve()
+    engine = SurgicalProgramRepairEngine(workspace_root=root)
+    result = engine.attempt_surgical_repair(
+        test_output=test_output,
+        total_passing_tests=total_passing_tests,
+    )
+    return json.dumps(result.to_dict(), indent=2)
+

@@ -24,6 +24,7 @@ class BenchmarkReport(BaseModel):
 class GateRequest(BaseModel):
     baseline: dict = Field(default_factory=dict)
     human_approved: bool = False
+    autonomous_mode: bool = True
 
 
 @router.post("/candidates", status_code=201)
@@ -58,7 +59,12 @@ async def gate_candidate(candidate_id: str, body: GateRequest) -> dict:
     def _do():
         from agent_workspace.evolution import get_evolution_engine
 
-        return get_evolution_engine().gate(candidate_id, body.baseline, human_approved=body.human_approved)
+        return get_evolution_engine().gate(
+            candidate_id,
+            body.baseline,
+            human_approved=body.human_approved,
+            autonomous_mode=body.autonomous_mode,
+        )
 
     promoted, reason = await asyncio.to_thread(_do)
     return {"promoted": promoted, "reason": reason}

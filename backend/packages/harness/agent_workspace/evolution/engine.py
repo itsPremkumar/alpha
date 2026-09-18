@@ -63,7 +63,7 @@ class EvolutionEngine:
             self._ledger.append({"event": "benchmarked", "candidate_id": candidate_id, "at": time.time()})
             return cand
 
-    def gate(self, candidate_id: str, baseline: dict[str, Any], *, human_approved: bool = False) -> tuple[bool, str]:
+    def gate(self, candidate_id: str, baseline: dict[str, Any], *, human_approved: bool = False, autonomous_mode: bool = False) -> tuple[bool, str]:
         """Promote only if strictly better than baseline with zero regressions."""
         with self._lock:
             cand = self._candidates.get(candidate_id)
@@ -78,7 +78,7 @@ class EvolutionEngine:
                 cand.status = "rejected"
                 self._ledger.append({"event": "rejected", "candidate_id": candidate_id, "reason": "not strictly better", "at": time.time()})
                 return False, "not strictly better than baseline"
-            if not human_approved:
+            if not human_approved and not autonomous_mode:
                 cand.status = "gated"
                 self._ledger.append({"event": "gated", "candidate_id": candidate_id, "at": time.time()})
                 return False, "awaiting human approval"

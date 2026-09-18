@@ -16,6 +16,7 @@ class SymbolType(str, Enum):
 
 
 class EdgeType(str, Enum):
+    DEFINES = "defines"
     IMPORTS = "imports"
     CALLS = "calls"
     INHERITS = "inherits"
@@ -111,3 +112,39 @@ class SymbolGraph:
 
     def find_symbol_by_name(self, name: str) -> list[SymbolNode]:
         return [sym for sym in self.symbols.values() if sym.name == name]
+
+    def generate_compact_repo_map(
+        self,
+        active_files: list[str] | None = None,
+        query: str | None = None,
+        token_budget: int = 1500,
+    ) -> str:
+        """Generates a compact repo map using Personalized PageRank within token budget."""
+        from agent_workspace.coding.structural_intelligence.symbol_dependency_graph import SymbolDependencyGraph
+        from agent_workspace.coding.structural_intelligence.repo_map import RepoMapGenerator
+
+        graph = SymbolDependencyGraph()
+        for sym in self.symbols.values():
+            from agent_workspace.coding.structural_intelligence.polyglot_cst import SymbolKind, SymbolNode as RichNode
+            kind_map = {
+                SymbolType.CLASS: SymbolKind.CLASS,
+                SymbolType.FUNCTION: SymbolKind.FUNCTION,
+                SymbolType.VARIABLE: SymbolKind.VARIABLE,
+                SymbolType.IMPORT: SymbolKind.IMPORT,
+                SymbolType.MODULE: SymbolKind.MODULE,
+            }
+            node = RichNode(
+                id=f"{sym.file_path}:{sym.name}",
+                name=sym.name,
+                kind=kind_map.get(sym.symbol_type, SymbolKind.FUNCTION),
+                file_path=sym.file_path,
+                start_line=sym.line_number,
+                end_line=sym.line_number,
+                docstring=sym.docstring,
+                parameters=sym.parameters,
+            )
+            graph.add_node(node)
+        
+        generator = RepoMapGenerator(token_budget=token_budget)
+        return generator.generate_repo_map(graph, active_files=active_files, query=query)
+
