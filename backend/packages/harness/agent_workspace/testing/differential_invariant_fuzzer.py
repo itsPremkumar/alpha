@@ -254,14 +254,18 @@ class DifferentialInvariantFuzzer:
                 "consistency_score": 0.0,
             }
 
-        # Inspect signature
-        try:
-            sig = inspect.signature(mod_func)
-            param_names = [p.name for p in sig.parameters.values() if p.default == inspect.Parameter.empty]
-            if not param_names:
-                param_names = list(sig.parameters.keys())
-        except Exception:
-            param_names = list(input_schema.keys()) if input_schema else ["x"]
+        # Inspect parameter names
+        param_names: List[str] = []
+        if input_schema:
+            param_names = list(input_schema.keys())
+        else:
+            try:
+                sig = inspect.signature(mod_func)
+                param_names = [p.name for p in sig.parameters.values()]
+            except Exception:
+                param_names = ["x"]
+        if not param_names:
+            param_names = ["x"]
 
         comparisons: List[DifferentialComparisonResult] = []
         regressions: List[Dict[str, Any]] = []
@@ -356,10 +360,36 @@ class DifferentialInvariantFuzzer:
                         comparisons.append(reg)
                         regressions.append(reg.to_dict())
             else:
-                # Baseline raised an exception: check if modified behaves reasonably
+                # Baseline raised an exception
                 if not m_res.success and b_res.exception_type == m_res.exception_type:
                     unmutated_evaluated += 1
                     unmutated_consistent += 1
+                elif m_res.success:
+                    # Baseline raised exception, but modified resolved cleanly: bug fix verified by fuzzer
+                    fix_comp = DifferentialComparisonResult(
+                        input_args=(),
+                        input_kwargs=case_kwargs,
+                        baseline_result=b_res,
+                        modified_result=m_res,
+                        is_bug_inducing_input=True,
+                        is_consistent=False,
+                        fix_verified=True,
+                        discrepancy_details=f"Fuzz trial discovered bug fix: baseline raised {b_res.exception_type}; modified resolved cleanly with {repr(m_res.return_value)}.",
+                    )
+                    comparisons.append(fix_comp)
+                    verified_fixes.append(fix_comp.to_dict())
+                elif not m_res.success and b_res.exception_type != m_res.exception_type:
+                    reg = DifferentialComparisonResult(
+                        input_args=(),
+                        input_kwargs=case_kwargs,
+                        baseline_result=b_res,
+                        modified_result=m_res,
+                        is_consistent=False,
+                        regression_detected=True,
+                        discrepancy_details=f"Exception type divergence: baseline raised {b_res.exception_type}, but modified raised {m_res.exception_type}: {m_res.exception_message}",
+                    )
+                    comparisons.append(reg)
+                    regressions.append(reg.to_dict())
 
         consistency_score = (
             unmutated_consistent / unmutated_evaluated if unmutated_evaluated > 0 else 1.0

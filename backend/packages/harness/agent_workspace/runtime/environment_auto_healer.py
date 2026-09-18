@@ -21,7 +21,7 @@ import sys
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any
 
 from langchain.tools import tool
 
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 # Canonical mapping from Python import/module name to distribution package name
-CANONICAL_MODULE_MAP: Dict[str, str] = {
+CANONICAL_MODULE_MAP: dict[str, str] = {
     "yaml": "PyYAML",
     "cv2": "opencv-python",
     "PIL": "Pillow",
@@ -59,7 +59,7 @@ class DependencyConstraint:
     operator: str  # "==", ">=", "<=", ">", "<", "~=", "^"
     version: str
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -71,10 +71,10 @@ class DiagnosticIssue:
     severity: str  # "Critical", "High", "Medium", "Low"
     raw_message: str
     affected_entity: str
-    recommended_package: Optional[str] = None
-    suggested_action: Optional[str] = None
+    recommended_package: str | None = None
+    suggested_action: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -84,8 +84,8 @@ class ManifestHealingReport:
 
     manifest_path: str
     manifest_type: str
-    repaired_constraints: List[Dict[str, Any]] = field(default_factory=list)
-    added_packages: List[str] = field(default_factory=list)
+    repaired_constraints: list[dict[str, Any]] = field(default_factory=list)
+    added_packages: list[str] = field(default_factory=list)
     status: str = "healthy"  # "healthy", "repaired", "unresolved"
 
 
@@ -95,7 +95,7 @@ class DependencySATSolver:
     def __init__(self) -> None:
         pass
 
-    def parse_version_tuple(self, ver_str: str) -> Tuple[int, ...]:
+    def parse_version_tuple(self, ver_str: str) -> tuple[int, ...]:
         """Convert version string into comparable integer tuple."""
         cleaned = re.sub(r"[^\d.]", "", ver_str.split("-")[0])
         parts = []
@@ -108,9 +108,7 @@ class DependencySATSolver:
             parts.append(0)
         return tuple(parts[:4])
 
-    def solve_constraints(
-        self, package_name: str, constraints: List[DependencyConstraint]
-    ) -> Tuple[bool, Optional[str], Optional[str]]:
+    def solve_constraints(self, package_name: str, constraints: list[DependencyConstraint]) -> tuple[bool, str | None, str | None]:
         """Compute satisfiability for multiple constraints on a package.
 
         Returns (is_satisfiable, resolved_version_specifier, explanation).
@@ -118,9 +116,9 @@ class DependencySATSolver:
         if not constraints:
             return True, None, "No constraints specified."
 
-        min_ver: Optional[Tuple[int, ...]] = None
-        max_ver: Optional[Tuple[int, ...]] = None
-        exact_ver: Optional[Tuple[int, ...]] = None
+        min_ver: tuple[int, ...] | None = None
+        max_ver: tuple[int, ...] | None = None
+        exact_ver: tuple[int, ...] | None = None
 
         for c in constraints:
             parsed = self.parse_version_tuple(c.version)
@@ -178,13 +176,13 @@ class DependencySATSolver:
 class EnvironmentAutoHealer:
     """Autonomous environment auditor and healing engine."""
 
-    def __init__(self, project_root: Union[str, Path] = ".") -> None:
+    def __init__(self, project_root: str | Path = ".") -> None:
         self.project_root = Path(project_root).resolve()
         self.sat_solver = DependencySATSolver()
 
-    def parse_requirements_txt(self, path: Path) -> List[DependencyConstraint]:
+    def parse_requirements_txt(self, path: Path) -> list[DependencyConstraint]:
         """Parse a requirements.txt file into structured constraints."""
-        constraints: List[DependencyConstraint] = []
+        constraints: list[DependencyConstraint] = []
         if not path.is_file():
             return constraints
 
@@ -205,7 +203,7 @@ class EnvironmentAutoHealer:
                 )
         return constraints
 
-    def _parse_pep508_spec(self, dep_str: str) -> Optional[DependencyConstraint]:
+    def _parse_pep508_spec(self, dep_str: str) -> DependencyConstraint | None:
         """Extract package and version constraint from a PEP 508 dependency string."""
         clean = dep_str.split(";")[0].strip()
         match = re.match(r"^([a-zA-Z0-9_\-\.]+)\s*([=><~^!]+)?\s*([a-zA-Z0-9_\-\.\*]+)?", clean)
@@ -218,7 +216,7 @@ class EnvironmentAutoHealer:
             )
         return None
 
-    def _parse_spec_val(self, pkg: str, spec: Any) -> Optional[DependencyConstraint]:
+    def _parse_spec_val(self, pkg: str, spec: Any) -> DependencyConstraint | None:
         """Convert version string or dictionary table into DependencyConstraint."""
         if isinstance(spec, str):
             ver_str = spec.strip()
@@ -240,15 +238,16 @@ class EnvironmentAutoHealer:
             return self._parse_spec_val(pkg, str(spec["version"]))
         return None
 
-    def parse_pyproject_toml(self, path: Path) -> List[DependencyConstraint]:
+    def parse_pyproject_toml(self, path: Path) -> list[DependencyConstraint]:
         """Parse dependencies from pyproject.toml."""
-        constraints: List[DependencyConstraint] = []
+        constraints: list[DependencyConstraint] = []
         if not path.is_file():
             return constraints
 
         text = path.read_text(encoding="utf-8")
         try:
             import tomllib
+
             data = tomllib.loads(text)
             # 1. PEP 621 project.dependencies
             proj_deps = data.get("project", {}).get("dependencies", [])
@@ -306,15 +305,16 @@ class EnvironmentAutoHealer:
                     )
         return constraints
 
-    def parse_cargo_toml(self, path: Path) -> List[DependencyConstraint]:
+    def parse_cargo_toml(self, path: Path) -> list[DependencyConstraint]:
         """Parse dependencies from Cargo.toml."""
-        constraints: List[DependencyConstraint] = []
+        constraints: list[DependencyConstraint] = []
         if not path.is_file():
             return constraints
 
         text = path.read_text(encoding="utf-8")
         try:
             import tomllib
+
             data = tomllib.loads(text)
             for section in ("dependencies", "dev-dependencies", "build-dependencies"):
                 deps = data.get(section, {})
@@ -345,14 +345,12 @@ class EnvironmentAutoHealer:
                 match = re.match(r"^([=><~^]+)?\s*([a-zA-Z0-9_\-\.\*]+)", val)
                 if match:
                     op, ver = match.groups()
-                    constraints.append(
-                        DependencyConstraint(package_name=pkg, operator=op or "^", version=ver or "0.0.0")
-                    )
+                    constraints.append(DependencyConstraint(package_name=pkg, operator=op or "^", version=ver or "0.0.0"))
         return constraints
 
-    def parse_package_json(self, path: Path) -> List[DependencyConstraint]:
+    def parse_package_json(self, path: Path) -> list[DependencyConstraint]:
         """Parse dependencies from package.json."""
-        constraints: List[DependencyConstraint] = []
+        constraints: list[DependencyConstraint] = []
         if not path.is_file():
             return constraints
 
@@ -376,23 +374,19 @@ class EnvironmentAutoHealer:
                         elif ver_str.startswith("=="):
                             op = "=="
                             ver_str = ver_str[2:]
-                        constraints.append(
-                            DependencyConstraint(package_name=pkg, operator=op, version=ver_str)
-                        )
+                        constraints.append(DependencyConstraint(package_name=pkg, operator=op, version=ver_str))
         except Exception as e:
             logger.warning("Error parsing package.json: %s", e)
 
         return constraints
 
-    def diagnose_error_logs(self, logs: str) -> List[DiagnosticIssue]:
+    def diagnose_error_logs(self, logs: str) -> list[DiagnosticIssue]:
         """Scan error logs for ModuleNotFoundError, missing shared libraries, and version issues."""
-        issues: List[DiagnosticIssue] = []
+        issues: list[DiagnosticIssue] = []
 
         # 1. ModuleNotFoundError: No module named '...'
-        missing_module_pattern = re.finditer(
-            r"ModuleNotFoundError:\s+No module named ['\"]([^'\"]+)['\"]", logs
-        )
-        seen_modules: Set[str] = set()
+        missing_module_pattern = re.finditer(r"ModuleNotFoundError:\s+No module named ['\"]([^'\"]+)['\"]", logs)
+        seen_modules: set[str] = set()
         for m in missing_module_pattern:
             mod = m.group(1).split(".")[0]
             if mod not in seen_modules:
@@ -441,10 +435,10 @@ class EnvironmentAutoHealer:
 
         return issues
 
-    def check_virtualenv_health(self) -> Dict[str, Any]:
+    def check_virtualenv_health(self) -> dict[str, Any]:
         """Verify Python executable, site-packages, and packaging toolchain health."""
         executable = sys.executable
-        site_packages: List[str] = [p for p in sys.path if "site-packages" in p]
+        site_packages: list[str] = [p for p in sys.path if "site-packages" in p]
         is_writable = False
 
         if site_packages:
@@ -467,20 +461,20 @@ class EnvironmentAutoHealer:
     def diagnose_and_heal(
         self,
         auto_heal: bool = True,
-        manifest_types: Optional[List[str]] = None,
-        error_logs: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        manifest_types: list[str] | None = None,
+        error_logs: str | None = None,
+    ) -> dict[str, Any]:
         """Execute full autonomous diagnostic and self-healing workflow."""
         types_to_scan = manifest_types or ["requirements.txt", "pyproject.toml", "package.json", "Cargo.toml"]
-        all_issues: List[DiagnosticIssue] = []
+        all_issues: list[DiagnosticIssue] = []
 
         # 1. Parse error logs if provided
         if error_logs:
             all_issues.extend(self.diagnose_error_logs(error_logs))
 
         # 2. Inspect manifests and solve dependency SAT
-        manifest_reports: List[ManifestHealingReport] = []
-        package_constraints_map: Dict[str, List[DependencyConstraint]] = defaultdict(list)
+        manifest_reports: list[ManifestHealingReport] = []
+        package_constraints_map: dict[str, list[DependencyConstraint]] = defaultdict(list)
 
         for m_name in types_to_scan:
             m_path = self.project_root / m_name
@@ -514,7 +508,7 @@ class EnvironmentAutoHealer:
                 manifest_reports.append(rep)
 
         # 3. Solve constraints with SAT solver
-        sat_solutions: Dict[str, Any] = {}
+        sat_solutions: dict[str, Any] = {}
         for pkg, constraints in package_constraints_map.items():
             if len(constraints) > 1 or any(c.operator in ("==", "<", "<=") for c in constraints):
                 is_sat, resolved_spec, explanation = self.sat_solver.solve_constraints(pkg, constraints)
@@ -536,7 +530,7 @@ class EnvironmentAutoHealer:
                     )
 
         # 4. Synthesize Auto-Heal Actions
-        healed_actions: List[Dict[str, Any]] = []
+        healed_actions: list[dict[str, Any]] = []
         if auto_heal:
             for issue in all_issues:
                 if issue.issue_type == "missing_module" and issue.recommended_package:
@@ -569,10 +563,7 @@ class EnvironmentAutoHealer:
             "sat_constraint_solutions": sat_solutions,
             "healed_actions": healed_actions,
             "virtualenv_health": venv_health,
-            "summary": (
-                f"Scanned {len(manifest_reports)} manifests. Identified {len(all_issues)} issues; "
-                f"synthesized {len(healed_actions)} autonomous healing actions."
-            ),
+            "summary": (f"Scanned {len(manifest_reports)} manifests. Identified {len(all_issues)} issues; synthesized {len(healed_actions)} autonomous healing actions."),
         }
 
 
@@ -580,9 +571,9 @@ class EnvironmentAutoHealer:
 def diagnose_and_heal_environment(
     project_root: str = ".",
     auto_heal: bool = True,
-    manifest_types: Optional[List[str]] = None,
-    error_logs: Optional[str] = None,
-) -> Dict[str, Any]:
+    manifest_types: list[str] | None = None,
+    error_logs: str | None = None,
+) -> dict[str, Any]:
     """Scan build manifests, error logs, and virtualenv health to automatically repair environments.
 
     Inspects pyproject.toml, requirements.txt, package.json, and Cargo.toml. Autonomously
