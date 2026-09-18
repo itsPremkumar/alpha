@@ -125,12 +125,15 @@ from .setup_agent_tool import setup_agent
 
 # Autonomous Skill Synthesis & Swarm Orchestration Tools
 from .skill_forge_tool import forge_skill_from_trace
+from .skill_workshop_tool import synthesize_reusable_skill
 from .skills_hub_tool import skills_hub_manage
 from .smart_approval_tool import verify_command_approval
 from .subagent_control_tool import subagent_control
 from .supervision_tool import supervision_tool
 from .swarm_tool import swarm_tool
 from .task_tool import task_tool
+from .credential_request_tool import request_secure_credential
+from .wake_gate_tool import await_task_event
 
 # Environment Interaction & Perception Fabric
 from .tom_consult_tool import tom_consult
@@ -273,6 +276,9 @@ __all__ = [
     "identify_autonomous_command_tool",
     "cognitive_memory_tool",
     "deep_research",
+    "synthesize_reusable_skill",
+    "request_secure_credential",
+    "await_task_event",
     "run_introspective_tree_search",
     "compute_program_slice",
     "run_differential_regression_oracle",

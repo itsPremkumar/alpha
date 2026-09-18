@@ -127,6 +127,9 @@ from agent_workspace.tools.builtins import (
     visual_verify_artifact,
     manage_reflexion_memory,
     workflow_dag_manage,
+    synthesize_reusable_skill,
+    request_secure_credential,
+    await_task_event,
     run_introspective_tree_search,
     compute_program_slice,
     run_differential_regression_oracle,
@@ -158,7 +161,7 @@ BUILTIN_TOOLS = [
     bot_roster_tool,
     group_chat_tool,
     kanban_board_tool,
-    # OpenClaw-inspired Continuous Goal, Canvas & Trajectory extensions:
+    # Autonomous Continuous Goal, Canvas & Trajectory extensions:
     goal_engine_tool,
     canvas_widget_tool,
     trajectory_audit_tool,
@@ -169,6 +172,9 @@ BUILTIN_TOOLS = [
     cognitive_memory_tool,
     consolidate_memory_dream,
     update_progress_card,
+    synthesize_reusable_skill,
+    request_secure_credential,
+    await_task_event,
     # Bounded Recursive Self-Improvement Loop:
     self_improvement_loop_tool,
     ralph_loop_tool,
