@@ -112,12 +112,15 @@ from .setup_agent_tool import setup_agent
 
 # Autonomous Skill Synthesis & Swarm Orchestration Tools
 from .skill_forge_tool import forge_skill_from_trace
+from .skill_workshop_tool import synthesize_reusable_skill
 from .skills_hub_tool import skills_hub_manage
 from .smart_approval_tool import verify_command_approval
 from .subagent_control_tool import subagent_control
 from .supervision_tool import supervision_tool
 from .swarm_tool import swarm_tool
 from .task_tool import task_tool
+from .credential_request_tool import request_secure_credential
+from .wake_gate_tool import await_task_event
 
 # Environment Interaction & Perception Fabric
 from .tom_consult_tool import tom_consult
@@ -128,6 +131,17 @@ from .update_agent_tool import update_agent
 from .view_image_tool import view_image_tool
 from .visual_verification_tool import visual_verify_artifact
 from .workflow_dag_tool import workflow_dag_manage
+
+# Frontier Autonomous Software Engineering Suite Tools
+from .introspective_tree_search_tool import run_introspective_tree_search
+from .program_slicing_tool import compute_program_slice
+from .differential_invariant_fuzzer_tool import run_differential_regression_oracle
+from .environment_auto_healer_tool import diagnose_and_heal_environment
+from .structural_ast_reconciler_tool import reconcile_structural_ast_conflicts
+from .contrastive_trajectory_replay_tool import (
+    query_contrastive_memory,
+    record_trajectory_outcome,
+)
 
 __all__ = [
     "setup_agent",
@@ -240,6 +254,16 @@ __all__ = [
     "identify_autonomous_command_tool",
     "cognitive_memory_tool",
     "deep_research",
+    "synthesize_reusable_skill",
+    "request_secure_credential",
+    "await_task_event",
+    "run_introspective_tree_search",
+    "compute_program_slice",
+    "run_differential_regression_oracle",
+    "diagnose_and_heal_environment",
+    "reconcile_structural_ast_conflicts",
+    "query_contrastive_memory",
+    "record_trajectory_outcome",
 ]
 
 

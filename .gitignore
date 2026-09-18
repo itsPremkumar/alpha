@@ -84,5 +84,6 @@ config.yaml.bak
 .agent_workspace_projects/
 backend/.agent_workspace_projects/
 .deerflow_projects/
+.workbuddy-ai/
 
 

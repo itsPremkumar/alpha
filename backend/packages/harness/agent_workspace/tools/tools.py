@@ -117,6 +117,16 @@ from agent_workspace.tools.builtins import (
     visual_verify_artifact,
     manage_reflexion_memory,
     workflow_dag_manage,
+    synthesize_reusable_skill,
+    request_secure_credential,
+    await_task_event,
+    run_introspective_tree_search,
+    compute_program_slice,
+    run_differential_regression_oracle,
+    diagnose_and_heal_environment,
+    reconcile_structural_ast_conflicts,
+    query_contrastive_memory,
+    record_trajectory_outcome,
 )
 from agent_workspace.tools.mcp_metadata import tag_mcp_tool
 from agent_workspace.tools.sync import make_sync_tool_wrapper
@@ -141,7 +151,7 @@ BUILTIN_TOOLS = [
     bot_roster_tool,
     group_chat_tool,
     kanban_board_tool,
-    # OpenClaw-inspired Continuous Goal, Canvas & Trajectory extensions:
+    # Autonomous Continuous Goal, Canvas & Trajectory extensions:
     goal_engine_tool,
     canvas_widget_tool,
     trajectory_audit_tool,
@@ -152,6 +162,9 @@ BUILTIN_TOOLS = [
     cognitive_memory_tool,
     consolidate_memory_dream,
     update_progress_card,
+    synthesize_reusable_skill,
+    request_secure_credential,
+    await_task_event,
     # Bounded Recursive Self-Improvement Loop:
     self_improvement_loop_tool,
     ralph_loop_tool,
@@ -236,6 +249,14 @@ BUILTIN_TOOLS = [
     visual_verify_artifact,
     manage_reflexion_memory,
     compile_problem_model,
+    # SOTA Frontier Agentic Software Engineering Tools:
+    run_introspective_tree_search,
+    compute_program_slice,
+    run_differential_regression_oracle,
+    diagnose_and_heal_environment,
+    reconcile_structural_ast_conflicts,
+    query_contrastive_memory,
+    record_trajectory_outcome,
 ]
 
 SUBAGENT_TOOLS = [

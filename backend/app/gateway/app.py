@@ -31,6 +31,7 @@ from app.gateway.routers import (
     company,
     console,
     council,
+    credentials,
     deliberation,
     deliveries,
     enterprise,
@@ -57,6 +58,7 @@ from app.gateway.routers import (
     runs,
     scheduled_tasks,
     skills,
+    skills_workshop,
     subagent_batches,
     subagent_control,
     subagents,
@@ -905,6 +907,8 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     app.include_router(evolution.router)
     app.include_router(deliveries.router)
     app.include_router(checkpoints.router)
+    app.include_router(skills_workshop.router)
+    app.include_router(credentials.router)
 
     # Suggestions API is mounted at /api/threads/{thread_id}/suggestions
     app.include_router(suggestions.router)
