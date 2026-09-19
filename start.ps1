@@ -90,6 +90,38 @@ function Test-PortListening {
     return (Get-ListeningProcessIds -Port $Port).Count -gt 0
 }
 
+# Windows PowerShell 5.1 copies the environment into a case-insensitive
+# dictionary when Start-Process spawns a child. If two variables differ only by
+# case -- the very common HTTP_PROXY/http_proxy pair, typically left behind by a
+# proxy tool or a package manager -- it raises
+# "Item has already been added. Key in dictionary: 'http_proxy'" and the child is
+# never created, so neither the Gateway nor the frontend ever starts and the user
+# just sees a dead page. Collapse case-duplicates before spawning anything.
+function Remove-CaseDuplicateEnvironmentVariables {
+    # Go through .NET rather than the `Env:` provider: once two variables differ
+    # only by case the provider cannot even enumerate the environment
+    # (Get-ChildItem Env: raises "An item with the same key has already been
+    # added"), so any provider-based cleanup would fail before it started.
+    $names = @()
+    try {
+        foreach ($key in [System.Environment]::GetEnvironmentVariables().Keys) {
+            $names += [string]$key
+        }
+    } catch {
+        return
+    }
+    $seen = @{}
+    foreach ($name in $names) {
+        $lower = $name.ToLowerInvariant()
+        if ($seen.ContainsKey($lower)) {
+            # Passing $null deletes the variable.
+            [System.Environment]::SetEnvironmentVariable($name, $null)
+        } else {
+            $seen[$lower] = $true
+        }
+    }
+}
+
 # A launcher wrapper (notably `uv run`) can hand off / re-exec after the
 # service is already answering: the tracked wrapper PID is then gone while
 # the real server keeps the port. Only treat an exited wrapper as a crash
@@ -224,6 +256,10 @@ $frontendLogOut = "$RepoRoot\logs\frontend.log"
 $frontendLogErr = "$RepoRoot\logs\frontend.err.log"
 
 # -- 5. Start Backend Gateway ------------------------------------------------
+# Collapse case-duplicate environment variables first: Start-Process refuses to
+# spawn a child while both HTTP_PROXY and http_proxy exist (see the helper).
+Remove-CaseDuplicateEnvironmentVariables
+
 Write-Host "`n[1/2] Starting Gateway API on port $GatewayPort..." -ForegroundColor Yellow
 Write-Host "  logs: logs\gateway.log, logs\gateway.err.log" -ForegroundColor Gray
 

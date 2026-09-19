@@ -579,9 +579,25 @@ class AppConfig(BaseModel):
         """
         if isinstance(config, str):
             if config.startswith("$"):
-                env_value = os.getenv(config[1:])
+                env_name = config[1:]
+                env_value = os.getenv(env_name)
                 if env_value is None:
-                    raise ValueError(f"Environment variable {config[1:]} not found for config value {config}")
+                    # An unset optional secret must not abort startup. The
+                    # shipped config.example.yaml references dozens of provider
+                    # keys (OPENROUTER_API_KEY, BRAVE_SEARCH_API_KEY, ...), and
+                    # both install.ps1 and start.ps1 copy it verbatim to
+                    # config.yaml on a fresh install. Raising here crashed the
+                    # Gateway before it could serve /health or the UI, so the
+                    # app was dead on arrival for every new user. Degrade to an
+                    # empty value and let the integration that actually needs
+                    # the key fail loudly when it is used.
+                    logger.warning(
+                        "Environment variable %s is not set; config value %s resolved to an empty string. "
+                        "Set it in .env or the environment to enable this integration.",
+                        env_name,
+                        config,
+                    )
+                    return ""
                 return env_value
             return config
         elif isinstance(config, dict):
