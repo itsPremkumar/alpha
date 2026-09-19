@@ -485,6 +485,11 @@ class TestSyncSingletonThreadSafety:
         assert store1 is not store2
 
     def test_concurrent_checkpointer_getter_creates_one_instance(self):
+        # Order-independence: a checkpointer cached by an earlier test would be
+        # returned without ever entering the patched context manager, so the
+        # blocking factory would never be entered and this assertion would fail
+        # depending on test order.
+        reset_checkpointer()
         load_checkpointer_config_from_dict({"type": "memory"})
         factory = _BlockingSingletonFactory()
 
@@ -503,6 +508,8 @@ class TestSyncSingletonThreadSafety:
         assert factory.enter_count() == 1
 
     def test_concurrent_store_getter_creates_one_instance(self):
+        # Order-independence: see the checkpointer variant above.
+        reset_store()
         load_checkpointer_config_from_dict({"type": "memory"})
         factory = _BlockingSingletonFactory()
 
