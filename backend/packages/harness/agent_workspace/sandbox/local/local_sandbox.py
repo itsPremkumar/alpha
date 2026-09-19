@@ -391,12 +391,22 @@ class LocalSandbox(Sandbox):
         # Scan directly instead of compiling one regex per thread root. Python's
         # global regex caches outlive an evicted LocalSandbox and otherwise keep
         # high-cardinality thread paths resident.
+        # ``separator_agnostic=True`` is required here even though this class's
+        # bases come from platform filesystem resolution: the *text* being
+        # reversed is not platform-spelled. ``_resolve_paths_in_content``
+        # deliberately stores agent-written content with forward slashes (to
+        # avoid corrupting Windows path segments into escape sequences), and
+        # ``_resolve_paths_in_command`` does the same for commands. Without this
+        # flag a backslash base can never match that forward-slash text, so
+        # reading back an agent-written file leaked the raw host path (real
+        # username and full directory tree) instead of the container path.
         result = output
         for mapping in self._mappings_by_local_specificity:
             result = replace_output_path_matches(
                 result,
                 self._resolved_local_paths[mapping],
                 self._reverse_resolve_path,
+                separator_agnostic=True,
             )
 
         return result

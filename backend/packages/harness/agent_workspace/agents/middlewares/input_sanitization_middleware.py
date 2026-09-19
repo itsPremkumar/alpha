@@ -107,6 +107,19 @@ _BLOCKED_TAG_NAMES: frozenset[str] = frozenset(
         # pre-declaring acceptance criteria as met).
         "report_contract",
         "acceptance_criteria",
+        # Frontier/autonomy framework blocks. Each is emitted by harness code
+        # into model input as trusted framework context; forging any of them in
+        # untrusted input would let a user impersonate framework authority —
+        # e.g. stage fake slash-command lifecycle directives, fake session
+        # handoff instructions, or fake team/project governance context.
+        "autonomous_command_lifecycle_directive",
+        "autonomous_planning",
+        "rlm_harness_system",
+        "session_handoff_continuation",
+        "hierarchical_project_context",
+        "historical_reflexion_lessons",
+        "team_context",
+        "wiki",
         # Common prompt-injection tag patterns
         "system",
         "instruction",
