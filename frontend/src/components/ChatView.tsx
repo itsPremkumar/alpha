@@ -13,6 +13,7 @@ import { consumeChatStream } from "@/lib/chat-stream";
 import type { StreamMessage } from "@/lib/sse-reducer";
 import { chatRequestErrorMessage, ChatRequestFailure } from "@/lib/chat-request-error";
 import { branding } from "@/lib/branding";
+import { BrandLogo } from "@/components/BrandLogo";
 import { fetchBots, touchBot } from "@/lib/bots";
 import { fetchFeatures, fetchOpsStatus, FeatureFlags } from "@/lib/workspace";
 import { listThreadRuns, cancelRun } from "@/lib/runs";
@@ -40,7 +41,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { BotDetailPanel } from "@/components/bots/BotDetailPanel";
 import { ActiveBotPicker } from "@/components/bots/ActiveBotPicker";
 import { ErrorBox, SkeletonList } from "@/components/ui";
-import { Sparkles, Activity, Shrink, Target, ClipboardList } from "lucide-react";
+import { Activity, Shrink, Target, ClipboardList } from "lucide-react";
 
 // Sections load on demand so the first paint stays light.
 const BotOpsSection = lazy(() => import("@/components/sections/BotOpsSection").then((m) => ({ default: m.BotOpsSection })));
@@ -1036,12 +1037,12 @@ export default function ChatView() {
             {/* Messages Viewport */}
             <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
               {messages.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto space-y-3">
-                  <div className="size-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
-                    <Sparkles className="size-6" />
-                  </div>
+                <div
+                  className="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto space-y-3"
+                  aria-label={branding.name}
+                >
                   <h2 className="text-lg font-semibold text-foreground tracking-tight">
-                    {branding.name}
+                    <BrandLogo logoSize={44} textClassName="text-lg text-foreground" priority />
                   </h2>
                   <p className="text-xs text-muted-foreground leading-relaxed">
                     {activeBot

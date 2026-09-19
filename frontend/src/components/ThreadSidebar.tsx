@@ -1,13 +1,14 @@
 ﻿"use client";
 
 import React, { useEffect, useState } from "react";
-import { Plus, MessageSquare, Search, PanelLeftClose, PanelLeft, Bot, MoreHorizontal, Pencil, GitBranch, FolderInput, Trash2, Download, Upload, FileText } from "lucide-react";
+import { Plus, MessageSquare, Search, PanelLeftClose, PanelLeft, MoreHorizontal, Pencil, GitBranch, FolderInput, Trash2, Download, Upload, FileText } from "lucide-react";
 import { Thread } from "@/types/chat";
 import { searchThreads, renameThread, deleteThread, branchThread, moveThread } from "@/lib/threads-ext";
 import { searchLocalMessages, removeLocalThread, upsertLocalThread, storageInfo, clearLocalStore, SearchHit } from "@/lib/history-store";
 import { listProjects, Project } from "@/lib/projects";
 import { errMsg } from "@/lib/http";
 import { branding } from "@/lib/branding";
+import { BrandLogo, BrandMark } from "@/components/BrandLogo";
 
 interface ThreadSidebarProps {
   threads: Thread[];
@@ -153,6 +154,7 @@ export function ThreadSidebar({
   if (!isOpen) {
     return (
       <div className="p-2 border-r border-border bg-card/40 flex flex-col items-center gap-2">
+        <BrandMark size={26} />
         <button
           type="button"
           onClick={() => setIsOpen(true)}
@@ -179,12 +181,7 @@ export function ThreadSidebar({
     <aside className="w-64 border-r border-border bg-card/40 flex flex-col h-screen shrink-0 transition-all">
       {/* Top Header */}
       <div className="p-3 border-b border-border/60 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="size-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold">
-            <Bot className="size-4" />
-          </div>
-          <span className="font-semibold text-sm tracking-tight">{branding.name}</span>
-        </div>
+        <BrandLogo logoSize={28} textClassName="text-sm" priority />
         <button
           type="button"
           onClick={() => setIsOpen(false)}
