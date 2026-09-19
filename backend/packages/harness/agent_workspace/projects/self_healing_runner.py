@@ -99,7 +99,28 @@ class SelfHealingTestRunner:
 
         for attempt in range(1, max_attempts + 1):
             logger.info("Executing verification for %s (attempt %d/%d)", task_id, attempt, max_attempts)
-            run_result = test_fn()
+            try:
+                run_result = test_fn()
+            except Exception as exc:
+                # Fault isolation: a verification harness that raises (bad command,
+                # subprocess/OS error, import failure) must not escape the loop.
+                # Escaping would abort self-healing, skip the remaining retries,
+                # and lose the postmortem — the caller would get an exception
+                # instead of an outcome. Record it as a failed attempt so the
+                # loop can retry, repair, and finally report like any other failure.
+                logger.warning(
+                    "Verification harness raised for %s on attempt %d; recording as a failed attempt",
+                    task_id,
+                    attempt,
+                    exc_info=True,
+                )
+                run_result = TestRunResult(
+                    passed=False,
+                    stdout="",
+                    stderr=f"{type(exc).__name__}: {exc}",
+                    exit_code=1,
+                    traceback_summary=f"{type(exc).__name__}: {exc}",
+                )
             run_result.attempt_index = attempt
 
             if not run_result.traceback_summary and not run_result.passed:
