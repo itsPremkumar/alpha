@@ -14,7 +14,8 @@ references/
 ├── 02-avo-and-evolution/                     # Agentic Variation Operators (NVIDIA AVO Loop)
 ├── 03-rsi-and-self-improvement/              # Recursive Self-Improvement & Safe Evolution
 ├── 04-frontier-benchmarks-and-deep-research/ # Competitive Analysis, Deep Agents & Agent Studies
-└── 05-autonomous-operations-and-execution/   # Autonomous Operations, Swarms & Roadmaps
+├── 05-autonomous-operations-and-execution/   # Autonomous Operations, Swarms & Roadmaps
+└── 06-workbuddy-and-tenant-harness/          # WorkBuddy / CodeBuddy Product Ideas & Inspiration
 ```
 
 ---
@@ -112,6 +113,24 @@ Autonomous enterprise operations, business goal trees, multi-agent workflows, an
 - **[Ultimate Harness Implementation Plan](./05-autonomous-operations-and-execution/ultimate-harness-implementation-plan.md)**: Phased delivery roadmap for implementing the complete world-class autonomous agent harness.
 - **[MetaGPT & ChatDev Multi-Agent SDLC Architectures](./05-autonomous-operations-and-execution/metagpt-and-chatdev-multi-agent-sdlc.md)**: Role specialization, Standard Operating Procedures (SOPs), publish/subscribe message bus document handoffs (MetaGPT) vs. communicative waterfall chat chains (ChatDev).
 - **[Human-in-the-Loop Collaborative Co-Work Patterns: Beyond Chat and Autonomy](./05-autonomous-operations-and-execution/human-in-the-loop-collaborative-cowork-patterns.md)**: Real-time collaborative co-work, bidirectional mid-flight steering, streaming partial visual diffs, shared canvas, and granular permission boundaries.
+
+---
+
+### 🧩 06. WorkBuddy & Tenant Agent Harness — Ideas & Inspiration (`06-workbuddy-and-tenant-harness/`)
+
+Ideas and inspiration borrowed from **WorkBuddy AI / Tencent CodeBuddy** and the
+tenant-grade, product-first agent harness category. Unlike the other directories,
+these documents study **product craft** — legibility, steerability, reversibility,
+extensibility ergonomics, and memory transparency — rather than new engines.
+
+- **[WorkBuddy & CodeBuddy Harness Analysis](./06-workbuddy-and-tenant-harness/workbuddy-tenant-harness-analysis.md)**: What this category of product is, its layered architecture, its product/platform characteristics (bundled runtimes, entitlements, filesystem safety doctrine, skills + connectors + experts, layered memory), and the harness-layer behaviours worth studying.
+- **[Borrowed Ideas & Alpha Gap Map](./06-workbuddy-and-tenant-harness/borrowed-ideas-and-gap-map.md)**: Feature-by-feature comparison across 28 areas (4 `NEW`, 22 `PARTIAL`, 2 `ALREADY HAVE`), each closing in a concrete proposal with a suggested engine, integration point, and tier — plus a recommended three-wave sequencing plan.
+- **[Inspiration Notes — Product Craft & Feel](./06-workbuddy-and-tenant-harness/inspiration-notes-product-craft.md)**: The non-obvious lessons — restraint as a feature, the internal/external authority asymmetry, ambiguity-means-ask, completion-as-presentation, memory-as-dialogue, hook feedback as user feedback, docs-as-tool, and not narrating machinery.
+
+**Headline finding:** Alpha has built an autonomous agent *operating system*; this
+category has built an agent *product*. The highest-leverage remaining work is not
+more engines but making Alpha's existing 89 engines **legible, steerable, and
+safe** to a human who did not build them.
 
 ---
 
