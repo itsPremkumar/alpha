@@ -180,8 +180,11 @@ if (-not $nodeCmd) {
     exit 1
 }
 
-# Next.js 16 requires Node.js 22+. An older Node crashes the dev server
-# with no obvious message, so check the version up front.
+# Next.js 15.5.x supports Node 18+, but the Windows dev/startup path in this
+# repo (long-lived dev server, proxy environment normalization, and the
+# `pnpm`/Corepack shim used by install/start) is validated on Node 22+.
+# Older Node versions can fail the dev server with no obvious message,
+# so enforce Node 22+ up front.
 try {
     $nodeMajor = [int]((& node --version).TrimStart("v").Split(".")[0])
 } catch {

@@ -103,6 +103,9 @@ try {
     if ($LASTEXITCODE -ne 0) {
         Write-Host "  -> Retrying uv sync without locked constraint..." -ForegroundColor Yellow
         & uv sync
+        if ($LASTEXITCODE -ne 0) {
+            throw "uv sync failed (exit code $LASTEXITCODE). Fix the backend dependency install before continuing."
+        }
     }
 } finally {
     Pop-Location
