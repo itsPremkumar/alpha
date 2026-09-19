@@ -59,8 +59,12 @@ _LOCAL_PATH_IN_TEXT_RE = re.compile(
     r"(?:file://)?/[^\s'\"<>|*?]+"  # POSIX absolute path or file:// URI
     r"|file://[A-Za-z]:[^\s'\"<>|*?]+"  # file://C:/… — some Windows tools skip the third slash
     # Windows drive-qualified absolute path; the lookbehind keeps a word
-    # character before the colon (file:/…, id:/…) on the earlier alternatives
-    r"|(?<![\w.-])[A-Za-z]:[\\/][^\s'\"<>|*?]+"
+    # character before the colon (file:/…, id:/…) on the earlier alternatives.
+    # Unlike the other branches, whitespace is allowed here (except tabs and
+    # newlines): real Windows paths routinely contain spaces
+    # ("C:\Users\John Smith\..."), and an over-greedy match is harmless — the
+    # candidate only rewrites when resolution confirms the file exists.
+    r"|(?<![\w.-])[A-Za-z]:[\\/][^\t\r\n'\"<>|*?]+"
     # path relative to the server cwd (Windows servers print "\" separators)
     r"|(?:\.{0,2}[\\/]|[\w.-]+[\\/])[^\s'\"<>|*?]+"
 )
@@ -319,9 +323,31 @@ def _rewrite_local_paths_in_text(
                 source_base_dir=source_base_dir,
             )
         rewritten = translated_by_source[stripped]
-        if rewritten is None:
-            return token
-        return f"{rewritten}{trailing}"
+        if rewritten is not None:
+            return f"{rewritten}{trailing}"
+        # The drive-path branch allows spaces, so the greedy token can swallow
+        # trailing prose ("C:\dir\a.png and more text"). Retry successively
+        # shorter space-delimited prefixes: resolution only succeeds when the
+        # file actually exists inside the thread's user-data tree, so the
+        # backoff cannot rewrite text that was never a real path.
+        remainder = stripped
+        for _ in range(16):
+            if " " not in remainder:
+                break
+            remainder = remainder[: remainder.rfind(" ")].rstrip(_TEXT_PATH_TRAILING_CHARS)
+            if not remainder:
+                break
+            if remainder not in translated_by_source:
+                translated_by_source[remainder] = _local_uri_to_virtual_path(
+                    remainder,
+                    thread_id=thread_id,
+                    user_id=user_id,
+                    source_base_dir=source_base_dir,
+                )
+            rewritten = translated_by_source[remainder]
+            if rewritten is not None:
+                return f"{rewritten}{stripped[len(remainder):]}{trailing}"
+        return token
 
     rewritten = _LOCAL_PATH_IN_TEXT_RE.sub(_replace, text)
     if changed_files is None:

@@ -2513,7 +2513,6 @@ def write_file_tool(
     description: str = "",
     append: bool = False,
     anchor_hash: str | None = None,
-    bypass_syntax_check: bool = False,
 ) -> str:
     """Write text content to a file. By default this overwrites the target file; set append=True to add content to the end without replacing existing content.
 
@@ -2581,13 +2580,13 @@ def write_file_tool(
         with get_file_operation_lock(sandbox, path):
             # Pre-commit AST Syntax Guardrail
             if not append:
-                is_valid, err_msg = validate_syntax_precommit(requested_path, content, bypass=bypass_syntax_check)
+                is_valid, err_msg = validate_syntax_precommit(requested_path, content, bypass=False)
                 if not is_valid:
                     return err_msg
             else:
                 try:
                     existing = sandbox.read_file(path)
-                    is_valid, err_msg = validate_syntax_precommit(requested_path, existing + content, bypass=bypass_syntax_check)
+                    is_valid, err_msg = validate_syntax_precommit(requested_path, existing + content, bypass=False)
                     if not is_valid:
                         return err_msg
                 except Exception:
@@ -2619,9 +2618,8 @@ async def _write_file_tool_async(
     description: str = "",
     append: bool = False,
     anchor_hash: str | None = None,
-    bypass_syntax_check: bool = False,
 ) -> str:
-    return await _run_sync_tool_after_async_sandbox_init(write_file_tool.func, runtime, path, content, description, append, anchor_hash, bypass_syntax_check)
+    return await _run_sync_tool_after_async_sandbox_init(write_file_tool.func, runtime, path, content, description, append, anchor_hash)
 
 
 write_file_tool.coroutine = _write_file_tool_async
@@ -2636,7 +2634,6 @@ def str_replace_tool(
     description: str = "",
     replace_all: bool = False,
     anchor_hash: str | None = None,
-    bypass_syntax_check: bool = False,
 ) -> str:
     """Replace a substring in a file with another substring.
     If `replace_all` is False (default), the substring to replace must appear **exactly once** in the file.
@@ -2680,7 +2677,7 @@ def str_replace_tool(
             else:
                 new_content = content.replace(old_str, new_str, 1)
             # Pre-commit AST Syntax Guardrail
-            is_valid, err_msg = validate_syntax_precommit(requested_path, new_content, bypass=bypass_syntax_check)
+            is_valid, err_msg = validate_syntax_precommit(requested_path, new_content, bypass=False)
             if not is_valid:
                 return err_msg
             sandbox.write_file(path, new_content)
@@ -2703,7 +2700,6 @@ async def _str_replace_tool_async(
     description: str = "",
     replace_all: bool = False,
     anchor_hash: str | None = None,
-    bypass_syntax_check: bool = False,
 ) -> str:
     return await _run_sync_tool_after_async_sandbox_init(
         str_replace_tool.func,
@@ -2714,7 +2710,6 @@ async def _str_replace_tool_async(
         description,
         replace_all,
         anchor_hash,
-        bypass_syntax_check,
     )
 
 

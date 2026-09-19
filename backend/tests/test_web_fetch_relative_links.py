@@ -13,11 +13,30 @@ from agent_workspace.utils.readability import ReadabilityExtractor
 PAGE_URL = "https://example.com/docs/current"
 
 
+def _readability_js_available() -> bool:
+    """Link/image destinations only survive extraction via the node-backed
+    Readability.js path; the pure-Python fallback keeps text but strips hrefs."""
+    try:
+        from readabilipy.simple_json import have_node
+
+        return bool(have_node())
+    except Exception:
+        return False
+
+
+requires_readability_js = pytest.mark.skipif(
+    not _readability_js_available(),
+    reason="Readability.js unavailable (node runtime or its npm-installed deps missing); "
+    "the pure-Python fallback strips link destinations, so these assertions cannot hold",
+)
+
+
 def _article(links: str, *, head: str = "") -> str:
     paragraph = "<p>This article explains the documentation in detail, with enough ordinary prose for the real readability extractor to retain the content and its related references.</p>"
     return f"<html><head><title>Guide</title>{head}</head><body><article>{paragraph * 5}<p>{links}</p></article></body></html>"
 
 
+@requires_readability_js
 @pytest.mark.parametrize("provider", ["jina_ai", "browserless", "infoquest"])
 @pytest.mark.anyio
 async def test_web_fetch_resolves_relative_links_through_real_extraction(monkeypatch, provider):
@@ -37,6 +56,7 @@ async def test_web_fetch_resolves_relative_links_through_real_extraction(monkeyp
     assert "[Reference](https://example.com/reference)" in result
 
 
+@requires_readability_js
 @pytest.mark.parametrize(
     ("destination", "expected"),
     [
@@ -54,6 +74,7 @@ def test_extract_article_resolves_link_destinations(destination, expected):
     assert f"[Reference]({expected})" in article.to_markdown()
 
 
+@requires_readability_js
 def test_extract_article_resolves_images_and_relative_document_base():
     article = ReadabilityExtractor().extract_article(
         _article('<a href="next">Next</a> <img src="images/chart.png" alt="Chart">', head='<base href="../assets/">'),
@@ -64,11 +85,13 @@ def test_extract_article_resolves_images_and_relative_document_base():
     assert "![Chart](https://example.com/assets/images/chart.png)" in markdown
 
 
+@requires_readability_js
 def test_extract_article_without_url_preserves_legacy_relative_links():
     article = ReadabilityExtractor().extract_article(_article('<a href="../next">Next</a>'))
     assert "[Next](../next)" in article.to_markdown()
 
 
+@requires_readability_js
 @pytest.mark.parametrize(
     ("base", "expected"),
     [
@@ -104,6 +127,7 @@ def test_python_extraction_fallback_preserves_article_text(monkeypatch):
     assert "This article explains the documentation" in article.to_markdown()
 
 
+@requires_readability_js
 @pytest.mark.parametrize("base", ["http://[broken", "data:text/plain,invalid", "javascript:void(0)", "about:blank", "mailto:help@example.com", "blob:https://example.com/id"])
 def test_invalid_document_base_does_not_lose_valid_relative_links(base):
     article = ReadabilityExtractor().extract_article(
@@ -128,6 +152,7 @@ def test_url_resolution_preserves_malformed_markup_extraction(fragment):
     assert extractor.extract_article(html, url=PAGE_URL).to_markdown() == extractor.extract_article(html).to_markdown().replace("(../next)", "(https://example.com/next)")
 
 
+@requires_readability_js
 def test_document_base_skips_target_only_base():
     html = _article('<a href="next">Next</a>', head='<base target="_blank"><base href="https://cdn.example.com/assets/">')
     assert "[Next](https://cdn.example.com/assets/next)" in ReadabilityExtractor().extract_article(html, url=PAGE_URL).to_markdown()

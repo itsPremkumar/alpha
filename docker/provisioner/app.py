@@ -153,9 +153,14 @@ def join_host_path(base: str, *parts: str) -> str:
             result /= part
         return str(result)
 
-    from pathlib import Path
+    # POSIX-styled base (e.g. "/.agent-workspace"): the joined result feeds
+    # Kubernetes hostPath fields, which are interpreted by the (Linux) node —
+    # never by the OS the provisioner itself runs on. Building the path with
+    # the native ``Path`` class would rewrite "/" to "\\" on a Windows host
+    # and corrupt every hostPath the provisioner emits.
+    from pathlib import PurePosixPath
 
-    result = Path(base)
+    result = PurePosixPath(base)
     for part in parts:
         result /= part
     return str(result)
@@ -164,11 +169,14 @@ def join_host_path(base: str, *parts: str) -> str:
 def _host_base_dir_for_extra_mounts() -> str:
     """Return the host-visible Agent Workspace state root used for controlled mounts."""
     if AGENT_WORKSPACE_HOST_BASE_DIR:
-        return os.path.normpath(AGENT_WORKSPACE_HOST_BASE_DIR)
+        # posixpath on purpose: this value feeds Kubernetes hostPath fields and
+        # POSIX-styled containment checks, so it must not be rewritten into
+        # Windows separators when the provisioner runs on a Windows host.
+        return posixpath.normpath(AGENT_WORKSPACE_HOST_BASE_DIR)
 
-    normalized_threads = os.path.normpath(THREADS_HOST_PATH)
-    if os.path.basename(normalized_threads) == "threads":
-        return os.path.dirname(normalized_threads)
+    normalized_threads = posixpath.normpath(THREADS_HOST_PATH)
+    if posixpath.basename(normalized_threads) == "threads":
+        return posixpath.dirname(normalized_threads)
     return ""
 
 
@@ -243,7 +251,11 @@ def _validated_extra_mounts(
     seen_container_paths: set[str] = set()
     validated: list[ExtraMount] = []
     for mount in extra_mounts:
-        host_path = os.path.normpath(mount.host_path)
+        # posixpath on purpose: host_path feeds Kubernetes hostPath fields and
+        # POSIX containment checks. The native os.path.normpath would rewrite
+        # "/" separators into "\\" on a Windows host and corrupt the emitted
+        # volume; Windows-styled inputs (drive/UNC) pass through untouched.
+        host_path = posixpath.normpath(mount.host_path)
         if not os.path.isabs(host_path):
             raise HTTPException(status_code=400, detail=f"Extra mount host path must be absolute: {mount.host_path}")
         if not _is_path_under_base(host_path, host_base_dir):
