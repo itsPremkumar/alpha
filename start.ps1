@@ -370,6 +370,60 @@ function Cleanup-Stack {
     Write-Host "[OK] All Agent Workspace services stopped cleanly.`n" -ForegroundColor Green
 }
 
+# -- Helper for Auto-Restart -------------------------------------------------
+# Long unattended runs must survive a single-service crash: restart the dead
+# side instead of tearing the whole stack down. Bounded (max restarts per
+# rolling window) so a deterministically crashing service still surfaces
+# instead of hot-looping forever.
+$script:gatewayRestarts = 0
+$script:frontendRestarts = 0
+$script:windowStart = [DateTime]::UtcNow
+$MaxRestartsPerWindow = 5
+$RestartWindowSeconds = 300
+
+function Reset-RestartWindowIfExpired {
+    if (([DateTime]::UtcNow - $script:windowStart).TotalSeconds -gt $RestartWindowSeconds) {
+        $script:windowStart = [DateTime]::UtcNow
+        $script:gatewayRestarts = 0
+        $script:frontendRestarts = 0
+    }
+}
+
+function Restart-GatewayService {
+    param([int]$Attempt)
+    $backoff = [Math]::Min(30, 3 * $Attempt)
+    Write-Host "`n[WARN] Gateway API died — auto-restarting (attempt $Attempt of $MaxRestartsPerWindow, backoff ${backoff}s)..." -ForegroundColor Yellow
+    Show-LogTail $gatewayLogErr
+    Free-PortOrExit -Port $GatewayPort
+    Start-Sleep -Seconds $backoff
+    $script:gatewayProcess = Start-Process -FilePath $uvPath `
+        -ArgumentList "run --no-sync uvicorn app.gateway.app:app --host 127.0.0.1 --port $GatewayPort" `
+        -WorkingDirectory "$RepoRoot\backend" -PassThru -WindowStyle Hidden `
+        -RedirectStandardOutput $gatewayLogOut -RedirectStandardError $gatewayLogErr
+    Write-Host "  Gateway relaunched (PID: $($script:gatewayProcess.Id)). Waiting for /health/ready..." -ForegroundColor Gray
+}
+
+function Restart-FrontendService {
+    param([int]$Attempt)
+    $backoff = [Math]::Min(30, 3 * $Attempt)
+    Write-Host "`n[WARN] Frontend UI died — auto-restarting (attempt $Attempt of $MaxRestartsPerWindow, backoff ${backoff}s)..." -ForegroundColor Yellow
+    Show-LogTail $frontendLogErr
+    Free-PortOrExit -Port $FrontendPort
+    Start-Sleep -Seconds $backoff
+    if ($Prod) {
+        $script:frontendProcess = Start-Process -FilePath $nodePath `
+            -ArgumentList "node_modules/next/dist/bin/next start -p $FrontendPort" `
+            -WorkingDirectory "$RepoRoot\frontend" -PassThru -WindowStyle Hidden `
+            -RedirectStandardOutput $frontendLogOut -RedirectStandardError $frontendLogErr
+    } else {
+        $script:frontendProcess = Start-Process -FilePath $nodePath `
+            -ArgumentList "node_modules/next/dist/bin/next dev -p $FrontendPort" `
+            -WorkingDirectory "$RepoRoot\frontend" -PassThru -WindowStyle Hidden `
+            -RedirectStandardOutput $frontendLogOut -RedirectStandardError $frontendLogErr
+    }
+    Write-Host "  Frontend relaunched (PID: $($script:frontendProcess.Id))." -ForegroundColor Gray
+}
+
 # -- 7. Wait for Services to be Ready ----------------------------------------
 Write-Host "`nWaiting for services to become healthy..." -ForegroundColor Yellow
 Write-Host "(First Next.js compile on Windows can take a few minutes.)" -ForegroundColor Gray
@@ -471,7 +525,8 @@ if (-not $NoBrowser) {
 # -- 9. Keep Running and Monitor ---------------------------------------------
 # Monitor the PORTS (effective liveness), not just the launcher wrapper PIDs
 # (see Update-TrackedProcess). A service counts as dead only when its port
-# goes quiet.
+# goes quiet. Dead services are auto-restarted with backoff inside a bounded
+# restart budget; only an exhausted budget (or Ctrl+C) tears the stack down.
 $exitCode = 0
 try {
     while ($true) {
@@ -481,16 +536,31 @@ try {
         $gatewayGone = ($gatewayProcess -eq $null -or $gatewayProcess.HasExited) -and -not (Test-PortListening -Port $GatewayPort)
         $frontendGone = ($frontendProcess -eq $null -or $frontendProcess.HasExited) -and -not (Test-PortListening -Port $FrontendPort)
         if ($gatewayGone -or $frontendGone) {
+            Reset-RestartWindowIfExpired
+            $restarted = $false
             if ($gatewayGone) {
-                Write-Host "`n[ERROR] Gateway API stopped. See logs\gateway.log / logs\gateway.err.log" -ForegroundColor Red
-                Show-LogTail $gatewayLogErr
+                $script:gatewayRestarts += 1
+                if ($script:gatewayRestarts -gt $MaxRestartsPerWindow) {
+                    Write-Host "`n[ERROR] Gateway API crashed repeatedly ($MaxRestartsPerWindow restarts in ${RestartWindowSeconds}s). Giving up — see logs\gateway.log / logs\gateway.err.log" -ForegroundColor Red
+                    Show-LogTail $gatewayLogErr
+                    $exitCode = 1
+                    break
+                }
+                Restart-GatewayService -Attempt $script:gatewayRestarts
+                $restarted = $true
             }
             if ($frontendGone) {
-                Write-Host "`n[ERROR] Frontend UI stopped. See logs\frontend.log / logs\frontend.err.log" -ForegroundColor Red
-                Show-LogTail $frontendLogErr
+                $script:frontendRestarts += 1
+                if ($script:frontendRestarts -gt $MaxRestartsPerWindow) {
+                    Write-Host "`n[ERROR] Frontend UI crashed repeatedly ($MaxRestartsPerWindow restarts in ${RestartWindowSeconds}s). Giving up — see logs\frontend.log / logs\frontend.err.log" -ForegroundColor Red
+                    Show-LogTail $frontendLogErr
+                    $exitCode = 1
+                    break
+                }
+                Restart-FrontendService -Attempt $script:frontendRestarts
+                $restarted = $true
             }
-            $exitCode = 1
-            break
+            if ($restarted) { continue }
         }
     }
 } finally {
