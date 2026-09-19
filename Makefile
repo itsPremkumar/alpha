@@ -1,6 +1,6 @@
 # Agent Workspace - Unified Development Environment
 
-.PHONY: help config config-upgrade check check-agent-guidance install extension-install extension-upgrade extension-list extension-enable extension-disable extension-remove setup doctor prod-check support-bundle detect-thread-boundaries detect-blocking-io dev dev-daemon start start-daemon nginx stop up down clean docker-init docker-start docker-stop docker-logs docker-logs-frontend docker-logs-gateway docker-logs-redis setup-sandbox
+.PHONY: help config config-upgrade check check-agent-guidance install extension-install extension-upgrade extension-list extension-enable extension-disable extension-remove setup doctor prod-check support-bundle detect-thread-boundaries detect-blocking-io dev dev-daemon start start-daemon nginx stop up down clean docker-init docker-start docker-stop docker-logs docker-logs-frontend docker-logs-gateway docker-logs-redis setup-sandbox verify checkpoint rollback guardrails context safe-exec
 
 BASH ?= bash
 BACKEND_UV_RUN = cd backend && uv run
@@ -222,3 +222,30 @@ up:
 # Stop and remove production containers
 down:
 	@$(RUN_SHELL_SCRIPT) ./scripts/deploy.sh down
+
+# ==========================================
+# Agent ergonomics (added: safe, additive)
+# ==========================================
+
+# Frontend typecheck + unit tests in one shot.
+verify:
+	@cd frontend && $(FRONTEND_PNPM) run verify
+
+# Snapshot the working tree (non-destructive: git stash create).
+checkpoint:
+	@powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/checkpoint.ps1
+
+rollback:
+	@powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/checkpoint.ps1 -Restore
+
+# Scan staged changes for secrets / destructive patterns (add -Strict to fail).
+guardrails:
+	@powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/guardrails.ps1
+
+# Print AGENTS.md / CLAUDE.md / SOUL.md for pasting into a session.
+context:
+	@powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/print-context.ps1
+
+# Allowlist-only command runner. Example: make safe-exec CMD="git status"
+safe-exec:
+	@powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/safe-exec.ps1 -Command "$(CMD)"
