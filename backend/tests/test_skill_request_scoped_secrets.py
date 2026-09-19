@@ -23,6 +23,7 @@ from agent_workspace.skills.types import SecretRequirement, Skill, SkillCategory
 _SLASH_SOURCE_OWNER_TOKEN = "test-slash-source-owner"
 
 
+@pytest.mark.skipif(__import__("os").name == "nt", reason="POSIX shell semantics: tests use `echo $VAR`, which Windows PowerShell/cmd do not expand")
 class TestLocalSandboxEnvInjection:
     """LocalSandbox.execute_command(env=...) injects per-call env into the subprocess."""
 

@@ -5714,7 +5714,7 @@ class TestFormatArtifactText:
         text = _format_artifact_text(
             ["/mnt/user-data/outputs/a.txt", "/mnt/user-data/outputs/b.csv"],
         )
-        assert text == "Created Files: 📎 a.txt、b.csv"
+        assert text == "Created Files: 📎 a.txt, b.csv"
 
 
 class TestHandleChatWithArtifacts:
