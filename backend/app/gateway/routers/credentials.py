@@ -13,6 +13,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from agent_workspace.security.credential_vault import get_credential_vault
+from agent_workspace.utils.thread_id import ThreadId
 
 logger = logging.getLogger(__name__)
 
@@ -48,14 +49,14 @@ def submit_credential(req: CredentialSubmitRequest) -> dict[str, Any]:
 
 
 @router.get("/pending", summary="List Pending Credential Requests")
-def list_pending_credentials(thread_id: str) -> list[dict[str, Any]]:
+def list_pending_credentials(thread_id: ThreadId) -> list[dict[str, Any]]:
     """Query unfulfilled credential prompts for a thread."""
     vault = get_credential_vault()
     return vault.list_pending(thread_id=thread_id)
 
 
 @router.delete("/clear", summary="Purge Thread Credentials")
-def clear_credentials(thread_id: str) -> dict[str, Any]:
+def clear_credentials(thread_id: ThreadId) -> dict[str, Any]:
     """Purge all secrets for a finished thread."""
     vault = get_credential_vault()
     vault.clear_thread(thread_id=thread_id)
