@@ -14,6 +14,7 @@ import type { StreamMessage } from "@/lib/sse-reducer";
 import { chatRequestErrorMessage, ChatRequestFailure } from "@/lib/chat-request-error";
 import { branding } from "@/lib/branding";
 import { BrandLogo } from "@/components/BrandLogo";
+import { WorkspaceVitals } from "@/components/WorkspaceVitals";
 import { fetchBots, touchBot } from "@/lib/bots";
 import { fetchFeatures, fetchOpsStatus, FeatureFlags } from "@/lib/workspace";
 import { listThreadRuns, cancelRun } from "@/lib/runs";
@@ -818,6 +819,10 @@ export default function ChatView() {
           <div className="overflow-x-auto">
             <NavTabs view={view} onChange={setView} badge={{ bots: bots.length }} />
           </div>
+
+          {/* Live backend vitals: connectivity, usage and subsystem readiness,
+              always visible on the main screen instead of buried in settings. */}
+          <WorkspaceVitals />
 
           {view === "chat" && (
             <div className="flex items-center gap-2 flex-wrap">
