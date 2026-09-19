@@ -30,7 +30,15 @@ _JWT_SECRET = "test-secret-key-for-langgraph-auth-testing-min-32"
 
 
 @pytest.fixture(autouse=True)
-def _setup_auth_config():
+def _setup_auth_config(monkeypatch):
+    # These tests assert that unauthenticated requests are rejected. A
+    # developer's local `.env` -- which install.ps1 creates with
+    # AGENT_WORKSPACE_AUTH_DISABLED=1 -- is read into os.environ by
+    # load_dotenv() at import time, which bypasses auth entirely and makes every
+    # "DID NOT RAISE 401" assertion fail even though the code is correct.
+    # Force auth on so the suite is self-isolating and behaves the same with or
+    # without a local .env.
+    monkeypatch.setenv("AGENT_WORKSPACE_AUTH_DISABLED", "0")
     set_auth_config(AuthConfig(jwt_secret=_JWT_SECRET))
     yield
     set_auth_config(AuthConfig(jwt_secret=_JWT_SECRET))

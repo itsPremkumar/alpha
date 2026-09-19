@@ -62,6 +62,20 @@ def _setup_config():
     set_auth_config(AuthConfig(jwt_secret=_TEST_SECRET))
 
 
+@pytest.fixture(autouse=True)
+def _auth_enabled(monkeypatch):
+    """Keep auth active regardless of the developer's local `.env`.
+
+    install.ps1 writes AGENT_WORKSPACE_AUTH_DISABLED=1 into the repo-root `.env`,
+    and load_dotenv() (called when app config / auth config is imported) lifts it
+    into os.environ. That silently bypasses authentication and makes every
+    assertion that a request is *rejected* fail, even though the code under test
+    is correct. Force the flag off so these tests are self-isolating and behave
+    identically with or without a local `.env`.
+    """
+    monkeypatch.setenv("AGENT_WORKSPACE_AUTH_DISABLED", "0")
+
+
 # ── CSRF Middleware Path Matching ────────────────────────────────────
 
 
