@@ -16,6 +16,15 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = $PSScriptRoot
 Set-Location $RepoRoot
 
+# Windows resolves a bare command name through PATHEXT, and PowerShell refuses
+# to execute an .exe at all ("Cannot run a document in the middle of a pipeline")
+# when PATHEXT has been narrowed -- some managed images ship PATHEXT=.CPL. When
+# that happens `uv` and `node` are neither resolvable nor launchable even though
+# both are installed and on PATH. Restore the platform default.
+if (-not $env:PATHEXT -or $env:PATHEXT -notlike "*.EXE*") {
+    $env:PATHEXT = ".COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.CPL"
+}
+
 Write-Host "`n========================================================" -ForegroundColor Cyan
 Write-Host "    Agent Workspace - Unified Super-Agent Platform      " -ForegroundColor Cyan
 Write-Host "========================================================`n" -ForegroundColor Cyan
@@ -146,39 +155,75 @@ function Update-TrackedProcess {
 }
 
 # -- 1. Locate uv and Node.js ------------------------------------------------
-$uvCmd = Get-Command uv -ErrorAction SilentlyContinue
-if (-not $uvCmd) {
-    $uvCandidates = @(
-        "$env:USERPROFILE\.cargo\bin\uv.exe",
-        "$env:APPDATA\uv\uv.exe",
-        "$env:LOCALAPPDATA\Programs\uv\uv.exe"
+# Resolving a bare name relies on PATHEXT, which is not reliable: when PATHEXT
+# is missing ".EXE" (or the tool simply is not on PATH), `Get-Command uv`
+# returns nothing even though uv.exe is installed and its directory is on PATH.
+# Resolve "<name>.exe" explicitly and fall back to the known install locations.
+function Resolve-Executable {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [string[]]$ExtraCandidates = @()
     )
-    foreach ($c in $uvCandidates) {
-        if (Test-Path $c) {
-            $dir = Split-Path $c
-            $env:PATH = "$dir;" + $env:PATH
-            $uvCmd = Get-Command uv -ErrorAction SilentlyContinue
-            break
-        }
+    foreach ($candidate in @("$Name.exe", $Name)) {
+        $cmd = Get-Command $candidate -ErrorAction SilentlyContinue
+        if ($cmd) { return $cmd.Source }
     }
+    foreach ($c in $ExtraCandidates) {
+        if ($c -and (Test-Path $c)) { return $c }
+    }
+    foreach ($root in @($env:LOCALAPPDATA, $env:ProgramFiles, ${env:ProgramFiles(x86)})) {
+        if (-not $root) { continue }
+        try {
+            $hit = Get-ChildItem -Path $root -Filter "$Name.exe" -Recurse -Depth 2 -ErrorAction SilentlyContinue |
+                Select-Object -First 1
+            if ($hit) { return $hit.FullName }
+        } catch {}
+    }
+    return $null
 }
-if (-not $uvCmd) {
+
+$uvCandidates = @(
+    "$env:USERPROFILE\.cargo\bin\uv.exe",
+    "$env:APPDATA\uv\uv.exe",
+    "$env:LOCALAPPDATA\Programs\uv\uv.exe",
+    "$env:LOCALAPPDATA\hermes\bin\uv.exe",
+    "$env:USERPROFILE\.local\bin\uv.exe",
+    "$env:USERPROFILE\scoop\shims\uv.exe",
+    "$env:ProgramData\chocolatey\bin\uv.exe"
+)
+$uvPath = Resolve-Executable -Name "uv" -ExtraCandidates $uvCandidates
+if (-not $uvPath) {
     Write-Host "[!] 'uv' not found. Installing Astral uv package manager..." -ForegroundColor Yellow
     try {
         powershell -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 | iex"
         $env:PATH = "$env:USERPROFILE\.cargo\bin;" + $env:PATH
-        $uvCmd = Get-Command uv -ErrorAction SilentlyContinue
+        $uvPath = Resolve-Executable -Name "uv" -ExtraCandidates $uvCandidates
     } catch {
         Write-Error "Failed to install uv automatically. Please install it from https://astral.sh/uv"
         exit 1
     }
 }
+if (-not $uvPath) {
+    Write-Host "[ERROR] Could not locate 'uv' even after attempting installation." -ForegroundColor Red
+    Write-Host "Install it from https://astral.sh/uv and re-run this script.`n" -ForegroundColor Yellow
+    exit 1
+}
+$env:PATH = (Split-Path $uvPath) + ";" + $env:PATH
+Write-Host "  uv: $uvPath" -ForegroundColor Gray
 
-$nodeCmd = Get-Command node -ErrorAction SilentlyContinue
-if (-not $nodeCmd) {
+$nodePath = Resolve-Executable -Name "node" -ExtraCandidates @(
+    "$env:ProgramFiles\nodejs\node.exe",
+    "${env:ProgramFiles(x86)}\nodejs\node.exe",
+    "$env:LOCALAPPDATA\Programs\nodejs\node.exe",
+    "$env:APPDATA\nvm\v22.22.2\node.exe",
+    "$env:LOCALAPPDATA\nvm4w\nodejs\node.exe"
+)
+if (-not $nodePath) {
     Write-Error "Node.js (v22+) is required. Please install from https://nodejs.org/"
     exit 1
 }
+$env:PATH = (Split-Path $nodePath) + ";" + $env:PATH
+Write-Host "  node: $nodePath" -ForegroundColor Gray
 
 # Next.js 15.5.x supports Node 18+, but the Windows dev/startup path in this
 # repo (long-lived dev server, proxy environment normalization, and the
@@ -186,12 +231,12 @@ if (-not $nodeCmd) {
 # Older Node versions can fail the dev server with no obvious message,
 # so enforce Node 22+ up front.
 try {
-    $nodeMajor = [int]((& node --version).TrimStart("v").Split(".")[0])
+    $nodeMajor = [int]((& $nodePath --version).TrimStart("v").Split(".")[0])
 } catch {
     $nodeMajor = 0
 }
 if ($nodeMajor -lt 22) {
-    Write-Host "[ERROR] Node.js v22+ is required, found '$(node --version)'. Please upgrade from https://nodejs.org/`n" -ForegroundColor Red
+    Write-Host "[ERROR] Node.js v22+ is required, found '$(& $nodePath --version)'. Please upgrade from https://nodejs.org/`n" -ForegroundColor Red
     exit 1
 }
 
@@ -266,7 +311,7 @@ Remove-CaseDuplicateEnvironmentVariables
 Write-Host "`n[1/2] Starting Gateway API on port $GatewayPort..." -ForegroundColor Yellow
 Write-Host "  logs: logs\gateway.log, logs\gateway.err.log" -ForegroundColor Gray
 
-$gatewayProcess = Start-Process -FilePath "uv" `
+$gatewayProcess = Start-Process -FilePath $uvPath `
     -ArgumentList "run --no-sync uvicorn app.gateway.app:app --host 127.0.0.1 --port $GatewayPort" `
     -WorkingDirectory "$RepoRoot\backend" -PassThru -WindowStyle Hidden `
     -RedirectStandardOutput $gatewayLogOut -RedirectStandardError $gatewayLogErr
@@ -281,7 +326,7 @@ if ($Prod) {
         Write-Host "Production build not found. Building frontend..." -ForegroundColor Yellow
         Push-Location "$RepoRoot\frontend"
         try {
-            & node node_modules/next/dist/bin/next build
+            & $nodePath node_modules/next/dist/bin/next build
             if ($LASTEXITCODE -ne 0) {
                 Stop-ProcessTree -ProcessId $gatewayProcess.Id
                 throw "Frontend production build failed; startup aborted."
@@ -291,7 +336,7 @@ if ($Prod) {
         }
     }
     # `next start` takes -p directly (no dev wrapper involved).
-    $frontendProcess = Start-Process -FilePath "node" `
+    $frontendProcess = Start-Process -FilePath $nodePath `
         -ArgumentList "node_modules/next/dist/bin/next start -p $FrontendPort" `
         -WorkingDirectory "$RepoRoot\frontend" -PassThru -WindowStyle Hidden `
         -RedirectStandardOutput $frontendLogOut -RedirectStandardError $frontendLogErr
@@ -299,7 +344,7 @@ if ($Prod) {
     # Pass -p explicitly: relying on $env:PORT alone is fragile, and without
     # it a custom -FrontendPort would boot on 3000 while the browser opens
     # the requested port (blank page).
-    $frontendProcess = Start-Process -FilePath "node" `
+    $frontendProcess = Start-Process -FilePath $nodePath `
         -ArgumentList $frontendArgs `
         -WorkingDirectory "$RepoRoot\frontend" -PassThru -WindowStyle Hidden `
         -RedirectStandardOutput $frontendLogOut -RedirectStandardError $frontendLogErr

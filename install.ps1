@@ -10,51 +10,94 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = $PSScriptRoot
 Set-Location $RepoRoot
 
+# Windows resolves a bare command name through PATHEXT, and PowerShell refuses
+# to execute an .exe at all ("Cannot run a document in the middle of a pipeline")
+# when PATHEXT has been narrowed -- some managed images ship PATHEXT=.CPL. When
+# that happens `uv` and `node` are neither resolvable nor launchable even though
+# both are installed and on PATH. Restore the platform default.
+if (-not $env:PATHEXT -or $env:PATHEXT -notlike "*.EXE*") {
+    $env:PATHEXT = ".COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.CPL"
+}
+
 Write-Host "`n========================================================" -ForegroundColor Cyan
 Write-Host "    Agent Workspace - Automated Setup & Installation    " -ForegroundColor Cyan
 Write-Host "========================================================`n" -ForegroundColor Cyan
 
 # 1. Check & locate uv
 Write-Host "[1/5] Checking Python / uv package manager..." -ForegroundColor Yellow
-$uvCmd = Get-Command "uv" -ErrorAction SilentlyContinue
-if (-not $uvCmd) {
-    # Check default install locations
-    $uvCandidates = @(
-        "$env:USERPROFILE\.cargo\bin\uv.exe",
-        "$env:APPDATA\uv\uv.exe",
-        "$env:LOCALAPPDATA\Programs\uv\uv.exe"
+# Resolving a bare name through PATHEXT is not reliable: when PATHEXT is missing
+# ".EXE" (or the tool is not on PATH at all), `Get-Command uv` returns nothing
+# even though uv.exe exists and its directory is on PATH. Resolve "<name>.exe"
+# explicitly, then fall back to the known install locations.
+function Resolve-Executable {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [string[]]$ExtraCandidates = @()
     )
-    foreach ($candidate in $uvCandidates) {
-        if (Test-Path $candidate) {
-            $env:PATH = ((Split-Path $candidate) + ";" + $env:PATH)
-            $uvCmd = Get-Command "uv" -ErrorAction SilentlyContinue
-            break
-        }
+    foreach ($candidate in @("$Name.exe", $Name)) {
+        $cmd = Get-Command $candidate -ErrorAction SilentlyContinue
+        if ($cmd) { return $cmd.Source }
     }
+    foreach ($c in $ExtraCandidates) {
+        if ($c -and (Test-Path $c)) { return $c }
+    }
+    foreach ($root in @($env:LOCALAPPDATA, $env:ProgramFiles, ${env:ProgramFiles(x86)})) {
+        if (-not $root) { continue }
+        try {
+            $hit = Get-ChildItem -Path $root -Filter "$Name.exe" -Recurse -Depth 2 -ErrorAction SilentlyContinue |
+                Select-Object -First 1
+            if ($hit) { return $hit.FullName }
+        } catch {}
+    }
+    return $null
 }
 
-if (-not $uvCmd) {
+$uvCandidates = @(
+    "$env:USERPROFILE\.cargo\bin\uv.exe",
+    "$env:APPDATA\uv\uv.exe",
+    "$env:LOCALAPPDATA\Programs\uv\uv.exe",
+    "$env:LOCALAPPDATA\hermes\bin\uv.exe",
+    "$env:USERPROFILE\.local\bin\uv.exe",
+    "$env:USERPROFILE\scoop\shims\uv.exe",
+    "$env:ProgramData\chocolatey\bin\uv.exe"
+)
+$uvPath = Resolve-Executable -Name "uv" -ExtraCandidates $uvCandidates
+
+if (-not $uvPath) {
     Write-Host "  -> 'uv' not found. Installing Astral uv automatically..." -ForegroundColor Yellow
     try {
         powershell -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 | iex"
         $env:PATH = ("$env:USERPROFILE\.cargo\bin;" + $env:PATH)
-        $uvCmd = Get-Command "uv" -ErrorAction SilentlyContinue
+        $uvPath = Resolve-Executable -Name "uv" -ExtraCandidates $uvCandidates
     } catch {
         Write-Error "Failed to auto-install uv. Please install it manually from https://astral.sh/uv and retry."
         exit 1
     }
 }
-$uvVersion = & uv --version
+if (-not $uvPath) {
+    Write-Host "[ERROR] Could not locate 'uv' even after attempting installation." -ForegroundColor Red
+    Write-Host "Install it from https://astral.sh/uv and re-run this script.`n" -ForegroundColor Yellow
+    exit 1
+}
+$env:PATH = ((Split-Path $uvPath) + ";" + $env:PATH)
+$uvVersion = & $uvPath --version
 Write-Host "  [OK] $uvVersion" -ForegroundColor Green
 
 # 2. Check Node.js
 Write-Host "`n[2/5] Checking Node.js runtime..." -ForegroundColor Yellow
-$nodeCmd = Get-Command "node" -ErrorAction SilentlyContinue
-if (-not $nodeCmd) {
+$nodePath = Resolve-Executable -Name "node" -ExtraCandidates @(
+    "$env:ProgramFiles\nodejs\node.exe",
+    "${env:ProgramFiles(x86)}\nodejs\node.exe",
+    "$env:LOCALAPPDATA\Programs\nodejs\node.exe",
+    "$env:APPDATA\nvm\v22.22.2\node.exe",
+    "$env:LOCALAPPDATA\nvm4w\nodejs\node.exe"
+)
+if (-not $nodePath) {
     Write-Error "Node.js (version 22+) is required. Please install it from https://nodejs.org/ and rerun this script."
     exit 1
 }
-$nodeVersion = & node -v
+$env:PATH = ((Split-Path $nodePath) + ";" + $env:PATH)
+$nodeVersion = & $nodePath -v
 Write-Host "  [OK] Node.js $nodeVersion" -ForegroundColor Green
 
 # 3. Setup configuration files
@@ -99,15 +142,25 @@ Write-Host "  [OK] All configuration files prepared." -ForegroundColor Green
 Write-Host "`n[4/5] Installing Backend dependencies (uv sync)..." -ForegroundColor Yellow
 Push-Location "$RepoRoot\backend"
 try {
-    & uv sync --locked
-    if ($LASTEXITCODE -ne 0) {
+    # `uv` reports progress on stderr. Under $ErrorActionPreference = "Stop"
+    # PowerShell treats stderr output from a native command as a terminating
+    # error and aborts the script even when uv exits 0, so run these under
+    # 'Continue' and judge them purely by $LASTEXITCODE.
+    $previousEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    & $uvPath sync --locked 2>&1 | ForEach-Object { Write-Host "  $_" }
+    $syncExit = $LASTEXITCODE
+    if ($syncExit -ne 0) {
         Write-Host "  -> Retrying uv sync without locked constraint..." -ForegroundColor Yellow
-        & uv sync
-        if ($LASTEXITCODE -ne 0) {
-            throw "uv sync failed (exit code $LASTEXITCODE). Fix the backend dependency install before continuing."
-        }
+        & $uvPath sync 2>&1 | ForEach-Object { Write-Host "  $_" }
+        $syncExit = $LASTEXITCODE
+    }
+    $ErrorActionPreference = $previousEap
+    if ($syncExit -ne 0) {
+        throw "uv sync failed (exit code $syncExit). Fix the backend dependency install before continuing."
     }
 } finally {
+    $ErrorActionPreference = 'Stop'
     Pop-Location
 }
 Write-Host "  [OK] Backend dependencies installed." -ForegroundColor Green
@@ -117,11 +170,28 @@ if (-not $SkipFrontend) {
     Write-Host "`n[5/5] Installing Frontend dependencies..." -ForegroundColor Yellow
     Push-Location "$RepoRoot\frontend"
     try {
-        & uv run --project "$RepoRoot\backend" python "$RepoRoot\scripts\pnpm.py" install
+        $previousEap = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        & $uvPath run --project "$RepoRoot\backend" python "$RepoRoot\scripts\pnpm.py" install 2>&1 | ForEach-Object { Write-Host "  $_" }
+        $installExit = $LASTEXITCODE
+        $ErrorActionPreference = $previousEap
+        if ($installExit -ne 0) {
+            throw "pnpm install failed (exit code $installExit)."
+        }
     } catch {
         Write-Host "  -> Fallback to npm install..." -ForegroundColor Yellow
-        & npm install
+        $ErrorActionPreference = 'Continue'
+        & npm install 2>&1 | ForEach-Object { Write-Host "  $_" }
+        $npmExit = $LASTEXITCODE
+        $ErrorActionPreference = 'Stop'
+        if ($npmExit -ne 0) {
+            Write-Host "[ERROR] Frontend dependency installation failed (exit code $npmExit)." -ForegroundColor Red
+            Write-Host "Run 'cd frontend; pnpm install' manually and re-run this script.`n" -ForegroundColor Yellow
+            Pop-Location
+            exit 1
+        }
     } finally {
+        $ErrorActionPreference = 'Stop'
         Pop-Location
     }
     Write-Host "  [OK] Frontend dependencies installed." -ForegroundColor Green
