@@ -16,6 +16,14 @@ from agent_workspace.config.sandbox_config import SandboxConfig
 from agent_workspace.runtime.user_context import reset_current_user, set_current_user
 from agent_workspace.sandbox.acquire_serialization import AcquireSerializer
 
+# POSIX permission-bit assertion on the Lark CLI user auth dirs. Windows cannot
+# represent `chmod(0o700)` — `stat.S_IMODE` always reports broad access there —
+# so this assertion is only meaningful on the Linux CI matrix.
+requires_posix_permission_bits = pytest.mark.skipif(
+    __import__("os").name == "nt",
+    reason="asserts POSIX 0o700 permission bits, which Windows stat cannot represent",
+)
+
 _LEGACY_COLLIDING_IDENTITIES = (
     ("user-9721", "thread-9721"),
     ("user-94361", "thread-94361"),
@@ -192,6 +200,7 @@ def test_get_thread_mounts_uses_explicit_user_id(tmp_path, monkeypatch):
     assert container_paths["/mnt/user-data/outputs"] == str(tmp_path / "users" / "ou-user" / "threads" / "thread-4" / "user-data" / "outputs")
 
 
+@requires_posix_permission_bits
 def test_get_lark_cli_runtime_mounts_uses_user_auth_dirs(tmp_path, monkeypatch):
     """Sandbox lark-cli commands must read the same auth dirs as Settings."""
     aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")

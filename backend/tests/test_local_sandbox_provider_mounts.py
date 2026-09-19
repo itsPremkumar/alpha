@@ -8,6 +8,17 @@ import pytest
 from agent_workspace.sandbox.local.local_sandbox import LocalSandbox, PathMapping
 from agent_workspace.sandbox.local.local_sandbox_provider import LocalSandboxProvider
 
+# These two tests drive the sandbox through a POSIX shell toolchain: one forces
+# ``_get_shell`` to return ``/bin/sh`` and runs ``cat``, the other shells out to
+# a bare ``python``. Neither tool exists on a Windows host, so the sandbox's
+# platform-native shell (PowerShell/cmd) is never exercised and the command
+# cannot spawn. The behavior under test is platform-independent and covered on
+# the POSIX CI matrix; the POSIX-toolchain mechanics are not portable.
+requires_posix_shell_toolchain = pytest.mark.skipif(
+    __import__("os").name == "nt",
+    reason="requires a POSIX shell toolchain (/bin/sh, cat, python on PATH), which Windows does not provide",
+)
+
 
 def _symlink_to(target, link, *, target_is_directory=False):
     try:
@@ -153,6 +164,7 @@ class TestReadOnlyPath:
             sandbox.write_file("/mnt/skills/new_file.py", "content")
         assert exc_info.value.errno == errno.EROFS
 
+    @requires_posix_shell_toolchain
     def test_bash_write_to_projected_copy_does_not_mutate_source(self, tmp_path):
         source = tmp_path / "canonical" / "SKILL.md"
         view = tmp_path / "skills_view" / "public" / "demo" / "SKILL.md"
@@ -521,6 +533,7 @@ class TestMultipleMounts:
         sandbox.write_file("/mnt/repo/writable/file.txt", "content")
         assert (rw_dir / "file.txt").read_text() == "content"
 
+    @requires_posix_shell_toolchain
     def test_execute_command_path_replacement(self, tmp_path, monkeypatch):
         data_dir = tmp_path / "data"
         data_dir.mkdir()

@@ -629,17 +629,19 @@ def test_build_middlewares_uses_resolved_model_name_for_vision(monkeypatch):
     # verify the custom middleware is injected correctly.
     # With this test's default safety config enabled, the tail order is:
     #   ..., custom, TerminalResponseMiddleware, ModelLengthFinishReasonMiddleware,
-    #   SafetyFinishReasonMiddleware, ClarificationMiddleware, so the custom mock
-    #   sits at index [-5].
-    assert len(middlewares) > 0 and isinstance(middlewares[-5], MagicMock)
+    #   FinishFirstVerifierMiddleware, SafetyFinishReasonMiddleware,
+    #   ClarificationMiddleware, so the custom mock sits at index [-6].
+    assert len(middlewares) > 0 and isinstance(middlewares[-6], MagicMock)
 
     from agent_workspace.agents.middlewares.clarification_middleware import ClarificationMiddleware
+    from agent_workspace.agents.middlewares.finish_first_verifier_middleware import FinishFirstVerifierMiddleware
     from agent_workspace.agents.middlewares.model_length_finish_reason_middleware import ModelLengthFinishReasonMiddleware
     from agent_workspace.agents.middlewares.safety_finish_reason_middleware import SafetyFinishReasonMiddleware
     from agent_workspace.agents.middlewares.terminal_response_middleware import TerminalResponseMiddleware
 
-    assert isinstance(middlewares[-4], TerminalResponseMiddleware)
-    assert isinstance(middlewares[-3], ModelLengthFinishReasonMiddleware)
+    assert isinstance(middlewares[-5], TerminalResponseMiddleware)
+    assert isinstance(middlewares[-4], ModelLengthFinishReasonMiddleware)
+    assert isinstance(middlewares[-3], FinishFirstVerifierMiddleware)
     assert isinstance(middlewares[-2], SafetyFinishReasonMiddleware)
     assert isinstance(middlewares[-1], ClarificationMiddleware)
 
@@ -770,7 +772,14 @@ def test_build_middlewares_orders_skill_activation_before_policy_and_durable_con
     activation_idx = next(i for i, middleware in enumerate(middlewares) if isinstance(middleware, SkillActivationMiddleware))
     policy_idx = next(i for i, middleware in enumerate(middlewares) if isinstance(middleware, SkillToolPolicyMiddleware))
     durable_idx = next(i for i, middleware in enumerate(middlewares) if isinstance(middleware, DurableContextMiddleware))
-    assert policy_idx == activation_idx + 1
+    # AutonomousCommandMiddleware intentionally sits between activation and the
+    # tool policy: slash-command lifecycle staging happens after activation and
+    # before runtime allowed-tools enforcement.
+    from agent_workspace.agents.middlewares.autonomous_command_middleware import AutonomousCommandMiddleware
+
+    autonomous_idx = next(i for i, middleware in enumerate(middlewares) if isinstance(middleware, AutonomousCommandMiddleware))
+    assert autonomous_idx == activation_idx + 1
+    assert policy_idx == autonomous_idx + 1
     assert durable_idx == policy_idx + 1
     assert middlewares[activation_idx]._slash_source_owner_token == middlewares[policy_idx]._slash_source_owner_token
 
@@ -796,8 +805,20 @@ def test_compiled_skill_policy_chain_filters_schema_and_blocks_execution(monkeyp
     )
     activation_idx = next(i for i, middleware in enumerate(middlewares) if isinstance(middleware, SkillActivationMiddleware))
     durable_idx = next(i for i, middleware in enumerate(middlewares) if isinstance(middleware, DurableContextMiddleware))
-    compiled_slice = middlewares[activation_idx : durable_idx + 1]
-    assert [type(middleware) for middleware in compiled_slice] == [SkillActivationMiddleware, SkillToolPolicyMiddleware, DurableContextMiddleware]
+    production_slice = middlewares[activation_idx : durable_idx + 1]
+    from agent_workspace.agents.middlewares.autonomous_command_middleware import AutonomousCommandMiddleware
+
+    # The production slice now also carries AutonomousCommandMiddleware between
+    # activation and policy. It is async-only (awrap_model_call), and this test
+    # drives the compiled graph synchronously, so compile just the skill-policy
+    # chain under test — activation -> policy -> durable context.
+    assert [type(middleware) for middleware in production_slice] == [
+        SkillActivationMiddleware,
+        AutonomousCommandMiddleware,
+        SkillToolPolicyMiddleware,
+        DurableContextMiddleware,
+    ]
+    compiled_slice = [middleware for middleware in production_slice if not isinstance(middleware, AutonomousCommandMiddleware)]
 
     skill_dir = Path("/tmp/skills/public/restricted")
     restricted = Skill(
@@ -811,7 +832,7 @@ def test_compiled_skill_policy_chain_filters_schema_and_blocks_execution(monkeyp
         allowed_tools=("read_file",),
         enabled=True,
     )
-    policy = compiled_slice[1]
+    policy = next(middleware for middleware in compiled_slice if isinstance(middleware, SkillToolPolicyMiddleware))
     policy._storage = lambda: _PolicyStorageStub([] if use_stale_path else [restricted])
 
     context: dict[str, object] = {}
@@ -957,11 +978,12 @@ def test_build_middlewares_injects_configured_extension_middlewares(monkeypatch)
     )
 
     middleware_types = [type(m).__name__ for m in middlewares]
-    assert middleware_types[-6:] == [
+    assert middleware_types[-7:] == [
         "ConfiguredGuardMiddleware",
         "ConfiguredAuditMiddleware",
         "TerminalResponseMiddleware",
         "ModelLengthFinishReasonMiddleware",
+        "FinishFirstVerifierMiddleware",
         "SafetyFinishReasonMiddleware",
         "ClarificationMiddleware",
     ]

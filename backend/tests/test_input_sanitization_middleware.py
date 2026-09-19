@@ -215,6 +215,19 @@ _FRAMEWORK_STRUCTURED_TAGS = [
     # prompts carrying acceptance criteria.
     "report_contract",
     "acceptance_criteria",
+    # Frontier/autonomy framework blocks (see _BLOCKED_TAG_NAMES in the
+    # middleware for emission sites): autonomous command lifecycle staging,
+    # autonomous planning scaffolds, RLM harness context, session handoffs,
+    # hierarchical project rules, reflexion lessons, team governance context,
+    # and full-memory wiki injections.
+    "autonomous_command_lifecycle_directive",
+    "autonomous_planning",
+    "rlm_harness_system",
+    "session_handoff_continuation",
+    "hierarchical_project_context",
+    "historical_reflexion_lessons",
+    "team_context",
+    "wiki",
 ]
 
 
@@ -276,6 +289,33 @@ _EXEMPT_BLOCK_TAGS = {
     # Documentation artifact: appears only in this middleware's own explanatory
     # comment describing the tag pattern, not emitted into any prompt.
     "tag",
+    # HTML rendering markup emitted by UI-artifact producers (canvas/widget.py,
+    # canvas/progress_card.py, orchestration/discipline/visual_engineering.py,
+    # tools/builtins/visual_verification_tool.py, canvas_widget_tool.py,
+    # commands/catalog.py). These strings are widget/HTML payloads handled as
+    # data for the browser UI — never framework authority injected into model
+    # input — so blocking them would only escape benign HTML in user prose
+    # without protecting anything. (div/span appear only in this middleware's
+    # own explanatory comments.)
+    "body",
+    "button",
+    "code",
+    "div",
+    "h1",
+    "h2",
+    "h3",
+    "head",
+    "html",
+    "li",
+    "p",
+    "pre",
+    "script",
+    "span",
+    "strong",
+    "style",
+    "svg",
+    "title",
+    "ul",
 }
 
 

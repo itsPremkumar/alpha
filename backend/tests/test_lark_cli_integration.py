@@ -34,6 +34,16 @@ from agent_workspace.skills.storage import reset_skill_storage
 from agent_workspace.skills.storage.user_scoped_skill_storage import UserScopedSkillStorage
 from agent_workspace.skills.types import SkillCategory
 
+# The managed Lark CLI sandbox runtime is a Linux artifact: provisioning
+# validates the POSIX executability bit (`st_mode & 0o111`) of `bin/lark-cli`
+# and each `linux-<arch>/lark-cli`. Windows has no POSIX permission bits, so
+# `chmod(0o755)` cannot make that bit observable and these tests can never
+# pass there. They run on the Linux CI matrix that targets the sandbox runtime.
+requires_posix_exec_bit = pytest.mark.skipif(
+    os.name == "nt",
+    reason="managed Lark CLI sandbox runtime is a Linux artifact validated via POSIX exec bits, which Windows cannot represent",
+)
+
 
 def _skill_content(name: str) -> str:
     return f"---\nname: {name}\ndescription: {name} integration skill\n---\n\n# {name}\n"
@@ -291,6 +301,7 @@ def test_init_image_launcher_matches_python_constant() -> None:
     assert lark_cli.LARK_CLI_SANDBOX_LAUNCHER_SCRIPT.strip() in body
 
 
+@requires_posix_exec_bit
 def test_managed_sandbox_runtime_verifies_and_installs_linux_archives(monkeypatch, tmp_path) -> None:
     assert hasattr(lark_cli, "_ensure_managed_sandbox_lark_cli"), "managed sandbox runtime installer is missing"
     _patch_paths(monkeypatch, tmp_path / "home")
@@ -347,6 +358,7 @@ def test_managed_sandbox_runtime_rejects_unsafe_tar_member(monkeypatch, tmp_path
         lark_cli._ensure_managed_sandbox_lark_cli("v1.0.65")
 
 
+@requires_posix_exec_bit
 def test_managed_sandbox_runtime_accepts_prestaged_airgapped_tree(monkeypatch, tmp_path) -> None:
     _patch_paths(monkeypatch, tmp_path / "home")
     source = tmp_path / "pre-staged"
@@ -419,6 +431,7 @@ def test_managed_sandbox_runtime_rejects_non_executable_prestaged_binary(monkeyp
     assert not lark_cli.lark_cli_managed_sandbox_dir().exists()
 
 
+@requires_posix_exec_bit
 def test_concurrent_managed_sandbox_runtime_installs_serialize_replacement(monkeypatch, tmp_path) -> None:
     _patch_paths(monkeypatch, tmp_path / "home")
     source = tmp_path / "pre-staged"
@@ -571,6 +584,7 @@ def test_status_runtime_mode_none_for_non_aio(monkeypatch, tmp_path) -> None:
     assert detail
 
 
+@requires_posix_exec_bit
 def test_status_runtime_mode_gateway_download_ready(monkeypatch, tmp_path) -> None:
     _patch_paths(monkeypatch, tmp_path / "home")
     config = _config(tmp_path / "skills")
