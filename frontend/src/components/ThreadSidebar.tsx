@@ -43,6 +43,15 @@ export function ThreadSidebar({
   serverOnline = true,
 }: ThreadSidebarProps) {
   const [isOpen, setIsOpen] = useState(true);
+
+  // The sidebar is a fixed 16rem rail. On a phone that would consume most of
+  // the viewport and leave the conversation unusable, so start collapsed on
+  // narrow screens. This runs after mount (not in the initialiser) to keep the
+  // server and client first render identical.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.innerWidth < 768) setIsOpen(false);
+  }, []);
   const [search, setSearch] = useState("");
   const [serverHits, setServerHits] = useState<Array<Record<string, unknown>> | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
@@ -178,7 +187,7 @@ export function ThreadSidebar({
   }
 
   return (
-    <aside className="w-64 border-r border-border bg-card/40 flex flex-col h-screen shrink-0 transition-all">
+    <aside className="w-64 border-r border-border bg-card/40 flex flex-col h-screen shrink-0 transition-all max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:shadow-2xl">
       {/* Top Header */}
       <div className="p-3 border-b border-border/60 flex items-center justify-between">
         <BrandLogo logoSize={28} textClassName="text-sm" priority />
