@@ -29,7 +29,13 @@ const desktopConfig = JSON.parse(
 // Runtime-only deps that Next.js standalone tracing omits (proven by booting
 // the bundle with no parent node_modules: the server crashes with
 // MODULE_NOT_FOUND without them). Copied from the frontend install below.
-const EXTRA_STANDALONE_DEPS = ["@swc/helpers", "@next/env"];
+//
+// styled-jsx: next/dist/server/require-hook.js does
+// require.resolve('styled-jsx/package.json') at startup. With pnpm the package
+// only exists inside .pnpm (never hoisted to frontend/node_modules), so tracing
+// misses it and the packaged app dies with
+// "Cannot find module 'styled-jsx/package.json'" before serving anything.
+const EXTRA_STANDALONE_DEPS = ["@swc/helpers", "@next/env", "styled-jsx"];
 
 function run(cmd, args, options = {}) {
   console.log(`> ${cmd} ${args.join(" ")}`);
