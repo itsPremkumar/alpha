@@ -53,6 +53,13 @@ venv, no login, chat opens), and silent uninstall. To publish:
    `%APPDATA%\agent-workspace-desktop\project\config.yaml` → restart → chat.
    Internet is required on first launch (one-time Python/package download).
 
+**Or skip the local build entirely:** push a `v*` tag, or run the
+*Windows Desktop Installer* workflow manually, and GitHub's own Windows runner
+builds the installer and attaches it to the Release — no local packaging needed.
+See `.github/workflows/windows-installer.yml`. This is the recommended route on
+machines where packaging is impractical (low memory, or a sandbox that restricts
+writes under `node_modules`).
+
 ## Build from source (developers)
 
 Prerequisites (build machine only): **Node.js 22+**, **uv**, and Git.

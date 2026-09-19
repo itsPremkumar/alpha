@@ -1,0 +1,75 @@
+name: Windows Desktop Installer
+
+# Builds the self-contained Agent Workspace Windows installer (NSIS .exe) on a
+# clean runner and publishes it. The bundle ships its own portable Node and uv
+# (see electron/scripts/fetch-runtime.mjs), so end users need nothing
+# pre-installed.
+#
+# This exists so the installer does not have to be produced on a developer
+# machine: packaging is memory- and network-heavy and is the only step that
+# cannot run in a write-restricted sandbox.
+
+on:
+  push:
+    branches: [ 'main' ]
+    tags: [ 'v*' ]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+concurrency:
+  group: windows-installer-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-installer:
+    if: github.event.pull_request.draft == false
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Keep in step with electron/desktop-config.json `nodeVersion`.
+          node-version: '22'
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use pinned pnpm version
+        run: corepack prepare pnpm@10.26.2 --activate
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Electron build dependencies
+        working-directory: electron
+        run: npm install
+
+      - name: Build desktop installer
+        working-directory: electron
+        run: npm run dist
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Agent-Workspace-Windows-Installer
+          path: electron/dist/*.exe
+          if-no-files-found: error
+          retention-days: 30
+
+      # Only tag pushes become public release assets, so anyone can download a
+      # finished installer without a GitHub account.
+      - name: Attach installer to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: electron/dist/*.exe
