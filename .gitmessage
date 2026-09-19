@@ -1,0 +1,9 @@
+# type(scope): summary  — imperative, <=72 chars, no trailing period
+#
+# type: feat | fix | chore | docs | test | refactor | perf | ci | build | revert
+# scope: electron | frontend | backend | ui | self-healing | installer | ci | docs
+#
+# Observed in this repo: "fix(electron): ...", "feat(ui): ...", "test(auth): ..."
+#
+# Body: why the change was needed (not what). Wrap at 72.
+# Footer: Refs #123, BREAKING CHANGE: ...
