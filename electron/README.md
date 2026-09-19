@@ -58,6 +58,15 @@ venv, no login, chat opens), and silent uninstall. To publish:
 Prerequisites (build machine only): **Node.js 22+**, **uv**, and Git.
 `uv` provisions Python automatically; end users never need any of this.
 
+**Build machine resources.** Packaging is memory- and network-heavy: `npm install`
+pulls Electron (~150 MB) plus electron-builder, and `dist` additionally downloads
+portable Node and uv into `build/runtime`. Expect ~2 GB of free disk and several
+GB of free RAM, on an unrestricted shell. On a sandbox that denies writes under
+`node_modules`, or a machine with under ~1 GB free RAM, the install may report
+success while leaving packages partially extracted and the Electron binary
+missing — verify `node_modules\electron\dist\electron.exe` exists before running
+`npm run dist`, otherwise rerun the install on a less constrained machine.
+
 ```powershell
 git clone <repo-url> agent-workspace
 cd agent-workspace\electron

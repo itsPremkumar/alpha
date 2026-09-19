@@ -11,9 +11,11 @@
 #   - the Python backend sources      -> <resources>/backend
 #   - config templates                -> <resources>/config-templates
 #
-# At runtime the app spawns the backend via `uv` and the frontend via `node`
-# (both must be installed on the machine — see README.md). The backend venv
-# is created on first launch inside the installed backend directory.
+# At runtime the app spawns the backend via `uv` and the frontend via `node`.
+# Both come from the bundled runtime below (build/runtime), so end-user machines
+# need nothing pre-installed — uv additionally provisions CPython on first
+# launch. The backend venv is created on first launch inside the installed
+# backend directory.
 
 appId: ai.agent-workspace.desktop
 productName: Agent Workspace
