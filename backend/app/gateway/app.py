@@ -65,6 +65,7 @@ from app.gateway.routers import (
     suggestions,
     supervision,
     swarms,
+    system_monitor,
     thread_runs,
     threads,
     uploads,
@@ -330,6 +331,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     async with langgraph_runtime(app, startup_config):
         logger.info("LangGraph runtime initialised")
 
+        # Continuous host system monitor (RAM/disk/CPU/GPU/network/internet).
+        # Best-effort and self-contained: a sampler failure must never fail the
+        # boot or take down the Gateway, so every error is caught and logged.
+        try:
+            from app.gateway.system_monitor_service import start_system_monitor
+
+            await asyncio.to_thread(start_system_monitor)
+            logger.info("System monitor started")
+        except Exception:
+            logger.exception("System monitor failed to start (non-fatal)")
+
         # Check admin bootstrap state and migrate orphan threads after admin exists.
         # Must run AFTER langgraph_runtime so app.state.store is available for thread migration
         await _ensure_admin_user(app)
@@ -491,6 +503,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 await app.state.scheduled_task_service.stop()
             except Exception:
                 logger.exception("Failed to stop scheduled task service")
+
+        # Stop the host system monitor (bounded join inside the service).
+        try:
+            from app.gateway.system_monitor_service import stop_system_monitor
+
+            await asyncio.to_thread(stop_system_monitor)
+        except Exception:
+            logger.exception("Failed to stop system monitor")
 
         if getattr(app.state, "mcp_task_service", None) is not None:
             app.state.mcp_tasks_available = False
@@ -705,6 +725,10 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
                 "description": "Deployment metadata and runtime status for operators and monitoring",
             },
             {
+                "name": "system",
+                "description": "Continuous host resource monitoring (RAM, disk, CPU, GPU, network, internet)",
+            },
+            {
                 "name": "health",
                 "description": "Health check and system status endpoints",
             },
@@ -838,6 +862,9 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
 
     # Ops API (deployment metadata) is mounted at /api/ops
     app.include_router(ops.router)
+
+    # System monitor API (host resources) is mounted at /api/system
+    app.include_router(system_monitor.router)
 
     # MCP API is mounted at /api/mcp
     app.include_router(mcp.router)
