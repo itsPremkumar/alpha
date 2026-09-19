@@ -6,6 +6,7 @@ import { listCommands, searchCommands, commandCategories, executeCommand, SlashC
 import { fetchMcpConfig, setMcpServerEnabled, addMcpServer, deleteMcpServer, resetMcpCache, McpServer } from "@/lib/mcp";
 import { evaluatePlan, dispatchPlan, navigateBrowser } from "@/lib/plan";
 import { Section, EmptyState, ErrorBox, Notice, Btn, Badge, Field, SkeletonList, inputCls } from "@/components/ui";
+import { SystemMonitorSection } from "@/components/sections/SystemMonitorSection";
 import { errMsg } from "@/lib/http";
 import { RefreshCw, Terminal, PlugZap, Trash2, Wand2, Globe, Pause, Play } from "lucide-react";
 
@@ -158,6 +159,11 @@ export function SystemSection(props: { threadId: string | null; browserActive: b
     >
       {error && <ErrorBox message={error} onRetry={() => { refreshProbes(); refreshSlow(); }} />}
       {notice && <Notice message={notice} />}
+
+      {/* Host resources — continuous backend monitor, RAM first. */}
+      <div className="rounded-2xl border border-border/60 bg-card p-4">
+        <SystemMonitorSection />
+      </div>
 
       {/* Live status grid */}
       <div className="rounded-2xl border border-border/60 bg-card p-4">

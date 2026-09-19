@@ -17,6 +17,7 @@ import {
 import { Badge } from "@/components/ui";
 import { Probe, probeAll } from "@/lib/system";
 import { ConsoleStats, fetchConsoleStats, fetchOpsVersion } from "@/lib/workspace";
+import { SystemVitals, fetchSystemVitals } from "@/lib/systemMonitor";
 
 /**
  * Live vitals for the whole workspace, sourced from the Gateway.
@@ -32,6 +33,7 @@ interface Vitals {
   version: string;
   stats: ConsoleStats | null;
   probes: Probe[];
+  host: SystemVitals | null;
 }
 
 function compactNumber(n: number): string {
@@ -48,10 +50,11 @@ function formatCost(cost: number | null, currency: string | null): string {
 }
 
 async function load(): Promise<Vitals> {
-  const [probes, statsRes, version] = await Promise.all([
+  const [probes, statsRes, version, host] = await Promise.all([
     probeAll().catch(() => [] as Probe[]),
     fetchConsoleStats().catch(() => null),
     fetchOpsVersion().catch(() => "unknown"),
+    fetchSystemVitals().catch(() => null),
   ]);
   const gateway = probes.find((p) => p.key === "gateway");
   return {
@@ -59,7 +62,13 @@ async function load(): Promise<Vitals> {
     version,
     stats: statsRes,
     probes,
+    host,
   };
+}
+
+function formatGiB(mb: number): string {
+  if (!Number.isFinite(mb) || mb <= 0) return "—";
+  return `${(mb / 1024).toFixed(1)}G`;
 }
 
 function Metric({
@@ -100,6 +109,11 @@ export function WorkspaceVitals({ className = "" }: { className?: string }) {
 
   useEffect(() => {
     void refresh();
+    // Auto-refresh the strip (host RAM included) while the tab is visible.
+    const id = window.setInterval(() => {
+      if (!document.hidden) void refresh();
+    }, 10000);
+    return () => window.clearInterval(id);
   }, [refresh]);
 
   if (loading && !vitals) {
@@ -130,6 +144,23 @@ export function WorkspaceVitals({ className = "" }: { className?: string }) {
         <Cpu className="size-3" />
         <span className="font-medium tabular-nums">v{vitals.version}</span>
       </span>
+
+      {vitals.host && (
+        <span
+          title={`Host RAM: ${formatGiB(vitals.host.ram.used_mb)} of ${formatGiB(vitals.host.ram.total_mb)} (${vitals.host.ram.percent.toFixed(1)}%) — CPU ${vitals.host.cpu.percent.toFixed(0)}%`}
+          className="inline-flex items-center gap-1 text-muted-foreground whitespace-nowrap"
+        >
+          <span
+            className={`size-1.5 rounded-full ${vitals.host.ram.percent >= 90 ? "bg-red-500" : vitals.host.ram.percent >= 70 ? "bg-amber-500" : "bg-emerald-500"}`}
+            aria-hidden="true"
+          />
+          <span className="font-semibold text-foreground tabular-nums">
+            {formatGiB(vitals.host.ram.used_mb)}/{formatGiB(vitals.host.ram.total_mb)}
+          </span>
+          <span className="hidden lg:inline">RAM</span>
+          <span className="font-medium tabular-nums">{vitals.host.ram.percent.toFixed(0)}%</span>
+        </span>
+      )}
 
       {s && (
         <>
