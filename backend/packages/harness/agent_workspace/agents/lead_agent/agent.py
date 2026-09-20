@@ -772,6 +772,13 @@ def _load_enabled_available_skills(available_skills: set[str] | None, *, app_con
         logger.exception("Failed to load enabled skills")
         raise
 
+    # Operator allowlist is a hard ceiling: it applies regardless of what the
+    # caller asked for, so a skill cannot be reached unless an operator named it.
+    allowed = getattr(app_config.skills, "allowed_skills", None)
+    if allowed:
+        allowlist = set(allowed)
+        skills = [skill for skill in skills if skill.name in allowlist]
+
     if available_skills is None:
         return skills
     return [skill for skill in skills if skill.name in available_skills]

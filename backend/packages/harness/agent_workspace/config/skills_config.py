@@ -37,6 +37,23 @@ class SkillsConfig(BaseModel):
         default=False,
         description=("When enabled, skill metadata is not injected into the system prompt. Instead, only skill names appear in <skill_index> and the LLM discovers details on demand via the describe_skill tool."),
     )
+    allowed_skills: list[str] | None = Field(
+        default=None,
+        description=(
+            "Optional allowlist of skill names. ``None`` (the default) keeps the "
+            "current behaviour of considering every enabled skill. When set, any "
+            "skill not named here is never loaded, so an operator can run with a "
+            "reviewed subset instead of whatever happens to be installed. This is "
+            "the OpenClaw-style bundled-skill allowlist: the risk being closed is "
+            "that skills activate implicitly, before anyone has reviewed them."
+        ),
+    )
+
+    def is_skill_allowed(self, skill_name: str) -> bool:
+        """True when ``skill_name`` passes the allowlist (or none is configured)."""
+        if not self.allowed_skills:
+            return True
+        return skill_name in set(self.allowed_skills)
 
     def get_skills_path(self) -> Path:
         """
