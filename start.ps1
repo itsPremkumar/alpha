@@ -1,4 +1,4 @@
-﻿# Agent Workspace - Unified System Launcher for Windows (PowerShell)
+﻿# Alpha - Unified System Launcher for Windows (PowerShell)
 # Usage:
 #   .\start.ps1               # Start full stack and open web browser
 #   .\start.ps1 -NoBrowser    # Start full stack without auto-opening browser
@@ -26,7 +26,7 @@ if (-not $env:PATHEXT -or $env:PATHEXT -notlike "*.EXE*") {
 }
 
 Write-Host "`n========================================================" -ForegroundColor Cyan
-Write-Host "    Agent Workspace - Unified Super-Agent Platform      " -ForegroundColor Cyan
+Write-Host "    Alpha - Unified Super-Agent Platform      " -ForegroundColor Cyan
 Write-Host "========================================================`n" -ForegroundColor Cyan
 
 # -- Helpers ---------------------------------------------------------------
@@ -352,7 +352,7 @@ if ($Prod) {
 
 # -- Helper for Graceful Shutdown --------------------------------------------
 function Cleanup-Stack {
-    Write-Host "`nShutting down Agent Workspace services gracefully..." -ForegroundColor Yellow
+    Write-Host "`nShutting down Alpha services gracefully..." -ForegroundColor Yellow
     if ($gatewayProcess -and -not $gatewayProcess.HasExited) {
         Write-Host "  -> Stopping Gateway API tree (PID: $($gatewayProcess.Id))..." -ForegroundColor Gray
         & taskkill /PID $($gatewayProcess.Id) /T /F 2>&1 | Out-Null
@@ -367,7 +367,7 @@ function Cleanup-Stack {
             & taskkill /PID $id /T /F 2>&1 | Out-Null
         }
     }
-    Write-Host "[OK] All Agent Workspace services stopped cleanly.`n" -ForegroundColor Green
+    Write-Host "[OK] All Alpha services stopped cleanly.`n" -ForegroundColor Green
 }
 
 # -- Helper for Auto-Restart -------------------------------------------------
@@ -506,7 +506,7 @@ if (-not $gatewayReady -or -not $frontendReady) {
 $appUrl = "http://localhost:$FrontendPort"
 
 Write-Host "`n========================================================" -ForegroundColor Green
-Write-Host "Agent Workspace is LIVE and running as ONE unified system!" -ForegroundColor Green
+Write-Host "Alpha is LIVE and running as ONE unified system!" -ForegroundColor Green
 Write-Host "========================================================" -ForegroundColor Green
 Write-Host "  Web Application:  " -NoNewline
 Write-Host "$appUrl" -ForegroundColor Cyan
@@ -518,7 +518,7 @@ Write-Host "========================================================" -Foregroun
 Write-Host "Press [Ctrl+C] to stop all services cleanly.`n" -ForegroundColor Yellow
 
 if (-not $NoBrowser) {
-    Write-Host "Opening Agent Workspace in your default web browser..." -ForegroundColor Cyan
+    Write-Host "Opening Alpha in your default web browser..." -ForegroundColor Cyan
     Start-Process $appUrl
 }
 
