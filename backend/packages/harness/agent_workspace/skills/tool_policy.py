@@ -25,16 +25,27 @@ ALWAYS_AVAILABLE_BUILTIN_TOOL_NAMES = frozenset(
 )
 
 
-def allowed_tool_names_for_skills(skills: list[Skill]) -> set[str] | None:
+def allowed_tool_names_for_skills(
+    skills: list[Skill],
+    *,
+    allow_all_when_undeclared: bool = True,
+) -> set[str] | None:
     """Return the union of explicit skill allowed-tools declarations.
 
     None means legacy allow-all behavior. It is returned only when no loaded
     skill declares allowed-tools. Once any skill declares the field, legacy
     skills without the field contribute no tools instead of disabling the
     explicit restrictions from other skills.
+
+    ``allow_all_when_undeclared=False`` closes a real gap: when *no* skill
+    declares allowed-tools the union is empty by default, which historically
+    meant "no restriction". Under OpenClaw's rule that a Skill grants no
+    permissions, an undeclared skill set should yield only the framework
+    built-ins rather than the whole tool registry. Defaults to True so existing
+    deployments keep their behaviour.
     """
     if not skills:
-        return None
+        return None if allow_all_when_undeclared else set(ALWAYS_AVAILABLE_BUILTIN_TOOL_NAMES)
 
     allowed: set[str] = set()
     has_explicit_declaration = False
@@ -47,7 +58,7 @@ def allowed_tool_names_for_skills(skills: list[Skill]) -> set[str] | None:
         allowed.update(skill.allowed_tools)
 
     if not has_explicit_declaration:
-        return None
+        return None if allow_all_when_undeclared else set(ALWAYS_AVAILABLE_BUILTIN_TOOL_NAMES)
     return allowed
 
 
@@ -56,8 +67,11 @@ def filter_tools_by_skill_allowed_tools[ToolT: NamedTool](
     skills: list[Skill],
     *,
     always_allowed_tool_names: set[str] | frozenset[str] = frozenset(),
+    allow_all_when_undeclared: bool = True,
 ) -> list[ToolT]:
-    allowed = allowed_tool_names_for_skills(skills)
+    allowed = allowed_tool_names_for_skills(
+        skills, allow_all_when_undeclared=allow_all_when_undeclared
+    )
     if allowed is None:
         return tools
 
