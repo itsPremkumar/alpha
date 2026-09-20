@@ -42,7 +42,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { BotDetailPanel } from "@/components/bots/BotDetailPanel";
 import { ActiveBotPicker } from "@/components/bots/ActiveBotPicker";
 import { ErrorBox, SkeletonList } from "@/components/ui";
-import { Activity, Shrink, Target, ClipboardList } from "lucide-react";
+import { Activity, Shrink, Target, ClipboardList, Settings } from "lucide-react";
 
 // Sections load on demand so the first paint stays light.
 const BotOpsSection = lazy(() => import("@/components/sections/BotOpsSection").then((m) => ({ default: m.BotOpsSection })));
@@ -63,6 +63,7 @@ const SystemSection = lazy(() => import("@/components/sections/SystemSection").t
 const IntegrationSection = lazy(() => import("@/components/sections/IntegrationSection").then((m) => ({ default: m.IntegrationSection })));
 const WorkforceSection = lazy(() => import("@/components/sections/WorkforceSection").then((m) => ({ default: m.WorkforceSection })));
 const WarRoomSection = lazy(() => import("@/components/sections/WarRoomSection").then((m) => ({ default: m.WarRoomSection })));
+const SettingsSection = lazy(() => import("@/components/sections/SettingsSection").then((m) => ({ default: m.SettingsSection })));
 
 function SectionFallback() {
   return (
@@ -140,7 +141,18 @@ export default function ChatView() {
       const merged = mergeThreads(tList);
       setThreads(merged);
       setModels(mList);
-      if (mList.length > 0) setSelectedModel(mList[0].id);
+      let initialModel = "default";
+      try {
+        const savedModel = localStorage.getItem("alpha_selected_model");
+        if (savedModel && (mList.length === 0 || mList.some((m) => m.id === savedModel))) {
+          initialModel = savedModel;
+        } else if (mList.length > 0) {
+          initialModel = mList[0].id;
+        }
+      } catch {
+        if (mList.length > 0) initialModel = mList[0].id;
+      }
+      setSelectedModel(initialModel);
       setActiveThreadId((prev) => prev || (merged.length > 0 ? merged[0].thread_id : null));
       setBots(bList);
       setBotsLoading(false);
@@ -811,6 +823,7 @@ export default function ChatView() {
           onExportHistory={handleExportHistory}
           onImportHistory={handleImportHistory}
           serverOnline={gatewayOk === true}
+          onOpenSettings={() => setView("settings")}
         />
       )}
 
@@ -847,9 +860,15 @@ export default function ChatView() {
               </button>
               <div className="flex-1" />
               <ActiveBotPicker bots={bots} activeBot={activeBot} onPick={rememberBot} />
-              <span className="hidden lg:inline text-xs text-muted-foreground">
-                {models.find((m) => m.id === selectedModel)?.name || "Default Agent"}
-              </span>
+              <button
+                type="button"
+                onClick={() => setView("settings")}
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-muted/70 transition-colors"
+                title="Open Settings"
+              >
+                <Settings className="size-3.5" />
+                <span className="hidden lg:inline">{models.find((m) => m.id === selectedModel)?.name || "Settings"}</span>
+              </button>
             </div>
           )}
         </header>
@@ -980,6 +999,19 @@ export default function ChatView() {
         ) : view === "integration" ? (
           <Suspense fallback={<SectionFallback />}>
             <IntegrationSection />
+          </Suspense>
+        ) : view === "settings" ? (
+          <Suspense fallback={<SectionFallback />}>
+            <SettingsSection
+              currentModel={selectedModel}
+              onModelChange={(m) => {
+                setSelectedModel(m);
+                try {
+                  localStorage.setItem("alpha_selected_model", m);
+                } catch {}
+              }}
+              onOpenView={(v) => setView(v)}
+            />
           </Suspense>
         ) : (
           <>

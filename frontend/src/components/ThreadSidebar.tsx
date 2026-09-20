@@ -1,7 +1,7 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useState } from "react";
-import { Plus, MessageSquare, Search, PanelLeftClose, PanelLeft, MoreHorizontal, Pencil, GitBranch, FolderInput, Trash2, Download, Upload, FileText } from "lucide-react";
+import { Plus, MessageSquare, Search, PanelLeftClose, PanelLeft, MoreHorizontal, Pencil, GitBranch, FolderInput, Trash2, Download, Upload, FileText, Settings } from "lucide-react";
 import { Thread } from "@/types/chat";
 import { searchThreads, renameThread, deleteThread, branchThread, moveThread } from "@/lib/threads-ext";
 import { searchLocalMessages, removeLocalThread, upsertLocalThread, storageInfo, clearLocalStore, SearchHit } from "@/lib/history-store";
@@ -26,6 +26,7 @@ interface ThreadSidebarProps {
   onImportHistory: (f: File) => Promise<string>;
   /** True when the Gateway is reachable — controls honest sync copy. Defaults to true. */
   serverOnline?: boolean;
+  onOpenSettings?: () => void;
 }
 
 export function ThreadSidebar({
@@ -41,6 +42,7 @@ export function ThreadSidebar({
   scopeAvatar,
   ownerLabel,
   serverOnline = true,
+  onOpenSettings,
 }: ThreadSidebarProps) {
   const [isOpen, setIsOpen] = useState(true);
 
@@ -182,6 +184,17 @@ export function ThreadSidebar({
         >
           <Plus className="size-4" />
         </button>
+        {onOpenSettings && (
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            className="p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors mt-auto"
+            title="Open Settings"
+            aria-label="Open Settings"
+          >
+            <Settings className="size-4" />
+          </button>
+        )}
       </div>
     );
   }
@@ -423,7 +436,20 @@ export function ThreadSidebar({
           />
         </div>
         <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-          <span>{branding.name}</span>
+          <div className="flex items-center gap-1.5">
+            <span>{branding.name}</span>
+            {onOpenSettings && (
+              <button
+                type="button"
+                onClick={onOpenSettings}
+                className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground p-0.5 rounded hover:bg-muted"
+                title="Open Settings"
+              >
+                <Settings className="size-3" />
+                <span className="text-[10px]">Settings</span>
+              </button>
+            )}
+          </div>
           <span className="flex items-center gap-1.5">
             <button
               type="button"
