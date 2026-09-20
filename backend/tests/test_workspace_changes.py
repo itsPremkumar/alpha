@@ -5,12 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from agent_workspace.config.paths import Paths
-from agent_workspace.runtime.events.store.memory import MemoryRunEventStore
-from agent_workspace.runtime.runs.manager import RunManager
-from agent_workspace.runtime.runs.worker import RunContext, run_agent
-from agent_workspace.runtime.user_context import get_effective_user_id
-from agent_workspace.workspace_changes import (
+from alpha.config.paths import Paths
+from alpha.runtime.events.store.memory import MemoryRunEventStore
+from alpha.runtime.runs.manager import RunManager
+from alpha.runtime.runs.worker import RunContext, run_agent
+from alpha.runtime.user_context import get_effective_user_id
+from alpha.workspace_changes import (
     WorkspaceChangeLimits,
     WorkspaceRoot,
     capture_workspace_snapshot,
@@ -19,8 +19,8 @@ from agent_workspace.workspace_changes import (
     record_workspace_changes,
     scan_workspace_roots,
 )
-from agent_workspace.workspace_changes.api import get_workspace_changes_response
-from agent_workspace.workspace_changes.scanner import (
+from alpha.workspace_changes.api import get_workspace_changes_response
+from alpha.workspace_changes.scanner import (
     SAMPLE_BYTES,
     _normalize_symlink_target,
     is_sensitive_workspace_path,
@@ -190,7 +190,7 @@ def test_compare_snapshots_keeps_nul_bytes_classified_as_binary(tmp_path):
 
 
 def test_count_diff_lines_ignores_only_real_headers():
-    from agent_workspace.workspace_changes.diff import _count_diff_lines
+    from alpha.workspace_changes.diff import _count_diff_lines
 
     lines = [
         "--- a/mnt/user-data/workspace/file.txt",
@@ -218,7 +218,7 @@ def test_count_diff_lines_counts_content_starting_with_dashes_or_pluses():
     """
     import difflib
 
-    from agent_workspace.workspace_changes.diff import _count_diff_lines
+    from alpha.workspace_changes.diff import _count_diff_lines
 
     lines = list(
         difflib.unified_diff(
@@ -574,7 +574,7 @@ async def test_workspace_changes_response_is_empty_when_no_event_exists():
 
 @pytest.mark.anyio
 async def test_run_agent_records_workspace_changes_event(tmp_path, monkeypatch):
-    from agent_workspace.config import paths as paths_module
+    from alpha.config import paths as paths_module
 
     monkeypatch.setattr(paths_module, "_paths", Paths(tmp_path))
 
@@ -627,7 +627,7 @@ async def test_run_agent_records_workspace_changes_event(tmp_path, monkeypatch):
 
 @pytest.mark.anyio
 async def test_record_workspace_changes_content_uses_total_changed_count(tmp_path, monkeypatch):
-    from agent_workspace.config import paths as paths_module
+    from alpha.config import paths as paths_module
 
     monkeypatch.setattr(paths_module, "_paths", Paths(tmp_path))
     user_id = get_effective_user_id()
@@ -664,7 +664,7 @@ async def test_record_workspace_changes_content_uses_total_changed_count(tmp_pat
 
 @pytest.mark.anyio
 async def test_record_workspace_changes_uses_cached_baseline_for_modified_diff(tmp_path, monkeypatch):
-    from agent_workspace.config import paths as paths_module
+    from alpha.config import paths as paths_module
 
     monkeypatch.setattr(paths_module, "_paths", Paths(tmp_path))
     user_id = get_effective_user_id()

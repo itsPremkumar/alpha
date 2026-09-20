@@ -2,7 +2,7 @@
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-from agent_workspace.client import AgentWorkspaceClient
+from alpha.client import AgentWorkspaceClient
 
 
 def test_serialize_ai_message_preserves_additional_kwargs():

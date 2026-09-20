@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from agent_workspace.safety.self_repo_guard import SelfRepoGuard
+from alpha.safety.self_repo_guard import SelfRepoGuard
 
 
 def test_self_repo_guard_blocks_mutations(tmp_path: Path):

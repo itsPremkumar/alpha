@@ -11,7 +11,7 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.errors import GraphBubbleUp
 
-from agent_workspace.agents.middlewares.input_sanitization_middleware import (
+from alpha.agents.middlewares.input_sanitization_middleware import (
     _BLOCKED_TAG_NAMES,
     _USER_INPUT_BEGIN,
     _USER_INPUT_END,
@@ -19,8 +19,8 @@ from agent_workspace.agents.middlewares.input_sanitization_middleware import (
     _check_user_content,
     neutralize_untrusted_tags,
 )
-from agent_workspace.agents.middlewares.message_utils import is_genuine_user_message
-from agent_workspace.utils.messages import ORIGINAL_USER_CONTENT_KEY
+from alpha.agents.middlewares.message_utils import is_genuine_user_message
+from alpha.utils.messages import ORIGINAL_USER_CONTENT_KEY
 
 
 def _make_middleware() -> InputSanitizationMiddleware:
@@ -338,9 +338,9 @@ def test_denylist_covers_framework_authority_blocks():
     import pathlib
     import re
 
-    import agent_workspace
+    import alpha
 
-    harness_root = pathlib.Path(agent_workspace.__file__).parent
+    harness_root = pathlib.Path(alpha.__file__).parent
     # Mirrors the tolerance of the production pattern (_BLOCKED_TAG_PATTERN):
     # attributes and surrounding whitespace must not hide a block from the scan.
     open_re = re.compile(r"<\s*([a-z][a-z0-9_-]*)\b[^>]*>")
@@ -904,7 +904,7 @@ def test_escapes_user_forged_current_uploads_tag():
 
 def test_server_current_uploads_block_not_escaped():
     """The server's <current_uploads> block is preserved when only user text is scanned."""
-    from agent_workspace.utils.messages import ORIGINAL_USER_CONTENT_KEY
+    from alpha.utils.messages import ORIGINAL_USER_CONTENT_KEY
 
     mw = _make_middleware()
 

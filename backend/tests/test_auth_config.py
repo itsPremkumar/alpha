@@ -37,7 +37,7 @@ def test_auth_config_from_env():
 def test_auth_config_missing_secret_generates_and_persists(tmp_path, caplog):
     import logging
 
-    from agent_workspace.config.paths import Paths
+    from alpha.config.paths import Paths
 
     old = cfg._auth_config
     cfg._auth_config = None
@@ -45,7 +45,7 @@ def test_auth_config_missing_secret_generates_and_persists(tmp_path, caplog):
     try:
         with patch.dict(os.environ, {}, clear=True):
             os.environ.pop("AUTH_JWT_SECRET", None)
-            with patch("agent_workspace.config.paths.get_paths", return_value=Paths(base_dir=tmp_path)), caplog.at_level(logging.WARNING):
+            with patch("alpha.config.paths.get_paths", return_value=Paths(base_dir=tmp_path)), caplog.at_level(logging.WARNING):
                 config = cfg.get_auth_config()
             assert config.jwt_secret
             assert any("AUTH_JWT_SECRET" in msg for msg in caplog.messages)
@@ -56,7 +56,7 @@ def test_auth_config_missing_secret_generates_and_persists(tmp_path, caplog):
 
 
 def test_auth_config_reuses_persisted_secret(tmp_path):
-    from agent_workspace.config.paths import Paths
+    from alpha.config.paths import Paths
 
     old = cfg._auth_config
     cfg._auth_config = None
@@ -65,7 +65,7 @@ def test_auth_config_reuses_persisted_secret(tmp_path):
     try:
         with patch.dict(os.environ, {}, clear=True):
             os.environ.pop("AUTH_JWT_SECRET", None)
-            with patch("agent_workspace.config.paths.get_paths", return_value=Paths(base_dir=tmp_path)):
+            with patch("alpha.config.paths.get_paths", return_value=Paths(base_dir=tmp_path)):
                 config = cfg.get_auth_config()
             assert config.jwt_secret == persisted
     finally:
@@ -73,7 +73,7 @@ def test_auth_config_reuses_persisted_secret(tmp_path):
 
 
 def test_auth_config_empty_secret_file_generates_new(tmp_path):
-    from agent_workspace.config.paths import Paths
+    from alpha.config.paths import Paths
 
     old = cfg._auth_config
     cfg._auth_config = None
@@ -81,7 +81,7 @@ def test_auth_config_empty_secret_file_generates_new(tmp_path):
     try:
         with patch.dict(os.environ, {}, clear=True):
             os.environ.pop("AUTH_JWT_SECRET", None)
-            with patch("agent_workspace.config.paths.get_paths", return_value=Paths(base_dir=tmp_path)):
+            with patch("alpha.config.paths.get_paths", return_value=Paths(base_dir=tmp_path)):
                 config = cfg.get_auth_config()
             assert config.jwt_secret
             assert len(config.jwt_secret) > 20

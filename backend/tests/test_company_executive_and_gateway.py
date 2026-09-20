@@ -9,9 +9,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.gateway.routers.company import router as company_router
-from agent_workspace.company.executive import ExecutiveIntelligenceLayer
-from agent_workspace.company.organization import AutonomousCompanyEngine
-from agent_workspace.tools.builtins.company_tool import company_tool
+from alpha.company.executive import ExecutiveIntelligenceLayer
+from alpha.company.organization import AutonomousCompanyEngine
+from alpha.tools.builtins.company_tool import company_tool
 
 
 def test_executive_intelligence_digest_generation():
@@ -155,8 +155,8 @@ def test_company_gateway_rest_api():
 
 
 def test_company_boundary_firewall_integrity():
-    """Verify that packages/harness/agent_workspace/company/ strictly avoids importing app.*."""
-    company_dir = Path(__file__).resolve().parent.parent / "packages" / "harness" / "agent_workspace" / "company"
+    """Verify that packages/harness/alpha/company/ strictly avoids importing app.*."""
+    company_dir = Path(__file__).resolve().parent.parent / "packages" / "harness" / "alpha" / "company"
     assert company_dir.exists(), f"Directory not found: {company_dir}"
 
     for py_file in company_dir.glob("*.py"):

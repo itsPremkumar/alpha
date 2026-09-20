@@ -2,7 +2,7 @@
 
 import pytest
 
-from agent_workspace.config.loop_detection_config import LoopDetectionConfig
+from alpha.config.loop_detection_config import LoopDetectionConfig
 
 
 class TestLoopDetectionConfig:

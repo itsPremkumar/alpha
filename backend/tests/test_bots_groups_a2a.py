@@ -30,8 +30,8 @@ def _user_request():
 def _isolated_home(tmp_path, monkeypatch):
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
     # Reset process singletons so each test gets a fresh HOME-bound instance.
-    import agent_workspace.bots.registry as bot_reg
-    import agent_workspace.groups.service as grp_svc
+    import alpha.bots.registry as bot_reg
+    import alpha.groups.service as grp_svc
 
     monkeypatch.setattr(bot_reg, "_global_registry", None)
     monkeypatch.setattr(bot_reg, "_global_registry_path", None)
@@ -102,7 +102,7 @@ async def test_groups_moderated_and_round_robin_modes() -> None:
 
 
 async def test_agent_roster_send_inbox_and_broadcast() -> None:
-    from agent_workspace.subagents.messaging import get_agent_roster
+    from alpha.subagents.messaging import get_agent_roster
 
     roster = get_agent_roster("thread-test-1")
     roster.register_agent("coder", role="worker", status="idle")

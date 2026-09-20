@@ -3,7 +3,7 @@
 
 Today AIO sandbox already accepts /mnt/user-data/... paths directly because the
 container has those paths bind-mounted per-thread. LocalSandbox, however,
-externalises that translation to ``agent_workspace.sandbox.tools`` via ``thread_data``,
+externalises that translation to ``alpha.sandbox.tools`` via ``thread_data``,
 so any caller that bypasses tools.py (e.g. ``uploads.py`` syncing files into a
 remote sandbox via ``sandbox.update_file(virtual_path, ...)``) sees inconsistent
 behaviour.
@@ -23,8 +23,8 @@ from unittest.mock import patch
 
 import pytest
 
-from agent_workspace.config.sandbox_config import SandboxConfig
-from agent_workspace.sandbox.local.local_sandbox_provider import LocalSandboxProvider
+from alpha.config.sandbox_config import SandboxConfig
+from alpha.sandbox.local.local_sandbox_provider import LocalSandboxProvider
 
 
 def _build_config(skills_dir: Path) -> SimpleNamespace:
@@ -33,9 +33,9 @@ def _build_config(skills_dir: Path) -> SimpleNamespace:
         skills=SimpleNamespace(
             container_path="/mnt/skills",
             get_skills_path=lambda: skills_dir,
-            use="agent_workspace.skills.storage.local_skill_storage:LocalSkillStorage",
+            use="alpha.skills.storage.local_skill_storage:LocalSkillStorage",
         ),
-        sandbox=SandboxConfig(use="agent_workspace.sandbox.local:LocalSandboxProvider", mounts=[]),
+        sandbox=SandboxConfig(use="alpha.sandbox.local:LocalSandboxProvider", mounts=[]),
     )
 
 
@@ -47,7 +47,7 @@ def isolated_paths(monkeypatch, tmp_path):
     real ``.agent-workspace/`` tree.
     """
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
-    from agent_workspace.config import paths as paths_module
+    from alpha.config import paths as paths_module
 
     monkeypatch.setattr(paths_module, "_paths", None)
     yield tmp_path
@@ -60,7 +60,7 @@ def provider(isolated_paths, tmp_path):
     skills_dir = tmp_path / "skills"
     skills_dir.mkdir()
     cfg = _build_config(skills_dir)
-    with patch("agent_workspace.config.get_app_config", return_value=cfg):
+    with patch("alpha.config.get_app_config", return_value=cfg):
         yield LocalSandboxProvider()
 
 
@@ -277,7 +277,7 @@ def test_reset_clears_both_generic_and_per_thread_caches(provider):
 
 
 def test_is_local_sandbox_accepts_generic_and_per_thread_id_formats():
-    from agent_workspace.sandbox.tools import is_local_sandbox
+    from alpha.sandbox.tools import is_local_sandbox
 
     generic = SimpleNamespace(state={"sandbox": {"sandbox_id": "local"}}, context={})
     per_thread = SimpleNamespace(state={"sandbox": {"sandbox_id": "local:default:alpha"}}, context={})
@@ -306,7 +306,7 @@ def test_concurrent_acquire_same_thread_yields_single_instance(provider):
     import threading
     import time
 
-    from agent_workspace.sandbox.local import local_sandbox as local_sandbox_module
+    from alpha.sandbox.local import local_sandbox as local_sandbox_module
 
     # Force a wide race window by slowing the LocalSandbox constructor down.
     original_init = local_sandbox_module.LocalSandbox.__init__
@@ -376,7 +376,7 @@ def test_thread_sandbox_cache_is_bounded(isolated_paths, tmp_path):
     skills_dir.mkdir()
     cfg = _build_config(skills_dir)
 
-    with patch("agent_workspace.config.get_app_config", return_value=cfg):
+    with patch("alpha.config.get_app_config", return_value=cfg):
         provider = LocalSandboxProvider(max_cached_threads=3)
 
     for i in range(5):
@@ -395,7 +395,7 @@ def test_lru_promotes_recently_used_thread(isolated_paths, tmp_path):
     skills_dir.mkdir()
     cfg = _build_config(skills_dir)
 
-    with patch("agent_workspace.config.get_app_config", return_value=cfg):
+    with patch("alpha.config.get_app_config", return_value=cfg):
         provider = LocalSandboxProvider(max_cached_threads=3)
 
     for name in ["a", "b", "c"]:

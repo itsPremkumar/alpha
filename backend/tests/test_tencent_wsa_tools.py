@@ -9,7 +9,7 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def reset_api_key_warned():
-    import agent_workspace.community.tencent_wsa.tools as wsa
+    import alpha.community.tencent_wsa.tools as wsa
 
     wsa._api_key_warned = set()
     yield
@@ -42,28 +42,28 @@ def _mock_http_client(response: MagicMock):
 class TestTencentWsaApiKey:
     def test_config_key_takes_precedence_over_environment(self, monkeypatch):
         monkeypatch.setenv("TENCENTCLOUD_WSA_APIKEY", "environment-key")
-        with patch("agent_workspace.community.tencent_wsa.tools.get_app_config") as get_config:
+        with patch("alpha.community.tencent_wsa.tools.get_app_config") as get_config:
             get_config.return_value.get_tool_config.return_value = _tool_config({"api_key": "config-key"})
 
-            from agent_workspace.community.tencent_wsa.tools import _get_api_key
+            from alpha.community.tencent_wsa.tools import _get_api_key
 
             assert _get_api_key() == "config-key"
 
     def test_environment_key_is_used_as_fallback(self, monkeypatch):
         monkeypatch.setenv("TENCENTCLOUD_WSA_APIKEY", "environment-key")
-        with patch("agent_workspace.community.tencent_wsa.tools.get_app_config") as get_config:
+        with patch("alpha.community.tencent_wsa.tools.get_app_config") as get_config:
             get_config.return_value.get_tool_config.return_value = _tool_config({"api_key": " "})
 
-            from agent_workspace.community.tencent_wsa.tools import _get_api_key
+            from alpha.community.tencent_wsa.tools import _get_api_key
 
             assert _get_api_key() == "environment-key"
 
     def test_missing_key_returns_a_structured_error(self, monkeypatch):
         monkeypatch.delenv("TENCENTCLOUD_WSA_APIKEY", raising=False)
-        with patch("agent_workspace.community.tencent_wsa.tools.get_app_config") as get_config:
+        with patch("alpha.community.tencent_wsa.tools.get_app_config") as get_config:
             get_config.return_value.get_tool_config.return_value = _tool_config({})
 
-            from agent_workspace.community.tencent_wsa.tools import web_search_tool
+            from alpha.community.tencent_wsa.tools import web_search_tool
 
             result = json.loads(web_search_tool.run({"query": "腾讯云"}))
 
@@ -97,12 +97,12 @@ class TestTencentWsaSearch:
         client, context_manager = _mock_http_client(http_response)
 
         with (
-            patch("agent_workspace.community.tencent_wsa.tools.get_app_config") as get_config,
-            patch("agent_workspace.community.tencent_wsa.tools.httpx.Client", return_value=context_manager),
+            patch("alpha.community.tencent_wsa.tools.get_app_config") as get_config,
+            patch("alpha.community.tencent_wsa.tools.httpx.Client", return_value=context_manager),
         ):
             get_config.return_value.get_tool_config.return_value = _tool_config({"api_key": "test-key", "max_results": 1, "mode": 2})
 
-            from agent_workspace.community.tencent_wsa.tools import web_search_tool
+            from alpha.community.tencent_wsa.tools import web_search_tool
 
             result = json.loads(web_search_tool.run({"query": "  腾讯云搜索  ", "max_results": 99}))
 
@@ -137,12 +137,12 @@ class TestTencentWsaSearch:
         client, context_manager = _mock_http_client(http_response)
 
         with (
-            patch("agent_workspace.community.tencent_wsa.tools.get_app_config") as get_config,
-            patch("agent_workspace.community.tencent_wsa.tools.httpx.Client", return_value=context_manager),
+            patch("alpha.community.tencent_wsa.tools.get_app_config") as get_config,
+            patch("alpha.community.tencent_wsa.tools.httpx.Client", return_value=context_manager),
         ):
             get_config.return_value.get_tool_config.return_value = _tool_config({"api_key": "test-key"})
 
-            from agent_workspace.community.tencent_wsa.tools import web_search_tool
+            from alpha.community.tencent_wsa.tools import web_search_tool
 
             web_search_tool.run({"query": "腾讯云"})
 
@@ -155,12 +155,12 @@ class TestTencentWsaSearch:
         client, context_manager = _mock_http_client(http_response)
 
         with (
-            patch("agent_workspace.community.tencent_wsa.tools.get_app_config") as get_config,
-            patch("agent_workspace.community.tencent_wsa.tools.httpx.Client", return_value=context_manager),
+            patch("alpha.community.tencent_wsa.tools.get_app_config") as get_config,
+            patch("alpha.community.tencent_wsa.tools.httpx.Client", return_value=context_manager),
         ):
             get_config.return_value.get_tool_config.return_value = _tool_config({"api_key": "test-key"})
 
-            from agent_workspace.community.tencent_wsa.tools import web_search_tool
+            from alpha.community.tencent_wsa.tools import web_search_tool
 
             result = json.loads(web_search_tool.run({"query": "腾讯云", "max_results": 20}))
 
@@ -169,12 +169,12 @@ class TestTencentWsaSearch:
 
     def test_empty_query_does_not_call_paid_api(self):
         with (
-            patch("agent_workspace.community.tencent_wsa.tools.get_app_config") as get_config,
-            patch("agent_workspace.community.tencent_wsa.tools.httpx.Client") as client,
+            patch("alpha.community.tencent_wsa.tools.get_app_config") as get_config,
+            patch("alpha.community.tencent_wsa.tools.httpx.Client") as client,
         ):
             get_config.return_value.get_tool_config.return_value = _tool_config({"api_key": "test-key"})
 
-            from agent_workspace.community.tencent_wsa.tools import web_search_tool
+            from alpha.community.tencent_wsa.tools import web_search_tool
 
             result = json.loads(web_search_tool.run({"query": "  "}))
 
@@ -187,12 +187,12 @@ class TestTencentWsaSearch:
         _, context_manager = _mock_http_client(http_response)
 
         with (
-            patch("agent_workspace.community.tencent_wsa.tools.get_app_config") as get_config,
-            patch("agent_workspace.community.tencent_wsa.tools.httpx.Client", return_value=context_manager),
+            patch("alpha.community.tencent_wsa.tools.get_app_config") as get_config,
+            patch("alpha.community.tencent_wsa.tools.httpx.Client", return_value=context_manager),
         ):
             get_config.return_value.get_tool_config.return_value = _tool_config({"api_key": "test-key"})
 
-            from agent_workspace.community.tencent_wsa.tools import web_search_tool
+            from alpha.community.tencent_wsa.tools import web_search_tool
 
             result = json.loads(web_search_tool.run({"query": "腾讯云"}))
 
@@ -205,12 +205,12 @@ class TestTencentWsaSearch:
         _, context_manager = _mock_http_client(http_response)
 
         with (
-            patch("agent_workspace.community.tencent_wsa.tools.get_app_config") as get_config,
-            patch("agent_workspace.community.tencent_wsa.tools.httpx.Client", return_value=context_manager),
+            patch("alpha.community.tencent_wsa.tools.get_app_config") as get_config,
+            patch("alpha.community.tencent_wsa.tools.httpx.Client", return_value=context_manager),
         ):
             get_config.return_value.get_tool_config.return_value = _tool_config({"api_key": "test-key"})
 
-            from agent_workspace.community.tencent_wsa.tools import web_search_tool
+            from alpha.community.tencent_wsa.tools import web_search_tool
 
             result = json.loads(web_search_tool.run({"query": "腾讯云"}))
 
@@ -229,12 +229,12 @@ class TestTencentWsaSearch:
         client, context_manager = _mock_http_client(http_response)
 
         with (
-            patch("agent_workspace.community.tencent_wsa.tools.get_app_config") as get_config,
-            patch("agent_workspace.community.tencent_wsa.tools.httpx.Client", return_value=context_manager),
+            patch("alpha.community.tencent_wsa.tools.get_app_config") as get_config,
+            patch("alpha.community.tencent_wsa.tools.httpx.Client", return_value=context_manager),
         ):
             get_config.return_value.get_tool_config.return_value = _tool_config({"api_key": "test-key"})
 
-            from agent_workspace.community.tencent_wsa.tools import web_search_tool
+            from alpha.community.tencent_wsa.tools import web_search_tool
 
             result = json.loads(web_search_tool.run({"query": "腾讯云"}))
 
@@ -248,12 +248,12 @@ class TestTencentWsaSearch:
         _, context_manager = _mock_http_client(http_response)
 
         with (
-            patch("agent_workspace.community.tencent_wsa.tools.get_app_config") as get_config,
-            patch("agent_workspace.community.tencent_wsa.tools.httpx.Client", return_value=context_manager),
+            patch("alpha.community.tencent_wsa.tools.get_app_config") as get_config,
+            patch("alpha.community.tencent_wsa.tools.httpx.Client", return_value=context_manager),
         ):
             get_config.return_value.get_tool_config.return_value = _tool_config({"api_key": "test-key"})
 
-            from agent_workspace.community.tencent_wsa.tools import web_search_tool
+            from alpha.community.tencent_wsa.tools import web_search_tool
 
             result = json.loads(web_search_tool.run({"query": "腾讯云"}))
 
@@ -270,16 +270,16 @@ class TestTencentWsaConfiguration:
         [(3, 3), ("7", 7), (True, 5), (2.9, 5), (0, 5), (-1, 5), (500, 50), ("bad", 5)],
     )
     def test_coerce_max_results(self, value, expected):
-        from agent_workspace.community.tencent_wsa.tools import _coerce_max_results
+        from alpha.community.tencent_wsa.tools import _coerce_max_results
 
         assert _coerce_max_results(value) == expected
 
     @pytest.mark.parametrize("value", (None, "2", True, 2.0, "bad", -1, 3))
     def test_invalid_mode_is_omitted(self, value):
-        with patch("agent_workspace.community.tencent_wsa.tools.get_app_config") as get_config:
+        with patch("alpha.community.tencent_wsa.tools.get_app_config") as get_config:
             extras = {} if value is None else {"mode": value}
             get_config.return_value.get_tool_config.return_value = _tool_config(extras)
 
-            from agent_workspace.community.tencent_wsa.tools import _get_mode
+            from alpha.community.tencent_wsa.tools import _get_mode
 
             assert _get_mode() is None

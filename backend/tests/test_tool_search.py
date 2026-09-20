@@ -1,11 +1,11 @@
 import json
 
-from agent_workspace.tools.builtins.tool_search_tool import (
+from alpha.tools.builtins.tool_search_tool import (
     catalog_tool_call,
     catalog_tool_describe,
     catalog_tool_search,
 )
-from agent_workspace.tools.search.catalog import UniversalToolCatalog, get_universal_catalog
+from alpha.tools.search.catalog import UniversalToolCatalog, get_universal_catalog
 
 
 def test_catalog_register_search_describe_call():

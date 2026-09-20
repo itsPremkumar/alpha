@@ -12,12 +12,12 @@ from pathlib import Path
 
 import pytest
 
-from agent_workspace.agents.memory import MemoryCorruptionError
-from agent_workspace.agents.memory.backends.deermem.deer_mem import DeerMem
-from agent_workspace.agents.memory.backends.deermem.deermem.config import DeerMemConfig
-from agent_workspace.agents.memory.backends.deermem.deermem.core import storage as storage_module
-from agent_workspace.agents.memory.backends.deermem.deermem.core.paths import fact_file_path
-from agent_workspace.agents.memory.backends.deermem.deermem.core.storage import (
+from alpha.agents.memory import MemoryCorruptionError
+from alpha.agents.memory.backends.deermem.deer_mem import DeerMem
+from alpha.agents.memory.backends.deermem.deermem.config import DeerMemConfig
+from alpha.agents.memory.backends.deermem.deermem.core import storage as storage_module
+from alpha.agents.memory.backends.deermem.deermem.core.paths import fact_file_path
+from alpha.agents.memory.backends.deermem.deermem.core.storage import (
     FileMemoryStorage,
     MemoryFactRevisionConflict,
     MemoryManifestRevisionConflict,

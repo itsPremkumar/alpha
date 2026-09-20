@@ -19,10 +19,10 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from agent_workspace.config.run_ownership_config import RunOwnershipConfig
-from agent_workspace.runtime import ORPHAN_RECOVERY_STOP_REASON, RunManager, RunStatus, ThreadOperationKind
-from agent_workspace.runtime.runs.manager import CancelOutcome, ConflictError, _generate_worker_id
-from agent_workspace.runtime.runs.store.memory import MemoryRunStore
+from alpha.config.run_ownership_config import RunOwnershipConfig
+from alpha.runtime import ORPHAN_RECOVERY_STOP_REASON, RunManager, RunStatus, ThreadOperationKind
+from alpha.runtime.runs.manager import CancelOutcome, ConflictError, _generate_worker_id
+from alpha.runtime.runs.store.memory import MemoryRunStore
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -587,7 +587,7 @@ async def test_periodic_reconciliation_logs_recovered_run_ids_when_callback_fail
             created_at=created_at,
         )
 
-    with caplog.at_level("WARNING", logger="agent_workspace.runtime.runs.manager"):
+    with caplog.at_level("WARNING", logger="alpha.runtime.runs.manager"):
         await manager._reconcile_orphans_periodic()
         await asyncio.sleep(0)
 
@@ -1911,7 +1911,7 @@ class _EndingCrossProcessBridge:
         return None
 
     def subscribe(self, run_id, *, last_event_id=None, heartbeat_interval=15.0):
-        from agent_workspace.runtime import END_SENTINEL
+        from alpha.runtime import END_SENTINEL
 
         async def events():
             yield END_SENTINEL
@@ -1928,7 +1928,7 @@ def _make_cancel_test_app(mgr: RunManager, *, bridge=None):
     from fastapi.testclient import TestClient
 
     from app.gateway.routers import thread_runs
-    from agent_workspace.runtime import MemoryStreamBridge
+    from alpha.runtime import MemoryStreamBridge
 
     app = make_authed_test_app()
     app.include_router(thread_runs.router)

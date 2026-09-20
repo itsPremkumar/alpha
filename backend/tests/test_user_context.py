@@ -11,8 +11,8 @@ import pytest
 from langchain_core.runnables import RunnableLambda
 from langgraph.runtime import Runtime, ServerInfo
 
-from agent_workspace.config.paths import Paths, make_safe_user_id
-from agent_workspace.runtime.user_context import (
+from alpha.config.paths import Paths, make_safe_user_id
+from alpha.runtime.user_context import (
     DEFAULT_USER_ID,
     CurrentUser,
     get_current_user,

@@ -12,10 +12,10 @@ from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage, HumanMessage
 
 from app.gateway.routers import thread_runs
-from agent_workspace.runtime import RunRecord
-from agent_workspace.runtime.events.store.memory import MemoryRunEventStore
-from agent_workspace.runtime.journal import build_branch_history_seed_events
-from agent_workspace.runtime.runs.manager import EditReplayVisibility
+from alpha.runtime import RunRecord
+from alpha.runtime.events.store.memory import MemoryRunEventStore
+from alpha.runtime.journal import build_branch_history_seed_events
+from alpha.runtime.runs.manager import EditReplayVisibility
 
 
 def _make_app(

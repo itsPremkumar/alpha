@@ -19,15 +19,15 @@ import pytest
 
 # Module names mocked to break circular imports (same set as test_subagent_executor.py)
 _MOCKED_MODULE_NAMES = [
-    "agent_workspace.agents",
-    "agent_workspace.agents.thread_state",
-    "agent_workspace.agents.middlewares",
-    "agent_workspace.agents.middlewares.thread_data_middleware",
-    "agent_workspace.sandbox",
-    "agent_workspace.sandbox.middleware",
-    "agent_workspace.sandbox.security",
-    "agent_workspace.models",
-    "agent_workspace.skills.storage",
+    "alpha.agents",
+    "alpha.agents.thread_state",
+    "alpha.agents.middlewares",
+    "alpha.agents.middlewares.thread_data_middleware",
+    "alpha.sandbox",
+    "alpha.sandbox.middleware",
+    "alpha.sandbox.security",
+    "alpha.models",
+    "alpha.skills.storage",
 ]
 
 
@@ -36,7 +36,7 @@ def _default_app_config():
 
 
 def _clear_stale_executor_package_attr() -> None:
-    subagents_pkg = sys.modules.get("agent_workspace.subagents")
+    subagents_pkg = sys.modules.get("alpha.subagents")
     if subagents_pkg is not None and hasattr(subagents_pkg, "executor"):
         delattr(subagents_pkg, "executor")
 
@@ -45,22 +45,22 @@ def _clear_stale_executor_package_attr() -> None:
 def _setup_executor_module():
     """Set up mocked modules and import the real executor (same pattern as test_subagent_executor.py)."""
     original_modules = {name: sys.modules.get(name) for name in _MOCKED_MODULE_NAMES}
-    original_executor = sys.modules.get("agent_workspace.subagents.executor")
+    original_executor = sys.modules.get("alpha.subagents.executor")
 
-    if "agent_workspace.subagents.executor" in sys.modules:
-        del sys.modules["agent_workspace.subagents.executor"]
+    if "alpha.subagents.executor" in sys.modules:
+        del sys.modules["alpha.subagents.executor"]
     _clear_stale_executor_package_attr()
 
     for name in _MOCKED_MODULE_NAMES:
         sys.modules[name] = MagicMock()
-    storage_module = ModuleType("agent_workspace.skills.storage")
+    storage_module = ModuleType("alpha.skills.storage")
     storage_module.get_or_new_skill_storage = lambda **kwargs: SimpleNamespace(load_skills=lambda *, enabled_only: [])
-    sys.modules["agent_workspace.skills.storage"] = storage_module
+    sys.modules["alpha.skills.storage"] = storage_module
 
-    from agent_workspace.subagents.config import SubagentConfig
-    from agent_workspace.subagents.executor import SubagentExecutor
+    from alpha.subagents.config import SubagentConfig
+    from alpha.subagents.executor import SubagentExecutor
 
-    executor_module = sys.modules["agent_workspace.subagents.executor"]
+    executor_module = sys.modules["alpha.subagents.executor"]
     executor_module.get_app_config = _default_app_config
 
     yield {
@@ -76,9 +76,9 @@ def _setup_executor_module():
             del sys.modules[name]
 
     if original_executor is not None:
-        sys.modules["agent_workspace.subagents.executor"] = original_executor
-    elif "agent_workspace.subagents.executor" in sys.modules:
-        del sys.modules["agent_workspace.subagents.executor"]
+        sys.modules["alpha.subagents.executor"] = original_executor
+    elif "alpha.subagents.executor" in sys.modules:
+        del sys.modules["alpha.subagents.executor"]
 
 
 class TestSubagentCheckpointerIsolation:
@@ -106,11 +106,11 @@ class TestSubagentCheckpointerIsolation:
             return []
 
         monkeypatch.setattr(executor_module, "create_agent", fake_create_agent)
-        mw_module = ModuleType("agent_workspace.agents.middlewares.tool_error_handling_middleware")
+        mw_module = ModuleType("alpha.agents.middlewares.tool_error_handling_middleware")
         mw_module.build_subagent_runtime_middlewares = fake_build_subagent_runtime_middlewares
         monkeypatch.setitem(
             sys.modules,
-            "agent_workspace.agents.middlewares.tool_error_handling_middleware",
+            "alpha.agents.middlewares.tool_error_handling_middleware",
             mw_module,
         )
 

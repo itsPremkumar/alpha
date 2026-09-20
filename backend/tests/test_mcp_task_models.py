@@ -2,7 +2,7 @@ from datetime import timedelta
 
 import pytest
 
-from agent_workspace.mcp.tasks import McpTaskDriverRegistry, TaskSnapshot, TaskStatus, TaskSubmission, TaskSubmitRequest
+from alpha.mcp.tasks import McpTaskDriverRegistry, TaskSnapshot, TaskStatus, TaskSubmission, TaskSubmitRequest
 
 
 def test_task_snapshot_normalizes_string_statuses():

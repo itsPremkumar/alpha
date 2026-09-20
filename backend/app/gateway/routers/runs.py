@@ -17,8 +17,8 @@ from app.gateway.deps import get_feedback_repo, get_run_event_store, get_run_man
 from app.gateway.pagination import trim_run_message_page
 from app.gateway.run_models import RunCreateRequest
 from app.gateway.services import abuild_checkpoint_state_accessor, sse_consumer, start_run, wait_for_run_completion
-from agent_workspace.runtime import serialize_channel_values_for_api
-from agent_workspace.utils.thread_id import resolve_thread_id
+from alpha.runtime import serialize_channel_values_for_api
+from alpha.utils.thread_id import resolve_thread_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/runs", tags=["runs"])

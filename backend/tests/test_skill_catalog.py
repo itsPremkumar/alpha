@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from agent_workspace.skills.catalog import MAX_RESULTS, SkillCatalog
-from agent_workspace.skills.types import Skill, SkillCategory
+from alpha.skills.catalog import MAX_RESULTS, SkillCatalog
+from alpha.skills.types import Skill, SkillCategory
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 

@@ -12,7 +12,7 @@ personality could otherwise close its tag and forge a framework-trusted
 
 from __future__ import annotations
 
-from agent_workspace.agents.lead_agent import prompt as prompt_module
+from alpha.agents.lead_agent import prompt as prompt_module
 
 # A value that breaks out of the <soul> block and forges a framework-reserved
 # block the model would read as trusted context.

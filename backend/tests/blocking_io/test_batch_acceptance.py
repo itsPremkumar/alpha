@@ -7,21 +7,21 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from agent_workspace.config.paths import Paths
-from agent_workspace.subagents import batch_acceptance
-from agent_workspace.subagents.acceptance_checks import check_acceptance_criteria
+from alpha.config.paths import Paths
+from alpha.subagents import batch_acceptance
+from alpha.subagents.acceptance_checks import check_acceptance_criteria
 
 pytestmark = pytest.mark.asyncio
 
 
 async def _setup(monkeypatch, tmp_path):
     paths = await asyncio.to_thread(Paths, str(tmp_path))
-    monkeypatch.setattr("agent_workspace.config.paths._paths", paths)
+    monkeypatch.setattr("alpha.config.paths._paths", paths)
     probe = tmp_path / "probe.txt"
     probe.write_text("actual output")
     lease = SimpleNamespace(sandbox_id="local", owner_id="check-lease", release=AsyncMock())
-    monkeypatch.setattr("agent_workspace.sandbox.sandbox_provider.get_sandbox_provider", lambda: object())
-    monkeypatch.setattr("agent_workspace.sandbox.lease.acquire_sandbox_client_lease", AsyncMock(return_value=lease))
+    monkeypatch.setattr("alpha.sandbox.sandbox_provider.get_sandbox_provider", lambda: object())
+    monkeypatch.setattr("alpha.sandbox.lease.acquire_sandbox_client_lease", AsyncMock(return_value=lease))
     return probe, lease
 
 

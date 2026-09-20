@@ -33,8 +33,8 @@ from pathlib import Path
 import pytest
 from sqlalchemy.ext.asyncio import create_async_engine
 
-import agent_workspace.persistence.models  # noqa: F401
-from agent_workspace.persistence import bootstrap as bootstrap_mod
+import alpha.persistence.models  # noqa: F401
+from alpha.persistence import bootstrap as bootstrap_mod
 
 pytestmark = pytest.mark.asyncio
 

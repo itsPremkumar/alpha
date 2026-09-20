@@ -14,8 +14,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from agent_workspace.config.database_config import DatabaseConfig
-from agent_workspace.runtime.runs.store.memory import MemoryRunStore
+from alpha.config.database_config import DatabaseConfig
+from alpha.runtime.runs.store.memory import MemoryRunStore
 
 # -- DatabaseConfig --
 
@@ -28,7 +28,7 @@ class TestDatabaseConfig:
 
     def test_sqlite_paths_unified(self):
         c = DatabaseConfig(backend="sqlite", sqlite_dir="./mydata")
-        assert c.sqlite_path.endswith("agent_workspace.db")
+        assert c.sqlite_path.endswith("alpha.db")
         assert "mydata" in c.sqlite_path
         # Backward-compatible aliases point to the same file
         assert c.checkpointer_sqlite_path == c.sqlite_path
@@ -38,7 +38,7 @@ class TestDatabaseConfig:
         c = DatabaseConfig(backend="sqlite", sqlite_dir="./data")
         url = c.app_sqlalchemy_url
         assert url.startswith("sqlite+aiosqlite:///")
-        assert "agent_workspace.db" in url
+        assert "alpha.db" in url
 
     def test_app_sqlalchemy_url_postgres(self):
         c = DatabaseConfig(
@@ -75,7 +75,7 @@ class TestDatabaseConfig:
         c = DatabaseConfig()
         assert c.postgres_schema == ""
 
-    @pytest.mark.parametrize("schema", ["agent_workspace", "my_schema", "_private", "s", "a" * 63])
+    @pytest.mark.parametrize("schema", ["alpha", "my_schema", "_private", "s", "a" * 63])
     def test_postgres_schema_accepts_valid_identifier(self, schema):
         c = DatabaseConfig(backend="postgres", postgres_url="postgresql://u:p@h:5432/db", postgres_schema=schema)
         assert c.postgres_schema == schema
@@ -94,13 +94,13 @@ class TestDatabaseConfig:
             "Public",
             # Trailing/leading whitespace must be rejected: a ``$``-anchored
             # ``re.match`` accepts a single trailing ``\n``, which would create a
-            # quoted schema literally named ``agent_workspace\n`` while the unquoted
-            # search_path folds to ``agent_workspace`` and misses it (tables land in
+            # quoted schema literally named ``alpha\n`` while the unquoted
+            # search_path folds to ``alpha`` and misses it (tables land in
             # ``public``). ``re.fullmatch`` on an unanchored pattern rejects it.
-            "agent_workspace\n",
-            "agent_workspace\t",
+            "alpha\n",
+            "alpha\t",
             "\nagent_workspace",
-            "agent_workspace ",
+            "alpha ",
         ],
     )
     def test_postgres_schema_rejects_invalid_identifier(self, schema):
@@ -110,9 +110,9 @@ class TestDatabaseConfig:
             DatabaseConfig(backend="postgres", postgres_url="postgresql://u:p@h:5432/db", postgres_schema=schema)
 
     def test_postgres_schema_does_not_pollute_url(self):
-        c = DatabaseConfig(backend="postgres", postgres_url="postgresql://u:p@h:5432/db", postgres_schema="agent_workspace")
+        c = DatabaseConfig(backend="postgres", postgres_url="postgresql://u:p@h:5432/db", postgres_schema="alpha")
         url = c.app_sqlalchemy_url
-        assert "agent_workspace" not in url.replace("/db", "")
+        assert "alpha" not in url.replace("/db", "")
         assert url.startswith("postgresql+asyncpg://")
 
 
@@ -326,7 +326,7 @@ class TestBaseToDictMixin:
         from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
         from sqlalchemy.orm import Mapped, mapped_column
 
-        from agent_workspace.persistence.base import Base
+        from alpha.persistence.base import Base
 
         class _Tmp(Base):
             __tablename__ = "_tmp_test"
@@ -358,7 +358,7 @@ class TestBaseToDictMixin:
 class TestEngineLifecycle:
     @pytest.mark.anyio
     async def test_memory_is_noop(self):
-        from agent_workspace.persistence.engine import close_engine, get_session_factory, init_engine
+        from alpha.persistence.engine import close_engine, get_session_factory, init_engine
 
         await init_engine("memory")
         assert get_session_factory() is None
@@ -366,7 +366,7 @@ class TestEngineLifecycle:
 
     @pytest.mark.anyio
     async def test_sqlite_creates_engine(self, tmp_path):
-        from agent_workspace.persistence.engine import close_engine, get_session_factory, init_engine
+        from alpha.persistence.engine import close_engine, get_session_factory, init_engine
 
         url = f"sqlite+aiosqlite:///{tmp_path / 'test.db'}"
         await init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
@@ -380,7 +380,7 @@ class TestEngineLifecycle:
     @pytest.mark.anyio
     async def test_postgres_without_asyncpg_gives_actionable_error(self):
         """If asyncpg is not installed, error message tells user what to do."""
-        from agent_workspace.persistence.engine import init_engine
+        from alpha.persistence.engine import init_engine
 
         with (
             patch.dict(sys.modules, {"asyncpg": None}),
@@ -418,7 +418,7 @@ def _make_fake_pg_engine():
 class TestPostgresSchemaInit:
     @pytest.mark.anyio
     async def test_passes_search_path_connect_args(self, monkeypatch):
-        import agent_workspace.persistence.engine as engine_module
+        import alpha.persistence.engine as engine_module
 
         monkeypatch.setitem(sys.modules, "asyncpg", object())
         fake_engine, _calls = _make_fake_pg_engine()
@@ -429,34 +429,34 @@ class TestPostgresSchemaInit:
             return fake_engine
 
         monkeypatch.setattr(engine_module, "create_async_engine", fake_create)
-        monkeypatch.setattr("agent_workspace.persistence.bootstrap.bootstrap_schema", AsyncMock())
+        monkeypatch.setattr("alpha.persistence.bootstrap.bootstrap_schema", AsyncMock())
 
         await engine_module.init_engine(
             "postgres",
             url="postgresql+asyncpg://u:p@h:5432/db",
-            postgres_schema="agent_workspace",
+            postgres_schema="alpha",
         )
 
         assert captured["connect_args"] == {
             "command_timeout": engine_module.POSTGRES_COMMAND_TIMEOUT_SECONDS,
-            "server_settings": {"search_path": "agent_workspace"},
+            "server_settings": {"search_path": "alpha"},
         }
         await engine_module.close_engine()
 
     @pytest.mark.anyio
     async def test_creates_schema_before_bootstrap(self, monkeypatch):
-        import agent_workspace.persistence.engine as engine_module
+        import alpha.persistence.engine as engine_module
 
         monkeypatch.setitem(sys.modules, "asyncpg", object())
         fake_engine, calls = _make_fake_pg_engine()
         monkeypatch.setattr(engine_module, "create_async_engine", lambda url, **kw: fake_engine)
         calls.attach_mock(AsyncMock(), "bootstrap_schema")
-        monkeypatch.setattr("agent_workspace.persistence.bootstrap.bootstrap_schema", calls.bootstrap_schema)
+        monkeypatch.setattr("alpha.persistence.bootstrap.bootstrap_schema", calls.bootstrap_schema)
 
         await engine_module.init_engine(
             "postgres",
             url="postgresql+asyncpg://u:p@h:5432/db",
-            postgres_schema="agent_workspace",
+            postgres_schema="alpha",
         )
 
         names = [c[0] for c in calls.mock_calls]
@@ -467,12 +467,12 @@ class TestPostgresSchemaInit:
         assert names.index("execute") < names.index("bootstrap_schema")
         # The DDL passed to execute must be a CreateSchema for the target schema.
         execute_arg = calls.execute.call_args[0][0]
-        assert "agent_workspace" in str(execute_arg)
+        assert "alpha" in str(execute_arg)
         await engine_module.close_engine()
 
     @pytest.mark.anyio
     async def test_empty_schema_skips_connect_args_and_ddl(self, monkeypatch):
-        import agent_workspace.persistence.engine as engine_module
+        import alpha.persistence.engine as engine_module
 
         monkeypatch.setitem(sys.modules, "asyncpg", object())
         fake_engine, calls = _make_fake_pg_engine()
@@ -484,7 +484,7 @@ class TestPostgresSchemaInit:
 
         monkeypatch.setattr(engine_module, "create_async_engine", fake_create)
         calls.attach_mock(AsyncMock(), "bootstrap_schema")
-        monkeypatch.setattr("agent_workspace.persistence.bootstrap.bootstrap_schema", calls.bootstrap_schema)
+        monkeypatch.setattr("alpha.persistence.bootstrap.bootstrap_schema", calls.bootstrap_schema)
 
         await engine_module.init_engine("postgres", url="postgresql+asyncpg://u:p@h:5432/db")
 

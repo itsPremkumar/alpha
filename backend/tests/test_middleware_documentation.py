@@ -7,9 +7,9 @@ from pathlib import Path
 import pytest
 from langchain.agents.middleware import AgentMiddleware
 
-from agent_workspace.agents import create_agent_workspace_agent
-from agent_workspace.client import AgentWorkspaceClient
-from agent_workspace.config.extensions_config import ExtensionsConfig
+from alpha.agents import create_agent_workspace_agent
+from alpha.client import AgentWorkspaceClient
+from alpha.config.extensions_config import ExtensionsConfig
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MIDDLEWARE_GUIDES = (

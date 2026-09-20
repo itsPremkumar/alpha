@@ -2,9 +2,9 @@
 
 import json
 
-from agent_workspace.reasoning.tom.consultant import TheoryOfMindConsultant
-from agent_workspace.reasoning.tom.models import PriorityDomain, RiskTolerance
-from agent_workspace.tools.builtins.tom_consult_tool import tom_consult
+from alpha.reasoning.tom.consultant import TheoryOfMindConsultant
+from alpha.reasoning.tom.models import PriorityDomain, RiskTolerance
+from alpha.tools.builtins.tom_consult_tool import tom_consult
 
 
 def test_tom_consultant_refactor_invariants():

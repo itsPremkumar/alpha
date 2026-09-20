@@ -12,8 +12,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from agent_workspace.skills.authoring import validate_skill_draft
-from agent_workspace.skills.workshop import SkillDraft, SkillWorkshopEngine
+from alpha.skills.authoring import validate_skill_draft
+from alpha.skills.workshop import SkillDraft, SkillWorkshopEngine
 
 logger = logging.getLogger(__name__)
 

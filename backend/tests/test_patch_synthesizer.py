@@ -1,6 +1,6 @@
 """Tests for PatchSynthesizer, diff statistics, and patch hygiene validator."""
 
-from agent_workspace.workspace_changes.patch_synthesizer import (
+from alpha.workspace_changes.patch_synthesizer import (
     PatchSynthesizer,
 )
 

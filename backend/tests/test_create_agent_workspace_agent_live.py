@@ -37,7 +37,7 @@ def _make_model():
 @requires_llm
 def test_minimal_agent_responds():
     """create_agent_workspace_agent(model) produces a graph that returns a response."""
-    from agent_workspace.agents.factory import create_agent_workspace_agent
+    from alpha.agents.factory import create_agent_workspace_agent
 
     model = _make_model()
     graph = create_agent_workspace_agent(model, features=None, middleware=[])
@@ -60,7 +60,7 @@ def test_minimal_agent_responds():
 @requires_llm
 def test_agent_with_custom_tool():
     """Agent can invoke a user-provided tool and return the result."""
-    from agent_workspace.agents.factory import create_agent_workspace_agent
+    from alpha.agents.factory import create_agent_workspace_agent
 
     @tool
     def add(a: int, b: int) -> int:
@@ -88,8 +88,8 @@ def test_agent_with_custom_tool():
 @requires_llm
 def test_features_mode_middleware_chain():
     """RuntimeFeatures assembles a working middleware chain that executes."""
-    from agent_workspace.agents.factory import create_agent_workspace_agent
-    from agent_workspace.agents.features import RuntimeFeatures
+    from alpha.agents.factory import create_agent_workspace_agent
+    from alpha.agents.features import RuntimeFeatures
 
     model = _make_model()
     feat = RuntimeFeatures(sandbox=False, auto_title=False, memory=False)

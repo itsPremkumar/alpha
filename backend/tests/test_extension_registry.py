@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from agent_workspace.extensions.registry import EMPTY_EXTENSIONS, ExtensionRegistry
+from alpha.extensions.registry import EMPTY_EXTENSIONS, ExtensionRegistry
 
 
 class _Contributor:

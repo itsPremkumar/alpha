@@ -6,9 +6,9 @@ import time
 
 import pytest
 
-from agent_workspace.skills.authoring import build_learn_prompt, validate_skill_draft
-from agent_workspace.skills.curator import SkillCurator
-from agent_workspace.skills.usage import SkillUsageTracker
+from alpha.skills.authoring import build_learn_prompt, validate_skill_draft
+from alpha.skills.curator import SkillCurator
+from alpha.skills.usage import SkillUsageTracker
 
 
 @pytest.fixture()

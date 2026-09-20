@@ -11,16 +11,16 @@ from agent_workspace_extension_api import EXTENSION_TASK_STORE_KEY, ExtensionDat
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
 
-from agent_workspace.extensions import (
+from alpha.extensions import (
     EXTENSION_SNAPSHOT_CONTEXT_KEY,
     get_agent_build_extensions,
     reset_loaded_extensions,
     resolve_run_extensions,
     set_loaded_extensions,
 )
-from agent_workspace.extensions.registry import ExtensionRegistry
-from agent_workspace.runtime.runs.manager import RunManager
-from agent_workspace.runtime.runs.worker import RunContext, _build_runtime_context, run_agent
+from alpha.extensions.registry import ExtensionRegistry
+from alpha.runtime.runs.manager import RunManager
+from alpha.runtime.runs.worker import RunContext, _build_runtime_context, run_agent
 
 
 def test_build_runtime_context_installs_the_extension_store():
@@ -127,15 +127,15 @@ def _bridge():
 
 
 _MOCKED_SUBAGENT_MODULES = (
-    "agent_workspace.agents",
-    "agent_workspace.agents.thread_state",
-    "agent_workspace.agents.middlewares",
-    "agent_workspace.agents.middlewares.thread_data_middleware",
-    "agent_workspace.sandbox",
-    "agent_workspace.sandbox.middleware",
-    "agent_workspace.sandbox.security",
-    "agent_workspace.models",
-    "agent_workspace.skills.storage",
+    "alpha.agents",
+    "alpha.agents.thread_state",
+    "alpha.agents.middlewares",
+    "alpha.agents.middlewares.thread_data_middleware",
+    "alpha.sandbox",
+    "alpha.sandbox.middleware",
+    "alpha.sandbox.security",
+    "alpha.models",
+    "alpha.skills.storage",
 )
 
 
@@ -143,27 +143,27 @@ _MOCKED_SUBAGENT_MODULES = (
 def _subagent_env():
     """Import the real executor behind tests/conftest.py's cycle-breaking mock."""
     original_modules = {name: sys.modules.get(name) for name in _MOCKED_SUBAGENT_MODULES}
-    original_executor = sys.modules.get("agent_workspace.subagents.executor")
+    original_executor = sys.modules.get("alpha.subagents.executor")
     missing = object()
-    subagents_pkg = sys.modules.get("agent_workspace.subagents")
+    subagents_pkg = sys.modules.get("alpha.subagents")
     original_executor_attr = getattr(subagents_pkg, "executor", missing) if subagents_pkg is not None else missing
 
-    sys.modules.pop("agent_workspace.subagents.executor", None)
+    sys.modules.pop("alpha.subagents.executor", None)
     if subagents_pkg is not None and hasattr(subagents_pkg, "executor"):
         delattr(subagents_pkg, "executor")
 
     try:
         for name in _MOCKED_SUBAGENT_MODULES:
             sys.modules[name] = MagicMock()
-        storage_module = ModuleType("agent_workspace.skills.storage")
+        storage_module = ModuleType("alpha.skills.storage")
         storage_module.get_or_new_skill_storage = lambda **kwargs: SimpleNamespace(load_skills=lambda *, enabled_only: [])
         storage_module.get_or_new_user_skill_storage = lambda user_id, **kwargs: SimpleNamespace(load_skills=lambda *, enabled_only: [])
-        sys.modules["agent_workspace.skills.storage"] = storage_module
+        sys.modules["alpha.skills.storage"] = storage_module
 
-        from agent_workspace.subagents.config import SubagentConfig
-        from agent_workspace.subagents.executor import SubagentExecutor, SubagentResult, SubagentStatus
+        from alpha.subagents.config import SubagentConfig
+        from alpha.subagents.executor import SubagentExecutor, SubagentResult, SubagentStatus
 
-        executor_module = sys.modules["agent_workspace.subagents.executor"]
+        executor_module = sys.modules["alpha.subagents.executor"]
         executor_module.get_app_config = lambda: SimpleNamespace(
             tool_search=SimpleNamespace(enabled=False),
             authorization=SimpleNamespace(enabled=False),
@@ -181,10 +181,10 @@ def _subagent_env():
             else:
                 sys.modules[name] = original
         if original_executor is None:
-            sys.modules.pop("agent_workspace.subagents.executor", None)
+            sys.modules.pop("alpha.subagents.executor", None)
         else:
-            sys.modules["agent_workspace.subagents.executor"] = original_executor
-        subagents_pkg = sys.modules.get("agent_workspace.subagents")
+            sys.modules["alpha.subagents.executor"] = original_executor
+        subagents_pkg = sys.modules.get("alpha.subagents")
         if subagents_pkg is not None:
             if original_executor_attr is missing:
                 if hasattr(subagents_pkg, "executor"):

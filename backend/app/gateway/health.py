@@ -35,11 +35,11 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import text
 
-from agent_workspace.persistence.engine import get_engine
+from alpha.persistence.engine import get_engine
 
 if TYPE_CHECKING:
-    from agent_workspace.config.app_config import AppConfig
-    from agent_workspace.config.checkpointer_config import CheckpointerConfig
+    from alpha.config.app_config import AppConfig
+    from alpha.config.checkpointer_config import CheckpointerConfig
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +112,7 @@ def resolve_checkpointer_config(startup_config: AppConfig) -> CheckpointerConfig
     callers must treat that as a failure (unreachable), never as
     ``not_configured``.
     """
-    from agent_workspace.runtime.checkpointer.provider import _resolve_checkpointer_config
+    from alpha.runtime.checkpointer.provider import _resolve_checkpointer_config
 
     try:
         return _resolve_checkpointer_config(startup_config)
@@ -143,7 +143,7 @@ def _sqlite_disk_uri(conn_str: str) -> str:
     readiness probe can never resurrect a checkpointer/Store file that was
     deleted or lost after startup - absence must surface as unreachable. Plain
     filesystem paths (already absolute after
-    ``agent_workspace.runtime.store._sqlite_utils.resolve_sqlite_conn_str``) are
+    ``alpha.runtime.store._sqlite_utils.resolve_sqlite_conn_str``) are
     converted with ``Path.as_uri`` for correct percent-encoding; existing
     ``file:`` URIs keep their path bytes and get ``mode=rw`` merged into the
     query, replacing any pinned mode.
@@ -173,7 +173,7 @@ async def _probe_sqlite_backend(conn_string: str | None) -> str:
     except ImportError:
         logger.error("Readiness probe: aiosqlite is not installed for the sqlite checkpointer backend")
         return DATABASE_UNREACHABLE
-    from agent_workspace.runtime.store._sqlite_utils import resolve_sqlite_conn_str
+    from alpha.runtime.store._sqlite_utils import resolve_sqlite_conn_str
 
     conn_str = resolve_sqlite_conn_str(conn_string or "store.db")
     if _sqlite_is_in_memory(conn_str):
@@ -199,7 +199,7 @@ async def _probe_postgres_backend(conn_string: str, schema: str) -> str:
         logger.error("Readiness probe: psycopg is not installed for the postgres checkpointer backend")
         return DATABASE_UNREACHABLE
     try:
-        from agent_workspace.persistence.postgres_schema import dsn_with_search_path, normalize_libpq_dsn
+        from alpha.persistence.postgres_schema import dsn_with_search_path, normalize_libpq_dsn
 
         dsn = dsn_with_search_path(normalize_libpq_dsn(conn_string), schema)
         async with asyncio.timeout(_PROBE_TIMEOUT_SECONDS):

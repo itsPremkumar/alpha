@@ -15,8 +15,8 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
 from app.gateway.deps import require_admin_user
-from agent_workspace.planning.bridge import AutonomousDispatchBridge
-from agent_workspace.planning.meta_planner import CognitiveMetaPlanner
+from alpha.planning.bridge import AutonomousDispatchBridge
+from alpha.planning.meta_planner import CognitiveMetaPlanner
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/plan-mode", tags=["plan-mode"])
@@ -82,7 +82,7 @@ class InterviewReviewRequest(BaseModel):
 @router.post("/interview/questions")
 async def interview_questions(payload: InterviewStartRequest) -> dict:
     """Derive gap questions that must be answered before planning is safe."""
-    from agent_workspace.planning.interview import derive_gap_questions, new_plan
+    from alpha.planning.interview import derive_gap_questions, new_plan
 
     questions = await asyncio.to_thread(derive_gap_questions, payload.objective, known=payload.known)
     plan = new_plan(payload.objective)
@@ -98,7 +98,7 @@ async def interview_review(payload: InterviewReviewRequest) -> dict:
         raise HTTPException(status_code=422, detail="verdict must be approve|request_changes|reject.")
 
     def _review():
-        from agent_workspace.planning.interview import PlanArtifact, record_review
+        from alpha.planning.interview import PlanArtifact, record_review
 
         steps = payload.plan.get("steps", [])
         risks = payload.plan.get("risks", [])

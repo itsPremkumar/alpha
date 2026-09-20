@@ -71,8 +71,8 @@ async def seed_baseline(backend: str, pg_url: str, pg_schema: str, n_users: int 
     the same run."""
     from app.gateway.auth.models import User
     from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
-    from agent_workspace.config.database_config import DatabaseConfig
-    from agent_workspace.persistence.engine import close_engine, get_session_factory, init_engine_from_config
+    from alpha.config.database_config import DatabaseConfig
+    from alpha.persistence.engine import close_engine, get_session_factory, init_engine_from_config
 
     if backend == "sqlite":
         sqlite_dir = Path(SQLITE_BENCH_DIR)
@@ -98,7 +98,7 @@ async def seed_baseline(backend: str, pg_url: str, pg_schema: str, n_users: int 
         # schema, never a shared/production one.
         from sqlalchemy import text
 
-        from agent_workspace.persistence.engine import get_engine
+        from alpha.persistence.engine import get_engine
 
         engine = get_engine()
         async with engine.begin() as conn:
@@ -122,7 +122,7 @@ async def drop_isolated_schema(pg_url: str, pg_schema: str) -> None:
     from sqlalchemy import text
     from sqlalchemy.ext.asyncio import create_async_engine
 
-    from agent_workspace.config.database_config import DatabaseConfig
+    from alpha.config.database_config import DatabaseConfig
 
     cfg = DatabaseConfig(backend="postgres", postgres_url=pg_url, postgres_schema=pg_schema)
     engine = create_async_engine(cfg.app_sqlalchemy_url)

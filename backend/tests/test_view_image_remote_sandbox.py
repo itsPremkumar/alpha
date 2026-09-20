@@ -11,9 +11,9 @@ from langchain.agents.middleware.types import ModelRequest
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, ToolMessage
 
-from agent_workspace.agents.middlewares.view_image_middleware import ViewImageMiddleware
-from agent_workspace.sandbox.lease import SandboxLeaseManager
-from agent_workspace.tools.builtins.view_image_tool import view_image_tool
+from alpha.agents.middlewares.view_image_middleware import ViewImageMiddleware
+from alpha.sandbox.lease import SandboxLeaseManager
+from alpha.tools.builtins.view_image_tool import view_image_tool
 
 PNG_BYTES = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
 STALE_SAME_SIZE_PNG_BYTES = PNG_BYTES[:-1] + bytes([PNG_BYTES[-1] ^ 1])
@@ -188,7 +188,7 @@ def test_view_image_reads_active_sandbox_when_host_mirror_is_missing(tmp_path, m
     sandbox = _RemoteSandbox(PNG_BYTES)
     provider = _Provider(sandbox)
     monkeypatch.setattr(
-        "agent_workspace.sandbox.sandbox_provider.get_sandbox_provider",
+        "alpha.sandbox.sandbox_provider.get_sandbox_provider",
         lambda: provider,
     )
     host_path = Path(thread_data["outputs_path"]) / "plot.png"
@@ -217,7 +217,7 @@ def test_view_image_prefers_active_sandbox_over_stale_host_mirror(tmp_path, monk
     sandbox = _RemoteSandbox(remote_bytes)
     provider = _Provider(sandbox)
     monkeypatch.setattr(
-        "agent_workspace.sandbox.sandbox_provider.get_sandbox_provider",
+        "alpha.sandbox.sandbox_provider.get_sandbox_provider",
         lambda: provider,
     )
 
@@ -242,7 +242,7 @@ def test_view_image_falls_back_to_host_when_saved_sandbox_has_no_live_client(tmp
     host_path.write_bytes(PNG_BYTES)
     provider = _Provider(None)
     monkeypatch.setattr(
-        "agent_workspace.sandbox.sandbox_provider.get_sandbox_provider",
+        "alpha.sandbox.sandbox_provider.get_sandbox_provider",
         lambda: provider,
     )
 
@@ -267,7 +267,7 @@ def test_view_image_does_not_fall_back_after_live_sandbox_download_failure(tmp_p
     sandbox = _FailingRemoteSandbox(PNG_BYTES)
     provider = _Provider(sandbox)
     monkeypatch.setattr(
-        "agent_workspace.sandbox.sandbox_provider.get_sandbox_provider",
+        "alpha.sandbox.sandbox_provider.get_sandbox_provider",
         lambda: provider,
     )
 
@@ -296,7 +296,7 @@ def test_view_image_recovers_verified_host_copy_when_replacement_sandbox_lacks_f
     sandbox = _MissingRemoteSandbox(PNG_BYTES, sandbox_id="remote-new")
     provider = _Provider(sandbox)
     monkeypatch.setattr(
-        "agent_workspace.sandbox.sandbox_provider.get_sandbox_provider",
+        "alpha.sandbox.sandbox_provider.get_sandbox_provider",
         lambda: provider,
     )
     previous = {
@@ -331,7 +331,7 @@ def test_view_image_rejects_same_size_stale_host_copy_after_replacement(tmp_path
     sandbox = _MissingRemoteSandbox(PNG_BYTES, sandbox_id="remote-new")
     provider = _Provider(sandbox)
     monkeypatch.setattr(
-        "agent_workspace.sandbox.sandbox_provider.get_sandbox_provider",
+        "alpha.sandbox.sandbox_provider.get_sandbox_provider",
         lambda: provider,
     )
     previous = {
@@ -363,7 +363,7 @@ def test_view_image_same_generation_missing_file_stays_fail_closed(tmp_path, mon
     sandbox = _MissingRemoteSandbox(PNG_BYTES)
     provider = _Provider(sandbox)
     monkeypatch.setattr(
-        "agent_workspace.sandbox.sandbox_provider.get_sandbox_provider",
+        "alpha.sandbox.sandbox_provider.get_sandbox_provider",
         lambda: provider,
     )
     previous = {
@@ -391,7 +391,7 @@ def test_view_image_legacy_metadata_does_not_authorize_cross_generation_fallback
     sandbox = _MissingRemoteSandbox(PNG_BYTES, sandbox_id="remote-new")
     provider = _Provider(sandbox)
     monkeypatch.setattr(
-        "agent_workspace.sandbox.sandbox_provider.get_sandbox_provider",
+        "alpha.sandbox.sandbox_provider.get_sandbox_provider",
         lambda: provider,
     )
     previous = {
@@ -420,7 +420,7 @@ def test_middleware_injects_image_from_active_sandbox_without_host_copy(tmp_path
     sandbox = _RemoteSandbox(PNG_BYTES)
     provider = _Provider(sandbox)
     monkeypatch.setattr(
-        "agent_workspace.sandbox.sandbox_provider.get_sandbox_provider",
+        "alpha.sandbox.sandbox_provider.get_sandbox_provider",
         lambda: provider,
     )
     state = {
@@ -447,7 +447,7 @@ def test_middleware_prefers_active_sandbox_over_stale_host_mirror(tmp_path, monk
     sandbox = _RemoteSandbox(remote_bytes)
     provider = _Provider(sandbox)
     monkeypatch.setattr(
-        "agent_workspace.sandbox.sandbox_provider.get_sandbox_provider",
+        "alpha.sandbox.sandbox_provider.get_sandbox_provider",
         lambda: provider,
     )
     state = {
@@ -472,7 +472,7 @@ def test_middleware_falls_back_to_host_when_saved_sandbox_has_no_live_client(tmp
     host_path.write_bytes(PNG_BYTES)
     provider = _Provider(None)
     monkeypatch.setattr(
-        "agent_workspace.sandbox.sandbox_provider.get_sandbox_provider",
+        "alpha.sandbox.sandbox_provider.get_sandbox_provider",
         lambda: provider,
     )
     state = {
@@ -498,7 +498,7 @@ def test_middleware_uses_verified_host_copy_after_sandbox_replacement(tmp_path, 
     sandbox = _MissingRemoteSandbox(PNG_BYTES, sandbox_id="remote-new")
     provider = _Provider(sandbox)
     monkeypatch.setattr(
-        "agent_workspace.sandbox.sandbox_provider.get_sandbox_provider",
+        "alpha.sandbox.sandbox_provider.get_sandbox_provider",
         lambda: provider,
     )
     state = {
@@ -524,7 +524,7 @@ def test_middleware_rejects_same_size_stale_host_after_sandbox_replacement(tmp_p
     sandbox = _MissingRemoteSandbox(PNG_BYTES, sandbox_id="remote-new")
     provider = _Provider(sandbox)
     monkeypatch.setattr(
-        "agent_workspace.sandbox.sandbox_provider.get_sandbox_provider",
+        "alpha.sandbox.sandbox_provider.get_sandbox_provider",
         lambda: provider,
     )
     state = {
@@ -550,7 +550,7 @@ def test_middleware_same_generation_failure_does_not_use_host_copy(tmp_path, mon
     sandbox = _FailingRemoteSandbox(PNG_BYTES)
     provider = _Provider(sandbox)
     monkeypatch.setattr(
-        "agent_workspace.sandbox.sandbox_provider.get_sandbox_provider",
+        "alpha.sandbox.sandbox_provider.get_sandbox_provider",
         lambda: provider,
     )
     state = {
@@ -581,7 +581,7 @@ def test_middleware_sync_read_finishes_before_lease_release(tmp_path, monkeypatc
         user_id="user-1",
     )
     monkeypatch.setattr(
-        "agent_workspace.sandbox.sandbox_provider.get_sandbox_provider",
+        "alpha.sandbox.sandbox_provider.get_sandbox_provider",
         lambda: provider,
     )
     request = _make_model_request(
@@ -649,7 +649,7 @@ async def test_middleware_cancellation_drains_sandbox_download_before_lease_rele
         user_id="user-1",
     )
     monkeypatch.setattr(
-        "agent_workspace.sandbox.sandbox_provider.get_sandbox_provider",
+        "alpha.sandbox.sandbox_provider.get_sandbox_provider",
         lambda: provider,
     )
     request = _make_model_request(

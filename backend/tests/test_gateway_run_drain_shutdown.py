@@ -30,7 +30,7 @@ from typing import Annotated, TypedDict
 import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 
-from agent_workspace.runtime import RunManager, RunStatus
+from alpha.runtime import RunManager, RunStatus
 
 
 # Module-level so langgraph's get_type_hints (which resolves annotations against
@@ -158,7 +158,7 @@ async def test_langgraph_runtime_drains_runs_before_closing_checkpointer(monkeyp
     from fastapi import FastAPI
 
     from app.gateway.deps import langgraph_runtime
-    from agent_workspace.extensions.registry import ExtensionRegistry
+    from alpha.extensions.registry import ExtensionRegistry
 
     events: list[str] = []
 
@@ -203,17 +203,17 @@ async def test_langgraph_runtime_drains_runs_before_closing_checkpointer(monkeyp
     def spy_reset_extension_notify_loop():
         events.append("extension_loop_reset")
 
-    monkeypatch.setattr("agent_workspace.runtime.checkpointer.async_provider.make_checkpointer", probe_checkpointer)
-    monkeypatch.setattr("agent_workspace.runtime.make_stream_bridge", fake_stream_bridge)
-    monkeypatch.setattr("agent_workspace.runtime.make_store", fake_store)
-    monkeypatch.setattr("agent_workspace.persistence.engine.init_engine_from_config", fake_init_engine)
-    monkeypatch.setattr("agent_workspace.persistence.engine.close_engine", fake_close_engine)
-    monkeypatch.setattr("agent_workspace.persistence.engine.get_session_factory", fake_session_factory)
-    monkeypatch.setattr("agent_workspace.runtime.events.store.make_run_event_store", lambda _cfg: object())
-    monkeypatch.setattr("agent_workspace.persistence.thread_meta.make_thread_store", lambda _sf, _store: object())
+    monkeypatch.setattr("alpha.runtime.checkpointer.async_provider.make_checkpointer", probe_checkpointer)
+    monkeypatch.setattr("alpha.runtime.make_stream_bridge", fake_stream_bridge)
+    monkeypatch.setattr("alpha.runtime.make_store", fake_store)
+    monkeypatch.setattr("alpha.persistence.engine.init_engine_from_config", fake_init_engine)
+    monkeypatch.setattr("alpha.persistence.engine.close_engine", fake_close_engine)
+    monkeypatch.setattr("alpha.persistence.engine.get_session_factory", fake_session_factory)
+    monkeypatch.setattr("alpha.runtime.events.store.make_run_event_store", lambda _cfg: object())
+    monkeypatch.setattr("alpha.persistence.thread_meta.make_thread_store", lambda _sf, _store: object())
     monkeypatch.setattr(RunManager, "shutdown", spy_shutdown, raising=False)
-    monkeypatch.setattr("agent_workspace.extensions.notify.set_extension_notify_loop", spy_set_extension_notify_loop)
-    monkeypatch.setattr("agent_workspace.extensions.notify.reset_extension_notify_loop", spy_reset_extension_notify_loop)
+    monkeypatch.setattr("alpha.extensions.notify.set_extension_notify_loop", spy_set_extension_notify_loop)
+    monkeypatch.setattr("alpha.extensions.notify.reset_extension_notify_loop", spy_reset_extension_notify_loop)
 
     app = FastAPI()
     registry = ExtensionRegistry()
@@ -270,9 +270,9 @@ async def test_langgraph_runtime_resets_extension_loop_when_startup_exits_early(
     def spy_reset_extension_notify_loop():
         events.append("extension_loop_reset")
 
-    monkeypatch.setattr("agent_workspace.runtime.make_stream_bridge", failing_stream_bridge)
-    monkeypatch.setattr("agent_workspace.extensions.notify.set_extension_notify_loop", spy_set_extension_notify_loop)
-    monkeypatch.setattr("agent_workspace.extensions.notify.reset_extension_notify_loop", spy_reset_extension_notify_loop)
+    monkeypatch.setattr("alpha.runtime.make_stream_bridge", failing_stream_bridge)
+    monkeypatch.setattr("alpha.extensions.notify.set_extension_notify_loop", spy_set_extension_notify_loop)
+    monkeypatch.setattr("alpha.extensions.notify.reset_extension_notify_loop", spy_reset_extension_notify_loop)
 
     app = FastAPI()
     startup_config = SimpleNamespace(
@@ -368,7 +368,7 @@ async def test_shutdown_preserves_status_of_run_completed_during_drain():
     """A run that finishes (e.g. success) during the drain window must keep its
     real terminal status — shutdown must not blanket-overwrite it to
     ``interrupted`` in memory or in the store (Copilot review on PR #3381)."""
-    from agent_workspace.runtime.runs.store.memory import MemoryRunStore
+    from alpha.runtime.runs.store.memory import MemoryRunStore
 
     store = MemoryRunStore()
     rm = RunManager(store=store)
@@ -408,7 +408,7 @@ async def test_shutdown_surfaces_failed_interrupted_persist(caplog):
     PR #3381)."""
     import logging
 
-    from agent_workspace.runtime.runs.store.memory import MemoryRunStore
+    from alpha.runtime.runs.store.memory import MemoryRunStore
 
     class _FailingStore(MemoryRunStore):
         async def update_status(self, *args, **kwargs):
@@ -427,7 +427,7 @@ async def test_shutdown_surfaces_failed_interrupted_persist(caplog):
     record.task = asyncio.create_task(worker())
     try:
         await asyncio.wait_for(started.wait(), timeout=1.0)
-        with caplog.at_level(logging.WARNING, logger="agent_workspace.runtime.runs.manager"):
+        with caplog.at_level(logging.WARNING, logger="alpha.runtime.runs.manager"):
             await rm.shutdown(timeout=5.0)
         assert "Could not persist interrupted status for run" in caplog.text, caplog.text
     finally:

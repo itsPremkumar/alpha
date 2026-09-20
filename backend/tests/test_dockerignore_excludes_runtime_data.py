@@ -40,7 +40,7 @@ HOST_LOCAL_PATHS = [
     "backend/.env",
     "frontend/.env",
     ".agent-workspace/integrations/skills/provider/pack/SKILL.md",
-    "backend/.agent-workspace/data/agent_workspace.db",
+    "backend/.agent-workspace/data/alpha.db",
     "backend/.agent-workspace/.jwt_secret",
     "backend/.agent-workspace/users/some-user/agents/my-agent/config.yaml",
     "backend/sandbox/some-thread/scratch.py",
@@ -52,7 +52,7 @@ BUILD_INPUT_PATHS = [
     "frontend/.env.example",
     "backend/pyproject.toml",
     "backend/app/gateway/app.py",
-    "backend/packages/harness/agent_workspace/config/extensions_config.py",
+    "backend/packages/harness/alpha/config/extensions_config.py",
 ]
 
 

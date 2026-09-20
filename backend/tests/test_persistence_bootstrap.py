@@ -1,4 +1,4 @@
-"""Tests for ``agent_workspace.persistence.bootstrap.bootstrap_schema``.
+"""Tests for ``alpha.persistence.bootstrap.bootstrap_schema``.
 
 Covers the three-branch decision table:
 
@@ -29,9 +29,9 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import create_async_engine
 
 # Pre-import models so Base.metadata is populated before bootstrap reads it.
-import agent_workspace.persistence.models  # noqa: F401
-from agent_workspace.persistence.base import Base
-from agent_workspace.persistence.bootstrap import (
+import alpha.persistence.models  # noqa: F401
+from alpha.persistence.base import Base
+from alpha.persistence.bootstrap import (
     _BASELINE_INDEX_NAMES,
     _BASELINE_TABLE_NAMES,
     _decide_state,
@@ -41,7 +41,7 @@ from agent_workspace.persistence.bootstrap import (
     _upgrade,
     bootstrap_schema,
 )
-from agent_workspace.persistence.migrations._helpers import _normalize_default
+from alpha.persistence.migrations._helpers import _normalize_default
 
 # Mark only async tests via the decorator below; module-level pytestmark would
 # spuriously warn for the sync ``TestDecideState`` cases.
@@ -289,7 +289,7 @@ async def test_legacy_with_manual_workaround_column_warns_on_drift(
         async with engine.begin() as conn:
             await conn.execute(sa.text("ALTER TABLE runs ADD COLUMN token_usage_by_model JSON"))
 
-        with caplog.at_level("WARNING", logger="agent_workspace.persistence.migrations._helpers"):
+        with caplog.at_level("WARNING", logger="alpha.persistence.migrations._helpers"):
             await bootstrap_schema(engine, backend="sqlite")
 
         # Bootstrap still completes -- the helper does not block on drift.
@@ -298,7 +298,7 @@ async def test_legacy_with_manual_workaround_column_warns_on_drift(
         col = await _runs_column_meta(engine, "token_usage_by_model")
         assert col["nullable"] is True
 
-        drift_warnings = [r for r in caplog.records if r.levelname == "WARNING" and r.name == "agent_workspace.persistence.migrations._helpers" and "safe_add_column" in r.getMessage() and "token_usage_by_model" in r.getMessage()]
+        drift_warnings = [r for r in caplog.records if r.levelname == "WARNING" and r.name == "alpha.persistence.migrations._helpers" and "safe_add_column" in r.getMessage() and "token_usage_by_model" in r.getMessage()]
         assert drift_warnings, "expected safe_add_column to warn about the drifted column"
         msg = drift_warnings[0].getMessage()
         assert "nullable" in msg
@@ -329,7 +329,7 @@ async def test_legacy_with_wrong_type_workaround_warns_on_type_drift(
         async with engine.begin() as conn:
             await conn.execute(sa.text("ALTER TABLE runs ADD COLUMN token_usage_by_model TEXT NOT NULL DEFAULT '{}'"))
 
-        with caplog.at_level("WARNING", logger="agent_workspace.persistence.migrations._helpers"):
+        with caplog.at_level("WARNING", logger="alpha.persistence.migrations._helpers"):
             await bootstrap_schema(engine, backend="sqlite")
 
         assert await _alembic_version(engine) == HEAD
@@ -338,7 +338,7 @@ async def test_legacy_with_wrong_type_workaround_warns_on_type_drift(
         col = await _runs_column_meta(engine, "token_usage_by_model")
         assert col["nullable"] is False
 
-        drift_warnings = [r for r in caplog.records if r.levelname == "WARNING" and r.name == "agent_workspace.persistence.migrations._helpers" and "safe_add_column" in r.getMessage() and "token_usage_by_model" in r.getMessage()]
+        drift_warnings = [r for r in caplog.records if r.levelname == "WARNING" and r.name == "alpha.persistence.migrations._helpers" and "safe_add_column" in r.getMessage() and "token_usage_by_model" in r.getMessage()]
         assert drift_warnings, "expected safe_add_column to warn about pure type drift (was silent before the family check)"
         msg = drift_warnings[0].getMessage()
         # The drift entry must explicitly name the type mismatch -- this is
@@ -360,7 +360,7 @@ async def test_legacy_with_wrong_type_workaround_warns_on_type_drift(
 
 
 def test_type_equivalent_matches_known_dialect_synonyms() -> None:
-    from agent_workspace.persistence.migrations._helpers import _type_equivalent
+    from alpha.persistence.migrations._helpers import _type_equivalent
 
     # JSON ↔ JSONB (Postgres dialect difference, operationally interchangeable
     # for our schema). Both directions, and via raw strings.
@@ -370,7 +370,7 @@ def test_type_equivalent_matches_known_dialect_synonyms() -> None:
 
 
 def test_type_equivalent_catches_wholesale_type_mismatch() -> None:
-    from agent_workspace.persistence.migrations._helpers import _type_equivalent
+    from alpha.persistence.migrations._helpers import _type_equivalent
 
     # The reviewer scenario: TEXT NOT NULL DEFAULT '{}' workaround.
     assert _type_equivalent("TEXT", "JSON") is False
@@ -382,7 +382,7 @@ def test_type_equivalent_catches_wholesale_type_mismatch() -> None:
 def test_type_equivalent_ignores_type_parameters() -> None:
     """Length / precision differences are out of scope for this helper --
     the goal is wholesale-type drift, not dialect-rendered size defaults."""
-    from agent_workspace.persistence.migrations._helpers import _type_equivalent
+    from alpha.persistence.migrations._helpers import _type_equivalent
 
     assert _type_equivalent("VARCHAR(255)", "VARCHAR(500)") is True
     assert _type_equivalent("NUMERIC(10,2)", "NUMERIC(20,4)") is True
@@ -390,7 +390,7 @@ def test_type_equivalent_ignores_type_parameters() -> None:
 
 def test_type_equivalent_returns_true_on_missing_info() -> None:
     """Missing reflected info must not false-positive into a noisy warning."""
-    from agent_workspace.persistence.migrations._helpers import _type_equivalent
+    from alpha.persistence.migrations._helpers import _type_equivalent
 
     assert _type_equivalent(None, sa.JSON()) is True
     assert _type_equivalent(sa.JSON(), None) is True
@@ -879,7 +879,7 @@ def test_baseline_revision_id_is_known() -> None:
     from alembic.config import Config  # noqa: PLC0415
     from alembic.script import ScriptDirectory  # noqa: PLC0415
 
-    migrations_dir = Path(__file__).resolve().parents[1] / "packages/harness/agent_workspace/persistence/migrations"
+    migrations_dir = Path(__file__).resolve().parents[1] / "packages/harness/alpha/persistence/migrations"
     cfg = Config()
     cfg.set_main_option("script_location", str(migrations_dir))
     script = ScriptDirectory.from_config(cfg)

@@ -1,10 +1,10 @@
 """End-to-end integration testing: Mission Compiler, Epistemics, RSI, Consequence Simulation, and Self-Healing."""
 
-from agent_workspace.consequence import AffordanceModel, ConsequenceSimulator
-from agent_workspace.epistemics import EpistemicBeliefEngine, EpistemicStatus
-from agent_workspace.mission import MissionCompiler, RiskTier
-from agent_workspace.rsi import RSIEngine, RSIStage
-from agent_workspace.runtime.selfheal import SelfHealingWatchdog
+from alpha.consequence import AffordanceModel, ConsequenceSimulator
+from alpha.epistemics import EpistemicBeliefEngine, EpistemicStatus
+from alpha.mission import MissionCompiler, RiskTier
+from alpha.rsi import RSIEngine, RSIStage
+from alpha.runtime.selfheal import SelfHealingWatchdog
 
 
 def test_full_hermes_agi_executive_lifecycle(tmp_path):

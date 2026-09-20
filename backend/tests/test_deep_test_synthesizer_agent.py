@@ -1,6 +1,6 @@
 """Unit tests for DeepTestSynthesizerAgent."""
 
-from agent_workspace.subagents.builtins.deep_test_synthesizer_agent import (
+from alpha.subagents.builtins.deep_test_synthesizer_agent import (
     DEEP_TEST_SYNTHESIZER_AGENT_CONFIG,
     DeepTestSynthesizerAgent,
 )

@@ -8,8 +8,8 @@ from unittest.mock import MagicMock
 import pytest
 from langchain_core.messages import AIMessage
 
-from agent_workspace.agents.middlewares.token_usage_middleware import TokenUsageMiddleware
-from agent_workspace.runtime.token_meter import (
+from alpha.agents.middlewares.token_usage_middleware import TokenUsageMiddleware
+from alpha.runtime.token_meter import (
     TokenMeter,
     TokenSnapshot,
     check_token_budget,

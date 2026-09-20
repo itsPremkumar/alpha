@@ -9,12 +9,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from agent_workspace.authz import sandbox_authz
-from agent_workspace.config.app_config import AppConfig
-from agent_workspace.config.authorization_config import AuthorizationConfig, AuthorizationProviderConfig
-from agent_workspace.config.model_config import ModelConfig
-from agent_workspace.config.sandbox_config import SandboxConfig
-from agent_workspace.sandbox import tools as sandbox_tools
+from alpha.authz import sandbox_authz
+from alpha.config.app_config import AppConfig
+from alpha.config.authorization_config import AuthorizationConfig, AuthorizationProviderConfig
+from alpha.config.model_config import ModelConfig
+from alpha.config.sandbox_config import SandboxConfig
+from alpha.sandbox import tools as sandbox_tools
 
 pytestmark = pytest.mark.asyncio
 
@@ -26,13 +26,13 @@ async def test_reused_async_sandbox_offloads_config_and_provider_resolution(tmp_
 
     app_config = AppConfig(
         models=[ModelConfig(name="gpt-4", model="gpt-4", use="langchain_openai:ChatOpenAI")],
-        sandbox=SandboxConfig(use="agent_workspace.sandbox.local:LocalSandboxProvider"),
+        sandbox=SandboxConfig(use="alpha.sandbox.local:LocalSandboxProvider"),
         authorization=AuthorizationConfig(
             enabled=True,
             fail_closed=True,
             default_role="user",
             provider=AuthorizationProviderConfig(
-                use="agent_workspace.authz.rbac:RbacAuthorizationProvider",
+                use="alpha.authz.rbac:RbacAuthorizationProvider",
                 config={"roles": {"user": {"sandbox": {"allow": "*"}}}},
             ),
         ),

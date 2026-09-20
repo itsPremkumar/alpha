@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from agent_workspace.config.paths import Paths
+from alpha.config.paths import Paths
 
 
 @pytest.fixture

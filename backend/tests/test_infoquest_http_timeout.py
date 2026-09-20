@@ -5,7 +5,7 @@ from unittest.mock import Mock
 import pytest
 import requests
 
-from agent_workspace.community.infoquest.infoquest_client import InfoQuestClient
+from alpha.community.infoquest.infoquest_client import InfoQuestClient
 
 
 @pytest.mark.parametrize("operation", ["fetch", "web_search", "image_search"])

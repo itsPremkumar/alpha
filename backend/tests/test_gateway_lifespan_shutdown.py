@@ -64,8 +64,8 @@ def test_enabled_scheduler_start_failure_aborts_gateway_lifespan():
             patch("app.channels.service.start_channel_service", start_channel_service),
             patch("app.channels.service.stop_channel_service", AsyncMock()),
             patch("app.scheduler.ScheduledTaskService", return_value=scheduler_service),
-            patch("agent_workspace.skills.projection.ensure_public_skill_projection"),
-            patch("agent_workspace.agents.memory.get_memory_manager", return_value=MagicMock()),
+            patch("alpha.skills.projection.ensure_public_skill_projection"),
+            patch("alpha.agents.memory.get_memory_manager", return_value=MagicMock()),
         ):
             with pytest.raises(RuntimeError, match="scheduled recovery failed"):
                 async with lifespan(app):
@@ -105,11 +105,11 @@ async def _run_lifespan_with_hanging_stop() -> float:
         patch("app.gateway.app.get_app_config", return_value=startup_config),
         patch("app.gateway.app.get_gateway_config", return_value=MagicMock(host="x", port=0)),
         patch("app.gateway.app.langgraph_runtime", _noop_langgraph_runtime),
-        patch("agent_workspace.skills.projection.ensure_public_skill_projection"),
+        patch("alpha.skills.projection.ensure_public_skill_projection"),
         patch("app.gateway.app.auth.close_oidc_service", close_oidc_service),
         patch("app.channels.service.start_channel_service", side_effect=fake_start),
         patch("app.channels.service.stop_channel_service", side_effect=hang_forever),
-        patch("agent_workspace.agents.memory.get_memory_manager", return_value=MagicMock()),
+        patch("alpha.agents.memory.get_memory_manager", return_value=MagicMock()),
     ):
         loop = asyncio.get_event_loop()
         start = loop.time()
@@ -152,7 +152,7 @@ async def _run_lifespan_with_upload_staging_cleanup():
         patch("app.gateway.app.get_app_config", return_value=startup_config),
         patch("app.gateway.app.get_gateway_config", return_value=MagicMock(host="x", port=0)),
         patch("app.gateway.app.langgraph_runtime", _noop_langgraph_runtime),
-        patch("agent_workspace.skills.projection.ensure_public_skill_projection"),
+        patch("alpha.skills.projection.ensure_public_skill_projection"),
         patch("app.gateway.app.cleanup_stale_upload_staging_files", cleanup_upload_staging_files),
         patch("app.gateway.app.auth.close_oidc_service", close_oidc_service),
         patch("app.channels.service.start_channel_service", side_effect=fake_start),
@@ -174,8 +174,8 @@ def test_lifespan_sweeps_upload_staging_files_on_startup():
 
 async def _run_lifespan_with_mcp_task_config_snapshot() -> None:
     from app.gateway.app import lifespan
-    from agent_workspace.config.extensions_config import ExtensionsConfig
-    from agent_workspace.mcp.tasks.runtime import McpTaskConfigurationError, validate_mcp_task_config_snapshot
+    from alpha.config.extensions_config import ExtensionsConfig
+    from alpha.mcp.tasks.runtime import McpTaskConfigurationError, validate_mcp_task_config_snapshot
 
     app = FastAPI()
     startup_config = SimpleNamespace(
@@ -217,9 +217,9 @@ async def _run_lifespan_with_mcp_task_config_snapshot() -> None:
         patch("app.gateway.app.auth.close_oidc_service", AsyncMock()),
         patch("app.channels.service.start_channel_service", side_effect=fake_start),
         patch("app.channels.service.stop_channel_service", AsyncMock()),
-        patch("agent_workspace.skills.projection.ensure_public_skill_projection"),
-        patch("agent_workspace.agents.memory.get_memory_manager", return_value=MagicMock()),
-        patch("agent_workspace.config.extensions_config.ExtensionsConfig.from_file", return_value=startup_extensions),
+        patch("alpha.skills.projection.ensure_public_skill_projection"),
+        patch("alpha.agents.memory.get_memory_manager", return_value=MagicMock()),
+        patch("alpha.config.extensions_config.ExtensionsConfig.from_file", return_value=startup_extensions),
     ):
         async with lifespan(app):
             with pytest.raises(McpTaskConfigurationError, match="reports.*restart"):
@@ -287,12 +287,12 @@ async def _run_lifespan_with_memory_flush(
         patch("app.gateway.app.get_app_config", return_value=startup_config),
         patch("app.gateway.app.get_gateway_config", return_value=MagicMock(host="x", port=0)),
         patch("app.gateway.app.langgraph_runtime", _noop_langgraph_runtime),
-        patch("agent_workspace.skills.projection.ensure_public_skill_projection"),
+        patch("alpha.skills.projection.ensure_public_skill_projection"),
         patch("app.gateway.app.auth.close_oidc_service", close_oidc_service),
         patch("app.channels.service.start_channel_service", side_effect=fake_start),
         patch("app.channels.service.stop_channel_service", stop_channel_service),
-        patch("agent_workspace.agents.memory.get_memory_manager", return_value=manager),
-        patch("agent_workspace.extensions.notify.suspend_extension_system_observations", suspend_system_observations),
+        patch("alpha.agents.memory.get_memory_manager", return_value=manager),
+        patch("alpha.extensions.notify.suspend_extension_system_observations", suspend_system_observations),
     ):
         async with lifespan(app):
             pass
@@ -389,7 +389,7 @@ async def _run_lifespan_with_warm_return(warm_return: bool | None) -> MagicMock:
         patch("app.gateway.app.auth.close_oidc_service", close_oidc_service),
         patch("app.channels.service.start_channel_service", side_effect=fake_start),
         patch("app.channels.service.stop_channel_service", stop_channel_service),
-        patch("agent_workspace.agents.memory.get_memory_manager", return_value=manager),
+        patch("alpha.agents.memory.get_memory_manager", return_value=manager),
     ):
         async with lifespan(app):
             pass
@@ -447,7 +447,7 @@ async def _run_lifespan_with_slow_retrieval_warm() -> float:
         patch("app.gateway.app.auth.close_oidc_service", AsyncMock()),
         patch("app.channels.service.start_channel_service", side_effect=fake_start),
         patch("app.channels.service.stop_channel_service", AsyncMock()),
-        patch("agent_workspace.agents.memory.get_memory_manager", return_value=manager),
+        patch("alpha.agents.memory.get_memory_manager", return_value=manager),
     ):
         context = lifespan(app)
         loop = asyncio.get_running_loop()
@@ -503,7 +503,7 @@ async def _run_shutdown_with_blocked_retrieval_warm() -> tuple[float, MagicMock]
         patch("app.gateway.app.auth.close_oidc_service", AsyncMock()),
         patch("app.channels.service.start_channel_service", side_effect=fake_start),
         patch("app.channels.service.stop_channel_service", AsyncMock()),
-        patch("agent_workspace.agents.memory.get_memory_manager", return_value=manager),
+        patch("alpha.agents.memory.get_memory_manager", return_value=manager),
     ):
         context = lifespan(app)
         await context.__aenter__()

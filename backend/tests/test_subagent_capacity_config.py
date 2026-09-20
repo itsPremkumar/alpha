@@ -3,11 +3,11 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
-from agent_workspace.config.app_config import AppConfig
-from agent_workspace.config.reload_boundary import STARTUP_ONLY_FIELDS, STARTUP_ONLY_PREFIX
-from agent_workspace.config.subagent_batches_config import SubagentBatchesConfig
-from agent_workspace.config.subagent_runtime_config import SubagentRuntimeConfig
-from agent_workspace.config.subagents_config import effective_subagent_concurrency
+from alpha.config.app_config import AppConfig
+from alpha.config.reload_boundary import STARTUP_ONLY_FIELDS, STARTUP_ONLY_PREFIX
+from alpha.config.subagent_batches_config import SubagentBatchesConfig
+from alpha.config.subagent_runtime_config import SubagentRuntimeConfig
+from alpha.config.subagents_config import effective_subagent_concurrency
 
 
 def test_subagent_runtime_defaults_are_safe_and_bounded() -> None:

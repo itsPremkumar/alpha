@@ -2,7 +2,7 @@ from importlib.metadata import distribution
 
 
 def test_installed_distribution_exposes_agent_workspace_extension_entry_point() -> None:
-    entry_points = [entry_point for entry_point in distribution("agent-workspace-extension-example").entry_points if entry_point.group == "agent_workspace.extensions"]
+    entry_points = [entry_point for entry_point in distribution("agent-workspace-extension-example").entry_points if entry_point.group == "alpha.extensions"]
 
     assert [(entry_point.name, entry_point.value) for entry_point in entry_points] == [("example", "agent_workspace_extension_example:install")]
 

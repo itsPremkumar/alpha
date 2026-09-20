@@ -6,7 +6,7 @@ test_skills_router.py and this module) into a single dedicated module.
 
 from pathlib import Path
 
-from agent_workspace.skills.validation import ALLOWED_FRONTMATTER_PROPERTIES, _validate_skill_frontmatter
+from alpha.skills.validation import ALLOWED_FRONTMATTER_PROPERTIES, _validate_skill_frontmatter
 
 
 def _write_skill(tmp_path: Path, content: str) -> Path:

@@ -20,18 +20,18 @@ from app.gateway.routers.models import ModelResponse, ModelsListResponse
 from app.gateway.routers.skills import SkillInstallResponse, SkillResponse, SkillsListResponse
 from app.gateway.routers.threads import ThreadGoalResponse
 from app.gateway.routers.uploads import UploadResponse
-from agent_workspace.agents.middlewares.view_image_middleware import ViewImageMiddleware
-from agent_workspace.agents.thread_state import DeltaThreadState, ThreadState
-from agent_workspace.client import AgentWorkspaceClient
-from agent_workspace.config.authorization_config import AuthorizationConfig, AuthorizationProviderConfig
-from agent_workspace.config.extensions_config import ExtensionsConfig, McpServerConfig
-from agent_workspace.config.paths import Paths
-from agent_workspace.config.subagent_runtime_config import SubagentRuntimeConfig
-from agent_workspace.sandbox.lease import ensure_sandbox_lease_owner, get_sandbox_lease_manager
-from agent_workspace.sandbox.sandbox_provider import reset_sandbox_provider, set_sandbox_provider
-from agent_workspace.skills.types import SkillCategory
-from agent_workspace.tools.mcp_metadata import tag_mcp_tool
-from agent_workspace.uploads.manager import PathTraversalError
+from alpha.agents.middlewares.view_image_middleware import ViewImageMiddleware
+from alpha.agents.thread_state import DeltaThreadState, ThreadState
+from alpha.client import AgentWorkspaceClient
+from alpha.config.authorization_config import AuthorizationConfig, AuthorizationProviderConfig
+from alpha.config.extensions_config import ExtensionsConfig, McpServerConfig
+from alpha.config.paths import Paths
+from alpha.config.subagent_runtime_config import SubagentRuntimeConfig
+from alpha.sandbox.lease import ensure_sandbox_lease_owner, get_sandbox_lease_manager
+from alpha.sandbox.sandbox_provider import reset_sandbox_provider, set_sandbox_provider
+from alpha.skills.types import SkillCategory
+from alpha.tools.mcp_metadata import tag_mcp_tool
+from alpha.uploads.manager import PathTraversalError
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -63,22 +63,22 @@ def mock_app_config():
 @pytest.fixture
 def client(mock_app_config, tmp_path):
     """Create a AgentWorkspaceClient with mocked config loading."""
-    import agent_workspace.skills.storage as _storage_mod
-    from agent_workspace.skills.storage.local_skill_storage import LocalSkillStorage
+    import alpha.skills.storage as _storage_mod
+    from alpha.skills.storage.local_skill_storage import LocalSkillStorage
 
     _storage_mod._default_skill_storage = LocalSkillStorage(host_path=str(tmp_path))
-    with patch("agent_workspace.client.get_app_config", return_value=mock_app_config):
+    with patch("alpha.client.get_app_config", return_value=mock_app_config):
         return AgentWorkspaceClient()
 
 
 @pytest.fixture
 def allow_skill_security_scan():
     async def _scan(*args, **kwargs):
-        from agent_workspace.skills.security_scanner import ScanResult
+        from alpha.skills.security_scanner import ScanResult
 
         return ScanResult(decision="allow", reason="ok")
 
-    with patch("agent_workspace.skills.installer.scan_skill_content", _scan):
+    with patch("alpha.skills.installer.scan_skill_content", _scan):
         yield
 
 
@@ -100,7 +100,7 @@ class TestClientInit:
 
     def test_custom_params(self, mock_app_config):
         mock_middleware = MagicMock()
-        with patch("agent_workspace.client.get_app_config", return_value=mock_app_config):
+        with patch("alpha.client.get_app_config", return_value=mock_app_config):
             c = AgentWorkspaceClient(model_name="gpt-4", thinking_enabled=False, subagent_enabled=True, plan_mode=True, agent_name="test-agent", available_skills={"skill1", "skill2"}, middlewares=[mock_middleware])
         assert c._model_name == "gpt-4"
         assert c._thinking_enabled is False
@@ -111,7 +111,7 @@ class TestClientInit:
         assert c._middlewares == [mock_middleware]
 
     def test_invalid_agent_name(self, mock_app_config):
-        with patch("agent_workspace.client.get_app_config", return_value=mock_app_config):
+        with patch("alpha.client.get_app_config", return_value=mock_app_config):
             with pytest.raises(ValueError, match="Invalid agent name"):
                 AgentWorkspaceClient(agent_name="invalid name with spaces!")
             with pytest.raises(ValueError, match="Invalid agent name"):
@@ -119,8 +119,8 @@ class TestClientInit:
 
     def test_custom_config_path(self, mock_app_config):
         with (
-            patch("agent_workspace.client.reload_app_config") as mock_reload,
-            patch("agent_workspace.client.get_app_config", return_value=mock_app_config),
+            patch("alpha.client.reload_app_config") as mock_reload,
+            patch("alpha.client.get_app_config", return_value=mock_app_config),
         ):
             AgentWorkspaceClient(config_path="/tmp/custom.yaml")
             mock_reload.assert_called_once_with("/tmp/custom.yaml")
@@ -129,29 +129,29 @@ class TestClientInit:
         runtime_config = SubagentRuntimeConfig(max_running=7)
         mock_app_config.subagent_runtime = runtime_config
         with (
-            patch("agent_workspace.client.get_app_config", return_value=mock_app_config),
-            patch("agent_workspace.client.configure_subagent_execution_capacity") as configure,
+            patch("alpha.client.get_app_config", return_value=mock_app_config),
+            patch("alpha.client.configure_subagent_execution_capacity") as configure,
         ):
             AgentWorkspaceClient()
         configure.assert_called_once_with(runtime_config)
 
     def test_checkpointer_stored(self, mock_app_config):
         cp = MagicMock()
-        with patch("agent_workspace.client.get_app_config", return_value=mock_app_config):
+        with patch("alpha.client.get_app_config", return_value=mock_app_config):
             c = AgentWorkspaceClient(checkpointer=cp)
         assert c._checkpointer is cp
 
     def test_process_mode_is_frozen_from_app_config(self, mock_app_config, monkeypatch: pytest.MonkeyPatch):
-        from agent_workspace.runtime import checkpoint_mode
+        from alpha.runtime import checkpoint_mode
 
         monkeypatch.setattr(checkpoint_mode, "_frozen_checkpoint_channel_mode", None)
-        with patch("agent_workspace.client.get_app_config", return_value=mock_app_config):
+        with patch("alpha.client.get_app_config", return_value=mock_app_config):
             client = AgentWorkspaceClient()
         assert client._checkpoint_channel_mode == "full"
 
         mock_app_config.database.checkpoint_channel_mode = "delta"
         with (
-            patch("agent_workspace.client.get_app_config", return_value=mock_app_config),
+            patch("alpha.client.get_app_config", return_value=mock_app_config),
             pytest.raises(
                 checkpoint_mode.CheckpointModeReconfigurationError,
                 match="restart",
@@ -164,11 +164,11 @@ class TestClientInit:
 
         from langgraph.channels import DeltaChannel
 
-        from agent_workspace.agents import thread_state
+        from alpha.agents import thread_state
 
         mock_app_config.database.checkpoint_channel_mode = "delta"
         mock_app_config.database.checkpoint_delta.snapshot_frequency = 7
-        with patch("agent_workspace.client.get_app_config", return_value=mock_app_config):
+        with patch("alpha.client.get_app_config", return_value=mock_app_config):
             AgentWorkspaceClient()
 
         schema = thread_state.get_thread_state_schema("delta")
@@ -202,7 +202,7 @@ class TestConfigQueries:
         skill.category = "public"
         skill.enabled = True
 
-        with patch("agent_workspace.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[skill]) as mock_load:
+        with patch("alpha.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[skill]) as mock_load:
             result = client.list_skills()
             mock_load.assert_called_once_with(enabled_only=False)
 
@@ -217,7 +217,7 @@ class TestConfigQueries:
         }
 
     def test_list_skills_enabled_only(self, client):
-        with patch("agent_workspace.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[]) as mock_load:
+        with patch("alpha.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[]) as mock_load:
             client.list_skills(enabled_only=True)
             # UserScopedSkillStorage.load_skills calls super().load_skills(enabled_only=False)
             # then filters enabled-only itself, so the parent call always uses enabled_only=False.
@@ -227,7 +227,7 @@ class TestConfigQueries:
         memory = {"version": "1.0", "facts": []}
         mock_mgr = MagicMock()
         mock_mgr.get_memory.return_value = memory
-        with patch("agent_workspace.agents.memory.get_memory_manager", return_value=mock_mgr):
+        with patch("alpha.agents.memory.get_memory_manager", return_value=mock_mgr):
             result = client.get_memory()
             mock_mgr.get_memory.assert_called_once()
         assert result == memory
@@ -236,7 +236,7 @@ class TestConfigQueries:
         memory = {"version": "1.0", "facts": []}
         mock_mgr = MagicMock()
         mock_mgr.get_memory.return_value = memory
-        with patch("agent_workspace.agents.memory.get_memory_manager", return_value=mock_mgr):
+        with patch("alpha.agents.memory.get_memory_manager", return_value=mock_mgr):
             result = client.export_memory()
             mock_mgr.get_memory.assert_called_once()
         assert result == memory
@@ -339,7 +339,7 @@ class TestStream:
         assert call_kwargs["context"]["agent_name"] == "test-agent-1"
 
     def test_full_mode_overwrites_internal_delta_before_agent_creation(self, client):
-        from agent_workspace.runtime.checkpoint_mode import (
+        from alpha.runtime.checkpoint_mode import (
             CHECKPOINT_MODE_METADATA_KEY,
             INTERNAL_CHECKPOINT_MODE_KEY,
         )
@@ -377,7 +377,7 @@ class TestStream:
     def test_full_mode_rejects_delta_before_agent_creation(self, client):
         from types import SimpleNamespace
 
-        from agent_workspace.runtime.checkpoint_mode import (
+        from alpha.runtime.checkpoint_mode import (
             CHECKPOINT_MODE_METADATA_KEY,
             CheckpointModeMismatchError,
         )
@@ -1129,7 +1129,7 @@ class TestExtractText:
 
 class TestEnsureAgent:
     def test_authorization_filters_framework_tools_and_reuses_provider(self, client, mock_app_config):
-        from agent_workspace.authz.provider import AuthzDecision, AuthzReason
+        from alpha.authz.provider import AuthzDecision, AuthzReason
 
         class Provider:
             name = "test"
@@ -1152,7 +1152,7 @@ class TestEnsureAgent:
             provider=AuthorizationProviderConfig(use="unused:Provider"),
         )
         mock_app_config.skills.deferred_discovery = True
-        from agent_workspace.config.task_continuity_config import TaskContinuityConfig
+        from alpha.config.task_continuity_config import TaskContinuityConfig
 
         mock_app_config.task_continuity = TaskContinuityConfig(enabled=True)
         client._app_config = mock_app_config
@@ -1162,16 +1162,16 @@ class TestEnsureAgent:
         describe_tool = StructuredTool.from_function(lambda: "describe", name="describe_skill", description="describe")
 
         with (
-            patch("agent_workspace.client.create_chat_model"),
-            patch("agent_workspace.client.create_agent", return_value=MagicMock()) as mock_create_agent,
-            patch("agent_workspace.client.build_middlewares", return_value=[]) as mock_build_middlewares,
-            patch("agent_workspace.client.apply_prompt_template", return_value="prompt"),
-            patch("agent_workspace.client.get_enabled_skills_for_config", return_value=[MagicMock()]),
-            patch("agent_workspace.client.build_skill_search_setup", return_value=SimpleNamespace(describe_skill_tool=describe_tool, skill_names=frozenset({"example"}))),
+            patch("alpha.client.create_chat_model"),
+            patch("alpha.client.create_agent", return_value=MagicMock()) as mock_create_agent,
+            patch("alpha.client.build_middlewares", return_value=[]) as mock_build_middlewares,
+            patch("alpha.client.apply_prompt_template", return_value="prompt"),
+            patch("alpha.client.get_enabled_skills_for_config", return_value=[MagicMock()]),
+            patch("alpha.client.build_skill_search_setup", return_value=SimpleNamespace(describe_skill_tool=describe_tool, skill_names=frozenset({"example"}))),
             patch.object(client, "_get_tools", return_value=[safe_tool, denied_tool]),
-            patch("agent_workspace.authz.tool_filter.resolve_authorization_provider", return_value=provider),
-            patch("agent_workspace.agents.lead_agent.agent.resolve_authorization_provider", return_value=provider),
-            patch("agent_workspace.runtime.checkpointer.get_checkpointer", return_value=None),
+            patch("alpha.authz.tool_filter.resolve_authorization_provider", return_value=provider),
+            patch("alpha.agents.lead_agent.agent.resolve_authorization_provider", return_value=provider),
+            patch("alpha.runtime.checkpointer.get_checkpointer", return_value=None),
         ):
             client._ensure_agent(client._get_runnable_config("t1"), context={"user_role": "user"})
 
@@ -1182,20 +1182,20 @@ class TestEnsureAgent:
         mock_app_config.authorization = AuthorizationConfig(
             enabled=True,
             provider=AuthorizationProviderConfig(
-                use="agent_workspace.authz.rbac:RbacAuthorizationProvider",
+                use="alpha.authz.rbac:RbacAuthorizationProvider",
                 config={"roles": {"user": {"tools": {"allow": "*"}}}},
             ),
         )
         client._app_config = mock_app_config
 
         with (
-            patch("agent_workspace.client.create_chat_model"),
-            patch("agent_workspace.client.create_agent", side_effect=[MagicMock(), MagicMock()]) as mock_create_agent,
-            patch("agent_workspace.client.build_middlewares", return_value=[]),
-            patch("agent_workspace.client.apply_prompt_template", return_value="prompt"),
-            patch("agent_workspace.client.get_enabled_skills_for_config", return_value=[]),
+            patch("alpha.client.create_chat_model"),
+            patch("alpha.client.create_agent", side_effect=[MagicMock(), MagicMock()]) as mock_create_agent,
+            patch("alpha.client.build_middlewares", return_value=[]),
+            patch("alpha.client.apply_prompt_template", return_value="prompt"),
+            patch("alpha.client.get_enabled_skills_for_config", return_value=[]),
             patch.object(client, "_get_tools", return_value=[]),
-            patch("agent_workspace.runtime.checkpointer.get_checkpointer", return_value=None),
+            patch("alpha.runtime.checkpointer.get_checkpointer", return_value=None),
         ):
             config = client._get_runnable_config("t1")
             client._ensure_agent(config, context={"user_id": "u1", "user_role": "user", "authz_attributes": {"department": "eng"}})
@@ -1209,13 +1209,13 @@ class TestEnsureAgent:
         client._app_config = mock_app_config
 
         with (
-            patch("agent_workspace.client.create_chat_model"),
-            patch("agent_workspace.client.create_agent", side_effect=[MagicMock(), MagicMock()]) as mock_create_agent,
-            patch("agent_workspace.client.build_middlewares", return_value=[]) as mock_build_middlewares,
-            patch("agent_workspace.client.apply_prompt_template", return_value="prompt") as mock_apply_prompt,
-            patch("agent_workspace.client.get_enabled_skills_for_config", return_value=[]),
+            patch("alpha.client.create_chat_model"),
+            patch("alpha.client.create_agent", side_effect=[MagicMock(), MagicMock()]) as mock_create_agent,
+            patch("alpha.client.build_middlewares", return_value=[]) as mock_build_middlewares,
+            patch("alpha.client.apply_prompt_template", return_value="prompt") as mock_apply_prompt,
+            patch("alpha.client.get_enabled_skills_for_config", return_value=[]),
             patch.object(client, "_get_tools", return_value=[]),
-            patch("agent_workspace.runtime.checkpointer.get_checkpointer", return_value=None),
+            patch("alpha.runtime.checkpointer.get_checkpointer", return_value=None),
         ):
             config = client._get_runnable_config("t1")
             client._ensure_agent(config, context={"user_id": "alice"})
@@ -1229,7 +1229,7 @@ class TestEnsureAgent:
         mock_app_config.authorization = AuthorizationConfig(
             enabled=True,
             provider=AuthorizationProviderConfig(
-                use="agent_workspace.authz.rbac:RbacAuthorizationProvider",
+                use="alpha.authz.rbac:RbacAuthorizationProvider",
                 config={"roles": {"user": {"tools": {"allow": "*"}}}},
             ),
         )
@@ -1237,13 +1237,13 @@ class TestEnsureAgent:
         attributes = {"groups": ["reader"]}
 
         with (
-            patch("agent_workspace.client.create_chat_model"),
-            patch("agent_workspace.client.create_agent", side_effect=[MagicMock(), MagicMock()]) as mock_create_agent,
-            patch("agent_workspace.client.build_middlewares", return_value=[]),
-            patch("agent_workspace.client.apply_prompt_template", return_value="prompt"),
-            patch("agent_workspace.client.get_enabled_skills_for_config", return_value=[]),
+            patch("alpha.client.create_chat_model"),
+            patch("alpha.client.create_agent", side_effect=[MagicMock(), MagicMock()]) as mock_create_agent,
+            patch("alpha.client.build_middlewares", return_value=[]),
+            patch("alpha.client.apply_prompt_template", return_value="prompt"),
+            patch("alpha.client.get_enabled_skills_for_config", return_value=[]),
             patch.object(client, "_get_tools", return_value=[]),
-            patch("agent_workspace.runtime.checkpointer.get_checkpointer", return_value=None),
+            patch("alpha.runtime.checkpointer.get_checkpointer", return_value=None),
         ):
             config = client._get_runnable_config("t1")
             context = {
@@ -1265,20 +1265,20 @@ class TestEnsureAgent:
         describe_tool = StructuredTool.from_function(lambda: "describe", name="describe_skill", description="describe")
 
         with (
-            patch("agent_workspace.client.create_chat_model"),
-            patch("agent_workspace.client.create_agent", return_value=MagicMock()) as mock_create_agent,
-            patch("agent_workspace.client.build_middlewares", return_value=[]),
-            patch("agent_workspace.client.apply_prompt_template", return_value="prompt"),
-            patch("agent_workspace.client.get_enabled_skills_for_config", return_value=[MagicMock()]),
+            patch("alpha.client.create_chat_model"),
+            patch("alpha.client.create_agent", return_value=MagicMock()) as mock_create_agent,
+            patch("alpha.client.build_middlewares", return_value=[]),
+            patch("alpha.client.apply_prompt_template", return_value="prompt"),
+            patch("alpha.client.get_enabled_skills_for_config", return_value=[MagicMock()]),
             patch(
-                "agent_workspace.client.build_skill_search_setup",
+                "alpha.client.build_skill_search_setup",
                 return_value=SimpleNamespace(
                     describe_skill_tool=describe_tool,
                     skill_names=frozenset({"example"}),
                 ),
             ),
             patch.object(client, "_get_tools", return_value=[mcp_tool]),
-            patch("agent_workspace.runtime.checkpointer.get_checkpointer", return_value=None),
+            patch("alpha.runtime.checkpointer.get_checkpointer", return_value=None),
         ):
             client._ensure_agent(client._get_runnable_config("t1"))
 
@@ -1294,13 +1294,13 @@ class TestEnsureAgent:
         config = client._get_runnable_config("t1")
 
         with (
-            patch("agent_workspace.client.create_chat_model"),
-            patch("agent_workspace.client.create_agent", return_value=mock_agent) as mock_create_agent,
-            patch("agent_workspace.client.build_middlewares", return_value=[]) as mock_build_middlewares,
-            patch("agent_workspace.client.apply_prompt_template", return_value="prompt") as mock_apply_prompt,
-            patch("agent_workspace.client.get_enabled_skills_for_config", return_value=[]),
+            patch("alpha.client.create_chat_model"),
+            patch("alpha.client.create_agent", return_value=mock_agent) as mock_create_agent,
+            patch("alpha.client.build_middlewares", return_value=[]) as mock_build_middlewares,
+            patch("alpha.client.apply_prompt_template", return_value="prompt") as mock_apply_prompt,
+            patch("alpha.client.get_enabled_skills_for_config", return_value=[]),
             patch.object(client, "_get_tools", return_value=[]),
-            patch("agent_workspace.runtime.checkpointer.get_checkpointer", return_value=MagicMock()),
+            patch("alpha.runtime.checkpointer.get_checkpointer", return_value=MagicMock()),
         ):
             client._agent_name = "custom-agent"
             client._available_skills = {"test_skill"}
@@ -1323,13 +1323,13 @@ class TestEnsureAgent:
         config = client._get_runnable_config("t-delta")
 
         with (
-            patch("agent_workspace.client.create_chat_model"),
-            patch("agent_workspace.client.create_agent", return_value=mock_agent) as mock_create_agent,
-            patch("agent_workspace.client.build_middlewares", return_value=[middleware]),
-            patch("agent_workspace.client.apply_prompt_template", return_value="prompt"),
-            patch("agent_workspace.client.get_enabled_skills_for_config", return_value=[]),
+            patch("alpha.client.create_chat_model"),
+            patch("alpha.client.create_agent", return_value=mock_agent) as mock_create_agent,
+            patch("alpha.client.build_middlewares", return_value=[middleware]),
+            patch("alpha.client.apply_prompt_template", return_value="prompt"),
+            patch("alpha.client.get_enabled_skills_for_config", return_value=[]),
             patch.object(client, "_get_tools", return_value=[]),
-            patch("agent_workspace.runtime.checkpointer.get_checkpointer", return_value=None),
+            patch("alpha.runtime.checkpointer.get_checkpointer", return_value=None),
         ):
             client._ensure_agent(config)
 
@@ -1344,13 +1344,13 @@ class TestEnsureAgent:
         config = client._get_runnable_config("t1")
 
         with (
-            patch("agent_workspace.client.create_chat_model"),
-            patch("agent_workspace.client.create_agent", return_value=mock_agent) as mock_create_agent,
-            patch("agent_workspace.client.build_middlewares", return_value=[]),
-            patch("agent_workspace.client.apply_prompt_template", return_value="prompt"),
-            patch("agent_workspace.client.get_enabled_skills_for_config", return_value=[]),
+            patch("alpha.client.create_chat_model"),
+            patch("alpha.client.create_agent", return_value=mock_agent) as mock_create_agent,
+            patch("alpha.client.build_middlewares", return_value=[]),
+            patch("alpha.client.apply_prompt_template", return_value="prompt"),
+            patch("alpha.client.get_enabled_skills_for_config", return_value=[]),
             patch.object(client, "_get_tools", return_value=[]),
-            patch("agent_workspace.runtime.checkpointer.get_checkpointer", return_value=mock_checkpointer),
+            patch("alpha.runtime.checkpointer.get_checkpointer", return_value=mock_checkpointer),
         ):
             client._ensure_agent(config)
 
@@ -1370,13 +1370,13 @@ class TestEnsureAgent:
             return [MagicMock()] + custom + [mock_clarification]
 
         with (
-            patch("agent_workspace.client.create_chat_model"),
-            patch("agent_workspace.client.create_agent", return_value=mock_agent) as mock_create_agent,
-            patch("agent_workspace.client.build_middlewares", side_effect=fake_build_middlewares),
-            patch("agent_workspace.client.apply_prompt_template", return_value="prompt"),
-            patch("agent_workspace.client.get_enabled_skills_for_config", return_value=[]),
+            patch("alpha.client.create_chat_model"),
+            patch("alpha.client.create_agent", return_value=mock_agent) as mock_create_agent,
+            patch("alpha.client.build_middlewares", side_effect=fake_build_middlewares),
+            patch("alpha.client.apply_prompt_template", return_value="prompt"),
+            patch("alpha.client.get_enabled_skills_for_config", return_value=[]),
             patch.object(client, "_get_tools", return_value=[]),
-            patch("agent_workspace.runtime.checkpointer.get_checkpointer", return_value=MagicMock()),
+            patch("alpha.runtime.checkpointer.get_checkpointer", return_value=MagicMock()),
         ):
             client._ensure_agent(config)
 
@@ -1390,13 +1390,13 @@ class TestEnsureAgent:
         config = client._get_runnable_config("t1")
 
         with (
-            patch("agent_workspace.client.create_chat_model"),
-            patch("agent_workspace.client.create_agent", return_value=mock_agent) as mock_create_agent,
-            patch("agent_workspace.client.build_middlewares", return_value=[]),
-            patch("agent_workspace.client.apply_prompt_template", return_value="prompt"),
-            patch("agent_workspace.client.get_enabled_skills_for_config", return_value=[]),
+            patch("alpha.client.create_chat_model"),
+            patch("alpha.client.create_agent", return_value=mock_agent) as mock_create_agent,
+            patch("alpha.client.build_middlewares", return_value=[]),
+            patch("alpha.client.apply_prompt_template", return_value="prompt"),
+            patch("alpha.client.get_enabled_skills_for_config", return_value=[]),
             patch.object(client, "_get_tools", return_value=[]),
-            patch("agent_workspace.runtime.checkpointer.get_checkpointer", return_value=None),
+            patch("alpha.runtime.checkpointer.get_checkpointer", return_value=None),
         ):
             client._ensure_agent(config)
 
@@ -1434,13 +1434,13 @@ class TestEnsureAgent:
         )
 
         with (
-            patch("agent_workspace.client.create_chat_model"),
-            patch("agent_workspace.client.create_agent", side_effect=[MagicMock(), MagicMock()]) as mock_create_agent,
-            patch("agent_workspace.client.build_middlewares", return_value=[]),
-            patch("agent_workspace.client.apply_prompt_template", return_value="prompt"),
-            patch("agent_workspace.client.get_enabled_skills_for_config", return_value=[]),
+            patch("alpha.client.create_chat_model"),
+            patch("alpha.client.create_agent", side_effect=[MagicMock(), MagicMock()]) as mock_create_agent,
+            patch("alpha.client.build_middlewares", return_value=[]),
+            patch("alpha.client.apply_prompt_template", return_value="prompt"),
+            patch("alpha.client.get_enabled_skills_for_config", return_value=[]),
             patch.object(client, "_get_tools", return_value=[]),
-            patch("agent_workspace.runtime.checkpointer.get_checkpointer", return_value=None),
+            patch("alpha.runtime.checkpointer.get_checkpointer", return_value=None),
         ):
             client._ensure_agent(config1)
             client._ensure_agent(config2)
@@ -1452,7 +1452,7 @@ class TestEnsureAgent:
         (parity with agent.py — config flag must not be a silent no-op on the embedded path)."""
         from pathlib import Path
 
-        from agent_workspace.skills.types import Skill, SkillCategory
+        from alpha.skills.types import Skill, SkillCategory
 
         fake_skill = Skill(
             name="deep-research",
@@ -1472,13 +1472,13 @@ class TestEnsureAgent:
         config = client._get_runnable_config("t1")
 
         with (
-            patch("agent_workspace.client.create_chat_model"),
-            patch("agent_workspace.client.create_agent", return_value=MagicMock()),
-            patch("agent_workspace.client.build_middlewares", return_value=[]),
-            patch("agent_workspace.client.apply_prompt_template", return_value="prompt") as mock_apply_prompt,
+            patch("alpha.client.create_chat_model"),
+            patch("alpha.client.create_agent", return_value=MagicMock()),
+            patch("alpha.client.build_middlewares", return_value=[]),
+            patch("alpha.client.apply_prompt_template", return_value="prompt") as mock_apply_prompt,
             patch.object(client, "_get_tools", return_value=[]),
-            patch("agent_workspace.runtime.checkpointer.get_checkpointer", return_value=None),
-            patch("agent_workspace.client.get_enabled_skills_for_config", return_value=[fake_skill]),
+            patch("alpha.runtime.checkpointer.get_checkpointer", return_value=None),
+            patch("alpha.client.get_enabled_skills_for_config", return_value=[fake_skill]),
         ):
             client._ensure_agent(config)
 
@@ -1490,7 +1490,7 @@ class TestEnsureAgent:
         """When skills.deferred_discovery=False, skill_names is None so the legacy prompt path runs."""
         from pathlib import Path
 
-        from agent_workspace.skills.types import Skill, SkillCategory
+        from alpha.skills.types import Skill, SkillCategory
 
         fake_skill = Skill(
             name="deep-research",
@@ -1510,13 +1510,13 @@ class TestEnsureAgent:
         config = client._get_runnable_config("t1")
 
         with (
-            patch("agent_workspace.client.create_chat_model"),
-            patch("agent_workspace.client.create_agent", return_value=MagicMock()),
-            patch("agent_workspace.client.build_middlewares", return_value=[]),
-            patch("agent_workspace.client.apply_prompt_template", return_value="prompt") as mock_apply_prompt,
+            patch("alpha.client.create_chat_model"),
+            patch("alpha.client.create_agent", return_value=MagicMock()),
+            patch("alpha.client.build_middlewares", return_value=[]),
+            patch("alpha.client.apply_prompt_template", return_value="prompt") as mock_apply_prompt,
             patch.object(client, "_get_tools", return_value=[]),
-            patch("agent_workspace.runtime.checkpointer.get_checkpointer", return_value=None),
-            patch("agent_workspace.client.get_enabled_skills_for_config", return_value=[fake_skill]),
+            patch("alpha.runtime.checkpointer.get_checkpointer", return_value=None),
+            patch("alpha.client.get_enabled_skills_for_config", return_value=[fake_skill]),
         ):
             client._ensure_agent(config)
 
@@ -1533,8 +1533,8 @@ class TestEnsureAgent:
         """
         from langchain_core.tools import tool as as_tool
 
-        from agent_workspace.agents.middlewares.mcp_routing_middleware import McpRoutingMiddleware
-        from agent_workspace.tools.mcp_metadata import tag_mcp_routing, tag_mcp_tool
+        from alpha.agents.middlewares.mcp_routing_middleware import McpRoutingMiddleware
+        from alpha.tools.mcp_metadata import tag_mcp_routing, tag_mcp_tool
 
         @as_tool
         def postgres_query(sql: str) -> str:
@@ -1551,13 +1551,13 @@ class TestEnsureAgent:
         config = client._get_runnable_config("t1")
 
         with (
-            patch("agent_workspace.client.create_chat_model"),
-            patch("agent_workspace.client.create_agent", return_value=MagicMock()),
-            patch("agent_workspace.client.build_middlewares", return_value=[]) as mock_build_middlewares,
-            patch("agent_workspace.client.apply_prompt_template", return_value="prompt"),
+            patch("alpha.client.create_chat_model"),
+            patch("alpha.client.create_agent", return_value=MagicMock()),
+            patch("alpha.client.build_middlewares", return_value=[]) as mock_build_middlewares,
+            patch("alpha.client.apply_prompt_template", return_value="prompt"),
             patch.object(client, "_get_tools", return_value=[postgres_query]),
-            patch("agent_workspace.runtime.checkpointer.get_checkpointer", return_value=None),
-            patch("agent_workspace.client.get_enabled_skills_for_config", return_value=[]),
+            patch("alpha.runtime.checkpointer.get_checkpointer", return_value=None),
+            patch("alpha.client.get_enabled_skills_for_config", return_value=[]),
         ):
             client._ensure_agent(config)
 
@@ -1573,13 +1573,13 @@ class TestEnsureAgent:
         config = client._get_runnable_config("t1")
 
         with (
-            patch("agent_workspace.client.create_chat_model"),
-            patch("agent_workspace.client.create_agent", return_value=MagicMock()),
-            patch("agent_workspace.client.build_middlewares", return_value=[]) as mock_build_middlewares,
-            patch("agent_workspace.client.apply_prompt_template", return_value="prompt"),
+            patch("alpha.client.create_chat_model"),
+            patch("alpha.client.create_agent", return_value=MagicMock()),
+            patch("alpha.client.build_middlewares", return_value=[]) as mock_build_middlewares,
+            patch("alpha.client.apply_prompt_template", return_value="prompt"),
             patch.object(client, "_get_tools", return_value=[]),
-            patch("agent_workspace.runtime.checkpointer.get_checkpointer", return_value=None),
-            patch("agent_workspace.client.get_enabled_skills_for_config", return_value=[]),
+            patch("alpha.runtime.checkpointer.get_checkpointer", return_value=None),
+            patch("alpha.client.get_enabled_skills_for_config", return_value=[]),
         ):
             client._ensure_agent(config)
 
@@ -1708,7 +1708,7 @@ class TestThreadQueries:
         mock_checkpointer = MagicMock()
         mock_checkpointer.list.return_value = []
 
-        with patch("agent_workspace.runtime.checkpointer.provider.get_checkpointer", return_value=mock_checkpointer):
+        with patch("alpha.runtime.checkpointer.provider.get_checkpointer", return_value=mock_checkpointer):
             # No internal checkpointer, should fetch from provider
             result = client.list_threads()
 
@@ -1746,7 +1746,7 @@ class TestThreadQueries:
 
         with (
             patch.object(client, "_ensure_agent"),
-            patch("agent_workspace.client.CheckpointStateAccessor.bind", return_value=accessor),
+            patch("alpha.client.CheckpointStateAccessor.bind", return_value=accessor),
         ):
             result = client.get_thread("t1")
 
@@ -1803,7 +1803,7 @@ class TestThreadQueries:
         accessor = MagicMock()
         accessor.history.return_value = [snapshot]
 
-        with patch("agent_workspace.client.CheckpointStateAccessor", create=True) as accessor_type:
+        with patch("alpha.client.CheckpointStateAccessor", create=True) as accessor_type:
             accessor_type.bind.return_value = accessor
             result = client.get_thread("thread-1")
 
@@ -1817,9 +1817,9 @@ class TestThreadQueries:
         client._agent = MagicMock()
 
         with (
-            patch("agent_workspace.runtime.checkpointer.provider.get_checkpointer", return_value=mock_checkpointer),
+            patch("alpha.runtime.checkpointer.provider.get_checkpointer", return_value=mock_checkpointer),
             patch.object(client, "_ensure_agent"),
-            patch("agent_workspace.client.CheckpointStateAccessor.bind", return_value=accessor),
+            patch("alpha.client.CheckpointStateAccessor.bind", return_value=accessor),
         ):
             result = client.get_thread("t99")
 
@@ -1862,7 +1862,7 @@ class TestMcpConfig:
         ext_config = MagicMock()
         ext_config.mcp_servers = {"github": server}
 
-        with patch("agent_workspace.client.get_extensions_config", return_value=ext_config):
+        with patch("alpha.client.get_extensions_config", return_value=ext_config):
             result = client.get_mcp_config()
 
         assert "mcp_servers" in result
@@ -1884,9 +1884,9 @@ class TestMcpConfig:
             client._agent = MagicMock()
 
             with (
-                patch("agent_workspace.client.ExtensionsConfig.resolve_config_path", return_value=tmp_path),
-                patch("agent_workspace.client.get_extensions_config", return_value=current_config),
-                patch("agent_workspace.client.reload_extensions_config", return_value=reloaded_config),
+                patch("alpha.client.ExtensionsConfig.resolve_config_path", return_value=tmp_path),
+                patch("alpha.client.get_extensions_config", return_value=current_config),
+                patch("alpha.client.reload_extensions_config", return_value=reloaded_config),
             ):
                 result = client.update_mcp_config({"new-server": {"enabled": True, "type": "sse"}})
 
@@ -1917,8 +1917,8 @@ class TestMcpConfig:
         )
 
         with (
-            patch("agent_workspace.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
-            patch("agent_workspace.client.reload_extensions_config", return_value=ExtensionsConfig()),
+            patch("alpha.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
+            patch("alpha.client.reload_extensions_config", return_value=ExtensionsConfig()),
         ):
             client.update_mcp_config({"new": {"type": "stdio", "command": "uvx", "env": {"TOKEN": "$AGENT_WORKSPACE_TEST_GH_TOKEN"}}})
 
@@ -1937,8 +1937,8 @@ class TestMcpConfig:
         reload = MagicMock()
 
         with (
-            patch("agent_workspace.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
-            patch("agent_workspace.client.reload_extensions_config", reload),
+            patch("alpha.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
+            patch("alpha.client.reload_extensions_config", reload),
             pytest.raises(ValueError),
         ):
             client.update_mcp_config({"bad": {"enabled": "not-a-bool"}})
@@ -1964,13 +1964,13 @@ class TestSkillsManagement:
 
     def test_get_skill_found(self, client):
         skill = self._make_skill()
-        with patch("agent_workspace.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[skill]):
+        with patch("alpha.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[skill]):
             result = client.get_skill("test-skill")
         assert result is not None
         assert result["name"] == "test-skill"
 
     def test_get_skill_not_found(self, client):
-        with patch("agent_workspace.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[]):
+        with patch("alpha.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[]):
             result = client.get_skill("nonexistent")
         assert result is None
 
@@ -1992,11 +1992,11 @@ class TestSkillsManagement:
             # method is invoked 4 times: provide 4 return values.
             with (
                 patch(
-                    "agent_workspace.skills.storage.local_skill_storage.LocalSkillStorage.load_skills",
+                    "alpha.skills.storage.local_skill_storage.LocalSkillStorage.load_skills",
                     side_effect=[[skill], [skill], [updated_skill], [updated_skill]],
                 ),
-                patch("agent_workspace.client.ExtensionsConfig.resolve_config_path", return_value=tmp_path),
-                patch("agent_workspace.client.reload_extensions_config"),
+                patch("alpha.client.ExtensionsConfig.resolve_config_path", return_value=tmp_path),
+                patch("alpha.client.reload_extensions_config"),
             ):
                 result = client.update_skill("test-skill", enabled=False)
             assert result["enabled"] is False
@@ -2017,11 +2017,11 @@ class TestSkillsManagement:
         try:
             with (
                 patch(
-                    "agent_workspace.skills.storage.local_skill_storage.LocalSkillStorage.load_skills",
+                    "alpha.skills.storage.local_skill_storage.LocalSkillStorage.load_skills",
                     side_effect=[[skill], [skill], [updated_skill], [updated_skill]],
                 ),
-                patch("agent_workspace.client.ExtensionsConfig.resolve_config_path", return_value=tmp_path),
-                patch("agent_workspace.client.reload_extensions_config"),
+                patch("alpha.client.ExtensionsConfig.resolve_config_path", return_value=tmp_path),
+                patch("alpha.client.reload_extensions_config"),
             ):
                 client.update_skill("test-skill", enabled=False)
 
@@ -2056,9 +2056,9 @@ class TestSkillsManagement:
         storage.load_skills.side_effect = [[skill], [self._make_skill(enabled=False)]]
 
         with (
-            patch("agent_workspace.client.get_or_new_user_skill_storage", return_value=storage),
-            patch("agent_workspace.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
-            patch("agent_workspace.client.reload_extensions_config"),
+            patch("alpha.client.get_or_new_user_skill_storage", return_value=storage),
+            patch("alpha.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
+            patch("alpha.client.reload_extensions_config"),
         ):
             client.update_skill("test-skill", enabled=False)
 
@@ -2069,7 +2069,7 @@ class TestSkillsManagement:
         assert "ghp_live_secret_value" not in written_text
 
     def test_update_skill_not_found(self, client):
-        with patch("agent_workspace.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[]):
+        with patch("alpha.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[]):
             with pytest.raises(ValueError, match="not found"):
                 client.update_skill("nonexistent", enabled=True)
 
@@ -2089,12 +2089,12 @@ class TestSkillsManagement:
             skills_root = tmp_path / "skills"
             (skills_root / "custom").mkdir(parents=True)
 
-            from agent_workspace.skills.storage.local_skill_storage import LocalSkillStorage
+            from alpha.skills.storage.local_skill_storage import LocalSkillStorage
 
             local_storage = LocalSkillStorage(host_path=str(skills_root))
             with (
-                patch("agent_workspace.skills.storage._default_skill_storage", local_storage),
-                patch("agent_workspace.client.get_or_new_user_skill_storage", lambda user_id, **kwargs: local_storage),
+                patch("alpha.skills.storage._default_skill_storage", local_storage),
+                patch("alpha.client.get_or_new_user_skill_storage", lambda user_id, **kwargs: local_storage),
             ):
                 result = client.install_skill(archive_path)
 
@@ -2126,7 +2126,7 @@ class TestMemoryManagement:
         imported = {"version": "1.0", "facts": []}
         mock_mgr = MagicMock()
         mock_mgr.import_memory.return_value = imported
-        with patch("agent_workspace.agents.memory.get_memory_manager", return_value=mock_mgr):
+        with patch("alpha.agents.memory.get_memory_manager", return_value=mock_mgr):
             result = client.import_memory(imported)
         assert mock_mgr.import_memory.call_count == 1
         call_args = mock_mgr.import_memory.call_args
@@ -2138,7 +2138,7 @@ class TestMemoryManagement:
         data = {"version": "1.0", "facts": []}
         mock_mgr = MagicMock()
         mock_mgr.reload_memory.return_value = data
-        with patch("agent_workspace.agents.memory.get_memory_manager", return_value=mock_mgr):
+        with patch("alpha.agents.memory.get_memory_manager", return_value=mock_mgr):
             result = client.reload_memory()
         assert result == data
 
@@ -2149,7 +2149,7 @@ class TestMemoryManagement:
         mock_mgr = MagicMock()
         mock_mgr.reload_memory.side_effect = NotImplementedError("reload not supported")
         mock_mgr.get_memory.side_effect = NotImplementedError("get_memory not supported")
-        with patch("agent_workspace.agents.memory.get_memory_manager", return_value=mock_mgr):
+        with patch("alpha.agents.memory.get_memory_manager", return_value=mock_mgr):
             with pytest.raises(NotImplementedError, match="implements neither"):
                 client.reload_memory()
         mock_mgr.reload_memory.assert_called_once()
@@ -2159,7 +2159,7 @@ class TestMemoryManagement:
         data = {"version": "1.0", "facts": []}
         mock_mgr = MagicMock()
         mock_mgr.clear_memory.return_value = data
-        with patch("agent_workspace.agents.memory.get_memory_manager", return_value=mock_mgr):
+        with patch("alpha.agents.memory.get_memory_manager", return_value=mock_mgr):
             result = client.clear_memory()
         assert result == data
 
@@ -2167,7 +2167,7 @@ class TestMemoryManagement:
         data = {"version": "1.0", "facts": []}
         mock_mgr = MagicMock()
         mock_mgr.create_fact.return_value = (data, "fact_new")
-        with patch("agent_workspace.agents.memory.get_memory_manager", return_value=mock_mgr):
+        with patch("alpha.agents.memory.get_memory_manager", return_value=mock_mgr):
             result = client.create_memory_fact(
                 "User prefers concise code reviews.",
                 category="preference",
@@ -2185,7 +2185,7 @@ class TestMemoryManagement:
         data = {"version": "1.0", "facts": []}
         mock_mgr = MagicMock()
         mock_mgr.delete_fact.return_value = data
-        with patch("agent_workspace.agents.memory.get_memory_manager", return_value=mock_mgr):
+        with patch("alpha.agents.memory.get_memory_manager", return_value=mock_mgr):
             result = client.delete_memory_fact("fact_123")
             mock_mgr.delete_fact.assert_called_once_with("fact_123", user_id=ANY)
         assert result == data
@@ -2194,7 +2194,7 @@ class TestMemoryManagement:
         data = {"version": "1.0", "facts": []}
         mock_mgr = MagicMock()
         mock_mgr.update_fact.return_value = data
-        with patch("agent_workspace.agents.memory.get_memory_manager", return_value=mock_mgr):
+        with patch("alpha.agents.memory.get_memory_manager", return_value=mock_mgr):
             result = client.update_memory_fact(
                 "fact_123",
                 "User prefers spaces",
@@ -2214,7 +2214,7 @@ class TestMemoryManagement:
         data = {"version": "1.0", "facts": []}
         mock_mgr = MagicMock()
         mock_mgr.update_fact.return_value = data
-        with patch("agent_workspace.agents.memory.get_memory_manager", return_value=mock_mgr):
+        with patch("alpha.agents.memory.get_memory_manager", return_value=mock_mgr):
             result = client.update_memory_fact(
                 "fact_123",
                 "User prefers spaces",
@@ -2236,7 +2236,7 @@ class TestMemoryManagement:
         config.manager_class = "deermem"
         config.backend_config = {}
 
-        with patch("agent_workspace.config.memory_config.get_memory_config", return_value=config):
+        with patch("alpha.config.memory_config.get_memory_config", return_value=config):
             result = client.get_memory_config()
 
         assert result["enabled"] is True
@@ -2255,8 +2255,8 @@ class TestMemoryManagement:
         mock_mgr.get_memory.return_value = data
 
         with (
-            patch("agent_workspace.config.memory_config.get_memory_config", return_value=config),
-            patch("agent_workspace.agents.memory.get_memory_manager", return_value=mock_mgr),
+            patch("alpha.config.memory_config.get_memory_config", return_value=config),
+            patch("alpha.agents.memory.get_memory_manager", return_value=mock_mgr),
         ):
             result = client.get_memory_status()
 
@@ -2281,7 +2281,7 @@ class TestUploads:
             uploads_dir = tmp_path / "uploads"
             uploads_dir.mkdir()
 
-            with patch("agent_workspace.client.get_uploads_dir", return_value=uploads_dir), patch("agent_workspace.client.ensure_uploads_dir", return_value=uploads_dir):
+            with patch("alpha.client.get_uploads_dir", return_value=uploads_dir), patch("alpha.client.ensure_uploads_dir", return_value=uploads_dir):
                 result = client.upload_files("thread-1", [src_file])
 
             assert result["success"] is True
@@ -2338,10 +2338,10 @@ class TestUploads:
                 return client.upload_files("thread-async", [first, second])
 
             with (
-                patch("agent_workspace.client.get_uploads_dir", return_value=uploads_dir),
-                patch("agent_workspace.client.ensure_uploads_dir", return_value=uploads_dir),
-                patch("agent_workspace.utils.file_conversion.CONVERTIBLE_EXTENSIONS", {".pdf"}),
-                patch("agent_workspace.utils.file_conversion.convert_file_to_markdown", side_effect=fake_convert),
+                patch("alpha.client.get_uploads_dir", return_value=uploads_dir),
+                patch("alpha.client.ensure_uploads_dir", return_value=uploads_dir),
+                patch("alpha.utils.file_conversion.CONVERTIBLE_EXTENSIONS", {".pdf"}),
+                patch("alpha.utils.file_conversion.convert_file_to_markdown", side_effect=fake_convert),
                 patch("concurrent.futures.ThreadPoolExecutor", FakeExecutor),
             ):
                 result = asyncio.run(call_upload())
@@ -2372,10 +2372,10 @@ class TestUploads:
                 return md_path
 
             with (
-                patch("agent_workspace.client.get_uploads_dir", return_value=uploads_dir),
-                patch("agent_workspace.client.ensure_uploads_dir", return_value=uploads_dir),
-                patch("agent_workspace.utils.file_conversion.CONVERTIBLE_EXTENSIONS", {".docx", ".pdf"}),
-                patch("agent_workspace.utils.file_conversion.convert_file_to_markdown", side_effect=fake_convert),
+                patch("alpha.client.get_uploads_dir", return_value=uploads_dir),
+                patch("alpha.client.ensure_uploads_dir", return_value=uploads_dir),
+                patch("alpha.utils.file_conversion.CONVERTIBLE_EXTENSIONS", {".docx", ".pdf"}),
+                patch("alpha.utils.file_conversion.convert_file_to_markdown", side_effect=fake_convert),
             ):
                 result = client.upload_files("thread-1", [docx, pdf])
 
@@ -2410,10 +2410,10 @@ class TestUploads:
                 return md_path
 
             with (
-                patch("agent_workspace.client.get_uploads_dir", return_value=uploads_dir),
-                patch("agent_workspace.client.ensure_uploads_dir", return_value=uploads_dir),
-                patch("agent_workspace.utils.file_conversion.CONVERTIBLE_EXTENSIONS", {".docx", ".pdf"}),
-                patch("agent_workspace.utils.file_conversion.convert_file_to_markdown", side_effect=convert_failing_on_docx),
+                patch("alpha.client.get_uploads_dir", return_value=uploads_dir),
+                patch("alpha.client.ensure_uploads_dir", return_value=uploads_dir),
+                patch("alpha.utils.file_conversion.CONVERTIBLE_EXTENSIONS", {".docx", ".pdf"}),
+                patch("alpha.utils.file_conversion.convert_file_to_markdown", side_effect=convert_failing_on_docx),
             ):
                 result = client.upload_files("thread-1", [docx, pdf])
 
@@ -2429,7 +2429,7 @@ class TestUploads:
             (uploads_dir / "a.txt").write_text("a")
             (uploads_dir / "b.txt").write_text("bb")
 
-            with patch("agent_workspace.client.get_uploads_dir", return_value=uploads_dir), patch("agent_workspace.client.ensure_uploads_dir", return_value=uploads_dir):
+            with patch("alpha.client.get_uploads_dir", return_value=uploads_dir), patch("alpha.client.ensure_uploads_dir", return_value=uploads_dir):
                 result = client.list_uploads("thread-1")
 
             assert result["count"] == 2
@@ -2447,7 +2447,7 @@ class TestUploads:
             uploads_dir = Path(tmp)
             (uploads_dir / "delete-me.txt").write_text("gone")
 
-            with patch("agent_workspace.client.get_uploads_dir", return_value=uploads_dir), patch("agent_workspace.client.ensure_uploads_dir", return_value=uploads_dir):
+            with patch("alpha.client.get_uploads_dir", return_value=uploads_dir), patch("alpha.client.ensure_uploads_dir", return_value=uploads_dir):
                 result = client.delete_upload("thread-1", "delete-me.txt")
 
             assert result["success"] is True
@@ -2456,14 +2456,14 @@ class TestUploads:
 
     def test_delete_upload_not_found(self, client):
         with tempfile.TemporaryDirectory() as tmp:
-            with patch("agent_workspace.client.get_uploads_dir", return_value=Path(tmp)):
+            with patch("alpha.client.get_uploads_dir", return_value=Path(tmp)):
                 with pytest.raises(FileNotFoundError):
                     client.delete_upload("thread-1", "nope.txt")
 
     def test_delete_upload_path_traversal(self, client):
         with tempfile.TemporaryDirectory() as tmp:
             uploads_dir = Path(tmp)
-            with patch("agent_workspace.client.get_uploads_dir", return_value=uploads_dir), patch("agent_workspace.client.ensure_uploads_dir", return_value=uploads_dir):
+            with patch("alpha.client.get_uploads_dir", return_value=uploads_dir), patch("alpha.client.ensure_uploads_dir", return_value=uploads_dir):
                 with pytest.raises(PathTraversalError):
                     client.delete_upload("thread-1", "../../etc/passwd")
 
@@ -2475,7 +2475,7 @@ class TestUploads:
 
 class TestArtifacts:
     def test_get_artifact(self, client):
-        from agent_workspace.runtime.user_context import get_effective_user_id
+        from alpha.runtime.user_context import get_effective_user_id
 
         with tempfile.TemporaryDirectory() as tmp:
             paths = Paths(base_dir=tmp)
@@ -2484,21 +2484,21 @@ class TestArtifacts:
             outputs.mkdir(parents=True)
             (outputs / "result.txt").write_text("artifact content")
 
-            with patch("agent_workspace.client.get_paths", return_value=paths):
+            with patch("alpha.client.get_paths", return_value=paths):
                 content, mime = client.get_artifact("t1", "mnt/user-data/outputs/result.txt")
 
             assert content == b"artifact content"
             assert "text" in mime
 
     def test_get_artifact_not_found(self, client):
-        from agent_workspace.runtime.user_context import get_effective_user_id
+        from alpha.runtime.user_context import get_effective_user_id
 
         with tempfile.TemporaryDirectory() as tmp:
             paths = Paths(base_dir=tmp)
             user_id = get_effective_user_id()
             paths.sandbox_outputs_dir("t1", user_id=user_id).mkdir(parents=True)
 
-            with patch("agent_workspace.client.get_paths", return_value=paths):
+            with patch("alpha.client.get_paths", return_value=paths):
                 with pytest.raises(FileNotFoundError):
                     client.get_artifact("t1", "mnt/user-data/outputs/nope.txt")
 
@@ -2507,14 +2507,14 @@ class TestArtifacts:
             client.get_artifact("t1", "bad/path/file.txt")
 
     def test_get_artifact_path_traversal(self, client):
-        from agent_workspace.runtime.user_context import get_effective_user_id
+        from alpha.runtime.user_context import get_effective_user_id
 
         with tempfile.TemporaryDirectory() as tmp:
             paths = Paths(base_dir=tmp)
             user_id = get_effective_user_id()
             paths.sandbox_outputs_dir("t1", user_id=user_id).mkdir(parents=True)
 
-            with patch("agent_workspace.client.get_paths", return_value=paths):
+            with patch("alpha.client.get_paths", return_value=paths):
                 with pytest.raises(PathTraversalError):
                     client.get_artifact("t1", "mnt/user-data/../../../etc/passwd")
 
@@ -2667,7 +2667,7 @@ class TestScenarioFileLifecycle:
             (tmp_path / "report.txt").write_text("quarterly report data")
             (tmp_path / "data.csv").write_text("a,b,c\n1,2,3")
 
-            with patch("agent_workspace.client.get_uploads_dir", return_value=uploads_dir), patch("agent_workspace.client.ensure_uploads_dir", return_value=uploads_dir):
+            with patch("alpha.client.get_uploads_dir", return_value=uploads_dir), patch("alpha.client.ensure_uploads_dir", return_value=uploads_dir):
                 # Step 1: Upload
                 result = client.upload_files(
                     "t-lifecycle",
@@ -2696,7 +2696,7 @@ class TestScenarioFileLifecycle:
 
     def test_upload_then_read_artifact(self, client):
         """Upload a file, simulate agent producing artifact, read it back."""
-        from agent_workspace.runtime.user_context import get_effective_user_id
+        from alpha.runtime.user_context import get_effective_user_id
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -2712,7 +2712,7 @@ class TestScenarioFileLifecycle:
             src_file = tmp_path / "input.txt"
             src_file.write_text("raw data to process")
 
-            with patch("agent_workspace.client.get_uploads_dir", return_value=uploads_dir), patch("agent_workspace.client.ensure_uploads_dir", return_value=uploads_dir):
+            with patch("alpha.client.get_uploads_dir", return_value=uploads_dir), patch("alpha.client.ensure_uploads_dir", return_value=uploads_dir):
                 uploaded = client.upload_files("t-artifact", [src_file])
                 assert len(uploaded["files"]) == 1
 
@@ -2720,7 +2720,7 @@ class TestScenarioFileLifecycle:
             (outputs_dir / "analysis.json").write_text('{"result": "processed"}')
 
             # Retrieve artifact
-            with patch("agent_workspace.client.get_paths", return_value=paths):
+            with patch("alpha.client.get_paths", return_value=paths):
                 content, mime = client.get_artifact("t-artifact", "mnt/user-data/outputs/analysis.json")
 
             assert json.loads(content) == {"result": "processed"}
@@ -2757,12 +2757,12 @@ class TestScenarioConfigManagement:
         skill.category = "public"
         skill.enabled = True
 
-        with patch("agent_workspace.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[skill]):
+        with patch("alpha.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[skill]):
             skills_result = client.list_skills()
         assert len(skills_result["skills"]) == 1
 
         # Get specific skill
-        with patch("agent_workspace.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[skill]):
+        with patch("alpha.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[skill]):
             detail = client.get_skill("web-search")
         assert detail is not None
         assert detail["enabled"] is True
@@ -2780,9 +2780,9 @@ class TestScenarioConfigManagement:
 
             client._agent = MagicMock()  # Simulate existing agent
             with (
-                patch("agent_workspace.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
-                patch("agent_workspace.client.get_extensions_config", return_value=current_config),
-                patch("agent_workspace.client.reload_extensions_config", return_value=reloaded_config),
+                patch("alpha.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
+                patch("alpha.client.get_extensions_config", return_value=current_config),
+                patch("alpha.client.reload_extensions_config", return_value=reloaded_config),
             ):
                 mcp_result = client.update_mcp_config({"my-mcp": {"enabled": True}})
             assert "my-mcp" in mcp_result["mcp_servers"]
@@ -2807,10 +2807,10 @@ class TestScenarioConfigManagement:
 
             client._agent = MagicMock()  # Simulate re-created agent
             with (
-                patch("agent_workspace.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", side_effect=[[skill], [toggled]]),
-                patch("agent_workspace.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
-                patch("agent_workspace.client.get_extensions_config", return_value=ext_config),
-                patch("agent_workspace.client.reload_extensions_config"),
+                patch("alpha.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", side_effect=[[skill], [toggled]]),
+                patch("alpha.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
+                patch("alpha.client.get_extensions_config", return_value=ext_config),
+                patch("alpha.client.reload_extensions_config"),
             ):
                 skill_result = client.update_skill("code-gen", enabled=False)
             assert skill_result["enabled"] is False
@@ -2833,13 +2833,13 @@ class TestScenarioAgentRecreation:
         config_b = client._get_runnable_config("t1", model_name="claude-3")
 
         with (
-            patch("agent_workspace.client.create_chat_model"),
-            patch("agent_workspace.client.create_agent", side_effect=fake_create_agent),
-            patch("agent_workspace.client.build_middlewares", return_value=[]),
-            patch("agent_workspace.client.apply_prompt_template", return_value="prompt"),
-            patch("agent_workspace.client.get_enabled_skills_for_config", return_value=[]),
+            patch("alpha.client.create_chat_model"),
+            patch("alpha.client.create_agent", side_effect=fake_create_agent),
+            patch("alpha.client.build_middlewares", return_value=[]),
+            patch("alpha.client.apply_prompt_template", return_value="prompt"),
+            patch("alpha.client.get_enabled_skills_for_config", return_value=[]),
             patch.object(client, "_get_tools", return_value=[]),
-            patch("agent_workspace.runtime.checkpointer.get_checkpointer", return_value=MagicMock()),
+            patch("alpha.runtime.checkpointer.get_checkpointer", return_value=MagicMock()),
         ):
             client._ensure_agent(config_a)
             first_agent = client._agent
@@ -2862,13 +2862,13 @@ class TestScenarioAgentRecreation:
         config = client._get_runnable_config("t1", model_name="gpt-4")
 
         with (
-            patch("agent_workspace.client.create_chat_model"),
-            patch("agent_workspace.client.create_agent", side_effect=fake_create_agent),
-            patch("agent_workspace.client.build_middlewares", return_value=[]),
-            patch("agent_workspace.client.apply_prompt_template", return_value="prompt"),
-            patch("agent_workspace.client.get_enabled_skills_for_config", return_value=[]),
+            patch("alpha.client.create_chat_model"),
+            patch("alpha.client.create_agent", side_effect=fake_create_agent),
+            patch("alpha.client.build_middlewares", return_value=[]),
+            patch("alpha.client.apply_prompt_template", return_value="prompt"),
+            patch("alpha.client.get_enabled_skills_for_config", return_value=[]),
             patch.object(client, "_get_tools", return_value=[]),
-            patch("agent_workspace.runtime.checkpointer.get_checkpointer", return_value=MagicMock()),
+            patch("alpha.runtime.checkpointer.get_checkpointer", return_value=MagicMock()),
         ):
             client._ensure_agent(config)
             client._ensure_agent(config)
@@ -2888,13 +2888,13 @@ class TestScenarioAgentRecreation:
         config = client._get_runnable_config("t1")
 
         with (
-            patch("agent_workspace.client.create_chat_model"),
-            patch("agent_workspace.client.create_agent", side_effect=fake_create_agent),
-            patch("agent_workspace.client.build_middlewares", return_value=[]),
-            patch("agent_workspace.client.apply_prompt_template", return_value="prompt"),
-            patch("agent_workspace.client.get_enabled_skills_for_config", return_value=[]),
+            patch("alpha.client.create_chat_model"),
+            patch("alpha.client.create_agent", side_effect=fake_create_agent),
+            patch("alpha.client.build_middlewares", return_value=[]),
+            patch("alpha.client.apply_prompt_template", return_value="prompt"),
+            patch("alpha.client.get_enabled_skills_for_config", return_value=[]),
             patch.object(client, "_get_tools", return_value=[]),
-            patch("agent_workspace.runtime.checkpointer.get_checkpointer", return_value=MagicMock()),
+            patch("alpha.runtime.checkpointer.get_checkpointer", return_value=MagicMock()),
         ):
             client._ensure_agent(config)
             client.reset_agent()
@@ -3003,7 +3003,7 @@ class TestScenarioThreadIsolation:
             def get_dir(thread_id):
                 return uploads_a if thread_id == "thread-a" else uploads_b
 
-            with patch("agent_workspace.client.get_uploads_dir", side_effect=get_dir), patch("agent_workspace.client.ensure_uploads_dir", side_effect=get_dir):
+            with patch("alpha.client.get_uploads_dir", side_effect=get_dir), patch("alpha.client.ensure_uploads_dir", side_effect=get_dir):
                 client.upload_files("thread-a", [src_file])
 
                 files_a = client.list_uploads("thread-a")
@@ -3014,7 +3014,7 @@ class TestScenarioThreadIsolation:
 
     def test_artifacts_isolated_per_thread(self, client):
         """Artifacts in thread-A are not accessible from thread-B."""
-        from agent_workspace.runtime.user_context import get_effective_user_id
+        from alpha.runtime.user_context import get_effective_user_id
 
         with tempfile.TemporaryDirectory() as tmp:
             paths = Paths(base_dir=tmp)
@@ -3024,7 +3024,7 @@ class TestScenarioThreadIsolation:
             paths.sandbox_outputs_dir("thread-b", user_id=user_id).mkdir(parents=True)
             (outputs_a / "result.txt").write_text("thread-a artifact")
 
-            with patch("agent_workspace.client.get_paths", return_value=paths):
+            with patch("alpha.client.get_paths", return_value=paths):
                 content, _ = client.get_artifact("thread-a", "mnt/user-data/outputs/result.txt")
                 assert content == b"thread-a artifact"
 
@@ -3057,17 +3057,17 @@ class TestScenarioMemoryWorkflow:
         mock_mgr.get_memory.side_effect = [initial_data, updated_data]
         mock_mgr.reload_memory.return_value = updated_data
 
-        with patch("agent_workspace.agents.memory.get_memory_manager", return_value=mock_mgr):
+        with patch("alpha.agents.memory.get_memory_manager", return_value=mock_mgr):
             mem = client.get_memory()
         assert len(mem["facts"]) == 1
 
-        with patch("agent_workspace.agents.memory.get_memory_manager", return_value=mock_mgr):
+        with patch("alpha.agents.memory.get_memory_manager", return_value=mock_mgr):
             refreshed = client.reload_memory()
         assert len(refreshed["facts"]) == 2
 
         with (
-            patch("agent_workspace.config.memory_config.get_memory_config", return_value=config),
-            patch("agent_workspace.agents.memory.get_memory_manager", return_value=mock_mgr),
+            patch("alpha.config.memory_config.get_memory_config", return_value=config),
+            patch("alpha.agents.memory.get_memory_manager", return_value=mock_mgr),
         ):
             status = client.get_memory_status()
         assert status["config"]["enabled"] is True
@@ -3094,12 +3094,12 @@ class TestScenarioSkillInstallAndUse:
             (skills_root / "custom").mkdir(parents=True)
 
             # Step 1: Install
-            from agent_workspace.skills.storage.local_skill_storage import LocalSkillStorage
+            from alpha.skills.storage.local_skill_storage import LocalSkillStorage
 
             local_storage = LocalSkillStorage(host_path=str(skills_root))
             with (
-                patch("agent_workspace.skills.storage._default_skill_storage", local_storage),
-                patch("agent_workspace.client.get_or_new_user_skill_storage", lambda user_id, **kwargs: local_storage),
+                patch("alpha.skills.storage._default_skill_storage", local_storage),
+                patch("alpha.client.get_or_new_user_skill_storage", lambda user_id, **kwargs: local_storage),
             ):
                 result = client.install_skill(archive)
             assert result["success"] is True
@@ -3113,7 +3113,7 @@ class TestScenarioSkillInstallAndUse:
             installed_skill.category = "custom"
             installed_skill.enabled = True
 
-            with patch("agent_workspace.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[installed_skill]):
+            with patch("alpha.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[installed_skill]):
                 skills_result = client.list_skills()
             assert any(s["name"] == "my-analyzer" for s in skills_result["skills"])
 
@@ -3133,10 +3133,10 @@ class TestScenarioSkillInstallAndUse:
             config_file.write_text("{}")
 
             with (
-                patch("agent_workspace.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", side_effect=[[installed_skill], [disabled_skill]]),
-                patch("agent_workspace.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
-                patch("agent_workspace.client.get_extensions_config", return_value=ext_config),
-                patch("agent_workspace.client.reload_extensions_config"),
+                patch("alpha.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", side_effect=[[installed_skill], [disabled_skill]]),
+                patch("alpha.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
+                patch("alpha.client.get_extensions_config", return_value=ext_config),
+                patch("alpha.client.reload_extensions_config"),
             ):
                 toggled = client.update_skill("my-analyzer", enabled=False)
             assert toggled["enabled"] is False
@@ -3232,10 +3232,10 @@ class TestScenarioEdgeCases:
             pdf_file.write_bytes(b"%PDF-1.4 fake content")
 
             with (
-                patch("agent_workspace.client.get_uploads_dir", return_value=uploads_dir),
-                patch("agent_workspace.client.ensure_uploads_dir", return_value=uploads_dir),
-                patch("agent_workspace.utils.file_conversion.CONVERTIBLE_EXTENSIONS", {".pdf"}),
-                patch("agent_workspace.utils.file_conversion.convert_file_to_markdown", side_effect=Exception("conversion failed")),
+                patch("alpha.client.get_uploads_dir", return_value=uploads_dir),
+                patch("alpha.client.ensure_uploads_dir", return_value=uploads_dir),
+                patch("alpha.utils.file_conversion.CONVERTIBLE_EXTENSIONS", {".pdf"}),
+                patch("alpha.utils.file_conversion.convert_file_to_markdown", side_effect=Exception("conversion failed")),
             ):
                 result = client.upload_files("t-pdf-fail", [pdf_file])
 
@@ -3270,7 +3270,7 @@ class TestGatewayConformance:
         mock_app_config.models = [model]
         mock_app_config.token_usage.enabled = True
 
-        with patch("agent_workspace.client.get_app_config", return_value=mock_app_config):
+        with patch("alpha.client.get_app_config", return_value=mock_app_config):
             client = AgentWorkspaceClient()
 
         result = client.list_models()
@@ -3290,7 +3290,7 @@ class TestGatewayConformance:
         mock_app_config.models = [model]
         mock_app_config.get_model_config.return_value = model
 
-        with patch("agent_workspace.client.get_app_config", return_value=mock_app_config):
+        with patch("alpha.client.get_app_config", return_value=mock_app_config):
             client = AgentWorkspaceClient()
 
         result = client.get_model("test-model")
@@ -3307,7 +3307,7 @@ class TestGatewayConformance:
         skill.category = "public"
         skill.enabled = True
 
-        with patch("agent_workspace.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[skill]):
+        with patch("alpha.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[skill]):
             result = client.list_skills()
 
         parsed = SkillsListResponse(**result)
@@ -3322,7 +3322,7 @@ class TestGatewayConformance:
         skill.category = "public"
         skill.enabled = True
 
-        with patch("agent_workspace.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[skill]):
+        with patch("alpha.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[skill]):
             result = client.get_skill("web-search")
 
         assert result is not None
@@ -3338,12 +3338,12 @@ class TestGatewayConformance:
         with zipfile.ZipFile(archive, "w") as zf:
             zf.write(skill_dir / "SKILL.md", "my-skill/SKILL.md")
 
-        from agent_workspace.skills.storage.local_skill_storage import LocalSkillStorage
+        from alpha.skills.storage.local_skill_storage import LocalSkillStorage
 
         local_storage = LocalSkillStorage(host_path=str(tmp_path))
         with (
-            patch("agent_workspace.skills.storage._default_skill_storage", local_storage),
-            patch("agent_workspace.client.get_or_new_user_skill_storage", lambda user_id, **kwargs: local_storage),
+            patch("alpha.skills.storage._default_skill_storage", local_storage),
+            patch("alpha.client.get_or_new_user_skill_storage", lambda user_id, **kwargs: local_storage),
         ):
             result = client.install_skill(archive)
 
@@ -3366,7 +3366,7 @@ class TestGatewayConformance:
         ext_config = MagicMock()
         ext_config.mcp_servers = {"test": server}
 
-        with patch("agent_workspace.client.get_extensions_config", return_value=ext_config):
+        with patch("alpha.client.get_extensions_config", return_value=ext_config):
             result = client.get_mcp_config()
 
         parsed = McpConfigResponse(**result)
@@ -3389,9 +3389,9 @@ class TestGatewayConformance:
         config_file.write_text("{}")
 
         with (
-            patch("agent_workspace.client.get_extensions_config", return_value=ext_config),
-            patch("agent_workspace.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
-            patch("agent_workspace.client.reload_extensions_config", return_value=ext_config),
+            patch("alpha.client.get_extensions_config", return_value=ext_config),
+            patch("alpha.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
+            patch("alpha.client.reload_extensions_config", return_value=ext_config),
         ):
             result = client.update_mcp_config({"srv": server.model_dump()})
 
@@ -3405,7 +3405,7 @@ class TestGatewayConformance:
         src_file = tmp_path / "hello.txt"
         src_file.write_text("hello")
 
-        with patch("agent_workspace.client.get_uploads_dir", return_value=uploads_dir), patch("agent_workspace.client.ensure_uploads_dir", return_value=uploads_dir):
+        with patch("alpha.client.get_uploads_dir", return_value=uploads_dir), patch("alpha.client.ensure_uploads_dir", return_value=uploads_dir):
             result = client.upload_files("t-conform", [src_file])
 
         parsed = UploadResponse(**result)
@@ -3433,7 +3433,7 @@ class TestGatewayConformance:
         mem_cfg.manager_class = "deermem"
         mem_cfg.backend_config = {}
 
-        with patch("agent_workspace.config.memory_config.get_memory_config", return_value=mem_cfg):
+        with patch("alpha.config.memory_config.get_memory_config", return_value=mem_cfg):
             result = client.get_memory_config()
 
         parsed = MemoryConfigResponse(**result)
@@ -3467,8 +3467,8 @@ class TestGatewayConformance:
         mock_mgr.get_memory.return_value = memory_data
 
         with (
-            patch("agent_workspace.config.memory_config.get_memory_config", return_value=mem_cfg),
-            patch("agent_workspace.agents.memory.get_memory_manager", return_value=mock_mgr),
+            patch("alpha.config.memory_config.get_memory_config", return_value=mem_cfg),
+            patch("alpha.agents.memory.get_memory_manager", return_value=mock_mgr),
         ):
             result = client.get_memory_status()
 
@@ -3500,18 +3500,18 @@ class TestInstallSkillSecurity:
             (skills_root / "custom").mkdir(parents=True)
 
             # Patch max_total_size to a small value to trigger the bomb check.
-            from agent_workspace.skills import installer as _installer
+            from alpha.skills import installer as _installer
 
             orig = _installer.safe_extract_skill_archive
 
             def patched_extract(zf, dest, max_total_size=100):
                 return orig(zf, dest, max_total_size=100)
 
-            from agent_workspace.skills.storage.local_skill_storage import LocalSkillStorage
+            from alpha.skills.storage.local_skill_storage import LocalSkillStorage
 
             with (
-                patch("agent_workspace.skills.storage._default_skill_storage", LocalSkillStorage(host_path=str(skills_root))),
-                patch("agent_workspace.skills.installer.safe_extract_skill_archive", side_effect=patched_extract),
+                patch("alpha.skills.storage._default_skill_storage", LocalSkillStorage(host_path=str(skills_root))),
+                patch("alpha.skills.installer.safe_extract_skill_archive", side_effect=patched_extract),
             ):
                 with pytest.raises(ValueError, match="too large"):
                     client.install_skill(archive)
@@ -3526,9 +3526,9 @@ class TestInstallSkillSecurity:
             skills_root = Path(tmp) / "skills"
             (skills_root / "custom").mkdir(parents=True)
 
-            from agent_workspace.skills.storage.local_skill_storage import LocalSkillStorage
+            from alpha.skills.storage.local_skill_storage import LocalSkillStorage
 
-            with patch("agent_workspace.skills.storage._default_skill_storage", LocalSkillStorage(host_path=str(skills_root))):
+            with patch("alpha.skills.storage._default_skill_storage", LocalSkillStorage(host_path=str(skills_root))):
                 with pytest.raises(ValueError, match="unsafe"):
                     client.install_skill(archive)
 
@@ -3542,9 +3542,9 @@ class TestInstallSkillSecurity:
             skills_root = Path(tmp) / "skills"
             (skills_root / "custom").mkdir(parents=True)
 
-            from agent_workspace.skills.storage.local_skill_storage import LocalSkillStorage
+            from alpha.skills.storage.local_skill_storage import LocalSkillStorage
 
-            with patch("agent_workspace.skills.storage._default_skill_storage", LocalSkillStorage(host_path=str(skills_root))):
+            with patch("alpha.skills.storage._default_skill_storage", LocalSkillStorage(host_path=str(skills_root))):
                 with pytest.raises(ValueError, match="unsafe"):
                     client.install_skill(archive)
 
@@ -3566,12 +3566,12 @@ class TestInstallSkillSecurity:
             skills_root = tmp_path / "skills"
             (skills_root / "custom").mkdir(parents=True)
 
-            from agent_workspace.skills.storage.local_skill_storage import LocalSkillStorage
+            from alpha.skills.storage.local_skill_storage import LocalSkillStorage
 
             local_storage = LocalSkillStorage(host_path=str(skills_root))
             with (
-                patch("agent_workspace.skills.storage._default_skill_storage", local_storage),
-                patch("agent_workspace.client.get_or_new_user_skill_storage", lambda user_id, **kwargs: local_storage),
+                patch("alpha.skills.storage._default_skill_storage", local_storage),
+                patch("alpha.client.get_or_new_user_skill_storage", lambda user_id, **kwargs: local_storage),
             ):
                 result = client.install_skill(archive)
 
@@ -3596,11 +3596,11 @@ class TestInstallSkillSecurity:
             skills_root = tmp_path / "skills"
             (skills_root / "custom").mkdir(parents=True)
 
-            from agent_workspace.skills.storage.local_skill_storage import LocalSkillStorage
+            from alpha.skills.storage.local_skill_storage import LocalSkillStorage
 
             with (
-                patch("agent_workspace.skills.storage._default_skill_storage", LocalSkillStorage(host_path=str(skills_root))),
-                patch("agent_workspace.skills.validation._validate_skill_frontmatter", return_value=(True, "OK", "../evil")),
+                patch("alpha.skills.storage._default_skill_storage", LocalSkillStorage(host_path=str(skills_root))),
+                patch("alpha.skills.validation._validate_skill_frontmatter", return_value=(True, "OK", "../evil")),
             ):
                 with pytest.raises(ValueError, match="Invalid skill name"):
                     client.install_skill(archive)
@@ -3621,12 +3621,12 @@ class TestInstallSkillSecurity:
             skills_root = tmp_path / "skills"
             (skills_root / "custom" / "dupe-skill").mkdir(parents=True)
 
-            from agent_workspace.skills.storage.local_skill_storage import LocalSkillStorage
+            from alpha.skills.storage.local_skill_storage import LocalSkillStorage
 
             with (
-                patch("agent_workspace.skills.storage._default_skill_storage", LocalSkillStorage(host_path=str(skills_root))),
-                patch("agent_workspace.skills.validation._validate_skill_frontmatter", return_value=(True, "OK", "dupe-skill")),
-                patch("agent_workspace.client.get_or_new_user_skill_storage", return_value=LocalSkillStorage(host_path=str(skills_root))),
+                patch("alpha.skills.storage._default_skill_storage", LocalSkillStorage(host_path=str(skills_root))),
+                patch("alpha.skills.validation._validate_skill_frontmatter", return_value=(True, "OK", "dupe-skill")),
+                patch("alpha.client.get_or_new_user_skill_storage", return_value=LocalSkillStorage(host_path=str(skills_root))),
             ):
                 with pytest.raises(ValueError, match="already exists"):
                     client.install_skill(archive)
@@ -3641,9 +3641,9 @@ class TestInstallSkillSecurity:
             skills_root = Path(tmp) / "skills"
             (skills_root / "custom").mkdir(parents=True)
 
-            from agent_workspace.skills.storage.local_skill_storage import LocalSkillStorage
+            from alpha.skills.storage.local_skill_storage import LocalSkillStorage
 
-            with patch("agent_workspace.skills.storage._default_skill_storage", LocalSkillStorage(host_path=str(skills_root))):
+            with patch("alpha.skills.storage._default_skill_storage", LocalSkillStorage(host_path=str(skills_root))):
                 with pytest.raises(ValueError, match="empty"):
                     client.install_skill(archive)
 
@@ -3662,11 +3662,11 @@ class TestInstallSkillSecurity:
             skills_root = tmp_path / "skills"
             (skills_root / "custom").mkdir(parents=True)
 
-            from agent_workspace.skills.storage.local_skill_storage import LocalSkillStorage
+            from alpha.skills.storage.local_skill_storage import LocalSkillStorage
 
             with (
-                patch("agent_workspace.skills.storage._default_skill_storage", LocalSkillStorage(host_path=str(skills_root))),
-                patch("agent_workspace.skills.validation._validate_skill_frontmatter", return_value=(False, "Missing name field", "")),
+                patch("alpha.skills.storage._default_skill_storage", LocalSkillStorage(host_path=str(skills_root))),
+                patch("alpha.skills.validation._validate_skill_frontmatter", return_value=(False, "Missing name field", "")),
             ):
                 with pytest.raises(ValueError, match="Invalid skill"):
                     client.install_skill(archive)
@@ -3748,7 +3748,7 @@ class TestAtomicWriteJson:
 class TestConfigUpdateErrors:
     def test_update_mcp_config_no_config_file(self, client):
         """FileNotFoundError when extensions_config.json cannot be located."""
-        with patch("agent_workspace.client.ExtensionsConfig.resolve_config_path", return_value=None):
+        with patch("alpha.client.ExtensionsConfig.resolve_config_path", return_value=None):
             with pytest.raises(FileNotFoundError, match="Cannot locate"):
                 client.update_mcp_config({"server": {}})
 
@@ -3759,8 +3759,8 @@ class TestConfigUpdateErrors:
         skill.category = SkillCategory.PUBLIC  # Only PUBLIC skills need extensions_config.json
 
         with (
-            patch("agent_workspace.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[skill]),
-            patch("agent_workspace.client.ExtensionsConfig.resolve_config_path", return_value=None),
+            patch("alpha.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[skill]),
+            patch("alpha.client.ExtensionsConfig.resolve_config_path", return_value=None),
         ):
             with pytest.raises(FileNotFoundError, match="Cannot locate"):
                 client.update_skill("some-skill", enabled=False)
@@ -3779,10 +3779,10 @@ class TestConfigUpdateErrors:
             config_file.write_text("{}")
 
             with (
-                patch("agent_workspace.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", side_effect=[[skill], []]),
-                patch("agent_workspace.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
-                patch("agent_workspace.client.get_extensions_config", return_value=ext_config),
-                patch("agent_workspace.client.reload_extensions_config"),
+                patch("alpha.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", side_effect=[[skill], []]),
+                patch("alpha.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
+                patch("alpha.client.get_extensions_config", return_value=ext_config),
+                patch("alpha.client.reload_extensions_config"),
             ):
                 with pytest.raises(RuntimeError, match="disappeared"):
                     client.update_skill("ghost-skill", enabled=False)
@@ -4046,7 +4046,7 @@ class TestUploadDeleteSymlink:
                     pytest.skip("symlink creation requires Developer Mode or elevated privileges on Windows")
                 raise
 
-            with patch("agent_workspace.client.get_uploads_dir", return_value=uploads_dir), patch("agent_workspace.client.ensure_uploads_dir", return_value=uploads_dir):
+            with patch("alpha.client.get_uploads_dir", return_value=uploads_dir), patch("alpha.client.ensure_uploads_dir", return_value=uploads_dir):
                 # The resolved path of the symlink escapes uploads_dir,
                 # so path traversal check should catch it.
                 with pytest.raises(PathTraversalError):
@@ -4066,7 +4066,7 @@ class TestUploadDeleteSymlink:
             src_file = tmp_path / weird_name
             src_file.write_text("data")
 
-            with patch("agent_workspace.client.get_uploads_dir", return_value=uploads_dir), patch("agent_workspace.client.ensure_uploads_dir", return_value=uploads_dir):
+            with patch("alpha.client.get_uploads_dir", return_value=uploads_dir), patch("alpha.client.ensure_uploads_dir", return_value=uploads_dir):
                 result = client.upload_files("thread-1", [src_file])
 
             assert result["success"] is True
@@ -4082,7 +4082,7 @@ class TestUploadDeleteSymlink:
 class TestArtifactHardening:
     def test_artifact_directory_rejected(self, client):
         """get_artifact rejects paths that resolve to a directory."""
-        from agent_workspace.runtime.user_context import get_effective_user_id
+        from alpha.runtime.user_context import get_effective_user_id
 
         with tempfile.TemporaryDirectory() as tmp:
             paths = Paths(base_dir=tmp)
@@ -4090,13 +4090,13 @@ class TestArtifactHardening:
             subdir = paths.sandbox_outputs_dir("t1", user_id=user_id) / "subdir"
             subdir.mkdir(parents=True)
 
-            with patch("agent_workspace.client.get_paths", return_value=paths):
+            with patch("alpha.client.get_paths", return_value=paths):
                 with pytest.raises(ValueError, match="not a file"):
                     client.get_artifact("t1", "mnt/user-data/outputs/subdir")
 
     def test_artifact_leading_slash_stripped(self, client):
         """Paths with leading slash are handled correctly."""
-        from agent_workspace.runtime.user_context import get_effective_user_id
+        from alpha.runtime.user_context import get_effective_user_id
 
         with tempfile.TemporaryDirectory() as tmp:
             paths = Paths(base_dir=tmp)
@@ -4105,7 +4105,7 @@ class TestArtifactHardening:
             outputs.mkdir(parents=True)
             (outputs / "file.txt").write_text("content")
 
-            with patch("agent_workspace.client.get_paths", return_value=paths):
+            with patch("alpha.client.get_paths", return_value=paths):
                 content, _mime = client.get_artifact("t1", "/mnt/user-data/outputs/file.txt")
 
             assert content == b"content"
@@ -4139,7 +4139,7 @@ class TestUploadDuplicateFilenames:
             (dir_a / "data.txt").write_text("version A")
             (dir_b / "data.txt").write_text("version B")
 
-            with patch("agent_workspace.client.get_uploads_dir", return_value=uploads_dir), patch("agent_workspace.client.ensure_uploads_dir", return_value=uploads_dir):
+            with patch("alpha.client.get_uploads_dir", return_value=uploads_dir), patch("alpha.client.ensure_uploads_dir", return_value=uploads_dir):
                 result = client.upload_files("t-dup", [dir_a / "data.txt", dir_b / "data.txt"])
 
             assert result["success"] is True
@@ -4172,7 +4172,7 @@ class TestUploadDuplicateFilenames:
                 d.mkdir()
                 (d / "report.csv").write_text(f"from {name}")
 
-            with patch("agent_workspace.client.get_uploads_dir", return_value=uploads_dir), patch("agent_workspace.client.ensure_uploads_dir", return_value=uploads_dir):
+            with patch("alpha.client.get_uploads_dir", return_value=uploads_dir), patch("alpha.client.ensure_uploads_dir", return_value=uploads_dir):
                 result = client.upload_files(
                     "t-triple",
                     [tmp_path / "x" / "report.csv", tmp_path / "y" / "report.csv", tmp_path / "z" / "report.csv"],
@@ -4192,7 +4192,7 @@ class TestUploadDuplicateFilenames:
             (tmp_path / "a.txt").write_text("aaa")
             (tmp_path / "b.txt").write_text("bbb")
 
-            with patch("agent_workspace.client.get_uploads_dir", return_value=uploads_dir), patch("agent_workspace.client.ensure_uploads_dir", return_value=uploads_dir):
+            with patch("alpha.client.get_uploads_dir", return_value=uploads_dir), patch("alpha.client.ensure_uploads_dir", return_value=uploads_dir):
                 result = client.upload_files("t-ok", [tmp_path / "a.txt", tmp_path / "b.txt"])
 
             assert result["success"] is True
@@ -4215,14 +4215,14 @@ class TestBugArtifactPrefixMatchTooLoose:
 
     def test_exact_prefix_without_subpath_accepted(self, client):
         """Bare 'mnt/user-data' is accepted (will later fail as directory, not at prefix)."""
-        from agent_workspace.runtime.user_context import get_effective_user_id
+        from alpha.runtime.user_context import get_effective_user_id
 
         with tempfile.TemporaryDirectory() as tmp:
             paths = Paths(base_dir=tmp)
             user_id = get_effective_user_id()
             paths.sandbox_outputs_dir("t1", user_id=user_id).mkdir(parents=True)
 
-            with patch("agent_workspace.client.get_paths", return_value=paths):
+            with patch("alpha.client.get_paths", return_value=paths):
                 # Accepted at prefix check, but fails because it's a directory.
                 with pytest.raises(ValueError, match="not a file"):
                     client.get_artifact("t1", "mnt/user-data")
@@ -4242,7 +4242,7 @@ class TestBugListUploadsDeadCode:
             mock_paths = MagicMock()
             mock_paths.sandbox_uploads_dir.return_value = non_existent
 
-            with patch("agent_workspace.uploads.manager.get_paths", return_value=mock_paths):
+            with patch("alpha.uploads.manager.get_paths", return_value=mock_paths):
                 result = client.list_uploads("thread-fresh")
 
             # Read path should NOT create the directory
@@ -4268,9 +4268,9 @@ class TestBugAgentInvalidationInconsistency:
             config_file.write_text("{}")
 
             with (
-                patch("agent_workspace.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
-                patch("agent_workspace.client.get_extensions_config", return_value=current_config),
-                patch("agent_workspace.client.reload_extensions_config", return_value=reloaded),
+                patch("alpha.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
+                patch("alpha.client.get_extensions_config", return_value=current_config),
+                patch("alpha.client.reload_extensions_config", return_value=reloaded),
             ):
                 client.update_mcp_config({})
 
@@ -4300,10 +4300,10 @@ class TestBugAgentInvalidationInconsistency:
             config_file.write_text("{}")
 
             with (
-                patch("agent_workspace.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", side_effect=[[skill], [updated]]),
-                patch("agent_workspace.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
-                patch("agent_workspace.client.get_extensions_config", return_value=ext_config),
-                patch("agent_workspace.client.reload_extensions_config"),
+                patch("alpha.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", side_effect=[[skill], [updated]]),
+                patch("alpha.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
+                patch("alpha.client.get_extensions_config", return_value=ext_config),
+                patch("alpha.client.reload_extensions_config"),
             ):
                 client.update_skill("s1", enabled=False)
 

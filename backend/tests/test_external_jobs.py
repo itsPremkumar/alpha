@@ -10,19 +10,19 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from agent_workspace.jobs import (
+from alpha.jobs import (
     ExternalJobRunner,
     JobPriority,
     JobSpec,
     JobStatus,
     PersistentJobQueue,
 )
-from agent_workspace.tools.builtins.job_tool import job_tool
+from alpha.tools.builtins.job_tool import job_tool
 
 
 @pytest.fixture(autouse=True)
 def host_job_config(monkeypatch):
-    monkeypatch.setattr("agent_workspace.jobs.runner.get_app_config", lambda: SimpleNamespace(sandbox=SimpleNamespace(allow_host_bash=True)))
+    monkeypatch.setattr("alpha.jobs.runner.get_app_config", lambda: SimpleNamespace(sandbox=SimpleNamespace(allow_host_bash=True)))
 
 
 def test_job_queue_priority_ordering():
@@ -100,7 +100,7 @@ async def test_job_tool_cannot_bypass_operator_gate(monkeypatch):
     import importlib
     import json
 
-    module = importlib.import_module("agent_workspace.tools.builtins.job_tool")
+    module = importlib.import_module("alpha.tools.builtins.job_tool")
     queue = PersistentJobQueue()
     runner = ExternalJobRunner(queue)
     monkeypatch.setattr(module, "_GLOBAL_QUEUE", queue)

@@ -6,10 +6,10 @@ import threading
 import pytest
 from langgraph.runtime import Runtime
 
-from agent_workspace.sandbox.middleware import SandboxMiddleware
-from agent_workspace.sandbox.sandbox import Sandbox
-from agent_workspace.sandbox.sandbox_provider import SandboxProvider, reset_sandbox_provider, set_sandbox_provider
-from agent_workspace.sandbox.search import GrepMatch
+from alpha.sandbox.middleware import SandboxMiddleware
+from alpha.sandbox.sandbox import Sandbox
+from alpha.sandbox.sandbox_provider import SandboxProvider, reset_sandbox_provider, set_sandbox_provider
+from alpha.sandbox.search import GrepMatch
 
 
 class _SandboxStub(Sandbox):

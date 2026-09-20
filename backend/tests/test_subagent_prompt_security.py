@@ -2,8 +2,8 @@
 
 from types import SimpleNamespace
 
-from agent_workspace.agents.lead_agent import prompt as prompt_module
-from agent_workspace.subagents import registry as registry_module
+from alpha.agents.lead_agent import prompt as prompt_module
+from alpha.subagents import registry as registry_module
 
 
 def test_get_available_subagent_names_hides_bash_when_host_bash_disabled(monkeypatch) -> None:
@@ -69,14 +69,14 @@ def test_build_subagent_section_is_empty_for_explicit_hard_deny(monkeypatch) -> 
 
 
 def test_bash_subagent_prompt_mentions_workspace_relative_paths() -> None:
-    from agent_workspace.subagents.builtins.bash_agent import BASH_AGENT_CONFIG
+    from alpha.subagents.builtins.bash_agent import BASH_AGENT_CONFIG
 
     assert "Treat `/mnt/user-data/workspace` as the default working directory for file IO" in BASH_AGENT_CONFIG.system_prompt
     assert "`hello.txt`, `../uploads/input.csv`, and `../outputs/result.md`" in BASH_AGENT_CONFIG.system_prompt
 
 
 def test_general_purpose_subagent_prompt_mentions_workspace_relative_paths() -> None:
-    from agent_workspace.subagents.builtins.general_purpose import GENERAL_PURPOSE_CONFIG
+    from alpha.subagents.builtins.general_purpose import GENERAL_PURPOSE_CONFIG
 
     assert "Treat `/mnt/user-data/workspace` as the default working directory for coding and file IO" in GENERAL_PURPOSE_CONFIG.system_prompt
     assert "`hello.txt`, `../uploads/input.csv`, and `../outputs/result.md`" in GENERAL_PURPOSE_CONFIG.system_prompt
@@ -88,7 +88,7 @@ def test_general_purpose_subagent_prompt_prohibits_task_tool() -> None:
     Without this, subagents may attempt to call `task` after seeing the parent
     agent use it, triggering a LangGraph tool validation error (#4159).
     """
-    from agent_workspace.subagents.builtins.general_purpose import GENERAL_PURPOSE_CONFIG
+    from alpha.subagents.builtins.general_purpose import GENERAL_PURPOSE_CONFIG
 
     prompt = GENERAL_PURPOSE_CONFIG.system_prompt
     assert "task" in prompt.lower()

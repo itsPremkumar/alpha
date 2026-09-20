@@ -18,10 +18,10 @@ import json
 from pathlib import Path
 from typing import Any
 
-from agent_workspace.agents.memory.backends.deermem.deermem.config import DeerMemConfig
-from agent_workspace.agents.memory.backends.deermem.deermem.core.paths import DEFAULT_AGENT_BUCKET, memory_file_path
-from agent_workspace.agents.memory.backends.deermem.deermem.core.storage import DOCUMENT_VERSION, FileMemoryStorage
-from agent_workspace.config.runtime_paths import runtime_home
+from alpha.agents.memory.backends.deermem.deermem.config import DeerMemConfig
+from alpha.agents.memory.backends.deermem.deermem.core.paths import DEFAULT_AGENT_BUCKET, memory_file_path
+from alpha.agents.memory.backends.deermem.deermem.core.storage import DOCUMENT_VERSION, FileMemoryStorage
+from alpha.config.runtime_paths import runtime_home
 
 
 def discover_user_ids(storage_path: Path) -> list[str]:

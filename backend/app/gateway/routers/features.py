@@ -12,8 +12,8 @@ from pydantic import BaseModel, Field
 
 from app.gateway.browser_capability import browser_capability
 from app.gateway.deps import get_config
-from agent_workspace.config.app_config import AppConfig
-from agent_workspace.subagents.capacity import configured_subagent_max_running
+from alpha.config.app_config import AppConfig
+from alpha.subagents.capacity import configured_subagent_max_running
 
 router = APIRouter(prefix="/api", tags=["features"])
 

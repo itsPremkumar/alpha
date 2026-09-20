@@ -2,7 +2,7 @@
 
 import tempfile
 from pathlib import Path
-from agent_workspace.tools.programmatic_calling import ProgrammaticCallingEngine, MAX_STDOUT_BYTES
+from alpha.tools.programmatic_calling import ProgrammaticCallingEngine, MAX_STDOUT_BYTES
 
 
 def test_programmatic_tool_calling_execution():

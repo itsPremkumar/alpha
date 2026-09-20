@@ -24,7 +24,7 @@ import pytest
 from _agent_e2e_helpers import FakeToolCallingModel, build_single_tool_call_model
 from langchain_core.messages import AIMessage, HumanMessage
 
-from agent_workspace.runtime.checkpoint_state import build_state_mutation_graph
+from alpha.runtime.checkpoint_state import build_state_mutation_graph
 
 pytestmark = pytest.mark.no_auto_user
 
@@ -39,7 +39,7 @@ models:
     api_key: $OPENAI_API_KEY
     base_url: $OPENAI_API_BASE
 sandbox:
-  use: agent_workspace.sandbox.local:LocalSandboxProvider
+  use: alpha.sandbox.local:LocalSandboxProvider
 agents_api:
   enabled: true
 title:
@@ -224,10 +224,10 @@ def _reset_process_singletons(monkeypatch: pytest.MonkeyPatch) -> None:
     """
 
     from app.gateway import deps as deps_module
-    from agent_workspace.config import app_config as app_config_module
-    from agent_workspace.config import extensions_config as extensions_config_module
-    from agent_workspace.config import paths as paths_module
-    from agent_workspace.persistence import engine as engine_module
+    from alpha.config import app_config as app_config_module
+    from alpha.config import extensions_config as extensions_config_module
+    from alpha.config import paths as paths_module
+    from alpha.persistence import engine as engine_module
 
     for module, attr, value in (
         (app_config_module, "_app_config", None),
@@ -255,7 +255,7 @@ def _preserve_process_config_singletons(monkeypatch: pytest.MonkeyPatch) -> None
     loading the isolated test config does not leak into later tests.
     """
 
-    from agent_workspace.config import (
+    from alpha.config import (
         acp_config,
         agents_api_config,
         checkpointer_config,
@@ -288,7 +288,7 @@ def isolated_app(isolated_agent_workspace_home: Path, monkeypatch: pytest.Monkey
     _preserve_process_config_singletons(monkeypatch)
     _reset_process_singletons(monkeypatch)
 
-    from agent_workspace.config import app_config as app_config_module
+    from alpha.config import app_config as app_config_module
 
     cfg = app_config_module.get_app_config()
     cfg.database.sqlite_dir = str(isolated_agent_workspace_home / "db")
@@ -316,7 +316,7 @@ def isolated_app_with_title(isolated_agent_workspace_home: Path, monkeypatch: py
     _preserve_process_config_singletons(monkeypatch)
     _reset_process_singletons(monkeypatch)
 
-    from agent_workspace.config import app_config as app_config_module
+    from alpha.config import app_config as app_config_module
 
     cfg = app_config_module.get_app_config()
     cfg.database.sqlite_dir = str(isolated_agent_workspace_home / "db")
@@ -575,7 +575,7 @@ def test_stream_run_executes_real_lead_agent_setup_agent_business_path(isolated_
 
     with (
         patch(
-            "agent_workspace.agents.lead_agent.agent.create_chat_model",
+            "alpha.agents.lead_agent.agent.create_chat_model",
             new=_build_fake_setup_agent_model(agent_name),
         ),
         TestClient(isolated_app) as client,
@@ -767,7 +767,7 @@ def test_cancel_wait_false_generates_title_from_graph_input_before_checkpoint(is
 async def test_sse_consumer_disconnect_cancels_inflight_run():
     """A disconnected SSE request should cancel an in-flight run when configured."""
     from app.gateway.services import sse_consumer
-    from agent_workspace.runtime import DisconnectMode, MemoryStreamBridge, RunManager, RunStatus
+    from alpha.runtime import DisconnectMode, MemoryStreamBridge, RunManager, RunStatus
 
     bridge = MemoryStreamBridge()
     run_manager = RunManager()

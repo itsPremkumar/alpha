@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from agent_workspace.community.ddg_search import tools
+from alpha.community.ddg_search import tools
 
 
 def test_resolve_ddgs_region_maps_worldwide_chinese_query_for_wikipedia() -> None:
@@ -131,7 +131,7 @@ def test_search_text_time_range_excludes_explicit_filter_agnostic_backends(
 
 
 def test_web_search_tool_reads_ddgs_options_from_config() -> None:
-    with patch("agent_workspace.community.ddg_search.tools.get_app_config") as mock_config:
+    with patch("alpha.community.ddg_search.tools.get_app_config") as mock_config:
         tool_config = MagicMock()
         tool_config.model_extra = {
             "max_results": 3,
@@ -141,7 +141,7 @@ def test_web_search_tool_reads_ddgs_options_from_config() -> None:
         }
         mock_config.return_value.get_tool_config.return_value = tool_config
 
-        with patch("agent_workspace.community.ddg_search.tools._search_text") as mock_search:
+        with patch("alpha.community.ddg_search.tools._search_text") as mock_search:
             mock_search.return_value = [{"title": "Result", "href": "https://example.com", "body": "Snippet"}]
 
             result = tools.web_search_tool.invoke({"query": "latest news", "max_results": 8, "time_range": "week"})

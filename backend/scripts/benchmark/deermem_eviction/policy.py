@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from agent_workspace.agents.memory.backends.deermem.deermem.core.eviction import EVICTION_POLICY_HYBRID_V1, select_facts_for_capacity
+from alpha.agents.memory.backends.deermem.deermem.core.eviction import EVICTION_POLICY_HYBRID_V1, select_facts_for_capacity
 
 from .config import HybridPolicyConfig
 from .pool import PreparedCase

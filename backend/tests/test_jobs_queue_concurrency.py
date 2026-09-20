@@ -6,13 +6,13 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from agent_workspace.jobs import ExternalJobRunner, JobPriority, JobResult, JobSpec, JobStatus, PersistentJobQueue
+from alpha.jobs import ExternalJobRunner, JobPriority, JobResult, JobSpec, JobStatus, PersistentJobQueue
 
 
 @pytest.fixture
 def host_config(monkeypatch):
     config = SimpleNamespace(sandbox=SimpleNamespace(allow_host_bash=True))
-    monkeypatch.setattr("agent_workspace.jobs.runner.get_app_config", lambda: config)
+    monkeypatch.setattr("alpha.jobs.runner.get_app_config", lambda: config)
     return config
 
 
@@ -269,7 +269,7 @@ async def test_failures_release_capacity_and_worker_can_restart(processes, monke
         registry["first"] = ControlledProcess()
         registry["first"].communicate = AsyncMock(side_effect=TimeoutError)
     elif failure == "environment":
-        monkeypatch.setattr("agent_workspace.jobs.runner.build_sandbox_env", Mock(side_effect=[RuntimeError("bad environment"), {}, {}]))
+        monkeypatch.setattr("alpha.jobs.runner.build_sandbox_env", Mock(side_effect=[RuntimeError("bad environment"), {}, {}]))
     try:
         await runner.submit_async(first, authorized_operator=True)
         await runner.submit_async(second, authorized_operator=True)

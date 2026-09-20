@@ -9,12 +9,12 @@ import pytest
 from langchain.tools import ToolRuntime
 from langgraph.types import Overwrite
 
-from agent_workspace.sandbox.exceptions import SandboxNotFoundError
-from agent_workspace.sandbox.lease import SANDBOX_LEASE_OWNER_CONTEXT_KEY, get_sandbox_lease_manager
-from agent_workspace.sandbox.sandbox import Sandbox
-from agent_workspace.sandbox.sandbox_provider import SandboxProvider, reset_sandbox_provider, set_sandbox_provider
-from agent_workspace.sandbox.search import GrepMatch
-from agent_workspace.sandbox.tools import (
+from alpha.sandbox.exceptions import SandboxNotFoundError
+from alpha.sandbox.lease import SANDBOX_LEASE_OWNER_CONTEXT_KEY, get_sandbox_lease_manager
+from alpha.sandbox.sandbox import Sandbox
+from alpha.sandbox.sandbox_provider import SandboxProvider, reset_sandbox_provider, set_sandbox_provider
+from alpha.sandbox.search import GrepMatch
+from alpha.sandbox.tools import (
     _run_sync_tool_after_async_sandbox_init,
     ensure_sandbox_initialized,
     ensure_sandbox_initialized_async,
@@ -509,8 +509,8 @@ async def test_cancelled_async_tool_drains_worker_before_execution_lease_cleanup
         async def _safe_config():
             return None
 
-        monkeypatch.setattr("agent_workspace.sandbox.tools.authorize_sandbox_execution_async", _allow_sandbox)
-        monkeypatch.setattr("agent_workspace.sandbox.tools.safe_app_config_async", _safe_config)
+        monkeypatch.setattr("alpha.sandbox.tools.authorize_sandbox_execution_async", _allow_sandbox)
+        monkeypatch.setattr("alpha.sandbox.tools.safe_app_config_async", _safe_config)
 
         def _blocking_tool(inner_runtime: ToolRuntime) -> str:
             worker_started.set()

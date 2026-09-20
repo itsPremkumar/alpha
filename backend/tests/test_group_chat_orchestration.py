@@ -2,10 +2,10 @@
 
 from pathlib import Path
 
-from agent_workspace.groups.orchestration import GroupOrchestrator
-from agent_workspace.groups.quorum import QuorumEngine
-from agent_workspace.groups.room import GroupRoom
-from agent_workspace.groups.service import GroupChatService
+from alpha.groups.orchestration import GroupOrchestrator
+from alpha.groups.quorum import QuorumEngine
+from alpha.groups.room import GroupRoom
+from alpha.groups.service import GroupChatService
 
 
 def test_orchestrator_parse_mentions():

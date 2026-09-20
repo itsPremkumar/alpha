@@ -9,23 +9,23 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from langchain_core.tools import StructuredTool
 
-from agent_workspace.agents.lead_agent import agent as lead_agent_module
-from agent_workspace.agents.middlewares.tool_error_handling_middleware import (
+from alpha.agents.lead_agent import agent as lead_agent_module
+from alpha.agents.middlewares.tool_error_handling_middleware import (
     build_lead_runtime_middlewares,
     build_subagent_runtime_middlewares,
 )
-from agent_workspace.authz.adapter import GuardrailAuthorizationAdapter
-from agent_workspace.authz.enforcement import filter_tools_by_authorization
-from agent_workspace.authz.provider import AuthzDecision, AuthzReason, Principal
-from agent_workspace.authz.rbac import RbacAuthorizationProvider
-from agent_workspace.config.app_config import AppConfig
-from agent_workspace.config.authorization_config import AuthorizationConfig, AuthorizationProviderConfig
-from agent_workspace.config.guardrails_config import GuardrailProviderConfig, GuardrailsConfig
-from agent_workspace.config.model_config import ModelConfig
-from agent_workspace.config.sandbox_config import SandboxConfig
-from agent_workspace.guardrails.middleware import GuardrailMiddleware
-from agent_workspace.tools.builtins.tool_search import assemble_deferred_tools
-from agent_workspace.tools.mcp_metadata import tag_mcp_tool
+from alpha.authz.adapter import GuardrailAuthorizationAdapter
+from alpha.authz.enforcement import filter_tools_by_authorization
+from alpha.authz.provider import AuthzDecision, AuthzReason, Principal
+from alpha.authz.rbac import RbacAuthorizationProvider
+from alpha.config.app_config import AppConfig
+from alpha.config.authorization_config import AuthorizationConfig, AuthorizationProviderConfig
+from alpha.config.guardrails_config import GuardrailProviderConfig, GuardrailsConfig
+from alpha.config.model_config import ModelConfig
+from alpha.config.sandbox_config import SandboxConfig
+from alpha.guardrails.middleware import GuardrailMiddleware
+from alpha.tools.builtins.tool_search import assemble_deferred_tools
+from alpha.tools.mcp_metadata import tag_mcp_tool
 
 
 def _tool(name: str) -> StructuredTool:
@@ -246,7 +246,7 @@ class TestAuthorizationGuardrailWiring:
         config = _app_config(
             authorization=AuthorizationConfig(
                 enabled=True,
-                provider=AuthorizationProviderConfig(use="agent_workspace.authz.rbac:RbacAuthorizationProvider", config={"roles": {"user": {}}}),
+                provider=AuthorizationProviderConfig(use="alpha.authz.rbac:RbacAuthorizationProvider", config={"roles": {"user": {}}}),
             )
         )
 
@@ -261,12 +261,12 @@ class TestAuthorizationGuardrailWiring:
         config = _app_config(
             authorization=AuthorizationConfig(
                 enabled=True,
-                provider=AuthorizationProviderConfig(use="agent_workspace.authz.rbac:RbacAuthorizationProvider", config={"roles": {"user": {}}}),
+                provider=AuthorizationProviderConfig(use="alpha.authz.rbac:RbacAuthorizationProvider", config={"roles": {"user": {}}}),
             ),
             guardrails=GuardrailsConfig(
                 enabled=True,
                 provider=GuardrailProviderConfig(
-                    use="agent_workspace.guardrails.builtin:AllowlistProvider",
+                    use="alpha.guardrails.builtin:AllowlistProvider",
                     config={"allowed_tools": ["bash"]},
                 ),
             ),
@@ -334,7 +334,7 @@ def test_lead_agent_filters_all_model_visible_tools_and_reuses_provider(monkeypa
         authorization=AuthorizationConfig(
             enabled=True,
             provider=AuthorizationProviderConfig(
-                use="agent_workspace.authz.rbac:RbacAuthorizationProvider",
+                use="alpha.authz.rbac:RbacAuthorizationProvider",
                 config={"roles": {"user": {"tools": {"allow": ["safe_tool", "history_read"]}}}},
             ),
         ),
@@ -365,8 +365,8 @@ def test_lead_agent_filters_all_model_visible_tools_and_reuses_provider(monkeypa
         ),
         raising=False,
     )
-    monkeypatch.setattr("agent_workspace.skills.describe.build_skill_search_setup", lead_agent_module.build_skill_search_setup)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [_tool("safe_tool"), _tool("denied_tool")])
+    monkeypatch.setattr("alpha.skills.describe.build_skill_search_setup", lead_agent_module.build_skill_search_setup)
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [_tool("safe_tool"), _tool("denied_tool")])
     monkeypatch.setattr(lead_agent_module, "should_use_memory_tools", lambda memory_config: True)
     monkeypatch.setattr(
         lead_agent_module,

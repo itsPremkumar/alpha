@@ -2,7 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.gateway.routers.mcp import McpServerConfigResponse
-from agent_workspace.config.extensions_config import ExtensionsConfig
+from alpha.config.extensions_config import ExtensionsConfig
 
 
 def test_task_toolsets_preserve_raw_tool_names_and_support_multiple_groups() -> None:

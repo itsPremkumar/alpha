@@ -14,9 +14,9 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.outputs import ChatGeneration, LLMResult
 
-from agent_workspace.runtime.events.store.memory import MemoryRunEventStore
-from agent_workspace.runtime.journal import RunJournal
-from agent_workspace.utils.messages import ORIGINAL_USER_CONTENT_KEY
+from alpha.runtime.events.store.memory import MemoryRunEventStore
+from alpha.runtime.journal import RunJournal
+from alpha.utils.messages import ORIGINAL_USER_CONTENT_KEY
 
 
 def test_run_journal_is_marked_as_loop_bound():
@@ -570,7 +570,7 @@ class TestFinalToolMessageReconciliation:
 
         j, store = journal_setup
         j.on_llm_end(
-            _make_llm_response("", tool_calls=[{"id": "call_search", "name": "web_search", "args": {"query": "agent_workspace"}}]),
+            _make_llm_response("", tool_calls=[{"id": "call_search", "name": "web_search", "args": {"query": "alpha"}}]),
             run_id=uuid4(),
             parent_run_id=None,
             tags=["subagent:general-purpose"],

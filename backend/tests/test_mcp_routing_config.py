@@ -7,7 +7,7 @@ import logging
 import pytest
 from pydantic import ValidationError
 
-from agent_workspace.config.extensions_config import ExtensionsConfig, McpServerConfig, resolve_effective_mcp_routing
+from alpha.config.extensions_config import ExtensionsConfig, McpServerConfig, resolve_effective_mcp_routing
 
 
 def test_server_default_routing_applies_to_every_tool():

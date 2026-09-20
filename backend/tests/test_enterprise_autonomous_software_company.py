@@ -12,7 +12,7 @@ from app.gateway.routers.enterprise import (
 from app.gateway.routers.enterprise import (
     router as enterprise_router,
 )
-from agent_workspace.enterprise import (
+from alpha.enterprise import (
     EnterpriseDepartment,
     EnterpriseHeartbeatCoordinator,
     EnterpriseHierarchyEngine,
@@ -21,7 +21,7 @@ from agent_workspace.enterprise import (
     QualityCouncilQuorumEngine,
     get_discovery_and_optimization_engine,
 )
-from agent_workspace.enterprise.governance import DepartmentTokenTreasury
+from alpha.enterprise.governance import DepartmentTokenTreasury
 
 # ============================================================================
 # 1. Dynamic Enterprise Hierarchy & C-Suite Swarm Tests
@@ -283,7 +283,7 @@ def test_council_holdout_benchmark_and_3_signature_release():
     assert candidate.deployed is False
     assert council.get_active_release("enterprise-core") is None
     payload = candidate.model_dump(mode="json")
-    from agent_workspace.enterprise.council import PreviewReleaseCandidate
+    from alpha.enterprise.council import PreviewReleaseCandidate
 
     assert PreviewReleaseCandidate.model_validate(payload).model_dump(mode="json") == payload
 
@@ -409,7 +409,7 @@ def test_holdout_preview_clears_stale_quorum():
         description="Candidate where benchmark runs last",
         diff_content="sample diff content for v2.3.0",
     )
-    from agent_workspace.enterprise.models import CryptographicSignature
+    from alpha.enterprise.models import CryptographicSignature
 
     candidate.signatures = [CryptographicSignature(signatory_role=role, signatory_bot="untrusted", signature_hash="invalid", payload_digest=candidate.diff_hash, verified=True) for role in ("CTO_ARCH", "CISO_ASTRA", "SWE_BENCHMARK")]
     candidate.status = "multi_sig_verified"

@@ -8,14 +8,14 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.gateway.routers.company import router as company_router
-from agent_workspace.company import (
+from alpha.company import (
     AutonomousCompanyEngine,
     HermesKanbanAdapter,
     HermesLocalBridge,
     ProductionLineEngine,
     ProductionStage,
 )
-from agent_workspace.tools.builtins.company_tool import company_tool
+from alpha.tools.builtins.company_tool import company_tool
 
 
 def test_hermes_local_bridge_bot_discovery():

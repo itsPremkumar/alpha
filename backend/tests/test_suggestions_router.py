@@ -5,13 +5,13 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.gateway.routers import suggestions
-from agent_workspace.trace_context import request_trace_context
-from agent_workspace.utils import oneshot_llm
+from alpha.trace_context import request_trace_context
+from alpha.utils import oneshot_llm
 
 
 @pytest.fixture(autouse=True)
 def _clear_langfuse_env(monkeypatch):
-    from agent_workspace.config.tracing_config import reset_tracing_config
+    from alpha.config.tracing_config import reset_tracing_config
 
     for name in ("LANGFUSE_TRACING", "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_BASE_URL", "AGENT_WORKSPACE_ENV", "ENVIRONMENT"):
         monkeypatch.delenv(name, raising=False)
@@ -154,7 +154,7 @@ def test_generate_suggestions_injects_agent_workspace_trace_metadata_when_langfu
     monkeypatch.setenv("LANGFUSE_TRACING", "true")
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
-    from agent_workspace.config.tracing_config import reset_tracing_config
+    from alpha.config.tracing_config import reset_tracing_config
 
     reset_tracing_config()
     req = suggestions.SuggestionsRequest(

@@ -1,6 +1,6 @@
-from agent_workspace.orchestration.discipline.recon import FastReconWorker, ReconResult
-from agent_workspace.orchestration.discipline.ultrabrain import UltrabrainSolution, UltrabrainWorker
-from agent_workspace.orchestration.discipline.visual_engineering import (
+from alpha.orchestration.discipline.recon import FastReconWorker, ReconResult
+from alpha.orchestration.discipline.ultrabrain import UltrabrainSolution, UltrabrainWorker
+from alpha.orchestration.discipline.visual_engineering import (
     VisualEngineeringWorker,
     VisualWidgetSpec,
 )
@@ -50,8 +50,8 @@ def test_fast_recon_worker():
 
     # Explore mode (symbols)
     tree = [
-        "backend/packages/harness/agent_workspace/agents/planner.py",
-        "backend/packages/harness/agent_workspace/orchestration/discipline/ultrabrain.py",
+        "backend/packages/harness/alpha/agents/planner.py",
+        "backend/packages/harness/alpha/orchestration/discipline/ultrabrain.py",
         "backend/tests/test_planner.py",
     ]
     res_code = worker.search_codebase_symbols("discipline", file_tree=tree)

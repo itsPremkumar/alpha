@@ -1,6 +1,6 @@
 """Unit tests for DeepDebuggerAgent."""
 
-from agent_workspace.subagents.builtins.deep_debugger_agent import (
+from alpha.subagents.builtins.deep_debugger_agent import (
     DEEP_DEBUGGER_AGENT_CONFIG,
     DeepDebuggerAgent,
 )

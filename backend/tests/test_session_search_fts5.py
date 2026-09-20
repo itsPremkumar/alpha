@@ -1,6 +1,6 @@
 """Tests for SQLite FTS5 Long-Term Session Recall."""
 
-from agent_workspace.memory.session_search import SessionSearchEngine
+from alpha.memory.session_search import SessionSearchEngine
 
 
 def test_session_search_fts5_discovery_and_cron_demotion():

@@ -9,17 +9,17 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, ValidationError
 
 from app.gateway.deps import is_admin_user, require_admin_user
-from agent_workspace.config.app_config import get_app_config
-from agent_workspace.persistence.managed_subagents import (
+from alpha.config.app_config import get_app_config
+from alpha.persistence.managed_subagents import (
     ManagedSubagentDefinition,
     ManagedSubagentExistsError,
     get_managed_subagent_store,
 )
-from agent_workspace.persistence.managed_subagents.base import (
+from alpha.persistence.managed_subagents.base import (
     MANAGED_SUBAGENT_NAME_PATTERN,
     normalize_managed_subagent_name,
 )
-from agent_workspace.subagents.builtins import BUILTIN_SUBAGENTS
+from alpha.subagents.builtins import BUILTIN_SUBAGENTS
 
 router = APIRouter(prefix="/api/subagents", tags=["subagents"])
 _ADMIN_REQUIRED_DETAIL = "Admin privileges are required to manage subagents."

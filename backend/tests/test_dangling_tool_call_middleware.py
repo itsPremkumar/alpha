@@ -10,7 +10,7 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 # that strict providers reject when assistant tool-call names or arguments are malformed.
 from langchain_openai.chat_models.base import _convert_message_to_dict
 
-from agent_workspace.agents.middlewares.dangling_tool_call_middleware import (
+from alpha.agents.middlewares.dangling_tool_call_middleware import (
     DanglingToolCallMiddleware,
 )
 

@@ -51,7 +51,7 @@ class _BlockingProbeStore:
         return True
 
     def renew(self, sandbox_id: str):
-        from agent_workspace.community.aio_sandbox.ownership import RenewOutcome
+        from alpha.community.aio_sandbox.ownership import RenewOutcome
 
         self._blocking_touch()
         return RenewOutcome.RENEWED
@@ -68,10 +68,10 @@ class _BlockingProbeStore:
 
 def _make_provider_with_active_sandbox(tmp_path: Path, sandbox_id: str):
     """A real provider (no ``__init__``) holding one active sandbox to release."""
-    from agent_workspace.community.aio_sandbox.aio_sandbox_provider import AioSandboxProvider
-    from agent_workspace.community.aio_sandbox.sandbox_info import SandboxInfo
-    from agent_workspace.config.sandbox_config import SandboxOwnershipConfig
-    from agent_workspace.sandbox.acquire_serialization import AcquireSerializer
+    from alpha.community.aio_sandbox.aio_sandbox_provider import AioSandboxProvider
+    from alpha.community.aio_sandbox.sandbox_info import SandboxInfo
+    from alpha.config.sandbox_config import SandboxOwnershipConfig
+    from alpha.sandbox.acquire_serialization import AcquireSerializer
 
     provider = AioSandboxProvider.__new__(AioSandboxProvider)
     provider._lock = threading.Lock()
@@ -114,7 +114,7 @@ async def test_aafter_agent_offloads_release_off_the_event_loop(tmp_path, monkey
     If it regresses to calling ``release`` directly, the probe's file IO trips
     the strict Blockbuster gate.
     """
-    import agent_workspace.sandbox.middleware as mw_mod
+    import alpha.sandbox.middleware as mw_mod
 
     provider = _make_provider_with_active_sandbox(tmp_path, "sb-release")
     monkeypatch.setattr(mw_mod, "get_sandbox_provider", lambda: provider)

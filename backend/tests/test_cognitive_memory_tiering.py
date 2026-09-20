@@ -7,7 +7,7 @@ import time
 
 import pytest
 
-from agent_workspace.memory.cognitive_memory_tiering import (
+from alpha.memory.cognitive_memory_tiering import (
     BM25_B,
     CognitiveMemoryConsolidator,
     CognitiveMemorySystem,
@@ -23,7 +23,7 @@ from agent_workspace.memory.cognitive_memory_tiering import (
     relevance_decay,
     tokenize,
 )
-from agent_workspace.tools.builtins.cognitive_memory_tiering_tool import (
+from alpha.tools.builtins.cognitive_memory_tiering_tool import (
     consolidate_cognitive_memory,
     recall_agent_memory,
 )

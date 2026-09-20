@@ -4,9 +4,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from agent_workspace.avo.persistence import AVOPersistenceManager
-from agent_workspace.avo.workspace_runner import WorkspaceAVORunner
-from agent_workspace.tools.builtins import code_agentic_core
+from alpha.avo.persistence import AVOPersistenceManager
+from alpha.avo.workspace_runner import WorkspaceAVORunner
+from alpha.tools.builtins import code_agentic_core
 
 
 @pytest.fixture
@@ -122,7 +122,7 @@ def test_persistence_failure_reports_retained_workspace(workspace, monkeypatch):
 
 @pytest.mark.parametrize("method", ["save_lineage", "load_lineage", "save_knowledge_base", "load_knowledge_base"])
 def test_persistence_path_confined(tmp_path, method):
-    from agent_workspace.avo import AVOLineage, DomainKnowledgeBase
+    from alpha.avo import AVOLineage, DomainKnowledgeBase
 
     manager = AVOPersistenceManager(tmp_path)
     args = [AVOLineage()] if method == "save_lineage" else [DomainKnowledgeBase()] if method == "save_knowledge_base" else []

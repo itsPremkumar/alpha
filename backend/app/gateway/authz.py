@@ -41,14 +41,14 @@ from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
 
 from fastapi import HTTPException, Request
 
-from agent_workspace.authz.principal import build_principal_from_context
-from agent_workspace.authz.provider import AuthorizationProvider, AuthzDecision, AuthzRequest, Principal
-from agent_workspace.authz.runtime import resolve_authorization_provider
-from agent_workspace.config.authorization_config import AuthorizationConfig
+from alpha.authz.principal import build_principal_from_context
+from alpha.authz.provider import AuthorizationProvider, AuthzDecision, AuthzRequest, Principal
+from alpha.authz.runtime import resolve_authorization_provider
+from alpha.config.authorization_config import AuthorizationConfig
 
 if TYPE_CHECKING:
     from app.gateway.auth.models import User
-    from agent_workspace.config.app_config import AppConfig
+    from alpha.config.app_config import AppConfig
 
 P = ParamSpec("P")
 T = TypeVar("T")
@@ -174,7 +174,7 @@ def _get_route_authorization_config() -> AuthorizationConfig:
     Falls back to a disabled config when AppConfig is not available (e.g. test
     environments without a config.yaml), preserving legacy all-permissions behavior.
     """
-    from agent_workspace.config.app_config import get_app_config
+    from alpha.config.app_config import get_app_config
 
     try:
         return get_app_config().authorization
@@ -383,15 +383,15 @@ def authorize_sandbox_for_request(
     builds the Principal from the request-scoped ``user`` — the same identity
     construction as ``resolve_model_authorization`` (including the
     ``INTERNAL_SYSTEM_ROLE → None`` pop). Raises
-    :class:`~agent_workspace.sandbox.exceptions.SandboxAuthorizationError` on deny or
+    :class:`~alpha.sandbox.exceptions.SandboxAuthorizationError` on deny or
     on provider-resolution failure under ``fail_closed``; callers translate
     that into skipping the sandbox sync (not an HTTP error, since the primary
     operation — e.g. file upload — can proceed without it).
 
     No-op when ``authorization.enabled`` is false.
     """
-    from agent_workspace.authz.sandbox_authz import authorize_sandbox_execution
-    from agent_workspace.sandbox.exceptions import SandboxAuthorizationError
+    from alpha.authz.sandbox_authz import authorize_sandbox_execution
+    from alpha.sandbox.exceptions import SandboxAuthorizationError
 
     config = _get_route_authorization_config()
     if config.enabled is not True:
@@ -432,7 +432,7 @@ class SandboxRequestLease:
         """Drop the request holder without bypassing concurrent executions."""
         if self.owner_id is None or self.provider is None:
             return
-        from agent_workspace.sandbox.lease import get_sandbox_lease_manager
+        from alpha.sandbox.lease import get_sandbox_lease_manager
 
         owner_id = self.owner_id
         self.owner_id = None
@@ -467,7 +467,7 @@ async def try_acquire_sandbox_for_request(
     - ``request is None`` (direct-call tests) and unresolvable users skip the
       gate — same fail-open semantics as the models routes' anonymous bypass.
     """
-    from agent_workspace.sandbox.exceptions import SandboxAuthorizationError
+    from alpha.sandbox.exceptions import SandboxAuthorizationError
 
     try:
         from app.gateway.deps import get_optional_user_from_request
@@ -485,7 +485,7 @@ async def try_acquire_sandbox_for_request(
             provider=None,
         )
 
-    from agent_workspace.sandbox.lease import get_sandbox_lease_manager
+    from alpha.sandbox.lease import get_sandbox_lease_manager
 
     owner_id = f"{owner_prefix}:{uuid.uuid4()}"
     sandbox_id = await get_sandbox_lease_manager(sandbox_provider).acquire_async(

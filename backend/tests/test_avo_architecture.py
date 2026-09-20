@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from agent_workspace.avo import (
+from alpha.avo import (
     AVOEngine,
     AVOLineage,
     AVOSupervisor,
@@ -23,11 +23,11 @@ from agent_workspace.avo import (
     StrategicPivotDirective,
     VersionRecord,
 )
-from agent_workspace.avo.persistence import AVOPersistenceManager
-from agent_workspace.avo.workspace_runner import WorkspaceAVORunner
-from agent_workspace.orchestration.problem_model import ProblemModelCompiler
-from agent_workspace.tools.builtins.variation_operator_tool import run_variation_operator_step
-from agent_workspace.tools.builtins.problem_model_tool import compile_problem_model
+from alpha.avo.persistence import AVOPersistenceManager
+from alpha.avo.workspace_runner import WorkspaceAVORunner
+from alpha.orchestration.problem_model import ProblemModelCompiler
+from alpha.tools.builtins.variation_operator_tool import run_variation_operator_step
+from alpha.tools.builtins.problem_model_tool import compile_problem_model
 
 
 def test_avo_persistence_roundtrip(tmp_path: Path):

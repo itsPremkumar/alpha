@@ -19,8 +19,8 @@ import threading
 import time
 from pathlib import Path
 
-from agent_workspace.skills import export
-from agent_workspace.skills.storage.local_skill_storage import LocalSkillStorage
+from alpha.skills import export
+from alpha.skills.storage.local_skill_storage import LocalSkillStorage
 
 
 class Tracker:

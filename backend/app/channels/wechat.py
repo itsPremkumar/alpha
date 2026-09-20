@@ -27,7 +27,7 @@ from app.channels.base import Channel
 from app.channels.commands import is_known_channel_command
 from app.channels.connection_identity import attach_connection_identity
 from app.channels.message_bus import InboundMessage, InboundMessageType, MessageBus, OutboundMessage, ResolvedAttachment
-from agent_workspace.branding import DISPLAY_NAME
+from alpha.branding import DISPLAY_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -323,7 +323,7 @@ class WechatChannel(Channel):
             chat_id=msg.chat_id,
             context_token=context_token,
             text=text,
-            client_id_prefix="agent_workspace",
+            client_id_prefix="alpha",
             max_retries=_max_retries,
         )
 
@@ -714,7 +714,7 @@ class WechatChannel(Channel):
             chat_id=chat_id,
             context_token=context_token,
             text=text,
-            client_id_prefix="agent_workspace-connect",
+            client_id_prefix="alpha-connect",
             max_retries=1,
         )
 

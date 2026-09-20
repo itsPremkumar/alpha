@@ -6,7 +6,7 @@ import threading
 import time
 from typing import Any
 
-from agent_workspace.community.warm_pool_lifecycle import DEFAULT_IDLE_TIMEOUT, DEFAULT_REPLICAS, WarmPoolLifecycleMixin
+from alpha.community.warm_pool_lifecycle import DEFAULT_IDLE_TIMEOUT, DEFAULT_REPLICAS, WarmPoolLifecycleMixin
 
 
 class _Provider(WarmPoolLifecycleMixin[str]):

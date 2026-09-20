@@ -1,7 +1,7 @@
 import tempfile
 from pathlib import Path
 
-from agent_workspace.skills.forge import (
+from alpha.skills.forge import (
     Skill,
     SkillForge,
     SkillParameter,

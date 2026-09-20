@@ -1,7 +1,7 @@
 import json
 from unittest.mock import MagicMock, patch
 
-from agent_workspace.community.image_search.tools import image_search_tool
+from alpha.community.image_search.tools import image_search_tool
 
 
 def test_image_search_uses_full_image_url_not_thumbnail():
@@ -18,8 +18,8 @@ def test_image_search_uses_full_image_url_not_thumbnail():
     cfg.get_tool_config.return_value = None
 
     with (
-        patch("agent_workspace.community.image_search.tools._search_images", return_value=fake_results),
-        patch("agent_workspace.community.image_search.tools.get_app_config", return_value=cfg),
+        patch("alpha.community.image_search.tools._search_images", return_value=fake_results),
+        patch("alpha.community.image_search.tools.get_app_config", return_value=cfg),
     ):
         output = json.loads(image_search_tool.invoke({"query": "a cat"}))
 

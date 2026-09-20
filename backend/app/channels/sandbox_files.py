@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from agent_workspace.sandbox.lease import acquire_sandbox_client_lease
+from alpha.sandbox.lease import acquire_sandbox_client_lease
 
 
 async def sync_file_to_thread_sandbox(

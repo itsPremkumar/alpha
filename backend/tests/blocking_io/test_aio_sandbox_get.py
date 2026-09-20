@@ -7,7 +7,7 @@ lookup. A prior change renewed the cross-process lease inside ``get()``
 — reported on PR #4221.
 
 Under the strict Blockbuster context (this directory's conftest), any blocking IO
-reached from ``agent_workspace.*`` while on the event loop raises ``BlockingError``.
+reached from ``alpha.*`` while on the event loop raises ``BlockingError``.
 
 The ownership store is injected here as a **blocking probe**: every store method
 does real file IO. That keeps the anchor honest across backends — the configured
@@ -54,7 +54,7 @@ class _BlockingProbeStore:
         return True
 
     def renew(self, sandbox_id: str):
-        from agent_workspace.community.aio_sandbox.ownership import RenewOutcome
+        from alpha.community.aio_sandbox.ownership import RenewOutcome
 
         self._blocking_touch()
         return RenewOutcome.RENEWED
@@ -71,9 +71,9 @@ class _BlockingProbeStore:
 
 def _make_provider(tmp_path: Path):
     """Build an ``AioSandboxProvider`` without ``__init__`` (no Docker, no threads)."""
-    from agent_workspace.community.aio_sandbox.aio_sandbox_provider import AioSandboxProvider
-    from agent_workspace.config.sandbox_config import SandboxOwnershipConfig
-    from agent_workspace.sandbox.acquire_serialization import AcquireSerializer
+    from alpha.community.aio_sandbox.aio_sandbox_provider import AioSandboxProvider
+    from alpha.config.sandbox_config import SandboxOwnershipConfig
+    from alpha.sandbox.acquire_serialization import AcquireSerializer
 
     provider = AioSandboxProvider.__new__(AioSandboxProvider)
     provider._lock = threading.Lock()
@@ -133,8 +133,8 @@ async def test_async_acquire_offloads_ownership_publish(tmp_path, monkeypatch):
     these two were called directly, putting a Redis round trip on the event loop
     for every discover/create.
     """
-    import agent_workspace.community.aio_sandbox.aio_sandbox_provider as aio_mod
-    from agent_workspace.community.aio_sandbox.sandbox_info import SandboxInfo
+    import alpha.community.aio_sandbox.aio_sandbox_provider as aio_mod
+    from alpha.community.aio_sandbox.sandbox_info import SandboxInfo
 
     provider = _make_provider(tmp_path)
     info = SandboxInfo(

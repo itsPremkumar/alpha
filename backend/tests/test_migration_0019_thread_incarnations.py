@@ -16,11 +16,11 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.schema import CreateTable
 
-from agent_workspace.persistence.bootstrap import _FORWARD_COMPATIBLE_REVISION, _get_alembic_config
+from alpha.persistence.bootstrap import _FORWARD_COMPATIBLE_REVISION, _get_alembic_config
 
 _PREVIOUS = "0021_batch_acceptance"
 _REVISION = "0019_thread_incarnations"
-_MIGRATION_MODULE = "agent_workspace.persistence.migrations.versions.0019_thread_incarnations"
+_MIGRATION_MODULE = "alpha.persistence.migrations.versions.0019_thread_incarnations"
 
 
 def _asyncpg_url(url: str | None) -> str | None:
@@ -183,7 +183,7 @@ async def test_sqlite_0019_reapply_does_not_report_varchar_drift(
             with Operations.context(context):
                 migration.upgrade()
 
-        with caplog.at_level("WARNING", logger="agent_workspace.persistence.migrations._helpers"):
+        with caplog.at_level("WARNING", logger="alpha.persistence.migrations._helpers"):
             async with engine.begin() as connection:
                 await connection.run_sync(reapply)
 

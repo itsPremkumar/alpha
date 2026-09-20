@@ -1,8 +1,8 @@
 """Runs endpoints — create, stream, wait, cancel.
 
 Implements the LangGraph Platform runs API on top of
-:class:`agent_workspace.agents.runs.RunManager` and
-:class:`agent_workspace.agents.stream_bridge.StreamBridge`.
+:class:`alpha.agents.runs.RunManager` and
+:class:`alpha.agents.stream_bridge.StreamBridge`.
 
 SSE format is aligned with the LangGraph Platform protocol so that
 the ``useStream`` React hook from ``@langchain/langgraph-sdk/react``
@@ -44,16 +44,16 @@ from app.gateway.pagination import trim_run_message_page
 from app.gateway.run_models import RunCreateRequest
 from app.gateway.services import abuild_checkpoint_state_accessor, build_thread_checkpoint_state_accessor, sse_consumer, start_run, wait_for_run_completion
 from app.gateway.utils import sanitize_log_param
-from agent_workspace.agents.middlewares.dynamic_context_middleware import strip_injected_user_message_id_suffix
-from agent_workspace.authz.sandbox_authz import safe_app_config_async
-from agent_workspace.config.paths import get_paths, make_safe_user_id
-from agent_workspace.runtime import CancelOutcome, ConflictError, RunRecord, RunStatus, ThreadOperationKind, serialize_channel_values_for_api
-from agent_workspace.runtime.runs.store.base import format_run_cursor_created_at, normalize_run_created_at_iso
-from agent_workspace.runtime.secret_context import redact_config_secrets, redact_metadata_secrets
-from agent_workspace.runtime.user_context import get_effective_user_id
-from agent_workspace.utils.messages import ORIGINAL_USER_CONTENT_KEY, get_original_user_content_text, message_to_text
-from agent_workspace.utils.thread_id import ThreadId
-from agent_workspace.workspace_changes import get_workspace_changes_response
+from alpha.agents.middlewares.dynamic_context_middleware import strip_injected_user_message_id_suffix
+from alpha.authz.sandbox_authz import safe_app_config_async
+from alpha.config.paths import get_paths, make_safe_user_id
+from alpha.runtime import CancelOutcome, ConflictError, RunRecord, RunStatus, ThreadOperationKind, serialize_channel_values_for_api
+from alpha.runtime.runs.store.base import format_run_cursor_created_at, normalize_run_created_at_iso
+from alpha.runtime.secret_context import redact_config_secrets, redact_metadata_secrets
+from alpha.runtime.user_context import get_effective_user_id
+from alpha.utils.messages import ORIGINAL_USER_CONTENT_KEY, get_original_user_content_text, message_to_text
+from alpha.utils.thread_id import ThreadId
+from alpha.workspace_changes import get_workspace_changes_response
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/threads", tags=["runs"])

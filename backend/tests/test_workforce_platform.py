@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from agent_workspace.scheduler.delivery import DeliveryLedger
-from agent_workspace.skills.tiers import TierRegistry
+from alpha.scheduler.delivery import DeliveryLedger
+from alpha.skills.tiers import TierRegistry
 
 
 @pytest.fixture()
@@ -42,7 +42,7 @@ def test_delivery_ledger_exactly_once(ledger):
 
 
 def test_project_rooms_solo_vs_team(tmp_path):
-    from agent_workspace.groups.service import GroupChatService
+    from alpha.groups.service import GroupChatService
 
     svc = GroupChatService(storage_path=tmp_path / "rooms.json")
     assert svc.get_or_create_project_room("proj-solo", ["coder"]) is None

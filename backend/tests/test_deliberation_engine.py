@@ -15,20 +15,20 @@ from __future__ import annotations
 
 import pytest
 
-from agent_workspace.deliberation.council import CouncilEngine
-from agent_workspace.deliberation.debate import DebateEngine
-from agent_workspace.deliberation.engine import get_master_deliberation_engine
-from agent_workspace.deliberation.models import (
+from alpha.deliberation.council import CouncilEngine
+from alpha.deliberation.debate import DebateEngine
+from alpha.deliberation.engine import get_master_deliberation_engine
+from alpha.deliberation.models import (
     DeliberationConfidence,
     DeliberationStrategy,
 )
-from agent_workspace.deliberation.router import (
+from alpha.deliberation.router import (
     DeliberationRouter,
     TaskDifficulty,
     TaskRisk,
 )
-from agent_workspace.deliberation.verifier import DeliberationVerifier
-from agent_workspace.tools.builtins.deliberation_tool import deliberation_tool
+from alpha.deliberation.verifier import DeliberationVerifier
+from alpha.tools.builtins.deliberation_tool import deliberation_tool
 
 
 # 1. Deliberation Router & Worthwhile Predictor
@@ -186,10 +186,10 @@ async def test_gateway_deliberation_router():
 
 # 9. Strict Harness Boundary Invariant
 def test_deliberation_boundary_integrity():
-    """Confirms packages/harness/agent_workspace/deliberation contains zero forbidden imports from app.*."""
+    """Confirms packages/harness/alpha/deliberation contains zero forbidden imports from app.*."""
     import pathlib
 
-    delib_dir = pathlib.Path(__file__).parent.parent / "packages" / "harness" / "agent_workspace" / "deliberation"
+    delib_dir = pathlib.Path(__file__).parent.parent / "packages" / "harness" / "alpha" / "deliberation"
     for py_file in delib_dir.rglob("*.py"):
         content = py_file.read_text(encoding="utf-8")
         assert "from app." not in content, f"Boundary violation in {py_file}: contains 'from app.'"

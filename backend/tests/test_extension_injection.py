@@ -13,9 +13,9 @@ from langchain.agents.middleware import AgentMiddleware
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage
 
-from agent_workspace.extensions.anchors import PlacementAnchor, inner_of, innermost, outer_of, outermost
-from agent_workspace.extensions.injection import inject_middlewares
-from agent_workspace.extensions.registry import ExtensionRegistry
+from alpha.extensions.anchors import PlacementAnchor, inner_of, innermost, outer_of, outermost
+from alpha.extensions.injection import inject_middlewares
+from alpha.extensions.registry import ExtensionRegistry
 
 
 class _Core:
@@ -92,7 +92,7 @@ def _ctx() -> AgentBuildContext:
 
 
 def _tags(stack: list[object]) -> list[str]:
-    from agent_workspace.extensions.isolation import IsolatedMiddleware
+    from alpha.extensions.isolation import IsolatedMiddleware
 
     out = []
     for m in stack:

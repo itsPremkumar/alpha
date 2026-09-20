@@ -1,10 +1,10 @@
 """Unit tests for the shared config-file content-signature helper.
 
-``agent_workspace.config.file_signature.get_config_signature`` was extracted from
+``alpha.config.file_signature.get_config_signature`` was extracted from
 verbatim-duplicate implementations that used to live independently in
-``agent_workspace.config.app_config`` and ``agent_workspace.mcp.cache`` (flagged in review
+``alpha.config.app_config`` and ``alpha.mcp.cache`` (flagged in review
 on PR #4124: "now a verbatim duplicate of
-``agent_workspace/config/app_config.py::_get_config_signature`` / ``_ConfigSignature``
+``alpha/config/app_config.py::_get_config_signature`` / ``_ConfigSignature``
 ... worth a follow-up to extract both into a small shared helper"). These
 tests cover the shared implementation directly, and pin that both former
 call sites now delegate to it instead of maintaining independent copies that
@@ -16,7 +16,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from agent_workspace.config.file_signature import ConfigSignature, get_config_signature
+from alpha.config.file_signature import ConfigSignature, get_config_signature
 
 
 def test_missing_file_returns_none(tmp_path: Path):
@@ -68,8 +68,8 @@ def test_app_config_and_mcp_cache_share_the_same_implementation():
     delegate to this shared helper rather than maintaining independent
     verbatim copies that can silently drift apart over time.
     """
-    import agent_workspace.config.app_config as app_config_module
-    import agent_workspace.mcp.cache as cache_module
+    import alpha.config.app_config as app_config_module
+    import alpha.mcp.cache as cache_module
 
     assert app_config_module._get_config_signature is get_config_signature
     assert cache_module._get_config_signature is get_config_signature

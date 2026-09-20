@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from agent_workspace.projects import conflicts as conflicts_mod
-from agent_workspace.projects.conflicts import raise_conflict, resolve_conflict
-from agent_workspace.projects.context import allowed_sections, build_context
-from agent_workspace.projects.evidence import Evidence, check_completion
+from alpha.projects import conflicts as conflicts_mod
+from alpha.projects.conflicts import raise_conflict, resolve_conflict
+from alpha.projects.context import allowed_sections, build_context
+from alpha.projects.evidence import Evidence, check_completion
 
 
 @pytest.fixture(autouse=True)
@@ -45,19 +45,19 @@ def test_conflict_raise_resolve_records_adr():
     assert raised.status == "open"
     resolved = resolve_conflict("proj-cf", raised, "Use REST for v1; revisit at v2.", resolved_by="architect")
     assert resolved.status == "resolved"
-    from agent_workspace.projects.decisions import get_decision_log
+    from alpha.projects.decisions import get_decision_log
 
     assert len(get_decision_log("proj-cf").search("REST vs GraphQL")) == 1
 
 
 def test_lock_overlap_detection_same_scope(tmp_path):
-    from agent_workspace.projects.locks import LockManager
+    from alpha.projects.locks import LockManager
 
     manager = LockManager(storage_path=tmp_path / "locks.json")
     manager.acquire("p", "file", "a.py", "coder")
     # Same owner re-acquire is not a conflict; simulate a second owner by
     # direct insert (acquire would raise, which is the live behavior).
-    from agent_workspace.projects.locks import ResourceLock
+    from alpha.projects.locks import ResourceLock
 
     manager._locks["lk-other"] = ResourceLock(lock_id="lk-other", project_id="p", scope="file", path="a.py", owner_bot="frontend")
     found = conflicts_mod.detect_lock_conflicts("p", lock_manager=manager)
@@ -67,7 +67,7 @@ def test_lock_overlap_detection_same_scope(tmp_path):
 
 def test_workspace_layout_and_branch_names(tmp_path, monkeypatch):
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
-    from agent_workspace.projects.workspace import WORKSPACE_DIRS, branch_name, ensure_workspace, project_root
+    from alpha.projects.workspace import WORKSPACE_DIRS, branch_name, ensure_workspace, project_root
 
     root = ensure_workspace("proj-ws")
     assert root == project_root("proj-ws")
@@ -79,7 +79,7 @@ def test_workspace_layout_and_branch_names(tmp_path, monkeypatch):
 
 
 def test_handoff_create_accept_flow():
-    from agent_workspace.projects.handoffs import get_handoff_store
+    from alpha.projects.handoffs import get_handoff_store
 
     store = get_handoff_store("proj-ho")
     rec = store.create("t-1", "architect", "coder", "Build auth", completed_work="spec done", files_modified=["auth.py"], recommended_next_action="implement")

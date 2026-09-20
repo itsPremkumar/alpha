@@ -1,5 +1,5 @@
 
-from agent_workspace.metacognition import (
+from alpha.metacognition import (
     BiasFlag,
     CognitiveMode,
     ConfidenceCalibrator,

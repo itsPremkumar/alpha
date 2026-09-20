@@ -1,8 +1,8 @@
 """Unit tests for direct agent-to-agent messaging and family roster."""
 
 
-from agent_workspace.subagents.messaging import AgentRoster, get_agent_roster
-from agent_workspace.tools.builtins.agent_message_tool import agent_message_tool, agent_observe_tool
+from alpha.subagents.messaging import AgentRoster, get_agent_roster
+from alpha.tools.builtins.agent_message_tool import agent_message_tool, agent_observe_tool
 
 
 def test_agent_roster_registration_and_status():

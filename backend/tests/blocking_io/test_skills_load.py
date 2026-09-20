@@ -27,9 +27,9 @@ pytestmark = pytest.mark.asyncio
 
 _MISSING = object()
 _EXECUTOR_IMPORT_MOCKS = (
-    "agent_workspace.agents",
-    "agent_workspace.agents.thread_state",
-    "agent_workspace.models",
+    "alpha.agents",
+    "alpha.agents.thread_state",
+    "alpha.models",
 )
 
 
@@ -46,22 +46,22 @@ def _seed_skill(skills_root: Path) -> None:
 def _real_subagent_executor() -> Iterator[type]:
     """Import the real executor despite the suite-level circular-import mock."""
     original_modules = {name: sys.modules.get(name, _MISSING) for name in _EXECUTOR_IMPORT_MOCKS}
-    original_executor = sys.modules.get("agent_workspace.subagents.executor", _MISSING)
-    parent_module = sys.modules.get("agent_workspace.subagents")
+    original_executor = sys.modules.get("alpha.subagents.executor", _MISSING)
+    parent_module = sys.modules.get("alpha.subagents")
     original_parent_executor = getattr(parent_module, "executor", _MISSING) if parent_module is not None else _MISSING
 
-    sys.modules.pop("agent_workspace.subagents.executor", None)
+    sys.modules.pop("alpha.subagents.executor", None)
     for name in _EXECUTOR_IMPORT_MOCKS:
         sys.modules[name] = MagicMock()
 
     try:
-        executor_module = importlib.import_module("agent_workspace.subagents.executor")
+        executor_module = importlib.import_module("alpha.subagents.executor")
         yield executor_module.SubagentExecutor
     finally:
         if original_executor is _MISSING:
-            sys.modules.pop("agent_workspace.subagents.executor", None)
+            sys.modules.pop("alpha.subagents.executor", None)
         else:
-            sys.modules["agent_workspace.subagents.executor"] = original_executor
+            sys.modules["alpha.subagents.executor"] = original_executor
 
         if parent_module is not None:
             if original_parent_executor is _MISSING:
@@ -80,8 +80,8 @@ def _real_subagent_executor() -> Iterator[type]:
 
 
 async def test_load_skills_via_to_thread_does_not_block_event_loop(tmp_path: Path) -> None:
-    from agent_workspace.config.skills_config import SkillsConfig
-    from agent_workspace.subagents.config import SubagentConfig
+    from alpha.config.skills_config import SkillsConfig
+    from alpha.subagents.config import SubagentConfig
 
     _seed_skill(tmp_path)
 

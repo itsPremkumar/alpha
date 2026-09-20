@@ -7,13 +7,13 @@ exact semantics of the linear scan they replaced (match, miss -> None,
 first-match-wins on duplicate names) and confirm a config reload rebuilds them.
 """
 
-from agent_workspace.config.app_config import AppConfig
+from alpha.config.app_config import AppConfig
 
 
 def _build(model_names=(), tool_names=(), group_names=()):
     return AppConfig.model_validate(
         {
-            "sandbox": {"use": "agent_workspace.sandbox.local:LocalSandboxProvider"},
+            "sandbox": {"use": "alpha.sandbox.local:LocalSandboxProvider"},
             "models": [{"name": n, "use": "pkg:Cls", "model": n} for n in model_names],
             "tools": [{"name": n, "group": "default", "use": "pkg:fn"} for n in tool_names],
             "tool_groups": [{"name": n} for n in group_names],
@@ -40,7 +40,7 @@ def test_get_config_first_match_wins_on_duplicate_names():
     # previous next(...) scan.
     cfg = AppConfig.model_validate(
         {
-            "sandbox": {"use": "agent_workspace.sandbox.local:LocalSandboxProvider"},
+            "sandbox": {"use": "alpha.sandbox.local:LocalSandboxProvider"},
             "models": [
                 {"name": "dup", "use": "pkg:A", "model": "first"},
                 {"name": "dup", "use": "pkg:B", "model": "second"},

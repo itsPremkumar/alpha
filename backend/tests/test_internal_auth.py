@@ -59,7 +59,7 @@ def test_get_internal_user_normalises_unsafe_owner_user_id():
     is lossy but deterministic; two distinct raw inputs never collide.
     """
     import app.gateway.internal_auth as internal_auth
-    from agent_workspace.config.paths import make_safe_user_id
+    from alpha.config.paths import make_safe_user_id
 
     # Path-traversal-style payloads must be normalised away.
     user_a = internal_auth.get_internal_user(owner_user_id="ou_abc/../../etc/passwd")

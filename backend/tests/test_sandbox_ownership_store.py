@@ -22,7 +22,7 @@ import uuid
 
 import pytest
 
-from agent_workspace.community.aio_sandbox.ownership import (
+from alpha.community.aio_sandbox.ownership import (
     MemoryOwnershipStore,
     OwnershipBackendError,
     RenewOutcome,
@@ -31,8 +31,8 @@ from agent_workspace.community.aio_sandbox.ownership import (
     make_sandbox_ownership_store,
     resolve_ownership_config,
 )
-from agent_workspace.config.sandbox_config import SandboxOwnershipConfig
-from agent_workspace.config.stream_bridge_config import StreamBridgeConfig
+from alpha.config.sandbox_config import SandboxOwnershipConfig
+from alpha.config.stream_bridge_config import StreamBridgeConfig
 
 REDIS_TEST_URL = os.environ.get("AGENT_WORKSPACE_TEST_REDIS_URL", "redis://localhost:6379/15")
 
@@ -63,7 +63,7 @@ class _StoreFactory:
         self.kind = kind
         self.ttl = ttl_seconds
         self._shared_leases: dict = {}
-        self._key_prefix = f"agent_workspace:test:{uuid.uuid4().hex}"
+        self._key_prefix = f"alpha:test:{uuid.uuid4().hex}"
         self._made: list = []
 
     def make(self, owner_id: str, *, ttl_seconds: float | None = None):
@@ -74,7 +74,7 @@ class _StoreFactory:
             # talking to one backend, as redis clients naturally do.
             store._leases = self._shared_leases
         else:
-            from agent_workspace.community.aio_sandbox.ownership.redis import RedisOwnershipStore
+            from alpha.community.aio_sandbox.ownership.redis import RedisOwnershipStore
 
             store = RedisOwnershipStore(
                 owner_id=owner_id,
@@ -430,13 +430,13 @@ def test_redis_backend_error_is_wrapped_not_leaked():
     in the dev group. Gating it on a live Redis would mean the fail-closed
     contract was never exercised in CI, which is the one place it matters.
     """
-    from agent_workspace.community.aio_sandbox.ownership.redis import RedisOwnershipStore
+    from alpha.community.aio_sandbox.ownership.redis import RedisOwnershipStore
 
     store = RedisOwnershipStore(
         owner_id="A",
         redis_url="redis://127.0.0.1:1/0",  # nothing listening
         ttl_seconds=60,
-        key_prefix=f"agent_workspace:test:{uuid.uuid4().hex}",
+        key_prefix=f"alpha:test:{uuid.uuid4().hex}",
     )
     with pytest.raises(OwnershipBackendError):
         store.claim("s1")
@@ -510,9 +510,9 @@ def test_concurrent_claims_serialize_to_one_winner(stores):
 @pytest.mark.integration
 @requires_redis
 def test_redis_store_declares_cross_process_support():
-    from agent_workspace.community.aio_sandbox.ownership.redis import RedisOwnershipStore
+    from alpha.community.aio_sandbox.ownership.redis import RedisOwnershipStore
 
-    store = RedisOwnershipStore(owner_id="A", redis_url=REDIS_TEST_URL, ttl_seconds=60, key_prefix=f"agent_workspace:test:{uuid.uuid4().hex}")
+    store = RedisOwnershipStore(owner_id="A", redis_url=REDIS_TEST_URL, ttl_seconds=60, key_prefix=f"alpha:test:{uuid.uuid4().hex}")
     try:
         assert store.supports_cross_process is True
     finally:

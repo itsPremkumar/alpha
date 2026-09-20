@@ -7,17 +7,17 @@ from pathlib import Path
 
 import pytest
 
-from agent_workspace.protocols.a2a import (
+from alpha.protocols.a2a import (
     A2ADelegationRequest,
     A2AProtocolAdapter,
     AgentCapabilityCard,
 )
-from agent_workspace.protocols.mcp_tasks import (
+from alpha.protocols.mcp_tasks import (
     MCPTaskManager,
     MCPTaskSpec,
     MCPTaskState,
 )
-from agent_workspace.tools.builtins.a2a_tool import a2a_tool
+from alpha.tools.builtins.a2a_tool import a2a_tool
 
 
 def test_a2a_capability_cards_and_delegation():
@@ -136,10 +136,10 @@ def test_os_subsystems_boundary_integrity():
     """Verify that jobs, supervision, planning/integrity, and protocols NEVER import app.*."""
     backend_root = Path(__file__).resolve().parent.parent
     subsystems = [
-        backend_root / "packages" / "harness" / "agent_workspace" / "jobs",
-        backend_root / "packages" / "harness" / "agent_workspace" / "supervision",
-        backend_root / "packages" / "harness" / "agent_workspace" / "protocols",
-        backend_root / "packages" / "harness" / "agent_workspace" / "planning" / "integrity.py",
+        backend_root / "packages" / "harness" / "alpha" / "jobs",
+        backend_root / "packages" / "harness" / "alpha" / "supervision",
+        backend_root / "packages" / "harness" / "alpha" / "protocols",
+        backend_root / "packages" / "harness" / "alpha" / "planning" / "integrity.py",
     ]
 
     violations: list[str] = []

@@ -1,7 +1,7 @@
 """Concurrency regression tests for the MCP session-pool singleton lifecycle.
 
 These guard the module-level ``get_session_pool`` / ``reset_session_pool``
-singleton in ``agent_workspace.mcp.session_pool``. ``reset_session_pool`` is reachable
+singleton in ``alpha.mcp.session_pool``. ``reset_session_pool`` is reachable
 in production through the ``/api/mcp/cache/reset`` admin endpoint
 (``reset_mcp_tools_cache`` closes the pool so it is rebuilt on the next tool
 load), and the harness runs the main event loop alongside channel threads on
@@ -20,7 +20,7 @@ here was the reset racing the get's return.
 import sys
 import threading
 
-from agent_workspace.mcp.session_pool import (
+from alpha.mcp.session_pool import (
     MCPSessionPool,
     get_session_pool,
     reset_session_pool,

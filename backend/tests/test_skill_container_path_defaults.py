@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 def test_mnt_skills_literal_is_owned_by_skill_constants_module():
-    package_root = Path(__file__).parents[1] / "packages" / "harness" / "agent_workspace"
+    package_root = Path(__file__).parents[1] / "packages" / "harness" / "alpha"
     allowed = {package_root / "constants.py"}
     offenders: list[str] = []
 
@@ -23,7 +23,7 @@ def test_mnt_skills_literal_is_owned_by_skill_constants_module():
 
 
 def test_runtime_middlewares_use_top_level_skills_container_constant():
-    package_root = Path(__file__).parents[1] / "packages" / "harness" / "agent_workspace"
+    package_root = Path(__file__).parents[1] / "packages" / "harness" / "alpha"
     offenders: list[str] = []
 
     for relative_path in (
@@ -33,7 +33,7 @@ def test_runtime_middlewares_use_top_level_skills_container_constant():
         path = package_root / relative_path
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.module == "agent_workspace.config.skills_config":
+            if isinstance(node, ast.ImportFrom) and node.module == "alpha.config.skills_config":
                 imported_names = {alias.name for alias in node.names}
                 if "DEFAULT_SKILLS_CONTAINER_PATH" in imported_names:
                     offenders.append(str(relative_path))

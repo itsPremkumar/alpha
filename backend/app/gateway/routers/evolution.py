@@ -30,7 +30,7 @@ class GateRequest(BaseModel):
 @router.post("/candidates", status_code=201)
 async def propose_candidate(body: ProposeRequest) -> dict:
     def _do():
-        from agent_workspace.evolution import get_evolution_engine
+        from alpha.evolution import get_evolution_engine
 
         return get_evolution_engine().propose(body.surface, body.target, body.payload, parent_id=body.parent_id).to_dict()
 
@@ -43,7 +43,7 @@ async def propose_candidate(body: ProposeRequest) -> dict:
 @router.post("/candidates/{candidate_id}/benchmark")
 async def record_benchmark(candidate_id: str, body: BenchmarkReport) -> dict:
     def _do():
-        from agent_workspace.evolution import get_evolution_engine
+        from alpha.evolution import get_evolution_engine
 
         cand = get_evolution_engine().record_benchmark(candidate_id, body.benchmark)
         return cand.to_dict() if cand else None
@@ -57,7 +57,7 @@ async def record_benchmark(candidate_id: str, body: BenchmarkReport) -> dict:
 @router.post("/candidates/{candidate_id}/gate")
 async def gate_candidate(candidate_id: str, body: GateRequest) -> dict:
     def _do():
-        from agent_workspace.evolution import get_evolution_engine
+        from alpha.evolution import get_evolution_engine
 
         return get_evolution_engine().gate(
             candidate_id,
@@ -73,7 +73,7 @@ async def gate_candidate(candidate_id: str, body: GateRequest) -> dict:
 @router.post("/candidates/{candidate_id}/rollback")
 async def rollback_candidate(candidate_id: str, reason: str = "") -> dict:
     def _do():
-        from agent_workspace.evolution import get_evolution_engine
+        from alpha.evolution import get_evolution_engine
 
         return get_evolution_engine().rollback(candidate_id, reason)
 
@@ -83,7 +83,7 @@ async def rollback_candidate(candidate_id: str, reason: str = "") -> dict:
 @router.get("/ledger")
 async def evolution_ledger(limit: int = 100) -> dict:
     def _do():
-        from agent_workspace.evolution import get_evolution_engine
+        from alpha.evolution import get_evolution_engine
 
         return get_evolution_engine().ledger(limit=min(limit, 500))
 

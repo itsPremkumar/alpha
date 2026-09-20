@@ -23,20 +23,20 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import InMemorySaver
 
-from agent_workspace.agents.middlewares.durable_context_middleware import DurableContextMiddleware
-from agent_workspace.agents.middlewares.summarization_middleware import AgentWorkspaceSummarizationMiddleware
-from agent_workspace.agents.task_continuity import archive
-from agent_workspace.agents.task_continuity.tools import history_read, history_search, task_note
-from agent_workspace.agents.thread_state import ThreadState
-from agent_workspace.config.paths import Paths
-from agent_workspace.config.task_continuity_config import TaskContinuityConfig
+from alpha.agents.middlewares.durable_context_middleware import DurableContextMiddleware
+from alpha.agents.middlewares.summarization_middleware import AgentWorkspaceSummarizationMiddleware
+from alpha.agents.task_continuity import archive
+from alpha.agents.task_continuity.tools import history_read, history_search, task_note
+from alpha.agents.thread_state import ThreadState
+from alpha.config.paths import Paths
+from alpha.config.task_continuity_config import TaskContinuityConfig
 
 
 async def run(args):
     private = json.loads(Path(args.endpoints).read_text())
     model = ChatOpenAI(model=private["llm_model"], base_url=private["llm_base"], api_key=private.get("llm_key", "unused"), temperature=0, max_tokens=2048, timeout=180, max_retries=1, extra_body={"reasoning_effort": "none"})
     results = []
-    with tempfile.TemporaryDirectory(prefix="agent_workspace-continuity-") as directory:
+    with tempfile.TemporaryDirectory(prefix="alpha-continuity-") as directory:
         root = Path(directory)
         original_paths = archive.get_paths
         archive.get_paths = lambda: Paths(base_dir=root)

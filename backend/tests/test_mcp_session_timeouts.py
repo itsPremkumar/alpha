@@ -17,9 +17,9 @@ import pytest
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
-from agent_workspace.config.extensions_config import ExtensionsConfig, McpServerConfig
-from agent_workspace.constants import DEFAULT_MCP_SESSION_INIT_TIMEOUT
-from agent_workspace.mcp.tools import _make_session_pool_tool, get_mcp_tools
+from alpha.config.extensions_config import ExtensionsConfig, McpServerConfig
+from alpha.constants import DEFAULT_MCP_SESSION_INIT_TIMEOUT
+from alpha.mcp.tools import _make_session_pool_tool, get_mcp_tools
 
 
 class _Args(BaseModel):
@@ -92,13 +92,13 @@ async def test_discovery_timeout_skips_hung_server_without_blocking_healthy_serv
             return [_tool("fast_server_fast_search")]
 
     with (
-        patch("agent_workspace.mcp.tools.ExtensionsConfig.from_file", return_value=extensions_config),
-        patch("agent_workspace.mcp.tools.build_servers_config", return_value=servers_config),
-        patch("agent_workspace.mcp.tools.get_initial_oauth_headers", new_callable=AsyncMock, return_value={}),
-        patch("agent_workspace.mcp.tools.build_oauth_tool_interceptor", return_value=None),
+        patch("alpha.mcp.tools.ExtensionsConfig.from_file", return_value=extensions_config),
+        patch("alpha.mcp.tools.build_servers_config", return_value=servers_config),
+        patch("alpha.mcp.tools.get_initial_oauth_headers", new_callable=AsyncMock, return_value={}),
+        patch("alpha.mcp.tools.build_oauth_tool_interceptor", return_value=None),
         patch("langchain_mcp_adapters.client.MultiServerMCPClient", FakeClient),
         patch("langchain_mcp_adapters.tools.load_mcp_tools", new_callable=AsyncMock),
-        patch("agent_workspace.mcp.tools._make_session_pool_tool", side_effect=lambda tool, *_args, **_kwargs: tool),
+        patch("alpha.mcp.tools._make_session_pool_tool", side_effect=lambda tool, *_args, **_kwargs: tool),
     ):
         # Without the discovery timeout the slow server would hang the call past
         # the 5s bound and this test would fail with TimeoutError.
@@ -120,13 +120,13 @@ async def test_session_init_timeout_raises_when_session_creation_hangs(tmp_path,
     mock_pool.get_session = hanging_get_session
 
     with (
-        patch("agent_workspace.mcp.tools.get_session_pool", return_value=mock_pool),
-        patch("agent_workspace.mcp.tools.get_paths", return_value=MagicMock()),
+        patch("alpha.mcp.tools.get_session_pool", return_value=mock_pool),
+        patch("alpha.mcp.tools.get_paths", return_value=MagicMock()),
         patch(
-            "agent_workspace.mcp.tools._prepare_stdio_workspace",
+            "alpha.mcp.tools._prepare_stdio_workspace",
             return_value=(tmp_path, tmp_path / "tmp", {}),
         ),
-        caplog.at_level(logging.WARNING, logger="agent_workspace.mcp.tools"),
+        caplog.at_level(logging.WARNING, logger="alpha.mcp.tools"),
     ):
         wrapped = _make_session_pool_tool(
             _tool("github_search"),
@@ -188,13 +188,13 @@ async def test_discovery_timeout_from_sdk_with_opt_out_is_reported_without_loggi
             raise TimeoutError("internal SDK timeout")
 
     with (
-        patch("agent_workspace.mcp.tools.ExtensionsConfig.from_file", return_value=extensions_config),
-        patch("agent_workspace.mcp.tools.build_servers_config", return_value=servers_config),
-        patch("agent_workspace.mcp.tools.get_initial_oauth_headers", new_callable=AsyncMock, return_value={}),
-        patch("agent_workspace.mcp.tools.build_oauth_tool_interceptor", return_value=None),
+        patch("alpha.mcp.tools.ExtensionsConfig.from_file", return_value=extensions_config),
+        patch("alpha.mcp.tools.build_servers_config", return_value=servers_config),
+        patch("alpha.mcp.tools.get_initial_oauth_headers", new_callable=AsyncMock, return_value={}),
+        patch("alpha.mcp.tools.build_oauth_tool_interceptor", return_value=None),
         patch("langchain_mcp_adapters.client.MultiServerMCPClient", FakeClient),
         patch("langchain_mcp_adapters.tools.load_mcp_tools", new_callable=AsyncMock),
-        caplog.at_level(logging.WARNING, logger="agent_workspace.mcp.tools"),
+        caplog.at_level(logging.WARNING, logger="alpha.mcp.tools"),
     ):
         tools = await get_mcp_tools()
 
@@ -225,10 +225,10 @@ async def test_session_init_timeout_does_not_block_fast_session(tmp_path) -> Non
     mock_pool.get_session = AsyncMock(return_value=mock_session)
 
     with (
-        patch("agent_workspace.mcp.tools.get_session_pool", return_value=mock_pool),
-        patch("agent_workspace.mcp.tools.get_paths", return_value=MagicMock()),
+        patch("alpha.mcp.tools.get_session_pool", return_value=mock_pool),
+        patch("alpha.mcp.tools.get_paths", return_value=MagicMock()),
         patch(
-            "agent_workspace.mcp.tools._prepare_stdio_workspace",
+            "alpha.mcp.tools._prepare_stdio_workspace",
             return_value=(tmp_path, tmp_path / "tmp", {}),
         ),
     ):

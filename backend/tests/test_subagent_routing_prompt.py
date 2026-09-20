@@ -1,9 +1,9 @@
 """Prompt-contract tests for benefit-based subagent routing."""
 
-from agent_workspace.agents.lead_agent import prompt as prompt_module
-from agent_workspace.subagents.builtins.bash_agent import BASH_AGENT_CONFIG
-from agent_workspace.subagents.builtins.general_purpose import GENERAL_PURPOSE_CONFIG
-from agent_workspace.tools.builtins.task_tool import task_tool
+from alpha.agents.lead_agent import prompt as prompt_module
+from alpha.subagents.builtins.bash_agent import BASH_AGENT_CONFIG
+from alpha.subagents.builtins.general_purpose import GENERAL_PURPOSE_CONFIG
+from alpha.tools.builtins.task_tool import task_tool
 
 
 def _build_section(monkeypatch, names: list[str] | None = None, max_concurrent: int = 3) -> str:

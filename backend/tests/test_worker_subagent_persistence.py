@@ -17,20 +17,20 @@ import sys
 
 import pytest
 
-from agent_workspace.runtime.runs.worker import _SubagentEventBuffer
+from alpha.runtime.runs.worker import _SubagentEventBuffer
 
 
 def test_worker_imports_first_without_circular_import():
     """Gateway startup imports worker early; importing it first must not trigger
-    a circular import through agent_workspace.subagents (regression for the #3779 fix).
+    a circular import through alpha.subagents (regression for the #3779 fix).
 
     pytest preloads many modules, so the cycle only reproduces when worker is the
-    first agent_workspace import — hence a clean subprocess.
+    first alpha import — hence a clean subprocess.
     """
     repo_backend = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     env = {**os.environ, "PYTHONPATH": repo_backend}
     result = subprocess.run(
-        [sys.executable, "-c", "import agent_workspace.runtime.runs.worker"],
+        [sys.executable, "-c", "import alpha.runtime.runs.worker"],
         capture_output=True,
         text=True,
         env=env,
@@ -205,7 +205,7 @@ async def test_roundtrip_step_is_listable_but_not_in_message_feed():
     # End-to-end against the real in-memory store: a persisted subagent step is
     # retrievable via list_events (fetch-on-expand) yet never leaks into the
     # thread message feed (list_messages), which filters category == "message".
-    from agent_workspace.runtime.events.store.memory import MemoryRunEventStore
+    from alpha.runtime.events.store.memory import MemoryRunEventStore
 
     store = MemoryRunEventStore()
     buffer = _SubagentEventBuffer(store, "thread_1", "run_1")

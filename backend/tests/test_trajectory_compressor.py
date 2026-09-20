@@ -1,6 +1,6 @@
 """Tests for Atomic Trajectory Compressor."""
 
-from agent_workspace.trajectory.trajectory_compressor import TrajectoryCompactor, TrajectoryTurn
+from alpha.trajectory.trajectory_compressor import TrajectoryCompactor, TrajectoryTurn
 
 
 def test_trajectory_compactor_pair_preservation_and_head_tail():

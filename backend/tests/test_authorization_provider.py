@@ -14,23 +14,23 @@ import asyncio
 
 import pytest
 
-from agent_workspace.authz.adapter import GuardrailAuthorizationAdapter
-from agent_workspace.authz.provider import (
+from alpha.authz.adapter import GuardrailAuthorizationAdapter
+from alpha.authz.provider import (
     AuthorizationProvider,
     AuthzDecision,
     AuthzReason,
     AuthzRequest,
     Principal,
 )
-from agent_workspace.config.app_config import AppConfig
-from agent_workspace.config.authorization_config import (
+from alpha.config.app_config import AppConfig
+from alpha.config.authorization_config import (
     AuthorizationConfig,
     get_authorization_config,
     load_authorization_config_from_dict,
     reset_authorization_config,
 )
-from agent_workspace.config.sandbox_config import SandboxConfig
-from agent_workspace.guardrails.provider import GuardrailDecision, GuardrailProvider, GuardrailRequest
+from alpha.config.sandbox_config import SandboxConfig
+from alpha.guardrails.provider import GuardrailDecision, GuardrailProvider, GuardrailRequest
 
 # --- Test providers ---
 

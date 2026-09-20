@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from agent_workspace.projects import membership as membership_mod
-from agent_workspace.projects.membership import MembershipStore
+from alpha.projects import membership as membership_mod
+from alpha.projects.membership import MembershipStore
 
 
 @pytest.fixture()

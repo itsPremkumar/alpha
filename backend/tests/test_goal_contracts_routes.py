@@ -9,9 +9,9 @@ from app.gateway.auth import jwt
 from app.gateway.auth.models import User
 from app.gateway.auth_middleware import AuthMiddleware
 from app.gateway.routers import goal_contracts
-from agent_workspace.config.authorization_config import AuthorizationConfig
-from agent_workspace.config.paths import Paths
-from agent_workspace.goals import GoalStore
+from alpha.config.authorization_config import AuthorizationConfig
+from alpha.config.paths import Paths
+from alpha.goals import GoalStore
 
 pytestmark = pytest.mark.no_auto_user
 BASE = "/api/goals/contracts"

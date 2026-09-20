@@ -12,14 +12,14 @@ from types import SimpleNamespace
 
 import pytest
 
-import agent_workspace.swarm.coordinator as coord_mod
-from agent_workspace.planning.bridge import AutonomousDispatchBridge
-from agent_workspace.planning.meta_planner import (
+import alpha.swarm.coordinator as coord_mod
+from alpha.planning.bridge import AutonomousDispatchBridge
+from alpha.planning.meta_planner import (
     CognitiveMetaPlanner,
     ExecutionParadigm,
 )
-from agent_workspace.swarm.models import SwarmMode
-from agent_workspace.tools.builtins.cognitive_plan_tool import cognitive_plan
+from alpha.swarm.models import SwarmMode
+from alpha.tools.builtins.cognitive_plan_tool import cognitive_plan
 
 
 @pytest.fixture(autouse=True)
@@ -224,10 +224,10 @@ async def test_gateway_plan_mode_router():
 
 # 9. Strict Harness Boundary Invariant
 def test_planning_harness_boundary_integrity():
-    """Confirms packages/harness/agent_workspace/planning contains zero forbidden imports from app.*."""
+    """Confirms packages/harness/alpha/planning contains zero forbidden imports from app.*."""
     import pathlib
 
-    planning_dir = pathlib.Path(__file__).parent.parent / "packages" / "harness" / "agent_workspace" / "planning"
+    planning_dir = pathlib.Path(__file__).parent.parent / "packages" / "harness" / "alpha" / "planning"
     for py_file in planning_dir.rglob("*.py"):
         content = py_file.read_text(encoding="utf-8")
         assert "from app." not in content, f"Boundary violation in {py_file}: contains 'from app.'"

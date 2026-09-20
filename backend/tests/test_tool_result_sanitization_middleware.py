@@ -14,13 +14,13 @@ from types import SimpleNamespace
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
-from agent_workspace.agents.middlewares.input_sanitization_middleware import _check_user_content
-from agent_workspace.agents.middlewares.tool_result_sanitization_middleware import (
+from alpha.agents.middlewares.input_sanitization_middleware import _check_user_content
+from alpha.agents.middlewares.tool_result_sanitization_middleware import (
     ToolResultSanitizationMiddleware,
     _neutralize_content,
 )
-from agent_workspace.community.browserless.browserless_client import BrowserlessScreenshotResult
-from agent_workspace.community.browserless.tools import _target_status_warning
+from alpha.community.browserless.browserless_client import BrowserlessScreenshotResult
+from alpha.community.browserless.tools import _target_status_warning
 
 # A web page body an attacker controls, embedding a forged framework block plus
 # a forged user-input boundary marker.

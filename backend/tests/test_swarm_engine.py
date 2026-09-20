@@ -12,14 +12,14 @@ from unittest.mock import patch
 
 import pytest
 
-import agent_workspace.swarm.coordinator as coord_mod
-from agent_workspace.swarm.aggregator import SwarmAggregator
-from agent_workspace.swarm.coordinator import SwarmCoordinator
-from agent_workspace.swarm.decomposer import SwarmTaskDecomposer
-from agent_workspace.swarm.estimator import SwarmBenefitEstimator
-from agent_workspace.swarm.models import SwarmMode, SwarmPlan, SwarmTaskNode, TaskNodeState
-from agent_workspace.swarm.scheduler import SwarmScheduler
-from agent_workspace.swarm.watchdog import SwarmWatchdog
+import alpha.swarm.coordinator as coord_mod
+from alpha.swarm.aggregator import SwarmAggregator
+from alpha.swarm.coordinator import SwarmCoordinator
+from alpha.swarm.decomposer import SwarmTaskDecomposer
+from alpha.swarm.estimator import SwarmBenefitEstimator
+from alpha.swarm.models import SwarmMode, SwarmPlan, SwarmTaskNode, TaskNodeState
+from alpha.swarm.scheduler import SwarmScheduler
+from alpha.swarm.watchdog import SwarmWatchdog
 
 
 @pytest.fixture(autouse=True)
@@ -219,7 +219,7 @@ def test_swarm_coordinator_lifecycle_and_persistence(tmp_path):
 
 # 7. Built-in Agent Tool Actions
 def test_swarm_tool_actions():
-    from agent_workspace.tools.builtins.swarm_tool import swarm_tool
+    from alpha.tools.builtins.swarm_tool import swarm_tool
 
     # 1. Evaluate
     eval_res = swarm_tool.invoke(
@@ -314,10 +314,10 @@ async def test_gateway_swarms_router():
 
 # 9. Harness Boundary Integrity
 def test_swarm_harness_boundary_integrity():
-    """Confirms packages/harness/agent_workspace/swarm contains zero forbidden imports from app.*."""
+    """Confirms packages/harness/alpha/swarm contains zero forbidden imports from app.*."""
     import pathlib
 
-    swarm_dir = pathlib.Path(__file__).parent.parent / "packages" / "harness" / "agent_workspace" / "swarm"
+    swarm_dir = pathlib.Path(__file__).parent.parent / "packages" / "harness" / "alpha" / "swarm"
     for py_file in swarm_dir.glob("*.py"):
         content = py_file.read_text(encoding="utf-8")
         assert "from app." not in content, f"Boundary violation in {py_file}: contains 'from app.'"

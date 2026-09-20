@@ -3,7 +3,7 @@ import json
 import httpx
 import pytest
 
-from agent_workspace.community.ragflow.client import (
+from alpha.community.ragflow.client import (
     RAGFlowAPIError,
     RAGFlowClient,
     RAGFlowConnectionError,

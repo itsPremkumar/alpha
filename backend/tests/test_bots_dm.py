@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from agent_workspace.bots.dm import (
+from alpha.bots.dm import (
     PROTOCOL_MARKER,
     apply_attribution,
     backfill_roster_profiles,
@@ -19,7 +19,7 @@ from agent_workspace.bots.dm import (
     resolve_runtime_bot_name,
     send_dm,
 )
-from agent_workspace.bots.failure_reasons import (
+from alpha.bots.failure_reasons import (
     AGENT_BLOCKED,
     PROVIDER_AUTH_OR_ACCESS,
     PROVIDER_QUOTA_LIMIT,
@@ -29,14 +29,14 @@ from agent_workspace.bots.failure_reasons import (
     is_auto_retryable,
     is_valid_agent_name,
 )
-from agent_workspace.bots.inbox import BotInbox
+from alpha.bots.inbox import BotInbox
 
 
 @pytest.fixture(autouse=True)
 def _home(tmp_path, monkeypatch):
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
-    import agent_workspace.bots.inbox as inbox_mod
-    import agent_workspace.bots.registry as bot_reg
+    import alpha.bots.inbox as inbox_mod
+    import alpha.bots.registry as bot_reg
 
     monkeypatch.setattr(bot_reg, "_global_registry", None)
     monkeypatch.setattr(bot_reg, "_global_registry_path", None)
@@ -110,7 +110,7 @@ def test_send_dm_rejects_unknown_target_and_caps():
 
 
 def test_send_dm_rejects_suspended_recipient():
-    from agent_workspace.bots.registry import get_bot_registry
+    from alpha.bots.registry import get_bot_registry
 
     reg = get_bot_registry()
     reg.update_bot("coder", status="suspended", bump_version=False)
@@ -148,7 +148,7 @@ def test_messaging_section_guarantee_idempotent():
 
 
 def test_backfill_roster_profiles():
-    from agent_workspace.bots.registry import get_bot_registry
+    from alpha.bots.registry import get_bot_registry
 
     reg = get_bot_registry()
     reg.update_bot("coder", soul="# Bare soul.", bump_version=False)
@@ -211,15 +211,15 @@ def test_dm_delivery_matrix(sender, target, message, ctx, expected):
 def test_roster_reminder_injected_only_for_bot_runtime(tmp_path, monkeypatch):
     from types import SimpleNamespace
 
-    from agent_workspace.agents.middlewares.dynamic_context_middleware import DynamicContextMiddleware
+    from alpha.agents.middlewares.dynamic_context_middleware import DynamicContextMiddleware
 
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
-    import agent_workspace.bots.registry as bot_reg
+    import alpha.bots.registry as bot_reg
 
     monkeypatch.setattr(bot_reg, "_global_registry", None)
     monkeypatch.setattr(bot_reg, "_global_registry_path", None)
-    monkeypatch.setattr("agent_workspace.agents.lead_agent.prompt._get_memory_context", lambda *a, **k: "")
-    monkeypatch.setattr("agent_workspace.runtime.user_context.resolve_runtime_user_id", lambda runtime: "u1")
+    monkeypatch.setattr("alpha.agents.lead_agent.prompt._get_memory_context", lambda *a, **k: "")
+    monkeypatch.setattr("alpha.runtime.user_context.resolve_runtime_user_id", lambda runtime: "u1")
 
     middleware = DynamicContextMiddleware(agent_name=None, app_config=None)
     bot_reminder, _ = middleware._build_full_reminder(SimpleNamespace(context={"bot_name": "coder"}, config={}))

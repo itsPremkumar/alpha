@@ -17,9 +17,9 @@ from pathlib import Path
 import pytest
 import yaml
 
-from agent_workspace.extensions.cli import find_project_root
-from agent_workspace.extensions.loader import ExtensionSpec
-from agent_workspace.extensions.manager import (
+from alpha.extensions.cli import find_project_root
+from alpha.extensions.loader import ExtensionSpec
+from alpha.extensions.manager import (
     ExtensionManager,
     _controlled_uv_environment,
     _detect_extra_flags,
@@ -27,7 +27,7 @@ from agent_workspace.extensions.manager import (
     _validate_locked_local_sources,
     _validate_remote_source,
 )
-from agent_workspace.tui.cli import main as agent_workspace_main
+from alpha.tui.cli import main as agent_workspace_main
 
 
 def _write_local_extension(
@@ -45,7 +45,7 @@ def _write_local_extension(
     )
     entry_point = (
         f"""\
-[project.entry-points."agent_workspace.extensions"]
+[project.entry-points."alpha.extensions"]
 demo = "{entry_target}"
 """
         if with_entry_point
@@ -157,7 +157,7 @@ def _assert_demo_entry_point_loads(backend: Path) -> None:
         [
             str(backend / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")),
             "-c",
-            "from importlib.metadata import entry_points; eps=entry_points(group='agent_workspace.extensions'); assert [(e.name, e.value) for e in eps] == [('demo', 'demo_extension:install')]; assert callable(next(iter(eps)).load())",
+            "from importlib.metadata import entry_points; eps=entry_points(group='alpha.extensions'); assert [(e.name, e.value) for e in eps] == [('demo', 'demo_extension:install')]; assert callable(next(iter(eps)).load())",
         ],
         check=False,
         capture_output=True,
@@ -176,8 +176,8 @@ def _write_demo_wheel(directory: Path, *, version: str = "1.0.0", marker: str | 
     records = {
         "demo_extension/__init__.py": init,
         f"{dist_info}/METADATA": (f"Metadata-Version: 2.1\nName: agent-workspace-extension-demo\nVersion: {version}\nRequires-Python: >=3.12\n"),
-        f"{dist_info}/WHEEL": ("Wheel-Version: 1.0\nGenerator: agent_workspace-extension-test\nRoot-Is-Purelib: true\nTag: py3-none-any\n"),
-        f"{dist_info}/entry_points.txt": ("[agent_workspace.extensions]\ndemo = demo_extension:install\n"),
+        f"{dist_info}/WHEEL": ("Wheel-Version: 1.0\nGenerator: alpha-extension-test\nRoot-Is-Purelib: true\nTag: py3-none-any\n"),
+        f"{dist_info}/entry_points.txt": ("[alpha.extensions]\ndemo = demo_extension:install\n"),
     }
     records[f"{dist_info}/RECORD"] = "".join(f"{name},,\n" for name in (*records, f"{dist_info}/RECORD"))
     with zipfile.ZipFile(wheel, "w") as archive:
@@ -557,7 +557,7 @@ def test_failed_upgrade_leaves_snapshot_when_staging_rename_fails(tmp_path: Path
             raise OSError("snapshot file in use")
         return original_rename(self, target)
 
-    monkeypatch.setattr("agent_workspace.extensions.manager.Path.rename", _rename)
+    monkeypatch.setattr("alpha.extensions.manager.Path.rename", _rename)
 
     with pytest.raises(OSError, match="snapshot file in use"):
         manager.upgrade(str(source), yes=True)
@@ -594,7 +594,7 @@ def test_failed_upgrade_restores_snapshot_when_a_concurrent_dependency_edit_bloc
         )
         raise RuntimeError("simulated dependency sync failure")
 
-    monkeypatch.setattr("agent_workspace.extensions.manager._sync_environment", _fail_after_operator_edit)
+    monkeypatch.setattr("alpha.extensions.manager._sync_environment", _fail_after_operator_edit)
 
     with pytest.raises(RuntimeError, match="recovery.*dependency"):
         manager.upgrade(str(source), yes=True)
@@ -1026,7 +1026,7 @@ version = "1.0.0"
         encoding="utf-8",
     )
 
-    with caplog.at_level("WARNING", logger="agent_workspace.extensions.manager"):
+    with caplog.at_level("WARNING", logger="alpha.extensions.manager"):
         _validate_locked_local_sources(lock_path, backend)
 
     assert "loopback" in caplog.text
@@ -1060,7 +1060,7 @@ wheels = [
         encoding="utf-8",
     )
 
-    with caplog.at_level("WARNING", logger="agent_workspace.extensions.manager"):
+    with caplog.at_level("WARNING", logger="alpha.extensions.manager"):
         _validate_locked_local_sources(lock_path, backend)
 
     assert caplog.text == ""
@@ -1541,7 +1541,7 @@ def test_failed_install_does_not_overwrite_a_concurrent_operator_config_edit(
     _write_local_extension(source)
     config_path = root / "config.yaml"
     operator_edit = "config_version: 1\nlog_level: debug # edited during install\n"
-    from agent_workspace.extensions import manager as manager_module
+    from alpha.extensions import manager as manager_module
 
     original_sync = manager_module._sync_environment
     calls = 0
@@ -1554,7 +1554,7 @@ def test_failed_install_does_not_overwrite_a_concurrent_operator_config_edit(
             raise RuntimeError("simulated dependency sync failure")
         return original_sync(*args, **kwargs)
 
-    monkeypatch.setattr("agent_workspace.extensions.manager._sync_environment", _fail_after_operator_edit)
+    monkeypatch.setattr("alpha.extensions.manager._sync_environment", _fail_after_operator_edit)
 
     with pytest.raises(RuntimeError, match="sync failure"):
         ExtensionManager(root).install(str(source), yes=True)
@@ -1581,7 +1581,7 @@ def test_failed_install_preserves_a_concurrent_dependency_file_edit(
         )
         raise RuntimeError("simulated dependency sync failure")
 
-    monkeypatch.setattr("agent_workspace.extensions.manager._sync_environment", _fail_after_operator_edit)
+    monkeypatch.setattr("alpha.extensions.manager._sync_environment", _fail_after_operator_edit)
 
     with pytest.raises(RuntimeError, match="recovery.*dependency"):
         ExtensionManager(root).install(str(source), yes=True)
@@ -1616,7 +1616,7 @@ def test_uv_add_partial_writes_are_rolled_back_when_the_command_fails(
             lock_path.write_text("partial uv lock write\n", encoding="utf-8")
             raise subprocess.CalledProcessError(1, command)
 
-    monkeypatch.setattr("agent_workspace.extensions.manager._run_uv", _partially_write_then_fail)
+    monkeypatch.setattr("alpha.extensions.manager._run_uv", _partially_write_then_fail)
 
     with pytest.raises(subprocess.CalledProcessError):
         ExtensionManager(root).install(str(source), yes=True)
@@ -1941,12 +1941,12 @@ def test_list_uses_the_same_boolean_coercion_as_the_runtime_loader(tmp_path: Pat
         """\
 plugins:
   - name: numeric
-    package: agent_workspace-extension-numeric
+    package: alpha-extension-numeric
     use: numeric_extension:install
     enabled: 0
     required: 1
   - name: yaml-booleans
-    package: agent_workspace-extension-yaml-booleans
+    package: alpha-extension-yaml-booleans
     use: yaml_boolean_extension:install
     enabled: yes
     required: no
@@ -2022,7 +2022,7 @@ def test_remove_rolls_back_package_lock_config_source_and_environment_when_confi
     def _fail_replace(_source, _target):
         raise OSError("simulated config replacement failure")
 
-    monkeypatch.setattr("agent_workspace.extensions.manager.os.replace", _fail_replace)
+    monkeypatch.setattr("alpha.extensions.manager.os.replace", _fail_replace)
 
     with pytest.raises(OSError, match="replacement failure"):
         manager.remove("demo")
@@ -2054,7 +2054,7 @@ def test_failed_remove_preserves_a_concurrent_operator_config_edit(
     manager.install(str(source), yes=True)
     config_path = root / "config.yaml"
     operator_edit = "config_version: 1\nplugins: []\nlog_level: debug # edited during remove\n"
-    from agent_workspace.extensions import manager as manager_module
+    from alpha.extensions import manager as manager_module
 
     original_sync = manager_module._sync_environment
     calls = 0
@@ -2067,7 +2067,7 @@ def test_failed_remove_preserves_a_concurrent_operator_config_edit(
             raise RuntimeError("simulated dependency sync failure")
         return original_sync(*args, **kwargs)
 
-    monkeypatch.setattr("agent_workspace.extensions.manager._sync_environment", _fail_after_operator_edit)
+    monkeypatch.setattr("alpha.extensions.manager._sync_environment", _fail_after_operator_edit)
 
     with pytest.raises(
         RuntimeError,
@@ -2100,7 +2100,7 @@ def test_failed_remove_preserves_a_concurrent_dependency_file_edit(
         )
         raise RuntimeError("simulated dependency sync failure")
 
-    monkeypatch.setattr("agent_workspace.extensions.manager._sync_environment", _fail_after_operator_edit)
+    monkeypatch.setattr("alpha.extensions.manager._sync_environment", _fail_after_operator_edit)
 
     with pytest.raises(RuntimeError, match="recovery.*dependency"):
         manager.remove("demo")
@@ -2142,7 +2142,7 @@ def test_uv_remove_partial_writes_are_rolled_back_when_the_command_fails(
             )
             raise subprocess.CalledProcessError(1, command)
 
-    monkeypatch.setattr("agent_workspace.extensions.manager._run_uv", _partially_write_then_fail)
+    monkeypatch.setattr("alpha.extensions.manager._run_uv", _partially_write_then_fail)
 
     with pytest.raises(subprocess.CalledProcessError):
         manager.remove("demo")
@@ -2391,7 +2391,7 @@ def test_install_uses_one_controlled_uv_project_and_deferred_sync(
             return subprocess.CompletedProcess(command, 0)
         return subprocess.CompletedProcess(command, 0, stdout='[["demo", "demo_extension:install"]]\n')
 
-    monkeypatch.setattr("agent_workspace.extensions.manager.subprocess.run", _record_run)
+    monkeypatch.setattr("alpha.extensions.manager.subprocess.run", _record_run)
 
     ExtensionManager(root).install(str(source), yes=True)
 
@@ -2473,7 +2473,7 @@ def test_install_validates_the_config_before_running_third_party_build_hooks(
         commands.append(list(command))
         return subprocess.CompletedProcess(command, 0, stdout="uv 0.11.1\n")
 
-    monkeypatch.setattr("agent_workspace.extensions.manager.subprocess.run", _record)
+    monkeypatch.setattr("alpha.extensions.manager.subprocess.run", _record)
 
     with pytest.raises(expected_error, match=message):
         ExtensionManager(root).install(str(source), yes=True)
@@ -2516,7 +2516,7 @@ def test_failed_recovery_sync_still_restores_the_dependency_files(
             lock_path.write_text("version = 1\n# written by the recovery resolve\n", encoding="utf-8")
         raise subprocess.CalledProcessError(1, command)
 
-    monkeypatch.setattr("agent_workspace.extensions.manager.subprocess.run", _run)
+    monkeypatch.setattr("alpha.extensions.manager.subprocess.run", _run)
 
     with pytest.raises(RuntimeError, match="original failure"):
         ExtensionManager(root).install(str(source), yes=True)
@@ -2559,7 +2559,7 @@ def test_interrupt_during_install_restores_files_without_a_recovery_resolve(
         syncs.append(list(command))
         raise KeyboardInterrupt
 
-    monkeypatch.setattr("agent_workspace.extensions.manager.subprocess.run", _run)
+    monkeypatch.setattr("alpha.extensions.manager.subprocess.run", _run)
 
     with pytest.raises(KeyboardInterrupt):
         ExtensionManager(root).install(str(source), yes=True)
@@ -2596,7 +2596,7 @@ def test_entry_point_discovery_tolerates_interpreter_startup_output(
             stdout='vendor sitecustomize loaded\n[["demo", "demo_extension:install"]]\n',
         )
 
-    monkeypatch.setattr("agent_workspace.extensions.manager.subprocess.run", _run)
+    monkeypatch.setattr("alpha.extensions.manager.subprocess.run", _run)
 
     result = ExtensionManager(root).install(str(source), yes=True)
 
@@ -2621,7 +2621,7 @@ def test_install_rejects_uv_versions_without_no_workspace_support(
             return subprocess.CompletedProcess(command, 0, stdout="uv 0.7.20\n")
         return subprocess.CompletedProcess(command, 0)
 
-    monkeypatch.setattr("agent_workspace.extensions.manager.subprocess.run", _old_uv)
+    monkeypatch.setattr("alpha.extensions.manager.subprocess.run", _old_uv)
 
     with pytest.raises(RuntimeError, match="uv 0.8.0 or newer"):
         ExtensionManager(root).install(str(source), yes=True)
@@ -2663,7 +2663,7 @@ plugins:
                 (root / "backend" / "uv.lock").write_text('version = 1\nrequires-python = ">=3.12"\n', encoding="utf-8")
         return subprocess.CompletedProcess(command, 0)
 
-    monkeypatch.setattr("agent_workspace.extensions.manager.subprocess.run", _record_run)
+    monkeypatch.setattr("alpha.extensions.manager.subprocess.run", _record_run)
 
     ExtensionManager(root).remove("demo")
 

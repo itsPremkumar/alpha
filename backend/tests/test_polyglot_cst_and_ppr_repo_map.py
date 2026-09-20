@@ -6,19 +6,19 @@ import tempfile
 from pathlib import Path
 import pytest
 
-from agent_workspace.coding.structural_intelligence.polyglot_cst import (
+from alpha.coding.structural_intelligence.polyglot_cst import (
     PolyglotCSTParser,
     SymbolKind,
 )
-from agent_workspace.coding.structural_intelligence.symbol_dependency_graph import (
+from alpha.coding.structural_intelligence.symbol_dependency_graph import (
     EdgeType,
     SymbolDependencyGraph,
 )
-from agent_workspace.coding.structural_intelligence.repo_map import (
+from alpha.coding.structural_intelligence.repo_map import (
     PersonalizedPageRank,
     RepoMapGenerator,
 )
-from agent_workspace.tools.builtins.code_agentic_core import generate_personalized_repo_map
+from alpha.tools.builtins.code_agentic_core import generate_personalized_repo_map
 
 
 def test_polyglot_python_ast_parsing():

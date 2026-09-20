@@ -9,7 +9,7 @@ from unittest import mock
 
 import pytest
 
-from agent_workspace.models.claude_provider import ClaudeChatModel
+from alpha.models.claude_provider import ClaudeChatModel
 
 
 def _make_model(prompt_cache_size: int = 3) -> ClaudeChatModel:

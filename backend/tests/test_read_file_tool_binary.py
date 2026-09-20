@@ -11,8 +11,8 @@ pin the actionable error contract and guard the normal text path.
 from pathlib import Path
 from types import SimpleNamespace
 
-from agent_workspace.sandbox.local.local_sandbox import LocalSandbox, PathMapping
-from agent_workspace.sandbox.tools import read_file_tool
+from alpha.sandbox.local.local_sandbox import LocalSandbox, PathMapping
+from alpha.sandbox.tools import read_file_tool
 
 
 def _local_runtime(tmp_path: Path) -> SimpleNamespace:
@@ -34,8 +34,8 @@ def test_read_file_tool_binary_file_returns_actionable_hint(tmp_path, monkeypatc
     # .xlsx is a zip container: header bytes PK\x03\x04 plus a non-UTF-8 byte 0x82
     # that makes strict UTF-8 decoding fail (the exact byte seen in the field logs).
     (tmp_path / "uploads" / "data.xlsx").write_bytes(b"PK\x03\x04\x14\x00\x00\x00\x08\x00\x82\x6a\xb1\x55")
-    monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_sandbox_initialized", lambda runtime: LocalSandbox("t1"))
-    monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
+    monkeypatch.setattr("alpha.sandbox.tools.ensure_sandbox_initialized", lambda runtime: LocalSandbox("t1"))
+    monkeypatch.setattr("alpha.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
 
     result = read_file_tool.func(
         runtime=runtime,
@@ -52,8 +52,8 @@ def test_read_file_tool_binary_file_returns_actionable_hint(tmp_path, monkeypatc
 def test_read_file_tool_text_file_unaffected(tmp_path, monkeypatch) -> None:
     runtime = _local_runtime(tmp_path)
     (tmp_path / "uploads" / "notes.txt").write_text("hello 你好\nsecond line", encoding="utf-8")
-    monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_sandbox_initialized", lambda runtime: LocalSandbox("t1"))
-    monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
+    monkeypatch.setattr("alpha.sandbox.tools.ensure_sandbox_initialized", lambda runtime: LocalSandbox("t1"))
+    monkeypatch.setattr("alpha.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
 
     result = read_file_tool.func(
         runtime=runtime,
@@ -66,7 +66,7 @@ def test_read_file_tool_text_file_unaffected(tmp_path, monkeypatch) -> None:
 
 
 def test_read_file_tool_keeps_custom_mount_path_provider_owned(tmp_path, monkeypatch) -> None:
-    from agent_workspace.config.sandbox_config import VolumeMountConfig
+    from alpha.config.sandbox_config import VolumeMountConfig
 
     runtime = _local_runtime(tmp_path)
     mounted = tmp_path / "mounted-code"
@@ -77,8 +77,8 @@ def test_read_file_tool_keeps_custom_mount_path_provider_owned(tmp_path, monkeyp
         path_mappings=[PathMapping(container_path="/mnt/code-read", local_path=str(mounted), read_only=True)],
     )
     mount = VolumeMountConfig(host_path=str(mounted), container_path="/mnt/code-read", read_only=True)
-    monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_sandbox_initialized", lambda _runtime: sandbox)
-    monkeypatch.setattr("agent_workspace.sandbox.tools._get_custom_mounts", lambda: [mount])
+    monkeypatch.setattr("alpha.sandbox.tools.ensure_sandbox_initialized", lambda _runtime: sandbox)
+    monkeypatch.setattr("alpha.sandbox.tools._get_custom_mounts", lambda: [mount])
 
     full = read_file_tool.func(
         runtime=runtime,
@@ -113,8 +113,8 @@ def test_read_file_tool_passes_line_range_into_sandbox(monkeypatch) -> None:
             return "line 1\nline 2"
 
     runtime = SimpleNamespace(state={"sandbox": {"sandbox_id": "aio:test"}}, context={"thread_id": "t1"})
-    monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_sandbox_initialized", lambda runtime: RangeAwareSandbox())
-    monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
+    monkeypatch.setattr("alpha.sandbox.tools.ensure_sandbox_initialized", lambda runtime: RangeAwareSandbox())
+    monkeypatch.setattr("alpha.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
 
     result = read_file_tool.func(
         runtime=runtime,
@@ -141,8 +141,8 @@ def test_read_file_tool_passes_open_ended_ranges_into_sandbox(monkeypatch) -> No
             return "line 1\nline 2"
 
     runtime = SimpleNamespace(state={"sandbox": {"sandbox_id": "aio:test"}}, context={"thread_id": "t1"})
-    monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_sandbox_initialized", lambda runtime: RangeAwareSandbox())
-    monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
+    monkeypatch.setattr("alpha.sandbox.tools.ensure_sandbox_initialized", lambda runtime: RangeAwareSandbox())
+    monkeypatch.setattr("alpha.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
 
     start_only = read_file_tool.func(
         runtime=runtime,
@@ -164,7 +164,7 @@ def test_read_file_tool_passes_open_ended_ranges_into_sandbox(monkeypatch) -> No
 
 def test_read_file_tool_validates_range_order(monkeypatch) -> None:
     runtime = SimpleNamespace(state={"sandbox": {"sandbox_id": "aio:test"}}, context={"thread_id": "t1"})
-    monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_sandbox_initialized", lambda runtime: object())
+    monkeypatch.setattr("alpha.sandbox.tools.ensure_sandbox_initialized", lambda runtime: object())
 
     result = read_file_tool.func(
         runtime=runtime,

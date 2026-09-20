@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from agent_workspace.subagents.step_events import (
+from alpha.subagents.step_events import (
     SUBAGENT_EVENT_CATEGORY,
     SUBAGENT_STEP_MAX_CHARS,
     build_subagent_step,
@@ -28,7 +28,7 @@ def test_ai_message_becomes_ai_step_with_tool_calls():
         "id": "ai-1",
         "content": "Let me search the web.",
         "tool_calls": [
-            {"name": "web_search", "args": {"query": "agent_workspace"}, "id": "call_1", "type": "tool_call"},
+            {"name": "web_search", "args": {"query": "alpha"}, "id": "call_1", "type": "tool_call"},
         ],
     }
 
@@ -39,7 +39,7 @@ def test_ai_message_becomes_ai_step_with_tool_calls():
     assert step["kind"] == "ai"
     assert step["text"] == "Let me search the web."
     assert step["truncated"] is False
-    assert step["tool_calls"] == [{"name": "web_search", "args": {"query": "agent_workspace"}}]
+    assert step["tool_calls"] == [{"name": "web_search", "args": {"query": "alpha"}}]
     assert "tool_name" not in step
 
 
@@ -188,13 +188,13 @@ def test_ai_step_keeps_small_tool_call_args_structured():
     message = {
         "type": "ai",
         "content": "searching",
-        "tool_calls": [{"name": "web_search", "args": {"query": "agent_workspace"}}],
+        "tool_calls": [{"name": "web_search", "args": {"query": "alpha"}}],
     }
 
     step = build_subagent_step(message, task_id="t", message_index=1)
 
     call = step["tool_calls"][0]
-    assert call["args"] == {"query": "agent_workspace"}
+    assert call["args"] == {"query": "alpha"}
     assert "args_truncated" not in call
 
 

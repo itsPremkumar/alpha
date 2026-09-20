@@ -10,8 +10,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.gateway import services
-from agent_workspace.runtime.runs.manager import RunManager
-from agent_workspace.runtime.runs.worker import RunContext, run_agent
+from alpha.runtime.runs.manager import RunManager
+from alpha.runtime.runs.worker import RunContext, run_agent
 
 
 class _Agent:

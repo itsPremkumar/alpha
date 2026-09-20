@@ -2,11 +2,11 @@
 
 import pytest
 
-from agent_workspace.skills.executable import (
+from alpha.skills.executable import (
     ExecutableSkillReference,
     ExecutableSkillRunner,
 )
-from agent_workspace.tools.builtins.executable_skill_tool import invoke_python_skill_tool
+from alpha.tools.builtins.executable_skill_tool import invoke_python_skill_tool
 
 
 def sample_sync_calculator(a: int, b: int, op: str = "add") -> int:
@@ -44,7 +44,7 @@ async def test_executable_skill_runner_async():
         callable_name="sample_async_validator",
     )
 
-    res = await runner.execute(ref, {"name": "agent_workspace"})
+    res = await runner.execute(ref, {"name": "alpha"})
     assert res == {"validated": True, "target": "AGENT_WORKSPACE"}
 
 

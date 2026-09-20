@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from agent_workspace.scheduler.schedules import (
+from alpha.scheduler.schedules import (
     next_run_at,
     normalize_cron_expression,
     parse_interval_seconds,

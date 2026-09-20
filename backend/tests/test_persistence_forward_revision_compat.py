@@ -18,10 +18,10 @@ from alembic.script import ScriptDirectory
 from alembic.util.exc import CommandError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-import agent_workspace.persistence.models  # noqa: F401
-from agent_workspace.config.database_config import DatabaseConfig
-from agent_workspace.persistence import bootstrap as bootstrap_mod
-from agent_workspace.persistence.bootstrap import (
+import alpha.persistence.models  # noqa: F401
+from alpha.config.database_config import DatabaseConfig
+from alpha.persistence import bootstrap as bootstrap_mod
+from alpha.persistence.bootstrap import (
     _CANONICAL_0019_SCHEMA_FLOOR,
     _FORWARD_COMPATIBLE_REVISION,
     _get_alembic_config,
@@ -29,8 +29,8 @@ from agent_workspace.persistence.bootstrap import (
     _upgrade,
     bootstrap_schema,
 )
-from agent_workspace.persistence.engine import close_engine, get_engine, init_engine_from_config
-from agent_workspace.persistence.thread_meta.sql import ThreadMetaRepository
+from alpha.persistence.engine import close_engine, get_engine, init_engine_from_config
+from alpha.persistence.thread_meta.sql import ThreadMetaRepository
 
 CANONICAL_INCARNATION_REVISION = "0019_thread_incarnations"
 LOCAL_HEAD = _get_head_revision()
@@ -223,7 +223,7 @@ async def test_known_canonical_0019_validates_fixed_floor_then_upgrades_to_futur
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from agent_workspace.persistence.base import Base
+    from alpha.persistence.base import Base
 
     engine = create_async_engine(_url(tmp_path, "future-head.db"))
     future_table = None
@@ -304,7 +304,7 @@ async def test_exact_forward_revision_skips_upgrade_with_warning(
         await _seed_canonical_0019(engine)
         _simulate_rollback_binary(monkeypatch)
 
-        with caplog.at_level("WARNING", logger="agent_workspace.persistence.bootstrap"):
+        with caplog.at_level("WARNING", logger="alpha.persistence.bootstrap"):
             await bootstrap_schema(engine, backend="sqlite")
 
         assert await _database_revision(engine) == _FORWARD_COMPATIBLE_REVISION
@@ -356,7 +356,7 @@ async def test_sqlite_upgrade_race_recovers_when_other_process_applies_forward_r
         new_cfg = _get_alembic_config(new_gateway)
         await asyncio.to_thread(_upgrade, new_cfg, CANONICAL_INCARNATION_REVISION)
 
-        with caplog.at_level("WARNING", logger="agent_workspace.persistence.bootstrap"):
+        with caplog.at_level("WARNING", logger="alpha.persistence.bootstrap"):
             continue_upgrade.set()
             await old_bootstrap
         assert await _database_revision(old_gateway) == _FORWARD_COMPATIBLE_REVISION

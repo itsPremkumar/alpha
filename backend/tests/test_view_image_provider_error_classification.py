@@ -3,8 +3,8 @@ import hashlib
 from pathlib import Path
 from types import SimpleNamespace
 
-from agent_workspace.agents.thread_state import ViewedImageData
-from agent_workspace.tools.builtins.view_image_tool import _is_file_not_found_error, view_image_tool
+from alpha.agents.thread_state import ViewedImageData
+from alpha.tools.builtins.view_image_tool import _is_file_not_found_error, view_image_tool
 
 PNG_BYTES = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
 
@@ -91,7 +91,7 @@ def test_http_404_replacement_sandbox_recovers_verified_host_copy(tmp_path, monk
     host_path.write_bytes(PNG_BYTES)
     sandbox = _HttpMissingSandbox()
     monkeypatch.setattr(
-        "agent_workspace.sandbox.sandbox_provider.get_sandbox_provider",
+        "alpha.sandbox.sandbox_provider.get_sandbox_provider",
         lambda: _Provider(sandbox),
     )
     runtime = SimpleNamespace(

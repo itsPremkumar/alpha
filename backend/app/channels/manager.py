@@ -42,17 +42,17 @@ from app.gateway.csrf_middleware import CSRF_COOKIE_NAME, CSRF_HEADER_NAME, gene
 from app.gateway.github import run_policy as _github_run_policy  # noqa: F401
 from app.gateway.internal_auth import create_internal_auth_headers
 from app.gateway.path_utils import resolve_outputs_confined_path
-from agent_workspace.branding import DISPLAY_NAME
-from agent_workspace.config.agents_config import list_custom_agents, load_agent_config
-from agent_workspace.config.paths import make_safe_user_id
-from agent_workspace.runtime import END_SENTINEL, StreamBridge
-from agent_workspace.runtime.goal import parse_goal_command
-from agent_workspace.runtime.user_context import get_effective_user_id
-from agent_workspace.skills.slash import parse_slash_skill_reference
-from agent_workspace.skills.storage import get_or_new_skill_storage
-from agent_workspace.skills.storage.skill_storage import SkillStorage
-from agent_workspace.trace_context import ensure_trace_context
-from agent_workspace.utils.messages import ORIGINAL_USER_CONTENT_KEY
+from alpha.branding import DISPLAY_NAME
+from alpha.config.agents_config import list_custom_agents, load_agent_config
+from alpha.config.paths import make_safe_user_id
+from alpha.runtime import END_SENTINEL, StreamBridge
+from alpha.runtime.goal import parse_goal_command
+from alpha.runtime.user_context import get_effective_user_id
+from alpha.skills.slash import parse_slash_skill_reference
+from alpha.skills.storage import get_or_new_skill_storage
+from alpha.skills.storage.skill_storage import SkillStorage
+from alpha.trace_context import ensure_trace_context
+from alpha.utils.messages import ORIGINAL_USER_CONTENT_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -776,7 +776,7 @@ def _owner_headers(msg: InboundMessage) -> dict[str, str] | None:
 
 
 def _safe_user_id_for_run(raw_user_id: str) -> str:
-    from agent_workspace.config.paths import get_paths
+    from alpha.config.paths import get_paths
 
     try:
         return get_paths().prepare_user_dir_for_raw_id(raw_user_id)
@@ -915,7 +915,7 @@ async def _ingest_inbound_files(thread_id: str, msg: InboundMessage, *, user_id:
     if not msg.files:
         return []
 
-    from agent_workspace.uploads.manager import (
+    from alpha.uploads.manager import (
         UnsafeUploadPathError,
         claim_unique_filename,
         ensure_uploads_dir,
@@ -1643,7 +1643,7 @@ class ChannelManager:
         self._worker_tasks = {
             asyncio.create_task(
                 self._worker_loop(worker_index),
-                name=f"agent_workspace-channel-worker-{worker_index}",
+                name=f"alpha-channel-worker-{worker_index}",
             )
             for worker_index in range(self._max_concurrency)
         }
@@ -1686,7 +1686,7 @@ class ChannelManager:
         for task in watcher_tasks:
             task.cancel()
 
-        join_task = asyncio.create_task(self.bus.join_inbound(), name="agent_workspace-channel-inbound-drain")
+        join_task = asyncio.create_task(self.bus.join_inbound(), name="alpha-channel-inbound-drain")
         drained = False
         try:
             done, _ = await asyncio.wait({join_task}, timeout=max(0.0, grace_deadline - loop.time()))

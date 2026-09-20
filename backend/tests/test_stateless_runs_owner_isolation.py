@@ -35,9 +35,9 @@ from langgraph.store.memory import InMemoryStore
 
 from app.gateway.auth.models import User
 from app.gateway.routers import runs
-from agent_workspace.config.app_config import AppConfig, reset_app_config, set_app_config
-from agent_workspace.persistence.thread_meta.memory import MemoryThreadMetaStore
-from agent_workspace.runtime import ConflictError
+from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
+from alpha.persistence.thread_meta.memory import MemoryThreadMetaStore
+from alpha.runtime import ConflictError
 
 USER_A = User(email="owner-a@example.com", password_hash="x", system_role="user", id=uuid4())
 USER_B = User(email="intruder-b@example.com", password_hash="x", system_role="user", id=uuid4())
@@ -51,7 +51,7 @@ THREAD_SHARED = "thread-shared-null-owner"
 def _stub_app_config():
     """Inject a minimal AppConfig so the allowed path (which builds a
     RunContext via ``get_config()``) never reads config.yaml from disk."""
-    set_app_config(AppConfig.model_validate({"sandbox": {"use": "agent_workspace.sandbox.local:LocalSandboxProvider"}}))
+    set_app_config(AppConfig.model_validate({"sandbox": {"use": "alpha.sandbox.local:LocalSandboxProvider"}}))
     yield
     reset_app_config()
 

@@ -15,7 +15,7 @@ import inspect
 from types import SimpleNamespace
 
 from app.gateway.services import sse_consumer
-from agent_workspace.runtime import DisconnectMode, RunRecord, RunStatus
+from alpha.runtime import DisconnectMode, RunRecord, RunStatus
 
 
 def _running_record() -> RunRecord:

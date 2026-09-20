@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from agent_workspace.utils.file_outline import MAX_OUTLINE_ENTRIES, extract_outline, extract_outline_for_file
+from alpha.utils.file_outline import MAX_OUTLINE_ENTRIES, extract_outline, extract_outline_for_file
 
 
 @pytest.mark.parametrize("heading", ["# {text}", "**SECTION {text}**", "**1** **{text}**"])

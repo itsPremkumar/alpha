@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import pytest
 
-from agent_workspace.projects import constitution as const_mod
-from agent_workspace.projects.decisions import DecisionLog
-from agent_workspace.projects.events import ProjectEventBus
-from agent_workspace.projects.goals import GoalTree
-from agent_workspace.projects.state import get_state, refresh_state, set_phase
+from alpha.projects import constitution as const_mod
+from alpha.projects.decisions import DecisionLog
+from alpha.projects.events import ProjectEventBus
+from alpha.projects.goals import GoalTree
+from alpha.projects.state import get_state, refresh_state, set_phase
 
 
 @pytest.fixture(autouse=True)
@@ -48,7 +48,7 @@ def test_event_bus_sequence_and_search(tmp_path):
 
 
 def test_state_folds_events():
-    from agent_workspace.projects.events import get_event_bus
+    from alpha.projects.events import get_event_bus
 
     bus = get_event_bus("proj-state")
     bus.emit("agent_joined", "coder", {})

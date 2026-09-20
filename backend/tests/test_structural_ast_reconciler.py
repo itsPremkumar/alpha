@@ -3,7 +3,7 @@
 import ast
 import pytest
 
-from agent_workspace.editing.structural_ast_reconciler import (
+from alpha.editing.structural_ast_reconciler import (
     StructuralAstConflictReconciler,
     reconcile_structural_ast_conflicts,
 )

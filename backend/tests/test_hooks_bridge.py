@@ -11,15 +11,15 @@ from unittest.mock import MagicMock
 
 from langchain_core.messages import HumanMessage, ToolMessage
 
-from agent_workspace.agents.middlewares.hooks_bridge_middleware import (
+from alpha.agents.middlewares.hooks_bridge_middleware import (
     HookDecision,
     HooksBridgeMiddleware,
     _matcher_matches,
 )
-from agent_workspace.config.app_config import AppConfig
-from agent_workspace.config.hooks_config import HooksConfig
-from agent_workspace.config.model_config import ModelConfig
-from agent_workspace.config.sandbox_config import SandboxConfig
+from alpha.config.app_config import AppConfig
+from alpha.config.hooks_config import HooksConfig
+from alpha.config.model_config import ModelConfig
+from alpha.config.sandbox_config import SandboxConfig
 
 PY = f'"{sys.executable}"'
 
@@ -239,7 +239,7 @@ class TestBridgeConfig:
         assert middleware._config.enabled is False
 
         class _App:
-            from agent_workspace.config.hooks_config import HooksConfig as _HC
+            from alpha.config.hooks_config import HooksConfig as _HC
 
             hooks = _HC(enabled=True, hooks_path="/tmp/h.json")
 
@@ -263,12 +263,12 @@ class TestBridgeAssembly:
                     supports_vision=False,
                 )
             ],
-            sandbox=SandboxConfig(use="agent_workspace.sandbox.local:LocalSandboxProvider"),
+            sandbox=SandboxConfig(use="alpha.sandbox.local:LocalSandboxProvider"),
             hooks=HooksConfig(**hooks_kwargs),
         )
 
     def test_enabled_hooks_appends_bridge_innermost(self):
-        from agent_workspace.agents.middlewares.tool_error_handling_middleware import _build_runtime_middlewares
+        from alpha.agents.middlewares.tool_error_handling_middleware import _build_runtime_middlewares
 
         chain = _build_runtime_middlewares(
             app_config=self._app_config(enabled=True, hooks_path="/nonexistent/hooks.json"),
@@ -278,7 +278,7 @@ class TestBridgeAssembly:
         assert isinstance(chain[-1], HooksBridgeMiddleware)
 
     def test_disabled_by_default_bridge_absent(self):
-        from agent_workspace.agents.middlewares.tool_error_handling_middleware import _build_runtime_middlewares
+        from alpha.agents.middlewares.tool_error_handling_middleware import _build_runtime_middlewares
 
         chain = _build_runtime_middlewares(
             app_config=self._app_config(),

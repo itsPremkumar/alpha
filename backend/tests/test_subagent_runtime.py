@@ -3,9 +3,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from agent_workspace.config.subagent_batches_config import SubagentBatchesConfig
-from agent_workspace.config.subagent_runtime_config import SubagentRuntimeConfig
-from agent_workspace.subagents import SubagentRuntime
+from alpha.config.subagent_batches_config import SubagentBatchesConfig
+from alpha.config.subagent_runtime_config import SubagentRuntimeConfig
+from alpha.subagents import SubagentRuntime
 
 
 def test_runtime_rejects_batch_repository_without_enabled_batch_config() -> None:
@@ -50,7 +50,7 @@ async def test_runtime_owns_batch_worker_lifecycle_and_shared_capacity() -> None
     app_config = MagicMock()
 
     with patch(
-        "agent_workspace.subagents.batch_service.SubagentBatchService",
+        "alpha.subagents.batch_service.SubagentBatchService",
         return_value=service,
     ) as service_type:
         runtime = SubagentRuntime(

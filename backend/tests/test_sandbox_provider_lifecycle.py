@@ -13,9 +13,9 @@ exit, so tests never leak a provider into one another.
 import threading
 import time
 
-import agent_workspace.sandbox.sandbox_provider as sandbox_provider
-from agent_workspace.sandbox.sandbox import Sandbox
-from agent_workspace.sandbox.sandbox_provider import SandboxProvider
+import alpha.sandbox.sandbox_provider as sandbox_provider
+from alpha.sandbox.sandbox import Sandbox
+from alpha.sandbox.sandbox_provider import SandboxProvider
 
 
 class SlowSandboxProvider(SandboxProvider):

@@ -10,10 +10,10 @@ from pydantic import BaseModel, ConfigDict, JsonValue
 from app.gateway.auth_disabled import AUTH_SOURCE_PAT
 from app.gateway.authz import require_cancel_permission_if, require_permission
 from app.gateway.deps import get_current_user_from_request
-from agent_workspace.config.paths import get_paths, make_safe_user_id
-from agent_workspace.goals import AttemptStatus, GoalContract, GoalStore, InvalidTransitionError, PlanVersion, RecordNotFoundError, StoreCorruptionError, TaskAttempt
-from agent_workspace.goals.models import NonEmptyString
-from agent_workspace.utils.file_io import run_file_io
+from alpha.config.paths import get_paths, make_safe_user_id
+from alpha.goals import AttemptStatus, GoalContract, GoalStore, InvalidTransitionError, PlanVersion, RecordNotFoundError, StoreCorruptionError, TaskAttempt
+from alpha.goals.models import NonEmptyString
+from alpha.utils.file_io import run_file_io
 
 router = APIRouter(prefix="/api/goals/contracts", tags=["goal-contracts"])
 _stores: dict[Path, GoalStore] = {}

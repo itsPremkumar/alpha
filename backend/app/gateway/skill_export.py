@@ -12,8 +12,8 @@ from pydantic import BaseModel
 from starlette.requests import ClientDisconnect
 from starlette.responses import StreamingResponse
 
-from agent_workspace.skills.export import SkillExportArchive, SkillExportError
-from agent_workspace.utils.file_io import run_file_io
+from alpha.skills.export import SkillExportArchive, SkillExportError
+from alpha.utils.file_io import run_file_io
 
 # Slots are shared across all users in this Gateway process.
 _slots = threading.BoundedSemaphore(2)

@@ -15,7 +15,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.gateway.app import create_app
-from agent_workspace.commands import command_registry
+from alpha.commands import command_registry
 
 
 @pytest.fixture(autouse=True)
@@ -27,7 +27,7 @@ def _isolated_lifecycle_home(tmp_path, monkeypatch):
     until the per-parent cap rejects new spawns.
     """
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
-    import agent_workspace.subagents.lifecycle as lifecycle_mod
+    import alpha.subagents.lifecycle as lifecycle_mod
 
     monkeypatch.setattr(lifecycle_mod, "_GLOBAL_LIFECYCLE_MANAGER", None)
     yield

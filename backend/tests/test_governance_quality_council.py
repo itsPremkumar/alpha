@@ -1,5 +1,5 @@
 
-from agent_workspace.governance.council import (
+from alpha.governance.council import (
     QualityCouncil,
     RiskTier,
     VoteVerdict,

@@ -19,9 +19,9 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import StateGraph
 from langgraph.types import Overwrite
 
-from agent_workspace.agents.thread_state import get_thread_state_schema
-from agent_workspace.runtime.checkpoint_mode import inject_checkpoint_mode
-from agent_workspace.runtime.checkpoint_state import (
+from alpha.agents.thread_state import get_thread_state_schema
+from alpha.runtime.checkpoint_mode import inject_checkpoint_mode
+from alpha.runtime.checkpoint_state import (
     CheckpointStateAccessor,
     build_state_mutation_graph,
 )

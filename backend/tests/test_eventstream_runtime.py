@@ -1,14 +1,14 @@
 """Tests for Typed EventStream and Action-Observation Audit Ledger."""
 
-from agent_workspace.events.stream.actions import (
+from alpha.events.stream.actions import (
     ActionType,
     AgentFinishAction,
     CmdRunAction,
     CriticAction,
     FileEditAction,
 )
-from agent_workspace.events.stream.ledger import EventStreamLedger
-from agent_workspace.events.stream.observations import (
+from alpha.events.stream.ledger import EventStreamLedger
+from alpha.events.stream.observations import (
     CmdOutputObservation,
     CriticObservation,
     ErrorObservation,

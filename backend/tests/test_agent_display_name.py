@@ -8,13 +8,13 @@ from pydantic import ValidationError
 from sqlalchemy import create_engine
 
 from app.gateway.routers.agents import AgentCreateRequest, AgentUpdateRequest
-from agent_workspace.config.agents_config import AgentConfig
-from agent_workspace.persistence.agents.base import parse_agent_config
-from agent_workspace.persistence.agents.file import FileAgentStore
-from agent_workspace.persistence.agents.model import AgentRow
-from agent_workspace.persistence.agents.sql import SqlAgentStore
-from agent_workspace.persistence.base import Base
-from agent_workspace.tools.builtins.setup_agent_tool import setup_agent
+from alpha.config.agents_config import AgentConfig
+from alpha.persistence.agents.base import parse_agent_config
+from alpha.persistence.agents.file import FileAgentStore
+from alpha.persistence.agents.model import AgentRow
+from alpha.persistence.agents.sql import SqlAgentStore
+from alpha.persistence.base import Base
+from alpha.tools.builtins.setup_agent_tool import setup_agent
 
 
 @pytest.mark.parametrize("backend", ["file", "sql"])
@@ -29,7 +29,7 @@ def test_bootstrap_preserves_owner_display_name(tmp_path, monkeypatch, backend, 
         Base.metadata.create_all(engine, tables=[AgentRow.__table__])
         engine.dispose()
         store = SqlAgentStore(url)
-    monkeypatch.setattr("agent_workspace.tools.builtins.setup_agent_tool.get_agent_store", lambda: store)
+    monkeypatch.setattr("alpha.tools.builtins.setup_agent_tool.get_agent_store", lambda: store)
     owner = "test-user-autouse"
     store.create("reviewer", {"display_name": display_name}, "old soul", user_id=owner)
     store.create("reviewer", {"display_name": "Other owner"}, "other soul", user_id="other")
@@ -100,7 +100,7 @@ def test_invalid_stored_label_does_not_hide_or_break_agent(tmp_path, monkeypatch
     else:
         with store._Session() as session:
             assert session.query(AgentRow).one().config == raw
-    monkeypatch.setattr("agent_workspace.tools.builtins.setup_agent_tool.get_agent_store", lambda: store)
+    monkeypatch.setattr("alpha.tools.builtins.setup_agent_tool.get_agent_store", lambda: store)
     result = setup_agent.func(soul="new soul", description="rebootstrapped", runtime=SimpleNamespace(context={"agent_name": "reviewer"}, tool_call_id="test"))
     assert result.update["created_agent_name"] == "reviewer"
     assert store.get_soul("reviewer", user_id=owner) == "new soul"

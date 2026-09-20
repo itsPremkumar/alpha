@@ -19,7 +19,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.store.memory import InMemoryStore
 
 from app.gateway.routers import openai_compat, threads
-from agent_workspace.persistence.thread_meta.memory import THREADS_NS, MemoryThreadMetaStore
+from alpha.persistence.thread_meta.memory import THREADS_NS, MemoryThreadMetaStore
 
 
 class _PermissiveThreadMetaStore(MemoryThreadMetaStore):

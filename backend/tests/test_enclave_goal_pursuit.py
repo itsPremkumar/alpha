@@ -1,7 +1,7 @@
-from agent_workspace.security.enclave.goal_pursuit import (
+from alpha.security.enclave.goal_pursuit import (
     AstraGoalHarness,
 )
-from agent_workspace.security.enclave.spatiotemporal import (
+from alpha.security.enclave.spatiotemporal import (
     BoundingBox,
     SpatialObject,
     SpatioTemporalCache,

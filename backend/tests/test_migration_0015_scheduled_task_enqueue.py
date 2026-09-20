@@ -6,9 +6,9 @@ import pytest
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import create_async_engine
 
-import agent_workspace.persistence.models  # noqa: F401
-from agent_workspace.persistence.base import Base
-from agent_workspace.persistence.bootstrap import _get_head_revision, bootstrap_schema
+import alpha.persistence.models  # noqa: F401
+from alpha.persistence.base import Base
+from alpha.persistence.bootstrap import _get_head_revision, bootstrap_schema
 
 pytestmark = pytest.mark.asyncio
 

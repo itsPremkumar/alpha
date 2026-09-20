@@ -1,4 +1,4 @@
-"""Tests for agent_workspace.models.patched_mimo.PatchedChatMiMo."""
+"""Tests for alpha.models.patched_mimo.PatchedChatMiMo."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 
 
 def _make_model(**kwargs):
-    from agent_workspace.models.patched_mimo import PatchedChatMiMo
+    from alpha.models.patched_mimo import PatchedChatMiMo
 
     return PatchedChatMiMo(
         model="mimo-v2.5-pro",
@@ -19,7 +19,7 @@ def _make_model(**kwargs):
 
 
 def test_is_lc_serializable_returns_true():
-    from agent_workspace.models.patched_mimo import PatchedChatMiMo
+    from alpha.models.patched_mimo import PatchedChatMiMo
 
     assert PatchedChatMiMo.is_lc_serializable() is True
 

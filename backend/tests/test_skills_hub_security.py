@@ -1,9 +1,9 @@
 import json
 from pathlib import Path
 
-from agent_workspace.skills.audit.ast_audit import SkillASTAuditor
-from agent_workspace.skills.hub.discovery import SkillPackage, SkillsHub
-from agent_workspace.tools.builtins.skills_hub_tool import skills_hub_manage
+from alpha.skills.audit.ast_audit import SkillASTAuditor
+from alpha.skills.hub.discovery import SkillPackage, SkillsHub
+from alpha.tools.builtins.skills_hub_tool import skills_hub_manage
 
 
 def test_ast_security_auditor():
@@ -46,8 +46,8 @@ def test_skills_hub_lifecycle_and_audit_gate(tmp_path: Path):
     ok, msg = hub.install("cartographer")
     assert ok is True
     assert "Successfully audited and installed" in msg
-    assert (tmp_path / ".agent_workspace" / "skills" / "cartographer" / "SKILL.md").exists()
-    assert (tmp_path / ".agent_workspace" / "hub" / "lock.json").exists()
+    assert (tmp_path / ".alpha" / "skills" / "cartographer" / "SKILL.md").exists()
+    assert (tmp_path / ".alpha" / "hub" / "lock.json").exists()
 
     # 3. Attempt to install dangerous package
     malicious_pkg = SkillPackage(
@@ -64,8 +64,8 @@ def test_skills_hub_lifecycle_and_audit_gate(tmp_path: Path):
 
 def test_skills_hub_manage_tool(tmp_path: Path, monkeypatch):
     hub = SkillsHub(root_dir=tmp_path)
-    monkeypatch.setattr("agent_workspace.skills.hub.discovery.get_skills_hub", lambda: hub)
-    monkeypatch.setattr("agent_workspace.tools.builtins.skills_hub_tool.get_skills_hub", lambda: hub)
+    monkeypatch.setattr("alpha.skills.hub.discovery.get_skills_hub", lambda: hub)
+    monkeypatch.setattr("alpha.tools.builtins.skills_hub_tool.get_skills_hub", lambda: hub)
 
     # Search
     s_out = skills_hub_manage.invoke({"action": "search", "query_or_name": "git"})

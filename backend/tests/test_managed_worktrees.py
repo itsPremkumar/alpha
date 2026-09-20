@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from agent_workspace.sandbox.worktrees import WorktreeManager
+from alpha.sandbox.worktrees import WorktreeManager
 
 
 def git(root, *args):

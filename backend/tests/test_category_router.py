@@ -2,7 +2,7 @@
 
 import pytest
 
-from agent_workspace.models.category_router import (
+from alpha.models.category_router import (
     CategoryRouter,
 )
 

@@ -1,6 +1,6 @@
 """The neutral Guardrail -> observer authorization handoff."""
 
-from agent_workspace.authz.outcome import (
+from alpha.authz.outcome import (
     _MAX_TRACKED_OUTCOMES,
     AUTHORIZATION_OUTCOME_CONTEXT_KEY,
     AuthorizationOutcome,

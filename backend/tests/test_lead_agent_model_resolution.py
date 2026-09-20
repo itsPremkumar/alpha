@@ -17,24 +17,24 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.tools import tool
 
-from agent_workspace.agents.lead_agent import agent as lead_agent_module
-from agent_workspace.agents.middlewares import summarization_middleware as summarization_middleware_module
-from agent_workspace.agents.middlewares.loop_detection_middleware import LoopDetectionMiddleware
-from agent_workspace.agents.middlewares.subagent_limit_middleware import SubagentLimitMiddleware
-from agent_workspace.agents.middlewares.view_image_middleware import ViewImageMiddleware
-from agent_workspace.agents.thread_state import DeltaThreadState, ThreadState
-from agent_workspace.config.agents_config import AgentConfig
-from agent_workspace.config.app_config import AppConfig
-from agent_workspace.config.extensions_config import ExtensionsConfig
-from agent_workspace.config.loop_detection_config import LoopDetectionConfig
-from agent_workspace.config.memory_config import MemoryConfig
-from agent_workspace.config.model_config import ModelConfig
-from agent_workspace.config.sandbox_config import SandboxConfig
-from agent_workspace.config.subagents_config import SubagentsAppConfig
-from agent_workspace.config.summarization_config import SummarizationConfig
-from agent_workspace.runtime.checkpoint_mode import INTERNAL_CHECKPOINT_MODE_KEY
-from agent_workspace.runtime.secret_context import write_slash_skill_source_path
-from agent_workspace.skills.types import Skill, SkillCategory
+from alpha.agents.lead_agent import agent as lead_agent_module
+from alpha.agents.middlewares import summarization_middleware as summarization_middleware_module
+from alpha.agents.middlewares.loop_detection_middleware import LoopDetectionMiddleware
+from alpha.agents.middlewares.subagent_limit_middleware import SubagentLimitMiddleware
+from alpha.agents.middlewares.view_image_middleware import ViewImageMiddleware
+from alpha.agents.thread_state import DeltaThreadState, ThreadState
+from alpha.config.agents_config import AgentConfig
+from alpha.config.app_config import AppConfig
+from alpha.config.extensions_config import ExtensionsConfig
+from alpha.config.loop_detection_config import LoopDetectionConfig
+from alpha.config.memory_config import MemoryConfig
+from alpha.config.model_config import ModelConfig
+from alpha.config.sandbox_config import SandboxConfig
+from alpha.config.subagents_config import SubagentsAppConfig
+from alpha.config.summarization_config import SummarizationConfig
+from alpha.runtime.checkpoint_mode import INTERNAL_CHECKPOINT_MODE_KEY
+from alpha.runtime.secret_context import write_slash_skill_source_path
+from alpha.skills.types import Skill, SkillCategory
 
 _POLICY_INTEGRATION_TOOL_CALLS: list[str] = []
 
@@ -92,7 +92,7 @@ class _PolicyStorageStub:
 def _make_app_config(models: list[ModelConfig], loop_detection: LoopDetectionConfig | None = None) -> AppConfig:
     return AppConfig(
         models=models,
-        sandbox=SandboxConfig(use="agent_workspace.sandbox.local:LocalSandboxProvider"),
+        sandbox=SandboxConfig(use="alpha.sandbox.local:LocalSandboxProvider"),
         loop_detection=loop_detection or LoopDetectionConfig(),
     )
 
@@ -134,7 +134,7 @@ def test_make_lead_agent_uses_server_auth_identity_for_all_user_scoped_inputs(mo
     app_config = _make_app_config([_make_model("safe-model", supports_thinking=False)])
     captured: dict[str, object] = {}
 
-    import agent_workspace.tools as tools_module
+    import alpha.tools as tools_module
 
     def _load_agent_config(name, *, user_id=None):
         captured["agent_config_user_id"] = user_id
@@ -188,7 +188,7 @@ def test_make_lead_agent_scopes_bootstrap_middlewares_to_custom_agent(monkeypatc
     middleware_calls: list[dict[str, object]] = []
     prompt_calls: list[dict[str, object]] = []
 
-    import agent_workspace.tools as tools_module
+    import alpha.tools as tools_module
 
     monkeypatch.setattr(lead_agent_module, "_load_enabled_available_skills", lambda *args, **kwargs: [])
     monkeypatch.setattr(lead_agent_module, "build_middlewares", lambda *args, **kwargs: middleware_calls.append(kwargs) or [])
@@ -221,7 +221,7 @@ def test_make_lead_agent_attaches_tracing_callbacks_at_graph_root(monkeypatch):
     """
     app_config = _make_app_config([_make_model("safe-model", supports_thinking=False)])
 
-    import agent_workspace.tools as tools_module
+    import alpha.tools as tools_module
 
     monkeypatch.setattr(lead_agent_module, "get_app_config", lambda: app_config)
     monkeypatch.setattr(tools_module, "get_available_tools", lambda **kwargs: [])
@@ -256,7 +256,7 @@ def test_make_lead_agent_attaches_tracing_callbacks_at_graph_root(monkeypatch):
 def test_internal_make_lead_agent_uses_explicit_app_config(monkeypatch):
     app_config = _make_app_config([_make_model("explicit-model", supports_thinking=False)])
 
-    import agent_workspace.tools as tools_module
+    import alpha.tools as tools_module
 
     def _raise_get_app_config():
         raise AssertionError("ambient get_app_config() must not be used when app_config is explicit")
@@ -293,7 +293,7 @@ def test_internal_make_lead_agent_selects_and_normalizes_delta_state(monkeypatch
     middleware = ViewImageMiddleware()
     original_schema = middleware.state_schema
 
-    import agent_workspace.tools as tools_module
+    import alpha.tools as tools_module
 
     monkeypatch.setattr(tools_module, "get_available_tools", lambda **kwargs: [])
     monkeypatch.setattr(
@@ -324,7 +324,7 @@ def test_internal_make_lead_agent_selects_and_normalizes_delta_state(monkeypatch
 def test_internal_make_lead_agent_does_not_take_mode_from_runtime_context(monkeypatch):
     app_config = _make_app_config([_make_model("full-model", supports_thinking=False)])
 
-    import agent_workspace.tools as tools_module
+    import alpha.tools as tools_module
 
     monkeypatch.setattr(tools_module, "get_available_tools", lambda **kwargs: [])
     monkeypatch.setattr(lead_agent_module, "build_middlewares", lambda *args, **kwargs: [])
@@ -347,7 +347,7 @@ def test_internal_make_lead_agent_does_not_take_mode_from_runtime_context(monkey
 
 
 def test_public_make_lead_agent_does_not_take_mode_from_runtime_context(monkeypatch):
-    from agent_workspace.runtime import checkpoint_mode
+    from alpha.runtime import checkpoint_mode
 
     app_config = _make_app_config([_make_model("full-model", supports_thinking=False)])
     captured: dict[str, object] = {}
@@ -377,7 +377,7 @@ def test_public_make_lead_agent_does_not_take_mode_from_runtime_context(monkeypa
 def test_make_lead_agent_uses_runtime_app_config_from_context_without_global_read(monkeypatch):
     app_config = _make_app_config([_make_model("context-model", supports_thinking=False)])
 
-    import agent_workspace.tools as tools_module
+    import alpha.tools as tools_module
 
     def _raise_get_app_config():
         raise AssertionError("ambient get_app_config() must not be used when runtime context already carries app_config")
@@ -459,7 +459,7 @@ def test_resolve_model_name_raises_when_no_models_configured(monkeypatch):
 def test_make_lead_agent_disables_thinking_when_model_does_not_support_it(monkeypatch):
     app_config = _make_app_config([_make_model("safe-model", supports_thinking=False)])
 
-    import agent_workspace.tools as tools_module
+    import alpha.tools as tools_module
 
     monkeypatch.setattr(lead_agent_module, "get_app_config", lambda: app_config)
     monkeypatch.setattr(tools_module, "get_available_tools", lambda **kwargs: [])
@@ -502,7 +502,7 @@ def test_make_lead_agent_reads_runtime_options_from_context(monkeypatch):
         ]
     )
 
-    import agent_workspace.tools as tools_module
+    import alpha.tools as tools_module
 
     get_available_tools = MagicMock(return_value=[])
     monkeypatch.setattr(lead_agent_module, "get_app_config", lambda: app_config)
@@ -547,7 +547,7 @@ def test_make_lead_agent_reads_runtime_options_from_context(monkeypatch):
 def test_make_lead_agent_filters_clarification_tool_for_non_interactive_runs(monkeypatch):
     app_config = _make_app_config([_make_model("safe-model", supports_thinking=False)])
 
-    import agent_workspace.tools as tools_module
+    import alpha.tools as tools_module
 
     def _named_tool(name: str):
         tool = MagicMock()
@@ -633,11 +633,11 @@ def test_build_middlewares_uses_resolved_model_name_for_vision(monkeypatch):
     #   ClarificationMiddleware, so the custom mock sits at index [-6].
     assert len(middlewares) > 0 and isinstance(middlewares[-6], MagicMock)
 
-    from agent_workspace.agents.middlewares.clarification_middleware import ClarificationMiddleware
-    from agent_workspace.agents.middlewares.finish_first_verifier_middleware import FinishFirstVerifierMiddleware
-    from agent_workspace.agents.middlewares.model_length_finish_reason_middleware import ModelLengthFinishReasonMiddleware
-    from agent_workspace.agents.middlewares.safety_finish_reason_middleware import SafetyFinishReasonMiddleware
-    from agent_workspace.agents.middlewares.terminal_response_middleware import TerminalResponseMiddleware
+    from alpha.agents.middlewares.clarification_middleware import ClarificationMiddleware
+    from alpha.agents.middlewares.finish_first_verifier_middleware import FinishFirstVerifierMiddleware
+    from alpha.agents.middlewares.model_length_finish_reason_middleware import ModelLengthFinishReasonMiddleware
+    from alpha.agents.middlewares.safety_finish_reason_middleware import SafetyFinishReasonMiddleware
+    from alpha.agents.middlewares.terminal_response_middleware import TerminalResponseMiddleware
 
     assert isinstance(middlewares[-5], TerminalResponseMiddleware)
     assert isinstance(middlewares[-4], ModelLengthFinishReasonMiddleware)
@@ -754,9 +754,9 @@ def test_build_middlewares_passes_run_model_name_to_summarization(monkeypatch):
 
 
 def test_build_middlewares_orders_skill_activation_before_policy_and_durable_context(monkeypatch):
-    from agent_workspace.agents.middlewares.durable_context_middleware import DurableContextMiddleware
-    from agent_workspace.agents.middlewares.skill_activation_middleware import SkillActivationMiddleware
-    from agent_workspace.agents.middlewares.skill_tool_policy_middleware import SkillToolPolicyMiddleware
+    from alpha.agents.middlewares.durable_context_middleware import DurableContextMiddleware
+    from alpha.agents.middlewares.skill_activation_middleware import SkillActivationMiddleware
+    from alpha.agents.middlewares.skill_tool_policy_middleware import SkillToolPolicyMiddleware
 
     app_config = _make_app_config([_make_model("safe-model", supports_thinking=False)])
     monkeypatch.setattr(lead_agent_module, "build_lead_runtime_middlewares", lambda *, app_config, lazy_init=True: [])
@@ -775,7 +775,7 @@ def test_build_middlewares_orders_skill_activation_before_policy_and_durable_con
     # AutonomousCommandMiddleware intentionally sits between activation and the
     # tool policy: slash-command lifecycle staging happens after activation and
     # before runtime allowed-tools enforcement.
-    from agent_workspace.agents.middlewares.autonomous_command_middleware import AutonomousCommandMiddleware
+    from alpha.agents.middlewares.autonomous_command_middleware import AutonomousCommandMiddleware
 
     autonomous_idx = next(i for i, middleware in enumerate(middlewares) if isinstance(middleware, AutonomousCommandMiddleware))
     assert autonomous_idx == activation_idx + 1
@@ -786,9 +786,9 @@ def test_build_middlewares_orders_skill_activation_before_policy_and_durable_con
 
 @pytest.mark.parametrize("use_stale_path", [False, True], ids=["restrictive-skill", "stale-active-path"])
 def test_compiled_skill_policy_chain_filters_schema_and_blocks_execution(monkeypatch, use_stale_path):
-    from agent_workspace.agents.middlewares.durable_context_middleware import DurableContextMiddleware
-    from agent_workspace.agents.middlewares.skill_activation_middleware import SkillActivationMiddleware
-    from agent_workspace.agents.middlewares.skill_tool_policy_middleware import SkillToolPolicyMiddleware
+    from alpha.agents.middlewares.durable_context_middleware import DurableContextMiddleware
+    from alpha.agents.middlewares.skill_activation_middleware import SkillActivationMiddleware
+    from alpha.agents.middlewares.skill_tool_policy_middleware import SkillToolPolicyMiddleware
 
     app_config = _make_app_config(
         [_make_model("safe-model", supports_thinking=False)],
@@ -806,7 +806,7 @@ def test_compiled_skill_policy_chain_filters_schema_and_blocks_execution(monkeyp
     activation_idx = next(i for i, middleware in enumerate(middlewares) if isinstance(middleware, SkillActivationMiddleware))
     durable_idx = next(i for i, middleware in enumerate(middlewares) if isinstance(middleware, DurableContextMiddleware))
     production_slice = middlewares[activation_idx : durable_idx + 1]
-    from agent_workspace.agents.middlewares.autonomous_command_middleware import AutonomousCommandMiddleware
+    from alpha.agents.middlewares.autonomous_command_middleware import AutonomousCommandMiddleware
 
     # The production slice now also carries AutonomousCommandMiddleware between
     # activation and policy. It is async-only (awrap_model_call), and this test
@@ -868,11 +868,11 @@ def test_compiled_skill_policy_chain_filters_schema_and_blocks_execution(monkeyp
 
 
 def test_build_middlewares_places_mcp_routing_before_deferred_filter(monkeypatch):
-    from agent_workspace.agents.middlewares.deferred_tool_filter_middleware import DeferredToolFilterMiddleware
-    from agent_workspace.agents.middlewares.mcp_routing_middleware import McpRoutingMiddleware
-    from agent_workspace.agents.middlewares.skill_tool_policy_middleware import SkillToolPolicyMiddleware
-    from agent_workspace.agents.middlewares.tool_promotion_audit_middleware import DeferredToolPromotionAuditMiddleware
-    from agent_workspace.tools.builtins.tool_search import DeferredToolSetup
+    from alpha.agents.middlewares.deferred_tool_filter_middleware import DeferredToolFilterMiddleware
+    from alpha.agents.middlewares.mcp_routing_middleware import McpRoutingMiddleware
+    from alpha.agents.middlewares.skill_tool_policy_middleware import SkillToolPolicyMiddleware
+    from alpha.agents.middlewares.tool_promotion_audit_middleware import DeferredToolPromotionAuditMiddleware
+    from alpha.tools.builtins.tool_search import DeferredToolSetup
 
     app_config = _make_app_config([_make_model("safe-model", supports_thinking=False)], loop_detection=LoopDetectionConfig(enabled=False))
     routing = McpRoutingMiddleware({"mcp_thing": {"priority": 100, "keywords": ["orders"]}}, "hash123", 3)
@@ -1251,8 +1251,8 @@ def test_create_summarization_middleware_threads_resolved_app_config_to_model(mo
 
 
 def test_memory_middleware_uses_explicit_memory_config_without_global_read(monkeypatch):
-    from agent_workspace.agents.middlewares import memory_middleware as memory_middleware_module
-    from agent_workspace.agents.middlewares.memory_middleware import MemoryMiddleware
+    from alpha.agents.middlewares import memory_middleware as memory_middleware_module
+    from alpha.agents.middlewares.memory_middleware import MemoryMiddleware
 
     def _raise_get_memory_config():
         raise AssertionError("ambient get_memory_config() must not be used when memory_config is explicit")
@@ -1265,8 +1265,8 @@ def test_memory_middleware_uses_explicit_memory_config_without_global_read(monke
 
 
 def test_memory_middleware_async_path_uses_async_manager_call(monkeypatch):
-    from agent_workspace.agents.middlewares import memory_middleware as memory_middleware_module
-    from agent_workspace.agents.middlewares.memory_middleware import MemoryMiddleware
+    from alpha.agents.middlewares import memory_middleware as memory_middleware_module
+    from alpha.agents.middlewares.memory_middleware import MemoryMiddleware
 
     manager = SimpleNamespace(aadd=AsyncMock(), add=MagicMock(side_effect=AssertionError("sync add must not run")))
     monkeypatch.setattr(memory_middleware_module, "get_memory_manager", lambda: manager)
@@ -1296,7 +1296,7 @@ def test_resolve_runtime_option_precedence():
 
 
 def _make_agent_config(**kwargs):
-    from agent_workspace.config.agents_config import AgentConfig
+    from alpha.config.agents_config import AgentConfig
 
     return AgentConfig(name="researcher", **kwargs)
 
@@ -1313,7 +1313,7 @@ def test_make_lead_agent_applies_agent_model_settings(monkeypatch):
         reasoning_effort="high",
     )
 
-    import agent_workspace.tools as tools_module
+    import alpha.tools as tools_module
 
     monkeypatch.setattr(lead_agent_module, "load_agent_config", lambda name, *, user_id=None: agent_config)
     monkeypatch.setattr(tools_module, "get_available_tools", lambda **kwargs: [])
@@ -1342,7 +1342,7 @@ def test_request_thinking_overrides_agent_default(monkeypatch):
     app_config = _make_app_config([_make_model("agent-model", supports_thinking=True)])
     agent_config = _make_agent_config(model="agent-model", thinking_enabled=False)
 
-    import agent_workspace.tools as tools_module
+    import alpha.tools as tools_module
 
     monkeypatch.setattr(lead_agent_module, "load_agent_config", lambda name, *, user_id=None: agent_config)
     monkeypatch.setattr(tools_module, "get_available_tools", lambda **kwargs: [])
@@ -1370,7 +1370,7 @@ def test_empty_allowed_subagents_disables_requested_delegation(monkeypatch):
     app_config = _make_app_config([_make_model("agent-model", supports_thinking=False)])
     agent_config = _make_agent_config(model="agent-model", allowed_subagents=[])
 
-    import agent_workspace.tools as tools_module
+    import alpha.tools as tools_module
 
     get_available_tools = MagicMock(return_value=[])
     monkeypatch.setattr(lead_agent_module, "load_agent_config", lambda name, *, user_id=None: agent_config)
@@ -1403,7 +1403,7 @@ def test_make_lead_agent_no_agent_settings_passes_none_overrides(monkeypatch):
     """Without a custom agent, model_overrides is None (no behavior change)."""
     app_config = _make_app_config([_make_model("safe-model", supports_thinking=False)])
 
-    import agent_workspace.tools as tools_module
+    import alpha.tools as tools_module
 
     monkeypatch.setattr(lead_agent_module, "get_app_config", lambda: app_config)
     monkeypatch.setattr(tools_module, "get_available_tools", lambda **kwargs: [])

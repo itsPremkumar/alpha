@@ -20,8 +20,8 @@ from app.channels.message_bus import (
     OutboundMessage,
     ResolvedAttachment,
 )
-from agent_workspace.branding import DISPLAY_NAME
-from agent_workspace.uploads.manager import is_upload_staging_file, normalize_filename
+from alpha.branding import DISPLAY_NAME
+from alpha.uploads.manager import is_upload_staging_file, normalize_filename
 
 logger = logging.getLogger(__name__)
 

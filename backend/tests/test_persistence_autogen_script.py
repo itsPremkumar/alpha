@@ -4,7 +4,7 @@ The script must work in a clean checkout without any pre-existing data
 directory -- this is the failure mode reported as P2: a bare ``alembic
 revision --autogenerate`` would crash with
 ``sqlite3.OperationalError: unable to open database file`` because
-``alembic.ini``'s default URL points at ``./data/agent_workspace.db`` which doesn't
+``alembic.ini``'s default URL points at ``./data/alpha.db`` which doesn't
 exist yet.
 
 The fix: the script builds its own temp DB by running the existing alembic
@@ -20,8 +20,8 @@ from pathlib import Path
 import pytest
 import sqlalchemy as sa
 
-import agent_workspace.persistence.models  # noqa: F401
-from agent_workspace.persistence.base import Base
+import alpha.persistence.models  # noqa: F401
+from alpha.persistence.base import Base
 
 
 @pytest.fixture(scope="module")
@@ -49,7 +49,7 @@ def test_autogen_builds_temp_db_at_head_without_data_dir(autogen_module, monkeyp
     import os  # noqa: PLC0415
     import tempfile  # noqa: PLC0415
 
-    workdir = tempfile.mkdtemp(prefix="agent_workspace-autogen-test-")
+    workdir = tempfile.mkdtemp(prefix="alpha-autogen-test-")
     monkeypatch.chdir(workdir)
     # Sanity: this directory has no ``./data/`` -- so the alembic.ini default
     # URL would fail if used.

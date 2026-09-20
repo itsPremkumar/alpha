@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from agent_workspace.skills.installer import resolve_skill_dir_from_archive
+from alpha.skills.installer import resolve_skill_dir_from_archive
 
 
 def _write_skill(skill_dir: Path) -> None:

@@ -44,7 +44,7 @@ def _persistence_engine(tmp_path):
     import asyncio
 
     from app.gateway import deps
-    from agent_workspace.persistence.engine import close_engine, init_engine
+    from alpha.persistence.engine import close_engine, init_engine
 
     url = f"sqlite+aiosqlite:///{tmp_path}/auth_types.db"
     asyncio.run(init_engine("sqlite", url=url, sqlite_dir=str(tmp_path)))
@@ -674,7 +674,7 @@ def test_session_cookie_policy_persists_on_https():
     from app.gateway.auth.session_cookie import resolve_session_cookie_policy
 
     _setup_config()
-    request = Request(_make_request_scope(scheme="http", host="internal:8000", headers={"x-forwarded-proto": "https", "x-forwarded-host": "agent_workspace.example"}))
+    request = Request(_make_request_scope(scheme="http", host="internal:8000", headers={"x-forwarded-proto": "https", "x-forwarded-host": "alpha.example"}))
 
     policy = resolve_session_cookie_policy(request, remember_me=True)
 
@@ -808,7 +808,7 @@ def test_register_https_cookie_httponly_true_secure_true():
 
 def test_register_remember_me_false_keeps_access_and_csrf_session_only():
     _setup_config()
-    client = TestClient(_make_auth_app(), base_url="https://agent_workspace.example")
+    client = TestClient(_make_auth_app(), base_url="https://alpha.example")
 
     resp = client.post(
         "/api/v1/auth/register",
@@ -870,7 +870,7 @@ def test_login_remember_me_false_keeps_access_and_csrf_session_only():
 
 def test_login_remember_me_false_over_https_keeps_csrf_session_only():
     _setup_config()
-    client = TestClient(_make_auth_app(), base_url="https://agent_workspace.example")
+    client = TestClient(_make_auth_app(), base_url="https://alpha.example")
     email = _unique_email("remember-false-https")
     client.post("/api/v1/auth/register", json={"email": email, "password": "Tr0ub4dor3a"})
 
@@ -892,7 +892,7 @@ def test_login_remember_me_false_over_https_keeps_csrf_session_only():
 
 def test_login_failure_uses_csrf_fallback_cookie_lifetime_on_https():
     _setup_config()
-    client = TestClient(_make_auth_app(), base_url="https://agent_workspace.example")
+    client = TestClient(_make_auth_app(), base_url="https://alpha.example")
 
     resp = client.post(
         "/api/v1/auth/login/local",
@@ -929,7 +929,7 @@ def test_login_remember_me_true_keeps_access_and_csrf_max_age_in_lockstep_on_loc
 
 def test_change_password_preserves_session_only_preference():
     _setup_config()
-    client = TestClient(_make_auth_app(), base_url="https://agent_workspace.example")
+    client = TestClient(_make_auth_app(), base_url="https://alpha.example")
     email = _unique_email("change-password-session")
     client.post("/api/v1/auth/register", json={"email": email, "password": "Tr0ub4dor3a"})
     client.post(
@@ -955,7 +955,7 @@ def test_change_password_preserves_session_only_preference():
 
 def test_change_password_reissues_access_and_csrf_in_lockstep_when_preference_changes():
     _setup_config()
-    client = TestClient(_make_auth_app(), base_url="https://agent_workspace.example")
+    client = TestClient(_make_auth_app(), base_url="https://alpha.example")
     email = _unique_email("change-password-persistent")
     client.post("/api/v1/auth/register", json={"email": email, "password": "Tr0ub4dor3a"})
     client.post(
@@ -987,7 +987,7 @@ def test_change_password_reissues_access_and_csrf_in_lockstep_when_preference_ch
 
 def test_initialize_remember_me_false_keeps_access_and_csrf_session_only():
     _setup_config()
-    client = TestClient(_make_auth_app(), base_url="https://agent_workspace.example")
+    client = TestClient(_make_auth_app(), base_url="https://alpha.example")
 
     resp = client.post(
         "/api/v1/auth/initialize",
@@ -1009,7 +1009,7 @@ def test_initialize_remember_me_false_keeps_access_and_csrf_session_only():
 
 def test_logout_clears_access_and_csrf_without_reissuing_csrf():
     _setup_config()
-    client = TestClient(_make_auth_app(), base_url="https://agent_workspace.example")
+    client = TestClient(_make_auth_app(), base_url="https://alpha.example")
     client.post(
         "/api/v1/auth/register",
         json={"email": _unique_email("logout-clear"), "password": "Tr0ub4dor3a"},

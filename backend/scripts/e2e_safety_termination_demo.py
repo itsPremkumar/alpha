@@ -85,12 +85,12 @@ class _ContentFilteredFakeModel(BaseChatModel):
 def main() -> int:
     # Inject the fake model BEFORE constructing the client. Both the
     # client module and the lead-agent module bind ``create_chat_model``
-    # at import time via ``from agent_workspace.models import create_chat_model``,
+    # at import time via ``from alpha.models import create_chat_model``,
     # so we patch both attribute slots — the source-of-truth patch on
     # ``factory.create_chat_model`` doesn't propagate back into already-
     # imported names.
-    import agent_workspace.agents.lead_agent.agent as lead_agent_module
-    import agent_workspace.client as client_module
+    import alpha.agents.lead_agent.agent as lead_agent_module
+    import alpha.client as client_module
 
     fake = _ContentFilteredFakeModel()
     originals = {
@@ -104,7 +104,7 @@ def main() -> int:
     lead_agent_module.create_chat_model = fake_create_chat_model
     client_module.create_chat_model = fake_create_chat_model
 
-    from agent_workspace.client import AgentWorkspaceClient
+    from alpha.client import AgentWorkspaceClient
 
     try:
         client = AgentWorkspaceClient()

@@ -1,7 +1,7 @@
 """Unit tests for the hierarchical delegation engine."""
 
-from agent_workspace.subagents.deep_handoff_contract import DeepExecutionStatus
-from agent_workspace.subagents.hierarchical_delegator import (
+from alpha.subagents.deep_handoff_contract import DeepExecutionStatus
+from alpha.subagents.hierarchical_delegator import (
     HierarchicalDelegationEngine,
     get_delegation_engine,
     normalize_agent_type,

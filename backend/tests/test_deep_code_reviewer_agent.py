@@ -1,6 +1,6 @@
 """Unit tests for DeepCodeReviewerAgent."""
 
-from agent_workspace.subagents.builtins.deep_code_reviewer_agent import (
+from alpha.subagents.builtins.deep_code_reviewer_agent import (
     DEEP_CODE_REVIEWER_AGENT_CONFIG,
     DeepCodeReviewerAgent,
 )

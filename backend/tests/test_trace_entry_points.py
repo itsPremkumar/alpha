@@ -22,8 +22,8 @@ from app.channels.manager import ChannelManager
 from app.channels.message_bus import InboundMessage, MessageBus
 from app.channels.store import ChannelStore
 from app.scheduler.service import ScheduledTaskService
-from agent_workspace.config.app_config import AppConfig, reset_app_config, set_app_config
-from agent_workspace.trace_context import get_current_trace_id, request_trace_context
+from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
+from alpha.trace_context import get_current_trace_id, request_trace_context
 
 # --------------------------------------------------------------------------
 # Scheduled tasks
@@ -231,7 +231,7 @@ async def test_inbound_messages_are_handled_under_distinct_trace_scopes(tmp_path
 @pytest.fixture
 def _stub_app_config():
     """Keep the launchers independent from a developer-local config.yaml."""
-    set_app_config(AppConfig.model_validate({"sandbox": {"use": "agent_workspace.sandbox.local:LocalSandboxProvider"}}))
+    set_app_config(AppConfig.model_validate({"sandbox": {"use": "alpha.sandbox.local:LocalSandboxProvider"}}))
     yield
     reset_app_config()
 

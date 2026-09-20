@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 
-from agent_workspace.persistence.migrations._env_filters import (
+from alpha.persistence.migrations._env_filters import (
     LANGGRAPH_OWNED_TABLES,
     include_object,
 )
@@ -99,7 +99,7 @@ def test_env_module_wires_busy_timeout_for_sqlite() -> None:
     """
     from pathlib import Path  # noqa: PLC0415
 
-    env_path = Path(__file__).resolve().parents[1] / "packages/harness/agent_workspace/persistence/migrations/env.py"
+    env_path = Path(__file__).resolve().parents[1] / "packages/harness/alpha/persistence/migrations/env.py"
     src = env_path.read_text(encoding="utf-8")
     assert "PRAGMA busy_timeout=30000" in src or "PRAGMA busy_timeout = 30000" in src, (
         "env.py must set busy_timeout on its alembic-spawned engine; without it, cross-process bootstrap on SQLite fails fast instead of waiting for the file lock"
@@ -118,36 +118,36 @@ class TestExtensionOwnedTables:
     `_autogen_revision.py` diffs against a throwaway SQLite built from the
     migration chain, where no extension table exists. The exposed path is a
     direct `alembic revision --autogenerate` from the migrations directory,
-    whose `alembic.ini` points at a real `./data/agent_workspace.db` — the same path
+    whose `alembic.ini` points at a real `./data/alpha.db` — the same path
     `LANGGRAPH_OWNED_TABLES` covers.
     """
 
     def setup_method(self):
-        from agent_workspace.persistence.migrations import _env_filters
+        from alpha.persistence.migrations import _env_filters
 
         self._saved = set(_env_filters.EXTENSION_TABLE_PREFIXES)
 
     def teardown_method(self):
-        from agent_workspace.persistence.migrations import _env_filters
+        from alpha.persistence.migrations import _env_filters
 
         _env_filters.EXTENSION_TABLE_PREFIXES.clear()
         _env_filters.EXTENSION_TABLE_PREFIXES.update(self._saved)
 
     def test_a_registered_prefix_is_excluded(self):
-        from agent_workspace.persistence.migrations._env_filters import include_object, register_extension_table_prefix
+        from alpha.persistence.migrations._env_filters import include_object, register_extension_table_prefix
 
         register_extension_table_prefix("ext_")
         assert include_object(None, "ext_events", "table", True, None) is False
 
     def test_an_unregistered_table_is_still_included(self):
-        from agent_workspace.persistence.migrations._env_filters import include_object
+        from alpha.persistence.migrations._env_filters import include_object
 
         assert include_object(None, "runs", "table", True, None) is True
 
     def test_an_index_on_an_excluded_table_is_excluded_too(self):
         from types import SimpleNamespace
 
-        from agent_workspace.persistence.migrations._env_filters import include_object, register_extension_table_prefix
+        from alpha.persistence.migrations._env_filters import include_object, register_extension_table_prefix
 
         register_extension_table_prefix("ext_")
         index = SimpleNamespace(table=SimpleNamespace(name="ext_events"))
@@ -159,7 +159,7 @@ class TestExtensionOwnedTables:
         # alembic no longer believes exists).
         from types import SimpleNamespace
 
-        from agent_workspace.persistence.migrations._env_filters import include_object, register_extension_table_prefix
+        from alpha.persistence.migrations._env_filters import include_object, register_extension_table_prefix
 
         register_extension_table_prefix("ext_")
         constraint = SimpleNamespace(table=SimpleNamespace(name="ext_events"))
@@ -168,13 +168,13 @@ class TestExtensionOwnedTables:
     def test_registration_rejects_an_empty_prefix(self):
         import pytest
 
-        from agent_workspace.persistence.migrations._env_filters import register_extension_table_prefix
+        from alpha.persistence.migrations._env_filters import register_extension_table_prefix
 
         with pytest.raises(ValueError):
             register_extension_table_prefix("")
 
     def test_langgraph_exclusion_is_unaffected(self):
-        from agent_workspace.persistence.migrations._env_filters import include_object
+        from alpha.persistence.migrations._env_filters import include_object
 
         assert include_object(None, "checkpoints", "table", True, None) is False
 
@@ -184,13 +184,13 @@ class TestExtensionOwnedTables:
         loudly at registration time rather than degrade autogenerate silently."""
         import pytest
 
-        from agent_workspace.persistence.migrations._env_filters import register_extension_table_prefix
+        from alpha.persistence.migrations._env_filters import register_extension_table_prefix
 
         with pytest.raises(ValueError, match="runs"):
             register_extension_table_prefix("run")
 
     def test_registration_accepts_a_prefix_that_matches_no_host_table(self):
-        from agent_workspace.persistence.migrations._env_filters import EXTENSION_TABLE_PREFIXES, register_extension_table_prefix
+        from alpha.persistence.migrations._env_filters import EXTENSION_TABLE_PREFIXES, register_extension_table_prefix
 
         register_extension_table_prefix("acme_ext_")
         assert "acme_ext_" in EXTENSION_TABLE_PREFIXES
@@ -203,9 +203,9 @@ from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine
 
-import agent_workspace.persistence.models  # noqa: F401 - populate Base.metadata
-from agent_workspace.persistence.base import Base
-from agent_workspace.persistence.migrations._env_filters import (
+import alpha.persistence.models  # noqa: F401 - populate Base.metadata
+from alpha.persistence.base import Base
+from alpha.persistence.migrations._env_filters import (
     include_object,
     register_configured_extension_table_prefixes,
 )
@@ -307,7 +307,7 @@ class TestPrefixesReachTheAlembicProcess:
         import ast
         from pathlib import Path
 
-        env_py = Path(__file__).resolve().parents[1] / "packages/harness/agent_workspace/persistence/migrations/env.py"
+        env_py = Path(__file__).resolve().parents[1] / "packages/harness/alpha/persistence/migrations/env.py"
         called = {node.func.id for node in ast.walk(ast.parse(env_py.read_text(encoding="utf-8"))) if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
 
         assert "register_configured_extension_table_prefixes" in called, "env.py must populate the prefix set; include_object reads it in that process"

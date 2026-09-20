@@ -1,4 +1,4 @@
-"""Tests for MCP tools cache staleness detection (``agent_workspace.mcp.cache``).
+"""Tests for MCP tools cache staleness detection (``alpha.mcp.cache``).
 
 Regression coverage for the content-signature invalidation fix. The cache used
 to invalidate on a strict extensions-config *mtime* ``>`` comparison and tracked
@@ -12,7 +12,7 @@ tools serving in the LangGraph-embedded runtime and every non-writer worker:
 3. a resolved-path switch to a different config file whose mtime is <= the one
    recorded at initialization.
 
-The fix mirrors ``agent_workspace.config.app_config``'s ``(path, (mtime, size,
+The fix mirrors ``alpha.config.app_config``'s ``(path, (mtime, size,
 sha256))`` detection so both runtime-editable config files share one staleness
 signal. These tests fail on the pre-fix code (cases 1-3 return ``False``) and
 pass afterwards.
@@ -28,8 +28,8 @@ from pathlib import Path
 
 import pytest
 
-import agent_workspace.mcp.cache as cache_module
-from agent_workspace.config.extensions_config import ExtensionsConfig
+import alpha.mcp.cache as cache_module
+from alpha.config.extensions_config import ExtensionsConfig
 
 _MISSING = object()
 
@@ -60,7 +60,7 @@ def _server(command: str = "npx") -> dict:
 
 @pytest.fixture()
 def cache_globals():
-    """Snapshot/restore ``agent_workspace.mcp.cache`` module globals and reset the lock."""
+    """Snapshot/restore ``alpha.mcp.cache`` module globals and reset the lock."""
     saved = {name: getattr(cache_module, name, _MISSING) for name in _TRACKED_GLOBALS}
 
     cache_module._mcp_tools_cache = None
@@ -98,7 +98,7 @@ def _initialize_against(monkeypatch, config_path: Path) -> None:
     async def _fake_get_mcp_tools():
         return []
 
-    monkeypatch.setattr("agent_workspace.mcp.tools.get_mcp_tools", _fake_get_mcp_tools)
+    monkeypatch.setattr("alpha.mcp.tools.get_mcp_tools", _fake_get_mcp_tools)
     asyncio.run(cache_module.initialize_mcp_tools())
     assert cache_module._cache_initialized is True
 
@@ -319,7 +319,7 @@ class TestCrossLoopReinitialization:
             async def _fake_tools():
                 return []
 
-            monkeypatch.setattr("agent_workspace.mcp.tools.get_mcp_tools", _fake_tools)
+            monkeypatch.setattr("alpha.mcp.tools.get_mcp_tools", _fake_tools)
 
             asyncio.run(cache_module.initialize_mcp_tools())
             assert cache_module._cache_initialized is True
@@ -363,7 +363,7 @@ class TestCrossLoopReinitialization:
                 await asyncio.sleep(0.01)
                 return []
 
-            monkeypatch.setattr("agent_workspace.mcp.tools.get_mcp_tools", _fake_tools)
+            monkeypatch.setattr("alpha.mcp.tools.get_mcp_tools", _fake_tools)
 
             async def _contended_init():
                 await asyncio.gather(cache_module.initialize_mcp_tools(), cache_module.initialize_mcp_tools())
@@ -407,7 +407,7 @@ class TestCrossLoopReinitialization:
             async def _fake_tools():
                 return []
 
-            monkeypatch.setattr("agent_workspace.mcp.tools.get_mcp_tools", _fake_tools)
+            monkeypatch.setattr("alpha.mcp.tools.get_mcp_tools", _fake_tools)
 
             result1 = cache_module.get_cached_mcp_tools()
             assert result1 == []
@@ -444,7 +444,7 @@ def test_config_change_during_initialization_discards_stale_tools(cache_globals,
             return ["old-tools"]
         return ["new-tools"]
 
-    monkeypatch.setattr("agent_workspace.mcp.tools.get_mcp_tools", _fake_tools)
+    monkeypatch.setattr("alpha.mcp.tools.get_mcp_tools", _fake_tools)
 
     first = asyncio.run(cache_module.initialize_mcp_tools())
     assert first == []
@@ -468,7 +468,7 @@ def test_config_change_during_initialization_retires_pool_for_same_server_connec
     otherwise reuse that old session because ``MCPSessionPool`` keys only by
     ``(server_name, scope_key)``.
     """
-    from agent_workspace.mcp import session_pool as session_pool_module
+    from alpha.mcp import session_pool as session_pool_module
 
     class FakeSession:
         def __init__(self, command: str) -> None:
@@ -513,7 +513,7 @@ def test_config_change_during_initialization_retires_pool_for_same_server_connec
             _write_extensions_config(cfg, {"same": _server("uvx")})
         return [f"session-{session.command}"]
 
-    monkeypatch.setattr("agent_workspace.mcp.tools.get_mcp_tools", _fake_tools)
+    monkeypatch.setattr("alpha.mcp.tools.get_mcp_tools", _fake_tools)
 
     try:
         first = asyncio.run(cache_module.initialize_mcp_tools())
@@ -546,7 +546,7 @@ def test_reset_mcp_tools_cache_does_not_wait_for_in_flight_initialization(cache_
         await asyncio.to_thread(finish.wait)
         return []
 
-    monkeypatch.setattr("agent_workspace.mcp.tools.get_mcp_tools", _fake_tools)
+    monkeypatch.setattr("alpha.mcp.tools.get_mcp_tools", _fake_tools)
 
     worker = threading.Thread(target=lambda: asyncio.run(cache_module.initialize_mcp_tools()))
     worker.start()
@@ -578,7 +578,7 @@ def test_automatic_stale_invalidation_retires_session_pool_before_reinitializing
     otherwise the fresh wrappers can keep reusing sessions created from the old
     connection config.
     """
-    from agent_workspace.mcp import session_pool as session_pool_module
+    from alpha.mcp import session_pool as session_pool_module
 
     real_reset_session_pool = session_pool_module.reset_session_pool
     real_reset_session_pool()
@@ -597,7 +597,7 @@ def test_automatic_stale_invalidation_retires_session_pool_before_reinitializing
         loaded_pools.append(session_pool_module.get_session_pool())
         return ["new-tools"]
 
-    monkeypatch.setattr("agent_workspace.mcp.tools.get_mcp_tools", _fake_tools)
+    monkeypatch.setattr("alpha.mcp.tools.get_mcp_tools", _fake_tools)
 
     try:
         result = cache_module.get_cached_mcp_tools()
@@ -612,7 +612,7 @@ def test_automatic_stale_invalidation_retires_session_pool_before_reinitializing
 
 def test_reset_mcp_tools_cache_retires_session_pool_before_releasing_initializers(cache_globals, monkeypatch):
     """A reset must not let fresh tool wrappers publish with the retiring pool."""
-    from agent_workspace.mcp import session_pool as session_pool_module
+    from alpha.mcp import session_pool as session_pool_module
 
     real_reset_session_pool = session_pool_module.reset_session_pool
     real_reset_session_pool()
@@ -633,7 +633,7 @@ def test_reset_mcp_tools_cache_retires_session_pool_before_releasing_initializer
         race_results.append(asyncio.run(cache_module.initialize_mcp_tools()))
         return real_reset_session_pool()
 
-    monkeypatch.setattr("agent_workspace.mcp.tools.get_mcp_tools", _fake_tools)
+    monkeypatch.setattr("alpha.mcp.tools.get_mcp_tools", _fake_tools)
     monkeypatch.setattr(session_pool_module, "reset_session_pool", _reset_with_concurrent_initializer)
 
     try:
@@ -669,7 +669,7 @@ def test_cancelled_initializer_releases_generation_claim(cache_globals, monkeypa
         await release.wait()
         return []
 
-    monkeypatch.setattr("agent_workspace.mcp.tools.get_mcp_tools", _fake_tools)
+    monkeypatch.setattr("alpha.mcp.tools.get_mcp_tools", _fake_tools)
 
     async def _cancel_and_retry():
         owner = asyncio.create_task(cache_module.initialize_mcp_tools())

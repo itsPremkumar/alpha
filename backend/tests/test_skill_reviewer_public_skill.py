@@ -1,9 +1,9 @@
 import json
 from pathlib import Path
 
-from agent_workspace.skills.parser import parse_skill_file
-from agent_workspace.skills.review import LocalDirectoryReader, analyze_skill_package
-from agent_workspace.skills.types import SkillCategory
+from alpha.skills.parser import parse_skill_file
+from alpha.skills.review import LocalDirectoryReader, analyze_skill_package
+from alpha.skills.types import SkillCategory
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SKILL_DIR = REPO_ROOT / "skills" / "public" / "skill-reviewer"

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from agent_workspace.evaluation.autonomous_benchmark_harness import (
+from alpha.evaluation.autonomous_benchmark_harness import (
     DEFAULT_REFERENCE_PATCH_LINES,
     AutonomousBenchmarkHarness,
     BenchmarkProblem,
@@ -24,7 +24,7 @@ from agent_workspace.evaluation.autonomous_benchmark_harness import (
     problem_from_spec,
     summarize_log_counts,
 )
-from agent_workspace.tools.builtins.autonomous_benchmark_tool import (
+from alpha.tools.builtins.autonomous_benchmark_tool import (
     run_autonomous_benchmark_eval,
 )
 

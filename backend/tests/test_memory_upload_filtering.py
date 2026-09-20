@@ -9,8 +9,8 @@ persisting in long-term memory:
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from agent_workspace.agents.memory.backends.deermem.deermem.core.message_processing import detect_correction, detect_reinforcement, filter_messages_for_memory
-from agent_workspace.agents.memory.backends.deermem.deermem.core.updater import _strip_upload_mentions_from_memory
+from alpha.agents.memory.backends.deermem.deermem.core.message_processing import detect_correction, detect_reinforcement, filter_messages_for_memory
+from alpha.agents.memory.backends.deermem.deermem.core.updater import _strip_upload_mentions_from_memory
 
 # ---------------------------------------------------------------------------
 # Helpers

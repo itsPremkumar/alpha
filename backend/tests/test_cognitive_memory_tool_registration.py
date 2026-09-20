@@ -3,16 +3,16 @@ from types import SimpleNamespace
 
 import pytest
 
-from agent_workspace.config.app_config import AppConfig
-from agent_workspace.diagnostics.invariants import InvariantError, verify_agent_assembly
-from agent_workspace.tools.builtins.cognitive_memory_tool import cognitive_memory_tool
-from agent_workspace.tools.tools import BUILTIN_TOOLS, SUBAGENT_TOOLS, get_available_tools
+from alpha.config.app_config import AppConfig
+from alpha.diagnostics.invariants import InvariantError, verify_agent_assembly
+from alpha.tools.builtins.cognitive_memory_tool import cognitive_memory_tool
+from alpha.tools.tools import BUILTIN_TOOLS, SUBAGENT_TOOLS, get_available_tools
 
 
 @pytest.mark.parametrize("subagent_enabled", [False, True])
 def test_cognitive_memory_tool_registration(caplog, subagent_enabled):
-    config = AppConfig(sandbox={"use": "agent_workspace.sandbox.local:LocalSandboxProvider"})
-    with caplog.at_level(logging.WARNING, logger="agent_workspace.tools.tools"):
+    config = AppConfig(sandbox={"use": "alpha.sandbox.local:LocalSandboxProvider"})
+    with caplog.at_level(logging.WARNING, logger="alpha.tools.tools"):
         tools = get_available_tools(include_mcp=False, subagent_enabled=subagent_enabled, app_config=config)
 
     assert cognitive_memory_tool in BUILTIN_TOOLS
@@ -24,10 +24,10 @@ def test_cognitive_memory_tool_registration(caplog, subagent_enabled):
 
 @pytest.mark.parametrize("duplicate", [False, True])
 def test_cognitive_memory_tool_complete_assembly(monkeypatch, duplicate):
-    from agent_workspace.agents.lead_agent.agent import _complete_assembly
+    from alpha.agents.lead_agent.agent import _complete_assembly
 
-    monkeypatch.setattr("agent_workspace.extensions.get_agent_build_extensions", lambda: SimpleNamespace(has_agent_assembly_observers=False))
-    config = AppConfig(sandbox={"use": "agent_workspace.sandbox.local:LocalSandboxProvider"})
+    monkeypatch.setattr("alpha.extensions.get_agent_build_extensions", lambda: SimpleNamespace(has_agent_assembly_observers=False))
+    config = AppConfig(sandbox={"use": "alpha.sandbox.local:LocalSandboxProvider"})
     tools = get_available_tools(include_mcp=False, app_config=config)
     if duplicate:
         tools.append(cognitive_memory_tool)
@@ -69,21 +69,21 @@ async def test_subagent_cognitive_memory_inherits_owner_and_fails_closed(tmp_pat
 
     from langchain_core.messages import AIMessage
 
-    from agent_workspace.config.paths import Paths
-    from agent_workspace.memory.cognitive import engine
-    from agent_workspace.subagents.config import SubagentConfig
+    from alpha.config.paths import Paths
+    from alpha.memory.cognitive import engine
+    from alpha.subagents.config import SubagentConfig
 
     monkeypatch.setattr(engine, "get_paths", lambda: Paths(tmp_path))
     monkeypatch.setattr(engine, "_owner_systems", {})
     cognitive_memory_tool.func(action="store_belief", runtime=SimpleNamespace(context={"user_id": "alice"}), subject="PrivateAlice", predicate="likes", object_val="tea")
-    source = Path(__file__).parents[1] / "packages/harness/agent_workspace/subagents/executor.py"
+    source = Path(__file__).parents[1] / "packages/harness/alpha/subagents/executor.py"
     spec = importlib.util.spec_from_file_location("_cognitive_memory_test_executor", source)
     module = importlib.util.module_from_spec(spec)
     monkeypatch.setitem(sys.modules, spec.name, module)
     spec.loader.exec_module(module)
     monkeypatch.setattr(module, "build_tracing_callbacks", lambda: [])
     monkeypatch.setattr(module, "inject_langfuse_metadata", lambda *args, **kwargs: None)
-    config = AppConfig(sandbox={"use": "agent_workspace.sandbox.local:LocalSandboxProvider"})
+    config = AppConfig(sandbox={"use": "alpha.sandbox.local:LocalSandboxProvider"})
     tools = get_available_tools(include_mcp=False, subagent_enabled=False, app_config=config)
     executor = module.SubagentExecutor(
         config=SubagentConfig(name="memory-test", description="Memory test", system_prompt="Memory test"),

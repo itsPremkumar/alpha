@@ -1,7 +1,7 @@
 import json
 
 from app.gateway.app import app
-from agent_workspace.tools.builtins import (
+from alpha.tools.builtins import (
     a2a_tool,
     cognitive_plan,
     company_tool,
@@ -12,7 +12,7 @@ from agent_workspace.tools.builtins import (
     supervision_tool,
     swarm_tool,
 )
-from agent_workspace.tools.tools import BUILTIN_TOOLS, SUBAGENT_TOOLS, get_available_tools
+from alpha.tools.tools import BUILTIN_TOOLS, SUBAGENT_TOOLS, get_available_tools
 
 
 def test_builtin_tools_registration():

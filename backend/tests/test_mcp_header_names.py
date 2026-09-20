@@ -14,14 +14,14 @@ import pytest
 from langchain_mcp_adapters.interceptors import MCPToolCallRequest
 from pydantic import ValidationError
 
-from agent_workspace.config.extensions_config import ExtensionsConfig, McpServerConfig, McpUserScopedAuthConfig
-from agent_workspace.mcp.headers import (
+from alpha.config.extensions_config import ExtensionsConfig, McpServerConfig, McpUserScopedAuthConfig
+from alpha.mcp.headers import (
     apply_header_overrides,
     header_spellings,
     illegal_header_value_reason,
 )
-from agent_workspace.mcp.oauth import build_oauth_tool_interceptor
-from agent_workspace.mcp.user_scoped_auth import build_user_scoped_auth_interceptor
+from alpha.mcp.oauth import build_oauth_tool_interceptor
+from alpha.mcp.user_scoped_auth import build_user_scoped_auth_interceptor
 
 DISCOVERY = "Bearer discovery-token"
 
@@ -238,7 +238,7 @@ def test_oauth_token_replaces_a_differently_cased_static_header():
 @pytest.mark.asyncio
 async def test_durable_task_call_sends_one_authorization_header():
     """The task caller merges OAuth and interceptor headers into the connection itself."""
-    from agent_workspace.mcp.task_tool_caller import McpTaskToolCaller
+    from alpha.mcp.task_tool_caller import McpTaskToolCaller
 
     config = ExtensionsConfig.model_validate(
         {

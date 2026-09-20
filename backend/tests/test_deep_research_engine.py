@@ -1,13 +1,13 @@
 import pytest
 
-from agent_workspace.research.engine import (
+from alpha.research.engine import (
     ContradictionFinding,
     DeepResearchEngine,
     DeepResearchReport,
     EvidenceSource,
     ResearchGap,
 )
-from agent_workspace.research.five_pass import (
+from alpha.research.five_pass import (
     FivePassSearchCompiler,
     FivePassSearchPlan,
     SearchPassType,

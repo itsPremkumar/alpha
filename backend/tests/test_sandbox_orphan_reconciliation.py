@@ -18,19 +18,19 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from agent_workspace.community.aio_sandbox.aio_sandbox_provider import (
+from alpha.community.aio_sandbox.aio_sandbox_provider import (
     SandboxBeingDestroyedError,
     SandboxPolicyReplacementDeferredError,
 )
-from agent_workspace.community.aio_sandbox.ownership import compute_lease_ttl
-from agent_workspace.community.aio_sandbox.sandbox_info import SandboxInfo
+from alpha.community.aio_sandbox.ownership import compute_lease_ttl
+from alpha.community.aio_sandbox.sandbox_info import SandboxInfo
 
 # ── SandboxBackend.list_running() default ────────────────────────────────────
 
 
 def test_backend_list_running_default_returns_empty():
     """Base SandboxBackend.list_running() returns empty list (backward compat for RemoteSandboxBackend)."""
-    from agent_workspace.community.aio_sandbox.backend import SandboxBackend
+    from alpha.community.aio_sandbox.backend import SandboxBackend
 
     class StubBackend(SandboxBackend):
         def create(self, thread_id, sandbox_id, extra_mounts=None, *, user_id=None):
@@ -55,7 +55,7 @@ def test_backend_list_running_default_returns_empty():
 
 def _make_local_backend():
     """Create a LocalContainerBackend with minimal config."""
-    from agent_workspace.community.aio_sandbox.local_backend import LocalContainerBackend
+    from alpha.community.aio_sandbox.local_backend import LocalContainerBackend
 
     return LocalContainerBackend(
         image="test-image:latest",
@@ -284,7 +284,7 @@ def test_list_running_uses_single_batch_inspect_call(monkeypatch):
 
 def test_parse_docker_timestamp_with_nanoseconds():
     """Should correctly parse Docker's ISO 8601 timestamp with nanoseconds."""
-    from agent_workspace.community.aio_sandbox.local_backend import _parse_docker_timestamp
+    from alpha.community.aio_sandbox.local_backend import _parse_docker_timestamp
 
     ts = _parse_docker_timestamp("2026-04-08T01:22:50.123456789Z")
     assert ts > 0
@@ -294,7 +294,7 @@ def test_parse_docker_timestamp_with_nanoseconds():
 
 def test_parse_docker_timestamp_without_fractional_seconds():
     """Should parse plain ISO 8601 timestamps without fractional seconds."""
-    from agent_workspace.community.aio_sandbox.local_backend import _parse_docker_timestamp
+    from alpha.community.aio_sandbox.local_backend import _parse_docker_timestamp
 
     ts = _parse_docker_timestamp("2026-04-08T01:22:50Z")
     expected = datetime(2026, 4, 8, 1, 22, 50, tzinfo=UTC).timestamp()
@@ -302,7 +302,7 @@ def test_parse_docker_timestamp_without_fractional_seconds():
 
 
 def test_parse_docker_timestamp_empty_returns_zero():
-    from agent_workspace.community.aio_sandbox.local_backend import _parse_docker_timestamp
+    from alpha.community.aio_sandbox.local_backend import _parse_docker_timestamp
 
     assert _parse_docker_timestamp("") == 0.0
     assert _parse_docker_timestamp("not a timestamp") == 0.0
@@ -312,21 +312,21 @@ def test_parse_docker_timestamp_empty_returns_zero():
 
 
 def test_extract_host_port_returns_mapped_port():
-    from agent_workspace.community.aio_sandbox.local_backend import _extract_host_port
+    from alpha.community.aio_sandbox.local_backend import _extract_host_port
 
     entry = {"NetworkSettings": {"Ports": {"8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "8081"}]}}}
     assert _extract_host_port(entry, 8080) == 8081
 
 
 def test_extract_host_port_returns_none_when_unmapped():
-    from agent_workspace.community.aio_sandbox.local_backend import _extract_host_port
+    from alpha.community.aio_sandbox.local_backend import _extract_host_port
 
     entry = {"NetworkSettings": {"Ports": {}}}
     assert _extract_host_port(entry, 8080) is None
 
 
 def test_extract_host_port_handles_missing_fields():
-    from agent_workspace.community.aio_sandbox.local_backend import _extract_host_port
+    from alpha.community.aio_sandbox.local_backend import _extract_host_port
 
     assert _extract_host_port({}, 8080) is None
     assert _extract_host_port({"NetworkSettings": None}, 8080) is None
@@ -344,7 +344,7 @@ def _make_shared_ownership_store(**kwargs):
     backend-agnostic. The redis backend's own semantics are pinned separately in
     ``test_sandbox_ownership_store.py``.
     """
-    from agent_workspace.community.aio_sandbox.ownership.memory import MemoryOwnershipStore
+    from alpha.community.aio_sandbox.ownership.memory import MemoryOwnershipStore
 
     kwargs.setdefault("ttl_seconds", 600)
     return MemoryOwnershipStore(owner_id="__shared__", **kwargs)
@@ -424,10 +424,10 @@ def _make_provider_for_reconciliation(tmp_path=None, *, worker_id: str = "worker
     to model two gateway instances coordinating through one ownership backend.
     ``tmp_path`` is accepted and ignored: ownership no longer lives on disk.
     """
-    from agent_workspace.config.sandbox_config import SandboxOwnershipConfig
-    from agent_workspace.sandbox.acquire_serialization import AcquireSerializer
+    from alpha.config.sandbox_config import SandboxOwnershipConfig
+    from alpha.sandbox.acquire_serialization import AcquireSerializer
 
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     provider = aio_mod.AioSandboxProvider.__new__(aio_mod.AioSandboxProvider)
     provider._lock = threading.Lock()
     provider._sandboxes = {}
@@ -456,7 +456,7 @@ def _make_provider_for_reconciliation(tmp_path=None, *, worker_id: str = "worker
     provider._owner_id = worker_id
     provider._ownership_config = SandboxOwnershipConfig()
     if store is None:
-        from agent_workspace.community.aio_sandbox.ownership.memory import MemoryOwnershipStore
+        from alpha.community.aio_sandbox.ownership.memory import MemoryOwnershipStore
 
         provider._ownership = MemoryOwnershipStore(owner_id=worker_id, ttl_seconds=600)
     else:
@@ -622,7 +622,7 @@ def test_reconcile_does_not_replace_mismatched_policy_while_peer_owns_container(
 
 def test_reconcile_replaces_mismatched_policy_after_orphan_grace_and_destroy_claim():
     """A stale policy is replaced only after grace plus an exclusive teardown lease."""
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     shared = _make_shared_ownership_store()
     worker = _make_provider_for_reconciliation(worker_id="worker-b", store=shared)
     info = SandboxInfo(
@@ -683,7 +683,7 @@ def test_reconcile_does_not_replace_mismatched_policy_during_local_teardown():
 
 def test_discover_or_create_defers_mismatched_policy_owned_by_live_peer(tmp_path):
     """The request path uses the same fence instead of deleting on discovery."""
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     shared = _make_shared_ownership_store()
     worker_a = _make_provider_for_reconciliation(worker_id="worker-a", store=shared)
     worker_b = _make_provider_for_reconciliation(worker_id="worker-b", store=shared)
@@ -712,7 +712,7 @@ def test_discover_or_create_defers_mismatched_policy_owned_by_live_peer(tmp_path
 @pytest.mark.asyncio
 async def test_async_discover_or_create_defers_mismatched_policy_owned_by_live_peer(tmp_path):
     """The async request path must preserve the same replacement fence."""
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     shared = _make_shared_ownership_store()
     worker_a = _make_provider_for_reconciliation(worker_id="worker-a", store=shared)
     worker_b = _make_provider_for_reconciliation(worker_id="worker-b", store=shared)
@@ -814,7 +814,7 @@ def test_expired_lease_lets_peer_adopt_crashed_owner_container():
     leak when the owning instance dies without releasing. Adoption is delayed by
     the recovery grace, but a dead owner never republishes, so it still happens.
     """
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     shared = _make_shared_ownership_store(ttl_seconds=0.05)
     dead = _make_provider_for_reconciliation(worker_id="worker-dead", store=shared)
     worker_b = _make_provider_for_reconciliation(worker_id="worker-b", store=shared)
@@ -854,7 +854,7 @@ def test_acquire_fails_closed_when_ownership_cannot_be_published():
     exclusion while the sandbox was handed out as usable — peers then saw an
     unowned live container and reaped it.
     """
-    from agent_workspace.community.aio_sandbox.ownership import OwnershipBackendError
+    from alpha.community.aio_sandbox.ownership import OwnershipBackendError
 
     worker = _make_provider_for_reconciliation(worker_id="worker-a")
     worker._ownership = MagicMock()
@@ -880,7 +880,7 @@ def test_acquire_fails_closed_when_ownership_cannot_be_published():
 
 def test_reuse_fails_closed_when_ownership_cannot_be_published():
     """Same fail-closed rule on the in-process reuse path."""
-    from agent_workspace.community.aio_sandbox.ownership import OwnershipBackendError
+    from alpha.community.aio_sandbox.ownership import OwnershipBackendError
 
     worker = _make_provider_for_reconciliation(worker_id="worker-a")
     info = SandboxInfo(
@@ -902,7 +902,7 @@ def test_reuse_fails_closed_when_ownership_cannot_be_published():
 
 def test_destroy_fails_closed_when_ownership_unknown():
     """A store that cannot answer must not be read as 'container is free'."""
-    from agent_workspace.community.aio_sandbox.ownership import OwnershipBackendError
+    from alpha.community.aio_sandbox.ownership import OwnershipBackendError
 
     worker = _make_provider_for_reconciliation(worker_id="worker-a")
     worker._ownership = MagicMock()
@@ -922,7 +922,7 @@ def test_destroy_fails_closed_when_ownership_unknown():
 
 def test_reconcile_fails_closed_when_ownership_unknown():
     """A store outage must not turn every peer container into an adoptable orphan."""
-    from agent_workspace.community.aio_sandbox.ownership import OwnershipBackendError
+    from alpha.community.aio_sandbox.ownership import OwnershipBackendError
 
     worker = _make_provider_for_reconciliation(worker_id="worker-b")
     worker._ownership = MagicMock()
@@ -943,7 +943,7 @@ def test_reconcile_fails_closed_when_ownership_unknown():
 
     # Unowned for a full grace, so the container is adoptable and the only thing
     # left standing between it and the warm pool is the claim.
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     now = time.time()
     with patch.object(aio_mod.time, "time", return_value=now):
         worker._reconcile_orphans()
@@ -969,7 +969,7 @@ def test_init_always_starts_lease_renewal(monkeypatch, idle_timeout):
     a test that calls ``_start_lease_renewal()`` directly passes on the broken code
     and guards nothing.
     """
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
 
     started: list[str] = []
     monkeypatch.setattr(aio_mod.AioSandboxProvider, "_load_config", lambda self: {"idle_timeout": idle_timeout, "replicas": 3, "ownership": None})
@@ -997,7 +997,7 @@ def test_renewal_keeps_the_sandbox_when_the_store_cannot_answer():
     fleet-wide eviction the LAPSED/LOST split exists to prevent, which is pinned
     only for the flushed-store path, never for a raising one.
     """
-    from agent_workspace.community.aio_sandbox.ownership import OwnershipBackendError
+    from alpha.community.aio_sandbox.ownership import OwnershipBackendError
 
     worker = _make_provider_for_reconciliation(worker_id="worker-a")
     worker._ownership = MagicMock()
@@ -1032,7 +1032,7 @@ def test_renewal_keeps_the_sandbox_when_lapsed_reclaim_cannot_answer():
     the claim. Renewal must keep the sandbox and retry rather than route the
     claim through the ordinary fail-closed reap helper and evict a live entry.
     """
-    from agent_workspace.community.aio_sandbox.ownership import OwnershipBackendError, RenewOutcome
+    from alpha.community.aio_sandbox.ownership import OwnershipBackendError, RenewOutcome
 
     worker = _make_provider_for_reconciliation(worker_id="worker-a")
     worker._ownership = MagicMock()
@@ -1063,9 +1063,9 @@ def test_load_config_carries_the_stream_bridge_section():
     deployment silently fell back to `memory` — #4206 reopened on exactly the
     deployments the inference exists for.
     """
-    from agent_workspace.config.stream_bridge_config import StreamBridgeConfig
+    from alpha.config.stream_bridge_config import StreamBridgeConfig
 
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     provider = aio_mod.AioSandboxProvider.__new__(aio_mod.AioSandboxProvider)
 
     bridge = StreamBridgeConfig(type="redis", redis_url="redis://bridge:6379/0")
@@ -1087,9 +1087,9 @@ def test_init_infers_redis_ownership_from_a_redis_stream_bridge():
     between them — the same reason `test_init_always_starts_lease_renewal` drives
     `__init__` instead of calling `_start_lease_renewal` directly.
     """
-    from agent_workspace.config.stream_bridge_config import StreamBridgeConfig
+    from alpha.config.stream_bridge_config import StreamBridgeConfig
 
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
 
     app_config = MagicMock()
     app_config.stream_bridge = StreamBridgeConfig(type="redis", redis_url="redis://bridge:6379/0")
@@ -1123,7 +1123,7 @@ def test_init_infers_redis_ownership_from_a_redis_stream_bridge():
 
 def test_renewal_loop_refreshes_owned_leases():
     """The renewal thread actually renews (the loop body, not just its wiring)."""
-    from agent_workspace.config.sandbox_config import SandboxOwnershipConfig
+    from alpha.config.sandbox_config import SandboxOwnershipConfig
 
     worker = _make_provider_for_reconciliation(worker_id="worker-a")
     worker._ownership_config = SandboxOwnershipConfig(renewal_interval_seconds=0.05)
@@ -1267,7 +1267,7 @@ def test_lost_lease_drops_sandbox_without_destroying_container():
 
 def test_ownership_rollback_on_create_closes_the_client_it_drops():
     """A fenced rollback destroys the container; its host-side client must not leak (#2872)."""
-    from agent_workspace.community.aio_sandbox.ownership import OwnershipBackendError
+    from alpha.community.aio_sandbox.ownership import OwnershipBackendError
 
     worker = _make_provider_for_reconciliation(worker_id="worker-a")
     worker._ownership = MagicMock()
@@ -1280,7 +1280,7 @@ def test_ownership_rollback_on_create_closes_the_client_it_drops():
         created_at=time.time(),
     )
 
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     created: list[MagicMock] = []
 
     def fake_aio_sandbox(**kwargs):
@@ -1299,7 +1299,7 @@ def test_ownership_rollback_on_create_closes_the_client_it_drops():
 
 def test_ownership_rollback_does_not_destroy_when_teardown_claim_is_unavailable():
     """Unknown ownership is not permission to remove a possibly peer-created container."""
-    from agent_workspace.community.aio_sandbox.ownership import OwnershipBackendError
+    from alpha.community.aio_sandbox.ownership import OwnershipBackendError
 
     worker = _make_provider_for_reconciliation(worker_id="worker-a")
     worker._ownership = MagicMock()
@@ -1312,7 +1312,7 @@ def test_ownership_rollback_does_not_destroy_when_teardown_claim_is_unavailable(
         created_at=time.time(),
     )
 
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     created: list[MagicMock] = []
 
     def fake_aio_sandbox(**kwargs):
@@ -1443,7 +1443,7 @@ def test_adoption_grace_expires_so_a_truly_orphaned_container_is_still_adopted()
     than the TTL by construction. Reconciliation must adopt it then, or a crashed
     instance's containers would leak forever.
     """
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     shared = _make_shared_ownership_store()
     worker_b = _make_provider_for_reconciliation(worker_id="worker-b", store=shared)
     ttl = compute_lease_ttl(worker_b._ownership_config)
@@ -1478,7 +1478,7 @@ def test_adoption_grace_restarts_when_a_live_owner_republishes():
     because the container simply reads as owned. So the second lapse is the whole
     test; without it this passes with the reset deleted.
     """
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     shared = _make_shared_ownership_store()
     worker_a = _make_provider_for_reconciliation(worker_id="worker-a", store=shared)
     worker_b = _make_provider_for_reconciliation(worker_id="worker-b", store=shared)
@@ -1559,7 +1559,7 @@ def test_teardown_marker_is_held_for_a_stop_that_outlives_the_lease_ttl():
     reopened by its own expiry. The `flock` this replaced could not expire; a
     lease can, so it has to be held on purpose.
     """
-    from agent_workspace.config.sandbox_config import SandboxOwnershipConfig
+    from alpha.config.sandbox_config import SandboxOwnershipConfig
 
     lease_ttl = 0.15
     shared = _make_shared_ownership_store(ttl_seconds=lease_ttl)
@@ -1619,7 +1619,7 @@ def test_unhealthy_drop_holds_the_teardown_marker_for_its_stop():
     cannot see the id either: nothing refreshes the marker unless the stop holds
     it.
     """
-    from agent_workspace.config.sandbox_config import SandboxOwnershipConfig
+    from alpha.config.sandbox_config import SandboxOwnershipConfig
 
     lease_ttl = 0.15
     shared = _make_shared_ownership_store(ttl_seconds=lease_ttl)
@@ -1671,7 +1671,7 @@ def test_destroy_holds_the_teardown_marker_for_its_stop():
     unnoticed. "Every path does X" claims keep leaving exactly one sibling
     untested — this is that sibling.
     """
-    from agent_workspace.config.sandbox_config import SandboxOwnershipConfig
+    from alpha.config.sandbox_config import SandboxOwnershipConfig
 
     lease_ttl = 0.15
     shared = _make_shared_ownership_store(ttl_seconds=lease_ttl)
@@ -1812,7 +1812,7 @@ def test_teardown_join_budget_covers_refresh_and_final_release():
     join budget needs to exceed both sequential operation bounds rather than
     only one of them.
     """
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     store_operation_timeout_seconds = 5.0
 
     assert aio_mod.AioSandboxProvider._TEARDOWN_JOIN_TIMEOUT_SECONDS > 2 * store_operation_timeout_seconds
@@ -1829,7 +1829,7 @@ def test_teardown_release_waits_for_the_heartbeat_to_exit():
     create) until the TTL. Owning the release inside the heartbeat sequences it
     strictly after the last refresh. (fancyboi999, PR #4221)
     """
-    from agent_workspace.config.sandbox_config import SandboxOwnershipConfig
+    from alpha.config.sandbox_config import SandboxOwnershipConfig
 
     # Long store TTL so nothing lapses via TTL during the test — the only thing
     # that may clear the marker is a real release.
@@ -2006,7 +2006,7 @@ def test_teardown_heartbeat_stops_when_the_stop_returns():
     if it outlived the destroy the marker would be refreshed indefinitely and no
     peer could ever adopt or recreate the container.
     """
-    from agent_workspace.config.sandbox_config import SandboxOwnershipConfig
+    from alpha.config.sandbox_config import SandboxOwnershipConfig
 
     shared = _make_shared_ownership_store(ttl_seconds=0.15)
     worker_a = _make_provider_for_reconciliation(worker_id="worker-a", store=shared)
@@ -2209,7 +2209,7 @@ def test_sighup_handler_registered():
     original_sigterm = signal.getsignal(signal.SIGTERM)
     original_sigint = signal.getsignal(signal.SIGINT)
     try:
-        aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+        aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
         provider._original_sighup = original_sighup
         provider._original_sigterm = original_sigterm
         provider._original_sigint = original_sigint
@@ -2242,7 +2242,7 @@ def test_sighup_handler_registered():
 
 def _active_sandbox(provider, sandbox_id, info, *, thread_key=("u", "t1")):
     """Track *info* as an active sandbox on *provider*."""
-    from agent_workspace.community.aio_sandbox.aio_sandbox import AioSandbox
+    from alpha.community.aio_sandbox.aio_sandbox import AioSandbox
 
     provider._sandboxes[sandbox_id] = AioSandbox(id=sandbox_id, base_url=info.sandbox_url)
     provider._sandbox_infos[sandbox_id] = info
@@ -2585,14 +2585,14 @@ def test_discovered_sandbox_client_is_closed_when_ownership_publish_fails():
     not of the `AioSandbox` HTTP client constructed before the publish. The
     sibling create path already closes it on the same failure.
     """
-    from agent_workspace.community.aio_sandbox.ownership import OwnershipBackendError
+    from alpha.community.aio_sandbox.ownership import OwnershipBackendError
 
     provider = _make_provider_for_reconciliation()
     provider._ownership = MagicMock()
     provider._ownership.take.side_effect = OwnershipBackendError("store down")
 
     created = []
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     real_sandbox_cls = aio_mod.AioSandbox
 
     def tracking_sandbox(**kwargs):

@@ -11,8 +11,8 @@ router = APIRouter(prefix="/api/benchmarks", tags=["benchmarks"])
 
 
 def _ensure_demo_suite() -> None:
-    from agent_workspace.benchmarks import BenchmarkCase, BenchmarkSuite, get_benchmark_runner
-    from agent_workspace.benchmarks.suites import register_eval_suites
+    from alpha.benchmarks import BenchmarkCase, BenchmarkSuite, get_benchmark_runner
+    from alpha.benchmarks.suites import register_eval_suites
 
     register_eval_suites()
     runner = get_benchmark_runner()
@@ -20,8 +20,8 @@ def _ensure_demo_suite() -> None:
         return
 
     def _eval(case: BenchmarkCase) -> tuple[bool, float, str]:
-        from agent_workspace.projects.evidence import check_completion
-        from agent_workspace.recovery import decide
+        from alpha.projects.evidence import check_completion
+        from alpha.recovery import decide
 
         if case.case_id == "evidence-gate":
             gate = check_completion([{"kind": "commit", "reference": "abc"}, {"kind": "tests_passed", "reference": "r"}, {"kind": "lint", "reference": "r"}])
@@ -47,7 +47,7 @@ class RunSuiteRequest(BaseModel):
 async def list_suites() -> dict:
     def _do():
         _ensure_demo_suite()
-        from agent_workspace.benchmarks import get_benchmark_runner
+        from alpha.benchmarks import get_benchmark_runner
 
         return get_benchmark_runner().list_suites()
 
@@ -58,7 +58,7 @@ async def list_suites() -> dict:
 async def run_suite(name: str, body: RunSuiteRequest) -> dict:
     def _do():
         _ensure_demo_suite()
-        from agent_workspace.benchmarks import get_benchmark_runner
+        from alpha.benchmarks import get_benchmark_runner
 
         return get_benchmark_runner().run_suite(name, case_ids=body.case_ids)
 
@@ -71,7 +71,7 @@ async def run_suite(name: str, body: RunSuiteRequest) -> dict:
 @router.get("/results")
 async def recent_results(limit: int = 50) -> dict:
     def _do():
-        from agent_workspace.benchmarks import get_benchmark_runner
+        from alpha.benchmarks import get_benchmark_runner
 
         return get_benchmark_runner().recent_results(limit=min(limit, 200))
 

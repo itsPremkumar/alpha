@@ -10,13 +10,13 @@ from _agent_e2e_helpers import FakeToolCallingModel
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.runtime import Runtime
 
-from agent_workspace.agents.factory import create_agent_workspace_agent
-from agent_workspace.agents.middlewares.thread_data_middleware import ThreadDataMiddleware
-from agent_workspace.agents.thread_state import ThreadState
-from agent_workspace.config.paths import Paths
-from agent_workspace.tools.builtins.present_file_tool import present_file_tool
+from alpha.agents.factory import create_agent_workspace_agent
+from alpha.agents.middlewares.thread_data_middleware import ThreadDataMiddleware
+from alpha.agents.thread_state import ThreadState
+from alpha.config.paths import Paths
+from alpha.tools.builtins.present_file_tool import present_file_tool
 
-present_file_tool_module = importlib.import_module("agent_workspace.tools.builtins.present_file_tool")
+present_file_tool_module = importlib.import_module("alpha.tools.builtins.present_file_tool")
 
 
 def _build_present_files_graph(tmp_path: Path):

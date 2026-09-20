@@ -2,9 +2,9 @@
 
 import json
 
-from agent_workspace.epistemics.engine import EpistemicBeliefEngine
-from agent_workspace.epistemics.models import EpistemicStatus
-from agent_workspace.tools.builtins.epistemic_belief_tool import evaluate_epistemic_claim
+from alpha.epistemics.engine import EpistemicBeliefEngine
+from alpha.epistemics.models import EpistemicStatus
+from alpha.tools.builtins.epistemic_belief_tool import evaluate_epistemic_claim
 
 
 def test_epistemic_claim_registration():

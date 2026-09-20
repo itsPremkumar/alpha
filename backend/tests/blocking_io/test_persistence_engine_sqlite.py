@@ -26,10 +26,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-# Pre-import so `init_engine`'s lazy ``import agent_workspace.persistence.models`` is a
+# Pre-import so `init_engine`'s lazy ``import alpha.persistence.models`` is a
 # cached no-op rather than a file read under the strict gate.
-import agent_workspace.persistence.models  # noqa: E402,F401
-from agent_workspace.persistence import engine as engine_mod  # noqa: E402
+import alpha.persistence.models  # noqa: E402,F401
+from alpha.persistence import engine as engine_mod  # noqa: E402
 
 pytestmark = pytest.mark.asyncio
 
@@ -63,7 +63,7 @@ async def test_init_engine_sqlite_dir_setup_does_not_block_event_loop(tmp_path: 
         patch.object(engine_mod, "async_sessionmaker", return_value=MagicMock()),
         patch("sqlalchemy.event.listens_for", _noop_listens_for),
         patch(
-            "agent_workspace.persistence.bootstrap.bootstrap_schema",
+            "alpha.persistence.bootstrap.bootstrap_schema",
             new=_noop_bootstrap,
         ),
     ):

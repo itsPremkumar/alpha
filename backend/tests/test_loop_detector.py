@@ -1,4 +1,4 @@
-from agent_workspace.harness.continuous.loop_detector import (
+from alpha.harness.continuous.loop_detector import (
     ToolLoopDetector,
     hash_tool_call,
 )

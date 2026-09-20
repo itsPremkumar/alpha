@@ -12,9 +12,9 @@ from unittest import mock
 import pytest
 from langchain_core.messages import HumanMessage
 
-from agent_workspace.agents.middlewares.dynamic_context_middleware import DynamicContextMiddleware
-from agent_workspace.runtime.events.store.memory import MemoryRunEventStore
-from agent_workspace.runtime.journal import RunJournal
+from alpha.agents.middlewares.dynamic_context_middleware import DynamicContextMiddleware
+from alpha.runtime.events.store.memory import MemoryRunEventStore
+from alpha.runtime.journal import RunJournal
 
 
 @pytest.mark.anyio
@@ -111,8 +111,8 @@ async def test_effective_memory_flows_from_injection_to_the_existing_debug_api()
     memory = "<memory>\nUser prefers Python.\n</memory>\n"
 
     with (
-        mock.patch("agent_workspace.agents.lead_agent.prompt._get_memory_context", return_value=memory),
-        mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt,
+        mock.patch("alpha.agents.lead_agent.prompt._get_memory_context", return_value=memory),
+        mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt,
     ):
         mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
         update = DynamicContextMiddleware().before_agent(

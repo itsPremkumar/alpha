@@ -5,12 +5,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from agent_workspace.config.subagent_batches_config import SubagentBatchesConfig
-from agent_workspace.config.subagent_runtime_config import SubagentRuntimeConfig
-from agent_workspace.subagents import batch_service as service_module
-from agent_workspace.subagents.batch_runtime import BatchSubmitRequest
-from agent_workspace.subagents.batch_service import SubagentBatchService
-from agent_workspace.subagents.capacity import SubagentExecutionCapacity
+from alpha.config.subagent_batches_config import SubagentBatchesConfig
+from alpha.config.subagent_runtime_config import SubagentRuntimeConfig
+from alpha.subagents import batch_service as service_module
+from alpha.subagents.batch_runtime import BatchSubmitRequest
+from alpha.subagents.batch_service import SubagentBatchService
+from alpha.subagents.capacity import SubagentExecutionCapacity
 
 
 class FakeStatus(Enum):
@@ -126,7 +126,7 @@ async def test_execute_item_marks_real_running_then_persists_terminal_result(mon
     monkeypatch.setattr(service_module, "SubagentStatus", FakeStatus)
     monkeypatch.setattr(service_module, "get_background_task_result", lambda _execution_id: result)
     monkeypatch.setattr(service_module, "cleanup_background_task", lambda _execution_id: None)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **_kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **_kwargs: [])
     service = SubagentBatchService(
         repository=repository,
         config=SubagentBatchesConfig(),
@@ -211,7 +211,7 @@ async def test_execute_item_polls_completion_without_waiting_for_lease_renewal(m
     monkeypatch.setattr(service_module, "SubagentStatus", FakeStatus)
     monkeypatch.setattr(service_module, "get_background_task_result", read_result)
     monkeypatch.setattr(service_module, "cleanup_background_task", lambda _execution_id: None)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **_kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **_kwargs: [])
     service = SubagentBatchService(
         repository=repository,
         config=SubagentBatchesConfig(poll_interval_seconds=0.1, lease_seconds=120),
@@ -287,7 +287,7 @@ async def test_executor_admission_failure_requeues_instead_of_finalizing(monkeyp
     monkeypatch.setattr(service_module, "SubagentStatus", FakeStatus)
     monkeypatch.setattr(service_module, "get_background_task_result", lambda _execution_id: result)
     monkeypatch.setattr(service_module, "cleanup_background_task", lambda _execution_id: None)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **_kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **_kwargs: [])
     service = SubagentBatchService(
         repository=repository,
         config=SubagentBatchesConfig(),
@@ -315,9 +315,9 @@ async def test_cancel_during_tool_assembly_skips_launch(monkeypatch, tmp_path) -
     import threading
     from datetime import UTC, datetime
 
-    from agent_workspace.config.database_config import DatabaseConfig
-    from agent_workspace.persistence.engine import close_engine, get_session_factory, init_engine_from_config
-    from agent_workspace.persistence.subagent_batches import SubagentBatchRepository
+    from alpha.config.database_config import DatabaseConfig
+    from alpha.persistence.engine import close_engine, get_session_factory, init_engine_from_config
+    from alpha.persistence.subagent_batches import SubagentBatchRepository
 
     await init_engine_from_config(DatabaseConfig(backend="sqlite", sqlite_dir=str(tmp_path)))
     try:
@@ -369,7 +369,7 @@ async def test_cancel_during_tool_assembly_skips_launch(monkeypatch, tmp_path) -
             assembly_release.wait(timeout=15)
             return []
 
-        monkeypatch.setattr("agent_workspace.tools.get_available_tools", _blocking_assembly)
+        monkeypatch.setattr("alpha.tools.get_available_tools", _blocking_assembly)
         monkeypatch.setattr(service_module, "SubagentStatus", FakeStatus)
         monkeypatch.setattr(service_module, "resolve_subagent_model_name", lambda *_a, **_k: "test-model")
         monkeypatch.setattr(service_module, "request_cancel_background_task", lambda _execution_id: None)

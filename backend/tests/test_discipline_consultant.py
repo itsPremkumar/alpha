@@ -1,4 +1,4 @@
-from agent_workspace.orchestration.discipline.consultant import GapAnalysisReport, PlanConsultant
+from alpha.orchestration.discipline.consultant import GapAnalysisReport, PlanConsultant
 
 
 def test_consultant_identifies_missing_error_and_tests():

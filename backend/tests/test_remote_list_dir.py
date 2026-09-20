@@ -9,7 +9,7 @@ import subprocess
 
 import pytest
 
-from agent_workspace.sandbox.remote_list_dir import parse_remote_list_dir_output, remote_list_dir_command
+from alpha.sandbox.remote_list_dir import parse_remote_list_dir_output, remote_list_dir_command
 
 _POSIX_SH = pytest.mark.skipif(
     os.name == "nt" or shutil.which("sh") is None or shutil.which("head") is None,

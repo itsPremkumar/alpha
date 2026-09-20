@@ -1,4 +1,4 @@
-from agent_workspace.reasoning.governor import ReasoningGovernor
+from alpha.reasoning.governor import ReasoningGovernor
 
 
 def test_reasoning_governor_fast_mode():

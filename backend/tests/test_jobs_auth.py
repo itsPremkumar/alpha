@@ -12,8 +12,8 @@ from app.gateway.auth import jwt
 from app.gateway.auth.models import User
 from app.gateway.auth_middleware import AuthMiddleware
 from app.gateway.routers import jobs
-from agent_workspace.config.authorization_config import AuthorizationConfig
-from agent_workspace.jobs import ExternalJobRunner, JobResult, JobSpec, JobStatus, PersistentJobQueue
+from alpha.config.authorization_config import AuthorizationConfig
+from alpha.jobs import ExternalJobRunner, JobResult, JobSpec, JobStatus, PersistentJobQueue
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.no_auto_user]
 
@@ -27,8 +27,8 @@ def jobs_app(monkeypatch):
     monkeypatch.setattr("app.gateway.authz._get_route_authorization_config", lambda: AuthorizationConfig())
     monkeypatch.setattr("app.gateway.auth_middleware.is_auth_disabled", lambda: False)
     monkeypatch.setattr("app.gateway.auth_middleware.is_valid_internal_auth_token", lambda token: token == "test-internal")
-    config = SimpleNamespace(sandbox=SimpleNamespace(use="agent_workspace.sandbox.local:LocalSandboxProvider", allow_host_bash=True))
-    monkeypatch.setattr("agent_workspace.jobs.runner.get_app_config", lambda: config)
+    config = SimpleNamespace(sandbox=SimpleNamespace(use="alpha.sandbox.local:LocalSandboxProvider", allow_host_bash=True))
+    monkeypatch.setattr("alpha.jobs.runner.get_app_config", lambda: config)
     queue = PersistentJobQueue()
     runner = ExternalJobRunner(queue)
     monkeypatch.setattr(jobs, "_GLOBAL_QUEUE", queue)
@@ -58,7 +58,7 @@ async def test_non_operator_cannot_submit_even_with_host_gate(jobs_app):
     assert jobs_app.queue.list_jobs() == []
 
 
-@pytest.mark.parametrize("provider", ["agent_workspace.sandbox.local:LocalSandboxProvider", "agent_workspace.community.aio_sandbox:AioSandboxProvider"])
+@pytest.mark.parametrize("provider", ["alpha.sandbox.local:LocalSandboxProvider", "alpha.community.aio_sandbox:AioSandboxProvider"])
 @pytest.mark.parametrize("gate", [False, None, "true"])
 async def test_host_gate_is_explicit_for_every_provider(jobs_app, provider, gate):
     jobs_app.config.sandbox.use = provider
@@ -73,7 +73,7 @@ async def test_config_failure_denies_submission(jobs_app, monkeypatch):
     def fail_config():
         raise RuntimeError("private configuration detail")
 
-    monkeypatch.setattr("agent_workspace.jobs.runner.get_app_config", fail_config)
+    monkeypatch.setattr("alpha.jobs.runner.get_app_config", fail_config)
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=jobs_app.app), base_url="http://test") as client:
         response = await client.post("/api/jobs", headers=session_headers(jobs_app, "alice"), json={"command": ["must-not-run"]})
     assert response.status_code == 403

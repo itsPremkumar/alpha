@@ -18,14 +18,14 @@ import pytest
 from sqlalchemy import update
 
 from app.scheduler.service import ScheduledTaskService
-from agent_workspace.config.database_config import DatabaseConfig
-from agent_workspace.persistence.engine import close_engine, get_session_factory, init_engine_from_config
-from agent_workspace.persistence.scheduled_task_runs import ScheduledTaskRunRepository
-from agent_workspace.persistence.scheduled_task_runs.model import ScheduledTaskRunRow
-from agent_workspace.persistence.scheduled_tasks import ScheduledTaskRepository
-from agent_workspace.persistence.scheduled_tasks.model import ScheduledTaskRow
-from agent_workspace.runtime.runs.manager import RunRecord
-from agent_workspace.runtime.runs.schemas import DisconnectMode, RunStatus
+from alpha.config.database_config import DatabaseConfig
+from alpha.persistence.engine import close_engine, get_session_factory, init_engine_from_config
+from alpha.persistence.scheduled_task_runs import ScheduledTaskRunRepository
+from alpha.persistence.scheduled_task_runs.model import ScheduledTaskRunRow
+from alpha.persistence.scheduled_tasks import ScheduledTaskRepository
+from alpha.persistence.scheduled_tasks.model import ScheduledTaskRow
+from alpha.runtime.runs.manager import RunRecord
+from alpha.runtime.runs.schemas import DisconnectMode, RunStatus
 
 pytestmark = pytest.mark.asyncio
 
@@ -560,7 +560,7 @@ async def test_once_recovery_uses_occurrence_order_despite_clock_skew(tmp_path, 
         await _set_task_running(task_repo, "task-once-1")
         # Exercise normal repository insertion; only the worker's clock changes.
         # Descending UUID order must not break ties in favor of the old success.
-        with patch("agent_workspace.persistence.scheduled_task_runs.sql.datetime") as clock:
+        with patch("alpha.persistence.scheduled_task_runs.sql.datetime") as clock:
             clock.now.return_value = _NOW + timedelta(seconds=older_clock_ahead_seconds)
             older = await run_repo.create(
                 run_record_id="ffffffff-ffff-4fff-8fff-ffffffffffff",

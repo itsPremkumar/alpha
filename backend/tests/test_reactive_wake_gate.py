@@ -6,8 +6,8 @@ import asyncio
 
 import pytest
 
-from agent_workspace.scheduler.reactive_wake import ReactiveWakeGateRegistry
-from agent_workspace.tools.builtins.wake_gate_tool import await_task_event
+from alpha.scheduler.reactive_wake import ReactiveWakeGateRegistry
+from alpha.tools.builtins.wake_gate_tool import await_task_event
 
 
 def test_wake_gate_all_complete():

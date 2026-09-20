@@ -8,9 +8,9 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from agent_workspace.agents.memory.manager import get_memory_manager
-from agent_workspace.config.agents_api_config import get_agents_api_config
-from agent_workspace.config.agents_config import (
+from alpha.agents.memory.manager import get_memory_manager
+from alpha.config.agents_api_config import get_agents_api_config
+from alpha.config.agents_config import (
     AgentConfig,
     AgentDisplayName,
     AgentModelSettings,
@@ -19,10 +19,10 @@ from agent_workspace.config.agents_config import (
     load_agent_soul,
     preserve_non_managed_fields,
 )
-from agent_workspace.config.app_config import get_app_config
-from agent_workspace.config.paths import get_paths
-from agent_workspace.persistence.agents import AgentDeleteOutcome, AgentExistsError, get_agent_store
-from agent_workspace.runtime.user_context import get_effective_user_id
+from alpha.config.app_config import get_app_config
+from alpha.config.paths import get_paths
+from alpha.persistence.agents import AgentDeleteOutcome, AgentExistsError, get_agent_store
+from alpha.runtime.user_context import get_effective_user_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["agents"])

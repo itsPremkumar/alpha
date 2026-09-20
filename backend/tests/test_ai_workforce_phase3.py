@@ -12,33 +12,33 @@ from pathlib import Path
 import tempfile
 from fastapi.testclient import TestClient
 
-from agent_workspace.projects.approval_queue import (
+from alpha.projects.approval_queue import (
     ApprovalQueue,
     ApprovalRequest,
     get_approval_queue,
 )
-from agent_workspace.projects.self_healing_runner import (
+from alpha.projects.self_healing_runner import (
     SelfHealingTestRunner,
     TestRunResult,
 )
-from agent_workspace.projects.living_spec import (
+from alpha.projects.living_spec import (
     LivingSpecEngine,
     LivingSpec,
     LivingSpecSection,
 )
-from agent_workspace.projects.audit_council import (
+from alpha.projects.audit_council import (
     AuditCouncil,
     AuditVerdict,
 )
-from agent_workspace.projects.knowledge_index import (
+from alpha.projects.knowledge_index import (
     CrossProjectKnowledgeIndex,
     sanitize_text,
 )
-from agent_workspace.projects.contracts import (
+from alpha.projects.contracts import (
     ContractGatekeeper,
     DefinitionOfDone,
 )
-from agent_workspace.projects.postmortem import ProjectPostmortemEngine
+from alpha.projects.postmortem import ProjectPostmortemEngine
 
 
 def test_human_approval_queue_lifecycle(tmp_path: Path):

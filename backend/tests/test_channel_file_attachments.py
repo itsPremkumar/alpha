@@ -228,7 +228,7 @@ class TestResolveAttachments:
         (also used by the artifact editor) is exercised end to end.
         """
         from app.channels.manager import _resolve_attachments
-        from agent_workspace.config.paths import Paths
+        from alpha.config.paths import Paths
 
         paths = Paths(tmp_path)
         outputs_dir = paths.sandbox_outputs_dir("t1", user_id="owner-1")
@@ -296,7 +296,7 @@ class TestInboundFileIngestion:
             files=[{"type": "file", "filename": "report.pdf", "_content": b"pdf bytes"}],
         )
 
-        with patch("agent_workspace.uploads.manager.ensure_uploads_dir", return_value=uploads_dir):
+        with patch("alpha.uploads.manager.ensure_uploads_dir", return_value=uploads_dir):
             result = _run(manager._ingest_inbound_files("thread-1", msg))
 
         assert result == [
@@ -330,7 +330,7 @@ class TestInboundFileIngestion:
             return b"attacker data"
 
         with (
-            patch("agent_workspace.uploads.manager.ensure_uploads_dir", return_value=uploads_dir),
+            patch("alpha.uploads.manager.ensure_uploads_dir", return_value=uploads_dir),
             patch.dict(manager.INBOUND_FILE_READERS, {"test-channel": fake_reader}, clear=False),
         ):
             result = _run(manager._ingest_inbound_files("thread-1", msg))
@@ -359,7 +359,7 @@ class TestInboundFileIngestion:
             return b"attacker data"
 
         with (
-            patch("agent_workspace.uploads.manager.ensure_uploads_dir", return_value=uploads_dir),
+            patch("alpha.uploads.manager.ensure_uploads_dir", return_value=uploads_dir),
             patch.dict(manager.INBOUND_FILE_READERS, {"test-channel": fake_reader}, clear=False),
         ):
             result = _run(manager._ingest_inbound_files("thread-1", msg))
@@ -389,7 +389,7 @@ class TestInboundFileIngestion:
             return b"new attachment data"
 
         with (
-            patch("agent_workspace.uploads.manager.ensure_uploads_dir", return_value=uploads_dir),
+            patch("alpha.uploads.manager.ensure_uploads_dir", return_value=uploads_dir),
             patch.dict(manager.INBOUND_FILE_READERS, {"test-channel": fake_reader}, clear=False),
         ):
             result = _run(manager._ingest_inbound_files("thread-1", msg))
@@ -605,7 +605,7 @@ class TestManagerArtifactResolution:
 
         # Basic smoke test: empty artifacts returns empty list
         mock_paths = MagicMock()
-        with patch("agent_workspace.config.paths.get_paths", return_value=mock_paths):
+        with patch("alpha.config.paths.get_paths", return_value=mock_paths):
             result = _resolve_attachments("t1", [])
         assert result == []
 

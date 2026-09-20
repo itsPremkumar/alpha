@@ -13,8 +13,8 @@ from app.channels.message_bus import InboundMessage, MessageBus
 
 @pytest.fixture
 async def repo(tmp_path):
-    from agent_workspace.persistence.channel_connections import ChannelConnectionRepository, ChannelCredentialCipher
-    from agent_workspace.persistence.engine import close_engine, get_session_factory, init_engine
+    from alpha.persistence.channel_connections import ChannelConnectionRepository, ChannelCredentialCipher
+    from alpha.persistence.engine import close_engine, get_session_factory, init_engine
 
     await init_engine("sqlite", url=f"sqlite+aiosqlite:///{tmp_path / 'discord.db'}", sqlite_dir=str(tmp_path))
     try:

@@ -20,10 +20,10 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.gateway.authz import AuthContext, Permissions
 from app.gateway.routers import projects
-from agent_workspace.persistence.engine import close_engine, get_session_factory, init_engine
-from agent_workspace.persistence.projects import ProjectRepository
-from agent_workspace.persistence.thread_meta import THREAD_ARCHIVED_METADATA_KEY, THREAD_PROJECT_METADATA_KEY, ThreadMetaRepository
-from agent_workspace.runtime.user_context import reset_current_user, set_current_user
+from alpha.persistence.engine import close_engine, get_session_factory, init_engine
+from alpha.persistence.projects import ProjectRepository
+from alpha.persistence.thread_meta import THREAD_ARCHIVED_METADATA_KEY, THREAD_PROJECT_METADATA_KEY, ThreadMetaRepository
+from alpha.runtime.user_context import reset_current_user, set_current_user
 
 _STUB_PERMISSIONS: list[str] = [
     Permissions.THREADS_READ,

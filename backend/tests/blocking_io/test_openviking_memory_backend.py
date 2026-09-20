@@ -10,7 +10,7 @@ import pytest
 from langchain_core.documents import Document
 from langchain_core.messages import AIMessage, HumanMessage
 
-from agent_workspace.agents.memory.backends.openviking.openviking_manager import (
+from alpha.agents.memory.backends.openviking.openviking_manager import (
     OpenVikingMemoryManager,
 )
 
@@ -88,7 +88,7 @@ def _manager(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> OpenVikingMemoryManager:
-    import agent_workspace.agents.memory.backends.openviking.openviking_manager as module
+    import alpha.agents.memory.backends.openviking.openviking_manager as module
 
     monkeypatch.setenv("OPENVIKING_API_KEY", "user-key")
     monkeypatch.setattr(

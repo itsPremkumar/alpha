@@ -9,13 +9,13 @@ from __future__ import annotations
 
 from langchain_core.tools import BaseTool, StructuredTool
 
-from agent_workspace.authz.enforcement import filter_tools_by_authorization
-from agent_workspace.authz.provider import Principal
-from agent_workspace.authz.rbac import RbacAuthorizationProvider
-from agent_workspace.authz.tool_filter import apply_tool_authorization
-from agent_workspace.config.app_config import AppConfig
-from agent_workspace.config.authorization_config import AuthorizationConfig, AuthorizationProviderConfig
-from agent_workspace.config.sandbox_config import SandboxConfig
+from alpha.authz.enforcement import filter_tools_by_authorization
+from alpha.authz.provider import Principal
+from alpha.authz.rbac import RbacAuthorizationProvider
+from alpha.authz.tool_filter import apply_tool_authorization
+from alpha.config.app_config import AppConfig
+from alpha.config.authorization_config import AuthorizationConfig, AuthorizationProviderConfig
+from alpha.config.sandbox_config import SandboxConfig
 
 # --- Helpers ---
 
@@ -180,7 +180,7 @@ class TestApplyToolAuthorization:
             AuthorizationConfig(
                 enabled=True,
                 provider=AuthorizationProviderConfig(
-                    use="agent_workspace.authz.rbac:RbacAuthorizationProvider",
+                    use="alpha.authz.rbac:RbacAuthorizationProvider",
                     config={"roles": {"user": {"tools": {"allow": "*", "deny": ["bash"]}}}},
                 ),
             )

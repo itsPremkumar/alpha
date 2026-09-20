@@ -1,7 +1,7 @@
 """Tests for Autonomous Teammate Mesh and BotLoopGuard."""
 
 import pytest
-from agent_workspace.bots.teammate_mesh import AutonomousTeammateMesh, BotLoopGuard, LoopDetectedError
+from alpha.bots.teammate_mesh import AutonomousTeammateMesh, BotLoopGuard, LoopDetectedError
 
 
 def test_teammate_mesh_dm_delivery_and_attribution():

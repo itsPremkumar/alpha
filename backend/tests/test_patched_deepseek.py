@@ -1,4 +1,4 @@
-"""Tests for agent_workspace.models.patched_deepseek.PatchedChatDeepSeek.
+"""Tests for alpha.models.patched_deepseek.PatchedChatDeepSeek.
 
 Covers:
 - LangChain serialization protocol: is_lc_serializable, lc_secrets, to_json
@@ -15,7 +15,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 
 def _make_model(**kwargs):
-    from agent_workspace.models.patched_deepseek import PatchedChatDeepSeek
+    from alpha.models.patched_deepseek import PatchedChatDeepSeek
 
     return PatchedChatDeepSeek(
         model="deepseek-v4-pro",
@@ -30,7 +30,7 @@ def _make_model(**kwargs):
 
 
 def test_is_lc_serializable_returns_true():
-    from agent_workspace.models.patched_deepseek import PatchedChatDeepSeek
+    from alpha.models.patched_deepseek import PatchedChatDeepSeek
 
     assert PatchedChatDeepSeek.is_lc_serializable() is True
 

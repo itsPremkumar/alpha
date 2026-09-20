@@ -14,13 +14,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.gateway.app import create_app
-from agent_workspace.commands import (
+from alpha.commands import (
     AutonomousCommandEngine,
     LifecyclePhase,
     autonomous_command_engine,
     command_registry,
 )
-from agent_workspace.tools.builtins import (
+from alpha.tools.builtins import (
     execute_slash_command_tool,
     identify_autonomous_command_tool,
 )

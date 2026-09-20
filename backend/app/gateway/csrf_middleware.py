@@ -18,7 +18,7 @@ from app.gateway.auth.config import get_auth_config
 from app.gateway.auth.session_cookie_state import SESSION_COOKIE_ISSUED_STATE_ATTR, SESSION_COOKIE_MAX_AGE_STATE_ATTR, SESSION_COOKIE_SECURE_STATE_ATTR, SKIP_AUTH_CSRF_COOKIE_STATE_ATTR
 from app.gateway.auth_disabled import is_auth_disabled
 from app.gateway.request_path import get_request_route_path
-from agent_workspace.trace_context import TRACE_ID_HEADER
+from alpha.trace_context import TRACE_ID_HEADER
 
 CSRF_COOKIE_NAME = "csrf_token"
 CSRF_HEADER_NAME = "X-CSRF-Token"

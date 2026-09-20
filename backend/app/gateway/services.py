@@ -35,14 +35,14 @@ from app.gateway.internal_auth import (
 from app.gateway.run_models import RunCreateRequest
 from app.gateway.utils import sanitize_log_param
 from app.mcp_tasks.errors import PermanentNotificationError
-from agent_workspace.agents.middlewares.dynamic_context_middleware import _DYNAMIC_CONTEXT_REMINDER_KEY, _REMINDER_DATE_KEY
-from agent_workspace.agents.middlewares.input_sanitization_middleware import frame_untrusted_text
-from agent_workspace.agents.middlewares.tool_receipt import TOOL_RECEIPT_KEY, TOOL_RECEIPT_LEDGER_KEY
-from agent_workspace.agents.middlewares.tool_transform_meta import TOOL_TRANSFORMS_KEY
-from agent_workspace.agents.middlewares.view_image_middleware import _IMAGE_CONTEXT_MESSAGE_MARKER_KEY
-from agent_workspace.config.app_config import get_app_config
-from agent_workspace.config.database_config import resolve_checkpoint_graph_cache_max
-from agent_workspace.runtime import (
+from alpha.agents.middlewares.dynamic_context_middleware import _DYNAMIC_CONTEXT_REMINDER_KEY, _REMINDER_DATE_KEY
+from alpha.agents.middlewares.input_sanitization_middleware import frame_untrusted_text
+from alpha.agents.middlewares.tool_receipt import TOOL_RECEIPT_KEY, TOOL_RECEIPT_LEDGER_KEY
+from alpha.agents.middlewares.tool_transform_meta import TOOL_TRANSFORMS_KEY
+from alpha.agents.middlewares.view_image_middleware import _IMAGE_CONTEXT_MESSAGE_MARKER_KEY
+from alpha.config.app_config import get_app_config
+from alpha.config.database_config import resolve_checkpoint_graph_cache_max
+from alpha.runtime import (
     END_SENTINEL,
     HEARTBEAT_SENTINEL,
     ORPHAN_RECOVERY_STOP_REASON,
@@ -60,31 +60,31 @@ from agent_workspace.runtime import (
     build_state_mutation_graph,
     run_agent,
 )
-from agent_workspace.runtime.checkpoint_mode import (
+from alpha.runtime.checkpoint_mode import (
     INTERNAL_CHECKPOINT_MODE_KEY,
     CheckpointModeMismatchError,
     checkpoint_tuple_uses_delta,
     inject_checkpoint_mode,
 )
-from agent_workspace.runtime.checkpoint_state import graph_state_schema
-from agent_workspace.runtime.events.message_identity import MESSAGE_SEQ_KEY
-from agent_workspace.runtime.goal import goal_thread_lock
-from agent_workspace.runtime.journal import build_checkpoint_history_seed_events
-from agent_workspace.runtime.keyed_lock import KeyedLockTable
-from agent_workspace.runtime.runs.naming import resolve_root_run_name
-from agent_workspace.runtime.secret_context import (
+from alpha.runtime.checkpoint_state import graph_state_schema
+from alpha.runtime.events.message_identity import MESSAGE_SEQ_KEY
+from alpha.runtime.goal import goal_thread_lock
+from alpha.runtime.journal import build_checkpoint_history_seed_events
+from alpha.runtime.keyed_lock import KeyedLockTable
+from alpha.runtime.runs.naming import resolve_root_run_name
+from alpha.runtime.secret_context import (
     LegacyRunMetadataSecretError,
     redact_config_secrets,
     validate_run_metadata_secrets,
 )
-from agent_workspace.runtime.stream_modes import normalize_stream_modes
-from agent_workspace.runtime.user_context import reset_current_user, set_current_user
-from agent_workspace.sandbox.lease import SANDBOX_SERVER_OWNED_CONTEXT_KEYS
-from agent_workspace.subagents.status_contract import SUBAGENT_ACCEPTANCE_VERDICT_KEY, SUBAGENT_RECEIPT_VERDICT_KEY, SUBAGENT_TOOL_RECEIPTS_KEY
-from agent_workspace.trace_context import AGENT_WORKSPACE_TRACE_METADATA_KEY, ensure_trace_context, ensure_trace_id
-from agent_workspace.utils.assembly_io import run_assembly
-from agent_workspace.utils.messages import ORIGINAL_USER_CONTENT_KEY
-from agent_workspace.utils.thread_id import validate_thread_id
+from alpha.runtime.stream_modes import normalize_stream_modes
+from alpha.runtime.user_context import reset_current_user, set_current_user
+from alpha.sandbox.lease import SANDBOX_SERVER_OWNED_CONTEXT_KEYS
+from alpha.subagents.status_contract import SUBAGENT_ACCEPTANCE_VERDICT_KEY, SUBAGENT_RECEIPT_VERDICT_KEY, SUBAGENT_TOOL_RECEIPTS_KEY
+from alpha.trace_context import AGENT_WORKSPACE_TRACE_METADATA_KEY, ensure_trace_context, ensure_trace_id
+from alpha.utils.assembly_io import run_assembly
+from alpha.utils.messages import ORIGINAL_USER_CONTENT_KEY
+from alpha.utils.thread_id import validate_thread_id
 
 logger = logging.getLogger(__name__)
 
@@ -204,7 +204,7 @@ async def _ensure_thread_metadata(
     if existing is None:
         if require_existing_thread:
             raise LookupError(f"Thread {record.thread_id} was deleted during run admission")
-        from agent_workspace.persistence.thread_meta import THREAD_PROJECT_METADATA_KEY
+        from alpha.persistence.thread_meta import THREAD_PROJECT_METADATA_KEY
 
         run_metadata = record.metadata or {}
         metadata = {
@@ -657,7 +657,7 @@ def resolve_agent_factory(assistant_id: str | None):
     consumer must unwrap ``.graph``. A third-party factory that still returns a
     bare graph keeps working: the unwrap sites are type-checked, not assumed.
     """
-    from agent_workspace.agents.lead_agent.agent import assemble_lead_agent
+    from alpha.agents.lead_agent.agent import assemble_lead_agent
 
     return assemble_lead_agent
 
@@ -944,7 +944,7 @@ def _cache_state_accessor_graph(key: tuple[str | None, str, int | None], agent_f
 def _build_state_accessor_graph(agent_factory: Any, config: dict[str, Any]) -> Any:
     agent_result = agent_factory(config=config)
     try:
-        from agent_workspace.agents.lead_agent.agent import unwrap_agent_graph
+        from alpha.agents.lead_agent.agent import unwrap_agent_graph
 
         return unwrap_agent_graph(agent_result)
     except Exception:

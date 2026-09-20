@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from app.gateway.deps import require_admin_user
-from agent_workspace.config.extensions_config import (
+from alpha.config.extensions_config import (
     ExtensionsConfig,
     McpRoutingConfig,
     McpTaskToolsetConfig,
@@ -23,9 +23,9 @@ from agent_workspace.config.extensions_config import (
     reload_extensions_config,
     validate_raw_extensions_config,
 )
-from agent_workspace.config.runtime_paths import project_root
-from agent_workspace.constants import DEFAULT_MCP_SESSION_INIT_TIMEOUT
-from agent_workspace.mcp.cache import reset_mcp_tools_cache
+from alpha.config.runtime_paths import project_root
+from alpha.constants import DEFAULT_MCP_SESSION_INIT_TIMEOUT
+from alpha.mcp.cache import reset_mcp_tools_cache
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["mcp"])

@@ -2,7 +2,7 @@ import json
 import tempfile
 from pathlib import Path
 
-from agent_workspace.tools.builtins import (
+from alpha.tools.builtins import (
     blackboard_query,
     blackboard_record_evidence,
     check_metacognitive_health,

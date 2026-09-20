@@ -9,9 +9,9 @@ from pydantic import BaseModel, Field
 
 from app.gateway.authz import require_permission
 from app.gateway.browser_capability import browser_capability
-from agent_workspace.config.paths import get_paths
-from agent_workspace.runtime.user_context import get_effective_user_id, reset_current_user, set_current_user
-from agent_workspace.utils.thread_id import ThreadId
+from alpha.config.paths import get_paths
+from alpha.runtime.user_context import get_effective_user_id, reset_current_user, set_current_user
+from alpha.utils.thread_id import ThreadId
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ def _browser_tools_enabled() -> bool:
     in a base image) is not sufficient — otherwise the endpoints would expose
     server-side browser control the operator never turned on.
     """
-    from agent_workspace.config import get_app_config
+    from alpha.config import get_app_config
 
     with contextlib.suppress(Exception):
         capability = browser_capability(get_app_config())
@@ -88,7 +88,7 @@ async def navigate_browser(thread_id: ThreadId, body: BrowserNavigateRequest, re
         raise HTTPException(status_code=404, detail="Browser automation is not enabled")
 
     try:
-        from agent_workspace.community.browser_automation import navigate_and_capture, redact_browser_url
+        from alpha.community.browser_automation import navigate_and_capture, redact_browser_url
     except ImportError as exc:  # Playwright is an optional dependency.
         raise HTTPException(status_code=501, detail="Browser automation is not available") from exc
 
@@ -242,7 +242,7 @@ async def browser_stream(websocket: WebSocket, thread_id: ThreadId) -> None:
         return
 
     try:
-        from agent_workspace.community.browser_automation import (
+        from alpha.community.browser_automation import (
             BrowserLiveViewerError,
             BrowserSessionCapacityError,
             get_browser_session_manager,
@@ -284,7 +284,7 @@ async def browser_stream(websocket: WebSocket, thread_id: ThreadId) -> None:
     # Match the tool's session config (headless/viewport/cdp_url) so the live
     # stream reuses the same session the agent drives — including CDP-attach to
     # the user's real Chrome when configured.
-    from agent_workspace.config import get_app_config
+    from alpha.config import get_app_config
 
     tool_cfg = get_app_config().get_tool_config("browser_navigate")
     extra = (tool_cfg.model_extra or {}) if tool_cfg is not None else {}

@@ -2,8 +2,8 @@
 
 import pytest
 
-from agent_workspace.sandbox.repl.session import ReplSession
-from agent_workspace.tools.builtins.python_repl_tool import python_repl_tool
+from alpha.sandbox.repl.session import ReplSession
+from alpha.tools.builtins.python_repl_tool import python_repl_tool
 
 
 @pytest.mark.asyncio

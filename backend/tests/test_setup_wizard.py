@@ -52,16 +52,16 @@ class TestProviders:
         assert expected.issubset(providers)
 
         assert providers["openai_responses"].extra_config["use_responses_api"] is True
-        assert providers["gemini_openai_gateway"].use == "agent_workspace.models.patched_openai:PatchedChatOpenAI"
-        assert providers["mimo"].use == "agent_workspace.models.patched_mimo:PatchedChatMiMo"
-        assert providers["deepseek"].use == "agent_workspace.models.patched_deepseek:PatchedChatDeepSeek"
+        assert providers["gemini_openai_gateway"].use == "alpha.models.patched_openai:PatchedChatOpenAI"
+        assert providers["mimo"].use == "alpha.models.patched_mimo:PatchedChatMiMo"
+        assert providers["deepseek"].use == "alpha.models.patched_deepseek:PatchedChatDeepSeek"
         assert providers["volcengine"].extra_config["api_base"] == "https://ark.cn-beijing.volces.com/api/v3"
 
     def test_zai_glm_flash_uses_required_thinking_workaround(self):
         provider = next(p for p in LLM_PROVIDERS if p.name == "zai")
         config = provider.extra_config_for("glm-5.3-flash")
 
-        assert provider.use == "agent_workspace.models.patched_deepseek:PatchedChatDeepSeek"
+        assert provider.use == "alpha.models.patched_deepseek:PatchedChatDeepSeek"
         assert provider.env_var == "ZAI_API_KEY"
         assert config["api_base"] == "https://api.z.ai/api/paas/v4"
         assert config["supports_thinking"] is True
@@ -194,7 +194,7 @@ class TestBuildMinimalConfig:
             display_name="OpenAI",
             api_key_field="api_key",
             env_var="OPENAI_API_KEY",
-            search_use="agent_workspace.community.tavily.tools:web_search_tool",
+            search_use="alpha.community.tavily.tools:web_search_tool",
             search_extra_config={"max_results": 5},
         )
         data = yaml.safe_load(content)
@@ -231,7 +231,7 @@ class TestBuildMinimalConfig:
             display_name="OpenAI",
             api_key_field="api_key",
             env_var="OPENAI_API_KEY",
-            web_fetch_use="agent_workspace.community.jina_ai.tools:web_fetch_tool",
+            web_fetch_use="alpha.community.jina_ai.tools:web_fetch_tool",
             web_fetch_extra_config={"timeout": 10},
         )
         data = yaml.safe_load(content)
@@ -262,7 +262,7 @@ class TestBuildMinimalConfig:
         data = yaml.safe_load(content)
         assert "sandbox" in data
         assert "use" in data["sandbox"]
-        assert data["sandbox"]["use"] == "agent_workspace.sandbox.local:LocalSandboxProvider"
+        assert data["sandbox"]["use"] == "alpha.sandbox.local:LocalSandboxProvider"
         assert data["sandbox"]["allow_host_bash"] is False
 
     def test_bash_tool_disabled_by_default(self):
@@ -284,11 +284,11 @@ class TestBuildMinimalConfig:
             display_name="OpenAI",
             api_key_field="api_key",
             env_var="OPENAI_API_KEY",
-            sandbox_use="agent_workspace.community.aio_sandbox:AioSandboxProvider",
+            sandbox_use="alpha.community.aio_sandbox:AioSandboxProvider",
             include_bash_tool=True,
         )
         data = yaml.safe_load(content)
-        assert data["sandbox"]["use"] == "agent_workspace.community.aio_sandbox:AioSandboxProvider"
+        assert data["sandbox"]["use"] == "alpha.community.aio_sandbox:AioSandboxProvider"
         assert "allow_host_bash" not in data["sandbox"]
         tool_names = [t["name"] for t in data.get("tools", [])]
         assert "bash" in tool_names
@@ -321,7 +321,7 @@ class TestBuildMinimalConfig:
 
     def test_cli_provider_does_not_emit_fake_api_key(self):
         content = build_minimal_config(
-            provider_use="agent_workspace.models.openai_codex_provider:CodexChatModel",
+            provider_use="alpha.models.openai_codex_provider:CodexChatModel",
             model_name="gpt-5.4",
             display_name="Codex CLI",
             api_key_field="api_key",
@@ -359,7 +359,7 @@ class TestBuildMinimalConfig:
         )
         data = yaml.safe_load(content)
         model = data["models"][0]
-        assert model["use"] == "agent_workspace.models.patched_mimo:PatchedChatMiMo"
+        assert model["use"] == "alpha.models.patched_mimo:PatchedChatMiMo"
         assert model["base_url"] == "https://api.xiaomimimo.com/v1"
         assert model["api_key"] == "$MIMO_API_KEY"
         assert model["supports_thinking"] is True
@@ -663,27 +663,27 @@ class TestWriteConfigYaml:
                         {
                             "name": "web_search",
                             "group": "web",
-                            "use": "agent_workspace.community.ddg_search.tools:web_search_tool",
+                            "use": "alpha.community.ddg_search.tools:web_search_tool",
                             "max_results": 5,
                         },
                         {
                             "name": "web_fetch",
                             "group": "web",
-                            "use": "agent_workspace.community.jina_ai.tools:web_fetch_tool",
+                            "use": "alpha.community.jina_ai.tools:web_fetch_tool",
                             "timeout": 10,
                         },
                         {
                             "name": "image_search",
                             "group": "web",
-                            "use": "agent_workspace.community.image_search.tools:image_search_tool",
+                            "use": "alpha.community.image_search.tools:image_search_tool",
                             "max_results": 5,
                         },
-                        {"name": "ls", "group": "file:read", "use": "agent_workspace.sandbox.tools:ls_tool"},
-                        {"name": "write_file", "group": "file:write", "use": "agent_workspace.sandbox.tools:write_file_tool"},
-                        {"name": "bash", "group": "bash", "use": "agent_workspace.sandbox.tools:bash_tool"},
+                        {"name": "ls", "group": "file:read", "use": "alpha.sandbox.tools:ls_tool"},
+                        {"name": "write_file", "group": "file:write", "use": "alpha.sandbox.tools:write_file_tool"},
+                        {"name": "bash", "group": "bash", "use": "alpha.sandbox.tools:bash_tool"},
                     ],
                     "sandbox": {
-                        "use": "agent_workspace.sandbox.local:LocalSandboxProvider",
+                        "use": "alpha.sandbox.local:LocalSandboxProvider",
                         "allow_host_bash": False,
                     },
                     "summarization": {"max_tokens": 2048},

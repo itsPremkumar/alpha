@@ -1,12 +1,12 @@
 import json
 
-from agent_workspace.safety.guardian.circuit_breaker import DenialCircuitBreaker, get_denial_breaker
-from agent_workspace.safety.guardian.floors import PermanentAllowlist
-from agent_workspace.safety.guardian.smart import (
+from alpha.safety.guardian.circuit_breaker import DenialCircuitBreaker, get_denial_breaker
+from alpha.safety.guardian.floors import PermanentAllowlist
+from alpha.safety.guardian.smart import (
     evaluate_command_safety,
     strip_shell_comments,
 )
-from agent_workspace.tools.builtins.smart_approval_tool import verify_command_approval
+from alpha.tools.builtins.smart_approval_tool import verify_command_approval
 
 
 def test_strip_shell_comments():

@@ -9,9 +9,9 @@ import unittest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.runtime import Runtime
 
-from agent_workspace.orchestration.autopilot import ExecutiveAutopilot
-from agent_workspace.agents.middlewares.finish_first_verifier_middleware import FinishFirstVerifierMiddleware
-from agent_workspace.tools.builtins.code_agentic_core import (
+from alpha.orchestration.autopilot import ExecutiveAutopilot
+from alpha.agents.middlewares.finish_first_verifier_middleware import FinishFirstVerifierMiddleware
+from alpha.tools.builtins.code_agentic_core import (
     auto_test_and_repair,
     manage_code_checkpoint,
 )

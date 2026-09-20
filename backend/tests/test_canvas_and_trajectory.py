@@ -2,8 +2,8 @@
 
 from pathlib import Path
 
-from agent_workspace.canvas.manager import CanvasManager
-from agent_workspace.trajectory.store import TrajectoryStore
+from alpha.canvas.manager import CanvasManager
+from alpha.trajectory.store import TrajectoryStore
 
 
 def test_canvas_manager_lifecycle():

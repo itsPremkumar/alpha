@@ -3,10 +3,10 @@
 import tempfile
 from pathlib import Path
 
-from agent_workspace.agents.memory.backends.fullmemory.config import FullMemoryConfig
-from agent_workspace.agents.memory.backends.mem0oss.config import Mem0OssConfig
-from agent_workspace.agents.memory.backends.mem0oss.mem0oss_manager import Mem0OssManager
-from agent_workspace.memory.wiki_vault import WikiVault, ensure_user_vault
+from alpha.agents.memory.backends.fullmemory.config import FullMemoryConfig
+from alpha.agents.memory.backends.mem0oss.config import Mem0OssConfig
+from alpha.agents.memory.backends.mem0oss.mem0oss_manager import Mem0OssManager
+from alpha.memory.wiki_vault import WikiVault, ensure_user_vault
 
 
 def test_wiki_vault_init_digest_search_and_episodes():
@@ -64,7 +64,7 @@ def test_fullmemory_config_rejects_unknown_keys():
 def test_fullmemory_composite_no_keys():
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         mgr_kwargs = {"backend_config": {"storage_path": tmp}, "mode": "middleware"}
-        from agent_workspace.agents.memory.backends.fullmemory.fullmemory_manager import FullMemoryManager
+        from alpha.agents.memory.backends.fullmemory.fullmemory_manager import FullMemoryManager
 
         mgr = FullMemoryManager(**mgr_kwargs)
         try:

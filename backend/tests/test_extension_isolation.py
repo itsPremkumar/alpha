@@ -8,7 +8,7 @@ import pytest
 from langchain.agents.middleware import AgentMiddleware
 from langgraph.errors import GraphBubbleUp
 
-from agent_workspace.extensions.isolation import IsolatedMiddleware
+from alpha.extensions.isolation import IsolatedMiddleware
 
 
 class _Boom(AgentMiddleware):
@@ -683,7 +683,7 @@ def test_graph_bubble_up_propagates_from_lifecycle_hooks():
 def test_middleware_implements_agrees_with_the_wrapper():
     """Placement-guarantee checks reason about hook participation through
     middleware_implements(); the wrapper must not distort it."""
-    from agent_workspace.extensions.stack import middleware_implements
+    from alpha.extensions.stack import middleware_implements
 
     wrapped = IsolatedMiddleware(_LifecycleObserver(), "obs:install", lambda d: None)
     for hook in _LIFECYCLE_HOOKS:

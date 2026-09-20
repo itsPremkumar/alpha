@@ -5,15 +5,15 @@ import pytest
 import pytest_asyncio
 
 from app.mcp_tasks import McpTaskService
-from agent_workspace.config.database_config import DatabaseConfig
-from agent_workspace.mcp.tasks import (
+from alpha.config.database_config import DatabaseConfig
+from alpha.mcp.tasks import (
     ORDINARY_MCP_TASK_DRIVER,
     McpTaskDriverRegistry,
     OrdinaryMcpTaskDriver,
     TaskSubmitRequest,
 )
-from agent_workspace.persistence.engine import close_engine, get_session_factory, init_engine_from_config
-from agent_workspace.persistence.mcp_tasks import McpTaskRepository
+from alpha.persistence.engine import close_engine, get_session_factory, init_engine_from_config
+from alpha.persistence.mcp_tasks import McpTaskRepository
 
 
 @pytest_asyncio.fixture(autouse=True)

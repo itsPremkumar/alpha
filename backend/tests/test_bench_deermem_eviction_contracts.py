@@ -66,7 +66,7 @@ def test_cli_contract_validation_is_offline(capsys) -> None:
 def test_required_policy_version_is_checked_against_production() -> None:
     import pytest
 
-    from agent_workspace.agents.memory.backends.deermem.deermem.core.eviction import EVICTION_POLICY_HYBRID_V1
+    from alpha.agents.memory.backends.deermem.deermem.core.eviction import EVICTION_POLICY_HYBRID_V1
     from scripts.benchmark.deermem_eviction.policy import require_production_policy
 
     config = load_evaluation_config(EVAL_ROOT / "configs" / "pr4789-reproduction-v1.yaml")

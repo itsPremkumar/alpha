@@ -1,7 +1,7 @@
-from agent_workspace.avo import VersionRecord, get_avo_runner
-from agent_workspace.epistemics import EpistemicStatus, get_epistemic_engine
-from agent_workspace.rsi import RSIStage, get_rsi_engine
-from agent_workspace.trajectory.store import get_trajectory_store
+from alpha.avo import VersionRecord, get_avo_runner
+from alpha.epistemics import EpistemicStatus, get_epistemic_engine
+from alpha.rsi import RSIStage, get_rsi_engine
+from alpha.trajectory.store import get_trajectory_store
 
 
 def test_avo_lineage_and_pareto():

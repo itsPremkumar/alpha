@@ -22,9 +22,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from agent_workspace.agents.lead_agent import prompt as prompt_module
-from agent_workspace.skills.describe import _render_skill_metadata, get_skill_index_prompt_section
-from agent_workspace.skills.types import Skill, SkillCategory
+from alpha.agents.lead_agent import prompt as prompt_module
+from alpha.skills.describe import _render_skill_metadata, get_skill_index_prompt_section
+from alpha.skills.types import Skill, SkillCategory
 
 # A value that breaks out of its tag and forges a framework-reserved block the
 # model would read as trusted context.

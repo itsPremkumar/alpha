@@ -36,7 +36,7 @@ def run_agent_workspace(message: str) -> str:
     The model is resolved from ``config.yaml`` (no hardcoded override) so the
     live test exercises Alpha's own model-resolution path.
     """
-    from agent_workspace.client import AgentWorkspaceClient
+    from alpha.client import AgentWorkspaceClient
 
     client = AgentWorkspaceClient(config_path=str(CONFIG_PATH))
     return client.chat(message, thread_id=f"monocle-test-{uuid.uuid4().hex[:8]}")

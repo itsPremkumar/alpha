@@ -9,16 +9,16 @@ import pytest
 from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.types import Command
 
-from agent_workspace.config.app_config import AppConfig
-from agent_workspace.config.paths import Paths
-from agent_workspace.config.sandbox_config import SandboxConfig
-from agent_workspace.config.tool_output_config import ToolOutputConfig
-from agent_workspace.runtime.events.store.memory import MemoryRunEventStore
-from agent_workspace.runtime.runs.manager import RunManager
-from agent_workspace.runtime.runs.schemas import RunStatus
-from agent_workspace.runtime.runs.store.memory import MemoryRunStore
-from agent_workspace.runtime.runs.worker import RunContext, _delivery_content_with_outputs, run_agent
-from agent_workspace.runtime.user_context import get_effective_user_id
+from alpha.config.app_config import AppConfig
+from alpha.config.paths import Paths
+from alpha.config.sandbox_config import SandboxConfig
+from alpha.config.tool_output_config import ToolOutputConfig
+from alpha.runtime.events.store.memory import MemoryRunEventStore
+from alpha.runtime.runs.manager import RunManager
+from alpha.runtime.runs.schemas import RunStatus
+from alpha.runtime.runs.store.memory import MemoryRunStore
+from alpha.runtime.runs.worker import RunContext, _delivery_content_with_outputs, run_agent
+from alpha.runtime.user_context import get_effective_user_id
 
 
 def _make_bridge():
@@ -128,7 +128,7 @@ async def test_changed_outputs_succeed_when_a_produced_output_is_presented(monke
     record = await run_manager.create("thread-1")
     store = MemoryRunEventStore()
     monkeypatch.setattr(
-        "agent_workspace.runtime.runs.worker._produced_output_paths",
+        "alpha.runtime.runs.worker._produced_output_paths",
         AsyncMock(return_value=["/mnt/user-data/outputs/report.md"]),
     )
 
@@ -182,7 +182,7 @@ async def test_changed_outputs_fail_closed_when_not_presented(monkeypatch):
     record = await run_manager.create("thread-1")
     store = MemoryRunEventStore()
     monkeypatch.setattr(
-        "agent_workspace.runtime.runs.worker._produced_output_paths",
+        "alpha.runtime.runs.worker._produced_output_paths",
         AsyncMock(return_value=["/mnt/user-data/outputs/report.md"]),
     )
 
@@ -226,7 +226,7 @@ async def test_externalized_tool_results_do_not_trigger_delivery_verification(tm
     process feedback for the model, not deliverables: a run that only produced
     those files must succeed without any present_files call."""
     paths = Paths(base_dir=tmp_path)
-    monkeypatch.setattr("agent_workspace.workspace_changes.recorder.get_paths", lambda: paths)
+    monkeypatch.setattr("alpha.workspace_changes.recorder.get_paths", lambda: paths)
     run_manager = RunManager()
     record = await run_manager.create("thread-1")
     store = MemoryRunEventStore()
@@ -262,7 +262,7 @@ async def test_custom_tool_output_storage_subdir_does_not_trigger_delivery_verif
     """A custom tool_output.storage_subdir is honoured by the exclusion, not
     only the default .tool-results name."""
     paths = Paths(base_dir=tmp_path)
-    monkeypatch.setattr("agent_workspace.workspace_changes.recorder.get_paths", lambda: paths)
+    monkeypatch.setattr("alpha.workspace_changes.recorder.get_paths", lambda: paths)
     run_manager = RunManager()
     record = await run_manager.create("thread-1")
     store = MemoryRunEventStore()
@@ -295,7 +295,7 @@ async def test_changed_outputs_succeed_when_one_of_multiple_outputs_is_presented
     record = await run_manager.create("thread-1")
     store = MemoryRunEventStore()
     monkeypatch.setattr(
-        "agent_workspace.runtime.runs.worker._produced_output_paths",
+        "alpha.runtime.runs.worker._produced_output_paths",
         AsyncMock(
             return_value=[
                 "/mnt/user-data/outputs/report.md",
@@ -346,7 +346,7 @@ async def test_changed_outputs_fail_when_present_files_only_presents_an_unrelate
     record = await run_manager.create("thread-1")
     store = MemoryRunEventStore()
     monkeypatch.setattr(
-        "agent_workspace.runtime.runs.worker._produced_output_paths",
+        "alpha.runtime.runs.worker._produced_output_paths",
         AsyncMock(return_value=["/mnt/user-data/outputs/report.md"]),
     )
 
@@ -463,7 +463,7 @@ async def test_delivery_event_is_singleton_across_goal_continuations(monkeypatch
             return {"messages": []}
         return None
 
-    monkeypatch.setattr("agent_workspace.runtime.runs.worker._prepare_goal_continuation_input", prepare_continuation)
+    monkeypatch.setattr("alpha.runtime.runs.worker._prepare_goal_continuation_input", prepare_continuation)
 
     await run_agent(
         _make_bridge(),
@@ -638,7 +638,7 @@ async def test_produced_artifact_delivery_fails_closed_when_receipt_cannot_be_pe
     run_manager = RunManager(store=run_store)
     record = await run_manager.create("thread-1")
     monkeypatch.setattr(
-        "agent_workspace.runtime.runs.worker._produced_output_paths",
+        "alpha.runtime.runs.worker._produced_output_paths",
         AsyncMock(return_value=["/mnt/user-data/outputs/report.md"]),
     )
 
@@ -682,7 +682,7 @@ async def test_delivery_event_emitted_when_checkpoint_preflight_fails(monkeypatc
     record = await run_manager.create("thread-1")
     store = MemoryRunEventStore()
     compatibility_check = AsyncMock(side_effect=RuntimeError("incompatible checkpoint"))
-    monkeypatch.setattr("agent_workspace.runtime.runs.worker.aensure_checkpoint_mode_compatible", compatibility_check)
+    monkeypatch.setattr("alpha.runtime.runs.worker.aensure_checkpoint_mode_compatible", compatibility_check)
 
     def unexpected_agent_factory(**kwargs):
         raise AssertionError("agent must not be built after preflight failure")

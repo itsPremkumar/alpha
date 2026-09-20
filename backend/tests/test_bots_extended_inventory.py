@@ -8,26 +8,26 @@ from __future__ import annotations
 
 import pytest
 
-import agent_workspace.bots.health as health_mod
-import agent_workspace.bots.kill_switch as kill_switch_mod
-import agent_workspace.bots.registry as bot_reg
-from agent_workspace.bots.events import get_org_event_store, query_org_events
-from agent_workspace.bots.handoff import escalate_task, execute_handoff, resolve_succession
-from agent_workspace.bots.health import BotHealthMonitor
-from agent_workspace.bots.kill_switch import (
+import alpha.bots.health as health_mod
+import alpha.bots.kill_switch as kill_switch_mod
+import alpha.bots.registry as bot_reg
+from alpha.bots.events import get_org_event_store, query_org_events
+from alpha.bots.handoff import escalate_task, execute_handoff, resolve_succession
+from alpha.bots.health import BotHealthMonitor
+from alpha.bots.kill_switch import (
     is_bot_paused,
     is_kill_switch_active,
     pause_bot,
     resume_bot,
     set_global_kill_switch,
 )
-from agent_workspace.bots.organization import generate_organization_for_goal, get_organization_chart
-from agent_workspace.bots.performance import get_bot_performance, record_task_outcome
-from agent_workspace.bots.profile import BotProfile
-from agent_workspace.bots.quality_gate import evaluate_quality_gate
-from agent_workspace.bots.registry import BotRegistry
-from agent_workspace.bots.templates import BOT_TEMPLATES, DEPARTMENTS
-from agent_workspace.bots.work_discovery import claim_task, match_bot_for_task
+from alpha.bots.organization import generate_organization_for_goal, get_organization_chart
+from alpha.bots.performance import get_bot_performance, record_task_outcome
+from alpha.bots.profile import BotProfile
+from alpha.bots.quality_gate import evaluate_quality_gate
+from alpha.bots.registry import BotRegistry
+from alpha.bots.templates import BOT_TEMPLATES, DEPARTMENTS
+from alpha.bots.work_discovery import claim_task, match_bot_for_task
 
 
 @pytest.fixture(autouse=True)
@@ -384,7 +384,7 @@ async def test_gateway_bots_extended_endpoints():
 
 
 def test_bot_roster_tool_actions():
-    from agent_workspace.tools.builtins.bot_roster_tool import bot_roster_tool
+    from alpha.tools.builtins.bot_roster_tool import bot_roster_tool
 
     # 1. Create with template
     created = bot_roster_tool.invoke(

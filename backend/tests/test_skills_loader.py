@@ -5,9 +5,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from agent_workspace.config.skills_config import SkillsConfig
-from agent_workspace.skills.storage import get_or_new_skill_storage
-from agent_workspace.skills.storage.local_skill_storage import LocalSkillStorage
+from alpha.config.skills_config import SkillsConfig
+from alpha.skills.storage import get_or_new_skill_storage
+from alpha.skills.storage.local_skill_storage import LocalSkillStorage
 
 
 def _write_skill(skill_dir: Path, name: str, description: str) -> None:

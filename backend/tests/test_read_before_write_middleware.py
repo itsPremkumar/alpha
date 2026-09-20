@@ -31,7 +31,7 @@ def _read_marked_message(path, content, tool_call_id="r1"):
 
 
 def _middleware(files: dict[str, str]):
-    from agent_workspace.agents.middlewares.read_before_write_middleware import ReadBeforeWriteMiddleware
+    from alpha.agents.middlewares.read_before_write_middleware import ReadBeforeWriteMiddleware
 
     def reader(_runtime, path):
         normalized = posixpath.normpath(path)
@@ -47,7 +47,7 @@ def _middleware(files: dict[str, str]):
 
 class TestReadCurrentFileContent:
     def test_reads_via_sandbox_with_resolution(self):
-        from agent_workspace.sandbox import tools as sandbox_tools
+        from alpha.sandbox import tools as sandbox_tools
 
         sandbox = MagicMock()
         sandbox.read_file.return_value = "hello"
@@ -61,7 +61,7 @@ class TestReadCurrentFileContent:
         sandbox.read_file.assert_called_once_with("/mnt/user-data/outputs/report.md")
 
     def test_propagates_file_not_found(self):
-        from agent_workspace.sandbox import tools as sandbox_tools
+        from alpha.sandbox import tools as sandbox_tools
 
         sandbox = MagicMock()
         sandbox.read_file.side_effect = FileNotFoundError()
@@ -214,7 +214,7 @@ class TestWriteGate:
         assert result.status != "error"
 
     def test_blocked_write_has_agent_workspace_tool_meta(self):
-        from agent_workspace.agents.middlewares.tool_result_meta import TOOL_META_KEY
+        from alpha.agents.middlewares.tool_result_meta import TOOL_META_KEY
 
         mw = _middleware({self.PATH: "v1"})
         request = _make_request("write_file", {"description": "d", "path": self.PATH, "content": "v2"})
@@ -242,7 +242,7 @@ class TestAsyncPaths:
     def test_async_blocked_write_has_agent_workspace_tool_meta(self):
         import asyncio
 
-        from agent_workspace.agents.middlewares.tool_result_meta import TOOL_META_KEY
+        from alpha.agents.middlewares.tool_result_meta import TOOL_META_KEY
 
         mw = _middleware({self.PATH: "v1"})
         request = _make_request("write_file", {"description": "d", "path": self.PATH, "content": "v2"})
@@ -282,17 +282,17 @@ class TestAsyncPaths:
 
 
 def _wiring_app_config(**overrides):
-    from agent_workspace.config.app_config import AppConfig
-    from agent_workspace.config.sandbox_config import SandboxConfig
+    from alpha.config.app_config import AppConfig
+    from alpha.config.sandbox_config import SandboxConfig
 
     return AppConfig(sandbox=SandboxConfig(use="test"), **overrides)
 
 
 class TestChainWiring:
     def test_enabled_by_default_in_runtime_chain(self):
-        from agent_workspace.agents.middlewares.read_before_write_middleware import ReadBeforeWriteMiddleware
-        from agent_workspace.agents.middlewares.sandbox_audit_middleware import SandboxAuditMiddleware
-        from agent_workspace.agents.middlewares.tool_error_handling_middleware import ToolErrorHandlingMiddleware, build_lead_runtime_middlewares
+        from alpha.agents.middlewares.read_before_write_middleware import ReadBeforeWriteMiddleware
+        from alpha.agents.middlewares.sandbox_audit_middleware import SandboxAuditMiddleware
+        from alpha.agents.middlewares.tool_error_handling_middleware import ToolErrorHandlingMiddleware, build_lead_runtime_middlewares
 
         middlewares = build_lead_runtime_middlewares(app_config=_wiring_app_config())
         types = [type(m) for m in middlewares]
@@ -300,17 +300,17 @@ class TestChainWiring:
         assert types.index(SandboxAuditMiddleware) < types.index(ReadBeforeWriteMiddleware) < types.index(ToolErrorHandlingMiddleware)
 
     def test_disabled_removes_middleware(self):
-        from agent_workspace.agents.middlewares.read_before_write_middleware import ReadBeforeWriteMiddleware
-        from agent_workspace.agents.middlewares.tool_error_handling_middleware import build_lead_runtime_middlewares
-        from agent_workspace.config.read_before_write_config import ReadBeforeWriteConfig
+        from alpha.agents.middlewares.read_before_write_middleware import ReadBeforeWriteMiddleware
+        from alpha.agents.middlewares.tool_error_handling_middleware import build_lead_runtime_middlewares
+        from alpha.config.read_before_write_config import ReadBeforeWriteConfig
 
         app_config = _wiring_app_config(read_before_write=ReadBeforeWriteConfig(enabled=False))
         middlewares = build_lead_runtime_middlewares(app_config=app_config)
         assert ReadBeforeWriteMiddleware not in [type(m) for m in middlewares]
 
     def test_subagents_get_the_gate_too(self):
-        from agent_workspace.agents.middlewares.read_before_write_middleware import ReadBeforeWriteMiddleware
-        from agent_workspace.agents.middlewares.tool_error_handling_middleware import build_subagent_runtime_middlewares
+        from alpha.agents.middlewares.read_before_write_middleware import ReadBeforeWriteMiddleware
+        from alpha.agents.middlewares.tool_error_handling_middleware import build_subagent_runtime_middlewares
 
         middlewares = build_subagent_runtime_middlewares(app_config=_wiring_app_config())
         assert ReadBeforeWriteMiddleware in [type(m) for m in middlewares]
@@ -322,7 +322,7 @@ class TestErrorStringSandboxes:
     PATH = "/mnt/user-data/outputs/report.md"
 
     def _error_string_middleware(self, files):
-        from agent_workspace.agents.middlewares.read_before_write_middleware import ReadBeforeWriteMiddleware
+        from alpha.agents.middlewares.read_before_write_middleware import ReadBeforeWriteMiddleware
 
         def reader(_runtime, path):
             normalized = posixpath.normpath(path)
@@ -446,12 +446,12 @@ class TestBlockedPayloadElision:
 
     @staticmethod
     def _config(**overrides):
-        from agent_workspace.config.read_before_write_config import ReadBeforeWriteConfig
+        from alpha.config.read_before_write_config import ReadBeforeWriteConfig
 
         return ReadBeforeWriteConfig(**overrides)
 
     def _middleware(self, files=None, **config_overrides):
-        from agent_workspace.agents.middlewares.read_before_write_middleware import ReadBeforeWriteMiddleware
+        from alpha.agents.middlewares.read_before_write_middleware import ReadBeforeWriteMiddleware
 
         files = {self.PATH: "v1"} if files is None else files
 
@@ -482,14 +482,14 @@ class TestBlockedPayloadElision:
         return handler.call_args[0][0]
 
     def test_blocked_result_carries_write_block_marker(self):
-        from agent_workspace.agents.middlewares.read_before_write_middleware import WRITE_BLOCK_KEY
+        from alpha.agents.middlewares.read_before_write_middleware import WRITE_BLOCK_KEY
 
         mw = self._middleware()
         _ai, blocked = self._blocked_turn(mw, "write_file", {"description": "d", "path": self.PATH, "content": "v2"})
         assert blocked.additional_kwargs[WRITE_BLOCK_KEY] == {"path": self.PATH, "tool": "write_file"}
 
     def test_allowed_write_result_has_no_marker(self):
-        from agent_workspace.agents.middlewares.read_before_write_middleware import WRITE_BLOCK_KEY
+        from alpha.agents.middlewares.read_before_write_middleware import WRITE_BLOCK_KEY
 
         mw = self._middleware()
         messages = [_read_marked_message(self.PATH, "v1")]

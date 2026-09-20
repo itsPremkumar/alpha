@@ -15,8 +15,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.gateway.app import create_app
-from agent_workspace.commands import CommandCategory, SlashCommandDef, command_registry
-from agent_workspace.commands.registry import CommandExecutionResult
+from alpha.commands import CommandCategory, SlashCommandDef, command_registry
+from alpha.commands.registry import CommandExecutionResult
 
 
 def test_registry_initialization():

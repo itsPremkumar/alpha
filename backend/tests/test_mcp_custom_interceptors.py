@@ -3,7 +3,7 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from agent_workspace.mcp.tools import get_mcp_tools
+from alpha.mcp.tools import get_mcp_tools
 
 
 def _make_patches(*, interceptor_paths=None):
@@ -24,23 +24,23 @@ def _make_patches(*, interceptor_paths=None):
             return_value=mock_client,
         ),
         "from_file": patch(
-            "agent_workspace.config.extensions_config.ExtensionsConfig.from_file",
+            "alpha.config.extensions_config.ExtensionsConfig.from_file",
             return_value=MagicMock(
                 model_extra=extra,
                 get_enabled_mcp_servers=MagicMock(return_value={}),
             ),
         ),
         "build_servers": patch(
-            "agent_workspace.mcp.tools.build_servers_config",
+            "alpha.mcp.tools.build_servers_config",
             return_value={"test-server": {}},
         ),
         "oauth_headers": patch(
-            "agent_workspace.mcp.tools.get_initial_oauth_headers",
+            "alpha.mcp.tools.get_initial_oauth_headers",
             new_callable=AsyncMock,
             return_value={},
         ),
         "oauth_interceptor": patch(
-            "agent_workspace.mcp.tools.build_oauth_tool_interceptor",
+            "alpha.mcp.tools.build_oauth_tool_interceptor",
             return_value=None,
         ),
     }
@@ -69,7 +69,7 @@ def test_custom_interceptor_loaded_and_appended():
         p["build_servers"],
         p["oauth_headers"],
         p["oauth_interceptor"],
-        patch("agent_workspace.mcp.tools.resolve_variable", return_value=fake_builder),
+        patch("alpha.mcp.tools.resolve_variable", return_value=fake_builder),
     ):
         asyncio.run(get_mcp_tools())
 
@@ -100,7 +100,7 @@ def test_multiple_custom_interceptors():
         p["build_servers"],
         p["oauth_headers"],
         p["oauth_interceptor"],
-        patch("agent_workspace.mcp.tools.resolve_variable", side_effect=lambda path: builders[path]),
+        patch("alpha.mcp.tools.resolve_variable", side_effect=lambda path: builders[path]),
     ):
         asyncio.run(get_mcp_tools())
 
@@ -120,7 +120,7 @@ def test_custom_interceptor_builder_returning_none_is_skipped():
         p["build_servers"],
         p["oauth_headers"],
         p["oauth_interceptor"],
-        patch("agent_workspace.mcp.tools.resolve_variable", return_value=lambda: None),
+        patch("alpha.mcp.tools.resolve_variable", return_value=lambda: None),
     ):
         asyncio.run(get_mcp_tools())
 
@@ -137,8 +137,8 @@ def test_custom_interceptor_resolve_error_logs_warning_and_continues():
         p["build_servers"],
         p["oauth_headers"],
         p["oauth_interceptor"],
-        patch("agent_workspace.mcp.tools.resolve_variable", side_effect=ImportError("no such module")),
-        patch("agent_workspace.mcp.tools.logger.warning") as mock_warn,
+        patch("alpha.mcp.tools.resolve_variable", side_effect=ImportError("no such module")),
+        patch("alpha.mcp.tools.logger.warning") as mock_warn,
     ):
         tools = asyncio.run(get_mcp_tools())
 
@@ -161,8 +161,8 @@ def test_custom_interceptor_builder_exception_logs_warning_and_continues():
         p["build_servers"],
         p["oauth_headers"],
         p["oauth_interceptor"],
-        patch("agent_workspace.mcp.tools.resolve_variable", return_value=exploding_builder),
-        patch("agent_workspace.mcp.tools.logger.warning") as mock_warn,
+        patch("alpha.mcp.tools.resolve_variable", return_value=exploding_builder),
+        patch("alpha.mcp.tools.logger.warning") as mock_warn,
     ):
         tools = asyncio.run(get_mcp_tools())
 
@@ -203,8 +203,8 @@ def test_custom_interceptor_coexists_with_oauth_interceptor():
         p["from_file"],
         p["build_servers"],
         p["oauth_headers"],
-        patch("agent_workspace.mcp.tools.build_oauth_tool_interceptor", return_value=oauth_fn),
-        patch("agent_workspace.mcp.tools.resolve_variable", return_value=lambda: custom_fn),
+        patch("alpha.mcp.tools.build_oauth_tool_interceptor", return_value=oauth_fn),
+        patch("alpha.mcp.tools.resolve_variable", return_value=lambda: custom_fn),
     ):
         asyncio.run(get_mcp_tools())
 
@@ -228,7 +228,7 @@ def test_mcp_interceptors_single_string_is_normalized():
         p["build_servers"],
         p["oauth_headers"],
         p["oauth_interceptor"],
-        patch("agent_workspace.mcp.tools.resolve_variable", return_value=lambda: fake_interceptor),
+        patch("alpha.mcp.tools.resolve_variable", return_value=lambda: fake_interceptor),
     ):
         asyncio.run(get_mcp_tools())
 
@@ -245,7 +245,7 @@ def test_mcp_interceptors_invalid_type_logs_warning():
         p["build_servers"],
         p["oauth_headers"],
         p["oauth_interceptor"],
-        patch("agent_workspace.mcp.tools.logger.warning") as mock_warn,
+        patch("alpha.mcp.tools.logger.warning") as mock_warn,
     ):
         asyncio.run(get_mcp_tools())
 
@@ -264,8 +264,8 @@ def test_custom_interceptor_non_callable_return_logs_warning():
         p["build_servers"],
         p["oauth_headers"],
         p["oauth_interceptor"],
-        patch("agent_workspace.mcp.tools.resolve_variable", return_value=lambda: "not_a_callable"),
-        patch("agent_workspace.mcp.tools.logger.warning") as mock_warn,
+        patch("alpha.mcp.tools.resolve_variable", return_value=lambda: "not_a_callable"),
+        patch("alpha.mcp.tools.logger.warning") as mock_warn,
     ):
         asyncio.run(get_mcp_tools())
 

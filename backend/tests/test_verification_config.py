@@ -4,7 +4,7 @@ from pathlib import Path
 
 import yaml
 
-from agent_workspace.config.verification_config import VerificationConfig
+from alpha.config.verification_config import VerificationConfig
 
 
 def test_defaults_receipts_on_judge_off():
@@ -16,7 +16,7 @@ def test_defaults_receipts_on_judge_off():
 
 
 def test_app_config_carries_verification_section():
-    from agent_workspace.config.app_config import AppConfig
+    from alpha.config.app_config import AppConfig
 
     app_config = AppConfig.model_validate({"sandbox": {"use": "test"}})
     assert app_config.verification.receipts_enabled is True

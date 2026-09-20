@@ -1,5 +1,5 @@
 
-from agent_workspace.security.enclave import DeceptionWatchdog, TrajectoryFlightRecorder
+from alpha.security.enclave import DeceptionWatchdog, TrajectoryFlightRecorder
 
 
 def test_trajectory_flight_recorder_chain_integrity():

@@ -20,11 +20,11 @@ from pathlib import Path
 
 import pytest
 
-from agent_workspace.sandbox import path_patterns as path_patterns_module
-from agent_workspace.sandbox.local import local_sandbox as local_sandbox_module
-from agent_workspace.sandbox.local.local_sandbox import LocalSandbox, PathMapping
-from agent_workspace.sandbox.path_patterns import build_output_mask_pattern
-from agent_workspace.sandbox.tools import _compiled_mask_patterns
+from alpha.sandbox import path_patterns as path_patterns_module
+from alpha.sandbox.local import local_sandbox as local_sandbox_module
+from alpha.sandbox.local.local_sandbox import LocalSandbox, PathMapping
+from alpha.sandbox.path_patterns import build_output_mask_pattern
+from alpha.sandbox.tools import _compiled_mask_patterns
 
 
 def _legacy_tools_pattern(base: str) -> re.Pattern[str]:

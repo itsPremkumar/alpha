@@ -9,8 +9,8 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.tools import tool
 
-from agent_workspace.agents.middlewares.terminal_response_middleware import TerminalResponseMiddleware
-from agent_workspace.runtime.runs.worker import _extract_llm_error_fallback_message
+from alpha.agents.middlewares.terminal_response_middleware import TerminalResponseMiddleware
+from alpha.runtime.runs.worker import _extract_llm_error_fallback_message
 
 
 @tool

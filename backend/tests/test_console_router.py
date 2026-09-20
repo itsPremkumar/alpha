@@ -24,9 +24,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.gateway.routers import console
-from agent_workspace.persistence.base import Base
-from agent_workspace.persistence.run.model import RunRow
-from agent_workspace.persistence.thread_meta.model import ThreadMetaRow
+from alpha.persistence.base import Base
+from alpha.persistence.run.model import RunRow
+from alpha.persistence.thread_meta.model import ThreadMetaRow
 
 # Pinned to noon UTC so hour-level seed offsets (NOW - 1h, NOW - 2h) never cross
 # the midnight boundary into the previous calendar day, which would otherwise

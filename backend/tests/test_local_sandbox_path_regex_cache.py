@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from agent_workspace.sandbox.local import local_sandbox as local_sandbox_module
-from agent_workspace.sandbox.local.local_sandbox import LocalSandbox, PathMapping
+from alpha.sandbox.local import local_sandbox as local_sandbox_module
+from alpha.sandbox.local.local_sandbox import LocalSandbox, PathMapping
 
 
 def _make_sandbox(tmp_path: Path) -> LocalSandbox:

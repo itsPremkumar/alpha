@@ -12,15 +12,15 @@ from langchain_core.outputs import ChatGeneration, ChatResult
 from langgraph.constants import TAG_NOSTREAM
 from pydantic import ValidationError
 
-from agent_workspace.agents.memory.summarization_hook import memory_flush_hook
-from agent_workspace.agents.middlewares.dynamic_context_middleware import _DYNAMIC_CONTEXT_REMINDER_KEY, DynamicContextMiddleware, is_dynamic_context_reminder
-from agent_workspace.agents.middlewares.summarization_middleware import AgentWorkspaceSummarizationMiddleware, SummarizationEvent, SummaryGenerationError, create_summarization_middleware
-from agent_workspace.agents.thread_state import ThreadState
-from agent_workspace.config.app_config import AppConfig
-from agent_workspace.config.memory_config import MemoryConfig
-from agent_workspace.config.model_config import ModelConfig
-from agent_workspace.config.sandbox_config import SandboxConfig
-from agent_workspace.config.summarization_config import ContextSize, SummarizationConfig
+from alpha.agents.memory.summarization_hook import memory_flush_hook
+from alpha.agents.middlewares.dynamic_context_middleware import _DYNAMIC_CONTEXT_REMINDER_KEY, DynamicContextMiddleware, is_dynamic_context_reminder
+from alpha.agents.middlewares.summarization_middleware import AgentWorkspaceSummarizationMiddleware, SummarizationEvent, SummaryGenerationError, create_summarization_middleware
+from alpha.agents.thread_state import ThreadState
+from alpha.config.app_config import AppConfig
+from alpha.config.memory_config import MemoryConfig
+from alpha.config.model_config import ModelConfig
+from alpha.config.sandbox_config import SandboxConfig
+from alpha.config.summarization_config import ContextSize, SummarizationConfig
 
 
 def _messages() -> list:
@@ -276,7 +276,7 @@ def test_dynamic_context_reminder_is_preserved_across_summarization() -> None:
     assert emitted[1] is reminder
 
     followup_state = {"messages": [*emitted[1:], HumanMessage(content="Follow-up", id="msg-2")]}
-    with mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
+    with mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
         mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
         assert DynamicContextMiddleware().before_agent(followup_state, _runtime()) is None
 
@@ -330,8 +330,8 @@ async def test_abefore_model_calls_hooks_same_as_sync() -> None:
 
 def test_memory_flush_hook_skips_when_memory_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
     manager = MagicMock()
-    monkeypatch.setattr("agent_workspace.agents.memory.summarization_hook.get_memory_config", lambda: MemoryConfig(enabled=False))
-    monkeypatch.setattr("agent_workspace.agents.memory.summarization_hook.get_memory_manager", lambda: manager)
+    monkeypatch.setattr("alpha.agents.memory.summarization_hook.get_memory_config", lambda: MemoryConfig(enabled=False))
+    monkeypatch.setattr("alpha.agents.memory.summarization_hook.get_memory_manager", lambda: manager)
 
     memory_flush_hook(
         SummarizationEvent(
@@ -348,8 +348,8 @@ def test_memory_flush_hook_skips_when_memory_disabled(monkeypatch: pytest.Monkey
 
 def test_memory_flush_hook_skips_when_thread_id_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     manager = MagicMock()
-    monkeypatch.setattr("agent_workspace.agents.memory.summarization_hook.get_memory_config", lambda: MemoryConfig(enabled=True))
-    monkeypatch.setattr("agent_workspace.agents.memory.summarization_hook.get_memory_manager", lambda: manager)
+    monkeypatch.setattr("alpha.agents.memory.summarization_hook.get_memory_config", lambda: MemoryConfig(enabled=True))
+    monkeypatch.setattr("alpha.agents.memory.summarization_hook.get_memory_manager", lambda: manager)
 
     memory_flush_hook(
         SummarizationEvent(
@@ -371,8 +371,8 @@ def test_memory_flush_hook_forwards_raw_messages_to_manager(monkeypatch: pytest.
         AIMessage(content="Calling tool", tool_calls=[{"name": "search", "id": "tool-1", "args": {}}]),
         AIMessage(content="Final answer"),
     ]
-    monkeypatch.setattr("agent_workspace.agents.memory.summarization_hook.get_memory_config", lambda: MemoryConfig(enabled=True))
-    monkeypatch.setattr("agent_workspace.agents.memory.summarization_hook.get_memory_manager", lambda: manager)
+    monkeypatch.setattr("alpha.agents.memory.summarization_hook.get_memory_config", lambda: MemoryConfig(enabled=True))
+    monkeypatch.setattr("alpha.agents.memory.summarization_hook.get_memory_manager", lambda: manager)
 
     memory_flush_hook(
         SummarizationEvent(
@@ -394,8 +394,8 @@ def test_memory_flush_hook_forwards_raw_messages_to_manager(monkeypatch: pytest.
 
 def test_memory_flush_hook_preserves_agent_scoped_memory(monkeypatch: pytest.MonkeyPatch) -> None:
     manager = MagicMock()
-    monkeypatch.setattr("agent_workspace.agents.memory.summarization_hook.get_memory_config", lambda: MemoryConfig(enabled=True))
-    monkeypatch.setattr("agent_workspace.agents.memory.summarization_hook.get_memory_manager", lambda: manager)
+    monkeypatch.setattr("alpha.agents.memory.summarization_hook.get_memory_config", lambda: MemoryConfig(enabled=True))
+    monkeypatch.setattr("alpha.agents.memory.summarization_hook.get_memory_manager", lambda: manager)
 
     memory_flush_hook(
         SummarizationEvent(
@@ -413,8 +413,8 @@ def test_memory_flush_hook_preserves_agent_scoped_memory(monkeypatch: pytest.Mon
 
 def test_memory_flush_hook_passes_runtime_user_id(monkeypatch: pytest.MonkeyPatch) -> None:
     manager = MagicMock()
-    monkeypatch.setattr("agent_workspace.agents.memory.summarization_hook.get_memory_config", lambda: MemoryConfig(enabled=True))
-    monkeypatch.setattr("agent_workspace.agents.memory.summarization_hook.get_memory_manager", lambda: manager)
+    monkeypatch.setattr("alpha.agents.memory.summarization_hook.get_memory_config", lambda: MemoryConfig(enabled=True))
+    monkeypatch.setattr("alpha.agents.memory.summarization_hook.get_memory_manager", lambda: manager)
 
     memory_flush_hook(
         SummarizationEvent(
@@ -643,7 +643,7 @@ def test_factory_attaches_memory_flush_hook_by_default(monkeypatch):
     and the default ``skip_memory_flush=False``."""
     fake_model = MagicMock()
     fake_model.with_config.return_value = fake_model
-    monkeypatch.setattr("agent_workspace.agents.middlewares.summarization_middleware.create_chat_model", lambda **kw: fake_model)
+    monkeypatch.setattr("alpha.agents.middlewares.summarization_middleware.create_chat_model", lambda **kw: fake_model)
 
     app_config = SimpleNamespace(
         summarization=SummarizationConfig(enabled=True),
@@ -662,7 +662,7 @@ def test_factory_skip_memory_flush_omits_hook(monkeypatch):
     PARENT thread's durable memory (#3875 Phase 3 review)."""
     fake_model = MagicMock()
     fake_model.with_config.return_value = fake_model
-    monkeypatch.setattr("agent_workspace.agents.middlewares.summarization_middleware.create_chat_model", lambda **kw: fake_model)
+    monkeypatch.setattr("alpha.agents.middlewares.summarization_middleware.create_chat_model", lambda **kw: fake_model)
 
     app_config = SimpleNamespace(
         summarization=SummarizationConfig(enabled=True),
@@ -782,7 +782,7 @@ def test_null_model_summarizes_with_the_run_model(monkeypatch: pytest.MonkeyPatc
     injected ``runtime.context['model_name']``, which the production custom-agent /
     subagent contexts never populate."""
     built: list = []
-    monkeypatch.setattr("agent_workspace.agents.middlewares.summarization_middleware.create_chat_model", _tracking_create_chat_model(built))
+    monkeypatch.setattr("alpha.agents.middlewares.summarization_middleware.create_chat_model", _tracking_create_chat_model(built))
 
     default_model = MagicMock()
     default_model.with_config.return_value = default_model
@@ -811,7 +811,7 @@ def test_explicit_summary_model_failure_falls_back_to_run_model(monkeypatch: pyt
     compaction falls back to the run's own (working) model instead of no-op'ing.
     The fallback is built lazily only after the primary fails."""
     built: list = []
-    monkeypatch.setattr("agent_workspace.agents.middlewares.summarization_middleware.create_chat_model", _tracking_create_chat_model(built))
+    monkeypatch.setattr("alpha.agents.middlewares.summarization_middleware.create_chat_model", _tracking_create_chat_model(built))
 
     explicit = MagicMock()
     explicit.with_config.return_value = explicit
@@ -838,7 +838,7 @@ def test_explicit_summary_model_failure_falls_back_to_run_model(monkeypatch: pyt
 async def test_async_explicit_failure_falls_back_to_run_model(monkeypatch: pytest.MonkeyPatch) -> None:
     """The async path applies the same run-model fallback as the sync path."""
     built: list = []
-    monkeypatch.setattr("agent_workspace.agents.middlewares.summarization_middleware.create_chat_model", _tracking_create_chat_model(built))
+    monkeypatch.setattr("alpha.agents.middlewares.summarization_middleware.create_chat_model", _tracking_create_chat_model(built))
 
     explicit = MagicMock()
     explicit.with_config.return_value = explicit
@@ -865,7 +865,7 @@ def test_both_summary_models_failing_returns_none_on_automatic_path(monkeypatch:
     """When the explicit model and the run-model fallback both fail, the automatic
     path leaves compaction state unchanged (returns None) rather than raising."""
     built: list = []
-    monkeypatch.setattr("agent_workspace.agents.middlewares.summarization_middleware.create_chat_model", _tracking_create_chat_model(built, fail=True))
+    monkeypatch.setattr("alpha.agents.middlewares.summarization_middleware.create_chat_model", _tracking_create_chat_model(built, fail=True))
 
     explicit = MagicMock()
     explicit.with_config.return_value = explicit
@@ -892,7 +892,7 @@ def test_explicit_summary_model_equal_to_run_model_is_not_retried(monkeypatch: p
     fallback: the failed model must not be re-invoked (that would just burn another
     call against a provider we already know is down) and no second model is built."""
     built: list = []
-    monkeypatch.setattr("agent_workspace.agents.middlewares.summarization_middleware.create_chat_model", _tracking_create_chat_model(built, fail=True))
+    monkeypatch.setattr("alpha.agents.middlewares.summarization_middleware.create_chat_model", _tracking_create_chat_model(built, fail=True))
 
     explicit = MagicMock()
     explicit.with_config.return_value = explicit
@@ -922,7 +922,7 @@ def test_fallback_construction_error_does_not_escape_automatic_path(monkeypatch:
     def _failing_build(*, name=None, **kwargs):
         raise RuntimeError("cannot build run model")
 
-    monkeypatch.setattr("agent_workspace.agents.middlewares.summarization_middleware.create_chat_model", _failing_build)
+    monkeypatch.setattr("alpha.agents.middlewares.summarization_middleware.create_chat_model", _failing_build)
 
     explicit = MagicMock()
     explicit.with_config.return_value = explicit
@@ -948,7 +948,7 @@ def test_blank_summary_response_is_not_committed_null_case(monkeypatch: pytest.M
     summary: the automatic path returns None (history preserved, no RemoveMessage)
     instead of removing all history for an empty replacement."""
     run_model = _blank_model()
-    monkeypatch.setattr("agent_workspace.agents.middlewares.summarization_middleware.create_chat_model", lambda **kwargs: run_model)
+    monkeypatch.setattr("alpha.agents.middlewares.summarization_middleware.create_chat_model", lambda **kwargs: run_model)
 
     default_model = MagicMock()
     default_model.with_config.return_value = default_model
@@ -972,7 +972,7 @@ def test_blank_summary_response_is_not_committed_null_case(monkeypatch: pytest.M
 async def test_blank_summary_response_is_not_committed_async(monkeypatch: pytest.MonkeyPatch) -> None:
     """Async counterpart: a whitespace-only response leaves compaction state unchanged."""
     run_model = _blank_model()
-    monkeypatch.setattr("agent_workspace.agents.middlewares.summarization_middleware.create_chat_model", lambda **kwargs: run_model)
+    monkeypatch.setattr("alpha.agents.middlewares.summarization_middleware.create_chat_model", lambda **kwargs: run_model)
 
     default_model = MagicMock()
     default_model.with_config.return_value = default_model
@@ -996,7 +996,7 @@ def test_blank_primary_summary_falls_back_to_run_model(monkeypatch: pytest.Monke
     """A blank primary response is treated as failure and triggers the run-model
     fallback, exactly as a raised exception would."""
     built: list = []
-    monkeypatch.setattr("agent_workspace.agents.middlewares.summarization_middleware.create_chat_model", _tracking_create_chat_model(built))
+    monkeypatch.setattr("alpha.agents.middlewares.summarization_middleware.create_chat_model", _tracking_create_chat_model(built))
 
     explicit = _blank_model()  # primary returns whitespace
     middleware = AgentWorkspaceSummarizationMiddleware(
@@ -1094,7 +1094,7 @@ def _factory_app_config(model_names, *, summary_model_name=None, summarization_k
 
 @pytest.mark.parametrize("trim_limit", [None, 80, 4000])
 def test_factory_preserves_explicit_summary_input_limit(monkeypatch, trim_limit):
-    monkeypatch.setattr("agent_workspace.agents.middlewares.summarization_middleware.create_chat_model", _tracking_create_chat_model([]))
+    monkeypatch.setattr("alpha.agents.middlewares.summarization_middleware.create_chat_model", _tracking_create_chat_model([]))
     config = _factory_app_config(("run-model",))
     config.summarization.trim_tokens_to_summarize = trim_limit
 
@@ -1110,7 +1110,7 @@ def test_factory_null_case_anchor_is_run_model_not_models0(monkeypatch):
     still gets a working summarization middleware — the factory has no eager models[0]
     dependency."""
     built: list = []
-    monkeypatch.setattr("agent_workspace.agents.middlewares.summarization_middleware.create_chat_model", _tracking_create_chat_model(built))
+    monkeypatch.setattr("alpha.agents.middlewares.summarization_middleware.create_chat_model", _tracking_create_chat_model(built))
 
     middleware = create_summarization_middleware(
         app_config=_factory_app_config(("models0", "run-model")),
@@ -1142,7 +1142,7 @@ def test_factory_configured_constructor_failure_falls_back_to_run_model(monkeypa
         built.append(name)
         return model
 
-    monkeypatch.setattr("agent_workspace.agents.middlewares.summarization_middleware.create_chat_model", _factory)
+    monkeypatch.setattr("alpha.agents.middlewares.summarization_middleware.create_chat_model", _factory)
 
     middleware = create_summarization_middleware(
         app_config=_factory_app_config(("models0", "run-model"), summary_model_name="broken-summary"),
@@ -1174,10 +1174,10 @@ def test_factory_fraction_only_trigger_degrades_to_manual_compaction_only(monkey
     constructs as never-firing so manual compaction (/compact, force=True, never
     consults trigger clauses) keeps working; the warning names the config fix."""
     fake_model = _profileless_anchor_stub()
-    monkeypatch.setattr("agent_workspace.agents.middlewares.summarization_middleware.create_chat_model", lambda **kw: fake_model)
+    monkeypatch.setattr("alpha.agents.middlewares.summarization_middleware.create_chat_model", lambda **kw: fake_model)
     cfg = _factory_app_config(("models0",), summarization_kwargs={"trigger": ContextSize(type="fraction", value=0.8)})
 
-    with caplog.at_level("WARNING", logger="agent_workspace.agents.middlewares.summarization_middleware"):
+    with caplog.at_level("WARNING", logger="alpha.agents.middlewares.summarization_middleware"):
         middleware = create_summarization_middleware(app_config=cfg, run_model_name="models0", keep=("messages", 2))
 
     assert middleware is not None  # degraded, not raised — and not disabled either
@@ -1192,13 +1192,13 @@ def test_factory_drops_only_fraction_clauses_and_keeps_absolute_ones(monkeypatch
     """Mixed [fraction, messages] triggers degrade to the messages clause alone:
     construction succeeds and message-count compaction still fires."""
     fake_model = _profileless_anchor_stub()
-    monkeypatch.setattr("agent_workspace.agents.middlewares.summarization_middleware.create_chat_model", lambda **kw: fake_model)
+    monkeypatch.setattr("alpha.agents.middlewares.summarization_middleware.create_chat_model", lambda **kw: fake_model)
     cfg = _factory_app_config(
         ("models0",),
         summarization_kwargs={"trigger": [ContextSize(type="fraction", value=0.8), ContextSize(type="messages", value=3)]},
     )
 
-    with caplog.at_level("WARNING", logger="agent_workspace.agents.middlewares.summarization_middleware"):
+    with caplog.at_level("WARNING", logger="alpha.agents.middlewares.summarization_middleware"):
         middleware = create_summarization_middleware(app_config=cfg, run_model_name="models0", keep=("messages", 2))
 
     assert middleware is not None  # the absolute clause kept the middleware alive
@@ -1212,13 +1212,13 @@ def test_factory_keep_fraction_falls_back_to_messages_default(monkeypatch, caplo
     """A fraction ``keep`` against a profile-less anchor falls back to the
     messages default instead of failing construction."""
     fake_model = _profileless_anchor_stub()
-    monkeypatch.setattr("agent_workspace.agents.middlewares.summarization_middleware.create_chat_model", lambda **kw: fake_model)
+    monkeypatch.setattr("alpha.agents.middlewares.summarization_middleware.create_chat_model", lambda **kw: fake_model)
     cfg = _factory_app_config(
         ("models0",),
         summarization_kwargs={"trigger": ContextSize(type="messages", value=3), "keep": ContextSize(type="fraction", value=0.3)},
     )
 
-    with caplog.at_level("WARNING", logger="agent_workspace.agents.middlewares.summarization_middleware"):
+    with caplog.at_level("WARNING", logger="alpha.agents.middlewares.summarization_middleware"):
         middleware = create_summarization_middleware(app_config=cfg, run_model_name="models0")
 
     assert middleware is not None
@@ -1231,10 +1231,10 @@ def test_factory_null_trigger_with_fraction_keep_still_constructs(monkeypatch, c
     messages default — rather than disabling compaction. On main this exact config
     crashes the agent build (fraction keep needs a profile)."""
     fake_model = _profileless_anchor_stub()
-    monkeypatch.setattr("agent_workspace.agents.middlewares.summarization_middleware.create_chat_model", lambda **kw: fake_model)
+    monkeypatch.setattr("alpha.agents.middlewares.summarization_middleware.create_chat_model", lambda **kw: fake_model)
     cfg = _factory_app_config(("models0",), summarization_kwargs={"keep": ContextSize(type="fraction", value=0.3)})
 
-    with caplog.at_level("WARNING", logger="agent_workspace.agents.middlewares.summarization_middleware"):
+    with caplog.at_level("WARNING", logger="alpha.agents.middlewares.summarization_middleware"):
         middleware = create_summarization_middleware(app_config=cfg, run_model_name="models0")
 
     assert middleware is not None  # never-firing but constructed, same as any trigger: null setup
@@ -1248,7 +1248,7 @@ def test_factory_fraction_trigger_survives_when_anchor_has_profile(monkeypatch) 
     succeeding is itself the regression pin (#3103: it used to raise)."""
     model = _StaticChatModel(profile={"max_input_tokens": 65536})
     assert model.profile == {"max_input_tokens": 65536}
-    monkeypatch.setattr("agent_workspace.agents.middlewares.summarization_middleware.create_chat_model", lambda **kw: model)
+    monkeypatch.setattr("alpha.agents.middlewares.summarization_middleware.create_chat_model", lambda **kw: model)
     cfg = _factory_app_config(("models0",), summarization_kwargs={"trigger": ContextSize(type="fraction", value=0.8)})
 
     middleware = create_summarization_middleware(app_config=cfg, run_model_name="models0", keep=("messages", 2))
@@ -1324,7 +1324,7 @@ def test_factory_wiring_context_window_to_fraction_trigger_end_to_end() -> None:
     )
     cfg = AppConfig(
         models=[model],
-        sandbox=SandboxConfig(use="agent_workspace.sandbox.local:LocalSandboxProvider"),
+        sandbox=SandboxConfig(use="alpha.sandbox.local:LocalSandboxProvider"),
         summarization=SummarizationConfig(enabled=True, trigger=ContextSize(type="fraction", value=0.8)),
         memory=MemoryConfig(enabled=False),
     )
@@ -1356,7 +1356,7 @@ def test_text_extraction_failure_falls_back_to_run_model(monkeypatch):
     result, so it must be a candidate failure that falls back to the run model — not an
     exception that escapes automatic compaction."""
     built: list = []
-    monkeypatch.setattr("agent_workspace.agents.middlewares.summarization_middleware.create_chat_model", _tracking_create_chat_model(built))
+    monkeypatch.setattr("alpha.agents.middlewares.summarization_middleware.create_chat_model", _tracking_create_chat_model(built))
 
     primary = _text_raises_model()
     middleware = AgentWorkspaceSummarizationMiddleware(
@@ -1381,7 +1381,7 @@ def test_text_extraction_failure_falls_back_to_run_model(monkeypatch):
 async def test_text_extraction_failure_falls_back_to_run_model_async(monkeypatch):
     """Async counterpart: a ``.text`` accessor failure falls back to the run model."""
     built: list = []
-    monkeypatch.setattr("agent_workspace.agents.middlewares.summarization_middleware.create_chat_model", _tracking_create_chat_model(built))
+    monkeypatch.setattr("alpha.agents.middlewares.summarization_middleware.create_chat_model", _tracking_create_chat_model(built))
 
     primary = _text_raises_model()
     middleware = AgentWorkspaceSummarizationMiddleware(

@@ -60,7 +60,7 @@ def test_detect_mode_local_provider():
     """Local sandbox provider should map to local mode."""
     config = """
 sandbox:
-  use: agent_workspace.sandbox.local:LocalSandboxProvider
+  use: alpha.sandbox.local:LocalSandboxProvider
 """.strip()
 
     assert _detect_mode_with_config(config) == "local"
@@ -70,7 +70,7 @@ def test_detect_mode_aio_without_provisioner_url():
     """AIO sandbox without provisioner_url should map to aio mode."""
     config = """
 sandbox:
-  use: agent_workspace.community.aio_sandbox:AioSandboxProvider
+  use: alpha.community.aio_sandbox:AioSandboxProvider
 """.strip()
 
     assert _detect_mode_with_config(config) == "aio"
@@ -80,7 +80,7 @@ def test_detect_mode_provisioner_with_url():
     """AIO sandbox with provisioner_url should map to provisioner mode."""
     config = """
 sandbox:
-  use: agent_workspace.community.aio_sandbox:AioSandboxProvider
+  use: alpha.community.aio_sandbox:AioSandboxProvider
   provisioner_url: http://provisioner:8002
 """.strip()
 
@@ -91,7 +91,7 @@ def test_detect_mode_ignores_commented_provisioner_url():
     """Commented provisioner_url should not activate provisioner mode."""
     config = """
 sandbox:
-  use: agent_workspace.community.aio_sandbox:AioSandboxProvider
+  use: alpha.community.aio_sandbox:AioSandboxProvider
   # provisioner_url: http://provisioner:8002
 """.strip()
 
@@ -327,7 +327,7 @@ def test_aio_dood_socket_preflight_allows_windows_when_docker_reachable():
         _seed_compose_file(tmp_root)
         _seed_env_examples(tmp_root)
         (tmp_root / "config.yaml").write_text(
-            "sandbox:\n  use: agent_workspace.community.aio_sandbox:AioSandboxProvider\n",
+            "sandbox:\n  use: alpha.community.aio_sandbox:AioSandboxProvider\n",
             encoding="utf-8",
         )
         command = f"""
@@ -364,7 +364,7 @@ def test_aio_dood_socket_preflight_rejects_missing_socket_on_posix():
         _seed_compose_file(tmp_root)
         _seed_env_examples(tmp_root)
         (tmp_root / "config.yaml").write_text(
-            "sandbox:\n  use: agent_workspace.community.aio_sandbox:AioSandboxProvider\n",
+            "sandbox:\n  use: alpha.community.aio_sandbox:AioSandboxProvider\n",
             encoding="utf-8",
         )
         command = f"""
@@ -395,7 +395,7 @@ def test_aio_dood_socket_preflight_rejects_missing_custom_socket_on_windows():
         _seed_compose_file(tmp_root)
         _seed_env_examples(tmp_root)
         (tmp_root / "config.yaml").write_text(
-            "sandbox:\n  use: agent_workspace.community.aio_sandbox:AioSandboxProvider\n",
+            "sandbox:\n  use: alpha.community.aio_sandbox:AioSandboxProvider\n",
             encoding="utf-8",
         )
         command = f"""
@@ -436,7 +436,7 @@ def test_aio_dood_socket_preflight_rejects_windows_when_docker_unreachable():
         _seed_compose_file(tmp_root)
         _seed_env_examples(tmp_root)
         (tmp_root / "config.yaml").write_text(
-            "sandbox:\n  use: agent_workspace.community.aio_sandbox:AioSandboxProvider\n",
+            "sandbox:\n  use: alpha.community.aio_sandbox:AioSandboxProvider\n",
             encoding="utf-8",
         )
         command = f"""
@@ -472,7 +472,7 @@ def _setup_deploy_worktree(tmp_path: Path) -> Path:
     shutil.copytree(REPO_ROOT / "docker", worktree / "docker")
     (worktree / "backend").mkdir()
     (worktree / "config.yaml").write_text(
-        "sandbox:\n  use: agent_workspace.community.aio_sandbox:AioSandboxProvider\n",
+        "sandbox:\n  use: alpha.community.aio_sandbox:AioSandboxProvider\n",
         encoding="utf-8",
     )
     (worktree / "extensions_config.json").write_text("{}\n", encoding="utf-8")

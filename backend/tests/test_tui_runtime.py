@@ -4,9 +4,9 @@ The translation layer is pure and is exercised here against real
 ``StreamEvent`` objects plus a fake client, with no Textual involved.
 """
 
-from agent_workspace.client import StreamEvent
-from agent_workspace.tui.runtime import stream_actions, translate
-from agent_workspace.tui.view_state import (
+from alpha.client import StreamEvent
+from alpha.tui.runtime import stream_actions, translate
+from alpha.tui.view_state import (
     AssistantDelta,
     AssistantError,
     RunEnded,

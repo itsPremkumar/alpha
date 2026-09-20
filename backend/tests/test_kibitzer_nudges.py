@@ -1,6 +1,6 @@
 ﻿"""Tests for Kibitzer Resident Memory Sidecar."""
 
-from agent_workspace.memory.kibitzer import (
+from alpha.memory.kibitzer import (
     KibitzerMemoryBank,
     KibitzerObserver,
     redact_secrets,

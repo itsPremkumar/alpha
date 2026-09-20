@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from agent_workspace.community.aio_sandbox import backend as readiness
+from alpha.community.aio_sandbox import backend as readiness
 
 
 class _FakeAsyncClient:

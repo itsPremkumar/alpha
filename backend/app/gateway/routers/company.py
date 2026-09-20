@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from agent_workspace.company.organization import get_autonomous_company_engine
+from alpha.company.organization import get_autonomous_company_engine
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/company", tags=["company-os"])

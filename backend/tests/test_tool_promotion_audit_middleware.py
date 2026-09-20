@@ -7,9 +7,9 @@ import pytest
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
-from agent_workspace.agents.middlewares.tool_promotion_audit_middleware import DeferredToolPromotionAuditMiddleware
-from agent_workspace.runtime.events.store.memory import MemoryRunEventStore
-from agent_workspace.runtime.journal import RunJournal
+from alpha.agents.middlewares.tool_promotion_audit_middleware import DeferredToolPromotionAuditMiddleware
+from alpha.runtime.events.store.memory import MemoryRunEventStore
+from alpha.runtime.journal import RunJournal
 
 
 class _Recorder:

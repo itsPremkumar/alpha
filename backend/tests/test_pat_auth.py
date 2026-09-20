@@ -18,16 +18,16 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 from starlette.testclient import TestClient
 
-import agent_workspace.persistence.models  # noqa: F401  (register every table)
+import alpha.persistence.models  # noqa: F401  (register every table)
 from app.gateway.auth_disabled import AUTH_SOURCE_PAT, AUTH_SOURCE_SESSION
 from app.gateway.auth_middleware import AuthMiddleware
 from app.gateway.authz import require_cancel_permission_if
 from app.gateway.csrf_middleware import CSRFMiddleware
 from app.gateway.routers.auth import router as auth_router
 from app.gateway.run_models import RunCreateRequest
-from agent_workspace.config.authorization_config import AuthorizationConfig
-from agent_workspace.persistence.base import Base
-from agent_workspace.persistence.personal_access_tokens import PersonalAccessTokenRepository
+from alpha.config.authorization_config import AuthorizationConfig
+from alpha.persistence.base import Base
+from alpha.persistence.personal_access_tokens import PersonalAccessTokenRepository
 
 TEST_JWT_SECRET = "test-pat-jwt-secret-0123456789abcdef"
 

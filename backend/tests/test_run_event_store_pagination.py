@@ -2,7 +2,7 @@
 
 import pytest
 
-from agent_workspace.runtime.events.store.memory import MemoryRunEventStore
+from alpha.runtime.events.store.memory import MemoryRunEventStore
 
 
 @pytest.fixture

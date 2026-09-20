@@ -5,8 +5,8 @@ from typing import Any
 import pytest
 from langgraph.checkpoint.base import BaseCheckpointSaver, CheckpointTuple
 
-from agent_workspace.runtime.checkpoint_cache.memory import MemoryCheckpointHistoryCache
-from agent_workspace.runtime.checkpointer.cached_saver import CachedHistorySaver
+from alpha.runtime.checkpoint_cache.memory import MemoryCheckpointHistoryCache
+from alpha.runtime.checkpointer.cached_saver import CachedHistorySaver
 
 PREFIX = "ckpt-hist:v1:testdb"
 

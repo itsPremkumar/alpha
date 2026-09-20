@@ -1,4 +1,4 @@
-from agent_workspace.runtime.runs.naming import resolve_root_run_name
+from alpha.runtime.runs.naming import resolve_root_run_name
 
 
 def test_resolve_root_run_name_from_context_agent_name():

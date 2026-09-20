@@ -16,8 +16,8 @@ from langgraph.channels.binop import BinaryOperatorAggregate
 from langgraph.errors import InvalidUpdateError
 from langgraph.types import Overwrite
 
-import agent_workspace.agents.thread_state  # noqa: F401 - applies checkpoint patches at import
-from agent_workspace import checkpoint_patches
+import alpha.agents.thread_state  # noqa: F401 - applies checkpoint patches at import
+from alpha import checkpoint_patches
 
 
 def _replace(existing, new):

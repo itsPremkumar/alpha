@@ -21,9 +21,9 @@ import pytest
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import create_async_engine
 
-import agent_workspace.persistence.models  # noqa: F401
-from agent_workspace.persistence import bootstrap as bootstrap_mod
-from agent_workspace.persistence.bootstrap import _get_head_revision, bootstrap_schema
+import alpha.persistence.models  # noqa: F401
+from alpha.persistence import bootstrap as bootstrap_mod
+from alpha.persistence.bootstrap import _get_head_revision, bootstrap_schema
 
 pytestmark = pytest.mark.asyncio
 

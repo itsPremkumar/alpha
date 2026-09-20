@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from agent_workspace.security.credential_vault import SecureCredentialVault
-from agent_workspace.tools.builtins.credential_request_tool import request_secure_credential
+from alpha.security.credential_vault import SecureCredentialVault
+from alpha.tools.builtins.credential_request_tool import request_secure_credential
 
 
 def test_credential_vault_deposit_and_retrieve():

@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
-from agent_workspace.agents.memory.backends.honcho.honcho_manager import HonchoMemoryManager
+from alpha.agents.memory.backends.honcho.honcho_manager import HonchoMemoryManager
 
 
 class _BlockingFakeClient:

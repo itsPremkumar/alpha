@@ -2,9 +2,9 @@
 
 from pathlib import Path
 
-from agent_workspace.bots.epoch import CapabilityEpochManager
-from agent_workspace.bots.profile import BotProfile
-from agent_workspace.bots.registry import BotRegistry
+from alpha.bots.epoch import CapabilityEpochManager
+from alpha.bots.profile import BotProfile
+from alpha.bots.registry import BotRegistry
 
 
 def test_bot_profile_capability_fingerprint():

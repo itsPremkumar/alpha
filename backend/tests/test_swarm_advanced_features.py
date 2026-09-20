@@ -11,14 +11,14 @@ from types import SimpleNamespace
 
 import pytest
 
-import agent_workspace.swarm.coordinator as coord_mod
-from agent_workspace.swarm.coordinator import SwarmCoordinator
-from agent_workspace.swarm.governor import SwarmResourceGovernor
-from agent_workspace.swarm.incidents import SwarmIncidentManager
-from agent_workspace.swarm.memory import SwarmMemoryManager
-from agent_workspace.swarm.models import SwarmMode, SwarmPlan, SwarmTaskNode, TaskNodeState
-from agent_workspace.swarm.runner import AsyncSwarmRunner
-from agent_workspace.swarm.triggers import AutonomousWorkTrigger
+import alpha.swarm.coordinator as coord_mod
+from alpha.swarm.coordinator import SwarmCoordinator
+from alpha.swarm.governor import SwarmResourceGovernor
+from alpha.swarm.incidents import SwarmIncidentManager
+from alpha.swarm.memory import SwarmMemoryManager
+from alpha.swarm.models import SwarmMode, SwarmPlan, SwarmTaskNode, TaskNodeState
+from alpha.swarm.runner import AsyncSwarmRunner
+from alpha.swarm.triggers import AutonomousWorkTrigger
 
 
 @pytest.fixture(autouse=True)
@@ -202,7 +202,7 @@ def test_swarm_incident_and_succession_recovery():
 
 # 7. Built-in Tool Advanced Actions
 def test_swarm_tool_advanced_actions():
-    from agent_workspace.tools.builtins.swarm_tool import swarm_tool
+    from alpha.tools.builtins.swarm_tool import swarm_tool
 
     # Spawn swarm
     spawn_out = swarm_tool.invoke(
@@ -286,7 +286,7 @@ def test_swarm_advanced_harness_boundary():
     """Validates that all newly added swarm engines contain zero imports from app.*."""
     import pathlib
 
-    swarm_dir = pathlib.Path(__file__).parent.parent / "packages" / "harness" / "agent_workspace" / "swarm"
+    swarm_dir = pathlib.Path(__file__).parent.parent / "packages" / "harness" / "alpha" / "swarm"
     for py_file in swarm_dir.glob("*.py"):
         content = py_file.read_text(encoding="utf-8")
         assert "from app." not in content, f"Boundary violation in {py_file}: contains 'from app.'"

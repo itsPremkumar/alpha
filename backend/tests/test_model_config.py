@@ -4,7 +4,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from agent_workspace.config.model_config import ModelConfig
+from alpha.config.model_config import ModelConfig
 
 
 def _make_model(**overrides) -> ModelConfig:

@@ -4,8 +4,8 @@ import logging
 
 import pytest
 
-from agent_workspace.config.extensions_config import ExtensionsConfig, McpServerConfig
-from agent_workspace.mcp.client import build_server_params, build_servers_config
+from alpha.config.extensions_config import ExtensionsConfig, McpServerConfig
+from alpha.mcp.client import build_server_params, build_servers_config
 
 
 def test_build_server_params_stdio_success():
@@ -133,7 +133,7 @@ def test_build_servers_config_drops_only_the_server_with_an_illegal_header(caplo
         }
     )
 
-    with caplog.at_level(logging.ERROR, logger="agent_workspace.mcp.client"):
+    with caplog.at_level(logging.ERROR, logger="alpha.mcp.client"):
         servers_config = build_servers_config(config)
 
     # One bad server does not take the others down with it, and the log that

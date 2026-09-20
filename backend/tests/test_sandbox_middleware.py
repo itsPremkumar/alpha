@@ -12,18 +12,18 @@ from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.runtime import Runtime
 from langgraph.types import Command, Overwrite
 
-from agent_workspace.agents.thread_state import ThreadState
-from agent_workspace.sandbox.exceptions import SandboxAuthorizationError, SandboxRuntimeError
-from agent_workspace.sandbox.lease import (
+from alpha.agents.thread_state import ThreadState
+from alpha.sandbox.exceptions import SandboxAuthorizationError, SandboxRuntimeError
+from alpha.sandbox.lease import (
     get_sandbox_lease_manager,
     release_sandbox_execution_lease,
     release_sandbox_execution_lease_async,
 )
-from agent_workspace.sandbox.middleware import SandboxMiddleware, SandboxMiddlewareState
-from agent_workspace.sandbox.sandbox import Sandbox
-from agent_workspace.sandbox.sandbox_provider import SandboxProvider, reset_sandbox_provider, set_sandbox_provider
-from agent_workspace.sandbox.search import GrepMatch
-from agent_workspace.sandbox.tools import ensure_sandbox_initialized, ls_tool
+from alpha.sandbox.middleware import SandboxMiddleware, SandboxMiddlewareState
+from alpha.sandbox.sandbox import Sandbox
+from alpha.sandbox.sandbox_provider import SandboxProvider, reset_sandbox_provider, set_sandbox_provider
+from alpha.sandbox.search import GrepMatch
+from alpha.sandbox.tools import ensure_sandbox_initialized, ls_tool
 
 
 class _SyncProvider(SandboxProvider):
@@ -307,7 +307,7 @@ def test_explicit_skill_policy_does_not_reuse_checkpointed_sandbox_after_auth_de
         lambda *_args, **_kwargs: object(),
     )
     monkeypatch.setattr(
-        "agent_workspace.sandbox.middleware.authorize_sandbox_execution",
+        "alpha.sandbox.middleware.authorize_sandbox_execution",
         lambda **_kwargs: (_ for _ in ()).throw(SandboxAuthorizationError("denied")),
     )
     set_sandbox_provider(provider)

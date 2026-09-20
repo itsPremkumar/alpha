@@ -3,14 +3,14 @@
 import json
 from pathlib import Path
 
-from agent_workspace.tools.builtins import (
+from alpha.tools.builtins import (
     boulder_checkpoint_manage,
     hashline_edit,
     hashline_read,
     hyperplan_review_manage,
     workflow_dag_manage,
 )
-from agent_workspace.tools.tools import BUILTIN_TOOLS
+from alpha.tools.tools import BUILTIN_TOOLS
 
 
 def test_omo_tools_registered_in_builtin_tools():

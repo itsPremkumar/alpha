@@ -32,12 +32,12 @@ class _TeardownFirstScopeLock:
 
 def test_local_sandbox_client_bypasses_environment_proxy():
     """Local sandbox API calls must not inherit HTTP_PROXY (#3441)."""
-    from agent_workspace.community.aio_sandbox.aio_sandbox import AioSandbox
+    from alpha.community.aio_sandbox.aio_sandbox import AioSandbox
 
     sentinel_httpx = MagicMock()
     with (
-        patch("agent_workspace.community.aio_sandbox.aio_sandbox.httpx.Client", return_value=sentinel_httpx) as client_cls,
-        patch("agent_workspace.community.aio_sandbox.aio_sandbox.AioSandboxClient") as sdk_cls,
+        patch("alpha.community.aio_sandbox.aio_sandbox.httpx.Client", return_value=sentinel_httpx) as client_cls,
+        patch("alpha.community.aio_sandbox.aio_sandbox.AioSandboxClient") as sdk_cls,
     ):
         AioSandbox(id="test-sandbox", base_url="http://host.docker.internal:8080")
 
@@ -50,13 +50,13 @@ def test_local_sandbox_client_bypasses_environment_proxy():
 
 
 def test_local_sandbox_client_forwards_trusted_relay_headers():
-    from agent_workspace.community.aio_sandbox.aio_sandbox import AioSandbox
+    from alpha.community.aio_sandbox.aio_sandbox import AioSandbox
 
     sentinel_httpx = MagicMock()
     headers = {"X-Agent-Workspace-Relay-Token": "secret-token"}
     with (
-        patch("agent_workspace.community.aio_sandbox.aio_sandbox.httpx.Client", return_value=sentinel_httpx),
-        patch("agent_workspace.community.aio_sandbox.aio_sandbox.AioSandboxClient") as sdk_cls,
+        patch("alpha.community.aio_sandbox.aio_sandbox.httpx.Client", return_value=sentinel_httpx),
+        patch("alpha.community.aio_sandbox.aio_sandbox.AioSandboxClient") as sdk_cls,
     ):
         AioSandbox(
             id="test-sandbox",
@@ -82,11 +82,11 @@ def test_local_sandbox_client_forwards_trusted_relay_headers():
 )
 def test_external_sandbox_client_keeps_environment_proxy_support(base_url: str):
     """Externally hosted sandbox URLs retain the SDK's default proxy behavior."""
-    from agent_workspace.community.aio_sandbox.aio_sandbox import AioSandbox
+    from alpha.community.aio_sandbox.aio_sandbox import AioSandbox
 
     with (
-        patch("agent_workspace.community.aio_sandbox.aio_sandbox.httpx.Client") as client_cls,
-        patch("agent_workspace.community.aio_sandbox.aio_sandbox.AioSandboxClient") as sdk_cls,
+        patch("alpha.community.aio_sandbox.aio_sandbox.httpx.Client") as client_cls,
+        patch("alpha.community.aio_sandbox.aio_sandbox.AioSandboxClient") as sdk_cls,
     ):
         AioSandbox(id="test-sandbox", base_url=base_url)
 
@@ -97,8 +97,8 @@ def test_external_sandbox_client_keeps_environment_proxy_support(base_url: str):
 @pytest.fixture()
 def sandbox():
     """Create an AioSandbox with a mocked client."""
-    with patch("agent_workspace.community.aio_sandbox.aio_sandbox.AioSandboxClient"):
-        from agent_workspace.community.aio_sandbox.aio_sandbox import AioSandbox
+    with patch("alpha.community.aio_sandbox.aio_sandbox.AioSandboxClient"):
+        from alpha.community.aio_sandbox.aio_sandbox import AioSandbox
 
         sb = AioSandbox(id="test-sandbox", base_url="http://localhost:8080")
         return sb

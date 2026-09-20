@@ -17,9 +17,9 @@ from pathlib import Path
 
 import pytest
 
-from agent_workspace.config.sandbox_config import SandboxConfig
-from agent_workspace.sandbox.local import local_sandbox
-from agent_workspace.sandbox.local.local_sandbox import LocalSandbox
+from alpha.config.sandbox_config import SandboxConfig
+from alpha.sandbox.local import local_sandbox
+from alpha.sandbox.local.local_sandbox import LocalSandbox
 
 posix_only = pytest.mark.skipif(os.name == "nt", reason="POSIX process-group semantics")
 linux_proc_fd_only = pytest.mark.skipif(not Path("/proc/self/fd").exists(), reason="requires Linux /proc fd links")
@@ -185,12 +185,12 @@ def test_normal_command_output_exit_code_and_stderr():
 
 
 def test_sandbox_config_exposes_command_timeout_default():
-    cfg = SandboxConfig(use="agent_workspace.sandbox.local:LocalSandboxProvider")
+    cfg = SandboxConfig(use="alpha.sandbox.local:LocalSandboxProvider")
     assert cfg.bash_command_timeout == 600
 
 
 def test_sandbox_config_exposes_health_check_skip_seconds_default():
-    cfg = SandboxConfig(use="agent_workspace.sandbox.local:LocalSandboxProvider")
+    cfg = SandboxConfig(use="alpha.sandbox.local:LocalSandboxProvider")
     assert cfg.health_check_skip_seconds is None
 
 
@@ -198,7 +198,7 @@ def test_bash_tool_description_guides_backgrounding_long_lived_processes():
     """The bash tool description (seen by the model) must tell it to background
     long-lived processes like servers, so it doesn't block the turn in the
     foreground. This is the prompt-side half of the server-hang fix."""
-    from agent_workspace.sandbox.tools import bash_tool
+    from alpha.sandbox.tools import bash_tool
 
     description = bash_tool.description.lower()
     assert "background" in description

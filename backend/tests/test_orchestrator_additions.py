@@ -1,25 +1,25 @@
 """Additive orchestrator tests (15 OpenClaw-inspired core features)."""
 
-from agent_workspace.orchestrator.acp_binding import AcpBindingRegistry
-from agent_workspace.orchestrator.approvals import ApprovalCustodyStore
-from agent_workspace.orchestrator.automations import AutomationDefinition, AutomationScheduler
-from agent_workspace.orchestrator.context_engine_plugin import ContextEnginePlugin
-from agent_workspace.orchestrator.durable_tasks import (
+from alpha.orchestrator.acp_binding import AcpBindingRegistry
+from alpha.orchestrator.approvals import ApprovalCustodyStore
+from alpha.orchestrator.automations import AutomationDefinition, AutomationScheduler
+from alpha.orchestrator.context_engine_plugin import ContextEnginePlugin
+from alpha.orchestrator.durable_tasks import (
     ConcurrencyGovernor,
     DedupeCache,
     DeliveryQueue,
     DurableTaskRuntime,
     TokenBudgetGovernor,
 )
-from agent_workspace.orchestrator.memory_recall import CrossThreadRecallConfig, build_recall_query
-from agent_workspace.orchestrator.provider_routing import (
+from alpha.orchestrator.memory_recall import CrossThreadRecallConfig, build_recall_query
+from alpha.orchestrator.provider_routing import (
     ChannelModelOverride,
     UtilityModelRouter,
     build_fallback_chain,
 )
-from agent_workspace.orchestrator.secrets import is_secret_ref, redact_for_log, resolve_secret_refs
-from agent_workspace.orchestrator.sessions import SessionCatalog
-from agent_workspace.orchestrator.tracing import bind_trace_for_subagent
+from alpha.orchestrator.secrets import is_secret_ref, redact_for_log, resolve_secret_refs
+from alpha.orchestrator.sessions import SessionCatalog
+from alpha.orchestrator.tracing import bind_trace_for_subagent
 
 
 def test_context_engine_plugin_passthrough():
@@ -31,7 +31,7 @@ def test_context_engine_plugin_passthrough():
         watchdog = FakeWatchdog()
 
         def assemble(self, system_prompt="", history_messages=None, **kw):
-            from agent_workspace.orchestrator.context_engine_plugin import (
+            from alpha.orchestrator.context_engine_plugin import (
                 ContextEnginePlugin as _P,
             )
 

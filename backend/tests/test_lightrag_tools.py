@@ -5,11 +5,11 @@ from typing import Any
 
 import pytest
 
-import agent_workspace.community.lightrag.tools as lightrag_tools
-from agent_workspace.community.lightrag.client import LightRAGAPIError, LightRAGConnectionError
-from agent_workspace.community.lightrag.formatting import format_retrieval_result
-from agent_workspace.config.tool_config import ToolConfig
-from agent_workspace.tools.tools import get_available_tools
+import alpha.community.lightrag.tools as lightrag_tools
+from alpha.community.lightrag.client import LightRAGAPIError, LightRAGConnectionError
+from alpha.community.lightrag.formatting import format_retrieval_result
+from alpha.config.tool_config import ToolConfig
+from alpha.tools.tools import get_available_tools
 
 CHUNK_ID = "71a4613a-e91b-4d3b-bdff-6f45d9ac1f80"
 
@@ -61,7 +61,7 @@ def _config(
     search_config = ToolConfig(
         name="knowledge_search",
         group="knowledge",
-        use="agent_workspace.community.lightrag.tools:knowledge_search_tool",
+        use="alpha.community.lightrag.tools:knowledge_search_tool",
         **settings,
     )
     return SimpleNamespace(
@@ -176,7 +176,7 @@ async def test_invalid_settings_return_english_guidance_without_leaking_values(
     fake = FakeLightRAGClient()
     _install(monkeypatch, fake, config=_config(mode="vector"))
 
-    with caplog.at_level(logging.WARNING, logger="agent_workspace.community.lightrag.tools"):
+    with caplog.at_level(logging.WARNING, logger="alpha.community.lightrag.tools"):
         result = await lightrag_tools.knowledge_search("leave")
 
     assert result == "Error: Invalid LightRAG settings for knowledge_search; check config.yaml."
@@ -201,7 +201,7 @@ async def test_base_url_with_plain_or_encoded_userinfo_is_rejected_without_leaki
     fake = FakeLightRAGClient()
     _install(monkeypatch, fake, config=_config(base_url=base_url))
 
-    with caplog.at_level(logging.WARNING, logger="agent_workspace.community.lightrag.tools"):
+    with caplog.at_level(logging.WARNING, logger="alpha.community.lightrag.tools"):
         result = await lightrag_tools.knowledge_search("leave")
 
     assert result == "Error: Invalid LightRAG settings for knowledge_search; check config.yaml."
@@ -240,7 +240,7 @@ async def test_api_error_is_returned_as_readable_text_and_logged(
     fake = FakeLightRAGClient(error=LightRAGAPIError("RAG query is too short"))
     _install(monkeypatch, fake)
 
-    with caplog.at_level(logging.WARNING, logger="agent_workspace.community.lightrag.tools"):
+    with caplog.at_level(logging.WARNING, logger="alpha.community.lightrag.tools"):
         result = await lightrag_tools.knowledge_search("ab")
 
     assert result == "Error: RAG query is too short"
@@ -255,7 +255,7 @@ async def test_connection_error_is_english_and_does_not_leak_key(
     fake = FakeLightRAGClient(error=LightRAGConnectionError("ConnectError: refused lightrag-secret"))
     _install(monkeypatch, fake)
 
-    with caplog.at_level(logging.WARNING, logger="agent_workspace.community.lightrag.tools"):
+    with caplog.at_level(logging.WARNING, logger="alpha.community.lightrag.tools"):
         result = await lightrag_tools.knowledge_search("leave")
 
     assert result == "Error: Unable to connect to LightRAG (http://lightrag.test): ConnectError: refused [REDACTED]"
@@ -355,7 +355,7 @@ def test_tool_assembly_hides_credentials_without_network_io(monkeypatch: pytest.
     tool_config = ToolConfig(
         name="knowledge_search",
         group="knowledge",
-        use="agent_workspace.community.lightrag.tools:knowledge_search_tool",
+        use="alpha.community.lightrag.tools:knowledge_search_tool",
         base_url="http://lightrag.test",
         api_key="lightrag-secret",
         mode="hybrid",
@@ -394,18 +394,18 @@ def test_shared_knowledge_search_name_keeps_first_configured_entry() -> None:
     accidentally configuring both entries gets a documented outcome (the
     first entry wins) instead of silent provider swapping.
     """
-    from agent_workspace.config.app_config import AppConfig
-    from agent_workspace.config.sandbox_config import SandboxConfig
+    from alpha.config.app_config import AppConfig
+    from alpha.config.sandbox_config import SandboxConfig
 
     ragflow_entry = ToolConfig(
         name="knowledge_search",
         group="knowledge",
-        use="agent_workspace.community.ragflow.tools:knowledge_search_tool",
+        use="alpha.community.ragflow.tools:knowledge_search_tool",
     )
     lightrag_entry = ToolConfig(
         name="knowledge_search",
         group="knowledge",
-        use="agent_workspace.community.lightrag.tools:knowledge_search_tool",
+        use="alpha.community.lightrag.tools:knowledge_search_tool",
     )
 
     config = AppConfig(tools=[ragflow_entry, lightrag_entry], sandbox=SandboxConfig(use="example.remote:Sandbox"))

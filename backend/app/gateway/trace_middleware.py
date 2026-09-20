@@ -5,7 +5,7 @@ from __future__ import annotations
 from starlette.datastructures import Headers, MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from agent_workspace.trace_context import TRACE_ID_HEADER, request_trace_context
+from alpha.trace_context import TRACE_ID_HEADER, request_trace_context
 
 
 class TraceMiddleware:

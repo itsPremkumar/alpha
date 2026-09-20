@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from agent_workspace.metacompiler.dynamic_tool_synthesizer import (
+from alpha.metacompiler.dynamic_tool_synthesizer import (
     DEFAULT_ENTRYPOINT,
     DynamicToolRegistry,
     DynamicToolSynthesizer,
@@ -12,7 +12,7 @@ from agent_workspace.metacompiler.dynamic_tool_synthesizer import (
     SynthesisStatus,
     build_restricted_builtins,
 )
-from agent_workspace.tools.builtins.dynamic_tool_synthesizer_tool import (
+from alpha.tools.builtins.dynamic_tool_synthesizer_tool import (
     list_dynamic_tools,
     synthesize_runtime_tool,
 )
@@ -279,7 +279,7 @@ def test_unload_unknown_tool_is_false(synthesizer):
 
 def test_registry_enforces_capacity():
     registry = DynamicToolRegistry(max_tools=2)
-    from agent_workspace.metacompiler.dynamic_tool_synthesizer import DynamicToolRecord
+    from alpha.metacompiler.dynamic_tool_synthesizer import DynamicToolRecord
 
     for name in ("a", "b", "c"):
         registry.register(

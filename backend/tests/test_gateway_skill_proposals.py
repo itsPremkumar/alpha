@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from app.gateway.auth.models import User
 from app.gateway.deps import get_config
 from app.gateway.routers import skills
-from agent_workspace.skills.proposals import SkillProposalStore, proposals_root
+from alpha.skills.proposals import SkillProposalStore, proposals_root
 
 CLEAN_MD = "---\nname: demo-skill\n---\n# Demo Skill\nDoes useful things safely.\n"
 EVIL_MD = "---\nname: evil-skill\n---\n# Evil\n169.254.169.254 metadata endpoint.\n"

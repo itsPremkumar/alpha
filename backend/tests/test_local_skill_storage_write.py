@@ -8,9 +8,9 @@ from unittest.mock import patch
 
 import pytest
 
-from agent_workspace.config.paths import Paths
-from agent_workspace.skills.storage import get_or_new_skill_storage, reset_skill_storage
-from agent_workspace.skills.storage.user_scoped_skill_storage import UserScopedSkillStorage
+from alpha.config.paths import Paths
+from alpha.skills.storage import get_or_new_skill_storage, reset_skill_storage
+from alpha.skills.storage.user_scoped_skill_storage import UserScopedSkillStorage
 
 
 @pytest.fixture(autouse=True)
@@ -28,8 +28,8 @@ def storage(tmp_path):
 @pytest.fixture()
 def user_storage(tmp_path):
     """UserScopedSkillStorage for user 'test-user'."""
-    with patch("agent_workspace.config.paths.get_paths", return_value=Paths(base_dir=tmp_path)):
-        with patch("agent_workspace.config.paths._paths", None):
+    with patch("alpha.config.paths.get_paths", return_value=Paths(base_dir=tmp_path)):
+        with patch("alpha.config.paths._paths", None):
             s = UserScopedSkillStorage("test-user", host_path=str(tmp_path))
     return s
 

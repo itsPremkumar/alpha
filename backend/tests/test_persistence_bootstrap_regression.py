@@ -25,11 +25,11 @@ from uuid import uuid4
 import pytest
 import sqlalchemy as sa
 
-import agent_workspace.persistence.models  # noqa: F401  -- registers ORM models
-from agent_workspace.persistence.base import Base
-from agent_workspace.persistence.bootstrap import _get_head_revision
-from agent_workspace.persistence.engine import close_engine, get_session_factory, init_engine
-from agent_workspace.persistence.run import RunRepository
+import alpha.persistence.models  # noqa: F401  -- registers ORM models
+from alpha.persistence.base import Base
+from alpha.persistence.bootstrap import _get_head_revision
+from alpha.persistence.engine import close_engine, get_session_factory, init_engine
+from alpha.persistence.run import RunRepository
 
 pytestmark = pytest.mark.asyncio
 

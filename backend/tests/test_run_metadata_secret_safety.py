@@ -2,15 +2,15 @@ import pytest
 
 from app.gateway.routers.thread_runs import _record_to_response
 from app.gateway.routers.threads import HistoryEntry, ThreadResponse, ThreadStateResponse
-from agent_workspace.runtime.runs.manager import RunRecord
-from agent_workspace.runtime.runs.schemas import DisconnectMode, RunStatus
-from agent_workspace.runtime.secret_context import (
+from alpha.runtime.runs.manager import RunRecord
+from alpha.runtime.runs.schemas import DisconnectMode, RunStatus
+from alpha.runtime.secret_context import (
     LegacyRunMetadataSecretError,
     redact_config_secrets,
     redact_metadata_secrets,
     validate_run_metadata_secrets,
 )
-from agent_workspace.trace_context import AGENT_WORKSPACE_TRACE_METADATA_KEY
+from alpha.trace_context import AGENT_WORKSPACE_TRACE_METADATA_KEY
 
 
 @pytest.mark.parametrize("value", ["secret", "", None, {"nested": True}])

@@ -9,7 +9,7 @@ from app.gateway.github.triggers import (
     _resolved_trigger,
     event_should_fire,
 )
-from agent_workspace.config.agents_config import GitHubTriggerConfig
+from alpha.config.agents_config import GitHubTriggerConfig
 
 BOT = "coding-llm-gateway"
 
@@ -376,15 +376,15 @@ def test_pull_request_review_require_mention_skips_without_mention() -> None:
 
 
 # ---------------------------------------------------------------------------
-# @-mention boundary: ``@agent_workspace`` must NOT match ``@agent-workspace-bot``
+# @-mention boundary: ``@alpha`` must NOT match ``@agent-workspace-bot``
 # ---------------------------------------------------------------------------
 
 
 def test_mention_prefix_does_not_match_longer_login() -> None:
-    # Agent with mention_login='agent_workspace' must NOT fire on a comment that
+    # Agent with mention_login='alpha' must NOT fire on a comment that
     # addresses a different account, '@agent-workspace-bot'. Regression for the
     # naive substring ``f'@{login}' in body`` check.
-    trigger = _resolve("issue_comment", GitHubTriggerConfig(require_mention=True, mention_login="agent_workspace"))
+    trigger = _resolve("issue_comment", GitHubTriggerConfig(require_mention=True, mention_login="alpha"))
     fire, reason = event_should_fire(
         "issue_comment",
         {
@@ -394,7 +394,7 @@ def test_mention_prefix_does_not_match_longer_login() -> None:
             "repository": {"full_name": "a/b"},
         },
         trigger,
-        "agent_workspace",
+        "alpha",
     )
     assert fire is False
     assert "mention required" in reason

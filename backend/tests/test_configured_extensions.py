@@ -8,8 +8,8 @@ import pytest
 from langchain.agents.middleware import AgentMiddleware
 from pydantic import ValidationError
 
-from agent_workspace.agents.middlewares.configured_extensions import load_configured_extension_middlewares
-from agent_workspace.config.extensions_config import (
+from alpha.agents.middlewares.configured_extensions import load_configured_extension_middlewares
+from alpha.config.extensions_config import (
     ConfiguredMiddlewareSpec,
     ExtensionsConfig,
     atomic_write_extensions_config,

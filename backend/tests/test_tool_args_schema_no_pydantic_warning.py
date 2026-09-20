@@ -1,7 +1,7 @@
 """Regression test: tool args schemas must not emit Pydantic serialization warnings.
 
 Alpha tools annotate their runtime parameter as ``Runtime``
-(``agent_workspace.tools.types.Runtime`` = ``ToolRuntime[dict[str, Any], ThreadState]``)
+(``alpha.tools.types.Runtime`` = ``ToolRuntime[dict[str, Any], ThreadState]``)
 so the LangChain tool framework injects the runtime automatically.
 When the inner ``Runtime.context`` field is left as the unbound ``ContextT``
 TypeVar (default ``None``), Pydantic's ``model_dump()`` on the auto-generated
@@ -21,7 +21,7 @@ import pytest
 from langchain.tools import ToolRuntime
 from langchain_core.utils.function_calling import convert_to_openai_tool
 
-from agent_workspace.sandbox.tools import (
+from alpha.sandbox.tools import (
     bash_tool,
     glob_tool,
     grep_tool,
@@ -30,13 +30,13 @@ from agent_workspace.sandbox.tools import (
     str_replace_tool,
     write_file_tool,
 )
-from agent_workspace.tools.builtins.list_uploaded_files_tool import list_uploaded_files
-from agent_workspace.tools.builtins.present_file_tool import present_file_tool
-from agent_workspace.tools.builtins.setup_agent_tool import setup_agent
-from agent_workspace.tools.builtins.task_tool import task_tool
-from agent_workspace.tools.builtins.update_agent_tool import update_agent
-from agent_workspace.tools.builtins.view_image_tool import view_image_tool
-from agent_workspace.tools.skill_manage_tool import skill_manage_tool
+from alpha.tools.builtins.list_uploaded_files_tool import list_uploaded_files
+from alpha.tools.builtins.present_file_tool import present_file_tool
+from alpha.tools.builtins.setup_agent_tool import setup_agent
+from alpha.tools.builtins.task_tool import task_tool
+from alpha.tools.builtins.update_agent_tool import update_agent
+from alpha.tools.builtins.view_image_tool import view_image_tool
+from alpha.tools.skill_manage_tool import skill_manage_tool
 
 
 def _make_runtime(context: dict) -> ToolRuntime:
@@ -221,7 +221,7 @@ async def test_sandbox_tool_sync_async_signatures_and_forwarding_stay_aligned(
     assert list(inspect.signature(tool_obj.func).parameters) == list(inspect.signature(tool_obj.coroutine).parameters)
 
     run_sync_tool = AsyncMock(return_value="forwarded")
-    monkeypatch.setattr("agent_workspace.sandbox.tools._run_sync_tool_after_async_sandbox_init", run_sync_tool)
+    monkeypatch.setattr("alpha.sandbox.tools._run_sync_tool_after_async_sandbox_init", run_sync_tool)
     runtime = object()
 
     assert await tool_obj.coroutine(runtime=runtime, **call_args) == "forwarded"

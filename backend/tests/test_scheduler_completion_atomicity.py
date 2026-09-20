@@ -5,14 +5,14 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.scheduler.service import ScheduledTaskService
-from agent_workspace.persistence.base import Base
-from agent_workspace.persistence.scheduled_task_runs import ScheduledTaskRunRepository
-from agent_workspace.persistence.scheduled_task_runs.model import ScheduledTaskRunRow
-from agent_workspace.persistence.scheduled_tasks import ScheduledTaskRepository
-from agent_workspace.persistence.scheduled_tasks.model import ScheduledTaskRow
-from agent_workspace.runtime import RunStatus
-from agent_workspace.runtime.runs.manager import RunRecord
-from agent_workspace.runtime.runs.schemas import DisconnectMode
+from alpha.persistence.base import Base
+from alpha.persistence.scheduled_task_runs import ScheduledTaskRunRepository
+from alpha.persistence.scheduled_task_runs.model import ScheduledTaskRunRow
+from alpha.persistence.scheduled_tasks import ScheduledTaskRepository
+from alpha.persistence.scheduled_tasks.model import ScheduledTaskRow
+from alpha.runtime import RunStatus
+from alpha.runtime.runs.manager import RunRecord
+from alpha.runtime.runs.schemas import DisconnectMode
 
 
 @asynccontextmanager

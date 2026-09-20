@@ -1,7 +1,7 @@
 import pytest
 
-from agent_workspace.tools.builtins.code_mode_tool import code_mode_tool
-from agent_workspace.tools.code_mode.bridge import ToolBridge, execute_code_mode
+from alpha.tools.builtins.code_mode_tool import code_mode_tool
+from alpha.tools.code_mode.bridge import ToolBridge, execute_code_mode
 
 
 def test_tool_bridge_register_and_call():

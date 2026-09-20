@@ -8,10 +8,10 @@ from unittest.mock import patch
 
 import pytest
 
-from agent_workspace.config.paths import Paths
-from agent_workspace.skills.storage import reset_skill_storage, reset_user_skill_storage
-from agent_workspace.skills.storage.user_scoped_skill_storage import UserScopedSkillStorage
-from agent_workspace.skills.types import SkillCategory
+from alpha.config.paths import Paths
+from alpha.skills.storage import reset_skill_storage, reset_user_skill_storage
+from alpha.skills.storage.user_scoped_skill_storage import UserScopedSkillStorage
+from alpha.skills.types import SkillCategory
 
 
 def _skill_content(name: str, description: str = "Demo skill") -> str:
@@ -56,7 +56,7 @@ def config(skills_root):
         skills=SimpleNamespace(
             get_skills_path=lambda: skills_root,
             container_path="/mnt/skills",
-            use="agent_workspace.skills.storage.local_skill_storage:LocalSkillStorage",
+            use="alpha.skills.storage.local_skill_storage:LocalSkillStorage",
         ),
     )
 
@@ -64,8 +64,8 @@ def config(skills_root):
 @pytest.fixture
 def user_storage(base_dir: Path, skills_root, config) -> UserScopedSkillStorage:
     """Create a UserScopedSkillStorage for user 'test-user'."""
-    with patch("agent_workspace.config.paths.get_paths", return_value=Paths(base_dir=base_dir)):
-        with patch("agent_workspace.config.paths._paths", None):
+    with patch("alpha.config.paths.get_paths", return_value=Paths(base_dir=base_dir)):
+        with patch("alpha.config.paths._paths", None):
             storage = UserScopedSkillStorage("test-user", host_path=str(skills_root), app_config=config)
     return storage
 
@@ -147,7 +147,7 @@ class TestSkillLoading:
         integration_dir.mkdir(parents=True)
         (integration_dir / "SKILL.md").write_text(_skill_content("lark-doc"), encoding="utf-8")
 
-        with patch("agent_workspace.config.paths.get_paths", return_value=Paths(base_dir=base_dir)):
+        with patch("alpha.config.paths.get_paths", return_value=Paths(base_dir=base_dir)):
             alice = UserScopedSkillStorage("alice", host_path=str(skills_root), app_config=config)
             bob = UserScopedSkillStorage("bob", host_path=str(skills_root), app_config=config)
 
@@ -225,8 +225,8 @@ class TestIsolation:
     """Different users must see different custom skills."""
 
     def test_two_users_isolated(self, base_dir: Path, skills_root, config):
-        with patch("agent_workspace.config.paths.get_paths", return_value=Paths(base_dir=base_dir)):
-            with patch("agent_workspace.config.paths._paths", None):
+        with patch("alpha.config.paths.get_paths", return_value=Paths(base_dir=base_dir)):
+            with patch("alpha.config.paths._paths", None):
                 storage_a = UserScopedSkillStorage("alice", host_path=str(skills_root), app_config=config)
                 storage_b = UserScopedSkillStorage("bob", host_path=str(skills_root), app_config=config)
 
@@ -242,8 +242,8 @@ class TestIsolation:
                 assert skills_b[0].name == "skill-b"
 
     def test_delete_is_isolated(self, base_dir: Path, skills_root, config):
-        with patch("agent_workspace.config.paths.get_paths", return_value=Paths(base_dir=base_dir)):
-            with patch("agent_workspace.config.paths._paths", None):
+        with patch("alpha.config.paths.get_paths", return_value=Paths(base_dir=base_dir)):
+            with patch("alpha.config.paths._paths", None):
                 storage_a = UserScopedSkillStorage("alice", host_path=str(skills_root), app_config=config)
                 storage_b = UserScopedSkillStorage("bob", host_path=str(skills_root), app_config=config)
 
@@ -264,8 +264,8 @@ class TestHistoryIsolation:
     """History files are per-user."""
 
     def test_history_per_user(self, base_dir: Path, skills_root, config):
-        with patch("agent_workspace.config.paths.get_paths", return_value=Paths(base_dir=base_dir)):
-            with patch("agent_workspace.config.paths._paths", None):
+        with patch("alpha.config.paths.get_paths", return_value=Paths(base_dir=base_dir)):
+            with patch("alpha.config.paths._paths", None):
                 storage_a = UserScopedSkillStorage("alice", host_path=str(skills_root), app_config=config)
                 storage_a.write_custom_skill("shared-name", "SKILL.md", _skill_content("shared-name"))
 
@@ -275,8 +275,8 @@ class TestHistoryIsolation:
                 assert history_file_a.exists()
 
     def test_history_does_not_leak_to_global(self, base_dir: Path, skills_root, config):
-        with patch("agent_workspace.config.paths.get_paths", return_value=Paths(base_dir=base_dir)):
-            with patch("agent_workspace.config.paths._paths", None):
+        with patch("alpha.config.paths.get_paths", return_value=Paths(base_dir=base_dir)):
+            with patch("alpha.config.paths._paths", None):
                 storage = UserScopedSkillStorage("alice", host_path=str(skills_root), app_config=config)
                 storage.write_custom_skill("my-skill", "SKILL.md", _skill_content("my-skill"))
                 storage.append_history("my-skill", {"action": "create"})
@@ -399,27 +399,27 @@ class TestFactory:
     """get_or_new_user_skill_storage factory behavior."""
 
     def test_returns_same_instance_for_same_user(self, base_dir: Path, skills_root, config):
-        with patch("agent_workspace.config.paths.get_paths", return_value=Paths(base_dir=base_dir)):
-            with patch("agent_workspace.config.paths._paths", None):
-                from agent_workspace.skills.storage import get_or_new_user_skill_storage
+        with patch("alpha.config.paths.get_paths", return_value=Paths(base_dir=base_dir)):
+            with patch("alpha.config.paths._paths", None):
+                from alpha.skills.storage import get_or_new_user_skill_storage
 
                 s1 = get_or_new_user_skill_storage("alice", app_config=config)
                 s2 = get_or_new_user_skill_storage("alice", app_config=config)
                 assert s1 is s2
 
     def test_returns_different_instance_for_different_user(self, base_dir: Path, skills_root, config):
-        with patch("agent_workspace.config.paths.get_paths", return_value=Paths(base_dir=base_dir)):
-            with patch("agent_workspace.config.paths._paths", None):
-                from agent_workspace.skills.storage import get_or_new_user_skill_storage
+        with patch("alpha.config.paths.get_paths", return_value=Paths(base_dir=base_dir)):
+            with patch("alpha.config.paths._paths", None):
+                from alpha.skills.storage import get_or_new_user_skill_storage
 
                 s1 = get_or_new_user_skill_storage("alice", app_config=config)
                 s2 = get_or_new_user_skill_storage("bob", app_config=config)
                 assert s1 is not s2
 
     def test_reset_clears_specific_user(self, base_dir: Path, skills_root, config):
-        with patch("agent_workspace.config.paths.get_paths", return_value=Paths(base_dir=base_dir)):
-            with patch("agent_workspace.config.paths._paths", None):
-                from agent_workspace.skills.storage import get_or_new_user_skill_storage
+        with patch("alpha.config.paths.get_paths", return_value=Paths(base_dir=base_dir)):
+            with patch("alpha.config.paths._paths", None):
+                from alpha.skills.storage import get_or_new_user_skill_storage
 
                 s_alice = get_or_new_user_skill_storage("alice", app_config=config)
                 s_bob = get_or_new_user_skill_storage("bob", app_config=config)
@@ -447,9 +447,9 @@ class TestSkillToggleIsolation:
     def test_alice_disable_does_not_affect_bob(self, base_dir: Path, skills_root, config):
         from types import SimpleNamespace
 
-        from agent_workspace.agents.lead_agent.prompt import clear_skills_system_prompt_cache, get_skills_prompt_section
-        from agent_workspace.sandbox.tools import _is_disabled_skill_path
-        from agent_workspace.skills.storage import get_or_new_user_skill_storage
+        from alpha.agents.lead_agent.prompt import clear_skills_system_prompt_cache, get_skills_prompt_section
+        from alpha.sandbox.tools import _is_disabled_skill_path
+        from alpha.skills.storage import get_or_new_user_skill_storage
 
         # Rich config that includes skill_evolution (required by
         # get_skills_prompt_section) while keeping the test skills root.
@@ -458,9 +458,9 @@ class TestSkillToggleIsolation:
             skill_evolution=SimpleNamespace(enabled=False),
         )
 
-        with patch("agent_workspace.config.paths.get_paths", return_value=Paths(base_dir=base_dir)):
-            with patch("agent_workspace.config.paths._paths", None):
-                with patch("agent_workspace.config.get_app_config", return_value=rich_config):
+        with patch("alpha.config.paths.get_paths", return_value=Paths(base_dir=base_dir)):
+            with patch("alpha.config.paths._paths", None):
+                with patch("alpha.config.get_app_config", return_value=rich_config):
                     # Use the factory so storages enter the cache — both
                     # _is_disabled_skill_path and get_skills_prompt_section
                     # call the factory internally.
@@ -553,21 +553,21 @@ class TestSkillStateFailClosed:
     """
 
     def test_returns_true_when_state_lookup_raises(self) -> None:
-        from agent_workspace.sandbox.tools import _is_disabled_skill_path
+        from alpha.sandbox.tools import _is_disabled_skill_path
 
         def _boom(_skill_name: str) -> bool:
             raise OSError("storage unavailable")
 
-        with patch("agent_workspace.skills.storage.user_scoped_skill_storage.UserScopedSkillStorage.get_skill_enabled_state", side_effect=_boom):
+        with patch("alpha.skills.storage.user_scoped_skill_storage.UserScopedSkillStorage.get_skill_enabled_state", side_effect=_boom):
             assert _is_disabled_skill_path("/mnt/skills/custom/report-gen/SKILL.md", user_id="default") is True
 
     def test_returns_true_when_public_extensions_config_raises(self) -> None:
-        from agent_workspace.sandbox.tools import _is_disabled_skill_path
+        from alpha.sandbox.tools import _is_disabled_skill_path
 
         def _boom() -> bool:
             raise OSError("extensions_config.json unreadable")
 
-        with patch("agent_workspace.config.extensions_config.ExtensionsConfig.from_file", side_effect=_boom):
+        with patch("alpha.config.extensions_config.ExtensionsConfig.from_file", side_effect=_boom):
             assert _is_disabled_skill_path("/mnt/skills/public/bootstrap/SKILL.md", user_id="default") is True
 
 
@@ -583,9 +583,9 @@ class TestSkillLoadingRespectsGlobalDisable:
     def test_global_disable_wins_when_per_user_state_missing(self, tmp_path: Path) -> None:
         from types import SimpleNamespace
 
-        from agent_workspace.config.paths import Paths
-        from agent_workspace.skills.storage import get_or_new_user_skill_storage
-        from agent_workspace.skills.types import SkillCategory
+        from alpha.config.paths import Paths
+        from alpha.skills.storage import get_or_new_user_skill_storage
+        from alpha.skills.types import SkillCategory
 
         base = tmp_path
         skills_root = base / "skills"
@@ -598,16 +598,16 @@ class TestSkillLoadingRespectsGlobalDisable:
         )
 
         # Per-user state is empty (no per-user override for "shared-skill").
-        with patch("agent_workspace.config.paths.get_paths", return_value=Paths(base_dir=base)):
-            with patch("agent_workspace.config.paths._paths", None):
+        with patch("alpha.config.paths.get_paths", return_value=Paths(base_dir=base)):
+            with patch("alpha.config.paths._paths", None):
                 cfg = SimpleNamespace(
                     skills=SimpleNamespace(
                         get_skills_path=lambda: skills_root,
                         container_path="/mnt/skills",
-                        use="agent_workspace.skills.storage.local_skill_storage:LocalSkillStorage",
+                        use="alpha.skills.storage.local_skill_storage:LocalSkillStorage",
                     ),
                 )
-                with patch("agent_workspace.config.get_app_config", return_value=cfg):
+                with patch("alpha.config.get_app_config", return_value=cfg):
                     # Global extensions_config reports the shared skill as disabled.
                     ext_cfg = SimpleNamespace(
                         skills={"shared-skill": SimpleNamespace(enabled=False)},
@@ -615,7 +615,7 @@ class TestSkillLoadingRespectsGlobalDisable:
                     )
                     # User-scoped loading re-reads disk state so another
                     # worker's global disable is not hidden by a stale cache.
-                    with patch("agent_workspace.config.extensions_config.ExtensionsConfig.from_file", return_value=ext_cfg):
+                    with patch("alpha.config.extensions_config.ExtensionsConfig.from_file", return_value=ext_cfg):
                         storage = get_or_new_user_skill_storage("alice", app_config=cfg)
                         loaded = storage.load_skills(enabled_only=False)
                         shared = [s for s in loaded if s.name == "shared-skill" and s.category == SkillCategory.LEGACY]
@@ -633,7 +633,7 @@ class TestEnabledSkillsByConfigCacheBounded:
     def test_evicts_least_recently_used_above_maxsize(self, monkeypatch) -> None:
         from collections import OrderedDict
 
-        from agent_workspace.agents.lead_agent import prompt as prompt_module
+        from alpha.agents.lead_agent import prompt as prompt_module
 
         # Shrink the cap so the test stays fast.
         monkeypatch.setattr(prompt_module, "_ENABLED_SKILLS_BY_CONFIG_CACHE_MAXSIZE", 4)

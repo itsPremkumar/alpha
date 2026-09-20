@@ -1,6 +1,6 @@
 """Tests for user-facing IM channel connection configuration."""
 
-from agent_workspace.config.channel_connections_config import ChannelConnectionsConfig
+from alpha.config.channel_connections_config import ChannelConnectionsConfig
 
 
 def test_channel_connections_disabled_by_default():

@@ -12,8 +12,8 @@ from __future__ import annotations
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-from agent_workspace.agents.memory.backends.deermem.deer_mem import DeerMem
-from agent_workspace.agents.memory.backends.deermem.deermem.core.message_processing import (
+from alpha.agents.memory.backends.deermem.deer_mem import DeerMem
+from alpha.agents.memory.backends.deermem.deermem.core.message_processing import (
     detect_signals,
     extract_message_text,
     filter_trivial,

@@ -7,8 +7,8 @@ the real async store + background-loop wiring used by the TUI.
 import pytest
 from langgraph.store.memory import InMemoryStore
 
-from agent_workspace.persistence.thread_meta import make_thread_store
-from agent_workspace.tui.persistence import ThreadMetaWriter, _LoopThread
+from alpha.persistence.thread_meta import make_thread_store
+from alpha.tui.persistence import ThreadMetaWriter, _LoopThread
 
 
 @pytest.fixture

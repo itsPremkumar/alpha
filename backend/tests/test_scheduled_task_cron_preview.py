@@ -10,7 +10,7 @@ from fastapi import FastAPI
 
 from app.gateway.authz import AuthContext
 from app.gateway.routers import scheduled_tasks
-from agent_workspace.scheduler.schedules import next_run_at
+from alpha.scheduler.schedules import next_run_at
 
 URL = "/api/scheduled-tasks/preview-cron"
 PAYLOAD = {"cron": "0 9 * * 1-5", "timezone": "Asia/Shanghai", "count": 3, "start_at": "2026-09-12T00:00:00Z"}

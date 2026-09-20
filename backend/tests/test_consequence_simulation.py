@@ -2,9 +2,9 @@
 
 import json
 
-from agent_workspace.consequence.affordance import AffordanceModel, EnvironmentAffordances
-from agent_workspace.consequence.simulator import ConsequenceSimulator, SimulationReport
-from agent_workspace.tools.builtins.consequence_tool import simulate_consequences
+from alpha.consequence.affordance import AffordanceModel, EnvironmentAffordances
+from alpha.consequence.simulator import ConsequenceSimulator, SimulationReport
+from alpha.tools.builtins.consequence_tool import simulate_consequences
 
 
 def test_affordance_model_probe(tmp_path):

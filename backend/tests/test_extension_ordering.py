@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from agent_workspace.extensions.isolation import IsolatedMiddleware
-from agent_workspace.extensions.ordering import OrderingConstraint, assert_ordering
+from alpha.extensions.isolation import IsolatedMiddleware
+from alpha.extensions.ordering import OrderingConstraint, assert_ordering
 
 
 class _Outer:
@@ -91,11 +91,11 @@ def test_every_duplicate_participant_must_satisfy_the_constraint():
 
 
 def test_core_constraints_are_declared():
-    from agent_workspace.agents.middlewares.skill_tool_policy_middleware import SkillToolPolicyMiddleware
-    from agent_workspace.agents.middlewares.tool_error_handling_middleware import ToolErrorHandlingMiddleware
-    from agent_workspace.agents.middlewares.tool_progress_middleware import ToolProgressMiddleware
-    from agent_workspace.agents.middlewares.tool_promotion_audit_middleware import DeferredToolPromotionAuditMiddleware
-    from agent_workspace.extensions.ordering import core_ordering_constraints
+    from alpha.agents.middlewares.skill_tool_policy_middleware import SkillToolPolicyMiddleware
+    from alpha.agents.middlewares.tool_error_handling_middleware import ToolErrorHandlingMiddleware
+    from alpha.agents.middlewares.tool_progress_middleware import ToolProgressMiddleware
+    from alpha.agents.middlewares.tool_promotion_audit_middleware import DeferredToolPromotionAuditMiddleware
+    from alpha.extensions.ordering import core_ordering_constraints
 
     pairs = {(c.outer, c.inner) for c in core_ordering_constraints()}
     assert (ToolProgressMiddleware, ToolErrorHandlingMiddleware) in pairs
@@ -112,7 +112,7 @@ def test_core_constraints_are_a_plain_tuple():
     very tuples tests substitute for it — while iteration yielded the real
     constraints.
     """
-    from agent_workspace.extensions.ordering import core_ordering_constraints
+    from alpha.extensions.ordering import core_ordering_constraints
 
     constraints = core_ordering_constraints()
     iterated = list(constraints)
@@ -145,8 +145,8 @@ def test_resolution_stays_deferred_until_first_use():
     env = {**os.environ, "PYTHONPATH": os.pathsep.join([str(backend_root), str(backend_root / "packages" / "harness"), os.environ.get("PYTHONPATH", "")])}
     probe = (
         "import sys\n"
-        "from agent_workspace.extensions import ordering\n"
-        "targets = ('agent_workspace.agents.middlewares.tool_progress_middleware', 'agent_workspace.agents.middlewares.tool_error_handling_middleware')\n"
+        "from alpha.extensions import ordering\n"
+        "targets = ('alpha.agents.middlewares.tool_progress_middleware', 'alpha.agents.middlewares.tool_error_handling_middleware')\n"
         "print('after_import', [t for t in targets if t in sys.modules])\n"
         "ordering.core_ordering_constraints()\n"
         "print('after_call', sorted(t for t in targets if t in sys.modules))\n"
@@ -155,4 +155,4 @@ def test_resolution_stays_deferred_until_first_use():
 
     assert result.returncode == 0, result.stderr
     assert "after_import []" in result.stdout, "importing extensions.ordering must not load the middleware layer"
-    assert "after_call ['agent_workspace.agents.middlewares.tool_error_handling_middleware', 'agent_workspace.agents.middlewares.tool_progress_middleware']" in result.stdout
+    assert "after_call ['alpha.agents.middlewares.tool_error_handling_middleware', 'alpha.agents.middlewares.tool_progress_middleware']" in result.stdout

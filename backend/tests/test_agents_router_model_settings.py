@@ -20,10 +20,10 @@ from app.gateway.routers.agents import (
     get_agent,
     update_agent,
 )
-from agent_workspace.config.agents_api_config import load_agents_api_config_from_dict
-from agent_workspace.config.app_config import AppConfig, reset_app_config, set_app_config
-from agent_workspace.config.model_config import ModelConfig
-from agent_workspace.config.sandbox_config import SandboxConfig
+from alpha.config.agents_api_config import load_agents_api_config_from_dict
+from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
+from alpha.config.model_config import ModelConfig
+from alpha.config.sandbox_config import SandboxConfig
 
 pytestmark = pytest.mark.asyncio
 
@@ -31,12 +31,12 @@ pytestmark = pytest.mark.asyncio
 @pytest.fixture
 def _agent_env(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
-    monkeypatch.setattr("agent_workspace.config.paths._paths", None)
+    monkeypatch.setattr("alpha.config.paths._paths", None)
     load_agents_api_config_from_dict({"enabled": True})
     set_app_config(
         AppConfig(
             models=[ModelConfig(name="agent-model", display_name="Agent Model", description=None, use="langchain_openai:ChatOpenAI", model="agent-model")],
-            sandbox=SandboxConfig(use="agent_workspace.sandbox.local:LocalSandboxProvider"),
+            sandbox=SandboxConfig(use="alpha.sandbox.local:LocalSandboxProvider"),
         )
     )
     try:

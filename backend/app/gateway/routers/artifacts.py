@@ -20,12 +20,12 @@ from app.gateway.authz import SandboxRequestLease, require_permission, try_acqui
 from app.gateway.deps import get_run_manager
 from app.gateway.internal_auth import get_trusted_internal_owner_user_id
 from app.gateway.path_utils import normalize_outputs_virtual_path, resolve_outputs_confined_path, resolve_thread_virtual_path
-from agent_workspace.authz.sandbox_authz import safe_app_config
-from agent_workspace.config.paths import make_safe_user_id
-from agent_workspace.runtime import ConflictError, ThreadOperationKind
-from agent_workspace.runtime.user_context import get_effective_user_id
-from agent_workspace.sandbox.sandbox_provider import get_sandbox_provider
-from agent_workspace.utils.thread_id import ThreadId
+from alpha.authz.sandbox_authz import safe_app_config
+from alpha.config.paths import make_safe_user_id
+from alpha.runtime import ConflictError, ThreadOperationKind
+from alpha.runtime.user_context import get_effective_user_id
+from alpha.sandbox.sandbox_provider import get_sandbox_provider
+from alpha.utils.thread_id import ThreadId
 
 logger = logging.getLogger(__name__)
 

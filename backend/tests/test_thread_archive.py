@@ -3,8 +3,8 @@
 import pytest
 from langgraph.store.memory import InMemoryStore
 
-from agent_workspace.persistence.thread_meta.memory import MemoryThreadMetaStore
-from agent_workspace.persistence.thread_meta.sql import ThreadMetaRepository
+from alpha.persistence.thread_meta.memory import MemoryThreadMetaStore
+from alpha.persistence.thread_meta.sql import ThreadMetaRepository
 
 ARCHIVED = "agent_workspace_archived"
 
@@ -14,7 +14,7 @@ async def archive_store(request, tmp_path):
     if request.param == "memory":
         yield MemoryThreadMetaStore(InMemoryStore())
         return
-    from agent_workspace.persistence.engine import close_engine, get_session_factory, init_engine
+    from alpha.persistence.engine import close_engine, get_session_factory, init_engine
 
     await init_engine("sqlite", url=f"sqlite+aiosqlite:///{tmp_path / 'archive.db'}", sqlite_dir=str(tmp_path))
     try:

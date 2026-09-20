@@ -20,9 +20,9 @@ import threading
 import time
 from pathlib import Path
 
-import agent_workspace.skills.storage as skill_storage
-from agent_workspace.config.paths import Paths
-from agent_workspace.skills.storage import SkillStorage
+import alpha.skills.storage as skill_storage
+from alpha.config.paths import Paths
+from alpha.skills.storage import SkillStorage
 
 
 class SlowSkillStorage(SkillStorage):
@@ -87,8 +87,8 @@ _APP_CONFIG = _AppConfig()
 
 
 def _patch_storage_resolution(monkeypatch, cls=SlowSkillStorage) -> None:
-    monkeypatch.setattr("agent_workspace.config.get_app_config", lambda: _APP_CONFIG)
-    monkeypatch.setattr("agent_workspace.reflection.resolve_class", lambda *args, **kwargs: cls)
+    monkeypatch.setattr("alpha.config.get_app_config", lambda: _APP_CONFIG)
+    monkeypatch.setattr("alpha.reflection.resolve_class", lambda *args, **kwargs: cls)
 
 
 def test_get_or_new_skill_storage_constructs_one_singleton_under_concurrent_access(monkeypatch):
@@ -227,12 +227,12 @@ class SlowUserSkillStorage(SkillStorage):
 
 
 def _patch_user_storage_resolution(monkeypatch, cls=SlowUserSkillStorage) -> None:
-    monkeypatch.setattr("agent_workspace.config.get_app_config", lambda: _APP_CONFIG)
-    monkeypatch.setattr("agent_workspace.config.paths.get_paths", lambda: Paths(base_dir=Path("/tmp")))
-    monkeypatch.setattr("agent_workspace.config.paths._paths", None)
+    monkeypatch.setattr("alpha.config.get_app_config", lambda: _APP_CONFIG)
+    monkeypatch.setattr("alpha.config.paths.get_paths", lambda: Paths(base_dir=Path("/tmp")))
+    monkeypatch.setattr("alpha.config.paths._paths", None)
     # get_or_new_user_skill_storage calls UserScopedSkillStorage(user_id, **kwargs)
     # directly — not via resolve_class. Patch the class reference in the module.
-    monkeypatch.setattr("agent_workspace.skills.storage.UserScopedSkillStorage", cls)
+    monkeypatch.setattr("alpha.skills.storage.UserScopedSkillStorage", cls)
 
 
 def test_get_or_new_user_skill_storage_constructs_one_per_user_under_concurrent_access(monkeypatch):
@@ -332,7 +332,7 @@ def test_reset_user_skill_storage_normalises_cache_key(monkeypatch):
     ``make_safe_user_id(user_id)`` but ``reset`` would try to pop by the raw
     ID — a silent cache-invalidation failure.
     """
-    from agent_workspace.config.paths import make_safe_user_id
+    from alpha.config.paths import make_safe_user_id
 
     skill_storage.reset_skill_storage()
     SlowUserSkillStorage.instances_created = 0

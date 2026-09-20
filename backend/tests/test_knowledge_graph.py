@@ -1,4 +1,4 @@
-from agent_workspace.knowledge.graph import (
+from alpha.knowledge.graph import (
     EntityType,
     KnowledgeGraph,
     RelationType,

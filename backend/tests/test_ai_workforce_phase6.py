@@ -15,14 +15,14 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from agent_workspace.benchmarks.arena import get_benchmark_arena
-from agent_workspace.evolution.retrospective_engine import get_retrospective_engine
-from agent_workspace.integrations.github_bridge import get_github_workforce_bridge
-from agent_workspace.models.local_llm_failover import get_local_failover_router
-from agent_workspace.projects.canary_watchdog import get_canary_watchdog
-from agent_workspace.projects.checkpoint_engine import CheckpointEngine, get_checkpoint_engine
-from agent_workspace.projects.visual_verifier import get_visual_qa_engine
-from agent_workspace.sandbox.container_runner import get_container_sandbox_runner
+from alpha.benchmarks.arena import get_benchmark_arena
+from alpha.evolution.retrospective_engine import get_retrospective_engine
+from alpha.integrations.github_bridge import get_github_workforce_bridge
+from alpha.models.local_llm_failover import get_local_failover_router
+from alpha.projects.canary_watchdog import get_canary_watchdog
+from alpha.projects.checkpoint_engine import CheckpointEngine, get_checkpoint_engine
+from alpha.projects.visual_verifier import get_visual_qa_engine
+from alpha.sandbox.container_runner import get_container_sandbox_runner
 
 
 def test_visual_qa_verifier_lifecycle():

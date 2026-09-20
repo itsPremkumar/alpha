@@ -1,7 +1,7 @@
 import json
 import os
 
-from agent_workspace.models.credential_loader import (
+from alpha.models.credential_loader import (
     load_claude_code_credential,
     load_codex_cli_credential,
 )

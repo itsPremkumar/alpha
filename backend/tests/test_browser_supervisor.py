@@ -2,9 +2,9 @@ import json
 
 import pytest
 
-from agent_workspace.browser.stealth import get_stealth_headers
-from agent_workspace.browser.supervisor import BrowserSupervisor
-from agent_workspace.tools.builtins.browser_supervisor_tool import browser_navigate_and_inspect
+from alpha.browser.stealth import get_stealth_headers
+from alpha.browser.supervisor import BrowserSupervisor
+from alpha.tools.builtins.browser_supervisor_tool import browser_navigate_and_inspect
 
 
 def test_stealth_headers():

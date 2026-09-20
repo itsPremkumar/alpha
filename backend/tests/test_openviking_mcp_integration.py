@@ -14,9 +14,9 @@ import uvicorn
 from mcp.server.fastmcp import FastMCP
 
 from app.gateway.routers.mcp import McpServerConfigResponse, _mask_server_config
-from agent_workspace.config.extensions_config import ExtensionsConfig
-from agent_workspace.mcp.client import build_server_params
-from agent_workspace.mcp.tools import get_mcp_tools
+from alpha.config.extensions_config import ExtensionsConfig
+from alpha.mcp.client import build_server_params
+from alpha.mcp.tools import get_mcp_tools
 
 _IDENTITY_HEADERS = {
     "x-openviking-account",
@@ -155,7 +155,7 @@ async def test_openviking_http_mcp_discovers_exposes_and_calls_native_tools(
         _write_openviking_extensions_config(config_path, url)
         extensions = ExtensionsConfig.from_file(str(config_path))
 
-        with patch("agent_workspace.mcp.tools.ExtensionsConfig.from_file", return_value=extensions):
+        with patch("alpha.mcp.tools.ExtensionsConfig.from_file", return_value=extensions):
             tools = await get_mcp_tools()
 
         assert {tool.name for tool in tools} == {"openviking_find", "openviking_forget"}

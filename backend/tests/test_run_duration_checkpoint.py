@@ -8,14 +8,14 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.base import empty_checkpoint, uuid6
 from langgraph.checkpoint.memory import InMemorySaver
 
-import agent_workspace.runtime.runs.worker as worker
-from agent_workspace.runtime import ConflictError, ThreadOperationKind
-from agent_workspace.runtime.events.store.memory import MemoryRunEventStore
-from agent_workspace.runtime.goal import goal_thread_lock
-from agent_workspace.runtime.runs.manager import RunManager, RunStartOutcome
-from agent_workspace.runtime.runs.schemas import RunStatus
-from agent_workspace.runtime.runs.store.memory import MemoryRunStore
-from agent_workspace.runtime.runs.worker import RunContext, _persist_run_duration, run_agent
+import alpha.runtime.runs.worker as worker
+from alpha.runtime import ConflictError, ThreadOperationKind
+from alpha.runtime.events.store.memory import MemoryRunEventStore
+from alpha.runtime.goal import goal_thread_lock
+from alpha.runtime.runs.manager import RunManager, RunStartOutcome
+from alpha.runtime.runs.schemas import RunStatus
+from alpha.runtime.runs.store.memory import MemoryRunStore
+from alpha.runtime.runs.worker import RunContext, _persist_run_duration, run_agent
 
 
 class _YieldingSaver(InMemorySaver):

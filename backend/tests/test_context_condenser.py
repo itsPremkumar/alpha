@@ -1,9 +1,9 @@
 """Tests for Multi-stage Pipeline Context Condenser."""
 
-from agent_workspace.context.condenser.pipeline import PipelineCondenser
-from agent_workspace.context.condenser.pruner import DeterministicPruner
-from agent_workspace.context.condenser.summarizer import StructuredStateCondenser, WorkingState
-from agent_workspace.context.condenser.truncator import HeadTailBudgetTruncator
+from alpha.context.condenser.pipeline import PipelineCondenser
+from alpha.context.condenser.pruner import DeterministicPruner
+from alpha.context.condenser.summarizer import StructuredStateCondenser, WorkingState
+from alpha.context.condenser.truncator import HeadTailBudgetTruncator
 
 
 def test_deterministic_pruner():

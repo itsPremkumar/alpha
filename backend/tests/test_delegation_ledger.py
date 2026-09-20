@@ -2,9 +2,9 @@
 
 from langchain_core.messages import AIMessage, ToolMessage
 
-from agent_workspace.agents.middlewares.delegation_ledger import extract_delegations, render_delegation_ledger
-from agent_workspace.agents.thread_state import TERMINAL_STATUSES, merge_delegations
-from agent_workspace.subagents.status_contract import SUBAGENT_STATUS_VALUES
+from alpha.agents.middlewares.delegation_ledger import extract_delegations, render_delegation_ledger
+from alpha.agents.thread_state import TERMINAL_STATUSES, merge_delegations
+from alpha.subagents.status_contract import SUBAGENT_STATUS_VALUES
 
 
 def _entry(entry_id: str, status: str, description: str = "d", subagent_type: str = "general-purpose"):
@@ -70,7 +70,7 @@ class TestMergeDelegations:
         assert out[0]["run_id"] == "run-1"
 
     def test_over_cap_keeps_most_recent_entries(self):
-        from agent_workspace.agents import thread_state as thread_state_module
+        from alpha.agents import thread_state as thread_state_module
 
         cap = getattr(thread_state_module, "_DELEGATION_LEDGER_MAX_ENTRIES", None)
         assert isinstance(cap, int)
@@ -474,7 +474,7 @@ def _verdict(*, resolved=("r1",), failed=(), unknown=(), no_claims=False):
 
 
 def _completed_task_message(tool_call_id: str, verdict: dict | None) -> ToolMessage:
-    from agent_workspace.subagents.status_contract import make_subagent_additional_kwargs
+    from alpha.subagents.status_contract import make_subagent_additional_kwargs
 
     receipts = [
         {
@@ -553,7 +553,7 @@ def _acceptance_verdict() -> dict:
 
 class TestAcceptanceVerdictRendering:
     def test_entry_carries_verdict_and_renders_segment(self):
-        from agent_workspace.subagents.status_contract import make_subagent_additional_kwargs
+        from alpha.subagents.status_contract import make_subagent_additional_kwargs
 
         messages = [
             _ai_task_call("c1", "write report"),

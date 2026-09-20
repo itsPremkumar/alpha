@@ -9,8 +9,8 @@ from langchain_core.messages import AnyMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph.message import add_messages
 
-from agent_workspace.runtime import CheckpointStateAccessor
-from agent_workspace.runtime.checkpoint_mode import CHECKPOINT_MODE_METADATA_KEY, INTERNAL_CHECKPOINT_MODE_KEY
+from alpha.runtime import CheckpointStateAccessor
+from alpha.runtime.checkpoint_mode import CHECKPOINT_MODE_METADATA_KEY, INTERNAL_CHECKPOINT_MODE_KEY
 
 
 class FakeCheckpointer:
@@ -85,7 +85,7 @@ def _assert_delta_config_is_copied(original: dict[str, Any], forwarded: dict[str
 def test_mutation_graph_bakes_snapshot_frequency_into_fallback_schema() -> None:
     from langgraph.channels import DeltaChannel
 
-    from agent_workspace.runtime.checkpoint_state import build_state_mutation_graph
+    from alpha.runtime.checkpoint_state import build_state_mutation_graph
 
     default_graph = build_state_mutation_graph("compact", "delta")
     assert isinstance(default_graph.channels["messages"], DeltaChannel)
@@ -204,7 +204,7 @@ async def test_full_accessor_gates_writes_and_checks_reads_on_the_returned_snaps
 async def test_full_accessor_raises_when_the_returned_snapshot_is_delta_marked() -> None:
     """A full-mode accessor must fail closed on a delta checkpoint, detected
     via the returned snapshot metadata (no pre-read tuple fetch)."""
-    from agent_workspace.runtime.checkpoint_mode import CheckpointModeMismatchError
+    from alpha.runtime.checkpoint_mode import CheckpointModeMismatchError
 
     graph = FakeGraph()
     saver = FakeCheckpointer()
@@ -229,7 +229,7 @@ async def test_full_accessor_raises_when_the_returned_snapshot_is_delta_marked()
 @pytest.mark.anyio
 async def test_full_accessor_writes_still_check_compatibility_before_writing() -> None:
     """Writes cannot be un-applied, so the pre-write tuple fetch stays."""
-    from agent_workspace.runtime.checkpoint_mode import CheckpointModeMismatchError
+    from alpha.runtime.checkpoint_mode import CheckpointModeMismatchError
 
     graph = FakeGraph()
 

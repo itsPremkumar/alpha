@@ -2,10 +2,10 @@
 
 import json
 
-from agent_workspace.learning.experience.models import ExperienceRecord, OutcomeType
-from agent_workspace.learning.experience.retriever import ExperienceRetriever
-from agent_workspace.learning.experience.store import ExperienceStore
-from agent_workspace.tools.builtins.experience_tool import consult_experience
+from alpha.learning.experience.models import ExperienceRecord, OutcomeType
+from alpha.learning.experience.retriever import ExperienceRetriever
+from alpha.learning.experience.store import ExperienceStore
+from alpha.tools.builtins.experience_tool import consult_experience
 
 
 def test_experience_store_memory_and_disk(tmp_path):

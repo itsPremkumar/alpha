@@ -14,8 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from agent_workspace.integrations import lark_broker
-from agent_workspace.integrations.lark_broker import BrokerConfig, run_lark_cli, serve
+from alpha.integrations import lark_broker
+from alpha.integrations.lark_broker import BrokerConfig, run_lark_cli, serve
 
 
 def _fake_lark_cli(tmp_path: Path) -> str:

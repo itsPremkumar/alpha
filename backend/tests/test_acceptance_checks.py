@@ -10,13 +10,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from agent_workspace.subagents.acceptance_checks import (
+from alpha.subagents.acceptance_checks import (
     check_acceptance_criteria,
     render_acceptance_section,
     render_acceptance_segment,
     validate_acceptance_verdict,
 )
-from agent_workspace.subagents.report_contract import MAX_ACCEPTANCE_CRITERIA
+from alpha.subagents.report_contract import MAX_ACCEPTANCE_CRITERIA
 
 THREAD_DATA = {
     "workspace_path": "/ws/thread/user-data/workspace",
@@ -128,7 +128,7 @@ class TestFileLeaves:
         # where resolve() produces backslash separators.
         from pathlib import Path
 
-        from agent_workspace.sandbox.tools import _resolve_local_read_path
+        from alpha.sandbox.tools import _resolve_local_read_path
 
         assert Path(_resolve_local_read_path(seen[0], THREAD_DATA)) == Path("/ws/thread/user-data/outputs/report.md").resolve()  # type: ignore[arg-type]
 
@@ -463,11 +463,11 @@ class TestProbeFileSize:
                     raise raises
                 return output
 
-        monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_sandbox_initialized", lambda runtime=None: _Sandbox())
+        monkeypatch.setattr("alpha.sandbox.tools.ensure_sandbox_initialized", lambda runtime=None: _Sandbox())
         return captured
 
     def test_bare_integer_output_is_the_size(self, monkeypatch):
-        from agent_workspace.subagents.acceptance_checks import _probe_file_size
+        from alpha.subagents.acceptance_checks import _probe_file_size
 
         captured = self._install_sandbox(monkeypatch, output="  12345\n")
         assert _probe_file_size(self._REMOTE_RUNTIME, "/mnt/user-data/outputs/big.csv", None) == 12345
@@ -483,7 +483,7 @@ class TestProbeFileSize:
         shell with absolute-path utilities (function/alias/PATH/locale-proof),
         never opens content (no ``wc`` redirection a FIFO could block), and
         carries the marker env that routes AIO off the persistent session."""
-        from agent_workspace.subagents.acceptance_checks import _probe_file_size
+        from alpha.subagents.acceptance_checks import _probe_file_size
 
         captured = self._install_sandbox(monkeypatch, output="50001")
         _probe_file_size(self._REMOTE_RUNTIME, "/mnt/user-data/outputs/big.csv", None)
@@ -497,7 +497,7 @@ class TestProbeFileSize:
     def test_rejected_renderings_are_not_a_size(self, monkeypatch, output):
         """Symlinks, fifos, directories, and containment escapes (a swapped
         parent directory, root included) all degrade to UNVERIFIED."""
-        from agent_workspace.subagents.acceptance_checks import _probe_file_size
+        from alpha.subagents.acceptance_checks import _probe_file_size
 
         self._install_sandbox(monkeypatch, output=output)
         assert _probe_file_size(self._REMOTE_RUNTIME, "/mnt/user-data/outputs/big.csv", None) is None
@@ -505,26 +505,26 @@ class TestProbeFileSize:
     def test_nofile_marker_raises_file_not_found(self, monkeypatch):
         """A missing remote file must keep its deterministic not-holds — the
         probe renders it in its own words, never from provider error text."""
-        from agent_workspace.subagents.acceptance_checks import _probe_file_size
+        from alpha.subagents.acceptance_checks import _probe_file_size
 
         self._install_sandbox(monkeypatch, output="NOFILE")
         with pytest.raises(FileNotFoundError):
             _probe_file_size(self._REMOTE_RUNTIME, "/mnt/user-data/outputs/missing.md", None)
 
     def test_unreadable_marker_is_not_a_size(self, monkeypatch):
-        from agent_workspace.subagents.acceptance_checks import _probe_file_size
+        from alpha.subagents.acceptance_checks import _probe_file_size
 
         self._install_sandbox(monkeypatch, output="UNREADABLE")
         assert _probe_file_size(self._REMOTE_RUNTIME, "/mnt/user-data/outputs/big.csv", None) is None
 
     def test_provider_error_string_is_not_a_size(self, monkeypatch):
-        from agent_workspace.subagents.acceptance_checks import _probe_file_size
+        from alpha.subagents.acceptance_checks import _probe_file_size
 
         self._install_sandbox(monkeypatch, output="Error: No such file or directory")
         assert _probe_file_size(self._REMOTE_RUNTIME, "/mnt/user-data/outputs/big.csv", None) is None
 
     def test_execute_failure_degrades_to_none(self, monkeypatch):
-        from agent_workspace.subagents.acceptance_checks import _probe_file_size
+        from alpha.subagents.acceptance_checks import _probe_file_size
 
         self._install_sandbox(monkeypatch, raises=OSError("sandbox gone"))
         assert _probe_file_size(self._REMOTE_RUNTIME, "/mnt/user-data/outputs/big.csv", None) is None
@@ -537,7 +537,7 @@ class TestProbeFileSize:
         """PR review: in the supported host-bash-disabled configuration the
         probe must still work — locally it stats the validated host path
         directly and never acquires a sandbox or runs ``wc``."""
-        from agent_workspace.subagents.acceptance_checks import _probe_file_size
+        from alpha.subagents.acceptance_checks import _probe_file_size
 
         workspace = tmp_path / "user-data" / "workspace"
         workspace.mkdir(parents=True)
@@ -546,12 +546,12 @@ class TestProbeFileSize:
         def forbidden_ensure(runtime=None):
             raise AssertionError("the local probe must not acquire a sandbox")
 
-        monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_sandbox_initialized", forbidden_ensure)
+        monkeypatch.setattr("alpha.sandbox.tools.ensure_sandbox_initialized", forbidden_ensure)
         thread_data = {"workspace_path": str(workspace)}
         assert _probe_file_size(self._local_runtime(), "/mnt/user-data/workspace/report.md", thread_data) == 5
 
     def test_local_missing_file_raises_file_not_found(self, tmp_path):
-        from agent_workspace.subagents.acceptance_checks import _probe_file_size
+        from alpha.subagents.acceptance_checks import _probe_file_size
 
         workspace = tmp_path / "user-data" / "workspace"
         workspace.mkdir(parents=True)
@@ -561,7 +561,7 @@ class TestProbeFileSize:
     def test_local_directory_is_not_a_size(self, tmp_path):
         """A directory stats fine but is not a readable file — ``None`` lets
         the leaf degrade to UNVERIFIED instead of claiming a byte count."""
-        from agent_workspace.subagents.acceptance_checks import _probe_file_size
+        from alpha.subagents.acceptance_checks import _probe_file_size
 
         workspace = tmp_path / "user-data" / "workspace"
         (workspace / "subdir").mkdir(parents=True)
@@ -571,7 +571,7 @@ class TestProbeFileSize:
     def test_local_fifo_is_not_a_size(self, tmp_path):
         """A FIFO is never opened (stat is metadata-only) and its non-regular
         type degrades the leaf to UNVERIFIED."""
-        from agent_workspace.subagents.acceptance_checks import _probe_file_size
+        from alpha.subagents.acceptance_checks import _probe_file_size
 
         workspace = tmp_path / "user-data" / "workspace"
         workspace.mkdir(parents=True)
@@ -581,7 +581,7 @@ class TestProbeFileSize:
     def test_local_readable_probe_opens_one_byte_without_a_shell(self, monkeypatch, tmp_path):
         """The local readability proof is a direct one-byte ``open`` of the
         validated host path — no shell, no sandbox acquisition."""
-        from agent_workspace.subagents.acceptance_checks import _probe_file_readable
+        from alpha.subagents.acceptance_checks import _probe_file_readable
 
         workspace = tmp_path / "user-data" / "workspace"
         workspace.mkdir(parents=True)
@@ -590,7 +590,7 @@ class TestProbeFileSize:
         def forbidden_ensure(runtime=None):
             raise AssertionError("the local probe must not acquire a sandbox")
 
-        monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_sandbox_initialized", forbidden_ensure)
+        monkeypatch.setattr("alpha.sandbox.tools.ensure_sandbox_initialized", forbidden_ensure)
         thread_data = {"workspace_path": str(workspace)}
         assert _probe_file_readable(self._local_runtime(), "/mnt/user-data/workspace/report.md", thread_data) is True
 
@@ -598,7 +598,7 @@ class TestProbeFileSize:
     def test_local_unreadable_file_fails_the_probe(self, tmp_path):
         """The reviewer's reproduction: a mode-000 deliverable stats fine but
         cannot be opened — the probe answers False, not a stat-based hold."""
-        from agent_workspace.subagents.acceptance_checks import _probe_file_readable
+        from alpha.subagents.acceptance_checks import _probe_file_readable
 
         workspace = tmp_path / "user-data" / "workspace"
         workspace.mkdir(parents=True)
@@ -620,7 +620,7 @@ class TestProbeInnerScriptRealLayouts:
     there)."""
 
     def _run_probe(self, path: str, root: str) -> str:
-        from agent_workspace.subagents.acceptance_checks import _SIZE_PROBE_INNER_SCRIPT
+        from alpha.subagents.acceptance_checks import _SIZE_PROBE_INNER_SCRIPT
 
         command = f"/usr/bin/env -i /bin/sh -c {shlex.quote(_SIZE_PROBE_INNER_SCRIPT)} probe {shlex.quote(path)} {shlex.quote(root)}"
         return subprocess.run(command, shell=True, capture_output=True, text=True, check=True).stdout.strip()
@@ -651,7 +651,7 @@ class TestProbeInnerScriptRealLayouts:
         assert self._run_probe(str(outputs / "stolen.md"), str(outputs)) == "NONREGULAR"
 
     def _run_read_probe(self, path: str, root: str) -> str:
-        from agent_workspace.subagents.acceptance_checks import _READ_PROBE_INNER_SCRIPT
+        from alpha.subagents.acceptance_checks import _READ_PROBE_INNER_SCRIPT
 
         command = f"/usr/bin/env -i /bin/sh -c {shlex.quote(_READ_PROBE_INNER_SCRIPT)} probe {shlex.quote(path)} {shlex.quote(root)}"
         return subprocess.run(command, shell=True, capture_output=True, text=True, check=True).stdout.strip()
@@ -709,7 +709,7 @@ class TestProbeInnerScriptRealLayouts:
         """The full glue — root extraction, quoting, marker env, output
         parsing — against the real script running in a real fresh shell,
         with the fake sandbox mapping virtual paths like a provider mount."""
-        from agent_workspace.subagents.acceptance_checks import _probe_file_size
+        from alpha.subagents.acceptance_checks import _probe_file_size
 
         outputs = tmp_path / "outputs"
         outputs.mkdir()
@@ -727,7 +727,7 @@ class TestProbeInnerScriptRealLayouts:
                     command = command.replace(virtual, host)
                 return subprocess.run(command, shell=True, capture_output=True, text=True, check=True).stdout
 
-        monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_sandbox_initialized", lambda runtime=None: _RealShellSandbox())
+        monkeypatch.setattr("alpha.sandbox.tools.ensure_sandbox_initialized", lambda runtime=None: _RealShellSandbox())
         runtime = SimpleNamespace(state=None)  # not local → remote probe path
         assert _probe_file_size(runtime, "/mnt/user-data/outputs/report.md", None) == 5
         with pytest.raises(FileNotFoundError):
@@ -774,7 +774,7 @@ class TestTestsPassedLeaf:
         """PR review (P2): the Sandbox contract fails closed — an
         implementation that never declares its session semantics is UNKNOWN,
         not fresh-shell; only an explicit ``False`` is trusted."""
-        from agent_workspace.sandbox.sandbox import Sandbox
+        from alpha.sandbox.sandbox import Sandbox
 
         assert Sandbox.persistent_shell_sessions is None
 

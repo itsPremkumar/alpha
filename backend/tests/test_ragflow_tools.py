@@ -6,11 +6,11 @@ from types import SimpleNamespace
 
 import pytest
 
-import agent_workspace.community.ragflow.tools as ragflow_tools
-from agent_workspace.community.ragflow.client import RAGFlowAPIError, RAGFlowConnectionError
-from agent_workspace.community.ragflow.formatting import format_retrieval_result
-from agent_workspace.config.tool_config import ToolConfig
-from agent_workspace.tools.tools import get_available_tools
+import alpha.community.ragflow.tools as ragflow_tools
+from alpha.community.ragflow.client import RAGFlowAPIError, RAGFlowConnectionError
+from alpha.community.ragflow.formatting import format_retrieval_result
+from alpha.config.tool_config import ToolConfig
+from alpha.tools.tools import get_available_tools
 
 DATASET_ID_1 = "0123456789abcdef0123456789abcdef"
 DATASET_ID_2 = "fedcba9876543210fedcba9876543210"
@@ -108,7 +108,7 @@ def _config(
     search_config = ToolConfig(
         name="knowledge_search",
         group="knowledge",
-        use="agent_workspace.community.ragflow.tools:knowledge_search_tool",
+        use="alpha.community.ragflow.tools:knowledge_search_tool",
         **extra,
     )
     return SimpleNamespace(
@@ -192,7 +192,7 @@ async def test_missing_bound_dataset_returns_indexed_operator_guidance(
     )
     _install(monkeypatch, fake, config=_config(datasets=[DATASET_ID_1, MISSING_DATASET_ID]))
 
-    with caplog.at_level(logging.WARNING, logger="agent_workspace.community.ragflow.tools"):
+    with caplog.at_level(logging.WARNING, logger="alpha.community.ragflow.tools"):
         result = await ragflow_tools.knowledge_search("leave")
 
     assert result == "Error: The 2nd entry of knowledge_search.datasets was not found or is inaccessible; check config.yaml."
@@ -226,7 +226,7 @@ async def test_bound_dataset_api_error_uses_normal_redacted_error_handler(
     )
     _install(monkeypatch, fake, config=_config(datasets=[DATASET_ID_1]))
 
-    with caplog.at_level(logging.WARNING, logger="agent_workspace.community.ragflow.tools"):
+    with caplog.at_level(logging.WARNING, logger="alpha.community.ragflow.tools"):
         result = await ragflow_tools.knowledge_search("leave")
 
     assert result == "Error: invalid credential [REDACTED]"
@@ -354,7 +354,7 @@ async def test_all_dataset_scope_skips_empty_dataset_without_embedding_model_and
     )
     _install(monkeypatch, fake, config=_config(datasets=None))
 
-    with caplog.at_level(logging.WARNING, logger="agent_workspace.community.ragflow.tools"):
+    with caplog.at_level(logging.WARNING, logger="alpha.community.ragflow.tools"):
         result = await ragflow_tools.knowledge_search("searchable")
 
     assert [call[1]["dataset_ids"] for call in fake.retrieve_calls] == [[DATASET_ID_2]]
@@ -458,7 +458,7 @@ async def test_missing_api_key_returns_english_guidance_and_warns_only_once(
     fake = FakeRAGFlowClient()
     _install(monkeypatch, fake, config=_config(api_key=None, datasets=[DATASET_ID_1]))
 
-    with caplog.at_level(logging.WARNING, logger="agent_workspace.community.ragflow.tools"):
+    with caplog.at_level(logging.WARNING, logger="alpha.community.ragflow.tools"):
         first = await ragflow_tools.knowledge_search("leave")
         second = await ragflow_tools.knowledge_search("benefits")
 
@@ -562,7 +562,7 @@ async def test_connection_error_is_english_and_does_not_leak_key(
     fake = FakeRAGFlowClient(error=RAGFlowConnectionError("ConnectError: refused ragflow-secret"))
     _install(monkeypatch, fake)
 
-    with caplog.at_level(logging.WARNING, logger="agent_workspace.community.ragflow.tools"):
+    with caplog.at_level(logging.WARNING, logger="alpha.community.ragflow.tools"):
         result = await ragflow_tools.knowledge_search("leave")
 
     assert result == "Error: Unable to connect to RAGFlow (http://ragflow.test): ConnectError: refused [REDACTED]"
@@ -587,7 +587,7 @@ async def test_base_url_with_plain_or_encoded_userinfo_is_rejected_without_leaki
     fake = FakeRAGFlowClient()
     _install(monkeypatch, fake, config=_config(base_url=base_url, datasets=[DATASET_ID_1]))
 
-    with caplog.at_level(logging.WARNING, logger="agent_workspace.community.ragflow.tools"):
+    with caplog.at_level(logging.WARNING, logger="alpha.community.ragflow.tools"):
         result = await ragflow_tools.knowledge_search("leave")
 
     assert result == "Error: Invalid RAGFlow settings for knowledge_search; check config.yaml."
@@ -716,7 +716,7 @@ def test_tool_assembly_hides_bound_dataset_ids_without_network_io(monkeypatch: p
     tool_config = ToolConfig(
         name="knowledge_search",
         group="knowledge",
-        use="agent_workspace.community.ragflow.tools:knowledge_search_tool",
+        use="alpha.community.ragflow.tools:knowledge_search_tool",
         base_url="http://ragflow.test",
         api_key="ragflow-secret",
         datasets=[DATASET_ID_1, DATASET_ID_2],

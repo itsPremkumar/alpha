@@ -23,9 +23,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from langchain_core.messages import ToolMessage
 
-from agent_workspace.agents.middlewares.tool_error_handling_middleware import ToolErrorHandlingMiddleware
-from agent_workspace.agents.middlewares.tool_progress_middleware import ToolProgressMiddleware
-from agent_workspace.agents.middlewares.tool_result_meta import (
+from alpha.agents.middlewares.tool_error_handling_middleware import ToolErrorHandlingMiddleware
+from alpha.agents.middlewares.tool_progress_middleware import ToolProgressMiddleware
+from alpha.agents.middlewares.tool_result_meta import (
     _ATTRS_BY_ERROR_TYPE,
     _ERROR_SHELL_PHRASES,
     TOOL_META_KEY,
@@ -222,8 +222,8 @@ _LEGIT_ESSAY = "<html><head><title>Not Found: a short history of the 404</title>
 
 def _render(html: str, code: str, status: str) -> str:
     """Run the real web_fetch_tool over *html*; only the network client is faked."""
-    from agent_workspace.community.browserless import tools as browserless_tools
-    from agent_workspace.community.browserless.browserless_client import BrowserlessFetchResult
+    from alpha.community.browserless import tools as browserless_tools
+    from alpha.community.browserless.browserless_client import BrowserlessFetchResult
 
     client = MagicMock()
     client.fetch_html_with_status = AsyncMock(return_value=BrowserlessFetchResult(html=html, target_status_code=code, target_status=status))
@@ -325,7 +325,7 @@ _CRAWL4AI_ARTICLE_FIT = "# 404 Ways to Cook Rice\nRice is a staple for most of t
 
 def _render_crawl4ai(markdown: str) -> str:
     """Run the real crawl4ai web_fetch_tool; only the remote /md call is faked."""
-    from agent_workspace.community.crawl4ai import tools as crawl4ai_tools
+    from alpha.community.crawl4ai import tools as crawl4ai_tools
 
     client = MagicMock()
     client.fetch_markdown = AsyncMock(return_value=markdown)

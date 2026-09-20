@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-from agent_workspace.agents.middlewares.subagent_limit_middleware import (
+from alpha.agents.middlewares.subagent_limit_middleware import (
     DEFAULT_MAX_TOTAL_SUBAGENTS,
     MAX_CONCURRENT_SUBAGENTS,
     MAX_SUBAGENT_LIMIT,
@@ -13,7 +13,7 @@ from agent_workspace.agents.middlewares.subagent_limit_middleware import (
     SubagentLimitMiddleware,
     _clamp_subagent_limit,
 )
-from agent_workspace.agents.thread_state import DelegationEntry
+from alpha.agents.thread_state import DelegationEntry
 
 
 def _make_runtime(run_id: str = "run-1"):
@@ -198,7 +198,7 @@ class TestTruncateTaskCalls:
         msg = AIMessage(content="", tool_calls=[_task_call("t2")])
         state = {"messages": [msg], "delegations": [_delegation("t1")]}
 
-        with caplog.at_level(logging.WARNING, logger="agent_workspace.agents.middlewares.subagent_limit_middleware"):
+        with caplog.at_level(logging.WARNING, logger="alpha.agents.middlewares.subagent_limit_middleware"):
             result = mw._truncate_task_calls(state)
 
         assert result is not None

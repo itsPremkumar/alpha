@@ -14,8 +14,8 @@ from langchain_core.runnables import Runnable
 from langchain_core.tools import tool as as_tool
 from pydantic import PrivateAttr
 
-from agent_workspace.agents.middlewares import loop_detection_middleware as loop_detection_module
-from agent_workspace.agents.middlewares.loop_detection_middleware import (
+from alpha.agents.middlewares import loop_detection_middleware as loop_detection_module
+from alpha.agents.middlewares.loop_detection_middleware import (
     _HARD_STOP_MSG,
     _MAX_PENDING_WARNINGS_PER_RUN,
     LoopDetectionMiddleware,
@@ -1939,7 +1939,7 @@ class TestFromConfig:
 
     @staticmethod
     def _config(**kwargs):
-        from agent_workspace.config.loop_detection_config import LoopDetectionConfig
+        from alpha.config.loop_detection_config import LoopDetectionConfig
 
         return LoopDetectionConfig(**kwargs)
 

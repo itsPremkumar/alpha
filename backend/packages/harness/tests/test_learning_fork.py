@@ -5,14 +5,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from langgraph.runtime import Runtime
 
-from agent_workspace.agents.middlewares.learning_fork_middleware import (
+from alpha.agents.middlewares.learning_fork_middleware import (
     _WHITELISTED_TOOL_NAMES,
     LearningForkMiddleware,
     LearningForkMiddlewareState,
     _build_digest,
     build_learning_fork_middleware,
 )
-from agent_workspace.config.learning_fork_config import LearningForkConfig
+from alpha.config.learning_fork_config import LearningForkConfig
 
 
 class TestBuildDigest:
@@ -176,9 +176,9 @@ class TestLearningForkIntegration:
         ]
         mock_model.ainvoke = AsyncMock(return_value=mock_response)
 
-        with patch("agent_workspace.agents.middlewares.learning_fork_middleware.create_chat_model", return_value=mock_model):
-            with patch("agent_workspace.agents.middlewares.learning_fork_middleware.get_memory_manager") as mock_get_manager:
-                with patch("agent_workspace.agents.middlewares.learning_fork_middleware.get_skill_proposal_store") as mock_get_store:
+        with patch("alpha.agents.middlewares.learning_fork_middleware.create_chat_model", return_value=mock_model):
+            with patch("alpha.agents.middlewares.learning_fork_middleware.get_memory_manager") as mock_get_manager:
+                with patch("alpha.agents.middlewares.learning_fork_middleware.get_skill_proposal_store") as mock_get_store:
                     mock_manager = AsyncMock()
                     mock_manager.add = AsyncMock()
                     mock_get_manager.return_value = mock_manager
@@ -209,9 +209,9 @@ class TestLearningForkIntegration:
         ]
         mock_model.ainvoke = AsyncMock(return_value=mock_response)
 
-        with patch("agent_workspace.agents.middlewares.learning_fork_middleware.create_chat_model", return_value=mock_model):
-            with patch("agent_workspace.agents.middlewares.learning_fork_middleware.get_memory_manager") as mock_get_manager:
-                with patch("agent_workspace.agents.middlewares.learning_fork_middleware.get_skill_proposal_store") as mock_get_store:
+        with patch("alpha.agents.middlewares.learning_fork_middleware.create_chat_model", return_value=mock_model):
+            with patch("alpha.agents.middlewares.learning_fork_middleware.get_memory_manager") as mock_get_manager:
+                with patch("alpha.agents.middlewares.learning_fork_middleware.get_skill_proposal_store") as mock_get_store:
                     mock_manager = AsyncMock()
                     mock_manager.add = AsyncMock()
                     mock_get_manager.return_value = mock_manager
@@ -238,8 +238,8 @@ class TestLearningForkIntegration:
         ]
         mock_model.ainvoke = AsyncMock(return_value=mock_response)
 
-        with patch("agent_workspace.agents.middlewares.learning_fork_middleware.create_chat_model", return_value=mock_model):
-            with patch("agent_workspace.agents.middlewares.learning_fork_middleware.logger") as mock_logger:
+        with patch("alpha.agents.middlewares.learning_fork_middleware.create_chat_model", return_value=mock_model):
+            with patch("alpha.agents.middlewares.learning_fork_middleware.logger") as mock_logger:
                 await middleware.after_agent(state, runtime)
                 mock_logger.warning.assert_called()
 
@@ -248,8 +248,8 @@ class TestLearningForkIntegration:
         """Test that model failures don't crash the primary run."""
         middleware = LearningForkMiddleware(learning_fork_config=config)
 
-        with patch("agent_workspace.agents.middlewares.learning_fork_middleware.create_chat_model", side_effect=Exception("Model failed")):
-            with patch("agent_workspace.agents.middlewares.learning_fork_middleware.logger") as mock_logger:
+        with patch("alpha.agents.middlewares.learning_fork_middleware.create_chat_model", side_effect=Exception("Model failed")):
+            with patch("alpha.agents.middlewares.learning_fork_middleware.logger") as mock_logger:
                 result = await middleware.after_agent(state, runtime)
                 assert result is None
                 mock_logger.warning.assert_called()
@@ -266,13 +266,13 @@ class TestLearningForkIntegration:
         ]
         mock_model.ainvoke = AsyncMock(return_value=mock_response)
 
-        with patch("agent_workspace.agents.middlewares.learning_fork_middleware.create_chat_model", return_value=mock_model):
-            with patch("agent_workspace.agents.middlewares.learning_fork_middleware.get_memory_manager") as mock_get_manager:
+        with patch("alpha.agents.middlewares.learning_fork_middleware.create_chat_model", return_value=mock_model):
+            with patch("alpha.agents.middlewares.learning_fork_middleware.get_memory_manager") as mock_get_manager:
                 mock_manager = AsyncMock()
                 mock_manager.add = AsyncMock(side_effect=Exception("Tool failed"))
                 mock_get_manager.return_value = mock_manager
 
-                with patch("agent_workspace.agents.middlewares.learning_fork_middleware.logger") as mock_logger:
+                with patch("alpha.agents.middlewares.learning_fork_middleware.logger") as mock_logger:
                     result = await middleware.after_agent(state, runtime)
                     assert result is None
                     mock_logger.warning.assert_called()

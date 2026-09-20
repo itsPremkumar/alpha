@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from agent_workspace.community.aio_sandbox import network_proxy
+from alpha.community.aio_sandbox import network_proxy
 
 
 def test_domain_matches_exact_and_leading_wildcard_only() -> None:

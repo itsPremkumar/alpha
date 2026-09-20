@@ -1,10 +1,10 @@
 import json
 from pathlib import Path
 
-from agent_workspace.learning.curator import LearningGraphCurator
-from agent_workspace.learning.graph import KnowledgeGraph, KnowledgeNode
-from agent_workspace.learning.store import LearningGraphStore
-from agent_workspace.tools.builtins.learning_graph_tool import learning_graph_manage
+from alpha.learning.curator import LearningGraphCurator
+from alpha.learning.graph import KnowledgeGraph, KnowledgeNode
+from alpha.learning.store import LearningGraphStore
+from alpha.tools.builtins.learning_graph_tool import learning_graph_manage
 
 
 def test_knowledge_graph_basics_and_stats():
@@ -62,8 +62,8 @@ def test_curator_prune_and_merge():
 
 def test_learning_graph_manage_tool(tmp_path: Path, monkeypatch):
     store = LearningGraphStore(root_dir=tmp_path)
-    monkeypatch.setattr("agent_workspace.learning.store.get_learning_graph_store", lambda: store)
-    monkeypatch.setattr("agent_workspace.tools.builtins.learning_graph_tool.get_learning_graph_store", lambda: store)
+    monkeypatch.setattr("alpha.learning.store.get_learning_graph_store", lambda: store)
+    monkeypatch.setattr("alpha.tools.builtins.learning_graph_tool.get_learning_graph_store", lambda: store)
 
     # Record
     rec_res = learning_graph_manage.invoke({

@@ -10,7 +10,7 @@ import pytest
 @pytest.fixture(autouse=True)
 def reset_api_key_warned():
     """Reset the module-level warning flag before each test."""
-    import agent_workspace.community.brave.tools as brave_mod
+    import alpha.community.brave.tools as brave_mod
 
     brave_mod._api_key_warned = set()
     yield
@@ -19,7 +19,7 @@ def reset_api_key_warned():
 
 @pytest.fixture
 def mock_config_with_key():
-    with patch("agent_workspace.community.brave.tools.get_app_config") as mock:
+    with patch("alpha.community.brave.tools.get_app_config") as mock:
         tool_config = MagicMock()
         tool_config.model_extra = {"api_key": "test-brave-key", "max_results": 5}
         mock.return_value.get_tool_config.return_value = tool_config
@@ -28,7 +28,7 @@ def mock_config_with_key():
 
 @pytest.fixture
 def mock_config_no_key():
-    with patch("agent_workspace.community.brave.tools.get_app_config") as mock:
+    with patch("alpha.community.brave.tools.get_app_config") as mock:
         tool_config = MagicMock()
         tool_config.model_extra = {}
         mock.return_value.get_tool_config.return_value = tool_config
@@ -71,67 +71,67 @@ def _image_count_aware_get(results: list):
 
 class TestGetApiKey:
     def test_returns_config_key_when_present(self):
-        with patch("agent_workspace.community.brave.tools.get_app_config") as mock:
+        with patch("alpha.community.brave.tools.get_app_config") as mock:
             tool_config = MagicMock()
             tool_config.model_extra = {"api_key": "from-config"}
             mock.return_value.get_tool_config.return_value = tool_config
 
-            from agent_workspace.community.brave.tools import _get_api_key
+            from alpha.community.brave.tools import _get_api_key
 
             assert _get_api_key() == "from-config"
 
     def test_reads_config_for_requested_tool_name(self):
-        with patch("agent_workspace.community.brave.tools.get_app_config") as mock:
+        with patch("alpha.community.brave.tools.get_app_config") as mock:
             tool_config = MagicMock()
             tool_config.model_extra = {"api_key": "image-key"}
             mock.return_value.get_tool_config.return_value = tool_config
 
-            from agent_workspace.community.brave.tools import _get_api_key
+            from alpha.community.brave.tools import _get_api_key
 
             assert _get_api_key("image_search") == "image-key"
             mock.return_value.get_tool_config.assert_called_with("image_search")
 
     def test_falls_back_to_env_when_config_key_empty(self):
-        with patch("agent_workspace.community.brave.tools.get_app_config") as mock:
+        with patch("alpha.community.brave.tools.get_app_config") as mock:
             tool_config = MagicMock()
             tool_config.model_extra = {"api_key": "   "}
             mock.return_value.get_tool_config.return_value = tool_config
             with patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": "env-key"}, clear=True):
-                from agent_workspace.community.brave.tools import _get_api_key
+                from alpha.community.brave.tools import _get_api_key
 
                 assert _get_api_key() == "env-key"
 
     def test_falls_back_to_env_when_no_config(self):
-        with patch("agent_workspace.community.brave.tools.get_app_config") as mock:
+        with patch("alpha.community.brave.tools.get_app_config") as mock:
             mock.return_value.get_tool_config.return_value = None
             with patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": "env-only"}, clear=True):
-                from agent_workspace.community.brave.tools import _get_api_key
+                from alpha.community.brave.tools import _get_api_key
 
                 assert _get_api_key() == "env-only"
 
     def test_ignores_legacy_brave_api_key(self):
-        with patch("agent_workspace.community.brave.tools.get_app_config") as mock:
+        with patch("alpha.community.brave.tools.get_app_config") as mock:
             mock.return_value.get_tool_config.return_value = None
             with patch.dict("os.environ", {"BRAVE_API_KEY": "legacy"}, clear=True):
-                from agent_workspace.community.brave.tools import _get_api_key
+                from alpha.community.brave.tools import _get_api_key
 
                 assert _get_api_key() is None
 
     def test_returns_none_when_no_key_anywhere(self):
-        with patch("agent_workspace.community.brave.tools.get_app_config") as mock:
+        with patch("alpha.community.brave.tools.get_app_config") as mock:
             mock.return_value.get_tool_config.return_value = None
             with patch.dict("os.environ", {}, clear=True):
-                from agent_workspace.community.brave.tools import _get_api_key
+                from alpha.community.brave.tools import _get_api_key
 
                 assert _get_api_key() is None
 
     def test_model_extra_none_does_not_crash(self):
-        with patch("agent_workspace.community.brave.tools.get_app_config") as mock:
+        with patch("alpha.community.brave.tools.get_app_config") as mock:
             tool_config = MagicMock()
             tool_config.model_extra = None
             mock.return_value.get_tool_config.return_value = tool_config
             with patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": "env-key"}, clear=True):
-                from agent_workspace.community.brave.tools import _get_api_key
+                from alpha.community.brave.tools import _get_api_key
 
                 assert _get_api_key() == "env-key"
 
@@ -144,10 +144,10 @@ class TestWebSearchTool:
         ]
         mock_resp = _make_brave_response(results)
 
-        with patch("agent_workspace.community.brave.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.brave.tools.httpx.Client") as mock_client_cls:
             mock_client_cls.return_value.__enter__.return_value.get.return_value = mock_resp
 
-            from agent_workspace.community.brave.tools import web_search_tool
+            from alpha.community.brave.tools import web_search_tool
 
             result = web_search_tool.invoke({"query": "python tutorial"})
             parsed = json.loads(result)
@@ -165,10 +165,10 @@ class TestWebSearchTool:
         }
         results = [{"title": f"R{i}", "url": f"https://x.com/{i}", "description": f"D{i}"} for i in range(10)]
 
-        with patch("agent_workspace.community.brave.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.brave.tools.httpx.Client") as mock_client_cls:
             mock_client_cls.return_value.__enter__.return_value.get.side_effect = _count_aware_get(results)
 
-            from agent_workspace.community.brave.tools import web_search_tool
+            from alpha.community.brave.tools import web_search_tool
 
             result = web_search_tool.invoke({"query": "test"})
             parsed = json.loads(result)
@@ -181,10 +181,10 @@ class TestWebSearchTool:
         results = [{"title": f"R{i}", "url": f"https://x.com/{i}", "description": f"D{i}"} for i in range(10)]
 
         with patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": "env-key"}, clear=True):
-            with patch("agent_workspace.community.brave.tools.httpx.Client") as mock_client_cls:
+            with patch("alpha.community.brave.tools.httpx.Client") as mock_client_cls:
                 mock_client_cls.return_value.__enter__.return_value.get.side_effect = _count_aware_get(results)
 
-                from agent_workspace.community.brave.tools import web_search_tool
+                from alpha.community.brave.tools import web_search_tool
 
                 result = web_search_tool.invoke({"query": "test", "max_results": 2})
                 parsed = json.loads(result)
@@ -192,17 +192,17 @@ class TestWebSearchTool:
         assert parsed["total_results"] == 2
 
     def test_config_max_results_overrides_parameter(self):
-        with patch("agent_workspace.community.brave.tools.get_app_config") as mock:
+        with patch("alpha.community.brave.tools.get_app_config") as mock:
             tool_config = MagicMock()
             tool_config.model_extra = {"api_key": "test-key", "max_results": 3}
             mock.return_value.get_tool_config.return_value = tool_config
 
             results = [{"title": f"R{i}", "url": f"https://x.com/{i}", "description": f"D{i}"} for i in range(10)]
 
-            with patch("agent_workspace.community.brave.tools.httpx.Client") as mock_client_cls:
+            with patch("alpha.community.brave.tools.httpx.Client") as mock_client_cls:
                 mock_client_cls.return_value.__enter__.return_value.get.side_effect = _count_aware_get(results)
 
-                from agent_workspace.community.brave.tools import web_search_tool
+                from alpha.community.brave.tools import web_search_tool
 
                 result = web_search_tool.invoke({"query": "test", "max_results": 8})
                 parsed = json.loads(result)
@@ -211,18 +211,18 @@ class TestWebSearchTool:
 
     def test_max_results_string_from_env_is_coerced_and_clamped(self):
         """Env-sourced max_results is a string and must be coerced and clamped to 20."""
-        with patch("agent_workspace.community.brave.tools.get_app_config") as mock:
+        with patch("alpha.community.brave.tools.get_app_config") as mock:
             tool_config = MagicMock()
             tool_config.model_extra = {"api_key": "test-key", "max_results": "50"}
             mock.return_value.get_tool_config.return_value = tool_config
 
             results = [{"title": f"R{i}", "url": f"https://x.com/{i}", "description": f"D{i}"} for i in range(30)]
 
-            with patch("agent_workspace.community.brave.tools.httpx.Client") as mock_client_cls:
+            with patch("alpha.community.brave.tools.httpx.Client") as mock_client_cls:
                 mock_get = mock_client_cls.return_value.__enter__.return_value.get
                 mock_get.side_effect = _count_aware_get(results)
 
-                from agent_workspace.community.brave.tools import web_search_tool
+                from alpha.community.brave.tools import web_search_tool
 
                 result = web_search_tool.invoke({"query": "test"})
                 parsed = json.loads(result)
@@ -232,20 +232,20 @@ class TestWebSearchTool:
         assert parsed["total_results"] == 20
 
     def test_invalid_max_results_falls_back_to_default(self, caplog):
-        with patch("agent_workspace.community.brave.tools.get_app_config") as mock:
+        with patch("alpha.community.brave.tools.get_app_config") as mock:
             tool_config = MagicMock()
             tool_config.model_extra = {"api_key": "test-key", "max_results": "abc"}
             mock.return_value.get_tool_config.return_value = tool_config
 
             results = [{"title": f"R{i}", "url": f"https://x.com/{i}", "description": f"D{i}"} for i in range(10)]
 
-            with patch("agent_workspace.community.brave.tools.httpx.Client") as mock_client_cls:
+            with patch("alpha.community.brave.tools.httpx.Client") as mock_client_cls:
                 mock_get = mock_client_cls.return_value.__enter__.return_value.get
                 mock_get.side_effect = _count_aware_get(results)
 
-                from agent_workspace.community.brave.tools import web_search_tool
+                from alpha.community.brave.tools import web_search_tool
 
-                with caplog.at_level("WARNING", logger="agent_workspace.community.brave.tools"):
+                with caplog.at_level("WARNING", logger="alpha.community.brave.tools"):
                     result = web_search_tool.invoke({"query": "test"})
                 parsed = json.loads(result)
                 params = mock_get.call_args.kwargs["params"]
@@ -257,10 +257,10 @@ class TestWebSearchTool:
     def test_empty_results_returns_error_json(self, mock_config_with_key):
         mock_resp = _make_brave_response([])
 
-        with patch("agent_workspace.community.brave.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.brave.tools.httpx.Client") as mock_client_cls:
             mock_client_cls.return_value.__enter__.return_value.get.return_value = mock_resp
 
-            from agent_workspace.community.brave.tools import web_search_tool
+            from alpha.community.brave.tools import web_search_tool
 
             result = web_search_tool.invoke({"query": "no results"})
             parsed = json.loads(result)
@@ -274,10 +274,10 @@ class TestWebSearchTool:
         mock_resp.json.return_value = {}
         mock_resp.raise_for_status = MagicMock()
 
-        with patch("agent_workspace.community.brave.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.brave.tools.httpx.Client") as mock_client_cls:
             mock_client_cls.return_value.__enter__.return_value.get.return_value = mock_resp
 
-            from agent_workspace.community.brave.tools import web_search_tool
+            from alpha.community.brave.tools import web_search_tool
 
             result = web_search_tool.invoke({"query": "test"})
             parsed = json.loads(result)
@@ -286,7 +286,7 @@ class TestWebSearchTool:
 
     def test_missing_api_key_returns_error_json(self, mock_config_no_key):
         with patch.dict("os.environ", {}, clear=True):
-            from agent_workspace.community.brave.tools import web_search_tool
+            from alpha.community.brave.tools import web_search_tool
 
             result = web_search_tool.invoke({"query": "test"})
             parsed = json.loads(result)
@@ -298,9 +298,9 @@ class TestWebSearchTool:
         import logging
 
         with patch.dict("os.environ", {}, clear=True):
-            from agent_workspace.community.brave.tools import web_search_tool
+            from alpha.community.brave.tools import web_search_tool
 
-            with caplog.at_level(logging.WARNING, logger="agent_workspace.community.brave.tools"):
+            with caplog.at_level(logging.WARNING, logger="alpha.community.brave.tools"):
                 web_search_tool.invoke({"query": "q1"})
                 web_search_tool.invoke({"query": "q2"})
 
@@ -312,10 +312,10 @@ class TestWebSearchTool:
         mock_error_response.status_code = 403
         mock_error_response.text = "Forbidden"
 
-        with patch("agent_workspace.community.brave.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.brave.tools.httpx.Client") as mock_client_cls:
             mock_client_cls.return_value.__enter__.return_value.get.side_effect = httpx.HTTPStatusError("403", request=MagicMock(), response=mock_error_response)
 
-            from agent_workspace.community.brave.tools import web_search_tool
+            from alpha.community.brave.tools import web_search_tool
 
             result = web_search_tool.invoke({"query": "test"})
             parsed = json.loads(result)
@@ -324,10 +324,10 @@ class TestWebSearchTool:
         assert "403" in parsed["error"]
 
     def test_network_exception_returns_error_json(self, mock_config_with_key):
-        with patch("agent_workspace.community.brave.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.brave.tools.httpx.Client") as mock_client_cls:
             mock_client_cls.return_value.__enter__.return_value.get.side_effect = Exception("timeout")
 
-            from agent_workspace.community.brave.tools import web_search_tool
+            from alpha.community.brave.tools import web_search_tool
 
             result = web_search_tool.invoke({"query": "test"})
             parsed = json.loads(result)
@@ -338,11 +338,11 @@ class TestWebSearchTool:
         results = [{"title": "T", "url": "https://x.com", "description": "D"}]
         mock_resp = _make_brave_response(results)
 
-        with patch("agent_workspace.community.brave.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.brave.tools.httpx.Client") as mock_client_cls:
             mock_get = mock_client_cls.return_value.__enter__.return_value.get
             mock_get.return_value = mock_resp
 
-            from agent_workspace.community.brave.tools import web_search_tool
+            from alpha.community.brave.tools import web_search_tool
 
             web_search_tool.invoke({"query": "hello world"})
 
@@ -367,11 +367,11 @@ class TestWebSearchTool:
         results = [{"title": "T", "url": "https://x.com", "description": "D"}]
         mock_resp = _make_brave_response(results)
 
-        with patch("agent_workspace.community.brave.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.brave.tools.httpx.Client") as mock_client_cls:
             mock_get = mock_client_cls.return_value.__enter__.return_value.get
             mock_get.return_value = mock_resp
 
-            from agent_workspace.community.brave.tools import web_search_tool
+            from alpha.community.brave.tools import web_search_tool
 
             web_search_tool.invoke({"query": "latest releases", "time_range": time_range})
 
@@ -383,11 +383,11 @@ class TestWebSearchTool:
         results = [{"title": "T", "url": "https://x.com", "description": "D"}]
         mock_resp = _make_brave_response(results)
 
-        with patch("agent_workspace.community.brave.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.brave.tools.httpx.Client") as mock_client_cls:
             mock_get = mock_client_cls.return_value.__enter__.return_value.get
             mock_get.return_value = mock_resp
 
-            from agent_workspace.community.brave.tools import web_search_tool
+            from alpha.community.brave.tools import web_search_tool
 
             web_search_tool.invoke({"query": "stable documentation"})
 
@@ -399,11 +399,11 @@ class TestWebSearchTool:
         results = [{"title": "T", "url": "https://x.com", "description": "D"}]
         mock_resp = _make_brave_response(results)
 
-        with patch("agent_workspace.community.brave.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.brave.tools.httpx.Client") as mock_client_cls:
             mock_get = mock_client_cls.return_value.__enter__.return_value.get
             mock_get.return_value = mock_resp
 
-            from agent_workspace.community.brave.tools import web_search_tool
+            from alpha.community.brave.tools import web_search_tool
 
             result = web_search_tool.invoke({"query": "a" * 500})
             parsed = json.loads(result)
@@ -413,17 +413,17 @@ class TestWebSearchTool:
         assert parsed["query"] == "a" * 400
 
     def test_uses_env_key_when_config_absent(self):
-        with patch("agent_workspace.community.brave.tools.get_app_config") as mock:
+        with patch("alpha.community.brave.tools.get_app_config") as mock:
             mock.return_value.get_tool_config.return_value = None
             with patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": "env-only-key"}, clear=True):
                 results = [{"title": "T", "url": "https://x.com", "description": "D"}]
                 mock_resp = _make_brave_response(results)
 
-                with patch("agent_workspace.community.brave.tools.httpx.Client") as mock_client_cls:
+                with patch("alpha.community.brave.tools.httpx.Client") as mock_client_cls:
                     mock_get = mock_client_cls.return_value.__enter__.return_value.get
                     mock_get.return_value = mock_resp
 
-                    from agent_workspace.community.brave.tools import web_search_tool
+                    from alpha.community.brave.tools import web_search_tool
 
                     web_search_tool.invoke({"query": "env key test"})
                     headers = mock_get.call_args.kwargs["headers"]
@@ -435,10 +435,10 @@ class TestWebSearchTool:
         results = [{}]
         mock_resp = _make_brave_response(results)
 
-        with patch("agent_workspace.community.brave.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.brave.tools.httpx.Client") as mock_client_cls:
             mock_client_cls.return_value.__enter__.return_value.get.return_value = mock_resp
 
-            from agent_workspace.community.brave.tools import web_search_tool
+            from alpha.community.brave.tools import web_search_tool
 
             result = web_search_tool.invoke({"query": "test"})
             parsed = json.loads(result)
@@ -448,57 +448,57 @@ class TestWebSearchTool:
 
 class TestSafePublicUrl:
     def test_https_public_hostname_passes(self):
-        from agent_workspace.community.brave.tools import _safe_public_url
+        from alpha.community.brave.tools import _safe_public_url
 
         assert _safe_public_url("https://example.com/i.jpg") == "https://example.com/i.jpg"
 
     def test_non_http_scheme_is_filtered(self):
-        from agent_workspace.community.brave.tools import _safe_public_url
+        from alpha.community.brave.tools import _safe_public_url
 
         assert _safe_public_url("file:///etc/passwd") == ""
 
     def test_localhost_is_filtered(self):
-        from agent_workspace.community.brave.tools import _safe_public_url
+        from alpha.community.brave.tools import _safe_public_url
 
         assert _safe_public_url("http://localhost/i.jpg") == ""
 
     def test_private_ip_is_filtered(self):
-        from agent_workspace.community.brave.tools import _safe_public_url
+        from alpha.community.brave.tools import _safe_public_url
 
         assert _safe_public_url("http://10.0.0.1/i.jpg") == ""
 
     def test_obfuscated_loopback_ip_is_filtered(self):
-        from agent_workspace.community.brave.tools import _safe_public_url
+        from alpha.community.brave.tools import _safe_public_url
 
         assert _safe_public_url("http://2130706433/i.jpg") == ""
 
     def test_malformed_ipv6_url_does_not_raise(self):
-        from agent_workspace.community.brave.tools import _safe_public_url
+        from alpha.community.brave.tools import _safe_public_url
 
         assert _safe_public_url("http://[::1/i.jpg") == ""
 
     def test_nat64_embedded_loopback_is_filtered(self):
-        from agent_workspace.community.brave.tools import _safe_public_url
+        from alpha.community.brave.tools import _safe_public_url
 
         assert _safe_public_url("http://[64:ff9b::127.0.0.1]/i.jpg") == ""
 
     def test_ipv4_compatible_embedded_private_is_filtered(self):
-        from agent_workspace.community.brave.tools import _safe_public_url
+        from alpha.community.brave.tools import _safe_public_url
 
         assert _safe_public_url("http://[::10.0.0.1]/i.jpg") == ""
 
     def test_ipv4_mapped_loopback_is_filtered(self):
-        from agent_workspace.community.brave.tools import _safe_public_url
+        from alpha.community.brave.tools import _safe_public_url
 
         assert _safe_public_url("http://[::ffff:127.0.0.1]/i.jpg") == ""
 
     def test_sixtofour_loopback_is_filtered(self):
-        from agent_workspace.community.brave.tools import _safe_public_url
+        from alpha.community.brave.tools import _safe_public_url
 
         assert _safe_public_url("http://[2002:7f00:1::]/i.jpg") == ""
 
     def test_global_ipv6_passes(self):
-        from agent_workspace.community.brave.tools import _safe_public_url
+        from alpha.community.brave.tools import _safe_public_url
 
         assert _safe_public_url("http://[2001:4860:4860::8888]/i.jpg") == "http://[2001:4860:4860::8888]/i.jpg"
 
@@ -522,10 +522,10 @@ class TestImageSearchTool:
         ]
         mock_resp = _make_brave_images_response(results)
 
-        with patch("agent_workspace.community.brave.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.brave.tools.httpx.Client") as mock_client_cls:
             mock_client_cls.return_value.__enter__.return_value.get.return_value = mock_resp
 
-            from agent_workspace.community.brave.tools import image_search_tool
+            from alpha.community.brave.tools import image_search_tool
 
             result = image_search_tool.invoke({"query": "mountain landscape"})
             parsed = json.loads(result)
@@ -544,7 +544,7 @@ class TestImageSearchTool:
         assert "usage_hint" in parsed
 
     def test_image_search_sends_brave_image_params_from_config(self):
-        with patch("agent_workspace.community.brave.tools.get_app_config") as mock:
+        with patch("alpha.community.brave.tools.get_app_config") as mock:
             tool_config = MagicMock()
             tool_config.model_extra = {
                 "api_key": "test-key",
@@ -566,11 +566,11 @@ class TestImageSearchTool:
                 for i in range(250)
             ]
 
-            with patch("agent_workspace.community.brave.tools.httpx.Client") as mock_client_cls:
+            with patch("alpha.community.brave.tools.httpx.Client") as mock_client_cls:
                 mock_get = mock_client_cls.return_value.__enter__.return_value.get
                 mock_get.side_effect = _image_count_aware_get(results)
 
-                from agent_workspace.community.brave.tools import image_search_tool
+                from alpha.community.brave.tools import image_search_tool
 
                 result = image_search_tool.invoke({"query": "sakura", "max_results": 5})
                 parsed = json.loads(result)
@@ -603,10 +603,10 @@ class TestImageSearchTool:
             },
         ]
 
-        with patch("agent_workspace.community.brave.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.brave.tools.httpx.Client") as mock_client_cls:
             mock_client_cls.return_value.__enter__.return_value.get.return_value = _make_brave_images_response(results)
 
-            from agent_workspace.community.brave.tools import image_search_tool
+            from alpha.community.brave.tools import image_search_tool
 
             result = image_search_tool.invoke({"query": "unsafe"})
             parsed = json.loads(result)
@@ -631,10 +631,10 @@ class TestImageSearchTool:
             },
         ]
 
-        with patch("agent_workspace.community.brave.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.brave.tools.httpx.Client") as mock_client_cls:
             mock_client_cls.return_value.__enter__.return_value.get.return_value = _make_brave_images_response(results)
 
-            from agent_workspace.community.brave.tools import image_search_tool
+            from alpha.community.brave.tools import image_search_tool
 
             result = image_search_tool.invoke({"query": "fallback"})
             parsed = json.loads(result)
@@ -656,10 +656,10 @@ class TestImageSearchTool:
             },
         ]
 
-        with patch("agent_workspace.community.brave.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.brave.tools.httpx.Client") as mock_client_cls:
             mock_client_cls.return_value.__enter__.return_value.get.return_value = _make_brave_images_response(results)
 
-            from agent_workspace.community.brave.tools import image_search_tool
+            from alpha.community.brave.tools import image_search_tool
 
             result = image_search_tool.invoke({"query": "dims"})
             parsed = json.loads(result)
@@ -673,7 +673,7 @@ class TestImageSearchTool:
 
     def test_image_search_missing_api_key_returns_error_json(self, mock_config_no_key):
         with patch.dict("os.environ", {}, clear=True):
-            from agent_workspace.community.brave.tools import image_search_tool
+            from alpha.community.brave.tools import image_search_tool
 
             result = image_search_tool.invoke({"query": "test"})
             parsed = json.loads(result)
@@ -685,9 +685,9 @@ class TestImageSearchTool:
         import logging
 
         with patch.dict("os.environ", {}, clear=True):
-            from agent_workspace.community.brave.tools import image_search_tool, web_search_tool
+            from alpha.community.brave.tools import image_search_tool, web_search_tool
 
-            with caplog.at_level(logging.WARNING, logger="agent_workspace.community.brave.tools"):
+            with caplog.at_level(logging.WARNING, logger="alpha.community.brave.tools"):
                 web_search_tool.invoke({"query": "q1"})
                 image_search_tool.invoke({"query": "q2"})
                 image_search_tool.invoke({"query": "q3"})
@@ -702,10 +702,10 @@ class TestImageSearchTool:
         mock_error_response.status_code = 403
         mock_error_response.text = "Forbidden"
 
-        with patch("agent_workspace.community.brave.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.brave.tools.httpx.Client") as mock_client_cls:
             mock_client_cls.return_value.__enter__.return_value.get.side_effect = httpx.HTTPStatusError("403", request=MagicMock(), response=mock_error_response)
 
-            from agent_workspace.community.brave.tools import image_search_tool
+            from alpha.community.brave.tools import image_search_tool
 
             result = image_search_tool.invoke({"query": "test"})
             parsed = json.loads(result)
@@ -714,10 +714,10 @@ class TestImageSearchTool:
         assert parsed["query"] == "test"
 
     def test_image_search_unexpected_results_format_returns_error(self, mock_config_with_key):
-        with patch("agent_workspace.community.brave.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.brave.tools.httpx.Client") as mock_client_cls:
             mock_client_cls.return_value.__enter__.return_value.get.return_value = _make_brave_images_response({"not": "a list"})
 
-            from agent_workspace.community.brave.tools import image_search_tool
+            from alpha.community.brave.tools import image_search_tool
 
             result = image_search_tool.invoke({"query": "test"})
             parsed = json.loads(result)
@@ -727,7 +727,7 @@ class TestImageSearchTool:
 
 
 def test_package_exports_image_search_tool():
-    from agent_workspace.community.brave import image_search_tool
-    from agent_workspace.community.brave.tools import image_search_tool as direct_image_search_tool
+    from alpha.community.brave import image_search_tool
+    from alpha.community.brave.tools import image_search_tool as direct_image_search_tool
 
     assert image_search_tool is direct_image_search_tool

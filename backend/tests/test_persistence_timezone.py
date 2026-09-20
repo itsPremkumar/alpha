@@ -3,7 +3,7 @@
 SQLAlchemy's ``DateTime(timezone=True)`` is a no-op on SQLite because the
 backend has no native timezone type, so values read back are naive
 ``datetime`` instances. The four SQL ``_row_to_dict`` helpers therefore
-have to normalize through :func:`agent_workspace.utils.time.coerce_iso` instead
+have to normalize through :func:`alpha.utils.time.coerce_iso` instead
 of calling ``.isoformat()`` directly; otherwise the API ships
 timezone-less strings (e.g. ``"2026-05-20T06:10:22.970977"``) and the
 frontend's ``new Date(...)`` parses them as local time, shifting recent
@@ -23,7 +23,7 @@ def _assert_tz_aware(value: str | None, *, context: str) -> None:
 
 
 async def _init_sqlite(tmp_path):
-    from agent_workspace.persistence.engine import get_session_factory, init_engine
+    from alpha.persistence.engine import get_session_factory, init_engine
 
     url = f"sqlite+aiosqlite:///{tmp_path / 'tz.db'}"
     await init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
@@ -31,14 +31,14 @@ async def _init_sqlite(tmp_path):
 
 
 async def _cleanup():
-    from agent_workspace.persistence.engine import close_engine
+    from alpha.persistence.engine import close_engine
 
     await close_engine()
 
 
 @pytest.mark.anyio
 async def test_thread_meta_emits_tz_aware_timestamps(tmp_path):
-    from agent_workspace.persistence.thread_meta import ThreadMetaRepository
+    from alpha.persistence.thread_meta import ThreadMetaRepository
 
     repo = ThreadMetaRepository(await _init_sqlite(tmp_path))
     try:
@@ -62,7 +62,7 @@ async def test_thread_meta_emits_tz_aware_timestamps(tmp_path):
 
 @pytest.mark.anyio
 async def test_run_repository_emits_tz_aware_timestamps(tmp_path):
-    from agent_workspace.persistence.run import RunRepository
+    from alpha.persistence.run import RunRepository
 
     repo = RunRepository(await _init_sqlite(tmp_path))
     try:
@@ -76,7 +76,7 @@ async def test_run_repository_emits_tz_aware_timestamps(tmp_path):
 
 @pytest.mark.anyio
 async def test_feedback_repository_emits_tz_aware_timestamps(tmp_path):
-    from agent_workspace.persistence.feedback import FeedbackRepository
+    from alpha.persistence.feedback import FeedbackRepository
 
     repo = FeedbackRepository(await _init_sqlite(tmp_path))
     try:
@@ -88,7 +88,7 @@ async def test_feedback_repository_emits_tz_aware_timestamps(tmp_path):
 
 @pytest.mark.anyio
 async def test_run_event_store_emits_tz_aware_timestamps(tmp_path):
-    from agent_workspace.runtime.events.store.db import DbRunEventStore
+    from alpha.runtime.events.store.db import DbRunEventStore
 
     store = DbRunEventStore(await _init_sqlite(tmp_path))
     try:

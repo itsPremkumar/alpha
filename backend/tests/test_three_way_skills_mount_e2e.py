@@ -16,20 +16,20 @@ from unittest.mock import patch
 
 import pytest
 
-from agent_workspace.config.extensions_config import ExtensionsConfig, SkillStateConfig
-from agent_workspace.config.paths import Paths
-from agent_workspace.sandbox.local.local_sandbox import PathMapping
-from agent_workspace.sandbox.local.local_sandbox_provider import LocalSandboxProvider
-from agent_workspace.sandbox.tools import read_file_tool
-from agent_workspace.skills.projection import (
+from alpha.config.extensions_config import ExtensionsConfig, SkillStateConfig
+from alpha.config.paths import Paths
+from alpha.sandbox.local.local_sandbox import PathMapping
+from alpha.sandbox.local.local_sandbox_provider import LocalSandboxProvider
+from alpha.sandbox.tools import read_file_tool
+from alpha.skills.projection import (
     ensure_thread_skill_projection,
     rebuild_skill_projections,
 )
-from agent_workspace.skills.storage import reset_user_skill_storage
-from agent_workspace.skills.storage.user_scoped_skill_storage import UserScopedSkillStorage
-from agent_workspace.skills.types import SKILL_MD_FILE, Skill, SkillCategory
+from alpha.skills.storage import reset_user_skill_storage
+from alpha.skills.storage.user_scoped_skill_storage import UserScopedSkillStorage
+from alpha.skills.types import SKILL_MD_FILE, Skill, SkillCategory
 
-_AIO_MODULE = "agent_workspace.community.aio_sandbox.aio_sandbox_provider"
+_AIO_MODULE = "alpha.community.aio_sandbox.aio_sandbox_provider"
 _AIO_GET_CONFIG = f"{_AIO_MODULE}.get_app_config"
 
 
@@ -45,16 +45,16 @@ def _write_skill(base: Path, name: str, description: str = "test skill") -> Path
 
 
 def _build_config(skills_root: Path):
-    from agent_workspace.config.sandbox_config import SandboxConfig
+    from alpha.config.sandbox_config import SandboxConfig
 
     return SimpleNamespace(
         skills=SimpleNamespace(
             container_path="/mnt/skills",
             get_skills_path=lambda sk=skills_root: sk,
-            use="agent_workspace.skills.storage.local_skill_storage:LocalSkillStorage",
+            use="alpha.skills.storage.local_skill_storage:LocalSkillStorage",
         ),
         sandbox=SandboxConfig(
-            use="agent_workspace.sandbox.local:LocalSandboxProvider",
+            use="alpha.sandbox.local:LocalSandboxProvider",
             mounts=[],
         ),
     )
@@ -98,7 +98,7 @@ class TestThreeWayMountEndToEnd:
     def test_local_public_skill_mounted(self, skills_fs):
         cfg = _build_config(skills_fs["root"])
         paths = Paths(base_dir=skills_fs["users_dir"].parent)
-        with patch("agent_workspace.config.get_app_config", return_value=cfg), patch("agent_workspace.config.paths.get_paths", return_value=paths):
+        with patch("alpha.config.get_app_config", return_value=cfg), patch("alpha.config.paths.get_paths", return_value=paths):
             provider = LocalSandboxProvider()
             idx = _local_mounts(provider, "thread-1", user_id="user-1")
         assert "/mnt/skills/public" in idx
@@ -118,8 +118,8 @@ class TestThreeWayMountEndToEnd:
             root.mkdir(parents=True, exist_ok=True)
 
         with (
-            patch("agent_workspace.config.get_app_config", return_value=cfg),
-            patch("agent_workspace.config.paths.get_paths", return_value=paths),
+            patch("alpha.config.get_app_config", return_value=cfg),
+            patch("alpha.config.paths.get_paths", return_value=paths),
             patch.object(LocalSandboxProvider, "_ensure_skills_projection", side_effect=[OSError("transient"), projection]),
         ):
             provider = LocalSandboxProvider()
@@ -133,7 +133,7 @@ class TestThreeWayMountEndToEnd:
     def test_local_per_user_custom_skill_mounted(self, skills_fs):
         cfg = _build_config(skills_fs["root"])
         paths = Paths(base_dir=skills_fs["users_dir"].parent)
-        with patch("agent_workspace.config.get_app_config", return_value=cfg), patch("agent_workspace.config.paths.get_paths", return_value=paths):
+        with patch("alpha.config.get_app_config", return_value=cfg), patch("alpha.config.paths.get_paths", return_value=paths):
             provider = LocalSandboxProvider()
             idx = _local_mounts(provider, "thread-1", user_id="user-1")
         assert "/mnt/skills/custom" in idx
@@ -142,7 +142,7 @@ class TestThreeWayMountEndToEnd:
     def test_local_managed_integrations_use_per_user_projection(self, skills_fs):
         cfg = _build_config(skills_fs["root"])
         paths = Paths(base_dir=skills_fs["users_dir"].parent)
-        with patch("agent_workspace.config.get_app_config", return_value=cfg), patch("agent_workspace.config.paths.get_paths", return_value=paths):
+        with patch("alpha.config.get_app_config", return_value=cfg), patch("alpha.config.paths.get_paths", return_value=paths):
             provider = LocalSandboxProvider()
             idx = _local_mounts(provider, "thread-1", user_id="user-1")
         assert "/mnt/skills/integrations" in idx
@@ -152,7 +152,7 @@ class TestThreeWayMountEndToEnd:
     def test_local_legacy_mounted_for_user_without_custom(self, skills_fs):
         cfg = _build_config(skills_fs["root"])
         paths = Paths(base_dir=skills_fs["users_dir"].parent)
-        with patch("agent_workspace.config.get_app_config", return_value=cfg), patch("agent_workspace.config.paths.get_paths", return_value=paths):
+        with patch("alpha.config.get_app_config", return_value=cfg), patch("alpha.config.paths.get_paths", return_value=paths):
             provider = LocalSandboxProvider()
             idx = _local_mounts(provider, "thread-1", user_id="noob")
         assert "/mnt/skills/legacy" in idx
@@ -161,7 +161,7 @@ class TestThreeWayMountEndToEnd:
     def test_local_legacy_not_mounted_when_user_has_custom(self, skills_fs):
         cfg = _build_config(skills_fs["root"])
         paths = Paths(base_dir=skills_fs["users_dir"].parent)
-        with patch("agent_workspace.config.get_app_config", return_value=cfg), patch("agent_workspace.config.paths.get_paths", return_value=paths):
+        with patch("alpha.config.get_app_config", return_value=cfg), patch("alpha.config.paths.get_paths", return_value=paths):
             provider = LocalSandboxProvider()
             idx = _local_mounts(provider, "thread-1", user_id="user-1")
         assert "/mnt/skills/legacy" in idx
@@ -171,7 +171,7 @@ class TestThreeWayMountEndToEnd:
         (skills_fs["users_dir"] / "ghost" / "skills" / "custom" / "dangling-dir").mkdir(parents=True, exist_ok=True)
         cfg = _build_config(skills_fs["root"])
         paths = Paths(base_dir=skills_fs["users_dir"].parent)
-        with patch("agent_workspace.config.get_app_config", return_value=cfg), patch("agent_workspace.config.paths.get_paths", return_value=paths):
+        with patch("alpha.config.get_app_config", return_value=cfg), patch("alpha.config.paths.get_paths", return_value=paths):
             provider = LocalSandboxProvider()
             idx = _local_mounts(provider, "thread-1", user_id="ghost")
         assert "/mnt/skills/legacy" in idx
@@ -181,7 +181,7 @@ class TestThreeWayMountEndToEnd:
     def test_local_read_file_resolves_public_and_custom(self, skills_fs):
         cfg = _build_config(skills_fs["root"])
         paths = Paths(base_dir=skills_fs["users_dir"].parent)
-        with patch("agent_workspace.config.get_app_config", return_value=cfg), patch("agent_workspace.config.paths.get_paths", return_value=paths):
+        with patch("alpha.config.get_app_config", return_value=cfg), patch("alpha.config.paths.get_paths", return_value=paths):
             provider = LocalSandboxProvider()
             sid = provider.acquire("thread-1", user_id="user-1")
         sandbox = provider.get(sid)
@@ -191,7 +191,7 @@ class TestThreeWayMountEndToEnd:
     def test_local_read_file_resolves_legacy_skill(self, skills_fs):
         cfg = _build_config(skills_fs["root"])
         paths = Paths(base_dir=skills_fs["users_dir"].parent)
-        with patch("agent_workspace.config.get_app_config", return_value=cfg), patch("agent_workspace.config.paths.get_paths", return_value=paths):
+        with patch("alpha.config.get_app_config", return_value=cfg), patch("alpha.config.paths.get_paths", return_value=paths):
             provider = LocalSandboxProvider()
             sid = provider.acquire("thread-1", user_id="noob")
         sandbox = provider.get(sid)
@@ -204,7 +204,7 @@ class TestThreeWayMountEndToEnd:
         Acquire-time ``PathMapping`` must remain authoritative for both full and
         ranged reads; the tool layer must never reconstruct a raw host path.
         """
-        from agent_workspace.runtime.user_context import reset_current_user, set_current_user
+        from alpha.runtime.user_context import reset_current_user, set_current_user
 
         cfg = _build_config(skills_fs["root"])
         paths = Paths(base_dir=skills_fs["users_dir"].parent)
@@ -212,10 +212,10 @@ class TestThreeWayMountEndToEnd:
         reset_user_skill_storage()
 
         with (
-            patch("agent_workspace.config.get_app_config", return_value=cfg),
-            patch("agent_workspace.config.paths.get_paths", return_value=paths),
-            patch("agent_workspace.config.extensions_config.ExtensionsConfig.from_file", return_value=extensions),
-            patch("agent_workspace.config.extensions_config.get_extensions_config", return_value=extensions),
+            patch("alpha.config.get_app_config", return_value=cfg),
+            patch("alpha.config.paths.get_paths", return_value=paths),
+            patch("alpha.config.extensions_config.ExtensionsConfig.from_file", return_value=extensions),
+            patch("alpha.config.extensions_config.get_extensions_config", return_value=extensions),
         ):
             provider = LocalSandboxProvider()
             sandbox_ids = {
@@ -229,8 +229,8 @@ class TestThreeWayMountEndToEnd:
             def _must_not_pre_resolve(_path: str) -> str:
                 raise AssertionError("skill paths must stay virtual until the sandbox provider")
 
-            monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_sandbox_initialized", _sandbox_for)
-            monkeypatch.setattr("agent_workspace.sandbox.tools._resolve_skills_path", _must_not_pre_resolve)
+            monkeypatch.setattr("alpha.sandbox.tools.ensure_sandbox_initialized", _sandbox_for)
+            monkeypatch.setattr("alpha.sandbox.tools._resolve_skills_path", _must_not_pre_resolve)
 
             token = set_current_user(SimpleNamespace(id="wrong-context-user"))
             try:
@@ -272,12 +272,12 @@ class TestThreeWayMountEndToEnd:
 
     def test_registry_to_sandbox_full_pipeline(self, skills_fs):
         """Model's exact path: storage category → get_container_file_path → sandbox.read_file."""
-        from agent_workspace.skills.storage.user_scoped_skill_storage import UserScopedSkillStorage
+        from alpha.skills.storage.user_scoped_skill_storage import UserScopedSkillStorage
 
         cfg = _build_config(skills_fs["root"])
         paths = Paths(base_dir=skills_fs["users_dir"].parent)
 
-        with patch("agent_workspace.config.get_app_config", return_value=cfg), patch("agent_workspace.config.paths.get_paths", return_value=paths):
+        with patch("alpha.config.get_app_config", return_value=cfg), patch("alpha.config.paths.get_paths", return_value=paths):
             provider = LocalSandboxProvider()
             sid_user = provider.acquire("t1", user_id="user-1")
             sid_noob = provider.acquire("t2", user_id="noob")
@@ -285,7 +285,7 @@ class TestThreeWayMountEndToEnd:
         sandbox_noob = provider.get(sid_noob)
 
         # user-1 storage: sees public + custom, no legacy
-        with patch("agent_workspace.config.paths.get_paths", return_value=paths):
+        with patch("alpha.config.paths.get_paths", return_value=paths):
             storage = UserScopedSkillStorage(user_id="user-1", host_path=str(skills_fs["root"]))
             skills = list(storage._iter_skill_files())
         by_name = {sf.parent.name: (cat, sf) for cat, _root, sf in skills}
@@ -309,7 +309,7 @@ class TestThreeWayMountEndToEnd:
         assert "usr-skill" in sandbox_user.read_file(cp)
 
         # noob storage: sees public + legacy (no per-user custom)
-        with patch("agent_workspace.config.paths.get_paths", return_value=paths):
+        with patch("alpha.config.paths.get_paths", return_value=paths):
             storage = UserScopedSkillStorage(user_id="noob", host_path=str(skills_fs["root"]))
             skills = list(storage._iter_skill_files())
         by_name = {sf.parent.name: (cat, sf) for cat, _root, sf in skills}
@@ -330,10 +330,10 @@ class TestThreeWayMountEndToEnd:
         extensions = ExtensionsConfig(skills={"secret-skill": SkillStateConfig(enabled=False)})
 
         with (
-            patch("agent_workspace.config.get_app_config", return_value=cfg),
-            patch("agent_workspace.config.paths.get_paths", return_value=paths),
-            patch("agent_workspace.config.extensions_config.ExtensionsConfig.from_file", return_value=extensions),
-            patch("agent_workspace.config.extensions_config.get_extensions_config", return_value=extensions),
+            patch("alpha.config.get_app_config", return_value=cfg),
+            patch("alpha.config.paths.get_paths", return_value=paths),
+            patch("alpha.config.extensions_config.ExtensionsConfig.from_file", return_value=extensions),
+            patch("alpha.config.extensions_config.get_extensions_config", return_value=extensions),
         ):
             storage = UserScopedSkillStorage("user-1", host_path=str(skills_root), app_config=cfg)
             rebuild_skill_projections(storage)
@@ -352,7 +352,7 @@ class TestThreeWayMountEndToEnd:
                 },
                 context={"thread_id": "thread-1", "user_id": "user-1"},
             )
-            monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_sandbox_initialized", lambda _runtime: sandbox)
+            monkeypatch.setattr("alpha.sandbox.tools.ensure_sandbox_initialized", lambda _runtime: sandbox)
             virtual_path = "/mnt/skills/public/secret-skill/SKILL.md"
 
             disabled = sandbox.execute_command(f"cat {virtual_path}")
@@ -391,14 +391,14 @@ class TestThreeWayMountEndToEnd:
         extensions = ExtensionsConfig()
 
         with (
-            patch("agent_workspace.config.get_app_config", return_value=cfg),
-            patch("agent_workspace.config.paths.get_paths", return_value=paths),
+            patch("alpha.config.get_app_config", return_value=cfg),
+            patch("alpha.config.paths.get_paths", return_value=paths),
             patch(
-                "agent_workspace.config.extensions_config.ExtensionsConfig.from_file",
+                "alpha.config.extensions_config.ExtensionsConfig.from_file",
                 return_value=extensions,
             ),
             patch(
-                "agent_workspace.config.extensions_config.get_extensions_config",
+                "alpha.config.extensions_config.get_extensions_config",
                 return_value=extensions,
             ),
         ):
@@ -465,14 +465,14 @@ class TestThreeWayMountEndToEnd:
         extensions = ExtensionsConfig()
 
         with (
-            patch("agent_workspace.config.get_app_config", return_value=cfg),
-            patch("agent_workspace.config.paths.get_paths", return_value=paths),
+            patch("alpha.config.get_app_config", return_value=cfg),
+            patch("alpha.config.paths.get_paths", return_value=paths),
             patch(
-                "agent_workspace.config.extensions_config.ExtensionsConfig.from_file",
+                "alpha.config.extensions_config.ExtensionsConfig.from_file",
                 return_value=extensions,
             ),
             patch(
-                "agent_workspace.config.extensions_config.get_extensions_config",
+                "alpha.config.extensions_config.get_extensions_config",
                 return_value=extensions,
             ),
         ):
@@ -533,7 +533,7 @@ class TestThreeWayMountEndToEnd:
         cfg = _build_config(skills_fs["root"])
         paths = Paths(base_dir=skills_fs["users_dir"].parent)
         monkeypatch.setattr(aio_mod, "get_paths", lambda: paths)
-        with patch(_AIO_GET_CONFIG, return_value=cfg), patch("agent_workspace.config.paths.get_paths", return_value=paths):
+        with patch(_AIO_GET_CONFIG, return_value=cfg), patch("alpha.config.paths.get_paths", return_value=paths):
             mounts = aio_mod.AioSandboxProvider._get_skills_mounts(user_id="user-1")
         idx = {m[1]: m for m in mounts}
         assert "/mnt/skills/custom" in idx
@@ -544,7 +544,7 @@ class TestThreeWayMountEndToEnd:
         cfg = _build_config(skills_fs["root"])
         paths = Paths(base_dir=skills_fs["users_dir"].parent)
         monkeypatch.setattr(aio_mod, "get_paths", lambda: paths)
-        with patch(_AIO_GET_CONFIG, return_value=cfg), patch("agent_workspace.config.paths.get_paths", return_value=paths):
+        with patch(_AIO_GET_CONFIG, return_value=cfg), patch("alpha.config.paths.get_paths", return_value=paths):
             mounts = aio_mod.AioSandboxProvider._get_skills_mounts(user_id="noob")
         idx = {m[1]: m for m in mounts}
         assert "/mnt/skills/legacy" in idx
@@ -553,7 +553,7 @@ class TestThreeWayMountEndToEnd:
         cfg = _build_config(skills_fs["root"])
         paths = Paths(base_dir=skills_fs["users_dir"].parent)
         monkeypatch.setattr(aio_mod, "get_paths", lambda: paths)
-        with patch(_AIO_GET_CONFIG, return_value=cfg), patch("agent_workspace.config.paths.get_paths", return_value=paths):
+        with patch(_AIO_GET_CONFIG, return_value=cfg), patch("alpha.config.paths.get_paths", return_value=paths):
             mounts = aio_mod.AioSandboxProvider._get_skills_mounts(user_id="user-1")
         idx = {m[1]: m for m in mounts}
         assert "/mnt/skills/legacy" in idx
@@ -563,7 +563,7 @@ class TestThreeWayMountEndToEnd:
         cfg = _build_config(skills_fs["root"])
         paths = Paths(base_dir=skills_fs["users_dir"].parent)
         monkeypatch.setattr(aio_mod, "get_paths", lambda: paths)
-        with patch(_AIO_GET_CONFIG, return_value=cfg), patch("agent_workspace.config.paths.get_paths", return_value=paths):
+        with patch(_AIO_GET_CONFIG, return_value=cfg), patch("alpha.config.paths.get_paths", return_value=paths):
             mounts = aio_mod.AioSandboxProvider._get_skills_mounts(user_id="ghost")
         idx = {m[1]: m for m in mounts}
         assert "/mnt/skills/legacy" in idx
@@ -572,13 +572,13 @@ class TestThreeWayMountEndToEnd:
 
     def test_aio_extra_mounts_translate_to_docker_bind_mounts(self, skills_fs, aio_mod, monkeypatch):
         """extra_mounts → _format_container_mount → correct Docker --mount args."""
-        from agent_workspace.community.aio_sandbox.local_backend import _format_container_mount
+        from alpha.community.aio_sandbox.local_backend import _format_container_mount
 
         cfg = _build_config(skills_fs["root"])
         paths = Paths(base_dir=skills_fs["users_dir"].parent)
         monkeypatch.setattr(aio_mod, "get_paths", lambda: paths)
 
-        with patch(_AIO_GET_CONFIG, return_value=cfg), patch("agent_workspace.config.paths.get_paths", return_value=paths):
+        with patch(_AIO_GET_CONFIG, return_value=cfg), patch("alpha.config.paths.get_paths", return_value=paths):
             extra = aio_mod.AioSandboxProvider._get_extra_mounts(
                 aio_mod.AioSandboxProvider.__new__(aio_mod.AioSandboxProvider),
                 "thread-1",

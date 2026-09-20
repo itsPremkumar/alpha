@@ -14,10 +14,10 @@ import asyncio
 
 import pytest
 
-from agent_workspace.runtime.runs.manager import RunRecord, RunStartOutcome
-from agent_workspace.runtime.runs.schemas import DisconnectMode, RunStatus
-from agent_workspace.runtime.runs.worker import RunContext, _build_runtime_context, run_agent
-from agent_workspace.trace_context import AGENT_WORKSPACE_TRACE_METADATA_KEY, get_current_trace_id, request_trace_context
+from alpha.runtime.runs.manager import RunRecord, RunStartOutcome
+from alpha.runtime.runs.schemas import DisconnectMode, RunStatus
+from alpha.runtime.runs.worker import RunContext, _build_runtime_context, run_agent
+from alpha.trace_context import AGENT_WORKSPACE_TRACE_METADATA_KEY, get_current_trace_id, request_trace_context
 
 
 class _FakeAgent:

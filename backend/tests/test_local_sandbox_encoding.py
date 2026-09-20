@@ -5,8 +5,8 @@ import sys
 
 import pytest
 
-import agent_workspace.sandbox.local.local_sandbox as local_sandbox
-from agent_workspace.sandbox.local.local_sandbox import LocalSandbox, PathMapping, _BoundedPipeCapture
+import alpha.sandbox.local.local_sandbox as local_sandbox
+from alpha.sandbox.local.local_sandbox import LocalSandbox, PathMapping, _BoundedPipeCapture
 
 
 def _open(base, file, mode="r", *args, **kwargs):
@@ -73,7 +73,7 @@ def test_windows_capture_matches_subprocess_text_mode_encoding(python_args, pyth
 import subprocess
 import sys
 
-from agent_workspace.sandbox.local.local_sandbox import LocalSandbox
+from alpha.sandbox.local.local_sandbox import LocalSandbox
 
 reference = subprocess.Popen([sys.executable, "-c", ""], stdout=subprocess.PIPE, text=True)
 encoding = reference.stdout.encoding

@@ -10,18 +10,18 @@ import yaml
 from sqlalchemy import create_engine
 
 from app.gateway.deps import _validate_agent_storage
-from agent_workspace.config.agent_storage_config import AgentStorageConfig
-from agent_workspace.config.app_config import reset_app_config
-from agent_workspace.config.database_config import DatabaseConfig
-from agent_workspace.persistence.agents import get_agent_store, make_agent_store
-from agent_workspace.persistence.agents.file import FileAgentStore
-from agent_workspace.persistence.agents.model import AgentRow
-from agent_workspace.persistence.agents.sql import SqlAgentStore
-from agent_workspace.persistence.base import Base
-from agent_workspace.persistence.managed_subagents.base import ManagedSubagentDefinition
-from agent_workspace.persistence.managed_subagents.file import FileManagedSubagentStore
-from agent_workspace.persistence.managed_subagents.model import ManagedSubagentRow
-from agent_workspace.persistence.managed_subagents.sql import SqlManagedSubagentStore
+from alpha.config.agent_storage_config import AgentStorageConfig
+from alpha.config.app_config import reset_app_config
+from alpha.config.database_config import DatabaseConfig
+from alpha.persistence.agents import get_agent_store, make_agent_store
+from alpha.persistence.agents.file import FileAgentStore
+from alpha.persistence.agents.model import AgentRow
+from alpha.persistence.agents.sql import SqlAgentStore
+from alpha.persistence.base import Base
+from alpha.persistence.managed_subagents.base import ManagedSubagentDefinition
+from alpha.persistence.managed_subagents.file import FileManagedSubagentStore
+from alpha.persistence.managed_subagents.model import ManagedSubagentRow
+from alpha.persistence.managed_subagents.sql import SqlManagedSubagentStore
 
 
 def _cfg(agent_backend: str, db_backend: str, sqlite_dir: str = "/tmp/agent-store-test") -> SimpleNamespace:
@@ -78,7 +78,7 @@ def test_validation_warns_on_file_under_multiworker_postgres(monkeypatch, caplog
 def file_home(tmp_path, monkeypatch):
     """Root file stores at a temp AGENT_WORKSPACE_HOME with seeded definitions."""
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
-    from agent_workspace.config import paths as paths_module
+    from alpha.config import paths as paths_module
 
     monkeypatch.setattr(paths_module, "_paths", None)
     fs = FileAgentStore()
@@ -111,7 +111,7 @@ def _patch_importer(monkeypatch, cfg):
     engine.dispose()
 
     monkeypatch.setattr(importer, "get_app_config", lambda: cfg)
-    monkeypatch.setattr("agent_workspace.persistence.engine.init_engine_from_config", _noop_init)
+    monkeypatch.setattr("alpha.persistence.engine.init_engine_from_config", _noop_init)
     return importer
 
 
@@ -157,7 +157,7 @@ def test_importer_dry_run_writes_nothing(file_home, monkeypatch):
 
 def test_importer_runs_when_only_managed_subagents_exist(tmp_path, monkeypatch):
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
-    from agent_workspace.config import paths as paths_module
+    from alpha.config import paths as paths_module
 
     monkeypatch.setattr(paths_module, "_paths", None)
     FileManagedSubagentStore().create(
@@ -185,9 +185,9 @@ def test_read_free_functions_dispatch_to_db_backend(file_home, monkeypatch):
     are visible everywhere."""
     cfg = _cfg("db", "sqlite", str(file_home / "db"))
     _patch_importer(monkeypatch, cfg)  # creates the schema
-    monkeypatch.setattr("agent_workspace.config.app_config.get_app_config", lambda: cfg)
+    monkeypatch.setattr("alpha.config.app_config.get_app_config", lambda: cfg)
 
-    from agent_workspace.config.agents_config import list_custom_agents, load_agent_config, load_agent_soul
+    from alpha.config.agents_config import list_custom_agents, load_agent_config, load_agent_soul
 
     # The file store seeded 'reviewer'/'planner' on disk; the db is empty, so
     # the free functions (now db-backed) do not see them.
@@ -209,10 +209,10 @@ def test_file_create_race_maps_file_exists_to_agent_exists(tmp_path, monkeypatch
     # generic 500 — matching SqlAgentStore's IntegrityError path.
     import pathlib
 
-    from agent_workspace.persistence.agents.base import AgentExistsError
+    from alpha.persistence.agents.base import AgentExistsError
 
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
-    from agent_workspace.config import paths as paths_module
+    from alpha.config import paths as paths_module
 
     monkeypatch.setattr(paths_module, "_paths", None)
 
@@ -232,7 +232,7 @@ def test_file_create_race_maps_file_exists_to_agent_exists(tmp_path, monkeypatch
 def _write_min_config(path, extra: dict) -> None:
     """Minimal but valid config.yaml (sandbox + models are the only hard requirements)."""
     doc = {
-        "sandbox": {"use": "agent_workspace.sandbox.local:LocalSandboxProvider"},
+        "sandbox": {"use": "alpha.sandbox.local:LocalSandboxProvider"},
         "models": [{"name": "m", "use": "langchain_openai:ChatOpenAI", "model": "gpt-test"}],
         **extra,
     }
@@ -265,7 +265,7 @@ def test_get_agent_store_falls_back_to_file_without_config(tmp_path, monkeypatch
     keeps a misconfigured graph process from silently downgrading db to file."""
     monkeypatch.delenv("AGENT_WORKSPACE_CONFIG_PATH", raising=False)
     monkeypatch.setenv("AGENT_WORKSPACE_PROJECT_ROOT", str(tmp_path))
-    from agent_workspace.config import app_config
+    from alpha.config import app_config
 
     monkeypatch.setattr(app_config, "_legacy_config_candidates", lambda: ())
     try:
@@ -288,7 +288,7 @@ def test_get_agent_store_does_not_fallback_when_explicit_config_is_missing(tmp_p
 
 def test_get_agent_store_does_not_hide_invalid_config(monkeypatch):
     """Only missing config falls back; config errors must reach the caller."""
-    from agent_workspace.config import app_config
+    from alpha.config import app_config
 
     def raise_invalid_config():
         raise ValueError("invalid config")

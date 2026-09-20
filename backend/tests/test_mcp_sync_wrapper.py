@@ -8,8 +8,8 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import InjectedToolArg, StructuredTool
 from pydantic import BaseModel, Field
 
-from agent_workspace.mcp.tools import get_mcp_tools
-from agent_workspace.tools.sync import make_sync_tool_wrapper
+from alpha.mcp.tools import get_mcp_tools
+from alpha.tools.sync import make_sync_tool_wrapper
 
 
 class MockArgs(BaseModel):
@@ -36,9 +36,9 @@ def test_mcp_tool_sync_wrapper_generation():
 
     with (
         patch("langchain_mcp_adapters.client.MultiServerMCPClient", return_value=mock_client_instance),
-        patch("agent_workspace.config.extensions_config.ExtensionsConfig.from_file"),
+        patch("alpha.config.extensions_config.ExtensionsConfig.from_file"),
         patch(
-            "agent_workspace.mcp.tools.build_servers_config",
+            "alpha.mcp.tools.build_servers_config",
             return_value={
                 "test-server": {
                     "transport": "http",
@@ -46,7 +46,7 @@ def test_mcp_tool_sync_wrapper_generation():
                 }
             },
         ),
-        patch("agent_workspace.mcp.tools.get_initial_oauth_headers", new_callable=AsyncMock, return_value={}),
+        patch("alpha.mcp.tools.get_initial_oauth_headers", new_callable=AsyncMock, return_value={}),
     ):
         # Run the async function manually with asyncio.run
         tools = asyncio.run(get_mcp_tools())
@@ -88,11 +88,11 @@ def test_mcp_tool_loading_skips_failed_server():
 
     with (
         patch("langchain_mcp_adapters.client.MultiServerMCPClient", return_value=mock_client_instance),
-        patch("agent_workspace.config.extensions_config.ExtensionsConfig.from_file", return_value=MagicMock(model_extra={})),
-        patch("agent_workspace.mcp.tools.build_servers_config", return_value={"good-server": {}, "bad-server": {}}),
-        patch("agent_workspace.mcp.tools.get_initial_oauth_headers", new_callable=AsyncMock, return_value={}),
-        patch("agent_workspace.mcp.tools.build_oauth_tool_interceptor", return_value=None),
-        patch("agent_workspace.mcp.tools.logger.warning") as mock_warning,
+        patch("alpha.config.extensions_config.ExtensionsConfig.from_file", return_value=MagicMock(model_extra={})),
+        patch("alpha.mcp.tools.build_servers_config", return_value={"good-server": {}, "bad-server": {}}),
+        patch("alpha.mcp.tools.get_initial_oauth_headers", new_callable=AsyncMock, return_value={}),
+        patch("alpha.mcp.tools.build_oauth_tool_interceptor", return_value=None),
+        patch("alpha.mcp.tools.logger.warning") as mock_warning,
     ):
         tools = asyncio.run(get_mcp_tools())
 
@@ -180,7 +180,7 @@ def test_mcp_tool_sync_wrapper_exception_logging():
 
     sync_func = make_sync_tool_wrapper(error_coro, "error_tool")
 
-    with patch("agent_workspace.tools.sync.logger.error") as mock_log_error:
+    with patch("alpha.tools.sync.logger.error") as mock_log_error:
         with pytest.raises(ValueError, match="Tool failure"):
             sync_func()
         mock_log_error.assert_called_once()
@@ -209,7 +209,7 @@ def test_func_patched_mcp_tool_keeps_toolnode_runtime_injection(tmp_path):
     from langgraph.prebuilt.tool_node import _get_all_injected_args
     from mcp.types import CallToolResult, TextContent
 
-    from agent_workspace.mcp.tools import get_mcp_tools
+    from alpha.mcp.tools import get_mcp_tools
 
     # Adapter-shaped coroutine: same signature langchain_mcp_adapters produces.
     async def adapter_coro(
@@ -234,16 +234,16 @@ def test_func_patched_mcp_tool_keeps_toolnode_runtime_injection(tmp_path):
 
     with (
         patch("langchain_mcp_adapters.client.MultiServerMCPClient", return_value=client),
-        patch("agent_workspace.config.extensions_config.ExtensionsConfig.from_file", return_value=cfg),
-        patch("agent_workspace.mcp.tools.validate_mcp_task_config_snapshot"),
+        patch("alpha.config.extensions_config.ExtensionsConfig.from_file", return_value=cfg),
+        patch("alpha.mcp.tools.validate_mcp_task_config_snapshot"),
         patch(
-            "agent_workspace.mcp.tools.build_servers_config",
+            "alpha.mcp.tools.build_servers_config",
             return_value={"pw": {"transport": "stdio", "command": "x", "args": []}},
         ),
-        patch("agent_workspace.mcp.tools.get_initial_oauth_headers", new_callable=AsyncMock, return_value={}),
-        patch("agent_workspace.mcp.tools.build_mcp_tool_interceptors", return_value=[]),
+        patch("alpha.mcp.tools.get_initial_oauth_headers", new_callable=AsyncMock, return_value={}),
+        patch("alpha.mcp.tools.build_mcp_tool_interceptors", return_value=[]),
     ):
-        from agent_workspace.mcp.session_pool import reset_session_pool
+        from alpha.mcp.session_pool import reset_session_pool
 
         reset_session_pool()
         (tool,) = asyncio.run(get_mcp_tools())
@@ -267,12 +267,12 @@ def test_func_patched_mcp_tool_keeps_toolnode_runtime_injection(tmp_path):
             return CallToolResult(content=[TextContent(type="text", text="ok")], isError=False)
 
     with (
-        patch("agent_workspace.mcp.tools.get_paths") as gp,
+        patch("alpha.mcp.tools.get_paths") as gp,
         patch(
-            "agent_workspace.mcp.tools.call_pooled_session_tool",
+            "alpha.mcp.tools.call_pooled_session_tool",
             new=AsyncMock(return_value=CallToolResult(content=[TextContent(type="text", text="ok")], isError=False)),
         ),
-        patch("agent_workspace.mcp.session_pool.MCPSessionPool.get_session", new=AsyncMock(return_value=FakeSession())),
+        patch("alpha.mcp.session_pool.MCPSessionPool.get_session", new=AsyncMock(return_value=FakeSession())),
     ):
         gp.return_value.ensure_thread_dirs = lambda *a, **k: None
         gp.return_value.sandbox_work_dir = lambda *a, **k: tmp_path
@@ -314,11 +314,11 @@ def test_sync_wrapped_builtin_tools_still_resolve_runtime():
 
     from langgraph.prebuilt.tool_node import _get_all_injected_args
 
-    from agent_workspace.tools.builtins.background_tasks_tool import (
+    from alpha.tools.builtins.background_tasks_tool import (
         cancel_background_task,
         list_background_tasks,
     )
-    from agent_workspace.tools.builtins.batch_task_tool import batch_status, cancel_batch
+    from alpha.tools.builtins.batch_task_tool import batch_status, cancel_batch
 
     for tool in (list_background_tasks, cancel_background_task, batch_status, cancel_batch):
         patched = copy.copy(tool)

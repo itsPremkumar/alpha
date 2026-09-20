@@ -15,11 +15,11 @@ import pytest
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
-from agent_workspace.config.subagent_runtime_config import SubagentRuntimeConfig
-from agent_workspace.sandbox.security import LOCAL_BASH_SUBAGENT_DISABLED_MESSAGE
-from agent_workspace.subagents.capacity import SubagentExecutionCapacity
-from agent_workspace.subagents.config import SubagentConfig
-from agent_workspace.subagents.status_contract import (
+from alpha.config.subagent_runtime_config import SubagentRuntimeConfig
+from alpha.sandbox.security import LOCAL_BASH_SUBAGENT_DISABLED_MESSAGE
+from alpha.subagents.capacity import SubagentExecutionCapacity
+from alpha.subagents.config import SubagentConfig
+from alpha.subagents.status_contract import (
     SUBAGENT_ERROR_KEY,
     SUBAGENT_MODEL_NAME_KEY,
     SUBAGENT_RESULT_BRIEF_KEY,
@@ -31,9 +31,9 @@ from agent_workspace.subagents.status_contract import (
 )
 
 # Use module import so tests can patch the exact symbols referenced inside task_tool().
-# NOTE: conftest.py replaces agent_workspace.subagents.executor with a MagicMock, so the
+# NOTE: conftest.py replaces alpha.subagents.executor with a MagicMock, so the
 # executor-bound names inside task_tool are mocks; tests patch them explicitly.
-task_tool_module = importlib.import_module("agent_workspace.tools.builtins.task_tool")
+task_tool_module = importlib.import_module("alpha.tools.builtins.task_tool")
 
 
 def test_parent_loop_middleware_recorder_proxy_delivers_on_owner_loop():
@@ -295,7 +295,7 @@ def test_task_result_command_carries_loop_capped_from_real_loop_detection():
     the lead/ledger read, not just the in-memory result."""
     from langchain_core.messages import AIMessage
 
-    from agent_workspace.agents.middlewares.loop_detection_middleware import LoopDetectionMiddleware
+    from alpha.agents.middlewares.loop_detection_middleware import LoopDetectionMiddleware
 
     # Drive the real middleware to a hard stop (4 identical calls, hard_limit=4).
     mw = LoopDetectionMiddleware(warn_threshold=2, hard_limit=4)
@@ -400,8 +400,8 @@ def test_task_tool_forwards_the_run_extension_snapshot_to_executor(monkeypatch):
     """The lead run binds one immutable extension snapshot; delegation must
     carry that same object rather than re-reading the process singleton, which
     a concurrent replacement could have swapped underneath the run."""
-    from agent_workspace.extensions import EXTENSION_SNAPSHOT_CONTEXT_KEY
-    from agent_workspace.extensions.registry import ExtensionRegistry
+    from alpha.extensions import EXTENSION_SNAPSHOT_CONTEXT_KEY
+    from alpha.extensions.registry import ExtensionRegistry
 
     loaded = ExtensionRegistry().build()
     runtime = _make_runtime()
@@ -425,7 +425,7 @@ def test_task_tool_forwards_the_run_extension_snapshot_to_executor(monkeypatch):
     )
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: lambda _event: None)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
 
     _run_task_tool(runtime=runtime, description="test", prompt="p", subagent_type="general-purpose", tool_call_id="tc-ext")
 
@@ -455,7 +455,7 @@ def test_task_tool_installs_and_closes_narrow_middleware_recorder(monkeypatch):
     )
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: lambda _event: None)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
 
     _run_task_tool(runtime=runtime, description="test", prompt="p", subagent_type="general-purpose", tool_call_id="tc-journal")
 
@@ -491,7 +491,7 @@ def test_task_tool_omits_extensions_without_a_run_snapshot(monkeypatch):
     )
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: lambda _event: None)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
 
     _run_task_tool(runtime=runtime, description="test", prompt="p", subagent_type="general-purpose", tool_call_id="tc-no-ext")
 
@@ -522,7 +522,7 @@ def test_bound_task_tool_forwards_explicit_execution_capacity(monkeypatch):
     )
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: lambda _event: None)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
 
     bound_tool = task_tool_module.bind_task_tool(capacity, app_config=app_config)
     coroutine = getattr(bound_tool, "coroutine", None)
@@ -567,7 +567,7 @@ def test_task_tool_forwards_channel_user_id_to_executor(monkeypatch):
     )
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: lambda _event: None)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
 
     output = _run_task_tool(
         runtime=runtime,
@@ -605,7 +605,7 @@ def test_task_tool_forwards_is_internal_true_to_executor(monkeypatch):
     )
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: lambda _event: None)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
 
     _run_task_tool(runtime=runtime, description="test", prompt="p", subagent_type="general-purpose", tool_call_id="tc-1")
     assert captured["executor_kwargs"]["is_internal"] is True
@@ -634,7 +634,7 @@ def test_task_tool_forwards_is_internal_false_to_executor(monkeypatch):
     )
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: lambda _event: None)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
 
     _run_task_tool(runtime=runtime, description="test", prompt="p", subagent_type="general-purpose", tool_call_id="tc-1")
     assert captured["executor_kwargs"]["is_internal"] is False
@@ -663,7 +663,7 @@ def test_task_tool_copies_attributes_to_executor(monkeypatch):
     )
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: lambda _event: None)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
 
     _run_task_tool(runtime=runtime, description="test", prompt="p", subagent_type="general-purpose", tool_call_id="tc-1")
     executor_attrs = captured["executor_kwargs"]["authz_attributes"]
@@ -686,7 +686,7 @@ def test_task_tool_rejects_non_mapping_attributes(monkeypatch):
     monkeypatch.setattr(task_tool_module, "SubagentStatus", FakeSubagentStatus)
     monkeypatch.setattr(task_tool_module, "SubagentExecutor", DummyExecutor)
     monkeypatch.setattr(task_tool_module, "get_subagent_config", lambda _: _make_subagent_config())
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
 
     runtime = _make_runtime()
     runtime.context["authz_attributes"] = ["not", "a", "mapping"]
@@ -757,7 +757,7 @@ def test_task_tool_threads_runtime_app_config_to_subagent_dependencies(monkeypat
     )
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", fake_get_available_tools)
+    monkeypatch.setattr("alpha.tools.get_available_tools", fake_get_available_tools)
 
     output = _run_task_tool(
         runtime=runtime,
@@ -834,8 +834,8 @@ def test_task_tool_emits_running_and_completed_events(monkeypatch):
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
     monkeypatch.setattr(task_tool_module, "aemit_custom_event", fake_emit_custom_event)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    # task_tool lazily imports from agent_workspace.tools at call time, so patch that module-level function.
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", get_available_tools)
+    # task_tool lazily imports from alpha.tools at call time, so patch that module-level function.
+    monkeypatch.setattr("alpha.tools.get_available_tools", get_available_tools)
 
     output = _run_task_tool(
         runtime=runtime,
@@ -909,7 +909,7 @@ def test_task_tool_emits_cumulative_usage_on_running_event(monkeypatch):
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
     monkeypatch.setattr(task_tool_module, "_report_subagent_usage", lambda *_: None)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
 
     _run_task_tool(
         runtime=runtime,
@@ -981,7 +981,7 @@ def test_task_tool_context_mode_captures_dispatch_time_history(monkeypatch, cont
     monkeypatch.setattr(task_tool_module, "get_background_task_result", lambda _: _make_result(FakeSubagentStatus.COMPLETED, result="done"))
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: lambda event: None)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", load_tools)
+    monkeypatch.setattr("alpha.tools.get_available_tools", load_tools)
     kwargs = {"context_mode": context_mode} if context_mode is not None else {}
     result = _run_task_tool(runtime=runtime, prompt="Do the task", subagent_type="general-purpose", tool_call_id="tc-snapshot", **kwargs)
     assert _task_tool_message(result).additional_kwargs[SUBAGENT_STATUS_KEY] == "completed"
@@ -1040,7 +1040,7 @@ def test_task_tool_propagates_tool_groups_to_subagent(monkeypatch):
     )
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", get_available_tools)
+    monkeypatch.setattr("alpha.tools.get_available_tools", get_available_tools)
 
     output = _run_task_tool(
         runtime=runtime,
@@ -1091,7 +1091,7 @@ def test_task_tool_uses_subagent_model_override_for_tool_loading(monkeypatch):
     )
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", get_available_tools)
+    monkeypatch.setattr("alpha.tools.get_available_tools", get_available_tools)
 
     output = _run_task_tool(
         runtime=runtime,
@@ -1134,7 +1134,7 @@ def test_task_tool_inherits_parent_skill_allowlist_for_default_subagent(monkeypa
     )
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", MagicMock(return_value=[]))
+    monkeypatch.setattr("alpha.tools.get_available_tools", MagicMock(return_value=[]))
 
     output = _run_task_tool(
         runtime=runtime,
@@ -1180,7 +1180,7 @@ def test_task_tool_intersects_parent_and_subagent_skill_allowlists(monkeypatch):
     )
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", MagicMock(return_value=[]))
+    monkeypatch.setattr("alpha.tools.get_available_tools", MagicMock(return_value=[]))
 
     output = _run_task_tool(
         runtime=runtime,
@@ -1219,7 +1219,7 @@ def test_task_tool_no_tool_groups_passes_none(monkeypatch):
     )
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", get_available_tools)
+    monkeypatch.setattr("alpha.tools.get_available_tools", get_available_tools)
 
     output = _run_task_tool(
         runtime=runtime,
@@ -1257,7 +1257,7 @@ def test_task_tool_runtime_none_passes_groups_none(monkeypatch):
     )
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", get_available_tools)
+    monkeypatch.setattr("alpha.tools.get_available_tools", get_available_tools)
     fallback_app_config = SimpleNamespace(models=[SimpleNamespace(name="default-model")])
     monkeypatch.setattr(task_tool_module, "get_app_config", lambda: fallback_app_config)
 
@@ -1297,7 +1297,7 @@ def test_task_tool_runtime_none_passes_groups_none(monkeypatch):
     )
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
 
     output = _run_task_tool(
         runtime=_make_runtime(),
@@ -1334,7 +1334,7 @@ def test_task_tool_returns_timed_out_message(monkeypatch):
     )
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
 
     output = _run_task_tool(
         runtime=_make_runtime(),
@@ -1369,7 +1369,7 @@ def test_task_tool_surfaces_stop_reason_for_capped_run(monkeypatch):
     )
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
 
     output = _run_task_tool(
         runtime=_make_runtime(),
@@ -1424,7 +1424,7 @@ def test_task_tool_polling_safety_timeout(monkeypatch):
     )
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
 
     output = _run_task_tool(
         runtime=_make_runtime(),
@@ -1465,7 +1465,7 @@ def test_cleanup_called_on_completed(monkeypatch):
     )
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
     monkeypatch.setattr(
         task_tool_module,
         "cleanup_background_task",
@@ -1505,7 +1505,7 @@ def test_cleanup_called_on_failed(monkeypatch):
     )
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
     monkeypatch.setattr(
         task_tool_module,
         "cleanup_background_task",
@@ -1545,7 +1545,7 @@ def test_cleanup_called_on_timed_out(monkeypatch):
     )
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
     monkeypatch.setattr(
         task_tool_module,
         "cleanup_background_task",
@@ -1603,7 +1603,7 @@ def test_cleanup_not_called_on_polling_safety_timeout(monkeypatch):
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
     monkeypatch.setattr(task_tool_module, "run_on_isolated_subagent_loop", fake_run_on_isolated_subagent_loop)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
     monkeypatch.setattr(
         task_tool_module,
         "cleanup_background_task",
@@ -1668,7 +1668,7 @@ def test_cleanup_scheduled_on_cancellation(monkeypatch):
     monkeypatch.setattr(task_tool_module, "get_background_task_result", get_result)
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", cancel_on_second_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
     monkeypatch.setattr(
         task_tool_module,
         "cleanup_background_task",
@@ -1717,7 +1717,7 @@ def test_task_started_emit_failure_stops_subagent_reports_usage_and_cleans_up(mo
     monkeypatch.setattr(task_tool_module, "cleanup_background_task", lambda execution_id: cleanup_calls.append(execution_id))
     monkeypatch.setattr(task_tool_module, "_report_subagent_usage", lambda runtime, result: reported.append(result))
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
 
     with pytest.raises(RuntimeError, match="emit boom"):
         _run_task_tool(
@@ -1804,7 +1804,7 @@ def test_unexpected_poller_error_deferred_cleanup_survives_sync_invocation(monke
     monkeypatch.setattr(task_tool_module, "run_on_isolated_subagent_loop", transport_to_persistent_loop)
     monkeypatch.setattr(task_tool_module, "_report_subagent_usage", lambda runtime, r, **kwargs: reported.append(r))
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
 
     try:
         with pytest.raises(RuntimeError, match="status emit boom"):
@@ -1899,7 +1899,7 @@ def test_unexpected_error_with_failing_status_accessor_preserves_exception_and_a
     monkeypatch.setattr(task_tool_module, "run_on_isolated_subagent_loop", transport_to_persistent_loop)
     monkeypatch.setattr(task_tool_module, "_report_subagent_usage", lambda runtime, r, **kwargs: reported.append(r))
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
 
     try:
         # The ORIGINAL exception is the accessor failure from the polling
@@ -1980,7 +1980,7 @@ def test_unexpected_error_re_raised_promptly_via_short_grace(monkeypatch):
     # Real asyncio.sleep + a tiny grace window: the unwind must return within
     # the grace bound, not after max_poll_count * 5s.
     monkeypatch.setattr(task_tool_module, "_UNEXPECTED_EXIT_GRACE_SECONDS", 0.2)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
 
     with pytest.raises(RuntimeError, match="status emit boom"):
         _run_task_tool(
@@ -2087,7 +2087,7 @@ def test_deferred_cleanup_drops_final_usage_when_parent_loop_closed(monkeypatch)
     monkeypatch.setattr(task_tool_module, "cleanup_background_task", lambda execution_id_arg: cleanup_calls.append(execution_id_arg))
     monkeypatch.setattr(task_tool_module, "run_on_isolated_subagent_loop", transport_to_persistent_loop)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
 
     runtime = SimpleNamespace(
         state={
@@ -2225,7 +2225,7 @@ def test_deferred_final_usage_reported_on_parent_loop_with_real_recorder(monkeyp
     monkeypatch.setattr(task_tool_module, "request_cancel_background_task", lambda execution_id_arg: cancel_calls.append(execution_id_arg))
     monkeypatch.setattr(task_tool_module, "cleanup_background_task", lambda execution_id_arg: cleanup_calls.append(execution_id_arg))
     monkeypatch.setattr(task_tool_module, "run_on_isolated_subagent_loop", transport_to_persistent_loop)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
 
     runtime = SimpleNamespace(
         state={
@@ -2337,7 +2337,7 @@ async def test_unexpected_error_grace_wait_cancellation_is_honored(monkeypatch):
     monkeypatch.setattr(task_tool_module, "request_cancel_background_task", lambda execution_id_arg: cancel_calls.append(execution_id_arg))
     monkeypatch.setattr(task_tool_module, "_finalize_interrupted_subagent", absorbing_finalize)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
 
     coroutine = getattr(task_tool_module.task_tool, "coroutine", None)
     assert coroutine is not None
@@ -2426,7 +2426,7 @@ def test_execute_async_failure_leaves_no_background_residue(monkeypatch):
         "run_on_isolated_subagent_loop",
         lambda coro: deferred_schedules.append(coro) or (_ for _ in ()).throw(AssertionError("deferred cleanup must not be scheduled")),
     )
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
 
     with pytest.raises(RuntimeError, match="Timed out starting isolated subagent event loop"):
         _run_task_tool(
@@ -2492,7 +2492,7 @@ def test_cancelled_cleanup_stops_after_timeout(monkeypatch):
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", cancel_on_first_sleep)
     monkeypatch.setattr(task_tool_module, "run_on_isolated_subagent_loop", fake_run_on_isolated_subagent_loop)
     monkeypatch.setattr(task_tool_module, "_report_subagent_usage", fake_report_subagent_usage)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
     monkeypatch.setattr(
         task_tool_module,
         "cleanup_background_task",
@@ -2557,7 +2557,7 @@ def test_cancellation_wait_uses_subagent_polling_budget(monkeypatch):
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", cancel_then_continue)
     monkeypatch.setattr(task_tool_module.asyncio, "wait_for", fail_on_fixed_timeout)
     monkeypatch.setattr(task_tool_module, "_report_subagent_usage", fake_report_subagent_usage)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
     monkeypatch.setattr(
         task_tool_module,
         "cleanup_background_task",
@@ -2601,7 +2601,7 @@ def test_cancellation_calls_request_cancel(monkeypatch):
     )
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", cancel_on_first_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
     monkeypatch.setattr(
         task_tool_module,
         "request_cancel_background_task",
@@ -2650,7 +2650,7 @@ def test_task_tool_returns_cancelled_message(monkeypatch):
     monkeypatch.setattr(task_tool_module, "get_background_task_result", lambda _: next(responses))
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
     monkeypatch.setattr(
         task_tool_module,
         "cleanup_background_task",
@@ -2688,7 +2688,7 @@ def test_task_tool_emits_completed_metadata(monkeypatch):
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
     monkeypatch.setattr(task_tool_module, "_report_subagent_usage", lambda *_: None)
     monkeypatch.setattr(task_tool_module, "cleanup_background_task", lambda _: None)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", MagicMock(return_value=[]))
+    monkeypatch.setattr("alpha.tools.get_available_tools", MagicMock(return_value=[]))
 
     message = _task_tool_message(
         _run_task_tool(
@@ -2720,7 +2720,7 @@ def test_task_tool_emits_disappeared_task_metadata(monkeypatch):
     monkeypatch.setattr(task_tool_module, "get_background_task_result", lambda _: None)
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
     monkeypatch.setattr(task_tool_module, "cleanup_background_task", lambda _: None)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", MagicMock(return_value=[]))
+    monkeypatch.setattr("alpha.tools.get_available_tools", MagicMock(return_value=[]))
 
     message = _task_tool_message(
         _run_task_tool(
@@ -2754,7 +2754,7 @@ def test_task_tool_bounds_large_result_metadata(monkeypatch):
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
     monkeypatch.setattr(task_tool_module, "_report_subagent_usage", lambda *_: None)
     monkeypatch.setattr(task_tool_module, "cleanup_background_task", lambda _: None)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", MagicMock(return_value=[]))
+    monkeypatch.setattr("alpha.tools.get_available_tools", MagicMock(return_value=[]))
 
     message = _task_tool_message(
         _run_task_tool(
@@ -2824,7 +2824,7 @@ def test_cancellation_reports_subagent_usage(monkeypatch):
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", cancel_on_third_sleep)
     monkeypatch.setattr(task_tool_module, "_report_subagent_usage", fake_report_subagent_usage)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
     monkeypatch.setattr(task_tool_module, "request_cancel_background_task", lambda _: None)
     monkeypatch.setattr(
         task_tool_module,
@@ -2882,7 +2882,7 @@ def test_terminal_events_include_usage(monkeypatch, status, expected_type):
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
     monkeypatch.setattr(task_tool_module, "_report_subagent_usage", lambda *_: None)
     monkeypatch.setattr(task_tool_module, "cleanup_background_task", lambda _: None)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", MagicMock(return_value=[]))
+    monkeypatch.setattr("alpha.tools.get_available_tools", MagicMock(return_value=[]))
 
     _run_task_tool(
         runtime=runtime,
@@ -2917,7 +2917,7 @@ def test_terminal_event_usage_none_when_no_records(monkeypatch):
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
     monkeypatch.setattr(task_tool_module, "_report_subagent_usage", lambda *_: None)
     monkeypatch.setattr(task_tool_module, "cleanup_background_task", lambda _: None)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", MagicMock(return_value=[]))
+    monkeypatch.setattr("alpha.tools.get_available_tools", MagicMock(return_value=[]))
 
     _run_task_tool(
         runtime=runtime,
@@ -3013,7 +3013,7 @@ def _run_completed_task_tool(monkeypatch, *, result_text: str, tool_receipts: li
     )
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: lambda _event: None)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
 
     command = _run_task_tool(
         runtime=_make_runtime(),
@@ -3035,13 +3035,13 @@ def _run_completed_task_tool_with_criteria(monkeypatch, *, criteria: list[str], 
     # The checklist reads through the sandbox-native virtual path form.
     files = {"/mnt/user-data/outputs/report.md": "report body"}
     monkeypatch.setattr(
-        "agent_workspace.sandbox.tools.read_current_file_content",
+        "alpha.sandbox.tools.read_current_file_content",
         lambda _runtime, path: files[path] if path in files else (_ for _ in ()).throw(FileNotFoundError(path)),
     )
     # A bounded size is established before any read; fake the prober over the
     # same fake filesystem.
     monkeypatch.setattr(
-        "agent_workspace.subagents.acceptance_checks._probe_file_size",
+        "alpha.subagents.acceptance_checks._probe_file_size",
         lambda _runtime, path, _thread_data: len(files[path].encode("utf-8")) if path in files else (_ for _ in ()).throw(FileNotFoundError(path)),
     )
 
@@ -3062,7 +3062,7 @@ def _run_completed_task_tool_with_criteria(monkeypatch, *, criteria: list[str], 
     )
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: lambda _event: None)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
 
     command = _run_task_tool(
         runtime=_make_runtime(),
@@ -3122,7 +3122,7 @@ def test_task_tool_acceptance_check_failure_is_isolated(monkeypatch):
     )
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: lambda _event: None)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
 
     command = _run_task_tool(
         runtime=_make_runtime(),
@@ -3195,7 +3195,7 @@ def test_task_tool_failed_carries_receipts_without_verdict(monkeypatch):
     )
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: lambda _event: None)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
 
     command = _run_task_tool(
         runtime=_make_runtime(),
@@ -3231,7 +3231,7 @@ def _capture_executor_call(monkeypatch, **call_kwargs):
     )
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: lambda _event: None)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
 
     kwargs = {
         "runtime": _make_runtime(),

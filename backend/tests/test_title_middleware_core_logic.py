@@ -8,11 +8,11 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.constants import TAG_NOSTREAM
 
-from agent_workspace.agents.middlewares import title_middleware as title_middleware_module
-from agent_workspace.agents.middlewares.dynamic_context_middleware import _DYNAMIC_CONTEXT_REMINDER_KEY
-from agent_workspace.agents.middlewares.title_middleware import TitleMiddleware
-from agent_workspace.config.title_config import TitleConfig, get_title_config, set_title_config
-from agent_workspace.utils.messages import ORIGINAL_USER_CONTENT_KEY
+from alpha.agents.middlewares import title_middleware as title_middleware_module
+from alpha.agents.middlewares.dynamic_context_middleware import _DYNAMIC_CONTEXT_REMINDER_KEY
+from alpha.agents.middlewares.title_middleware import TitleMiddleware
+from alpha.config.title_config import TitleConfig, get_title_config, set_title_config
+from alpha.utils.messages import ORIGINAL_USER_CONTENT_KEY
 
 
 def _clone_title_config(config: TitleConfig) -> TitleConfig:

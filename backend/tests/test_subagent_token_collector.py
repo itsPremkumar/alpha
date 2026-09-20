@@ -3,7 +3,7 @@
 from unittest.mock import MagicMock
 from uuid import uuid4
 
-from agent_workspace.subagents.token_collector import SubagentTokenCollector
+from alpha.subagents.token_collector import SubagentTokenCollector
 
 
 def _make_llm_response(content="Hello", usage=None, response_metadata=None):

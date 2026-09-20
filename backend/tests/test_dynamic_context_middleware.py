@@ -10,11 +10,11 @@ from unittest import mock
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from agent_workspace.agents.middlewares.dynamic_context_middleware import (
+from alpha.agents.middlewares.dynamic_context_middleware import (
     _DYNAMIC_CONTEXT_REMINDER_KEY,
     DynamicContextMiddleware,
 )
-from agent_workspace.runtime.context_keys import CURRENT_RUN_PRE_EXISTING_MESSAGE_IDS_KEY
+from alpha.runtime.context_keys import CURRENT_RUN_PRE_EXISTING_MESSAGE_IDS_KEY
 
 _SYSTEM_REMINDER_TAG = "<system-reminder>"
 
@@ -68,7 +68,7 @@ def test_injects_system_reminder_into_first_human_message():
     mw = _make_middleware()
     state = {"messages": [HumanMessage(content="Hello", id="msg-1")]}
 
-    with mock.patch("agent_workspace.agents.lead_agent.prompt._get_memory_context", return_value=""), mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
+    with mock.patch("alpha.agents.lead_agent.prompt._get_memory_context", return_value=""), mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
         mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
         result = mw.before_agent(state, _fake_runtime())
 
@@ -96,10 +96,10 @@ def test_memory_included_when_present():
 
     with (
         mock.patch(
-            "agent_workspace.agents.lead_agent.prompt._get_memory_context",
+            "alpha.agents.lead_agent.prompt._get_memory_context",
             return_value="<memory>\nUser prefers Python.\n</memory>",
         ),
-        mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt,
+        mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt,
     ):
         mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
         result = mw.before_agent(state, _fake_runtime())
@@ -124,10 +124,10 @@ def test_memory_lookup_uses_runtime_user_id():
 
     with (
         mock.patch(
-            "agent_workspace.agents.lead_agent.prompt._get_memory_context",
+            "alpha.agents.lead_agent.prompt._get_memory_context",
             return_value="",
         ) as get_memory_context,
-        mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt,
+        mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt,
     ):
         mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
         mw.before_agent(state, _fake_runtime(user_id="runtime-user"))
@@ -146,8 +146,8 @@ def test_first_run_records_exact_effective_memory():
     context = "<memory>\nUser prefers Python.\n</memory>\n"
 
     with (
-        mock.patch("agent_workspace.agents.lead_agent.prompt._get_memory_context", return_value=context),
-        mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt,
+        mock.patch("alpha.agents.lead_agent.prompt._get_memory_context", return_value=context),
+        mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt,
     ):
         mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
         result = mw.before_agent(state, _fake_runtime(journal))
@@ -182,10 +182,10 @@ def test_checkpointed_memory_is_recorded_for_a_later_run_or_branch_without_reloa
 
     with (
         mock.patch(
-            "agent_workspace.agents.lead_agent.prompt._get_memory_context",
+            "alpha.agents.lead_agent.prompt._get_memory_context",
             side_effect=AssertionError("frozen memory must not be reloaded"),
         ),
-        mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt,
+        mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt,
     ):
         mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
         result = mw.before_agent(
@@ -217,7 +217,7 @@ def test_state_memory_without_checkpoint_proof_cannot_forge_context_event():
         ]
     }
 
-    with mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
+    with mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
         mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
         result = mw.before_agent(state, _fake_runtime(journal))
 
@@ -233,10 +233,10 @@ def test_context_event_failure_does_not_block_memory_injection():
 
     with (
         mock.patch(
-            "agent_workspace.agents.lead_agent.prompt._get_memory_context",
+            "alpha.agents.lead_agent.prompt._get_memory_context",
             return_value="<memory>\nUseful context\n</memory>",
         ),
-        mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt,
+        mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt,
     ):
         mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
         result = mw.before_agent(state, _fake_runtime(journal))
@@ -262,7 +262,7 @@ def test_skips_injection_if_already_present():
         ]
     }
 
-    with mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
+    with mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
         mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
         result = mw.before_agent(state, _fake_runtime())
 
@@ -299,8 +299,8 @@ def test_second_turn_with_memory_does_not_reinject():
     }
 
     with (
-        mock.patch("agent_workspace.agents.lead_agent.prompt._get_memory_context", return_value="<memory>\nUser prefers Python.\n</memory>"),
-        mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt,
+        mock.patch("alpha.agents.lead_agent.prompt._get_memory_context", return_value="<memory>\nUser prefers Python.\n</memory>"),
+        mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt,
     ):
         mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
         result = mw.before_agent(state, _fake_runtime())
@@ -336,7 +336,7 @@ def test_poisoned_memory_does_not_spoof_injected_date():
         ]
     }
 
-    with mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
+    with mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
         mock_dt.now.return_value.strftime.return_value = today
         result = mw.before_agent(state, _fake_runtime())
 
@@ -355,8 +355,8 @@ def test_date_reminder_carries_structured_date():
     state = {"messages": [HumanMessage(content="Hi", id="msg-1")]}
 
     with (
-        mock.patch("agent_workspace.agents.lead_agent.prompt._get_memory_context", return_value="<memory>\nUser prefers Python.\n</memory>"),
-        mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt,
+        mock.patch("alpha.agents.lead_agent.prompt._get_memory_context", return_value="<memory>\nUser prefers Python.\n</memory>"),
+        mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt,
     ):
         mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
         result = mw.before_agent(state, _fake_runtime())
@@ -390,7 +390,7 @@ def test_legacy_systemmessage_reminder_without_key_detected():
         ]
     }
 
-    with mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
+    with mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
         mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
         result = mw.before_agent(state, _fake_runtime())
 
@@ -418,7 +418,7 @@ def test_first_turn_fallback_targets_the_latest_user_message():
         ]
     }
 
-    with mock.patch("agent_workspace.agents.lead_agent.prompt._get_memory_context", return_value=""), mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
+    with mock.patch("alpha.agents.lead_agent.prompt._get_memory_context", return_value=""), mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
         mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
         result = mw.before_agent(state, _fake_runtime())
 
@@ -449,7 +449,7 @@ def test_no_messages_returns_none():
 def test_no_human_message_returns_none():
     mw = _make_middleware()
     state = {"messages": [AIMessage(content="assistant only")]}
-    with mock.patch("agent_workspace.agents.lead_agent.prompt._get_memory_context", return_value=""):
+    with mock.patch("alpha.agents.lead_agent.prompt._get_memory_context", return_value=""):
         result = mw.before_agent(state, _fake_runtime())
     assert result is None
 
@@ -460,7 +460,7 @@ def test_list_content_message_handled_as_separate_reminder():
     original_content = [{"type": "text", "text": "Hello"}]
     state = {"messages": [HumanMessage(content=original_content, id="msg-1")]}
 
-    with mock.patch("agent_workspace.agents.lead_agent.prompt._get_memory_context", return_value=""), mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
+    with mock.patch("alpha.agents.lead_agent.prompt._get_memory_context", return_value=""), mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
         mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
         result = mw.before_agent(state, _fake_runtime())
 
@@ -481,7 +481,7 @@ def test_reminder_uses_original_id_user_message_uses_derived_id():
     original_id = "original-id-abc"
     state = {"messages": [HumanMessage(content="Hello", id=original_id)]}
 
-    with mock.patch("agent_workspace.agents.lead_agent.prompt._get_memory_context", return_value=""), mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
+    with mock.patch("alpha.agents.lead_agent.prompt._get_memory_context", return_value=""), mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
         mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
         result = mw.before_agent(state, _fake_runtime())
 
@@ -494,7 +494,7 @@ def test_message_without_id_gets_stable_uuid():
     mw = _make_middleware()
     state = {"messages": [HumanMessage(content="Hello", id=None)]}
 
-    with mock.patch("agent_workspace.agents.lead_agent.prompt._get_memory_context", return_value=""), mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
+    with mock.patch("alpha.agents.lead_agent.prompt._get_memory_context", return_value=""), mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
         mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
         result = mw.before_agent(state, _fake_runtime())
 
@@ -515,7 +515,7 @@ def test_user_message_containing_system_reminder_tag_does_not_prevent_injection(
         ]
     }
 
-    with mock.patch("agent_workspace.agents.lead_agent.prompt._get_memory_context", return_value=""), mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
+    with mock.patch("alpha.agents.lead_agent.prompt._get_memory_context", return_value=""), mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
         mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
         result = mw.before_agent(state, _fake_runtime())
 
@@ -546,7 +546,7 @@ def test_first_turn_injection_with_unguarded_history_targets_last_user_message()
         ]
     }
 
-    with mock.patch("agent_workspace.agents.lead_agent.prompt._get_memory_context", return_value=""), mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
+    with mock.patch("alpha.agents.lead_agent.prompt._get_memory_context", return_value=""), mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
         mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
         result = mw.before_agent(state, _fake_runtime())
 
@@ -579,7 +579,7 @@ def test_midnight_crossing_injects_date_update_as_separate_message():
         ]
     }
 
-    with mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
+    with mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
         mock_dt.now.return_value.strftime.return_value = "2026-05-09, Saturday"
         result = mw.before_agent(state, _fake_runtime())
 
@@ -612,7 +612,7 @@ def test_midnight_crossing_id_swap():
         ]
     }
 
-    with mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
+    with mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
         mock_dt.now.return_value.strftime.return_value = "2026-05-09, Saturday"
         result = mw.before_agent(state, _fake_runtime())
 
@@ -628,17 +628,17 @@ def test_memory_message_carries_reminder_key_for_title_eligibility():
     Similarly, summarization_middleware._preserve_dynamic_context_reminders
     would not rescue the memory block from summary compression.
     """
-    from agent_workspace.agents.middlewares.dynamic_context_middleware import is_dynamic_context_reminder
+    from alpha.agents.middlewares.dynamic_context_middleware import is_dynamic_context_reminder
 
     mw = _make_middleware()
     state = {"messages": [HumanMessage(content="Hi", id="msg-1")]}
 
     with (
         mock.patch(
-            "agent_workspace.agents.lead_agent.prompt._get_memory_context",
+            "alpha.agents.lead_agent.prompt._get_memory_context",
             return_value="<memory>\nUser prefers Python.\n</memory>",
         ),
-        mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt,
+        mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt,
     ):
         mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
         result = mw.before_agent(state, _fake_runtime())
@@ -651,7 +651,7 @@ def test_memory_message_carries_reminder_key_for_title_eligibility():
     assert is_dynamic_context_reminder(memory_msg) is True
 
     # Only the actual user message is title-eligible
-    from agent_workspace.agents.middlewares.title_middleware import TitleMiddleware
+    from alpha.agents.middlewares.title_middleware import TitleMiddleware
 
     title_eligible = [m for m in msgs if TitleMiddleware._is_user_message_for_title(m)]
     assert len(title_eligible) == 1
@@ -673,7 +673,7 @@ def test_no_second_midnight_injection_once_date_updated():
         ]
     }
 
-    with mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
+    with mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
         mock_dt.now.return_value.strftime.return_value = "2026-05-09, Saturday"
         result = mw.before_agent(state, _fake_runtime())
 
@@ -694,7 +694,7 @@ def test_user_suffix_message_is_not_injection_target():
     message again, it would perform another ID-swap → ``X__user__user`` → … →
     unbounded suffix growth and ghost-message re-execution (issue #3725).
     """
-    from agent_workspace.agents.middlewares.dynamic_context_middleware import _is_user_injection_target
+    from alpha.agents.middlewares.dynamic_context_middleware import _is_user_injection_target
 
     # A __user-suffix message is NOT a valid injection target
     user_swap_msg = HumanMessage(content="Hello", id="msg-1__user")
@@ -714,7 +714,7 @@ def test_user_suffix_message_is_not_injection_target():
 
 
 def test_legacy_summary_message_is_not_injection_target():
-    from agent_workspace.agents.middlewares.dynamic_context_middleware import _is_user_injection_target
+    from alpha.agents.middlewares.dynamic_context_middleware import _is_user_injection_target
 
     summary_msg = HumanMessage(content="Here is a summary of the conversation", name="summary")
 
@@ -727,7 +727,7 @@ def test_endswith_not_substring_prevents_false_positive():
 
     A substring check (``"__user" in id``) would incorrectly reject such IDs.
     """
-    from agent_workspace.agents.middlewares.dynamic_context_middleware import _is_user_injection_target
+    from alpha.agents.middlewares.dynamic_context_middleware import _is_user_injection_target
 
     # ID contains "__user" in the middle — should NOT be rejected
     middle_match = HumanMessage(content="question", id="user__question-123")
@@ -762,7 +762,7 @@ def test_no_recursive_id_swap_in_full_middleware_flow():
     # First call: inject into HumanMessage(id="msg-1")
     state_v1 = {"messages": [HumanMessage(content="Hello", id="msg-1")]}
 
-    with mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt, mock.patch("agent_workspace.agents.lead_agent.prompt._get_memory_context", return_value=""):
+    with mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt, mock.patch("alpha.agents.lead_agent.prompt._get_memory_context", return_value=""):
         mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
         result_v1 = mw.before_agent(state_v1, _fake_runtime())
 
@@ -791,7 +791,7 @@ def test_no_recursive_id_swap_in_full_middleware_flow():
     # Second call: _last_injected_date returns None (no parseable date),
     # so _inject enters first-turn path and must skip msg-1__user via the
     # endswith("__user") guard, then inject into msg-2.
-    with mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt, mock.patch("agent_workspace.agents.lead_agent.prompt._get_memory_context", return_value=""):
+    with mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt, mock.patch("alpha.agents.lead_agent.prompt._get_memory_context", return_value=""):
         mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
         result_v2 = mw.before_agent(state_v2, _fake_runtime())
 
@@ -811,9 +811,9 @@ def test_format_current_date_defaults_to_server_local_without_env(monkeypatch):
     """Without AGENT_WORKSPACE_DATE_TIMEZONE the formatter keeps the legacy server-local behavior."""
     from datetime import datetime
 
-    from agent_workspace.agents.middlewares.dynamic_context_middleware import _format_current_date
+    from alpha.agents.middlewares.dynamic_context_middleware import _format_current_date
 
-    with mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
+    with mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
         mock_dt.now.return_value = datetime(2026, 5, 8, 9, 0)
         monkeypatch.delenv("AGENT_WORKSPACE_DATE_TIMEZONE", raising=False)
 
@@ -825,7 +825,7 @@ def test_format_current_date_honors_configured_timezone(monkeypatch):
     """A UTC instant must be rendered in the IANA zone named by AGENT_WORKSPACE_DATE_TIMEZONE."""
     from datetime import UTC, datetime
 
-    from agent_workspace.agents.middlewares.dynamic_context_middleware import _format_current_date
+    from alpha.agents.middlewares.dynamic_context_middleware import _format_current_date
 
     # 2026-09-02 20:30 UTC is 2026-09-03 04:30 in Asia/Shanghai: a UTC-only
     # formatter would report the wrong day for a Shanghai user.
@@ -835,7 +835,7 @@ def test_format_current_date_honors_configured_timezone(monkeypatch):
         # datetime.now(tz) semantics: the fixed instant expressed in *tz*.
         return fixed_utc.astimezone(tz) if tz is not None else fixed_utc.replace(tzinfo=None)
 
-    with mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
+    with mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
         mock_dt.now.side_effect = fake_now
         monkeypatch.setenv("AGENT_WORKSPACE_DATE_TIMEZONE", "Asia/Shanghai")
 
@@ -846,9 +846,9 @@ def test_format_current_date_invalid_timezone_falls_back(monkeypatch, caplog):
     """An unparseable IANA name must warn and degrade to the server-local timezone."""
     from datetime import datetime
 
-    from agent_workspace.agents.middlewares.dynamic_context_middleware import _format_current_date
+    from alpha.agents.middlewares.dynamic_context_middleware import _format_current_date
 
-    with mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
+    with mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
         mock_dt.now.return_value = datetime(2026, 5, 8, 9, 0)
         monkeypatch.setenv("AGENT_WORKSPACE_DATE_TIMEZONE", "Not/A_Zone")
 
@@ -857,7 +857,7 @@ def test_format_current_date_invalid_timezone_falls_back(monkeypatch, caplog):
 
 
 def _declared_date_timezone_policies():
-    from agent_workspace.agents.middlewares.dynamic_context_middleware import (
+    from alpha.agents.middlewares.dynamic_context_middleware import (
         DynamicContextMiddleware,
         SubagentDateContextMiddleware,
     )
@@ -890,7 +890,7 @@ def test_date_middlewares_declare_utc_timezone(monkeypatch):
 def test_date_middlewares_declare_resolved_local_zone_without_env(monkeypatch):
     """Without the knob the declaration resolves the actual local zone, so two
     hosts that render different dates still get different assembly fingerprints."""
-    from agent_workspace.agents.middlewares.dynamic_context_middleware import _effective_date_timezone_name
+    from alpha.agents.middlewares.dynamic_context_middleware import _effective_date_timezone_name
 
     monkeypatch.delenv("AGENT_WORKSPACE_DATE_TIMEZONE", raising=False)
     expected = {"current_date_timezone": _effective_date_timezone_name()}
@@ -901,7 +901,7 @@ def test_date_middlewares_declare_resolved_local_zone_without_env(monkeypatch):
 
 def test_date_middlewares_declare_resolved_local_zone_for_invalid_env(monkeypatch, caplog):
     """An invalid IANA name degrades to server-local and is declared as such."""
-    from agent_workspace.agents.middlewares.dynamic_context_middleware import _effective_date_timezone_name
+    from alpha.agents.middlewares.dynamic_context_middleware import _effective_date_timezone_name
 
     monkeypatch.setenv("AGENT_WORKSPACE_DATE_TIMEZONE", "Not/A_Zone")
     expected = {"current_date_timezone": _effective_date_timezone_name()}
@@ -912,7 +912,7 @@ def test_date_middlewares_declare_resolved_local_zone_for_invalid_env(monkeypatc
 
 def test_server_local_timezone_name_reads_tz_env(monkeypatch):
     """A POSIX TZ env var naming a real zone resolves to its IANA key."""
-    from agent_workspace.agents.middlewares.dynamic_context_middleware import _server_local_timezone_name
+    from alpha.agents.middlewares.dynamic_context_middleware import _server_local_timezone_name
 
     monkeypatch.setenv("TZ", "Asia/Shanghai")
     assert _server_local_timezone_name() == "Asia/Shanghai"
@@ -921,7 +921,7 @@ def test_server_local_timezone_name_reads_tz_env(monkeypatch):
 def test_server_local_timezone_name_reads_direct_macos_symlink_target(monkeypatch):
     """macOS /etc/localtime points at the unversioned zoneinfo dir; the direct
     symlink target must be read instead of a fully resolved path."""
-    import agent_workspace.agents.middlewares.dynamic_context_middleware as module
+    import alpha.agents.middlewares.dynamic_context_middleware as module
 
     monkeypatch.delenv("TZ", raising=False)
     monkeypatch.setattr(module.os, "readlink", lambda _path: "/var/db/timezone/zoneinfo/Asia/Shanghai")
@@ -931,7 +931,7 @@ def test_server_local_timezone_name_reads_direct_macos_symlink_target(monkeypatc
 
 def test_server_local_timezone_name_reads_apple_versioned_symlink_target(monkeypatch):
     """Apple's canonical versioned zoneinfo path must still yield the zone key."""
-    import agent_workspace.agents.middlewares.dynamic_context_middleware as module
+    import alpha.agents.middlewares.dynamic_context_middleware as module
 
     monkeypatch.delenv("TZ", raising=False)
     monkeypatch.setattr(
@@ -945,7 +945,7 @@ def test_server_local_timezone_name_reads_apple_versioned_symlink_target(monkeyp
 
 def test_server_local_timezone_name_normalizes_relative_symlink_target(monkeypatch):
     """A relative /etc/localtime target is resolved against /etc."""
-    import agent_workspace.agents.middlewares.dynamic_context_middleware as module
+    import alpha.agents.middlewares.dynamic_context_middleware as module
 
     monkeypatch.delenv("TZ", raising=False)
     monkeypatch.setattr(module.os, "readlink", lambda _path: "../usr/share/zoneinfo/Etc/UTC")
@@ -955,7 +955,7 @@ def test_server_local_timezone_name_normalizes_relative_symlink_target(monkeypat
 
 def test_effective_timezone_sentinel_uses_offset_when_local_zone_is_not_resolvable(monkeypatch):
     """Without a recoverable IANA key the declaration pins a stable sentinel."""
-    import agent_workspace.agents.middlewares.dynamic_context_middleware as module
+    import alpha.agents.middlewares.dynamic_context_middleware as module
 
     monkeypatch.setattr(module, "_server_local_timezone_name", lambda: None)
     monkeypatch.setattr(module, "_server_local_utc_offset_minutes", lambda: 8 * 60)

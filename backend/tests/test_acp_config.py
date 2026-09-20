@@ -6,8 +6,8 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from agent_workspace.config.acp_config import ACPAgentConfig, get_acp_agents, load_acp_config_from_dict
-from agent_workspace.config.app_config import AppConfig
+from alpha.config.acp_config import ACPAgentConfig, get_acp_agents, load_acp_config_from_dict
+from alpha.config.app_config import AppConfig
 
 
 def setup_function():
@@ -159,7 +159,7 @@ def test_app_config_reload_without_acp_agents_clears_previous_state(tmp_path, mo
     extensions_path.write_text(json.dumps({"mcpServers": {}, "skills": {}}), encoding="utf-8")
 
     config_with_acp = {
-        "sandbox": {"use": "agent_workspace.sandbox.local:LocalSandboxProvider"},
+        "sandbox": {"use": "alpha.sandbox.local:LocalSandboxProvider"},
         "models": [
             {
                 "name": "test-model",
@@ -176,7 +176,7 @@ def test_app_config_reload_without_acp_agents_clears_previous_state(tmp_path, mo
         },
     }
     config_without_acp = {
-        "sandbox": {"use": "agent_workspace.sandbox.local:LocalSandboxProvider"},
+        "sandbox": {"use": "alpha.sandbox.local:LocalSandboxProvider"},
         "models": [
             {
                 "name": "test-model",

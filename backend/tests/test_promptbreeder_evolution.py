@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from agent_workspace.evolution.promptbreeder import PromptGenome, PromptbreederEngine
+from alpha.evolution.promptbreeder import PromptGenome, PromptbreederEngine
 
 
 def test_promptbreeder_population_initialization():

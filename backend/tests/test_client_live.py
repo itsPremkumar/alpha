@@ -17,9 +17,9 @@ from pathlib import Path
 
 import pytest
 
-from agent_workspace.client import AgentWorkspaceClient, StreamEvent
-from agent_workspace.sandbox.security import is_host_bash_allowed
-from agent_workspace.uploads.manager import PathTraversalError
+from alpha.client import AgentWorkspaceClient, StreamEvent
+from alpha.sandbox.security import is_host_bash_allowed
+from alpha.uploads.manager import PathTraversalError
 
 pytestmark = pytest.mark.live
 

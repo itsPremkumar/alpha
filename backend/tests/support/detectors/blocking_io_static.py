@@ -24,7 +24,7 @@ from support.detectors.repo_root import resolve_repo_root
 REPO_ROOT = resolve_repo_root(Path(__file__))
 DEFAULT_SCAN_PATHS = (
     REPO_ROOT / "backend" / "app",
-    REPO_ROOT / "backend" / "packages" / "harness" / "agent_workspace",
+    REPO_ROOT / "backend" / "packages" / "harness" / "alpha",
     REPO_ROOT / "backend" / "scripts",
 )
 IGNORED_DIR_NAMES = {
@@ -1034,8 +1034,8 @@ def write_json_report(findings: Sequence[BlockingIOStaticFinding], output_path: 
 
 def _scan_root(path: str) -> str:
     parts = path.split("/")
-    if parts[:4] == ["backend", "packages", "harness", "agent_workspace"]:
-        return "backend/packages/harness/agent_workspace"
+    if parts[:4] == ["backend", "packages", "harness", "alpha"]:
+        return "backend/packages/harness/alpha"
     if len(parts) >= 2 and parts[0] == "backend":
         return "/".join(parts[:2])
     return parts[0] if parts else path

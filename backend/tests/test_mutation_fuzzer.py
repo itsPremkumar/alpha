@@ -1,6 +1,6 @@
 """Tests for Mutation Testing and Invariant Fuzzing Engine."""
 
-from agent_workspace.testing.mutation_fuzzer import (
+from alpha.testing.mutation_fuzzer import (
     MutationTestingEngine,
     PropertyInvariantFuzzer,
     MutantType,

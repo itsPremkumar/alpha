@@ -14,12 +14,12 @@ from unittest import mock
 import pytest
 from sqlalchemy import create_engine
 
-import agent_workspace.persistence.agents.model as agent_model
-from agent_workspace.config.agents_config import AgentConfig
-from agent_workspace.persistence.agents.base import AgentExistsError
-from agent_workspace.persistence.agents.model import AgentRow
-from agent_workspace.persistence.agents.sql import SqlAgentStore
-from agent_workspace.persistence.base import Base
+import alpha.persistence.agents.model as agent_model
+from alpha.config.agents_config import AgentConfig
+from alpha.persistence.agents.base import AgentExistsError
+from alpha.persistence.agents.model import AgentRow
+from alpha.persistence.agents.sql import SqlAgentStore
+from alpha.persistence.base import Base
 
 
 @pytest.fixture()
@@ -209,7 +209,7 @@ def test_sync_engine_mirrors_async_pragmas(tmp_path):
     # synchronous / busy_timeout are per-connection and must be re-applied here.
     from sqlalchemy import text
 
-    from agent_workspace.persistence.agents.sql import _get_sessionmaker
+    from alpha.persistence.agents.sql import _get_sessionmaker
 
     url = f"sqlite:///{tmp_path}/pragma.db"
     Session = _get_sessionmaker(url)
@@ -226,7 +226,7 @@ def test_sync_engine_mirrors_async_pragmas(tmp_path):
 def test_engine_cache_is_reused_per_url(tmp_path):
     # Two stores on the same URL share one cached engine (the lock-guarded
     # double-checked cache), so we never build duplicate engines/pools.
-    from agent_workspace.persistence.agents.sql import _get_sessionmaker
+    from alpha.persistence.agents.sql import _get_sessionmaker
 
     url = f"sqlite:///{tmp_path}/reuse.db"
     first = _get_sessionmaker(url)
@@ -240,11 +240,11 @@ def test_delete_preserves_memory_only_dir_when_no_row(store, tmp_path, monkeypat
     # db mode), so delete must preserve it and report "not-custom-agent" instead
     # of rmtree-ing a user's memory.
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
-    from agent_workspace.config import paths as paths_module
+    from alpha.config import paths as paths_module
 
     monkeypatch.setattr(paths_module, "_paths", None)
 
-    from agent_workspace.config.paths import get_paths
+    from alpha.config.paths import get_paths
 
     facts_dir = get_paths().user_agent_dir("u1", "ghost") / "facts"
     facts_dir.mkdir(parents=True)
@@ -259,11 +259,11 @@ def test_delete_removes_memory_dir_when_row_exists(store, tmp_path, monkeypatch)
     # The complement: when the agent row exists, its co-located on-disk memory is
     # cleaned along with the row.
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
-    from agent_workspace.config import paths as paths_module
+    from alpha.config import paths as paths_module
 
     monkeypatch.setattr(paths_module, "_paths", None)
 
-    from agent_workspace.config.paths import get_paths
+    from alpha.config.paths import get_paths
 
     store.create("real", {"name": "real"}, "s", user_id="u1")
     mem_dir = get_paths().user_agent_dir("u1", "real")

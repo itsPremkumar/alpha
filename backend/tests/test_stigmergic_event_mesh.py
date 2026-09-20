@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from agent_workspace.blackboard.stigmergic_event_mesh import (
+from alpha.blackboard.stigmergic_event_mesh import (
     DEFAULT_HALF_LIFE_SEC,
     EventAction,
     EventStream,
@@ -18,7 +18,7 @@ from agent_workspace.blackboard.stigmergic_event_mesh import (
     exponential_decay,
     get_stigmergic_mesh,
 )
-from agent_workspace.tools.builtins.stigmergic_mesh_tool import (
+from alpha.tools.builtins.stigmergic_mesh_tool import (
     emit_stigmergic_event,
     query_stigmergic_traces,
 )

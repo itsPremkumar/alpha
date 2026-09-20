@@ -8,17 +8,17 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
 from pydantic import Field
 
-from agent_workspace.agents.middlewares.deferred_tool_filter_middleware import DeferredToolFilterMiddleware
-from agent_workspace.agents.middlewares.mcp_routing_middleware import McpRoutingMiddleware
-from agent_workspace.agents.middlewares.skill_tool_policy_middleware import SkillToolPolicyMiddleware
-from agent_workspace.agents.middlewares.tool_promotion_audit_middleware import DeferredToolPromotionAuditMiddleware
-from agent_workspace.agents.thread_state import ThreadState
-from agent_workspace.runtime.secret_context import SKILL_TOOL_POLICY_DECISION_CONTEXT_KEY, write_slash_skill_source_path
-from agent_workspace.runtime.serialization import serialize
-from agent_workspace.skills.describe import build_skill_search_setup
-from agent_workspace.skills.types import Skill, SkillCategory
-from agent_workspace.tools.builtins.tool_search import build_deferred_tool_setup
-from agent_workspace.tools.mcp_metadata import tag_mcp_tool
+from alpha.agents.middlewares.deferred_tool_filter_middleware import DeferredToolFilterMiddleware
+from alpha.agents.middlewares.mcp_routing_middleware import McpRoutingMiddleware
+from alpha.agents.middlewares.skill_tool_policy_middleware import SkillToolPolicyMiddleware
+from alpha.agents.middlewares.tool_promotion_audit_middleware import DeferredToolPromotionAuditMiddleware
+from alpha.agents.thread_state import ThreadState
+from alpha.runtime.secret_context import SKILL_TOOL_POLICY_DECISION_CONTEXT_KEY, write_slash_skill_source_path
+from alpha.runtime.serialization import serialize
+from alpha.skills.describe import build_skill_search_setup
+from alpha.skills.types import Skill, SkillCategory
+from alpha.tools.builtins.tool_search import build_deferred_tool_setup
+from alpha.tools.mcp_metadata import tag_mcp_tool
 
 _SLASH_SOURCE_OWNER_TOKEN = "test-slash-source-owner"
 _CALC_CALLS: list[str] = []

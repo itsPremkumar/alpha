@@ -3,8 +3,8 @@ and include the expected text."""
 
 from rich.console import Console
 
-from agent_workspace.tui.render import render_header, render_status, render_transcript
-from agent_workspace.tui.view_state import (
+from alpha.tui.render import render_header, render_status, render_transcript
+from alpha.tui.view_state import (
     AssistantDelta,
     RunEnded,
     RunStarted,

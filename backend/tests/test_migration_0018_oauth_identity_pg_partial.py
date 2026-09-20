@@ -26,7 +26,7 @@ import sqlalchemy as sa
 from alembic import command as alembic_command
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from agent_workspace.persistence.bootstrap import _get_alembic_config
+from alpha.persistence.bootstrap import _get_alembic_config
 
 POSTGRES_URL = os.getenv("AGENT_WORKSPACE_TEST_POSTGRES_URL")
 

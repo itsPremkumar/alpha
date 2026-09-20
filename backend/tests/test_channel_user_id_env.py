@@ -13,7 +13,7 @@ Two halves:
 
 from types import SimpleNamespace
 
-from agent_workspace.sandbox.tools import (
+from alpha.sandbox.tools import (
     CHANNEL_USER_ID_ENV,
     _channel_identity_prefix,
     bash_tool,
@@ -45,8 +45,8 @@ class _CapturingSandbox:
 
 def _run_bash(monkeypatch, runtime, command: str = "echo hi") -> _CapturingSandbox:
     sandbox = _CapturingSandbox()
-    monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_sandbox_initialized", lambda runtime: sandbox)
-    monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
+    monkeypatch.setattr("alpha.sandbox.tools.ensure_sandbox_initialized", lambda runtime: sandbox)
+    monkeypatch.setattr("alpha.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
     bash_tool.func(runtime=runtime, description="test", command=command)
     return sandbox
 
@@ -189,10 +189,10 @@ class TestBashToolChannelIdentityPrefix:
             context={"channel_user_id": "ou_1", "thread_id": "t1"},
         )
         sandbox = _CapturingSandbox()
-        monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_sandbox_initialized", lambda runtime: sandbox)
-        monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
-        monkeypatch.setattr("agent_workspace.sandbox.tools.is_host_bash_allowed", lambda: True)
-        monkeypatch.setattr("agent_workspace.sandbox.tools._is_windows", lambda: True)
+        monkeypatch.setattr("alpha.sandbox.tools.ensure_sandbox_initialized", lambda runtime: sandbox)
+        monkeypatch.setattr("alpha.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
+        monkeypatch.setattr("alpha.sandbox.tools.is_host_bash_allowed", lambda: True)
+        monkeypatch.setattr("alpha.sandbox.tools._is_windows", lambda: True)
 
         bash_tool.func(runtime=runtime, description="test", command="echo hi")
 
@@ -205,10 +205,10 @@ class TestBashToolChannelIdentityPrefix:
             context={"channel_user_id": "ou_1", "thread_id": "t1"},
         )
         sandbox = _CapturingSandbox()
-        monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_sandbox_initialized", lambda runtime: sandbox)
-        monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
-        monkeypatch.setattr("agent_workspace.sandbox.tools.is_host_bash_allowed", lambda: True)
-        monkeypatch.setattr("agent_workspace.sandbox.tools._is_windows", lambda: False)
+        monkeypatch.setattr("alpha.sandbox.tools.ensure_sandbox_initialized", lambda runtime: sandbox)
+        monkeypatch.setattr("alpha.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
+        monkeypatch.setattr("alpha.sandbox.tools.is_host_bash_allowed", lambda: True)
+        monkeypatch.setattr("alpha.sandbox.tools._is_windows", lambda: False)
 
         bash_tool.func(runtime=runtime, description="test", command="echo hi")
 

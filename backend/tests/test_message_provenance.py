@@ -85,7 +85,7 @@ class TestDynamicContextStamping:
     def _inject(self):
         from langchain_core.messages import HumanMessage
 
-        from agent_workspace.agents.middlewares.dynamic_context_middleware import DynamicContextMiddleware
+        from alpha.agents.middlewares.dynamic_context_middleware import DynamicContextMiddleware
 
         middleware = DynamicContextMiddleware()
         return middleware._inject({"messages": [HumanMessage(content="hello", id="u1")]})
@@ -109,7 +109,7 @@ class TestDynamicContextMemoryStamping:
     def test_the_memory_block_is_stamped_as_memory(self, monkeypatch):
         from langchain_core.messages import HumanMessage
 
-        from agent_workspace.agents.middlewares import dynamic_context_middleware as module
+        from alpha.agents.middlewares import dynamic_context_middleware as module
 
         monkeypatch.setattr(module.DynamicContextMiddleware, "_build_full_reminder", lambda self, runtime=None: ("<system-reminder></system-reminder>", "some recalled memory"))
         middleware = module.DynamicContextMiddleware()
@@ -130,7 +130,7 @@ class TestDurableContextStamping:
 
         from langchain.agents.middleware.types import ModelRequest
 
-        from agent_workspace.agents.middlewares.durable_context_middleware import DurableContextMiddleware
+        from alpha.agents.middlewares.durable_context_middleware import DurableContextMiddleware
 
         middleware = DurableContextMiddleware()
         request = ModelRequest(
@@ -170,7 +170,7 @@ class TestSystemMessageCoalescingStamping:
         from langchain.agents.middleware.types import ModelRequest
         from langchain_core.messages import SystemMessage
 
-        from agent_workspace.agents.middlewares.system_message_coalescing_middleware import _coalesce_request
+        from alpha.agents.middlewares.system_message_coalescing_middleware import _coalesce_request
 
         request = ModelRequest(
             model=SimpleNamespace(),
@@ -189,7 +189,7 @@ class TestViewImageStamping:
     """The hidden image-details message is stamped as an image payload."""
 
     def test_the_image_context_message_is_stamped(self):
-        from agent_workspace.agents.middlewares.view_image_middleware import ViewImageMiddleware
+        from alpha.agents.middlewares.view_image_middleware import ViewImageMiddleware
 
         message = ViewImageMiddleware._create_image_context_message(["some image content"])
         provenance = read_provenance(message)
@@ -204,7 +204,7 @@ class TestSkillActivationStamping:
     def test_the_activation_message_is_stamped(self):
         from langchain_core.messages import HumanMessage
 
-        from agent_workspace.agents.middlewares.skill_activation_middleware import SkillActivationMiddleware
+        from alpha.agents.middlewares.skill_activation_middleware import SkillActivationMiddleware
 
         target = HumanMessage(content="/some-skill do the thing", id="u1")
         message = SkillActivationMiddleware._make_activation_message(target, "activation reminder text")
@@ -226,7 +226,7 @@ class TestStateWritesCannotForgeServerOwnedMetadata:
 
     @staticmethod
     def _forged() -> dict:
-        from agent_workspace.agents.middlewares.tool_transform_meta import TOOL_TRANSFORMS_KEY
+        from alpha.agents.middlewares.tool_transform_meta import TOOL_TRANSFORMS_KEY
 
         return {
             MESSAGE_CONTENT_KIND_KEY: "memory",
@@ -265,7 +265,7 @@ class TestStateWritesCannotForgeServerOwnedMetadata:
         the message-shaped stripper alone would let a forged
         ``receipt_verdict`` straight into the checkpoint (PR #5076 review)."""
         from app.gateway.services import strip_server_owned_state_metadata
-        from agent_workspace.agents.middlewares.delegation_ledger import render_delegation_ledger
+        from alpha.agents.middlewares.delegation_ledger import render_delegation_ledger
 
         values = {
             "delegations": [

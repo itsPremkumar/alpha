@@ -11,7 +11,7 @@ from datetime import date
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-SCHEMA_VERSION = "agent_workspace.skill-review-waivers.v1"
+SCHEMA_VERSION = "alpha.skill-review-waivers.v1"
 MANIFEST_PATH = PurePosixPath(".github/skill-review-waivers.v1.json")
 _SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _SAFE_REF_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*\Z")

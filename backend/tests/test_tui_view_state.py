@@ -4,7 +4,7 @@ The reducer is the testable heart of the TUI: a pure function mapping
 (state, action) -> state, with no Textual / rendering dependency.
 """
 
-from agent_workspace.tui.view_state import (
+from alpha.tui.view_state import (
     AssistantDelta,
     AssistantError,
     ClearRows,

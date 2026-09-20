@@ -12,14 +12,14 @@ class TestCheckpointerNoneFix:
     @pytest.mark.anyio
     async def test_async_make_checkpointer_returns_in_memory_saver_when_not_configured(self):
         """make_checkpointer should return InMemorySaver when config.checkpointer is None."""
-        from agent_workspace.runtime.checkpointer.async_provider import make_checkpointer
+        from alpha.runtime.checkpointer.async_provider import make_checkpointer
 
         # Mock get_app_config to return a config with checkpointer=None and database=None
         mock_config = MagicMock()
         mock_config.checkpointer = None
         mock_config.database = None
 
-        with patch("agent_workspace.runtime.checkpointer.async_provider.get_app_config", return_value=mock_config):
+        with patch("alpha.runtime.checkpointer.async_provider.get_app_config", return_value=mock_config):
             async with make_checkpointer() as checkpointer:
                 # Should return InMemorySaver, not None
                 assert checkpointer is not None
@@ -36,14 +36,14 @@ class TestCheckpointerNoneFix:
 
     def test_sync_checkpointer_context_returns_in_memory_saver_when_not_configured(self):
         """checkpointer_context should return InMemorySaver when config.checkpointer is None."""
-        from agent_workspace.runtime.checkpointer.provider import checkpointer_context
+        from alpha.runtime.checkpointer.provider import checkpointer_context
 
         # Mock get_app_config to return a config with checkpointer=None and database=None
         mock_config = MagicMock()
         mock_config.checkpointer = None
         mock_config.database = None
 
-        with patch("agent_workspace.runtime.checkpointer.provider.get_app_config", return_value=mock_config):
+        with patch("alpha.runtime.checkpointer.provider.get_app_config", return_value=mock_config):
             with checkpointer_context() as checkpointer:
                 # Should return InMemorySaver, not None
                 assert checkpointer is not None

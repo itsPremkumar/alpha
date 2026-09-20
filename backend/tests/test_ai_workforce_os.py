@@ -16,10 +16,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.gateway.app import create_app
-from agent_workspace.bots.permissions import get_permission_gate
-from agent_workspace.planning.dag_orchestrator import get_dag_orchestrator
-from agent_workspace.projects.context_router import ThreeLevelContextRouter
-from agent_workspace.projects.worktree_hook import WorktreeTaskContext
+from alpha.bots.permissions import get_permission_gate
+from alpha.planning.dag_orchestrator import get_dag_orchestrator
+from alpha.projects.context_router import ThreeLevelContextRouter
+from alpha.projects.worktree_hook import WorktreeTaskContext
 
 
 def test_three_level_context_router():

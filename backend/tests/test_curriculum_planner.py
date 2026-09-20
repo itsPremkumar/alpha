@@ -1,5 +1,5 @@
 
-from agent_workspace.learning.curriculum import (
+from alpha.learning.curriculum import (
     CapabilityGap,
     Curriculum,
     CurriculumBuilder,

@@ -816,7 +816,7 @@ def test_channel_connections_config_knows_buzz():
     Buzz's `BindingCodeChannelConnectionConfig` (always-True `configured`
     property, same as discord/feishu/dingtalk/wechat/wecom) is therefore
     indistinguishable from its siblings here until it is also enabled."""
-    from agent_workspace.config.channel_connections_config import ChannelConnectionsConfig
+    from alpha.config.channel_connections_config import ChannelConnectionsConfig
 
     cfg = ChannelConnectionsConfig()
     assert cfg.provider_status("buzz") == {"enabled": False, "configured": False}

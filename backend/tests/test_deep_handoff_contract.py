@@ -1,6 +1,6 @@
 """Unit tests for the Deep Handoff Contract and clean-context protocol."""
 
-from agent_workspace.subagents.deep_handoff_contract import (
+from alpha.subagents.deep_handoff_contract import (
     DeepExecutionStatus,
     DeepHandoffContract,
     DeepTaskSpec,

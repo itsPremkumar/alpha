@@ -1,6 +1,6 @@
 """Tests for Mixture-of-Agents (MoA) and PII Redaction."""
 
-from agent_workspace.deliberation.moa_engine import MoAEngine, PIIFilter
+from alpha.deliberation.moa_engine import MoAEngine, PIIFilter
 
 
 def test_pii_filter_redaction():

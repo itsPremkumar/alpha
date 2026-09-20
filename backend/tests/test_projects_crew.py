@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import pytest
 
-from agent_workspace.bots import registry as registry_mod
-from agent_workspace.groups import service as groups_service_mod
-from agent_workspace.projects import context_router as context_router_mod
-from agent_workspace.projects import events as events_mod
-from agent_workspace.projects import locks as locks_mod
-from agent_workspace.projects import membership as membership_mod
-from agent_workspace.projects.crew import ProjectCrewService
+from alpha.bots import registry as registry_mod
+from alpha.groups import service as groups_service_mod
+from alpha.projects import context_router as context_router_mod
+from alpha.projects import events as events_mod
+from alpha.projects import locks as locks_mod
+from alpha.projects import membership as membership_mod
+from alpha.projects.crew import ProjectCrewService
 
 
 @pytest.fixture()

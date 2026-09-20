@@ -8,8 +8,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.gateway.routers import memory
-from agent_workspace.agents.memory import MemoryConflictError, MemoryCorruptionError
-from agent_workspace.agents.memory.backends.deermem.deer_mem import DeerMem
+from alpha.agents.memory import MemoryConflictError, MemoryCorruptionError
+from alpha.agents.memory.backends.deermem.deer_mem import DeerMem
 
 
 def _sample_memory(facts: list[dict] | None = None) -> dict:
@@ -391,7 +391,7 @@ def test_update_memory_fact_route_returns_specific_error_for_invalid_confidence(
 
 def _internal_owner_request(owner_user_id: str) -> SimpleNamespace:
     from app.gateway.internal_auth import INTERNAL_OWNER_USER_ID_HEADER_NAME, INTERNAL_SYSTEM_ROLE
-    from agent_workspace.runtime.user_context import DEFAULT_USER_ID
+    from alpha.runtime.user_context import DEFAULT_USER_ID
 
     return SimpleNamespace(
         headers={INTERNAL_OWNER_USER_ID_HEADER_NAME: owner_user_id},
@@ -415,7 +415,7 @@ def test_get_memory_honors_bound_owner_header() -> None:
 
 
 def test_get_memory_sanitizes_unsafe_owner_header() -> None:
-    from agent_workspace.config.paths import make_safe_user_id
+    from alpha.config.paths import make_safe_user_id
 
     raw_owner = "feishu|ou_AbC/123"
     seen: dict[str, str] = {}

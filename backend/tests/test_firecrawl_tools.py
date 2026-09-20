@@ -5,8 +5,8 @@ from unittest.mock import MagicMock, patch
 
 
 class TestWebSearchTool:
-    @patch("agent_workspace.community.firecrawl.tools.FirecrawlApp")
-    @patch("agent_workspace.community.firecrawl.tools.get_app_config")
+    @patch("alpha.community.firecrawl.tools.FirecrawlApp")
+    @patch("alpha.community.firecrawl.tools.get_app_config")
     def test_search_uses_web_search_config(self, mock_get_app_config, mock_firecrawl_cls):
         search_config = MagicMock()
         search_config.model_extra = {"api_key": "firecrawl-search-key", "max_results": 7}
@@ -18,7 +18,7 @@ class TestWebSearchTool:
         ]
         mock_firecrawl_cls.return_value.search.return_value = mock_result
 
-        from agent_workspace.community.firecrawl.tools import web_search_tool
+        from alpha.community.firecrawl.tools import web_search_tool
 
         result = web_search_tool.invoke({"query": "test query"})
 
@@ -35,8 +35,8 @@ class TestWebSearchTool:
 
 
 class TestWebFetchTool:
-    @patch("agent_workspace.community.firecrawl.tools.FirecrawlApp")
-    @patch("agent_workspace.community.firecrawl.tools.get_app_config")
+    @patch("alpha.community.firecrawl.tools.FirecrawlApp")
+    @patch("alpha.community.firecrawl.tools.get_app_config")
     def test_fetch_uses_web_fetch_config(self, mock_get_app_config, mock_firecrawl_cls):
         fetch_config = MagicMock()
         fetch_config.model_extra = {"api_key": "firecrawl-fetch-key"}
@@ -53,7 +53,7 @@ class TestWebFetchTool:
         mock_scrape_result.metadata = MagicMock(title="Fetched Page")
         mock_firecrawl_cls.return_value.scrape.return_value = mock_scrape_result
 
-        from agent_workspace.community.firecrawl.tools import web_fetch_tool
+        from alpha.community.firecrawl.tools import web_fetch_tool
 
         result = web_fetch_tool.invoke({"url": "https://example.com"})
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from agent_workspace.projects.locks import LockConflictError, LockManager
+from alpha.projects.locks import LockConflictError, LockManager
 
 
 @pytest.fixture()

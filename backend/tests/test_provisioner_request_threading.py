@@ -16,7 +16,7 @@ from kubernetes.client.rest import ApiException
 
 
 def test_provisioner_thread_id_pattern_matches_gateway_contract(provisioner_module) -> None:
-    from agent_workspace.utils.thread_id import THREAD_ID_PATTERN
+    from alpha.utils.thread_id import THREAD_ID_PATTERN
 
     assert provisioner_module.SAFE_THREAD_ID_PATTERN == THREAD_ID_PATTERN
 

@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import pytest
 
-from agent_workspace.persistence import bootstrap as bootstrap_mod
+from alpha.persistence import bootstrap as bootstrap_mod
 
 
 class _FakeAsyncConn:

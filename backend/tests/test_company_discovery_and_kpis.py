@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from agent_workspace.company.discovery import ContinuousWorkDiscoveryEngine
-from agent_workspace.company.kpi import KPIEngine
-from agent_workspace.company.models import WorkCategory, WorkPriority
+from alpha.company.discovery import ContinuousWorkDiscoveryEngine
+from alpha.company.kpi import KPIEngine
+from alpha.company.models import WorkCategory, WorkPriority
 
 
 def test_continuous_work_discovery_and_scoring():

@@ -7,9 +7,9 @@ unshippable state unnoticed.
 
 from pathlib import Path
 
-from agent_workspace.skills.parser import parse_skill_file
-from agent_workspace.skills.skillscan.orchestrator import enforce_static_scan
-from agent_workspace.skills.types import SkillCategory
+from alpha.skills.parser import parse_skill_file
+from alpha.skills.skillscan.orchestrator import enforce_static_scan
+from alpha.skills.types import SkillCategory
 
 SKILL_DIR = (
     Path(__file__).resolve().parents[2] / "skills" / "public" / "project-cartographer"

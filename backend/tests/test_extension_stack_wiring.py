@@ -6,12 +6,12 @@ import pytest
 from agent_workspace_extension_api import AgentScope, MiddlewarePlacement, Placement
 from langchain.agents.middleware import AgentMiddleware
 
-from agent_workspace.agents.lead_agent.agent import build_middlewares
-from agent_workspace.config.app_config import AppConfig
-from agent_workspace.config.sandbox_config import SandboxConfig
-from agent_workspace.extensions.isolation import IsolatedMiddleware
-from agent_workspace.extensions.registry import ExtensionRegistry
-from agent_workspace.extensions.stack import PLACEMENT_ANCHORS
+from alpha.agents.lead_agent.agent import build_middlewares
+from alpha.config.app_config import AppConfig
+from alpha.config.sandbox_config import SandboxConfig
+from alpha.extensions.isolation import IsolatedMiddleware
+from alpha.extensions.registry import ExtensionRegistry
+from alpha.extensions.stack import PLACEMENT_ANCHORS
 
 
 def _app_config() -> AppConfig:
@@ -20,7 +20,7 @@ def _app_config() -> AppConfig:
     # verbatim test code assumed a default-constructible AppConfig; every
     # other builder test in this suite (e.g. test_lead_agent_model_resolution.py)
     # supplies this same minimal sandbox stanza for the same reason.
-    return AppConfig(sandbox=SandboxConfig(use="agent_workspace.sandbox.local:LocalSandboxProvider"))
+    return AppConfig(sandbox=SandboxConfig(use="alpha.sandbox.local:LocalSandboxProvider"))
 
 
 class _Probe(AgentMiddleware):
@@ -69,10 +69,10 @@ def test_zero_extensions_leaves_the_stack_unchanged():
 
 
 def test_zero_extensions_skip_policy_projection(monkeypatch):
-    from agent_workspace.agents.middlewares.tool_error_handling_middleware import (
+    from alpha.agents.middlewares.tool_error_handling_middleware import (
         build_subagent_runtime_middlewares,
     )
-    from agent_workspace.extensions import policy as policy_module
+    from alpha.extensions import policy as policy_module
 
     def _unexpected_projection(app_config):
         raise AssertionError("zero-extension path constructed an extension payload")
@@ -87,7 +87,7 @@ def test_zero_extensions_skip_policy_projection(monkeypatch):
 def test_zero_extension_composition_reuses_the_built_stack():
     from agent_workspace_extension_api import AgentBuildContext
 
-    from agent_workspace.extensions.stack import compose_with_extensions
+    from alpha.extensions.stack import compose_with_extensions
 
     middlewares = []
     result = compose_with_extensions(
@@ -101,10 +101,10 @@ def test_zero_extension_composition_reuses_the_built_stack():
 
 
 def test_bound_build_snapshot_is_used_by_lead_and_subagent_fallbacks():
-    from agent_workspace.agents.middlewares.tool_error_handling_middleware import (
+    from alpha.agents.middlewares.tool_error_handling_middleware import (
         build_subagent_runtime_middlewares,
     )
-    from agent_workspace.extensions import bind_agent_build_extensions
+    from alpha.extensions import bind_agent_build_extensions
 
     lead_capture = _CtxCapture()
     subagent_capture = _CtxCapture()
@@ -121,7 +121,7 @@ def test_bound_build_snapshot_is_used_by_lead_and_subagent_fallbacks():
 
 
 def test_lead_system_middlewares_capture_the_explicit_build_snapshot():
-    from agent_workspace.agents.middlewares.title_middleware import TitleMiddleware
+    from alpha.agents.middlewares.title_middleware import TitleMiddleware
 
     registry = ExtensionRegistry()
     with registry.attributed_to("observer:install"):
@@ -152,7 +152,7 @@ def test_tool_raw_lands_inside_tool_error_handling():
 
 
 def test_runtime_isolation_failure_is_recorded_after_stack_composition():
-    from agent_workspace.extensions import get_runtime_diagnostics, reset_runtime_diagnostics
+    from alpha.extensions import get_runtime_diagnostics, reset_runtime_diagnostics
 
     class _FailingObserver(AgentMiddleware):
         def wrap_tool_call(self, request, handler):
@@ -189,7 +189,7 @@ def test_runtime_isolation_failure_is_recorded_after_stack_composition():
 
 
 def test_build_and_runtime_diagnostics_are_each_recorded_once():
-    from agent_workspace.extensions import get_runtime_diagnostics, reset_runtime_diagnostics
+    from alpha.extensions import get_runtime_diagnostics, reset_runtime_diagnostics
 
     class _FailingObserver(AgentMiddleware):
         def wrap_model_call(self, request, handler):
@@ -221,7 +221,7 @@ def test_build_and_runtime_diagnostics_are_each_recorded_once():
 
 
 def test_lead_only_contribution_is_absent_from_subagent_stack():
-    from agent_workspace.agents.middlewares.tool_error_handling_middleware import (
+    from alpha.agents.middlewares.tool_error_handling_middleware import (
         build_subagent_runtime_middlewares,
     )
 
@@ -238,10 +238,10 @@ def test_first_subagent_build_resolves_every_lazy_anchor(monkeypatch):
     empty table, then populate only MODEL_PHYSICAL as it installed the
     subagent-specific override.
     """
-    from agent_workspace.agents.middlewares.tool_error_handling_middleware import (
+    from alpha.agents.middlewares.tool_error_handling_middleware import (
         build_subagent_runtime_middlewares,
     )
-    from agent_workspace.extensions import stack as stack_module
+    from alpha.extensions import stack as stack_module
 
     fresh_table = stack_module._AnchorTable()
     monkeypatch.setattr(stack_module._AnchorTable, "_loaded", False)
@@ -276,9 +276,9 @@ def test_core_ordering_table_is_enforced_against_a_real_stack(monkeypatch):
     them would require stubbing sys.modules entries, which tests the stubbing
     more than the wiring. Patching the table asserts exactly the claim at issue.
     """
-    from agent_workspace.agents.middlewares.input_sanitization_middleware import InputSanitizationMiddleware
-    from agent_workspace.agents.middlewares.tool_error_handling_middleware import ToolErrorHandlingMiddleware
-    from agent_workspace.extensions import ordering as ordering_mod
+    from alpha.agents.middlewares.input_sanitization_middleware import InputSanitizationMiddleware
+    from alpha.agents.middlewares.tool_error_handling_middleware import ToolErrorHandlingMiddleware
+    from alpha.extensions import ordering as ordering_mod
 
     # InputSanitization is the outermost wrapper and ToolErrorHandling sits deep
     # in the tail, so demanding the reverse is a constraint the real stack breaks.
@@ -308,8 +308,8 @@ def test_core_ordering_table_passes_on_the_unmodified_stack():
 def test_ordering_violation_raises_and_names_the_extension():
     """A contribution that inverts a core invariant must fail loudly at build
     time — the resulting behaviour would otherwise be wrong without an error."""
-    from agent_workspace.agents.middlewares.tool_error_handling_middleware import ToolErrorHandlingMiddleware
-    from agent_workspace.extensions.ordering import OrderingConstraint, assert_ordering
+    from alpha.agents.middlewares.tool_error_handling_middleware import ToolErrorHandlingMiddleware
+    from alpha.extensions.ordering import OrderingConstraint, assert_ordering
 
     stack = [ToolErrorHandlingMiddleware(app_config=_app_config()), _Probe("x")]
     constraints = (OrderingConstraint(outer=_Probe, inner=ToolErrorHandlingMiddleware, reason="test"),)
@@ -342,11 +342,11 @@ def _extensions_with_contributor(contributor):
 
 
 def _policy_config() -> AppConfig:
-    from agent_workspace.config.subagents_config import SubagentsAppConfig
-    from agent_workspace.config.token_budget_config import TokenBudgetConfig
+    from alpha.config.subagents_config import SubagentsAppConfig
+    from alpha.config.token_budget_config import TokenBudgetConfig
 
     return AppConfig(
-        sandbox=SandboxConfig(use="agent_workspace.sandbox.local:LocalSandboxProvider"),
+        sandbox=SandboxConfig(use="alpha.sandbox.local:LocalSandboxProvider"),
         token_budget=TokenBudgetConfig(
             enabled=True,
             max_tokens=12345,
@@ -397,7 +397,7 @@ def test_lead_build_context_carries_the_projected_host_policy():
 
 
 def test_subagent_build_context_carries_the_projected_host_policy():
-    from agent_workspace.agents.middlewares.tool_error_handling_middleware import build_subagent_runtime_middlewares
+    from alpha.agents.middlewares.tool_error_handling_middleware import build_subagent_runtime_middlewares
 
     capture = _CtxCapture()
     build_subagent_runtime_middlewares(

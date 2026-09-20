@@ -26,15 +26,15 @@ from langchain_core.language_models.fake_chat_models import FakeMessagesListChat
 from langchain_core.messages import AIMessage, HumanMessage
 from pydantic import PrivateAttr
 
-from agent_workspace.agents.lead_agent import prompt as prompt_module
-from agent_workspace.agents.memory import MemoryManager, MemoryReadError, reset_memory_manager
-from agent_workspace.agents.memory.manager import _scan_backends
-from agent_workspace.agents.middlewares.dynamic_context_middleware import (
+from alpha.agents.lead_agent import prompt as prompt_module
+from alpha.agents.memory import MemoryManager, MemoryReadError, reset_memory_manager
+from alpha.agents.memory.manager import _scan_backends
+from alpha.agents.middlewares.dynamic_context_middleware import (
     _DYNAMIC_CONTEXT_REMINDER_KEY,
     DynamicContextMiddleware,
 )
-from agent_workspace.config.memory_config import MemoryConfig
-from agent_workspace.runtime.context_keys import CURRENT_RUN_PRE_EXISTING_MESSAGE_IDS_KEY
+from alpha.config.memory_config import MemoryConfig
+from alpha.runtime.context_keys import CURRENT_RUN_PRE_EXISTING_MESSAGE_IDS_KEY
 
 pytestmark = pytest.mark.asyncio
 
@@ -119,7 +119,7 @@ async def test_abefore_agent_returns_same_result_as_before_agent() -> None:
 
     with (
         mock.patch.object(prompt_module, "_get_memory_context", return_value=""),
-        mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt,
+        mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt,
     ):
         mock_dt.now.return_value.strftime.return_value = "2026-06-05, Friday"
 
@@ -183,7 +183,7 @@ async def test_abefore_agent_returns_none_on_timeout(
     with (
         mock.patch.object(mw, "_inject", blocking_inject),
         mock.patch(
-            "agent_workspace.agents.middlewares.dynamic_context_middleware._INJECT_TIMEOUT_SECONDS",
+            "alpha.agents.middlewares.dynamic_context_middleware._INJECT_TIMEOUT_SECONDS",
             0.01,
         ),
     ):
@@ -227,7 +227,7 @@ async def test_abefore_agent_propagates_strict_memory_timeout(
     with (
         mock.patch.object(mw, "_inject", blocking_inject),
         mock.patch(
-            "agent_workspace.agents.middlewares.dynamic_context_middleware._INJECT_TIMEOUT_SECONDS",
+            "alpha.agents.middlewares.dynamic_context_middleware._INJECT_TIMEOUT_SECONDS",
             0.01,
         ),
     ):
@@ -303,7 +303,7 @@ async def test_abefore_agent_policy_resolution_failure_does_not_replace_timeout(
         with (
             mock.patch.object(mw, "_inject", blocking_inject),
             mock.patch(
-                "agent_workspace.agents.middlewares.dynamic_context_middleware._INJECT_TIMEOUT_SECONDS",
+                "alpha.agents.middlewares.dynamic_context_middleware._INJECT_TIMEOUT_SECONDS",
                 0.01,
             ),
         ):
@@ -363,7 +363,7 @@ async def test_abefore_agent_records_checkpointed_memory_on_timeout() -> None:
     with (
         mock.patch.object(mw, "_inject", blocking_inject),
         mock.patch(
-            "agent_workspace.agents.middlewares.dynamic_context_middleware._INJECT_TIMEOUT_SECONDS",
+            "alpha.agents.middlewares.dynamic_context_middleware._INJECT_TIMEOUT_SECONDS",
             0.01,
         ),
     ):
@@ -413,7 +413,7 @@ async def test_timeout_does_not_wait_for_saturated_executor(monkeypatch, read_po
                     await asyncio.sleep(0)
             with (
                 mock.patch.object(mw, "_inject", side_effect=occupy_worker) as inject,
-                mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware._INJECT_TIMEOUT_SECONDS", 0.01),
+                mock.patch("alpha.agents.middlewares.dynamic_context_middleware._INJECT_TIMEOUT_SECONDS", 0.01),
             ):
                 call = mw.abefore_agent({"messages": [HumanMessage(content="hi", id="m1")]}, SimpleNamespace(context={}))
                 if read_policy == "raise":
@@ -439,8 +439,8 @@ async def test_legacy_backend_timeout_preserves_read_policy(read_policy):
     try:
         with (
             mock.patch.object(asyncio.get_running_loop(), "_default_executor", executor),
-            mock.patch("agent_workspace.agents.memory.get_memory_manager", return_value=backend),
-            mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware._INJECT_TIMEOUT_SECONDS", 0.01),
+            mock.patch("alpha.agents.memory.get_memory_manager", return_value=backend),
+            mock.patch("alpha.agents.middlewares.dynamic_context_middleware._INJECT_TIMEOUT_SECONDS", 0.01),
         ):
             call = mw.abefore_agent({"messages": [HumanMessage(content="hi", id="m1")]}, SimpleNamespace(context={}))
             if read_policy == "fail_closed":
@@ -459,7 +459,7 @@ async def test_legacy_backend_timeout_preserves_read_policy(read_policy):
 @pytest.mark.parametrize("explicit_config", [True, False], ids=["cold_registry", "config_fallback"])
 async def test_cold_policy_resolution_stays_off_event_loop(monkeypatch, tmp_path, explicit_config):
     """Cold discovery and the config-reload fallback remain inside the deadline."""
-    from agent_workspace.agents.memory import manager as manager_module
+    from alpha.agents.memory import manager as manager_module
 
     monkeypatch.setenv("OPENVIKING_API_KEY", "test-key")
     cfg = MemoryConfig(manager_class="openviking", backend_config={"owner_user_id": "alice", "failure_policy": {"read": "fail_open"}})
@@ -493,9 +493,9 @@ async def test_cold_policy_resolution_stays_off_event_loop(monkeypatch, tmp_path
     try:
         with (
             mock.patch.object(manager_module, "_scan_backends", side_effect=cold_scan),
-            mock.patch("agent_workspace.config.memory_config.get_memory_config", side_effect=reload_config),
+            mock.patch("alpha.config.memory_config.get_memory_config", side_effect=reload_config),
             mock.patch.object(mw, "_inject", side_effect=blocking_inject),
-            mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware._INJECT_TIMEOUT_SECONDS", 0.2),
+            mock.patch("alpha.agents.middlewares.dynamic_context_middleware._INJECT_TIMEOUT_SECONDS", 0.2),
         ):
             assert await asyncio.wait_for(mw.abefore_agent({}, SimpleNamespace(context={})), 0.5) is None
     finally:
@@ -517,10 +517,10 @@ async def test_cold_saturated_timeout_never_starts_discovery(monkeypatch, disabl
     try:
         with (
             mock.patch.object(asyncio.get_running_loop(), "_default_executor", executor),
-            mock.patch("agent_workspace.agents.memory.manager._scan_backends") as scan,
-            mock.patch("agent_workspace.config.memory_config.get_memory_config") as reload_config,
+            mock.patch("alpha.agents.memory.manager._scan_backends") as scan,
+            mock.patch("alpha.config.memory_config.get_memory_config") as reload_config,
             mock.patch.object(mw, "_inject") as inject,
-            mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware._INJECT_TIMEOUT_SECONDS", 0.01),
+            mock.patch("alpha.agents.middlewares.dynamic_context_middleware._INJECT_TIMEOUT_SECONDS", 0.01),
         ):
             executor.submit(release.wait, 2)
             call = mw.abefore_agent({}, SimpleNamespace(context={}))

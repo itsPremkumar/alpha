@@ -35,7 +35,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import Runnable
 from langgraph.checkpoint.memory import InMemorySaver
 
-from agent_workspace.agents.middlewares.dynamic_context_middleware import (
+from alpha.agents.middlewares.dynamic_context_middleware import (
     DynamicContextMiddleware,
     is_dynamic_context_reminder,
 )
@@ -134,8 +134,8 @@ def _run_two_turns() -> tuple[dict, _RecordModelInput]:
     cfg = {"configurable": {"thread_id": "stream-invariants-1"}}
 
     with (
-        mock.patch("agent_workspace.agents.lead_agent.prompt._get_memory_context", return_value=_MEMORY),
-        mock.patch("agent_workspace.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt,
+        mock.patch("alpha.agents.lead_agent.prompt._get_memory_context", return_value=_MEMORY),
+        mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt,
     ):
         mock_dt.now.return_value.strftime.return_value = _FIXED_DATE
         agent.invoke({"messages": [HumanMessage(content=_TURN_1, id="u1")]}, cfg)

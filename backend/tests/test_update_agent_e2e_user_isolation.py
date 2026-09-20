@@ -36,7 +36,7 @@ from app.gateway.services import (
     inject_authenticated_user_context,
     merge_run_context_overrides,
 )
-from agent_workspace.runtime.runs.worker import _build_runtime_context, _install_runtime_context
+from alpha.runtime.runs.worker import _build_runtime_context, _install_runtime_context
 
 
 def _make_request(user_id_str: str | None) -> SimpleNamespace:
@@ -80,18 +80,18 @@ def _patch_update_agent_dependencies(tmp_path: Path):
 
     return [
         patch(
-            "agent_workspace.tools.builtins.update_agent_tool.get_paths",
+            "alpha.tools.builtins.update_agent_tool.get_paths",
             return_value=_make_paths_mock(tmp_path),
         ),
         patch(
-            "agent_workspace.tools.builtins.update_agent_tool.get_app_config",
+            "alpha.tools.builtins.update_agent_tool.get_app_config",
             return_value=fake_app_cfg,
         ),
         # load_agent_config (used by update_agent to read existing config) also
         # reads paths via its own module-level get_paths reference. Patch it too
         # or the tool returns "Agent does not exist" before touching disk.
         patch(
-            "agent_workspace.config.agents_config.get_paths",
+            "alpha.config.agents_config.get_paths",
             return_value=_make_paths_mock(tmp_path),
         ),
     ]
@@ -100,7 +100,7 @@ def _patch_update_agent_dependencies(tmp_path: Path):
 def _build_update_graph(*, soul_payload: str):
     from langchain.agents import create_agent
 
-    from agent_workspace.tools.builtins.update_agent_tool import update_agent
+    from alpha.tools.builtins.update_agent_tool import update_agent
 
     fake_model = build_single_tool_call_model(
         tool_name="update_agent",
@@ -214,7 +214,7 @@ def test_update_agent_uses_contextvar_when_present(tmp_path: Path, monkeypatch):
     keep working regardless of how runtime.context is populated."""
     from types import SimpleNamespace as _SN
 
-    from agent_workspace.runtime.user_context import reset_current_user, set_current_user
+    from alpha.runtime.user_context import reset_current_user, set_current_user
 
     auth_uid = "11112222-3333-4444-5555-666677778888"
     user = _SN(id=auth_uid, email="ctxvar@local")

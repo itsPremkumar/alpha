@@ -3,7 +3,7 @@
 Covers the config gate (``MONOCLE_TRACING`` default off / toggle on), the setup
 helper's behavior (off-box exporter warning, exporter validation, idempotency,
 Langfuse coexistence), the Gateway-lifespan wiring, and the regression that
-importing ``agent_workspace.agents`` no longer sets up telemetry at import time.
+importing ``alpha.agents`` no longer sets up telemetry at import time.
 """
 
 from __future__ import annotations
@@ -23,9 +23,9 @@ import pytest
 # module in minimal installs instead of erroring at collection.
 pytest.importorskip("monocle_apptrace")
 
-from agent_workspace.config import is_monocle_tracing_enabled
-from agent_workspace.config.tracing_config import get_tracing_config, reset_tracing_config
-from agent_workspace.tracing.monocle import setup_monocle_tracing_if_enabled
+from alpha.config import is_monocle_tracing_enabled
+from alpha.config.tracing_config import get_tracing_config, reset_tracing_config
+from alpha.tracing.monocle import setup_monocle_tracing_if_enabled
 
 _TRACING_ENV = (
     "MONOCLE_TRACING",
@@ -43,7 +43,7 @@ def clear_monocle_env(monkeypatch):
         monkeypatch.delenv(name, raising=False)
     # The setup-completed flag is process-global; reset it so a test that runs
     # (mocked) setup cannot change how later tests observe the embedded hint.
-    monkeypatch.setattr("agent_workspace.tracing.monocle._setup_completed", False)
+    monkeypatch.setattr("alpha.tracing.monocle._setup_completed", False)
     reset_tracing_config()
     yield
     reset_tracing_config()
@@ -167,7 +167,7 @@ def test_coexists_with_langfuse():
 
         from opentelemetry import trace
 
-        from agent_workspace.tracing.monocle import setup_monocle_tracing_if_enabled
+        from alpha.tracing.monocle import setup_monocle_tracing_if_enabled
 
         # Gateway order: Monocle at startup, Langfuse per-run afterwards.
         assert setup_monocle_tracing_if_enabled() is True
@@ -225,40 +225,40 @@ def test_embedded_hint_when_enabled_but_uninitialized(monkeypatch, caplog):
     so this debug line is the only in-process signal explaining why no Monocle
     traces appear.
     """
-    from agent_workspace.tracing import build_tracing_callbacks
+    from alpha.tracing import build_tracing_callbacks
 
     monkeypatch.setenv("MONOCLE_TRACING", "true")
     reset_tracing_config()
-    monkeypatch.setattr("agent_workspace.tracing.monocle._setup_completed", False)
+    monkeypatch.setattr("alpha.tracing.monocle._setup_completed", False)
 
     # Scoped to the factory's logger: earlier tests in the suite may have run
     # configure_logging(), which pins an explicit INFO level on the hierarchy
     # that a root-level caplog.at_level(DEBUG) would not override.
-    with caplog.at_level(logging.DEBUG, logger="agent_workspace.tracing.factory"):
+    with caplog.at_level(logging.DEBUG, logger="alpha.tracing.factory"):
         assert build_tracing_callbacks() == []
 
     assert any("not initialized in this process" in r.message for r in caplog.records)
 
 
 def test_no_embedded_hint_after_setup(monkeypatch, caplog):
-    from agent_workspace.tracing import build_tracing_callbacks
+    from alpha.tracing import build_tracing_callbacks
 
     monkeypatch.setenv("MONOCLE_TRACING", "true")
     reset_tracing_config()
-    monkeypatch.setattr("agent_workspace.tracing.monocle._setup_completed", False)
+    monkeypatch.setattr("alpha.tracing.monocle._setup_completed", False)
     monkeypatch.setattr("monocle_apptrace.setup_monocle_telemetry", lambda **kw: None)
     assert setup_monocle_tracing_if_enabled() is True
 
-    with caplog.at_level(logging.DEBUG, logger="agent_workspace.tracing.factory"):
+    with caplog.at_level(logging.DEBUG, logger="alpha.tracing.factory"):
         build_tracing_callbacks()
 
     assert not any("not initialized in this process" in r.message for r in caplog.records)
 
 
 def test_no_import_time_setup():
-    """Regression: importing agent_workspace.agents must not install telemetry.
+    """Regression: importing alpha.agents must not install telemetry.
 
-    The setup call used to live at module import in ``agent_workspace/agents/__init__``.
+    The setup call used to live at module import in ``alpha/agents/__init__``.
     It now happens only via the gateway lifespan, so a plain import must neither
     expose ``setup_monocle_telemetry`` nor install a global OTel
     ``TracerProvider`` (which is what ``setup_monocle_telemetry`` does). Runs in
@@ -271,7 +271,7 @@ def test_no_import_time_setup():
         from opentelemetry import trace
         from opentelemetry.trace import ProxyTracerProvider
 
-        import agent_workspace.agents as agents
+        import alpha.agents as agents
 
         assert not hasattr(agents, "setup_monocle_telemetry")
         # Still the SDK-less default proxy: no provider was installed on import.
@@ -296,7 +296,7 @@ def test_double_invoke_is_idempotent():
         import os
         os.environ["MONOCLE_TRACING"] = "true"
         os.environ["MONOCLE_EXPORTERS"] = "console"  # avoid writing .monocle/ files
-        from agent_workspace.tracing.monocle import setup_monocle_tracing_if_enabled
+        from alpha.tracing.monocle import setup_monocle_tracing_if_enabled
         from monocle_apptrace.instrumentation.common.instrumentor import get_monocle_instrumentor
 
         assert setup_monocle_tracing_if_enabled() is True
@@ -339,7 +339,7 @@ def test_gateway_lifespan_initializes_monocle():
         patch("app.gateway.app.get_app_config", return_value=startup_config),
         patch("app.gateway.app.get_gateway_config", return_value=MagicMock(host="x", port=0)),
         patch("app.gateway.app.langgraph_runtime", _noop_langgraph_runtime),
-        patch("agent_workspace.skills.projection.ensure_public_skill_projection"),
+        patch("alpha.skills.projection.ensure_public_skill_projection"),
         patch("app.gateway.app.setup_monocle_tracing_if_enabled", setup_spy),
         patch("app.gateway.app.auth.close_oidc_service", AsyncMock()),
         patch("app.channels.service.start_channel_service", side_effect=fake_start),
@@ -382,7 +382,7 @@ def test_gateway_lifespan_survives_monocle_setup_failure(caplog):
         patch("app.gateway.app.get_app_config", return_value=startup_config),
         patch("app.gateway.app.get_gateway_config", return_value=MagicMock(host="x", port=0)),
         patch("app.gateway.app.langgraph_runtime", _noop_langgraph_runtime),
-        patch("agent_workspace.skills.projection.ensure_public_skill_projection"),
+        patch("alpha.skills.projection.ensure_public_skill_projection"),
         patch("app.gateway.app.setup_monocle_tracing_if_enabled", setup_spy),
         patch("app.gateway.app.auth.close_oidc_service", AsyncMock()),
         patch("app.channels.service.start_channel_service", side_effect=fake_start),

@@ -15,13 +15,13 @@ from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-import agent_workspace.persistence.models  # noqa: F401
-from agent_workspace.persistence.base import Base
-from agent_workspace.persistence.postgres_schema import build_asyncpg_connect_args
-from agent_workspace.persistence.scheduled_task_runs import ActiveScheduledRunConflict, ScheduledTaskRunRepository
-from agent_workspace.persistence.scheduled_task_runs.model import ScheduledTaskRunRow
-from agent_workspace.persistence.scheduled_tasks import ScheduledTaskRepository
-from agent_workspace.persistence.scheduled_tasks.model import ACTIVE_RUN_STATUSES, ONCE_TASK_STATUS_BY_RUN_STATUS, ScheduledTaskRow
+import alpha.persistence.models  # noqa: F401
+from alpha.persistence.base import Base
+from alpha.persistence.postgres_schema import build_asyncpg_connect_args
+from alpha.persistence.scheduled_task_runs import ActiveScheduledRunConflict, ScheduledTaskRunRepository
+from alpha.persistence.scheduled_task_runs.model import ScheduledTaskRunRow
+from alpha.persistence.scheduled_tasks import ScheduledTaskRepository
+from alpha.persistence.scheduled_tasks.model import ACTIVE_RUN_STATUSES, ONCE_TASK_STATUS_BY_RUN_STATUS, ScheduledTaskRow
 
 pytestmark = pytest.mark.asyncio
 
@@ -241,7 +241,7 @@ async def test_recovery_lookup_prefers_the_highest_sequence_whenever_one_exists(
     await _create_task(first)
     now = datetime(2026, 7, 15, 12, 0, tzinfo=UTC)
     # The later sequence carries the earlier caller clock: sequence still wins.
-    with patch("agent_workspace.persistence.scheduled_task_runs.sql.datetime") as clock:
+    with patch("alpha.persistence.scheduled_task_runs.sql.datetime") as clock:
         clock.now.return_value = now + timedelta(seconds=30)
         await _create_run(first, "older-sequenced")
         clock.now.return_value = now

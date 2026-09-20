@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from agent_workspace.community.aio_sandbox.local_backend import (
+from alpha.community.aio_sandbox.local_backend import (
     LocalContainerBackend,
     _ContainerInspection,
     _format_container_command_for_log,
@@ -17,8 +17,8 @@ from agent_workspace.community.aio_sandbox.local_backend import (
     _redact_container_command_for_log,
     _resolve_docker_bind_host,
 )
-from agent_workspace.community.aio_sandbox.sandbox_info import SandboxInfo
-from agent_workspace.utils.network import get_free_port, release_port
+from alpha.community.aio_sandbox.sandbox_info import SandboxInfo
+from alpha.utils.network import get_free_port, release_port
 
 
 def test_sandbox_info_does_not_serialize_or_repr_relay_credentials():
@@ -133,7 +133,7 @@ def test_start_container_logs_redacted_env_values(monkeypatch, caplog):
 
     monkeypatch.setattr("subprocess.run", fake_run)
 
-    with caplog.at_level(logging.INFO, logger="agent_workspace.community.aio_sandbox.local_backend"):
+    with caplog.at_level(logging.INFO, logger="alpha.community.aio_sandbox.local_backend"):
         backend._start_container("sandbox-test", 18080)
 
     joined_cmd = " ".join(captured_cmd)
@@ -201,7 +201,7 @@ def test_darwin_open_keeps_docker_to_reconcile_restricted_sandbox(monkeypatch):
             return SimpleNamespace(stdout="container 0.7.0\n", stderr="", returncode=0)
         raise AssertionError(f"unexpected command: {cmd}")
 
-    monkeypatch.setattr("agent_workspace.community.aio_sandbox.local_backend.platform.system", lambda: "Darwin")
+    monkeypatch.setattr("alpha.community.aio_sandbox.local_backend.platform.system", lambda: "Darwin")
     monkeypatch.setattr("subprocess.run", fake_run)
 
     backend = LocalContainerBackend(
@@ -220,9 +220,9 @@ def test_darwin_open_keeps_docker_to_reconcile_restricted_sandbox(monkeypatch):
                 1.0,
                 None,
                 {
-                    "agent_workspace.role": "sandbox",
-                    "agent_workspace.sandbox_id": "transition",
-                    "agent_workspace.network_mode": "allowlist",
+                    "alpha.role": "sandbox",
+                    "alpha.sandbox_id": "transition",
+                    "alpha.network_mode": "allowlist",
                 },
                 "sandbox:latest",
                 frozenset({"agent-workspace-sandbox-net-old"}),
@@ -236,7 +236,7 @@ def test_darwin_open_keeps_docker_to_reconcile_restricted_sandbox(monkeypatch):
     assert [info.sandbox_id for info in infos] == ["transition"]
     assert infos[0].requires_replacement is True
     assert ["container", "--version"] in commands
-    assert any("label=agent_workspace.role=sandbox" in command for command in commands)
+    assert any("label=alpha.role=sandbox" in command for command in commands)
 
 
 def test_darwin_open_uses_apple_container_without_managed_docker_sandboxes(monkeypatch):
@@ -250,7 +250,7 @@ def test_darwin_open_uses_apple_container_without_managed_docker_sandboxes(monke
             return SimpleNamespace(stdout="other-sandbox-collision\n", stderr="", returncode=0)
         raise AssertionError(f"unexpected command: {cmd}")
 
-    monkeypatch.setattr("agent_workspace.community.aio_sandbox.local_backend.platform.system", lambda: "Darwin")
+    monkeypatch.setattr("alpha.community.aio_sandbox.local_backend.platform.system", lambda: "Darwin")
     monkeypatch.setattr("subprocess.run", fake_run)
 
     backend = LocalContainerBackend(
@@ -263,7 +263,7 @@ def test_darwin_open_uses_apple_container_without_managed_docker_sandboxes(monke
     )
 
     assert backend.runtime == "container"
-    assert any("label=agent_workspace.role=sandbox" in command for command in commands)
+    assert any("label=alpha.role=sandbox" in command for command in commands)
 
 
 def _restricted_backend() -> LocalContainerBackend:
@@ -306,14 +306,14 @@ def test_open_create_labels_sandbox_identity_and_mode(monkeypatch):
         return "container-id"
 
     monkeypatch.setattr(backend, "_start_container", fake_start)
-    monkeypatch.setattr("agent_workspace.community.aio_sandbox.local_backend.get_free_port", lambda start_port=None: 18080)
+    monkeypatch.setattr("alpha.community.aio_sandbox.local_backend.get_free_port", lambda start_port=None: 18080)
 
     backend.create(thread_id="thread", sandbox_id="labelled-open")
 
     assert captured["labels"] == {
-        "agent_workspace.sandbox_id": "labelled-open",
-        "agent_workspace.role": "sandbox",
-        "agent_workspace.network_mode": "open",
+        "alpha.sandbox_id": "labelled-open",
+        "alpha.role": "sandbox",
+        "alpha.network_mode": "open",
     }
 
 
@@ -332,7 +332,7 @@ def test_create_internal_network_isolates_both_gateway_families_and_labels_polic
     create = commands[0]
     assert "com.docker.network.bridge.gateway_mode_ipv4=isolated" in create
     assert "com.docker.network.bridge.gateway_mode_ipv6=isolated" in create
-    assert f"agent_workspace.network_policy_digest={backend._network_policy_digest()}" in create
+    assert f"alpha.network_policy_digest={backend._network_policy_digest()}" in create
 
 
 def test_create_egress_network_is_per_sandbox_and_disables_inter_container_traffic(monkeypatch):
@@ -350,8 +350,8 @@ def test_create_egress_network_is_per_sandbox_and_disables_inter_container_traff
     create = commands[0]
     assert "--internal" not in create
     assert "com.docker.network.bridge.enable_icc=false" in create
-    assert "agent_workspace.role=egress-network" in create
-    assert f"agent_workspace.network_policy_digest={backend._network_policy_digest()}" in create
+    assert "alpha.role=egress-network" in create
+    assert f"alpha.network_policy_digest={backend._network_policy_digest()}" in create
 
 
 def test_restricted_resource_status_requires_matching_policy_image_and_network():
@@ -424,7 +424,7 @@ def test_restricted_resource_status_requires_matching_policy_image_and_network()
     inspections[proxy_name] = _ContainerInspection(
         created_at=1.0,
         host_port=18080,
-        labels={**backend._restricted_labels(sandbox_id, "network-proxy"), "agent_workspace.network_policy_digest": "stale"},
+        labels={**backend._restricted_labels(sandbox_id, "network-proxy"), "alpha.network_policy_digest": "stale"},
         image="proxy:latest",
         networks=frozenset({egress_network_name, network_name}),
         relay_token="test-relay-token-that-is-at-least-32-bytes",
@@ -652,7 +652,7 @@ def test_resolve_docker_bind_host_follows_host_gateway_mapping_for_dood(monkeypa
     monkeypatch.delenv("AGENT_WORKSPACE_SANDBOX_BIND_HOST", raising=False)
     monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_HOST", "host.docker.internal")
     monkeypatch.setattr(
-        "agent_workspace.community.aio_sandbox.local_backend._resolve_sandbox_host_address",
+        "alpha.community.aio_sandbox.local_backend._resolve_sandbox_host_address",
         lambda host: "192.168.64.1",
     )
 
@@ -664,7 +664,7 @@ def test_resolve_docker_bind_host_brackets_ipv6_host_gateway(monkeypatch):
     monkeypatch.delenv("AGENT_WORKSPACE_SANDBOX_BIND_HOST", raising=False)
     monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_HOST", "host.docker.internal")
     monkeypatch.setattr(
-        "agent_workspace.community.aio_sandbox.local_backend._resolve_sandbox_host_address",
+        "alpha.community.aio_sandbox.local_backend._resolve_sandbox_host_address",
         lambda host: "[fd00::1]",
     )
 
@@ -696,7 +696,7 @@ def test_resolve_docker_bind_host_resolves_hostname_override(monkeypatch):
     resolves to the address the daemon actually maps before use."""
     monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_BIND_HOST", "host.docker.internal")
     monkeypatch.setattr(
-        "agent_workspace.community.aio_sandbox.local_backend._resolve_sandbox_host_address",
+        "alpha.community.aio_sandbox.local_backend._resolve_sandbox_host_address",
         lambda host: "192.168.64.1" if host == "host.docker.internal" else None,
     )
     assert _resolve_docker_bind_host() == "192.168.64.1"
@@ -705,7 +705,7 @@ def test_resolve_docker_bind_host_resolves_hostname_override(monkeypatch):
 def test_resolve_docker_bind_host_rejects_unresolvable_hostname_override(monkeypatch):
     monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_BIND_HOST", "not-a-resolvable-host.invalid")
     monkeypatch.setattr(
-        "agent_workspace.community.aio_sandbox.local_backend._resolve_sandbox_host_address",
+        "alpha.community.aio_sandbox.local_backend._resolve_sandbox_host_address",
         lambda host: None,
     )
     with pytest.raises(RuntimeError, match="AGENT_WORKSPACE_SANDBOX_BIND_HOST"):
@@ -716,11 +716,11 @@ def test_resolve_docker_bind_host_uses_discovered_bridge_gateway_when_resolution
     monkeypatch.delenv("AGENT_WORKSPACE_SANDBOX_BIND_HOST", raising=False)
     monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_HOST", "host.docker.internal")
     monkeypatch.setattr(
-        "agent_workspace.community.aio_sandbox.local_backend._resolve_sandbox_host_address",
+        "alpha.community.aio_sandbox.local_backend._resolve_sandbox_host_address",
         lambda host: None,
     )
     monkeypatch.setattr(
-        "agent_workspace.community.aio_sandbox.local_backend._docker_bridge_gateway_ip",
+        "alpha.community.aio_sandbox.local_backend._docker_bridge_gateway_ip",
         lambda: "192.168.64.1",
     )
 
@@ -731,11 +731,11 @@ def test_resolve_docker_bind_host_falls_back_to_static_bridge_gateway(monkeypatc
     monkeypatch.delenv("AGENT_WORKSPACE_SANDBOX_BIND_HOST", raising=False)
     monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_HOST", "host.docker.internal")
     monkeypatch.setattr(
-        "agent_workspace.community.aio_sandbox.local_backend._resolve_sandbox_host_address",
+        "alpha.community.aio_sandbox.local_backend._resolve_sandbox_host_address",
         lambda host: None,
     )
     monkeypatch.setattr(
-        "agent_workspace.community.aio_sandbox.local_backend._docker_bridge_gateway_ip",
+        "alpha.community.aio_sandbox.local_backend._docker_bridge_gateway_ip",
         lambda: None,
     )
 
@@ -750,7 +750,7 @@ def test_resolve_docker_bind_host_uses_ipv6_loopback_for_ipv6_sandbox_host(monke
 
 
 def test_resolve_docker_bind_host_logs_selected_bind_reason(caplog):
-    with caplog.at_level(logging.DEBUG, logger="agent_workspace.community.aio_sandbox.local_backend"):
+    with caplog.at_level(logging.DEBUG, logger="alpha.community.aio_sandbox.local_backend"):
         assert _resolve_docker_bind_host(sandbox_host="localhost", bind_host="") == "127.0.0.1"
 
     messages = "\n".join(record.getMessage() for record in caplog.records)
@@ -833,11 +833,11 @@ def test_start_container_binds_dood_port_to_bridge_gateway(monkeypatch):
     monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_HOST", "host.docker.internal")
     monkeypatch.delenv("AGENT_WORKSPACE_SANDBOX_BIND_HOST", raising=False)
     monkeypatch.setattr(
-        "agent_workspace.community.aio_sandbox.local_backend._resolve_sandbox_host_address",
+        "alpha.community.aio_sandbox.local_backend._resolve_sandbox_host_address",
         lambda host: None,
     )
     monkeypatch.setattr(
-        "agent_workspace.community.aio_sandbox.local_backend._docker_bridge_gateway_ip",
+        "alpha.community.aio_sandbox.local_backend._docker_bridge_gateway_ip",
         lambda: "172.17.0.1",
     )
 
@@ -964,9 +964,9 @@ def test_resolve_sandbox_host_address_formats_and_filters(monkeypatch):
             return [(socket_module.AF_INET, None, None, "", ("0.0.0.0", 0))]
         raise OSError("no such host")
 
-    monkeypatch.setattr("agent_workspace.community.aio_sandbox.local_backend.socket.getaddrinfo", fake_getaddrinfo)
+    monkeypatch.setattr("alpha.community.aio_sandbox.local_backend.socket.getaddrinfo", fake_getaddrinfo)
 
-    from agent_workspace.community.aio_sandbox.local_backend import _resolve_sandbox_host_address
+    from alpha.community.aio_sandbox.local_backend import _resolve_sandbox_host_address
 
     assert _resolve_sandbox_host_address("v4host") == "203.0.113.7"
     # zone ids are stripped and IPv6 is bracketed for docker -p syntax
@@ -1187,9 +1187,9 @@ def test_restricted_discovery_uses_proxy_relay_port(monkeypatch):
             1.0,
             None,
             {
-                "agent_workspace.role": "sandbox",
-                "agent_workspace.sandbox_id": "existing",
-                "agent_workspace.network_mode": "allowlist",
+                "alpha.role": "sandbox",
+                "alpha.sandbox_id": "existing",
+                "alpha.network_mode": "allowlist",
             },
             "sandbox:latest",
             frozenset(),
@@ -1211,7 +1211,7 @@ def test_restricted_discovery_uses_proxy_relay_port(monkeypatch):
         readiness.append(kwargs)
         return True
 
-    monkeypatch.setattr("agent_workspace.community.aio_sandbox.local_backend.wait_for_sandbox_ready", fake_ready)
+    monkeypatch.setattr("alpha.community.aio_sandbox.local_backend.wait_for_sandbox_ready", fake_ready)
 
     info = backend.discover("existing")
 
@@ -1236,9 +1236,9 @@ def test_restricted_discovery_reports_stale_policy_without_removing_resources(mo
                 1.0,
                 None,
                 {
-                    "agent_workspace.role": "sandbox",
-                    "agent_workspace.sandbox_id": "stale",
-                    "agent_workspace.network_mode": "allowlist",
+                    "alpha.role": "sandbox",
+                    "alpha.sandbox_id": "stale",
+                    "alpha.network_mode": "allowlist",
                 },
                 "sandbox:latest",
                 frozenset(),
@@ -1297,9 +1297,9 @@ def test_restricted_discovery_reports_labelled_open_sandbox_for_fenced_replaceme
                 1.0,
                 18080,
                 {
-                    "agent_workspace.role": "sandbox",
-                    "agent_workspace.sandbox_id": "labelled-open",
-                    "agent_workspace.network_mode": "open",
+                    "alpha.role": "sandbox",
+                    "alpha.sandbox_id": "labelled-open",
+                    "alpha.network_mode": "open",
                 },
                 "sandbox:latest",
                 frozenset({"bridge"}),
@@ -1331,9 +1331,9 @@ def test_open_discovery_reports_restricted_sandbox_for_fenced_replacement(monkey
                 1.0,
                 None,
                 {
-                    "agent_workspace.role": "sandbox",
-                    "agent_workspace.sandbox_id": "old-restricted",
-                    "agent_workspace.network_mode": "allowlist",
+                    "alpha.role": "sandbox",
+                    "alpha.sandbox_id": "old-restricted",
+                    "alpha.network_mode": "allowlist",
                 },
                 "sandbox:latest",
                 frozenset({"agent-workspace-sandbox-net-old"}),
@@ -1427,9 +1427,9 @@ def test_restricted_list_reconciliation_reports_stale_policy_without_removing_re
                 1.0,
                 None,
                 {
-                    "agent_workspace.role": "sandbox",
-                    "agent_workspace.sandbox_id": "stale",
-                    "agent_workspace.network_mode": "allowlist",
+                    "alpha.role": "sandbox",
+                    "alpha.sandbox_id": "stale",
+                    "alpha.network_mode": "allowlist",
                 },
                 "sandbox:latest",
                 frozenset(),
@@ -1437,7 +1437,7 @@ def test_restricted_list_reconciliation_reports_stale_policy_without_removing_re
             proxy_name: _ContainerInspection(
                 1.0,
                 18080,
-                {"agent_workspace.role": "network-proxy", "agent_workspace.sandbox_id": "stale"},
+                {"alpha.role": "network-proxy", "alpha.sandbox_id": "stale"},
                 "proxy:latest",
                 frozenset(),
             ),
@@ -1482,7 +1482,7 @@ def test_restricted_list_reports_legacy_open_sandbox_for_fenced_replacement(monk
     assert len(infos) == 1
     assert infos[0].requires_replacement is True
     assert infos[0].sandbox_url == ""
-    assert "label=agent_workspace.role=sandbox" not in commands[0]
+    assert "label=alpha.role=sandbox" not in commands[0]
 
 
 def test_open_list_reports_restricted_sandbox_for_fenced_replacement(monkeypatch):
@@ -1499,9 +1499,9 @@ def test_open_list_reports_restricted_sandbox_for_fenced_replacement(monkeypatch
                 1.0,
                 None,
                 {
-                    "agent_workspace.role": "sandbox",
-                    "agent_workspace.sandbox_id": "old-restricted",
-                    "agent_workspace.network_mode": "isolated",
+                    "alpha.role": "sandbox",
+                    "alpha.sandbox_id": "old-restricted",
+                    "alpha.network_mode": "isolated",
                 },
                 "sandbox:latest",
                 frozenset({"agent-workspace-sandbox-net-old"}),
@@ -1543,9 +1543,9 @@ def test_restricted_list_running_excludes_sidecars_for_overlapping_custom_prefix
                 1.0,
                 None,
                 {
-                    "agent_workspace.role": "sandbox",
-                    "agent_workspace.sandbox_id": sandbox_id,
-                    "agent_workspace.network_mode": "allowlist",
+                    "alpha.role": "sandbox",
+                    "alpha.sandbox_id": sandbox_id,
+                    "alpha.network_mode": "allowlist",
                 },
                 "sandbox:latest",
                 frozenset(),
@@ -1553,7 +1553,7 @@ def test_restricted_list_running_excludes_sidecars_for_overlapping_custom_prefix
             proxy_name: _ContainerInspection(
                 1.0,
                 18080,
-                {"agent_workspace.role": "network-proxy", "agent_workspace.sandbox_id": sandbox_id},
+                {"alpha.role": "network-proxy", "alpha.sandbox_id": sandbox_id},
                 "proxy:latest",
                 frozenset(),
                 "test-relay-token-that-is-at-least-32-bytes",
@@ -1573,7 +1573,7 @@ def test_restricted_list_running_excludes_sidecars_for_overlapping_custom_prefix
 
     assert [info.sandbox_id for info in infos] == [sandbox_id]
     assert checked == [sandbox_id]
-    assert "label=agent_workspace.role=sandbox" not in commands[0]
+    assert "label=alpha.role=sandbox" not in commands[0]
     sidecar_as_sandbox_id = proxy_name[len(backend._container_prefix) + 1 :]
     fabricated_proxy_name, _ = backend._resource_names(sidecar_as_sandbox_id)
     assert fabricated_proxy_name not in {name for batch in inspected_batches for name in batch}
@@ -1783,7 +1783,7 @@ def test_discover_brackets_ipv6_sandbox_host_for_url(monkeypatch, sandbox_host):
         seen_urls.append(url)
         return True
 
-    monkeypatch.setattr("agent_workspace.community.aio_sandbox.local_backend.wait_for_sandbox_ready", fake_ready)
+    monkeypatch.setattr("alpha.community.aio_sandbox.local_backend.wait_for_sandbox_ready", fake_ready)
 
     info = backend.discover("sbx-ipv6")
 
@@ -1800,7 +1800,7 @@ def test_create_brackets_ipv6_sandbox_host_for_url(monkeypatch, sandbox_host):
         "_start_container",
         lambda name, port, mounts=None, **_kwargs: "container-id",
     )
-    monkeypatch.setattr("agent_workspace.community.aio_sandbox.local_backend.get_free_port", lambda start_port=None: 18082)
+    monkeypatch.setattr("alpha.community.aio_sandbox.local_backend.get_free_port", lambda start_port=None: 18082)
 
     info = backend.create(thread_id="t", sandbox_id="sbx-ipv6")
 
@@ -1810,7 +1810,7 @@ def test_create_brackets_ipv6_sandbox_host_for_url(monkeypatch, sandbox_host):
 def test_resolve_sandbox_host_address_accepts_bracketed_ipv6(monkeypatch):
     """The bracketed form must resolve (unbracketed for getaddrinfo) instead
     of failing through to the IPv4 bridge fallback."""
-    from agent_workspace.community.aio_sandbox.local_backend import _resolve_sandbox_host_address
+    from alpha.community.aio_sandbox.local_backend import _resolve_sandbox_host_address
 
     infos = [(socket.AF_INET6, socket.SOCK_STREAM, 0, "", ("fd00::1", 0, 0, 0))]
 
@@ -1818,7 +1818,7 @@ def test_resolve_sandbox_host_address_accepts_bracketed_ipv6(monkeypatch):
         assert host == "fd00::1", f"getaddrinfo must receive the unbracketed form, got {host!r}"
         return infos
 
-    monkeypatch.setattr("agent_workspace.community.aio_sandbox.local_backend.socket.getaddrinfo", fake_getaddrinfo)
+    monkeypatch.setattr("alpha.community.aio_sandbox.local_backend.socket.getaddrinfo", fake_getaddrinfo)
 
     assert _resolve_sandbox_host_address("[fd00::1]") == "[fd00::1]"
 
@@ -1876,7 +1876,7 @@ def test_start_container_passes_long_syntax_custom_network_with_fields(monkeypat
 
 def test_effective_network_target_last_name_field_wins():
     """Docker's parser lets a later name= field overwrite an earlier one."""
-    from agent_workspace.community.aio_sandbox.local_backend import _effective_docker_network_target as target
+    from alpha.community.aio_sandbox.local_backend import _effective_docker_network_target as target
 
     assert target("name=host,name=egressnet") == "egressnet"
     assert target("name=egressnet,name=host") == "host"
@@ -1908,8 +1908,8 @@ def _assert_image_starts_under_hardened_capabilities(
     sandbox_id: str,
     failure_label: str,
 ) -> None:
-    from agent_workspace.community.aio_sandbox.backend import SANDBOX_LOCAL_PROVIDER_READY_TIMEOUT
-    from agent_workspace.community.aio_sandbox.local_backend import wait_for_sandbox_ready
+    from alpha.community.aio_sandbox.backend import SANDBOX_LOCAL_PROVIDER_READY_TIMEOUT
+    from alpha.community.aio_sandbox.local_backend import wait_for_sandbox_ready
 
     if not _docker_daemon_available():
         pytest.skip("requires a running Docker daemon")

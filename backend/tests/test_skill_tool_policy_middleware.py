@@ -11,9 +11,9 @@ from langchain_core.messages import HumanMessage
 from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.runtime import Runtime
 
-from agent_workspace.runtime.secret_context import SKILL_TOOL_POLICY_DECISION_CONTEXT_KEY, write_slash_skill_source_path
-from agent_workspace.skills.parser import parse_skill_file
-from agent_workspace.skills.types import Skill, SkillCategory
+from alpha.runtime.secret_context import SKILL_TOOL_POLICY_DECISION_CONTEXT_KEY, write_slash_skill_source_path
+from alpha.skills.parser import parse_skill_file
+from alpha.skills.types import Skill, SkillCategory
 
 _SLASH_SOURCE_OWNER_TOKEN = "test-slash-source-owner"
 
@@ -75,7 +75,7 @@ def _skill(name: str, allowed_tools, *, enabled=True):
 
 
 def _middleware(skills, *, available_skills=None):
-    from agent_workspace.agents.middlewares.skill_tool_policy_middleware import SkillToolPolicyMiddleware
+    from alpha.agents.middlewares.skill_tool_policy_middleware import SkillToolPolicyMiddleware
 
     middleware = SkillToolPolicyMiddleware(
         available_skills=available_skills,
@@ -92,8 +92,8 @@ def _tool_names(request):
 @pytest.mark.parametrize(
     "middleware_class_path",
     [
-        "agent_workspace.agents.middlewares.skill_activation_middleware.SkillActivationMiddleware",
-        "agent_workspace.agents.middlewares.skill_tool_policy_middleware.SkillToolPolicyMiddleware",
+        "alpha.agents.middlewares.skill_activation_middleware.SkillActivationMiddleware",
+        "alpha.agents.middlewares.skill_tool_policy_middleware.SkillToolPolicyMiddleware",
     ],
 )
 def test_skill_policy_middlewares_require_shared_slash_source_token(middleware_class_path):
@@ -107,8 +107,8 @@ def test_skill_policy_middlewares_require_shared_slash_source_token(middleware_c
 
 @pytest.mark.parametrize("invalid_token", [None, "", 7])
 def test_skill_policy_middlewares_reject_invalid_slash_source_tokens(invalid_token):
-    from agent_workspace.agents.middlewares.skill_activation_middleware import SkillActivationMiddleware
-    from agent_workspace.agents.middlewares.skill_tool_policy_middleware import SkillToolPolicyMiddleware
+    from alpha.agents.middlewares.skill_activation_middleware import SkillActivationMiddleware
+    from alpha.agents.middlewares.skill_tool_policy_middleware import SkillToolPolicyMiddleware
 
     for middleware_class in (SkillActivationMiddleware, SkillToolPolicyMiddleware):
         with pytest.raises(ValueError, match="non-empty string"):
@@ -388,7 +388,7 @@ def test_caller_forged_slash_source_cannot_override_captured_skill_policy():
 
 
 def test_slash_activation_and_policy_compose_on_the_same_model_call(monkeypatch):
-    from agent_workspace.agents.middlewares.skill_activation_middleware import SkillActivationMiddleware, _Activation, _ActivationResolution
+    from alpha.agents.middlewares.skill_activation_middleware import SkillActivationMiddleware, _Activation, _ActivationResolution
 
     skill = _skill("reviewer", ["review_skill_package"])
     activation = _Activation(

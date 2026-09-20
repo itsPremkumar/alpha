@@ -1,5 +1,5 @@
 
-from agent_workspace.avo.scoring import EvaluationVector
+from alpha.avo.scoring import EvaluationVector
 
 
 def test_evaluation_vector_correctness_gating():

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from agent_workspace.extensions import reset_loaded_extensions, reset_runtime_diagnostics
-from agent_workspace.extensions.loader import ExtensionLoadError, ExtensionSpec
-from agent_workspace.extensions.registry import ExtensionRegistry
+from alpha.extensions import reset_loaded_extensions, reset_runtime_diagnostics
+from alpha.extensions.loader import ExtensionLoadError, ExtensionSpec
+from alpha.extensions.registry import ExtensionRegistry
 
 
 @pytest.fixture(autouse=True)
@@ -28,8 +28,8 @@ def stub_app_config(monkeypatch):
     loading one from disk.
     """
     import app.gateway.app as app_module
-    from agent_workspace.config.app_config import AppConfig
-    from agent_workspace.config.sandbox_config import SandboxConfig
+    from alpha.config.app_config import AppConfig
+    from alpha.config.sandbox_config import SandboxConfig
 
     config = AppConfig(sandbox=SandboxConfig(use="test"))
     monkeypatch.setattr(app_module, "get_app_config", lambda: config)
@@ -37,7 +37,7 @@ def stub_app_config(monkeypatch):
 
 
 def test_create_app_exposes_loaded_extensions_on_app_state_and_process_singleton(monkeypatch):
-    import agent_workspace.extensions as extensions_module
+    import alpha.extensions as extensions_module
 
     loaded = ExtensionRegistry().build()
     monkeypatch.setattr(
@@ -55,7 +55,7 @@ def test_create_app_exposes_loaded_extensions_on_app_state_and_process_singleton
 
 
 def test_create_app_exposes_one_canonical_live_diagnostics_list(monkeypatch):
-    import agent_workspace.extensions as extensions_module
+    import alpha.extensions as extensions_module
 
     loaded = ExtensionRegistry().build()
     load_diagnostic = extensions_module.Diagnostic.warning(
@@ -89,7 +89,7 @@ def test_create_app_mounts_extension_routers_after_all_host_routes(monkeypatch):
     from fastapi import APIRouter
     from fastapi.testclient import TestClient
 
-    import agent_workspace.extensions as extensions_module
+    import alpha.extensions as extensions_module
 
     conflict = APIRouter()
     good = APIRouter()
@@ -133,7 +133,7 @@ def test_create_app_mounts_extension_routers_after_all_host_routes(monkeypatch):
 
 
 def test_create_app_fails_open_when_extension_loading_raises_unexpectedly(monkeypatch):
-    import agent_workspace.extensions as extensions_module
+    import alpha.extensions as extensions_module
 
     def _raise_unexpectedly(plugins):
         raise RuntimeError("malformed plugins configuration")
@@ -150,7 +150,7 @@ def test_create_app_fails_open_when_extension_loading_raises_unexpectedly(monkey
 
 
 def test_create_app_fails_closed_when_a_required_extension_cannot_load(monkeypatch):
-    import agent_workspace.extensions as extensions_module
+    import alpha.extensions as extensions_module
     from app.gateway.app import create_app
 
     def _raise_required(plugins):
@@ -169,7 +169,7 @@ def test_create_app_tolerates_a_missing_config_file_and_loads_no_extensions(monk
     config loading before the Gateway serves traffic.
     """
     import app.gateway.app as app_module
-    import agent_workspace.extensions as extensions_module
+    import alpha.extensions as extensions_module
 
     def _missing_config():
         raise FileNotFoundError("`config.yaml` file not found in the project root or legacy backend/repository root locations")
@@ -199,7 +199,7 @@ def test_create_app_propagates_config_failures_instead_of_blaming_extension_load
     drop a ``required: true`` extension without failing the boot.
     """
     import app.gateway.app as app_module
-    import agent_workspace.extensions as extensions_module
+    import alpha.extensions as extensions_module
 
     def _broken_config():
         raise ValueError("config.yaml failed validation")

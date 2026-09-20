@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from agent_workspace.runtime import goal
+from alpha.runtime import goal
 
 
 def test_build_goal_state_defaults_to_claude_stop_hook_cap():
@@ -140,7 +140,7 @@ def test_evaluate_goal_completion_injects_langfuse_metadata(monkeypatch):
     a standalone, non-graph model call must inject Langfuse trace-attribute
     metadata itself since there is no graph root to lift it from.
     """
-    from agent_workspace.config.tracing_config import reset_tracing_config
+    from alpha.config.tracing_config import reset_tracing_config
 
     for name in ("LANGFUSE_TRACING", "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_BASE_URL"):
         monkeypatch.delenv(name, raising=False)

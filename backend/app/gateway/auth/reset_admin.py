@@ -21,12 +21,12 @@ from sqlalchemy import select
 from app.gateway.auth.credential_file import write_initial_credentials
 from app.gateway.auth.password import hash_password
 from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
-from agent_workspace.persistence.user.model import UserRow
+from alpha.persistence.user.model import UserRow
 
 
 async def _run(email: str | None) -> int:
-    from agent_workspace.config import get_app_config
-    from agent_workspace.persistence.engine import (
+    from alpha.config import get_app_config
+    from alpha.persistence.engine import (
         close_engine,
         get_session_factory,
         init_engine_from_config,

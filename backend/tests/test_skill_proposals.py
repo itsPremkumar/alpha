@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from agent_workspace.skills.proposals import (
+from alpha.skills.proposals import (
     APPROVED,
     INSTALLED,
     MAX_SKILL_MD_CHARS,
@@ -54,7 +54,7 @@ def test_clean_markdown_scans_without_findings():
 
 
 def test_private_key_markdown_is_blocked():
-    from agent_workspace.skills.skillscan.orchestrator import StaticScanBlockedError
+    from alpha.skills.skillscan.orchestrator import StaticScanBlockedError
 
     with pytest.raises(StaticScanBlockedError) as exc_info:
         scan_proposal_markdown("evil-skill", EVIL_KEY_MD)
@@ -121,7 +121,7 @@ def test_status_transitions_are_guarded(tmp_path):
 
 
 def test_list_status_filter_and_newest_first(tmp_path, monkeypatch):
-    from agent_workspace.skills import proposals as proposals_module
+    from alpha.skills import proposals as proposals_module
 
     stamps = (f"2026-01-01T00:00:{second:02d}+00:00" for second in range(60))
     monkeypatch.setattr(proposals_module, "_utcnow", lambda: next(stamps))
@@ -156,7 +156,7 @@ def _tool_runtime(user_id="alice"):
 async def _call_propose_tool(monkeypatch, tmp_path, **kwargs):
     # NOTE: import the tool object directly — `import ...propose_skill_tool
     # as x` would bind the package-level shadowing attribute instead.
-    from agent_workspace.tools.builtins.propose_skill_tool import propose_skill_tool as tool_obj
+    from alpha.tools.builtins.propose_skill_tool import propose_skill_tool as tool_obj
 
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path / "home"))
     coroutine = getattr(tool_obj, "coroutine", None)

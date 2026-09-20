@@ -7,7 +7,7 @@ import logging
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from agent_workspace.supervision import (
+from alpha.supervision import (
     AnomalyReport,
     AnomalyType,
     DeterministicWatchdog,

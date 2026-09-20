@@ -12,10 +12,10 @@ import pytest
 from mcp.shared.exceptions import McpError
 from mcp.types import CONNECTION_CLOSED, ErrorData
 
-from agent_workspace.config.extensions_config import ExtensionsConfig
-from agent_workspace.config.paths import Paths
-from agent_workspace.mcp.session_pool import MCPSessionPool
-from agent_workspace.mcp.task_tool_caller import McpTaskToolCaller, mcp_task_session_scope_key
+from alpha.config.extensions_config import ExtensionsConfig
+from alpha.config.paths import Paths
+from alpha.mcp.session_pool import MCPSessionPool
+from alpha.mcp.task_tool_caller import McpTaskToolCaller, mcp_task_session_scope_key
 
 
 def _config() -> ExtensionsConfig:
@@ -92,9 +92,9 @@ async def test_stdio_task_call_reuses_exact_scope_and_raw_tool_name() -> None:
     caller = McpTaskToolCaller(_config())
 
     with (
-        patch("agent_workspace.mcp.task_tool_caller.get_session_pool", return_value=pool),
+        patch("alpha.mcp.task_tool_caller.get_session_pool", return_value=pool),
         patch(
-            "agent_workspace.mcp.task_tool_caller._prepare_stdio_connection",
+            "alpha.mcp.task_tool_caller._prepare_stdio_connection",
             return_value={"transport": "stdio", "command": "report-mcp"},
         ),
     ):
@@ -135,9 +135,9 @@ async def test_broken_stdio_task_session_is_evicted_for_next_poll_reconnect(disc
     caller = McpTaskToolCaller(_config())
 
     with (
-        patch("agent_workspace.mcp.task_tool_caller.get_session_pool", return_value=pool),
+        patch("alpha.mcp.task_tool_caller.get_session_pool", return_value=pool),
         patch(
-            "agent_workspace.mcp.task_tool_caller._prepare_stdio_connection",
+            "alpha.mcp.task_tool_caller._prepare_stdio_connection",
             return_value={"transport": "stdio", "command": "report-mcp"},
         ),
         pytest.raises(type(disconnect_error)),
@@ -169,9 +169,9 @@ async def test_stdio_task_timeout_keeps_healthy_stateful_session() -> None:
     caller = McpTaskToolCaller(_config())
 
     with (
-        patch("agent_workspace.mcp.task_tool_caller.get_session_pool", return_value=pool),
+        patch("alpha.mcp.task_tool_caller.get_session_pool", return_value=pool),
         patch(
-            "agent_workspace.mcp.task_tool_caller._prepare_stdio_connection",
+            "alpha.mcp.task_tool_caller._prepare_stdio_connection",
             return_value={"transport": "stdio", "command": "report-mcp"},
         ),
         pytest.raises(McpError, match="request timed out"),
@@ -203,9 +203,9 @@ async def test_stdio_task_interceptor_failure_keeps_healthy_session() -> None:
     caller._interceptors = [reject_call]
 
     with (
-        patch("agent_workspace.mcp.task_tool_caller.get_session_pool", return_value=pool),
+        patch("alpha.mcp.task_tool_caller.get_session_pool", return_value=pool),
         patch(
-            "agent_workspace.mcp.task_tool_caller._prepare_stdio_connection",
+            "alpha.mcp.task_tool_caller._prepare_stdio_connection",
             return_value={"transport": "stdio", "command": "report-mcp"},
         ),
         pytest.raises(RuntimeError, match="interceptor rejected call"),
@@ -268,8 +268,8 @@ mcp.run(transport="stdio")
 
     try:
         with (
-            patch("agent_workspace.mcp.task_tool_caller.get_paths", return_value=Paths(tmp_path)),
-            patch("agent_workspace.mcp.task_tool_caller.get_session_pool", return_value=pool),
+            patch("alpha.mcp.task_tool_caller.get_paths", return_value=Paths(tmp_path)),
+            patch("alpha.mcp.task_tool_caller.get_session_pool", return_value=pool),
         ):
             submitted = await caller.call_tool(
                 server_name="reports",
@@ -324,9 +324,9 @@ async def test_stdio_task_session_initialization_respects_configured_timeout() -
     caller = McpTaskToolCaller(config)
 
     with (
-        patch("agent_workspace.mcp.task_tool_caller.get_session_pool", return_value=pool),
+        patch("alpha.mcp.task_tool_caller.get_session_pool", return_value=pool),
         patch(
-            "agent_workspace.mcp.task_tool_caller._prepare_stdio_connection",
+            "alpha.mcp.task_tool_caller._prepare_stdio_connection",
             return_value={"transport": "stdio", "command": "report-mcp"},
         ),
         pytest.raises(TimeoutError),

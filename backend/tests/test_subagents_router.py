@@ -8,10 +8,10 @@ import pytest
 from fastapi import HTTPException
 
 from app.gateway.routers import subagents as router
-from agent_workspace.config.app_config import AppConfig, reset_app_config, set_app_config
-from agent_workspace.config.sandbox_config import SandboxConfig
-from agent_workspace.config.subagents_config import CustomSubagentConfig, SubagentsAppConfig
-from agent_workspace.persistence.managed_subagents.file import FileManagedSubagentStore
+from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
+from alpha.config.sandbox_config import SandboxConfig
+from alpha.config.subagents_config import CustomSubagentConfig, SubagentsAppConfig
+from alpha.persistence.managed_subagents.file import FileManagedSubagentStore
 
 pytestmark = pytest.mark.asyncio
 
@@ -23,8 +23,8 @@ def _request(role: str):
 @pytest.fixture(autouse=True)
 def _environment(tmp_path, monkeypatch):
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
-    monkeypatch.setattr("agent_workspace.config.paths._paths", None)
-    set_app_config(AppConfig(sandbox=SandboxConfig(use="agent_workspace.sandbox.local:LocalSandboxProvider")))
+    monkeypatch.setattr("alpha.config.paths._paths", None)
+    set_app_config(AppConfig(sandbox=SandboxConfig(use="alpha.sandbox.local:LocalSandboxProvider")))
     store = FileManagedSubagentStore()
     monkeypatch.setattr(router, "get_managed_subagent_store", lambda *_: store)
     yield
@@ -59,7 +59,7 @@ async def test_admin_can_create_update_and_delete_managed_subagent():
 async def test_ordinary_user_can_list_but_cannot_read_prompts_or_write():
     set_app_config(
         AppConfig(
-            sandbox=SandboxConfig(use="agent_workspace.sandbox.local:LocalSandboxProvider"),
+            sandbox=SandboxConfig(use="alpha.sandbox.local:LocalSandboxProvider"),
             subagents=SubagentsAppConfig(
                 custom_agents={
                     "config-worker": CustomSubagentConfig(
@@ -155,7 +155,7 @@ async def test_builtin_name_is_rejected_at_create():
 async def test_config_name_is_rejected_at_create():
     set_app_config(
         AppConfig(
-            sandbox=SandboxConfig(use="agent_workspace.sandbox.local:LocalSandboxProvider"),
+            sandbox=SandboxConfig(use="alpha.sandbox.local:LocalSandboxProvider"),
             subagents=SubagentsAppConfig(
                 custom_agents={
                     "planner": CustomSubagentConfig(
@@ -182,7 +182,7 @@ async def test_config_name_is_rejected_at_create():
 async def test_catalog_marks_config_definition_shadowed_by_builtin_as_conflict():
     set_app_config(
         AppConfig(
-            sandbox=SandboxConfig(use="agent_workspace.sandbox.local:LocalSandboxProvider"),
+            sandbox=SandboxConfig(use="alpha.sandbox.local:LocalSandboxProvider"),
             subagents=SubagentsAppConfig(
                 custom_agents={
                     "general-purpose": CustomSubagentConfig(

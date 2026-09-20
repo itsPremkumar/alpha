@@ -152,8 +152,8 @@ def test_timing_saver_records_cumulative_ms() -> None:
 
 
 def _reset_checkpoint_freezes(monkeypatch: pytest.MonkeyPatch) -> None:
-    from agent_workspace.config.app_config import reset_app_config
-    from agent_workspace.runtime import checkpoint_mode
+    from alpha.config.app_config import reset_app_config
+    from alpha.runtime import checkpoint_mode
 
     reset_app_config()
     monkeypatch.setattr(checkpoint_mode, "_frozen_checkpoint_channel_mode", None)
@@ -164,7 +164,7 @@ def _reset_checkpoint_freezes(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_run_case_succeeds_end_to_end_small(tmp_path, monkeypatch, mode, frequency) -> None:
     _reset_checkpoint_freezes(monkeypatch)
     from app.gateway import services as gateway_services
-    from agent_workspace.config.app_config import reset_app_config
+    from alpha.config.app_config import reset_app_config
 
     gateway_services._state_accessor_graph_cache.clear()
     case = bench.ProductionCase(
@@ -203,7 +203,7 @@ def test_run_case_fails_when_warm_cache_is_not_hit(tmp_path, monkeypatch) -> Non
     warm samples silently measure the cold path — the case row must fail."""
     _reset_checkpoint_freezes(monkeypatch)
     from app.gateway import services as gateway_services
-    from agent_workspace.config.app_config import reset_app_config
+    from alpha.config.app_config import reset_app_config
 
     gateway_services._state_accessor_graph_cache.clear()
 

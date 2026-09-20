@@ -7,12 +7,12 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.base import empty_checkpoint, uuid6
 from langgraph.checkpoint.memory import InMemorySaver
 
-from agent_workspace.extensions.registry import ExtensionRegistry
-from agent_workspace.runtime.checkpoint_state import CheckpointStateAccessor, build_state_mutation_graph
-from agent_workspace.runtime.goal import GoalEvaluation, attach_goal_evaluation, build_goal_state, latest_visible_assistant_signature, read_thread_goal, write_thread_goal
-from agent_workspace.runtime.runs import worker
-from agent_workspace.runtime.runs.manager import RunRecord, RunStartOutcome
-from agent_workspace.runtime.runs.schemas import DisconnectMode, RunStatus
+from alpha.extensions.registry import ExtensionRegistry
+from alpha.runtime.checkpoint_state import CheckpointStateAccessor, build_state_mutation_graph
+from alpha.runtime.goal import GoalEvaluation, attach_goal_evaluation, build_goal_state, latest_visible_assistant_signature, read_thread_goal, write_thread_goal
+from alpha.runtime.runs import worker
+from alpha.runtime.runs.manager import RunRecord, RunStartOutcome
+from alpha.runtime.runs.schemas import DisconnectMode, RunStatus
 
 
 def _full_accessor(checkpointer) -> CheckpointStateAccessor:
@@ -589,7 +589,7 @@ def test_stand_down_reason_uses_documented_default_caps_when_missing():
 
     assert worker._stand_down_reason(bare_goal, unmet, no_progress_count=0) is None
     # And the two gate functions agree on the same bare goal.
-    from agent_workspace.runtime.goal import should_continue_goal
+    from alpha.runtime.goal import should_continue_goal
 
     assert should_continue_goal(bare_goal, unmet, no_progress_count=0) is True
 

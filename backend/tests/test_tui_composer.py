@@ -3,7 +3,7 @@
 import pytest
 from textual.app import App, ComposeResult
 
-from agent_workspace.tui.widgets.composer import ComposerInput
+from alpha.tui.widgets.composer import ComposerInput
 
 
 class _Harness(App):

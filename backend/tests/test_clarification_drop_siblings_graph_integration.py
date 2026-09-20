@@ -16,8 +16,8 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.tools import tool
 
-from agent_workspace.agents.middlewares.clarification_middleware import ClarificationMiddleware
-from agent_workspace.tools.builtins.clarification_tool import ask_clarification_tool
+from alpha.agents.middlewares.clarification_middleware import ClarificationMiddleware
+from alpha.tools.builtins.clarification_tool import ask_clarification_tool
 
 _BASH_INVOCATIONS: list[str] = []
 _MIXED_MESSAGE_ID = "ai-clarification-with-sibling"

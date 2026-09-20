@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from agent_workspace.sandbox.exceptions import SandboxError
-from agent_workspace.sandbox.tools import (
+from alpha.sandbox.exceptions import SandboxError
+from alpha.sandbox.tools import (
     VIRTUAL_PATH_PREFIX,
     _apply_cwd_prefix,
     _compiled_mask_patterns,
@@ -107,8 +107,8 @@ def test_mask_local_paths_in_output_hides_host_paths() -> None:
 def test_mask_local_paths_in_output_hides_skills_host_paths() -> None:
     """Skills host paths in bash output should be masked to virtual paths."""
     with (
-        patch("agent_workspace.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
-        patch("agent_workspace.sandbox.tools._get_skills_host_path", return_value="/home/user/agent-workspace/skills"),
+        patch("alpha.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
+        patch("alpha.sandbox.tools._get_skills_host_path", return_value="/home/user/agent-workspace/skills"),
     ):
         output = "Reading: /home/user/agent-workspace/skills/public/bootstrap/SKILL.md"
         masked = mask_local_paths_in_output(output, _THREAD_DATA)
@@ -129,8 +129,8 @@ def test_mask_local_paths_does_not_match_inside_longer_sibling(suffix: str) -> N
     ``LocalSandbox._reverse_output_patterns`` (#4035).
     """
     with (
-        patch("agent_workspace.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
-        patch("agent_workspace.sandbox.tools._get_skills_host_path", return_value="/home/user/agent-workspace/skills"),
+        patch("alpha.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
+        patch("alpha.sandbox.tools._get_skills_host_path", return_value="/home/user/agent-workspace/skills"),
     ):
         output = f"found /home/user/agent-workspace/skills{suffix}"
         masked = mask_local_paths_in_output(output, None)
@@ -149,7 +149,7 @@ def test_mask_local_paths_does_not_match_inside_longer_acp_sibling(suffix: str) 
     is unresolvable in both directions.
     """
     acp_host = "/home/user/.agent-workspace/acp-workspace"
-    with patch("agent_workspace.sandbox.tools._get_acp_workspace_host_path", return_value=acp_host):
+    with patch("alpha.sandbox.tools._get_acp_workspace_host_path", return_value=acp_host):
         output = f"copied {acp_host}{suffix}"
         masked = mask_local_paths_in_output(output, _THREAD_DATA)
 
@@ -200,8 +200,8 @@ def test_mask_local_paths_still_matches_base_before_non_slash_boundaries(boundar
     three, so the lookahead would fail and the raw host path would be emitted.
     """
     with (
-        patch("agent_workspace.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
-        patch("agent_workspace.sandbox.tools._get_skills_host_path", return_value="/home/user/agent-workspace/skills"),
+        patch("alpha.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
+        patch("alpha.sandbox.tools._get_skills_host_path", return_value="/home/user/agent-workspace/skills"),
     ):
         masked = mask_local_paths_in_output(f"root is /home/user/agent-workspace/skills{boundary}", None)
 
@@ -217,8 +217,8 @@ def test_mask_local_paths_translates_a_bare_base_at_end_of_output(prefix: str) -
     -- the leak this function exists to prevent.
     """
     with (
-        patch("agent_workspace.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
-        patch("agent_workspace.sandbox.tools._get_skills_host_path", return_value="/home/user/agent-workspace/skills"),
+        patch("alpha.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
+        patch("alpha.sandbox.tools._get_skills_host_path", return_value="/home/user/agent-workspace/skills"),
     ):
         masked = mask_local_paths_in_output(f"{prefix}/home/user/agent-workspace/skills", None)
 
@@ -240,9 +240,9 @@ def test_mask_local_paths_cache_does_not_retain_per_thread_sources() -> None:
     _compiled_mask_patterns.cache_clear()
 
     with (
-        patch("agent_workspace.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
-        patch("agent_workspace.sandbox.tools._get_skills_host_path", return_value="/srv/agent-workspace/skills"),
-        patch("agent_workspace.sandbox.tools._get_acp_workspace_host_path", return_value=None),
+        patch("alpha.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
+        patch("alpha.sandbox.tools._get_skills_host_path", return_value="/srv/agent-workspace/skills"),
+        patch("alpha.sandbox.tools._get_acp_workspace_host_path", return_value=None),
     ):
         for index in range(32):
             root = f"/tmp/agent-workspace/threads/thread-{index}/user-data"
@@ -266,11 +266,11 @@ def test_mask_local_paths_caches_dynamic_source_resolution_per_root() -> None:
 
     try:
         with (
-            patch("agent_workspace.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
-            patch("agent_workspace.sandbox.tools._get_skills_host_path", return_value="/srv/agent-workspace/skills"),
-            patch("agent_workspace.sandbox.tools._get_acp_workspace_host_path", return_value=None),
-            patch("agent_workspace.config.paths.get_paths", side_effect=RuntimeError("skip user paths")),
-            patch("agent_workspace.sandbox.tools.os.path.realpath", side_effect=lambda path: path) as realpath,
+            patch("alpha.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
+            patch("alpha.sandbox.tools._get_skills_host_path", return_value="/srv/agent-workspace/skills"),
+            patch("alpha.sandbox.tools._get_acp_workspace_host_path", return_value=None),
+            patch("alpha.config.paths.get_paths", side_effect=RuntimeError("skip user paths")),
+            patch("alpha.sandbox.tools.os.path.realpath", side_effect=lambda path: path) as realpath,
         ):
             for _ in range(200):
                 masked = mask_local_paths_in_output("created /tmp/agent-workspace/threads/t1/user-data/workspace/result.txt", _THREAD_DATA)
@@ -301,8 +301,8 @@ def test_mask_local_paths_stable_across_repeated_and_batched_calls() -> None:
 def test_mask_local_paths_no_thread_data_still_masks_skills() -> None:
     """With thread_data=None, skills host paths are still masked (user-data skipped)."""
     with (
-        patch("agent_workspace.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
-        patch("agent_workspace.sandbox.tools._get_skills_host_path", return_value="/home/user/agent-workspace/skills"),
+        patch("alpha.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
+        patch("alpha.sandbox.tools._get_skills_host_path", return_value="/home/user/agent-workspace/skills"),
     ):
         masked = mask_local_paths_in_output("Reading: /home/user/agent-workspace/skills/a/b.md", None)
         assert "/home/user/agent-workspace/skills" not in masked
@@ -319,8 +319,8 @@ def test_mask_local_paths_normalizes_windows_spelled_skill_tails() -> None:
     """
     windows_root = "C:\\Users\\alice\\agent-workspace\\skills"
     with (
-        patch("agent_workspace.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
-        patch("agent_workspace.sandbox.tools._get_skills_host_path", return_value=windows_root),
+        patch("alpha.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
+        patch("alpha.sandbox.tools._get_skills_host_path", return_value=windows_root),
     ):
         masked = mask_local_paths_in_output(f"Reading: {windows_root}\\lark-cli\\lark-doc\\SKILL.md", None)
 
@@ -328,7 +328,7 @@ def test_mask_local_paths_normalizes_windows_spelled_skill_tails() -> None:
 
 
 def test_mask_local_paths_hides_global_integration_skill_paths(tmp_path: Path) -> None:
-    from agent_workspace.config.paths import Paths
+    from alpha.config.paths import Paths
 
     paths = Paths(base_dir=tmp_path)
     integration_dir = tmp_path / "integrations" / "skills" / "lark-cli" / "lark-doc"
@@ -336,10 +336,10 @@ def test_mask_local_paths_hides_global_integration_skill_paths(tmp_path: Path) -
     output = f"Reading: {integration_dir / 'SKILL.md'}"
 
     with (
-        patch("agent_workspace.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
-        patch("agent_workspace.sandbox.tools._get_skills_host_path", return_value="/home/user/agent-workspace/skills"),
-        patch("agent_workspace.config.paths.get_paths", return_value=paths),
-        patch("agent_workspace.runtime.user_context.get_effective_user_id", return_value="alice"),
+        patch("alpha.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
+        patch("alpha.sandbox.tools._get_skills_host_path", return_value="/home/user/agent-workspace/skills"),
+        patch("alpha.config.paths.get_paths", return_value=paths),
+        patch("alpha.runtime.user_context.get_effective_user_id", return_value="alice"),
     ):
         masked = mask_local_paths_in_output(output, _THREAD_DATA)
 
@@ -386,15 +386,15 @@ def test_validate_local_tool_path_rejects_non_virtual_path_mentions_configured_m
 
 
 def test_validate_local_tool_path_prioritizes_user_data_before_custom_mounts() -> None:
-    from agent_workspace.config.sandbox_config import VolumeMountConfig
+    from alpha.config.sandbox_config import VolumeMountConfig
 
     mounts = [
         VolumeMountConfig(host_path="/tmp/host-user-data", container_path=VIRTUAL_PATH_PREFIX, read_only=False),
     ]
-    with patch("agent_workspace.sandbox.tools._get_custom_mounts", return_value=mounts):
+    with patch("alpha.sandbox.tools._get_custom_mounts", return_value=mounts):
         validate_local_tool_path(f"{VIRTUAL_PATH_PREFIX}/workspace/file.txt", _THREAD_DATA, read_only=True)
 
-    with patch("agent_workspace.sandbox.tools._get_custom_mounts", return_value=mounts):
+    with patch("alpha.sandbox.tools._get_custom_mounts", return_value=mounts):
         with pytest.raises(PermissionError, match="path traversal"):
             validate_local_tool_path(f"{VIRTUAL_PATH_PREFIX}/workspace/../../etc/passwd", _THREAD_DATA, read_only=True)
 
@@ -425,14 +425,14 @@ def test_validate_local_tool_path_rejects_traversal_in_user_data() -> None:
 
 def test_validate_local_tool_path_rejects_traversal_in_skills() -> None:
     """Path traversal via .. in skills paths must be rejected."""
-    with patch("agent_workspace.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"):
+    with patch("alpha.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"):
         with pytest.raises(PermissionError, match="path traversal"):
             validate_local_tool_path("/mnt/skills/../../etc/passwd", _THREAD_DATA, read_only=True)
 
 
 def test_validate_local_tool_path_rejects_none_thread_data() -> None:
     """Missing thread_data should raise SandboxRuntimeError."""
-    from agent_workspace.sandbox.exceptions import SandboxRuntimeError
+    from alpha.sandbox.exceptions import SandboxRuntimeError
 
     with pytest.raises(SandboxRuntimeError):
         validate_local_tool_path(f"{VIRTUAL_PATH_PREFIX}/workspace/file.txt", None)
@@ -444,8 +444,8 @@ def test_validate_local_tool_path_rejects_none_thread_data() -> None:
 def test_resolve_skills_path_resolves_correctly() -> None:
     """Skills virtual path should resolve to host path."""
     with (
-        patch("agent_workspace.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
-        patch("agent_workspace.sandbox.tools._get_skills_host_path", return_value="/home/user/agent-workspace/skills"),
+        patch("alpha.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
+        patch("alpha.sandbox.tools._get_skills_host_path", return_value="/home/user/agent-workspace/skills"),
     ):
         resolved = _resolve_skills_path("/mnt/skills/public/bootstrap/SKILL.md")
         assert resolved == "/home/user/agent-workspace/skills/public/bootstrap/SKILL.md"
@@ -454,29 +454,29 @@ def test_resolve_skills_path_resolves_correctly() -> None:
 def test_resolve_skills_path_resolves_root() -> None:
     """Skills container root should resolve to host skills directory."""
     with (
-        patch("agent_workspace.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
-        patch("agent_workspace.sandbox.tools._get_skills_host_path", return_value="/home/user/agent-workspace/skills"),
+        patch("alpha.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
+        patch("alpha.sandbox.tools._get_skills_host_path", return_value="/home/user/agent-workspace/skills"),
     ):
         resolved = _resolve_skills_path("/mnt/skills")
         assert resolved == "/home/user/agent-workspace/skills"
 
 
 def test_extract_skill_name_from_integration_skill_path() -> None:
-    with patch("agent_workspace.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"):
+    with patch("alpha.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"):
         assert _extract_skill_name_from_skills_path("/mnt/skills/integrations/lark-cli/lark-doc/SKILL.md") == "lark-doc"
         assert _extract_skill_name_from_skills_path("/mnt/skills/integrations/lark-cli") is None
 
 
 def test_resolve_skills_path_resolves_global_integration_skills(tmp_path: Path) -> None:
-    from agent_workspace.config.paths import Paths
+    from alpha.config.paths import Paths
 
     paths = Paths(base_dir=tmp_path)
     expected = tmp_path / "integrations" / "skills" / "lark-cli" / "lark-doc" / "SKILL.md"
     with (
-        patch("agent_workspace.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
-        patch("agent_workspace.sandbox.tools._get_skills_host_path", return_value="/home/user/agent-workspace/skills"),
-        patch("agent_workspace.config.paths.get_paths", return_value=paths),
-        patch("agent_workspace.runtime.user_context.get_effective_user_id", return_value="alice"),
+        patch("alpha.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
+        patch("alpha.sandbox.tools._get_skills_host_path", return_value="/home/user/agent-workspace/skills"),
+        patch("alpha.config.paths.get_paths", return_value=paths),
+        patch("alpha.runtime.user_context.get_effective_user_id", return_value="alice"),
     ):
         resolved = _resolve_skills_path("/mnt/skills/integrations/lark-cli/lark-doc/SKILL.md")
 
@@ -484,14 +484,14 @@ def test_resolve_skills_path_resolves_global_integration_skills(tmp_path: Path) 
 
 
 def test_resolve_skills_path_blocks_integration_traversal(tmp_path: Path) -> None:
-    from agent_workspace.config.paths import Paths
+    from alpha.config.paths import Paths
 
     paths = Paths(base_dir=tmp_path)
     with (
-        patch("agent_workspace.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
-        patch("agent_workspace.sandbox.tools._get_skills_host_path", return_value="/home/user/agent-workspace/skills"),
-        patch("agent_workspace.config.paths.get_paths", return_value=paths),
-        patch("agent_workspace.runtime.user_context.get_effective_user_id", return_value="alice"),
+        patch("alpha.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
+        patch("alpha.sandbox.tools._get_skills_host_path", return_value="/home/user/agent-workspace/skills"),
+        patch("alpha.config.paths.get_paths", return_value=paths),
+        patch("alpha.runtime.user_context.get_effective_user_id", return_value="alice"),
     ):
         with pytest.raises(PermissionError, match="path traversal detected"):
             _resolve_skills_path("/mnt/skills/integrations/../../etc/passwd")
@@ -500,8 +500,8 @@ def test_resolve_skills_path_blocks_integration_traversal(tmp_path: Path) -> Non
 def test_resolve_skills_path_raises_when_not_configured() -> None:
     """Should raise FileNotFoundError when skills directory is not available."""
     with (
-        patch("agent_workspace.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
-        patch("agent_workspace.sandbox.tools._get_skills_host_path", return_value=None),
+        patch("alpha.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
+        patch("alpha.sandbox.tools._get_skills_host_path", return_value=None),
     ):
         with pytest.raises(FileNotFoundError, match="Skills directory not available"):
             _resolve_skills_path("/mnt/skills/public/bootstrap/SKILL.md")
@@ -550,8 +550,8 @@ def test_replace_virtual_paths_in_command_does_not_replace_skills_paths() -> Non
     _resolve_skills_path / _resolve_acp_workspace_path.
     """
     with (
-        patch("agent_workspace.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
-        patch("agent_workspace.sandbox.tools._get_skills_host_path", return_value="/home/user/agent-workspace/skills"),
+        patch("alpha.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
+        patch("alpha.sandbox.tools._get_skills_host_path", return_value="/home/user/agent-workspace/skills"),
     ):
         cmd = "cat /mnt/skills/public/bootstrap/SKILL.md"
         result = replace_virtual_paths_in_command(cmd, _THREAD_DATA)
@@ -563,8 +563,8 @@ def test_replace_virtual_paths_in_command_does_not_replace_skills_paths() -> Non
 def test_replace_virtual_paths_in_command_replaces_user_data_only() -> None:
     """Only user-data paths should be replaced; skills and ACP paths stay virtual."""
     with (
-        patch("agent_workspace.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
-        patch("agent_workspace.sandbox.tools._get_skills_host_path", return_value="/home/user/skills"),
+        patch("alpha.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
+        patch("alpha.sandbox.tools._get_skills_host_path", return_value="/home/user/skills"),
     ):
         cmd = "cat /mnt/skills/public/SKILL.md > /mnt/user-data/workspace/out.txt"
         result = replace_virtual_paths_in_command(cmd, _THREAD_DATA)
@@ -676,7 +676,7 @@ def test_validate_local_bash_command_paths_blocks_traversal_in_user_data() -> No
 
 def test_validate_local_bash_command_paths_blocks_traversal_in_skills() -> None:
     """Bash commands with traversal in skills paths should be blocked."""
-    with patch("agent_workspace.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"):
+    with patch("alpha.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"):
         with pytest.raises(PermissionError, match="path traversal"):
             validate_local_bash_command_paths(
                 "cat /mnt/skills/../../etc/passwd",
@@ -837,10 +837,10 @@ def test_bash_tool_rejects_host_bash_when_local_sandbox_default(monkeypatch) -> 
     )
 
     monkeypatch.setattr(
-        "agent_workspace.sandbox.tools.ensure_sandbox_initialized",
+        "alpha.sandbox.tools.ensure_sandbox_initialized",
         lambda runtime: SimpleNamespace(execute_command=lambda command: pytest.fail("host bash should not execute")),
     )
-    monkeypatch.setattr("agent_workspace.sandbox.tools.is_host_bash_allowed", lambda: False)
+    monkeypatch.setattr("alpha.sandbox.tools.is_host_bash_allowed", lambda: False)
 
     result = bash_tool.func(
         runtime=runtime,
@@ -871,11 +871,11 @@ def test_bash_tool_guides_recovery_after_host_path_rejection(monkeypatch) -> Non
         context={"thread_id": "thread-1"},
     )
     monkeypatch.setattr(
-        "agent_workspace.sandbox.tools.ensure_sandbox_initialized",
+        "alpha.sandbox.tools.ensure_sandbox_initialized",
         lambda runtime: SimpleNamespace(execute_command=lambda command: pytest.fail("unsafe command should not execute")),
     )
-    monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
-    monkeypatch.setattr("agent_workspace.sandbox.tools.is_host_bash_allowed", lambda: True)
+    monkeypatch.setattr("alpha.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
+    monkeypatch.setattr("alpha.sandbox.tools.is_host_bash_allowed", lambda: True)
 
     result = bash_tool.func(runtime=runtime, description="detect the OS", command="cat /etc/os-release")
 
@@ -890,11 +890,11 @@ def test_bash_tool_blocks_relative_traversal_before_host_execution(monkeypatch) 
     )
 
     monkeypatch.setattr(
-        "agent_workspace.sandbox.tools.ensure_sandbox_initialized",
+        "alpha.sandbox.tools.ensure_sandbox_initialized",
         lambda runtime: SimpleNamespace(execute_command=lambda command: pytest.fail("unsafe command should not execute")),
     )
-    monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
-    monkeypatch.setattr("agent_workspace.sandbox.tools.is_host_bash_allowed", lambda: True)
+    monkeypatch.setattr("alpha.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
+    monkeypatch.setattr("alpha.sandbox.tools.is_host_bash_allowed", lambda: True)
 
     result = bash_tool.func(
         runtime=runtime,
@@ -909,7 +909,7 @@ def test_bash_tool_blocks_relative_traversal_before_host_execution(monkeypatch) 
 
 
 def test_is_skills_path_recognises_default_prefix() -> None:
-    with patch("agent_workspace.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"):
+    with patch("alpha.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"):
         assert _is_skills_path("/mnt/skills") is True
         assert _is_skills_path("/mnt/skills/public/bootstrap/SKILL.md") is True
         assert _is_skills_path("/mnt/skills-extra/foo") is False
@@ -918,7 +918,7 @@ def test_is_skills_path_recognises_default_prefix() -> None:
 
 def test_validate_local_tool_path_allows_skills_read_only() -> None:
     """read_file / ls should be able to access /mnt/skills paths."""
-    with patch("agent_workspace.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"):
+    with patch("alpha.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"):
         # Should not raise
         validate_local_tool_path(
             "/mnt/skills/public/bootstrap/SKILL.md",
@@ -929,7 +929,7 @@ def test_validate_local_tool_path_allows_skills_read_only() -> None:
 
 def test_validate_local_tool_path_blocks_skills_write() -> None:
     """write_file / str_replace must NOT write to skills paths."""
-    with patch("agent_workspace.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"):
+    with patch("alpha.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"):
         with pytest.raises(PermissionError, match="Write access to skills path is not allowed"):
             validate_local_tool_path(
                 "/mnt/skills/public/bootstrap/SKILL.md",
@@ -940,7 +940,7 @@ def test_validate_local_tool_path_blocks_skills_write() -> None:
 
 def test_validate_local_bash_command_paths_allows_skills_path() -> None:
     """bash commands referencing /mnt/skills should be allowed."""
-    with patch("agent_workspace.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"):
+    with patch("alpha.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"):
         validate_local_bash_command_paths(
             "cat /mnt/skills/public/bootstrap/SKILL.md",
             _THREAD_DATA,
@@ -999,14 +999,14 @@ def test_validate_local_bash_command_paths_blocks_file_urls_mixed_with_valid() -
 
 def test_validate_local_bash_command_paths_still_blocks_other_paths() -> None:
     """Paths outside virtual and system prefixes must still be blocked."""
-    with patch("agent_workspace.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"):
+    with patch("alpha.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"):
         with pytest.raises(PermissionError, match="Unsafe absolute paths"):
             validate_local_bash_command_paths("cat /etc/shadow", _THREAD_DATA)
 
 
 def test_validate_local_tool_path_skills_custom_container_path() -> None:
     """Skills with a custom container_path in config should also work."""
-    with patch("agent_workspace.sandbox.tools._get_skills_container_path", return_value="/custom/skills"):
+    with patch("alpha.sandbox.tools._get_skills_container_path", return_value="/custom/skills"):
         # Should not raise
         validate_local_tool_path(
             "/custom/skills/public/my-skill/SKILL.md",
@@ -1073,7 +1073,7 @@ def test_resolve_acp_workspace_path_resolves_correctly(tmp_path: Path) -> None:
     """ACP workspace virtual path should resolve to host path."""
     acp_dir = tmp_path / "acp-workspace"
     acp_dir.mkdir()
-    with patch("agent_workspace.sandbox.tools._get_acp_workspace_host_path", return_value=str(acp_dir)):
+    with patch("alpha.sandbox.tools._get_acp_workspace_host_path", return_value=str(acp_dir)):
         resolved = _resolve_acp_workspace_path("/mnt/acp-workspace/hello.py")
         assert resolved == str(acp_dir / "hello.py")
 
@@ -1082,14 +1082,14 @@ def test_resolve_acp_workspace_path_resolves_root(tmp_path: Path) -> None:
     """ACP workspace root should resolve to host directory."""
     acp_dir = tmp_path / "acp-workspace"
     acp_dir.mkdir()
-    with patch("agent_workspace.sandbox.tools._get_acp_workspace_host_path", return_value=str(acp_dir)):
+    with patch("alpha.sandbox.tools._get_acp_workspace_host_path", return_value=str(acp_dir)):
         resolved = _resolve_acp_workspace_path("/mnt/acp-workspace")
         assert resolved == str(acp_dir)
 
 
 def test_resolve_acp_workspace_path_raises_when_not_available() -> None:
     """Should raise FileNotFoundError when ACP workspace does not exist."""
-    with patch("agent_workspace.sandbox.tools._get_acp_workspace_host_path", return_value=None):
+    with patch("alpha.sandbox.tools._get_acp_workspace_host_path", return_value=None):
         with pytest.raises(FileNotFoundError, match="ACP workspace directory not available"):
             _resolve_acp_workspace_path("/mnt/acp-workspace/hello.py")
 
@@ -1098,7 +1098,7 @@ def test_resolve_acp_workspace_path_blocks_traversal(tmp_path: Path) -> None:
     """Path traversal in ACP workspace paths must be rejected."""
     acp_dir = tmp_path / "acp-workspace"
     acp_dir.mkdir()
-    with patch("agent_workspace.sandbox.tools._get_acp_workspace_host_path", return_value=str(acp_dir)):
+    with patch("alpha.sandbox.tools._get_acp_workspace_host_path", return_value=str(acp_dir)):
         with pytest.raises(PermissionError, match="path traversal"):
             _resolve_acp_workspace_path("/mnt/acp-workspace/../../etc/passwd")
 
@@ -1111,7 +1111,7 @@ def test_replace_virtual_paths_in_command_does_not_replace_acp_workspace() -> No
     consistency with the sandbox mapping.
     """
     acp_host = "/home/user/.agent-workspace/acp-workspace"
-    with patch("agent_workspace.sandbox.tools._get_acp_workspace_host_path", return_value=acp_host):
+    with patch("alpha.sandbox.tools._get_acp_workspace_host_path", return_value=acp_host):
         cmd = "cp /mnt/acp-workspace/hello.py /mnt/user-data/outputs/hello.py"
         result = replace_virtual_paths_in_command(cmd, _THREAD_DATA)
         # ACP workspace path should remain as virtual path (not resolved)
@@ -1125,7 +1125,7 @@ def test_replace_virtual_paths_in_command_does_not_replace_acp_workspace() -> No
 def test_mask_local_paths_in_output_hides_acp_workspace_host_paths() -> None:
     """ACP workspace host paths in bash output should be masked to virtual paths."""
     acp_host = "/home/user/.agent-workspace/acp-workspace"
-    with patch("agent_workspace.sandbox.tools._get_acp_workspace_host_path", return_value=acp_host):
+    with patch("alpha.sandbox.tools._get_acp_workspace_host_path", return_value=acp_host):
         output = f"Copied: {acp_host}/hello.py"
         masked = mask_local_paths_in_output(output, _THREAD_DATA)
 
@@ -1163,7 +1163,7 @@ def test_apply_cwd_prefix_quotes_path_with_spaces() -> None:
 
 def test_validate_local_bash_command_paths_allows_mcp_filesystem_paths() -> None:
     """Bash commands referencing MCP filesystem server paths should be allowed."""
-    from agent_workspace.config.extensions_config import ExtensionsConfig, McpServerConfig
+    from alpha.config.extensions_config import ExtensionsConfig, McpServerConfig
 
     mock_config = ExtensionsConfig(
         mcp_servers={
@@ -1174,7 +1174,7 @@ def test_validate_local_bash_command_paths_allows_mcp_filesystem_paths() -> None
             )
         }
     )
-    with patch("agent_workspace.config.extensions_config.get_extensions_config", return_value=mock_config):
+    with patch("alpha.config.extensions_config.get_extensions_config", return_value=mock_config):
         # Should not raise - MCP filesystem paths are allowed
         validate_local_bash_command_paths("ls /mnt/d/workspace", _THREAD_DATA)
         validate_local_bash_command_paths("cat /mnt/d/workspace/subdir/file.txt", _THREAD_DATA)
@@ -1193,7 +1193,7 @@ def test_validate_local_bash_command_paths_allows_mcp_filesystem_paths() -> None
                 )
             }
         )
-        with patch("agent_workspace.config.extensions_config.get_extensions_config", return_value=disabled_config):
+        with patch("alpha.config.extensions_config.get_extensions_config", return_value=disabled_config):
             with pytest.raises(PermissionError, match="Unsafe absolute paths"):
                 validate_local_bash_command_paths("ls /mnt/d/workspace", _THREAD_DATA)
 
@@ -1203,7 +1203,7 @@ def test_validate_local_bash_command_paths_allows_mcp_filesystem_paths() -> None
 
 def _mock_custom_mounts():
     """Create mock VolumeMountConfig objects for testing."""
-    from agent_workspace.config.sandbox_config import VolumeMountConfig
+    from alpha.config.sandbox_config import VolumeMountConfig
 
     return [
         VolumeMountConfig(host_path="/home/user/code-read", container_path="/mnt/code-read", read_only=True),
@@ -1212,7 +1212,7 @@ def _mock_custom_mounts():
 
 
 def test_is_custom_mount_path_recognises_configured_mounts() -> None:
-    with patch("agent_workspace.sandbox.tools._get_custom_mounts", return_value=_mock_custom_mounts()):
+    with patch("alpha.sandbox.tools._get_custom_mounts", return_value=_mock_custom_mounts()):
         assert _is_custom_mount_path("/mnt/code-read") is True
         assert _is_custom_mount_path("/mnt/code-read/src/main.py") is True
         assert _is_custom_mount_path("/mnt/data") is True
@@ -1222,13 +1222,13 @@ def test_is_custom_mount_path_recognises_configured_mounts() -> None:
 
 
 def test_get_custom_mount_for_path_returns_longest_prefix() -> None:
-    from agent_workspace.config.sandbox_config import VolumeMountConfig
+    from alpha.config.sandbox_config import VolumeMountConfig
 
     mounts = [
         VolumeMountConfig(host_path="/var/mnt", container_path="/mnt", read_only=False),
         VolumeMountConfig(host_path="/home/user/code", container_path="/mnt/code", read_only=True),
     ]
-    with patch("agent_workspace.sandbox.tools._get_custom_mounts", return_value=mounts):
+    with patch("alpha.sandbox.tools._get_custom_mounts", return_value=mounts):
         mount = _get_custom_mount_for_path("/mnt/code/file.py")
         assert mount is not None
         assert mount.container_path == "/mnt/code"
@@ -1236,48 +1236,48 @@ def test_get_custom_mount_for_path_returns_longest_prefix() -> None:
 
 def test_validate_local_tool_path_allows_custom_mount_read() -> None:
     """read_file / ls should be able to access custom mount paths."""
-    with patch("agent_workspace.sandbox.tools._get_custom_mounts", return_value=_mock_custom_mounts()):
+    with patch("alpha.sandbox.tools._get_custom_mounts", return_value=_mock_custom_mounts()):
         validate_local_tool_path("/mnt/code-read/src/main.py", _THREAD_DATA, read_only=True)
         validate_local_tool_path("/mnt/data/file.txt", _THREAD_DATA, read_only=True)
 
 
 def test_validate_local_tool_path_blocks_read_only_mount_write() -> None:
     """write_file / str_replace must NOT write to read-only custom mounts."""
-    with patch("agent_workspace.sandbox.tools._get_custom_mounts", return_value=_mock_custom_mounts()):
+    with patch("alpha.sandbox.tools._get_custom_mounts", return_value=_mock_custom_mounts()):
         with pytest.raises(PermissionError, match="Write access to read-only mount is not allowed"):
             validate_local_tool_path("/mnt/code-read/src/main.py", _THREAD_DATA, read_only=False)
 
 
 def test_validate_local_tool_path_allows_writable_mount_write() -> None:
     """write_file / str_replace should succeed on writable custom mounts."""
-    with patch("agent_workspace.sandbox.tools._get_custom_mounts", return_value=_mock_custom_mounts()):
+    with patch("alpha.sandbox.tools._get_custom_mounts", return_value=_mock_custom_mounts()):
         validate_local_tool_path("/mnt/data/file.txt", _THREAD_DATA, read_only=False)
 
 
 def test_validate_local_tool_path_blocks_traversal_in_custom_mount() -> None:
     """Path traversal via .. in custom mount paths must be rejected."""
-    with patch("agent_workspace.sandbox.tools._get_custom_mounts", return_value=_mock_custom_mounts()):
+    with patch("alpha.sandbox.tools._get_custom_mounts", return_value=_mock_custom_mounts()):
         with pytest.raises(PermissionError, match="path traversal"):
             validate_local_tool_path("/mnt/code-read/../../etc/passwd", _THREAD_DATA, read_only=True)
 
 
 def test_validate_local_bash_command_paths_allows_custom_mount() -> None:
     """bash commands referencing custom mount paths should be allowed."""
-    with patch("agent_workspace.sandbox.tools._get_custom_mounts", return_value=_mock_custom_mounts()):
+    with patch("alpha.sandbox.tools._get_custom_mounts", return_value=_mock_custom_mounts()):
         validate_local_bash_command_paths("cat /mnt/code-read/src/main.py", _THREAD_DATA)
         validate_local_bash_command_paths("ls /mnt/data", _THREAD_DATA)
 
 
 def test_validate_local_bash_command_paths_blocks_traversal_in_custom_mount() -> None:
     """Bash commands with traversal in custom mount paths should be blocked."""
-    with patch("agent_workspace.sandbox.tools._get_custom_mounts", return_value=_mock_custom_mounts()):
+    with patch("alpha.sandbox.tools._get_custom_mounts", return_value=_mock_custom_mounts()):
         with pytest.raises(PermissionError, match="path traversal"):
             validate_local_bash_command_paths("cat /mnt/code-read/../../etc/passwd", _THREAD_DATA)
 
 
 def test_validate_local_bash_command_paths_still_blocks_non_mount_paths() -> None:
     """Paths not matching any custom mount should still be blocked."""
-    with patch("agent_workspace.sandbox.tools._get_custom_mounts", return_value=_mock_custom_mounts()):
+    with patch("alpha.sandbox.tools._get_custom_mounts", return_value=_mock_custom_mounts()):
         with pytest.raises(PermissionError, match="Unsafe absolute paths"):
             validate_local_bash_command_paths("cat /etc/shadow", _THREAD_DATA)
 
@@ -1294,16 +1294,16 @@ def test_get_custom_mounts_caching(monkeypatch, tmp_path) -> None:
     dir_b = tmp_path / "data"
     dir_b.mkdir()
 
-    from agent_workspace.config.sandbox_config import SandboxConfig, VolumeMountConfig
+    from alpha.config.sandbox_config import SandboxConfig, VolumeMountConfig
 
     mounts = [
         VolumeMountConfig(host_path=str(dir_a), container_path="/mnt/code-read", read_only=True),
         VolumeMountConfig(host_path=str(dir_b), container_path="/mnt/data", read_only=False),
     ]
-    mock_sandbox = SandboxConfig(use="agent_workspace.sandbox.local:LocalSandboxProvider", mounts=mounts)
+    mock_sandbox = SandboxConfig(use="alpha.sandbox.local:LocalSandboxProvider", mounts=mounts)
     mock_config = SimpleNamespace(sandbox=mock_sandbox)
 
-    with patch("agent_workspace.config.get_app_config", return_value=mock_config):
+    with patch("alpha.config.get_app_config", return_value=mock_config):
         result = _get_custom_mounts()
         assert len(result) == 2
 
@@ -1320,7 +1320,7 @@ def test_get_custom_mounts_filters_nonexistent_host_path(monkeypatch, tmp_path) 
     if hasattr(_get_custom_mounts, "_cached"):
         monkeypatch.delattr(_get_custom_mounts, "_cached")
 
-    from agent_workspace.config.sandbox_config import SandboxConfig, VolumeMountConfig
+    from alpha.config.sandbox_config import SandboxConfig, VolumeMountConfig
 
     existing_dir = tmp_path / "existing"
     existing_dir.mkdir()
@@ -1329,10 +1329,10 @@ def test_get_custom_mounts_filters_nonexistent_host_path(monkeypatch, tmp_path) 
         VolumeMountConfig(host_path=str(existing_dir), container_path="/mnt/existing", read_only=True),
         VolumeMountConfig(host_path="/nonexistent/path/12345", container_path="/mnt/ghost", read_only=False),
     ]
-    mock_sandbox = SandboxConfig(use="agent_workspace.sandbox.local:LocalSandboxProvider", mounts=mounts)
+    mock_sandbox = SandboxConfig(use="alpha.sandbox.local:LocalSandboxProvider", mounts=mounts)
     mock_config = SimpleNamespace(sandbox=mock_sandbox)
 
-    with patch("agent_workspace.config.get_app_config", return_value=mock_config):
+    with patch("alpha.config.get_app_config", return_value=mock_config):
         result = _get_custom_mounts()
         assert len(result) == 1
         assert result[0].container_path == "/mnt/existing"
@@ -1343,7 +1343,7 @@ def test_get_custom_mounts_filters_nonexistent_host_path(monkeypatch, tmp_path) 
 
 def test_get_custom_mount_for_path_boundary_no_false_prefix_match() -> None:
     """_get_custom_mount_for_path must not match /mnt/code-read-extra for /mnt/code-read."""
-    with patch("agent_workspace.sandbox.tools._get_custom_mounts", return_value=_mock_custom_mounts()):
+    with patch("alpha.sandbox.tools._get_custom_mounts", return_value=_mock_custom_mounts()):
         mount = _get_custom_mount_for_path("/mnt/code-read-extra/foo")
         assert mount is None
 
@@ -1385,9 +1385,9 @@ def test_str_replace_parallel_updates_should_preserve_both_edits(monkeypatch) ->
     ]
     failures: list[BaseException] = []
 
-    monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_sandbox_initialized", lambda runtime: sandbox)
-    monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
-    monkeypatch.setattr("agent_workspace.sandbox.tools.is_local_sandbox", lambda runtime: False)
+    monkeypatch.setattr("alpha.sandbox.tools.ensure_sandbox_initialized", lambda runtime: sandbox)
+    monkeypatch.setattr("alpha.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
+    monkeypatch.setattr("alpha.sandbox.tools.is_local_sandbox", lambda runtime: False)
 
     def worker(runtime: SimpleNamespace, old_str: str, new_str: str) -> None:
         try:
@@ -1467,11 +1467,11 @@ def test_str_replace_parallel_updates_in_isolated_sandboxes_should_not_share_pat
     failures: list[BaseException] = []
 
     monkeypatch.setattr(
-        "agent_workspace.sandbox.tools.ensure_sandbox_initialized",
+        "alpha.sandbox.tools.ensure_sandbox_initialized",
         lambda runtime: sandboxes[runtime.context["sandbox_key"]],
     )
-    monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
-    monkeypatch.setattr("agent_workspace.sandbox.tools.is_local_sandbox", lambda runtime: False)
+    monkeypatch.setattr("alpha.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
+    monkeypatch.setattr("alpha.sandbox.tools.is_local_sandbox", lambda runtime: False)
 
     def worker(runtime: SimpleNamespace, old_str: str, new_str: str) -> None:
         try:
@@ -1538,9 +1538,9 @@ def test_str_replace_and_append_on_same_path_should_preserve_both_updates(monkey
     ]
     failures: list[BaseException] = []
 
-    monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_sandbox_initialized", lambda runtime: sandbox)
-    monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
-    monkeypatch.setattr("agent_workspace.sandbox.tools.is_local_sandbox", lambda runtime: False)
+    monkeypatch.setattr("alpha.sandbox.tools.ensure_sandbox_initialized", lambda runtime: sandbox)
+    monkeypatch.setattr("alpha.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
+    monkeypatch.setattr("alpha.sandbox.tools.is_local_sandbox", lambda runtime: False)
 
     def replace_worker() -> None:
         try:
@@ -1592,13 +1592,13 @@ def test_write_file_tool_bounds_large_oserror_and_masks_local_paths(monkeypatch)
     runtime = SimpleNamespace(state={}, context={"thread_id": "thread-1"}, config={})
     sandbox = FailingSandbox()
 
-    monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_sandbox_initialized", lambda runtime: sandbox)
-    monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
-    monkeypatch.setattr("agent_workspace.sandbox.tools.is_local_sandbox", lambda runtime: True)
-    monkeypatch.setattr("agent_workspace.sandbox.tools.get_thread_data", lambda runtime: _THREAD_DATA)
-    monkeypatch.setattr("agent_workspace.sandbox.tools.validate_local_tool_path", lambda path, thread_data: None)
+    monkeypatch.setattr("alpha.sandbox.tools.ensure_sandbox_initialized", lambda runtime: sandbox)
+    monkeypatch.setattr("alpha.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
+    monkeypatch.setattr("alpha.sandbox.tools.is_local_sandbox", lambda runtime: True)
+    monkeypatch.setattr("alpha.sandbox.tools.get_thread_data", lambda runtime: _THREAD_DATA)
+    monkeypatch.setattr("alpha.sandbox.tools.validate_local_tool_path", lambda path, thread_data: None)
     monkeypatch.setattr(
-        "agent_workspace.sandbox.tools._resolve_and_validate_user_data_path",
+        "alpha.sandbox.tools._resolve_and_validate_user_data_path",
         lambda path, thread_data: f"{_THREAD_DATA['workspace_path']}/output.txt",
     )
 
@@ -1627,9 +1627,9 @@ def test_write_file_tool_preserves_short_oserror_without_truncation(monkeypatch)
     runtime = SimpleNamespace(state={}, context={"thread_id": "thread-1"}, config={})
     sandbox = FailingSandbox()
 
-    monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_sandbox_initialized", lambda runtime: sandbox)
-    monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
-    monkeypatch.setattr("agent_workspace.sandbox.tools.is_local_sandbox", lambda runtime: False)
+    monkeypatch.setattr("alpha.sandbox.tools.ensure_sandbox_initialized", lambda runtime: sandbox)
+    monkeypatch.setattr("alpha.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
+    monkeypatch.setattr("alpha.sandbox.tools.is_local_sandbox", lambda runtime: False)
 
     result = write_file_tool.func(
         runtime=runtime,
@@ -1652,9 +1652,9 @@ def test_write_file_tool_bounds_large_sandbox_error(monkeypatch) -> None:
     runtime = SimpleNamespace(state={}, context={"thread_id": "thread-1"}, config={})
     sandbox = FailingSandbox()
 
-    monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_sandbox_initialized", lambda runtime: sandbox)
-    monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
-    monkeypatch.setattr("agent_workspace.sandbox.tools.is_local_sandbox", lambda runtime: False)
+    monkeypatch.setattr("alpha.sandbox.tools.ensure_sandbox_initialized", lambda runtime: sandbox)
+    monkeypatch.setattr("alpha.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
+    monkeypatch.setattr("alpha.sandbox.tools.is_local_sandbox", lambda runtime: False)
 
     result = write_file_tool.func(
         runtime=runtime,
@@ -1704,9 +1704,9 @@ def test_write_file_tool_formats_all_other_failure_branches(
     runtime = SimpleNamespace(state={}, context={"thread_id": "thread-1"}, config={})
     sandbox = FailingSandbox()
 
-    monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_sandbox_initialized", lambda runtime: sandbox)
-    monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
-    monkeypatch.setattr("agent_workspace.sandbox.tools.is_local_sandbox", lambda runtime: False)
+    monkeypatch.setattr("alpha.sandbox.tools.ensure_sandbox_initialized", lambda runtime: sandbox)
+    monkeypatch.setattr("alpha.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
+    monkeypatch.setattr("alpha.sandbox.tools.is_local_sandbox", lambda runtime: False)
 
     result = write_file_tool.func(
         runtime=runtime,
@@ -1730,8 +1730,8 @@ def test_write_file_tool_handles_sandbox_init_failure(monkeypatch) -> None:
         raise SandboxError("sandbox missing")
 
     runtime = SimpleNamespace(state={}, context={"thread_id": "thread-1"}, config={})
-    monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_sandbox_initialized", raise_sandbox_error)
-    monkeypatch.setattr("agent_workspace.sandbox.tools.is_local_sandbox", lambda runtime: False)
+    monkeypatch.setattr("alpha.sandbox.tools.ensure_sandbox_initialized", raise_sandbox_error)
+    monkeypatch.setattr("alpha.sandbox.tools.is_local_sandbox", lambda runtime: False)
 
     result = write_file_tool.func(
         runtime=runtime,
@@ -1753,7 +1753,7 @@ def test_file_operation_lock_memory_cleanup() -> None:
     """
     import gc
 
-    from agent_workspace.sandbox.file_operation_lock import _FILE_OPERATION_LOCKS, get_file_operation_lock
+    from alpha.sandbox.file_operation_lock import _FILE_OPERATION_LOCKS, get_file_operation_lock
 
     class MockSandbox:
         id = "test_cleanup_sandbox"

@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from agent_workspace.state.boulder import (
+from alpha.state.boulder import (
     append_session_id,
     clear_boulder,
     create_boulder,

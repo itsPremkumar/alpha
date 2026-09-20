@@ -32,7 +32,7 @@ def _config(skills_root: Path) -> SimpleNamespace:
         skills=SimpleNamespace(
             get_skills_path=lambda: skills_root,
             container_path="/mnt/skills",
-            use="agent_workspace.skills.storage.local_skill_storage:LocalSkillStorage",
+            use="alpha.skills.storage.local_skill_storage:LocalSkillStorage",
         )
     )
 

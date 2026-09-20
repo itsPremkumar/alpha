@@ -5,8 +5,8 @@ from collections import deque
 
 import pytest
 
-from agent_workspace.config.subagent_runtime_config import SubagentRuntimeConfig
-from agent_workspace.subagents.capacity import SubagentExecutionCapacity
+from alpha.config.subagent_runtime_config import SubagentRuntimeConfig
+from alpha.subagents.capacity import SubagentExecutionCapacity
 
 
 class _NoIterationDeque(deque):

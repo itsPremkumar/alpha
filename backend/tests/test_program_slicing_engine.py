@@ -2,7 +2,7 @@
 
 import pytest
 
-from agent_workspace.coding.program_slicing_engine import (
+from alpha.coding.program_slicing_engine import (
     ProgramSlicingEngine,
     compute_program_slice,
 )

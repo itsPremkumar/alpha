@@ -1,16 +1,16 @@
-"""Tests for agent_workspace.tracing.metadata.build_langfuse_trace_metadata."""
+"""Tests for alpha.tracing.metadata.build_langfuse_trace_metadata."""
 
 from __future__ import annotations
 
 import pytest
 
-from agent_workspace.trace_context import request_trace_context
-from agent_workspace.tracing import metadata as tracing_metadata
+from alpha.trace_context import request_trace_context
+from alpha.tracing import metadata as tracing_metadata
 
 
 @pytest.fixture(autouse=True)
 def _clear_tracing_env(monkeypatch):
-    from agent_workspace.config.tracing_config import reset_tracing_config
+    from alpha.config.tracing_config import reset_tracing_config
 
     for name in (
         "LANGFUSE_TRACING",

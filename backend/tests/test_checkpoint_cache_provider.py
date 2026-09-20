@@ -2,11 +2,11 @@
 
 import pytest
 
-from agent_workspace.config.app_config import AppConfig, set_app_config
-from agent_workspace.runtime.checkpoint_mode import freeze_checkpoint_channel_mode
-from agent_workspace.runtime.checkpointer.async_provider import make_checkpointer
-from agent_workspace.runtime.checkpointer.cached_saver import CachedHistorySaver
-from agent_workspace.runtime.checkpointer.provider import checkpointer_context, reset_checkpointer
+from alpha.config.app_config import AppConfig, set_app_config
+from alpha.runtime.checkpoint_mode import freeze_checkpoint_channel_mode
+from alpha.runtime.checkpointer.async_provider import make_checkpointer
+from alpha.runtime.checkpointer.cached_saver import CachedHistorySaver
+from alpha.runtime.checkpointer.provider import checkpointer_context, reset_checkpointer
 
 
 # AppConfig requires the sandbox section (no default); the rest of the config
@@ -17,7 +17,7 @@ def _app_config(mode: str, cache: dict | None = None) -> AppConfig:
         database["checkpoint_cache"] = cache
     return AppConfig.model_validate(
         {
-            "sandbox": {"use": "agent_workspace.sandbox.local.provider:LocalSandboxProvider"},
+            "sandbox": {"use": "alpha.sandbox.local.provider:LocalSandboxProvider"},
             "database": database,
         }
     )

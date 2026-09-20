@@ -6,10 +6,10 @@ import pytest
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
-from agent_workspace.subagents.config import SubagentConfig
-from agent_workspace.tools.builtins.batch_task_tool import BatchTaskItem
+from alpha.subagents.config import SubagentConfig
+from alpha.tools.builtins.batch_task_tool import BatchTaskItem
 
-tool_module = importlib.import_module("agent_workspace.tools.builtins.batch_task_tool")
+tool_module = importlib.import_module("alpha.tools.builtins.batch_task_tool")
 
 
 def _runtime():

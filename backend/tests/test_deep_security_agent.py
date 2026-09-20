@@ -1,6 +1,6 @@
 """Unit tests for DeepSecurityAuditorAgent."""
 
-from agent_workspace.subagents.builtins.deep_security_agent import (
+from alpha.subagents.builtins.deep_security_agent import (
     DEEP_SECURITY_AGENT_CONFIG,
     DeepSecurityAuditorAgent,
 )

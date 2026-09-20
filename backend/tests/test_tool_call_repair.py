@@ -1,7 +1,7 @@
 """Unit tests for Tool Call Repair and Stream Normalizer."""
 
-from agent_workspace.tools.repair.normalizer import ToolCallNormalizer, repair_json_payload
-from agent_workspace.tools.repair.promoter import ToolCallPromoter
+from alpha.tools.repair.normalizer import ToolCallNormalizer, repair_json_payload
+from alpha.tools.repair.promoter import ToolCallPromoter
 
 
 def test_repair_json_payload_variations():

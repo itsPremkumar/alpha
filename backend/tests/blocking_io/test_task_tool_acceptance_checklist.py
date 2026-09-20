@@ -6,7 +6,7 @@ on the LangGraph event loop. The whole check is offloaded with
 ``asyncio.to_thread`` in ``task_tool``; this anchor locks that offload.
 
 Under the strict Blockbuster context (this directory's conftest), any blocking
-IO reached from ``agent_workspace.*`` while on the event loop raises
+IO reached from ``alpha.*`` while on the event loop raises
 ``BlockingError``.
 
 The content reader is injected here as a **blocking probe**: it does real
@@ -27,11 +27,11 @@ from types import SimpleNamespace
 import pytest
 from langchain_core.messages import ToolMessage
 
-from agent_workspace.subagents.config import SubagentConfig
+from alpha.subagents.config import SubagentConfig
 
 # importlib.import_module binds the real module: the package attribute
-# ``agent_workspace.tools.builtins.task_tool`` is shadowed by the StructuredTool.
-task_tool_module = importlib.import_module("agent_workspace.tools.builtins.task_tool")
+# ``alpha.tools.builtins.task_tool`` is shadowed by the StructuredTool.
+task_tool_module = importlib.import_module("alpha.tools.builtins.task_tool")
 
 pytestmark = pytest.mark.asyncio
 
@@ -89,7 +89,7 @@ def _completed_result() -> SimpleNamespace:
 def _patch_task_tool_boundary(monkeypatch, tmp_path: Path) -> None:
     """Mock only the external boundaries; the offload under guard stays real."""
     monkeypatch.setattr(
-        "agent_workspace.sandbox.tools.read_current_file_content",
+        "alpha.sandbox.tools.read_current_file_content",
         _blocking_probe_reader(tmp_path / "probe.txt"),
     )
 
@@ -124,7 +124,7 @@ def _patch_task_tool_boundary(monkeypatch, tmp_path: Path) -> None:
         return None
 
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
 
 
 async def test_acceptance_checklist_file_leaf_is_offloaded(monkeypatch, tmp_path):
@@ -165,7 +165,7 @@ async def test_blocking_probe_reader_actually_trips_the_gate(monkeypatch, tmp_pa
     since Blockbuster intercepts the syscall before it can block.)"""
     from blockbuster import BlockingError
 
-    from agent_workspace.subagents.acceptance_checks import check_acceptance_criteria
+    from alpha.subagents.acceptance_checks import check_acceptance_criteria
 
     (tmp_path / "probe.txt").write_text("probe body", encoding="utf-8")
     thread_data = {

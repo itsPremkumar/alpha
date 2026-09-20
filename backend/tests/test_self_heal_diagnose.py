@@ -4,9 +4,9 @@ import json
 import os
 import time
 
-from agent_workspace.runtime.selfheal.models import FaultType, HealthReport
-from agent_workspace.runtime.selfheal.watchdog import SelfHealingWatchdog
-from agent_workspace.tools.builtins.self_heal_tool import self_heal_diagnose
+from alpha.runtime.selfheal.models import FaultType, HealthReport
+from alpha.runtime.selfheal.watchdog import SelfHealingWatchdog
+from alpha.tools.builtins.self_heal_tool import self_heal_diagnose
 
 
 def test_self_healing_stale_lock_detection_and_remediation(tmp_path):

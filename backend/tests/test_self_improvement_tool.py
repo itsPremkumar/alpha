@@ -11,12 +11,12 @@ import pytest
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
-from agent_workspace.subagents.config import SubagentConfig
+from alpha.subagents.config import SubagentConfig
 
-ralph_module = importlib.import_module("agent_workspace.tools.builtins.self_improvement_tool")
+ralph_module = importlib.import_module("alpha.tools.builtins.self_improvement_tool")
 
 
-# NOTE: backend/tests/conftest.py pre-mocks ``agent_workspace.subagents.executor``
+# NOTE: backend/tests/conftest.py pre-mocks ``alpha.subagents.executor``
 # with a MagicMock class (breaks the subagents->thread_state import cycle),
 # so the ``SubagentStatus`` name is unusable in tests. Mirror what
 # test_task_tool_core_logic.py does: a local fake with the same members, and
@@ -301,8 +301,8 @@ class TestRalphCompletionRule:
 
 class TestRalphRegistration:
     def test_tool_registered_as_builtin(self):
-        from agent_workspace.tools.builtins import ralph_loop_tool
-        from agent_workspace.tools.tools import BUILTIN_TOOLS
+        from alpha.tools.builtins import ralph_loop_tool
+        from alpha.tools.tools import BUILTIN_TOOLS
 
         assert ralph_loop_tool.name == "ralph_loop"
         assert ralph_loop_tool in BUILTIN_TOOLS

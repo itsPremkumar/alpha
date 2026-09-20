@@ -9,7 +9,7 @@ import pytest
 @pytest.fixture
 def mock_app_config():
     """Mock the app config to return tool configurations."""
-    with patch("agent_workspace.community.exa.tools.get_app_config") as mock_config:
+    with patch("alpha.community.exa.tools.get_app_config") as mock_config:
         tool_config = MagicMock()
         tool_config.model_extra = {
             "max_results": 5,
@@ -24,7 +24,7 @@ def mock_app_config():
 @pytest.fixture
 def mock_exa_client():
     """Mock the Exa client."""
-    with patch("agent_workspace.community.exa.tools.Exa") as mock_exa_cls:
+    with patch("alpha.community.exa.tools.Exa") as mock_exa_cls:
         mock_client = MagicMock()
         mock_exa_cls.return_value = mock_client
         yield mock_client
@@ -47,7 +47,7 @@ class TestWebSearchTool:
         mock_response.results = [mock_result_1, mock_result_2]
         mock_exa_client.search.return_value = mock_response
 
-        from agent_workspace.community.exa.tools import web_search_tool
+        from alpha.community.exa.tools import web_search_tool
 
         result = web_search_tool.invoke({"query": "test query"})
         parsed = json.loads(result)
@@ -67,7 +67,7 @@ class TestWebSearchTool:
 
     def test_search_with_custom_config(self, mock_exa_client):
         """Test search respects custom configuration values."""
-        with patch("agent_workspace.community.exa.tools.get_app_config") as mock_config:
+        with patch("alpha.community.exa.tools.get_app_config") as mock_config:
             tool_config = MagicMock()
             tool_config.model_extra = {
                 "max_results": 10,
@@ -81,7 +81,7 @@ class TestWebSearchTool:
             mock_response.results = []
             mock_exa_client.search.return_value = mock_response
 
-            from agent_workspace.community.exa.tools import web_search_tool
+            from alpha.community.exa.tools import web_search_tool
 
             web_search_tool.invoke({"query": "neural search"})
 
@@ -103,7 +103,7 @@ class TestWebSearchTool:
         mock_response.results = [mock_result]
         mock_exa_client.search.return_value = mock_response
 
-        from agent_workspace.community.exa.tools import web_search_tool
+        from alpha.community.exa.tools import web_search_tool
 
         result = web_search_tool.invoke({"query": "test"})
         parsed = json.loads(result)
@@ -116,7 +116,7 @@ class TestWebSearchTool:
         mock_response.results = []
         mock_exa_client.search.return_value = mock_response
 
-        from agent_workspace.community.exa.tools import web_search_tool
+        from alpha.community.exa.tools import web_search_tool
 
         result = web_search_tool.invoke({"query": "nothing"})
         parsed = json.loads(result)
@@ -127,7 +127,7 @@ class TestWebSearchTool:
         """Test search returns error string on exception."""
         mock_exa_client.search.side_effect = Exception("API rate limit exceeded")
 
-        from agent_workspace.community.exa.tools import web_search_tool
+        from alpha.community.exa.tools import web_search_tool
 
         result = web_search_tool.invoke({"query": "error"})
 
@@ -145,7 +145,7 @@ class TestWebFetchTool:
         mock_response.results = [mock_result]
         mock_exa_client.get_contents.return_value = mock_response
 
-        from agent_workspace.community.exa.tools import web_fetch_tool
+        from alpha.community.exa.tools import web_fetch_tool
 
         result = web_fetch_tool.invoke({"url": "https://example.com"})
 
@@ -165,7 +165,7 @@ class TestWebFetchTool:
         mock_response.results = [mock_result]
         mock_exa_client.get_contents.return_value = mock_response
 
-        from agent_workspace.community.exa.tools import web_fetch_tool
+        from alpha.community.exa.tools import web_fetch_tool
 
         result = web_fetch_tool.invoke({"url": "https://example.com"})
 
@@ -177,7 +177,7 @@ class TestWebFetchTool:
         mock_response.results = []
         mock_exa_client.get_contents.return_value = mock_response
 
-        from agent_workspace.community.exa.tools import web_fetch_tool
+        from alpha.community.exa.tools import web_fetch_tool
 
         result = web_fetch_tool.invoke({"url": "https://example.com/404"})
 
@@ -187,7 +187,7 @@ class TestWebFetchTool:
         """Test fetch returns error string on exception."""
         mock_exa_client.get_contents.side_effect = Exception("Connection timeout")
 
-        from agent_workspace.community.exa.tools import web_fetch_tool
+        from alpha.community.exa.tools import web_fetch_tool
 
         result = web_fetch_tool.invoke({"url": "https://example.com"})
 
@@ -195,7 +195,7 @@ class TestWebFetchTool:
 
     def test_fetch_reads_web_fetch_config(self, mock_exa_client):
         """Test that web_fetch_tool reads 'web_fetch' config, not 'web_search'."""
-        with patch("agent_workspace.community.exa.tools.get_app_config") as mock_config:
+        with patch("alpha.community.exa.tools.get_app_config") as mock_config:
             tool_config = MagicMock()
             tool_config.model_extra = {"api_key": "exa-fetch-key"}
             mock_config.return_value.get_tool_config.return_value = tool_config
@@ -207,7 +207,7 @@ class TestWebFetchTool:
             mock_response.results = [mock_result]
             mock_exa_client.get_contents.return_value = mock_response
 
-            from agent_workspace.community.exa.tools import web_fetch_tool
+            from alpha.community.exa.tools import web_fetch_tool
 
             web_fetch_tool.invoke({"url": "https://example.com"})
 
@@ -215,8 +215,8 @@ class TestWebFetchTool:
 
     def test_fetch_uses_independent_api_key(self, mock_exa_client):
         """Test mixed-provider config: web_fetch uses its own api_key, not web_search's."""
-        with patch("agent_workspace.community.exa.tools.get_app_config") as mock_config:
-            with patch("agent_workspace.community.exa.tools.Exa") as mock_exa_cls:
+        with patch("alpha.community.exa.tools.get_app_config") as mock_config:
+            with patch("alpha.community.exa.tools.Exa") as mock_exa_cls:
                 mock_exa_cls.return_value = mock_exa_client
                 fetch_config = MagicMock()
                 fetch_config.model_extra = {"api_key": "exa-fetch-key"}
@@ -235,7 +235,7 @@ class TestWebFetchTool:
                 mock_response.results = [mock_result]
                 mock_exa_client.get_contents.return_value = mock_response
 
-                from agent_workspace.community.exa.tools import web_fetch_tool
+                from alpha.community.exa.tools import web_fetch_tool
 
                 web_fetch_tool.invoke({"url": "https://example.com"})
 
@@ -251,7 +251,7 @@ class TestWebFetchTool:
         mock_response.results = [mock_result]
         mock_exa_client.get_contents.return_value = mock_response
 
-        from agent_workspace.community.exa.tools import web_fetch_tool
+        from alpha.community.exa.tools import web_fetch_tool
 
         result = web_fetch_tool.invoke({"url": "https://example.com"})
 

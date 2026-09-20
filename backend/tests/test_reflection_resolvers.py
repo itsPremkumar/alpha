@@ -2,8 +2,8 @@
 
 import pytest
 
-from agent_workspace.reflection import resolvers
-from agent_workspace.reflection.resolvers import resolve_variable
+from alpha.reflection import resolvers
+from alpha.reflection.resolvers import resolve_variable
 
 
 def test_resolve_variable_reports_install_hint_for_missing_google_provider(monkeypatch: pytest.MonkeyPatch):

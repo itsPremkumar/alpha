@@ -161,7 +161,7 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--python",
         default=sys.executable,
-        help="Python executable used to invoke python -m agent_workspace.skills.review.cli.",
+        help="Python executable used to invoke python -m alpha.skills.review.cli.",
     )
     args = parser.parse_args(argv)
 
@@ -295,7 +295,7 @@ def find_public_skill_package(path: PurePosixPath, repo_root: Path) -> PurePosix
 
 
 def _is_eval_fixture_skill_md(path: PurePosixPath) -> bool:
-    from agent_workspace.skills.package_paths import is_eval_fixture_skill_md
+    from alpha.skills.package_paths import is_eval_fixture_skill_md
 
     return is_eval_fixture_skill_md(path)
 
@@ -305,7 +305,7 @@ def collect_review_facts(package: Path, repo_root: Path, python_executable: str)
     command = [
         python_executable,
         "-m",
-        "agent_workspace.skills.review.cli",
+        "alpha.skills.review.cli",
         package_rel,
         "--format",
         "json",
@@ -338,7 +338,7 @@ def collect_review_facts(package: Path, repo_root: Path, python_executable: str)
 def run_review(package: Path, repo_root: Path, python_executable: str, manifest: WaiverManifest = EMPTY_MANIFEST) -> int:
     package_rel = package.relative_to(repo_root).as_posix()
     print(f"[skill-review] Reviewing package: {package_rel}")
-    print(f"[skill-review] $ python -m agent_workspace.skills.review.cli {package_rel} --format json --fail-on never")
+    print(f"[skill-review] $ python -m alpha.skills.review.cli {package_rel} --format json --fail-on never")
     facts = collect_review_facts(package, repo_root, python_executable)
     if facts is None:
         print(f"[skill-review] Failed: {package_rel}")

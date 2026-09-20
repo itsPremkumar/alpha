@@ -11,10 +11,10 @@ import asyncio
 
 import pytest
 
-from agent_workspace.runtime.runs.manager import RunRecord, RunStartOutcome
-from agent_workspace.runtime.runs.schemas import DisconnectMode, RunStatus
-from agent_workspace.runtime.runs.worker import RunContext, run_agent
-from agent_workspace.trace_context import (
+from alpha.runtime.runs.manager import RunRecord, RunStartOutcome
+from alpha.runtime.runs.schemas import DisconnectMode, RunStatus
+from alpha.runtime.runs.worker import RunContext, run_agent
+from alpha.trace_context import (
     AGENT_WORKSPACE_TRACE_METADATA_KEY,
     request_trace_context,
 )
@@ -85,7 +85,7 @@ class _FakeBridge:
 
 @pytest.fixture(autouse=True)
 def _clear_tracing_env(monkeypatch):
-    from agent_workspace.config.tracing_config import reset_tracing_config
+    from alpha.config.tracing_config import reset_tracing_config
 
     for name in ("LANGFUSE_TRACING", "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_BASE_URL"):
         monkeypatch.delenv(name, raising=False)
@@ -99,7 +99,7 @@ async def test_run_agent_injects_langfuse_metadata(monkeypatch):
     monkeypatch.setenv("LANGFUSE_TRACING", "true")
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
-    from agent_workspace.config.tracing_config import reset_tracing_config
+    from alpha.config.tracing_config import reset_tracing_config
 
     reset_tracing_config()
 
@@ -157,7 +157,7 @@ async def test_run_agent_uses_context_user_id_over_contextvar(monkeypatch):
     monkeypatch.setenv("LANGFUSE_TRACING", "true")
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
-    from agent_workspace.config.tracing_config import reset_tracing_config
+    from alpha.config.tracing_config import reset_tracing_config
 
     reset_tracing_config()
 
@@ -212,9 +212,9 @@ async def test_run_agent_falls_back_to_default_user_when_unset(monkeypatch):
     monkeypatch.setenv("LANGFUSE_TRACING", "true")
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
-    from agent_workspace.config.tracing_config import reset_tracing_config
-    from agent_workspace.runtime import user_context as user_context_module
-    from agent_workspace.runtime.user_context import DEFAULT_USER_ID
+    from alpha.config.tracing_config import reset_tracing_config
+    from alpha.runtime import user_context as user_context_module
+    from alpha.runtime.user_context import DEFAULT_USER_ID
 
     reset_tracing_config()
     monkeypatch.setattr(user_context_module, "get_effective_user_id", lambda: DEFAULT_USER_ID)
@@ -254,7 +254,7 @@ async def test_run_agent_preserves_caller_metadata_overrides(monkeypatch):
     monkeypatch.setenv("LANGFUSE_TRACING", "true")
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
-    from agent_workspace.config.tracing_config import reset_tracing_config
+    from alpha.config.tracing_config import reset_tracing_config
 
     reset_tracing_config()
 
@@ -283,7 +283,7 @@ async def test_run_agent_preserves_caller_metadata_overrides(monkeypatch):
         config={
             "configurable": {"thread_id": "thread-default"},
             "metadata": {
-                AGENT_WORKSPACE_TRACE_METADATA_KEY: "explicit-agent_workspace-trace",
+                AGENT_WORKSPACE_TRACE_METADATA_KEY: "explicit-alpha-trace",
                 "langfuse_session_id": "custom-session-id",
                 "langfuse_user_id": "explicit-user",
             },
@@ -297,7 +297,7 @@ async def test_run_agent_preserves_caller_metadata_overrides(monkeypatch):
     # ...except agent_workspace_trace_id, which the server issues. Honouring the
     # caller here would let the persisted run point at an id that matches
     # neither the response header nor the log lines for the same request.
-    assert metadata[AGENT_WORKSPACE_TRACE_METADATA_KEY] != "explicit-agent_workspace-trace"
+    assert metadata[AGENT_WORKSPACE_TRACE_METADATA_KEY] != "explicit-alpha-trace"
     assert metadata[AGENT_WORKSPACE_TRACE_METADATA_KEY] == fake_agent.captured_config["context"][AGENT_WORKSPACE_TRACE_METADATA_KEY]
     # Worker still fills in keys that the caller didn't set.
     assert metadata["langfuse_trace_name"] == "lead-agent"
@@ -311,7 +311,7 @@ async def test_run_agent_overwrites_caller_supplied_trace_id(monkeypatch):
     monkeypatch.setenv("LANGFUSE_TRACING", "true")
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
-    from agent_workspace.config.tracing_config import reset_tracing_config
+    from alpha.config.tracing_config import reset_tracing_config
 
     reset_tracing_config()
 

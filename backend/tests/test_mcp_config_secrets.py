@@ -38,7 +38,7 @@ from app.gateway.routers.mcp import (
     update_mcp_server,
     update_mcp_server_state,
 )
-from agent_workspace.config.extensions_config import ExtensionsConfig, McpServerConfig
+from alpha.config.extensions_config import ExtensionsConfig, McpServerConfig
 
 # ---------------------------------------------------------------------------
 # _mask_server_config

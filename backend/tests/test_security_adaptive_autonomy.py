@@ -1,5 +1,5 @@
 
-from agent_workspace.security.autonomy import (
+from alpha.security.autonomy import (
     ActionRiskClassifier,
     ActionRiskLevel,
     AuthorizationDecision,

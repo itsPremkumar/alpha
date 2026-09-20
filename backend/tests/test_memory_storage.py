@@ -5,9 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
-from agent_workspace.agents.memory.backends.deermem.deermem.config import DeerMemConfig
-from agent_workspace.agents.memory.backends.deermem.deermem.core.paths import validate_agent_name
-from agent_workspace.agents.memory.backends.deermem.deermem.core.storage import (
+from alpha.agents.memory.backends.deermem.deermem.config import DeerMemConfig
+from alpha.agents.memory.backends.deermem.deermem.core.paths import validate_agent_name
+from alpha.agents.memory.backends.deermem.deermem.core.storage import (
     FileMemoryStorage,
     MemoryStorage,
     create_empty_memory,
@@ -176,5 +176,5 @@ class TestCreateStorage:
             create_storage(DeerMemConfig(storage_class="builtins.dict"))
 
     def test_dotted_storage_class_resolves(self):
-        storage = create_storage(DeerMemConfig(storage_class="agent_workspace.agents.memory.backends.deermem.deermem.core.storage.FileMemoryStorage"))
+        storage = create_storage(DeerMemConfig(storage_class="alpha.agents.memory.backends.deermem.deermem.core.storage.FileMemoryStorage"))
         assert isinstance(storage, FileMemoryStorage)

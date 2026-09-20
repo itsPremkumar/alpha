@@ -1,5 +1,5 @@
 
-from agent_workspace.avo.supervisor import AVOSupervisor
+from alpha.avo.supervisor import AVOSupervisor
 
 
 def test_supervisor_exhaustion_stall_detection():

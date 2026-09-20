@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from agent_workspace.skills.security_scanner import _extract_json_object, scan_skill_content
+from alpha.skills.security_scanner import _extract_json_object, scan_skill_content
 
 
 def _make_env(monkeypatch, response_content):
@@ -22,8 +22,8 @@ def _make_env(monkeypatch, response_content):
         model.create_kwargs = kwargs
         return model
 
-    monkeypatch.setattr("agent_workspace.skills.security_scanner.get_app_config", lambda: config)
-    monkeypatch.setattr("agent_workspace.skills.security_scanner.create_chat_model", _fake_create_chat_model)
+    monkeypatch.setattr("alpha.skills.security_scanner.get_app_config", lambda: config)
+    monkeypatch.setattr("alpha.skills.security_scanner.create_chat_model", _fake_create_chat_model)
     return model
 
 
@@ -46,9 +46,9 @@ def _make_traced_env(monkeypatch, *, model_name, response_content='{"decision":"
         model.create_kwargs = kwargs
         return model
 
-    monkeypatch.setattr("agent_workspace.skills.security_scanner.get_app_config", lambda: config)
-    monkeypatch.setattr("agent_workspace.skills.security_scanner.create_chat_model", _fake_create_chat_model)
-    monkeypatch.setattr("agent_workspace.skills.security_scanner.get_effective_user_id", lambda: "scanner-user")
+    monkeypatch.setattr("alpha.skills.security_scanner.get_app_config", lambda: config)
+    monkeypatch.setattr("alpha.skills.security_scanner.create_chat_model", _fake_create_chat_model)
+    monkeypatch.setattr("alpha.skills.security_scanner.get_effective_user_id", lambda: "scanner-user")
     return model
 
 
@@ -149,8 +149,8 @@ async def test_scan_skill_content_ignores_non_text_blocks_and_joins_text_blocks(
 @pytest.mark.anyio
 async def test_scan_skill_content_blocks_when_model_unavailable(monkeypatch):
     config = SimpleNamespace(skill_evolution=SimpleNamespace(moderation_model_name=None))
-    monkeypatch.setattr("agent_workspace.skills.security_scanner.get_app_config", lambda: config)
-    monkeypatch.setattr("agent_workspace.skills.security_scanner.create_chat_model", lambda **kwargs: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr("alpha.skills.security_scanner.get_app_config", lambda: config)
+    monkeypatch.setattr("alpha.skills.security_scanner.create_chat_model", lambda **kwargs: (_ for _ in ()).throw(RuntimeError("boom")))
 
     result = await scan_skill_content(SKILL_CONTENT, executable=False)
 
@@ -213,7 +213,7 @@ async def test_scan_distinguishes_unparseable_executable(monkeypatch):
 
 
 # --- tracing wiring: in-graph vs standalone (see the INVARIANT in
-# packages/harness/agent_workspace/agents/lead_agent/agent.py and the Tracing System
+# packages/harness/alpha/agents/lead_agent/agent.py and the Tracing System
 # section of backend/AGENTS.md) ---
 
 
@@ -254,7 +254,7 @@ async def test_scan_skill_content_injects_langfuse_metadata_when_standalone(monk
     it the skill-moderation trace has no user/session/name attribution (the #4252
     follow-up gap).
     """
-    from agent_workspace.config.tracing_config import reset_tracing_config
+    from alpha.config.tracing_config import reset_tracing_config
 
     _enable_langfuse_env(monkeypatch)
     reset_tracing_config()
@@ -286,7 +286,7 @@ async def test_scan_skill_content_omits_langfuse_metadata_when_in_graph(monkeypa
     direction: an unconditional inject (dropping the guard) would double-attribute
     against the root trace and turn this red, even though Langfuse is enabled.
     """
-    from agent_workspace.config.tracing_config import reset_tracing_config
+    from alpha.config.tracing_config import reset_tracing_config
 
     _enable_langfuse_env(monkeypatch)
     reset_tracing_config()
@@ -307,9 +307,9 @@ def _make_unavailable_env(monkeypatch, *, security_fail_closed):
             security_fail_closed=security_fail_closed,
         )
     )
-    monkeypatch.setattr("agent_workspace.skills.security_scanner.get_app_config", lambda: config)
+    monkeypatch.setattr("alpha.skills.security_scanner.get_app_config", lambda: config)
     monkeypatch.setattr(
-        "agent_workspace.skills.security_scanner.create_chat_model",
+        "alpha.skills.security_scanner.create_chat_model",
         lambda **kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
     )
 
@@ -341,7 +341,7 @@ async def test_fail_closed_blocks_non_executable_when_model_unavailable(monkeypa
 @pytest.mark.anyio
 async def test_fail_open_logs_operator_visible_warning(monkeypatch, caplog):
     _make_unavailable_env(monkeypatch, security_fail_closed=False)
-    with caplog.at_level(logging.WARNING, logger="agent_workspace.skills.security_scanner"):
+    with caplog.at_level(logging.WARNING, logger="alpha.skills.security_scanner"):
         result = await scan_skill_content(SKILL_CONTENT, executable=False)
     assert result.decision == "warn"
     assert "failing open" in caplog.text

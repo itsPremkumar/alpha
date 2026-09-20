@@ -2,8 +2,8 @@
 
 from rich.console import Console
 
-from agent_workspace.tui.command_registry import build_registry
-from agent_workspace.tui.render import render_palette
+from alpha.tui.command_registry import build_registry
+from alpha.tui.render import render_palette
 
 
 def _text(renderable) -> str:

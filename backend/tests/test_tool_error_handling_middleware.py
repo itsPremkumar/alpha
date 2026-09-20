@@ -9,20 +9,20 @@ from langchain.agents.middleware import AgentMiddleware
 from langchain_core.messages import ToolMessage
 from langgraph.errors import GraphInterrupt
 
-from agent_workspace.agents.middlewares.tool_error_handling_middleware import (
+from alpha.agents.middlewares.tool_error_handling_middleware import (
     ToolErrorHandlingMiddleware,
     build_lead_runtime_middlewares,
     build_subagent_runtime_middlewares,
 )
-from agent_workspace.agents.middlewares.tool_result_meta import TOOL_META_KEY
-from agent_workspace.agents.middlewares.view_image_middleware import ViewImageMiddleware
-from agent_workspace.config import summarization_config
-from agent_workspace.config.app_config import AppConfig, CircuitBreakerConfig
-from agent_workspace.config.extensions_config import ExtensionsConfig
-from agent_workspace.config.guardrails_config import GuardrailsConfig
-from agent_workspace.config.model_config import ModelConfig
-from agent_workspace.config.sandbox_config import SandboxConfig
-from agent_workspace.subagents.status_contract import SUBAGENT_ERROR_KEY, SUBAGENT_STATUS_KEY
+from alpha.agents.middlewares.tool_result_meta import TOOL_META_KEY
+from alpha.agents.middlewares.view_image_middleware import ViewImageMiddleware
+from alpha.config import summarization_config
+from alpha.config.app_config import AppConfig, CircuitBreakerConfig
+from alpha.config.extensions_config import ExtensionsConfig
+from alpha.config.guardrails_config import GuardrailsConfig
+from alpha.config.model_config import ModelConfig
+from alpha.config.sandbox_config import SandboxConfig
+from alpha.subagents.status_contract import SUBAGENT_ERROR_KEY, SUBAGENT_STATUS_KEY
 
 
 class ConfiguredSubagentMiddleware(AgentMiddleware):
@@ -73,31 +73,31 @@ def _stub_runtime_middleware_imports(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setitem(
         sys.modules,
-        "agent_workspace.agents.middlewares.llm_error_handling_middleware",
+        "alpha.agents.middlewares.llm_error_handling_middleware",
         _module(
-            "agent_workspace.agents.middlewares.llm_error_handling_middleware",
+            "alpha.agents.middlewares.llm_error_handling_middleware",
             LLMErrorHandlingMiddleware=FakeLLMErrorHandlingMiddleware,
         ),
     )
     monkeypatch.setitem(
         sys.modules,
-        "agent_workspace.agents.middlewares.thread_data_middleware",
-        _module("agent_workspace.agents.middlewares.thread_data_middleware", ThreadDataMiddleware=FakeMiddleware),
+        "alpha.agents.middlewares.thread_data_middleware",
+        _module("alpha.agents.middlewares.thread_data_middleware", ThreadDataMiddleware=FakeMiddleware),
     )
     monkeypatch.setitem(
         sys.modules,
-        "agent_workspace.sandbox.middleware",
-        _module("agent_workspace.sandbox.middleware", SandboxMiddleware=FakeMiddleware),
+        "alpha.sandbox.middleware",
+        _module("alpha.sandbox.middleware", SandboxMiddleware=FakeMiddleware),
     )
     monkeypatch.setitem(
         sys.modules,
-        "agent_workspace.agents.middlewares.dangling_tool_call_middleware",
-        _module("agent_workspace.agents.middlewares.dangling_tool_call_middleware", DanglingToolCallMiddleware=FakeMiddleware),
+        "alpha.agents.middlewares.dangling_tool_call_middleware",
+        _module("alpha.agents.middlewares.dangling_tool_call_middleware", DanglingToolCallMiddleware=FakeMiddleware),
     )
     monkeypatch.setitem(
         sys.modules,
-        "agent_workspace.agents.middlewares.sandbox_audit_middleware",
-        _module("agent_workspace.agents.middlewares.sandbox_audit_middleware", SandboxAuditMiddleware=FakeMiddleware),
+        "alpha.agents.middlewares.sandbox_audit_middleware",
+        _module("alpha.agents.middlewares.sandbox_audit_middleware", SandboxAuditMiddleware=FakeMiddleware),
     )
 
 
@@ -117,37 +117,37 @@ def test_build_subagent_runtime_middlewares_threads_app_config_to_llm_middleware
 
     monkeypatch.setitem(
         sys.modules,
-        "agent_workspace.agents.middlewares.llm_error_handling_middleware",
+        "alpha.agents.middlewares.llm_error_handling_middleware",
         _module(
-            "agent_workspace.agents.middlewares.llm_error_handling_middleware",
+            "alpha.agents.middlewares.llm_error_handling_middleware",
             LLMErrorHandlingMiddleware=FakeLLMErrorHandlingMiddleware,
         ),
     )
     monkeypatch.setitem(
         sys.modules,
-        "agent_workspace.agents.middlewares.thread_data_middleware",
-        _module("agent_workspace.agents.middlewares.thread_data_middleware", ThreadDataMiddleware=FakeMiddleware),
+        "alpha.agents.middlewares.thread_data_middleware",
+        _module("alpha.agents.middlewares.thread_data_middleware", ThreadDataMiddleware=FakeMiddleware),
     )
     monkeypatch.setitem(
         sys.modules,
-        "agent_workspace.sandbox.middleware",
-        _module("agent_workspace.sandbox.middleware", SandboxMiddleware=FakeMiddleware),
+        "alpha.sandbox.middleware",
+        _module("alpha.sandbox.middleware", SandboxMiddleware=FakeMiddleware),
     )
     monkeypatch.setitem(
         sys.modules,
-        "agent_workspace.agents.middlewares.dangling_tool_call_middleware",
-        _module("agent_workspace.agents.middlewares.dangling_tool_call_middleware", DanglingToolCallMiddleware=FakeMiddleware),
+        "alpha.agents.middlewares.dangling_tool_call_middleware",
+        _module("alpha.agents.middlewares.dangling_tool_call_middleware", DanglingToolCallMiddleware=FakeMiddleware),
     )
     monkeypatch.setitem(
         sys.modules,
-        "agent_workspace.agents.middlewares.sandbox_audit_middleware",
-        _module("agent_workspace.agents.middlewares.sandbox_audit_middleware", SandboxAuditMiddleware=FakeMiddleware),
+        "alpha.agents.middlewares.sandbox_audit_middleware",
+        _module("alpha.agents.middlewares.sandbox_audit_middleware", SandboxAuditMiddleware=FakeMiddleware),
     )
     monkeypatch.setitem(
         sys.modules,
-        "agent_workspace.agents.middlewares.input_sanitization_middleware",
+        "alpha.agents.middlewares.input_sanitization_middleware",
         _module(
-            "agent_workspace.agents.middlewares.input_sanitization_middleware",
+            "alpha.agents.middlewares.input_sanitization_middleware",
             InputSanitizationMiddleware=FakeMiddleware,
             neutralize_untrusted_tags=lambda value: value,
         ),
@@ -166,15 +166,15 @@ def test_build_subagent_runtime_middlewares_threads_app_config_to_llm_middleware
     # + 1 SubagentDateContextMiddleware
     # + 1 SystemMessageCoalescingMiddleware + 1 ToolReceiptMiddleware
     # (all enabled by default).
-    from agent_workspace.agents.middlewares.durable_context_middleware import DurableContextMiddleware
-    from agent_workspace.agents.middlewares.dynamic_context_middleware import SubagentDateContextMiddleware
-    from agent_workspace.agents.middlewares.safety_finish_reason_middleware import SafetyFinishReasonMiddleware
-    from agent_workspace.agents.middlewares.skill_activation_middleware import SkillActivationMiddleware
-    from agent_workspace.agents.middlewares.skill_tool_policy_middleware import SkillToolPolicyMiddleware
-    from agent_workspace.agents.middlewares.system_message_coalescing_middleware import SystemMessageCoalescingMiddleware
-    from agent_workspace.agents.middlewares.token_budget_middleware import TokenBudgetMiddleware
-    from agent_workspace.agents.middlewares.tool_output_budget_middleware import ToolOutputBudgetMiddleware
-    from agent_workspace.agents.middlewares.tool_receipt_middleware import ToolReceiptMiddleware
+    from alpha.agents.middlewares.durable_context_middleware import DurableContextMiddleware
+    from alpha.agents.middlewares.dynamic_context_middleware import SubagentDateContextMiddleware
+    from alpha.agents.middlewares.safety_finish_reason_middleware import SafetyFinishReasonMiddleware
+    from alpha.agents.middlewares.skill_activation_middleware import SkillActivationMiddleware
+    from alpha.agents.middlewares.skill_tool_policy_middleware import SkillToolPolicyMiddleware
+    from alpha.agents.middlewares.system_message_coalescing_middleware import SystemMessageCoalescingMiddleware
+    from alpha.agents.middlewares.token_budget_middleware import TokenBudgetMiddleware
+    from alpha.agents.middlewares.tool_output_budget_middleware import ToolOutputBudgetMiddleware
+    from alpha.agents.middlewares.tool_receipt_middleware import ToolReceiptMiddleware
 
     assert len(middlewares) == 19
     assert isinstance(middlewares[0], FakeMiddleware)  # InputSanitizationMiddleware stub
@@ -204,8 +204,8 @@ def test_build_subagent_runtime_middlewares_threads_app_config_to_llm_middleware
 
 
 def test_subagent_runtime_sandbox_does_not_own_lead_skill_projection() -> None:
-    from agent_workspace.extensions.registry import ExtensionRegistry
-    from agent_workspace.sandbox.middleware import SandboxMiddleware
+    from alpha.extensions.registry import ExtensionRegistry
+    from alpha.sandbox.middleware import SandboxMiddleware
 
     middlewares = build_subagent_runtime_middlewares(
         app_config=_make_app_config(),
@@ -221,8 +221,8 @@ def test_tool_progress_middleware_is_outer_relative_to_error_handling(monkeypatc
     # ToolProgressMiddleware must have a lower index than ToolErrorHandlingMiddleware
     # so that the framework's "first in list = outermost" rule makes it outer.
     # Only then can it read agent_workspace_tool_meta stamped by ToolErrorHandlingMiddleware.
-    from agent_workspace.agents.middlewares.tool_progress_middleware import ToolProgressMiddleware
-    from agent_workspace.config.tool_progress_config import ToolProgressConfig
+    from alpha.agents.middlewares.tool_progress_middleware import ToolProgressMiddleware
+    from alpha.config.tool_progress_config import ToolProgressConfig
 
     app_config = AppConfig(
         models=[
@@ -251,21 +251,21 @@ def test_tool_progress_middleware_is_outer_relative_to_error_handling(monkeypatc
 
 def test_middleware_ordering_guard_moved_to_declarative_constraints(monkeypatch: pytest.MonkeyPatch):
     """_build_runtime_middlewares no longer hand-validates ordering; the invariant is now
-    declared in agent_workspace.extensions.ordering (core_ordering_constraints / assert_ordering) and
+    declared in alpha.extensions.ordering (core_ordering_constraints / assert_ordering) and
     is checked once the composing builder merges extension contributions in (Task 9).
 
     This test previously monkeypatched SandboxAuditMiddleware to a ToolErrorHandlingMiddleware
     instance to force the wrong-order condition and asserted that the builder itself raised.
     That in-builder guard was deleted on purpose: validating here would check a stack that
     hasn't received extension contributions yet. Building under the same wrong-order condition
-    must no longer raise inside this builder; agent_workspace.extensions.ordering has the equivalent
+    must no longer raise inside this builder; alpha.extensions.ordering has the equivalent
     coverage (see test_extension_ordering.py and test_core_constraints_are_declared).
     """
-    from agent_workspace.agents.middlewares.tool_error_handling_middleware import (
+    from alpha.agents.middlewares.tool_error_handling_middleware import (
         ToolErrorHandlingMiddleware,
         build_lead_runtime_middlewares,
     )
-    from agent_workspace.config.tool_progress_config import ToolProgressConfig
+    from alpha.config.tool_progress_config import ToolProgressConfig
 
     _stub_runtime_middleware_imports(monkeypatch)
     # Override the SandboxAuditMiddleware stub with a real ToolErrorHandlingMiddleware so it
@@ -273,9 +273,9 @@ def test_middleware_ordering_guard_moved_to_declarative_constraints(monkeypatch:
     # ToolProgressMiddleware — the same wrong-order condition the deleted guard used to catch.
     monkeypatch.setitem(
         sys.modules,
-        "agent_workspace.agents.middlewares.sandbox_audit_middleware",
+        "alpha.agents.middlewares.sandbox_audit_middleware",
         _module(
-            "agent_workspace.agents.middlewares.sandbox_audit_middleware",
+            "alpha.agents.middlewares.sandbox_audit_middleware",
             SandboxAuditMiddleware=ToolErrorHandlingMiddleware,
         ),
     )
@@ -291,8 +291,8 @@ def test_middleware_ordering_guard_moved_to_declarative_constraints(monkeypatch:
 def test_lead_runtime_middlewares_thread_app_config_to_tool_error_handling(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setitem(
         sys.modules,
-        "agent_workspace.agents.middlewares.input_sanitization_middleware",
-        _module("agent_workspace.agents.middlewares.input_sanitization_middleware", InputSanitizationMiddleware=object),
+        "alpha.agents.middlewares.input_sanitization_middleware",
+        _module("alpha.agents.middlewares.input_sanitization_middleware", InputSanitizationMiddleware=object),
     )
     app_config = _make_app_config()
     _stub_runtime_middleware_imports(monkeypatch)
@@ -308,9 +308,9 @@ def test_lead_runtime_middlewares_pass_agent_skills_to_sandbox(
 ):
     monkeypatch.setitem(
         sys.modules,
-        "agent_workspace.agents.middlewares.input_sanitization_middleware",
+        "alpha.agents.middlewares.input_sanitization_middleware",
         _module(
-            "agent_workspace.agents.middlewares.input_sanitization_middleware",
+            "alpha.agents.middlewares.input_sanitization_middleware",
             InputSanitizationMiddleware=object,
             neutralize_untrusted_tags=lambda value: value,
         ),
@@ -336,9 +336,9 @@ def test_lead_runtime_middlewares_can_delegate_skill_projection_ownership(
 ):
     monkeypatch.setitem(
         sys.modules,
-        "agent_workspace.agents.middlewares.input_sanitization_middleware",
+        "alpha.agents.middlewares.input_sanitization_middleware",
         _module(
-            "agent_workspace.agents.middlewares.input_sanitization_middleware",
+            "alpha.agents.middlewares.input_sanitization_middleware",
             InputSanitizationMiddleware=object,
             neutralize_untrusted_tags=lambda value: value,
         ),
@@ -368,8 +368,8 @@ def test_build_lead_runtime_middlewares_orders_thread_data_before_uploads():
     first run of a thread when the directory has not been pre-created by the
     upload endpoint.
     """
-    from agent_workspace.agents.middlewares.thread_data_middleware import ThreadDataMiddleware
-    from agent_workspace.agents.middlewares.uploads_middleware import UploadsMiddleware
+    from alpha.agents.middlewares.thread_data_middleware import ThreadDataMiddleware
+    from alpha.agents.middlewares.uploads_middleware import UploadsMiddleware
 
     app_config = _make_app_config()
     middlewares = build_lead_runtime_middlewares(app_config=app_config)
@@ -391,16 +391,16 @@ def test_build_lead_runtime_middlewares_chain_order_matches_agents_md():
     DanglingToolCall) is caught. If a future refactor legitimately reorders
     these, update backend/AGENTS.md "Middleware Chain" in the same change.
     """
-    from agent_workspace.agents.middlewares.dangling_tool_call_middleware import DanglingToolCallMiddleware
-    from agent_workspace.agents.middlewares.input_sanitization_middleware import InputSanitizationMiddleware
-    from agent_workspace.agents.middlewares.llm_error_handling_middleware import LLMErrorHandlingMiddleware
-    from agent_workspace.agents.middlewares.read_before_write_middleware import ReadBeforeWriteMiddleware
-    from agent_workspace.agents.middlewares.sandbox_audit_middleware import SandboxAuditMiddleware
-    from agent_workspace.agents.middlewares.thread_data_middleware import ThreadDataMiddleware
-    from agent_workspace.agents.middlewares.tool_output_budget_middleware import ToolOutputBudgetMiddleware
-    from agent_workspace.agents.middlewares.tool_result_sanitization_middleware import ToolResultSanitizationMiddleware
-    from agent_workspace.agents.middlewares.uploads_middleware import UploadsMiddleware
-    from agent_workspace.sandbox.middleware import SandboxMiddleware
+    from alpha.agents.middlewares.dangling_tool_call_middleware import DanglingToolCallMiddleware
+    from alpha.agents.middlewares.input_sanitization_middleware import InputSanitizationMiddleware
+    from alpha.agents.middlewares.llm_error_handling_middleware import LLMErrorHandlingMiddleware
+    from alpha.agents.middlewares.read_before_write_middleware import ReadBeforeWriteMiddleware
+    from alpha.agents.middlewares.sandbox_audit_middleware import SandboxAuditMiddleware
+    from alpha.agents.middlewares.thread_data_middleware import ThreadDataMiddleware
+    from alpha.agents.middlewares.tool_output_budget_middleware import ToolOutputBudgetMiddleware
+    from alpha.agents.middlewares.tool_result_sanitization_middleware import ToolResultSanitizationMiddleware
+    from alpha.agents.middlewares.uploads_middleware import UploadsMiddleware
+    from alpha.sandbox.middleware import SandboxMiddleware
 
     app_config = _make_app_config()
     middlewares = build_lead_runtime_middlewares(app_config=app_config)
@@ -642,12 +642,12 @@ def test_subagent_runtime_middlewares_attach_deferred_filter_when_setup_has_name
     """A subagent built with deferred MCP tools gets DeferredToolFilterMiddleware, positioned before SafetyFinishReasonMiddleware (mirrors the lead ordering)."""
     from langchain_core.tools import tool as as_tool
 
-    from agent_workspace.agents.middlewares.deferred_tool_filter_middleware import DeferredToolFilterMiddleware
-    from agent_workspace.agents.middlewares.safety_finish_reason_middleware import SafetyFinishReasonMiddleware
-    from agent_workspace.agents.middlewares.skill_tool_policy_middleware import SkillToolPolicyMiddleware
-    from agent_workspace.agents.middlewares.tool_promotion_audit_middleware import DeferredToolPromotionAuditMiddleware
-    from agent_workspace.tools.builtins.tool_search import build_deferred_tool_setup
-    from agent_workspace.tools.mcp_metadata import tag_mcp_tool
+    from alpha.agents.middlewares.deferred_tool_filter_middleware import DeferredToolFilterMiddleware
+    from alpha.agents.middlewares.safety_finish_reason_middleware import SafetyFinishReasonMiddleware
+    from alpha.agents.middlewares.skill_tool_policy_middleware import SkillToolPolicyMiddleware
+    from alpha.agents.middlewares.tool_promotion_audit_middleware import DeferredToolPromotionAuditMiddleware
+    from alpha.tools.builtins.tool_search import build_deferred_tool_setup
+    from alpha.tools.mcp_metadata import tag_mcp_tool
 
     app_config = _make_app_config()
     _stub_runtime_middleware_imports(monkeypatch)
@@ -675,7 +675,7 @@ def test_subagent_runtime_middlewares_attach_deferred_filter_when_setup_has_name
 
 
 def test_subagent_runtime_middlewares_inject_configured_extension_middlewares(monkeypatch):
-    from agent_workspace.agents.middlewares.safety_finish_reason_middleware import SafetyFinishReasonMiddleware
+    from alpha.agents.middlewares.safety_finish_reason_middleware import SafetyFinishReasonMiddleware
 
     app_config = _make_app_config()
     app_config.extensions = ExtensionsConfig(middlewares=[f"{__name__}:ConfiguredSubagentMiddleware"])
@@ -693,9 +693,9 @@ def test_subagent_runtime_middlewares_inject_configured_extension_middlewares(mo
 
 
 def test_subagent_runtime_middlewares_place_mcp_routing_before_deferred_filter(monkeypatch):
-    from agent_workspace.agents.middlewares.deferred_tool_filter_middleware import DeferredToolFilterMiddleware
-    from agent_workspace.agents.middlewares.mcp_routing_middleware import McpRoutingMiddleware
-    from agent_workspace.tools.builtins.tool_search import DeferredToolSetup
+    from alpha.agents.middlewares.deferred_tool_filter_middleware import DeferredToolFilterMiddleware
+    from alpha.agents.middlewares.mcp_routing_middleware import McpRoutingMiddleware
+    from alpha.tools.builtins.tool_search import DeferredToolSetup
 
     app_config = _make_app_config()
     _stub_runtime_middleware_imports(monkeypatch)
@@ -711,9 +711,9 @@ def test_subagent_runtime_middlewares_place_mcp_routing_before_deferred_filter(m
 
 def test_subagent_runtime_middlewares_skip_deferred_filter_without_names(monkeypatch):
     """No deferred setup (disabled / no MCP tool) -> no DeferredToolFilterMiddleware."""
-    from agent_workspace.agents.middlewares.deferred_tool_filter_middleware import DeferredToolFilterMiddleware
-    from agent_workspace.agents.middlewares.tool_promotion_audit_middleware import DeferredToolPromotionAuditMiddleware
-    from agent_workspace.tools.builtins.tool_search import DeferredToolSetup
+    from alpha.agents.middlewares.deferred_tool_filter_middleware import DeferredToolFilterMiddleware
+    from alpha.agents.middlewares.tool_promotion_audit_middleware import DeferredToolPromotionAuditMiddleware
+    from alpha.tools.builtins.tool_search import DeferredToolSetup
 
     app_config = _make_app_config()
     _stub_runtime_middleware_imports(monkeypatch)
@@ -729,7 +729,7 @@ def test_subagent_runtime_middlewares_attach_loop_detection_when_enabled(monkeyp
     tool loop is broken instead of burning tokens until ``max_turns`` (#3875).
     ``loop_detection.enabled`` defaults to True, so the default subagent chain
     carries the guard. Phase 1 of #3875."""
-    from agent_workspace.agents.middlewares.loop_detection_middleware import LoopDetectionMiddleware
+    from alpha.agents.middlewares.loop_detection_middleware import LoopDetectionMiddleware
 
     app_config = _make_app_config()
     _stub_runtime_middleware_imports(monkeypatch)
@@ -743,8 +743,8 @@ def test_subagent_runtime_middlewares_attach_loop_detection_when_enabled(monkeyp
 def test_subagent_runtime_middlewares_omit_loop_detection_when_disabled(monkeypatch):
     """``loop_detection.enabled=False`` must drop the guard from the subagent
     chain, mirroring the lead's gate (``lead_agent/agent.py``)."""
-    from agent_workspace.agents.middlewares.loop_detection_middleware import LoopDetectionMiddleware
-    from agent_workspace.config.loop_detection_config import LoopDetectionConfig
+    from alpha.agents.middlewares.loop_detection_middleware import LoopDetectionMiddleware
+    from alpha.config.loop_detection_config import LoopDetectionConfig
 
     app_config = _make_app_config().model_copy(update={"loop_detection": LoopDetectionConfig(enabled=False)})
     _stub_runtime_middleware_imports(monkeypatch)
@@ -761,8 +761,8 @@ def test_subagent_runtime_middlewares_place_loop_detection_before_safety_finish(
     later) executes first — the placement its docstring requires and the lead
     chain (``lead_agent/agent.py``) uses. The assertion pins registration order,
     not execution order."""
-    from agent_workspace.agents.middlewares.loop_detection_middleware import LoopDetectionMiddleware
-    from agent_workspace.agents.middlewares.safety_finish_reason_middleware import SafetyFinishReasonMiddleware
+    from alpha.agents.middlewares.loop_detection_middleware import LoopDetectionMiddleware
+    from alpha.agents.middlewares.safety_finish_reason_middleware import SafetyFinishReasonMiddleware
 
     app_config = _make_app_config()
     _stub_runtime_middleware_imports(monkeypatch)
@@ -785,8 +785,8 @@ def test_subagent_runtime_middlewares_attach_durable_context_before_summarizatio
     context layer must use the same skill settings as the lead chain and run
     before summarization.
     """
-    from agent_workspace.agents.middlewares import summarization_middleware as sm
-    from agent_workspace.agents.middlewares.durable_context_middleware import DurableContextMiddleware
+    from alpha.agents.middlewares import summarization_middleware as sm
+    from alpha.agents.middlewares.durable_context_middleware import DurableContextMiddleware
 
     sentinel = object()
     captured: dict[str, object] = {}
@@ -810,7 +810,7 @@ def test_subagent_runtime_middlewares_attach_durable_context_before_summarizatio
 
     # summarization is enabled by default False; flip it on so the factory path
     # is taken (the factory early-returns None when disabled).
-    from agent_workspace.config.summarization_config import SummarizationConfig
+    from alpha.config.summarization_config import SummarizationConfig
 
     app_config = _make_app_config().model_copy(update={"summarization": SummarizationConfig(enabled=True)})
     monkeypatch.setattr(sm, "create_summarization_middleware", fake_create_summarization_middleware)
@@ -853,11 +853,11 @@ def test_subagent_compaction_injects_summary_before_assistant_tool_tail(monkeypa
     from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
     from langchain_core.outputs import ChatGeneration, ChatResult
 
-    from agent_workspace.agents.middlewares.durable_context_middleware import DurableContextMiddleware
-    from agent_workspace.agents.middlewares.summarization_middleware import AgentWorkspaceSummarizationMiddleware
-    from agent_workspace.agents.middlewares.system_message_coalescing_middleware import SystemMessageCoalescingMiddleware
-    from agent_workspace.agents.thread_state import ThreadState
-    from agent_workspace.config.summarization_config import ContextSize, SummarizationConfig
+    from alpha.agents.middlewares.durable_context_middleware import DurableContextMiddleware
+    from alpha.agents.middlewares.summarization_middleware import AgentWorkspaceSummarizationMiddleware
+    from alpha.agents.middlewares.system_message_coalescing_middleware import SystemMessageCoalescingMiddleware
+    from alpha.agents.thread_state import ThreadState
+    from alpha.config.summarization_config import ContextSize, SummarizationConfig
 
     class _StaticModel(BaseChatModel):
         text: str
@@ -888,7 +888,7 @@ def test_subagent_compaction_injects_summary_before_assistant_tool_tail(monkeypa
     summary_model = _StaticModel(text="COMPRESSED_SUBAGENT_HISTORY")
     strict_model = _StaticModel(text="final answer", require_durable_summary=True)
     monkeypatch.setattr(
-        "agent_workspace.agents.middlewares.summarization_middleware.create_chat_model",
+        "alpha.agents.middlewares.summarization_middleware.create_chat_model",
         lambda **kwargs: summary_model,
     )
 
@@ -950,9 +950,9 @@ def test_subagent_chain_coalesces_durable_authority_system_message(monkeypatch):
     from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
     from langchain_core.outputs import ChatGeneration, ChatResult
 
-    from agent_workspace.agents.middlewares.durable_context_middleware import DurableContextMiddleware
-    from agent_workspace.agents.middlewares.system_message_coalescing_middleware import SystemMessageCoalescingMiddleware
-    from agent_workspace.agents.thread_state import ThreadState
+    from alpha.agents.middlewares.durable_context_middleware import DurableContextMiddleware
+    from alpha.agents.middlewares.system_message_coalescing_middleware import SystemMessageCoalescingMiddleware
+    from alpha.agents.thread_state import ThreadState
 
     seen: dict[str, list[int]] = {}
 
@@ -1008,9 +1008,9 @@ def test_subagent_chain_injects_date_without_memory_and_coalesces_for_strict_pro
     from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
     from langchain_core.outputs import ChatGeneration, ChatResult
 
-    from agent_workspace.agents.middlewares import dynamic_context_middleware as dynamic_context
-    from agent_workspace.agents.middlewares.system_message_coalescing_middleware import SystemMessageCoalescingMiddleware
-    from agent_workspace.agents.thread_state import ThreadState
+    from alpha.agents.middlewares import dynamic_context_middleware as dynamic_context
+    from alpha.agents.middlewares.system_message_coalescing_middleware import SystemMessageCoalescingMiddleware
+    from alpha.agents.thread_state import ThreadState
 
     class _FrozenDateTime:
         @classmethod
@@ -1053,7 +1053,7 @@ def test_subagent_chain_injects_date_without_memory_and_coalesces_for_strict_pro
     app_config = _make_app_config()
     assert app_config.memory.injection_enabled is True
     monkeypatch.setattr(dynamic_context, "datetime", _FrozenDateTime)
-    monkeypatch.setattr("agent_workspace.agents.lead_agent.prompt._get_memory_context", _unexpected_memory_lookup)
+    monkeypatch.setattr("alpha.agents.lead_agent.prompt._get_memory_context", _unexpected_memory_lookup)
 
     runtime_middlewares = build_subagent_runtime_middlewares(
         app_config=app_config,
@@ -1081,7 +1081,7 @@ def test_subagent_runtime_middlewares_omit_summarization_when_factory_returns_no
     """When ``summarization.enabled`` is False the shared factory returns None and
     the subagent chain must NOT carry a summarization middleware — the default
     state, since SummarizationConfig.enabled defaults to False."""
-    from agent_workspace.agents.middlewares.summarization_middleware import AgentWorkspaceSummarizationMiddleware
+    from alpha.agents.middlewares.summarization_middleware import AgentWorkspaceSummarizationMiddleware
 
     app_config = _make_app_config()  # summarization.enabled defaults to False
     _stub_runtime_middleware_imports(monkeypatch)
@@ -1107,10 +1107,10 @@ def test_lead_runtime_chain_finds_historical_uploads_under_lazy_init_false(tmp_p
     from langchain_core.messages import HumanMessage
     from langgraph.runtime import Runtime
 
-    from agent_workspace.agents.middlewares.thread_data_middleware import ThreadDataMiddleware
-    from agent_workspace.agents.middlewares.uploads_middleware import UploadsMiddleware
-    from agent_workspace.config.paths import Paths
-    from agent_workspace.runtime.user_context import get_effective_user_id
+    from alpha.agents.middlewares.thread_data_middleware import ThreadDataMiddleware
+    from alpha.agents.middlewares.uploads_middleware import UploadsMiddleware
+    from alpha.config.paths import Paths
+    from alpha.runtime.user_context import get_effective_user_id
 
     thread_id = "thread-historical-files"
     user_id = get_effective_user_id()
@@ -1163,13 +1163,13 @@ def test_subagent_summarization_fires_mid_run_and_produces_usable_result(monkeyp
     from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage
     from langchain_core.outputs import ChatGeneration, ChatResult
 
-    from agent_workspace.agents.middlewares.summarization_middleware import (
+    from alpha.agents.middlewares.summarization_middleware import (
         AgentWorkspaceSummarizationMiddleware,
         create_summarization_middleware,
     )
-    from agent_workspace.agents.thread_state import ThreadState
-    from agent_workspace.config.memory_config import MemoryConfig
-    from agent_workspace.config.summarization_config import ContextSize, SummarizationConfig
+    from alpha.agents.thread_state import ThreadState
+    from alpha.config.memory_config import MemoryConfig
+    from alpha.config.summarization_config import ContextSize, SummarizationConfig
 
     # A model that always emits a plain AIMessage — no tools, so the run is a
     # single turn but the input already exceeds the trigger threshold, forcing
@@ -1191,7 +1191,7 @@ def test_subagent_summarization_fires_mid_run_and_produces_usable_result(monkeyp
     # The factory resolves its summary model via create_chat_model; point it at
     # the same static model so no real provider is contacted.
     monkeypatch.setattr(
-        "agent_workspace.agents.middlewares.summarization_middleware.create_chat_model",
+        "alpha.agents.middlewares.summarization_middleware.create_chat_model",
         lambda **kwargs: static_model,
     )
 
@@ -1252,8 +1252,8 @@ def test_subagent_summarization_fires_mid_run_and_produces_usable_result(monkeyp
 
 def test_build_lead_runtime_middlewares_passes_read_before_write_config():
     """The gate's model-bound payload elision is configured from app_config.read_before_write."""
-    from agent_workspace.agents.middlewares.read_before_write_middleware import ReadBeforeWriteMiddleware
-    from agent_workspace.config.read_before_write_config import ReadBeforeWriteConfig
+    from alpha.agents.middlewares.read_before_write_middleware import ReadBeforeWriteMiddleware
+    from alpha.config.read_before_write_config import ReadBeforeWriteConfig
 
     app_config = _make_app_config().model_copy(update={"read_before_write": ReadBeforeWriteConfig(elide_min_chars=321)})
     middlewares = build_lead_runtime_middlewares(app_config=app_config)

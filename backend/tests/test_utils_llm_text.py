@@ -1,8 +1,8 @@
-"""Tests for ``agent_workspace.utils.llm_text``."""
+"""Tests for ``alpha.utils.llm_text``."""
 
 from __future__ import annotations
 
-from agent_workspace.utils.llm_text import (
+from alpha.utils.llm_text import (
     extract_response_text,
     strip_markdown_code_fence,
     strip_think_blocks,

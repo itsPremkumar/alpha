@@ -5,13 +5,13 @@ import pytest
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel
 
-from agent_workspace.config.extensions_config import ExtensionsConfig, McpServerConfig
-from agent_workspace.mcp.tasks.runtime import (
+from alpha.config.extensions_config import ExtensionsConfig, McpServerConfig
+from alpha.mcp.tasks.runtime import (
     McpTaskConfigurationError,
     set_mcp_task_config_snapshot,
     set_mcp_task_submitter,
 )
-from agent_workspace.mcp.tools import _configure_task_tools_for_server, get_mcp_tools
+from alpha.mcp.tools import _configure_task_tools_for_server, get_mcp_tools
 
 
 class _SubmitArgs(BaseModel):
@@ -193,7 +193,7 @@ async def test_tool_reload_rejects_task_server_runtime_config_drift() -> None:
     try:
         with (
             patch(
-                "agent_workspace.mcp.tools.ExtensionsConfig.from_file",
+                "alpha.mcp.tools.ExtensionsConfig.from_file",
                 return_value=current,
             ),
             pytest.raises(McpTaskConfigurationError, match="reports.*restart"),

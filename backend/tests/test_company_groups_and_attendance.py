@@ -10,10 +10,10 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.gateway.routers.company import router
-from agent_workspace.company.attendance import AttendanceStatus
-from agent_workspace.company.models import OrgArchetype
-from agent_workspace.company.organization import get_autonomous_company_engine
-from agent_workspace.tools.builtins.company_tool import company_tool
+from alpha.company.attendance import AttendanceStatus
+from alpha.company.models import OrgArchetype
+from alpha.company.organization import get_autonomous_company_engine
+from alpha.tools.builtins.company_tool import company_tool
 
 
 @pytest.fixture

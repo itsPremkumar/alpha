@@ -9,17 +9,17 @@ import pytest
 import app.mcp_tasks.service as service_module
 from app.mcp_tasks.errors import PermanentNotificationError
 from app.mcp_tasks.service import McpTaskService
-from agent_workspace.mcp.tasks import (
+from alpha.mcp.tasks import (
     McpTaskDriverRegistry,
     TaskSnapshot,
     TaskStatus,
     TaskSubmission,
     TaskSubmitRequest,
 )
-from agent_workspace.mcp.tasks.ordinary import McpTaskProtocolError
-from agent_workspace.persistence.mcp_tasks import DuplicateMcpRemoteTaskError
-from agent_workspace.runtime.runs.manager import ConflictError
-from agent_workspace.runtime.runs.schemas import RunStatus
+from alpha.mcp.tasks.ordinary import McpTaskProtocolError
+from alpha.persistence.mcp_tasks import DuplicateMcpRemoteTaskError
+from alpha.runtime.runs.manager import ConflictError
+from alpha.runtime.runs.schemas import RunStatus
 
 
 class FakeRepository:

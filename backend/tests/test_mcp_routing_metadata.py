@@ -8,8 +8,8 @@ import pytest
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
-from agent_workspace.config.extensions_config import ExtensionsConfig
-from agent_workspace.tools.mcp_metadata import MCP_TOOL_METADATA_KEY, MCP_TOOL_ROUTING_METADATA_KEY, get_mcp_routing, tag_mcp_routing, tag_mcp_tool
+from alpha.config.extensions_config import ExtensionsConfig
+from alpha.tools.mcp_metadata import MCP_TOOL_METADATA_KEY, MCP_TOOL_ROUTING_METADATA_KEY, get_mcp_routing, tag_mcp_routing, tag_mcp_tool
 
 
 class _Args(BaseModel):
@@ -75,7 +75,7 @@ def test_get_mcp_routing_returns_none_for_off_mode():
 @pytest.mark.asyncio
 @pytest.mark.parametrize("transport", ["http", "stdio"])
 async def test_get_mcp_tools_tags_effective_routing_metadata(transport: str):
-    from agent_workspace.mcp.tools import get_mcp_tools
+    from alpha.mcp.tools import get_mcp_tools
 
     tool = _tool("postgres_query")
     extensions_config = ExtensionsConfig.model_validate(
@@ -104,13 +104,13 @@ async def test_get_mcp_tools_tags_effective_routing_metadata(transport: str):
     )
 
     with (
-        patch("agent_workspace.mcp.tools.ExtensionsConfig.from_file", return_value=extensions_config),
+        patch("alpha.mcp.tools.ExtensionsConfig.from_file", return_value=extensions_config),
         patch(
-            "agent_workspace.mcp.tools.build_servers_config",
+            "alpha.mcp.tools.build_servers_config",
             return_value={"postgres": {"transport": transport, "url": "http://localhost:8000/mcp", "command": "npx"}},
         ),
-        patch("agent_workspace.mcp.tools.get_initial_oauth_headers", return_value={}),
-        patch("agent_workspace.mcp.tools.build_oauth_tool_interceptor", return_value=None),
+        patch("alpha.mcp.tools.get_initial_oauth_headers", return_value={}),
+        patch("alpha.mcp.tools.build_oauth_tool_interceptor", return_value=None),
         patch("langchain_mcp_adapters.client.MultiServerMCPClient") as MockClient,
     ):
         MockClient.return_value.get_tools = AsyncMock(return_value=[tool])

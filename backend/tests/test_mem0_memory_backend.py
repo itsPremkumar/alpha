@@ -8,8 +8,8 @@ import threading
 import httpx
 import pytest
 
-from agent_workspace.agents.memory.backends.mem0.client import Mem0APIError, Mem0AuthError, Mem0Client
-from agent_workspace.agents.memory.backends.mem0.config import Mem0Config
+from alpha.agents.memory.backends.mem0.client import Mem0APIError, Mem0AuthError, Mem0Client
+from alpha.agents.memory.backends.mem0.config import Mem0Config
 
 
 class TestMem0Config:
@@ -219,7 +219,7 @@ class TestMem0Client:
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage  # noqa: E402
 
-from agent_workspace.agents.memory.backends.mem0.message_filtering import (  # noqa: E402
+from alpha.agents.memory.backends.mem0.message_filtering import (  # noqa: E402
     extract_message_text,
     filter_messages_for_memory,
 )
@@ -277,7 +277,7 @@ class TestMessageFiltering:
 
 from typing import Any  # noqa: E402
 
-from agent_workspace.agents.memory.backends.mem0.mem0_manager import Mem0Manager  # noqa: E402
+from alpha.agents.memory.backends.mem0.mem0_manager import Mem0Manager  # noqa: E402
 
 
 class FakeMem0Client:
@@ -344,7 +344,7 @@ class TestMem0ManagerConstruction:
         monkeypatch.setenv("MEM0_API_KEY", "k")
         fake = FakeMem0Client()
         monkeypatch.setattr(
-            "agent_workspace.agents.memory.backends.mem0.mem0_manager.Mem0Client",
+            "alpha.agents.memory.backends.mem0.mem0_manager.Mem0Client",
             lambda **kwargs: fake,
         )
         Mem0Manager.from_config({}, mode="middleware")
@@ -354,7 +354,7 @@ class TestMem0ManagerConstruction:
         monkeypatch.setenv("MEM0_API_KEY", "k")
         fake = FakeMem0Client()
         monkeypatch.setattr(
-            "agent_workspace.agents.memory.backends.mem0.mem0_manager.Mem0Client",
+            "alpha.agents.memory.backends.mem0.mem0_manager.Mem0Client",
             lambda **kwargs: fake,
         )
         mgr = Mem0Manager.from_config({"startup_policy": "tolerate"}, mode="tool")
@@ -417,7 +417,7 @@ class TestMem0ManagerAdd:
         assert any("mem0" in r.message for r in caplog.records)
 
     def test_add_write_error_raise_policy(self) -> None:
-        from agent_workspace.agents.memory.manager import MemoryManagerError
+        from alpha.agents.memory.manager import MemoryManagerError
 
         mgr, fake = _manager({"failure_policy": {"write": "raise"}})
         fake.error = Mem0APIError("server down")
@@ -482,7 +482,7 @@ class TestMem0ManagerGetContext:
         assert mgr.get_context("u1") == ""
 
     def test_read_error_fail_closed_raises(self) -> None:
-        from agent_workspace.agents.memory.manager import MemoryReadError
+        from alpha.agents.memory.manager import MemoryReadError
 
         mgr, fake = _manager({"failure_policy": {"read": "fail_closed"}})
         fake.error = Mem0APIError("down")
@@ -653,7 +653,7 @@ class TestMem0ManagerManage:
 
 class TestMem0Discovery:
     def test_scan_backends_registers_mem0(self) -> None:
-        import agent_workspace.agents.memory.manager as manager_module
+        import alpha.agents.memory.manager as manager_module
 
         manager_module._backends_cache = None
         try:
@@ -663,8 +663,8 @@ class TestMem0Discovery:
         assert registry["mem0"] is Mem0Manager
 
     def test_factory_resolves_mem0(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from agent_workspace.agents.memory.manager import get_memory_manager, reset_memory_manager
-        from agent_workspace.config.memory_config import MemoryConfig, get_memory_config, set_memory_config
+        from alpha.agents.memory.manager import get_memory_manager, reset_memory_manager
+        from alpha.config.memory_config import MemoryConfig, get_memory_config, set_memory_config
 
         monkeypatch.setenv("MEM0_API_KEY", "k")
         monkeypatch.setattr(Mem0Client, "ping", lambda self: None)

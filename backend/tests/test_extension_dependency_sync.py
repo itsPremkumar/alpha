@@ -79,7 +79,7 @@ def test_root_makefile_exposes_extension_management_commands() -> None:
     makefile = REPO_ROOT / "Makefile"
 
     install = _make_recipe(makefile, "extension-install")
-    assert "agent_workspace extensions install" in install
+    assert "alpha extensions install" in install
     assert "--source-env __agent_workspace_extension_source__" in install
     assert "AGENT_WORKSPACE_EXTENSION_SOURCE" not in install
     assert "$(SOURCE)" not in install
@@ -87,7 +87,7 @@ def test_root_makefile_exposes_extension_management_commands() -> None:
     assert "--yes" not in install
 
     upgrade = _make_recipe(makefile, "extension-upgrade")
-    assert "agent_workspace extensions upgrade" in upgrade
+    assert "alpha extensions upgrade" in upgrade
     assert "--source-env __agent_workspace_extension_source__" in upgrade
     assert "AGENT_WORKSPACE_EXTENSION_SOURCE" not in upgrade
     assert "$(SOURCE)" not in upgrade
@@ -95,10 +95,10 @@ def test_root_makefile_exposes_extension_management_commands() -> None:
     assert "--yes" not in upgrade
 
     for target, command in (
-        ("extension-list", "agent_workspace extensions list"),
-        ("extension-enable", "agent_workspace extensions enable"),
-        ("extension-disable", "agent_workspace extensions disable"),
-        ("extension-remove", "agent_workspace extensions remove"),
+        ("extension-list", "alpha extensions list"),
+        ("extension-enable", "alpha extensions enable"),
+        ("extension-disable", "alpha extensions disable"),
+        ("extension-remove", "alpha extensions remove"),
     ):
         recipe = _make_recipe(makefile, target)
         assert command in recipe

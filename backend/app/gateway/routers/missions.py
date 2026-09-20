@@ -20,7 +20,7 @@ class MissionCreateRequest(BaseModel):
 
 def _owner(request: Request) -> str:
     try:
-        from agent_workspace.runtime.user_context import get_effective_user_id
+        from alpha.runtime.user_context import get_effective_user_id
 
         return get_effective_user_id() or "local-user"
     except Exception:
@@ -33,7 +33,7 @@ async def create_mission(body: MissionCreateRequest, request: Request) -> dict:
     owner = _owner(request)
 
     def _do():
-        from agent_workspace.missions import get_mission_store
+        from alpha.missions import get_mission_store
 
         m = get_mission_store().create(owner, body.objective, constraints=body.constraints, budget=body.budget)
         return m.to_dict()
@@ -47,7 +47,7 @@ async def list_missions(request: Request, status: str | None = None) -> dict:
     owner = _owner(request)
 
     def _do():
-        from agent_workspace.missions import get_mission_store
+        from alpha.missions import get_mission_store
 
         rows = get_mission_store().list(owner=owner, status=status)
         return {"missions": [m.to_dict() for m in rows], "count": len(rows)}
@@ -61,7 +61,7 @@ async def get_mission(mission_id: str, request: Request) -> dict:
     owner = _owner(request)
 
     def _do():
-        from agent_workspace.missions import get_mission_store
+        from alpha.missions import get_mission_store
 
         m = get_mission_store().get(mission_id)
         if m is None or m.owner != owner:
@@ -80,7 +80,7 @@ async def transition_mission(mission_id: str, request: Request, to: str = "activ
     owner = _owner(request)
 
     def _do():
-        from agent_workspace.missions import get_mission_store
+        from alpha.missions import get_mission_store
 
         store = get_mission_store()
         m = store.get(mission_id)
@@ -106,7 +106,7 @@ async def attach_thread(mission_id: str, body: AttachThreadRequest, request: Req
     owner = _owner(request)
 
     def _do():
-        from agent_workspace.missions import get_mission_store
+        from alpha.missions import get_mission_store
 
         store = get_mission_store()
         m = store.get(mission_id)

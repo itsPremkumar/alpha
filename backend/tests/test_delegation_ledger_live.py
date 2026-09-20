@@ -23,9 +23,9 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMe
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.runtime import Runtime
 
-from agent_workspace.agents.middlewares.durable_context_middleware import DurableContextMiddleware
-from agent_workspace.client import AgentWorkspaceClient, StreamEvent
-from agent_workspace.config.app_config import reload_app_config, reset_app_config, set_app_config
+from alpha.agents.middlewares.durable_context_middleware import DurableContextMiddleware
+from alpha.client import AgentWorkspaceClient, StreamEvent
+from alpha.config.app_config import reload_app_config, reset_app_config, set_app_config
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _ROOT_CONFIG = _REPO_ROOT / "config.yaml"
@@ -104,21 +104,21 @@ def live_config_path(tmp_path):
 @pytest.fixture
 def real_subagent_executor():
     """Undo tests/conftest.py's executor mock for this explicit live test."""
-    original_executor_module = sys.modules.get("agent_workspace.subagents.executor")
+    original_executor_module = sys.modules.get("alpha.subagents.executor")
     original_subagent_attrs: dict[str, Any] = {}
     original_task_tool_attrs: dict[str, Any] = {}
 
-    import agent_workspace.subagents as subagents_pkg
+    import alpha.subagents as subagents_pkg
 
     for name in ("SubagentExecutor", "SubagentResult"):
         original_subagent_attrs[name] = getattr(subagents_pkg, name, None)
 
-    sys.modules.pop("agent_workspace.subagents.executor", None)
-    executor_module = importlib.import_module("agent_workspace.subagents.executor")
+    sys.modules.pop("alpha.subagents.executor", None)
+    executor_module = importlib.import_module("alpha.subagents.executor")
     subagents_pkg.SubagentExecutor = executor_module.SubagentExecutor
     subagents_pkg.SubagentResult = executor_module.SubagentResult
 
-    task_tool_module = sys.modules.get("agent_workspace.tools.builtins.task_tool")
+    task_tool_module = sys.modules.get("alpha.tools.builtins.task_tool")
     if task_tool_module is not None:
         for name in (
             "SubagentExecutor",
@@ -133,9 +133,9 @@ def real_subagent_executor():
     yield
 
     if original_executor_module is not None:
-        sys.modules["agent_workspace.subagents.executor"] = original_executor_module
+        sys.modules["alpha.subagents.executor"] = original_executor_module
     else:
-        sys.modules.pop("agent_workspace.subagents.executor", None)
+        sys.modules.pop("alpha.subagents.executor", None)
     for name, value in original_subagent_attrs.items():
         setattr(subagents_pkg, name, value)
     if task_tool_module is not None:

@@ -86,10 +86,10 @@ def openai_chat_response(model: str, text: str, *, thread_id: str) -> dict[str, 
         "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
         "object": "chat.completion",
         "created": created,
-        "model": model or "agent_workspace",
+        "model": model or "alpha",
         "choices": [{"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}],
         "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-        "system_fingerprint": f"agent_workspace:{thread_id}",
+        "system_fingerprint": f"alpha:{thread_id}",
     }
 
 

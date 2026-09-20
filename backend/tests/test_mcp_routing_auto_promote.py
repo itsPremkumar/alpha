@@ -9,12 +9,12 @@ from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool as as_tool
 
-from agent_workspace.agents.middlewares.deferred_tool_filter_middleware import DeferredToolFilterMiddleware
-from agent_workspace.agents.middlewares.mcp_routing_middleware import McpRoutingMiddleware, assert_mcp_routing_before_deferred_filter
-from agent_workspace.agents.thread_state import ThreadState, merge_promoted
-from agent_workspace.tools.builtins.tool_search import assemble_deferred_tools, build_mcp_routing_middleware
-from agent_workspace.tools.mcp_metadata import tag_mcp_routing, tag_mcp_tool
-from agent_workspace.utils.messages import ORIGINAL_USER_CONTENT_KEY
+from alpha.agents.middlewares.deferred_tool_filter_middleware import DeferredToolFilterMiddleware
+from alpha.agents.middlewares.mcp_routing_middleware import McpRoutingMiddleware, assert_mcp_routing_before_deferred_filter
+from alpha.agents.thread_state import ThreadState, merge_promoted
+from alpha.tools.builtins.tool_search import assemble_deferred_tools, build_mcp_routing_middleware
+from alpha.tools.mcp_metadata import tag_mcp_routing, tag_mcp_tool
+from alpha.utils.messages import ORIGINAL_USER_CONTENT_KEY
 
 
 class _Recorder:

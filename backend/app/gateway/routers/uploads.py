@@ -13,11 +13,11 @@ from pydantic import BaseModel, Field
 
 from app.gateway.authz import SandboxRequestLease, require_permission, try_acquire_sandbox_for_request
 from app.gateway.deps import get_config
-from agent_workspace.config.app_config import AppConfig
-from agent_workspace.config.paths import get_paths
-from agent_workspace.runtime.user_context import get_effective_user_id
-from agent_workspace.sandbox.sandbox_provider import SandboxProvider, get_sandbox_provider
-from agent_workspace.uploads.manager import (
+from alpha.config.app_config import AppConfig
+from alpha.config.paths import get_paths
+from alpha.runtime.user_context import get_effective_user_id
+from alpha.sandbox.sandbox_provider import SandboxProvider, get_sandbox_provider
+from alpha.uploads.manager import (
     UPLOAD_STAGING_PREFIX,
     UPLOAD_STAGING_SUFFIX,
     PathTraversalError,
@@ -33,9 +33,9 @@ from agent_workspace.uploads.manager import (
     upload_virtual_path,
     validate_upload_destination,
 )
-from agent_workspace.utils.file_conversion import CONVERTIBLE_EXTENSIONS, convert_file_to_markdown
-from agent_workspace.utils.file_io import run_file_io
-from agent_workspace.utils.thread_id import ThreadId
+from alpha.utils.file_conversion import CONVERTIBLE_EXTENSIONS, convert_file_to_markdown
+from alpha.utils.file_io import run_file_io
+from alpha.utils.thread_id import ThreadId
 
 logger = logging.getLogger(__name__)
 

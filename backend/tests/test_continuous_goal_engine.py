@@ -3,12 +3,12 @@
 from pathlib import Path
 from uuid import uuid4
 
-from agent_workspace.harness.continuous.runner import ContinuousGoalRunner
-from agent_workspace.harness.continuous.store import GoalStore
-from agent_workspace.tools.builtins.canvas_widget_tool import canvas_widget_tool
-from agent_workspace.tools.builtins.goal_engine_tool import goal_engine_tool
-from agent_workspace.tools.builtins.trajectory_audit_tool import trajectory_audit_tool
-from agent_workspace.trajectory.store import TrajectoryStore
+from alpha.harness.continuous.runner import ContinuousGoalRunner
+from alpha.harness.continuous.store import GoalStore
+from alpha.tools.builtins.canvas_widget_tool import canvas_widget_tool
+from alpha.tools.builtins.goal_engine_tool import goal_engine_tool
+from alpha.tools.builtins.trajectory_audit_tool import trajectory_audit_tool
+from alpha.trajectory.store import TrajectoryStore
 
 
 def test_continuous_goal_runner_autonomous_lifecycle(tmp_path: Path):

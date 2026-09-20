@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from agent_workspace.runtime.events.store.jsonl import JsonlRunEventStore
+from alpha.runtime.events.store.jsonl import JsonlRunEventStore
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -178,7 +178,7 @@ async def test_put_batch_failure_rolls_back_no_partial_records(monkeypatch):
     """A failed append is rolled back before the re-buffered batch is retried."""
     import json
 
-    from agent_workspace.runtime.events.store import jsonl as jsonl_mod
+    from alpha.runtime.events.store import jsonl as jsonl_mod
 
     real_append = jsonl_mod.JsonlRunEventStore._append_records
 
@@ -231,7 +231,7 @@ async def test_put_batch_failure_rolls_back_no_partial_records(monkeypatch):
 @pytest.mark.anyio
 async def test_mixed_run_batch_failure_restores_all_run_files(monkeypatch):
     """A failed mixed-run append restores prior bytes in every touched file."""
-    from agent_workspace.runtime.events.store import jsonl as jsonl_mod
+    from alpha.runtime.events.store import jsonl as jsonl_mod
 
     real_append = jsonl_mod.JsonlRunEventStore._append_records
     append_calls = 0
@@ -271,7 +271,7 @@ async def test_mixed_run_batch_failure_restores_all_run_files(monkeypatch):
 @pytest.mark.anyio
 async def test_mixed_run_batch_logs_error_when_rollback_fails(monkeypatch, caplog):
     """A rollback failure must make possible retry duplicates visible to operators."""
-    from agent_workspace.runtime.events.store import jsonl as jsonl_mod
+    from alpha.runtime.events.store import jsonl as jsonl_mod
 
     real_append = jsonl_mod.JsonlRunEventStore._append_records
     real_unlink = Path.unlink
@@ -372,7 +372,7 @@ async def test_db_put_batch_rejects_mixed_thread_ids():
     """DbRunEventStore.put_batch must raise ValueError for cross-thread batches."""
     from unittest.mock import MagicMock
 
-    from agent_workspace.runtime.events.store.db import DbRunEventStore
+    from alpha.runtime.events.store.db import DbRunEventStore
 
     mock_sf = MagicMock()
     store = DbRunEventStore(session_factory=mock_sf)

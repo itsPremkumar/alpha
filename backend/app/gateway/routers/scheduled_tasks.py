@@ -18,18 +18,18 @@ from app.gateway.deps import (
     get_scheduled_task_service,
     get_thread_store,
 )
-from agent_workspace.config.agents_config import AGENT_NAME_PATTERN, load_agent_config
-from agent_workspace.persistence.scheduled_tasks import ActiveScheduledTaskMutationConflict
-from agent_workspace.scheduler.schedules import (
+from alpha.config.agents_config import AGENT_NAME_PATTERN, load_agent_config
+from alpha.persistence.scheduled_tasks import ActiveScheduledTaskMutationConflict
+from alpha.scheduler.schedules import (
     MAX_INTERVAL_SECONDS,
     normalize_cron_expression,
     parse_interval_seconds,
     validate_timezone,
 )
-from agent_workspace.scheduler.schedules import (
+from alpha.scheduler.schedules import (
     next_run_at as compute_next_run_at,
 )
-from agent_workspace.utils.thread_id import ThreadId
+from alpha.utils.thread_id import ThreadId
 
 router = APIRouter(prefix="/api", tags=["scheduled-tasks"])
 

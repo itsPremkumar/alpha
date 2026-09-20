@@ -5,9 +5,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from agent_workspace.config.paths import Paths
+from alpha.config.paths import Paths
 
-present_file_tool_module = importlib.import_module("agent_workspace.tools.builtins.present_file_tool")
+present_file_tool_module = importlib.import_module("alpha.tools.builtins.present_file_tool")
 
 
 def _make_runtime(outputs_path: str) -> SimpleNamespace:

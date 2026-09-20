@@ -5,12 +5,12 @@ from unittest.mock import MagicMock
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-from agent_workspace.agents.middlewares.model_length_finish_reason_middleware import (
+from alpha.agents.middlewares.model_length_finish_reason_middleware import (
     MODEL_LENGTH_CAPPED_STOP_REASON,
     ModelLengthFinishReasonMiddleware,
 )
 
-_MW_LOGGER = "agent_workspace.agents.middlewares.model_length_finish_reason_middleware"
+_MW_LOGGER = "alpha.agents.middlewares.model_length_finish_reason_middleware"
 
 
 def _runtime(run_id: str = "run-1"):

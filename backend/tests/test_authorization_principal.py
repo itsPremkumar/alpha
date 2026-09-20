@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from agent_workspace.authz.principal import build_principal_from_context
+from alpha.authz.principal import build_principal_from_context
 
 
 class TestPrincipalBuilderFields:

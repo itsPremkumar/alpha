@@ -7,10 +7,10 @@ import asyncio
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
-from agent_workspace.agents.middlewares.tool_error_handling_middleware import (
+from alpha.agents.middlewares.tool_error_handling_middleware import (
     ToolErrorHandlingMiddleware,
 )
-from agent_workspace.subagents.status_contract import (
+from alpha.subagents.status_contract import (
     SUBAGENT_ERROR_KEY,
     SUBAGENT_STATUS_KEY,
 )

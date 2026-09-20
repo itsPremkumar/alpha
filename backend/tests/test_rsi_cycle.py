@@ -6,9 +6,9 @@ from dataclasses import asdict
 
 import pytest
 
-from agent_workspace.rsi.engine import RSIEngine
-from agent_workspace.rsi.models import ABTestResult, HoldoutResult, RSIStage
-from agent_workspace.tools.builtins.rsi_engine_tool import run_rsi_cycle
+from alpha.rsi.engine import RSIEngine
+from alpha.rsi.models import ABTestResult, HoldoutResult, RSIStage
+from alpha.tools.builtins.rsi_engine_tool import run_rsi_cycle
 
 
 @pytest.mark.parametrize("force", [False, True])

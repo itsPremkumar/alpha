@@ -3,8 +3,8 @@
 import json
 from unittest.mock import MagicMock, patch
 
-from agent_workspace.community.infoquest import tools
-from agent_workspace.community.infoquest.infoquest_client import InfoQuestClient
+from alpha.community.infoquest import tools
+from alpha.community.infoquest.infoquest_client import InfoQuestClient
 
 
 class TestInfoQuestClient:
@@ -24,7 +24,7 @@ class TestInfoQuestClient:
         assert client.fetch_navigation_timeout == 60
         assert client.search_time_range == 24
 
-    @patch("agent_workspace.community.infoquest.infoquest_client.requests.post")
+    @patch("alpha.community.infoquest.infoquest_client.requests.post")
     def test_fetch_success(self, mock_post):
         """Test successful fetch operation."""
         mock_response = MagicMock()
@@ -42,7 +42,7 @@ class TestInfoQuestClient:
         assert kwargs["json"]["url"] == "https://example.com"
         assert kwargs["json"]["format"] == "HTML"
 
-    @patch("agent_workspace.community.infoquest.infoquest_client.requests.post")
+    @patch("alpha.community.infoquest.infoquest_client.requests.post")
     def test_fetch_non_200_status(self, mock_post):
         """Test fetch operation with non-200 status code."""
         mock_response = MagicMock()
@@ -55,7 +55,7 @@ class TestInfoQuestClient:
 
         assert result == "Error: fetch API returned status 404: Not Found"
 
-    @patch("agent_workspace.community.infoquest.infoquest_client.requests.post")
+    @patch("alpha.community.infoquest.infoquest_client.requests.post")
     def test_fetch_empty_response(self, mock_post):
         """Test fetch operation with empty response."""
         mock_response = MagicMock()
@@ -68,7 +68,7 @@ class TestInfoQuestClient:
 
         assert result == "Error: no result found"
 
-    @patch("agent_workspace.community.infoquest.infoquest_client.requests.post")
+    @patch("alpha.community.infoquest.infoquest_client.requests.post")
     def test_web_search_raw_results_success(self, mock_post):
         """Test successful web_search_raw_results operation."""
         mock_response = MagicMock()
@@ -85,7 +85,7 @@ class TestInfoQuestClient:
         assert args[0] == "https://search.infoquest.bytepluses.com"
         assert kwargs["json"]["query"] == "test query"
 
-    @patch("agent_workspace.community.infoquest.infoquest_client.requests.post")
+    @patch("alpha.community.infoquest.infoquest_client.requests.post")
     def test_web_search_success(self, mock_post):
         """Test successful web_search operation."""
         mock_response = MagicMock()
@@ -123,7 +123,7 @@ class TestInfoQuestClient:
         assert cleaned[1]["type"] == "news"
         assert cleaned[1]["title"] == "Test News"
 
-    @patch("agent_workspace.community.infoquest.tools._get_infoquest_client")
+    @patch("alpha.community.infoquest.tools._get_infoquest_client")
     def test_web_search_tool(self, mock_get_client):
         """Test web_search_tool function."""
         mock_client = MagicMock()
@@ -136,7 +136,7 @@ class TestInfoQuestClient:
         mock_get_client.assert_called_once()
         mock_client.web_search.assert_called_once_with("test query")
 
-    @patch("agent_workspace.community.infoquest.tools._get_infoquest_client")
+    @patch("alpha.community.infoquest.tools._get_infoquest_client")
     def test_web_fetch_tool(self, mock_get_client):
         """Test web_fetch_tool function."""
         mock_client = MagicMock()
@@ -149,7 +149,7 @@ class TestInfoQuestClient:
         mock_get_client.assert_called_once()
         mock_client.fetch.assert_called_once_with("https://example.com")
 
-    @patch("agent_workspace.community.infoquest.tools.get_app_config")
+    @patch("alpha.community.infoquest.tools.get_app_config")
     def test_get_infoquest_client(self, mock_get_app_config):
         """Test _get_infoquest_client function with config."""
         mock_config = MagicMock()
@@ -170,7 +170,7 @@ class TestInfoQuestClient:
         assert client.image_search_time_range == 7
         assert client.image_size == "l"
 
-    @patch("agent_workspace.community.infoquest.infoquest_client.requests.post")
+    @patch("alpha.community.infoquest.infoquest_client.requests.post")
     def test_web_search_api_error(self, mock_post):
         """Test web_search operation with API error."""
         mock_post.side_effect = Exception("Connection error")
@@ -205,7 +205,7 @@ class TestInfoQuestClient:
 
 
 class TestImageSearch:
-    @patch("agent_workspace.community.infoquest.infoquest_client.requests.post")
+    @patch("alpha.community.infoquest.infoquest_client.requests.post")
     def test_image_search_raw_results_success(self, mock_post):
         """Test successful image_search_raw_results operation."""
         mock_response = MagicMock()
@@ -222,7 +222,7 @@ class TestImageSearch:
         assert args[0] == "https://search.infoquest.bytepluses.com"
         assert kwargs["json"]["query"] == "test query"
 
-    @patch("agent_workspace.community.infoquest.infoquest_client.requests.post")
+    @patch("alpha.community.infoquest.infoquest_client.requests.post")
     def test_image_search_raw_results_with_parameters(self, mock_post):
         """Test image_search_raw_results with all parameters."""
         mock_response = MagicMock()
@@ -241,7 +241,7 @@ class TestImageSearch:
         assert kwargs["json"]["image_size"] == "l"
         assert kwargs["json"]["format"] == "JSON"
 
-    @patch("agent_workspace.community.infoquest.infoquest_client.requests.post")
+    @patch("alpha.community.infoquest.infoquest_client.requests.post")
     def test_image_search_raw_results_invalid_time_range(self, mock_post):
         """Test image_search_raw_results with invalid time_range parameter."""
         mock_response = MagicMock()
@@ -263,7 +263,7 @@ class TestImageSearch:
         assert "time_range" not in kwargs["json"]
         assert "image_size" not in kwargs["json"]
 
-    @patch("agent_workspace.community.infoquest.infoquest_client.requests.post")
+    @patch("alpha.community.infoquest.infoquest_client.requests.post")
     def test_image_search_success(self, mock_post):
         """Test successful image_search operation."""
         mock_response = MagicMock()
@@ -284,7 +284,7 @@ class TestImageSearch:
 
         assert result_data[0]["title"] == "Test Image"
 
-    @patch("agent_workspace.community.infoquest.infoquest_client.requests.post")
+    @patch("alpha.community.infoquest.infoquest_client.requests.post")
     def test_image_search_with_all_parameters(self, mock_post):
         """Test image_search with all optional parameters."""
         mock_response = MagicMock()
@@ -304,7 +304,7 @@ class TestImageSearch:
         assert kwargs["json"]["site"] == "flickr.com"
         assert kwargs["json"]["image_size"] == "m"
 
-    @patch("agent_workspace.community.infoquest.infoquest_client.requests.post")
+    @patch("alpha.community.infoquest.infoquest_client.requests.post")
     def test_image_search_api_error(self, mock_post):
         """Test image_search operation with API error."""
         mock_post.side_effect = Exception("Connection error")
@@ -314,7 +314,7 @@ class TestImageSearch:
 
         assert "Error" in result
 
-    @patch("agent_workspace.community.infoquest.tools._get_infoquest_client")
+    @patch("alpha.community.infoquest.tools._get_infoquest_client")
     def test_image_search_tool(self, mock_get_client):
         """Test image_search_tool function."""
         mock_client = MagicMock()
@@ -332,7 +332,7 @@ class TestImageSearch:
 
     # In /Users/bytedance/python/agent-workspacev2/agent-workspace/backend/tests/test_infoquest_client.py
 
-    @patch("agent_workspace.community.infoquest.tools._get_infoquest_client")
+    @patch("alpha.community.infoquest.tools._get_infoquest_client")
     def test_image_search_tool_with_parameters(self, mock_get_client):
         """Test image_search_tool function with all parameters (extra parameters will be ignored)."""
         mock_client = MagicMock()

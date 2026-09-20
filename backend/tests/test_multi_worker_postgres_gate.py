@@ -20,8 +20,8 @@ from fastapi import FastAPI
 
 from app.gateway.deps import _enforce_postgres_for_multi_worker, langgraph_runtime
 from app.gateway.routers.browser import _browser_tools_enabled
-from agent_workspace.config.database_config import DatabaseConfig
-from agent_workspace.config.run_ownership_config import RunOwnershipConfig
+from alpha.config.database_config import DatabaseConfig
+from alpha.config.run_ownership_config import RunOwnershipConfig
 
 
 def _config_with_backend(
@@ -211,7 +211,7 @@ def test_runtime_browser_surface_stays_disabled_after_incompatible_hot_reload(mo
     monkeypatch.setenv("GATEWAY_WORKERS", "2")
     live_config = SimpleNamespace(tools=[SimpleNamespace(name="browser_navigate", model_extra={})])
 
-    with patch("agent_workspace.config.get_app_config", return_value=live_config):
+    with patch("alpha.config.get_app_config", return_value=live_config):
         assert _browser_tools_enabled() is False
 
 
@@ -326,11 +326,11 @@ async def test_langgraph_runtime_invokes_gate_before_persistence_setup(monkeypat
 
     with (
         patch(
-            "agent_workspace.persistence.engine.init_engine_from_config",
+            "alpha.persistence.engine.init_engine_from_config",
             init_engine_from_config,
         ),
-        patch("agent_workspace.runtime.make_stream_bridge", side_effect=_noop_stream_bridge) as make_stream_bridge,
-        patch("agent_workspace.runtime.make_store", side_effect=_noop_stream_bridge) as make_store,
+        patch("alpha.runtime.make_stream_bridge", side_effect=_noop_stream_bridge) as make_stream_bridge,
+        patch("alpha.runtime.make_store", side_effect=_noop_stream_bridge) as make_store,
     ):
         app = FastAPI()
         startup_config = _config_with_backend("sqlite")

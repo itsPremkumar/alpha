@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from agent_workspace.goals import GoalContract, GoalStore, InvalidTransitionError, PlanVersion, RecordNotFoundError, StoreCorruptionError, TaskAttempt
+from alpha.goals import GoalContract, GoalStore, InvalidTransitionError, PlanVersion, RecordNotFoundError, StoreCorruptionError, TaskAttempt
 
 
 @pytest.fixture
@@ -241,7 +241,7 @@ def test_atomic_failure_preserves_prior_approval(store, tmp_path, failure):
     second = store.create_plan(contract.id, {}, owner_id="alice")
     path = next((tmp_path / "goals").glob("*.json"))
     before = path.read_bytes()
-    with patch(f"agent_workspace.goals.store.os.{failure}", side_effect=OSError("injected failure")):
+    with patch(f"alpha.goals.store.os.{failure}", side_effect=OSError("injected failure")):
         with pytest.raises(OSError, match="injected failure"):
             store.approve_plan(second.id, owner_id="alice")
     assert path.read_bytes() == before
@@ -296,7 +296,7 @@ def test_invalid_content_does_not_write(store):
 
 
 def test_repository_export():
-    from agent_workspace.goals import GoalsRepository
+    from alpha.goals import GoalsRepository
 
     assert GoalsRepository is GoalStore
 
@@ -322,7 +322,7 @@ def test_atomic_write_flushes_before_replace(store, tmp_path):
         events.append("replace")
         real_replace(source, destination)
 
-    with patch("agent_workspace.goals.store.os.fsync", side_effect=fsync), patch("agent_workspace.goals.store.os.replace", side_effect=replace):
+    with patch("alpha.goals.store.os.fsync", side_effect=fsync), patch("alpha.goals.store.os.replace", side_effect=replace):
         store.create_contract("Durable", owner_id="alice")
     assert events == ["fsync", "replace"]
     assert len(list((tmp_path / "goals").iterdir())) == 1

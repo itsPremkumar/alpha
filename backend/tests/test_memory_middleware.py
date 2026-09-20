@@ -3,9 +3,9 @@ from unittest.mock import MagicMock
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.runtime import Runtime
 
-from agent_workspace.agents.middlewares import memory_middleware as memory_middleware_module
-from agent_workspace.agents.middlewares.memory_middleware import MemoryMiddleware
-from agent_workspace.config.memory_config import MemoryConfig
+from alpha.agents.middlewares import memory_middleware as memory_middleware_module
+from alpha.agents.middlewares.memory_middleware import MemoryMiddleware
+from alpha.config.memory_config import MemoryConfig
 
 
 def test_after_agent_queues_memory_under_runtime_user(monkeypatch):

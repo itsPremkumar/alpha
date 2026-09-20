@@ -10,9 +10,9 @@ from pathlib import Path
 
 import pytest
 
-from agent_workspace.skills.package_paths import is_eval_fixture_skill_md
-from agent_workspace.skills.storage import get_or_new_skill_storage
-from agent_workspace.skills.validation import _validate_skill_frontmatter
+from alpha.skills.package_paths import is_eval_fixture_skill_md
+from alpha.skills.storage import get_or_new_skill_storage
+from alpha.skills.validation import _validate_skill_frontmatter
 
 SKILLS_PUBLIC_DIR = Path(__file__).resolve().parents[2] / "skills" / "public"
 

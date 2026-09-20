@@ -3,14 +3,14 @@
 import json
 from pathlib import Path
 
-from agent_workspace.reproduction.engine import ReproductionEngine
-from agent_workspace.reproduction.gates import (
+from alpha.reproduction.engine import ReproductionEngine
+from alpha.reproduction.gates import (
     PostFixVerificationGate,
     PreFixFailureGate,
 )
-from agent_workspace.reproduction.models import ReproductionStatus
-from agent_workspace.reproduction.synthesizer import ReproductionSynthesizer
-from agent_workspace.tools.builtins.reproduction_tool import reproduce_and_verify
+from alpha.reproduction.models import ReproductionStatus
+from alpha.reproduction.synthesizer import ReproductionSynthesizer
+from alpha.tools.builtins.reproduction_tool import reproduce_and_verify
 
 
 def test_reproduction_synthesizer():

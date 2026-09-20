@@ -1,4 +1,4 @@
-from agent_workspace.orchestration.discipline.reviewer import PlanReviewer, ReviewVerdict, VerdictType
+from alpha.orchestration.discipline.reviewer import PlanReviewer, ReviewVerdict, VerdictType
 
 
 def test_reviewer_rejects_destructive_commands():

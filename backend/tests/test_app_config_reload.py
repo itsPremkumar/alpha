@@ -8,21 +8,21 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-import agent_workspace.config.app_config as app_config_module
-from agent_workspace.config.acp_config import load_acp_config_from_dict
-from agent_workspace.config.agents_api_config import get_agents_api_config, load_agents_api_config_from_dict
-from agent_workspace.config.app_config import AppConfig, get_app_config, reset_app_config
-from agent_workspace.config.checkpointer_config import get_checkpointer_config, load_checkpointer_config_from_dict
-from agent_workspace.config.database_config import DatabaseConfig
-from agent_workspace.config.guardrails_config import get_guardrails_config, load_guardrails_config_from_dict
-from agent_workspace.config.memory_config import get_memory_config, load_memory_config_from_dict
-from agent_workspace.config.stream_bridge_config import get_stream_bridge_config, load_stream_bridge_config_from_dict
-from agent_workspace.config.subagents_config import get_subagents_app_config, load_subagents_config_from_dict
-from agent_workspace.config.summarization_config import get_summarization_config, load_summarization_config_from_dict
-from agent_workspace.config.title_config import get_title_config, load_title_config_from_dict
-from agent_workspace.config.tool_search_config import get_tool_search_config, load_tool_search_config_from_dict
-from agent_workspace.runtime.checkpointer import get_checkpointer, reset_checkpointer
-from agent_workspace.runtime.store import get_store, reset_store
+import alpha.config.app_config as app_config_module
+from alpha.config.acp_config import load_acp_config_from_dict
+from alpha.config.agents_api_config import get_agents_api_config, load_agents_api_config_from_dict
+from alpha.config.app_config import AppConfig, get_app_config, reset_app_config
+from alpha.config.checkpointer_config import get_checkpointer_config, load_checkpointer_config_from_dict
+from alpha.config.database_config import DatabaseConfig
+from alpha.config.guardrails_config import get_guardrails_config, load_guardrails_config_from_dict
+from alpha.config.memory_config import get_memory_config, load_memory_config_from_dict
+from alpha.config.stream_bridge_config import get_stream_bridge_config, load_stream_bridge_config_from_dict
+from alpha.config.subagents_config import get_subagents_app_config, load_subagents_config_from_dict
+from alpha.config.summarization_config import get_summarization_config, load_summarization_config_from_dict
+from alpha.config.title_config import get_title_config, load_title_config_from_dict
+from alpha.config.tool_search_config import get_tool_search_config, load_tool_search_config_from_dict
+from alpha.runtime.checkpointer import get_checkpointer, reset_checkpointer
+from alpha.runtime.store import get_store, reset_store
 
 
 def _reset_config_singletons() -> None:
@@ -45,7 +45,7 @@ def _write_config(path: Path, *, model_name: str, supports_thinking: bool) -> No
     path.write_text(
         yaml.safe_dump(
             {
-                "sandbox": {"use": "agent_workspace.sandbox.local:LocalSandboxProvider"},
+                "sandbox": {"use": "alpha.sandbox.local:LocalSandboxProvider"},
                 "models": [
                     {
                         "name": model_name,
@@ -68,7 +68,7 @@ def _write_config_with_agents_api(
     agents_api: dict | None = None,
 ) -> None:
     config = {
-        "sandbox": {"use": "agent_workspace.sandbox.local:LocalSandboxProvider"},
+        "sandbox": {"use": "alpha.sandbox.local:LocalSandboxProvider"},
         "models": [
             {
                 "name": model_name,
@@ -86,7 +86,7 @@ def _write_config_with_agents_api(
 
 def _write_config_with_sections(path: Path, sections: dict | None = None) -> None:
     config = {
-        "sandbox": {"use": "agent_workspace.sandbox.local:LocalSandboxProvider"},
+        "sandbox": {"use": "alpha.sandbox.local:LocalSandboxProvider"},
         "models": [
             {
                 "name": "first-model",
@@ -174,7 +174,7 @@ def test_resolve_checkpoint_graph_cache_max_tolerates_stub_configs() -> None:
     from types import SimpleNamespace
     from unittest.mock import MagicMock
 
-    from agent_workspace.config.database_config import resolve_checkpoint_graph_cache_max
+    from alpha.config.database_config import resolve_checkpoint_graph_cache_max
 
     assert resolve_checkpoint_graph_cache_max(None, "accessor_graph_max", 64) == 64
     assert resolve_checkpoint_graph_cache_max(SimpleNamespace(), "accessor_graph_max", 64) == 64
@@ -279,7 +279,7 @@ def test_app_config_loads_extension_middlewares_from_extensions_config(tmp_path,
 
 
 def test_app_config_loads_middleware_kwargs_from_config_yaml(tmp_path, monkeypatch):
-    from agent_workspace.config.extensions_config import ConfiguredMiddlewareSpec
+    from alpha.config.extensions_config import ConfiguredMiddlewareSpec
 
     config_path = tmp_path / "config.yaml"
     extensions_path = tmp_path / "extensions_config.json"
@@ -317,7 +317,7 @@ def test_app_config_defaults_empty_database_to_sqlite(tmp_path, monkeypatch):
         yaml.safe_dump(
             {
                 "database": {},
-                "sandbox": {"use": "agent_workspace.sandbox.local:LocalSandboxProvider"},
+                "sandbox": {"use": "alpha.sandbox.local:LocalSandboxProvider"},
             }
         ),
         encoding="utf-8",
@@ -344,7 +344,7 @@ def test_app_config_coerces_commented_out_list_sections(tmp_path, monkeypatch):
     config_path.write_text(
         yaml.safe_dump(
             {
-                "sandbox": {"use": "agent_workspace.sandbox.local:LocalSandboxProvider"},
+                "sandbox": {"use": "alpha.sandbox.local:LocalSandboxProvider"},
                 "models": None,
                 "tools": None,
                 "tool_groups": None,
@@ -374,7 +374,7 @@ def test_app_config_coerces_commented_out_object_sections(tmp_path, monkeypatch)
     config_path.write_text(
         yaml.safe_dump(
             {
-                "sandbox": {"use": "agent_workspace.sandbox.local:LocalSandboxProvider"},
+                "sandbox": {"use": "alpha.sandbox.local:LocalSandboxProvider"},
                 "memory": None,
                 "summarization": None,
                 "guardrails": None,
@@ -421,7 +421,7 @@ def test_app_config_warns_when_no_models_configured(tmp_path, monkeypatch, caplo
     config_path.write_text(
         yaml.safe_dump(
             {
-                "sandbox": {"use": "agent_workspace.sandbox.local:LocalSandboxProvider"},
+                "sandbox": {"use": "alpha.sandbox.local:LocalSandboxProvider"},
                 "models": None,
             }
         ),
@@ -429,7 +429,7 @@ def test_app_config_warns_when_no_models_configured(tmp_path, monkeypatch, caplo
     )
     monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(extensions_path))
 
-    with caplog.at_level("WARNING", logger="agent_workspace.config.app_config"):
+    with caplog.at_level("WARNING", logger="alpha.config.app_config"):
         AppConfig.from_file(str(config_path))
 
     assert "No models are configured" in caplog.text
@@ -704,8 +704,8 @@ def test_get_app_config_does_not_reset_persistence_singletons_when_database_chan
     def _reset_store() -> None:
         reset_calls["store"] += 1
 
-    monkeypatch.setattr("agent_workspace.runtime.checkpointer.reset_checkpointer", _reset_checkpointer)
-    monkeypatch.setattr("agent_workspace.runtime.store.reset_store", _reset_store)
+    monkeypatch.setattr("alpha.runtime.checkpointer.reset_checkpointer", _reset_checkpointer)
+    monkeypatch.setattr("alpha.runtime.store.reset_store", _reset_store)
 
     try:
         get_app_config()

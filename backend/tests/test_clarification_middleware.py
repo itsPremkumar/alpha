@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 from langgraph.graph.message import add_messages
 
-from agent_workspace.agents.middlewares.clarification_middleware import ClarificationMiddleware
+from alpha.agents.middlewares.clarification_middleware import ClarificationMiddleware
 
 
 @pytest.fixture
@@ -613,7 +613,7 @@ class TestClarificationToolSchema:
     """The tool schema must expose the v2 form parameter (request-side only)."""
 
     def test_tool_exposes_fields_argument(self):
-        from agent_workspace.tools.builtins.clarification_tool import ask_clarification_tool
+        from alpha.tools.builtins.clarification_tool import ask_clarification_tool
 
         schema = ask_clarification_tool.args
         assert "fields" in schema
@@ -627,7 +627,7 @@ class TestClarificationToolSchema:
         docstring alone."""
         from langchain_core.utils.function_calling import convert_to_openai_tool
 
-        from agent_workspace.tools.builtins.clarification_tool import ask_clarification_tool
+        from alpha.tools.builtins.clarification_tool import ask_clarification_tool
 
         parameters = convert_to_openai_tool(ask_clarification_tool)["function"]["parameters"]
         items = parameters["properties"]["fields"]["anyOf"][0]["items"]

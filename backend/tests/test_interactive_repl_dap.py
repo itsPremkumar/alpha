@@ -1,6 +1,6 @@
 """Tests for Interactive Runtime REPL and DAP Engine."""
 
-from agent_workspace.debugging.interactive_repl_dap import InteractiveDebugEngine
+from alpha.debugging.interactive_repl_dap import InteractiveDebugEngine
 
 
 def test_debug_session_breakpoints_and_frame_inspection():

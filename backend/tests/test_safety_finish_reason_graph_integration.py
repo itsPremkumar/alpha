@@ -29,7 +29,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.tools import tool
 
-from agent_workspace.agents.middlewares.safety_finish_reason_middleware import SafetyFinishReasonMiddleware
+from alpha.agents.middlewares.safety_finish_reason_middleware import SafetyFinishReasonMiddleware
 
 _TOOL_INVOCATIONS: list[dict[str, Any]] = []
 

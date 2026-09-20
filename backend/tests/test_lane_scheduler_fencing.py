@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from agent_workspace.runtime.lane_scheduler import (
+from alpha.runtime.lane_scheduler import (
     ExecutionLane,
     FenceContentionError,
     LaneScheduler,

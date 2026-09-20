@@ -11,15 +11,15 @@ import anyio
 import pytest
 from fastapi import FastAPI
 
-import agent_workspace.runtime as runtime_module
+import alpha.runtime as runtime_module
 from app.gateway import deps as gateway_deps
-from agent_workspace.config.run_ownership_config import RunOwnershipConfig
-from agent_workspace.persistence import engine as engine_module
-from agent_workspace.persistence import thread_meta as thread_meta_module
-from agent_workspace.runtime import END_SENTINEL, MemoryStreamBridge, RunManager
-from agent_workspace.runtime.checkpointer import async_provider as checkpointer_module
-from agent_workspace.runtime.events import store as event_store_module
-from agent_workspace.runtime.runs.store.memory import MemoryRunStore
+from alpha.config.run_ownership_config import RunOwnershipConfig
+from alpha.persistence import engine as engine_module
+from alpha.persistence import thread_meta as thread_meta_module
+from alpha.runtime import END_SENTINEL, MemoryStreamBridge, RunManager
+from alpha.runtime.checkpointer import async_provider as checkpointer_module
+from alpha.runtime.events import store as event_store_module
+from alpha.runtime.runs.store.memory import MemoryRunStore
 
 
 @asynccontextmanager

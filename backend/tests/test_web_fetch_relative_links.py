@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from agent_workspace.community.browserless.browserless_client import BrowserlessFetchResult
-from agent_workspace.utils.readability import ReadabilityExtractor
+from alpha.community.browserless.browserless_client import BrowserlessFetchResult
+from alpha.utils.readability import ReadabilityExtractor
 
 PAGE_URL = "https://example.com/docs/current"
 
@@ -40,7 +40,7 @@ def _article(links: str, *, head: str = "") -> str:
 @pytest.mark.parametrize("provider", ["jina_ai", "browserless", "infoquest"])
 @pytest.mark.anyio
 async def test_web_fetch_resolves_relative_links_through_real_extraction(monkeypatch, provider):
-    module = importlib.import_module(f"agent_workspace.community.{provider}.tools")
+    module = importlib.import_module(f"alpha.community.{provider}.tools")
     html = _article('<a href="../next">Next</a> <a href="/reference">Reference</a>')
     monkeypatch.setattr(module, "get_app_config", lambda: SimpleNamespace(get_tool_config=lambda name: None))
     if provider == "jina_ai":
@@ -111,7 +111,7 @@ def test_extract_article_uses_first_document_base(base, expected):
 def test_python_extraction_fallback_preserves_article_text(monkeypatch):
     import subprocess
 
-    from agent_workspace.utils import readability
+    from alpha.utils import readability
 
     original = readability.simple_json_from_html_string
 
@@ -160,7 +160,7 @@ def test_document_base_skips_target_only_base():
 
 @pytest.mark.parametrize("destination", ["href=../next", "HREF='../next'", 'href="../next?x=1&amp;y=2"', 'href = "../next" href="/ignored"'])
 def test_rewriter_changes_only_destination_values(destination):
-    from agent_workspace.utils.readability import _resolve_html_urls
+    from alpha.utils.readability import _resolve_html_urls
 
     html = """<!-- <a href="/comment"> -->\n<script>const sample = "<a href=/script>";</script>\n""" + f"<p><b>Misnested <i>text</b> tail</i> <a {destination}>Next</a></p>"
     result = _resolve_html_urls(html, PAGE_URL)
@@ -173,7 +173,7 @@ def test_rewriter_changes_only_destination_values(destination):
 
 @pytest.mark.parametrize("tag", ["textarea", "title", "xmp", "iframe", "noembed", "noframes"])
 def test_rewriter_preserves_link_examples_in_text_elements(tag):
-    from agent_workspace.utils.readability import _resolve_html_urls
+    from alpha.utils.readability import _resolve_html_urls
 
     example = f'<{tag}><a href="/literal">Example</a></{tag}>'
     html = example + '<a href="../next">Next</a>'
@@ -182,14 +182,14 @@ def test_rewriter_preserves_link_examples_in_text_elements(tag):
 
 @pytest.mark.parametrize("attribute", ["href", 'href=""', "href=''", 'href href="/ignored"'])
 def test_empty_destination_uses_document_base(attribute):
-    from agent_workspace.utils.readability import _resolve_html_urls
+    from alpha.utils.readability import _resolve_html_urls
 
     html = f"<a {attribute}>Current</a>"
     assert f'href="{PAGE_URL}"' in _resolve_html_urls(html, PAGE_URL)
 
 
 def test_textarea_with_script_example_does_not_hide_following_links():
-    from agent_workspace.utils.readability import _resolve_html_urls
+    from alpha.utils.readability import _resolve_html_urls
 
     example = '<textarea><script><a href="/literal"></textarea>'
     html = example + '<a href="../next">Next</a>'
@@ -197,7 +197,7 @@ def test_textarea_with_script_example_does_not_hide_following_links():
 
 
 def test_pages_without_base_skip_html5_tree_construction(monkeypatch):
-    from agent_workspace.utils import readability
+    from alpha.utils import readability
 
     def unexpected_parse(*args, **kwargs):
         pytest.fail("A page without a base prefix must not build an HTML5 tree")
@@ -215,7 +215,7 @@ def test_pages_without_base_skip_html5_tree_construction(monkeypatch):
     ],
 )
 def test_base_precheck_retains_case_insensitive_tree_selection(head):
-    from agent_workspace.utils.readability import _resolve_html_urls
+    from alpha.utils.readability import _resolve_html_urls
 
     html = _article('<a href="next">Next</a>', head=head)
     assert '<a href="https://cdn.example.com/next">Next</a>' in _resolve_html_urls(html, PAGE_URL)
@@ -230,7 +230,7 @@ def test_base_precheck_retains_case_insensitive_tree_selection(head):
     ],
 )
 def test_base_precheck_false_positives_do_not_override_page_url(head):
-    from agent_workspace.utils.readability import _resolve_html_urls
+    from alpha.utils.readability import _resolve_html_urls
 
     html = _article('<a href="../next">Next</a>', head=head)
     assert '<a href="https://example.com/next">Next</a>' in _resolve_html_urls(html, PAGE_URL)

@@ -13,14 +13,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from agent_workspace.config.subagents_config import (
+from alpha.config.subagents_config import (
     CustomSubagentConfig,
     SubagentOverrideConfig,
     SubagentsAppConfig,
     get_subagents_app_config,
     load_subagents_config_from_dict,
 )
-from agent_workspace.subagents.config import SubagentConfig
+from alpha.subagents.config import SubagentConfig
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -322,7 +322,7 @@ class TestRegistryCustomAgentLookup:
         _reset_subagents_config()
 
     def test_custom_agent_found(self):
-        from agent_workspace.subagents.registry import get_subagent_config
+        from alpha.subagents.registry import get_subagent_config
 
         load_subagents_config_from_dict(
             {
@@ -348,12 +348,12 @@ class TestRegistryCustomAgentLookup:
         assert config.model == "inherit"
 
     def test_custom_agent_found_from_explicit_app_config_without_global_config(self, monkeypatch):
-        from agent_workspace.subagents.registry import get_subagent_config
+        from alpha.subagents.registry import get_subagent_config
 
         def fail_get_subagents_app_config():
             raise AssertionError("ambient get_subagents_app_config() must not be used when app_config is explicit")
 
-        monkeypatch.setattr("agent_workspace.config.subagents_config.get_subagents_app_config", fail_get_subagents_app_config)
+        monkeypatch.setattr("alpha.config.subagents_config.get_subagents_app_config", fail_get_subagents_app_config)
 
         app_config = SimpleNamespace(
             subagents=SubagentsAppConfig(
@@ -374,14 +374,14 @@ class TestRegistryCustomAgentLookup:
         assert config.skills == ["data-analysis"]
 
     def test_custom_agent_not_found(self):
-        from agent_workspace.subagents.registry import get_subagent_config
+        from alpha.subagents.registry import get_subagent_config
 
         _reset_subagents_config()
         assert get_subagent_config("nonexistent") is None
 
     def test_get_available_subagent_names_falls_back_when_subagents_app_config_lacks_sandbox(self, monkeypatch):
-        from agent_workspace.subagents import registry as registry_module
-        from agent_workspace.subagents.registry import get_available_subagent_names
+        from alpha.subagents import registry as registry_module
+        from alpha.subagents.registry import get_available_subagent_names
 
         captured: dict[str, tuple] = {}
 
@@ -397,8 +397,8 @@ class TestRegistryCustomAgentLookup:
 
     def test_builtin_takes_priority_over_custom(self):
         """If a custom agent has the same name as a builtin, builtin wins."""
-        from agent_workspace.subagents.builtins import BUILTIN_SUBAGENTS
-        from agent_workspace.subagents.registry import get_subagent_config
+        from alpha.subagents.builtins import BUILTIN_SUBAGENTS
+        from alpha.subagents.registry import get_subagent_config
 
         load_subagents_config_from_dict(
             {
@@ -416,7 +416,7 @@ class TestRegistryCustomAgentLookup:
 
     def test_custom_agent_with_override(self):
         """Per-agent overrides also apply to custom agents."""
-        from agent_workspace.subagents.registry import get_subagent_config
+        from alpha.subagents.registry import get_subagent_config
 
         load_subagents_config_from_dict(
             {
@@ -448,7 +448,7 @@ class TestRegistrySkillsOverride:
         _reset_subagents_config()
 
     def test_skills_override_applied_to_builtin(self):
-        from agent_workspace.subagents.registry import get_subagent_config
+        from alpha.subagents.registry import get_subagent_config
 
         load_subagents_config_from_dict(
             {
@@ -461,7 +461,7 @@ class TestRegistrySkillsOverride:
         assert config.skills == ["web-search", "data-analysis"]
 
     def test_empty_skills_override(self):
-        from agent_workspace.subagents.registry import get_subagent_config
+        from alpha.subagents.registry import get_subagent_config
 
         load_subagents_config_from_dict(
             {
@@ -474,15 +474,15 @@ class TestRegistrySkillsOverride:
         assert config.skills == []
 
     def test_no_skills_override_keeps_default(self):
-        from agent_workspace.subagents.registry import get_subagent_config
+        from alpha.subagents.registry import get_subagent_config
 
         _reset_subagents_config()
         config = get_subagent_config("general-purpose")
         assert config.skills is None  # Default: inherit all
 
     def test_skills_override_does_not_mutate_builtin(self):
-        from agent_workspace.subagents.builtins import BUILTIN_SUBAGENTS
-        from agent_workspace.subagents.registry import get_subagent_config
+        from alpha.subagents.builtins import BUILTIN_SUBAGENTS
+        from alpha.subagents.registry import get_subagent_config
 
         load_subagents_config_from_dict(
             {
@@ -505,7 +505,7 @@ class TestRegistryAvailableNames:
         _reset_subagents_config()
 
     def test_includes_builtin_names(self):
-        from agent_workspace.subagents.registry import get_subagent_names
+        from alpha.subagents.registry import get_subagent_names
 
         _reset_subagents_config()
         names = get_subagent_names()
@@ -513,7 +513,7 @@ class TestRegistryAvailableNames:
         assert "bash" in names
 
     def test_includes_custom_names(self):
-        from agent_workspace.subagents.registry import get_subagent_names
+        from alpha.subagents.registry import get_subagent_names
 
         load_subagents_config_from_dict(
             {
@@ -536,7 +536,7 @@ class TestRegistryAvailableNames:
         assert "researcher" in names
 
     def test_no_duplicates_when_custom_name_matches_builtin(self):
-        from agent_workspace.subagents.registry import get_subagent_names
+        from alpha.subagents.registry import get_subagent_names
 
         load_subagents_config_from_dict(
             {
@@ -562,7 +562,7 @@ class TestRegistryListSubagentsWithCustom:
         _reset_subagents_config()
 
     def test_list_includes_custom_agents(self):
-        from agent_workspace.subagents.registry import list_subagents
+        from alpha.subagents.registry import list_subagents
 
         load_subagents_config_from_dict(
             {
@@ -582,7 +582,7 @@ class TestRegistryListSubagentsWithCustom:
         assert "analysis" in names
 
     def test_list_custom_agent_has_correct_skills(self):
-        from agent_workspace.subagents.registry import list_subagents
+        from alpha.subagents.registry import list_subagents
 
         load_subagents_config_from_dict(
             {

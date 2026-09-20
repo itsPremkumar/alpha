@@ -4,7 +4,7 @@
 missing, except ``get_store`` which returns ``None``.
 
 ``AppConfig`` is intentionally *not* cached on ``app.state``. Routers and the
-run path resolve it through :func:`agent_workspace.config.app_config.get_app_config`,
+run path resolve it through :func:`alpha.config.app_config.get_app_config`,
 which performs mtime-based hot reload, so edits to ``config.yaml`` take
 effect on the next request without a process restart. The engines created in
 :func:`langgraph_runtime` (stream bridge, persistence, checkpointer, store,
@@ -27,12 +27,12 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 from fastapi import FastAPI, HTTPException, Request
 from langgraph.types import Checkpointer
 
-from agent_workspace.community.browser_automation.session import browser_multi_worker_error
-from agent_workspace.config.app_config import AppConfig, get_app_config
-from agent_workspace.persistence.feedback import FeedbackRepository
-from agent_workspace.runtime import ORPHAN_RECOVERY_STOP_REASON, STARTUP_ORPHAN_RECOVERY_ERROR, RunContext, RunManager, StreamBridge
-from agent_workspace.runtime.events.store.base import RunEventStore
-from agent_workspace.runtime.runs.store.base import RunStore
+from alpha.community.browser_automation.session import browser_multi_worker_error
+from alpha.config.app_config import AppConfig, get_app_config
+from alpha.persistence.feedback import FeedbackRepository
+from alpha.runtime import ORPHAN_RECOVERY_STOP_REASON, STARTUP_ORPHAN_RECOVERY_ERROR, RunContext, RunManager, StreamBridge
+from alpha.runtime.events.store.base import RunEventStore
+from alpha.runtime.runs.store.base import RunStore
 
 logger = logging.getLogger(__name__)
 
@@ -275,8 +275,8 @@ async def _flush_recovered_stream_cleanups(
 if TYPE_CHECKING:
     from app.gateway.auth.local_provider import LocalAuthProvider
     from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
-    from agent_workspace.persistence.thread_meta.base import ThreadMetaStore
-    from agent_workspace.runtime import RunRecord
+    from alpha.persistence.thread_meta.base import ThreadMetaStore
+    from alpha.runtime import RunRecord
 
 
 T = TypeVar("T")
@@ -332,7 +332,7 @@ async def _terminalize_recovered_runs(
 def get_config() -> AppConfig:
     """Return the freshest ``AppConfig`` for the current request.
 
-    Routes through :func:`agent_workspace.config.app_config.get_app_config`, which
+    Routes through :func:`alpha.config.app_config.get_app_config`, which
     honours runtime ``ContextVar`` overrides and reloads ``config.yaml`` from
     disk when its mtime changes. ``AppConfig`` is not cached on ``app.state``
     at all — the only startup-time snapshot lives as a local
@@ -346,7 +346,7 @@ def get_config() -> AppConfig:
     Hot-reload boundary: fields backed by startup-time singletons
     (engines, sandbox provider, IM channels, logging handler) require a
     process restart to change at runtime. The authoritative list lives in
-    :mod:`agent_workspace.config.reload_boundary` and is mirrored by the
+    :mod:`alpha.config.reload_boundary` and is mirrored by the
     standardised ``"startup-only:"`` prefix on the matching
     ``Field(description=...)`` in :class:`AppConfig` — IDE hover on those
     fields will surface the boundary inline. See
@@ -390,11 +390,11 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
         async with langgraph_runtime(app, startup_config):
             yield
     """
-    from agent_workspace.persistence.engine import close_engine, get_session_factory, init_engine_from_config
-    from agent_workspace.runtime import make_store, make_stream_bridge
-    from agent_workspace.runtime.checkpoint_mode import freeze_checkpoint_channel_mode, freeze_checkpoint_snapshot_frequency
-    from agent_workspace.runtime.checkpointer.async_provider import make_checkpointer
-    from agent_workspace.runtime.events.store import make_run_event_store
+    from alpha.persistence.engine import close_engine, get_session_factory, init_engine_from_config
+    from alpha.runtime import make_store, make_stream_bridge
+    from alpha.runtime.checkpoint_mode import freeze_checkpoint_channel_mode, freeze_checkpoint_snapshot_frequency
+    from alpha.runtime.checkpointer.async_provider import make_checkpointer
+    from alpha.runtime.events.store import make_run_event_store
 
     # ------------------------------------------------------------------
     # Multi-worker safety gate: reject SQLite when GATEWAY_WORKERS > 1.
@@ -412,7 +412,7 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
         # stack. Registering the callback synchronously here also covers every
         # startup-failure and cancellation path below.
         try:
-            from agent_workspace.extensions.notify import (
+            from alpha.extensions.notify import (
                 reset_extension_notify_loop,
                 set_extension_notify_loop,
             )
@@ -461,9 +461,9 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
         # Initialize repositories — one get_session_factory() call for all.
         sf = get_session_factory()
         if sf is not None:
-            from agent_workspace.persistence.feedback import FeedbackRepository
-            from agent_workspace.persistence.personal_access_tokens import PersonalAccessTokenRepository
-            from agent_workspace.persistence.run import RunRepository
+            from alpha.persistence.feedback import FeedbackRepository
+            from alpha.persistence.personal_access_tokens import PersonalAccessTokenRepository
+            from alpha.persistence.run import RunRepository
 
             app.state.run_store = RunRepository(sf)
             app.state.feedback_repo = FeedbackRepository(sf)
@@ -471,7 +471,7 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
 
             app.state.pat_repo = PersonalAccessTokenRepository(sf, last_used_write_interval_seconds=PAT_LAST_USED_WRITE_INTERVAL_SECONDS)
         else:
-            from agent_workspace.runtime.runs.store.memory import MemoryRunStore
+            from alpha.runtime.runs.store.memory import MemoryRunStore
 
             app.state.run_store = MemoryRunStore()
             app.state.feedback_repo = None
@@ -482,8 +482,8 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
         # Services are app-scoped. Capture this app's immutable extension set
         # once and close over the same object for teardown; the process-wide
         # singleton may be replaced by another app/test before shutdown.
-        from agent_workspace.extensions import EMPTY_EXTENSIONS, record_runtime_diagnostics
-        from agent_workspace.extensions.gateway import start_services, stop_services
+        from alpha.extensions import EMPTY_EXTENSIONS, record_runtime_diagnostics
+        from alpha.extensions.gateway import start_services, stop_services
 
         extensions = getattr(app.state, "extensions", EMPTY_EXTENSIONS)
         attempted_services: list[tuple[str, Any]] = []
@@ -508,17 +508,17 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
             )
         )
 
-        from agent_workspace.persistence.thread_meta import make_thread_store
+        from alpha.persistence.thread_meta import make_thread_store
 
         app.state.thread_store = make_thread_store(sf, app.state.store)
         if sf is not None:
-            from agent_workspace.persistence.mcp_tasks import McpTaskRepository
-            from agent_workspace.persistence.projects import ProjectRepository
-            from agent_workspace.persistence.scheduled_task_runs import (
+            from alpha.persistence.mcp_tasks import McpTaskRepository
+            from alpha.persistence.projects import ProjectRepository
+            from alpha.persistence.scheduled_task_runs import (
                 ScheduledTaskRunRepository,
             )
-            from agent_workspace.persistence.scheduled_tasks import ScheduledTaskRepository
-            from agent_workspace.persistence.subagent_batches import SubagentBatchRepository
+            from alpha.persistence.scheduled_tasks import ScheduledTaskRepository
+            from alpha.persistence.subagent_batches import SubagentBatchRepository
 
             app.state.project_repo = ProjectRepository(sf)
             app.state.scheduled_task_repo = ScheduledTaskRepository(
@@ -578,7 +578,7 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
         # all inflight rows are reclaimed (unchanged behaviour). In multi-worker
         # mode (Postgres), only runs with an expired lease are reclaimed; runs
         # owned by another live worker are skipped.
-        from agent_workspace.utils.time import now_iso
+        from alpha.utils.time import now_iso
 
         recovered_runs = await app.state.run_manager.reconcile_orphaned_inflight_runs(
             error=STARTUP_ORPHAN_RECOVERY_ERROR,
@@ -759,7 +759,7 @@ def get_local_provider() -> LocalAuthProvider:
     global _cached_local_provider, _cached_repo
     if _cached_repo is None:
         from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
-        from agent_workspace.persistence.engine import get_session_factory
+        from alpha.persistence.engine import get_session_factory
 
         sf = get_session_factory()
         if sf is None:

@@ -20,14 +20,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from agent_workspace.authz.provider import AuthzDecision, AuthzReason
-from agent_workspace.authz.rbac import RbacAuthorizationProvider
-from agent_workspace.authz.sandbox_authz import authorize_sandbox_execution
-from agent_workspace.config.app_config import AppConfig
-from agent_workspace.config.authorization_config import AuthorizationConfig, AuthorizationProviderConfig
-from agent_workspace.config.model_config import ModelConfig
-from agent_workspace.config.sandbox_config import SandboxConfig
-from agent_workspace.sandbox.exceptions import SandboxAuthorizationError
+from alpha.authz.provider import AuthzDecision, AuthzReason
+from alpha.authz.rbac import RbacAuthorizationProvider
+from alpha.authz.sandbox_authz import authorize_sandbox_execution
+from alpha.config.app_config import AppConfig
+from alpha.config.authorization_config import AuthorizationConfig, AuthorizationProviderConfig
+from alpha.config.model_config import ModelConfig
+from alpha.config.sandbox_config import SandboxConfig
+from alpha.sandbox.exceptions import SandboxAuthorizationError
 
 # ── Helpers ────────────────────────────────────────────────────────────
 
@@ -36,7 +36,7 @@ def _make_app_config() -> AppConfig:
     """Build a minimal AppConfig for authorization tests."""
     return AppConfig(
         models=[ModelConfig(name="gpt-4", model="gpt-4", use="langchain_openai:ChatOpenAI")],
-        sandbox=SandboxConfig(use="agent_workspace.sandbox.local:LocalSandboxProvider"),
+        sandbox=SandboxConfig(use="alpha.sandbox.local:LocalSandboxProvider"),
         authorization=AuthorizationConfig(),
     )
 
@@ -77,7 +77,7 @@ def test_authorize_sandbox_rbac_allow(monkeypatch):
     app_config = _make_app_config()
     _enable_authz(app_config)
     monkeypatch.setattr(
-        "agent_workspace.authz.sandbox_authz.resolve_authorization_provider",
+        "alpha.authz.sandbox_authz.resolve_authorization_provider",
         lambda config: provider,
     )
     authorize_sandbox_execution(context=_context(), app_config=app_config)  # must not raise
@@ -89,7 +89,7 @@ def test_authorize_sandbox_rbac_deny(monkeypatch):
     app_config = _make_app_config()
     _enable_authz(app_config)
     monkeypatch.setattr(
-        "agent_workspace.authz.sandbox_authz.resolve_authorization_provider",
+        "alpha.authz.sandbox_authz.resolve_authorization_provider",
         lambda config: provider,
     )
     with pytest.raises(SandboxAuthorizationError, match="not permitted for your role"):
@@ -102,7 +102,7 @@ def test_authorize_sandbox_rbac_deny_via_bool(monkeypatch):
     app_config = _make_app_config()
     _enable_authz(app_config)
     monkeypatch.setattr(
-        "agent_workspace.authz.sandbox_authz.resolve_authorization_provider",
+        "alpha.authz.sandbox_authz.resolve_authorization_provider",
         lambda config: provider,
     )
     with pytest.raises(SandboxAuthorizationError):
@@ -115,7 +115,7 @@ def test_authorize_sandbox_no_policy_is_unrestricted(monkeypatch):
     app_config = _make_app_config()
     _enable_authz(app_config)
     monkeypatch.setattr(
-        "agent_workspace.authz.sandbox_authz.resolve_authorization_provider",
+        "alpha.authz.sandbox_authz.resolve_authorization_provider",
         lambda config: provider,
     )
     authorize_sandbox_execution(context=_context(), app_config=app_config)  # must not raise
@@ -139,7 +139,7 @@ def test_authorize_sandbox_provider_error_fail_closed(monkeypatch):
     app_config = _make_app_config()
     _enable_authz(app_config, fail_closed=True)
     monkeypatch.setattr(
-        "agent_workspace.authz.sandbox_authz.resolve_authorization_provider",
+        "alpha.authz.sandbox_authz.resolve_authorization_provider",
         lambda config: _ErrorProvider(),
     )
     with pytest.raises(SandboxAuthorizationError):
@@ -164,7 +164,7 @@ def test_authorize_sandbox_provider_error_fail_open(monkeypatch):
     app_config = _make_app_config()
     _enable_authz(app_config, fail_closed=False)
     monkeypatch.setattr(
-        "agent_workspace.authz.sandbox_authz.resolve_authorization_provider",
+        "alpha.authz.sandbox_authz.resolve_authorization_provider",
         lambda config: _ErrorProvider(),
     )
     authorize_sandbox_execution(context=_context(), app_config=app_config)  # must not raise
@@ -181,7 +181,7 @@ def test_authorize_sandbox_internal_caller_uses_default_role(monkeypatch):
     app_config = _make_app_config()
     _enable_authz(app_config, default_role="admin")
     monkeypatch.setattr(
-        "agent_workspace.authz.sandbox_authz.resolve_authorization_provider",
+        "alpha.authz.sandbox_authz.resolve_authorization_provider",
         lambda config: provider,
     )
     # Internal caller with system_role=None → default_role="admin" → allowed.
@@ -197,7 +197,7 @@ def test_authorize_sandbox_denied_error_carries_role(monkeypatch):
     app_config = _make_app_config()
     _enable_authz(app_config)
     monkeypatch.setattr(
-        "agent_workspace.authz.sandbox_authz.resolve_authorization_provider",
+        "alpha.authz.sandbox_authz.resolve_authorization_provider",
         lambda config: provider,
     )
     with pytest.raises(SandboxAuthorizationError) as exc_info:
@@ -215,16 +215,16 @@ def test_ensure_sandbox_initialized_denies_on_authz_reject(monkeypatch):
     before provider.acquire is touched, so a denied role never acquires a
     sandbox (and the error propagates as a friendly ToolMessage upstream).
     """
-    from agent_workspace.sandbox import tools as sandbox_tools
+    from alpha.sandbox import tools as sandbox_tools
 
     provider = RbacAuthorizationProvider(roles={"user": {"sandbox": {"allow": []}}})
     app_config = _make_app_config()
     _enable_authz(app_config)
     monkeypatch.setattr(
-        "agent_workspace.authz.sandbox_authz.resolve_authorization_provider",
+        "alpha.authz.sandbox_authz.resolve_authorization_provider",
         lambda config: provider,
     )
-    monkeypatch.setattr("agent_workspace.config.get_app_config", lambda: app_config)
+    monkeypatch.setattr("alpha.config.get_app_config", lambda: app_config)
 
     runtime = SimpleNamespace(
         state={"sandbox": None},
@@ -242,16 +242,16 @@ def test_ensure_sandbox_initialized_denies_on_authz_reject(monkeypatch):
 
 def test_ensure_sandbox_initialized_rechecks_authz_for_reused_sandbox(monkeypatch):
     """A persisted sandbox id must not outlive a revoked execute grant."""
-    from agent_workspace.sandbox import tools as sandbox_tools
+    from alpha.sandbox import tools as sandbox_tools
 
     provider = RbacAuthorizationProvider(roles={"user": {"sandbox": {"allow": []}}})
     app_config = _make_app_config()
     _enable_authz(app_config)
     monkeypatch.setattr(
-        "agent_workspace.authz.sandbox_authz.resolve_authorization_provider",
+        "alpha.authz.sandbox_authz.resolve_authorization_provider",
         lambda config: provider,
     )
-    monkeypatch.setattr("agent_workspace.config.get_app_config", lambda: app_config)
+    monkeypatch.setattr("alpha.config.get_app_config", lambda: app_config)
 
     sandbox_provider = MagicMock()
     sandbox_provider.get.return_value = MagicMock()
@@ -270,8 +270,8 @@ def test_ensure_sandbox_initialized_rechecks_authz_for_reused_sandbox(monkeypatc
 
 def test_ensure_sandbox_initialized_allows_on_authz_permit(monkeypatch):
     """ensure_sandbox_initialized proceeds to acquire on allow."""
-    from agent_workspace.sandbox import tools as sandbox_tools
-    from agent_workspace.sandbox.sandbox_provider import (
+    from alpha.sandbox import tools as sandbox_tools
+    from alpha.sandbox.sandbox_provider import (
         reset_sandbox_provider,
         set_sandbox_provider,
     )
@@ -280,10 +280,10 @@ def test_ensure_sandbox_initialized_allows_on_authz_permit(monkeypatch):
     app_config = _make_app_config()
     _enable_authz(app_config)
     monkeypatch.setattr(
-        "agent_workspace.authz.sandbox_authz.resolve_authorization_provider",
+        "alpha.authz.sandbox_authz.resolve_authorization_provider",
         lambda config: provider,
     )
-    monkeypatch.setattr("agent_workspace.config.get_app_config", lambda: app_config)
+    monkeypatch.setattr("alpha.config.get_app_config", lambda: app_config)
 
     acquired = {"called": False}
 
@@ -341,7 +341,7 @@ def test_authorize_sandbox_calls_provider_with_correct_request(monkeypatch):
     app_config = _make_app_config()
     _enable_authz(app_config)
     monkeypatch.setattr(
-        "agent_workspace.authz.sandbox_authz.resolve_authorization_provider",
+        "alpha.authz.sandbox_authz.resolve_authorization_provider",
         lambda config: provider,
     )
     authorize_sandbox_execution(context=_context(), app_config=app_config)
@@ -373,7 +373,7 @@ def _make_upload_app(monkeypatch, provider, *, fail_closed: bool = True):
         lambda: app_config.authorization,
     )
     monkeypatch.setattr(
-        "agent_workspace.authz.sandbox_authz.resolve_authorization_provider",
+        "alpha.authz.sandbox_authz.resolve_authorization_provider",
         lambda config: provider,
     )
 
@@ -475,7 +475,7 @@ def test_authorize_sandbox_resolution_error_fail_open_allows(monkeypatch):
     app_config = _make_app_config()
     _enable_authz(app_config, fail_closed=False)
     monkeypatch.setattr(
-        "agent_workspace.authz.sandbox_authz.resolve_authorization_provider",
+        "alpha.authz.sandbox_authz.resolve_authorization_provider",
         _boom,
     )
     authorize_sandbox_execution(context=_context(), app_config=app_config)  # must not raise
@@ -490,7 +490,7 @@ def test_authorize_sandbox_resolution_error_fail_closed_denies(monkeypatch):
     app_config = _make_app_config()
     _enable_authz(app_config, fail_closed=True)
     monkeypatch.setattr(
-        "agent_workspace.authz.sandbox_authz.resolve_authorization_provider",
+        "alpha.authz.sandbox_authz.resolve_authorization_provider",
         _boom,
     )
     with pytest.raises(SandboxAuthorizationError):
@@ -507,16 +507,16 @@ def test_eager_before_agent_deny_skips_acquisition(monkeypatch):
     """
     from types import SimpleNamespace as _NS
 
-    from agent_workspace.sandbox.middleware import SandboxMiddleware
+    from alpha.sandbox.middleware import SandboxMiddleware
 
     provider = RbacAuthorizationProvider(roles={"user": {"sandbox": {"allow": []}}})
     app_config = _make_app_config()
     _enable_authz(app_config)
     monkeypatch.setattr(
-        "agent_workspace.authz.sandbox_authz.resolve_authorization_provider",
+        "alpha.authz.sandbox_authz.resolve_authorization_provider",
         lambda config: provider,
     )
-    monkeypatch.setattr("agent_workspace.config.get_app_config", lambda: app_config)
+    monkeypatch.setattr("alpha.config.get_app_config", lambda: app_config)
 
     acquired = {"called": False}
 
@@ -553,7 +553,7 @@ def test_artifact_sandbox_sync_skipped_when_denied(monkeypatch, tmp_path):
         lambda: app_config.authorization,
     )
     monkeypatch.setattr(
-        "agent_workspace.authz.sandbox_authz.resolve_authorization_provider",
+        "alpha.authz.sandbox_authz.resolve_authorization_provider",
         lambda config: provider,
     )
 
@@ -574,7 +574,7 @@ def test_artifact_sandbox_sync_skipped_when_denied(monkeypatch, tmp_path):
         "app.gateway.deps.get_optional_user_from_request",
         AsyncMock(return_value=_request_user()),
     )
-    monkeypatch.setattr("agent_workspace.config.get_app_config", lambda: app_config)
+    monkeypatch.setattr("alpha.config.get_app_config", lambda: app_config)
 
     from _router_auth_helpers import call_unwrapped
 
@@ -608,13 +608,13 @@ def test_authorize_sandbox_no_config_file_is_noop(monkeypatch):
     config-less environments, which previously propagated out of the gate and
     broke ensure_sandbox_initialized's direct-call tests.
     """
-    from agent_workspace.authz import sandbox_authz as mod
+    from alpha.authz import sandbox_authz as mod
 
     def _no_config():
         raise FileNotFoundError("config.yaml file not found in the project root")
 
-    monkeypatch.setattr("agent_workspace.config.get_app_config", _no_config)
-    # safe_app_config imports get_app_config lazily from agent_workspace.config.
+    monkeypatch.setattr("alpha.config.get_app_config", _no_config)
+    # safe_app_config imports get_app_config lazily from alpha.config.
     assert mod.safe_app_config() is None
     # And the gate itself tolerates app_config=None (same as disabled).
     authorize_sandbox_execution(context=_context(), app_config=None)  # must not raise
@@ -665,16 +665,16 @@ def test_ensure_sandbox_initialized_async_denies_on_authz_reject(monkeypatch):
     Regression for willem-bd's round-4 finding — the async gate copy is
     verbatim-sync, so without this test deleting it would leave the suite green.
     """
-    from agent_workspace.sandbox import tools as sandbox_tools
+    from alpha.sandbox import tools as sandbox_tools
 
     provider = RbacAuthorizationProvider(roles={"user": {"sandbox": {"allow": []}}})
     app_config = _make_app_config()
     _enable_authz(app_config)
     monkeypatch.setattr(
-        "agent_workspace.authz.sandbox_authz.resolve_authorization_provider",
+        "alpha.authz.sandbox_authz.resolve_authorization_provider",
         lambda config: provider,
     )
-    monkeypatch.setattr("agent_workspace.config.get_app_config", lambda: app_config)
+    monkeypatch.setattr("alpha.config.get_app_config", lambda: app_config)
 
     sandbox_provider = MagicMock()
     sandbox_provider.acquire_async = AsyncMock(side_effect=AssertionError("must not acquire"))
@@ -694,16 +694,16 @@ def test_ensure_sandbox_initialized_async_denies_on_authz_reject(monkeypatch):
 
 def test_ensure_sandbox_initialized_async_rechecks_authz_for_reused_sandbox(monkeypatch):
     """Async tool calls also re-check a revoked grant before sandbox reuse."""
-    from agent_workspace.sandbox import tools as sandbox_tools
+    from alpha.sandbox import tools as sandbox_tools
 
     provider = RbacAuthorizationProvider(roles={"user": {"sandbox": {"allow": []}}})
     app_config = _make_app_config()
     _enable_authz(app_config)
     monkeypatch.setattr(
-        "agent_workspace.authz.sandbox_authz.resolve_authorization_provider",
+        "alpha.authz.sandbox_authz.resolve_authorization_provider",
         lambda config: provider,
     )
-    monkeypatch.setattr("agent_workspace.config.get_app_config", lambda: app_config)
+    monkeypatch.setattr("alpha.config.get_app_config", lambda: app_config)
 
     sandbox_provider = MagicMock()
     sandbox_provider.get.return_value = MagicMock()
@@ -724,7 +724,7 @@ def test_ensure_sandbox_initialized_async_rechecks_authz_for_reused_sandbox(monk
 
 def test_async_provider_is_constructed_on_running_event_loop(monkeypatch):
     """A loop-affine custom provider must not be constructed in a worker."""
-    from agent_workspace.authz.sandbox_authz import authorize_sandbox_execution_async
+    from alpha.authz.sandbox_authz import authorize_sandbox_execution_async
 
     provider_module = ModuleType("loop_affine_authz_test_provider")
     constructed_on = []
@@ -767,7 +767,7 @@ def test_async_provider_is_constructed_on_running_event_loop(monkeypatch):
 
 def test_async_sandbox_tool_authorizes_once_via_async_provider(monkeypatch):
     """One async tool invocation must make one async authorization decision."""
-    from agent_workspace.sandbox import tools as sandbox_tools
+    from alpha.sandbox import tools as sandbox_tools
 
     provider = MagicMock()
     provider.authorize.return_value = AuthzDecision(allow=True)
@@ -775,10 +775,10 @@ def test_async_sandbox_tool_authorizes_once_via_async_provider(monkeypatch):
     app_config = _make_app_config()
     _enable_authz(app_config)
     monkeypatch.setattr(
-        "agent_workspace.authz.sandbox_authz.resolve_authorization_provider",
+        "alpha.authz.sandbox_authz.resolve_authorization_provider",
         lambda config: provider,
     )
-    monkeypatch.setattr("agent_workspace.config.get_app_config", lambda: app_config)
+    monkeypatch.setattr("alpha.config.get_app_config", lambda: app_config)
 
     sandbox = MagicMock()
     sandbox.list_dir.return_value = []
@@ -819,7 +819,7 @@ def _composed_file_request(name, args, runtime, messages=()):
 
 
 def _install_composed_file_authz(monkeypatch, *, allow=True):
-    from agent_workspace.sandbox import tools as sandbox_tools
+    from alpha.sandbox import tools as sandbox_tools
 
     provider = MagicMock()
     provider.authorize.return_value = AuthzDecision(allow=allow)
@@ -827,10 +827,10 @@ def _install_composed_file_authz(monkeypatch, *, allow=True):
     app_config = _make_app_config()
     _enable_authz(app_config)
     monkeypatch.setattr(
-        "agent_workspace.authz.sandbox_authz.resolve_authorization_provider",
+        "alpha.authz.sandbox_authz.resolve_authorization_provider",
         lambda config: provider,
     )
-    monkeypatch.setattr("agent_workspace.config.get_app_config", lambda: app_config)
+    monkeypatch.setattr("alpha.config.get_app_config", lambda: app_config)
 
     sandbox = MagicMock()
     sandbox.id = "sbx-existing"
@@ -851,8 +851,8 @@ def test_composed_sync_file_tool_authorizes_once(monkeypatch, tool_name):
     """Read-before-write re-entry shares one synchronous provider decision."""
     from langchain_core.messages import ToolMessage
 
-    from agent_workspace.agents.middlewares.read_before_write_middleware import ReadBeforeWriteMiddleware
-    from agent_workspace.sandbox import tools as sandbox_tools
+    from alpha.agents.middlewares.read_before_write_middleware import ReadBeforeWriteMiddleware
+    from alpha.sandbox import tools as sandbox_tools
 
     provider, sandbox, runtime = _install_composed_file_authz(monkeypatch)
     path = "/mnt/user-data/outputs/report.md"
@@ -905,8 +905,8 @@ def test_composed_async_file_tool_authorizes_once(monkeypatch, tool_name):
 
     from langchain_core.messages import ToolMessage
 
-    from agent_workspace.agents.middlewares.read_before_write_middleware import ReadBeforeWriteMiddleware
-    from agent_workspace.sandbox import tools as sandbox_tools
+    from alpha.agents.middlewares.read_before_write_middleware import ReadBeforeWriteMiddleware
+    from alpha.sandbox import tools as sandbox_tools
 
     provider, sandbox, runtime = _install_composed_file_authz(monkeypatch)
     path = "/mnt/user-data/outputs/report.md"
@@ -957,7 +957,7 @@ def test_composed_write_authorization_deny_is_not_swallowed(monkeypatch, is_asyn
     """The gate's generic fail-open path must never turn an authz deny into allow."""
     import asyncio
 
-    from agent_workspace.agents.middlewares.read_before_write_middleware import ReadBeforeWriteMiddleware
+    from alpha.agents.middlewares.read_before_write_middleware import ReadBeforeWriteMiddleware
 
     provider, sandbox, runtime = _install_composed_file_authz(monkeypatch, allow=False)
     path = "/mnt/user-data/outputs/report.md"
@@ -990,16 +990,16 @@ def test_abefore_agent_deny_skips_acquisition(monkeypatch):
 
     Async counterpart of test_eager_before_agent_deny_skips_acquisition.
     """
-    from agent_workspace.sandbox.middleware import SandboxMiddleware
+    from alpha.sandbox.middleware import SandboxMiddleware
 
     provider = RbacAuthorizationProvider(roles={"user": {"sandbox": {"allow": []}}})
     app_config = _make_app_config()
     _enable_authz(app_config)
     monkeypatch.setattr(
-        "agent_workspace.authz.sandbox_authz.resolve_authorization_provider",
+        "alpha.authz.sandbox_authz.resolve_authorization_provider",
         lambda config: provider,
     )
-    monkeypatch.setattr("agent_workspace.config.get_app_config", lambda: app_config)
+    monkeypatch.setattr("alpha.config.get_app_config", lambda: app_config)
 
     acquired = {"called": False}
 

@@ -9,8 +9,8 @@ from typing import get_type_hints
 
 import pytest
 
-from agent_workspace.agents import thread_state as thread_state_module
-from agent_workspace.agents.thread_state import (
+from alpha.agents import thread_state as thread_state_module
+from alpha.agents.thread_state import (
     _SKILL_CONTEXT_MAX_ENTRIES,
     TERMINAL_STATUSES,
     THREAD_STATE_REDUCER_FIELDS,
@@ -24,7 +24,7 @@ from agent_workspace.agents.thread_state import (
     merge_todos,
     merge_viewed_images,
 )
-from agent_workspace.subagents.status_contract import SUBAGENT_STATUS_VALUES
+from alpha.subagents.status_contract import SUBAGENT_STATUS_VALUES
 
 
 class TestMergeSandbox:

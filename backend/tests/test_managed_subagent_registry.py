@@ -5,9 +5,9 @@ from __future__ import annotations
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from agent_workspace.config.subagents_config import CustomSubagentConfig, SubagentOverrideConfig, SubagentsAppConfig
-from agent_workspace.persistence.managed_subagents import ManagedSubagentDefinition
-from agent_workspace.subagents import registry
+from alpha.config.subagents_config import CustomSubagentConfig, SubagentOverrideConfig, SubagentsAppConfig
+from alpha.persistence.managed_subagents import ManagedSubagentDefinition
+from alpha.subagents import registry
 
 
 def _managed(name: str, *, enabled: bool = True) -> ManagedSubagentDefinition:

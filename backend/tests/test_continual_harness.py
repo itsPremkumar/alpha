@@ -5,14 +5,14 @@ from pathlib import Path
 import pytest
 from langchain_core.messages import SystemMessage
 
-from agent_workspace.agents.middlewares.continual_harness_middleware import (
+from alpha.agents.middlewares.continual_harness_middleware import (
     CONTINUAL_HARNESS_REMINDER_KEY,
     ContinualHarnessMiddleware,
 )
-from agent_workspace.harness.continual.refine import ContinualRefinementEngine
-from agent_workspace.harness.continual.snapshots import HarnessSnapshotManager
-from agent_workspace.harness.continual.state import HarnessState
-from agent_workspace.tools.builtins.harness_refine_tool import harness_refine_tool
+from alpha.harness.continual.refine import ContinualRefinementEngine
+from alpha.harness.continual.snapshots import HarnessSnapshotManager
+from alpha.harness.continual.state import HarnessState
+from alpha.tools.builtins.harness_refine_tool import harness_refine_tool
 
 
 def test_harness_state_crud(tmp_path: Path):

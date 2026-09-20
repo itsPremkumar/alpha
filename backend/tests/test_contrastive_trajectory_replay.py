@@ -2,7 +2,7 @@
 
 import pytest
 
-from agent_workspace.memory.contrastive_trajectory_replay import (
+from alpha.memory.contrastive_trajectory_replay import (
     ContrastiveTrajectoryReplay,
     TrajectoryRecord,
     query_contrastive_memory,

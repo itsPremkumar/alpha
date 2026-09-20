@@ -2,7 +2,7 @@
 
 import pytest
 
-from agent_workspace.workflow.dag_engine import (
+from alpha.workflow.dag_engine import (
     DAGEngine,
     UnverifiedNodeCompletionError,
     WriteScopeCollisionError,

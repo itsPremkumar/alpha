@@ -8,8 +8,8 @@ from unittest.mock import MagicMock
 import pytest
 from langchain_core.messages import HumanMessage, ToolMessage
 
-from agent_workspace.config.paths import Paths
-from agent_workspace.tools.builtins.list_uploaded_files_tool import _format_omitted_summary, _list_uploaded_files_impl, _resolve_thread_id
+from alpha.config.paths import Paths
+from alpha.tools.builtins.list_uploaded_files_tool import _format_omitted_summary, _list_uploaded_files_impl, _resolve_thread_id
 
 
 def _paths(tmp_path):
@@ -17,7 +17,7 @@ def _paths(tmp_path):
 
 
 def _uploads_dir(tmp_path: Path, thread_id: str = "thread-abc") -> Path:
-    from agent_workspace.runtime.user_context import get_effective_user_id
+    from alpha.runtime.user_context import get_effective_user_id
 
     d = Paths(str(tmp_path)).sandbox_uploads_dir(thread_id, user_id=get_effective_user_id())
     d.mkdir(parents=True, exist_ok=True)
@@ -270,8 +270,8 @@ class TestListUploadedFiles:
 class TestMiddlewareToolStateBridge:
     def test_middleware_state_write_excludes_file_in_tool(self, tmp_path):
         """Middleware writes uploaded_files → tool reads and excludes them."""
-        from agent_workspace.agents.middlewares.uploads_middleware import UploadsMiddleware
-        from agent_workspace.utils.messages import ORIGINAL_USER_CONTENT_KEY
+        from alpha.agents.middlewares.uploads_middleware import UploadsMiddleware
+        from alpha.utils.messages import ORIGINAL_USER_CONTENT_KEY
 
         # Setup: create uploads dir + file using the same thread_id the
         # middleware and tool will resolve.
@@ -315,7 +315,7 @@ class TestMiddlewareToolStateBridge:
 
     def test_empty_state_update_excludes_nothing(self, tmp_path):
         """When middleware clears state (no uploads), tool sees all files as historical."""
-        from agent_workspace.agents.middlewares.uploads_middleware import UploadsMiddleware
+        from alpha.agents.middlewares.uploads_middleware import UploadsMiddleware
 
         empty_thread_id = "thread-bridge-empty"
         uploads_dir = _uploads_dir(tmp_path, thread_id=empty_thread_id)
@@ -364,10 +364,10 @@ def test_real_graph_state_propagation_to_list_uploaded_files(tmp_path):
     from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
     from langchain_core.messages import AIMessage, HumanMessage
 
-    from agent_workspace.agents.middlewares.uploads_middleware import UploadsMiddleware
-    from agent_workspace.agents.thread_state import ThreadState
-    from agent_workspace.tools.builtins.list_uploaded_files_tool import list_uploaded_files
-    from agent_workspace.utils.messages import ORIGINAL_USER_CONTENT_KEY
+    from alpha.agents.middlewares.uploads_middleware import UploadsMiddleware
+    from alpha.agents.thread_state import ThreadState
+    from alpha.tools.builtins.list_uploaded_files_tool import list_uploaded_files
+    from alpha.utils.messages import ORIGINAL_USER_CONTENT_KEY
 
     thread_id = "test-graph-propagation"
     uploads_dir = _uploads_dir(tmp_path, thread_id=thread_id)
@@ -447,8 +447,8 @@ def test_files_in_additional_kwargs_reaches_middleware(tmp_path):
     This is the contract that IM channels rely on when passing files via
     ``_human_input_message(..., files=uploaded)``.
     """
-    from agent_workspace.agents.middlewares.uploads_middleware import UploadsMiddleware
-    from agent_workspace.utils.messages import ORIGINAL_USER_CONTENT_KEY
+    from alpha.agents.middlewares.uploads_middleware import UploadsMiddleware
+    from alpha.utils.messages import ORIGINAL_USER_CONTENT_KEY
 
     thread_id = "test-im-files"
     uploads_dir = _uploads_dir(tmp_path, thread_id=thread_id)
@@ -489,7 +489,7 @@ def test_channel_message_single_upload_block_via_middleware(tmp_path):
     upload-context producer, so one attachment → one ``<current_uploads>``
     block → the filename appears exactly once in the model-facing content.
     """
-    from agent_workspace.agents.middlewares.uploads_middleware import UploadsMiddleware
+    from alpha.agents.middlewares.uploads_middleware import UploadsMiddleware
 
     thread_id = "test-channel-single-block"
     uploads_dir = _uploads_dir(tmp_path, thread_id=thread_id)
@@ -976,7 +976,7 @@ class TestToolSchema:
     """
 
     def test_runtime_excluded_from_model_facing_args(self):
-        from agent_workspace.tools.builtins.list_uploaded_files_tool import list_uploaded_files
+        from alpha.tools.builtins.list_uploaded_files_tool import list_uploaded_files
 
         assert set(list_uploaded_files.args) == {"include_outline", "max_results", "query", "extensions"}
         assert "runtime" not in list_uploaded_files.args
@@ -984,7 +984,7 @@ class TestToolSchema:
     def test_openai_schema_generation_succeeds(self):
         from langchain_core.utils.function_calling import convert_to_openai_tool
 
-        from agent_workspace.tools.builtins.list_uploaded_files_tool import list_uploaded_files
+        from alpha.tools.builtins.list_uploaded_files_tool import list_uploaded_files
 
         # This raised PydanticInvalidForJsonSchema before the fix.
         oai = convert_to_openai_tool(list_uploaded_files)

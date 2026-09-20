@@ -17,8 +17,8 @@ import pytest
 import yaml
 from langchain.tools import ToolRuntime
 
-from agent_workspace.config.agents_config import AgentConfig
-from agent_workspace.tools.builtins.update_agent_tool import update_agent
+from alpha.config.agents_config import AgentConfig
+from alpha.tools.builtins.update_agent_tool import update_agent
 
 DEFAULT_USER = "test-user-autouse"  # matches the autouse fixture in tests/conftest.py
 
@@ -84,9 +84,9 @@ def _seed_agent(
 @pytest.fixture()
 def patched_paths(tmp_path: Path):
     paths_mock = _make_paths_mock(tmp_path)
-    with patch("agent_workspace.tools.builtins.update_agent_tool.get_paths", return_value=paths_mock):
+    with patch("alpha.tools.builtins.update_agent_tool.get_paths", return_value=paths_mock):
         # load_agent_config also calls get_paths(); patch the same target it uses.
-        with patch("agent_workspace.config.agents_config.get_paths", return_value=paths_mock):
+        with patch("alpha.config.agents_config.get_paths", return_value=paths_mock):
             yield paths_mock
 
 
@@ -95,7 +95,7 @@ def stub_app_config():
     """Stub get_app_config so model validation accepts only known names."""
     fake = MagicMock()
     fake.get_model_config.side_effect = lambda name: object() if name in {"gpt-known", "m1"} else None
-    with patch("agent_workspace.tools.builtins.update_agent_tool.get_app_config", return_value=fake):
+    with patch("alpha.tools.builtins.update_agent_tool.get_app_config", return_value=fake):
         yield fake
 
 
@@ -463,7 +463,7 @@ def test_update_agent_soul_failure_does_not_replace_config(tmp_path, patched_pat
             raise OSError("disk full while staging SOUL.md")
         return real_named_temp_file(*args, **kwargs)
 
-    with patch("agent_workspace.persistence.agents.file.tempfile.NamedTemporaryFile", side_effect=_explode_on_soul):
+    with patch("alpha.persistence.agents.file.tempfile.NamedTemporaryFile", side_effect=_explode_on_soul):
         result = update_agent.func(runtime=_runtime(), description="new-desc", soul="new soul")
 
     cfg = yaml.safe_load((agent_dir / "config.yaml").read_text())
@@ -478,7 +478,7 @@ def test_update_agent_soul_failure_does_not_replace_config(tmp_path, patched_pat
 
 def test_update_agent_only_writes_under_current_user(tmp_path, patched_paths):
     """An update from user 'alice' must never touch user 'bob's agent files."""
-    from agent_workspace.runtime.user_context import reset_current_user, set_current_user
+    from alpha.runtime.user_context import reset_current_user, set_current_user
 
     # Seed an agent for both users with the same name.
     alice_dir = _seed_agent(tmp_path, name="shared", description="alice-desc", soul="alice soul", user_id="alice")
@@ -522,8 +522,8 @@ def test_update_agent_round_trips_known_fields(tmp_path, patched_paths):
     )
     fake_app_config = MagicMock()
     fake_app_config.get_model_config.return_value = object()
-    with patch("agent_workspace.tools.builtins.update_agent_tool.load_agent_config", return_value=fake_cfg):
-        with patch("agent_workspace.tools.builtins.update_agent_tool.get_app_config", return_value=fake_app_config):
+    with patch("alpha.tools.builtins.update_agent_tool.load_agent_config", return_value=fake_cfg):
+        with patch("alpha.tools.builtins.update_agent_tool.get_app_config", return_value=fake_app_config):
             update_agent.func(runtime=_runtime(), description="bumped")
 
     cfg = yaml.safe_load((_user_agent_dir(tmp_path) / "config.yaml").read_text())
@@ -539,7 +539,7 @@ def test_update_agent_refuses_on_webhook_channel(tmp_path, patched_paths):
 
     The lead-agent factory already withholds ``update_agent`` from runs
     on webhook channels (see ``_WEBHOOK_CHANNELS`` in
-    ``agent_workspace.agents.lead_agent.agent``). The same set is mirrored
+    ``alpha.agents.lead_agent.agent``). The same set is mirrored
     here so a future code path that re-attaches the tool without going
     through ``_make_lead_agent`` (custom factories, ad-hoc tests, etc.)
     does not silently accept untrusted self-mutation requests routed
@@ -586,7 +586,7 @@ def test_update_agent_proceeds_on_non_webhook_channel(tmp_path, patched_paths, s
         context={"agent_name": "test-agent", "channel_name": "telegram"},
         tool_call_id="call_tg",
     )
-    with patch("agent_workspace.tools.builtins.update_agent_tool.load_agent_config", return_value=fake_cfg):
+    with patch("alpha.tools.builtins.update_agent_tool.load_agent_config", return_value=fake_cfg):
         update_agent.func(runtime=runtime, description="bumped")
 
     cfg = yaml.safe_load((seeded / "config.yaml").read_text())

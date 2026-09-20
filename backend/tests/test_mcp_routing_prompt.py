@@ -9,9 +9,9 @@ from langchain_core.tools import StructuredTool
 from langchain_core.utils.function_calling import convert_to_openai_function
 from pydantic import BaseModel, Field
 
-from agent_workspace.agents.lead_agent.prompt import apply_prompt_template
-from agent_workspace.tools.builtins.tool_search import assemble_deferred_tools, get_mcp_routing_hints_prompt_section
-from agent_workspace.tools.mcp_metadata import tag_mcp_routing, tag_mcp_tool
+from alpha.agents.lead_agent.prompt import apply_prompt_template
+from alpha.tools.builtins.tool_search import assemble_deferred_tools, get_mcp_routing_hints_prompt_section
+from alpha.tools.mcp_metadata import tag_mcp_routing, tag_mcp_tool
 
 
 class _Args(BaseModel):
@@ -113,9 +113,9 @@ def test_apply_prompt_template_places_routing_hints_after_deferred_tools(monkeyp
         ]
     )
     empty_storage = SimpleNamespace(load_skills=lambda *, enabled_only: [])
-    monkeypatch.setattr("agent_workspace.agents.lead_agent.prompt.get_or_new_skill_storage", lambda **kwargs: empty_storage)
-    monkeypatch.setattr("agent_workspace.agents.lead_agent.prompt.get_or_new_user_skill_storage", lambda *args, **kwargs: empty_storage)
-    monkeypatch.setattr("agent_workspace.agents.lead_agent.prompt.get_agent_soul", lambda agent_name=None, **kwargs: "")
+    monkeypatch.setattr("alpha.agents.lead_agent.prompt.get_or_new_skill_storage", lambda **kwargs: empty_storage)
+    monkeypatch.setattr("alpha.agents.lead_agent.prompt.get_or_new_user_skill_storage", lambda *args, **kwargs: empty_storage)
+    monkeypatch.setattr("alpha.agents.lead_agent.prompt.get_agent_soul", lambda agent_name=None, **kwargs: "")
 
     prompt = apply_prompt_template(
         app_config=_minimal_prompt_app_config(),

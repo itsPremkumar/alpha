@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from agent_workspace.config.paths import Paths
+from alpha.config.paths import Paths
 
 
 @pytest.fixture
@@ -32,13 +32,13 @@ class TestValidateUserId:
 
 class TestMakeSafeUserId:
     def test_already_safe_id_is_unchanged(self):
-        from agent_workspace.config.paths import make_safe_user_id
+        from alpha.config.paths import make_safe_user_id
 
         assert make_safe_user_id("ou_abc-123") == "ou_abc-123"
         assert make_safe_user_id("123456") == "123456"
 
     def test_unsafe_chars_are_sanitized_with_stable_suffix(self):
-        from agent_workspace.config.paths import make_safe_user_id
+        from alpha.config.paths import make_safe_user_id
 
         result = make_safe_user_id("user@example.com")
         # Sanitized prefix plus a stable digest of the original.
@@ -48,19 +48,19 @@ class TestMakeSafeUserId:
         assert make_safe_user_id("user@example.com") == result
 
     def test_sanitized_id_passes_validation(self, paths: Paths):
-        from agent_workspace.config.paths import make_safe_user_id
+        from alpha.config.paths import make_safe_user_id
 
         safe = make_safe_user_id("用户/../etc")
         # Must be usable as a filesystem-scoped bucket without raising.
         assert paths.user_dir(safe) == paths.base_dir / "users" / safe
 
     def test_distinct_unsafe_ids_do_not_collide(self):
-        from agent_workspace.config.paths import make_safe_user_id
+        from alpha.config.paths import make_safe_user_id
 
         assert make_safe_user_id("a.b") != make_safe_user_id("a/b")
 
     def test_empty_id_rejected(self):
-        from agent_workspace.config.paths import make_safe_user_id
+        from alpha.config.paths import make_safe_user_id
 
         with pytest.raises(ValueError, match="non-empty"):
             make_safe_user_id("")
@@ -68,14 +68,14 @@ class TestMakeSafeUserId:
 
 class TestValidateIntegrationId:
     def test_accepts_dotted_integration_id(self):
-        from agent_workspace.config.paths import _validate_integration_id
+        from alpha.config.paths import _validate_integration_id
 
         assert _validate_integration_id("lark-cli") == "lark-cli"
         assert _validate_integration_id("some.integration") == "some.integration"
 
     @pytest.mark.parametrize("integration_id", [".", ".."])
     def test_rejects_dot_and_dotdot(self, integration_id):
-        from agent_workspace.config.paths import _validate_integration_id
+        from alpha.config.paths import _validate_integration_id
 
         with pytest.raises(ValueError, match="Invalid integration_id"):
             _validate_integration_id(integration_id)
@@ -96,7 +96,7 @@ class TestUserDir:
         assert paths.user_dir("alice") == paths.base_dir / "users" / "alice"
 
     def test_prepare_user_dir_migrates_unique_legacy_unsafe_bucket(self, paths: Paths):
-        from agent_workspace.config.paths import make_safe_user_id
+        from alpha.config.paths import make_safe_user_id
 
         raw = "user@example.com"
         safe = make_safe_user_id(raw)
@@ -115,7 +115,7 @@ class TestUserDir:
         """A different raw ID with the same sanitized prefix has a different legacy digest."""
         import hashlib
 
-        from agent_workspace.config.paths import make_safe_user_id
+        from alpha.config.paths import make_safe_user_id
 
         users_dir = paths.base_dir / "users"
         other_legacy = users_dir / f"a-b-{hashlib.sha1(b'a/b').hexdigest()[:16]}"

@@ -11,8 +11,8 @@ import asyncio
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
-from agent_workspace.runtime.events.store.memory import MemoryRunEventStore
-from agent_workspace.runtime.journal import build_branch_history_seed_events
+from alpha.runtime.events.store.memory import MemoryRunEventStore
+from alpha.runtime.journal import build_branch_history_seed_events
 
 
 def _seed(messages):

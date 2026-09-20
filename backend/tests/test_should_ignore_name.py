@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import fnmatch
 
-from agent_workspace.sandbox.search import IGNORE_PATTERNS, should_ignore_name, should_ignore_path
+from alpha.sandbox.search import IGNORE_PATTERNS, should_ignore_name, should_ignore_path
 
 
 def _reference(name: str) -> bool:

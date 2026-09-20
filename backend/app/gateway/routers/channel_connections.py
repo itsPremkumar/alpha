@@ -17,10 +17,10 @@ from app.channels.runtime_config_store import (
     merge_runtime_channel_configs,
 )
 from app.gateway.deps import require_admin_user
-from agent_workspace.branding import DISPLAY_NAME
-from agent_workspace.config.channel_connections_config import ChannelConnectionsConfig
-from agent_workspace.persistence.channel_connections import ChannelConnectionRepository
-from agent_workspace.persistence.engine import get_session_factory
+from alpha.branding import DISPLAY_NAME
+from alpha.config.channel_connections_config import ChannelConnectionsConfig
+from alpha.persistence.channel_connections import ChannelConnectionRepository
+from alpha.persistence.engine import get_session_factory
 
 router = APIRouter(prefix="/api/channels", tags=["channel-connections"])
 logger = logging.getLogger(__name__)
@@ -145,7 +145,7 @@ def _get_user_id(request: Request) -> str:
 
 
 def _get_app_config():
-    from agent_workspace.config.app_config import get_app_config
+    from alpha.config.app_config import get_app_config
 
     return get_app_config()
 

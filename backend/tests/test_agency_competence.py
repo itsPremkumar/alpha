@@ -1,5 +1,5 @@
 
-from agent_workspace.agency import (
+from alpha.agency import (
     CompetenceTracker,
     CuriosityScorer,
     MotivationArbiter,

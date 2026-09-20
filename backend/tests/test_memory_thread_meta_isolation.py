@@ -12,10 +12,10 @@ from types import SimpleNamespace
 import pytest
 from langgraph.store.memory import InMemoryStore
 
-from agent_workspace.persistence.projects import ProjectNotAssignableError
-from agent_workspace.persistence.thread_meta import ThreadOwnershipConflictError
-from agent_workspace.persistence.thread_meta.memory import MemoryThreadMetaStore
-from agent_workspace.runtime.user_context import reset_current_user, set_current_user
+from alpha.persistence.projects import ProjectNotAssignableError
+from alpha.persistence.thread_meta import ThreadOwnershipConflictError
+from alpha.persistence.thread_meta.memory import MemoryThreadMetaStore
+from alpha.runtime.user_context import reset_current_user, set_current_user
 
 USER_A = SimpleNamespace(id="user-a", email="a@test.local")
 USER_B = SimpleNamespace(id="user-b", email="b@test.local")

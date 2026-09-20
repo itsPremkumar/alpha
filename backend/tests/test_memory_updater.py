@@ -5,21 +5,21 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from agent_workspace.agents.memory.backends.deermem.deermem.config import DeerMemConfig
-from agent_workspace.agents.memory.backends.deermem.deermem.core.prompt import format_conversation_for_update
-from agent_workspace.agents.memory.backends.deermem.deermem.core.storage import (
+from alpha.agents.memory.backends.deermem.deermem.config import DeerMemConfig
+from alpha.agents.memory.backends.deermem.deermem.core.prompt import format_conversation_for_update
+from alpha.agents.memory.backends.deermem.deermem.core.storage import (
     MemoryManifestRevisionConflict,
     MemoryStorage,
 )
-from agent_workspace.agents.memory.backends.deermem.deermem.core.updater import (
+from alpha.agents.memory.backends.deermem.deermem.core.updater import (
     MemoryUpdater,
     _build_staleness_section,
     _coerce_source_confidence,
     _extract_text,
     _parse_memory_update_response,
 )
-from agent_workspace.agents.memory.manager import LangfuseMemoryCallbacks
-from agent_workspace.trace_context import get_current_trace_id, request_trace_context
+from alpha.agents.memory.manager import LangfuseMemoryCallbacks
+from alpha.trace_context import get_current_trace_id, request_trace_context
 
 
 def _make_memory(facts: list[dict[str, object]] | None = None) -> dict[str, object]:
@@ -1384,7 +1384,7 @@ class TestUpdateMemoryStructuredResponse:
 
         with (
             patch(
-                "agent_workspace.agents.memory.backends.deermem.deermem.core.updater._SYNC_MEMORY_UPDATER_EXECUTOR.submit",
+                "alpha.agents.memory.backends.deermem.deermem.core.updater._SYNC_MEMORY_UPDATER_EXECUTOR.submit",
                 side_effect=RuntimeError("executor down"),
             ),
         ):
@@ -1683,7 +1683,7 @@ class TestUserIdForwarding:
         monkeypatch.setenv("LANGFUSE_TRACING", "true")
         monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
         monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
-        from agent_workspace.config.tracing_config import reset_tracing_config
+        from alpha.config.tracing_config import reset_tracing_config
 
         reset_tracing_config()
         valid_json = '{"user": {}, "history": {}, "newFacts": [], "factsToRemove": []}'

@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from agent_workspace.planning.integrity import GoalIntegrityEngine
+from alpha.planning.integrity import GoalIntegrityEngine
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/goal-integrity", tags=["goal-integrity"])

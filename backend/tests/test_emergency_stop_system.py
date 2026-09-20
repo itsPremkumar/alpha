@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from agent_workspace.runtime.estop import EmergencyStopManager
-from agent_workspace.tools.builtins.estop_tool import emergency_stop_manage
+from alpha.runtime.estop import EmergencyStopManager
+from alpha.tools.builtins.estop_tool import emergency_stop_manage
 
 
 def test_estop_lifecycle(tmp_path: Path):
@@ -26,8 +26,8 @@ def test_estop_lifecycle(tmp_path: Path):
 
 def test_emergency_stop_tool(tmp_path: Path, monkeypatch):
     manager = EmergencyStopManager(root_dir=tmp_path)
-    monkeypatch.setattr("agent_workspace.runtime.estop.get_estop_manager", lambda: manager)
-    monkeypatch.setattr("agent_workspace.tools.builtins.estop_tool.get_estop_manager", lambda: manager)
+    monkeypatch.setattr("alpha.runtime.estop.get_estop_manager", lambda: manager)
+    monkeypatch.setattr("alpha.tools.builtins.estop_tool.get_estop_manager", lambda: manager)
 
     # Check status
     stat_out = emergency_stop_manage.invoke({"action": "status"})

@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 import pytest
 
-from agent_workspace.safety.canary_sandbox import (
+from alpha.safety.canary_sandbox import (
     ASTSafetyInvariantChecker,
     EphemeralCanarySandbox,
 )

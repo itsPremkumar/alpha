@@ -1,6 +1,6 @@
 import pytest
 
-from agent_workspace.security.enclave import CheckpointCrypto, CheckpointIntegrityError
+from alpha.security.enclave import CheckpointCrypto, CheckpointIntegrityError
 
 
 def test_aes_gcm_encrypt_decrypt_roundtrip():

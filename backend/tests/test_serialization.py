@@ -1,4 +1,4 @@
-"""Tests for agent_workspace.runtime.serialization."""
+"""Tests for alpha.runtime.serialization."""
 
 from __future__ import annotations
 
@@ -28,13 +28,13 @@ class _Unprintable:
 
 
 def test_serialize_none():
-    from agent_workspace.runtime.serialization import serialize_lc_object
+    from alpha.runtime.serialization import serialize_lc_object
 
     assert serialize_lc_object(None) is None
 
 
 def test_serialize_primitives():
-    from agent_workspace.runtime.serialization import serialize_lc_object
+    from alpha.runtime.serialization import serialize_lc_object
 
     assert serialize_lc_object("hello") == "hello"
     assert serialize_lc_object(42) == 42
@@ -43,7 +43,7 @@ def test_serialize_primitives():
 
 
 def test_serialize_dict():
-    from agent_workspace.runtime.serialization import serialize_lc_object
+    from alpha.runtime.serialization import serialize_lc_object
 
     obj = {"a": _FakePydanticV2(), "b": [1, "two"]}
     result = serialize_lc_object(obj)
@@ -51,46 +51,46 @@ def test_serialize_dict():
 
 
 def test_serialize_list():
-    from agent_workspace.runtime.serialization import serialize_lc_object
+    from alpha.runtime.serialization import serialize_lc_object
 
     result = serialize_lc_object([_FakePydanticV1(), 1])
     assert result == [{"key": "v1"}, 1]
 
 
 def test_serialize_tuple():
-    from agent_workspace.runtime.serialization import serialize_lc_object
+    from alpha.runtime.serialization import serialize_lc_object
 
     result = serialize_lc_object((_FakePydanticV2(),))
     assert result == [{"key": "v2"}]
 
 
 def test_serialize_pydantic_v2():
-    from agent_workspace.runtime.serialization import serialize_lc_object
+    from alpha.runtime.serialization import serialize_lc_object
 
     assert serialize_lc_object(_FakePydanticV2()) == {"key": "v2"}
 
 
 def test_serialize_pydantic_v1():
-    from agent_workspace.runtime.serialization import serialize_lc_object
+    from alpha.runtime.serialization import serialize_lc_object
 
     assert serialize_lc_object(_FakePydanticV1()) == {"key": "v1"}
 
 
 def test_serialize_fallback_str():
-    from agent_workspace.runtime.serialization import serialize_lc_object
+    from alpha.runtime.serialization import serialize_lc_object
 
     result = serialize_lc_object(object())
     assert isinstance(result, str)
 
 
 def test_serialize_fallback_repr():
-    from agent_workspace.runtime.serialization import serialize_lc_object
+    from alpha.runtime.serialization import serialize_lc_object
 
     assert serialize_lc_object(_Unprintable()) == "<Unprintable>"
 
 
 def test_serialize_channel_values_strips_pregel_keys():
-    from agent_workspace.runtime.serialization import serialize_channel_values
+    from alpha.runtime.serialization import serialize_channel_values
 
     raw = {
         "messages": ["hello"],
@@ -111,14 +111,14 @@ def test_serialize_channel_values_strips_pregel_keys():
 
 
 def test_serialize_channel_values_serializes_objects():
-    from agent_workspace.runtime.serialization import serialize_channel_values
+    from alpha.runtime.serialization import serialize_channel_values
 
     result = serialize_channel_values({"obj": _FakePydanticV2()})
     assert result == {"obj": {"key": "v2"}}
 
 
 def test_serialize_messages_tuple():
-    from agent_workspace.runtime.serialization import serialize_messages_tuple
+    from alpha.runtime.serialization import serialize_messages_tuple
 
     chunk = _FakePydanticV2()
     metadata = {"langgraph_node": "agent"}
@@ -127,21 +127,21 @@ def test_serialize_messages_tuple():
 
 
 def test_serialize_messages_tuple_non_dict_metadata():
-    from agent_workspace.runtime.serialization import serialize_messages_tuple
+    from alpha.runtime.serialization import serialize_messages_tuple
 
     result = serialize_messages_tuple((_FakePydanticV2(), "not-a-dict"))
     assert result == [{"key": "v2"}, {}]
 
 
 def test_serialize_messages_tuple_fallback():
-    from agent_workspace.runtime.serialization import serialize_messages_tuple
+    from alpha.runtime.serialization import serialize_messages_tuple
 
     result = serialize_messages_tuple("not-a-tuple")
     assert result == "not-a-tuple"
 
 
 def test_serialize_dispatcher_messages_mode():
-    from agent_workspace.runtime.serialization import serialize
+    from alpha.runtime.serialization import serialize
 
     chunk = _FakePydanticV2()
     result = serialize((chunk, {"node": "x"}), mode="messages")
@@ -149,14 +149,14 @@ def test_serialize_dispatcher_messages_mode():
 
 
 def test_serialize_dispatcher_values_mode():
-    from agent_workspace.runtime.serialization import serialize
+    from alpha.runtime.serialization import serialize
 
     result = serialize({"msg": "hi", "__pregel_tasks": "x"}, mode="values")
     assert result == {"msg": "hi"}
 
 
 def test_serialize_dispatcher_default_mode():
-    from agent_workspace.runtime.serialization import serialize
+    from alpha.runtime.serialization import serialize
 
     result = serialize(_FakePydanticV1())
     assert result == {"key": "v1"}
@@ -179,7 +179,7 @@ def _make_msg(
 
 
 def test_strip_data_url_removes_base64_from_hidden_messages():
-    from agent_workspace.runtime.serialization import strip_data_url_image_blocks
+    from alpha.runtime.serialization import strip_data_url_image_blocks
 
     messages = [
         _make_msg(
@@ -209,7 +209,7 @@ def test_strip_data_url_removes_base64_from_hidden_messages():
 
 
 def test_strip_data_url_preserves_non_hidden_messages():
-    from agent_workspace.runtime.serialization import strip_data_url_image_blocks
+    from alpha.runtime.serialization import strip_data_url_image_blocks
 
     messages = [
         _make_msg(
@@ -228,7 +228,7 @@ def test_strip_data_url_preserves_non_hidden_messages():
 
 
 def test_strip_data_url_preserves_https_image_urls():
-    from agent_workspace.runtime.serialization import strip_data_url_image_blocks
+    from alpha.runtime.serialization import strip_data_url_image_blocks
 
     messages = [
         _make_msg(
@@ -247,7 +247,7 @@ def test_strip_data_url_preserves_https_image_urls():
 
 
 def test_strip_data_url_handles_string_content():
-    from agent_workspace.runtime.serialization import strip_data_url_image_blocks
+    from alpha.runtime.serialization import strip_data_url_image_blocks
 
     messages = [
         _make_msg("plain text content", hide_from_ui=True),
@@ -257,7 +257,7 @@ def test_strip_data_url_handles_string_content():
 
 
 def test_strip_data_url_handles_non_dict_messages():
-    from agent_workspace.runtime.serialization import strip_data_url_image_blocks
+    from alpha.runtime.serialization import strip_data_url_image_blocks
 
     result = strip_data_url_image_blocks(["a_string", None, 42])
     assert result == ["a_string", None, 42]
@@ -265,7 +265,7 @@ def test_strip_data_url_handles_non_dict_messages():
 
 def test_strip_data_url_mixed_messages():
     """A realistic mix: normal user message + hidden image injection + AI reply."""
-    from agent_workspace.runtime.serialization import strip_data_url_image_blocks
+    from alpha.runtime.serialization import strip_data_url_image_blocks
 
     messages = [
         _make_msg("Please analyze this image", hide_from_ui=False),
@@ -292,7 +292,7 @@ def test_strip_data_url_mixed_messages():
 
 
 def test_serialize_channel_values_for_api_strips_base64():
-    from agent_workspace.runtime.serialization import serialize_channel_values_for_api
+    from alpha.runtime.serialization import serialize_channel_values_for_api
 
     channel_values = {
         "messages": [
@@ -324,7 +324,7 @@ def test_serialize_channel_values_for_api_strips_base64():
 
 def test_serialize_channel_values_for_api_no_messages():
     """When channel_values has no messages key, returns without error."""
-    from agent_workspace.runtime.serialization import serialize_channel_values_for_api
+    from alpha.runtime.serialization import serialize_channel_values_for_api
 
     result = serialize_channel_values_for_api({"title": "empty"})
     assert result == {"title": "empty"}
@@ -336,7 +336,7 @@ def test_serialize_values_mode_strips_base64_from_hidden_messages():
     endpoints do — otherwise the same payload leaks over the stream."""
     import json
 
-    from agent_workspace.runtime.serialization import serialize
+    from alpha.runtime.serialization import serialize
 
     state = {
         "messages": [

@@ -11,12 +11,12 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.mcp_tasks.errors import PermanentNotificationError
-from agent_workspace.constants import (
+from alpha.constants import (
     MCP_TASK_POLL_AFTER_MAX_SECONDS,
     MCP_TASK_REMOTE_ID_MAX_LENGTH,
     MCP_TASK_RESULT_ARTIFACT_MAX_BYTES,
 )
-from agent_workspace.mcp.tasks import (
+from alpha.mcp.tasks import (
     McpTaskDriverRegistry,
     McpTaskProtocolError,
     TaskReference,
@@ -24,9 +24,9 @@ from agent_workspace.mcp.tasks import (
     TaskStatus,
     TaskSubmitRequest,
 )
-from agent_workspace.persistence.mcp_tasks import DuplicateMcpRemoteTaskError
-from agent_workspace.runtime.runs.manager import ConflictError
-from agent_workspace.runtime.runs.schemas import RunStatus
+from alpha.persistence.mcp_tasks import DuplicateMcpRemoteTaskError
+from alpha.runtime.runs.manager import ConflictError
+from alpha.runtime.runs.schemas import RunStatus
 
 logger = logging.getLogger(__name__)
 
@@ -651,7 +651,7 @@ class McpTaskService:
         if self._task is not None:
             return
         self._stop.clear()
-        self._task = asyncio.create_task(self._run_loop(), name="agent_workspace-mcp-task-poller")
+        self._task = asyncio.create_task(self._run_loop(), name="alpha-mcp-task-poller")
 
     async def stop(self) -> None:
         task = self._task

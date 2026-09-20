@@ -1,7 +1,7 @@
 import pytest
 
-from agent_workspace.mission.state_machine import TaskState
-from agent_workspace.mission.work_queue import (
+from alpha.mission.state_machine import TaskState
+from alpha.mission.work_queue import (
     BudgetExceededError,
     CyclicDependencyError,
     DurableWorkQueue,

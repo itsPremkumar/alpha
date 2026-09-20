@@ -22,8 +22,8 @@ from pathlib import Path
 import pytest
 from dotenv import load_dotenv
 
-from agent_workspace.client import AgentWorkspaceClient, StreamEvent
-from agent_workspace.config.app_config import AppConfig
+from alpha.client import AgentWorkspaceClient, StreamEvent
+from alpha.config.app_config import AppConfig
 
 # Load .env from project root (for OPENAI_API_KEY etc.)
 load_dotenv(os.path.join(os.path.dirname(__file__), "../../.env"))
@@ -78,7 +78,7 @@ def _make_e2e_config() -> AppConfig:
                 }
             ],
             "sandbox": {
-                "use": "agent_workspace.sandbox.local:LocalSandboxProvider",
+                "use": "alpha.sandbox.local:LocalSandboxProvider",
                 "allow_host_bash": True,
             },
         }
@@ -107,51 +107,51 @@ def e2e_env(tmp_path, monkeypatch):
         "AGENT_WORKSPACE_PROJECT_ROOT",
         str(Path(__file__).resolve().parents[2]),
     )
-    monkeypatch.setattr("agent_workspace.config.paths._paths", None)
-    monkeypatch.setattr("agent_workspace.sandbox.sandbox_provider._default_sandbox_provider", None)
+    monkeypatch.setattr("alpha.config.paths._paths", None)
+    monkeypatch.setattr("alpha.sandbox.sandbox_provider._default_sandbox_provider", None)
 
     # 2. Inject a clean AppConfig. We must reset _app_config to None BEFORE
     # calling _make_e2e_config() because AppConfig() constructor misbehaves when
     # a disk config is already cached: it returns the cached model list instead
     # of the provided one. Clearing first ensures the test config is correct.
-    monkeypatch.setattr("agent_workspace.config.app_config._app_config", None)
-    monkeypatch.setattr("agent_workspace.config.app_config._app_config_is_custom", False)
+    monkeypatch.setattr("alpha.config.app_config._app_config", None)
+    monkeypatch.setattr("alpha.config.app_config._app_config_is_custom", False)
     config = _make_e2e_config()
-    monkeypatch.setattr("agent_workspace.config.app_config._app_config", config)
-    monkeypatch.setattr("agent_workspace.config.app_config._app_config_is_custom", True)
-    monkeypatch.setattr("agent_workspace.client.get_app_config", lambda: config)
+    monkeypatch.setattr("alpha.config.app_config._app_config", config)
+    monkeypatch.setattr("alpha.config.app_config._app_config_is_custom", True)
+    monkeypatch.setattr("alpha.client.get_app_config", lambda: config)
 
     # 3. Disable title generation (extra LLM call, non-deterministic)
-    from agent_workspace.config.title_config import TitleConfig
+    from alpha.config.title_config import TitleConfig
 
-    monkeypatch.setattr("agent_workspace.config.title_config._title_config", TitleConfig(enabled=False))
+    monkeypatch.setattr("alpha.config.title_config._title_config", TitleConfig(enabled=False))
 
     # 4. Disable memory queueing (avoids background threads & file writes)
-    from agent_workspace.config.memory_config import MemoryConfig
+    from alpha.config.memory_config import MemoryConfig
 
     monkeypatch.setattr(
-        "agent_workspace.agents.middlewares.memory_middleware.get_memory_config",
+        "alpha.agents.middlewares.memory_middleware.get_memory_config",
         lambda: MemoryConfig(enabled=False),
     )
 
     # 5. Ensure summarization is off (default, but be explicit)
-    from agent_workspace.config.summarization_config import SummarizationConfig
+    from alpha.config.summarization_config import SummarizationConfig
 
-    monkeypatch.setattr("agent_workspace.config.summarization_config._summarization_config", SummarizationConfig(enabled=False))
+    monkeypatch.setattr("alpha.config.summarization_config._summarization_config", SummarizationConfig(enabled=False))
 
     # 6. Exclude TitleMiddleware from the chain.
     #    It triggers an extra LLM call to generate a thread title, which adds
     #    non-determinism and cost to E2E tests (title generation is already
     #    disabled via TitleConfig above, but the middleware still participates
     #    in the chain and can interfere with event ordering).
-    from agent_workspace.agents.lead_agent.agent import build_middlewares as _original_build_middlewares
-    from agent_workspace.agents.middlewares.title_middleware import TitleMiddleware
+    from alpha.agents.lead_agent.agent import build_middlewares as _original_build_middlewares
+    from alpha.agents.middlewares.title_middleware import TitleMiddleware
 
     def _sync_safe_build_middlewares(*args, **kwargs):
         mws = _original_build_middlewares(*args, **kwargs)
         return [m for m in mws if not isinstance(m, TitleMiddleware)]
 
-    monkeypatch.setattr("agent_workspace.client.build_middlewares", _sync_safe_build_middlewares)
+    monkeypatch.setattr("alpha.client.build_middlewares", _sync_safe_build_middlewares)
 
     return {"tmp_path": tmp_path}
 
@@ -282,8 +282,8 @@ class TestFileUploadIntegration:
         assert result["files"][0]["filename"] == "readme.txt"
 
         # Physically exists
-        from agent_workspace.config.paths import get_paths
-        from agent_workspace.runtime.user_context import get_effective_user_id
+        from alpha.config.paths import get_paths
+        from alpha.runtime.user_context import get_effective_user_id
 
         assert (get_paths().sandbox_uploads_dir(tid, user_id=get_effective_user_id()) / "readme.txt").exists()
 
@@ -420,7 +420,7 @@ class TestMiddlewareChain:
 
         # ThreadDataMiddleware should have set paths in the state.
         # We verify the paths singleton can resolve the thread dir.
-        from agent_workspace.config.paths import get_paths
+        from alpha.config.paths import get_paths
 
         thread_dir = get_paths().thread_dir(tid)
         assert str(thread_dir).endswith(tid)
@@ -493,8 +493,8 @@ class TestArtifactAccess:
 
     def test_get_artifact_happy_path(self, e2e_env):
         """Write a file to outputs, then read it back via get_artifact()."""
-        from agent_workspace.config.paths import get_paths
-        from agent_workspace.runtime.user_context import get_effective_user_id
+        from alpha.config.paths import get_paths
+        from alpha.runtime.user_context import get_effective_user_id
 
         c = AgentWorkspaceClient(checkpointer=None, thinking_enabled=False)
         tid = str(uuid.uuid4())
@@ -510,8 +510,8 @@ class TestArtifactAccess:
 
     def test_get_artifact_nested_path(self, e2e_env):
         """Artifacts in subdirectories are accessible."""
-        from agent_workspace.config.paths import get_paths
-        from agent_workspace.runtime.user_context import get_effective_user_id
+        from alpha.config.paths import get_paths
+        from alpha.runtime.user_context import get_effective_user_id
 
         c = AgentWorkspaceClient(checkpointer=None, thinking_enabled=False)
         tid = str(uuid.uuid4())
@@ -549,11 +549,11 @@ class TestSkillInstallation:
     @pytest.fixture(autouse=True)
     def _allow_skill_security_scan(self, monkeypatch):
         async def _scan(*args, **kwargs):
-            from agent_workspace.skills.security_scanner import ScanResult
+            from alpha.skills.security_scanner import ScanResult
 
             return ScanResult(decision="allow", reason="ok")
 
-        monkeypatch.setattr("agent_workspace.skills.installer.scan_skill_content", _scan)
+        monkeypatch.setattr("alpha.skills.installer.scan_skill_content", _scan)
 
     @pytest.fixture(autouse=True)
     def _isolate_skills_dir(self, tmp_path, monkeypatch):
@@ -561,15 +561,15 @@ class TestSkillInstallation:
         skills_root = tmp_path / "skills"
         (skills_root / "public").mkdir(parents=True)
         (skills_root / "custom").mkdir(parents=True)
-        from agent_workspace.skills.storage.local_skill_storage import LocalSkillStorage
+        from alpha.skills.storage.local_skill_storage import LocalSkillStorage
 
         local_storage = LocalSkillStorage(host_path=str(skills_root))
         monkeypatch.setattr(
-            "agent_workspace.skills.storage._default_skill_storage",
+            "alpha.skills.storage._default_skill_storage",
             local_storage,
         )
         monkeypatch.setattr(
-            "agent_workspace.client.get_or_new_user_skill_storage",
+            "alpha.client.get_or_new_user_skill_storage",
             lambda user_id, **kwargs: local_storage,
         )
         self._skills_root = skills_root
@@ -706,7 +706,7 @@ class TestConfigManagement:
         monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(config_file))
 
         # Force reload so the singleton picks up our test file
-        from agent_workspace.config.extensions_config import reload_extensions_config
+        from alpha.config.extensions_config import reload_extensions_config
 
         reload_extensions_config()
 
@@ -733,7 +733,7 @@ class TestConfigManagement:
         config_file.write_text(json.dumps({"mcpServers": {}, "skills": {}, "middlewares": ["pkg:Middleware"]}))
         monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(config_file))
 
-        from agent_workspace.config.extensions_config import reload_extensions_config
+        from alpha.config.extensions_config import reload_extensions_config
 
         reload_extensions_config()
 
@@ -763,7 +763,7 @@ class TestConfigManagement:
         config_file.write_text(json.dumps({"mcpServers": {}, "skills": {}}))
         monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(config_file))
 
-        from agent_workspace.config.extensions_config import reload_extensions_config
+        from alpha.config.extensions_config import reload_extensions_config
 
         reload_extensions_config()
 

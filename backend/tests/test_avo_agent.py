@@ -1,5 +1,5 @@
 
-from agent_workspace.avo import (
+from alpha.avo import (
     AgenticVariationLoop,
     AVOEngine,
     AVOLineage,

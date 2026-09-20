@@ -9,8 +9,8 @@ from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage, Syst
 from langchain_core.outputs import ChatGeneration, ChatResult
 from pydantic import Field
 
-from agent_workspace.agents.middlewares.dynamic_context_middleware import _DYNAMIC_CONTEXT_REMINDER_KEY
-from agent_workspace.agents.middlewares.summarization_middleware import AgentWorkspaceSummarizationMiddleware
+from alpha.agents.middlewares.dynamic_context_middleware import _DYNAMIC_CONTEXT_REMINDER_KEY
+from alpha.agents.middlewares.summarization_middleware import AgentWorkspaceSummarizationMiddleware
 
 
 def _char_count(messages) -> int:

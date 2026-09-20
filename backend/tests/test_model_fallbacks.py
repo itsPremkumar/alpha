@@ -14,10 +14,10 @@ from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResu
 from langchain_core.tools import tool
 from pydantic import ValidationError
 
-from agent_workspace.config.app_config import AppConfig
-from agent_workspace.config.model_config import ModelConfig, ProviderConfig
-from agent_workspace.models import factory as factory_module
-from agent_workspace.models.fallback import (
+from alpha.config.app_config import AppConfig
+from alpha.config.model_config import ModelConfig, ProviderConfig
+from alpha.models import factory as factory_module
+from alpha.models.fallback import (
     FallbackChatModel,
     ModelFallbackExhaustedError,
     is_retryable_llm_error,

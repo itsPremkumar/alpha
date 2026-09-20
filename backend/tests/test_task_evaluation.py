@@ -1,4 +1,4 @@
-from agent_workspace.evaluation.benchmark import (
+from alpha.evaluation.benchmark import (
     STANDARD_BENCHMARKS,
     EvaluationRunner,
     TaskEvaluationResult,

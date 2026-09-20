@@ -64,7 +64,7 @@ class ApprovalDecideRequest(BaseModel):
 @router.post("/evaluate")
 async def evaluate_action(body: EvaluateRequest) -> dict:
     def _do():
-        from agent_workspace.policy import get_policy_engine
+        from alpha.policy import get_policy_engine
 
         return get_policy_engine().evaluate(body.action, actor=body.actor, project_id=body.project_id).to_dict()
 
@@ -74,7 +74,7 @@ async def evaluate_action(body: EvaluateRequest) -> dict:
 @router.get("/policies")
 async def list_policies() -> dict:
     def _do():
-        from agent_workspace.policy import get_policy_engine
+        from alpha.policy import get_policy_engine
 
         return [p.to_dict() for p in get_policy_engine().list_policies()]
 
@@ -87,7 +87,7 @@ async def add_policy(body: PolicyCreateRequest) -> dict:
         raise HTTPException(status_code=422, detail="auto must be allow|deny|approval.")
 
     def _do():
-        from agent_workspace.policy import get_policy_engine
+        from alpha.policy import get_policy_engine
 
         return get_policy_engine().add_policy(body.action_pattern, actor=body.actor, project_id=body.project_id, auto=body.auto, note=body.note).to_dict()
 
@@ -97,7 +97,7 @@ async def add_policy(body: PolicyCreateRequest) -> dict:
 @router.delete("/policies/{policy_id}")
 async def remove_policy(policy_id: str) -> dict:
     def _do():
-        from agent_workspace.policy import get_policy_engine
+        from alpha.policy import get_policy_engine
 
         return get_policy_engine().remove_policy(policy_id)
 

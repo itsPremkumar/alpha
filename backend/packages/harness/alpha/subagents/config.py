@@ -1,0 +1,88 @@
+"""Subagent configuration definitions."""
+
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from alpha.config.app_config import AppConfig
+
+
+# Conservative tool set used when a subagent declares no ``tools`` allowlist and
+# ``inherit_all`` is False. Read/search only: a subagent that has not been
+# granted specific authority should be able to look, not act.
+DEFAULT_SUBAGENT_TOOL_ALLOWLIST: tuple[str, ...] = (
+    "read_file",
+    "grep_search",
+    "list_dir",
+    "web_search",
+    "web_fetch",
+    "tool_search",
+    "describe_skill",
+)
+
+
+@dataclass
+class SubagentConfig:
+    """Configuration for a subagent.
+
+    Attributes:
+        name: Unique identifier for the subagent.
+        description: When Claude should delegate to this subagent.
+        system_prompt: The system prompt that guides the subagent's behavior.
+        tools: Optional list of tool names to allow. If None, inherits all tools
+            when ``inherit_all`` is True (the historical default); otherwise the
+            conservative ``DEFAULT_SUBAGENT_TOOL_ALLOWLIST`` applies.
+        inherit_all: When True (default, existing behaviour) a subagent with no
+            ``tools`` allowlist inherits every parent tool. Set False to require
+            an explicit allowlist, falling back to the read/search-only default.
+        disallowed_tools: Optional list of tool names to deny.
+        skills: Optional list of skill names to make discoverable and activatable.
+                If None, all enabled skills are available. If empty, skills are
+                disabled for this subagent. Skill bodies and their allowed-tools
+                policies take effect only after activation/loading at runtime.
+        model: Model to use - 'inherit' uses parent's model.
+        max_turns: Maximum agent turns before stopping. Built-in agents use the
+            value set here (general-purpose=150, bash=60) unless the global
+            ``subagents.max_turns`` is set.
+        timeout_seconds: Bare fallback execution-time cap. For built-in agents the
+            effective limit is the global ``subagents.timeout_seconds`` (default
+            1800 = 30 min), layered on by the registry; this 900 only applies
+            when no differing global value exists.
+    """
+
+    name: str
+    description: str
+    system_prompt: str | None = None
+    tools: list[str] | None = None
+    # Defaults to True to preserve historical behaviour; operators can set it
+    # False (or per-agent) so an undeclared toolset is read/search-only rather
+    # than a full inheritance of every parent tool.
+    inherit_all: bool = True
+    disallowed_tools: list[str] | None = field(default_factory=lambda: ["task", "ralph_loop", "session_search"])
+    # ``task`` and ``ralph_loop`` are denied so delegations cannot nest;
+    # ``session_search`` is lead-only (crosses thread boundaries by design).
+    skills: list[str] | None = None
+    model: str = "inherit"
+    max_turns: int = 50
+    timeout_seconds: int = 900
+
+
+def _default_model_name(app_config: "AppConfig") -> str:
+    if not app_config.models:
+        raise ValueError("No chat models are configured. Please configure at least one model in config.yaml.")
+    return app_config.models[0].name
+
+
+def resolve_subagent_model_name(config: SubagentConfig, parent_model: str | None, *, app_config: "AppConfig | None" = None) -> str:
+    """Resolve the effective model name a subagent should use."""
+    if config.model != "inherit":
+        return config.model
+
+    if parent_model is not None:
+        return parent_model
+
+    if app_config is None:
+        from alpha.config import get_app_config
+
+        app_config = get_app_config()
+    return _default_model_name(app_config)

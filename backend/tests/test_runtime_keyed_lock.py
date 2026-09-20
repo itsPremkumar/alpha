@@ -10,8 +10,8 @@ from uuid import uuid4
 
 import pytest
 
-from agent_workspace.runtime.goal import goal_thread_lock
-from agent_workspace.runtime.runs.worker import _checkpoint_thread_lock
+from alpha.runtime.goal import goal_thread_lock
+from alpha.runtime.runs.worker import _checkpoint_thread_lock
 
 
 class _WeakThreadId(str):
@@ -70,7 +70,7 @@ async def test_goal_and_checkpoint_lock_domains_remain_independent() -> None:
 
 @pytest.mark.asyncio
 async def test_late_arrival_cannot_bypass_queued_waiter() -> None:
-    from agent_workspace.runtime.keyed_lock import AsyncKeyedLockTable
+    from alpha.runtime.keyed_lock import AsyncKeyedLockTable
 
     table = AsyncKeyedLockTable[str]()
     release_first = asyncio.Event()
@@ -128,7 +128,7 @@ async def test_late_arrival_cannot_bypass_queued_waiter() -> None:
 
 @pytest.mark.asyncio
 async def test_cancelled_waiter_releases_its_participation() -> None:
-    from agent_workspace.runtime.keyed_lock import AsyncKeyedLockTable
+    from alpha.runtime.keyed_lock import AsyncKeyedLockTable
 
     table = AsyncKeyedLockTable[_WeakKey]()
     key = _WeakKey()
@@ -166,7 +166,7 @@ async def test_cancelled_waiter_releases_its_participation() -> None:
 
 @pytest.mark.asyncio
 async def test_many_unique_keys_are_reclaimed() -> None:
-    from agent_workspace.runtime.keyed_lock import AsyncKeyedLockTable
+    from alpha.runtime.keyed_lock import AsyncKeyedLockTable
 
     table = AsyncKeyedLockTable[_WeakKey]()
     keys = [_WeakKey() for _ in range(1000)]
@@ -183,7 +183,7 @@ async def test_many_unique_keys_are_reclaimed() -> None:
 
 
 def test_same_key_is_independent_across_event_loops() -> None:
-    from agent_workspace.runtime.keyed_lock import AsyncKeyedLockTable
+    from alpha.runtime.keyed_lock import AsyncKeyedLockTable
 
     table = AsyncKeyedLockTable[str]()
     barrier = threading.Barrier(2, timeout=2)
@@ -210,7 +210,7 @@ def test_keyed_lock_table_late_arrival_cannot_bypass_queued_waiter() -> None:
     a second lock and entering concurrently (which is what an early
     reclamation would allow).
     """
-    from agent_workspace.runtime.keyed_lock import KeyedLockTable
+    from alpha.runtime.keyed_lock import KeyedLockTable
 
     table = KeyedLockTable[str]()
     release_first = threading.Event()
@@ -290,7 +290,7 @@ def test_keyed_lock_table_late_arrival_cannot_bypass_queued_waiter() -> None:
 
 
 def test_keyed_lock_table_many_unique_keys_are_reclaimed() -> None:
-    from agent_workspace.runtime.keyed_lock import KeyedLockTable
+    from alpha.runtime.keyed_lock import KeyedLockTable
 
     table = KeyedLockTable[int]()
 

@@ -1,9 +1,9 @@
 from pathlib import Path
 from types import SimpleNamespace
 
-from agent_workspace.agents.lead_agent.prompt import get_skills_prompt_section
-from agent_workspace.config.agents_config import AgentConfig
-from agent_workspace.skills.types import Skill
+from alpha.agents.lead_agent.prompt import get_skills_prompt_section
+from alpha.config.agents_config import AgentConfig
+from alpha.skills.types import Skill
 
 
 class NamedTool:
@@ -30,12 +30,12 @@ def _mock_skill_storages(monkeypatch, skills):
     from types import SimpleNamespace
 
     mock_storage = SimpleNamespace(load_skills=lambda *, enabled_only: skills)
-    monkeypatch.setattr("agent_workspace.agents.lead_agent.prompt.get_or_new_skill_storage", lambda **kwargs: mock_storage)
-    monkeypatch.setattr("agent_workspace.agents.lead_agent.prompt.get_or_new_user_skill_storage", lambda user_id, **kwargs: mock_storage)
+    monkeypatch.setattr("alpha.agents.lead_agent.prompt.get_or_new_skill_storage", lambda **kwargs: mock_storage)
+    monkeypatch.setattr("alpha.agents.lead_agent.prompt.get_or_new_user_skill_storage", lambda user_id, **kwargs: mock_storage)
     monkeypatch.setattr(
-        "agent_workspace.config.get_app_config",
+        "alpha.config.get_app_config",
         lambda: SimpleNamespace(
-            skills=SimpleNamespace(container_path="/mnt/skills", use="agent_workspace.skills.storage.local_skill_storage:LocalSkillStorage", get_skills_path=lambda: Path("/tmp/skills")),
+            skills=SimpleNamespace(container_path="/mnt/skills", use="alpha.skills.storage.local_skill_storage:LocalSkillStorage", get_skills_path=lambda: Path("/tmp/skills")),
             skill_evolution=SimpleNamespace(enabled=False),
         ),
     )
@@ -43,7 +43,7 @@ def _mock_skill_storages(monkeypatch, skills):
 
 def test_get_skills_prompt_section_returns_empty_when_no_skills_match(monkeypatch):
     skills = [_make_skill("skill1"), _make_skill("skill2")]
-    monkeypatch.setattr("agent_workspace.agents.lead_agent.prompt._get_enabled_skills", lambda: skills)
+    monkeypatch.setattr("alpha.agents.lead_agent.prompt._get_enabled_skills", lambda: skills)
     _mock_skill_storages(monkeypatch, skills)
 
     result = get_skills_prompt_section(available_skills={"non_existent_skill"})
@@ -52,7 +52,7 @@ def test_get_skills_prompt_section_returns_empty_when_no_skills_match(monkeypatc
 
 def test_get_skills_prompt_section_returns_empty_when_available_skills_empty(monkeypatch):
     skills = [_make_skill("skill1"), _make_skill("skill2")]
-    monkeypatch.setattr("agent_workspace.agents.lead_agent.prompt._get_enabled_skills", lambda: skills)
+    monkeypatch.setattr("alpha.agents.lead_agent.prompt._get_enabled_skills", lambda: skills)
     _mock_skill_storages(monkeypatch, skills)
 
     result = get_skills_prompt_section(available_skills=set())
@@ -61,7 +61,7 @@ def test_get_skills_prompt_section_returns_empty_when_available_skills_empty(mon
 
 def test_get_skills_prompt_section_returns_skills(monkeypatch):
     skills = [_make_skill("skill1"), _make_skill("skill2")]
-    monkeypatch.setattr("agent_workspace.agents.lead_agent.prompt._get_enabled_skills", lambda: skills)
+    monkeypatch.setattr("alpha.agents.lead_agent.prompt._get_enabled_skills", lambda: skills)
     _mock_skill_storages(monkeypatch, skills)
 
     result = get_skills_prompt_section(available_skills={"skill1"})
@@ -72,7 +72,7 @@ def test_get_skills_prompt_section_returns_skills(monkeypatch):
 
 def test_get_skills_prompt_section_returns_all_when_available_skills_is_none(monkeypatch):
     skills = [_make_skill("skill1"), _make_skill("skill2")]
-    monkeypatch.setattr("agent_workspace.agents.lead_agent.prompt._get_enabled_skills", lambda: skills)
+    monkeypatch.setattr("alpha.agents.lead_agent.prompt._get_enabled_skills", lambda: skills)
     _mock_skill_storages(monkeypatch, skills)
 
     result = get_skills_prompt_section(available_skills=None)
@@ -85,16 +85,16 @@ def test_get_skills_prompt_section_no_arg_cold_cache_loads_enabled_skills(monkey
     enabled-skills list while the synchronously-loaded disabled section is populated."""
     import threading
 
-    from agent_workspace.agents.lead_agent import prompt as prompt_mod
+    from alpha.agents.lead_agent import prompt as prompt_mod
 
     skills = [_make_skill("skill1"), _make_skill("skill2", enabled=False)]
     mock_storage = SimpleNamespace(load_skills=lambda *, enabled_only: [s for s in skills if s.enabled or not enabled_only])
-    monkeypatch.setattr("agent_workspace.agents.lead_agent.prompt.get_or_new_skill_storage", lambda **kwargs: mock_storage)
-    monkeypatch.setattr("agent_workspace.agents.lead_agent.prompt.get_or_new_user_skill_storage", lambda user_id, **kwargs: mock_storage)
+    monkeypatch.setattr("alpha.agents.lead_agent.prompt.get_or_new_skill_storage", lambda **kwargs: mock_storage)
+    monkeypatch.setattr("alpha.agents.lead_agent.prompt.get_or_new_user_skill_storage", lambda user_id, **kwargs: mock_storage)
     monkeypatch.setattr(
-        "agent_workspace.config.get_app_config",
+        "alpha.config.get_app_config",
         lambda: SimpleNamespace(
-            skills=SimpleNamespace(container_path="/mnt/skills", use="agent_workspace.skills.storage.local_skill_storage:LocalSkillStorage", get_skills_path=lambda: Path("/tmp/skills")),
+            skills=SimpleNamespace(container_path="/mnt/skills", use="alpha.skills.storage.local_skill_storage:LocalSkillStorage", get_skills_path=lambda: Path("/tmp/skills")),
             skill_evolution=SimpleNamespace(enabled=False),
         ),
     )
@@ -112,7 +112,7 @@ def test_get_skills_prompt_section_no_arg_cold_cache_loads_enabled_skills(monkey
 
 def test_get_skills_prompt_section_includes_slash_activation_guidance(monkeypatch):
     skills = [_make_skill("data-analysis")]
-    monkeypatch.setattr("agent_workspace.agents.lead_agent.prompt._get_enabled_skills", lambda: skills)
+    monkeypatch.setattr("alpha.agents.lead_agent.prompt._get_enabled_skills", lambda: skills)
     _mock_skill_storages(monkeypatch, skills)
 
     result = get_skills_prompt_section(available_skills={"data-analysis"})
@@ -124,13 +124,13 @@ def test_get_skills_prompt_section_includes_slash_activation_guidance(monkeypatc
 
 def test_get_skills_prompt_section_includes_self_evolution_rules(monkeypatch):
     skills = [_make_skill("skill1")]
-    monkeypatch.setattr("agent_workspace.agents.lead_agent.prompt._get_enabled_skills", lambda: skills)
-    monkeypatch.setattr("agent_workspace.agents.lead_agent.prompt.get_or_new_skill_storage", lambda **kwargs: __import__("types").SimpleNamespace(load_skills=lambda *, enabled_only: skills))
-    monkeypatch.setattr("agent_workspace.agents.lead_agent.prompt.get_or_new_user_skill_storage", lambda user_id, **kwargs: __import__("types").SimpleNamespace(load_skills=lambda *, enabled_only: skills))
+    monkeypatch.setattr("alpha.agents.lead_agent.prompt._get_enabled_skills", lambda: skills)
+    monkeypatch.setattr("alpha.agents.lead_agent.prompt.get_or_new_skill_storage", lambda **kwargs: __import__("types").SimpleNamespace(load_skills=lambda *, enabled_only: skills))
+    monkeypatch.setattr("alpha.agents.lead_agent.prompt.get_or_new_user_skill_storage", lambda user_id, **kwargs: __import__("types").SimpleNamespace(load_skills=lambda *, enabled_only: skills))
     monkeypatch.setattr(
-        "agent_workspace.config.get_app_config",
+        "alpha.config.get_app_config",
         lambda: SimpleNamespace(
-            skills=SimpleNamespace(container_path="/mnt/skills", use="agent_workspace.skills.storage.local_skill_storage:LocalSkillStorage", get_skills_path=lambda: Path("/tmp/skills")),
+            skills=SimpleNamespace(container_path="/mnt/skills", use="alpha.skills.storage.local_skill_storage:LocalSkillStorage", get_skills_path=lambda: Path("/tmp/skills")),
             skill_evolution=SimpleNamespace(enabled=True),
         ),
     )
@@ -140,13 +140,13 @@ def test_get_skills_prompt_section_includes_self_evolution_rules(monkeypatch):
 
 
 def test_get_skills_prompt_section_includes_self_evolution_rules_without_skills(monkeypatch):
-    monkeypatch.setattr("agent_workspace.agents.lead_agent.prompt._get_enabled_skills", lambda: [])
-    monkeypatch.setattr("agent_workspace.agents.lead_agent.prompt.get_or_new_skill_storage", lambda **kwargs: __import__("types").SimpleNamespace(load_skills=lambda *, enabled_only: []))
-    monkeypatch.setattr("agent_workspace.agents.lead_agent.prompt.get_or_new_user_skill_storage", lambda user_id, **kwargs: __import__("types").SimpleNamespace(load_skills=lambda *, enabled_only: []))
+    monkeypatch.setattr("alpha.agents.lead_agent.prompt._get_enabled_skills", lambda: [])
+    monkeypatch.setattr("alpha.agents.lead_agent.prompt.get_or_new_skill_storage", lambda **kwargs: __import__("types").SimpleNamespace(load_skills=lambda *, enabled_only: []))
+    monkeypatch.setattr("alpha.agents.lead_agent.prompt.get_or_new_user_skill_storage", lambda user_id, **kwargs: __import__("types").SimpleNamespace(load_skills=lambda *, enabled_only: []))
     monkeypatch.setattr(
-        "agent_workspace.config.get_app_config",
+        "alpha.config.get_app_config",
         lambda: SimpleNamespace(
-            skills=SimpleNamespace(container_path="/mnt/skills", use="agent_workspace.skills.storage.local_skill_storage:LocalSkillStorage", get_skills_path=lambda: Path("/tmp/skills")),
+            skills=SimpleNamespace(container_path="/mnt/skills", use="alpha.skills.storage.local_skill_storage:LocalSkillStorage", get_skills_path=lambda: Path("/tmp/skills")),
             skill_evolution=SimpleNamespace(enabled=True),
         ),
     )
@@ -157,14 +157,14 @@ def test_get_skills_prompt_section_includes_self_evolution_rules_without_skills(
 
 def test_get_skills_prompt_section_cache_respects_skill_evolution_toggle(monkeypatch):
     skills = [_make_skill("skill1")]
-    monkeypatch.setattr("agent_workspace.agents.lead_agent.prompt._get_enabled_skills", lambda: skills)
-    monkeypatch.setattr("agent_workspace.agents.lead_agent.prompt.get_or_new_skill_storage", lambda **kwargs: __import__("types").SimpleNamespace(load_skills=lambda *, enabled_only: skills))
-    monkeypatch.setattr("agent_workspace.agents.lead_agent.prompt.get_or_new_user_skill_storage", lambda user_id, **kwargs: __import__("types").SimpleNamespace(load_skills=lambda *, enabled_only: skills))
+    monkeypatch.setattr("alpha.agents.lead_agent.prompt._get_enabled_skills", lambda: skills)
+    monkeypatch.setattr("alpha.agents.lead_agent.prompt.get_or_new_skill_storage", lambda **kwargs: __import__("types").SimpleNamespace(load_skills=lambda *, enabled_only: skills))
+    monkeypatch.setattr("alpha.agents.lead_agent.prompt.get_or_new_user_skill_storage", lambda user_id, **kwargs: __import__("types").SimpleNamespace(load_skills=lambda *, enabled_only: skills))
     config = SimpleNamespace(
-        skills=SimpleNamespace(container_path="/mnt/skills", use="agent_workspace.skills.storage.local_skill_storage:LocalSkillStorage", get_skills_path=lambda: Path("/tmp/skills")),
+        skills=SimpleNamespace(container_path="/mnt/skills", use="alpha.skills.storage.local_skill_storage:LocalSkillStorage", get_skills_path=lambda: Path("/tmp/skills")),
         skill_evolution=SimpleNamespace(enabled=True),
     )
-    monkeypatch.setattr("agent_workspace.config.get_app_config", lambda: config)
+    monkeypatch.setattr("alpha.config.get_app_config", lambda: config)
 
     enabled_result = get_skills_prompt_section(available_skills=None)
     assert "Skill Self-Evolution" in enabled_result
@@ -176,21 +176,21 @@ def test_get_skills_prompt_section_cache_respects_skill_evolution_toggle(monkeyp
 
 def test_get_skills_prompt_section_uses_explicit_config_for_enabled_skills(monkeypatch):
     explicit_config = SimpleNamespace(
-        skills=SimpleNamespace(container_path="/mnt/alt-skills", use="agent_workspace.skills.storage.local_skill_storage:LocalSkillStorage", get_skills_path=lambda: Path("/tmp/alt-skills")),
+        skills=SimpleNamespace(container_path="/mnt/alt-skills", use="alpha.skills.storage.local_skill_storage:LocalSkillStorage", get_skills_path=lambda: Path("/tmp/alt-skills")),
         skill_evolution=SimpleNamespace(enabled=False),
     )
 
     def fail_get_app_config():
         raise AssertionError("ambient get_app_config() must not be used when app_config is explicit")
 
-    monkeypatch.setattr("agent_workspace.agents.lead_agent.prompt._get_enabled_skills", lambda: [_make_skill("global-skill")])
-    monkeypatch.setattr("agent_workspace.config.get_app_config", fail_get_app_config)
+    monkeypatch.setattr("alpha.agents.lead_agent.prompt._get_enabled_skills", lambda: [_make_skill("global-skill")])
+    monkeypatch.setattr("alpha.config.get_app_config", fail_get_app_config)
     monkeypatch.setattr(
-        "agent_workspace.agents.lead_agent.prompt.get_or_new_skill_storage",
+        "alpha.agents.lead_agent.prompt.get_or_new_skill_storage",
         lambda app_config=None, **kwargs: __import__("types").SimpleNamespace(load_skills=lambda *, enabled_only: [_make_skill("explicit-skill")] if app_config is explicit_config else []),
     )
     monkeypatch.setattr(
-        "agent_workspace.agents.lead_agent.prompt.get_or_new_user_skill_storage",
+        "alpha.agents.lead_agent.prompt.get_or_new_user_skill_storage",
         lambda user_id, app_config=None, **kwargs: __import__("types").SimpleNamespace(load_skills=lambda *, enabled_only: [_make_skill("explicit-skill")] if app_config is explicit_config else []),
     )
 
@@ -203,9 +203,9 @@ def test_get_skills_prompt_section_uses_explicit_config_for_enabled_skills(monke
 def test_get_skills_prompt_section_deferred_path_uses_skill_index(monkeypatch):
     """When skill_names is provided, renders <skill_index> instead of <available_skills>."""
     skills = [_make_skill("data-analysis"), _make_skill("deep-research")]
-    monkeypatch.setattr("agent_workspace.agents.lead_agent.prompt._get_enabled_skills", lambda: skills)
+    monkeypatch.setattr("alpha.agents.lead_agent.prompt._get_enabled_skills", lambda: skills)
     monkeypatch.setattr(
-        "agent_workspace.config.get_app_config",
+        "alpha.config.get_app_config",
         lambda: SimpleNamespace(
             skills=SimpleNamespace(container_path="/mnt/skills"),
             skill_evolution=SimpleNamespace(enabled=False),
@@ -213,8 +213,8 @@ def test_get_skills_prompt_section_deferred_path_uses_skill_index(monkeypatch):
     )
     # Deferred path never touches storage, but patch defensively in case of fallback.
     _null_storage = SimpleNamespace(load_skills=lambda *, enabled_only: [])
-    monkeypatch.setattr("agent_workspace.agents.lead_agent.prompt.get_or_new_skill_storage", lambda **kw: _null_storage)
-    monkeypatch.setattr("agent_workspace.agents.lead_agent.prompt.get_or_new_user_skill_storage", lambda *a, **kw: _null_storage)
+    monkeypatch.setattr("alpha.agents.lead_agent.prompt.get_or_new_skill_storage", lambda **kw: _null_storage)
+    monkeypatch.setattr("alpha.agents.lead_agent.prompt.get_or_new_user_skill_storage", lambda *a, **kw: _null_storage)
 
     # Deferred path: skill_names provided
     result = get_skills_prompt_section(
@@ -233,9 +233,9 @@ def test_get_skills_prompt_section_deferred_path_uses_skill_index(monkeypatch):
 def test_get_skills_prompt_section_legacy_path_when_skill_names_none(monkeypatch):
     """When skill_names is None, falls back to legacy <available_skills> rendering."""
     skills = [_make_skill("data-analysis")]
-    monkeypatch.setattr("agent_workspace.agents.lead_agent.prompt._get_enabled_skills", lambda: skills)
+    monkeypatch.setattr("alpha.agents.lead_agent.prompt._get_enabled_skills", lambda: skills)
     monkeypatch.setattr(
-        "agent_workspace.config.get_app_config",
+        "alpha.config.get_app_config",
         lambda: SimpleNamespace(
             skills=SimpleNamespace(container_path="/mnt/skills"),
             skill_evolution=SimpleNamespace(enabled=False),
@@ -243,8 +243,8 @@ def test_get_skills_prompt_section_legacy_path_when_skill_names_none(monkeypatch
     )
     # Legacy path loads ALL skills (enabled + disabled) from storage for the disabled-skills section.
     _storage = SimpleNamespace(load_skills=lambda *, enabled_only: skills)
-    monkeypatch.setattr("agent_workspace.agents.lead_agent.prompt.get_or_new_skill_storage", lambda **kw: _storage)
-    monkeypatch.setattr("agent_workspace.agents.lead_agent.prompt.get_or_new_user_skill_storage", lambda *a, **kw: _storage)
+    monkeypatch.setattr("alpha.agents.lead_agent.prompt.get_or_new_skill_storage", lambda **kw: _storage)
+    monkeypatch.setattr("alpha.agents.lead_agent.prompt.get_or_new_user_skill_storage", lambda *a, **kw: _storage)
 
     # Legacy path: skill_names not provided
     result = get_skills_prompt_section(available_skills=None)
@@ -258,13 +258,13 @@ def test_get_skills_prompt_section_legacy_path_when_skill_names_none(monkeypatch
 def test_make_lead_agent_empty_skills_passed_correctly(monkeypatch):
     from unittest.mock import MagicMock
 
-    from agent_workspace.agents.lead_agent import agent as lead_agent_module
+    from alpha.agents.lead_agent import agent as lead_agent_module
 
     # Mock dependencies
     monkeypatch.setattr(lead_agent_module, "get_app_config", lambda: MagicMock())
     monkeypatch.setattr(lead_agent_module, "_resolve_model_name", lambda x=None, **kwargs: "default-model")
     monkeypatch.setattr(lead_agent_module, "create_chat_model", lambda **kwargs: "model")
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
     monkeypatch.setattr(lead_agent_module, "_load_enabled_available_skills", lambda available_skills, *, app_config, user_id=None: [])
     monkeypatch.setattr(lead_agent_module, "build_middlewares", lambda *args, **kwargs: [])
     monkeypatch.setattr(lead_agent_module, "create_agent", lambda **kwargs: kwargs)
@@ -306,7 +306,7 @@ def test_make_lead_agent_empty_skills_passed_correctly(monkeypatch):
 def test_make_lead_agent_custom_skill_allowlist_does_not_activate_tool_policy(monkeypatch):
     from unittest.mock import MagicMock
 
-    from agent_workspace.agents.lead_agent import agent as lead_agent_module
+    from alpha.agents.lead_agent import agent as lead_agent_module
 
     monkeypatch.setattr(lead_agent_module, "_resolve_model_name", lambda x=None, **kwargs: "default-model")
     monkeypatch.setattr(lead_agent_module, "create_chat_model", lambda **kwargs: "model")
@@ -315,7 +315,7 @@ def test_make_lead_agent_custom_skill_allowlist_does_not_activate_tool_policy(mo
     monkeypatch.setattr(lead_agent_module, "create_agent", lambda **kwargs: kwargs)
     monkeypatch.setattr(lead_agent_module, "load_agent_config", lambda x, *, user_id=None: AgentConfig(name="test", skills=["restricted", "legacy"]))
     monkeypatch.setattr(lead_agent_module, "_load_enabled_available_skills", lambda available_skills, *, app_config, user_id=None: [_make_skill("restricted", ["read_file", "web_search"]), _make_skill("legacy", None)])
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [NamedTool("task"), NamedTool("bash"), NamedTool("read_file"), NamedTool("web_search")])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [NamedTool("task"), NamedTool("bash"), NamedTool("read_file"), NamedTool("web_search")])
 
     mock_app_config = MagicMock()
     # make_lead_agent freezes the delta snapshot frequency from the app config;
@@ -338,7 +338,7 @@ def test_make_lead_agent_custom_skill_allowlist_does_not_activate_tool_policy(mo
 
 
 def test_skill_allowed_tools_default_does_not_preserve_read_file_for_subagents():
-    from agent_workspace.skills.tool_policy import filter_tools_by_skill_allowed_tools
+    from alpha.skills.tool_policy import filter_tools_by_skill_allowed_tools
 
     tools = [NamedTool("read_file"), NamedTool("dataagent_query"), NamedTool("bash")]
     skills = [_make_skill("data-query", ["dataagent_query"])]
@@ -351,7 +351,7 @@ def test_skill_allowed_tools_default_does_not_preserve_read_file_for_subagents()
 def test_make_lead_agent_all_legacy_skills_preserve_all_tools(monkeypatch):
     from unittest.mock import MagicMock
 
-    from agent_workspace.agents.lead_agent import agent as lead_agent_module
+    from alpha.agents.lead_agent import agent as lead_agent_module
 
     monkeypatch.setattr(lead_agent_module, "_resolve_model_name", lambda x=None, **kwargs: "default-model")
     monkeypatch.setattr(lead_agent_module, "create_chat_model", lambda **kwargs: "model")
@@ -360,7 +360,7 @@ def test_make_lead_agent_all_legacy_skills_preserve_all_tools(monkeypatch):
     monkeypatch.setattr(lead_agent_module, "create_agent", lambda **kwargs: kwargs)
     monkeypatch.setattr(lead_agent_module, "load_agent_config", lambda x, *, user_id=None: AgentConfig(name="test", skills=None))
     monkeypatch.setattr(lead_agent_module, "_load_enabled_available_skills", lambda available_skills, *, app_config, user_id=None: [_make_skill("legacy", None)])
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [NamedTool("bash"), NamedTool("read_file")])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [NamedTool("bash"), NamedTool("read_file")])
 
     mock_app_config = MagicMock()
     # make_lead_agent freezes the delta snapshot frequency from the app config;
@@ -381,9 +381,9 @@ def test_make_lead_agent_passive_empty_skill_policy_preserves_mcp_and_other_tool
 
     from langchain_core.tools import tool
 
-    from agent_workspace.agents.lead_agent import agent as lead_agent_module
-    from agent_workspace.agents.lead_agent import prompt as prompt_module
-    from agent_workspace.tools.mcp_metadata import tag_mcp_tool
+    from alpha.agents.lead_agent import agent as lead_agent_module
+    from alpha.agents.lead_agent import prompt as prompt_module
+    from alpha.tools.mcp_metadata import tag_mcp_tool
 
     @tool
     def lightrag_query(query: str) -> str:
@@ -409,7 +409,7 @@ def test_make_lead_agent_passive_empty_skill_policy_preserves_mcp_and_other_tool
         lambda x, *, user_id=None: AgentConfig(name="test", skills=["example-safe-skill"]),
     )
     monkeypatch.setattr(
-        "agent_workspace.tools.get_available_tools",
+        "alpha.tools.get_available_tools",
         lambda **kwargs: [
             NamedTool("bash"),
             NamedTool("read_file"),
@@ -450,7 +450,7 @@ def test_default_lead_agent_does_not_apply_installed_skill_allowlists(monkeypatc
     """
     from unittest.mock import MagicMock
 
-    from agent_workspace.agents.lead_agent import agent as lead_agent_module
+    from alpha.agents.lead_agent import agent as lead_agent_module
 
     monkeypatch.setattr(lead_agent_module, "_resolve_model_name", lambda x=None, **kwargs: "default-model")
     monkeypatch.setattr(lead_agent_module, "create_chat_model", lambda **kwargs: "model")
@@ -463,7 +463,7 @@ def test_default_lead_agent_does_not_apply_installed_skill_allowlists(monkeypatc
         lambda available_skills, *, app_config, user_id=None: [_make_skill("skill-reviewer", ["review_skill_package"])],
     )
     monkeypatch.setattr(
-        "agent_workspace.tools.get_available_tools",
+        "alpha.tools.get_available_tools",
         lambda **kwargs: [NamedTool("bash"), NamedTool("browser_navigate"), NamedTool("review_skill_package")],
     )
 
@@ -490,8 +490,8 @@ def test_make_lead_agent_fails_closed_when_skill_policy_load_fails(monkeypatch):
 
     import pytest
 
-    from agent_workspace.agents.lead_agent import agent as lead_agent_module
-    from agent_workspace.agents.lead_agent import prompt as prompt_module
+    from alpha.agents.lead_agent import agent as lead_agent_module
+    from alpha.agents.lead_agent import prompt as prompt_module
 
     monkeypatch.setattr(lead_agent_module, "_resolve_model_name", lambda x=None, **kwargs: "default-model")
     monkeypatch.setattr(lead_agent_module, "create_chat_model", lambda **kwargs: "model")
@@ -536,7 +536,7 @@ def test_make_lead_agent_drops_update_agent_on_github_channel(monkeypatch):
     """
     from unittest.mock import MagicMock
 
-    from agent_workspace.agents.lead_agent import agent as lead_agent_module
+    from alpha.agents.lead_agent import agent as lead_agent_module
 
     monkeypatch.setattr(lead_agent_module, "_resolve_model_name", lambda x=None, **kwargs: "default-model")
     monkeypatch.setattr(lead_agent_module, "create_chat_model", lambda **kwargs: "model")
@@ -545,7 +545,7 @@ def test_make_lead_agent_drops_update_agent_on_github_channel(monkeypatch):
     monkeypatch.setattr(lead_agent_module, "create_agent", lambda **kwargs: kwargs)
     monkeypatch.setattr(lead_agent_module, "load_agent_config", lambda x, *, user_id=None: AgentConfig(name="test", skills=None))
     monkeypatch.setattr(lead_agent_module, "_load_enabled_available_skills", lambda available_skills, *, app_config, user_id=None: [_make_skill("legacy", None)])
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [NamedTool("bash"), NamedTool("read_file")])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [NamedTool("bash"), NamedTool("read_file")])
 
     mock_app_config = MagicMock()
     # make_lead_agent freezes the delta snapshot frequency from the app config;
@@ -575,7 +575,7 @@ def test_make_lead_agent_keeps_update_agent_on_non_webhook_channels(monkeypatch)
     """
     from unittest.mock import MagicMock
 
-    from agent_workspace.agents.lead_agent import agent as lead_agent_module
+    from alpha.agents.lead_agent import agent as lead_agent_module
 
     monkeypatch.setattr(lead_agent_module, "_resolve_model_name", lambda x=None, **kwargs: "default-model")
     monkeypatch.setattr(lead_agent_module, "create_chat_model", lambda **kwargs: "model")
@@ -584,7 +584,7 @@ def test_make_lead_agent_keeps_update_agent_on_non_webhook_channels(monkeypatch)
     monkeypatch.setattr(lead_agent_module, "create_agent", lambda **kwargs: kwargs)
     monkeypatch.setattr(lead_agent_module, "load_agent_config", lambda x, *, user_id=None: AgentConfig(name="test", skills=None))
     monkeypatch.setattr(lead_agent_module, "_load_enabled_available_skills", lambda available_skills, *, app_config, user_id=None: [_make_skill("legacy", None)])
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [NamedTool("bash")])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [NamedTool("bash")])
 
     mock_app_config = MagicMock()
     # make_lead_agent freezes the delta snapshot frequency from the app config;

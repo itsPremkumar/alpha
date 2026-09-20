@@ -17,9 +17,9 @@ from app.gateway.authz import (
     resolve_route_permissions,
 )
 from app.gateway.routers import runs, scheduled_tasks
-from agent_workspace.authz.provider import AuthzDecision, AuthzReason
-from agent_workspace.authz.rbac import RbacAuthorizationProvider
-from agent_workspace.config.authorization_config import AuthorizationConfig, AuthorizationProviderConfig
+from alpha.authz.provider import AuthzDecision, AuthzReason
+from alpha.authz.rbac import RbacAuthorizationProvider
+from alpha.config.authorization_config import AuthorizationConfig, AuthorizationProviderConfig
 
 
 class _RecordingProvider:
@@ -407,7 +407,7 @@ class TestRouteProviderCache:
         config = AuthorizationConfig(
             enabled=True,
             provider=AuthorizationProviderConfig(
-                use="agent_workspace.authz.rbac:RbacAuthorizationProvider",
+                use="alpha.authz.rbac:RbacAuthorizationProvider",
                 config={"roles": {"user": {"routes": {"allow": "*"}}}},
             ),
         )
@@ -428,14 +428,14 @@ class TestRouteProviderCache:
         config1 = AuthorizationConfig(
             enabled=True,
             provider=AuthorizationProviderConfig(
-                use="agent_workspace.authz.rbac:RbacAuthorizationProvider",
+                use="alpha.authz.rbac:RbacAuthorizationProvider",
                 config={"roles": {"user": {"routes": {"allow": "*"}}}},
             ),
         )
         config2 = AuthorizationConfig(
             enabled=True,
             provider=AuthorizationProviderConfig(
-                use="agent_workspace.authz.rbac:RbacAuthorizationProvider",
+                use="alpha.authz.rbac:RbacAuthorizationProvider",
                 config={"roles": {"user": {"routes": {"allow": []}}}},
             ),
         )
@@ -457,7 +457,7 @@ class TestRouteProviderCache:
         config1 = AuthorizationConfig(
             enabled=True,
             provider=AuthorizationProviderConfig(
-                use="agent_workspace.authz.rbac:RbacAuthorizationProvider",
+                use="alpha.authz.rbac:RbacAuthorizationProvider",
                 config={"roles": {"user": {"routes": {"allow": "*"}}}},
             ),
         )
@@ -465,7 +465,7 @@ class TestRouteProviderCache:
         config2 = AuthorizationConfig(
             enabled=True,
             provider=AuthorizationProviderConfig(
-                use="agent_workspace.authz.rbac:RbacAuthorizationProvider",
+                use="alpha.authz.rbac:RbacAuthorizationProvider",
                 config={"roles": {"user": {"routes": {"allow": "*"}}}},
             ),
         )

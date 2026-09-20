@@ -8,15 +8,15 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import create_engine, select
 
-from agent_workspace.persistence.base import Base
-from agent_workspace.persistence.managed_subagents import (
+from alpha.persistence.base import Base
+from alpha.persistence.managed_subagents import (
     ManagedSubagentDefinition,
     ManagedSubagentExistsError,
     make_managed_subagent_store,
 )
-from agent_workspace.persistence.managed_subagents.file import FileManagedSubagentStore
-from agent_workspace.persistence.managed_subagents.model import ManagedSubagentRow
-from agent_workspace.persistence.managed_subagents.sql import SqlManagedSubagentStore
+from alpha.persistence.managed_subagents.file import FileManagedSubagentStore
+from alpha.persistence.managed_subagents.model import ManagedSubagentRow
+from alpha.persistence.managed_subagents.sql import SqlManagedSubagentStore
 
 
 def _definition(name: str = "researcher", **changes) -> ManagedSubagentDefinition:
@@ -31,7 +31,7 @@ def _definition(name: str = "researcher", **changes) -> ManagedSubagentDefinitio
 @pytest.fixture()
 def file_store(tmp_path, monkeypatch):
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
-    monkeypatch.setattr("agent_workspace.config.paths._paths", None)
+    monkeypatch.setattr("alpha.config.paths._paths", None)
     return FileManagedSubagentStore()
 
 

@@ -1,5 +1,5 @@
 
-from agent_workspace.avo.knowledge import DomainKnowledgeBase
+from alpha.avo.knowledge import DomainKnowledgeBase
 
 
 def test_knowledge_base_seeding_and_query():

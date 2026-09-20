@@ -29,7 +29,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from agent_workspace.runtime.user_context import (
+from alpha.runtime.user_context import (
     reset_current_user,
     set_current_user,
 )
@@ -43,7 +43,7 @@ async def _make_engines(tmp_path):
 
     Returns a cleanup coroutine the caller should await at the end.
     """
-    from agent_workspace.persistence.engine import close_engine, init_engine
+    from alpha.persistence.engine import close_engine, init_engine
 
     url = f"sqlite+aiosqlite:///{tmp_path / 'isolation.db'}"
     await init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
@@ -70,8 +70,8 @@ def _as_user(user):
 @pytest.mark.anyio
 @pytest.mark.no_auto_user
 async def test_thread_meta_cross_user_isolation(tmp_path):
-    from agent_workspace.persistence.engine import get_session_factory
-    from agent_workspace.persistence.thread_meta import ThreadMetaRepository
+    from alpha.persistence.engine import get_session_factory
+    from alpha.persistence.thread_meta import ThreadMetaRepository
 
     cleanup = await _make_engines(tmp_path)
     try:
@@ -118,8 +118,8 @@ async def test_thread_meta_cross_user_isolation(tmp_path):
 @pytest.mark.no_auto_user
 async def test_thread_meta_cross_user_mutation_denied(tmp_path):
     """User B cannot update or delete a thread owned by User A."""
-    from agent_workspace.persistence.engine import get_session_factory
-    from agent_workspace.persistence.thread_meta import ThreadMetaRepository
+    from alpha.persistence.engine import get_session_factory
+    from alpha.persistence.thread_meta import ThreadMetaRepository
 
     cleanup = await _make_engines(tmp_path)
     try:
@@ -156,8 +156,8 @@ async def test_thread_meta_cross_user_mutation_denied(tmp_path):
 @pytest.mark.anyio
 @pytest.mark.no_auto_user
 async def test_runs_cross_user_isolation(tmp_path):
-    from agent_workspace.persistence.engine import get_session_factory
-    from agent_workspace.persistence.run import RunRepository
+    from alpha.persistence.engine import get_session_factory
+    from alpha.persistence.run import RunRepository
 
     cleanup = await _make_engines(tmp_path)
     try:
@@ -200,8 +200,8 @@ async def test_runs_cross_user_isolation(tmp_path):
 @pytest.mark.anyio
 @pytest.mark.no_auto_user
 async def test_runs_cross_user_delete_denied(tmp_path):
-    from agent_workspace.persistence.engine import get_session_factory
-    from agent_workspace.persistence.run import RunRepository
+    from alpha.persistence.engine import get_session_factory
+    from alpha.persistence.run import RunRepository
 
     cleanup = await _make_engines(tmp_path)
     try:
@@ -229,8 +229,8 @@ async def test_runs_cross_user_delete_denied(tmp_path):
 @pytest.mark.no_auto_user
 async def test_run_events_cross_user_isolation(tmp_path):
     """run_events holds raw conversation content — most sensitive leak vector."""
-    from agent_workspace.persistence.engine import get_session_factory
-    from agent_workspace.runtime.events.store.db import DbRunEventStore
+    from alpha.persistence.engine import get_session_factory
+    from alpha.runtime.events.store.db import DbRunEventStore
 
     cleanup = await _make_engines(tmp_path)
     try:
@@ -299,8 +299,8 @@ async def test_run_events_cross_user_isolation(tmp_path):
 @pytest.mark.no_auto_user
 async def test_run_events_cross_user_delete_denied(tmp_path):
     """User B cannot delete User A's event stream."""
-    from agent_workspace.persistence.engine import get_session_factory
-    from agent_workspace.runtime.events.store.db import DbRunEventStore
+    from alpha.persistence.engine import get_session_factory
+    from alpha.runtime.events.store.db import DbRunEventStore
 
     cleanup = await _make_engines(tmp_path)
     try:
@@ -334,8 +334,8 @@ async def test_run_events_cross_user_delete_denied(tmp_path):
 @pytest.mark.anyio
 @pytest.mark.no_auto_user
 async def test_feedback_cross_user_isolation(tmp_path):
-    from agent_workspace.persistence.engine import get_session_factory
-    from agent_workspace.persistence.feedback import FeedbackRepository
+    from alpha.persistence.engine import get_session_factory
+    from alpha.persistence.feedback import FeedbackRepository
 
     cleanup = await _make_engines(tmp_path)
     try:
@@ -388,8 +388,8 @@ async def test_feedback_cross_user_isolation(tmp_path):
 @pytest.mark.anyio
 @pytest.mark.no_auto_user
 async def test_feedback_cross_user_delete_denied(tmp_path):
-    from agent_workspace.persistence.engine import get_session_factory
-    from agent_workspace.persistence.feedback import FeedbackRepository
+    from alpha.persistence.engine import get_session_factory
+    from alpha.persistence.feedback import FeedbackRepository
 
     cleanup = await _make_engines(tmp_path)
     try:
@@ -418,8 +418,8 @@ async def test_feedback_cross_user_delete_denied(tmp_path):
 @pytest.mark.no_auto_user
 async def test_repository_without_context_raises(tmp_path):
     """Defense-in-depth: calling repo methods without a user context errors."""
-    from agent_workspace.persistence.engine import get_session_factory
-    from agent_workspace.persistence.thread_meta import ThreadMetaRepository
+    from alpha.persistence.engine import get_session_factory
+    from alpha.persistence.thread_meta import ThreadMetaRepository
 
     cleanup = await _make_engines(tmp_path)
     try:
@@ -438,8 +438,8 @@ async def test_repository_without_context_raises(tmp_path):
 @pytest.mark.no_auto_user
 async def test_explicit_none_bypasses_filter(tmp_path):
     """Migration scripts pass user_id=None to see all rows regardless of owner."""
-    from agent_workspace.persistence.engine import get_session_factory
-    from agent_workspace.persistence.thread_meta import ThreadMetaRepository
+    from alpha.persistence.engine import get_session_factory
+    from alpha.persistence.thread_meta import ThreadMetaRepository
 
     cleanup = await _make_engines(tmp_path)
     try:

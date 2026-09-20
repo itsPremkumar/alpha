@@ -11,7 +11,7 @@ Covers:
 
 import pytest
 
-from agent_workspace.config.subagents_config import (
+from alpha.config.subagents_config import (
     DEFAULT_MAX_TOTAL_SUBAGENTS_PER_RUN,
     SubagentOverrideConfig,
     SubagentsAppConfig,
@@ -19,7 +19,7 @@ from agent_workspace.config.subagents_config import (
     get_subagents_app_config,
     load_subagents_config_from_dict,
 )
-from agent_workspace.subagents.config import SubagentConfig
+from alpha.subagents.config import SubagentConfig
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -173,7 +173,7 @@ class TestSubagentsAppConfigDefaults:
     def test_get_token_budget_for_respects_explicit_global(self):
         """A user-set global ``token_budget`` is respected as-is — the
         summarization coupling only affects the default."""
-        from agent_workspace.config.token_budget_config import TokenBudgetConfig
+        from alpha.config.token_budget_config import TokenBudgetConfig
 
         config = SubagentsAppConfig(token_budget=TokenBudgetConfig(enabled=True, max_tokens=500_000))
         # Explicit global wins for an agent with no per-agent override.
@@ -183,7 +183,7 @@ class TestSubagentsAppConfigDefaults:
     def test_get_token_budget_for_respects_per_agent_override(self):
         """A per-agent ``token_budget`` override wins over both the default and
         the summarization coupling."""
-        from agent_workspace.config.token_budget_config import TokenBudgetConfig
+        from alpha.config.token_budget_config import TokenBudgetConfig
 
         config = SubagentsAppConfig(
             agents={"bash": SubagentOverrideConfig(token_budget=TokenBudgetConfig(enabled=True, max_tokens=300_000))},
@@ -375,12 +375,12 @@ class TestRegistryGetSubagentConfig:
         _reset_subagents_config()
 
     def test_returns_none_for_unknown_agent(self):
-        from agent_workspace.subagents.registry import get_subagent_config
+        from alpha.subagents.registry import get_subagent_config
 
         assert get_subagent_config("nonexistent") is None
 
     def test_returns_config_for_builtin_agents(self):
-        from agent_workspace.subagents.registry import get_subagent_config
+        from alpha.subagents.registry import get_subagent_config
 
         assert get_subagent_config("general-purpose") is not None
         assert get_subagent_config("bash") is not None
@@ -389,7 +389,7 @@ class TestRegistryGetSubagentConfig:
         """An explicit global timeout (here the non-default 900) propagates to a
         built-in agent, while max_turns still comes from the builtin def (150).
         """
-        from agent_workspace.subagents.registry import get_subagent_config
+        from alpha.subagents.registry import get_subagent_config
 
         _reset_subagents_config(timeout_seconds=900)
         config = get_subagent_config("general-purpose")
@@ -401,7 +401,7 @@ class TestRegistryGetSubagentConfig:
         general-purpose enough turns/time for deep research, which previously
         failed with GraphRecursionError at the old max_turns=100 limit.
         """
-        from agent_workspace.subagents.registry import get_subagent_config
+        from alpha.subagents.registry import get_subagent_config
 
         load_subagents_config_from_dict({})  # no subagents config -> model defaults
         config = get_subagent_config("general-purpose")
@@ -411,7 +411,7 @@ class TestRegistryGetSubagentConfig:
         assert get_subagent_config("bash").max_turns == 60
 
     def test_global_timeout_override_applied(self):
-        from agent_workspace.subagents.registry import get_subagent_config
+        from alpha.subagents.registry import get_subagent_config
 
         _reset_subagents_config(timeout_seconds=1800, max_turns=140)
         config = get_subagent_config("general-purpose")
@@ -419,7 +419,7 @@ class TestRegistryGetSubagentConfig:
         assert config.max_turns == 140
 
     def test_per_agent_runtime_override_applied(self):
-        from agent_workspace.subagents.registry import get_subagent_config
+        from alpha.subagents.registry import get_subagent_config
 
         load_subagents_config_from_dict(
             {
@@ -433,7 +433,7 @@ class TestRegistryGetSubagentConfig:
         assert bash_config.max_turns == 80
 
     def test_per_agent_override_does_not_affect_other_agents(self):
-        from agent_workspace.subagents.registry import get_subagent_config
+        from alpha.subagents.registry import get_subagent_config
 
         load_subagents_config_from_dict(
             {
@@ -447,7 +447,7 @@ class TestRegistryGetSubagentConfig:
         assert gp_config.max_turns == 120
 
     def test_per_agent_model_override_applied(self):
-        from agent_workspace.subagents.registry import get_subagent_config
+        from alpha.subagents.registry import get_subagent_config
 
         load_subagents_config_from_dict(
             {
@@ -460,8 +460,8 @@ class TestRegistryGetSubagentConfig:
 
     def test_omitted_model_keeps_builtin_value(self):
         """When config.yaml has no `model` field for an agent, the builtin default must be preserved."""
-        from agent_workspace.subagents.builtins import BUILTIN_SUBAGENTS
-        from agent_workspace.subagents.registry import get_subagent_config
+        from alpha.subagents.builtins import BUILTIN_SUBAGENTS
+        from alpha.subagents.registry import get_subagent_config
 
         builtin_bash_model = BUILTIN_SUBAGENTS["bash"].model
         load_subagents_config_from_dict(
@@ -475,8 +475,8 @@ class TestRegistryGetSubagentConfig:
 
     def test_explicit_null_model_keeps_builtin_value(self):
         """An explicit `model: null` in config.yaml is equivalent to omission — builtin wins."""
-        from agent_workspace.subagents.builtins import BUILTIN_SUBAGENTS
-        from agent_workspace.subagents.registry import get_subagent_config
+        from alpha.subagents.builtins import BUILTIN_SUBAGENTS
+        from alpha.subagents.registry import get_subagent_config
 
         builtin_bash_model = BUILTIN_SUBAGENTS["bash"].model
         load_subagents_config_from_dict(
@@ -489,8 +489,8 @@ class TestRegistryGetSubagentConfig:
         assert bash_config.model == builtin_bash_model
 
     def test_model_override_does_not_affect_other_agents(self):
-        from agent_workspace.subagents.builtins import BUILTIN_SUBAGENTS
-        from agent_workspace.subagents.registry import get_subagent_config
+        from alpha.subagents.builtins import BUILTIN_SUBAGENTS
+        from alpha.subagents.registry import get_subagent_config
 
         builtin_gp_model = BUILTIN_SUBAGENTS["general-purpose"].model
         load_subagents_config_from_dict(
@@ -504,8 +504,8 @@ class TestRegistryGetSubagentConfig:
 
     def test_model_override_preserves_other_fields(self):
         """Applying a model override must leave timeout_seconds / max_turns / name intact."""
-        from agent_workspace.subagents.builtins import BUILTIN_SUBAGENTS
-        from agent_workspace.subagents.registry import get_subagent_config
+        from alpha.subagents.builtins import BUILTIN_SUBAGENTS
+        from alpha.subagents.registry import get_subagent_config
 
         original = BUILTIN_SUBAGENTS["bash"]
         load_subagents_config_from_dict(
@@ -524,8 +524,8 @@ class TestRegistryGetSubagentConfig:
 
     def test_model_override_does_not_mutate_builtin(self):
         """Registry must return a new object, leaving the builtin default intact."""
-        from agent_workspace.subagents.builtins import BUILTIN_SUBAGENTS
-        from agent_workspace.subagents.registry import get_subagent_config
+        from alpha.subagents.builtins import BUILTIN_SUBAGENTS
+        from alpha.subagents.registry import get_subagent_config
 
         original_bash_model = BUILTIN_SUBAGENTS["bash"].model
         load_subagents_config_from_dict(
@@ -539,8 +539,8 @@ class TestRegistryGetSubagentConfig:
 
     def test_builtin_config_object_is_not_mutated(self):
         """Registry must return a new object, leaving the builtin default intact."""
-        from agent_workspace.subagents.builtins import BUILTIN_SUBAGENTS
-        from agent_workspace.subagents.registry import get_subagent_config
+        from alpha.subagents.builtins import BUILTIN_SUBAGENTS
+        from alpha.subagents.registry import get_subagent_config
 
         original_timeout = BUILTIN_SUBAGENTS["bash"].timeout_seconds
         original_max_turns = BUILTIN_SUBAGENTS["bash"].max_turns
@@ -554,8 +554,8 @@ class TestRegistryGetSubagentConfig:
 
     def test_config_preserves_other_fields(self):
         """Applying runtime overrides must not change other SubagentConfig fields."""
-        from agent_workspace.subagents.builtins import BUILTIN_SUBAGENTS
-        from agent_workspace.subagents.registry import get_subagent_config
+        from alpha.subagents.builtins import BUILTIN_SUBAGENTS
+        from alpha.subagents.registry import get_subagent_config
 
         _reset_subagents_config(timeout_seconds=300, max_turns=140)
         original = BUILTIN_SUBAGENTS["general-purpose"]
@@ -579,14 +579,14 @@ class TestRegistryListSubagents:
         _reset_subagents_config()
 
     def test_lists_both_builtin_agents(self):
-        from agent_workspace.subagents.registry import list_subagents
+        from alpha.subagents.registry import list_subagents
 
         names = {cfg.name for cfg in list_subagents()}
         assert "general-purpose" in names
         assert "bash" in names
 
     def test_all_returned_configs_get_global_override(self):
-        from agent_workspace.subagents.registry import list_subagents
+        from alpha.subagents.registry import list_subagents
 
         _reset_subagents_config(timeout_seconds=123, max_turns=77)
         for cfg in list_subagents():
@@ -594,7 +594,7 @@ class TestRegistryListSubagents:
             assert cfg.max_turns == 77, f"{cfg.name} has wrong max_turns"
 
     def test_per_agent_overrides_reflected_in_list(self):
-        from agent_workspace.subagents.registry import list_subagents
+        from alpha.subagents.registry import list_subagents
 
         load_subagents_config_from_dict(
             {

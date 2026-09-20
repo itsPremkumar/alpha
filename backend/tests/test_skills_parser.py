@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from agent_workspace.skills.parser import parse_skill_file
+from alpha.skills.parser import parse_skill_file
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -295,7 +295,7 @@ def test_parse_unquoted_colon_value_logs_line_and_hint(tmp_path, caplog):
     front_matter = f"name: collect-startrun\ndescription: {long_value}"
     skill_file = _write_skill(tmp_path, front_matter)
 
-    with caplog.at_level(logging.ERROR, logger="agent_workspace.skills.parser"):
+    with caplog.at_level(logging.ERROR, logger="alpha.skills.parser"):
         skill = parse_skill_file(skill_file, category="custom")
 
     assert skill is None
@@ -334,7 +334,7 @@ def test_parse_unquoted_colon_value_preserves_nested_key_indent(tmp_path, caplog
     front_matter = "name: nested-skill\nmetadata:\n  author: Jane: Doe"
     skill_file = _write_skill(tmp_path, front_matter)
 
-    with caplog.at_level(logging.ERROR, logger="agent_workspace.skills.parser"):
+    with caplog.at_level(logging.ERROR, logger="alpha.skills.parser"):
         skill = parse_skill_file(skill_file, category="custom")
 
     assert skill is None
@@ -350,7 +350,7 @@ def test_parse_unrelated_yaml_error_omits_quoting_hint(tmp_path, caplog):
     # quoting hint would be misleading and must be suppressed.
     skill_file = _write_skill(tmp_path, "name: [unclosed\ndescription: x")
 
-    with caplog.at_level(logging.ERROR, logger="agent_workspace.skills.parser"):
+    with caplog.at_level(logging.ERROR, logger="alpha.skills.parser"):
         skill = parse_skill_file(skill_file, category="custom")
 
     assert skill is None
@@ -364,7 +364,7 @@ def test_parse_valid_skill_emits_no_error_log(tmp_path, caplog):
 
     skill_file = _write_skill(tmp_path, 'name: ok-skill\ndescription: "Foo: bar"')
 
-    with caplog.at_level(logging.ERROR, logger="agent_workspace.skills.parser"):
+    with caplog.at_level(logging.ERROR, logger="alpha.skills.parser"):
         skill = parse_skill_file(skill_file, category="custom")
 
     assert skill is not None
@@ -390,7 +390,7 @@ def test_parse_unquoted_colon_value_escapes_backslashes_in_hint(tmp_path, caplog
     front_matter = "name: path-skill\ndescription: Windows path: C:\\Temp"
     skill_file = _write_skill(tmp_path, front_matter)
 
-    with caplog.at_level(logging.ERROR, logger="agent_workspace.skills.parser"):
+    with caplog.at_level(logging.ERROR, logger="alpha.skills.parser"):
         skill = parse_skill_file(skill_file, category="custom")
 
     assert skill is None
@@ -411,7 +411,7 @@ def test_parse_unquoted_colon_value_escapes_regex_in_hint(tmp_path, caplog):
     front_matter = "name: regex-skill\ndescription: match: \\d+ digits"
     skill_file = _write_skill(tmp_path, front_matter)
 
-    with caplog.at_level(logging.ERROR, logger="agent_workspace.skills.parser"):
+    with caplog.at_level(logging.ERROR, logger="alpha.skills.parser"):
         skill = parse_skill_file(skill_file, category="custom")
 
     assert skill is None

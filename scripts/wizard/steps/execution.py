@@ -6,8 +6,8 @@ from dataclasses import dataclass
 
 from wizard.ui import ask_choice, ask_yes_no, print_header, print_info, print_warning
 
-LOCAL_SANDBOX = "agent_workspace.sandbox.local:LocalSandboxProvider"
-CONTAINER_SANDBOX = "agent_workspace.community.aio_sandbox:AioSandboxProvider"
+LOCAL_SANDBOX = "alpha.sandbox.local:LocalSandboxProvider"
+CONTAINER_SANDBOX = "alpha.community.aio_sandbox:AioSandboxProvider"
 
 
 @dataclass

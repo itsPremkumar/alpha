@@ -294,7 +294,7 @@ def test_main_exits_nonzero_when_review_cli_reports_error(tmp_path: Path, monkey
         assert command == [
             "test-python",
             "-m",
-            "agent_workspace.skills.review.cli",
+            "alpha.skills.review.cli",
             "skills/public/bad",
             "--format",
             "json",

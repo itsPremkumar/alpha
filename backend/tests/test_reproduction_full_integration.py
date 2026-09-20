@@ -2,9 +2,9 @@
 
 from pathlib import Path
 
-from agent_workspace.critic import AgentFinishedCritic
-from agent_workspace.learning.experience import ExperienceRecord, ExperienceRetriever, ExperienceStore, OutcomeType
-from agent_workspace.reproduction import ReproductionEngine, ReproductionStatus
+from alpha.critic import AgentFinishedCritic
+from alpha.learning.experience import ExperienceRecord, ExperienceRetriever, ExperienceStore, OutcomeType
+from alpha.reproduction import ReproductionEngine, ReproductionStatus
 
 
 def test_full_reproduction_and_experience_pipeline(tmp_path):

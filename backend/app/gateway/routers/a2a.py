@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from agent_workspace.protocols.a2a import (
+from alpha.protocols.a2a import (
     A2ADelegationRequest,
     A2AProtocolAdapter,
     AgentCapabilityCard,

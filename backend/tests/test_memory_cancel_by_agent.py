@@ -7,10 +7,10 @@ from unittest.mock import MagicMock, patch
 
 from fastapi import HTTPException
 
-from agent_workspace.agents.memory.backends.deermem.deer_mem import DeerMem
-from agent_workspace.agents.memory.backends.deermem.deermem.core.queue import ConversationContext
-from agent_workspace.agents.memory.manager import MemoryManager, get_memory_manager, reset_memory_manager
-from agent_workspace.config.memory_config import MemoryConfig, get_memory_config, set_memory_config
+from alpha.agents.memory.backends.deermem.deer_mem import DeerMem
+from alpha.agents.memory.backends.deermem.deermem.core.queue import ConversationContext
+from alpha.agents.memory.manager import MemoryManager, get_memory_manager, reset_memory_manager
+from alpha.config.memory_config import MemoryConfig, get_memory_config, set_memory_config
 
 
 def test_deermem_cancel_by_agent_uses_canonical_bucket(tmp_path) -> None:

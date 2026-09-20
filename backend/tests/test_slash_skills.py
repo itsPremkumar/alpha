@@ -8,14 +8,14 @@ from langchain.agents.middleware.types import ModelRequest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from app.channels.commands import KNOWN_CHANNEL_COMMANDS
-from agent_workspace.agents.middlewares import skill_activation_middleware as middleware_module
-from agent_workspace.agents.middlewares.skill_activation_middleware import SkillActivationMiddleware, is_slash_skill_activation_reminder
-from agent_workspace.config.extensions_config import ExtensionsConfig
-from agent_workspace.config.paths import Paths
-from agent_workspace.skills.slash import RESERVED_SLASH_SKILL_NAMES, parse_slash_skill_reference, resolve_slash_skill
-from agent_workspace.skills.storage.user_scoped_skill_storage import UserScopedSkillStorage
-from agent_workspace.skills.types import Skill, SkillCategory
-from agent_workspace.utils.messages import ORIGINAL_USER_CONTENT_KEY
+from alpha.agents.middlewares import skill_activation_middleware as middleware_module
+from alpha.agents.middlewares.skill_activation_middleware import SkillActivationMiddleware, is_slash_skill_activation_reminder
+from alpha.config.extensions_config import ExtensionsConfig
+from alpha.config.paths import Paths
+from alpha.skills.slash import RESERVED_SLASH_SKILL_NAMES, parse_slash_skill_reference, resolve_slash_skill
+from alpha.skills.storage.user_scoped_skill_storage import UserScopedSkillStorage
+from alpha.skills.types import Skill, SkillCategory
+from alpha.utils.messages import ORIGINAL_USER_CONTENT_KEY
 
 _SLASH_SOURCE_OWNER_TOKEN = "test-slash-source-owner"
 
@@ -156,13 +156,13 @@ def test_skill_activation_middleware_reads_public_skill_from_real_user_scoped_st
         skills=SimpleNamespace(
             get_skills_path=lambda: skills_root,
             container_path="/mnt/skills",
-            use="agent_workspace.skills.storage.local_skill_storage:LocalSkillStorage",
+            use="alpha.skills.storage.local_skill_storage:LocalSkillStorage",
         ),
     )
     extensions_config = ExtensionsConfig()
-    monkeypatch.setattr("agent_workspace.config.paths.get_paths", lambda: Paths(base_dir=tmp_path))
+    monkeypatch.setattr("alpha.config.paths.get_paths", lambda: Paths(base_dir=tmp_path))
     monkeypatch.setattr(ExtensionsConfig, "from_file", classmethod(lambda cls, config_path=None: extensions_config))
-    monkeypatch.setattr("agent_workspace.config.extensions_config.get_extensions_config", lambda: extensions_config)
+    monkeypatch.setattr("alpha.config.extensions_config.get_extensions_config", lambda: extensions_config)
     storage = UserScopedSkillStorage("test-user", host_path=str(skills_root), app_config=app_config)
     monkeypatch.setattr(middleware_module, "get_or_new_user_skill_storage", lambda user_id, **kwargs: storage)
 
@@ -208,13 +208,13 @@ def test_skill_activation_middleware_reads_external_custom_skill_directory_symli
         skills=SimpleNamespace(
             get_skills_path=lambda: skills_root,
             container_path="/mnt/skills",
-            use="agent_workspace.skills.storage.local_skill_storage:LocalSkillStorage",
+            use="alpha.skills.storage.local_skill_storage:LocalSkillStorage",
         ),
     )
     extensions_config = ExtensionsConfig()
-    monkeypatch.setattr("agent_workspace.config.paths.get_paths", lambda: Paths(base_dir=tmp_path))
+    monkeypatch.setattr("alpha.config.paths.get_paths", lambda: Paths(base_dir=tmp_path))
     monkeypatch.setattr(ExtensionsConfig, "from_file", classmethod(lambda cls, config_path=None: extensions_config))
-    monkeypatch.setattr("agent_workspace.config.extensions_config.get_extensions_config", lambda: extensions_config)
+    monkeypatch.setattr("alpha.config.extensions_config.get_extensions_config", lambda: extensions_config)
 
     storage = UserScopedSkillStorage("test-user", host_path=str(skills_root), app_config=app_config)
     monkeypatch.setattr(middleware_module, "get_or_new_user_skill_storage", lambda user_id, **kwargs: storage)

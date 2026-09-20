@@ -22,7 +22,7 @@ from langchain.agents import create_agent
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from agent_workspace.agents.middlewares.dynamic_context_middleware import (
+from alpha.agents.middlewares.dynamic_context_middleware import (
     _DYNAMIC_CONTEXT_REMINDER_KEY,
     SubagentDateContextMiddleware,
 )

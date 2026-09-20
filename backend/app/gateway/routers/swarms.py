@@ -14,8 +14,8 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.gateway.deps import require_admin_user
-from agent_workspace.swarm.coordinator import get_swarm_coordinator
-from agent_workspace.swarm.models import SwarmMode
+from alpha.swarm.coordinator import get_swarm_coordinator
+from alpha.swarm.models import SwarmMode
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/swarms", tags=["swarms"])
@@ -150,7 +150,7 @@ async def complete_swarm_task(swarm_id: str, task_id: str, payload: SwarmTaskCom
     if not plan:
         raise HTTPException(status_code=404, detail=f"Swarm '{swarm_id}' not found.")
 
-    from agent_workspace.swarm.scheduler import SwarmScheduler
+    from alpha.swarm.scheduler import SwarmScheduler
 
     scheduler = SwarmScheduler(plan)
     updated = scheduler.mark_completed(
@@ -207,7 +207,7 @@ async def expand_swarm(swarm_id: str, payload: SwarmExpandRequest, request: Requ
 @router.get("/{swarm_id}/incidents")
 async def get_swarm_incidents(swarm_id: str):
     """Retrieves recorded failure incidents and succession recovery actions."""
-    from agent_workspace.swarm.incidents import get_swarm_incident_manager
+    from alpha.swarm.incidents import get_swarm_incident_manager
 
     inc_mgr = get_swarm_incident_manager()
     incidents = await asyncio.to_thread(inc_mgr.get_incidents, swarm_id)
@@ -217,7 +217,7 @@ async def get_swarm_incidents(swarm_id: str):
 @router.get("/{swarm_id}/memory")
 async def get_swarm_memory(swarm_id: str):
     """Retrieves operational facts and discovered artifacts from the Swarm Blackboard."""
-    from agent_workspace.swarm.memory import get_swarm_memory_manager
+    from alpha.swarm.memory import get_swarm_memory_manager
 
     mem_mgr = get_swarm_memory_manager()
     facts = await asyncio.to_thread(mem_mgr.get_facts, swarm_id)
@@ -228,7 +228,7 @@ async def get_swarm_memory(swarm_id: str):
 @router.get("/governor/status")
 async def get_resource_governor_status():
     """Retrieves model tier routing and rate-limit throttle status."""
-    from agent_workspace.swarm.governor import get_swarm_resource_governor
+    from alpha.swarm.governor import get_swarm_resource_governor
 
     gov = get_swarm_resource_governor()
     status = await asyncio.to_thread(gov.get_status)

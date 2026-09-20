@@ -22,7 +22,7 @@ import pytest
 
 from app.channels import manager as mgr
 from app.channels.message_bus import InboundMessage
-from agent_workspace.uploads.manager import get_uploads_dir
+from alpha.uploads.manager import get_uploads_dir
 
 pytestmark = pytest.mark.asyncio
 
@@ -30,7 +30,7 @@ pytestmark = pytest.mark.asyncio
 async def test_ingest_inbound_files_does_not_block_event_loop(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
     # Rebuild the cached Paths against the tmp home so uploads resolve under it.
-    import agent_workspace.config.paths as paths_mod
+    import alpha.config.paths as paths_mod
 
     monkeypatch.setattr(paths_mod, "_paths", None)
 

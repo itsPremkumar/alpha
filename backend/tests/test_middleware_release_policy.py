@@ -119,50 +119,50 @@ class _StaticChatModel(BaseChatModel):
 
 
 def _make_loop_detection_middleware():
-    from agent_workspace.agents.middlewares.loop_detection_middleware import LoopDetectionMiddleware
+    from alpha.agents.middlewares.loop_detection_middleware import LoopDetectionMiddleware
 
     return LoopDetectionMiddleware()
 
 
 def _make_subagent_limit_middleware():
-    from agent_workspace.agents.middlewares.subagent_limit_middleware import SubagentLimitMiddleware
+    from alpha.agents.middlewares.subagent_limit_middleware import SubagentLimitMiddleware
 
     return SubagentLimitMiddleware(max_concurrent=2, max_total=6)
 
 
 def _make_terminal_response_middleware():
-    from agent_workspace.agents.middlewares.terminal_response_middleware import TerminalResponseMiddleware
+    from alpha.agents.middlewares.terminal_response_middleware import TerminalResponseMiddleware
 
     return TerminalResponseMiddleware()
 
 
 def _make_todo_middleware():
-    from agent_workspace.agents.middlewares.todo_middleware import TodoMiddleware
+    from alpha.agents.middlewares.todo_middleware import TodoMiddleware
 
     return TodoMiddleware()
 
 
 def _make_token_budget_middleware():
-    from agent_workspace.agents.middlewares.token_budget_middleware import TokenBudgetMiddleware
-    from agent_workspace.config.token_budget_config import TokenBudgetConfig
+    from alpha.agents.middlewares.token_budget_middleware import TokenBudgetMiddleware
+    from alpha.config.token_budget_config import TokenBudgetConfig
 
     return TokenBudgetMiddleware(config=TokenBudgetConfig())
 
 
 def _make_deferred_tool_filter_middleware():
-    from agent_workspace.agents.middlewares.deferred_tool_filter_middleware import DeferredToolFilterMiddleware
+    from alpha.agents.middlewares.deferred_tool_filter_middleware import DeferredToolFilterMiddleware
 
     return DeferredToolFilterMiddleware(deferred_names=frozenset({"tool_b", "tool_a"}), catalog_hash="catalog-1")
 
 
 def _make_safety_finish_reason_middleware():
-    from agent_workspace.agents.middlewares.safety_finish_reason_middleware import SafetyFinishReasonMiddleware
+    from alpha.agents.middlewares.safety_finish_reason_middleware import SafetyFinishReasonMiddleware
 
     return SafetyFinishReasonMiddleware()
 
 
 def _make_summarization_middleware():
-    from agent_workspace.agents.middlewares.summarization_middleware import AgentWorkspaceSummarizationMiddleware
+    from alpha.agents.middlewares.summarization_middleware import AgentWorkspaceSummarizationMiddleware
 
     return AgentWorkspaceSummarizationMiddleware(
         model=_StaticChatModel(),
@@ -173,37 +173,37 @@ def _make_summarization_middleware():
 
 
 def _make_durable_context_middleware():
-    from agent_workspace.agents.middlewares.durable_context_middleware import DurableContextMiddleware
+    from alpha.agents.middlewares.durable_context_middleware import DurableContextMiddleware
 
     return DurableContextMiddleware()
 
 
 def _make_tool_output_budget_middleware():
-    from agent_workspace.agents.middlewares.tool_output_budget_middleware import ToolOutputBudgetMiddleware
+    from alpha.agents.middlewares.tool_output_budget_middleware import ToolOutputBudgetMiddleware
 
     return ToolOutputBudgetMiddleware()
 
 
 def _make_skill_activation_middleware():
-    from agent_workspace.agents.middlewares.skill_activation_middleware import SkillActivationMiddleware
+    from alpha.agents.middlewares.skill_activation_middleware import SkillActivationMiddleware
 
     return SkillActivationMiddleware(available_skills={"skill-b", "skill-a"}, slash_source_owner_token="test-owner-token")
 
 
 def _make_system_message_coalescing_middleware():
-    from agent_workspace.agents.middlewares.system_message_coalescing_middleware import SystemMessageCoalescingMiddleware
+    from alpha.agents.middlewares.system_message_coalescing_middleware import SystemMessageCoalescingMiddleware
 
     return SystemMessageCoalescingMiddleware()
 
 
 def _make_dynamic_context_middleware():
-    from agent_workspace.agents.middlewares.dynamic_context_middleware import DynamicContextMiddleware
+    from alpha.agents.middlewares.dynamic_context_middleware import DynamicContextMiddleware
 
     return DynamicContextMiddleware()
 
 
 def _make_subagent_date_context_middleware():
-    from agent_workspace.agents.middlewares.dynamic_context_middleware import SubagentDateContextMiddleware
+    from alpha.agents.middlewares.dynamic_context_middleware import SubagentDateContextMiddleware
 
     return SubagentDateContextMiddleware()
 
@@ -216,25 +216,25 @@ def _make_subagent_date_context_middleware():
 # entry and mark it with `pytest.param(..., marks=pytest.mark.skip(reason=...))`
 # instead of dropping it — a documented gap beats an invisible one.
 _MIDDLEWARE_DECLARATIONS = [
-    ("agent_workspace.agents.middlewares.loop_detection_middleware", "LoopDetectionMiddleware", _make_loop_detection_middleware),
-    ("agent_workspace.agents.middlewares.subagent_limit_middleware", "SubagentLimitMiddleware", _make_subagent_limit_middleware),
-    ("agent_workspace.agents.middlewares.terminal_response_middleware", "TerminalResponseMiddleware", _make_terminal_response_middleware),
+    ("alpha.agents.middlewares.loop_detection_middleware", "LoopDetectionMiddleware", _make_loop_detection_middleware),
+    ("alpha.agents.middlewares.subagent_limit_middleware", "SubagentLimitMiddleware", _make_subagent_limit_middleware),
+    ("alpha.agents.middlewares.terminal_response_middleware", "TerminalResponseMiddleware", _make_terminal_response_middleware),
     # Alpha's own subclass, not the LangChain base class re-exported into
     # this module under the same import path (TodoListMiddleware).
-    ("agent_workspace.agents.middlewares.todo_middleware", "TodoMiddleware", _make_todo_middleware),
-    ("agent_workspace.agents.middlewares.token_budget_middleware", "TokenBudgetMiddleware", _make_token_budget_middleware),
-    ("agent_workspace.agents.middlewares.deferred_tool_filter_middleware", "DeferredToolFilterMiddleware", _make_deferred_tool_filter_middleware),
-    ("agent_workspace.agents.middlewares.safety_finish_reason_middleware", "SafetyFinishReasonMiddleware", _make_safety_finish_reason_middleware),
-    ("agent_workspace.agents.middlewares.summarization_middleware", "AgentWorkspaceSummarizationMiddleware", _make_summarization_middleware),
-    ("agent_workspace.agents.middlewares.durable_context_middleware", "DurableContextMiddleware", _make_durable_context_middleware),
-    ("agent_workspace.agents.middlewares.tool_output_budget_middleware", "ToolOutputBudgetMiddleware", _make_tool_output_budget_middleware),
-    ("agent_workspace.agents.middlewares.skill_activation_middleware", "SkillActivationMiddleware", _make_skill_activation_middleware),
-    ("agent_workspace.agents.middlewares.system_message_coalescing_middleware", "SystemMessageCoalescingMiddleware", _make_system_message_coalescing_middleware),
+    ("alpha.agents.middlewares.todo_middleware", "TodoMiddleware", _make_todo_middleware),
+    ("alpha.agents.middlewares.token_budget_middleware", "TokenBudgetMiddleware", _make_token_budget_middleware),
+    ("alpha.agents.middlewares.deferred_tool_filter_middleware", "DeferredToolFilterMiddleware", _make_deferred_tool_filter_middleware),
+    ("alpha.agents.middlewares.safety_finish_reason_middleware", "SafetyFinishReasonMiddleware", _make_safety_finish_reason_middleware),
+    ("alpha.agents.middlewares.summarization_middleware", "AgentWorkspaceSummarizationMiddleware", _make_summarization_middleware),
+    ("alpha.agents.middlewares.durable_context_middleware", "DurableContextMiddleware", _make_durable_context_middleware),
+    ("alpha.agents.middlewares.tool_output_budget_middleware", "ToolOutputBudgetMiddleware", _make_tool_output_budget_middleware),
+    ("alpha.agents.middlewares.skill_activation_middleware", "SkillActivationMiddleware", _make_skill_activation_middleware),
+    ("alpha.agents.middlewares.system_message_coalescing_middleware", "SystemMessageCoalescingMiddleware", _make_system_message_coalescing_middleware),
     # The date middlewares declare the effective timezone the injected
     # <current_date> follows, so differently-anchored deployments fingerprint
     # differently.
-    ("agent_workspace.agents.middlewares.dynamic_context_middleware", "DynamicContextMiddleware", _make_dynamic_context_middleware),
-    ("agent_workspace.agents.middlewares.dynamic_context_middleware", "SubagentDateContextMiddleware", _make_subagent_date_context_middleware),
+    ("alpha.agents.middlewares.dynamic_context_middleware", "DynamicContextMiddleware", _make_dynamic_context_middleware),
+    ("alpha.agents.middlewares.dynamic_context_middleware", "SubagentDateContextMiddleware", _make_subagent_date_context_middleware),
 ]
 
 
@@ -264,7 +264,7 @@ def test_middleware_release_policy_parameters_are_canonically_serialisable(impor
 
 
 def _middleware_fingerprint(middleware):
-    from agent_workspace.agents.assembly_descriptor import build_assembly_descriptor
+    from alpha.agents.assembly_descriptor import build_assembly_descriptor
 
     return build_assembly_descriptor(
         namespace="test",
@@ -284,14 +284,14 @@ def _middleware_fingerprint(middleware):
 
 
 def _continuity_summarizer(config):
-    from agent_workspace.agents.middlewares.summarization_middleware import AgentWorkspaceSummarizationMiddleware
+    from alpha.agents.middlewares.summarization_middleware import AgentWorkspaceSummarizationMiddleware
 
     return AgentWorkspaceSummarizationMiddleware(model=_StaticChatModel(), trigger=("messages", 4), keep=("messages", 2), task_continuity_config=config)
 
 
 @pytest.mark.parametrize("field,value", [("enabled", False), ("max_batches", 1), ("max_records_per_batch", 1), ("max_record_chars", 1000)])
 def test_each_continuity_policy_field_changes_assembly_identity(field, value):
-    from agent_workspace.config.task_continuity_config import TaskContinuityConfig
+    from alpha.config.task_continuity_config import TaskContinuityConfig
 
     original = _continuity_summarizer(TaskContinuityConfig(enabled=True))
     changed = _continuity_summarizer(TaskContinuityConfig(**{"enabled": True, field: value}))
@@ -300,7 +300,7 @@ def test_each_continuity_policy_field_changes_assembly_identity(field, value):
 
 
 def test_disabled_continuity_retention_does_not_change_assembly_identity():
-    from agent_workspace.config.task_continuity_config import TaskContinuityConfig
+    from alpha.config.task_continuity_config import TaskContinuityConfig
 
     omitted = _continuity_summarizer(None)
     disabled = _continuity_summarizer(TaskContinuityConfig(enabled=False, max_batches=1, max_records_per_batch=1, max_record_chars=1000))
@@ -310,7 +310,7 @@ def test_disabled_continuity_retention_does_not_change_assembly_identity():
 
 @pytest.mark.parametrize("kwargs", [{"task_continuity_enabled": True}, {"skills_container_path": "/other-skills"}, {"skill_file_read_tool_names": ["custom_read"]}])
 def test_durable_context_behavior_changes_assembly_identity(kwargs):
-    from agent_workspace.agents.middlewares.durable_context_middleware import DurableContextMiddleware
+    from alpha.agents.middlewares.durable_context_middleware import DurableContextMiddleware
 
     original = DurableContextMiddleware()
     changed = DurableContextMiddleware(**kwargs)
@@ -318,7 +318,7 @@ def test_durable_context_behavior_changes_assembly_identity(kwargs):
 
 
 def test_equivalent_durable_context_configuration_has_identical_identity():
-    from agent_workspace.agents.middlewares.durable_context_middleware import DurableContextMiddleware
+    from alpha.agents.middlewares.durable_context_middleware import DurableContextMiddleware
 
     first = DurableContextMiddleware(skills_container_path="/skills/./", skill_file_read_tool_names=["read_b", "read_a", "read_a"])
     second = DurableContextMiddleware(skills_container_path="/skills", skill_file_read_tool_names=["read_a", "read_b"])

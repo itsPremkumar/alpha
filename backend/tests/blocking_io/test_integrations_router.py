@@ -18,8 +18,8 @@ from types import SimpleNamespace
 import pytest
 
 from app.gateway.routers import integrations
-from agent_workspace.config import paths as paths_module
-from agent_workspace.integrations import lark_cli
+from alpha.config import paths as paths_module
+from alpha.integrations import lark_cli
 
 pytestmark = pytest.mark.asyncio
 
@@ -81,7 +81,7 @@ async def _config(tmp_path: Path) -> SimpleNamespace:
         skills=SimpleNamespace(
             get_skills_path=lambda: skills_root,
             container_path="/mnt/skills",
-            use="agent_workspace.skills.storage.local_skill_storage:LocalSkillStorage",
+            use="alpha.skills.storage.local_skill_storage:LocalSkillStorage",
         )
     )
 

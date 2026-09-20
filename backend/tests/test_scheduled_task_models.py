@@ -1,5 +1,5 @@
-from agent_workspace.config.app_config import AppConfig
-from agent_workspace.persistence.models import ScheduledTaskRow, ScheduledTaskRunRow
+from alpha.config.app_config import AppConfig
+from alpha.persistence.models import ScheduledTaskRow, ScheduledTaskRunRow
 
 
 def test_app_config_exposes_scheduler_section():

@@ -238,7 +238,7 @@ async def test_postgres_release_deletes_key():
 async def test_postgres_try_record_fail_open_when_no_session_factory(monkeypatch):
     # When Postgres is selected but no session factory is available, the store
     # must fail open (allow the message) rather than crash startup/handling.
-    import agent_workspace.persistence.engine as engine_mod
+    import alpha.persistence.engine as engine_mod
 
     monkeypatch.setattr(engine_mod, "get_session_factory", lambda: None)
     store = PostgresInboundDedupeStore()  # no injected factory -> resolved lazily

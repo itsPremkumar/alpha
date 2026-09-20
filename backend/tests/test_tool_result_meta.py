@@ -8,7 +8,7 @@ import pytest
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
-from agent_workspace.agents.middlewares.tool_result_meta import (
+from alpha.agents.middlewares.tool_result_meta import (
     TOOL_META_KEY,
     ToolResultMeta,
     normalize_tool_message,

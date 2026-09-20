@@ -1,6 +1,6 @@
 """Public contracts for Alpha extensions.
 
-This package MUST NOT import `agent_workspace`. Every host contract an extension
+This package MUST NOT import `alpha`. Every host contract an extension
 needs lives here, while framework imports remain direct extension dependencies;
 extensions can therefore be released independently of the host.
 """

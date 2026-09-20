@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from agent_workspace.deliberation.moa import (
+from alpha.deliberation.moa import (
     build_aggregator_prompt,
     gather_references,
     redact_reference_text,
     run_moa_turn,
 )
-from agent_workspace.kanban.stop_guard import build_stop_nudge, stop_nudge_enabled, terminal_called
-from agent_workspace.learning.insights import format_text, summarize
-from agent_workspace.learning.review_queue import ReviewQueue
-from agent_workspace.recovery import bot_turn_retry_action
+from alpha.kanban.stop_guard import build_stop_nudge, stop_nudge_enabled, terminal_called
+from alpha.learning.insights import format_text, summarize
+from alpha.learning.review_queue import ReviewQueue
+from alpha.recovery import bot_turn_retry_action
 
 
 def test_review_queue_coalesces_and_flushes():
@@ -114,7 +114,7 @@ def test_kanban_stop_guard(monkeypatch):
 
 
 def test_bot_turn_retry_policy():
-    from agent_workspace.recovery import BOT_RETRY_COMPRESS_THEN_RESUME, BOT_RETRY_NONE, BOT_RETRY_RESUME
+    from alpha.recovery import BOT_RETRY_COMPRESS_THEN_RESUME, BOT_RETRY_NONE, BOT_RETRY_RESUME
 
     assert bot_turn_retry_action("context length exceeded max tokens") == BOT_RETRY_COMPRESS_THEN_RESUME
     assert bot_turn_retry_action("model timed out", failure_reason="delivery_timeout") == BOT_RETRY_RESUME

@@ -5,15 +5,15 @@ from pathlib import Path
 import pytest
 import yaml
 
-from agent_workspace.config import app_config as app_config_module
-from agent_workspace.config import extensions_config as extensions_config_module
-from agent_workspace.config import skills_config as skills_config_module
-from agent_workspace.config.app_config import AppConfig
-from agent_workspace.config.extensions_config import ExtensionsConfig
-from agent_workspace.config.paths import Paths
-from agent_workspace.config.runtime_paths import project_root
-from agent_workspace.config.skills_config import SkillsConfig
-from agent_workspace.skills.storage import get_or_new_skill_storage
+from alpha.config import app_config as app_config_module
+from alpha.config import extensions_config as extensions_config_module
+from alpha.config import skills_config as skills_config_module
+from alpha.config.app_config import AppConfig
+from alpha.config.extensions_config import ExtensionsConfig
+from alpha.config.paths import Paths
+from alpha.config.runtime_paths import project_root
+from alpha.config.skills_config import SkillsConfig
+from alpha.skills.storage import get_or_new_skill_storage
 
 
 def _clear_path_env(monkeypatch):
@@ -32,7 +32,7 @@ def test_default_runtime_paths_resolve_from_current_project(tmp_path: Path, monk
     monkeypatch.chdir(tmp_path)
 
     (tmp_path / "config.yaml").write_text(
-        yaml.safe_dump({"sandbox": {"use": "agent_workspace.sandbox.local:LocalSandboxProvider"}}),
+        yaml.safe_dump({"sandbox": {"use": "alpha.sandbox.local:LocalSandboxProvider"}}),
         encoding="utf-8",
     )
     (tmp_path / "extensions_config.json").write_text('{"mcpServers": {}, "skills": {}}', encoding="utf-8")
@@ -55,7 +55,7 @@ def test_agent_workspace_project_root_overrides_current_directory(tmp_path: Path
     monkeypatch.setenv("AGENT_WORKSPACE_PROJECT_ROOT", str(project_root))
 
     (project_root / "config.yaml").write_text(
-        yaml.safe_dump({"sandbox": {"use": "agent_workspace.sandbox.local:LocalSandboxProvider"}}),
+        yaml.safe_dump({"sandbox": {"use": "alpha.sandbox.local:LocalSandboxProvider"}}),
         encoding="utf-8",
     )
     (project_root / "mcp_config.json").write_text('{"mcpServers": {}, "skills": {}}', encoding="utf-8")
@@ -108,7 +108,7 @@ def test_app_config_falls_back_to_legacy_when_project_root_lacks_config(tmp_path
     legacy_repo.mkdir()
     legacy_backend_config = legacy_backend / "config.yaml"
     legacy_backend_config.write_text(
-        yaml.safe_dump({"sandbox": {"use": "agent_workspace.sandbox.local:LocalSandboxProvider"}}),
+        yaml.safe_dump({"sandbox": {"use": "alpha.sandbox.local:LocalSandboxProvider"}}),
         encoding="utf-8",
     )
     repo_root_config = legacy_repo / "config.yaml"
@@ -172,7 +172,7 @@ def test_extensions_config_falls_back_to_legacy_when_project_root_lacks_file(tmp
     legacy_extensions = fake_backend / "extensions_config.json"
     legacy_extensions.write_text('{"mcpServers": {}, "skills": {}}', encoding="utf-8")
 
-    fake_paths_module_file = fake_backend / "packages" / "harness" / "agent_workspace" / "config" / "extensions_config.py"
+    fake_paths_module_file = fake_backend / "packages" / "harness" / "alpha" / "config" / "extensions_config.py"
     fake_paths_module_file.parent.mkdir(parents=True)
     fake_paths_module_file.write_text("", encoding="utf-8")
 
@@ -219,7 +219,7 @@ def test_extensions_config_env_var_missing_file_raises(tmp_path: Path, monkeypat
     fancyboi999 [P1]) instead of silently starting with every MCP server and
     skill absent.
 
-    ``agent_workspace.mcp.cache._resolve_config_path`` calls
+    ``alpha.mcp.cache._resolve_config_path`` calls
     ``ExtensionsConfig.resolve_config_path()`` with no args and therefore
     hits this exact branch whenever the env var is set; that module has its
     own narrower catch around this specific exception so the MCP tools-cache
@@ -255,7 +255,7 @@ def test_extensions_config_search_finds_nothing_returns_none(tmp_path: Path, mon
     condition (see ``test_extensions_config_explicit_path_missing_file_raises``
     and ``test_extensions_config_env_var_missing_file_raises`` above).
     Regression guard for the original #4124 fix:
-    ``agent_workspace.mcp.cache._is_cache_stale`` depends on this fallback ``None``
+    ``alpha.mcp.cache._is_cache_stale`` depends on this fallback ``None``
     to treat "never configured" as "not stale".
     """
     _clear_path_env(monkeypatch)
@@ -270,7 +270,7 @@ def test_extensions_config_search_finds_nothing_returns_none(tmp_path: Path, mon
     # No extensions_config.json / mcp_config.json anywhere: not in cwd, not in
     # the legacy backend dir, not in the legacy repo root.
 
-    fake_paths_module_file = fake_backend / "packages" / "harness" / "agent_workspace" / "config" / "extensions_config.py"
+    fake_paths_module_file = fake_backend / "packages" / "harness" / "alpha" / "config" / "extensions_config.py"
     fake_paths_module_file.parent.mkdir(parents=True)
     fake_paths_module_file.write_text("", encoding="utf-8")
 

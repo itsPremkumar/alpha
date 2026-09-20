@@ -15,8 +15,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from agent_workspace.agents.lead_agent import prompt as prompt_module
-from agent_workspace.subagents import registry as registry_module
+from alpha.agents.lead_agent import prompt as prompt_module
+from alpha.subagents import registry as registry_module
 
 # A first line that breaks out of the <subagent_system> block and forges a
 # framework-reserved block the model would read as trusted context. Only the

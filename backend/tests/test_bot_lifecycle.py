@@ -24,9 +24,9 @@ def _admin_request():
 @pytest.fixture(autouse=True)
 def _isolated_home(tmp_path, monkeypatch):
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
-    import agent_workspace.bots.registry as bot_reg
-    import agent_workspace.groups.runner as runner
-    import agent_workspace.groups.service as grp_svc
+    import alpha.bots.registry as bot_reg
+    import alpha.groups.runner as runner
+    import alpha.groups.service as grp_svc
 
     monkeypatch.setattr(bot_reg, "_global_registry", None)
     monkeypatch.setattr(bot_reg, "_global_registry_path", None)
@@ -110,8 +110,8 @@ async def test_lifecycle_status_roundtrip_and_filter() -> None:
 
 
 async def test_team_run_skips_inactive_members() -> None:
-    from agent_workspace.bots.registry import get_bot_registry
-    from agent_workspace.groups.runner import get_group_run_service
+    from alpha.bots.registry import get_bot_registry
+    from alpha.groups.runner import get_group_run_service
 
     registry = get_bot_registry()
     registry.get_or_create("doer")
@@ -128,8 +128,8 @@ async def test_team_run_skips_inactive_members() -> None:
 
 
 async def test_team_run_rejects_all_inactive_roster() -> None:
-    from agent_workspace.bots.registry import get_bot_registry
-    from agent_workspace.groups.runner import get_group_run_service
+    from alpha.bots.registry import get_bot_registry
+    from alpha.groups.runner import get_group_run_service
 
     registry = get_bot_registry()
     registry.get_or_create("gone")
@@ -139,7 +139,7 @@ async def test_team_run_rejects_all_inactive_roster() -> None:
 
 
 async def test_structured_message_kinds() -> None:
-    from agent_workspace.subagents.messaging import MESSAGE_KINDS, get_agent_roster
+    from alpha.subagents.messaging import MESSAGE_KINDS, get_agent_roster
 
     assert "task_handoff" in MESSAGE_KINDS and "message" in MESSAGE_KINDS
     roster = get_agent_roster("thread-kinds")

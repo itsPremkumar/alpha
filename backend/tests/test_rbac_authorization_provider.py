@@ -6,8 +6,8 @@ import asyncio
 
 import pytest
 
-from agent_workspace.authz.provider import AuthzRequest, Principal
-from agent_workspace.authz.rbac import RbacAuthorizationProvider
+from alpha.authz.provider import AuthzRequest, Principal
+from alpha.authz.rbac import RbacAuthorizationProvider
 
 # --- Helpers ---
 
@@ -411,6 +411,6 @@ class TestConfigImmutability:
 
 class TestProtocolConformance:
     def test_rbac_is_authorization_provider(self):
-        from agent_workspace.authz.provider import AuthorizationProvider
+        from alpha.authz.provider import AuthorizationProvider
 
         assert isinstance(RbacAuthorizationProvider(roles={}), AuthorizationProvider)

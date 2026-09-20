@@ -1,6 +1,6 @@
-from agent_workspace.models.moa.orchestrator import MoACandidate, MoAOrchestrator
-from agent_workspace.models.moa.redact import redact_pii_and_secrets
-from agent_workspace.tools.builtins.moa_reasoning_tool import moa_multi_model_reasoning
+from alpha.models.moa.orchestrator import MoACandidate, MoAOrchestrator
+from alpha.models.moa.redact import redact_pii_and_secrets
+from alpha.tools.builtins.moa_reasoning_tool import moa_multi_model_reasoning
 
 
 def test_redact_pii_and_secrets():

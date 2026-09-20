@@ -19,22 +19,22 @@ from types import SimpleNamespace
 
 import pytest
 
-import agent_workspace.subagents.lifecycle as life_mod
-import agent_workspace.subagents.promotion as prom_mod
-import agent_workspace.subagents.resilience as res_mod
-from agent_workspace.subagents.lifecycle import (
+import alpha.subagents.lifecycle as life_mod
+import alpha.subagents.promotion as prom_mod
+import alpha.subagents.resilience as res_mod
+from alpha.subagents.lifecycle import (
     SubagentContract,
     SubagentLifecycleManager,
     SubagentStatusEnum,
 )
-from agent_workspace.subagents.promotion import SubagentPromotionManager
-from agent_workspace.subagents.resilience import SubagentResilienceEngine
-from agent_workspace.subagents.specialists import (
+from alpha.subagents.promotion import SubagentPromotionManager
+from alpha.subagents.resilience import SubagentResilienceEngine
+from alpha.subagents.specialists import (
     SpecialistRoleArchetype,
     generate_dynamic_role,
     get_archetype_template,
 )
-from agent_workspace.tools.builtins.subagent_control_tool import subagent_control
+from alpha.tools.builtins.subagent_control_tool import subagent_control
 
 
 @pytest.fixture(autouse=True)
@@ -356,10 +356,10 @@ async def test_gateway_subagent_control_router():
 
 # 10. Strict Harness Boundary Invariant
 def test_subagent_control_plane_boundary_integrity():
-    """Confirms packages/harness/agent_workspace/subagents contains zero forbidden imports from app.*."""
+    """Confirms packages/harness/alpha/subagents contains zero forbidden imports from app.*."""
     import pathlib
 
-    subagents_dir = pathlib.Path(__file__).parent.parent / "packages" / "harness" / "agent_workspace" / "subagents"
+    subagents_dir = pathlib.Path(__file__).parent.parent / "packages" / "harness" / "alpha" / "subagents"
     for py_file in subagents_dir.rglob("*.py"):
         content = py_file.read_text(encoding="utf-8")
         assert "from app." not in content, f"Boundary violation in {py_file}: contains 'from app.'"

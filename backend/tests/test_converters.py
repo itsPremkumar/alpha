@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock
 
-from agent_workspace.runtime.converters import (
+from alpha.runtime.converters import (
     langchain_messages_to_openai,
     langchain_to_openai_completion,
     langchain_to_openai_message,

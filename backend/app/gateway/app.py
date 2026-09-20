@@ -72,11 +72,11 @@ from app.gateway.routers import (
 )
 from app.gateway.security_headers_middleware import SecurityHeadersMiddleware
 from app.gateway.trace_middleware import TraceMiddleware
-from agent_workspace.branding import DISPLAY_NAME
-from agent_workspace.config import app_config as agent_workspace_app_config
-from agent_workspace.logging_config import DEFAULT_LOG_DATE_FORMAT, DEFAULT_LOG_FORMAT, configure_logging
-from agent_workspace.tracing.monocle import setup_monocle_tracing_if_enabled
-from agent_workspace.uploads.manager import cleanup_stale_upload_staging_files
+from alpha.branding import DISPLAY_NAME
+from alpha.config import app_config as agent_workspace_app_config
+from alpha.logging_config import DEFAULT_LOG_DATE_FORMAT, DEFAULT_LOG_FORMAT, configure_logging
+from alpha.tracing.monocle import setup_monocle_tracing_if_enabled
+from alpha.uploads.manager import cleanup_stale_upload_staging_files
 
 AppConfig = agent_workspace_app_config.AppConfig
 get_app_config = agent_workspace_app_config.get_app_config
@@ -124,8 +124,8 @@ async def _ensure_admin_user(app: FastAPI) -> None:
     from sqlalchemy import select
 
     from app.gateway.deps import get_local_provider
-    from agent_workspace.persistence.engine import get_session_factory
-    from agent_workspace.persistence.user.model import UserRow
+    from alpha.persistence.engine import get_session_factory
+    from alpha.persistence.user.model import UserRow
 
     try:
         provider = get_local_provider()
@@ -234,9 +234,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # snapshot on `app.state` to keep that contract enforceable.
     try:
         startup_config = get_app_config()
-        from agent_workspace.config.subagent_batches_config import SubagentBatchesConfig
-        from agent_workspace.config.subagent_runtime_config import SubagentRuntimeConfig
-        from agent_workspace.subagents.capacity import configure_subagent_execution_capacity
+        from alpha.config.subagent_batches_config import SubagentBatchesConfig
+        from alpha.config.subagent_runtime_config import SubagentRuntimeConfig
+        from alpha.subagents.capacity import configure_subagent_execution_capacity
 
         subagent_runtime_config = getattr(startup_config, "subagent_runtime", None)
         if not isinstance(subagent_runtime_config, SubagentRuntimeConfig):
@@ -256,7 +256,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     config = get_gateway_config()
     logger.info(f"Starting API Gateway on {config.host}:{config.port}")
 
-    from agent_workspace.skills.projection import ensure_public_skill_projection
+    from alpha.skills.projection import ensure_public_skill_projection
 
     public_projection_ready = await asyncio.to_thread(ensure_public_skill_projection, app_config=startup_config)
     if public_projection_ready:
@@ -264,7 +264,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Agent observability (Monocle). Off by default; enabled with
     # MONOCLE_TRACING. Initialized here at startup — not at import time — so a
-    # plain `import agent_workspace.agents` never installs a process-global tracer.
+    # plain `import alpha.agents` never installs a process-global tracer.
     # Unlike LangSmith/Langfuse, whose validation failures abort the agent run,
     # a bad Monocle config only logs: the Gateway keeps serving without tracing.
     try:
@@ -277,7 +277,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # the requested scope when the full warm-up has not completed yet.
     retrieval_warm_task: asyncio.Task[None] | None = None
     try:
-        from agent_workspace.agents.memory import get_memory_manager
+        from alpha.agents.memory import get_memory_manager
 
         if startup_config.memory.enabled:
             manager = await asyncio.to_thread(get_memory_manager)
@@ -302,7 +302,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # the base default -- log "skipping" instead of the misleading "warmed
     # successfully" so the log reflects what actually happened.
     try:
-        from agent_workspace.agents.memory import get_memory_manager
+        from alpha.agents.memory import get_memory_manager
 
         manager = await asyncio.to_thread(get_memory_manager)
         warmed = await asyncio.wait_for(
@@ -397,15 +397,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
         from app.gateway.services import launch_mcp_task_notification_run
         from app.mcp_tasks import McpTaskService
-        from agent_workspace.config.extensions_config import ExtensionsConfig
-        from agent_workspace.config.mcp_tasks_config import McpTasksConfig
-        from agent_workspace.mcp.task_tool_caller import McpTaskToolCaller
-        from agent_workspace.mcp.tasks import (
+        from alpha.config.extensions_config import ExtensionsConfig
+        from alpha.config.mcp_tasks_config import McpTasksConfig
+        from alpha.mcp.task_tool_caller import McpTaskToolCaller
+        from alpha.mcp.tasks import (
             ORDINARY_MCP_TASK_DRIVER,
             McpTaskDriverRegistry,
             OrdinaryMcpTaskDriver,
         )
-        from agent_workspace.mcp.tasks.runtime import (
+        from alpha.mcp.tasks.runtime import (
             configured_task_toolset_count,
             set_mcp_task_config_snapshot,
             set_mcp_task_submitter,
@@ -456,7 +456,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 app.state.mcp_tasks_available = True
 
         from app.subagent_batches import SubagentBatchService
-        from agent_workspace.subagents.batch_runtime import set_subagent_batch_submitter
+        from alpha.subagents.batch_runtime import set_subagent_batch_submitter
 
         batch_repo = getattr(app.state, "subagent_batch_repo", None)
         app.state.subagent_batches_available = False
@@ -519,10 +519,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             except Exception:
                 logger.exception("Failed to stop MCP task service")
             finally:
-                from agent_workspace.mcp.tasks.runtime import set_mcp_task_submitter
+                from alpha.mcp.tasks.runtime import set_mcp_task_submitter
 
                 set_mcp_task_submitter(None)
-        from agent_workspace.mcp.tasks.runtime import set_mcp_task_config_snapshot
+        from alpha.mcp.tasks.runtime import set_mcp_task_config_snapshot
 
         set_mcp_task_config_snapshot(None)
 
@@ -533,12 +533,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             except Exception:
                 logger.exception("Failed to stop subagent batch service")
             finally:
-                from agent_workspace.subagents.batch_runtime import set_subagent_batch_submitter
+                from alpha.subagents.batch_runtime import set_subagent_batch_submitter
 
                 set_subagent_batch_submitter(None)
 
         try:
-            from agent_workspace.community.browser_automation import get_browser_session_manager
+            from alpha.community.browser_automation import get_browser_session_manager
 
             closed = await asyncio.wait_for(
                 get_browser_session_manager().close_all_sessions(),
@@ -596,7 +596,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             # system-model callbacks. Stop accepting those callbacks before
             # flushing, while keeping the registered loop alive for awaited
             # task hooks until langgraph_runtime drains runs and subagents.
-            from agent_workspace.extensions.notify import suspend_extension_system_observations
+            from alpha.extensions.notify import suspend_extension_system_observations
 
             suspend_extension_system_observations()
         except Exception:
@@ -605,7 +605,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         try:
             app_cfg = get_app_config()
             if app_cfg.memory.enabled:
-                from agent_workspace.agents.memory import get_memory_manager
+                from alpha.agents.memory import get_memory_manager
 
                 manager = await asyncio.to_thread(get_memory_manager)
                 flush_timeout = app_cfg.memory.shutdown_flush_timeout_seconds
@@ -815,7 +815,7 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     # Python extensions load once while the Gateway app is constructed. Agent
     # middleware builders consume the same immutable set through the process
     # singleton; app.state exposes it to the Gateway runtime.
-    from agent_workspace.extensions import (
+    from alpha.extensions import (
         EMPTY_EXTENSIONS,
         ExtensionLoadError,
         initialize_runtime_diagnostics,
@@ -1013,7 +1013,7 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     # registration order, so every host route (including conditional routes
     # and /health) keeps precedence. Definite shadows are rejected with an
     # attributed diagnostic while unrelated extension routers still mount.
-    from agent_workspace.extensions.gateway import include_contributed_routers
+    from alpha.extensions.gateway import include_contributed_routers
 
     record_runtime_diagnostics(include_contributed_routers(app, loaded_extensions))
 

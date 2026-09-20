@@ -9,12 +9,12 @@ from types import SimpleNamespace
 import pytest
 from fastapi import FastAPI
 
-from agent_workspace.extensions import (
+from alpha.extensions import (
     get_runtime_diagnostics,
     initialize_runtime_diagnostics,
     reset_runtime_diagnostics,
 )
-from agent_workspace.extensions.registry import ExtensionRegistry
+from alpha.extensions.registry import ExtensionRegistry
 
 
 @pytest.fixture(autouse=True)
@@ -44,12 +44,12 @@ def _patch_runtime_resources(monkeypatch, events: list[str]) -> None:
     async def close_engine() -> None:
         events.append("engine_close")
 
-    monkeypatch.setattr("agent_workspace.runtime.make_stream_bridge", lambda _config: _resource(object()))
-    monkeypatch.setattr("agent_workspace.runtime.make_store", lambda _config: _resource(object()))
-    monkeypatch.setattr("agent_workspace.runtime.checkpointer.async_provider.make_checkpointer", lambda _config: _resource(object()))
-    monkeypatch.setattr("agent_workspace.persistence.engine.init_engine_from_config", init_engine)
-    monkeypatch.setattr("agent_workspace.persistence.engine.close_engine", close_engine)
-    monkeypatch.setattr("agent_workspace.persistence.engine.get_session_factory", lambda: None)
+    monkeypatch.setattr("alpha.runtime.make_stream_bridge", lambda _config: _resource(object()))
+    monkeypatch.setattr("alpha.runtime.make_store", lambda _config: _resource(object()))
+    monkeypatch.setattr("alpha.runtime.checkpointer.async_provider.make_checkpointer", lambda _config: _resource(object()))
+    monkeypatch.setattr("alpha.persistence.engine.init_engine_from_config", init_engine)
+    monkeypatch.setattr("alpha.persistence.engine.close_engine", close_engine)
+    monkeypatch.setattr("alpha.persistence.engine.get_session_factory", lambda: None)
 
 
 @pytest.mark.asyncio
@@ -65,9 +65,9 @@ async def test_runtime_owns_engine_cleanup_before_initialization(monkeypatch):
     async def close_engine() -> None:
         events.append("engine_close")
 
-    monkeypatch.setattr("agent_workspace.runtime.make_stream_bridge", lambda _config: _resource(object()))
-    monkeypatch.setattr("agent_workspace.persistence.engine.init_engine_from_config", fail_engine_init)
-    monkeypatch.setattr("agent_workspace.persistence.engine.close_engine", close_engine)
+    monkeypatch.setattr("alpha.runtime.make_stream_bridge", lambda _config: _resource(object()))
+    monkeypatch.setattr("alpha.persistence.engine.init_engine_from_config", fail_engine_init)
+    monkeypatch.setattr("alpha.persistence.engine.close_engine", close_engine)
 
     with pytest.raises(RuntimeError, match="schema bootstrap failed"):
         async with langgraph_runtime(
@@ -81,7 +81,7 @@ async def test_runtime_owns_engine_cleanup_before_initialization(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_later_startup_failure_stops_same_snapshot_and_appends_diagnostics(monkeypatch):
-    import agent_workspace.extensions as extensions_module
+    import alpha.extensions as extensions_module
     from app.gateway.deps import langgraph_runtime
 
     events: list[str] = []
@@ -116,7 +116,7 @@ async def test_later_startup_failure_stops_same_snapshot_and_appends_diagnostics
 
     _patch_runtime_resources(monkeypatch, events)
     monkeypatch.setattr(
-        "agent_workspace.persistence.thread_meta.make_thread_store",
+        "alpha.persistence.thread_meta.make_thread_store",
         lambda _sf, _store: (_ for _ in ()).throw(RuntimeError("thread store failed")),
     )
 

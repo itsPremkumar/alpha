@@ -21,7 +21,7 @@ from starlette.testclient import TestClient
 from app.gateway.auth_middleware import AuthMiddleware
 from app.gateway.csrf_middleware import CSRFMiddleware, is_auth_endpoint, should_check_csrf
 from app.gateway.request_path import get_request_route_path
-from agent_workspace.config.authorization_config import AuthorizationConfig
+from alpha.config.authorization_config import AuthorizationConfig
 
 
 @pytest.fixture(autouse=True)

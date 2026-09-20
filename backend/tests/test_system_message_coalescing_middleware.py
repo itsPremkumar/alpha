@@ -16,7 +16,7 @@ from unittest.mock import MagicMock
 import pytest
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 
-from agent_workspace.agents.middlewares.system_message_coalescing_middleware import (
+from alpha.agents.middlewares.system_message_coalescing_middleware import (
     SystemMessageCoalescingMiddleware,
     _coalesce_request,
     _flatten_content,

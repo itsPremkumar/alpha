@@ -2,9 +2,9 @@
 
 import pytest
 
-from agent_workspace.tui.app import AgentWorkspaceTUI, SelectScreen
-from agent_workspace.tui.cli import LaunchPlan
-from agent_workspace.tui.theme import THEME
+from alpha.tui.app import AgentWorkspaceTUI, SelectScreen
+from alpha.tui.cli import LaunchPlan
+from alpha.tui.theme import THEME
 
 
 class _FakeClient:

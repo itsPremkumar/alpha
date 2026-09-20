@@ -309,8 +309,8 @@ def test_service_wiring_injects_persistent_store_path(tmp_path, monkeypatch):
     class StubPaths:
         base_dir = str(tmp_path)
 
-    monkeypatch.setattr("agent_workspace.config.paths.get_paths", lambda: StubPaths())
-    monkeypatch.setattr("agent_workspace.reflection.resolve_class", lambda path, base_class=None: StubChannel)
+    monkeypatch.setattr("alpha.config.paths.get_paths", lambda: StubPaths())
+    monkeypatch.setattr("alpha.reflection.resolve_class", lambda path, base_class=None: StubChannel)
 
     service = ChannelService(channels_config={})
     started = asyncio.run(service._start_channel("buzz", {"relay_url": "wss://x", "private_key": SK3_HEX}))

@@ -1,6 +1,6 @@
 """Tests for bounded composer input history (pure)."""
 
-from agent_workspace.tui.input_history import InputHistory
+from alpha.tui.input_history import InputHistory
 
 
 def test_add_ignores_empty_and_whitespace():

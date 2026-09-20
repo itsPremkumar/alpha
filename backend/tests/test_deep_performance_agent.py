@@ -1,6 +1,6 @@
 """Unit tests for DeepPerformanceAgent."""
 
-from agent_workspace.subagents.builtins.deep_performance_agent import (
+from alpha.subagents.builtins.deep_performance_agent import (
     DEEP_PERFORMANCE_AGENT_CONFIG,
     DeepPerformanceAgent,
 )

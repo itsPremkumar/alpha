@@ -3,17 +3,17 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from agent_workspace.config.database_config import DatabaseConfig
-from agent_workspace.persistence.engine import close_engine, get_session_factory, init_engine_from_config
-from agent_workspace.persistence.run import RunRepository
-from agent_workspace.persistence.scheduled_task_runs import (
+from alpha.config.database_config import DatabaseConfig
+from alpha.persistence.engine import close_engine, get_session_factory, init_engine_from_config
+from alpha.persistence.run import RunRepository
+from alpha.persistence.scheduled_task_runs import (
     ActiveScheduledRunConflict,
     ScheduledTaskAdmissionRejected,
     ScheduledTaskRunRepository,
 )
-from agent_workspace.persistence.scheduled_task_runs.model import ScheduledTaskRunRow
-from agent_workspace.persistence.scheduled_tasks import ActiveScheduledTaskMutationConflict, ScheduledTaskRepository
-from agent_workspace.persistence.scheduled_tasks.model import ScheduledTaskRow
+from alpha.persistence.scheduled_task_runs.model import ScheduledTaskRunRow
+from alpha.persistence.scheduled_tasks import ActiveScheduledTaskMutationConflict, ScheduledTaskRepository
+from alpha.persistence.scheduled_tasks.model import ScheduledTaskRow
 
 
 @pytest.mark.asyncio
@@ -1152,7 +1152,7 @@ async def test_update_after_launch_rejects_stale_lease_owner(tmp_path, caplog):
             },
         )
 
-        with caplog.at_level("WARNING", logger="agent_workspace.persistence.scheduled_tasks.sql"):
+        with caplog.at_level("WARNING", logger="alpha.persistence.scheduled_tasks.sql"):
             updated = await repo.update_after_launch(
                 "task-fenced",
                 status="enabled",

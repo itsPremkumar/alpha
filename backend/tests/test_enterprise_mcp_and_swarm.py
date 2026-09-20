@@ -6,15 +6,15 @@ import json
 import time
 import pytest
 
-from agent_workspace.mcp.gateway import (
+from alpha.mcp.gateway import (
     RoleTier,
     SecretScrubber,
     TransportType,
     UniversalMCPGateway,
 )
-from agent_workspace.workflow.sdlc_engine import DocumentGatedSDLCEngine, SDLCStage
-from agent_workspace.blackboard.federated_blackboard import FederatedBlackboard, PheromoneType
-from agent_workspace.swarm.cnp_auction import (
+from alpha.workflow.sdlc_engine import DocumentGatedSDLCEngine, SDLCStage
+from alpha.blackboard.federated_blackboard import FederatedBlackboard, PheromoneType
+from alpha.swarm.cnp_auction import (
     ContractNetAuctionEngine,
     SwarmWorkerAgent,
     TaskAnnouncement,

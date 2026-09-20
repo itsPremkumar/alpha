@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import pytest
 
-from agent_workspace.agents.middlewares.tool_output_budget_middleware import (
+from alpha.agents.middlewares.tool_output_budget_middleware import (
     ToolOutputBudgetMiddleware,
     _budget_content,
     _effective_trigger,
     _resolve_externalize_threshold,
 )
-from agent_workspace.config.tool_output_config import ToolOutputConfig
+from alpha.config.tool_output_config import ToolOutputConfig
 
 
 def _config(**kwargs) -> ToolOutputConfig:

@@ -8,8 +8,8 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
-from agent_workspace.skills.workshop import SkillWorkshopEngine
-from agent_workspace.tools.builtins.skill_workshop_tool import synthesize_reusable_skill
+from alpha.skills.workshop import SkillWorkshopEngine
+from alpha.tools.builtins.skill_workshop_tool import synthesize_reusable_skill
 
 
 def test_distill_from_trace_creates_valid_draft():

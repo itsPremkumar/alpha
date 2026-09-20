@@ -155,7 +155,7 @@ def _memory_mb() -> MemorySnapshot:
 
 def _disk_snapshot() -> DiskSnapshot | None:
     try:
-        from agent_workspace.config.runtime_paths import runtime_home
+        from alpha.config.runtime_paths import runtime_home
 
         target = str(runtime_home())
         usage = shutil.disk_usage(target)
@@ -211,7 +211,7 @@ async def ops_advice(current_workers: int = 1) -> AutonomyAdviceResponse:
     import asyncio as _asyncio
 
     def _advise():
-        from agent_workspace.ops.monitor import advise, read_resources
+        from alpha.ops.monitor import advise, read_resources
 
         reading = read_resources()
         advice = advise(reading, current_workers=max(0, current_workers))

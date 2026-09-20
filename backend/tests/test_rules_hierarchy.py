@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from agent_workspace.rules.hierarchy import (
+from alpha.rules.hierarchy import (
     HierarchicalRuleEngine,
     init_deep_scaffold,
 )

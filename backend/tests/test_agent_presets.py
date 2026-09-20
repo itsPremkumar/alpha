@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from agent_workspace.agents.lead_agent import agent as lead_agent_module
-from agent_workspace.config.agent_preset_config import (
+from alpha.agents.lead_agent import agent as lead_agent_module
+from alpha.config.agent_preset_config import (
     MINIMAL_PRESET_NAME,
     STANDARD_PRESET_NAME,
     AgentPresetConfig,
@@ -13,9 +13,9 @@ from agent_workspace.config.agent_preset_config import (
     preset_summary,
     resolve_agent_preset,
 )
-from agent_workspace.config.app_config import AppConfig
-from agent_workspace.config.model_config import ModelConfig
-from agent_workspace.config.sandbox_config import SandboxConfig
+from alpha.config.app_config import AppConfig
+from alpha.config.model_config import ModelConfig
+from alpha.config.sandbox_config import SandboxConfig
 
 
 def _make_app_config(*, presets: dict | None = None) -> AppConfig:
@@ -31,7 +31,7 @@ def _make_app_config(*, presets: dict | None = None) -> AppConfig:
                 supports_vision=False,
             )
         ],
-        sandbox=SandboxConfig(use="agent_workspace.sandbox.local:LocalSandboxProvider"),
+        sandbox=SandboxConfig(use="alpha.sandbox.local:LocalSandboxProvider"),
         agent_presets=presets or {},
     )
 
@@ -43,7 +43,7 @@ def _named_tool(name: str):
 
 
 def _install_assembly_mocks(monkeypatch, app_config, tools: list, captured: dict) -> None:
-    import agent_workspace.tools as tools_module
+    import alpha.tools as tools_module
 
     def _fake_get_tools(**kwargs):
         captured.update(kwargs)

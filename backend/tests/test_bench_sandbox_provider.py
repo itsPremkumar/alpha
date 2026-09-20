@@ -256,7 +256,7 @@ def test_health_check_skip_seconds_is_forwarded_and_serialized(monkeypatch, tmp_
 
 
 def test_boxlite_factory_restores_module_state(monkeypatch):
-    import agent_workspace.community.boxlite.provider as provider_mod
+    import alpha.community.boxlite.provider as provider_mod
 
     original_get_app_config = provider_mod.get_app_config
 

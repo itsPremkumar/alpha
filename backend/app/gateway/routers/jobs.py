@@ -10,13 +10,13 @@ from pydantic import BaseModel, Field
 from app.gateway.auth_disabled import AUTH_SOURCE_PAT, AUTH_SOURCE_SESSION
 from app.gateway.authz import require_permission
 from app.gateway.deps import get_current_user_from_request, require_admin_user
-from agent_workspace.jobs import (
+from alpha.jobs import (
     JobPriority,
     JobSpec,
     JobStatus,
     PersistentJobQueue,
 )
-from agent_workspace.jobs.runner import ExternalJobRunner
+from alpha.jobs.runner import ExternalJobRunner
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])

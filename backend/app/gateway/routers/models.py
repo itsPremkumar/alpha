@@ -9,8 +9,8 @@ from app.gateway.authz import (
     resolve_model_authorization,
 )
 from app.gateway.deps import get_config, get_optional_user_from_request
-from agent_workspace.authz.provider import AuthzDecision, AuthzRequest
-from agent_workspace.config.app_config import AppConfig
+from alpha.authz.provider import AuthzDecision, AuthzRequest
+from alpha.config.app_config import AppConfig
 
 logger = logging.getLogger(__name__)
 
@@ -214,7 +214,7 @@ async def local_endpoint_health(base_url: str = "http://127.0.0.1:11434") -> dic
     import asyncio as _asyncio
 
     def _probe():
-        from agent_workspace.models.local import probe_openai_compatible
+        from alpha.models.local import probe_openai_compatible
 
         return probe_openai_compatible(base_url).to_dict()
 

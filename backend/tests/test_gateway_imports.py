@@ -32,12 +32,12 @@ def test_title_middleware_imports_without_message_identity_cycle() -> None:
     """A middleware module must be importable as the process's first import.
 
     ``message_identity`` reaching back into ``agents.middlewares`` closed a cycle
-    (middleware -> agent_workspace.runtime -> worker -> events -> middleware) that only
+    (middleware -> alpha.runtime -> worker -> events -> middleware) that only
     stayed hidden while some earlier import happened to break it first. Running
     ``tests/test_title_generation.py`` on its own was enough to hit it.
     """
     result = subprocess.run(
-        [sys.executable, "-c", "from agent_workspace.agents.middlewares.title_middleware import TitleMiddleware; print(TitleMiddleware.__name__)"],
+        [sys.executable, "-c", "from alpha.agents.middlewares.title_middleware import TitleMiddleware; print(TitleMiddleware.__name__)"],
         capture_output=True,
         text=True,
         env=_gateway_import_env(),
@@ -49,7 +49,7 @@ def test_title_middleware_imports_without_message_identity_cycle() -> None:
 def test_message_identity_imports_standalone() -> None:
     """The seq-lookup identity helper must not require the agent package first."""
     result = subprocess.run(
-        [sys.executable, "-c", "from agent_workspace.runtime.events.message_identity import message_identity; print(message_identity({'id': 'x__user', 'type': 'human'}))"],
+        [sys.executable, "-c", "from alpha.runtime.events.message_identity import message_identity; print(message_identity({'id': 'x__user', 'type': 'human'}))"],
         capture_output=True,
         text=True,
         env=_gateway_import_env(),
@@ -64,7 +64,7 @@ def test_subagent_package_public_executor_exports_are_lazy_importable() -> None:
         [
             sys.executable,
             "-c",
-            "from agent_workspace.subagents import SubagentExecutor, SubagentResult; print(SubagentExecutor.__name__, SubagentResult.__name__)",
+            "from alpha.subagents import SubagentExecutor, SubagentResult; print(SubagentExecutor.__name__, SubagentResult.__name__)",
         ],
         capture_output=True,
         text=True,

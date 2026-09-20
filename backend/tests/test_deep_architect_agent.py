@@ -1,6 +1,6 @@
 """Unit tests for DeepArchitectAgent."""
 
-from agent_workspace.subagents.builtins.deep_architect_agent import (
+from alpha.subagents.builtins.deep_architect_agent import (
     DEEP_ARCHITECT_AGENT_CONFIG,
     DeepArchitectAgent,
 )

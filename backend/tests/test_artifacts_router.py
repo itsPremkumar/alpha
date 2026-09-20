@@ -15,8 +15,8 @@ from starlette.responses import FileResponse
 
 import app.gateway.routers.artifacts as artifacts_router
 from app.gateway.internal_auth import INTERNAL_OWNER_USER_ID_HEADER_NAME, INTERNAL_SYSTEM_ROLE
-from agent_workspace.config.paths import Paths, make_safe_user_id
-from agent_workspace.sandbox.lease import get_sandbox_lease_manager
+from alpha.config.paths import Paths, make_safe_user_id
+from alpha.sandbox.lease import get_sandbox_lease_manager
 
 # Browsers render any XML MIME type as a document, so an XHTML-namespaced
 # script in a plain .xml file runs in the application origin as well.

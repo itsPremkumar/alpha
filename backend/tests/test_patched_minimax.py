@@ -1,6 +1,6 @@
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMessage
 
-from agent_workspace.models.patched_minimax import PatchedChatMiniMax
+from alpha.models.patched_minimax import PatchedChatMiniMax
 
 
 def _make_model(**kwargs) -> PatchedChatMiniMax:

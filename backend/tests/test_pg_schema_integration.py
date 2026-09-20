@@ -9,12 +9,12 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import text
 
-from agent_workspace.config.database_config import DatabaseConfig
-from agent_workspace.persistence.engine import close_engine, get_engine, init_engine_from_config
-from agent_workspace.runtime.checkpointer.async_provider import make_checkpointer
-from agent_workspace.runtime.checkpointer.provider import _resolve_checkpointer_config, _sync_checkpointer_cm
-from agent_workspace.runtime.store.async_provider import make_store
-from agent_workspace.runtime.store.provider import _resolve_store_config, _sync_store_cm
+from alpha.config.database_config import DatabaseConfig
+from alpha.persistence.engine import close_engine, get_engine, init_engine_from_config
+from alpha.runtime.checkpointer.async_provider import make_checkpointer
+from alpha.runtime.checkpointer.provider import _resolve_checkpointer_config, _sync_checkpointer_cm
+from alpha.runtime.store.async_provider import make_store
+from alpha.runtime.store.provider import _resolve_store_config, _sync_store_cm
 
 POSTGRES_URL = os.getenv("AGENT_WORKSPACE_TEST_POSTGRES_URL")
 

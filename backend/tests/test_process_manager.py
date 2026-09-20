@@ -3,8 +3,8 @@
 import sys
 import time
 
-from agent_workspace.sandbox.process_manager import ProcessManager
-from agent_workspace.tools.builtins.process_handle_tool import process_handle_tool
+from alpha.sandbox.process_manager import ProcessManager
+from alpha.tools.builtins.process_handle_tool import process_handle_tool
 
 
 def test_process_manager_lifecycle():

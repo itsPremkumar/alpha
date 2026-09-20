@@ -1,4 +1,4 @@
-from agent_workspace.models.performance_registry import (
+from alpha.models.performance_registry import (
     DynamicCostLatencyRouter,
     ModelPerformanceRegistry,
 )

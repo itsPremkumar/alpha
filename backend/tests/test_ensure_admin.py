@@ -111,7 +111,7 @@ def test_admin_exists_triggers_migration():
     app = _make_app_stub(store=store)
 
     with patch("app.gateway.deps.get_local_provider", return_value=provider):
-        with patch("agent_workspace.persistence.engine.get_session_factory", return_value=sf):
+        with patch("alpha.persistence.engine.get_session_factory", return_value=sf):
             from app.gateway.app import _ensure_admin_user
 
             asyncio.run(_ensure_admin_user(app))
@@ -127,7 +127,7 @@ def test_admin_exists_no_admin_row_skips_migration():
     app = _make_app_stub(store=store)
 
     with patch("app.gateway.deps.get_local_provider", return_value=provider):
-        with patch("agent_workspace.persistence.engine.get_session_factory", return_value=sf):
+        with patch("alpha.persistence.engine.get_session_factory", return_value=sf):
             from app.gateway.app import _ensure_admin_user
 
             asyncio.run(_ensure_admin_user(app))
@@ -147,7 +147,7 @@ def test_admin_exists_no_store_skips_migration():
     app = _make_app_stub(store=None)
 
     with patch("app.gateway.deps.get_local_provider", return_value=provider):
-        with patch("agent_workspace.persistence.engine.get_session_factory", return_value=sf):
+        with patch("alpha.persistence.engine.get_session_factory", return_value=sf):
             from app.gateway.app import _ensure_admin_user
 
             asyncio.run(_ensure_admin_user(app))
@@ -162,7 +162,7 @@ def test_admin_exists_session_factory_none_skips_migration():
     app = _make_app_stub(store=store)
 
     with patch("app.gateway.deps.get_local_provider", return_value=provider):
-        with patch("agent_workspace.persistence.engine.get_session_factory", return_value=None):
+        with patch("alpha.persistence.engine.get_session_factory", return_value=None):
             from app.gateway.app import _ensure_admin_user
 
             asyncio.run(_ensure_admin_user(app))
@@ -184,7 +184,7 @@ def test_migration_failure_is_non_fatal():
     app = _make_app_stub(store=store)
 
     with patch("app.gateway.deps.get_local_provider", return_value=provider):
-        with patch("agent_workspace.persistence.engine.get_session_factory", return_value=sf):
+        with patch("alpha.persistence.engine.get_session_factory", return_value=sf):
             from app.gateway.app import _ensure_admin_user
 
             # Should not raise

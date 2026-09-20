@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import pytest
 
-from agent_workspace.projects.routing import decayed_reputation, rank_candidates, record_routing_feedback, select_agent
+from alpha.projects.routing import decayed_reputation, rank_candidates, record_routing_feedback, select_agent
 
 
 @pytest.fixture(autouse=True)
 def _home(tmp_path, monkeypatch):
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
-    import agent_workspace.bots.registry as bot_reg
+    import alpha.bots.registry as bot_reg
 
     monkeypatch.setattr(bot_reg, "_global_registry", None)
     monkeypatch.setattr(bot_reg, "_global_registry_path", None)
@@ -35,7 +35,7 @@ def test_excluded_bots_are_skipped():
 
 
 def test_selection_records_feedback_and_moves_reputation():
-    from agent_workspace.bots.registry import get_bot_registry
+    from alpha.bots.registry import get_bot_registry
 
     record_routing_feedback("coder", success=False, duration_sec=1.0)
     lowered = get_bot_registry().get_bot("coder").reputation_score

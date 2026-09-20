@@ -48,7 +48,7 @@ _update_artifact = update_artifact.__wrapped__
 async def _seed(tmp_path: Path, monkeypatch, thread_id: str, virtual_path: str) -> Path:
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
     # Rebuild cached Paths against the tmp home so the artifact resolves under it.
-    import agent_workspace.config.paths as paths_mod
+    import alpha.config.paths as paths_mod
 
     monkeypatch.setattr(paths_mod, "_paths", None)
     # Test-side path resolution also touches the filesystem (`.resolve()`); offload

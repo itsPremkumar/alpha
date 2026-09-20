@@ -23,8 +23,8 @@ import types
 
 import pytest
 
-from agent_workspace.community.tenki.provider import _BOOTSTRAP_TIMEOUT, TenkiSandboxProvider, _import_client
-from agent_workspace.community.tenki.sandbox import TenkiSandbox
+from alpha.community.tenki.provider import _BOOTSTRAP_TIMEOUT, TenkiSandboxProvider, _import_client
+from alpha.community.tenki.sandbox import TenkiSandbox
 
 # ── Fake Tenki SDK ────────────────────────────────────────────────────
 
@@ -286,12 +286,12 @@ def _stub_config(sandbox_attrs=None):
 def _install(monkeypatch, *, client=None, config_attrs=None):
     """Construct a provider with get_app_config + _import_client stubbed."""
     monkeypatch.setattr(
-        "agent_workspace.community.tenki.provider.get_app_config",
+        "alpha.community.tenki.provider.get_app_config",
         lambda: _stub_config(config_attrs),
     )
     if client is not None:
         monkeypatch.setattr(
-            "agent_workspace.community.tenki.provider._import_client",
+            "alpha.community.tenki.provider._import_client",
             lambda: lambda **kw: client,
         )
     provider = TenkiSandboxProvider()
@@ -312,7 +312,7 @@ def test_import_client_missing_raises_actionable(monkeypatch: pytest.MonkeyPatch
 
 
 def test_acquire_without_tenki_raises_and_shuts_down_cleanly(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("agent_workspace.community.tenki.provider.get_app_config", lambda: _stub_config())
+    monkeypatch.setattr("alpha.community.tenki.provider.get_app_config", lambda: _stub_config())
     _no_tenki(monkeypatch)
     provider = TenkiSandboxProvider()
     try:
@@ -522,7 +522,7 @@ def test_download_missing_file_raises_oserror() -> None:
 def test_download_cap_counts_bytes_actually_received(monkeypatch) -> None:
     # The cap must not rely on a separate size probe: a file that grows between
     # the probe and the read would slip past it.
-    monkeypatch.setattr("agent_workspace.community.tenki.sandbox._MAX_DOWNLOAD_SIZE", 100)
+    monkeypatch.setattr("alpha.community.tenki.sandbox._MAX_DOWNLOAD_SIZE", 100)
     fake = _FakeSandbox()
     box = TenkiSandbox("sb", fake)
     fake.files["/home/tenki/outputs/big.bin"] = b"x" * 500
@@ -534,7 +534,7 @@ def test_download_cap_counts_bytes_actually_received(monkeypatch) -> None:
 def test_download_size_cap_does_not_evict_sandbox(monkeypatch) -> None:
     # Hitting the size cap is a client-side limit, not a dead session — the
     # sandbox must stay live.
-    monkeypatch.setattr("agent_workspace.community.tenki.sandbox._MAX_DOWNLOAD_SIZE", 100)
+    monkeypatch.setattr("alpha.community.tenki.sandbox._MAX_DOWNLOAD_SIZE", 100)
     invalidated: list[tuple[str, str]] = []
     fake = _FakeSandbox()
     box = TenkiSandbox("sb", fake, on_terminal_failure=lambda sid, reason: invalidated.append((sid, reason)))
@@ -694,7 +694,7 @@ def test_load_config_rejects_invalid_environment_key(monkeypatch):
     # The config `environment` is merged into every command; a bad key must
     # fail fast at load time, like the per-call env in execute_command, not
     # surface as a confusing SDK error at create/exec time.
-    monkeypatch.setattr("agent_workspace.community.tenki.provider.get_app_config", lambda: _stub_config({"environment": {"bad-key": "1"}}))
+    monkeypatch.setattr("alpha.community.tenki.provider.get_app_config", lambda: _stub_config({"environment": {"bad-key": "1"}}))
     with pytest.raises(ValueError, match=r"POSIX"):
         TenkiSandboxProvider()
 
@@ -997,7 +997,7 @@ def test_stale_project_id_is_ignored_with_a_warning(monkeypatch, caplog):
     lookup, so silently dropping it changes how scope resolves.
     """
     client = _FakeClient()
-    with caplog.at_level(logging.WARNING, logger="agent_workspace.community.tenki.provider"):
+    with caplog.at_level(logging.WARNING, logger="alpha.community.tenki.provider"):
         provider = _install(monkeypatch, client=client, config_attrs={"project_id": "proj_legacy"})
     assert "sandbox.project_id is ignored" in caplog.text
     provider.acquire("thread-1", user_id="u1")
@@ -1026,7 +1026,7 @@ def test_create_rejects_project_id_like_the_real_sdk(monkeypatch):
     reason="requires a real Tenki API key (TENKI_API_KEY); network integration test",
 )
 def test_integration_real_sandbox(monkeypatch):
-    monkeypatch.setattr("agent_workspace.community.tenki.provider.get_app_config", lambda: _stub_config())
+    monkeypatch.setattr("alpha.community.tenki.provider.get_app_config", lambda: _stub_config())
     provider = TenkiSandboxProvider()
     try:
         sid = provider.acquire("it-thread", user_id="it-user")
@@ -1040,7 +1040,7 @@ def test_integration_real_sandbox(monkeypatch):
 
 
 def test_sandbox_id_matches_shared_identity():
-    from agent_workspace.sandbox.identity import derive_sandbox_scope_token
+    from alpha.sandbox.identity import derive_sandbox_scope_token
 
     assert TenkiSandboxProvider._sandbox_id("t-1", "u-1") == derive_sandbox_scope_token(user_id="u-1", thread_id="t-1")
     assert TenkiSandboxProvider._sandbox_id("t-1", "") == derive_sandbox_scope_token(user_id="", thread_id="t-1")

@@ -9,7 +9,7 @@ from alembic.script import ScriptDirectory
 from alembic.util.exc import CommandError
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from agent_workspace.persistence import bootstrap
+from alpha.persistence import bootstrap
 
 
 @pytest.mark.asyncio

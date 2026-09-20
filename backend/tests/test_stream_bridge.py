@@ -10,13 +10,13 @@ import anyio
 import pytest
 from pydantic import ValidationError
 
-from agent_workspace.config.stream_bridge_config import MAX_HEARTBEAT_INTERVAL_SECONDS, StreamBridgeConfig, set_stream_bridge_config
-from agent_workspace.runtime import END_SENTINEL, HEARTBEAT_SENTINEL, MemoryStreamBridge, StreamGap, make_stream_bridge
+from alpha.config.stream_bridge_config import MAX_HEARTBEAT_INTERVAL_SECONDS, StreamBridgeConfig, set_stream_bridge_config
+from alpha.runtime import END_SENTINEL, HEARTBEAT_SENTINEL, MemoryStreamBridge, StreamGap, make_stream_bridge
 
-# RedisStreamBridge is no longer re-exported from agent_workspace.runtime (redis is an
+# RedisStreamBridge is no longer re-exported from alpha.runtime (redis is an
 # optional extra; see the NOTE in runtime/stream_bridge/__init__.py). Import it
 # directly from the submodule.
-from agent_workspace.runtime.stream_bridge.redis import RedisStreamBridge
+from alpha.runtime.stream_bridge.redis import RedisStreamBridge
 
 
 def _stream_id_gt(left: str, right: str) -> bool:
@@ -804,7 +804,7 @@ async def test_redis_cleanup_deletes_stream(redis_bridge: RedisStreamBridge):
     await redis_bridge.publish(run_id, "event", {})
     await redis_bridge.cleanup(run_id)
 
-    assert fake.deleted == ["agent_workspace:stream_bridge:redis-run-cleanup"]
+    assert fake.deleted == ["alpha:stream_bridge:redis-run-cleanup"]
 
 
 @pytest.mark.anyio
@@ -818,7 +818,7 @@ async def test_redis_publish_refreshes_stream_ttl():
         client=fake,
     )
     run_id = "redis-run-ttl"
-    key = "agent_workspace:stream_bridge:redis-run-ttl"
+    key = "alpha:stream_bridge:redis-run-ttl"
 
     await bridge.publish(run_id, "event-1", {"n": 1})
     await bridge.publish(run_id, "event-2", {"n": 2})
@@ -1226,7 +1226,7 @@ async def test_make_stream_bridge_uses_docker_redis_env(monkeypatch):
 @pytest.mark.anyio
 async def test_make_stream_bridge_passes_redis_options(monkeypatch):
     """Redis options from config should be forwarded to Redis bridge setup."""
-    import agent_workspace.runtime.stream_bridge.redis as redis_module
+    import alpha.runtime.stream_bridge.redis as redis_module
 
     captured: dict = {}
 
@@ -1295,7 +1295,7 @@ async def real_redis_bridge():
     from redis.asyncio import Redis
 
     client = Redis.from_url(REDIS_TEST_URL, decode_responses=True)
-    key_prefix = f"agent_workspace:test:{uuid.uuid4().hex}"
+    key_prefix = f"alpha:test:{uuid.uuid4().hex}"
     bridge = RedisStreamBridge(redis_url=REDIS_TEST_URL, queue_maxsize=2, key_prefix=key_prefix, client=client)
     try:
         yield bridge
@@ -1469,7 +1469,7 @@ async def test_redis_integration_stream_ttl_reclaims_key():
     from redis.asyncio import Redis
 
     client = Redis.from_url(REDIS_TEST_URL, decode_responses=True)
-    key_prefix = f"agent_workspace:test:{uuid.uuid4().hex}"
+    key_prefix = f"alpha:test:{uuid.uuid4().hex}"
     bridge = RedisStreamBridge(
         redis_url=REDIS_TEST_URL,
         queue_maxsize=2,

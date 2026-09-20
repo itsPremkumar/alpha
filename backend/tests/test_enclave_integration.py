@@ -1,6 +1,6 @@
 import json
 
-from agent_workspace.tools.builtins import enterprise_security_manage
+from alpha.tools.builtins import enterprise_security_manage
 
 
 def test_enterprise_security_tool_actions():

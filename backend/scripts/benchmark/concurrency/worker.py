@@ -41,7 +41,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # no
 
 from app.gateway.auth.models import User  # noqa: E402
 from app.gateway.auth.repositories.sqlite import SQLiteUserRepository  # noqa: E402
-from agent_workspace.config.database_config import DatabaseConfig  # noqa: E402
+from alpha.config.database_config import DatabaseConfig  # noqa: E402
 
 # Must be the exact same absolute path run_concurrency_bench.py's
 # seed_baseline() computes (SQLITE_BENCH_DIR there) -- DatabaseConfig
@@ -53,7 +53,7 @@ from agent_workspace.config.database_config import DatabaseConfig  # noqa: E402
 SQLITE_BENCH_DIR = str(BACKEND_DIR / ".agent-workspace" / "bench_data")
 
 # The exact per-connection PRAGMAs the app sets on every SQLite connection
-# (agent_workspace/persistence/engine.py::_enable_sqlite_wal). journal_mode is
+# (alpha/persistence/engine.py::_enable_sqlite_wal). journal_mode is
 # persistent so WAL would be picked up incidentally from the seeder's engine,
 # but synchronous and foreign_keys are per-connection: without this a worker
 # runs at SQLite's synchronous=FULL / foreign_keys=OFF defaults and its write

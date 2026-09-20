@@ -2,8 +2,8 @@
 
 from unittest.mock import MagicMock
 
-from agent_workspace.agents.memory.backends.deermem.deermem.config import DeerMemConfig
-from agent_workspace.agents.memory.backends.deermem.deermem.core.updater import MemoryUpdater
+from alpha.agents.memory.backends.deermem.deermem.config import DeerMemConfig
+from alpha.agents.memory.backends.deermem.deermem.core.updater import MemoryUpdater
 
 
 def _updater(storage: MagicMock) -> MemoryUpdater:

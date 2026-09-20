@@ -33,7 +33,7 @@ from app.gateway.github.identity import extract_target, resolve_thread_id
 from app.gateway.github.prompts import build_prompt
 from app.gateway.github.registry import build_github_agent_registry, lookup_agents
 from app.gateway.github.triggers import event_should_fire
-from agent_workspace.config.agents_config import GitHubAgentConfig, GitHubTriggerConfig
+from alpha.config.agents_config import GitHubAgentConfig, GitHubTriggerConfig
 
 logger = logging.getLogger(__name__)
 

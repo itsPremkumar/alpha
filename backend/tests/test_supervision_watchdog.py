@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from agent_workspace.supervision import (
+from alpha.supervision import (
     AgentHealthStatus,
     AnomalyReport,
     AnomalyType,
@@ -13,7 +13,7 @@ from agent_workspace.supervision import (
     RecoveryAction,
     WatchdogRecoveryManager,
 )
-from agent_workspace.tools.builtins.supervision_tool import supervision_tool
+from alpha.tools.builtins.supervision_tool import supervision_tool
 
 
 def test_watchdog_frozen_progress_detection():

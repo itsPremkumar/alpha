@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from agent_workspace.planning.integrity import GoalIntegrityEngine
-from agent_workspace.tools.builtins.goal_integrity_tool import goal_integrity_tool
+from alpha.planning.integrity import GoalIntegrityEngine
+from alpha.tools.builtins.goal_integrity_tool import goal_integrity_tool
 
 
 def test_goal_integrity_aligned_plan():

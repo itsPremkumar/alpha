@@ -9,13 +9,13 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from agent_workspace.community.e2b_sandbox.capacity import (
+from alpha.community.e2b_sandbox.capacity import (
     CapacityBackendError,
     RedisE2BCapacityStore,
     ReserveStatus,
     make_e2b_capacity_store,
 )
-from agent_workspace.config.sandbox_config import SandboxOwnershipConfig
+from alpha.config.sandbox_config import SandboxOwnershipConfig
 
 REDIS_URL = os.environ.get("AGENT_WORKSPACE_TEST_REDIS_URL", "redis://localhost:6379/15")
 pytestmark = pytest.mark.integration
@@ -31,7 +31,7 @@ def make_store():
         probe.close()
         pytest.skip(f"Redis not reachable at {REDIS_URL}")
 
-    prefix = f"agent_workspace:test:{uuid.uuid4().hex}"
+    prefix = f"alpha:test:{uuid.uuid4().hex}"
     stores = []
 
     def make(hard_limit: int = 1):

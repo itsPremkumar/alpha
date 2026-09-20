@@ -1,6 +1,6 @@
 ﻿"""Tests for Skill-Embedded On-Demand MCP Lifecycle Manager."""
 
-from agent_workspace.skills.mcp_lifecycle import SkillMcpLifecycleManager
+from alpha.skills.mcp_lifecycle import SkillMcpLifecycleManager
 
 SKILL_WITH_MCP = """---
 name: playwright-browser

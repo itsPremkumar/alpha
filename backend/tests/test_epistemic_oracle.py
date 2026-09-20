@@ -2,8 +2,8 @@
 
 import json
 
-from agent_workspace.agent.oracle.service import OracleResponse, OracleService
-from agent_workspace.tools.builtins.ask_oracle_tool import ask_oracle
+from alpha.agent.oracle.service import OracleResponse, OracleService
+from alpha.tools.builtins.ask_oracle_tool import ask_oracle
 
 
 def test_oracle_service_domains():

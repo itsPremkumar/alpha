@@ -1,7 +1,7 @@
 import tempfile
 from pathlib import Path
 
-from agent_workspace.coding.repo_twin import (
+from alpha.coding.repo_twin import (
     BlastRadiusCalculator,
     RepoRecon,
     SymbolGraph,

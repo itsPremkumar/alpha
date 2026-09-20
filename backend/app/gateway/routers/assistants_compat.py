@@ -63,7 +63,7 @@ def _list_assistants() -> list[AssistantResponse]:
 
     # Also include custom agents from config.yaml agents directory
     try:
-        from agent_workspace.config.agents_config import list_custom_agents
+        from alpha.config.agents_config import list_custom_agents
 
         for agent_cfg in list_custom_agents():
             now = datetime.now(UTC).isoformat()

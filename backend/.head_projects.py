@@ -9,8 +9,8 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.gateway.authz import require_permission
 from app.gateway.deps import get_project_repo, get_thread_store
-from agent_workspace.runtime.secret_context import redact_metadata_secrets
-from agent_workspace.utils.time import coerce_iso
+from alpha.runtime.secret_context import redact_metadata_secrets
+from alpha.utils.time import coerce_iso
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/projects", tags=["projects"])
@@ -201,9 +201,9 @@ async def join_project(project_id: str, body: JoinRequest, request: Request) -> 
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.projects.events import get_event_bus
-        from agent_workspace.projects.membership import get_membership_store
-        from agent_workspace.projects.workspace import ensure_workspace
+        from alpha.projects.events import get_event_bus
+        from alpha.projects.membership import get_membership_store
+        from alpha.projects.workspace import ensure_workspace
 
         ensure_workspace(project_id)
         m = get_membership_store().join(project_id, body.bot_name, body.role_in_project)
@@ -219,8 +219,8 @@ async def leave_project(project_id: str, body: LeaveRequest, request: Request) -
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.projects.events import get_event_bus
-        from agent_workspace.projects.membership import get_membership_store
+        from alpha.projects.events import get_event_bus
+        from alpha.projects.membership import get_membership_store
 
         ok = get_membership_store().leave(project_id, body.bot_name)
         if ok:
@@ -236,7 +236,7 @@ async def project_heartbeat(project_id: str, body: HeartbeatRequest, request: Re
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.projects.membership import get_membership_store
+        from alpha.projects.membership import get_membership_store
 
         m = get_membership_store().heartbeat(project_id, body.bot_name, status=body.status, current_task_id=body.current_task_id, blocked_reason=body.blocked_reason)
         if m is None:
@@ -255,7 +255,7 @@ async def project_presence(project_id: str, request: Request) -> dict:
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.projects.membership import get_membership_store
+        from alpha.projects.membership import get_membership_store
 
         rows = get_membership_store().presence(project_id)
         return {"project_id": project_id, "members": [m.to_dict() for m in rows], "count": len(rows)}
@@ -273,7 +273,7 @@ async def get_constitution(project_id: str, request: Request) -> dict:
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.projects import constitution as const_mod
+        from alpha.projects import constitution as const_mod
 
         const = const_mod.get_constitution(project_id)
         if const is None:
@@ -289,8 +289,8 @@ async def put_constitution(project_id: str, body: ConstitutionRequest, request: 
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.projects import constitution as const_mod
-        from agent_workspace.projects.events import get_event_bus
+        from alpha.projects import constitution as const_mod
+        from alpha.projects.events import get_event_bus
 
         const = const_mod.put_constitution(project_id, body.markdown)
         get_event_bus(project_id).emit("constitution_updated", "operator", {"sha16": const.sha16})
@@ -308,7 +308,7 @@ async def get_project_state(project_id: str, request: Request, refresh: bool = Q
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.projects import state as state_mod
+        from alpha.projects import state as state_mod
 
         state = state_mod.refresh_state(project_id) if refresh else state_mod.get_state(project_id)
         return state.to_dict()
@@ -326,7 +326,7 @@ async def set_project_phase(project_id: str, body: PhaseRequest, request: Reques
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.projects import state as state_mod
+        from alpha.projects import state as state_mod
 
         return state_mod.set_phase(project_id, body.phase.strip().lower()).to_dict()
 
@@ -351,7 +351,7 @@ async def list_decisions(project_id: str, request: Request, q: str | None = Quer
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.projects.decisions import get_decision_log
+        from alpha.projects.decisions import get_decision_log
 
         log = get_decision_log(project_id)
         rows = log.search(q) if q else log.list()
@@ -366,7 +366,7 @@ async def record_decision(project_id: str, body: DecisionRequest, request: Reque
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.projects.decisions import get_decision_log
+        from alpha.projects.decisions import get_decision_log
 
         return get_decision_log(project_id).record(body.title, body.body, reason=body.reason, made_by=body.made_by, approved_by=body.approved_by, arch_version=body.arch_version).to_dict()
 
@@ -387,7 +387,7 @@ async def list_locks(project_id: str, request: Request) -> dict:
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.projects.locks import get_lock_manager
+        from alpha.projects.locks import get_lock_manager
 
         manager = get_lock_manager()
         manager.sweep_expired()
@@ -408,8 +408,8 @@ async def acquire_lock(project_id: str, body: LockRequest, request: Request) -> 
         raise HTTPException(status_code=422, detail="scope must be file|dir|task|artifact")
 
     def _do():
-        from agent_workspace.projects.events import get_event_bus
-        from agent_workspace.projects.locks import LockConflictError, get_lock_manager
+        from alpha.projects.events import get_event_bus
+        from alpha.projects.locks import LockConflictError, get_lock_manager
 
         try:
             lk = get_lock_manager().acquire(project_id, body.scope, body.path, body.owner_bot, reason=body.reason, ttl_seconds=body.ttl_seconds)
@@ -434,8 +434,8 @@ async def release_lock(project_id: str, lock_id: str, request: Request, requeste
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.projects.events import get_event_bus
-        from agent_workspace.projects.locks import get_lock_manager
+        from alpha.projects.events import get_event_bus
+        from alpha.projects.locks import get_lock_manager
 
         ok = get_lock_manager().release(lock_id, requester_bot)
         if ok:
@@ -458,7 +458,7 @@ async def request_lock_access(project_id: str, body: LockAccessRequest, request:
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.projects.locks import get_lock_manager
+        from alpha.projects.locks import get_lock_manager
 
         return get_lock_manager().request_access(project_id, body.scope, body.path, body.requester_bot, mode=body.mode).to_dict()
 
@@ -479,7 +479,7 @@ async def resolve_lock_access(project_id: str, request_id: str, body: ResolveLoc
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.projects.locks import get_lock_manager
+        from alpha.projects.locks import get_lock_manager
 
         rq = get_lock_manager().resolve_request(request_id, body.approver_bot, approve=body.approve)
         return rq.to_dict() if rq else None
@@ -511,7 +511,7 @@ async def list_handoffs(project_id: str, request: Request, status: str | None = 
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.projects.handoffs import get_handoff_store
+        from alpha.projects.handoffs import get_handoff_store
 
         rows = get_handoff_store(project_id).list(status=status)
         return {"project_id": project_id, "handoffs": [r.to_dict() for r in rows]}
@@ -525,7 +525,7 @@ async def create_handoff(project_id: str, body: HandoffRequest, request: Request
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.projects.handoffs import get_handoff_store
+        from alpha.projects.handoffs import get_handoff_store
 
         return (
             get_handoff_store(project_id)
@@ -562,7 +562,7 @@ async def accept_handoff(project_id: str, handoff_id: str, body: AcceptHandoffRe
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.projects.handoffs import get_handoff_store
+        from alpha.projects.handoffs import get_handoff_store
 
         rec = get_handoff_store(project_id).accept(handoff_id, body.to_bot)
         return rec.to_dict() if rec else None
@@ -579,7 +579,7 @@ async def read_project_events(project_id: str, request: Request, after_seq: int 
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.projects.events import get_event_bus
+        from alpha.projects.events import get_event_bus
 
         bus = get_event_bus(project_id)
         rows = bus.search(q, limit=limit) if q else bus.read(after_seq=after_seq, limit=limit)
@@ -594,7 +594,7 @@ async def get_project_context(project_id: str, request: Request, bot_role: str =
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.projects.context import build_context
+        from alpha.projects.context import build_context
 
         return build_context(project_id, bot_role).to_dict()
 
@@ -614,7 +614,7 @@ async def create_goal_tree(project_id: str, body: GoalCreateRequest, request: Re
     def _do():
         import uuid
 
-        from agent_workspace.projects.goals import GoalTree
+        from alpha.projects.goals import GoalTree
 
         goal_id = f"goal-{uuid.uuid4().hex[:8]}"
         tree = GoalTree(project_id, goal_id)
@@ -636,7 +636,7 @@ async def add_subgoal(project_id: str, goal_id: str, body: SubgoalRequest, reque
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.projects.goals import GoalTree
+        from alpha.projects.goals import GoalTree
 
         try:
             return GoalTree(project_id, goal_id).add_subgoal(body.parent_id, body.title, acceptance=body.acceptance).to_dict()
@@ -662,7 +662,7 @@ async def set_goal_status(project_id: str, goal_id: str, node_id: str, body: Goa
         raise HTTPException(status_code=422, detail="Invalid goal status.")
 
     def _do():
-        from agent_workspace.projects.goals import GoalTree
+        from alpha.projects.goals import GoalTree
 
         tree = GoalTree(project_id, goal_id)
         node = tree.set_status(node_id, body.status, blocked_reason=body.blocked_reason)
@@ -682,7 +682,7 @@ async def get_goal_tree(project_id: str, goal_id: str, request: Request) -> dict
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.projects.goals import GoalTree
+        from alpha.projects.goals import GoalTree
 
         tree = GoalTree(project_id, goal_id)
         return {**tree.to_dict(), "progress": tree.progress()}
@@ -703,7 +703,7 @@ async def detect_conflicts(project_id: str, request: Request) -> dict:
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.projects.conflicts import detect_lock_conflicts
+        from alpha.projects.conflicts import detect_lock_conflicts
 
         found = detect_lock_conflicts(project_id)
         return {"project_id": project_id, "conflicts": [c.to_dict() for c in found]}
@@ -719,7 +719,7 @@ async def raise_conflict(project_id: str, body: ConflictRequest, request: Reques
         raise HTTPException(status_code=422, detail="Invalid conflict kind.")
 
     def _do():
-        from agent_workspace.projects.conflicts import raise_conflict as _raise
+        from alpha.projects.conflicts import raise_conflict as _raise
 
         return _raise(project_id, body.kind, body.subject, body.parties, body.details).to_dict()
 
@@ -741,8 +741,8 @@ async def resolve_conflict(project_id: str, body: ResolveConflictRequest, reques
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.projects.conflicts import raise_conflict as _raise
-        from agent_workspace.projects.conflicts import resolve_conflict as _resolve
+        from alpha.projects.conflicts import raise_conflict as _raise
+        from alpha.projects.conflicts import resolve_conflict as _resolve
 
         conflict = _raise(project_id, body.kind, body.subject, body.parties, body.details, actor=body.resolved_by)
         return _resolve(project_id, conflict, body.resolution, resolved_by=body.resolved_by).to_dict()
@@ -761,7 +761,7 @@ async def completion_check(project_id: str, body: CompletionCheckRequest, reques
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.projects.evidence import check_completion
+        from alpha.projects.evidence import check_completion
 
         return check_completion(body.evidence, task_kind=body.task_kind).to_dict()
 
@@ -775,13 +775,13 @@ async def get_war_room(project_id: str, request: Request) -> dict:
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.bots.kill_switch import get_kill_switch_status
-        from agent_workspace.projects import decisions as dec_mod
-        from agent_workspace.projects import events as events_mod
-        from agent_workspace.projects import handoffs as handoff_mod
-        from agent_workspace.projects import locks as locks_mod
-        from agent_workspace.projects import membership as mem_mod
-        from agent_workspace.projects import state as state_mod
+        from alpha.bots.kill_switch import get_kill_switch_status
+        from alpha.projects import decisions as dec_mod
+        from alpha.projects import events as events_mod
+        from alpha.projects import handoffs as handoff_mod
+        from alpha.projects import locks as locks_mod
+        from alpha.projects import membership as mem_mod
+        from alpha.projects import state as state_mod
 
         # 1. Members Presence
         mem_store = mem_mod.get_membership_store()
@@ -808,44 +808,44 @@ async def get_war_room(project_id: str, request: Request) -> dict:
         ks = get_kill_switch_status()
 
         # 8. Pending Approvals
-        from agent_workspace.projects.approval_queue import get_approval_queue
+        from alpha.projects.approval_queue import get_approval_queue
         pending_approvals = [a.to_dict() for a in get_approval_queue(project_id).list_pending()]
 
         # 9. Task Contracts
-        from agent_workspace.projects.contracts import get_contract_gatekeeper
+        from alpha.projects.contracts import get_contract_gatekeeper
         contracts = [c.to_dict() for c in get_contract_gatekeeper(project_id).list_contracts()]
 
         # 10. Living Specification
-        from agent_workspace.projects.living_spec import get_living_spec_engine
+        from alpha.projects.living_spec import get_living_spec_engine
         living_spec = get_living_spec_engine(project_id).get_spec().to_dict()
 
         # 11. Cost & Token Governance
-        from agent_workspace.models.cost_governor import get_cost_governor
+        from alpha.models.cost_governor import get_cost_governor
         cost_summary = get_cost_governor().get_project_summary(project_id)
 
         # 12. Async Standup Briefing
-        from agent_workspace.projects.standup_engine import get_standup_engine
+        from alpha.projects.standup_engine import get_standup_engine
         standup_data = get_standup_engine(project_id).generate_standup().to_dict()
 
         # 13. Workspace Checkpoints
-        from agent_workspace.projects.checkpoint_engine import get_checkpoint_engine
+        from alpha.projects.checkpoint_engine import get_checkpoint_engine
         checkpoints = [c.to_dict() for c in get_checkpoint_engine(project_id).list_checkpoints()[:5]]
 
         # 14. Arena Bot Leaderboard
-        from agent_workspace.benchmarks.arena import get_benchmark_arena
+        from alpha.benchmarks.arena import get_benchmark_arena
         leaderboard = [l.to_dict() for l in get_benchmark_arena(project_id).get_leaderboard()[:5]]
 
         # 15. Canary Watchdog Status
-        from agent_workspace.projects.canary_watchdog import get_canary_watchdog
+        from alpha.projects.canary_watchdog import get_canary_watchdog
         canary_history = [c.to_dict() for c in get_canary_watchdog(project_id).get_history()[-3:]]
 
         # 16. Visual QA Receipts
-        from agent_workspace.projects.visual_verifier import get_visual_qa_engine
+        from alpha.projects.visual_verifier import get_visual_qa_engine
         visual_qa = [v.to_dict() for v in get_visual_qa_engine(project_id).get_history()[-3:]]
 
         # 17. AVO Genetic Optimization Lineage & Pareto Frontier
         try:
-            from agent_workspace.avo import get_avo_runner
+            from alpha.avo import get_avo_runner
             avo_runner = get_avo_runner(project_id)
             avo_lineage = {
                 "head_id": avo_runner.lineage.head_id,
@@ -858,7 +858,7 @@ async def get_war_room(project_id: str, request: Request) -> dict:
 
         # 18. Epistemic Belief Graph
         try:
-            from agent_workspace.epistemics import get_epistemic_engine
+            from alpha.epistemics import get_epistemic_engine
             ep_engine = get_epistemic_engine(project_id)
             epistemic_claims = [c.to_dict() for c in ep_engine.list_all()]
         except Exception:
@@ -866,7 +866,7 @@ async def get_war_room(project_id: str, request: Request) -> dict:
 
         # 19. Controlled RSI Closed-Loop Status
         try:
-            from agent_workspace.rsi import get_rsi_engine
+            from alpha.rsi import get_rsi_engine
             rsi_engine = get_rsi_engine(project_id)
             rsi_status = rsi_engine.get_status()
         except Exception:
@@ -874,7 +874,7 @@ async def get_war_room(project_id: str, request: Request) -> dict:
 
         # 20. Deterministic Trajectory Store
         try:
-            from agent_workspace.trajectory.store import get_trajectory_store
+            from alpha.trajectory.store import get_trajectory_store
             traj_store = get_trajectory_store(project_id)
             goal_ids = traj_store.list_goal_ids()[:3]
             trajectories = [traj_store.get_trajectory(gid).to_dict() for gid in goal_ids]
@@ -922,7 +922,7 @@ async def list_project_approvals(project_id: str, request: Request, status: str 
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.projects.approval_queue import get_approval_queue
+        from alpha.projects.approval_queue import get_approval_queue
 
         q = get_approval_queue(project_id)
         return {"project_id": project_id, "approvals": [r.to_dict() for r in q.list_requests(status=status)]}
@@ -936,7 +936,7 @@ async def resolve_project_approval(project_id: str, request_id: str, body: Resol
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.projects.approval_queue import get_approval_queue
+        from alpha.projects.approval_queue import get_approval_queue
 
         q = get_approval_queue(project_id)
         req = q.resolve_request(request_id, approved=body.approved, resolved_by=body.resolved_by, comment=body.comment)
@@ -961,7 +961,7 @@ async def create_project_checkpoint(project_id: str, body: CreateCheckpointBody,
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.projects.checkpoint_engine import get_checkpoint_engine
+        from alpha.projects.checkpoint_engine import get_checkpoint_engine
 
         return get_checkpoint_engine(project_id).create_checkpoint(tag=body.tag, metadata=body.metadata).to_dict()
 
@@ -974,7 +974,7 @@ async def list_project_checkpoints(project_id: str, request: Request) -> dict:
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.projects.checkpoint_engine import get_checkpoint_engine
+        from alpha.projects.checkpoint_engine import get_checkpoint_engine
 
         return {
             "project_id": project_id,
@@ -990,7 +990,7 @@ async def restore_project_checkpoint(project_id: str, checkpoint_id: str, reques
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.projects.checkpoint_engine import get_checkpoint_engine
+        from alpha.projects.checkpoint_engine import get_checkpoint_engine
 
         return get_checkpoint_engine(project_id).restore_checkpoint(checkpoint_id)
 
@@ -1011,7 +1011,7 @@ async def probe_project_canary(project_id: str, body: CanaryProbeBody, request: 
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.projects.canary_watchdog import get_canary_watchdog
+        from alpha.projects.canary_watchdog import get_canary_watchdog
 
         return get_canary_watchdog(project_id).probe_staging(port=body.port, mock_success=body.mock_success).to_dict()
 
@@ -1024,7 +1024,7 @@ async def get_project_bot_leaderboard(project_id: str, request: Request) -> dict
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.benchmarks.arena import get_benchmark_arena
+        from alpha.benchmarks.arena import get_benchmark_arena
 
         return {
             "project_id": project_id,
@@ -1054,7 +1054,7 @@ async def get_project_avo_lineage(project_id: str, request: Request) -> dict:
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.avo import get_avo_runner
+        from alpha.avo import get_avo_runner
 
         runner = get_avo_runner(project_id)
         return {
@@ -1074,7 +1074,7 @@ async def run_project_avo_iteration(project_id: str, body: AVOIterateBody, reque
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.avo import VersionRecord, get_avo_runner
+        from alpha.avo import VersionRecord, get_avo_runner
 
         runner = get_avo_runner(project_id)
         parent = body.parent_id or runner.lineage.head_id
@@ -1129,7 +1129,7 @@ async def list_project_epistemic_claims(project_id: str, request: Request) -> di
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.epistemics import get_epistemic_engine
+        from alpha.epistemics import get_epistemic_engine
 
         engine = get_epistemic_engine(project_id)
         return {
@@ -1147,7 +1147,7 @@ async def register_project_epistemic_claim(project_id: str, body: CreateClaimBod
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.epistemics import EpistemicStatus, get_epistemic_engine
+        from alpha.epistemics import EpistemicStatus, get_epistemic_engine
 
         engine = get_epistemic_engine(project_id)
         try:
@@ -1173,7 +1173,7 @@ async def add_project_epistemic_evidence(project_id: str, claim_id: str, body: A
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.epistemics import get_epistemic_engine
+        from alpha.epistemics import get_epistemic_engine
 
         engine = get_epistemic_engine(project_id)
         claim = engine.update_with_evidence(
@@ -1202,7 +1202,7 @@ async def get_project_rsi_status(project_id: str, request: Request) -> dict:
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.rsi import get_rsi_engine
+        from alpha.rsi import get_rsi_engine
 
         return {
             "project_id": project_id,
@@ -1218,7 +1218,7 @@ async def run_project_rsi_cycle(project_id: str, body: TriggerRSICycleBody, requ
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.rsi import get_rsi_engine
+        from alpha.rsi import get_rsi_engine
 
         engine = get_rsi_engine(project_id)
         result = engine.run_rsi_cycle(
@@ -1252,7 +1252,7 @@ async def list_project_trajectories(project_id: str, request: Request) -> dict:
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.trajectory.store import get_trajectory_store
+        from alpha.trajectory.store import get_trajectory_store
 
         store = get_trajectory_store(project_id)
         goal_ids = store.list_goal_ids()
@@ -1270,7 +1270,7 @@ async def get_project_trajectory(project_id: str, goal_id: str, request: Request
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.trajectory.store import get_trajectory_store
+        from alpha.trajectory.store import get_trajectory_store
 
         store = get_trajectory_store(project_id)
         return store.get_trajectory(goal_id).to_dict()
@@ -1284,7 +1284,7 @@ async def record_project_trajectory_step(project_id: str, goal_id: str, body: Re
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.trajectory.store import get_trajectory_store
+        from alpha.trajectory.store import get_trajectory_store
 
         store = get_trajectory_store(project_id)
         step = store.record_step(
@@ -1309,7 +1309,7 @@ async def replay_project_trajectory(project_id: str, goal_id: str, body: ReplayT
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.trajectory.store import get_trajectory_store
+        from alpha.trajectory.store import get_trajectory_store
 
         store = get_trajectory_store(project_id)
         return store.replay_from_step(goal_id=goal_id, from_step_index=body.from_step_index)
@@ -1357,7 +1357,7 @@ async def get_project_self_config_status(project_id: str, request: Request) -> d
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.autoconfig import get_self_config_engine
+        from alpha.autoconfig import get_self_config_engine
 
         engine = get_self_config_engine(project_id)
         return engine.get_status()
@@ -1371,7 +1371,7 @@ async def infer_project_self_config(project_id: str, body: SelfConfigInferBody, 
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.autoconfig import get_self_config_engine
+        from alpha.autoconfig import get_self_config_engine
 
         engine = get_self_config_engine(project_id)
         analysis = engine.analyze_goal(body.goal, body.context)
@@ -1390,7 +1390,7 @@ async def tune_project_self_config(project_id: str, body: SelfConfigTuneBody, re
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.autoconfig import RuntimeTuningUpdate, get_self_config_engine
+        from alpha.autoconfig import RuntimeTuningUpdate, get_self_config_engine
 
         engine = get_self_config_engine(project_id)
         updates = RuntimeTuningUpdate(
@@ -1440,7 +1440,7 @@ async def get_project_meta_compiler_lineage(project_id: str, request: Request) -
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.metacompiler import get_meta_compiler_lineage
+        from alpha.metacompiler import get_meta_compiler_lineage
 
         store = get_meta_compiler_lineage(project_id)
         return store.get_status()
@@ -1454,7 +1454,7 @@ async def compile_next_gen_agent(project_id: str, body: MetaCompileBody, request
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.metacompiler import AgentMetaCompiler, get_meta_compiler_lineage
+        from alpha.metacompiler import AgentMetaCompiler, get_meta_compiler_lineage
 
         store = get_meta_compiler_lineage(project_id)
         parent = store._blueprints.get(body.parent_id) if body.parent_id else store.active_head
@@ -1482,7 +1482,7 @@ async def benchmark_candidate_agent(project_id: str, body: MetaBenchmarkBody, re
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.metacompiler import MetaBenchmarkHarness, get_meta_compiler_lineage
+        from alpha.metacompiler import MetaBenchmarkHarness, get_meta_compiler_lineage
 
         store = get_meta_compiler_lineage(project_id)
         candidate = store._blueprints.get(body.blueprint_id)
@@ -1502,7 +1502,7 @@ async def hotswap_candidate_agent(project_id: str, body: MetaHotSwapBody, reques
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.metacompiler import get_meta_compiler_lineage
+        from alpha.metacompiler import get_meta_compiler_lineage
 
         store = get_meta_compiler_lineage(project_id)
         outcome = store.promote_blueprint(body.blueprint_id, force=body.force)
@@ -1520,7 +1520,7 @@ async def rollback_agent_architecture(project_id: str, body: MetaRollbackBody, r
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.metacompiler import get_meta_compiler_lineage
+        from alpha.metacompiler import get_meta_compiler_lineage
 
         store = get_meta_compiler_lineage(project_id)
         success = store.rollback(body.target_blueprint_id)
@@ -1551,7 +1551,7 @@ async def get_project_perpetual_status(project_id: str, request: Request) -> dic
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.perpetual import get_perpetual_daemon
+        from alpha.perpetual import get_perpetual_daemon
 
         daemon = get_perpetual_daemon(project_id)
         return daemon.get_status()
@@ -1565,7 +1565,7 @@ async def start_project_perpetual_daemon(project_id: str, request: Request) -> d
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.perpetual import get_perpetual_daemon
+        from alpha.perpetual import get_perpetual_daemon
 
         daemon = get_perpetual_daemon(project_id)
         daemon.start()
@@ -1580,7 +1580,7 @@ async def stop_project_perpetual_daemon(project_id: str, request: Request) -> di
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.perpetual import get_perpetual_daemon
+        from alpha.perpetual import get_perpetual_daemon
 
         daemon = get_perpetual_daemon(project_id)
         daemon.stop()
@@ -1595,7 +1595,7 @@ async def trigger_project_perpetual_heartbeat(project_id: str, request: Request)
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.perpetual import get_perpetual_daemon
+        from alpha.perpetual import get_perpetual_daemon
 
         daemon = get_perpetual_daemon(project_id)
         return daemon.step_heartbeat()
@@ -1609,7 +1609,7 @@ async def trigger_project_perpetual_discovery(project_id: str, request: Request)
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.perpetual import get_perpetual_daemon
+        from alpha.perpetual import get_perpetual_daemon
 
         daemon = get_perpetual_daemon(project_id)
         discovered = daemon.trigger_discovery()
@@ -1624,7 +1624,7 @@ async def trigger_project_perpetual_consolidation(project_id: str, request: Requ
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.perpetual import get_perpetual_daemon
+        from alpha.perpetual import get_perpetual_daemon
 
         daemon = get_perpetual_daemon(project_id)
         return daemon.trigger_consolidation()
@@ -1638,7 +1638,7 @@ async def create_project_perpetual_goal(project_id: str, body: PerpetualGoalBody
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.perpetual import get_perpetual_daemon
+        from alpha.perpetual import get_perpetual_daemon
 
         daemon = get_perpetual_daemon(project_id)
         goal = daemon.create_goal(title=body.title, description=body.description, priority=body.priority)

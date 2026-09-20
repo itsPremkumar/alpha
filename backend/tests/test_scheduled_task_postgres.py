@@ -11,12 +11,12 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import text
 
-from agent_workspace.config.database_config import DatabaseConfig
-from agent_workspace.persistence.engine import close_engine, get_engine, get_session_factory, init_engine_from_config
-from agent_workspace.persistence.run import RunRepository
-from agent_workspace.persistence.scheduled_task_runs import ScheduledTaskRunRepository
-from agent_workspace.persistence.scheduled_task_runs.model import ScheduledTaskRunRow
-from agent_workspace.persistence.scheduled_tasks import ScheduledTaskRepository
+from alpha.config.database_config import DatabaseConfig
+from alpha.persistence.engine import close_engine, get_engine, get_session_factory, init_engine_from_config
+from alpha.persistence.run import RunRepository
+from alpha.persistence.scheduled_task_runs import ScheduledTaskRunRepository
+from alpha.persistence.scheduled_task_runs.model import ScheduledTaskRunRow
+from alpha.persistence.scheduled_tasks import ScheduledTaskRepository
 
 POSTGRES_URL = os.environ.get("TEST_POSTGRES_URI")
 
@@ -191,7 +191,7 @@ async def test_postgres_once_recovery_uses_occurrence_order_despite_clock_skew(p
         increment_run_count=False,
     )
     # The older worker's clock and descending UUID order both favor its success.
-    with patch("agent_workspace.persistence.scheduled_task_runs.sql.datetime") as clock:
+    with patch("alpha.persistence.scheduled_task_runs.sql.datetime") as clock:
         clock.now.return_value = now + timedelta(seconds=older_clock_ahead_seconds)
         older = await task_run_repo.create(
             run_record_id="ffffffff-ffff-4fff-8fff-ffffffffffff",

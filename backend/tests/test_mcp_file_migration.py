@@ -13,9 +13,9 @@ from unittest.mock import patch
 import pytest
 from mcp.types import CallToolResult, ResourceLink, TextContent
 
-from agent_workspace.config.paths import VIRTUAL_PATH_PREFIX, Paths
-from agent_workspace.constants import MCP_TMP_SUBDIR
-from agent_workspace.mcp import tools as mcp_tools
+from alpha.config.paths import VIRTUAL_PATH_PREFIX, Paths
+from alpha.constants import MCP_TMP_SUBDIR
+from alpha.mcp import tools as mcp_tools
 
 
 @pytest.fixture
@@ -24,7 +24,7 @@ def paths(tmp_path: Path) -> Paths:
 
 
 def _patch_paths(paths: Paths):
-    return patch("agent_workspace.mcp.tools.get_paths", return_value=paths)
+    return patch("alpha.mcp.tools.get_paths", return_value=paths)
 
 
 def _workspace_file(paths: Paths, relative_path: str, *, content: bytes = b"data") -> Path:

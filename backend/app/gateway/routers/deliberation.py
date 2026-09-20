@@ -14,9 +14,9 @@ import logging
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from agent_workspace.deliberation.engine import get_master_deliberation_engine
-from agent_workspace.deliberation.models import DeliberationStrategy
-from agent_workspace.deliberation.router import DeliberationRouter
+from alpha.deliberation.engine import get_master_deliberation_engine
+from alpha.deliberation.models import DeliberationStrategy
+from alpha.deliberation.router import DeliberationRouter
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/deliberation", tags=["deliberation"])

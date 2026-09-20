@@ -1,4 +1,4 @@
-from agent_workspace.subagents.yield_handoff import (
+from alpha.subagents.yield_handoff import (
     SubagentYieldRegistry,
     get_yield_registry,
     sessions_settle,

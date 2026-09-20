@@ -15,9 +15,9 @@ from fastapi.testclient import TestClient
 from app.gateway import artifact_archive
 from app.gateway.auth.models import User
 from app.gateway.routers import thread_runs
-from agent_workspace.runtime.events.store.memory import MemoryRunEventStore
-from agent_workspace.runtime.runs.manager import RunManager
-from agent_workspace.runtime.runs.store.memory import MemoryRunStore
+from alpha.runtime.events.store.memory import MemoryRunEventStore
+from alpha.runtime.runs.manager import RunManager
+from alpha.runtime.runs.store.memory import MemoryRunStore
 
 THREAD_ID = "thread-archive"
 RUN_ID = "run-archive"

@@ -20,7 +20,7 @@ class DeliveryMarkRequest(BaseModel):
 @router.get("/scheduled-tasks/{task_id}/deliveries")
 async def list_deliveries(task_id: str) -> dict:
     def _do():
-        from agent_workspace.scheduler.delivery import get_delivery_ledger
+        from alpha.scheduler.delivery import get_delivery_ledger
 
         rows = get_delivery_ledger().for_task(task_id)
         return {"task_id": task_id, "deliveries": [r.to_dict() for r in rows], "count": len(rows)}
@@ -31,7 +31,7 @@ async def list_deliveries(task_id: str) -> dict:
 @router.post("/scheduled-tasks/{task_id}/deliveries/claim", status_code=201)
 async def claim_delivery(task_id: str, occurrence_id: str) -> dict:
     def _do():
-        from agent_workspace.scheduler.delivery import get_delivery_ledger
+        from alpha.scheduler.delivery import get_delivery_ledger
 
         rec, is_new = get_delivery_ledger().claim(task_id, occurrence_id)
         return {"delivery": rec.to_dict(), "is_new": is_new}
@@ -45,7 +45,7 @@ async def mark_delivery(task_id: str, occurrence_id: str, body: DeliveryMarkRequ
         raise HTTPException(status_code=422, detail="Invalid delivery status.")
 
     def _do():
-        from agent_workspace.scheduler.delivery import get_delivery_ledger
+        from alpha.scheduler.delivery import get_delivery_ledger
 
         rec = get_delivery_ledger().mark(occurrence_id, body.status, artifact_ref=body.artifact_ref, channel=body.channel, error=body.error)
         return rec.to_dict() if rec else None
@@ -59,7 +59,7 @@ async def mark_delivery(task_id: str, occurrence_id: str, body: DeliveryMarkRequ
 @router.get("/scheduled-tasks/blueprints")
 async def list_blueprints() -> dict:
     def _do():
-        from agent_workspace.scheduler.blueprints import list_blueprints as _list
+        from alpha.scheduler.blueprints import list_blueprints as _list
 
         return _list()
 
@@ -73,8 +73,8 @@ class BlueprintLaunchRequest(BaseModel):
 @router.post("/scheduled-tasks/blueprints/{blueprint_id}/launch", status_code=201)
 async def launch_blueprint(blueprint_id: str, body: BlueprintLaunchRequest) -> dict:
     def _do():
-        from agent_workspace.scheduler.blueprints import get_blueprint
-        from agent_workspace.scheduler.cron_manager import get_cron_manager
+        from alpha.scheduler.blueprints import get_blueprint
+        from alpha.scheduler.cron_manager import get_cron_manager
 
         blueprint = get_blueprint(blueprint_id)
         if blueprint is None:
@@ -92,7 +92,7 @@ async def launch_blueprint(blueprint_id: str, body: BlueprintLaunchRequest) -> d
 @router.get("/scheduled-tasks/{task_id}/incidents")
 async def list_incidents(task_id: str, unresolved_only: bool = False) -> dict:
     def _do():
-        from agent_workspace.scheduler.incidents import get_incident_tracker
+        from alpha.scheduler.incidents import get_incident_tracker
 
         rows = get_incident_tracker().list(task_id=task_id, unresolved_only=unresolved_only)
         return {"task_id": task_id, "incidents": [r.to_dict() for r in rows], "count": len(rows)}
@@ -103,7 +103,7 @@ async def list_incidents(task_id: str, unresolved_only: bool = False) -> dict:
 @router.post("/scheduled-tasks/incidents/{incident_id}/resolve")
 async def resolve_incident(incident_id: str) -> dict:
     def _do():
-        from agent_workspace.scheduler.incidents import get_incident_tracker
+        from alpha.scheduler.incidents import get_incident_tracker
 
         rec = get_incident_tracker().resolve(incident_id)
         return rec.to_dict() if rec else None

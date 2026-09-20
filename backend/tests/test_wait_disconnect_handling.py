@@ -22,9 +22,9 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import Any
 
-from agent_workspace.runtime import ORPHAN_RECOVERY_STOP_REASON, RunManager, RunRecord, RunStatus
-from agent_workspace.runtime.runs.schemas import DisconnectMode
-from agent_workspace.runtime.stream_bridge.memory import MemoryStreamBridge
+from alpha.runtime import ORPHAN_RECOVERY_STOP_REASON, RunManager, RunRecord, RunStatus
+from alpha.runtime.runs.schemas import DisconnectMode
+from alpha.runtime.stream_bridge.memory import MemoryStreamBridge
 
 THREAD_ID = "thread-wait-3265"
 
@@ -297,7 +297,7 @@ class TestWaitForRunCompletion:
     def test_sse_consumer_preserves_tail_events_after_durable_terminal_status(self) -> None:
         """A durable terminal row must not overtake delayed error and END events."""
         from app.gateway.services import sse_consumer
-        from agent_workspace.runtime.runs.store.memory import MemoryRunStore
+        from alpha.runtime.runs.store.memory import MemoryRunStore
 
         async def run() -> None:
             store = MemoryRunStore()
@@ -339,7 +339,7 @@ class TestWaitForRunCompletion:
     def test_wait_preserves_tail_events_after_durable_terminal_status(self) -> None:
         """The wait path must remain blocked until the real END is published."""
         from app.gateway.services import wait_for_run_completion
-        from agent_workspace.runtime.runs.store.memory import MemoryRunStore
+        from alpha.runtime.runs.store.memory import MemoryRunStore
 
         async def run() -> None:
             store = MemoryRunStore()
@@ -377,7 +377,7 @@ class TestWaitForRunCompletion:
     ) -> None:
         """A recovered orphan may synthesize END when its publisher is gone."""
         from app.gateway.services import sse_consumer
-        from agent_workspace.runtime.runs.store.memory import MemoryRunStore
+        from alpha.runtime.runs.store.memory import MemoryRunStore
 
         async def run() -> None:
             store = MemoryRunStore()
@@ -409,7 +409,7 @@ class TestWaitForRunCompletion:
     def test_wait_uses_explicit_orphan_recovery_liveness_boundary(self) -> None:
         """The non-streaming consumer shares the recovered-orphan boundary."""
         from app.gateway.services import wait_for_run_completion
-        from agent_workspace.runtime.runs.store.memory import MemoryRunStore
+        from alpha.runtime.runs.store.memory import MemoryRunStore
 
         async def run() -> None:
             store = MemoryRunStore()

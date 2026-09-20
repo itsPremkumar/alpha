@@ -30,9 +30,9 @@ from app.gateway.routers.agents import (
     list_agents,
     update_agent,
 )
-from agent_workspace.config.agents_api_config import load_agents_api_config_from_dict
-from agent_workspace.config.paths import get_paths
-from agent_workspace.runtime.user_context import get_effective_user_id
+from alpha.config.agents_api_config import load_agents_api_config_from_dict
+from alpha.config.paths import get_paths
+from alpha.runtime.user_context import get_effective_user_id
 
 pytestmark = pytest.mark.asyncio
 
@@ -41,12 +41,12 @@ pytestmark = pytest.mark.asyncio
 def _isolate_agent_store_config(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.delenv("AGENT_WORKSPACE_CONFIG_PATH", raising=False)
     monkeypatch.setenv("AGENT_WORKSPACE_PROJECT_ROOT", str(tmp_path))
-    monkeypatch.setattr("agent_workspace.config.app_config._legacy_config_candidates", lambda: ())
+    monkeypatch.setattr("alpha.config.app_config._legacy_config_candidates", lambda: ())
 
 
 async def test_create_agent_does_not_block_event_loop(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
-    monkeypatch.setattr("agent_workspace.config.paths._paths", None)
+    monkeypatch.setattr("alpha.config.paths._paths", None)
     load_agents_api_config_from_dict({"enabled": True})
     try:
         response = await create_agent_endpoint(AgentCreateRequest(name="loop-make-agent", soul="You are a test agent."))
@@ -62,7 +62,7 @@ async def test_create_agent_does_not_block_event_loop(tmp_path: Path, monkeypatc
 
 async def test_delete_agent_does_not_block_event_loop(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
-    monkeypatch.setattr("agent_workspace.config.paths._paths", None)
+    monkeypatch.setattr("alpha.config.paths._paths", None)
     load_agents_api_config_from_dict({"enabled": True})
     try:
         user_id = get_effective_user_id()
@@ -84,7 +84,7 @@ async def test_read_endpoints_do_not_block_event_loop(tmp_path: Path, monkeypatc
     # a DB round trip. They must offload via asyncio.to_thread, or the strict
     # Blockbuster gate raises BlockingError here (finding: reads on the loop).
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
-    monkeypatch.setattr("agent_workspace.config.paths._paths", None)
+    monkeypatch.setattr("alpha.config.paths._paths", None)
     load_agents_api_config_from_dict({"enabled": True})
     try:
         await create_agent_endpoint(AgentCreateRequest(name="loop-read-agent", soul="You are a test agent."))
@@ -104,7 +104,7 @@ async def test_read_endpoints_do_not_block_event_loop(tmp_path: Path, monkeypatc
 
 async def test_update_agent_does_not_block_event_loop(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
-    monkeypatch.setattr("agent_workspace.config.paths._paths", None)
+    monkeypatch.setattr("alpha.config.paths._paths", None)
     load_agents_api_config_from_dict({"enabled": True})
     try:
         await create_agent_endpoint(AgentCreateRequest(name="loop-update-agent", soul="Original soul"))

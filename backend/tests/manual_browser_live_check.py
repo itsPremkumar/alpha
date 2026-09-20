@@ -72,7 +72,7 @@ data_dir: {tmp / "data"}
 models:
   - name: deepseek-chat
     display_name: DeepSeek Chat
-    use: agent_workspace.models.patched_deepseek:PatchedChatDeepSeek
+    use: alpha.models.patched_deepseek:PatchedChatDeepSeek
     model: deepseek-chat
     api_key: $DEEPSEEK_API_KEY
     timeout: 120.0
@@ -80,7 +80,7 @@ models:
     max_tokens: 4096
 
 sandbox:
-  use: agent_workspace.sandbox.local:LocalSandboxProvider
+  use: alpha.sandbox.local:LocalSandboxProvider
 
 tool_groups:
   - name: browser
@@ -88,24 +88,24 @@ tool_groups:
 tools:
   - name: browser_navigate
     group: browser
-    use: agent_workspace.community.browser_automation.tools:browser_navigate_tool
+    use: alpha.community.browser_automation.tools:browser_navigate_tool
     headless: true
     allow_private_addresses: true
   - name: browser_snapshot
     group: browser
-    use: agent_workspace.community.browser_automation.tools:browser_snapshot_tool
+    use: alpha.community.browser_automation.tools:browser_snapshot_tool
   - name: browser_click
     group: browser
-    use: agent_workspace.community.browser_automation.tools:browser_click_tool
+    use: alpha.community.browser_automation.tools:browser_click_tool
   - name: browser_type
     group: browser
-    use: agent_workspace.community.browser_automation.tools:browser_type_tool
+    use: alpha.community.browser_automation.tools:browser_type_tool
   - name: browser_get_text
     group: browser
-    use: agent_workspace.community.browser_automation.tools:browser_get_text_tool
+    use: alpha.community.browser_automation.tools:browser_get_text_tool
   - name: browser_close
     group: browser
-    use: agent_workspace.community.browser_automation.tools:browser_close_tool
+    use: alpha.community.browser_automation.tools:browser_close_tool
 
 memory:
   enabled: false
@@ -125,9 +125,9 @@ def main() -> int:
 
     server, port = _start_server()
     base = f"http://127.0.0.1:{port}/"
-    tmpdir = Path(tempfile.mkdtemp(prefix="agent_workspace-browser-live-"))
+    tmpdir = Path(tempfile.mkdtemp(prefix="alpha-browser-live-"))
     try:
-        from agent_workspace.client import AgentWorkspaceClient
+        from alpha.client import AgentWorkspaceClient
 
         config_path = _write_config(tmpdir)
         # Make config resolution deterministic: get_available_tools() re-resolves

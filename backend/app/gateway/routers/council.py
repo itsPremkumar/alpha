@@ -26,7 +26,7 @@ class ReviewRequest(BaseModel):
 @router.post("/cases", status_code=201)
 async def open_case(body: OpenCaseRequest) -> dict:
     def _do():
-        from agent_workspace.council import get_council_engine
+        from alpha.council import get_council_engine
 
         return get_council_engine().open_case(body.artifact_id, body.artifact_ref, tier=body.tier, min_reviews=body.min_reviews).to_dict()
 
@@ -36,7 +36,7 @@ async def open_case(body: OpenCaseRequest) -> dict:
 @router.get("/cases")
 async def list_cases(status: str | None = None) -> dict:
     def _do():
-        from agent_workspace.council import get_council_engine
+        from alpha.council import get_council_engine
 
         rows = get_council_engine().list_cases(status=status)
         return {"cases": [c.to_dict() for c in rows], "count": len(rows)}
@@ -47,7 +47,7 @@ async def list_cases(status: str | None = None) -> dict:
 @router.get("/cases/{case_id}")
 async def get_case(case_id: str) -> dict:
     def _do():
-        from agent_workspace.council import get_council_engine
+        from alpha.council import get_council_engine
 
         case = get_council_engine().get_case(case_id)
         return case.to_dict() if case else None
@@ -64,7 +64,7 @@ async def submit_review(case_id: str, body: ReviewRequest) -> dict:
         raise HTTPException(status_code=422, detail="verdict must be approve|block|abstain.")
 
     def _do():
-        from agent_workspace.council import get_council_engine
+        from alpha.council import get_council_engine
 
         out = get_council_engine().submit_review(case_id, body.reviewer, body.verdict, evidence=body.evidence)
         if out is None:

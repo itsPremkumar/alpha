@@ -27,8 +27,8 @@ pytestmark = pytest.mark.asyncio
 
 
 async def test_async_checkpointer_sqlite_setup_does_not_block_event_loop(tmp_path: Path) -> None:
-    from agent_workspace.config.checkpointer_config import CheckpointerConfig
-    from agent_workspace.runtime.checkpointer.async_provider import _async_checkpointer
+    from alpha.config.checkpointer_config import CheckpointerConfig
+    from alpha.runtime.checkpointer.async_provider import _async_checkpointer
 
     db_file = tmp_path / "subdir" / "store.db"
 

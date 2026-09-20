@@ -6,9 +6,9 @@ from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
 from app.gateway.routers.mcp import McpServerConfigResponse
-from agent_workspace.config.extensions_config import ExtensionsConfig, McpServerConfig
-from agent_workspace.mcp.tools import _make_session_pool_tool, get_mcp_tools
-from agent_workspace.tools.mcp_metadata import get_mcp_routing
+from alpha.config.extensions_config import ExtensionsConfig, McpServerConfig
+from alpha.mcp.tools import _make_session_pool_tool, get_mcp_tools
+from alpha.tools.mcp_metadata import get_mcp_routing
 
 
 class _Args(BaseModel):
@@ -114,13 +114,13 @@ async def test_mcp_tool_name_prefix_can_be_disabled_per_server_without_disabling
         return [_tool(name)]
 
     with (
-        patch("agent_workspace.mcp.tools.ExtensionsConfig.from_file", return_value=extensions_config),
-        patch("agent_workspace.mcp.tools.build_servers_config", return_value=servers_config),
-        patch("agent_workspace.mcp.tools.get_initial_oauth_headers", new_callable=AsyncMock, return_value={}),
-        patch("agent_workspace.mcp.tools.build_mcp_tool_interceptors", return_value=[]),
+        patch("alpha.mcp.tools.ExtensionsConfig.from_file", return_value=extensions_config),
+        patch("alpha.mcp.tools.build_servers_config", return_value=servers_config),
+        patch("alpha.mcp.tools.get_initial_oauth_headers", new_callable=AsyncMock, return_value={}),
+        patch("alpha.mcp.tools.build_mcp_tool_interceptors", return_value=[]),
         patch("langchain_mcp_adapters.client.MultiServerMCPClient", FakeClient),
         patch("langchain_mcp_adapters.tools.load_mcp_tools", side_effect=fake_load_mcp_tools),
-        patch("agent_workspace.mcp.tools._make_session_pool_tool", side_effect=lambda tool, *_args, **_kwargs: tool) as wrap_tool,
+        patch("alpha.mcp.tools._make_session_pool_tool", side_effect=lambda tool, *_args, **_kwargs: tool) as wrap_tool,
     ):
         tools = await get_mcp_tools()
 
@@ -147,10 +147,10 @@ async def test_unprefixed_stdio_tool_keeps_server_like_original_name(tmp_path: P
     mock_pool.get_session = AsyncMock(return_value=mock_session)
 
     with (
-        patch("agent_workspace.mcp.tools.get_session_pool", return_value=mock_pool),
-        patch("agent_workspace.mcp.tools.get_paths", return_value=MagicMock()),
+        patch("alpha.mcp.tools.get_session_pool", return_value=mock_pool),
+        patch("alpha.mcp.tools.get_paths", return_value=MagicMock()),
         patch(
-            "agent_workspace.mcp.tools._prepare_stdio_workspace",
+            "alpha.mcp.tools._prepare_stdio_workspace",
             return_value=(tmp_path, tmp_path / "tmp", {}),
         ),
     ):

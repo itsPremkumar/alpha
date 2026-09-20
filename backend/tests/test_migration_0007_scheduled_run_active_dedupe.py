@@ -33,11 +33,11 @@ import pytest
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
-import agent_workspace.persistence.models  # noqa: F401  -- registers ORM models
-from agent_workspace.persistence.base import Base
-from agent_workspace.persistence.bootstrap import _get_head_revision
-from agent_workspace.persistence.engine import close_engine, init_engine
-from agent_workspace.persistence.scheduled_task_runs.model import ScheduledTaskRunRow
+import alpha.persistence.models  # noqa: F401  -- registers ORM models
+from alpha.persistence.base import Base
+from alpha.persistence.bootstrap import _get_head_revision
+from alpha.persistence.engine import close_engine, init_engine
+from alpha.persistence.scheduled_task_runs.model import ScheduledTaskRunRow
 
 pytestmark = pytest.mark.asyncio
 

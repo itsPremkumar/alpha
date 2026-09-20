@@ -13,16 +13,16 @@ from __future__ import annotations
 from agent_workspace_extension_api import AgentScope, MiddlewarePlacement, Placement
 from langchain.agents.middleware import AgentMiddleware
 
-from agent_workspace.agents.lead_agent.agent import build_middlewares
-from agent_workspace.agents.middlewares.tool_error_handling_middleware import (
+from alpha.agents.lead_agent.agent import build_middlewares
+from alpha.agents.middlewares.tool_error_handling_middleware import (
     build_subagent_runtime_middlewares,
 )
-from agent_workspace.config.app_config import AppConfig
-from agent_workspace.config.extensions_config import ExtensionsConfig
-from agent_workspace.config.sandbox_config import SandboxConfig
-from agent_workspace.extensions.isolation import IsolatedMiddleware
-from agent_workspace.extensions.registry import ExtensionRegistry
-from agent_workspace.extensions.stack import middleware_implements
+from alpha.config.app_config import AppConfig
+from alpha.config.extensions_config import ExtensionsConfig
+from alpha.config.sandbox_config import SandboxConfig
+from alpha.extensions.isolation import IsolatedMiddleware
+from alpha.extensions.registry import ExtensionRegistry
+from alpha.extensions.stack import middleware_implements
 
 
 class _Probe(AgentMiddleware):
@@ -46,14 +46,14 @@ def _stack_with(*placements: MiddlewarePlacement):
     return build_middlewares(
         config={"configurable": {}},
         model_name="gpt-4o",
-        app_config=AppConfig(sandbox=SandboxConfig(use="agent_workspace.sandbox.local:LocalSandboxProvider")),
+        app_config=AppConfig(sandbox=SandboxConfig(use="alpha.sandbox.local:LocalSandboxProvider")),
         extensions=_extensions(*placements),
     )
 
 
 def _subagent_stack_with(*placements: MiddlewarePlacement):
     return build_subagent_runtime_middlewares(
-        app_config=AppConfig(sandbox=SandboxConfig(use="agent_workspace.sandbox.local:LocalSandboxProvider")),
+        app_config=AppConfig(sandbox=SandboxConfig(use="alpha.sandbox.local:LocalSandboxProvider")),
         model_name="gpt-4o",
         extensions=_extensions(*placements),
     )
@@ -77,14 +77,14 @@ def test_model_physical_sees_the_final_request():
     index = _index_of_probe(stack, "physical")
     offenders = [type(_unwrap(m)).__name__ for m in stack[index + 1 :] if middleware_implements(_unwrap(m), "wrap_model_call")]
     assert offenders == [], (
-        f"these middlewares sit inner of the MODEL_PHYSICAL anchor and wrap model calls, breaking its documented guarantee: {offenders}. Either move them outer of the anchor or update the anchor table in agent_workspace/extensions/stack.py."
+        f"these middlewares sit inner of the MODEL_PHYSICAL anchor and wrap model calls, breaking its documented guarantee: {offenders}. Either move them outer of the anchor or update the anchor table in alpha/extensions/stack.py."
     )
 
 
 def test_lead_model_physical_uses_the_innermost_tail_anchor():
     """A configured duplicate must not capture the lead's type-based anchor."""
-    app_config = AppConfig(sandbox=SandboxConfig(use="agent_workspace.sandbox.local:LocalSandboxProvider"))
-    app_config.extensions = ExtensionsConfig(middlewares=["agent_workspace.agents.middlewares.safety_finish_reason_middleware:SafetyFinishReasonMiddleware"])
+    app_config = AppConfig(sandbox=SandboxConfig(use="alpha.sandbox.local:LocalSandboxProvider"))
+    app_config.extensions = ExtensionsConfig(middlewares=["alpha.agents.middlewares.safety_finish_reason_middleware:SafetyFinishReasonMiddleware"])
     stack = build_middlewares(
         config={"configurable": {}},
         model_name="gpt-4o",
@@ -104,9 +104,9 @@ def test_lead_model_physical_uses_the_innermost_tail_anchor():
 
 
 def test_lead_model_physical_reports_when_the_safety_anchor_is_disabled():
-    from agent_workspace.extensions import get_runtime_diagnostics, reset_runtime_diagnostics
+    from alpha.extensions import get_runtime_diagnostics, reset_runtime_diagnostics
 
-    app_config = AppConfig(sandbox=SandboxConfig(use="agent_workspace.sandbox.local:LocalSandboxProvider"))
+    app_config = AppConfig(sandbox=SandboxConfig(use="alpha.sandbox.local:LocalSandboxProvider"))
     app_config.safety_finish_reason.enabled = False
     reset_runtime_diagnostics()
     try:
@@ -145,8 +145,8 @@ def test_subagent_model_physical_sees_the_final_request():
 
 def test_subagent_model_physical_uses_the_innermost_core_coalescer():
     """A configured duplicate must not capture the type-based primary anchor."""
-    app_config = AppConfig(sandbox=SandboxConfig(use="agent_workspace.sandbox.local:LocalSandboxProvider"))
-    app_config.extensions = ExtensionsConfig(middlewares=["agent_workspace.agents.middlewares.system_message_coalescing_middleware:SystemMessageCoalescingMiddleware"])
+    app_config = AppConfig(sandbox=SandboxConfig(use="alpha.sandbox.local:LocalSandboxProvider"))
+    app_config.extensions = ExtensionsConfig(middlewares=["alpha.agents.middlewares.system_message_coalescing_middleware:SystemMessageCoalescingMiddleware"])
     stack = build_subagent_runtime_middlewares(
         app_config=app_config,
         model_name="gpt-4o",
@@ -183,7 +183,7 @@ def test_tool_raw_is_adjacent_to_the_callable_boundary():
     assert offenders == [], (
         f"these middlewares sit inner of TOOL_RAW and wrap tool calls: {offenders}. "
         "Either move them outer of the anchor or update the anchor table in "
-        "agent_workspace/extensions/stack.py — do not add them to the carve-out without "
+        "alpha/extensions/stack.py — do not add them to the carve-out without "
         "an argument for why TOOL_RAW still sees raw results."
     )
 
@@ -208,7 +208,7 @@ def test_tool_visible_sees_the_final_result():
 
 def test_model_logical_is_outer_of_the_retry_loop():
     """One logical decision must stay one event across provider retries."""
-    from agent_workspace.agents.middlewares.llm_error_handling_middleware import LLMErrorHandlingMiddleware
+    from alpha.agents.middlewares.llm_error_handling_middleware import LLMErrorHandlingMiddleware
 
     stack = _stack_with(MiddlewarePlacement(_Probe("logical"), Placement.MODEL_LOGICAL))
     logical = _index_of_probe(stack, "logical")

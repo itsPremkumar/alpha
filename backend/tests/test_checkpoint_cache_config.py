@@ -1,6 +1,6 @@
 """Config parsing for database.checkpoint_cache."""
 
-from agent_workspace.config.database_config import CheckpointCacheConfig, DatabaseConfig
+from alpha.config.database_config import CheckpointCacheConfig, DatabaseConfig
 
 
 def test_checkpoint_cache_defaults():

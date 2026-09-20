@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 from langchain.tools import ToolRuntime
 
-from agent_workspace.sandbox.lease import SandboxLeaseManager
-from agent_workspace.tools.builtins.view_image_tool import view_image_tool
+from alpha.sandbox.lease import SandboxLeaseManager
+from alpha.tools.builtins.view_image_tool import view_image_tool
 
 PNG_BYTES = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
 
@@ -84,7 +84,7 @@ async def test_view_image_ainvoke_drains_download_before_lease_release(tmp_path,
         user_id="user-1",
     )
     monkeypatch.setattr(
-        "agent_workspace.sandbox.sandbox_provider.get_sandbox_provider",
+        "alpha.sandbox.sandbox_provider.get_sandbox_provider",
         lambda: provider,
     )
     runtime = _runtime(tmp_path, sandbox.id)

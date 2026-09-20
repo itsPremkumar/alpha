@@ -29,7 +29,7 @@ def _write_agent(base: Path, user_id: str, name: str, body: dict) -> Path:
 @pytest.fixture()
 def base_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
-    from agent_workspace.config import paths as paths_module
+    from alpha.config import paths as paths_module
 
     monkeypatch.setattr(paths_module, "_paths", None)
     # Each test uses a fresh tmp_path, so the registry's mtime cache from

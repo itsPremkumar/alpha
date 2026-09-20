@@ -31,7 +31,7 @@ def _deploy_fixture(tmp_path: Path, *, docker_script: str) -> tuple[Path, dict[s
     shutil.copytree(REPO_ROOT / "scripts", worktree / "scripts")
     shutil.copytree(REPO_ROOT / "docker", worktree / "docker")
     (worktree / "backend").mkdir()
-    (worktree / "config.yaml").write_text("sandbox:\n  use: agent_workspace.sandbox:LocalSandboxProvider\n", encoding="utf-8")
+    (worktree / "config.yaml").write_text("sandbox:\n  use: alpha.sandbox:LocalSandboxProvider\n", encoding="utf-8")
     (worktree / "extensions_config.json").write_text('{"mcpServers":{},"skills":{}}\n', encoding="utf-8")
 
     bin_dir = tmp_path / "bin"

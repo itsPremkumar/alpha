@@ -14,7 +14,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.gateway.path_utils import OUTPUTS_VIRTUAL_ROOT, normalize_outputs_virtual_path, resolve_outputs_confined_path
-from agent_workspace.config.paths import Paths
+from alpha.config.paths import Paths
 
 THREAD_ID = "thread-1"
 USER_ID = "user-1"

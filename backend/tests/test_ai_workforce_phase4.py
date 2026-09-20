@@ -10,34 +10,34 @@ import pytest
 from pathlib import Path
 import tempfile
 
-from agent_workspace.models.cost_governor import (
+from alpha.models.cost_governor import (
     CostGovernor,
     BudgetConfig,
     TokenUsageRecord,
 )
-from agent_workspace.projects.pr_synthesizer import (
+from alpha.projects.pr_synthesizer import (
     PRSynthesizer,
     PullRequestPackage,
     infer_conventional_commit,
 )
-from agent_workspace.projects.standup_engine import (
+from alpha.projects.standup_engine import (
     StandupEngine,
     StandupReport,
 )
-from agent_workspace.deliberation.adversary_deliberator import (
+from alpha.deliberation.adversary_deliberator import (
     AdversaryDeliberator,
     AdversaryCritique,
 )
-from agent_workspace.projects.auction_engine import (
+from alpha.projects.auction_engine import (
     AuctionEngine,
     TaskBid,
 )
-from agent_workspace.projects.contracts import (
+from alpha.projects.contracts import (
     ContractGatekeeper,
     EvidenceReceipt,
 )
-from agent_workspace.projects.locks import get_lock_manager
-from agent_workspace.bots.registry import get_bot_registry
+from alpha.projects.locks import get_lock_manager
+from alpha.bots.registry import get_bot_registry
 
 
 def test_cost_governor_budget_tracking(tmp_path: Path):

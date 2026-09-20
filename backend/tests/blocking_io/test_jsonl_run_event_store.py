@@ -27,7 +27,7 @@ pytestmark = pytest.mark.asyncio
 
 
 async def test_jsonl_run_event_store_async_api_does_not_block_event_loop(tmp_path: Path) -> None:
-    from agent_workspace.runtime.events.store.jsonl import JsonlRunEventStore
+    from alpha.runtime.events.store.jsonl import JsonlRunEventStore
 
     store = JsonlRunEventStore(base_dir=str(tmp_path))
 

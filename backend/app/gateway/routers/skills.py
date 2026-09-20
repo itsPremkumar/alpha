@@ -15,9 +15,9 @@ from starlette.formparsers import MultiPartException, MultiPartParser
 from app.gateway.deps import get_config, require_admin_user
 from app.gateway.path_utils import resolve_thread_virtual_path
 from app.gateway.skill_export import ExportClientDisconnected, SkillExportManifestResponse, SkillExportResponse, export_http_error, run_export_work
-from agent_workspace.agents.lead_agent.prompt import clear_skills_system_prompt_cache, refresh_skills_system_prompt_cache_async, refresh_user_skills_system_prompt_cache_async
-from agent_workspace.config.app_config import AppConfig
-from agent_workspace.config.extensions_config import (
+from alpha.agents.lead_agent.prompt import clear_skills_system_prompt_cache, refresh_skills_system_prompt_cache_async, refresh_user_skills_system_prompt_cache_async
+from alpha.config.app_config import AppConfig
+from alpha.config.extensions_config import (
     ExtensionsConfig,
     atomic_write_extensions_config,
     extensions_config_file_lock,
@@ -28,11 +28,11 @@ from agent_workspace.config.extensions_config import (
     set_raw_skill_enabled,
     validate_raw_extensions_config,
 )
-from agent_workspace.runtime.user_context import get_effective_user_id
-from agent_workspace.skills import Skill
-from agent_workspace.skills.export import SkillExportError, build_skill_export, export_manifest
-from agent_workspace.skills.installer import SkillAlreadyExistsError, SkillSecurityScanError
-from agent_workspace.skills.proposals import (
+from alpha.runtime.user_context import get_effective_user_id
+from alpha.skills import Skill
+from alpha.skills.export import SkillExportError, build_skill_export, export_manifest
+from alpha.skills.installer import SkillAlreadyExistsError, SkillSecurityScanError
+from alpha.skills.proposals import (
     APPROVED,
     INSTALLED,
     PENDING,
@@ -44,16 +44,16 @@ from agent_workspace.skills.proposals import (
     validate_proposal_content,
     validate_proposal_name,
 )
-from agent_workspace.skills.security_scanner import scan_skill_content
-from agent_workspace.skills.security_static_scanner import (
+from alpha.skills.security_scanner import scan_skill_content
+from alpha.skills.security_static_scanner import (
     StaticFinding,
     StaticScanBlockedError,
     StaticScannerError,
     enforce_static_scan,
 )
-from agent_workspace.skills.storage import SkillStorage, get_or_new_user_skill_storage
-from agent_workspace.skills.types import SKILL_MD_FILE, SkillCategory
-from agent_workspace.utils.thread_id import ThreadId
+from alpha.skills.storage import SkillStorage, get_or_new_user_skill_storage
+from alpha.skills.types import SKILL_MD_FILE, SkillCategory
+from alpha.utils.thread_id import ThreadId
 
 logger = logging.getLogger(__name__)
 
@@ -200,7 +200,7 @@ def _copy_uploaded_skill_archive(source: BinaryIO) -> Path:
     """Copy an uploaded archive to a bounded temporary file off the event loop."""
     destination: Path | None = None
     try:
-        with tempfile.NamedTemporaryFile(prefix="agent_workspace-skill-", suffix=".skill", delete=False) as target:
+        with tempfile.NamedTemporaryFile(prefix="alpha-skill-", suffix=".skill", delete=False) as target:
             destination = Path(target.name)
             total = 0
             while chunk := source.read(_UPLOAD_COPY_CHUNK_BYTES):
@@ -534,7 +534,7 @@ async def create_skill_proposal(request: Request, body: SkillProposalCreateReque
 
 def _stage_proposal_archive(proposal: SkillProposal) -> Path:
     """Materialize a proposal as a `.skill` archive directory layout for install."""
-    staging = Path(tempfile.mkdtemp(prefix="agent_workspace-proposal-install-"))
+    staging = Path(tempfile.mkdtemp(prefix="alpha-proposal-install-"))
     skill_dir = staging / proposal.name
     skill_dir.mkdir(parents=True)
     (skill_dir / SKILL_MD_FILE).write_text(proposal.skill_md, encoding="utf-8")
@@ -879,8 +879,8 @@ def _write_extensions_skill_state(
     """
     from contextlib import nullcontext
 
-    from agent_workspace.skills.projection import skill_projection_mutation
-    from agent_workspace.skills.storage.local_skill_storage import LocalSkillStorage
+    from alpha.skills.projection import skill_projection_mutation
+    from alpha.skills.storage.local_skill_storage import LocalSkillStorage
 
     removal_names = (skill_name,) if not enabled else ()
     projection_update = skill_projection_mutation(storage, "public", remove_names=removal_names) if rebuild_public_projection and isinstance(storage, LocalSkillStorage) else nullcontext()
@@ -949,7 +949,7 @@ async def update_skill(skill_name: str, body: SkillUpdateRequest, request: Reque
             )
         else:
             # CUSTOM / LEGACY: write per-user state
-            from agent_workspace.skills.storage.user_scoped_skill_storage import UserScopedSkillStorage
+            from alpha.skills.storage.user_scoped_skill_storage import UserScopedSkillStorage
 
             if isinstance(storage, UserScopedSkillStorage):
                 await asyncio.to_thread(storage.set_skill_enabled_state, skill_name, body.enabled)
@@ -1009,7 +1009,7 @@ class SkillTierRequest(BaseModel):
 )
 async def list_skill_tiers() -> dict:
     def _do():
-        from agent_workspace.skills.tiers import get_tier_registry
+        from alpha.skills.tiers import get_tier_registry
 
         return [r.to_dict() for r in get_tier_registry().list()]
 
@@ -1025,7 +1025,7 @@ async def quarantine_skill(request: Request, skill_name: str = Query(...)) -> di
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
 
     def _do():
-        from agent_workspace.skills.tiers import get_tier_registry
+        from alpha.skills.tiers import get_tier_registry
 
         return get_tier_registry().quarantine(skill_name).to_dict()
 
@@ -1043,7 +1043,7 @@ async def graduate_skill(skill_name: str, request: Request, body: SkillTierReque
         raise HTTPException(status_code=422, detail="tier must be trusted|builtin.")
 
     def _do():
-        from agent_workspace.skills.tiers import get_tier_registry
+        from alpha.skills.tiers import get_tier_registry
 
         rec = get_tier_registry().graduate(skill_name, reviewer=body.reviewer, tier=body.tier)
         return rec.to_dict() if rec else None
@@ -1064,7 +1064,7 @@ async def skill_loadable(skill_name: str, min_tier: str = Query(default="communi
         raise HTTPException(status_code=422, detail="min_tier must be builtin|trusted|community.")
 
     def _do():
-        from agent_workspace.skills.tiers import get_tier_registry
+        from alpha.skills.tiers import get_tier_registry
 
         return get_tier_registry().loadable(skill_name, min_tier=min_tier)
 
@@ -1082,7 +1082,7 @@ class SkillPinRequest(BaseModel):
 )
 async def skill_usage() -> dict:
     def _do():
-        from agent_workspace.skills.usage import get_skill_usage_tracker
+        from alpha.skills.usage import get_skill_usage_tracker
 
         return [r.to_dict() for r in get_skill_usage_tracker().all_stats()]
 
@@ -1096,7 +1096,7 @@ async def skill_usage() -> dict:
 )
 async def skill_curator_report() -> dict:
     def _do():
-        from agent_workspace.skills.curator import SkillCurator
+        from alpha.skills.curator import SkillCurator
 
         return SkillCurator().report()
 
@@ -1114,7 +1114,7 @@ async def skill_curator_run(
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
 
     def _do():
-        from agent_workspace.skills.curator import SkillCurator
+        from alpha.skills.curator import SkillCurator
 
         curator = SkillCurator()
         changed = curator.apply_transitions(stale_after_days=stale_after_days, archive_after_days=archive_after_days, dry_run=dry_run)
@@ -1135,7 +1135,7 @@ async def skill_pin(skill_name: str, request: Request, body: SkillPinRequest) ->
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
 
     def _do():
-        from agent_workspace.skills.curator import SkillCurator
+        from alpha.skills.curator import SkillCurator
 
         curator = SkillCurator()
         if body.pinned:
@@ -1156,7 +1156,7 @@ async def skill_restore(skill_name: str, request: Request) -> dict:
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
 
     def _do():
-        from agent_workspace.skills.curator import SkillCurator
+        from alpha.skills.curator import SkillCurator
 
         return SkillCurator().restore(skill_name)
 

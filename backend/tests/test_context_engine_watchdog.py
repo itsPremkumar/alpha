@@ -1,8 +1,8 @@
 """Unit tests for Context Engine and Prefix-Preserving Compaction Watchdog."""
 
-from agent_workspace.context.engine import ContextEngine
-from agent_workspace.context.projection import ContextProjection
-from agent_workspace.context.watchdog import CompactionWatchdog
+from alpha.context.engine import ContextEngine
+from alpha.context.projection import ContextProjection
+from alpha.context.watchdog import CompactionWatchdog
 
 
 def test_context_projection_determinism():

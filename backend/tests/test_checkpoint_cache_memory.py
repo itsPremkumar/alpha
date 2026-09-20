@@ -2,13 +2,13 @@
 
 import pytest
 
-from agent_workspace.runtime.checkpoint_cache.base import (
+from alpha.runtime.checkpoint_cache.base import (
     CACHE_FORMAT_VERSION,
     CheckpointCacheStats,
     make_history_key,
     thread_key_stem,
 )
-from agent_workspace.runtime.checkpoint_cache.memory import MemoryCheckpointHistoryCache
+from alpha.runtime.checkpoint_cache.memory import MemoryCheckpointHistoryCache
 
 
 def _entry(tag: str) -> dict:

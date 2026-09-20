@@ -2,8 +2,8 @@ import asyncio
 
 import pytest
 
-from agent_workspace.config.subagent_runtime_config import SubagentRuntimeConfig
-from agent_workspace.subagents.capacity import (
+from alpha.config.subagent_runtime_config import SubagentRuntimeConfig
+from alpha.subagents.capacity import (
     SubagentCapacityRejected,
     SubagentCapacityTimeout,
     configure_subagent_execution_capacity,

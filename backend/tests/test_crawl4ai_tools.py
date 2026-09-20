@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from agent_workspace.community.crawl4ai.crawl4ai_client import Crawl4AiClient
+from alpha.community.crawl4ai.crawl4ai_client import Crawl4AiClient
 
 
 class AsyncMock(MagicMock):
@@ -21,7 +21,7 @@ class TestCrawl4AiClient:
     """Tests for the Crawl4AiClient class."""
 
     async def test_fetch_markdown_success(self):
-        with patch("agent_workspace.community.crawl4ai.crawl4ai_client.httpx.AsyncClient") as mock_cls:
+        with patch("alpha.community.crawl4ai.crawl4ai_client.httpx.AsyncClient") as mock_cls:
             mock_ctx = MagicMock()
             mock_cls.return_value.__aenter__.return_value = mock_ctx
 
@@ -44,7 +44,7 @@ class TestCrawl4AiClient:
         assert client.base_url == "http://crawl4ai:11235"
 
     async def test_fetch_markdown_http_error(self):
-        with patch("agent_workspace.community.crawl4ai.crawl4ai_client.httpx.AsyncClient") as mock_cls:
+        with patch("alpha.community.crawl4ai.crawl4ai_client.httpx.AsyncClient") as mock_cls:
             mock_ctx = MagicMock()
             mock_cls.return_value.__aenter__.return_value = mock_ctx
 
@@ -58,7 +58,7 @@ class TestCrawl4AiClient:
             assert "Error: Crawl4AI HTTP 502" in result
 
     async def test_fetch_markdown_success_false(self):
-        with patch("agent_workspace.community.crawl4ai.crawl4ai_client.httpx.AsyncClient") as mock_cls:
+        with patch("alpha.community.crawl4ai.crawl4ai_client.httpx.AsyncClient") as mock_cls:
             mock_ctx = MagicMock()
             mock_cls.return_value.__aenter__.return_value = mock_ctx
 
@@ -72,7 +72,7 @@ class TestCrawl4AiClient:
             assert result.startswith("Error:")
 
     async def test_fetch_markdown_empty(self):
-        with patch("agent_workspace.community.crawl4ai.crawl4ai_client.httpx.AsyncClient") as mock_cls:
+        with patch("alpha.community.crawl4ai.crawl4ai_client.httpx.AsyncClient") as mock_cls:
             mock_ctx = MagicMock()
             mock_cls.return_value.__aenter__.return_value = mock_ctx
 
@@ -86,7 +86,7 @@ class TestCrawl4AiClient:
             assert result == "Error: Crawl4AI returned empty markdown"
 
     async def test_fetch_markdown_timeout(self):
-        with patch("agent_workspace.community.crawl4ai.crawl4ai_client.httpx.AsyncClient") as mock_cls:
+        with patch("alpha.community.crawl4ai.crawl4ai_client.httpx.AsyncClient") as mock_cls:
             mock_ctx = MagicMock()
             mock_cls.return_value.__aenter__.return_value = mock_ctx
             import httpx
@@ -98,7 +98,7 @@ class TestCrawl4AiClient:
             assert "timed out" in result.lower() or "timeout" in result.lower()
 
     async def test_fetch_markdown_with_token(self):
-        with patch("agent_workspace.community.crawl4ai.crawl4ai_client.httpx.AsyncClient") as mock_cls:
+        with patch("alpha.community.crawl4ai.crawl4ai_client.httpx.AsyncClient") as mock_cls:
             mock_ctx = MagicMock()
             mock_cls.return_value.__aenter__.return_value = mock_ctx
 
@@ -114,7 +114,7 @@ class TestCrawl4AiClient:
             assert headers["Authorization"] == "Bearer secret"
 
     async def test_fetch_markdown_no_token_header_when_unset(self):
-        with patch("agent_workspace.community.crawl4ai.crawl4ai_client.httpx.AsyncClient") as mock_cls:
+        with patch("alpha.community.crawl4ai.crawl4ai_client.httpx.AsyncClient") as mock_cls:
             mock_ctx = MagicMock()
             mock_cls.return_value.__aenter__.return_value = mock_ctx
 
@@ -130,7 +130,7 @@ class TestCrawl4AiClient:
             assert "Authorization" not in headers
 
     async def test_fetch_markdown_request_error(self):
-        with patch("agent_workspace.community.crawl4ai.crawl4ai_client.httpx.AsyncClient") as mock_cls:
+        with patch("alpha.community.crawl4ai.crawl4ai_client.httpx.AsyncClient") as mock_cls:
             mock_ctx = MagicMock()
             mock_cls.return_value.__aenter__.return_value = mock_ctx
             import httpx
@@ -142,7 +142,7 @@ class TestCrawl4AiClient:
             assert result.startswith("Error: Crawl4AI request failed")
 
     async def test_fetch_markdown_non_json_200(self):
-        with patch("agent_workspace.community.crawl4ai.crawl4ai_client.httpx.AsyncClient") as mock_cls:
+        with patch("alpha.community.crawl4ai.crawl4ai_client.httpx.AsyncClient") as mock_cls:
             mock_ctx = MagicMock()
             mock_cls.return_value.__aenter__.return_value = mock_ctx
 
@@ -163,76 +163,76 @@ class TestCrawl4AiClient:
 class TestCrawl4AiTools:
     """Tests for the Crawl4AI tool functions."""
 
-    @patch("agent_workspace.community.crawl4ai.tools._build_client")
+    @patch("alpha.community.crawl4ai.tools._build_client")
     async def test_web_fetch_tool_success(self, mock_build):
-        from agent_workspace.community.crawl4ai import tools
+        from alpha.community.crawl4ai import tools
 
         mock_client = MagicMock()
         mock_client.fetch_markdown = AsyncMock(return_value="# Title\n\nContent")
         mock_build.return_value = mock_client
 
-        with patch("agent_workspace.community.crawl4ai.tools._get_tool_config", return_value=None):
+        with patch("alpha.community.crawl4ai.tools._get_tool_config", return_value=None):
             result = await tools.web_fetch_tool.ainvoke("https://example.com/article")
 
         assert result == "# Title\n\nContent"
         assert "Error:" not in result
 
-    @patch("agent_workspace.community.crawl4ai.tools._build_client")
+    @patch("alpha.community.crawl4ai.tools._build_client")
     async def test_web_fetch_tool_truncates_to_4096(self, mock_build):
-        from agent_workspace.community.crawl4ai import tools
+        from alpha.community.crawl4ai import tools
 
         mock_client = MagicMock()
         mock_client.fetch_markdown = AsyncMock(return_value="x" * 5000)
         mock_build.return_value = mock_client
 
-        with patch("agent_workspace.community.crawl4ai.tools._get_tool_config", return_value=None):
+        with patch("alpha.community.crawl4ai.tools._get_tool_config", return_value=None):
             result = await tools.web_fetch_tool.ainvoke("https://example.com")
 
         assert len(result) == 4096
 
-    @patch("agent_workspace.community.crawl4ai.tools._build_client")
+    @patch("alpha.community.crawl4ai.tools._build_client")
     async def test_web_fetch_tool_error_passthrough(self, mock_build):
-        from agent_workspace.community.crawl4ai import tools
+        from alpha.community.crawl4ai import tools
 
         mock_client = MagicMock()
         mock_client.fetch_markdown = AsyncMock(return_value="Error: Crawl4AI returned empty markdown")
         mock_build.return_value = mock_client
 
-        with patch("agent_workspace.community.crawl4ai.tools._get_tool_config", return_value=None):
+        with patch("alpha.community.crawl4ai.tools._get_tool_config", return_value=None):
             result = await tools.web_fetch_tool.ainvoke("https://example.com")
 
         assert result.startswith("Error:")
 
-    @patch("agent_workspace.community.crawl4ai.tools._build_client")
+    @patch("alpha.community.crawl4ai.tools._build_client")
     async def test_web_fetch_tool_exception(self, mock_build):
-        from agent_workspace.community.crawl4ai import tools
+        from alpha.community.crawl4ai import tools
 
         mock_client = MagicMock()
         mock_client.fetch_markdown = AsyncMock(side_effect=Exception("boom"))
         mock_build.return_value = mock_client
 
-        with patch("agent_workspace.community.crawl4ai.tools._get_tool_config", return_value=None):
+        with patch("alpha.community.crawl4ai.tools._get_tool_config", return_value=None):
             result = await tools.web_fetch_tool.ainvoke("https://example.com")
 
         assert result.startswith("Error:")
 
-    @patch("agent_workspace.community.crawl4ai.tools._build_client")
+    @patch("alpha.community.crawl4ai.tools._build_client")
     async def test_web_fetch_tool_rejects_metadata_ip(self, mock_build):
-        from agent_workspace.community.crawl4ai import tools
+        from alpha.community.crawl4ai import tools
 
-        with patch("agent_workspace.community.crawl4ai.tools._get_tool_config", return_value=None):
+        with patch("alpha.community.crawl4ai.tools._get_tool_config", return_value=None):
             result = await tools.web_fetch_tool.ainvoke("http://169.254.169.254/latest/meta-data/")
 
         assert "private, loopback, or metadata" in result
         mock_build.assert_not_called()
 
-    @patch("agent_workspace.community.crawl4ai.tools._build_client")
+    @patch("alpha.community.crawl4ai.tools._build_client")
     async def test_web_fetch_tool_rejects_dns_resolving_to_private(self, mock_build):
-        from agent_workspace.community.crawl4ai import tools
+        from alpha.community.crawl4ai import tools
 
-        with patch("agent_workspace.community.crawl4ai.tools._get_tool_config", return_value=None):
+        with patch("alpha.community.crawl4ai.tools._get_tool_config", return_value=None):
             with patch(
-                "agent_workspace.community.url_safety.resolve_host_addresses",
+                "alpha.community.url_safety.resolve_host_addresses",
                 return_value=[ipaddress.ip_address("10.0.0.5")],
             ):
                 result = await tools.web_fetch_tool.ainvoke("https://internal.example.com/")
@@ -240,70 +240,70 @@ class TestCrawl4AiTools:
         assert "private, loopback, or metadata" in result
         mock_build.assert_not_called()
 
-    @patch("agent_workspace.community.crawl4ai.tools._build_client")
+    @patch("alpha.community.crawl4ai.tools._build_client")
     async def test_web_fetch_tool_allows_private_when_opted_in(self, mock_build):
-        from agent_workspace.community.crawl4ai import tools
+        from alpha.community.crawl4ai import tools
 
         mock_client = MagicMock()
         mock_client.fetch_markdown = AsyncMock(return_value="# internal")
         mock_build.return_value = mock_client
 
-        with patch("agent_workspace.community.crawl4ai.tools._get_tool_config", return_value={"allow_private_addresses": True}):
+        with patch("alpha.community.crawl4ai.tools._get_tool_config", return_value={"allow_private_addresses": True}):
             result = await tools.web_fetch_tool.ainvoke("http://10.0.0.5/dashboard")
 
         assert result == "# internal"
         mock_client.fetch_markdown.assert_called_once()
 
-    @patch("agent_workspace.community.crawl4ai.tools._build_client")
+    @patch("alpha.community.crawl4ai.tools._build_client")
     async def test_web_fetch_tool_reads_config_once(self, mock_build):
         """Config is read exactly once per invocation (no split read on hot-reload)."""
-        from agent_workspace.community.crawl4ai import tools
+        from alpha.community.crawl4ai import tools
 
         mock_client = MagicMock()
         mock_client.fetch_markdown = AsyncMock(return_value="# ok")
         mock_build.return_value = mock_client
 
-        with patch("agent_workspace.community.crawl4ai.tools._get_tool_config", return_value={}) as mock_cfg:
+        with patch("alpha.community.crawl4ai.tools._get_tool_config", return_value={}) as mock_cfg:
             await tools.web_fetch_tool.ainvoke("https://example.com")
 
         mock_cfg.assert_called_once_with("web_fetch")
 
-    @patch("agent_workspace.community.crawl4ai.tools._build_client")
+    @patch("alpha.community.crawl4ai.tools._build_client")
     async def test_web_fetch_tool_passes_configured_filter(self, mock_build):
-        from agent_workspace.community.crawl4ai import tools
+        from alpha.community.crawl4ai import tools
 
         mock_client = MagicMock()
         mock_client.fetch_markdown = AsyncMock(return_value="# ok")
         mock_build.return_value = mock_client
 
-        with patch("agent_workspace.community.crawl4ai.tools._get_tool_config", return_value={"filter": "raw"}):
+        with patch("alpha.community.crawl4ai.tools._get_tool_config", return_value={"filter": "raw"}):
             await tools.web_fetch_tool.ainvoke("https://example.com")
 
         mock_client.fetch_markdown.assert_called_once()
         assert mock_client.fetch_markdown.call_args.kwargs.get("filter_mode") == "raw"
 
-    @patch("agent_workspace.community.crawl4ai.tools._build_client")
+    @patch("alpha.community.crawl4ai.tools._build_client")
     async def test_web_fetch_tool_invalid_filter_falls_back_to_fit(self, mock_build):
-        from agent_workspace.community.crawl4ai import tools
+        from alpha.community.crawl4ai import tools
 
         mock_client = MagicMock()
         mock_client.fetch_markdown = AsyncMock(return_value="# ok")
         mock_build.return_value = mock_client
 
-        with patch("agent_workspace.community.crawl4ai.tools._get_tool_config", return_value={"filter": "BOGUS"}):
+        with patch("alpha.community.crawl4ai.tools._get_tool_config", return_value={"filter": "BOGUS"}):
             await tools.web_fetch_tool.ainvoke("https://example.com")
 
         assert mock_client.fetch_markdown.call_args.kwargs.get("filter_mode") == "fit"
 
     async def test_build_client_reads_config(self):
-        from agent_workspace.community.crawl4ai import tools
+        from alpha.community.crawl4ai import tools
 
         client = tools._build_client({"base_url": "http://host.docker.internal:11235", "timeout": 45})
         assert client.base_url == "http://host.docker.internal:11235"
         assert client.timeout_s == 45.0
 
     async def test_build_client_defaults_when_unconfigured(self):
-        from agent_workspace.community.crawl4ai import tools
+        from alpha.community.crawl4ai import tools
 
         client = tools._build_client(None)
         assert client.base_url == "http://localhost:11235"
@@ -311,13 +311,13 @@ class TestCrawl4AiTools:
         assert client.token == ""
 
     async def test_build_client_reads_token(self):
-        from agent_workspace.community.crawl4ai import tools
+        from alpha.community.crawl4ai import tools
 
         client = tools._build_client({"token": "secret-token"})
         assert client.token == "secret-token"
 
     async def test_coerce_timeout_handles_bool_and_bad_values(self):
-        from agent_workspace.community.crawl4ai import tools
+        from alpha.community.crawl4ai import tools
 
         assert tools._coerce_timeout(True, 30) == 30.0
         assert tools._coerce_timeout(False, 30) == 30.0
@@ -327,7 +327,7 @@ class TestCrawl4AiTools:
         assert tools._coerce_timeout(12.5, 30) == 12.5
 
     async def test_coerce_filter_validates_and_normalizes(self):
-        from agent_workspace.community.crawl4ai import tools
+        from alpha.community.crawl4ai import tools
 
         assert tools._coerce_filter("raw") == "raw"
         assert tools._coerce_filter("  FIt ") == "fit"

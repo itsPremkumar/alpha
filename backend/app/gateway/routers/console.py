@@ -22,11 +22,11 @@ from sqlalchemy import func, select
 
 from app.gateway.authz import require_permission
 from app.gateway.deps import get_current_user
-from agent_workspace.config import get_app_config
-from agent_workspace.config.agents_config import list_custom_agents
-from agent_workspace.persistence.engine import get_session_factory
-from agent_workspace.persistence.run.model import RunRow
-from agent_workspace.persistence.thread_meta.model import ThreadMetaRow
+from alpha.config import get_app_config
+from alpha.config.agents_config import list_custom_agents
+from alpha.persistence.engine import get_session_factory
+from alpha.persistence.run.model import RunRow
+from alpha.persistence.thread_meta.model import ThreadMetaRow
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/console", tags=["console"])
@@ -526,7 +526,7 @@ async def console_insights(
     days: int = Query(default=30, ge=1, le=90),
 ) -> dict:
     """Aggregate recent runs through the insights summarizer."""
-    from agent_workspace.learning.insights import format_text, summarize
+    from alpha.learning.insights import format_text, summarize
 
     sf = _session_factory_or_503()
     user_id = await get_current_user(request)
@@ -553,7 +553,7 @@ async def console_insights(
     report = await asyncio.to_thread(summarize, records, days=days)
 
     def _skills():
-        from agent_workspace.skills.usage import get_skill_usage_tracker
+        from alpha.skills.usage import get_skill_usage_tracker
 
         stats = get_skill_usage_tracker().all_stats()
         ranked = sorted(stats, key=lambda s: -s.uses)[:10]

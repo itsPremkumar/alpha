@@ -47,8 +47,8 @@ from app.gateway.checkpoint_lineage import (
     CheckpointLineageError,
     find_checkpoint_before_message,
 )
-from agent_workspace.agents.thread_state import merge_message_writes
-from agent_workspace.runtime.runs.worker import persist_run_durations
+from alpha.agents.thread_state import merge_message_writes
+from alpha.runtime.runs.worker import persist_run_durations
 
 
 class FullState(TypedDict):

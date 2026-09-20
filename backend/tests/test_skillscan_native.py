@@ -8,9 +8,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from agent_workspace.skills.security_scanner import scan_skill_content
-from agent_workspace.skills.skillscan import StaticScanBlockedError, enforce_static_scan, scan_archive_preflight, scan_skill_dir
-from agent_workspace.skills.skillscan.orchestrator import _PYTHON_CLIENT_SINK_METHODS
+from alpha.skills.security_scanner import scan_skill_content
+from alpha.skills.skillscan import StaticScanBlockedError, enforce_static_scan, scan_archive_preflight, scan_skill_dir
+from alpha.skills.skillscan.orchestrator import _PYTHON_CLIENT_SINK_METHODS
 
 _FINDING_FIELDS = {"rule_id", "severity", "file", "line", "message", "remediation", "evidence"}
 
@@ -126,7 +126,7 @@ def test_client_analysis_recursion_recovery_keeps_findings_collected(tmp_path: P
         raise RecursionError("simulated adversarially deep AST")
 
     monkeypatch.setattr(
-        "agent_workspace.skills.skillscan.orchestrator._find_client_handle_sink",
+        "alpha.skills.skillscan.orchestrator._find_client_handle_sink",
         _raise_recursion_error,
     )
 
@@ -150,7 +150,7 @@ def test_python_client_analysis_stops_after_the_first_sink(tmp_path: Path, monke
     """
     import ast as ast_module
 
-    from agent_workspace.skills.skillscan import orchestrator as scan_orchestrator
+    from alpha.skills.skillscan import orchestrator as scan_orchestrator
 
     skill_dir = tmp_path / "demo-skill"
     _write_skill(skill_dir)
@@ -179,7 +179,7 @@ def test_python_client_analysis_stops_after_the_first_sink(tmp_path: Path, monke
 
 def test_python_client_analysis_budget_preserves_prior_findings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
     """Exhausting the deterministic client budget under-reports only that best-effort signal."""
-    monkeypatch.setattr("agent_workspace.skills.skillscan.orchestrator._PYTHON_CLIENT_ANALYSIS_BUDGET", 20)
+    monkeypatch.setattr("alpha.skills.skillscan.orchestrator._PYTHON_CLIENT_ANALYSIS_BUDGET", 20)
     skill_dir = tmp_path / "demo-skill"
     _write_skill(skill_dir)
     scripts_dir = skill_dir / "scripts"
@@ -508,7 +508,7 @@ def test_python_reverse_shell_real_call_sites_block(tmp_path: Path) -> None:
 
 
 def test_archive_member_count_cap_blocks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from agent_workspace.skills.skillscan import orchestrator
+    from alpha.skills.skillscan import orchestrator
 
     monkeypatch.setattr(orchestrator, "_MAX_ARCHIVE_MEMBERS", 4)
     archive = tmp_path / "demo-skill.skill"
@@ -557,7 +557,7 @@ async def test_llm_scanner_receives_static_findings_context(monkeypatch: pytest.
             return SimpleNamespace(content='{"decision":"allow","reason":"ok"}')
 
     config = SimpleNamespace(skill_evolution=SimpleNamespace(moderation_model_name=None))
-    monkeypatch.setattr("agent_workspace.skills.security_scanner.create_chat_model", lambda **kwargs: FakeModel())
+    monkeypatch.setattr("alpha.skills.security_scanner.create_chat_model", lambda **kwargs: FakeModel())
 
     result = await scan_skill_content(
         "# Demo\n",

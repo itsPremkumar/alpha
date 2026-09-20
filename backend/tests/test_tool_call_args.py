@@ -4,7 +4,7 @@ import json
 
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
 
-from agent_workspace.agents.middlewares.tool_call_args import rewrite_messages_tool_call_args, rewrite_tool_call_args
+from alpha.agents.middlewares.tool_call_args import rewrite_messages_tool_call_args, rewrite_tool_call_args
 
 ARGS = {"path": "/mnt/user-data/outputs/report.md", "content": "x" * 50}
 NEW_ARGS = {"path": "/mnt/user-data/outputs/report.md", "content": "[elided]"}

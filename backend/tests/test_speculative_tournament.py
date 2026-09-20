@@ -1,6 +1,6 @@
 """Tests for Speculative Synthesis and Tournament Bake-Off Engine."""
 
-from agent_workspace.synthesis.speculative_tournament import (
+from alpha.synthesis.speculative_tournament import (
     SpeculativeSynthesisEngine,
     ParetoScorer,
     PatchStrategy,

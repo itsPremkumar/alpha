@@ -65,23 +65,23 @@ async def main():
     # leak onto the interactive terminal via Python's lastResort handler.
     _setup_logging()
 
-    from agent_workspace.config import get_app_config
-    from agent_workspace.config.app_config import apply_logging_level
+    from alpha.config import get_app_config
+    from alpha.config.app_config import apply_logging_level
 
     app_config = get_app_config()
     apply_logging_level(app_config.log_level)
 
-    # Delay the rest of the agent_workspace imports until *after* logging is installed
-    # so that any import-time side effects (e.g. agent_workspace.agents starts a
+    # Delay the rest of the alpha imports until *after* logging is installed
+    # so that any import-time side effects (e.g. alpha.agents starts a
     # background skill-loader thread on import) emit logs to debug.log instead
     # of leaking onto the interactive terminal via Python's lastResort handler.
     from langchain_core.messages import HumanMessage
     from langgraph.runtime import Runtime
 
-    from agent_workspace.agents import make_lead_agent
-    from agent_workspace.config.paths import get_paths
-    from agent_workspace.mcp import initialize_mcp_tools
-    from agent_workspace.runtime.user_context import get_effective_user_id
+    from alpha.agents import make_lead_agent
+    from alpha.config.paths import get_paths
+    from alpha.mcp import initialize_mcp_tools
+    from alpha.runtime.user_context import get_effective_user_id
 
     # Initialize MCP tools at startup
     try:

@@ -9,8 +9,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from agent_workspace.sandbox.acquire_serialization import AcquireSerializer
-from agent_workspace.trace_context import get_current_trace_id, request_trace_context
+from alpha.sandbox.acquire_serialization import AcquireSerializer
+from alpha.trace_context import get_current_trace_id, request_trace_context
 
 
 class TestSyncMutualExclusion:

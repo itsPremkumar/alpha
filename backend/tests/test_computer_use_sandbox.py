@@ -1,4 +1,4 @@
-from agent_workspace.sandbox.computer_use import (
+from alpha.sandbox.computer_use import (
     ActionSafetyTier,
     BlastRadiusPolicy,
     ComputerWorker,

@@ -14,11 +14,11 @@ import pytest
 from langchain_core.messages import HumanMessage, ToolMessage
 from langgraph.types import Command
 
-from agent_workspace.agents.middlewares.tool_error_handling_middleware import ToolErrorHandlingMiddleware
-from agent_workspace.agents.middlewares.tool_progress_middleware import ToolProgressMiddleware
-from agent_workspace.agents.middlewares.tool_receipt import TOOL_RECEIPT_KEY
-from agent_workspace.agents.middlewares.tool_receipt_middleware import ToolReceiptMiddleware
-from agent_workspace.agents.middlewares.tool_result_meta import TOOL_META_KEY, normalize_tool_result
+from alpha.agents.middlewares.tool_error_handling_middleware import ToolErrorHandlingMiddleware
+from alpha.agents.middlewares.tool_progress_middleware import ToolProgressMiddleware
+from alpha.agents.middlewares.tool_receipt import TOOL_RECEIPT_KEY
+from alpha.agents.middlewares.tool_receipt_middleware import ToolReceiptMiddleware
+from alpha.agents.middlewares.tool_result_meta import TOOL_META_KEY, normalize_tool_result
 
 
 def _runtime(thread_id: str = "t1", run_id: str = "r1", tool_call_id: str = "call-1") -> SimpleNamespace:
@@ -343,7 +343,7 @@ def test_receipt_stamps_only_matching_command_message():
 
 
 def test_setup_agent_empty_soul_receipt_is_error():
-    from agent_workspace.tools.builtins.setup_agent_tool import setup_agent
+    from alpha.tools.builtins.setup_agent_tool import setup_agent
 
     runtime = _runtime()
     request = _request(tool_name="setup_agent", runtime=runtime)
@@ -361,7 +361,7 @@ def test_setup_agent_empty_soul_receipt_is_error():
 
 
 def test_view_image_disallowed_path_receipt_is_error():
-    from agent_workspace.tools.builtins.view_image_tool import view_image_tool
+    from alpha.tools.builtins.view_image_tool import view_image_tool
 
     request = _request(tool_name="view_image")
 

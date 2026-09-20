@@ -15,7 +15,7 @@ from _router_auth_helpers import make_authed_test_app
 from fastapi.testclient import TestClient
 
 from app.gateway.routers import thread_runs
-from agent_workspace.runtime.runs.manager import EditReplayVisibility
+from alpha.runtime.runs.manager import EditReplayVisibility
 
 
 def _make_app(messages, feedback_grouped):

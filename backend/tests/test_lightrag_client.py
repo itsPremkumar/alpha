@@ -3,7 +3,7 @@ import json
 import httpx
 import pytest
 
-from agent_workspace.community.lightrag.client import (
+from alpha.community.lightrag.client import (
     LightRAGAPIError,
     LightRAGClient,
     LightRAGConnectionError,

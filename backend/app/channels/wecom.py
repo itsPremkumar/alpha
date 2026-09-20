@@ -18,7 +18,7 @@ from app.channels.message_bus import (
     OutboundMessage,
     ResolvedAttachment,
 )
-from agent_workspace.branding import DISPLAY_NAME
+from alpha.branding import DISPLAY_NAME
 
 logger = logging.getLogger(__name__)
 

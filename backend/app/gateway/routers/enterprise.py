@@ -9,7 +9,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from agent_workspace.enterprise import (
+from alpha.enterprise import (
     get_council_quorum_engine,
     get_department_treasury,
     get_discovery_and_optimization_engine,

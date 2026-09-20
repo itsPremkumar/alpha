@@ -8,10 +8,10 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.gateway.routers import memory
-from agent_workspace.config.paths import Paths, make_safe_user_id
-from agent_workspace.memory.cognitive import engine
-from agent_workspace.runtime.user_context import reset_current_user, set_current_user
-from agent_workspace.tools.builtins.cognitive_memory_tool import cognitive_memory_tool
+from alpha.config.paths import Paths, make_safe_user_id
+from alpha.memory.cognitive import engine
+from alpha.runtime.user_context import reset_current_user, set_current_user
+from alpha.tools.builtins.cognitive_memory_tool import cognitive_memory_tool
 
 
 @pytest.fixture(autouse=True)
@@ -193,7 +193,7 @@ def test_tool_runtime_scope_schema_and_precedence():
     result = cognitive_memory_tool.func(action="recall", runtime=runtime, query="PrivateAlice")
     assert "PrivateAlice" in result
     assert not {"runtime", "user_id", "owner", "storage_dir"} & cognitive_memory_tool.tool_call_schema.model_fields.keys()
-    from agent_workspace.tools.tools import BUILTIN_TOOLS
+    from alpha.tools.tools import BUILTIN_TOOLS
 
     assert cognitive_memory_tool in BUILTIN_TOOLS
 

@@ -6,11 +6,11 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.errors import GraphBubbleUp
 
-from agent_workspace.agents.middlewares.safety_finish_reason_middleware import SafetyFinishReasonMiddleware
-from agent_workspace.agents.middlewares.safety_termination_detectors import (
+from alpha.agents.middlewares.safety_finish_reason_middleware import SafetyFinishReasonMiddleware
+from alpha.agents.middlewares.safety_termination_detectors import (
     SafetyTermination,
 )
-from agent_workspace.config.safety_finish_reason_config import (
+from alpha.config.safety_finish_reason_config import (
     SafetyDetectorConfig,
     SafetyFinishReasonConfig,
 )
@@ -512,7 +512,7 @@ class TestFromConfig:
         cfg = SafetyFinishReasonConfig(
             detectors=[
                 SafetyDetectorConfig(
-                    use="agent_workspace.agents.middlewares.safety_termination_detectors:OpenAICompatibleContentFilterDetector",
+                    use="alpha.agents.middlewares.safety_termination_detectors:OpenAICompatibleContentFilterDetector",
                     config={"finish_reasons": ["custom_filter"]},
                 ),
             ]
@@ -704,7 +704,7 @@ class TestStreamEvent:
 
         monkeypatch.setattr(langgraph.config, "get_stream_writer", lambda: fake_writer)
         monkeypatch.setattr(
-            "agent_workspace.agents.middlewares.safety_finish_reason_middleware.emit_custom_event",
+            "alpha.agents.middlewares.safety_finish_reason_middleware.emit_custom_event",
             fake_emit_custom_event,
         )
 
@@ -743,7 +743,7 @@ class TestStreamEvent:
 
         monkeypatch.setattr(langgraph.config, "get_stream_writer", lambda: captured.append)
         monkeypatch.setattr(
-            "agent_workspace.agents.middlewares.safety_finish_reason_middleware.aemit_custom_event",
+            "alpha.agents.middlewares.safety_finish_reason_middleware.aemit_custom_event",
             fake_emit_custom_event,
         )
 
@@ -773,7 +773,7 @@ class TestStreamEvent:
 
         monkeypatch.setattr(langgraph.config, "get_stream_writer", lambda: lambda _payload: None)
         monkeypatch.setattr(
-            "agent_workspace.agents.middlewares.safety_finish_reason_middleware.emit_custom_event",
+            "alpha.agents.middlewares.safety_finish_reason_middleware.emit_custom_event",
             interrupt_dispatch,
         )
 
@@ -794,7 +794,7 @@ class TestStreamEvent:
 
         monkeypatch.setattr(langgraph.config, "get_stream_writer", lambda: lambda _payload: None)
         monkeypatch.setattr(
-            "agent_workspace.agents.middlewares.safety_finish_reason_middleware.aemit_custom_event",
+            "alpha.agents.middlewares.safety_finish_reason_middleware.aemit_custom_event",
             interrupt_dispatch,
         )
 

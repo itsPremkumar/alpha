@@ -1,6 +1,6 @@
 import pytest
 
-from agent_workspace.models.failover import (
+from alpha.models.failover import (
     ModelEndpointConfig,
     ModelFailoverChain,
 )

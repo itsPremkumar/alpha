@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from agent_workspace.agents.memory.backends.deermem.deermem.core.paths import fact_file_path
+from alpha.agents.memory.backends.deermem.deermem.core.paths import fact_file_path
 
 
 def _legacy_memory(content: str) -> dict:

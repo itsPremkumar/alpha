@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel, Field
 
-from agent_workspace.commands import (
+from alpha.commands import (
     CommandCategory,
     LifecyclePhase,
     autonomous_command_engine,

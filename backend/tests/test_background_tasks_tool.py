@@ -3,8 +3,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from agent_workspace.mcp.tasks.runtime import set_mcp_task_submitter
-from agent_workspace.tools.builtins.background_tasks_tool import (
+from alpha.mcp.tasks.runtime import set_mcp_task_submitter
+from alpha.tools.builtins.background_tasks_tool import (
     _list_background_tasks_impl,
     cancel_background_task,
 )

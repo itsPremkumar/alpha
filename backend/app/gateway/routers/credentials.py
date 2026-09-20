@@ -12,8 +12,8 @@ from typing import Any
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from agent_workspace.security.credential_vault import get_credential_vault
-from agent_workspace.utils.thread_id import ThreadId
+from alpha.security.credential_vault import get_credential_vault
+from alpha.utils.thread_id import ThreadId
 
 logger = logging.getLogger(__name__)
 

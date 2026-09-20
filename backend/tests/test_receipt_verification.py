@@ -1,11 +1,11 @@
 """Tests for parent-side receipt citation verification (RFC #4651 PR2)."""
 
-from agent_workspace.agents.middlewares.receipt_verification import (
+from alpha.agents.middlewares.receipt_verification import (
     render_citation_verdict,
     validate_receipt_verdict,
     verify_receipt_citations,
 )
-from agent_workspace.agents.middlewares.tool_receipt import parse_citations
+from alpha.agents.middlewares.tool_receipt import parse_citations
 
 
 def _receipt(rid: str, tool: str = "write_file", status: str = "success") -> dict:

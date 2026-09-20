@@ -8,13 +8,13 @@ import pytest
 from langchain_core.tools import ToolException
 from langchain_mcp_adapters.interceptors import MCPToolCallRequest
 
-from agent_workspace.config.extensions_config import (
+from alpha.config.extensions_config import (
     ExtensionsConfig,
     McpServerConfig,
     McpUserScopedAuthConfig,
 )
-from agent_workspace.mcp.interceptors import build_mcp_tool_interceptors
-from agent_workspace.mcp.user_scoped_auth import build_user_scoped_auth_interceptor
+from alpha.mcp.interceptors import build_mcp_tool_interceptors
+from alpha.mcp.user_scoped_auth import build_user_scoped_auth_interceptor
 
 
 def _config(**user_auth_kwargs) -> ExtensionsConfig:
@@ -114,7 +114,7 @@ def test_on_missing_passthrough_keeps_static_headers():
 def test_default_user_fallback_is_denied_when_unmapped():
     """Without any resolvable identity the DEFAULT_USER_ID fallback must not inherit a credential."""
     interceptor = build_user_scoped_auth_interceptor(_config(users={"u1": "Bearer t1"}))
-    with patch("agent_workspace.mcp.user_scoped_auth._current_runtime", return_value=None), pytest.raises(ToolException):
+    with patch("alpha.mcp.user_scoped_auth._current_runtime", return_value=None), pytest.raises(ToolException):
         asyncio.run(interceptor(_request(runtime=None), AsyncMock()))
 
 
@@ -423,7 +423,7 @@ def test_stdio_server_user_auth_is_skipped_with_warning(caplog):
         },
         skills={},
     )
-    with caplog.at_level(logging.WARNING, logger="agent_workspace.mcp.user_scoped_auth"):
+    with caplog.at_level(logging.WARNING, logger="alpha.mcp.user_scoped_auth"):
         interceptor = build_user_scoped_auth_interceptor(config)
     assert interceptor is None  # no eligible servers -> nothing registered, no deny errors
     assert any("user_auth" in r.message and "stdio" in r.message for r in caplog.records)
@@ -458,7 +458,7 @@ def test_user_credential_wins_over_oauth_set_header_through_real_composition():
     interceptor that actually sets Authorization must lose the final header to
     the per-user credential, through the same composition the session-pool
     tool path uses."""
-    from agent_workspace.mcp.interceptors import compose_tool_interceptors
+    from alpha.mcp.interceptors import compose_tool_interceptors
 
     config = _config(users={"u1": "Bearer user-cred"})
 

@@ -3,7 +3,7 @@
 
 import pytest
 
-from agent_workspace.channels.debounce.debouncer import InboundDebouncer
+from alpha.channels.debounce.debouncer import InboundDebouncer
 
 
 def test_inbound_debouncer_flush():

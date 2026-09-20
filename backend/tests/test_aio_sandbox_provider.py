@@ -11,10 +11,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from agent_workspace.config.paths import Paths, join_host_path
-from agent_workspace.config.sandbox_config import SandboxConfig
-from agent_workspace.runtime.user_context import reset_current_user, set_current_user
-from agent_workspace.sandbox.acquire_serialization import AcquireSerializer
+from alpha.config.paths import Paths, join_host_path
+from alpha.config.sandbox_config import SandboxConfig
+from alpha.runtime.user_context import reset_current_user, set_current_user
+from alpha.sandbox.acquire_serialization import AcquireSerializer
 
 # POSIX permission-bit assertion on the Lark CLI user auth dirs. Windows cannot
 # represent `chmod(0o700)` — `stat.S_IMODE` always reports broad access there —
@@ -41,9 +41,9 @@ _LEGACY_COLLIDING_IDENTITIES = (
     ],
 )
 def test_load_config_preserves_thread_data_mounts_override(sandbox_overrides, expected, monkeypatch):
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     sandbox_config = SandboxConfig(
-        use="agent_workspace.community.aio_sandbox:AioSandboxProvider",
+        use="alpha.community.aio_sandbox:AioSandboxProvider",
         **sandbox_overrides,
     )
     app_config = SimpleNamespace(sandbox=sandbox_config, stream_bridge=None)
@@ -55,9 +55,9 @@ def test_load_config_preserves_thread_data_mounts_override(sandbox_overrides, ex
 
 
 def test_load_config_snapshots_custom_skills_container_path(monkeypatch):
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     sandbox_config = SandboxConfig(
-        use="agent_workspace.community.aio_sandbox:AioSandboxProvider",
+        use="alpha.community.aio_sandbox:AioSandboxProvider",
     )
     app_config = SimpleNamespace(
         sandbox=sandbox_config,
@@ -80,7 +80,7 @@ def test_load_config_snapshots_custom_skills_container_path(monkeypatch):
     ],
 )
 def test_thread_data_mounts_override_precedes_backend_detection(backend_is_local, override, expected):
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     provider = aio_mod.AioSandboxProvider.__new__(aio_mod.AioSandboxProvider)
     provider._config = {} if override is None else {"thread_data_mounts": override}
     provider._backend = object.__new__(aio_mod.LocalContainerBackend) if backend_is_local else object()
@@ -131,10 +131,10 @@ def _make_provider(tmp_path):
     ``test_sandbox_orphan_reconciliation.py`` (shared store) and
     ``test_sandbox_ownership_store.py`` (store contract).
     """
-    from agent_workspace.community.aio_sandbox.ownership.memory import MemoryOwnershipStore
-    from agent_workspace.config.sandbox_config import SandboxOwnershipConfig
+    from alpha.community.aio_sandbox.ownership.memory import MemoryOwnershipStore
+    from alpha.config.sandbox_config import SandboxOwnershipConfig
 
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     with patch.object(aio_mod.AioSandboxProvider, "_start_idle_checker"):
         provider = aio_mod.AioSandboxProvider.__new__(aio_mod.AioSandboxProvider)
         provider._config = {"idle_timeout": 600, "replicas": 3}
@@ -158,7 +158,7 @@ def _make_provider(tmp_path):
 
 def test_get_thread_mounts_includes_acp_workspace(tmp_path, monkeypatch):
     """_get_thread_mounts must include /mnt/acp-workspace (read-only) for docker sandbox."""
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     monkeypatch.setattr(aio_mod, "get_paths", lambda: Paths(base_dir=tmp_path))
     monkeypatch.setattr(aio_mod, "get_effective_user_id", lambda: None)
 
@@ -175,7 +175,7 @@ def test_get_thread_mounts_includes_acp_workspace(tmp_path, monkeypatch):
 
 def test_get_thread_mounts_includes_user_data_dirs(tmp_path, monkeypatch):
     """Baseline: user-data mounts must still be present after the ACP workspace change."""
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     monkeypatch.setattr(aio_mod, "get_paths", lambda: Paths(base_dir=tmp_path))
 
     mounts = aio_mod.AioSandboxProvider._get_thread_mounts("thread-4")
@@ -188,7 +188,7 @@ def test_get_thread_mounts_includes_user_data_dirs(tmp_path, monkeypatch):
 
 def test_get_thread_mounts_uses_explicit_user_id(tmp_path, monkeypatch):
     """Channel runs must mount the same user bucket used for artifact delivery."""
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     monkeypatch.setattr(aio_mod, "get_paths", lambda: Paths(base_dir=tmp_path))
     monkeypatch.setattr(aio_mod, "get_effective_user_id", lambda: "default")
 
@@ -203,8 +203,8 @@ def test_get_thread_mounts_uses_explicit_user_id(tmp_path, monkeypatch):
 @requires_posix_permission_bits
 def test_get_lark_cli_runtime_mounts_uses_user_auth_dirs(tmp_path, monkeypatch):
     """Sandbox lark-cli commands must read the same auth dirs as Settings."""
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
-    lark_cli = importlib.import_module("agent_workspace.integrations.lark_cli")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
+    lark_cli = importlib.import_module("alpha.integrations.lark_cli")
     monkeypatch.setattr(aio_mod, "get_paths", lambda: Paths(base_dir=tmp_path))
     monkeypatch.setattr(aio_mod, "get_effective_user_id", lambda: "default")
     runtime_dir = tmp_path / "integrations" / "lark-cli" / "sandbox-cli"
@@ -237,7 +237,7 @@ def test_get_lark_cli_runtime_mounts_uses_user_auth_dirs(tmp_path, monkeypatch):
 
 
 def test_get_user_skill_mounts_mounts_only_global_integrations(tmp_path, monkeypatch):
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     skills_root = tmp_path / "skills"
     (skills_root / "public").mkdir(parents=True)
     config = SimpleNamespace(
@@ -261,9 +261,9 @@ def test_get_user_skill_mounts_mounts_only_global_integrations(tmp_path, monkeyp
 
 def test_get_extra_mounts_provisioner_payload_has_unique_container_paths(tmp_path, monkeypatch, provisioner_module):
     """Full AIO mount composition must not send duplicate paths to provisioner."""
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
-    lark_cli = importlib.import_module("agent_workspace.integrations.lark_cli")
-    remote_backend = importlib.import_module("agent_workspace.community.aio_sandbox.remote_backend")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
+    lark_cli = importlib.import_module("alpha.integrations.lark_cli")
+    remote_backend = importlib.import_module("alpha.community.aio_sandbox.remote_backend")
     skills_root = tmp_path / "skills"
     (skills_root / "public").mkdir(parents=True)
     home = tmp_path / "home"
@@ -321,7 +321,7 @@ def test_thread_skill_projection_mounts_all_categories(
     tmp_path,
     monkeypatch,
 ):
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     paths = Paths(base_dir=tmp_path / "home")
     projection_root = paths.thread_skills_view_dir(
         "thread-policy",
@@ -346,7 +346,7 @@ def test_thread_skill_projection_uses_distinct_sandbox_identity(
     tmp_path,
     monkeypatch,
 ):
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     paths = Paths(base_dir=tmp_path / "home")
     monkeypatch.setattr(aio_mod, "get_paths", lambda: paths)
     monkeypatch.setattr(
@@ -375,7 +375,7 @@ def test_policy_scoped_sandbox_identity_changes_with_skills_container_root(
     tmp_path,
     monkeypatch,
 ):
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     paths = Paths(base_dir=tmp_path / "home")
     paths.thread_skills_view_dir(
         "thread-policy",
@@ -404,7 +404,7 @@ def test_shared_sandbox_identity_changes_when_custom_skills_root_changes(
     tmp_path,
     monkeypatch,
 ):
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     paths = Paths(base_dir=tmp_path / "home")
     monkeypatch.setattr(aio_mod, "get_paths", lambda: paths)
     config = SimpleNamespace(skills=SimpleNamespace(container_path="/custom-skills-a"))
@@ -457,7 +457,7 @@ def test_policy_scoped_create_excludes_local_config_mounts_below_skills_root(
     tmp_path,
     monkeypatch,
 ):
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     paths = Paths(base_dir=tmp_path / "home")
     paths.thread_skills_view_dir(
         "thread-policy",
@@ -525,7 +525,7 @@ def test_remote_create_forwards_configured_skills_container_path(
     tmp_path,
     monkeypatch,
 ):
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     provider = _make_provider(tmp_path)
     provider._config = {
         "replicas": 3,
@@ -587,7 +587,7 @@ async def test_remote_create_async_forwards_configured_skills_container_path(
     tmp_path,
     monkeypatch,
 ):
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     provider = _make_provider(tmp_path)
     provider._config = {
         "replicas": 3,
@@ -658,7 +658,7 @@ def test_join_host_path_preserves_windows_drive_letter_style():
 
 def test_get_thread_mounts_preserves_windows_host_path_style(tmp_path, monkeypatch):
     """Docker bind mount sources must keep Windows-style paths intact."""
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     monkeypatch.setenv("AGENT_WORKSPACE_HOST_BASE_DIR", r"C:\Users\demo\agent-workspace\backend\.agent-workspace")
     monkeypatch.setattr(aio_mod, "get_paths", lambda: Paths(base_dir=tmp_path))
     monkeypatch.setattr(aio_mod, "get_effective_user_id", lambda: None)
@@ -675,7 +675,7 @@ def test_get_thread_mounts_preserves_windows_host_path_style(tmp_path, monkeypat
 
 def test_discover_or_create_only_unlocks_when_lock_succeeds(tmp_path, monkeypatch):
     """Unlock should not run if exclusive locking itself fails."""
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     provider = _make_provider(tmp_path)
     provider._discover_or_create_with_lock = aio_mod.AioSandboxProvider._discover_or_create_with_lock.__get__(
         provider,
@@ -706,7 +706,7 @@ def test_discover_or_create_only_unlocks_when_lock_succeeds(tmp_path, monkeypatc
 @pytest.mark.anyio
 async def test_acquire_async_uses_async_readiness_polling(monkeypatch):
     """AioSandboxProvider async creation must not use sync readiness polling."""
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     provider = _make_provider(None)
     provider._config = {"replicas": 3}
     provider._warm_pool = {}
@@ -744,7 +744,7 @@ async def test_acquire_async_uses_async_readiness_polling(monkeypatch):
 @pytest.mark.anyio
 async def test_discover_or_create_with_lock_async_offloads_lock_file_open_and_close(tmp_path, monkeypatch):
     """Async lock path must not open or close lock files on the event loop."""
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     provider = _make_provider(tmp_path)
     provider._discover_or_create_with_lock_async = aio_mod.AioSandboxProvider._discover_or_create_with_lock_async.__get__(
         provider,
@@ -778,7 +778,7 @@ async def test_discover_or_create_with_lock_async_offloads_lock_file_open_and_cl
 @pytest.mark.anyio
 async def test_acquire_async_lock_wait_uses_dedicated_executor(tmp_path, monkeypatch):
     """Per-thread lock waits should not consume the default asyncio.to_thread pool."""
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     provider = _make_provider(tmp_path)
 
     async def fail_to_thread(*_args, **_kwargs):
@@ -808,7 +808,7 @@ async def test_acquire_async_lock_wait_uses_dedicated_executor(tmp_path, monkeyp
 @pytest.mark.anyio
 async def test_acquire_async_cancellation_does_not_leak_thread_lock(tmp_path):
     """Cancelled async lock waiters must not leave the per-thread lock held."""
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     provider = _make_provider(tmp_path)
     provider._warm_pool = {}
     provider._sandbox_infos = {}
@@ -843,7 +843,7 @@ async def test_acquire_async_cancellation_does_not_leak_thread_lock(tmp_path):
 @pytest.mark.anyio
 async def test_acquire_async_cancelled_waiter_does_not_block_successor(tmp_path, monkeypatch):
     """A cancelled waiter must not prevent the next live waiter from acquiring."""
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     provider = _make_provider(tmp_path)
     provider._warm_pool = {}
     provider._sandbox_infos = {}
@@ -889,7 +889,7 @@ async def test_acquire_async_cancelled_waiter_does_not_block_successor(tmp_path,
 @pytest.mark.anyio
 async def test_acquire_internal_async_offloads_cached_reuse_health_check(tmp_path, monkeypatch):
     """Async cached reuse must keep backend health checks off the event loop."""
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     provider, _sandbox, _ = _make_provider_with_active_sandbox(tmp_path, "sandbox-cached-async")
     provider._thread_sandboxes = {("default", "thread-cached-async"): "sandbox-cached-async"}
     provider._backend.is_alive = MagicMock(return_value=True)
@@ -913,7 +913,7 @@ async def test_acquire_internal_async_offloads_cached_reuse_health_check(tmp_pat
 
 def test_remote_backend_create_forwards_effective_user_id(monkeypatch):
     """Provisioner mode must receive user_id so PVC subPath matches user isolation."""
-    remote_mod = importlib.import_module("agent_workspace.community.aio_sandbox.remote_backend")
+    remote_mod = importlib.import_module("alpha.community.aio_sandbox.remote_backend")
     backend = remote_mod.RemoteSandboxBackend("http://provisioner:8002")
     token = set_current_user(SimpleNamespace(id="user-7"))
     posted: dict = {}
@@ -951,7 +951,7 @@ def test_remote_backend_create_forwards_effective_user_id(monkeypatch):
 
 def test_remote_backend_create_prefers_explicit_user_id(monkeypatch):
     """Provisioner mode must not fall back to the ambient default for channel runs."""
-    remote_mod = importlib.import_module("agent_workspace.community.aio_sandbox.remote_backend")
+    remote_mod = importlib.import_module("alpha.community.aio_sandbox.remote_backend")
     backend = remote_mod.RemoteSandboxBackend("http://provisioner:8002")
     posted: dict = {}
 
@@ -978,7 +978,7 @@ def test_remote_backend_create_prefers_explicit_user_id(monkeypatch):
 
 def test_create_sandbox_requests_runtime_when_lark_installed(tmp_path, monkeypatch):
     """The provider must request lark-cli runtime provisioning when Lark is installed."""
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     provider = _make_provider(tmp_path)
     provider._config = {"replicas": 3}
     provider._warm_pool = {}
@@ -1008,7 +1008,7 @@ def test_create_sandbox_requests_runtime_when_lark_installed(tmp_path, monkeypat
 
 def test_create_sandbox_requests_broker_when_active(tmp_path, monkeypatch):
     """Broker mode (Pattern B) is requested when the provisioner reports it."""
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     provider = _make_provider(tmp_path)
     provider._config = {"replicas": 3}
     provider._warm_pool = {}
@@ -1038,7 +1038,7 @@ def test_create_sandbox_requests_broker_when_active(tmp_path, monkeypatch):
 
 def test_create_sandbox_skips_runtime_when_lark_absent(tmp_path, monkeypatch):
     """No runtime provisioning request when the Lark skill pack is not installed."""
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     provider = _make_provider(tmp_path)
     provider._config = {"replicas": 3}
     provider._warm_pool = {}
@@ -1071,7 +1071,7 @@ def test_create_sandbox_skips_runtime_when_lark_absent(tmp_path, monkeypatch):
 
 def _make_provider_with_active_sandbox(tmp_path, sandbox_id: str):
     """Build a provider with one active sandbox suitable for release/destroy/shutdown tests."""
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     provider = _make_provider(tmp_path)
     provider._lock = aio_mod.threading.Lock()
     provider._warm_pool = {}
@@ -1172,7 +1172,7 @@ def test_get_uses_in_memory_registry_only(tmp_path):
 
 def test_acquire_drops_dead_cached_sandbox(tmp_path, monkeypatch):
     """acquire() must replace a stale active cache entry after its container dies."""
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     provider, sandbox, _ = _make_provider_with_active_sandbox(tmp_path, "sandbox-dead")
     provider._thread_sandboxes = {("default", "thread-dead"): "sandbox-dead"}
     provider._config = {"replicas": 3}
@@ -1218,7 +1218,7 @@ def test_acquire_keeps_cached_sandbox_when_health_check_errors(tmp_path):
 
 def test_drop_unhealthy_sandbox_skips_recreated_entry(tmp_path):
     """A stale health-check result must not delete a newly registered sandbox."""
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     provider = _make_provider(tmp_path)
     provider._lock = aio_mod.threading.Lock()
     provider._warm_pool = {}
@@ -1242,7 +1242,7 @@ def test_drop_unhealthy_sandbox_skips_recreated_entry(tmp_path):
 
 def test_acquire_skips_dead_warm_pool_sandbox(tmp_path, monkeypatch):
     """acquire() must create a fresh sandbox when the warm-pool entry died."""
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     provider = _make_provider(tmp_path)
     provider._lock = aio_mod.threading.Lock()
     provider._sandboxes = {}
@@ -1303,7 +1303,7 @@ def test_destroy_swallows_close_errors_and_still_destroys_backend(tmp_path, capl
 
 def test_cleanup_idle_sandboxes_keeps_active_cleanup_and_delegates_warm_expiry(tmp_path):
     """AIO active-idle cleanup must remain local while warm expiry uses the shared lifecycle."""
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     provider = _make_provider(tmp_path)
     provider._lock = aio_mod.threading.Lock()
     provider._sandboxes = {"active-old": MagicMock()}
@@ -1339,7 +1339,7 @@ def test_cleanup_idle_sandboxes_keeps_active_cleanup_and_delegates_warm_expiry(t
 
 def test_create_sandbox_evicts_oldest_warm_replica_via_shared_lifecycle(tmp_path, monkeypatch):
     """Replica enforcement must destroy the oldest warm SandboxInfo before creating another."""
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     provider = _make_provider(tmp_path)
     provider._lock = aio_mod.threading.Lock()
     provider._config = {"replicas": 2}
@@ -1372,7 +1372,7 @@ def test_create_sandbox_evicts_oldest_warm_replica_via_shared_lifecycle(tmp_path
 
 
 def _make_tenant_isolation_provider(tmp_path, monkeypatch):
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     provider = _make_provider(tmp_path)
     provider._lock = aio_mod.threading.Lock()
     provider._sandboxes = {}
@@ -1420,7 +1420,7 @@ def _make_tenant_isolation_provider(tmp_path, monkeypatch):
 
 
 def test_aio_wider_id_separates_known_legacy_collision():
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     identity_a, identity_b = _LEGACY_COLLIDING_IDENTITIES
     user_a, thread_a = identity_a
     user_b, thread_b = identity_b
@@ -1508,7 +1508,7 @@ def test_create_sandbox_claims_ownership_before_readiness_timeout_destroy(tmp_pa
     readiness gate, so for up to 60s the container ran unowned and a peer could
     adopt it; the subsequent stop landed on whatever turn the peer had handed it.
     """
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     provider, unready_info = _make_unready_destroy_provider(
         tmp_path,
         sandbox_id="unready",
@@ -1542,7 +1542,7 @@ def test_create_sandbox_claims_ownership_before_readiness_timeout_destroy(tmp_pa
 @pytest.mark.anyio
 async def test_create_sandbox_async_claims_ownership_before_readiness_timeout_destroy(tmp_path, monkeypatch):
     """#4248 (async path): same teardown-lease guard on the async readiness branch."""
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     provider, unready_info = _make_unready_destroy_provider(
         tmp_path,
         sandbox_id="unready-async",
@@ -1586,7 +1586,7 @@ def test_create_sandbox_skips_destroy_when_unready_sandbox_owned_by_peer(tmp_pat
     to reap via its own reconciliation. Stopping it anyway would be the
     cross-instance kill this guard exists to prevent.
     """
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     provider, unready_info = _make_unready_destroy_provider(
         tmp_path,
         sandbox_id="peer-owned",
@@ -1619,7 +1619,7 @@ def test_reconcile_does_not_adopt_a_container_whose_unready_teardown_is_reserved
     shape as ``test_reconcile_does_not_adopt_a_container_this_instance_is_tearing_down``
     in ``test_sandbox_orphan_reconciliation.py``.
     """
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     provider, unready_info = _make_unready_destroy_provider(
         tmp_path,
         sandbox_id="unready-race",
@@ -1670,7 +1670,7 @@ def test_reconcile_adopts_unready_container_when_no_teardown_is_in_flight(tmp_pa
     over-block legitimate reconciliation of a container whose creator crashed
     before the readiness gate.
     """
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     provider, unready_info = _make_unready_destroy_provider(
         tmp_path,
         sandbox_id="adoptable",
@@ -1687,7 +1687,7 @@ def test_reconcile_adopts_unready_container_when_no_teardown_is_in_flight(tmp_pa
 
 
 def test_deterministic_sandbox_id_matches_shared_identity():
-    from agent_workspace.sandbox.identity import derive_sandbox_scope_token
+    from alpha.sandbox.identity import derive_sandbox_scope_token
 
-    aio_mod = importlib.import_module("agent_workspace.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("alpha.community.aio_sandbox.aio_sandbox_provider")
     assert aio_mod.AioSandboxProvider._deterministic_sandbox_id("t-1", "u-1") == derive_sandbox_scope_token(user_id="u-1", thread_id="t-1")

@@ -28,19 +28,19 @@ from langgraph.store.memory import InMemoryStore
 from app.gateway import context_usage
 from app.gateway import services as gateway_services
 from app.gateway.routers import threads
-from agent_workspace.agents.thread_state import get_thread_state_schema
-from agent_workspace.config.app_config import AppConfig, reset_app_config, set_app_config
-from agent_workspace.persistence.thread_meta.memory import MemoryThreadMetaStore
-from agent_workspace.runtime import RunManager
-from agent_workspace.runtime.checkpoint_mode import checkpoint_metadata_uses_delta, inject_checkpoint_mode
-from agent_workspace.runtime.runs.store.memory import MemoryRunStore
+from alpha.agents.thread_state import get_thread_state_schema
+from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
+from alpha.persistence.thread_meta.memory import MemoryThreadMetaStore
+from alpha.runtime import RunManager
+from alpha.runtime.checkpoint_mode import checkpoint_metadata_uses_delta, inject_checkpoint_mode
+from alpha.runtime.runs.store.memory import MemoryRunStore
 
 _THREAD_ID = "thread-gateway-parity"
 
 
 @pytest.fixture
 def _stub_app_config():
-    set_app_config(AppConfig.model_validate({"sandbox": {"use": "agent_workspace.sandbox.local:LocalSandboxProvider"}}))
+    set_app_config(AppConfig.model_validate({"sandbox": {"use": "alpha.sandbox.local:LocalSandboxProvider"}}))
     yield
     reset_app_config()
 

@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from agent_workspace.agents.lead_agent import prompt as prompt_module
+from alpha.agents.lead_agent import prompt as prompt_module
 
 
 @pytest.mark.parametrize("agent_name", [None, "custom-agent"])
@@ -76,7 +76,7 @@ def test_gateway_documentation_display_identity(monkeypatch, enable_docs):
 
 
 def test_dependency_error_preserves_install_commands():
-    from agent_workspace.reflection.resolvers import _build_missing_dependency_hint
+    from alpha.reflection.resolvers import _build_missing_dependency_hint
 
     error = ModuleNotFoundError("missing", name="langchain_google_genai")
     hint = _build_missing_dependency_hint("langchain_google_genai", error)

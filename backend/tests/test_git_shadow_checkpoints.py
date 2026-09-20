@@ -6,7 +6,7 @@ import json
 import pytest
 from pathlib import Path
 
-from agent_workspace.tools.builtins.code_agentic_core import (
+from alpha.tools.builtins.code_agentic_core import (
     CodeCheckpoint,
     create_shadow_checkpoint,
     get_all_checkpoints,

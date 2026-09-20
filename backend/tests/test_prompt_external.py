@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from agent_workspace.agents.memory.backends.deermem.deermem.core.prompt import (
+from alpha.agents.memory.backends.deermem.deermem.core.prompt import (
     CONSOLIDATION_PROMPT,
     FACT_EXTRACTION_PROMPT,
     STALENESS_REVIEW_PROMPT,

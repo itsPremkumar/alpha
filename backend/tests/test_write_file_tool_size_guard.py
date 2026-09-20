@@ -12,8 +12,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from agent_workspace.sandbox import tools as tools_module
-from agent_workspace.sandbox.tools import write_file_tool
+from alpha.sandbox import tools as tools_module
+from alpha.sandbox.tools import write_file_tool
 
 
 def _call_write_file(*, content: str, append: bool = False) -> str:

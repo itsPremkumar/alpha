@@ -21,25 +21,25 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.gateway.routers import memory
-from agent_workspace.memory.cognitive.associative_memory import AssociativeNetwork
-from agent_workspace.memory.cognitive.engine import CognitiveMemorySystem
-from agent_workspace.memory.cognitive.episodic_memory import EpisodicMemoryEngine
-from agent_workspace.memory.cognitive.models import (
+from alpha.memory.cognitive.associative_memory import AssociativeNetwork
+from alpha.memory.cognitive.engine import CognitiveMemorySystem
+from alpha.memory.cognitive.episodic_memory import EpisodicMemoryEngine
+from alpha.memory.cognitive.models import (
     BeliefStatus,
     CognitiveTier,
     HybridRecallQuery,
     TraceOutcome,
 )
-from agent_workspace.memory.cognitive.procedural_memory import ProceduralSkillMemory
-from agent_workspace.memory.cognitive.semantic_graph import SemanticBeliefGraph
-from agent_workspace.memory.cognitive.spatio_temporal import SpatioTemporalMemory
-from agent_workspace.memory.cognitive.working_memory import WorkingMemoryEngine
+from alpha.memory.cognitive.procedural_memory import ProceduralSkillMemory
+from alpha.memory.cognitive.semantic_graph import SemanticBeliefGraph
+from alpha.memory.cognitive.spatio_temporal import SpatioTemporalMemory
+from alpha.memory.cognitive.working_memory import WorkingMemoryEngine
 
 
 @pytest.fixture(autouse=True)
 def isolated_cognitive_storage(tmp_path, monkeypatch):
-    from agent_workspace.config.paths import Paths
-    from agent_workspace.memory.cognitive import engine
+    from alpha.config.paths import Paths
+    from alpha.memory.cognitive import engine
 
     monkeypatch.setattr(engine, "get_paths", lambda: Paths(tmp_path))
     monkeypatch.setattr(engine, "_owner_systems", {})
@@ -570,7 +570,7 @@ def test_procedural_skill_deduplication_and_reinforcement():
 
 def test_cognitive_memory_builtin_tool(tmp_path: Path):
     """Verify built-in cognitive_memory_tool works across all supported actions."""
-    from agent_workspace.tools.builtins.cognitive_memory_tool import cognitive_memory_tool
+    from alpha.tools.builtins.cognitive_memory_tool import cognitive_memory_tool
 
     runtime = SimpleNamespace(context={"user_id": "tool-owner"})
 

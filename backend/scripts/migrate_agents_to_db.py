@@ -29,13 +29,13 @@ import asyncio
 import logging
 import sys
 
-from agent_workspace.config.app_config import get_app_config
-from agent_workspace.persistence.agents.base import AgentExistsError
-from agent_workspace.persistence.agents.file import FileAgentStore
-from agent_workspace.persistence.agents.sql import SqlAgentStore
-from agent_workspace.persistence.managed_subagents.base import ManagedSubagentExistsError
-from agent_workspace.persistence.managed_subagents.file import FileManagedSubagentStore
-from agent_workspace.persistence.managed_subagents.sql import SqlManagedSubagentStore
+from alpha.config.app_config import get_app_config
+from alpha.persistence.agents.base import AgentExistsError
+from alpha.persistence.agents.file import FileAgentStore
+from alpha.persistence.agents.sql import SqlAgentStore
+from alpha.persistence.managed_subagents.base import ManagedSubagentExistsError
+from alpha.persistence.managed_subagents.file import FileManagedSubagentStore
+from alpha.persistence.managed_subagents.sql import SqlManagedSubagentStore
 
 logger = logging.getLogger("migrate_agents_to_db")
 
@@ -78,7 +78,7 @@ def main() -> int:
 
     # Ensure the schema exists (creates both definition tables via the same
     # Alembic bootstrap the gateway runs) before the sync stores write rows.
-    from agent_workspace.persistence.engine import init_engine_from_config
+    from alpha.persistence.engine import init_engine_from_config
 
     asyncio.run(init_engine_from_config(config.database))
 

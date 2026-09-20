@@ -7,7 +7,7 @@
 
 import pytest
 
-from agent_workspace.autoconfig import (
+from alpha.autoconfig import (
     ComplexityLevel,
     ModelTier,
     OperatingMode,
@@ -15,7 +15,7 @@ from agent_workspace.autoconfig import (
     TopologyType,
     get_self_config_engine,
 )
-from agent_workspace.metacompiler import (
+from alpha.metacompiler import (
     AgentBlueprint,
     AgentHotSwapCoordinator,
     AgentMetaCompiler,
@@ -25,7 +25,7 @@ from agent_workspace.metacompiler import (
     ReasoningStrategy,
     get_meta_compiler_lineage,
 )
-from agent_workspace.perpetual import (
+from alpha.perpetual import (
     DaemonState,
     PerpetualMemoryConsolidator,
     StagnationRecoveryWatchdog,
@@ -290,7 +290,7 @@ def test_never_ending_daemon_continuous_discovery():
 
 def test_stagnation_intervention_auto_tunes_profile():
     daemon = get_perpetual_daemon("test_proj_stagnation_healing")
-    from agent_workspace.autoconfig import get_self_config_engine
+    from alpha.autoconfig import get_self_config_engine
 
     cfg_engine = get_self_config_engine("test_proj_stagnation_healing")
 
@@ -330,7 +330,7 @@ def test_metacompiler_hierarchical_decomposition_and_memory():
 @pytest.mark.parametrize("force", [False, True])
 @pytest.mark.parametrize("kind", ["simulated", "unknown", "measured"])
 def test_hotswap_never_claims_deployment_without_adapter(force, kind):
-    from agent_workspace.metacompiler.benchmark import SimulatedBenchmarkScorecard
+    from alpha.metacompiler.benchmark import SimulatedBenchmarkScorecard
 
     parent = AgentBlueprint()
     candidate = AgentMetaCompiler.compile_next_generation(parent)
@@ -356,7 +356,7 @@ def test_metacompiler_preview_serialization_and_legacy_scorecard():
     import json
     from dataclasses import fields
 
-    from agent_workspace.metacompiler.benchmark import SimulatedBenchmarkScorecard
+    from alpha.metacompiler.benchmark import SimulatedBenchmarkScorecard
 
     candidate = AgentBlueprint()
     scorecard = MetaBenchmarkHarness.evaluate_blueprint(candidate)

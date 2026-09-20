@@ -11,19 +11,19 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-import agent_workspace.config.app_config as app_config_module
-from agent_workspace.config.checkpointer_config import (
+import alpha.config.app_config as app_config_module
+from alpha.config.checkpointer_config import (
     CheckpointerConfig,
     ensure_config_loaded,
     get_checkpointer_config,
     load_checkpointer_config_from_dict,
     set_checkpointer_config,
 )
-from agent_workspace.config.database_config import DatabaseConfig
-from agent_workspace.runtime.checkpointer import get_checkpointer, reset_checkpointer
-from agent_workspace.runtime.checkpointer.provider import POSTGRES_INSTALL
-from agent_workspace.runtime.store import get_store, reset_store
-from agent_workspace.runtime.store.provider import POSTGRES_STORE_INSTALL
+from alpha.config.database_config import DatabaseConfig
+from alpha.runtime.checkpointer import get_checkpointer, reset_checkpointer
+from alpha.runtime.checkpointer.provider import POSTGRES_INSTALL
+from alpha.runtime.store import get_store, reset_store
+from alpha.runtime.store.provider import POSTGRES_STORE_INSTALL
 
 
 @pytest.fixture(autouse=True)
@@ -147,8 +147,8 @@ class TestCheckpointerConfig:
         assert config.postgres_schema == ""
 
     def test_postgres_schema_accepts_valid_identifier(self):
-        config = CheckpointerConfig(type="postgres", connection_string="postgresql://localhost/db", postgres_schema="agent_workspace")
-        assert config.postgres_schema == "agent_workspace"
+        config = CheckpointerConfig(type="postgres", connection_string="postgresql://localhost/db", postgres_schema="alpha")
+        assert config.postgres_schema == "alpha"
 
     @pytest.mark.parametrize("schema", ["1abc", "a b", "a;b", "a-b", "a" * 64, 'a"b', "MySchema", "Orders", "Public"])
     def test_postgres_schema_rejects_invalid_identifier(self, schema):
@@ -170,7 +170,7 @@ class TestCheckpointerConfig:
         def fake_get_app_config():
             load_checkpointer_config_from_dict({"type": "memory"})
 
-        with patch("agent_workspace.config.app_config.get_app_config", side_effect=fake_get_app_config) as mock_get_app_config:
+        with patch("alpha.config.app_config.get_app_config", side_effect=fake_get_app_config) as mock_get_app_config:
             ensure_config_loaded()
 
         mock_get_app_config.assert_called_once()
@@ -181,7 +181,7 @@ class TestCheckpointerConfig:
     def test_ensure_config_loaded_skips_explicit_config(self):
         load_checkpointer_config_from_dict({"type": "memory"})
 
-        with patch("agent_workspace.config.app_config.get_app_config") as mock_get_app_config:
+        with patch("alpha.config.app_config.get_app_config") as mock_get_app_config:
             ensure_config_loaded()
 
         mock_get_app_config.assert_not_called()
@@ -237,7 +237,7 @@ class TestGetCheckpointer:
         """get_checkpointer should return InMemorySaver when not configured."""
         from langgraph.checkpoint.memory import InMemorySaver
 
-        with patch("agent_workspace.runtime.checkpointer.provider.get_app_config", side_effect=FileNotFoundError):
+        with patch("alpha.runtime.checkpointer.provider.get_app_config", side_effect=FileNotFoundError):
             cp = get_checkpointer()
         assert cp is not None
         assert isinstance(cp, InMemorySaver)
@@ -333,9 +333,9 @@ class TestGetCheckpointer:
 
         with (
             patch.dict(sys.modules, {"langgraph.checkpoint.sqlite": mock_module}),
-            patch("agent_workspace.runtime.checkpointer.provider.ensure_sqlite_parent_dir") as mock_ensure,
+            patch("alpha.runtime.checkpointer.provider.ensure_sqlite_parent_dir") as mock_ensure,
             patch(
-                "agent_workspace.runtime.checkpointer.provider.resolve_sqlite_conn_str",
+                "alpha.runtime.checkpointer.provider.resolve_sqlite_conn_str",
                 return_value="/tmp/resolved/relative/test.db",
             ),
         ):
@@ -369,11 +369,11 @@ class TestGetCheckpointer:
         with (
             patch.dict(sys.modules, {"langgraph.checkpoint.sqlite": mock_module}),
             patch(
-                "agent_workspace.runtime.checkpointer.provider.ensure_sqlite_parent_dir",
+                "alpha.runtime.checkpointer.provider.ensure_sqlite_parent_dir",
                 side_effect=record_ensure,
             ),
             patch(
-                "agent_workspace.runtime.checkpointer.provider.resolve_sqlite_conn_str",
+                "alpha.runtime.checkpointer.provider.resolve_sqlite_conn_str",
                 return_value="/tmp/resolved/relative/test.db",
             ),
         ):
@@ -407,7 +407,7 @@ class TestGetCheckpointer:
 
     def test_postgres_schema_creates_schema_and_sets_search_path(self):
         """Sync Postgres checkpointer should create schema before setup."""
-        load_checkpointer_config_from_dict({"type": "postgres", "connection_string": "postgresql://localhost/db", "postgres_schema": "agent_workspace"})
+        load_checkpointer_config_from_dict({"type": "postgres", "connection_string": "postgresql://localhost/db", "postgres_schema": "alpha"})
 
         mock_saver_instance = MagicMock()
         mock_cm = MagicMock()
@@ -433,7 +433,7 @@ class TestGetCheckpointer:
 
         assert cp is mock_saver_instance
         mock_psycopg.connect.assert_called_once_with("postgresql://localhost/db", autocommit=True)
-        mock_conn.execute.assert_called_once_with('CREATE SCHEMA IF NOT EXISTS "agent_workspace"')
+        mock_conn.execute.assert_called_once_with('CREATE SCHEMA IF NOT EXISTS "alpha"')
         # psycopg 3 __exit__ does not close(); the sync path must close explicitly.
         mock_conn.close.assert_called_once_with()
         called_dsn = mock_saver_cls.from_conn_string.call_args.args[0]
@@ -442,7 +442,7 @@ class TestGetCheckpointer:
 
     def test_store_postgres_schema_creates_schema_and_sets_search_path(self):
         """Sync Postgres store should use the legacy checkpointer schema."""
-        load_checkpointer_config_from_dict({"type": "postgres", "connection_string": "postgresql://localhost/db", "postgres_schema": "agent_workspace"})
+        load_checkpointer_config_from_dict({"type": "postgres", "connection_string": "postgresql://localhost/db", "postgres_schema": "alpha"})
 
         mock_store_instance = MagicMock()
         mock_cm = MagicMock()
@@ -468,7 +468,7 @@ class TestGetCheckpointer:
 
         assert store is mock_store_instance
         mock_psycopg.connect.assert_called_once_with("postgresql://localhost/db", autocommit=True)
-        mock_conn.execute.assert_called_once_with('CREATE SCHEMA IF NOT EXISTS "agent_workspace"')
+        mock_conn.execute.assert_called_once_with('CREATE SCHEMA IF NOT EXISTS "alpha"')
         # psycopg 3 __exit__ does not close(); the sync path must close explicitly.
         mock_conn.close.assert_called_once_with()
         called_dsn = mock_store_cls.from_conn_string.call_args.args[0]
@@ -493,7 +493,7 @@ class TestSyncSingletonThreadSafety:
         load_checkpointer_config_from_dict({"type": "memory"})
         factory = _BlockingSingletonFactory()
 
-        with patch("agent_workspace.runtime.checkpointer.provider._sync_checkpointer_cm", side_effect=factory.context_manager):
+        with patch("alpha.runtime.checkpointer.provider._sync_checkpointer_cm", side_effect=factory.context_manager):
             futures_started = ThreadPoolExecutor(max_workers=1)
             try:
                 result_future = futures_started.submit(_call_getter_concurrently, get_checkpointer)
@@ -513,7 +513,7 @@ class TestSyncSingletonThreadSafety:
         load_checkpointer_config_from_dict({"type": "memory"})
         factory = _BlockingSingletonFactory()
 
-        with patch("agent_workspace.runtime.store.provider._sync_store_cm", side_effect=factory.context_manager):
+        with patch("alpha.runtime.store.provider._sync_store_cm", side_effect=factory.context_manager):
             futures_started = ThreadPoolExecutor(max_workers=1)
             try:
                 result_future = futures_started.submit(_call_getter_concurrently, get_store)
@@ -535,8 +535,8 @@ class TestSyncSingletonThreadSafety:
             load_checkpointer_config_from_dict({"type": "memory"})
 
         with (
-            patch("agent_workspace.runtime.checkpointer.provider._checkpointer_lock", tracking_lock),
-            patch("agent_workspace.runtime.checkpointer.provider.ensure_config_loaded", side_effect=fake_ensure_config_loaded),
+            patch("alpha.runtime.checkpointer.provider._checkpointer_lock", tracking_lock),
+            patch("alpha.runtime.checkpointer.provider.ensure_config_loaded", side_effect=fake_ensure_config_loaded),
         ):
             checkpointer = get_checkpointer()
 
@@ -551,8 +551,8 @@ class TestSyncSingletonThreadSafety:
             load_checkpointer_config_from_dict({"type": "memory"})
 
         with (
-            patch("agent_workspace.runtime.store.provider._store_lock", tracking_lock),
-            patch("agent_workspace.runtime.store.provider.ensure_config_loaded", side_effect=fake_ensure_config_loaded),
+            patch("alpha.runtime.store.provider._store_lock", tracking_lock),
+            patch("alpha.runtime.store.provider.ensure_config_loaded", side_effect=fake_ensure_config_loaded),
         ):
             store = get_store()
 
@@ -564,7 +564,7 @@ class TestSyncSingletonThreadSafety:
         factory = _BlockingSingletonFactory()
 
         with (
-            patch("agent_workspace.runtime.checkpointer.provider._sync_checkpointer_cm", side_effect=factory.context_manager),
+            patch("alpha.runtime.checkpointer.provider._sync_checkpointer_cm", side_effect=factory.context_manager),
             ThreadPoolExecutor(max_workers=2) as executor,
         ):
             get_future = executor.submit(get_checkpointer)
@@ -594,7 +594,7 @@ class TestSyncSingletonThreadSafety:
         factory = _BlockingSingletonFactory()
 
         with (
-            patch("agent_workspace.runtime.store.provider._sync_store_cm", side_effect=factory.context_manager),
+            patch("alpha.runtime.store.provider._sync_store_cm", side_effect=factory.context_manager),
             ThreadPoolExecutor(max_workers=2) as executor,
         ):
             get_future = executor.submit(get_store)
@@ -624,7 +624,7 @@ class TestAsyncCheckpointer:
     @pytest.mark.anyio
     async def test_sqlite_creates_parent_dir_via_to_thread(self):
         """Async SQLite setup should move mkdir off the event loop."""
-        from agent_workspace.runtime.checkpointer.async_provider import _prepare_sqlite_checkpointer_path, make_checkpointer
+        from alpha.runtime.checkpointer.async_provider import _prepare_sqlite_checkpointer_path, make_checkpointer
 
         mock_config = MagicMock()
         mock_config.checkpointer = CheckpointerConfig(type="sqlite", connection_string="relative/test.db")
@@ -641,10 +641,10 @@ class TestAsyncCheckpointer:
         mock_module.AsyncSqliteSaver = mock_saver_cls
 
         with (
-            patch("agent_workspace.runtime.checkpointer.async_provider.get_app_config", return_value=mock_config),
+            patch("alpha.runtime.checkpointer.async_provider.get_app_config", return_value=mock_config),
             patch.dict(sys.modules, {"langgraph.checkpoint.sqlite.aio": mock_module}),
             patch(
-                "agent_workspace.runtime.checkpointer.async_provider.asyncio.to_thread",
+                "alpha.runtime.checkpointer.async_provider.asyncio.to_thread",
                 new_callable=AsyncMock,
                 return_value="/tmp/resolved/test.db",
             ) as mock_to_thread,
@@ -662,10 +662,10 @@ class TestAsyncCheckpointer:
     @pytest.mark.anyio
     async def test_postgres_uses_connection_pool(self):
         """Async postgres checkpointer should use AsyncConnectionPool, not a single connection."""
-        from agent_workspace.runtime.checkpointer.async_provider import make_checkpointer
+        from alpha.runtime.checkpointer.async_provider import make_checkpointer
 
         mock_config = MagicMock()
-        mock_config.checkpointer = CheckpointerConfig(type="postgres", connection_string="postgresql://localhost/db", postgres_schema="agent_workspace")
+        mock_config.checkpointer = CheckpointerConfig(type="postgres", connection_string="postgresql://localhost/db", postgres_schema="alpha")
 
         mock_saver = AsyncMock()
 
@@ -691,7 +691,7 @@ class TestAsyncCheckpointer:
         mock_psycopg_rows.dict_row = mock_dict_row
 
         with (
-            patch("agent_workspace.runtime.checkpointer.async_provider.get_app_config", return_value=mock_config),
+            patch("alpha.runtime.checkpointer.async_provider.get_app_config", return_value=mock_config),
             patch.dict(sys.modules, {"langgraph.checkpoint.postgres.aio": mock_pg_module}),
             patch.dict(sys.modules, {"psycopg.rows": mock_psycopg_rows}),
             patch.dict(sys.modules, {"psycopg_pool": MagicMock(AsyncConnectionPool=mock_pool_cls)}),
@@ -709,7 +709,7 @@ class TestAsyncCheckpointer:
         assert "options=-c%20search_path%3Dagent_workspace" in call_kwargs[0][0]
         assert call_kwargs[1]["check"] is mock_pool_cls.check_connection
         assert "options" not in call_kwargs[1]["kwargs"]
-        mock_conn.execute.assert_awaited_once_with('CREATE SCHEMA IF NOT EXISTS "agent_workspace"')
+        mock_conn.execute.assert_awaited_once_with('CREATE SCHEMA IF NOT EXISTS "alpha"')
 
         # Verify saver was constructed with the pool (not via from_conn_string)
         mock_saver_cls.assert_called_once_with(conn=mock_pool_instance)
@@ -718,10 +718,10 @@ class TestAsyncCheckpointer:
     @pytest.mark.anyio
     async def test_database_postgres_uses_connection_pool(self):
         """Unified database postgres path should use AsyncConnectionPool with keepalive."""
-        from agent_workspace.config.database_config import DatabaseConfig
-        from agent_workspace.runtime.checkpointer.async_provider import make_checkpointer
+        from alpha.config.database_config import DatabaseConfig
+        from alpha.runtime.checkpointer.async_provider import make_checkpointer
 
-        db_config = DatabaseConfig(backend="postgres", postgres_url="postgresql://localhost/db", postgres_schema="agent_workspace")
+        db_config = DatabaseConfig(backend="postgres", postgres_url="postgresql://localhost/db", postgres_schema="alpha")
         mock_config = MagicMock()
         mock_config.checkpointer = None
         mock_config.database = db_config
@@ -750,7 +750,7 @@ class TestAsyncCheckpointer:
         mock_psycopg_rows.dict_row = mock_dict_row
 
         with (
-            patch("agent_workspace.runtime.checkpointer.async_provider.get_app_config", return_value=mock_config),
+            patch("alpha.runtime.checkpointer.async_provider.get_app_config", return_value=mock_config),
             patch.dict(sys.modules, {"langgraph.checkpoint.postgres.aio": mock_pg_module}),
             patch.dict(sys.modules, {"psycopg.rows": mock_psycopg_rows}),
             patch.dict(sys.modules, {"psycopg_pool": MagicMock(AsyncConnectionPool=mock_pool_cls)}),
@@ -763,7 +763,7 @@ class TestAsyncCheckpointer:
         assert "options=-c%20search_path%3Dagent_workspace" in call_kwargs[0][0]
         assert call_kwargs[1]["check"] is mock_pool_cls.check_connection
         assert "options" not in call_kwargs[1]["kwargs"]
-        mock_conn.execute.assert_awaited_once_with('CREATE SCHEMA IF NOT EXISTS "agent_workspace"')
+        mock_conn.execute.assert_awaited_once_with('CREATE SCHEMA IF NOT EXISTS "alpha"')
 
         mock_saver_cls.assert_called_once_with(conn=mock_pool_instance)
         mock_saver.setup.assert_awaited_once()
@@ -771,8 +771,8 @@ class TestAsyncCheckpointer:
     @pytest.mark.anyio
     async def test_database_sqlite_creates_parent_dir_via_to_thread(self):
         """Unified database SQLite setup should also move path IO off the event loop."""
-        from agent_workspace.config.database_config import DatabaseConfig
-        from agent_workspace.runtime.checkpointer.async_provider import _prepare_database_sqlite_checkpointer_path, make_checkpointer
+        from alpha.config.database_config import DatabaseConfig
+        from alpha.runtime.checkpointer.async_provider import _prepare_database_sqlite_checkpointer_path, make_checkpointer
 
         db_config = DatabaseConfig(backend="sqlite", sqlite_dir="relative-data")
         mock_config = MagicMock()
@@ -791,12 +791,12 @@ class TestAsyncCheckpointer:
         mock_module.AsyncSqliteSaver = mock_saver_cls
 
         with (
-            patch("agent_workspace.runtime.checkpointer.async_provider.get_app_config", return_value=mock_config),
+            patch("alpha.runtime.checkpointer.async_provider.get_app_config", return_value=mock_config),
             patch.dict(sys.modules, {"langgraph.checkpoint.sqlite.aio": mock_module}),
             patch(
-                "agent_workspace.runtime.checkpointer.async_provider.asyncio.to_thread",
+                "alpha.runtime.checkpointer.async_provider.asyncio.to_thread",
                 new_callable=AsyncMock,
-                return_value="/tmp/data/agent_workspace.db",
+                return_value="/tmp/data/alpha.db",
             ) as mock_to_thread,
         ):
             async with make_checkpointer() as saver:
@@ -806,7 +806,7 @@ class TestAsyncCheckpointer:
         called_fn, called_db_config = mock_to_thread.await_args.args
         assert called_fn is _prepare_database_sqlite_checkpointer_path
         assert called_db_config is db_config
-        mock_saver_cls.from_conn_string.assert_called_once_with("/tmp/data/agent_workspace.db")
+        mock_saver_cls.from_conn_string.assert_called_once_with("/tmp/data/alpha.db")
         mock_saver.setup.assert_awaited_once()
 
 
@@ -814,10 +814,10 @@ class TestAsyncStore:
     @pytest.mark.anyio
     async def test_postgres_schema_creates_schema_and_sets_search_path(self):
         """Async Postgres store should use the legacy checkpointer schema."""
-        from agent_workspace.runtime.store.async_provider import make_store
+        from alpha.runtime.store.async_provider import make_store
 
         mock_config = MagicMock()
-        mock_config.checkpointer = CheckpointerConfig(type="postgres", connection_string="postgresql://localhost/db", postgres_schema="agent_workspace")
+        mock_config.checkpointer = CheckpointerConfig(type="postgres", connection_string="postgresql://localhost/db", postgres_schema="alpha")
 
         mock_store = AsyncMock()
         mock_cm = AsyncMock()
@@ -844,7 +844,7 @@ class TestAsyncStore:
                 assert store is mock_store
 
         mock_async_connection.connect.assert_awaited_once_with("postgresql://localhost/db", autocommit=True)
-        mock_conn.execute.assert_awaited_once_with('CREATE SCHEMA IF NOT EXISTS "agent_workspace"')
+        mock_conn.execute.assert_awaited_once_with('CREATE SCHEMA IF NOT EXISTS "alpha"')
         mock_conn.close.assert_awaited_once()
         called_dsn = mock_store_cls.from_conn_string.call_args.args[0]
         assert "options=-c%20search_path%3Dagent_workspace" in called_dsn
@@ -853,12 +853,12 @@ class TestAsyncStore:
     @pytest.mark.anyio
     async def test_database_postgres_schema_creates_schema_and_sets_search_path(self):
         """Unified database postgres store should use database.postgres_schema."""
-        from agent_workspace.config.database_config import DatabaseConfig
-        from agent_workspace.runtime.store.async_provider import make_store
+        from alpha.config.database_config import DatabaseConfig
+        from alpha.runtime.store.async_provider import make_store
 
         mock_config = MagicMock()
         mock_config.checkpointer = None
-        mock_config.database = DatabaseConfig(backend="postgres", postgres_url="postgresql://localhost/db", postgres_schema="agent_workspace")
+        mock_config.database = DatabaseConfig(backend="postgres", postgres_url="postgresql://localhost/db", postgres_schema="alpha")
 
         mock_store = AsyncMock()
         mock_cm = AsyncMock()
@@ -885,7 +885,7 @@ class TestAsyncStore:
                 assert store is mock_store
 
         mock_async_connection.connect.assert_awaited_once_with("postgresql://localhost/db", autocommit=True)
-        mock_conn.execute.assert_awaited_once_with('CREATE SCHEMA IF NOT EXISTS "agent_workspace"')
+        mock_conn.execute.assert_awaited_once_with('CREATE SCHEMA IF NOT EXISTS "alpha"')
         mock_conn.close.assert_awaited_once()
         called_dsn = mock_store_cls.from_conn_string.call_args.args[0]
         assert "options=-c%20search_path%3Dagent_workspace" in called_dsn
@@ -906,7 +906,7 @@ class TestCheckpointerDatabaseConfig:
 
     def test_sync_checkpointer_context_uses_database_config(self):
         """The one-shot sync checkpointer factory must follow unified database config."""
-        from agent_workspace.runtime.checkpointer.provider import checkpointer_context
+        from alpha.runtime.checkpointer.provider import checkpointer_context
 
         app_config = SimpleNamespace(
             checkpointer=None,
@@ -916,8 +916,8 @@ class TestCheckpointerDatabaseConfig:
         factory = MagicMock(return_value=nullcontext(expected))
 
         with (
-            patch("agent_workspace.runtime.checkpointer.provider.get_app_config", return_value=app_config),
-            patch("agent_workspace.runtime.checkpointer.provider._sync_checkpointer_cm", factory),
+            patch("alpha.runtime.checkpointer.provider.get_app_config", return_value=app_config),
+            patch("alpha.runtime.checkpointer.provider._sync_checkpointer_cm", factory),
             checkpointer_context() as cp,
         ):
             assert cp is expected
@@ -928,7 +928,7 @@ class TestCheckpointerDatabaseConfig:
 
     def test_sync_checkpointer_context_uses_sqlite_database_config(self, tmp_path):
         """The one-shot sync checkpointer factory must resolve the sqlite branch too, not just postgres."""
-        from agent_workspace.runtime.checkpointer.provider import checkpointer_context
+        from alpha.runtime.checkpointer.provider import checkpointer_context
 
         db_config = DatabaseConfig(backend="sqlite", sqlite_dir=str(tmp_path))
         app_config = SimpleNamespace(checkpointer=None, database=db_config)
@@ -936,8 +936,8 @@ class TestCheckpointerDatabaseConfig:
         factory = MagicMock(return_value=nullcontext(expected))
 
         with (
-            patch("agent_workspace.runtime.checkpointer.provider.get_app_config", return_value=app_config),
-            patch("agent_workspace.runtime.checkpointer.provider._sync_checkpointer_cm", factory),
+            patch("alpha.runtime.checkpointer.provider.get_app_config", return_value=app_config),
+            patch("alpha.runtime.checkpointer.provider._sync_checkpointer_cm", factory),
             checkpointer_context() as cp,
         ):
             assert cp is expected
@@ -956,9 +956,9 @@ class TestCheckpointerDatabaseConfig:
         factory = MagicMock(return_value=nullcontext(expected))
 
         with (
-            patch("agent_workspace.runtime.checkpointer.provider.ensure_config_loaded"),
-            patch("agent_workspace.runtime.checkpointer.provider.get_app_config", return_value=app_config),
-            patch("agent_workspace.runtime.checkpointer.provider._sync_checkpointer_cm", factory),
+            patch("alpha.runtime.checkpointer.provider.ensure_config_loaded"),
+            patch("alpha.runtime.checkpointer.provider.get_app_config", return_value=app_config),
+            patch("alpha.runtime.checkpointer.provider._sync_checkpointer_cm", factory),
         ):
             assert get_checkpointer() is expected
 
@@ -971,15 +971,15 @@ class TestCheckpointerDatabaseConfig:
         from langgraph.checkpoint.memory import InMemorySaver
 
         with (
-            patch("agent_workspace.runtime.checkpointer.provider.ensure_config_loaded"),
-            patch("agent_workspace.runtime.checkpointer.provider.get_checkpointer_config", return_value=None),
-            patch("agent_workspace.runtime.checkpointer.provider.get_app_config", side_effect=FileNotFoundError),
+            patch("alpha.runtime.checkpointer.provider.ensure_config_loaded"),
+            patch("alpha.runtime.checkpointer.provider.get_checkpointer_config", return_value=None),
+            patch("alpha.runtime.checkpointer.provider.get_app_config", side_effect=FileNotFoundError),
         ):
             assert isinstance(get_checkpointer(), InMemorySaver)
 
     def test_legacy_checkpointer_config_takes_precedence(self):
         """Backward-compatible checkpointer config must override database."""
-        from agent_workspace.runtime.checkpointer.provider import checkpointer_context
+        from alpha.runtime.checkpointer.provider import checkpointer_context
 
         app_config = SimpleNamespace(
             checkpointer=CheckpointerConfig(type="memory"),
@@ -989,8 +989,8 @@ class TestCheckpointerDatabaseConfig:
         factory = MagicMock(return_value=nullcontext(expected))
 
         with (
-            patch("agent_workspace.runtime.checkpointer.provider.get_app_config", return_value=app_config),
-            patch("agent_workspace.runtime.checkpointer.provider._sync_checkpointer_cm", factory),
+            patch("alpha.runtime.checkpointer.provider.get_app_config", return_value=app_config),
+            patch("alpha.runtime.checkpointer.provider._sync_checkpointer_cm", factory),
             checkpointer_context() as cp,
         ):
             assert cp is expected
@@ -1003,12 +1003,12 @@ class TestCheckpointerDatabaseConfig:
         """Explicit memory mode remains an intentional non-persistent checkpointer."""
         from langgraph.checkpoint.memory import InMemorySaver
 
-        from agent_workspace.runtime.checkpointer.provider import checkpointer_context
+        from alpha.runtime.checkpointer.provider import checkpointer_context
 
         app_config = SimpleNamespace(checkpointer=None, database=DatabaseConfig(backend="memory"))
 
         with (
-            patch("agent_workspace.runtime.checkpointer.provider.get_app_config", return_value=app_config),
+            patch("alpha.runtime.checkpointer.provider.get_app_config", return_value=app_config),
             checkpointer_context() as cp,
         ):
             assert isinstance(cp, InMemorySaver)
@@ -1020,18 +1020,18 @@ class TestStoreDatabaseConfig:
         from langgraph.store.memory import InMemoryStore
 
         with (
-            patch("agent_workspace.runtime.store.provider.ensure_config_loaded"),
-            patch("agent_workspace.runtime.store.provider.get_checkpointer_config", return_value=None),
-            patch("agent_workspace.runtime.store.provider.get_app_config", side_effect=FileNotFoundError),
+            patch("alpha.runtime.store.provider.ensure_config_loaded"),
+            patch("alpha.runtime.store.provider.get_checkpointer_config", return_value=None),
+            patch("alpha.runtime.store.provider.get_app_config", side_effect=FileNotFoundError),
         ):
             assert isinstance(get_store(), InMemoryStore)
 
     @pytest.mark.anyio
     async def test_async_postgres_store_uses_database_config(self, caplog):
         """Unified database postgres config must not fall back to InMemoryStore."""
-        from agent_workspace.runtime.store.async_provider import make_store
+        from alpha.runtime.store.async_provider import make_store
 
-        caplog.set_level("WARNING", logger="agent_workspace.runtime.store.async_provider")
+        caplog.set_level("WARNING", logger="alpha.runtime.store.async_provider")
         app_config = SimpleNamespace(
             checkpointer=None,
             database=DatabaseConfig(backend="postgres", postgres_url="postgresql://localhost/db"),
@@ -1054,9 +1054,9 @@ class TestStoreDatabaseConfig:
 
     @pytest.mark.anyio
     async def test_async_sqlite_store_uses_unified_database_path(self, tmp_path):
-        """Unified database SQLite config must use the shared agent_workspace.db path."""
-        from agent_workspace.runtime.store.async_provider import make_store
-        from agent_workspace.runtime.store.provider import ensure_sqlite_parent_dir
+        """Unified database SQLite config must use the shared alpha.db path."""
+        from alpha.runtime.store.async_provider import make_store
+        from alpha.runtime.store.provider import ensure_sqlite_parent_dir
 
         db_config = DatabaseConfig(backend="sqlite", sqlite_dir=str(tmp_path))
         app_config = SimpleNamespace(checkpointer=None, database=db_config)
@@ -1071,7 +1071,7 @@ class TestStoreDatabaseConfig:
         with (
             patch.dict(sys.modules, {"langgraph.store.sqlite.aio": mock_module}),
             patch(
-                "agent_workspace.runtime.store.async_provider.asyncio.to_thread",
+                "alpha.runtime.store.async_provider.asyncio.to_thread",
                 new_callable=AsyncMock,
             ) as mock_to_thread,
         ):
@@ -1087,7 +1087,7 @@ class TestStoreDatabaseConfig:
 
     def test_sync_store_context_uses_database_config(self):
         """The one-shot sync Store factory must follow unified database config."""
-        from agent_workspace.runtime.store.provider import store_context
+        from alpha.runtime.store.provider import store_context
 
         app_config = SimpleNamespace(
             checkpointer=None,
@@ -1097,8 +1097,8 @@ class TestStoreDatabaseConfig:
         factory = MagicMock(return_value=nullcontext(expected_store))
 
         with (
-            patch("agent_workspace.runtime.store.provider.get_app_config", return_value=app_config),
-            patch("agent_workspace.runtime.store.provider._sync_store_cm", factory),
+            patch("alpha.runtime.store.provider.get_app_config", return_value=app_config),
+            patch("alpha.runtime.store.provider._sync_store_cm", factory),
             store_context() as store,
         ):
             assert store is expected_store
@@ -1117,9 +1117,9 @@ class TestStoreDatabaseConfig:
         factory = MagicMock(return_value=nullcontext(expected_store))
 
         with (
-            patch("agent_workspace.runtime.store.provider.ensure_config_loaded"),
-            patch("agent_workspace.runtime.store.provider.get_app_config", return_value=app_config),
-            patch("agent_workspace.runtime.store.provider._sync_store_cm", factory),
+            patch("alpha.runtime.store.provider.ensure_config_loaded"),
+            patch("alpha.runtime.store.provider.get_app_config", return_value=app_config),
+            patch("alpha.runtime.store.provider._sync_store_cm", factory),
         ):
             assert get_store() is expected_store
 
@@ -1129,7 +1129,7 @@ class TestStoreDatabaseConfig:
 
     def test_legacy_checkpointer_config_takes_precedence_for_store(self):
         """Backward-compatible checkpointer config must override database for Store."""
-        from agent_workspace.runtime.store.provider import store_context
+        from alpha.runtime.store.provider import store_context
 
         app_config = SimpleNamespace(
             checkpointer=CheckpointerConfig(type="memory"),
@@ -1139,8 +1139,8 @@ class TestStoreDatabaseConfig:
         factory = MagicMock(return_value=nullcontext(expected_store))
 
         with (
-            patch("agent_workspace.runtime.store.provider.get_app_config", return_value=app_config),
-            patch("agent_workspace.runtime.store.provider._sync_store_cm", factory),
+            patch("alpha.runtime.store.provider.get_app_config", return_value=app_config),
+            patch("alpha.runtime.store.provider._sync_store_cm", factory),
             store_context() as store,
         ):
             assert store is expected_store
@@ -1153,13 +1153,13 @@ class TestStoreDatabaseConfig:
         """Explicit memory mode remains an intentional non-persistent Store."""
         from langgraph.store.memory import InMemoryStore
 
-        from agent_workspace.runtime.store.provider import store_context
+        from alpha.runtime.store.provider import store_context
 
         app_config = SimpleNamespace(
             checkpointer=None,
             database=DatabaseConfig(backend="memory"),
         )
-        with patch("agent_workspace.runtime.store.provider.get_app_config", return_value=app_config):
+        with patch("alpha.runtime.store.provider.get_app_config", return_value=app_config):
             with store_context() as store:
                 assert isinstance(store, InMemoryStore)
 
@@ -1189,7 +1189,7 @@ class TestClientCheckpointerFallback:
         """AgentWorkspaceClient._ensure_agent falls back to get_checkpointer() when checkpointer=None."""
         from langgraph.checkpoint.memory import InMemorySaver
 
-        from agent_workspace.client import AgentWorkspaceClient
+        from alpha.client import AgentWorkspaceClient
 
         load_checkpointer_config_from_dict({"type": "memory"})
 
@@ -1211,13 +1211,13 @@ class TestClientCheckpointerFallback:
         config_mock.tool_search.enabled = False
 
         with (
-            patch("agent_workspace.client.get_app_config", return_value=config_mock),
-            patch("agent_workspace.client.create_agent", side_effect=fake_create_agent),
-            patch("agent_workspace.client.create_chat_model", return_value=MagicMock()),
-            patch("agent_workspace.client.build_middlewares", return_value=[]),
-            patch("agent_workspace.client.apply_prompt_template", return_value=""),
-            patch("agent_workspace.client.get_enabled_skills_for_config", return_value=[]),
-            patch("agent_workspace.client.AgentWorkspaceClient._get_tools", return_value=[]),
+            patch("alpha.client.get_app_config", return_value=config_mock),
+            patch("alpha.client.create_agent", side_effect=fake_create_agent),
+            patch("alpha.client.create_chat_model", return_value=MagicMock()),
+            patch("alpha.client.build_middlewares", return_value=[]),
+            patch("alpha.client.apply_prompt_template", return_value=""),
+            patch("alpha.client.get_enabled_skills_for_config", return_value=[]),
+            patch("alpha.client.AgentWorkspaceClient._get_tools", return_value=[]),
         ):
             client = AgentWorkspaceClient(checkpointer=None)
             config = client._get_runnable_config("test-thread")
@@ -1228,7 +1228,7 @@ class TestClientCheckpointerFallback:
 
     def test_client_explicit_checkpointer_takes_precedence(self):
         """An explicitly provided checkpointer is used even when config checkpointer is set."""
-        from agent_workspace.client import AgentWorkspaceClient
+        from alpha.client import AgentWorkspaceClient
 
         load_checkpointer_config_from_dict({"type": "memory"})
 
@@ -1251,13 +1251,13 @@ class TestClientCheckpointerFallback:
         config_mock.tool_search.enabled = False
 
         with (
-            patch("agent_workspace.client.get_app_config", return_value=config_mock),
-            patch("agent_workspace.client.create_agent", side_effect=fake_create_agent),
-            patch("agent_workspace.client.create_chat_model", return_value=MagicMock()),
-            patch("agent_workspace.client.build_middlewares", return_value=[]),
-            patch("agent_workspace.client.apply_prompt_template", return_value=""),
-            patch("agent_workspace.client.get_enabled_skills_for_config", return_value=[]),
-            patch("agent_workspace.client.AgentWorkspaceClient._get_tools", return_value=[]),
+            patch("alpha.client.get_app_config", return_value=config_mock),
+            patch("alpha.client.create_agent", side_effect=fake_create_agent),
+            patch("alpha.client.create_chat_model", return_value=MagicMock()),
+            patch("alpha.client.build_middlewares", return_value=[]),
+            patch("alpha.client.apply_prompt_template", return_value=""),
+            patch("alpha.client.get_enabled_skills_for_config", return_value=[]),
+            patch("alpha.client.AgentWorkspaceClient._get_tools", return_value=[]),
         ):
             client = AgentWorkspaceClient(checkpointer=explicit_cp)
             config = client._get_runnable_config("test-thread")

@@ -2,13 +2,13 @@ import os
 import tempfile
 import pytest
 
-from agent_workspace.subagents.categories import (
+from alpha.subagents.categories import (
     apply_category,
     get_category,
     list_category_names,
 )
-from agent_workspace.subagents.config import SubagentConfig
-from agent_workspace.tools.builtins import deep_research
+from alpha.subagents.config import SubagentConfig
+from alpha.tools.builtins import deep_research
 
 
 @pytest.mark.asyncio

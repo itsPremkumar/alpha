@@ -14,13 +14,13 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.gateway.deps import require_admin_user
-from agent_workspace.subagents.lifecycle import (
+from alpha.subagents.lifecycle import (
     SubagentContract,
     SubagentStatusEnum,
     get_subagent_lifecycle_manager,
 )
-from agent_workspace.subagents.promotion import get_subagent_promotion_manager
-from agent_workspace.subagents.resilience import get_subagent_resilience_engine
+from alpha.subagents.promotion import get_subagent_promotion_manager
+from alpha.subagents.resilience import get_subagent_resilience_engine
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/subagents/control", tags=["subagents-control"])

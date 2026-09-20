@@ -1,5 +1,5 @@
 
-from agent_workspace.research.five_pass import (
+from alpha.research.five_pass import (
     FivePassSearchCompiler,
     FivePassSearchPlan,
     SearchPassType,

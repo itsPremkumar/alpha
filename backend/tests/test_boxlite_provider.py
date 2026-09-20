@@ -19,9 +19,9 @@ import types
 
 import pytest
 
-from agent_workspace.community.boxlite.box import BoxliteBox
-from agent_workspace.community.boxlite.provider import BoxliteProvider, _import_simplebox
-from agent_workspace.trace_context import get_current_trace_id, request_trace_context
+from alpha.community.boxlite.box import BoxliteBox
+from alpha.community.boxlite.provider import BoxliteProvider, _import_simplebox
+from alpha.trace_context import get_current_trace_id, request_trace_context
 
 _LEGACY_COLLIDING_IDENTITIES = (
     ("user-9721", "thread-9721"),
@@ -99,7 +99,7 @@ def _no_existing_boxlite_boxes(monkeypatch: pytest.MonkeyPatch) -> None:
         def default():
             return _EmptyRuntime()
 
-    monkeypatch.setattr("agent_workspace.community.boxlite.provider._import_sync_boxlite_runtime", lambda: _EmptyBoxlite)
+    monkeypatch.setattr("alpha.community.boxlite.provider._import_sync_boxlite_runtime", lambda: _EmptyBoxlite)
 
 
 def test_import_simplebox_missing_raises_actionable(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -111,7 +111,7 @@ def test_import_simplebox_missing_raises_actionable(monkeypatch: pytest.MonkeyPa
 def test_acquire_without_boxlite_raises_and_shuts_down_cleanly(monkeypatch: pytest.MonkeyPatch) -> None:
     # Stub config so the provider constructs without a config.yaml on disk.
     stub = types.SimpleNamespace(sandbox=types.SimpleNamespace())
-    monkeypatch.setattr("agent_workspace.community.boxlite.provider.get_app_config", lambda: stub)
+    monkeypatch.setattr("alpha.community.boxlite.provider.get_app_config", lambda: stub)
     _no_boxlite(monkeypatch)
 
     provider = BoxliteProvider()
@@ -304,7 +304,7 @@ def test_execute_command_closed_box_returns_without_error_log(caplog) -> None:
     box = BoxliteBox("box-id", box=_FakeBox(name="box-id"), run=_fake_run)
     box.close()
 
-    with caplog.at_level(logging.ERROR, logger="agent_workspace.community.boxlite.box"):
+    with caplog.at_level(logging.ERROR, logger="alpha.community.boxlite.box"):
         output = box.execute_command("echo hi")
 
     assert output == "Error: sandbox has been closed"
@@ -314,7 +314,7 @@ def test_execute_command_closed_box_returns_without_error_log(caplog) -> None:
 def test_sandbox_id_deterministic(monkeypatch):
     """_sandbox_id produces the same id for the same inputs."""
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider.get_app_config",
+        "alpha.community.boxlite.provider.get_app_config",
         lambda: _stub_config(),
     )
     provider = BoxliteProvider()
@@ -327,7 +327,7 @@ def test_sandbox_id_deterministic(monkeypatch):
 def test_sandbox_id_different_users(monkeypatch):
     """Different users produce different ids for the same thread."""
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider.get_app_config",
+        "alpha.community.boxlite.provider.get_app_config",
         lambda: _stub_config(),
     )
     provider = BoxliteProvider()
@@ -339,7 +339,7 @@ def test_sandbox_id_different_users(monkeypatch):
 def test_sandbox_id_different_threads(monkeypatch):
     """Different threads produce different ids for the same user."""
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider.get_app_config",
+        "alpha.community.boxlite.provider.get_app_config",
         lambda: _stub_config(),
     )
     provider = BoxliteProvider()
@@ -351,7 +351,7 @@ def test_sandbox_id_different_threads(monkeypatch):
 def test_idle_timeout_zero_is_preserved_and_disables_reaper(monkeypatch):
     """idle_timeout=0 is a valid config value and disables the reaper thread."""
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider.get_app_config",
+        "alpha.community.boxlite.provider.get_app_config",
         lambda: _stub_config({"idle_timeout": 0}),
     )
 
@@ -365,7 +365,7 @@ def test_idle_timeout_zero_is_preserved_and_disables_reaper(monkeypatch):
 def test_create_box_passes_prefixed_sandbox_id_as_name(monkeypatch):
     """_create_box gives BoxLite a Alpha-owned name prefix."""
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider.get_app_config",
+        "alpha.community.boxlite.provider.get_app_config",
         lambda: _stub_config(),
     )
     # Inject fake SimpleBox and fake loop runner
@@ -377,7 +377,7 @@ def test_create_box_passes_prefixed_sandbox_id_as_name(monkeypatch):
             created_boxes.append(kwargs)
 
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider._import_simplebox",
+        "alpha.community.boxlite.provider._import_simplebox",
         lambda: _RecordingBox,
     )
 
@@ -394,7 +394,7 @@ def test_create_box_passes_prefixed_sandbox_id_as_name(monkeypatch):
 def test_startup_reconciliation_adopts_prefixed_existing_boxes(monkeypatch):
     """Existing Alpha-named BoxLite boxes are adopted into the warm pool."""
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider.get_app_config",
+        "alpha.community.boxlite.provider.get_app_config",
         lambda: _stub_config(),
     )
     stopped: list[str] = []
@@ -427,7 +427,7 @@ def test_startup_reconciliation_adopts_prefixed_existing_boxes(monkeypatch):
         def default():
             return _Runtime()
 
-    monkeypatch.setattr("agent_workspace.community.boxlite.provider._import_sync_boxlite_runtime", lambda: _Boxlite)
+    monkeypatch.setattr("alpha.community.boxlite.provider._import_sync_boxlite_runtime", lambda: _Boxlite)
 
     provider = BoxliteProvider()
 
@@ -442,11 +442,11 @@ def test_startup_reconciliation_adopts_prefixed_existing_boxes(monkeypatch):
 def test_release_parks_in_warm_pool(monkeypatch):
     """After release, box is in warm pool, not destroyed."""
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider.get_app_config",
+        "alpha.community.boxlite.provider.get_app_config",
         lambda: _stub_config(),
     )
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider._import_simplebox",
+        "alpha.community.boxlite.provider._import_simplebox",
         lambda: _FakeBox,
     )
 
@@ -474,11 +474,11 @@ def test_release_parks_in_warm_pool(monkeypatch):
 def test_acquire_reclaims_from_warm_pool(monkeypatch):
     """acquire reclaims a warm pool box for the same thread."""
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider.get_app_config",
+        "alpha.community.boxlite.provider.get_app_config",
         lambda: _stub_config(),
     )
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider._import_simplebox",
+        "alpha.community.boxlite.provider._import_simplebox",
         lambda: _FakeBox,
     )
 
@@ -506,11 +506,11 @@ async def test_acquire_async_propagates_request_trace_context(monkeypatch):
     ``request_trace_context()`` as unset and logs ``trace_id=-``.
     """
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider.get_app_config",
+        "alpha.community.boxlite.provider.get_app_config",
         lambda: _stub_config(),
     )
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider._import_simplebox",
+        "alpha.community.boxlite.provider._import_simplebox",
         lambda: _FakeBox,
     )
 
@@ -541,11 +541,11 @@ async def test_acquire_async_propagates_request_trace_context(monkeypatch):
 def test_explicit_recent_reclaim_skip_avoids_health_check(monkeypatch):
     """A configured skip window can reclaim recently released boxes without a ping."""
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider.get_app_config",
+        "alpha.community.boxlite.provider.get_app_config",
         lambda: _stub_config({"health_check_skip_seconds": 5}),
     )
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider._import_simplebox",
+        "alpha.community.boxlite.provider._import_simplebox",
         lambda: _FakeBox,
     )
 
@@ -571,11 +571,11 @@ def test_explicit_recent_reclaim_skip_avoids_health_check(monkeypatch):
 
 def test_recent_reclaim_validates_by_default(monkeypatch):
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider.get_app_config",
+        "alpha.community.boxlite.provider.get_app_config",
         lambda: _stub_config(),
     )
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider._import_simplebox",
+        "alpha.community.boxlite.provider._import_simplebox",
         lambda: _FakeBox,
     )
 
@@ -606,11 +606,11 @@ def test_recent_reclaim_validates_by_default(monkeypatch):
 
 def test_default_recent_reclaim_drops_dead_warm_box(monkeypatch):
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider.get_app_config",
+        "alpha.community.boxlite.provider.get_app_config",
         lambda: _stub_config(),
     )
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider._import_simplebox",
+        "alpha.community.boxlite.provider._import_simplebox",
         lambda: _FakeBox,
     )
 
@@ -639,11 +639,11 @@ def test_default_recent_reclaim_drops_dead_warm_box(monkeypatch):
 
 def test_dead_active_box_invalidation_closes_adapter(monkeypatch):
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider.get_app_config",
+        "alpha.community.boxlite.provider.get_app_config",
         lambda: _stub_config({"health_check_skip_seconds": 5}),
     )
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider._import_simplebox",
+        "alpha.community.boxlite.provider._import_simplebox",
         lambda: _FakeBox,
     )
 
@@ -671,7 +671,7 @@ def test_dead_active_box_invalidation_closes_adapter(monkeypatch):
 def test_adopted_warm_pool_box_still_health_checks(monkeypatch):
     """Startup-adopted boxes must still pass a health check before reclaim."""
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider.get_app_config",
+        "alpha.community.boxlite.provider.get_app_config",
         lambda: _stub_config({"health_check_skip_seconds": 5}),
     )
 
@@ -707,11 +707,11 @@ def test_adopted_warm_pool_box_still_health_checks(monkeypatch):
 
 def test_dead_active_box_is_invalidated_after_command_failure(monkeypatch):
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider.get_app_config",
+        "alpha.community.boxlite.provider.get_app_config",
         lambda: _stub_config({"health_check_skip_seconds": 5}),
     )
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider._import_simplebox",
+        "alpha.community.boxlite.provider._import_simplebox",
         lambda: _FakeBox,
     )
 
@@ -741,11 +741,11 @@ def test_dead_active_box_is_invalidated_after_command_failure(monkeypatch):
 
 def test_stale_closed_adapter_cannot_invalidate_recreated_box(monkeypatch):
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider.get_app_config",
+        "alpha.community.boxlite.provider.get_app_config",
         lambda: _stub_config({"health_check_skip_seconds": 5}),
     )
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider._import_simplebox",
+        "alpha.community.boxlite.provider._import_simplebox",
         lambda: _FakeBox,
     )
 
@@ -782,11 +782,11 @@ def test_stale_closed_adapter_cannot_invalidate_recreated_box(monkeypatch):
 def test_acquire_different_threads_dont_reclaim_each_other(monkeypatch):
     """Thread A's box can't be reclaimed by thread B."""
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider.get_app_config",
+        "alpha.community.boxlite.provider.get_app_config",
         lambda: _stub_config(),
     )
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider._import_simplebox",
+        "alpha.community.boxlite.provider._import_simplebox",
         lambda: _FakeBox,
     )
 
@@ -806,11 +806,11 @@ def test_acquire_different_threads_dont_reclaim_each_other(monkeypatch):
 def test_warm_pool_reclaim_failed_health_check_creates_new(monkeypatch):
     """Dead warm pool box is evicted and a new one created."""
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider.get_app_config",
+        "alpha.community.boxlite.provider.get_app_config",
         lambda: _stub_config(),
     )
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider._import_simplebox",
+        "alpha.community.boxlite.provider._import_simplebox",
         lambda: _FakeBox,
     )
 
@@ -839,11 +839,11 @@ def test_warm_pool_reclaim_failed_health_check_creates_new(monkeypatch):
 def test_concurrent_same_thread_acquire_creates_one_box(monkeypatch):
     """Concurrent acquires for one thread serialize before creating a named box."""
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider.get_app_config",
+        "alpha.community.boxlite.provider.get_app_config",
         lambda: _stub_config(),
     )
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider._import_simplebox",
+        "alpha.community.boxlite.provider._import_simplebox",
         lambda: _FakeBox,
     )
 
@@ -883,11 +883,11 @@ def test_concurrent_same_thread_acquire_creates_one_box(monkeypatch):
 def test_release_during_shutdown_closes_instead_of_reparking(monkeypatch):
     """release() must not park a VM after shutdown has begun."""
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider.get_app_config",
+        "alpha.community.boxlite.provider.get_app_config",
         lambda: _stub_config(),
     )
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider._import_simplebox",
+        "alpha.community.boxlite.provider._import_simplebox",
         lambda: _FakeBox,
     )
 
@@ -910,11 +910,11 @@ def test_release_during_shutdown_closes_instead_of_reparking(monkeypatch):
 def test_reset_parks_running_resources_for_later_cleanup(monkeypatch):
     """reset() stops thread reuse but leaves VMs tracked for cleanup."""
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider.get_app_config",
+        "alpha.community.boxlite.provider.get_app_config",
         lambda: _stub_config(),
     )
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider._import_simplebox",
+        "alpha.community.boxlite.provider._import_simplebox",
         lambda: _FakeBox,
     )
 
@@ -956,11 +956,11 @@ def test_reset_parks_running_resources_for_later_cleanup(monkeypatch):
 def test_reset_parked_resources_are_reaped_after_idle_timeout(monkeypatch):
     """VMs parked by reset remain visible to warm-pool idle cleanup."""
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider.get_app_config",
+        "alpha.community.boxlite.provider.get_app_config",
         lambda: _stub_config(),
     )
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider._import_simplebox",
+        "alpha.community.boxlite.provider._import_simplebox",
         lambda: _FakeBox,
     )
 
@@ -991,11 +991,11 @@ def test_reset_parked_resources_are_reaped_after_idle_timeout(monkeypatch):
 def test_idle_reaper_destroys_expired_warm_boxes(monkeypatch):
     """Idle reaper daemon destroys warm pool boxes that exceed the idle timeout."""
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider.get_app_config",
+        "alpha.community.boxlite.provider.get_app_config",
         lambda: _stub_config(),
     )
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider._import_simplebox",
+        "alpha.community.boxlite.provider._import_simplebox",
         lambda: _FakeBox,
     )
 
@@ -1030,11 +1030,11 @@ def test_idle_reaper_destroys_expired_warm_boxes(monkeypatch):
 def test_replica_enforcement_evicts_oldest_warm(monkeypatch):
     """When warm pool exceeds replica limit, the oldest box is evicted."""
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider.get_app_config",
+        "alpha.community.boxlite.provider.get_app_config",
         lambda: _stub_config({"replicas": 2}),
     )
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider._import_simplebox",
+        "alpha.community.boxlite.provider._import_simplebox",
         lambda: _FakeBox,
     )
 
@@ -1078,11 +1078,11 @@ def test_replica_enforcement_evicts_oldest_warm(monkeypatch):
 def test_replica_enforcement_counts_active_and_warm(monkeypatch):
     """replicas caps active + warm boxes, not warm boxes alone."""
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider.get_app_config",
+        "alpha.community.boxlite.provider.get_app_config",
         lambda: _stub_config({"replicas": 2}),
     )
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider._import_simplebox",
+        "alpha.community.boxlite.provider._import_simplebox",
         lambda: _FakeBox,
     )
 
@@ -1109,11 +1109,11 @@ def test_replica_enforcement_counts_active_and_warm(monkeypatch):
 def test_shutdown_stops_idle_reaper_and_destroys_all_boxes(monkeypatch):
     """shutdown stops the idle reaper thread and destroys all active + warm boxes."""
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider.get_app_config",
+        "alpha.community.boxlite.provider.get_app_config",
         lambda: _stub_config(),
     )
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider._import_simplebox",
+        "alpha.community.boxlite.provider._import_simplebox",
         lambda: _FakeBox,
     )
 
@@ -1169,11 +1169,11 @@ def test_wider_id_separates_known_legacy_collision():
 
 def test_forced_collision_never_overwrites_active_tenant(monkeypatch):
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider.get_app_config",
+        "alpha.community.boxlite.provider.get_app_config",
         lambda: _stub_config(),
     )
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider._import_simplebox",
+        "alpha.community.boxlite.provider._import_simplebox",
         lambda: _FakeBox,
     )
     monkeypatch.setattr(
@@ -1204,7 +1204,7 @@ def test_forced_collision_never_overwrites_active_tenant(monkeypatch):
 
 def test_late_same_tenant_collision_reuses_active_box(monkeypatch):
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider.get_app_config",
+        "alpha.community.boxlite.provider.get_app_config",
         lambda: _stub_config(),
     )
 
@@ -1247,7 +1247,7 @@ def test_late_same_tenant_collision_reuses_active_box(monkeypatch):
 
 def test_failed_health_check_does_not_remove_swapped_warm_entry(monkeypatch):
     monkeypatch.setattr(
-        "agent_workspace.community.boxlite.provider.get_app_config",
+        "alpha.community.boxlite.provider.get_app_config",
         lambda: _stub_config(),
     )
 
@@ -1293,7 +1293,7 @@ def test_failed_health_check_does_not_remove_swapped_warm_entry(monkeypatch):
 
 
 def test_sandbox_id_matches_shared_identity():
-    from agent_workspace.sandbox.identity import derive_sandbox_scope_token
+    from alpha.sandbox.identity import derive_sandbox_scope_token
 
     assert BoxliteProvider._sandbox_id("t-1", "u-1") == derive_sandbox_scope_token(user_id="u-1", thread_id="t-1")
 
@@ -1305,7 +1305,7 @@ def test_sandbox_id_none_user_quirk_pinned():
     two disagree). NOT fixed here — unifying the resolution is a separate
     behavior-changing decision with its own follow-up issue.
     """
-    from agent_workspace.sandbox.identity import derive_sandbox_scope_token
+    from alpha.sandbox.identity import derive_sandbox_scope_token
 
     assert BoxliteProvider._sandbox_id("t-1", None) == derive_sandbox_scope_token(user_id="None", thread_id="t-1")
 

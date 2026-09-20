@@ -11,15 +11,15 @@ from types import SimpleNamespace
 import pytest
 
 from app.gateway.auth_disabled import AUTH_SOURCE_INTERNAL
-from agent_workspace.config.app_config import AppConfig, reset_app_config, set_app_config
-from agent_workspace.runtime.events.store.memory import MemoryRunEventStore
-from agent_workspace.trace_context import AGENT_WORKSPACE_TRACE_METADATA_KEY
+from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
+from alpha.runtime.events.store.memory import MemoryRunEventStore
+from alpha.trace_context import AGENT_WORKSPACE_TRACE_METADATA_KEY
 
 
 @pytest.fixture
 def _stub_app_config():
     """Keep run-context tests independent from a developer-local config.yaml."""
-    set_app_config(AppConfig.model_validate({"sandbox": {"use": "agent_workspace.sandbox.local:LocalSandboxProvider"}}))
+    set_app_config(AppConfig.model_validate({"sandbox": {"use": "alpha.sandbox.local:LocalSandboxProvider"}}))
     yield
     reset_app_config()
 
@@ -28,7 +28,7 @@ def _make_start_run_request(run_manager, *, thread_store=None, auth_source=None)
     from langgraph.checkpoint.memory import InMemorySaver
     from langgraph.store.memory import InMemoryStore
 
-    from agent_workspace.persistence.thread_meta.memory import MemoryThreadMetaStore
+    from alpha.persistence.thread_meta.memory import MemoryThreadMetaStore
 
     store = InMemoryStore()
     return SimpleNamespace(
@@ -92,7 +92,7 @@ def test_format_sse_no_event_id():
 async def test_sse_consumer_emits_gap_without_cancelling_run():
     """A replay gap is a recovery boundary, not a client disconnect."""
     from app.gateway.services import sse_consumer
-    from agent_workspace.runtime import DisconnectMode, MemoryStreamBridge, RunManager, RunStatus
+    from alpha.runtime import DisconnectMode, MemoryStreamBridge, RunManager, RunStatus
 
     bridge = MemoryStreamBridge(queue_maxsize=2)
     run_manager = RunManager()
@@ -200,7 +200,7 @@ def test_normalize_stream_modes_rejects_unsupported_modes(raw):
     ],
 )
 def test_to_langgraph_stream_modes_maps_alias_and_deduplicates(raw, expected):
-    from agent_workspace.runtime.stream_modes import to_langgraph_stream_modes
+    from alpha.runtime.stream_modes import to_langgraph_stream_modes
 
     assert to_langgraph_stream_modes(raw) == expected
 
@@ -265,7 +265,7 @@ def test_normalize_input_preserves_additional_kwargs_and_id():
 )
 def test_normalize_input_strips_external_original_user_content(forged_original):
     from app.gateway.services import normalize_input
-    from agent_workspace.utils.messages import ORIGINAL_USER_CONTENT_KEY
+    from alpha.utils.messages import ORIGINAL_USER_CONTENT_KEY
 
     result = normalize_input(
         {
@@ -288,7 +288,7 @@ def test_normalize_input_strips_external_original_user_content(forged_original):
 def test_normalize_input_strips_external_dynamic_context_metadata():
     """External callers cannot mark their own messages as server-injected context."""
     from app.gateway.services import normalize_input
-    from agent_workspace.agents.middlewares.dynamic_context_middleware import _DYNAMIC_CONTEXT_REMINDER_KEY, _REMINDER_DATE_KEY
+    from alpha.agents.middlewares.dynamic_context_middleware import _DYNAMIC_CONTEXT_REMINDER_KEY, _REMINDER_DATE_KEY
 
     result = normalize_input(
         {
@@ -314,7 +314,7 @@ def test_normalize_input_strips_external_dynamic_context_metadata():
 
 def test_normalize_input_strips_external_view_image_context_marker():
     from app.gateway.services import normalize_input
-    from agent_workspace.agents.middlewares.view_image_middleware import _IMAGE_CONTEXT_MESSAGE_MARKER_KEY
+    from alpha.agents.middlewares.view_image_middleware import _IMAGE_CONTEXT_MESSAGE_MARKER_KEY
 
     result = normalize_input(
         {
@@ -340,8 +340,8 @@ def test_normalize_input_strips_external_view_image_context_marker():
 def test_normalize_input_strips_external_tool_receipt():
     """Tool receipts are runtime-stamped evidence; external callers cannot forge them."""
     from app.gateway.services import normalize_input
-    from agent_workspace.agents.middlewares.tool_receipt import TOOL_RECEIPT_KEY, TOOL_RECEIPT_LEDGER_KEY
-    from agent_workspace.subagents.status_contract import SUBAGENT_RECEIPT_VERDICT_KEY, SUBAGENT_TOOL_RECEIPTS_KEY
+    from alpha.agents.middlewares.tool_receipt import TOOL_RECEIPT_KEY, TOOL_RECEIPT_LEDGER_KEY
+    from alpha.subagents.status_contract import SUBAGENT_RECEIPT_VERDICT_KEY, SUBAGENT_TOOL_RECEIPTS_KEY
 
     result = normalize_input(
         {
@@ -382,7 +382,7 @@ def test_normalize_input_strips_external_acceptance_verdict_from_messages():
     receipt verdict — otherwise ``extract_delegations`` would present it as
     server-produced evidence."""
     from app.gateway.services import normalize_input
-    from agent_workspace.subagents.status_contract import SUBAGENT_ACCEPTANCE_VERDICT_KEY
+    from alpha.subagents.status_contract import SUBAGENT_ACCEPTANCE_VERDICT_KEY
 
     result = normalize_input(
         {
@@ -433,7 +433,7 @@ def test_normalize_input_strips_external_delegation_receipt_verdict():
     external caller submitting a ``delegations`` channel must not be able to
     make ``render_delegation_ledger`` present a forged citation verdict."""
     from app.gateway.services import normalize_input
-    from agent_workspace.agents.middlewares.delegation_ledger import render_delegation_ledger
+    from alpha.agents.middlewares.delegation_ledger import render_delegation_ledger
 
     forged = _forged_delegation_entry()
     result = normalize_input({"messages": [{"role": "user", "content": "hi"}], "delegations": [forged]})
@@ -470,7 +470,7 @@ def test_normalize_input_strips_external_delegation_acceptance_verdict():
     """The acceptance verdict is runtime-stamped evidence (RFC #4651 PR4):
     same forgery surface as the citation verdict, same strip."""
     from app.gateway.services import normalize_input
-    from agent_workspace.agents.middlewares.delegation_ledger import render_delegation_ledger
+    from alpha.agents.middlewares.delegation_ledger import render_delegation_ledger
 
     forged = {**_forged_delegation_entry(), "acceptance_verdict": _forged_acceptance_verdict()}
     result = normalize_input({"messages": [{"role": "user", "content": "hi"}], "delegations": [forged]})
@@ -502,8 +502,8 @@ def test_normalize_input_preserves_trusted_internal_delegation_verdict():
 
 def test_normalize_input_preserves_trusted_internal_original_user_content():
     from app.gateway.services import normalize_input
-    from agent_workspace.agents.middlewares.dynamic_context_middleware import _DYNAMIC_CONTEXT_REMINDER_KEY, _REMINDER_DATE_KEY
-    from agent_workspace.utils.messages import ORIGINAL_USER_CONTENT_KEY
+    from alpha.agents.middlewares.dynamic_context_middleware import _DYNAMIC_CONTEXT_REMINDER_KEY, _REMINDER_DATE_KEY
+    from alpha.utils.messages import ORIGINAL_USER_CONTENT_KEY
 
     result = normalize_input(
         {
@@ -651,7 +651,7 @@ def test_build_run_config_route_thread_id_overrides_client_configurable():
 @pytest.mark.parametrize("section", ["configurable", "context"])
 def test_build_run_config_strips_external_checkpoint_mode_override(section):
     from app.gateway.services import build_run_config
-    from agent_workspace.runtime.checkpoint_mode import INTERNAL_CHECKPOINT_MODE_KEY
+    from alpha.runtime.checkpoint_mode import INTERNAL_CHECKPOINT_MODE_KEY
 
     config = build_run_config(
         "thread-1",
@@ -695,9 +695,9 @@ def test_build_run_config_clamps_excessive_recursion_limit(_stub_app_config):
 def test_build_run_config_ceiling_is_configurable(_stub_app_config):
     """The clamp ceiling comes from AppConfig.max_recursion_limit, not a hardcoded value."""
     from app.gateway.services import build_run_config
-    from agent_workspace.config.app_config import AppConfig, reset_app_config, set_app_config
+    from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
 
-    set_app_config(AppConfig.model_validate({"sandbox": {"use": "agent_workspace.sandbox.local:LocalSandboxProvider"}, "max_recursion_limit": 300}))
+    set_app_config(AppConfig.model_validate({"sandbox": {"use": "alpha.sandbox.local:LocalSandboxProvider"}, "max_recursion_limit": 300}))
     try:
         config = build_run_config("thread-1", {"recursion_limit": 100_000_000}, None)
         assert config["recursion_limit"] == 300
@@ -813,7 +813,7 @@ def test_build_run_config_context_custom_agent_injects_agent_name():
 def test_resolve_agent_factory_returns_the_explicit_lead_assembly_factory():
     """Gateway workers receive the graph and its assembly descriptor together."""
     from app.gateway.services import resolve_agent_factory
-    from agent_workspace.agents.lead_agent.agent import assemble_lead_agent
+    from alpha.agents.lead_agent.agent import assemble_lead_agent
 
     assert resolve_agent_factory(None) is assemble_lead_agent
     assert resolve_agent_factory("lead_agent") is assemble_lead_agent
@@ -834,8 +834,8 @@ def test_build_checkpoint_state_accessor_uses_frozen_mode_and_binds_runtime_pers
     from unittest.mock import patch
 
     from app.gateway.services import build_checkpoint_state_accessor
-    from agent_workspace.config.app_config import get_app_config
-    from agent_workspace.runtime.checkpoint_mode import CHECKPOINT_MODE_METADATA_KEY, INTERNAL_CHECKPOINT_MODE_KEY
+    from alpha.config.app_config import get_app_config
+    from alpha.runtime.checkpoint_mode import CHECKPOINT_MODE_METADATA_KEY, INTERNAL_CHECKPOINT_MODE_KEY
 
     class FakeGraph:
         checkpointer = None
@@ -897,8 +897,8 @@ def test_build_checkpoint_state_accessor_accepts_lead_agent_assembly_factory(_st
     from unittest.mock import patch
 
     from app.gateway.services import build_checkpoint_state_accessor
-    from agent_workspace.agents.lead_agent.agent import LeadAgentAssembly
-    from agent_workspace.config.app_config import get_app_config
+    from alpha.agents.lead_agent.agent import LeadAgentAssembly
+    from alpha.config.app_config import get_app_config
 
     class FakeGraph:
         checkpointer = None
@@ -1338,7 +1338,7 @@ async def test_checkpoint_history_seed_guard_tolerates_missing_user_context():
     from unittest.mock import AsyncMock
 
     from app.gateway.services import ensure_checkpoint_history_seeded
-    from agent_workspace.runtime.user_context import AUTO, _AutoSentinel
+    from alpha.runtime.user_context import AUTO, _AutoSentinel
 
     captured: dict[str, object] = {}
 
@@ -1379,7 +1379,7 @@ async def test_checkpoint_history_seed_guard_is_thread_scoped_under_user_context
     from unittest.mock import AsyncMock, MagicMock, patch
 
     from app.gateway.services import ensure_checkpoint_history_seeded
-    from agent_workspace.runtime.user_context import AUTO
+    from alpha.runtime.user_context import AUTO
 
     captured: dict[str, object] = {}
 
@@ -1416,9 +1416,9 @@ async def test_checkpoint_history_seed_runs_exactly_once_across_principals(tmp_p
     from langchain_core.messages import AIMessage, HumanMessage
 
     from app.gateway.services import ensure_checkpoint_history_seeded
-    from agent_workspace.persistence.engine import close_engine, get_session_factory, init_engine
-    from agent_workspace.runtime.events.store.db import DbRunEventStore
-    from agent_workspace.runtime.user_context import reset_current_user, set_current_user
+    from alpha.persistence.engine import close_engine, get_session_factory, init_engine
+    from alpha.runtime.events.store.db import DbRunEventStore
+    from alpha.runtime.user_context import reset_current_user, set_current_user
 
     url = f"sqlite+aiosqlite:///{tmp_path / 'events.db'}"
     await init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
@@ -1503,8 +1503,8 @@ async def test_start_run_checkpoint_validation_failure_does_not_admit_run(_stub_
     from fastapi import HTTPException
 
     from app.gateway.services import start_run
-    from agent_workspace.runtime import RunManager
-    from agent_workspace.runtime.runs.store.memory import MemoryRunStore
+    from alpha.runtime import RunManager
+    from alpha.runtime.runs.store.memory import MemoryRunStore
 
     thread_id = "thread-invalid-checkpoint"
     run_store = MemoryRunStore()
@@ -1529,8 +1529,8 @@ async def test_pending_cancel_bypasses_thread_metadata_and_logs_failure(_stub_ap
     from unittest.mock import AsyncMock, patch
 
     from app.gateway.services import start_run
-    from agent_workspace.runtime import RunManager
-    from agent_workspace.runtime.runs.store.memory import MemoryRunStore
+    from alpha.runtime import RunManager
+    from alpha.runtime.runs.store.memory import MemoryRunStore
 
     metadata_started = asyncio.Event()
 
@@ -1575,10 +1575,10 @@ async def test_thread_metadata_timeout_logs_and_run_still_starts(_stub_app_confi
 
     import app.gateway.services as services
     from app.gateway.services import start_run
-    from agent_workspace.runtime import RunManager
-    from agent_workspace.runtime.runs.manager import RunStartOutcome
-    from agent_workspace.runtime.runs.schemas import RunStatus
-    from agent_workspace.runtime.runs.store.memory import MemoryRunStore
+    from alpha.runtime import RunManager
+    from alpha.runtime.runs.manager import RunStartOutcome
+    from alpha.runtime.runs.schemas import RunStatus
+    from alpha.runtime.runs.store.memory import MemoryRunStore
 
     metadata_started = asyncio.Event()
     run_agent_called = asyncio.Event()
@@ -1938,9 +1938,9 @@ async def _capture_start_run_graph_input(body, *, auth_source=None):
     from langgraph.store.memory import InMemoryStore
 
     from app.gateway.services import start_run
-    from agent_workspace.persistence.thread_meta.memory import MemoryThreadMetaStore
-    from agent_workspace.runtime import RunManager
-    from agent_workspace.runtime.runs.store.memory import MemoryRunStore
+    from alpha.persistence.thread_meta.memory import MemoryThreadMetaStore
+    from alpha.runtime import RunManager
+    from alpha.runtime.runs.store.memory import MemoryRunStore
 
     run_manager = RunManager(store=MemoryRunStore())
     state = SimpleNamespace(
@@ -1978,9 +1978,9 @@ def _make_start_run_persistence_context():
     from langgraph.checkpoint.memory import InMemorySaver
     from langgraph.store.memory import InMemoryStore
 
-    from agent_workspace.persistence.thread_meta.memory import MemoryThreadMetaStore
-    from agent_workspace.runtime import RunManager
-    from agent_workspace.runtime.runs.store.memory import MemoryRunStore
+    from alpha.persistence.thread_meta.memory import MemoryThreadMetaStore
+    from alpha.runtime import RunManager
+    from alpha.runtime.runs.store.memory import MemoryRunStore
 
     run_store = MemoryRunStore()
     thread_store = MemoryThreadMetaStore(InMemoryStore())
@@ -2171,7 +2171,7 @@ def test_start_run_strips_external_original_user_content(_stub_app_config):
     import asyncio
 
     from app.gateway.routers.thread_runs import RunCreateRequest
-    from agent_workspace.utils.messages import ORIGINAL_USER_CONTENT_KEY
+    from alpha.utils.messages import ORIGINAL_USER_CONTENT_KEY
 
     graph_input = asyncio.run(
         _capture_start_run_graph_input(
@@ -2198,7 +2198,7 @@ def test_start_run_preserves_internal_original_user_content(_stub_app_config):
 
     from app.gateway.auth_disabled import AUTH_SOURCE_INTERNAL
     from app.gateway.routers.thread_runs import RunCreateRequest
-    from agent_workspace.utils.messages import ORIGINAL_USER_CONTENT_KEY
+    from alpha.utils.messages import ORIGINAL_USER_CONTENT_KEY
 
     graph_input = asyncio.run(
         _capture_start_run_graph_input(
@@ -2232,10 +2232,10 @@ def test_start_run_uses_internal_owner_header_for_persistence(_stub_app_config):
     from app.gateway.auth_disabled import AUTH_SOURCE_INTERNAL
     from app.gateway.internal_auth import INTERNAL_OWNER_USER_ID_HEADER_NAME, INTERNAL_SYSTEM_ROLE
     from app.gateway.services import start_run
-    from agent_workspace.persistence.thread_meta.memory import MemoryThreadMetaStore
-    from agent_workspace.runtime import RunManager
-    from agent_workspace.runtime.runs.store.memory import MemoryRunStore
-    from agent_workspace.runtime.user_context import get_effective_user_id
+    from alpha.persistence.thread_meta.memory import MemoryThreadMetaStore
+    from alpha.runtime import RunManager
+    from alpha.runtime.runs.store.memory import MemoryRunStore
+    from alpha.runtime.user_context import get_effective_user_id
 
     async def _scenario():
         run_store = MemoryRunStore()
@@ -2313,9 +2313,9 @@ def test_start_run_stamps_internal_owner_guardrail_attribution(_stub_app_config)
     from app.gateway.auth_disabled import AUTH_SOURCE_INTERNAL
     from app.gateway.internal_auth import INTERNAL_OWNER_USER_ID_HEADER_NAME, INTERNAL_SYSTEM_ROLE
     from app.gateway.services import start_run
-    from agent_workspace.persistence.thread_meta.memory import MemoryThreadMetaStore
-    from agent_workspace.runtime import RunManager
-    from agent_workspace.runtime.runs.store.memory import MemoryRunStore
+    from alpha.persistence.thread_meta.memory import MemoryThreadMetaStore
+    from alpha.runtime import RunManager
+    from alpha.runtime.runs.store.memory import MemoryRunStore
 
     class _Provider:
         async def get_user(self, user_id: str):
@@ -2405,9 +2405,9 @@ def test_start_run_session_caller_anti_forgery(_stub_app_config):
     from langgraph.store.memory import InMemoryStore
 
     from app.gateway.services import start_run
-    from agent_workspace.persistence.thread_meta.memory import MemoryThreadMetaStore
-    from agent_workspace.runtime import RunManager
-    from agent_workspace.runtime.runs.store.memory import MemoryRunStore
+    from alpha.persistence.thread_meta.memory import MemoryThreadMetaStore
+    from alpha.runtime import RunManager
+    from alpha.runtime.runs.store.memory import MemoryRunStore
 
     async def _scenario():
         thread_store = MemoryThreadMetaStore(InMemoryStore())
@@ -2539,12 +2539,12 @@ def test_launch_scheduled_thread_run_uses_configured_recursion_limit(_stub_app_c
     from unittest.mock import patch
 
     from app.gateway.services import launch_scheduled_thread_run
-    from agent_workspace.config.app_config import AppConfig, set_app_config
+    from alpha.config.app_config import AppConfig, set_app_config
 
     set_app_config(
         AppConfig.model_validate(
             {
-                "sandbox": {"use": "agent_workspace.sandbox.local:LocalSandboxProvider"},
+                "sandbox": {"use": "alpha.sandbox.local:LocalSandboxProvider"},
                 "scheduler": {"recursion_limit": 1000},
             }
         )
@@ -2580,12 +2580,12 @@ def test_launch_scheduled_thread_run_recursion_limit_is_clamped_to_ceiling(_stub
     from unittest.mock import patch
 
     from app.gateway.services import launch_scheduled_thread_run
-    from agent_workspace.config.app_config import AppConfig, set_app_config
+    from alpha.config.app_config import AppConfig, set_app_config
 
     set_app_config(
         AppConfig.model_validate(
             {
-                "sandbox": {"use": "agent_workspace.sandbox.local:LocalSandboxProvider"},
+                "sandbox": {"use": "alpha.sandbox.local:LocalSandboxProvider"},
                 "max_recursion_limit": 1000,
                 "scheduler": {"recursion_limit": 5000},
             }
@@ -2757,7 +2757,7 @@ def test_launch_mcp_task_notification_run_restores_busy_thread_conflict(_stub_ap
     from fastapi import HTTPException
 
     from app.gateway.services import launch_mcp_task_notification_run
-    from agent_workspace.runtime.runs.manager import ConflictError
+    from alpha.runtime.runs.manager import ConflictError
 
     async def _scenario():
         with (
@@ -3276,9 +3276,9 @@ async def test_run_agent_invalid_stream_mode_finalizes_run_before_graph_invocati
     from types import SimpleNamespace
     from unittest.mock import AsyncMock, MagicMock
 
-    from agent_workspace.runtime.runs.manager import RunManager
-    from agent_workspace.runtime.runs.schemas import RunStatus
-    from agent_workspace.runtime.runs.worker import RunContext, run_agent
+    from alpha.runtime.runs.manager import RunManager
+    from alpha.runtime.runs.schemas import RunStatus
+    from alpha.runtime.runs.worker import RunContext, run_agent
 
     run_manager = RunManager()
     record = await run_manager.create("thread-invalid-stream-mode")
@@ -3324,13 +3324,13 @@ async def test_run_agent_full_mode_rejects_delta_before_graph_invocation():
     from types import SimpleNamespace
     from unittest.mock import AsyncMock, MagicMock
 
-    from agent_workspace.runtime.checkpoint_mode import (
+    from alpha.runtime.checkpoint_mode import (
         CHECKPOINT_MODE_METADATA_KEY,
         INTERNAL_CHECKPOINT_MODE_KEY,
     )
-    from agent_workspace.runtime.runs.manager import RunRecord, RunStartOutcome
-    from agent_workspace.runtime.runs.schemas import DisconnectMode, RunStatus
-    from agent_workspace.runtime.runs.worker import RunContext, run_agent
+    from alpha.runtime.runs.manager import RunRecord, RunStartOutcome
+    from alpha.runtime.runs.schemas import DisconnectMode, RunStatus
+    from alpha.runtime.runs.worker import RunContext, run_agent
 
     checkpointer = AsyncMock()
     checkpointer.aget_tuple.return_value = SimpleNamespace(
@@ -3401,10 +3401,10 @@ async def test_run_agent_full_mode_checks_selected_checkpoint_before_graph():
     from types import SimpleNamespace
     from unittest.mock import AsyncMock, MagicMock, call
 
-    from agent_workspace.runtime.checkpoint_mode import CHECKPOINT_MODE_METADATA_KEY
-    from agent_workspace.runtime.runs.manager import RunRecord, RunStartOutcome
-    from agent_workspace.runtime.runs.schemas import DisconnectMode, RunStatus
-    from agent_workspace.runtime.runs.worker import RunContext, run_agent
+    from alpha.runtime.checkpoint_mode import CHECKPOINT_MODE_METADATA_KEY
+    from alpha.runtime.runs.manager import RunRecord, RunStartOutcome
+    from alpha.runtime.runs.schemas import DisconnectMode, RunStatus
+    from alpha.runtime.runs.worker import RunContext, run_agent
 
     checkpointer = AsyncMock()
     checkpointer.aget_tuple.side_effect = [
@@ -3516,7 +3516,7 @@ def test_normalize_input_strips_the_server_owned_message_seq():
     is forked — a branch re-seeds its feed and reassigns seq (#4380).
     """
     from app.gateway.services import normalize_input
-    from agent_workspace.runtime.events.message_identity import MESSAGE_SEQ_KEY
+    from alpha.runtime.events.message_identity import MESSAGE_SEQ_KEY
 
     result = normalize_input(
         {
@@ -3561,7 +3561,7 @@ def test_client_forged_user_id_never_selects_another_users_credential():
     from types import SimpleNamespace
 
     from app.gateway.services import build_run_config, inject_authenticated_user_context, merge_run_context_overrides
-    from agent_workspace.runtime.user_context import resolve_runtime_user_id
+    from alpha.runtime.user_context import resolve_runtime_user_id
 
     config = build_run_config("thread-1", {"context": {"user_id": "victim"}}, None)
     merge_run_context_overrides(config, {"user_id": "victim"})
@@ -3578,7 +3578,7 @@ def _make_trace_start_run_request(run_manager):
     from langgraph.checkpoint.memory import InMemorySaver
     from langgraph.store.memory import InMemoryStore
 
-    from agent_workspace.persistence.thread_meta.memory import MemoryThreadMetaStore
+    from alpha.persistence.thread_meta.memory import MemoryThreadMetaStore
 
     return SimpleNamespace(
         headers={},
@@ -3602,8 +3602,8 @@ async def _start_run_capturing_config(body, thread_id):
     from unittest.mock import patch
 
     from app.gateway.services import start_run
-    from agent_workspace.runtime.runs.manager import RunManager
-    from agent_workspace.runtime.runs.store.memory import MemoryRunStore
+    from alpha.runtime.runs.manager import RunManager
+    from alpha.runtime.runs.store.memory import MemoryRunStore
 
     run_manager = RunManager(store=MemoryRunStore())
     request = _make_trace_start_run_request(run_manager)
@@ -3630,7 +3630,7 @@ async def test_start_run_replaces_a_caller_supplied_trace_id(_stub_app_config):
     Only the first is covered downstream, so a forged ``agent_workspace_trace_id``
     used to survive on the most visible surface of the two.
     """
-    from agent_workspace.trace_context import request_trace_context
+    from alpha.trace_context import request_trace_context
 
     body = _run_create_request(metadata={AGENT_WORKSPACE_TRACE_METADATA_KEY: "forged-by-caller", "caller_key": "kept"})
 
@@ -3647,7 +3647,7 @@ async def test_start_run_replaces_a_caller_supplied_trace_id(_stub_app_config):
 async def test_start_run_stamps_the_run_record_without_caller_metadata(_stub_app_config):
     """The run record always carries the id, so "the run records its trace id"
     holds for every run rather than only the ones that asked for it."""
-    from agent_workspace.trace_context import request_trace_context
+    from alpha.trace_context import request_trace_context
 
     body = _run_create_request()
 
@@ -3682,7 +3682,7 @@ async def test_start_run_strips_forged_trace_id_from_the_kwargs_echo(_stub_app_c
     replaced by a server value written through into the caller's request body:
     the id is ignored as an input on that surface, so any echo of it only
     manufactures disagreement with the header, the logs, and the run record."""
-    from agent_workspace.trace_context import request_trace_context
+    from alpha.trace_context import request_trace_context
 
     forged_config = {
         "metadata": {AGENT_WORKSPACE_TRACE_METADATA_KEY: "forged-in-config", "caller_key": "kept"},

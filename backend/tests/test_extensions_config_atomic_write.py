@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from agent_workspace.config import extensions_config as extensions_config_module
-from agent_workspace.config.extensions_config import atomic_write_extensions_config, extensions_config_file_lock
+from alpha.config import extensions_config as extensions_config_module
+from alpha.config.extensions_config import atomic_write_extensions_config, extensions_config_file_lock
 
 
 def _temporary_files_for(path: Path) -> list[Path]:

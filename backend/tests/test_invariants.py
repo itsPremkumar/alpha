@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from agent_workspace.diagnostics.invariants import (
+from alpha.diagnostics.invariants import (
     InvariantCheck,
     InvariantError,
     InvariantRegistry,

@@ -3,13 +3,13 @@
 Indexes every custom agent that declares a ``github:`` block by the
 ``(repo, event)`` pairs it is interested in, across all owners. Agent discovery
 and change detection go through the configured agent store
-(:mod:`agent_workspace.persistence.agents`), so both the ``file`` backend (per-user
+(:mod:`alpha.persistence.agents`), so both the ``file`` backend (per-user
 directories + the legacy shared layout) and the ``db`` backend (the shared
 ``agents`` table) are covered by the same code.
 
 The dispatcher calls :func:`build_github_agent_registry` once per webhook
 delivery. We avoid re-loading every agent on each call via a small cache keyed
-on the store's :meth:`~agent_workspace.persistence.agents.base.AgentStore.signature`
+on the store's :meth:`~alpha.persistence.agents.base.AgentStore.signature`
 change token: the file backend derives it from ``config.yaml`` mtimes (any
 edit, addition, or deletion invalidates the cache transparently); the db backend
 derives it from a deterministic digest of each agent's owner, name, config, and
@@ -31,8 +31,8 @@ from collections.abc import Hashable
 from dataclasses import dataclass
 
 from app.gateway.github.triggers import _resolved_trigger
-from agent_workspace.config.agents_config import AgentConfig, GitHubTriggerConfig
-from agent_workspace.persistence.agents import get_agent_store
+from alpha.config.agents_config import AgentConfig, GitHubTriggerConfig
+from alpha.persistence.agents import get_agent_store
 
 logger = logging.getLogger(__name__)
 

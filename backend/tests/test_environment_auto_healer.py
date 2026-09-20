@@ -2,7 +2,7 @@
 
 import pytest
 
-from agent_workspace.runtime.environment_auto_healer import (
+from alpha.runtime.environment_auto_healer import (
     CANONICAL_MODULE_MAP,
     DependencyConstraint,
     DependencySATSolver,

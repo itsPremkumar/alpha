@@ -40,8 +40,8 @@ from app.gateway.routers import mcp as mcp_router
 from app.gateway.routers import skills as skills_router
 from app.gateway.routers.mcp import McpConfigUpdateRequest
 from app.gateway.routers.skills import SkillUpdateRequest, update_skill
-from agent_workspace.config.extensions_config import ExtensionsConfig, SkillStateConfig
-from agent_workspace.skills import Skill
+from alpha.config.extensions_config import ExtensionsConfig, SkillStateConfig
+from alpha.skills import Skill
 
 pytestmark = pytest.mark.asyncio
 

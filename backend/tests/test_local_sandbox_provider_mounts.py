@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from agent_workspace.sandbox.local.local_sandbox import LocalSandbox, PathMapping
-from agent_workspace.sandbox.local.local_sandbox_provider import LocalSandboxProvider
+from alpha.sandbox.local.local_sandbox import LocalSandbox, PathMapping
+from alpha.sandbox.local.local_sandbox_provider import LocalSandboxProvider
 
 # These two tests drive the sandbox through a POSIX shell toolchain: one forces
 # ``_get_shell`` to return ``/bin/sh`` and runs ``cat``, the other shells out to
@@ -171,7 +171,7 @@ class TestReadOnlyPath:
         source.parent.mkdir(parents=True)
         view.parent.mkdir(parents=True)
         source.write_text("ORIGINAL\n", encoding="utf-8")
-        from agent_workspace.skills.projection import _copy_into_view
+        from alpha.skills.projection import _copy_into_view
 
         _copy_into_view(str(source), str(view))
         assert view.stat().st_ino != source.stat().st_ino
@@ -558,8 +558,8 @@ class TestMultipleMounts:
                 captured["command"] = args[0]
             return original_popen(*args, **kwargs)
 
-        monkeypatch.setattr("agent_workspace.sandbox.local.local_sandbox.subprocess.Popen", mock_popen)
-        monkeypatch.setattr("agent_workspace.sandbox.local.local_sandbox.LocalSandbox._get_shell", lambda self: "/bin/sh")
+        monkeypatch.setattr("alpha.sandbox.local.local_sandbox.subprocess.Popen", mock_popen)
+        monkeypatch.setattr("alpha.sandbox.local.local_sandbox.LocalSandbox._get_shell", lambda self: "/bin/sh")
 
         sandbox.execute_command("cat /mnt/data/test.txt")
         # Verify the command received the resolved local path
@@ -607,19 +607,19 @@ class TestLocalSandboxProviderMounts:
         provider = LocalSandboxProvider.__new__(LocalSandboxProvider)
 
         with patch(
-            "agent_workspace.sandbox.local.local_sandbox_provider.is_host_bash_allowed",
+            "alpha.sandbox.local.local_sandbox_provider.is_host_bash_allowed",
             return_value=False,
         ):
             assert provider.supports_agent_skill_isolation is True
 
         with patch(
-            "agent_workspace.sandbox.local.local_sandbox_provider.is_host_bash_allowed",
+            "alpha.sandbox.local.local_sandbox_provider.is_host_bash_allowed",
             return_value=True,
         ):
             assert provider.supports_agent_skill_isolation is False
 
     def test_thread_mappings_mount_per_user_integration_projections(self, tmp_path):
-        from agent_workspace.config.paths import Paths
+        from alpha.config.paths import Paths
 
         paths = Paths(base_dir=tmp_path / "home")
         skills_dir = tmp_path / "skills"
@@ -629,13 +629,13 @@ class TestLocalSandboxProviderMounts:
             skills=SimpleNamespace(
                 container_path="/mnt/skills",
                 get_skills_path=lambda: skills_dir,
-                use="agent_workspace.skills.storage.local_skill_storage:LocalSkillStorage",
+                use="alpha.skills.storage.local_skill_storage:LocalSkillStorage",
             )
         )
 
         with (
-            patch("agent_workspace.config.get_app_config", return_value=config),
-            patch("agent_workspace.config.paths.get_paths", return_value=paths),
+            patch("alpha.config.get_app_config", return_value=config),
+            patch("alpha.config.paths.get_paths", return_value=paths),
         ):
             alice = LocalSandboxProvider._build_thread_path_mappings("thread-a", user_id="alice")
             bob = LocalSandboxProvider._build_thread_path_mappings("thread-b", user_id="bob")
@@ -656,20 +656,20 @@ class TestLocalSandboxProviderMounts:
         custom_dir = tmp_path / "custom"
         custom_dir.mkdir()
 
-        from agent_workspace.config.sandbox_config import SandboxConfig, VolumeMountConfig
+        from alpha.config.sandbox_config import SandboxConfig, VolumeMountConfig
 
         sandbox_config = SandboxConfig(
-            use="agent_workspace.sandbox.local:LocalSandboxProvider",
+            use="alpha.sandbox.local:LocalSandboxProvider",
             mounts=[
                 VolumeMountConfig(host_path=str(custom_dir), container_path="/custom-skills/nested", read_only=False),
             ],
         )
         config = SimpleNamespace(
-            skills=SimpleNamespace(container_path="/custom-skills", get_skills_path=lambda: skills_dir, use="agent_workspace.skills.storage.local_skill_storage:LocalSkillStorage"),
+            skills=SimpleNamespace(container_path="/custom-skills", get_skills_path=lambda: skills_dir, use="alpha.skills.storage.local_skill_storage:LocalSkillStorage"),
             sandbox=sandbox_config,
         )
 
-        with patch("agent_workspace.config.get_app_config", return_value=config):
+        with patch("alpha.config.get_app_config", return_value=config):
             provider = LocalSandboxProvider()
 
         # Public skills are the only static skills mount; custom skills are
@@ -684,20 +684,20 @@ class TestLocalSandboxProviderMounts:
         public_dir = skills_dir / "public"
         public_dir.mkdir()
 
-        from agent_workspace.config.sandbox_config import SandboxConfig, VolumeMountConfig
+        from alpha.config.sandbox_config import SandboxConfig, VolumeMountConfig
 
         sandbox_config = SandboxConfig(
-            use="agent_workspace.sandbox.local:LocalSandboxProvider",
+            use="alpha.sandbox.local:LocalSandboxProvider",
             mounts=[
                 VolumeMountConfig(host_path="relative/path", container_path="/mnt/data", read_only=False),
             ],
         )
         config = SimpleNamespace(
-            skills=SimpleNamespace(container_path="/mnt/skills", get_skills_path=lambda: skills_dir, use="agent_workspace.skills.storage.local_skill_storage:LocalSkillStorage"),
+            skills=SimpleNamespace(container_path="/mnt/skills", get_skills_path=lambda: skills_dir, use="alpha.skills.storage.local_skill_storage:LocalSkillStorage"),
             sandbox=sandbox_config,
         )
 
-        with patch("agent_workspace.config.get_app_config", return_value=config):
+        with patch("alpha.config.get_app_config", return_value=config):
             provider = LocalSandboxProvider()
 
         # Public skills mount is static; custom skills are per-thread.
@@ -711,20 +711,20 @@ class TestLocalSandboxProviderMounts:
         custom_dir = tmp_path / "custom"
         custom_dir.mkdir()
 
-        from agent_workspace.config.sandbox_config import SandboxConfig, VolumeMountConfig
+        from alpha.config.sandbox_config import SandboxConfig, VolumeMountConfig
 
         sandbox_config = SandboxConfig(
-            use="agent_workspace.sandbox.local:LocalSandboxProvider",
+            use="alpha.sandbox.local:LocalSandboxProvider",
             mounts=[
                 VolumeMountConfig(host_path=str(custom_dir), container_path="mnt/data", read_only=False),
             ],
         )
         config = SimpleNamespace(
-            skills=SimpleNamespace(container_path="/mnt/skills", get_skills_path=lambda: skills_dir, use="agent_workspace.skills.storage.local_skill_storage:LocalSkillStorage"),
+            skills=SimpleNamespace(container_path="/mnt/skills", get_skills_path=lambda: skills_dir, use="alpha.skills.storage.local_skill_storage:LocalSkillStorage"),
             sandbox=sandbox_config,
         )
 
-        with patch("agent_workspace.config.get_app_config", return_value=config):
+        with patch("alpha.config.get_app_config", return_value=config):
             provider = LocalSandboxProvider()
 
         assert [m.container_path for m in provider._path_mappings] == ["/mnt/skills/public"]
@@ -745,21 +745,21 @@ class TestLocalSandboxProviderMounts:
         public_dir.mkdir()
         missing_host_path = tmp_path / "does-not-exist"
 
-        from agent_workspace.config.sandbox_config import SandboxConfig, VolumeMountConfig
+        from alpha.config.sandbox_config import SandboxConfig, VolumeMountConfig
 
         sandbox_config = SandboxConfig(
-            use="agent_workspace.sandbox.local:LocalSandboxProvider",
+            use="alpha.sandbox.local:LocalSandboxProvider",
             mounts=[
                 VolumeMountConfig(host_path=str(missing_host_path), container_path="/mnt/knowledge", read_only=True),
             ],
         )
         config = SimpleNamespace(
-            skills=SimpleNamespace(container_path="/mnt/skills", get_skills_path=lambda: skills_dir, use="agent_workspace.skills.storage.local_skill_storage:LocalSkillStorage"),
+            skills=SimpleNamespace(container_path="/mnt/skills", get_skills_path=lambda: skills_dir, use="alpha.skills.storage.local_skill_storage:LocalSkillStorage"),
             sandbox=sandbox_config,
         )
 
-        with caplog.at_level("ERROR", logger="agent_workspace.sandbox.local.local_sandbox_provider"):
-            with patch("agent_workspace.config.get_app_config", return_value=config):
+        with caplog.at_level("ERROR", logger="alpha.sandbox.local.local_sandbox_provider"):
+            with patch("alpha.config.get_app_config", return_value=config):
                 provider = LocalSandboxProvider()
 
         # Silent-skip behaviour is preserved (no breaking change for existing deployments).
@@ -951,20 +951,20 @@ class TestLocalSandboxProviderMounts:
         custom_dir = tmp_path / "custom"
         custom_dir.mkdir()
 
-        from agent_workspace.config.sandbox_config import SandboxConfig, VolumeMountConfig
+        from alpha.config.sandbox_config import SandboxConfig, VolumeMountConfig
 
         sandbox_config = SandboxConfig(
-            use="agent_workspace.sandbox.local:LocalSandboxProvider",
+            use="alpha.sandbox.local:LocalSandboxProvider",
             mounts=[
                 VolumeMountConfig(host_path=str(custom_dir), container_path="/mnt/data/", read_only=False),
             ],
         )
         config = SimpleNamespace(
-            skills=SimpleNamespace(container_path="/mnt/skills", get_skills_path=lambda: skills_dir, use="agent_workspace.skills.storage.local_skill_storage:LocalSkillStorage"),
+            skills=SimpleNamespace(container_path="/mnt/skills", get_skills_path=lambda: skills_dir, use="alpha.skills.storage.local_skill_storage:LocalSkillStorage"),
             sandbox=sandbox_config,
         )
 
-        with patch("agent_workspace.config.get_app_config", return_value=config):
+        with patch("alpha.config.get_app_config", return_value=config):
             provider = LocalSandboxProvider()
 
         assert [m.container_path for m in provider._path_mappings] == ["/mnt/skills/public", "/mnt/data"]
@@ -979,26 +979,26 @@ class TestLocalSandboxProviderResetClearsSingleton:
     """
 
     def _build_config(self, skills_dir, mounts):
-        from agent_workspace.config.sandbox_config import SandboxConfig
+        from alpha.config.sandbox_config import SandboxConfig
 
         sandbox_config = SandboxConfig(
-            use="agent_workspace.sandbox.local:LocalSandboxProvider",
+            use="alpha.sandbox.local:LocalSandboxProvider",
             mounts=mounts,
         )
         return SimpleNamespace(
             skills=SimpleNamespace(
                 container_path="/mnt/skills",
                 get_skills_path=lambda: skills_dir,
-                use="agent_workspace.skills.storage.local_skill_storage:LocalSkillStorage",
+                use="alpha.skills.storage.local_skill_storage:LocalSkillStorage",
             ),
             sandbox=sandbox_config,
         )
 
     def test_reset_sandbox_provider_clears_local_singleton(self, tmp_path):
-        from agent_workspace.config.sandbox_config import VolumeMountConfig
-        from agent_workspace.sandbox import local as local_module
-        from agent_workspace.sandbox.local import local_sandbox_provider as lsp_module
-        from agent_workspace.sandbox.sandbox_provider import (
+        from alpha.config.sandbox_config import VolumeMountConfig
+        from alpha.sandbox import local as local_module
+        from alpha.sandbox.local import local_sandbox_provider as lsp_module
+        from alpha.sandbox.sandbox_provider import (
             get_sandbox_provider,
             reset_sandbox_provider,
         )
@@ -1024,7 +1024,7 @@ class TestLocalSandboxProviderResetClearsSingleton:
         reset_sandbox_provider()
 
         try:
-            with patch("agent_workspace.sandbox.sandbox_provider.get_app_config", return_value=first_cfg), patch("agent_workspace.config.get_app_config", return_value=first_cfg):
+            with patch("alpha.sandbox.sandbox_provider.get_app_config", return_value=first_cfg), patch("alpha.config.get_app_config", return_value=first_cfg):
                 provider = get_sandbox_provider()
                 provider.acquire()
 
@@ -1037,7 +1037,7 @@ class TestLocalSandboxProviderResetClearsSingleton:
             # The whole point of the regression: reset must drop the cached LocalSandbox.
             assert lsp_module._singleton is None
 
-            with patch("agent_workspace.sandbox.sandbox_provider.get_app_config", return_value=second_cfg), patch("agent_workspace.config.get_app_config", return_value=second_cfg):
+            with patch("alpha.sandbox.sandbox_provider.get_app_config", return_value=second_cfg), patch("alpha.config.get_app_config", return_value=second_cfg):
                 provider2 = get_sandbox_provider()
                 provider2.acquire()
 
@@ -1054,9 +1054,9 @@ class TestLocalSandboxProviderResetClearsSingleton:
         assert hasattr(local_module.local_sandbox_provider, "_singleton")
 
     def test_shutdown_sandbox_provider_clears_local_singleton(self, tmp_path):
-        from agent_workspace.config.sandbox_config import VolumeMountConfig
-        from agent_workspace.sandbox.local import local_sandbox_provider as lsp_module
-        from agent_workspace.sandbox.sandbox_provider import (
+        from alpha.config.sandbox_config import VolumeMountConfig
+        from alpha.sandbox.local import local_sandbox_provider as lsp_module
+        from alpha.sandbox.sandbox_provider import (
             get_sandbox_provider,
             reset_sandbox_provider,
             shutdown_sandbox_provider,
@@ -1076,7 +1076,7 @@ class TestLocalSandboxProviderResetClearsSingleton:
         reset_sandbox_provider()
 
         try:
-            with patch("agent_workspace.sandbox.sandbox_provider.get_app_config", return_value=cfg), patch("agent_workspace.config.get_app_config", return_value=cfg):
+            with patch("alpha.sandbox.sandbox_provider.get_app_config", return_value=cfg), patch("alpha.config.get_app_config", return_value=cfg):
                 provider = get_sandbox_provider()
                 provider.acquire()
 
@@ -1090,8 +1090,8 @@ class TestLocalSandboxProviderResetClearsSingleton:
             reset_sandbox_provider()
 
     def test_provider_reset_method_is_idempotent(self, tmp_path):
-        from agent_workspace.sandbox.local import local_sandbox_provider as lsp_module
-        from agent_workspace.sandbox.local.local_sandbox_provider import LocalSandboxProvider
+        from alpha.sandbox.local import local_sandbox_provider as lsp_module
+        from alpha.sandbox.local.local_sandbox_provider import LocalSandboxProvider
 
         skills_dir = tmp_path / "skills"
         skills_dir.mkdir()
@@ -1100,7 +1100,7 @@ class TestLocalSandboxProviderResetClearsSingleton:
         lsp_module._singleton = None
 
         try:
-            with patch("agent_workspace.config.get_app_config", return_value=cfg):
+            with patch("alpha.config.get_app_config", return_value=cfg):
                 provider = LocalSandboxProvider()
                 provider.acquire()
             assert lsp_module._singleton is not None

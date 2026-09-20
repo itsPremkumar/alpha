@@ -17,10 +17,10 @@ from langgraph.types import Overwrite
 
 from app.gateway import services as gateway_services
 from app.gateway.routers import thread_runs, threads
-from agent_workspace.config.paths import Paths
-from agent_workspace.persistence.engine import close_engine, get_session_factory, init_engine
-from agent_workspace.persistence.projects import ProjectRepository
-from agent_workspace.persistence.thread_meta import (
+from alpha.config.paths import Paths
+from alpha.persistence.engine import close_engine, get_session_factory, init_engine
+from alpha.persistence.projects import ProjectRepository
+from alpha.persistence.thread_meta import (
     PROJECT_FILTER_UNSET,
     THREAD_PINNED_METADATA_KEY,
     THREAD_PROJECT_METADATA_KEY,
@@ -28,10 +28,10 @@ from agent_workspace.persistence.thread_meta import (
     ThreadMetaRepository,
     ThreadOwnershipConflictError,
 )
-from agent_workspace.persistence.thread_meta.memory import THREADS_NS, MemoryThreadMetaStore
-from agent_workspace.runtime import ConflictError, ThreadOperationKind
-from agent_workspace.runtime.checkpoint_state import CheckpointStateAccessor
-from agent_workspace.runtime.user_context import reset_current_user, set_current_user
+from alpha.persistence.thread_meta.memory import THREADS_NS, MemoryThreadMetaStore
+from alpha.runtime import ConflictError, ThreadOperationKind
+from alpha.runtime.checkpoint_state import CheckpointStateAccessor
+from alpha.runtime.user_context import reset_current_user, set_current_user
 
 _ISO_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
 
@@ -111,8 +111,8 @@ def test_thread_response_excludes_internal_incarnation() -> None:
 
 def test_compact_rejects_run_owned_by_another_worker(monkeypatch) -> None:
     """The HTTP guard must consult the shared store, not only local run memory."""
-    from agent_workspace.runtime import RunManager, RunStatus
-    from agent_workspace.runtime.runs.store.memory import MemoryRunStore
+    from alpha.runtime import RunManager, RunStatus
+    from alpha.runtime.runs.store.memory import MemoryRunStore
 
     app, _store, _checkpointer = _build_thread_app()
     run_store = MemoryRunStore()
@@ -142,8 +142,8 @@ def test_compact_rejects_run_owned_by_another_worker(monkeypatch) -> None:
 
 def test_update_state_rejects_run_owned_by_another_worker(monkeypatch) -> None:
     """All out-of-run writes share the same durable thread-operation admission."""
-    from agent_workspace.runtime import RunManager, RunStatus
-    from agent_workspace.runtime.runs.store.memory import MemoryRunStore
+    from alpha.runtime import RunManager, RunStatus
+    from alpha.runtime.runs.store.memory import MemoryRunStore
 
     app, _store, _checkpointer = _build_thread_app()
     run_store = MemoryRunStore()
@@ -384,7 +384,7 @@ def test_delete_thread_data_rejects_invalid_thread_id(tmp_path):
 
 
 def test_delete_thread_route_cleans_thread_directory(tmp_path):
-    from agent_workspace.runtime.user_context import get_effective_user_id
+    from alpha.runtime.user_context import get_effective_user_id
 
     paths = Paths(tmp_path)
     user_id = get_effective_user_id()
@@ -418,7 +418,7 @@ def test_delete_thread_route_closes_browser_session(tmp_path):
     with (
         patch("app.gateway.routers.threads.get_paths", return_value=paths),
         patch(
-            "agent_workspace.community.browser_automation.get_browser_session_manager",
+            "alpha.community.browser_automation.get_browser_session_manager",
             return_value=manager,
         ),
     ):
@@ -1003,8 +1003,8 @@ def test_goal_status_and_clear_round_trip() -> None:
 
 def test_goal_mutations_reject_run_owned_by_another_worker() -> None:
     """PUT and DELETE goal writes share the durable thread-operation boundary."""
-    from agent_workspace.runtime import RunManager, RunStatus
-    from agent_workspace.runtime.runs.store.memory import MemoryRunStore
+    from alpha.runtime import RunManager, RunStatus
+    from alpha.runtime.runs.store.memory import MemoryRunStore
 
     app, _store, _checkpointer = _build_thread_app()
     run_store = MemoryRunStore()
@@ -1760,7 +1760,7 @@ def test_get_thread_history_preserves_boundary_fallback_after_complete_partial_l
 
 def test_get_thread_history_removes_synthesized_boundary_when_exact_lookup_is_incomplete() -> None:
     """Unsafe pagination removes only attribution it cannot prove."""
-    from agent_workspace.runtime.events.store.base import IncompleteMessageRunLookupError
+    from alpha.runtime.events.store.base import IncompleteMessageRunLookupError
 
     app, _store, checkpointer = _build_thread_app()
     thread_id = "history-incomplete-exact-attribution"
@@ -2177,7 +2177,7 @@ def test_get_thread_history_backfills_legacy_durations_with_exact_event_run_id()
 
 def test_get_thread_history_finds_ai_event_beyond_ten_thousand_newer_events() -> None:
     """#4949: no arbitrary page cap may turn an old exact run into a boundary run."""
-    from agent_workspace.runtime.events.store.memory import MemoryRunEventStore
+    from alpha.runtime.events.store.memory import MemoryRunEventStore
 
     app, _store, checkpointer = _build_thread_app()
     thread_id = "legacy-history-run-id-paginated"
@@ -2360,7 +2360,7 @@ def test_get_thread_history_injects_turn_duration_once_per_run() -> None:
     messages."""
     from unittest.mock import AsyncMock, MagicMock
 
-    from agent_workspace.runtime import RunRecord
+    from alpha.runtime import RunRecord
 
     def _run(run_id: str, seconds: int) -> RunRecord:
         return RunRecord(
@@ -3042,7 +3042,7 @@ def _wire_extension_agent(monkeypatch, app, checkpointer, mode):
     from langchain.agents.middleware import AgentMiddleware
     from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 
-    from agent_workspace.agents.thread_state import get_thread_state_schema
+    from alpha.agents.thread_state import get_thread_state_schema
 
     class ExtensionState(TypedDict):
         ext_list: NotRequired[Annotated[list[str], operator.add]]
@@ -3252,7 +3252,7 @@ def test_branch_seeds_run_events_with_parent_history(monkeypatch, mode) -> None:
     message rows, so the inherited history vanishes from the UI as soon as
     the branch's first run refreshes the feed (#4380 problem 2).
     """
-    from agent_workspace.runtime.events.store.memory import MemoryRunEventStore
+    from alpha.runtime.events.store.memory import MemoryRunEventStore
 
     app, _store, checkpointer = _build_thread_app()
     custom_factory = _wire_extension_agent(monkeypatch, app, checkpointer, mode)
@@ -3976,7 +3976,7 @@ class TestRestReadsCarryMessageSeq:
         asyncio.run(_seed())
 
     def _app_with_feed(self, thread_id: str):
-        from agent_workspace.runtime.events.store.memory import MemoryRunEventStore
+        from alpha.runtime.events.store.memory import MemoryRunEventStore
 
         app, _store, checkpointer = _build_thread_app()
         app.state.run_event_store = MemoryRunEventStore()
@@ -4005,7 +4005,7 @@ class TestRestReadsCarryMessageSeq:
 
     def test_a_message_the_feed_does_not_know_is_left_unstamped(self) -> None:
         """Only persisted messages get a seq; the rest keep the weaving path."""
-        from agent_workspace.runtime.events.store.memory import MemoryRunEventStore
+        from alpha.runtime.events.store.memory import MemoryRunEventStore
 
         app, _store, checkpointer = _build_thread_app()
         app.state.run_event_store = MemoryRunEventStore()

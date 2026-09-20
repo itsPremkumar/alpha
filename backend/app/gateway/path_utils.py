@@ -5,8 +5,8 @@ from pathlib import Path
 
 from fastapi import HTTPException
 
-from agent_workspace.config.paths import VIRTUAL_PATH_PREFIX, get_paths
-from agent_workspace.runtime.user_context import get_effective_user_id
+from alpha.config.paths import VIRTUAL_PATH_PREFIX, get_paths
+from alpha.runtime.user_context import get_effective_user_id
 
 OUTPUTS_VIRTUAL_ROOT = f"{VIRTUAL_PATH_PREFIX}/outputs"
 _OUTPUTS_PREFIX = OUTPUTS_VIRTUAL_ROOT.lstrip("/") + "/"

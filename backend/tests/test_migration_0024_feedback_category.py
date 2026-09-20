@@ -13,8 +13,8 @@ import sqlalchemy as sa
 from alembic import command
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from agent_workspace.persistence.bootstrap import _get_alembic_config, _get_head_revision
-from agent_workspace.persistence.postgres_schema import build_asyncpg_connect_args
+from alpha.persistence.bootstrap import _get_alembic_config, _get_head_revision
+from alpha.persistence.postgres_schema import build_asyncpg_connect_args
 
 pytestmark = pytest.mark.asyncio
 

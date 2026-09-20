@@ -9,18 +9,18 @@ from langchain_core.tools import tool
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
-from agent_workspace.agents import thread_state as thread_state_module
-from agent_workspace.agents.lead_agent import agent as lead_agent_module
-from agent_workspace.agents.middlewares.durable_context_middleware import DurableContextMiddleware
-from agent_workspace.agents.middlewares.subagent_limit_middleware import SubagentLimitMiddleware
-from agent_workspace.agents.middlewares.summarization_middleware import AgentWorkspaceSummarizationMiddleware
-from agent_workspace.agents.middlewares.tool_error_handling_middleware import ToolErrorHandlingMiddleware
-from agent_workspace.agents.thread_state import ThreadState, merge_delegations
-from agent_workspace.config.app_config import AppConfig
-from agent_workspace.config.model_config import ModelConfig
-from agent_workspace.config.sandbox_config import SandboxConfig
-from agent_workspace.runtime.context_keys import CURRENT_RUN_PRE_EXISTING_MESSAGE_IDS_KEY
-from agent_workspace.subagents.status_contract import make_subagent_additional_kwargs
+from alpha.agents import thread_state as thread_state_module
+from alpha.agents.lead_agent import agent as lead_agent_module
+from alpha.agents.middlewares.durable_context_middleware import DurableContextMiddleware
+from alpha.agents.middlewares.subagent_limit_middleware import SubagentLimitMiddleware
+from alpha.agents.middlewares.summarization_middleware import AgentWorkspaceSummarizationMiddleware
+from alpha.agents.middlewares.tool_error_handling_middleware import ToolErrorHandlingMiddleware
+from alpha.agents.thread_state import ThreadState, merge_delegations
+from alpha.config.app_config import AppConfig
+from alpha.config.model_config import ModelConfig
+from alpha.config.sandbox_config import SandboxConfig
+from alpha.runtime.context_keys import CURRENT_RUN_PRE_EXISTING_MESSAGE_IDS_KEY
+from alpha.subagents.status_contract import make_subagent_additional_kwargs
 
 
 def _make_app_config() -> AppConfig:

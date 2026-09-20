@@ -12,8 +12,8 @@ from _router_auth_helpers import call_unwrapped
 from fastapi import UploadFile
 
 from app.gateway.routers import uploads
-from agent_workspace.runtime.user_context import get_effective_user_id
-from agent_workspace.uploads.manager import ensure_uploads_dir, get_uploads_dir
+from alpha.runtime.user_context import get_effective_user_id
+from alpha.uploads.manager import ensure_uploads_dir, get_uploads_dir
 
 pytestmark = pytest.mark.asyncio
 
@@ -62,7 +62,7 @@ class _RemoteProvider:
 def _reset_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
 
-    import agent_workspace.config.paths as paths_mod
+    import alpha.config.paths as paths_mod
 
     monkeypatch.setattr(paths_mod, "_paths", None)
 

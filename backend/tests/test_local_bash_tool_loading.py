@@ -1,13 +1,13 @@
 from types import SimpleNamespace
 
-from agent_workspace.sandbox.security import is_host_bash_allowed
-from agent_workspace.tools.tools import get_available_tools
+from alpha.sandbox.security import is_host_bash_allowed
+from alpha.tools.tools import get_available_tools
 
 
-def _make_config(*, allow_host_bash: bool, sandbox_use: str = "agent_workspace.sandbox.local:LocalSandboxProvider", extra_tools: list[SimpleNamespace] | None = None):
+def _make_config(*, allow_host_bash: bool, sandbox_use: str = "alpha.sandbox.local:LocalSandboxProvider", extra_tools: list[SimpleNamespace] | None = None):
     return SimpleNamespace(
         tools=[
-            SimpleNamespace(name="bash", group="bash", use="agent_workspace.sandbox.tools:bash_tool"),
+            SimpleNamespace(name="bash", group="bash", use="alpha.sandbox.tools:bash_tool"),
             SimpleNamespace(name="ls", group="file:read", use="tests:ls_tool"),
             *(extra_tools or []),
         ],
@@ -22,9 +22,9 @@ def _make_config(*, allow_host_bash: bool, sandbox_use: str = "agent_workspace.s
 
 
 def test_get_available_tools_hides_bash_for_default_local_sandbox(monkeypatch):
-    monkeypatch.setattr("agent_workspace.tools.tools.get_app_config", lambda: _make_config(allow_host_bash=False))
+    monkeypatch.setattr("alpha.tools.tools.get_app_config", lambda: _make_config(allow_host_bash=False))
     monkeypatch.setattr(
-        "agent_workspace.tools.tools.resolve_variable",
+        "alpha.tools.tools.resolve_variable",
         lambda use, _: SimpleNamespace(name="bash" if "bash" in use else "ls"),
     )
 
@@ -35,9 +35,9 @@ def test_get_available_tools_hides_bash_for_default_local_sandbox(monkeypatch):
 
 
 def test_get_available_tools_keeps_bash_when_explicitly_enabled(monkeypatch):
-    monkeypatch.setattr("agent_workspace.tools.tools.get_app_config", lambda: _make_config(allow_host_bash=True))
+    monkeypatch.setattr("alpha.tools.tools.get_app_config", lambda: _make_config(allow_host_bash=True))
     monkeypatch.setattr(
-        "agent_workspace.tools.tools.resolve_variable",
+        "alpha.tools.tools.resolve_variable",
         lambda use, _: SimpleNamespace(name="bash" if "bash" in use else "ls"),
     )
 
@@ -50,11 +50,11 @@ def test_get_available_tools_keeps_bash_when_explicitly_enabled(monkeypatch):
 def test_get_available_tools_hides_renamed_host_bash_alias(monkeypatch):
     config = _make_config(
         allow_host_bash=False,
-        extra_tools=[SimpleNamespace(name="shell", group="bash", use="agent_workspace.sandbox.tools:bash_tool")],
+        extra_tools=[SimpleNamespace(name="shell", group="bash", use="alpha.sandbox.tools:bash_tool")],
     )
-    monkeypatch.setattr("agent_workspace.tools.tools.get_app_config", lambda: config)
+    monkeypatch.setattr("alpha.tools.tools.get_app_config", lambda: config)
     monkeypatch.setattr(
-        "agent_workspace.tools.tools.resolve_variable",
+        "alpha.tools.tools.resolve_variable",
         lambda use, _: SimpleNamespace(name="bash" if "bash_tool" in use else "ls"),
     )
 
@@ -68,11 +68,11 @@ def test_get_available_tools_hides_renamed_host_bash_alias(monkeypatch):
 def test_get_available_tools_keeps_bash_for_aio_sandbox(monkeypatch):
     config = _make_config(
         allow_host_bash=False,
-        sandbox_use="agent_workspace.community.aio_sandbox:AioSandboxProvider",
+        sandbox_use="alpha.community.aio_sandbox:AioSandboxProvider",
     )
-    monkeypatch.setattr("agent_workspace.tools.tools.get_app_config", lambda: config)
+    monkeypatch.setattr("alpha.tools.tools.get_app_config", lambda: config)
     monkeypatch.setattr(
-        "agent_workspace.tools.tools.resolve_variable",
+        "alpha.tools.tools.resolve_variable",
         lambda use, _: SimpleNamespace(name="bash" if "bash_tool" in use else "ls"),
     )
 

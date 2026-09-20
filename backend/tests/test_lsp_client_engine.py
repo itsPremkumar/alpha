@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from agent_workspace.coding.lsp_client_engine import (
+from alpha.coding.lsp_client_engine import (
     HoverRecord,
     IndexFormat,
     LanguageServerIntelligenceEngine,
@@ -20,7 +20,7 @@ from agent_workspace.coding.lsp_client_engine import (
     _uri_to_path,
     run_coroutine,
 )
-from agent_workspace.tools.builtins.lsp_intelligence_tool import query_language_server_symbol
+from alpha.tools.builtins.lsp_intelligence_tool import query_language_server_symbol
 
 SERVICE_SOURCE = '''
 """Payment service module."""

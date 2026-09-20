@@ -1,5 +1,5 @@
 
-from agent_workspace.verification.evidence import (
+from alpha.verification.evidence import (
     ContradictionDetector,
     EvidenceMatrix,
     FinishFirstAuditor,

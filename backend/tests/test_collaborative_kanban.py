@@ -2,10 +2,10 @@
 
 from pathlib import Path
 
-from agent_workspace.groups.service import GroupChatService
-from agent_workspace.kanban.dependency import DependencyGraph
-from agent_workspace.kanban.models import KanbanTask
-from agent_workspace.kanban.store import KanbanStore
+from alpha.groups.service import GroupChatService
+from alpha.kanban.dependency import DependencyGraph
+from alpha.kanban.models import KanbanTask
+from alpha.kanban.store import KanbanStore
 
 
 def test_dependency_graph_cycle_detection():
@@ -112,7 +112,7 @@ def test_kanban_bridge_broadcast(tmp_path: Path):
     # Configure services
     group_service = GroupChatService(storage_path=room_file)
     # Monkey-patch global group service for bridge testing
-    import agent_workspace.kanban.bridge as bridge_module
+    import alpha.kanban.bridge as bridge_module
     old_service_getter = bridge_module.get_group_chat_service
     bridge_module.get_group_chat_service = lambda: group_service
 

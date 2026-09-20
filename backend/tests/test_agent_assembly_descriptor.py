@@ -107,7 +107,7 @@ class TestLeadAgentAssembly:
         """langgraph.json declares this factory; its ABI must not move."""
         import inspect
 
-        from agent_workspace.agents.lead_agent.agent import make_lead_agent
+        from alpha.agents.lead_agent.agent import make_lead_agent
 
         signature = inspect.signature(make_lead_agent)
         assert list(signature.parameters) == ["config"]
@@ -122,11 +122,11 @@ class TestLeadAgentAssembly:
         entries are all commented out, and assembly raises "No chat models are
         configured" before it can produce anything to assert on.
         """
-        from agent_workspace.agents.lead_agent import agent as lead_agent_module
-        from agent_workspace.config.app_config import AppConfig
-        from agent_workspace.config.model_config import ModelConfig
-        from agent_workspace.config.sandbox_config import SandboxConfig
-        from agent_workspace.config.subagents_config import CustomSubagentConfig, SubagentsAppConfig
+        from alpha.agents.lead_agent import agent as lead_agent_module
+        from alpha.config.app_config import AppConfig
+        from alpha.config.model_config import ModelConfig
+        from alpha.config.sandbox_config import SandboxConfig
+        from alpha.config.subagents_config import CustomSubagentConfig, SubagentsAppConfig
 
         app_config = AppConfig(
             models=[
@@ -141,7 +141,7 @@ class TestLeadAgentAssembly:
                 )
             ],
             subagents=SubagentsAppConfig(custom_agents={"researcher": CustomSubagentConfig(description="research", system_prompt="research")}),
-            sandbox=SandboxConfig(use="agent_workspace.sandbox.local:LocalSandboxProvider"),
+            sandbox=SandboxConfig(use="alpha.sandbox.local:LocalSandboxProvider"),
         )
         monkeypatch.setattr(lead_agent_module, "get_app_config", lambda: app_config)
         monkeypatch.setattr(
@@ -160,7 +160,7 @@ class TestLeadAgentAssembly:
         and schema, probing every middleware), so it only happens when an
         observer is actually registered to receive it.
         """
-        from agent_workspace.extensions.registry import ExtensionRegistry
+        from alpha.extensions.registry import ExtensionRegistry
 
         class _NoOpObserver:
             def on_agent_assembled(self, app_store, descriptor):
@@ -172,8 +172,8 @@ class TestLeadAgentAssembly:
         return registry.build()
 
     def test_assemble_returns_both_the_graph_and_a_descriptor(self, monkeypatch):
-        from agent_workspace.agents.lead_agent.agent import LeadAgentAssembly, assemble_lead_agent
-        from agent_workspace.extensions import bind_agent_build_extensions
+        from alpha.agents.lead_agent.agent import LeadAgentAssembly, assemble_lead_agent
+        from alpha.extensions import bind_agent_build_extensions
 
         self._isolate_from_the_ambient_config(monkeypatch)
         with bind_agent_build_extensions(self._extensions_with_an_agent_assembly_observer()):
@@ -186,10 +186,10 @@ class TestLeadAgentAssembly:
     def test_descriptor_hashes_the_same_scoped_prompt_passed_to_the_graph(self, monkeypatch):
         from agent_workspace_extension_api import canonical_hash
 
-        from agent_workspace.agents.lead_agent import agent as lead_agent_module
-        from agent_workspace.agents.lead_agent.agent import assemble_lead_agent
-        from agent_workspace.config.agents_config import AgentConfig
-        from agent_workspace.extensions import bind_agent_build_extensions
+        from alpha.agents.lead_agent import agent as lead_agent_module
+        from alpha.agents.lead_agent.agent import assemble_lead_agent
+        from alpha.config.agents_config import AgentConfig
+        from alpha.extensions import bind_agent_build_extensions
 
         self._isolate_from_the_ambient_config(monkeypatch)
         agent_config = AgentConfig(name="custom", allowed_subagents=["general-purpose"])
@@ -221,10 +221,10 @@ class TestLeadAgentAssembly:
     def test_descriptor_subagent_policy_respects_custom_agent_allowed_subagents(self, monkeypatch):
         """Fixes #5205: custom agent assembly descriptor must restrict its
         subagents policy allowlist and runtime limits to allowed_subagents."""
-        from agent_workspace.agents.lead_agent import agent as lead_agent_module
-        from agent_workspace.agents.lead_agent.agent import assemble_lead_agent
-        from agent_workspace.config.agents_config import AgentConfig
-        from agent_workspace.extensions import bind_agent_build_extensions
+        from alpha.agents.lead_agent import agent as lead_agent_module
+        from alpha.agents.lead_agent.agent import assemble_lead_agent
+        from alpha.config.agents_config import AgentConfig
+        from alpha.extensions import bind_agent_build_extensions
 
         self._isolate_from_the_ambient_config(monkeypatch)
         agent_config = AgentConfig(name="custom", allowed_subagents=["general-purpose"])
@@ -247,8 +247,8 @@ class TestLeadAgentAssembly:
         assert list(subagent_policy["runtime_limits"].keys()) == ["general-purpose"]
 
     def test_observers_receive_the_descriptor(self, monkeypatch):
-        from agent_workspace.agents.lead_agent.agent import assemble_lead_agent
-        from agent_workspace.extensions import bind_agent_build_extensions
+        from alpha.agents.lead_agent.agent import assemble_lead_agent
+        from alpha.extensions import bind_agent_build_extensions
 
         seen = []
 
@@ -257,7 +257,7 @@ class TestLeadAgentAssembly:
                 seen.append(descriptor)
 
         monkeypatch.setattr(
-            "agent_workspace.extensions.notify.notify_agent_assembled",
+            "alpha.extensions.notify.notify_agent_assembled",
             lambda descriptor, extensions=None: Observer().on_agent_assembled(None, descriptor),
         )
         self._isolate_from_the_ambient_config(monkeypatch)
@@ -269,12 +269,12 @@ class TestLeadAgentAssembly:
         """The zero-observer fast path must skip the expensive build entirely,
         not just skip notifying — mirroring notify_agent_assembled's own
         zero-observer short-circuit."""
-        from agent_workspace.agents.lead_agent.agent import assemble_lead_agent
+        from alpha.agents.lead_agent.agent import assemble_lead_agent
 
         def _fail(*args, **kwargs):
             raise AssertionError("build_assembly_descriptor must not run without an observer")
 
-        monkeypatch.setattr("agent_workspace.agents.assembly_descriptor.build_assembly_descriptor", _fail)
+        monkeypatch.setattr("alpha.agents.assembly_descriptor.build_assembly_descriptor", _fail)
         self._isolate_from_the_ambient_config(monkeypatch)
         assembly = assemble_lead_agent({"configurable": {"thread_id": "t-3"}})
         assert assembly.descriptor is None
@@ -284,14 +284,14 @@ class TestFactoryConsumersUnwrapTheGraph:
     """A missed unwrap fails at request time, not at import time."""
 
     def test_worker_unwraps_the_assembly(self):
-        from agent_workspace.agents.lead_agent.agent import LeadAgentAssembly
-        from agent_workspace.runtime.runs.worker import _agent_graph
+        from alpha.agents.lead_agent.agent import LeadAgentAssembly
+        from alpha.runtime.runs.worker import _agent_graph
 
         graph = object()
         assert _agent_graph(LeadAgentAssembly(graph=graph, descriptor=object())) is graph
 
     def test_worker_leaves_a_third_party_bare_graph_alone(self):
-        from agent_workspace.runtime.runs.worker import _agent_graph
+        from alpha.runtime.runs.worker import _agent_graph
 
         graph = object()
         assert _agent_graph(graph) is graph
@@ -299,7 +299,7 @@ class TestFactoryConsumersUnwrapTheGraph:
 
 class TestAssemblyObserverHost:
     def test_registration_survives_rollback_of_a_later_install(self):
-        from agent_workspace.extensions.registry import ExtensionRegistry
+        from alpha.extensions.registry import ExtensionRegistry
 
         class Observer:
             def on_agent_assembled(self, app_store, descriptor):
@@ -321,8 +321,8 @@ class TestAssemblyObserverHost:
         assert loaded.needs_task_store is False
 
     def test_a_broken_observer_does_not_stop_its_successors(self, caplog):
-        from agent_workspace.extensions.notify import notify_agent_assembled
-        from agent_workspace.extensions.registry import ExtensionRegistry
+        from alpha.extensions.notify import notify_agent_assembled
+        from alpha.extensions.registry import ExtensionRegistry
 
         seen = []
 
@@ -379,11 +379,11 @@ class TestBuildIdentityIsOutsideTheFingerprint:
         assert before.build != after.build
 
     def test_the_builder_reports_a_build_without_hashing_it(self):
-        from agent_workspace.agents.assembly_descriptor import build_assembly_descriptor
+        from alpha.agents.assembly_descriptor import build_assembly_descriptor
 
         def make():
             return build_assembly_descriptor(
-                namespace="agent_workspace",
+                namespace="alpha",
                 agent_name="lead-agent",
                 requested_model=None,
                 effective_model="gpt-x",
@@ -409,7 +409,7 @@ class TestWrappedExtensionMiddlewaresStayDistinguishable:
 
     @staticmethod
     def _wrap(inner, source):
-        from agent_workspace.extensions.isolation import IsolatedMiddleware
+        from alpha.extensions.isolation import IsolatedMiddleware
 
         return IsolatedMiddleware(inner, source, lambda diagnostic: None)
 
@@ -423,7 +423,7 @@ class TestWrappedExtensionMiddlewaresStayDistinguishable:
         return type(name, (AgentMiddleware,), namespace)()
 
     def test_two_extensions_middlewares_do_not_collapse_into_one_descriptor(self):
-        from agent_workspace.agents.assembly_descriptor import describe_middleware
+        from alpha.agents.assembly_descriptor import describe_middleware
 
         first = describe_middleware(self._wrap(self._inner("AlphaMiddleware"), "ext-a"))
         second = describe_middleware(self._wrap(self._inner("BetaMiddleware"), "ext-b"))
@@ -435,7 +435,7 @@ class TestWrappedExtensionMiddlewaresStayDistinguishable:
         assert first != second
 
     def test_a_wrapped_declaration_reaches_the_descriptor(self):
-        from agent_workspace.agents.assembly_descriptor import describe_middleware
+        from alpha.agents.assembly_descriptor import describe_middleware
 
         descriptor = describe_middleware(self._wrap(self._inner("DeclaringMiddleware", policy={"limit": 7}), "ext-a"))
 
@@ -445,7 +445,7 @@ class TestWrappedExtensionMiddlewaresStayDistinguishable:
     def test_a_policy_change_inside_a_wrapped_middleware_moves_the_fingerprint(self):
         from dataclasses import replace
 
-        from agent_workspace.agents.assembly_descriptor import describe_middleware
+        from alpha.agents.assembly_descriptor import describe_middleware
 
         def descriptor_for(limit):
             return AgentAssemblyDescriptor(
@@ -472,7 +472,7 @@ class TestWrappedExtensionMiddlewaresStayDistinguishable:
         assert base.fingerprint != other.fingerprint
 
     def test_an_unwrapped_host_middleware_reports_no_extension(self):
-        from agent_workspace.agents.assembly_descriptor import describe_middleware
+        from alpha.agents.assembly_descriptor import describe_middleware
 
         descriptor = describe_middleware(self._inner("HostMiddleware", policy={"limit": 1}))
 
@@ -492,10 +492,10 @@ class TestModelParametersProjectEffectiveSettings:
 
     @staticmethod
     def _build(model_config, *, model_overrides=None):
-        from agent_workspace.agents.assembly_descriptor import build_assembly_descriptor
+        from alpha.agents.assembly_descriptor import build_assembly_descriptor
 
         return build_assembly_descriptor(
-            namespace="agent_workspace",
+            namespace="alpha",
             agent_name="lead-agent",
             requested_model=None,
             effective_model="gpt-x",
@@ -513,7 +513,7 @@ class TestModelParametersProjectEffectiveSettings:
 
     @staticmethod
     def _model_config(**extra):
-        from agent_workspace.config.model_config import ModelConfig
+        from alpha.config.model_config import ModelConfig
 
         return ModelConfig(
             name="assembly-test-model",
@@ -568,10 +568,10 @@ class TestCustomAgentModelSettingsReachTheDescriptor:
     """
 
     def test_temperature_override_on_a_custom_agent_changes_the_fingerprint(self, monkeypatch):
-        from agent_workspace.agents.lead_agent import agent as lead_agent_module
-        from agent_workspace.agents.lead_agent.agent import assemble_lead_agent
-        from agent_workspace.config.agents_config import AgentConfig, AgentModelSettings
-        from agent_workspace.extensions import bind_agent_build_extensions
+        from alpha.agents.lead_agent import agent as lead_agent_module
+        from alpha.agents.lead_agent.agent import assemble_lead_agent
+        from alpha.config.agents_config import AgentConfig, AgentModelSettings
+        from alpha.extensions import bind_agent_build_extensions
 
         TestLeadAgentAssembly._isolate_from_the_ambient_config(monkeypatch)
 
@@ -588,8 +588,8 @@ class TestCustomAgentModelSettingsReachTheDescriptor:
 
     def test_bootstrap_assembly_does_not_invent_model_overrides(self, monkeypatch):
         """The bootstrap branch has no ``agent_config``, so no overrides exist to project."""
-        from agent_workspace.agents.lead_agent.agent import assemble_lead_agent
-        from agent_workspace.extensions import bind_agent_build_extensions
+        from alpha.agents.lead_agent.agent import assemble_lead_agent
+        from alpha.extensions import bind_agent_build_extensions
 
         TestLeadAgentAssembly._isolate_from_the_ambient_config(monkeypatch)
         with bind_agent_build_extensions(TestLeadAgentAssembly._extensions_with_an_agent_assembly_observer()):
@@ -604,7 +604,7 @@ class TestSkillCatalogHashesContent:
 
     @staticmethod
     def _skill(skill_dir: Path, *, required_secrets=(), secrets_autonomous=True):
-        from agent_workspace.skills.types import Skill, SkillCategory
+        from alpha.skills.types import Skill, SkillCategory
 
         skill_file = skill_dir / "SKILL.md"
         return Skill(
@@ -621,10 +621,10 @@ class TestSkillCatalogHashesContent:
 
     @staticmethod
     def _build(enabled_skills):
-        from agent_workspace.agents.assembly_descriptor import build_assembly_descriptor
+        from alpha.agents.assembly_descriptor import build_assembly_descriptor
 
         return build_assembly_descriptor(
-            namespace="agent_workspace",
+            namespace="alpha",
             agent_name="lead-agent",
             requested_model=None,
             effective_model="gpt-x",
@@ -654,7 +654,7 @@ class TestSkillCatalogHashesContent:
         assert before.enabled_skills == after.enabled_skills  # the catalog's visible identity is unchanged
 
     def test_required_secrets_flag_changes_the_fingerprint(self):
-        from agent_workspace.skills.types import SecretRequirement
+        from alpha.skills.types import SecretRequirement
 
         no_secrets = self._skill(Path("/nonexistent/skill-a"))
         with_secret = self._skill(Path("/nonexistent/skill-b"), required_secrets=(SecretRequirement(name="API_KEY"),))

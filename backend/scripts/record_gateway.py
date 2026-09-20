@@ -30,7 +30,7 @@ def _install_capture(out_path: Path) -> None:
     from langchain_core.messages import messages_to_dict
     from replay_provider import caller_identity, hash_messages, hash_replay_input
 
-    import agent_workspace.models.factory as factory_mod
+    import alpha.models.factory as factory_mod
 
     class Capture(BaseCallbackHandler):
         def __init__(self) -> None:

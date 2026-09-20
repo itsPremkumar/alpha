@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from agent_workspace.memory.active_memory import ActiveMemoryRouter
+from alpha.memory.active_memory import ActiveMemoryRouter
 
 
 def test_tier1_deterministic_resolution(tmp_path: Path):

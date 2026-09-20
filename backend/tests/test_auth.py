@@ -287,7 +287,7 @@ def _make_internal_owner_check_app():
     from fastapi import Request
     from langgraph.store.memory import InMemoryStore
 
-    from agent_workspace.persistence.thread_meta.memory import MemoryThreadMetaStore
+    from alpha.persistence.thread_meta.memory import MemoryThreadMetaStore
 
     app = FastAPI()
     thread_store = MemoryThreadMetaStore(InMemoryStore())
@@ -385,7 +385,7 @@ def test_sqlite_round_trip_new_fields():
     from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
 
     async def _run() -> None:
-        from agent_workspace.persistence.engine import (
+        from alpha.persistence.engine import (
             close_engine,
             get_session_factory,
             init_engine,
@@ -445,7 +445,7 @@ def test_create_user_duplicate_primary_key_is_not_misreported_as_oauth(tmp_path)
     from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
 
     async def _run() -> None:
-        from agent_workspace.persistence.engine import close_engine, get_session_factory, init_engine
+        from alpha.persistence.engine import close_engine, get_session_factory, init_engine
 
         url = f"sqlite+aiosqlite:///{tmp_path}/scratch.db"
         await init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
@@ -482,7 +482,7 @@ def test_create_user_duplicate_email_race_still_reports_email(tmp_path):
     from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
 
     async def _run() -> None:
-        from agent_workspace.persistence.engine import close_engine, get_session_factory, init_engine
+        from alpha.persistence.engine import close_engine, get_session_factory, init_engine
 
         url = f"sqlite+aiosqlite:///{tmp_path}/scratch.db"
         await init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
@@ -513,7 +513,7 @@ def test_create_user_propagates_non_uniqueness_integrity_error(tmp_path):
     from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
 
     async def _run() -> None:
-        from agent_workspace.persistence.engine import close_engine, get_session_factory, init_engine
+        from alpha.persistence.engine import close_engine, get_session_factory, init_engine
 
         await init_engine("sqlite", url=f"sqlite+aiosqlite:///{tmp_path}/scratch.db", sqlite_dir=str(tmp_path))
         try:
@@ -541,7 +541,7 @@ def test_create_user_real_oauth_conflict_still_reported_correctly(tmp_path):
     from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
 
     async def _run() -> None:
-        from agent_workspace.persistence.engine import close_engine, get_session_factory, init_engine
+        from alpha.persistence.engine import close_engine, get_session_factory, init_engine
 
         url = f"sqlite+aiosqlite:///{tmp_path}/scratch.db"
         await init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
@@ -594,7 +594,7 @@ def test_driver_constraint_name_reads_from_asyncpg_cause_chain():
 
 def test_is_oauth_identity_violation_matches_postgres_constraint_name():
     from app.gateway.auth.repositories.sqlite import _is_oauth_identity_violation
-    from agent_workspace.persistence.user.model import OAUTH_IDENTITY_INDEX_NAME
+    from alpha.persistence.user.model import OAUTH_IDENTITY_INDEX_NAME
 
     assert _is_oauth_identity_violation(_pg_integrity_error(OAUTH_IDENTITY_INDEX_NAME)) is True
 
@@ -698,12 +698,12 @@ def test_update_user_raises_when_row_concurrently_deleted(tmp_path):
     from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
 
     async def _run() -> None:
-        from agent_workspace.persistence.engine import (
+        from alpha.persistence.engine import (
             close_engine,
             get_session_factory,
             init_engine,
         )
-        from agent_workspace.persistence.user.model import UserRow
+        from alpha.persistence.user.model import UserRow
 
         with tempfile.TemporaryDirectory() as d:
             url = f"sqlite+aiosqlite:///{d}/scratch.db"
@@ -753,7 +753,7 @@ def test_email_lookup_is_case_insensitive(tmp_path):
     from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
 
     async def _run() -> None:
-        from agent_workspace.persistence.engine import close_engine, get_session_factory, init_engine
+        from alpha.persistence.engine import close_engine, get_session_factory, init_engine
 
         url = f"sqlite+aiosqlite:///{tmp_path}/scratch.db"
         await init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
@@ -780,7 +780,7 @@ def test_create_user_rejects_email_differing_only_in_case(tmp_path):
     from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
 
     async def _run() -> None:
-        from agent_workspace.persistence.engine import close_engine, get_session_factory, init_engine
+        from alpha.persistence.engine import close_engine, get_session_factory, init_engine
 
         url = f"sqlite+aiosqlite:///{tmp_path}/scratch.db"
         await init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
@@ -804,8 +804,8 @@ def test_create_user_rejects_legacy_mixed_case_email(tmp_path):
     from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
 
     async def _run() -> None:
-        from agent_workspace.persistence.engine import close_engine, get_session_factory, init_engine
-        from agent_workspace.persistence.user.model import UserRow
+        from alpha.persistence.engine import close_engine, get_session_factory, init_engine
+        from alpha.persistence.user.model import UserRow
 
         url = f"sqlite+aiosqlite:///{tmp_path}/scratch.db"
         await init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
@@ -841,7 +841,7 @@ def test_update_user_normalizes_email(tmp_path):
     from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
 
     async def _run() -> None:
-        from agent_workspace.persistence.engine import close_engine, get_session_factory, init_engine
+        from alpha.persistence.engine import close_engine, get_session_factory, init_engine
 
         url = f"sqlite+aiosqlite:///{tmp_path}/scratch.db"
         await init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
@@ -867,7 +867,7 @@ def test_distinct_emails_remain_distinct(tmp_path):
     from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
 
     async def _run() -> None:
-        from agent_workspace.persistence.engine import close_engine, get_session_factory, init_engine
+        from alpha.persistence.engine import close_engine, get_session_factory, init_engine
 
         url = f"sqlite+aiosqlite:///{tmp_path}/scratch.db"
         await init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
@@ -902,8 +902,8 @@ def test_legacy_mixed_case_duplicate_rows_resolve_without_error(tmp_path):
     from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
 
     async def _run() -> None:
-        from agent_workspace.persistence.engine import close_engine, get_session_factory, init_engine
-        from agent_workspace.persistence.user.model import UserRow
+        from alpha.persistence.engine import close_engine, get_session_factory, init_engine
+        from alpha.persistence.user.model import UserRow
 
         url = f"sqlite+aiosqlite:///{tmp_path}/scratch.db"
         await init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
@@ -949,8 +949,8 @@ def test_update_user_on_legacy_mixed_case_row_does_not_collide(tmp_path):
     from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
 
     async def _run() -> None:
-        from agent_workspace.persistence.engine import close_engine, get_session_factory, init_engine
-        from agent_workspace.persistence.user.model import UserRow
+        from alpha.persistence.engine import close_engine, get_session_factory, init_engine
+        from alpha.persistence.user.model import UserRow
 
         url = f"sqlite+aiosqlite:///{tmp_path}/scratch.db"
         await init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
@@ -1017,13 +1017,13 @@ def test_oidc_login_blocked_by_existing_local_account_across_case(tmp_path):
     from app.gateway.auth.local_provider import LocalAuthProvider
     from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
     from app.gateway.auth.user_provisioning import get_or_provision_oidc_user
-    from agent_workspace.config.auth_config import OIDCProviderConfig
+    from alpha.config.auth_config import OIDCProviderConfig
 
     async def _run() -> None:
         from fastapi import HTTPException
 
         from app.gateway.auth.oidc import OIDCIdentity
-        from agent_workspace.persistence.engine import close_engine, get_session_factory, init_engine
+        from alpha.persistence.engine import close_engine, get_session_factory, init_engine
 
         url = f"sqlite+aiosqlite:///{tmp_path}/scratch.db"
         await init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
@@ -1180,9 +1180,9 @@ async def test_rate_limiter_honors_configured_attempts_and_lockout(monkeypatch):
     """auth.local.max_login_attempts / lockout_seconds drive the throttle policy."""
     from app.gateway.routers import auth as auth_router
     from app.gateway.routers.auth import _check_rate_limit, _login_attempts, _record_login_failure
-    from agent_workspace.config.app_config import AppConfig, reset_app_config, set_app_config
-    from agent_workspace.config.auth_config import AuthAppConfig, LocalAuthConfig
-    from agent_workspace.config.sandbox_config import SandboxConfig
+    from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
+    from alpha.config.auth_config import AuthAppConfig, LocalAuthConfig
+    from alpha.config.sandbox_config import SandboxConfig
 
     _login_attempts.clear()
     set_app_config(
@@ -1218,7 +1218,7 @@ def test_rate_limiter_uses_defaults_when_config_unavailable(monkeypatch):
     to propagate by the test below.
     """
     from app.gateway.routers import auth as auth_router
-    from agent_workspace.config import app_config as app_config_module
+    from alpha.config import app_config as app_config_module
 
     def _missing():
         raise FileNotFoundError("no config.yaml")
@@ -1235,7 +1235,7 @@ def test_rate_limiter_malformed_config_propagates(monkeypatch):
     an operator who set max_login_attempts=2 must never silently get 5.
     """
     from app.gateway.routers import auth as auth_router
-    from agent_workspace.config import app_config as app_config_module
+    from alpha.config import app_config as app_config_module
 
     def _malformed():
         raise ValueError("config validation error")
@@ -1251,7 +1251,7 @@ async def test_rate_limiter_clean_ip_skips_config_read(monkeypatch):
     come before policy resolution (get_app_config re-hashes config.yaml on
     every call, and login_local is an unauthenticated async endpoint)."""
     from app.gateway.routers import auth as auth_router
-    from agent_workspace.config import app_config as app_config_module
+    from alpha.config import app_config as app_config_module
 
     def _must_not_load():
         raise AssertionError("config must not be read for a clean IP")
@@ -1272,9 +1272,9 @@ async def test_rate_limiter_policy_change_semantics():
     test below); subsequent failures lock under the new, stricter policy.
     """
     from app.gateway.routers.auth import _check_rate_limit, _login_attempts, _record_login_failure
-    from agent_workspace.config.app_config import AppConfig, reset_app_config, set_app_config
-    from agent_workspace.config.auth_config import AuthAppConfig, LocalAuthConfig
-    from agent_workspace.config.sandbox_config import SandboxConfig
+    from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
+    from alpha.config.auth_config import AuthAppConfig, LocalAuthConfig
+    from alpha.config.sandbox_config import SandboxConfig
 
     def _set_policy(max_attempts: int) -> None:
         set_app_config(
@@ -1322,7 +1322,7 @@ def test_local_auth_throttle_config_validation():
     """Throttle knobs reject degenerate operator values at config load."""
     import pydantic
 
-    from agent_workspace.config.auth_config import LocalAuthConfig
+    from alpha.config.auth_config import LocalAuthConfig
 
     with pytest.raises(pydantic.ValidationError):
         LocalAuthConfig(max_login_attempts=0)
@@ -1351,9 +1351,9 @@ async def test_rate_limiter_active_lockout_honors_live_lockout_seconds_change(mo
     """
     from app.gateway.routers import auth as auth_router
     from app.gateway.routers.auth import _check_rate_limit, _login_attempts, _record_login_failure
-    from agent_workspace.config.app_config import AppConfig, reset_app_config, set_app_config
-    from agent_workspace.config.auth_config import AuthAppConfig, LocalAuthConfig
-    from agent_workspace.config.sandbox_config import SandboxConfig
+    from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
+    from alpha.config.auth_config import AuthAppConfig, LocalAuthConfig
+    from alpha.config.sandbox_config import SandboxConfig
 
     def _set_policy(lockout_seconds: float) -> None:
         set_app_config(
@@ -1420,9 +1420,9 @@ async def test_rate_limiter_lowered_then_raised_duration_not_resurrected(monkeyp
     """
     from app.gateway.routers import auth as auth_router
     from app.gateway.routers.auth import _check_rate_limit, _login_attempts, _record_login_failure
-    from agent_workspace.config.app_config import AppConfig, reset_app_config, set_app_config
-    from agent_workspace.config.auth_config import AuthAppConfig, LocalAuthConfig
-    from agent_workspace.config.sandbox_config import SandboxConfig
+    from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
+    from alpha.config.auth_config import AuthAppConfig, LocalAuthConfig
+    from alpha.config.sandbox_config import SandboxConfig
 
     def _set_policy(lockout_seconds: float) -> None:
         set_app_config(
@@ -1471,7 +1471,7 @@ async def test_concurrent_checks_on_expired_lock_are_race_free(monkeypatch):
 
     from app.gateway.routers import auth as auth_router
     from app.gateway.routers.auth import _check_rate_limit, _login_attempts
-    from agent_workspace.config.auth_config import LocalAuthConfig
+    from alpha.config.auth_config import LocalAuthConfig
 
     def _defaults():
         return LocalAuthConfig().max_login_attempts, LocalAuthConfig().lockout_seconds
@@ -1558,9 +1558,9 @@ async def test_rate_limiter_eviction_expires_by_stored_sentence_not_current_thre
     """
     from app.gateway.routers import auth as auth_router
     from app.gateway.routers.auth import _login_attempts, _record_login_failure
-    from agent_workspace.config.app_config import AppConfig, reset_app_config, set_app_config
-    from agent_workspace.config.auth_config import AuthAppConfig, LocalAuthConfig
-    from agent_workspace.config.sandbox_config import SandboxConfig
+    from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
+    from alpha.config.auth_config import AuthAppConfig, LocalAuthConfig
+    from alpha.config.sandbox_config import SandboxConfig
 
     monkeypatch.setattr(auth_router, "_MAX_TRACKED_IPS", 2)
     monkeypatch.setattr(auth_router.time, "time", lambda: 100.0)
@@ -1594,9 +1594,9 @@ async def test_rate_limiter_tightened_threshold_preserves_failures():
     next failure starts the lock, and a successful login still clears it.
     """
     from app.gateway.routers.auth import _check_rate_limit, _login_attempts, _record_login_failure, _record_login_success
-    from agent_workspace.config.app_config import AppConfig, reset_app_config, set_app_config
-    from agent_workspace.config.auth_config import AuthAppConfig, LocalAuthConfig
-    from agent_workspace.config.sandbox_config import SandboxConfig
+    from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
+    from alpha.config.auth_config import AuthAppConfig, LocalAuthConfig
+    from alpha.config.sandbox_config import SandboxConfig
 
     def _set_policy(max_attempts: int) -> None:
         set_app_config(
@@ -1644,7 +1644,7 @@ async def test_rate_limiter_counts_failure_when_config_breaks(monkeypatch):
     and fails closed — before authenticate.
     """
     from app.gateway.routers.auth import _check_rate_limit, _login_attempts, _record_login_failure
-    from agent_workspace.config import app_config as app_config_module
+    from alpha.config import app_config as app_config_module
 
     def _malformed():
         raise ValueError("config validation error")
@@ -1682,7 +1682,7 @@ def test_login_local_broken_config_fails_closed_after_first_failure(monkeypatch)
     from fastapi.testclient import TestClient
 
     from app.gateway.routers import auth as auth_router
-    from agent_workspace.config import app_config as app_config_module
+    from alpha.config import app_config as app_config_module
 
     def _malformed():
         raise ValueError("config validation error")

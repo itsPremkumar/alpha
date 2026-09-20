@@ -38,8 +38,8 @@ class _FakeModel(FakeMessagesListChatModel):
 async def test_before_agent_uploads_scan_does_not_block_event_loop(tmp_path: Path) -> None:
     from langchain.agents import create_agent
 
-    from agent_workspace.agents.middlewares.uploads_middleware import UploadsMiddleware
-    from agent_workspace.runtime.user_context import get_effective_user_id
+    from alpha.agents.middlewares.uploads_middleware import UploadsMiddleware
+    from alpha.runtime.user_context import get_effective_user_id
 
     mw = await asyncio.to_thread(UploadsMiddleware, str(tmp_path))
     uploads_dir = await asyncio.to_thread(mw._paths.sandbox_uploads_dir, "t1", user_id=get_effective_user_id())

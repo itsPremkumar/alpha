@@ -15,9 +15,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from agent_workspace.community.browser_automation import session as session_mod
-from agent_workspace.community.browser_automation import tools
-from agent_workspace.community.browser_automation.session import (
+from alpha.community.browser_automation import session as session_mod
+from alpha.community.browser_automation import tools
+from alpha.community.browser_automation.session import (
     _LIVE_FRAME_JPEG_QUALITY,
     BrowserLiveViewerError,
     BrowserSession,

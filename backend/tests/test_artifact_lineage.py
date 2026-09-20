@@ -1,6 +1,6 @@
 import pytest
 
-from agent_workspace.lineage.artifact_lineage import (
+from alpha.lineage.artifact_lineage import (
     ArtifactLineageGraph,
     ConfidenceClass,
 )

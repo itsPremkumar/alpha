@@ -20,7 +20,7 @@ from agent_workspace_extension_api import (
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.runtime import Runtime
 
-from agent_workspace.extensions.notify import (
+from alpha.extensions.notify import (
     dispatch_system_model_observation,
     notify_system_model_call,
     observe_system_model_call,
@@ -29,7 +29,7 @@ from agent_workspace.extensions.notify import (
     suspend_extension_system_observations,
     task_store_for_system_call,
 )
-from agent_workspace.extensions.registry import ExtensionRegistry
+from alpha.extensions.registry import ExtensionRegistry
 
 
 class _Observer:
@@ -281,7 +281,7 @@ class _GoalModel:
 
 @pytest.mark.asyncio
 async def test_goal_evaluator_observes_success_and_failure_with_explicit_snapshot():
-    from agent_workspace.runtime.goal import evaluate_goal_completion
+    from alpha.runtime.goal import evaluate_goal_completion
 
     observer = _Observer()
     extensions = _extensions(observer)
@@ -315,8 +315,8 @@ async def test_goal_evaluator_observes_success_and_failure_with_explicit_snapsho
 
 @pytest.mark.asyncio
 async def test_title_middleware_uses_build_bound_snapshot_and_live_task_store(monkeypatch):
-    from agent_workspace.agents.middlewares import title_middleware as title_module
-    from agent_workspace.config.title_config import TitleConfig
+    from alpha.agents.middlewares import title_middleware as title_module
+    from alpha.config.title_config import TitleConfig
 
     observer = _Observer()
     extensions = _extensions(observer)
@@ -359,7 +359,7 @@ async def test_title_middleware_uses_build_bound_snapshot_and_live_task_store(mo
 
 @pytest.mark.asyncio
 async def test_async_summarization_observes_each_provider_attempt_and_live_store():
-    from agent_workspace.agents.middlewares.summarization_middleware import (
+    from alpha.agents.middlewares.summarization_middleware import (
         AgentWorkspaceSummarizationMiddleware,
     )
 
@@ -393,7 +393,7 @@ async def test_async_summarization_observes_each_provider_attempt_and_live_store
 
 @pytest.mark.asyncio
 async def test_summarization_public_hook_propagates_the_live_task_store():
-    from agent_workspace.agents.middlewares.summarization_middleware import (
+    from alpha.agents.middlewares.summarization_middleware import (
         AgentWorkspaceSummarizationMiddleware,
     )
 
@@ -430,8 +430,8 @@ async def test_summarization_public_hook_propagates_the_live_task_store():
 
 @pytest.mark.asyncio
 async def test_memory_callback_dispatches_the_captured_snapshot_and_live_store():
-    from agent_workspace.agents.memory.manager import LangfuseMemoryCallbacks
-    from agent_workspace.extensions import reset_loaded_extensions, set_loaded_extensions
+    from alpha.agents.memory.manager import LangfuseMemoryCallbacks
+    from alpha.extensions import reset_loaded_extensions, set_loaded_extensions
 
     first = _Observer()
     second = _Observer()
@@ -471,8 +471,8 @@ def test_memory_callback_does_not_swallow_interpreter_shutdown(monkeypatch):
     # Fail-open covers the bridge's own failures, not a process teardown
     # signal — the same boundary the DeerMem-side call site pins in
     # `test_memory_updater.py`.
-    from agent_workspace.agents.memory.manager import LangfuseMemoryCallbacks
-    from agent_workspace.extensions import notify as notify_module
+    from alpha.agents.memory.manager import LangfuseMemoryCallbacks
+    from alpha.extensions import notify as notify_module
 
     def _teardown(coro, what):
         coro.close()
@@ -493,8 +493,8 @@ def test_memory_callback_does_not_swallow_interpreter_shutdown(monkeypatch):
 
 
 def test_memory_callback_contains_bridge_failures(monkeypatch):
-    from agent_workspace.agents.memory.manager import LangfuseMemoryCallbacks
-    from agent_workspace.extensions import notify as notify_module
+    from alpha.agents.memory.manager import LangfuseMemoryCallbacks
+    from alpha.extensions import notify as notify_module
 
     def _broken(coro, what):
         coro.close()
@@ -519,7 +519,7 @@ async def test_system_model_failure_logs_identify_the_task_scope(caplog):
         async def on_system_model_call(self, app_store, task_store, kind, request, result):
             raise RuntimeError("observer broke")
 
-    with caplog.at_level(logging.WARNING, logger="agent_workspace.extensions.notify"):
+    with caplog.at_level(logging.WARNING, logger="alpha.extensions.notify"):
         await notify_system_model_call(
             _extensions(_Broken()),
             ExtensionData("summary-live-task"),
@@ -528,7 +528,7 @@ async def test_system_model_failure_logs_identify_the_task_scope(caplog):
             SystemModelResult(response="ok"),
         )
 
-    messages = [record.getMessage() for record in caplog.records if record.name == "agent_workspace.extensions.notify"]
+    messages = [record.getMessage() for record in caplog.records if record.name == "alpha.extensions.notify"]
     assert any("summary-live-task" in message and "goal" in message for message in messages)
 
 

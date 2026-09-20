@@ -28,10 +28,10 @@ from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.tools import tool as as_tool
 
-from agent_workspace.agents.middlewares.deferred_tool_filter_middleware import DeferredToolFilterMiddleware
-from agent_workspace.agents.thread_state import ThreadState
-from agent_workspace.tools.builtins.tool_search import assemble_deferred_tools, get_deferred_tools_prompt_section
-from agent_workspace.tools.mcp_metadata import tag_mcp_tool
+from alpha.agents.middlewares.deferred_tool_filter_middleware import DeferredToolFilterMiddleware
+from alpha.agents.thread_state import ThreadState
+from alpha.tools.builtins.tool_search import assemble_deferred_tools, get_deferred_tools_prompt_section
+from alpha.tools.mcp_metadata import tag_mcp_tool
 
 
 @as_tool
@@ -107,11 +107,11 @@ def test_subagent_builder_emits_working_deferred_filter():
     builder given a real setup, so a regression in the builder's wiring is caught: a
     wrong catalog hash silently stops promotion (turn 2 would keep mcp_calc hidden), a
     dropped filter stops hiding (turn 1 would bind mcp_calc)."""
-    from agent_workspace.agents.middlewares.tool_error_handling_middleware import build_subagent_runtime_middlewares
-    from agent_workspace.config.app_config import AppConfig, CircuitBreakerConfig
-    from agent_workspace.config.guardrails_config import GuardrailsConfig
-    from agent_workspace.config.model_config import ModelConfig
-    from agent_workspace.config.sandbox_config import SandboxConfig
+    from alpha.agents.middlewares.tool_error_handling_middleware import build_subagent_runtime_middlewares
+    from alpha.config.app_config import AppConfig, CircuitBreakerConfig
+    from alpha.config.guardrails_config import GuardrailsConfig
+    from alpha.config.model_config import ModelConfig
+    from alpha.config.sandbox_config import SandboxConfig
 
     bound: list[list[str]] = []
 

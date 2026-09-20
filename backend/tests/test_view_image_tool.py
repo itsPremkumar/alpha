@@ -6,9 +6,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from agent_workspace.tools.builtins.view_image_tool import view_image_tool
+from alpha.tools.builtins.view_image_tool import view_image_tool
 
-view_image_module = importlib.import_module("agent_workspace.tools.builtins.view_image_tool")
+view_image_module = importlib.import_module("alpha.tools.builtins.view_image_tool")
 
 PNG_BYTES = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
 

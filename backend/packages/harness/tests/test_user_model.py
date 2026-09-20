@@ -7,13 +7,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from agent_workspace.agents.memory.user_model import (
+from alpha.agents.memory.user_model import (
     FileUserModelProvider,
     NullUserModelProvider,
     UserModelProvider,
     create_user_model_provider,
 )
-from agent_workspace.config.app_config import AppConfig
+from alpha.config.app_config import AppConfig
 
 
 class TestNullUserModelProvider:
@@ -97,7 +97,7 @@ class TestFileUserModelProvider:
                 f.write(json.dumps(e) + "\n")
 
         runtime.context = {"thread_id": "test-thread"}
-        with patch("agent_workspace.agents.memory.user_model.resolve_runtime_user_id", return_value="test_user"):
+        with patch("alpha.agents.memory.user_model.resolve_runtime_user_id", return_value="test_user"):
             await provider.initialize(runtime, app_config)
 
         assert provider._user_id == "test_user"
@@ -107,7 +107,7 @@ class TestFileUserModelProvider:
     @pytest.mark.asyncio
     async def test_initialize_creates_new_file(self, provider, runtime, app_config):
         runtime.context = {"thread_id": "test-thread"}
-        with patch("agent_workspace.agents.memory.user_model.resolve_runtime_user_id", return_value="new_user"):
+        with patch("alpha.agents.memory.user_model.resolve_runtime_user_id", return_value="new_user"):
             await provider.initialize(runtime, app_config)
 
         assert provider._user_id == "new_user"

@@ -7,9 +7,9 @@ from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-from agent_workspace.agents.memory.backends.deermem.deermem.config import DeerMemConfig
-from agent_workspace.agents.memory.backends.deermem.deermem.core.storage import MemoryStorage
-from agent_workspace.agents.memory.backends.deermem.deermem.core.updater import MemoryUpdater, _message_identity
+from alpha.agents.memory.backends.deermem.deermem.config import DeerMemConfig
+from alpha.agents.memory.backends.deermem.deermem.core.storage import MemoryStorage
+from alpha.agents.memory.backends.deermem.deermem.core.updater import MemoryUpdater, _message_identity
 
 
 class _FakeLLM:

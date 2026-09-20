@@ -10,7 +10,7 @@ import argparse
 import logging
 import shutil
 
-from agent_workspace.config.paths import Paths, get_paths
+from alpha.config.paths import Paths, get_paths
 
 logger = logging.getLogger(__name__)
 

@@ -1,4 +1,4 @@
-"""Tests for agent_workspace.utils.messages text extraction.
+"""Tests for alpha.utils.messages text extraction.
 
 ``message_to_text`` is the shared extractor that ``RunJournal._message_text``
 (BaseMessage, with ``.text`` fallback) and the gateway thread-messages helper
@@ -12,7 +12,7 @@ from types import SimpleNamespace
 
 from langchain_core.messages import HumanMessage
 
-from agent_workspace.utils.messages import ORIGINAL_USER_CONTENT_KEY, message_content_to_text, message_to_text, restore_original_human_message
+from alpha.utils.messages import ORIGINAL_USER_CONTENT_KEY, message_content_to_text, message_to_text, restore_original_human_message
 
 # ---------- message_to_text: content shapes ----------
 

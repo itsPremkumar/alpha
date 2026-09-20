@@ -1,10 +1,10 @@
 """Tests for OpenHands Critic & Completion Verification subsystem."""
 
-from agent_workspace.critic.agent_finished import AgentFinishedCritic
-from agent_workspace.critic.base import CriticResult, CriticVerdict
-from agent_workspace.critic.empty_patch import EmptyPatchCritic
-from agent_workspace.critic.pipeline import CriticPipeline
-from agent_workspace.critic.rubric import RubricCriterion, RubricEvaluator
+from alpha.critic.agent_finished import AgentFinishedCritic
+from alpha.critic.base import CriticResult, CriticVerdict
+from alpha.critic.empty_patch import EmptyPatchCritic
+from alpha.critic.pipeline import CriticPipeline
+from alpha.critic.rubric import RubricCriterion, RubricEvaluator
 
 
 def test_critic_result_properties():

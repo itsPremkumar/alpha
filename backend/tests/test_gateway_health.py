@@ -19,7 +19,7 @@ from app.gateway.health import (
     readiness_payload,
     resolve_checkpointer_config,
 )
-from agent_workspace.config.checkpointer_config import CheckpointerConfig
+from alpha.config.checkpointer_config import CheckpointerConfig
 
 
 class _FakeConnection:
@@ -272,7 +272,7 @@ async def test_probe_checkpointer_postgres_without_psycopg_is_unreachable(monkey
     result = await _probe_checkpointer_backend(
         CheckpointerConfig(
             type="postgres",
-            connection_string="postgresql://user:pass@localhost:5432/agent_workspace",
+            connection_string="postgresql://user:pass@localhost:5432/alpha",
         )
     )
 
@@ -282,7 +282,7 @@ async def test_probe_checkpointer_postgres_without_psycopg_is_unreachable(monkey
 def test_resolve_checkpointer_config_passes_through_resolution(monkeypatch):
     resolved = CheckpointerConfig(type="memory")
     monkeypatch.setattr(
-        "agent_workspace.runtime.checkpointer.provider._resolve_checkpointer_config",
+        "alpha.runtime.checkpointer.provider._resolve_checkpointer_config",
         lambda app_config: resolved,
     )
 
@@ -296,7 +296,7 @@ def test_resolve_checkpointer_config_failure_fails_closed(monkeypatch):
         raise RuntimeError("broken checkpointer config")
 
     monkeypatch.setattr(
-        "agent_workspace.runtime.checkpointer.provider._resolve_checkpointer_config",
+        "alpha.runtime.checkpointer.provider._resolve_checkpointer_config",
         _raise,
     )
 

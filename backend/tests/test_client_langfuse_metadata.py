@@ -14,9 +14,9 @@ from typing import Any
 
 import pytest
 
-from agent_workspace.client import AgentWorkspaceClient
-from agent_workspace.config.authorization_config import AuthorizationConfig
-from agent_workspace.trace_context import AGENT_WORKSPACE_TRACE_METADATA_KEY, request_trace_context
+from alpha.client import AgentWorkspaceClient
+from alpha.config.authorization_config import AuthorizationConfig
+from alpha.trace_context import AGENT_WORKSPACE_TRACE_METADATA_KEY, request_trace_context
 
 
 class _FakeAgent:
@@ -34,7 +34,7 @@ class _FakeAgent:
 
 @pytest.fixture(autouse=True)
 def _clear_langfuse_env(monkeypatch):
-    from agent_workspace.config.tracing_config import reset_tracing_config
+    from alpha.config.tracing_config import reset_tracing_config
 
     for name in ("LANGFUSE_TRACING", "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_BASE_URL"):
         monkeypatch.delenv(name, raising=False)
@@ -90,7 +90,7 @@ def test_stream_injects_langfuse_metadata_when_enabled(monkeypatch):
     monkeypatch.setenv("LANGFUSE_TRACING", "true")
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
-    from agent_workspace.config.tracing_config import reset_tracing_config
+    from alpha.config.tracing_config import reset_tracing_config
 
     reset_tracing_config()
 
@@ -98,7 +98,7 @@ def test_stream_injects_langfuse_metadata_when_enabled(monkeypatch):
         pass
 
     sentinel = _SentinelHandler()
-    monkeypatch.setattr("agent_workspace.client.build_tracing_callbacks", lambda: [sentinel])
+    monkeypatch.setattr("alpha.client.build_tracing_callbacks", lambda: [sentinel])
 
     fake_agent = _FakeAgent()
     captured = _stub_agent_creation(monkeypatch, fake_agent)
@@ -118,7 +118,7 @@ def test_stream_injects_langfuse_metadata_when_enabled(monkeypatch):
 
 
 def test_stream_is_inert_when_langfuse_disabled(monkeypatch):
-    monkeypatch.setattr("agent_workspace.client.build_tracing_callbacks", lambda: [])
+    monkeypatch.setattr("alpha.client.build_tracing_callbacks", lambda: [])
 
     fake_agent = _FakeAgent()
     captured = _stub_agent_creation(monkeypatch, fake_agent)
@@ -137,10 +137,10 @@ def test_stream_preserves_caller_metadata_overrides(monkeypatch):
     monkeypatch.setenv("LANGFUSE_TRACING", "true")
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
-    from agent_workspace.config.tracing_config import reset_tracing_config
+    from alpha.config.tracing_config import reset_tracing_config
 
     reset_tracing_config()
-    monkeypatch.setattr("agent_workspace.client.build_tracing_callbacks", lambda: [])
+    monkeypatch.setattr("alpha.client.build_tracing_callbacks", lambda: [])
 
     fake_agent = _FakeAgent()
     captured = _stub_agent_creation(monkeypatch, fake_agent)
@@ -179,10 +179,10 @@ def test_stream_always_binds_a_trace_id(monkeypatch):
     monkeypatch.setenv("LANGFUSE_TRACING", "true")
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
-    from agent_workspace.config.tracing_config import reset_tracing_config
+    from alpha.config.tracing_config import reset_tracing_config
 
     reset_tracing_config()
-    monkeypatch.setattr("agent_workspace.client.build_tracing_callbacks", lambda: [])
+    monkeypatch.setattr("alpha.client.build_tracing_callbacks", lambda: [])
 
     fake_agent = _FakeAgent()
     captured = _stub_agent_creation(monkeypatch, fake_agent)
@@ -205,10 +205,10 @@ def test_stream_keeps_a_caller_bound_trace(monkeypatch):
     monkeypatch.setenv("LANGFUSE_TRACING", "true")
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
-    from agent_workspace.config.tracing_config import reset_tracing_config
+    from alpha.config.tracing_config import reset_tracing_config
 
     reset_tracing_config()
-    monkeypatch.setattr("agent_workspace.client.build_tracing_callbacks", lambda: [])
+    monkeypatch.setattr("alpha.client.build_tracing_callbacks", lambda: [])
 
     fake_agent = _FakeAgent()
     captured = _stub_agent_creation(monkeypatch, fake_agent)
@@ -232,7 +232,7 @@ def test_stream_does_not_leak_trace_id_to_caller_context_between_yields(monkeypa
     state. Per-step set/reset keeps the caller's context clean at every
     yield boundary.
     """
-    monkeypatch.setattr("agent_workspace.client.build_tracing_callbacks", lambda: [])
+    monkeypatch.setattr("alpha.client.build_tracing_callbacks", lambda: [])
 
     class _TwoEventAgent:
         def __init__(self) -> None:
@@ -246,7 +246,7 @@ def test_stream_does_not_leak_trace_id_to_caller_context_between_yields(monkeypa
     _stub_agent_creation(monkeypatch, _TwoEventAgent())
     client = _make_client(monkeypatch)
 
-    from agent_workspace.trace_context import get_current_trace_id
+    from alpha.trace_context import get_current_trace_id
 
     # Caller's context starts with no trace id bound.
     assert get_current_trace_id() is None
@@ -274,7 +274,7 @@ def test_stream_abandoned_generator_close_does_not_raise_cross_context(monkeypat
     with a cross-context reset. Per-step set/reset never leaves a Token
     outstanding across yield boundaries.
     """
-    monkeypatch.setattr("agent_workspace.client.build_tracing_callbacks", lambda: [])
+    monkeypatch.setattr("alpha.client.build_tracing_callbacks", lambda: [])
 
     class _InfiniteAgent:
         def __init__(self) -> None:
@@ -310,9 +310,9 @@ def test_stream_abandoned_generator_cleanup_stays_inside_trace_binding(monkeypat
     unrelated ambient one) and its records would not correlate with the turn
     they belong to.
     """
-    monkeypatch.setattr("agent_workspace.client.build_tracing_callbacks", lambda: [])
+    monkeypatch.setattr("alpha.client.build_tracing_callbacks", lambda: [])
 
-    from agent_workspace.trace_context import get_current_trace_id
+    from alpha.trace_context import get_current_trace_id
 
     observed: dict[str, str | None] = {}
 

@@ -5,9 +5,9 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from agent_workspace.config.app_config import AppConfig
-from agent_workspace.config.reload_boundary import STARTUP_ONLY_FIELDS
-from agent_workspace.extensions import (
+from alpha.config.app_config import AppConfig
+from alpha.config.reload_boundary import STARTUP_ONLY_FIELDS
+from alpha.extensions import (
     EMPTY_EXTENSIONS,
     ExtensionRegistry,
     get_loaded_extensions,
@@ -35,7 +35,7 @@ class _Marker:
 # (sandbox) intentionally still error when null"), so every AppConfig
 # construction below supplies it, matching the pattern already used in
 # test_app_config_reload.py.
-_SANDBOX = {"sandbox": {"use": "agent_workspace.sandbox.local:LocalSandboxProvider"}}
+_SANDBOX = {"sandbox": {"use": "alpha.sandbox.local:LocalSandboxProvider"}}
 
 
 def test_app_config_defaults_to_no_plugins():
@@ -128,7 +128,7 @@ def test_reset_does_not_leak_app_store_writes():
 
 
 def test_runtime_diagnostics_are_bounded_without_replacing_the_live_list(monkeypatch):
-    import agent_workspace.extensions as extensions_module
+    import alpha.extensions as extensions_module
 
     monkeypatch.setattr(extensions_module, "_MAX_RUNTIME_DIAGNOSTICS", 3)
     extensions_module.reset_runtime_diagnostics()

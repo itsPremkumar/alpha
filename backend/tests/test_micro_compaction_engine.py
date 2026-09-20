@@ -1,4 +1,4 @@
-from agent_workspace.context.micro_compaction import apply_micro_compaction, compact_tool_output
+from alpha.context.micro_compaction import apply_micro_compaction, compact_tool_output
 
 
 def test_compact_tool_output():

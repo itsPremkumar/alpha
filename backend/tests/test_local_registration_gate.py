@@ -14,7 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.gateway.auth.config import AuthConfig, set_auth_config
-from agent_workspace.config.auth_config import AuthAppConfig, LocalAuthConfig
+from alpha.config.auth_config import AuthAppConfig, LocalAuthConfig
 
 _TEST_SECRET = "test-secret-key-for-registration-gate-tests-only"
 
@@ -30,7 +30,7 @@ def _persistence_engine(tmp_path):
     import asyncio
 
     from app.gateway import deps
-    from agent_workspace.persistence.engine import close_engine, init_engine
+    from alpha.persistence.engine import close_engine, init_engine
 
     asyncio.run(init_engine("sqlite", url=f"sqlite+aiosqlite:///{tmp_path}/registration_gate.db", sqlite_dir=str(tmp_path)))
     deps._cached_local_provider = None
@@ -54,7 +54,7 @@ def client(monkeypatch):
     """
     from pathlib import Path
 
-    from agent_workspace.config.app_config import AppConfig
+    from alpha.config.app_config import AppConfig
 
     # config.yaml is gitignored, so tests cannot rely on it existing. The committed
     # example is a valid config and gives every other section (database above all)
@@ -65,7 +65,7 @@ def client(monkeypatch):
         set_auth_config(AuthConfig(jwt_secret=_TEST_SECRET))
         patched = baseline.model_copy(deep=True)
         patched.auth = AuthAppConfig(local=LocalAuthConfig(allow_registration=allow_registration), oidc=baseline.auth.oidc)
-        monkeypatch.setattr("agent_workspace.config.app_config.get_app_config", lambda: patched)
+        monkeypatch.setattr("alpha.config.app_config.get_app_config", lambda: patched)
         # setup-status memoizes per client IP; drop it so each direction is read fresh.
         from app.gateway.routers import auth as auth_router
 
@@ -141,7 +141,7 @@ def test_gate_falls_back_to_open_when_config_is_absent(monkeypatch):
     def _raise() -> None:
         raise FileNotFoundError("`config.yaml` file not found in the project root")
 
-    monkeypatch.setattr("agent_workspace.config.app_config.get_app_config", _raise)
+    monkeypatch.setattr("alpha.config.app_config.get_app_config", _raise)
     assert auth_router._local_registration_enabled() is True
 
 

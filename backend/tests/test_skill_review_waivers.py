@@ -21,8 +21,8 @@ from skill_review_waivers import (
     validate_manifest_against_facts,
 )
 
-from agent_workspace.skills.review.analyzer import analyze_skill_package
-from agent_workspace.skills.review.readers import LocalDirectoryReader
+from alpha.skills.review.analyzer import analyze_skill_package
+from alpha.skills.review.readers import LocalDirectoryReader
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -105,7 +105,7 @@ def test_committed_manifest_matches_schema_and_strict_parser() -> None:
 def test_skill_creator_waivers_match_current_error_findings() -> None:
     package = REPO_ROOT / "skills/public/skill-creator"
     manifest = parse_manifest((REPO_ROOT / ".github/skill-review-waivers.v1.json").read_bytes(), source="committed manifest")
-    facts = analyze_skill_package(LocalDirectoryReader(package).read(), profile="agent_workspace")
+    facts = analyze_skill_package(LocalDirectoryReader(package).read(), profile="alpha")
 
     validation_errors = validate_manifest_against_facts(
         manifest,

@@ -11,7 +11,7 @@ from typing import Any, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from agent_workspace.tools.builtins.code_agentic_core import (
+from alpha.tools.builtins.code_agentic_core import (
     create_shadow_checkpoint,
     get_all_checkpoints,
     rollback_to_checkpoint,

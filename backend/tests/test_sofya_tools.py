@@ -11,7 +11,7 @@ import pytest
 @pytest.fixture(autouse=True)
 def reset_api_key_warned():
     """Reset the module-level warning flag before each test."""
-    import agent_workspace.community.sofya.tools as sofya_mod
+    import alpha.community.sofya.tools as sofya_mod
 
     sofya_mod._api_key_warned = set()
     yield
@@ -20,7 +20,7 @@ def reset_api_key_warned():
 
 @pytest.fixture
 def mock_config_with_key():
-    with patch("agent_workspace.community.sofya.tools.get_app_config") as mock:
+    with patch("alpha.community.sofya.tools.get_app_config") as mock:
         tool_config = MagicMock()
         tool_config.model_extra = {"api_key": "test-sofya-key", "max_results": 5}
         mock.return_value.get_tool_config.return_value = tool_config
@@ -29,7 +29,7 @@ def mock_config_with_key():
 
 @pytest.fixture
 def mock_config_no_key():
-    with patch("agent_workspace.community.sofya.tools.get_app_config") as mock:
+    with patch("alpha.community.sofya.tools.get_app_config") as mock:
         tool_config = MagicMock()
         tool_config.model_extra = {}
         mock.return_value.get_tool_config.return_value = tool_config
@@ -53,56 +53,56 @@ def _make_fetch_response(results: list) -> MagicMock:
 
 class TestGetApiKey:
     def test_returns_config_key_when_present(self):
-        with patch("agent_workspace.community.sofya.tools.get_app_config") as mock:
+        with patch("alpha.community.sofya.tools.get_app_config") as mock:
             tool_config = MagicMock()
             tool_config.model_extra = {"api_key": "from-config"}
             mock.return_value.get_tool_config.return_value = tool_config
 
-            from agent_workspace.community.sofya.tools import _get_api_key
+            from alpha.community.sofya.tools import _get_api_key
 
             assert _get_api_key("web_search") == "from-config"
 
     def test_falls_back_to_env_when_config_key_whitespace(self):
-        with patch("agent_workspace.community.sofya.tools.get_app_config") as mock:
+        with patch("alpha.community.sofya.tools.get_app_config") as mock:
             tool_config = MagicMock()
             tool_config.model_extra = {"api_key": "   "}
             mock.return_value.get_tool_config.return_value = tool_config
             with patch.dict("os.environ", {"SOFYA_API_KEY": "env-key"}):
-                from agent_workspace.community.sofya.tools import _get_api_key
+                from alpha.community.sofya.tools import _get_api_key
 
                 assert _get_api_key("web_search") == "env-key"
 
     def test_uses_env_when_tool_is_not_configured(self):
-        with patch("agent_workspace.community.sofya.tools.get_app_config") as mock:
+        with patch("alpha.community.sofya.tools.get_app_config") as mock:
             mock.return_value.get_tool_config.return_value = None
             with patch.dict("os.environ", {"SOFYA_API_KEY": "env-only"}):
-                from agent_workspace.community.sofya.tools import _get_api_key
+                from alpha.community.sofya.tools import _get_api_key
 
                 assert _get_api_key("web_fetch") == "env-only"
 
     def test_returns_none_when_no_key_anywhere(self):
-        with patch("agent_workspace.community.sofya.tools.get_app_config") as mock:
+        with patch("alpha.community.sofya.tools.get_app_config") as mock:
             mock.return_value.get_tool_config.return_value = None
             with patch.dict("os.environ", {}, clear=True):
-                from agent_workspace.community.sofya.tools import _get_api_key
+                from alpha.community.sofya.tools import _get_api_key
 
                 assert _get_api_key("web_search") is None
 
     def test_returns_none_when_env_key_whitespace(self):
-        with patch("agent_workspace.community.sofya.tools.get_app_config") as mock:
+        with patch("alpha.community.sofya.tools.get_app_config") as mock:
             mock.return_value.get_tool_config.return_value = None
             with patch.dict("os.environ", {"SOFYA_API_KEY": "   "}):
-                from agent_workspace.community.sofya.tools import _get_api_key
+                from alpha.community.sofya.tools import _get_api_key
 
                 assert _get_api_key("web_search") is None
 
     def test_reads_config_for_requested_tool_name(self):
-        with patch("agent_workspace.community.sofya.tools.get_app_config") as mock:
+        with patch("alpha.community.sofya.tools.get_app_config") as mock:
             tool_config = MagicMock()
             tool_config.model_extra = {"api_key": "fetch-key"}
             mock.return_value.get_tool_config.return_value = tool_config
 
-            from agent_workspace.community.sofya.tools import _get_api_key
+            from alpha.community.sofya.tools import _get_api_key
 
             assert _get_api_key("web_fetch") == "fetch-key"
             mock.return_value.get_tool_config.assert_called_with("web_fetch")
@@ -110,32 +110,32 @@ class TestGetApiKey:
 
 class TestCoerceMaxResults:
     def test_returns_value_when_valid_positive_int(self):
-        from agent_workspace.community.sofya.tools import _coerce_max_results
+        from alpha.community.sofya.tools import _coerce_max_results
 
         assert _coerce_max_results(3) == 3
 
     def test_returns_value_for_numeric_string(self):
-        from agent_workspace.community.sofya.tools import _coerce_max_results
+        from alpha.community.sofya.tools import _coerce_max_results
 
         assert _coerce_max_results("7") == 7
 
     def test_caps_value_at_default_maximum(self):
-        from agent_workspace.community.sofya.tools import _coerce_max_results
+        from alpha.community.sofya.tools import _coerce_max_results
 
         assert _coerce_max_results(999) == 20
 
     def test_returns_default_for_non_numeric_string(self):
-        from agent_workspace.community.sofya.tools import _coerce_max_results
+        from alpha.community.sofya.tools import _coerce_max_results
 
         assert _coerce_max_results("oops") == 5
 
     def test_returns_default_for_none(self):
-        from agent_workspace.community.sofya.tools import _coerce_max_results
+        from alpha.community.sofya.tools import _coerce_max_results
 
         assert _coerce_max_results(None) == 5
 
     def test_returns_default_for_zero_or_negative(self):
-        from agent_workspace.community.sofya.tools import _coerce_max_results
+        from alpha.community.sofya.tools import _coerce_max_results
 
         assert _coerce_max_results(0) == 5
         assert _coerce_max_results(-3) == 5
@@ -143,7 +143,7 @@ class TestCoerceMaxResults:
 
 class TestMissingKeyMessage:
     def test_warns_once_per_tool_name(self, caplog):
-        import agent_workspace.community.sofya.tools as sofya_mod
+        import alpha.community.sofya.tools as sofya_mod
 
         with caplog.at_level(logging.WARNING):
             sofya_mod._missing_key_message("web_search")
@@ -154,7 +154,7 @@ class TestMissingKeyMessage:
         assert "web_search" in warnings[0].getMessage()
 
     def test_warns_separately_for_each_tool(self, caplog):
-        import agent_workspace.community.sofya.tools as sofya_mod
+        import alpha.community.sofya.tools as sofya_mod
 
         with caplog.at_level(logging.WARNING):
             sofya_mod._missing_key_message("web_search")
@@ -171,11 +171,11 @@ class TestWebSearchTool:
             {"title": "Result 2", "url": "https://example.com/2", "content": "Page content 2", "description": "Snippet 2"},
         ]
 
-        with patch("agent_workspace.community.sofya.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.sofya.tools.httpx.Client") as mock_client_cls:
             mock_post = mock_client_cls.return_value.__enter__.return_value.post
             mock_post.return_value = _make_search_response(results)
 
-            from agent_workspace.community.sofya.tools import web_search_tool
+            from alpha.community.sofya.tools import web_search_tool
 
             parsed = json.loads(web_search_tool.invoke({"query": "python tutorial"}))
 
@@ -190,10 +190,10 @@ class TestWebSearchTool:
     def test_falls_back_to_description_when_content_is_empty(self, mock_config_with_key):
         results = [{"title": "Result", "url": "https://example.com", "content": "", "description": "Snippet"}]
 
-        with patch("agent_workspace.community.sofya.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.sofya.tools.httpx.Client") as mock_client_cls:
             mock_client_cls.return_value.__enter__.return_value.post.return_value = _make_search_response(results)
 
-            from agent_workspace.community.sofya.tools import web_search_tool
+            from alpha.community.sofya.tools import web_search_tool
 
             parsed = json.loads(web_search_tool.invoke({"query": "test"}))
 
@@ -202,11 +202,11 @@ class TestWebSearchTool:
     def test_time_range_is_sent_as_freshness(self, mock_config_with_key):
         results = [{"title": "Result", "url": "https://example.com", "content": "Body"}]
 
-        with patch("agent_workspace.community.sofya.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.sofya.tools.httpx.Client") as mock_client_cls:
             mock_post = mock_client_cls.return_value.__enter__.return_value.post
             mock_post.return_value = _make_search_response(results)
 
-            from agent_workspace.community.sofya.tools import web_search_tool
+            from alpha.community.sofya.tools import web_search_tool
 
             web_search_tool.invoke({"query": "test", "time_range": "week"})
 
@@ -219,11 +219,11 @@ class TestWebSearchTool:
         }
         results = [{"title": "Result", "url": "https://example.com", "description": "Snippet"}]
 
-        with patch("agent_workspace.community.sofya.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.sofya.tools.httpx.Client") as mock_client_cls:
             mock_post = mock_client_cls.return_value.__enter__.return_value.post
             mock_post.return_value = _make_search_response(results)
 
-            from agent_workspace.community.sofya.tools import web_search_tool
+            from alpha.community.sofya.tools import web_search_tool
 
             web_search_tool.invoke({"query": "test"})
 
@@ -235,10 +235,10 @@ class TestWebSearchTool:
             {"title": "Listy", "url": "https://example.com/2", "content": None, "description": ["a", "b"]},
         ]
 
-        with patch("agent_workspace.community.sofya.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.sofya.tools.httpx.Client") as mock_client_cls:
             mock_client_cls.return_value.__enter__.return_value.post.return_value = _make_search_response(results)
 
-            from agent_workspace.community.sofya.tools import web_search_tool
+            from alpha.community.sofya.tools import web_search_tool
 
             parsed = json.loads(web_search_tool.invoke({"query": "test"}))
 
@@ -248,10 +248,10 @@ class TestWebSearchTool:
     def test_result_content_is_capped_by_default(self, mock_config_with_key):
         results = [{"title": "Result", "url": "https://example.com", "content": "x" * 9000}]
 
-        with patch("agent_workspace.community.sofya.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.sofya.tools.httpx.Client") as mock_client_cls:
             mock_client_cls.return_value.__enter__.return_value.post.return_value = _make_search_response(results)
 
-            from agent_workspace.community.sofya.tools import web_search_tool
+            from alpha.community.sofya.tools import web_search_tool
 
             parsed = json.loads(web_search_tool.invoke({"query": "test"}))
 
@@ -264,10 +264,10 @@ class TestWebSearchTool:
         }
         results = [{"title": "Result", "url": "https://example.com", "content": "x" * 9000}]
 
-        with patch("agent_workspace.community.sofya.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.sofya.tools.httpx.Client") as mock_client_cls:
             mock_client_cls.return_value.__enter__.return_value.post.return_value = _make_search_response(results)
 
-            from agent_workspace.community.sofya.tools import web_search_tool
+            from alpha.community.sofya.tools import web_search_tool
 
             parsed = json.loads(web_search_tool.invoke({"query": "test"}))
 
@@ -280,17 +280,17 @@ class TestWebSearchTool:
         }
         results = [{"title": "Result", "url": "https://example.com", "content": "x" * 9000}]
 
-        with patch("agent_workspace.community.sofya.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.sofya.tools.httpx.Client") as mock_client_cls:
             mock_client_cls.return_value.__enter__.return_value.post.return_value = _make_search_response(results)
 
-            from agent_workspace.community.sofya.tools import web_search_tool
+            from alpha.community.sofya.tools import web_search_tool
 
             parsed = json.loads(web_search_tool.invoke({"query": "test"}))
 
         assert len(parsed["results"][0]["content"]) == 9000
 
     def test_invalid_contents_max_characters_falls_back_to_default(self):
-        from agent_workspace.community.sofya.tools import _coerce_content_limit
+        from alpha.community.sofya.tools import _coerce_content_limit
 
         assert _coerce_content_limit("oops") == 2000
         assert _coerce_content_limit(None) == 2000
@@ -302,10 +302,10 @@ class TestWebSearchTool:
         """Five capped results must stay inline rather than being persisted to disk."""
         results = [{"title": f"R{i}", "url": f"https://example.com/{i}", "content": "x" * 20000} for i in range(5)]
 
-        with patch("agent_workspace.community.sofya.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.sofya.tools.httpx.Client") as mock_client_cls:
             mock_client_cls.return_value.__enter__.return_value.post.return_value = _make_search_response(results)
 
-            from agent_workspace.community.sofya.tools import web_search_tool
+            from alpha.community.sofya.tools import web_search_tool
 
             output = web_search_tool.invoke({"query": "test"})
 
@@ -318,11 +318,11 @@ class TestWebSearchTool:
         }
         results = [{"title": f"R{i}", "url": f"https://x.com/{i}", "content": f"C{i}"} for i in range(10)]
 
-        with patch("agent_workspace.community.sofya.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.sofya.tools.httpx.Client") as mock_client_cls:
             mock_post = mock_client_cls.return_value.__enter__.return_value.post
             mock_post.return_value = _make_search_response(results)
 
-            from agent_workspace.community.sofya.tools import web_search_tool
+            from alpha.community.sofya.tools import web_search_tool
 
             parsed = json.loads(web_search_tool.invoke({"query": "test", "max_results": 8}))
 
@@ -336,11 +336,11 @@ class TestWebSearchTool:
         }
         results = [{"title": "Result", "url": "https://example.com", "content": "Body"}]
 
-        with patch("agent_workspace.community.sofya.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.sofya.tools.httpx.Client") as mock_client_cls:
             mock_post = mock_client_cls.return_value.__enter__.return_value.post
             mock_post.return_value = _make_search_response(results)
 
-            from agent_workspace.community.sofya.tools import web_search_tool
+            from alpha.community.sofya.tools import web_search_tool
 
             with caplog.at_level(logging.WARNING):
                 web_search_tool.invoke({"query": "test"})
@@ -355,11 +355,11 @@ class TestWebSearchTool:
         }
         results = [{"title": "Result", "url": "https://example.com", "description": "Snippet"}]
 
-        with patch("agent_workspace.community.sofya.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.sofya.tools.httpx.Client") as mock_client_cls:
             mock_post = mock_client_cls.return_value.__enter__.return_value.post
             mock_post.return_value = _make_search_response(results)
 
-            from agent_workspace.community.sofya.tools import web_search_tool
+            from alpha.community.sofya.tools import web_search_tool
 
             web_search_tool.invoke({"query": "test"})
 
@@ -372,11 +372,11 @@ class TestWebSearchTool:
         }
         results = [{"title": f"R{i}", "url": f"https://x.com/{i}", "content": f"C{i}"} for i in range(10)]
 
-        with patch("agent_workspace.community.sofya.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.sofya.tools.httpx.Client") as mock_client_cls:
             mock_post = mock_client_cls.return_value.__enter__.return_value.post
             mock_post.return_value = _make_search_response(results)
 
-            from agent_workspace.community.sofya.tools import web_search_tool
+            from alpha.community.sofya.tools import web_search_tool
 
             parsed = json.loads(web_search_tool.invoke({"query": "test"}))
 
@@ -390,11 +390,11 @@ class TestWebSearchTool:
         }
         results = [{"title": f"R{i}", "url": f"https://x.com/{i}", "content": f"C{i}"} for i in range(30)]
 
-        with patch("agent_workspace.community.sofya.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.sofya.tools.httpx.Client") as mock_client_cls:
             mock_post = mock_client_cls.return_value.__enter__.return_value.post
             mock_post.return_value = _make_search_response(results)
 
-            from agent_workspace.community.sofya.tools import web_search_tool
+            from alpha.community.sofya.tools import web_search_tool
 
             parsed = json.loads(web_search_tool.invoke({"query": "test"}))
 
@@ -406,10 +406,10 @@ class TestWebSearchTool:
         results = [{"title": f"R{i}", "url": f"https://x.com/{i}", "content": f"C{i}"} for i in range(10)]
 
         with patch.dict("os.environ", {"SOFYA_API_KEY": "env-key"}):
-            with patch("agent_workspace.community.sofya.tools.httpx.Client") as mock_client_cls:
+            with patch("alpha.community.sofya.tools.httpx.Client") as mock_client_cls:
                 mock_client_cls.return_value.__enter__.return_value.post.return_value = _make_search_response(results)
 
-                from agent_workspace.community.sofya.tools import web_search_tool
+                from alpha.community.sofya.tools import web_search_tool
 
                 parsed = json.loads(web_search_tool.invoke({"query": "test", "max_results": 2}))
 
@@ -417,10 +417,10 @@ class TestWebSearchTool:
 
     def test_empty_results_return_error_json(self, mock_config_with_key):
         """An empty result list returns a structured error, matching ddg_search convention."""
-        with patch("agent_workspace.community.sofya.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.sofya.tools.httpx.Client") as mock_client_cls:
             mock_client_cls.return_value.__enter__.return_value.post.return_value = _make_search_response([])
 
-            from agent_workspace.community.sofya.tools import web_search_tool
+            from alpha.community.sofya.tools import web_search_tool
 
             parsed = json.loads(web_search_tool.invoke({"query": "no results"}))
 
@@ -428,10 +428,10 @@ class TestWebSearchTool:
         assert parsed["query"] == "no results"
 
     def test_unexpected_results_type_returns_error_json(self, mock_config_with_key):
-        with patch("agent_workspace.community.sofya.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.sofya.tools.httpx.Client") as mock_client_cls:
             mock_client_cls.return_value.__enter__.return_value.post.return_value = _make_response({"results": "nope"})
 
-            from agent_workspace.community.sofya.tools import web_search_tool
+            from alpha.community.sofya.tools import web_search_tool
 
             parsed = json.loads(web_search_tool.invoke({"query": "test"}))
 
@@ -443,20 +443,20 @@ class TestWebSearchTool:
         mock_resp = MagicMock()
         mock_resp.raise_for_status.side_effect = httpx.HTTPStatusError("error", request=request, response=response)
 
-        with patch("agent_workspace.community.sofya.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.sofya.tools.httpx.Client") as mock_client_cls:
             mock_client_cls.return_value.__enter__.return_value.post.return_value = mock_resp
 
-            from agent_workspace.community.sofya.tools import web_search_tool
+            from alpha.community.sofya.tools import web_search_tool
 
             parsed = json.loads(web_search_tool.invoke({"query": "test"}))
 
         assert parsed["error"] == "Sofya API error: HTTP 402"
 
     def test_network_error_returns_error_json(self, mock_config_with_key):
-        with patch("agent_workspace.community.sofya.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.sofya.tools.httpx.Client") as mock_client_cls:
             mock_client_cls.return_value.__enter__.return_value.post.side_effect = httpx.ConnectError("boom")
 
-            from agent_workspace.community.sofya.tools import web_search_tool
+            from alpha.community.sofya.tools import web_search_tool
 
             parsed = json.loads(web_search_tool.invoke({"query": "test"}))
 
@@ -464,7 +464,7 @@ class TestWebSearchTool:
 
     def test_missing_key_returns_error_json(self, mock_config_no_key):
         with patch.dict("os.environ", {}, clear=True):
-            from agent_workspace.community.sofya.tools import web_search_tool
+            from alpha.community.sofya.tools import web_search_tool
 
             parsed = json.loads(web_search_tool.invoke({"query": "test"}))
 
@@ -476,11 +476,11 @@ class TestWebFetchTool:
     def test_returns_title_and_content(self, mock_config_with_key):
         results = [{"title": "Example Page", "url": "https://example.com", "content": "# Markdown body", "success": True}]
 
-        with patch("agent_workspace.community.sofya.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.sofya.tools.httpx.Client") as mock_client_cls:
             mock_post = mock_client_cls.return_value.__enter__.return_value.post
             mock_post.return_value = _make_fetch_response(results)
 
-            from agent_workspace.community.sofya.tools import web_fetch_tool
+            from alpha.community.sofya.tools import web_fetch_tool
 
             result = web_fetch_tool.invoke({"url": "https://example.com"})
 
@@ -490,10 +490,10 @@ class TestWebFetchTool:
     def test_truncates_long_content(self, mock_config_with_key):
         results = [{"title": "Long", "url": "https://example.com", "content": "x" * 9000, "success": True}]
 
-        with patch("agent_workspace.community.sofya.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.sofya.tools.httpx.Client") as mock_client_cls:
             mock_client_cls.return_value.__enter__.return_value.post.return_value = _make_fetch_response(results)
 
-            from agent_workspace.community.sofya.tools import web_fetch_tool
+            from alpha.community.sofya.tools import web_fetch_tool
 
             result = web_fetch_tool.invoke({"url": "https://example.com"})
 
@@ -502,10 +502,10 @@ class TestWebFetchTool:
     def test_non_string_content_does_not_raise(self, mock_config_with_key):
         results = [{"title": "Numeric", "url": "https://example.com", "content": 12345, "success": True}]
 
-        with patch("agent_workspace.community.sofya.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.sofya.tools.httpx.Client") as mock_client_cls:
             mock_client_cls.return_value.__enter__.return_value.post.return_value = _make_fetch_response(results)
 
-            from agent_workspace.community.sofya.tools import web_fetch_tool
+            from alpha.community.sofya.tools import web_fetch_tool
 
             result = web_fetch_tool.invoke({"url": "https://example.com"})
 
@@ -514,10 +514,10 @@ class TestWebFetchTool:
     def test_missing_content_still_reports_no_content(self, mock_config_with_key):
         results = [{"title": "Empty", "url": "https://example.com", "content": None, "success": True}]
 
-        with patch("agent_workspace.community.sofya.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.sofya.tools.httpx.Client") as mock_client_cls:
             mock_client_cls.return_value.__enter__.return_value.post.return_value = _make_fetch_response(results)
 
-            from agent_workspace.community.sofya.tools import web_fetch_tool
+            from alpha.community.sofya.tools import web_fetch_tool
 
             result = web_fetch_tool.invoke({"url": "https://example.com"})
 
@@ -526,10 +526,10 @@ class TestWebFetchTool:
     def test_falls_back_to_untitled(self, mock_config_with_key):
         results = [{"title": "", "url": "https://example.com", "content": "Body", "success": True}]
 
-        with patch("agent_workspace.community.sofya.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.sofya.tools.httpx.Client") as mock_client_cls:
             mock_client_cls.return_value.__enter__.return_value.post.return_value = _make_fetch_response(results)
 
-            from agent_workspace.community.sofya.tools import web_fetch_tool
+            from alpha.community.sofya.tools import web_fetch_tool
 
             result = web_fetch_tool.invoke({"url": "https://example.com"})
 
@@ -538,10 +538,10 @@ class TestWebFetchTool:
     def test_failed_result_returns_its_error(self, mock_config_with_key):
         results = [{"url": "https://example.com", "success": False, "error": "404 Not Found"}]
 
-        with patch("agent_workspace.community.sofya.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.sofya.tools.httpx.Client") as mock_client_cls:
             mock_client_cls.return_value.__enter__.return_value.post.return_value = _make_fetch_response(results)
 
-            from agent_workspace.community.sofya.tools import web_fetch_tool
+            from alpha.community.sofya.tools import web_fetch_tool
 
             result = web_fetch_tool.invoke({"url": "https://example.com"})
 
@@ -550,20 +550,20 @@ class TestWebFetchTool:
     def test_empty_content_returns_error(self, mock_config_with_key):
         results = [{"title": "Empty", "url": "https://example.com", "content": "", "success": True}]
 
-        with patch("agent_workspace.community.sofya.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.sofya.tools.httpx.Client") as mock_client_cls:
             mock_client_cls.return_value.__enter__.return_value.post.return_value = _make_fetch_response(results)
 
-            from agent_workspace.community.sofya.tools import web_fetch_tool
+            from alpha.community.sofya.tools import web_fetch_tool
 
             result = web_fetch_tool.invoke({"url": "https://example.com"})
 
         assert result == "Error: No content found"
 
     def test_no_results_returns_error(self, mock_config_with_key):
-        with patch("agent_workspace.community.sofya.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.sofya.tools.httpx.Client") as mock_client_cls:
             mock_client_cls.return_value.__enter__.return_value.post.return_value = _make_fetch_response([])
 
-            from agent_workspace.community.sofya.tools import web_fetch_tool
+            from alpha.community.sofya.tools import web_fetch_tool
 
             result = web_fetch_tool.invoke({"url": "https://example.com"})
 
@@ -575,10 +575,10 @@ class TestWebFetchTool:
         mock_resp = MagicMock()
         mock_resp.raise_for_status.side_effect = httpx.HTTPStatusError("error", request=request, response=response)
 
-        with patch("agent_workspace.community.sofya.tools.httpx.Client") as mock_client_cls:
+        with patch("alpha.community.sofya.tools.httpx.Client") as mock_client_cls:
             mock_client_cls.return_value.__enter__.return_value.post.return_value = mock_resp
 
-            from agent_workspace.community.sofya.tools import web_fetch_tool
+            from alpha.community.sofya.tools import web_fetch_tool
 
             result = web_fetch_tool.invoke({"url": "https://example.com"})
 
@@ -586,7 +586,7 @@ class TestWebFetchTool:
 
     def test_missing_key_returns_error_string(self, mock_config_no_key):
         with patch.dict("os.environ", {}, clear=True):
-            from agent_workspace.community.sofya.tools import web_fetch_tool
+            from alpha.community.sofya.tools import web_fetch_tool
 
             result = web_fetch_tool.invoke({"url": "https://example.com"})
 

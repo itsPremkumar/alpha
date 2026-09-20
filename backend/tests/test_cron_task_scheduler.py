@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from agent_workspace.scheduler.cron_manager import CronManager
-from agent_workspace.tools.builtins.cronjob_manage_tool import cronjob_manage
+from alpha.scheduler.cron_manager import CronManager
+from alpha.tools.builtins.cronjob_manage_tool import cronjob_manage
 
 
 def test_cron_manager_lifecycle(tmp_path: Path):
@@ -42,8 +42,8 @@ def test_cron_manager_lifecycle(tmp_path: Path):
 
 def test_cronjob_manage_tool(tmp_path: Path, monkeypatch):
     manager = CronManager(root_dir=tmp_path)
-    monkeypatch.setattr("agent_workspace.scheduler.cron_manager.get_cron_manager", lambda: manager)
-    monkeypatch.setattr("agent_workspace.tools.builtins.cronjob_manage_tool.get_cron_manager", lambda: manager)
+    monkeypatch.setattr("alpha.scheduler.cron_manager.get_cron_manager", lambda: manager)
+    monkeypatch.setattr("alpha.tools.builtins.cronjob_manage_tool.get_cron_manager", lambda: manager)
 
     # Add
     add_out = cronjob_manage.invoke({

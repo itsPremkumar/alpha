@@ -6,10 +6,10 @@ import tempfile
 from pathlib import Path
 import pytest
 
-from agent_workspace.selfrepair.sbfl import OchiaiFaultLocalizer
-from agent_workspace.selfrepair.assertion_guard import TestAssertionImmutabilityGuard
-from agent_workspace.selfrepair.surgical_apr import SurgicalProgramRepairEngine
-from agent_workspace.tools.builtins.code_agentic_core import run_surgical_program_repair
+from alpha.selfrepair.sbfl import OchiaiFaultLocalizer
+from alpha.selfrepair.assertion_guard import TestAssertionImmutabilityGuard
+from alpha.selfrepair.surgical_apr import SurgicalProgramRepairEngine
+from alpha.tools.builtins.code_agentic_core import run_surgical_program_repair
 
 
 def test_ochiai_sbfl_formula_computation():

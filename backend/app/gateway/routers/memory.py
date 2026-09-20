@@ -7,10 +7,10 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
 from app.gateway.internal_auth import get_trusted_internal_owner_user_id
-from agent_workspace.agents.memory import MemoryConflictError, MemoryCorruptionError, MemoryManager, get_memory_manager
-from agent_workspace.config.memory_config import get_memory_config
-from agent_workspace.config.paths import make_safe_user_id
-from agent_workspace.runtime.user_context import get_effective_user_id
+from alpha.agents.memory import MemoryConflictError, MemoryCorruptionError, MemoryManager, get_memory_manager
+from alpha.config.memory_config import get_memory_config
+from alpha.config.paths import make_safe_user_id
+from alpha.runtime.user_context import get_effective_user_id
 
 router = APIRouter(prefix="/api", tags=["memory"])
 
@@ -579,8 +579,8 @@ class ProceduralSkillCreateRequest(BaseModel):
 def _cognitive_system_for_request(request: Request):
     from contextlib import contextmanager
 
-    from agent_workspace.memory.cognitive import get_cognitive_memory_system
-    from agent_workspace.runtime.user_context import require_current_user
+    from alpha.memory.cognitive import get_cognitive_memory_system
+    from alpha.runtime.user_context import require_current_user
 
     @contextmanager
     def operation():
@@ -618,7 +618,7 @@ def get_cognitive_overview(http_request: Request) -> dict[str, Any]:
     description="Query memory fusing BM25 lexical, vector similarity, graph traversal, and temporal decay.",
 )
 def recall_cognitive_memory(req: CognitiveRecallRequest, http_request: Request) -> list[dict[str, Any]]:
-    from agent_workspace.memory.cognitive import HybridRecallQuery
+    from alpha.memory.cognitive import HybridRecallQuery
 
     with _cognitive_system_for_request(http_request) as system:
         query_obj = HybridRecallQuery(**req.model_dump())
@@ -697,7 +697,7 @@ def delete_episodic_trace(trace_id: str, http_request: Request) -> dict[str, Any
     summary="List Semantic Belief Graph Nodes and Edges",
 )
 def list_semantic_graph(http_request: Request, status: str | None = None, subject: str | None = None, limit: int = 100) -> dict[str, Any]:
-    from agent_workspace.memory.cognitive import BeliefStatus
+    from alpha.memory.cognitive import BeliefStatus
 
     with _cognitive_system_for_request(http_request) as system:
         st_enum = None

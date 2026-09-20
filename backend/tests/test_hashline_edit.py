@@ -2,7 +2,7 @@
 
 import pytest
 
-from agent_workspace.editing.hashline import (
+from alpha.editing.hashline import (
     HashlineMismatchError,
     apply_hashline_edit,
     compute_line_hash,

@@ -6,14 +6,14 @@ import subprocess
 
 import pytest
 
-from agent_workspace.lineage.semantic_git_delta import (
+from alpha.lineage.semantic_git_delta import (
     SemanticGitDeltaAnalyzer,
     TransformationKind,
     compute_risk_score,
     extract_symbols,
     risk_band,
 )
-from agent_workspace.tools.builtins.semantic_git_delta_tool import analyze_semantic_git_delta
+from alpha.tools.builtins.semantic_git_delta_tool import analyze_semantic_git_delta
 
 BEFORE = '''
 class PaymentService:
@@ -256,7 +256,7 @@ def test_non_breaking_transformations_do_not_raise_risk():
 
 def _fake_transformation(weight: float):
     """Build a synthetic transformation for scoring tests."""
-    from agent_workspace.lineage.semantic_git_delta import SemanticTransformation
+    from alpha.lineage.semantic_git_delta import SemanticTransformation
 
     return SemanticTransformation(
         kind=TransformationKind.SYMBOL_REMOVED,

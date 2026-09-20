@@ -19,9 +19,9 @@ from app.channels.store import ChannelStore
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from agent_workspace.config.app_config import AppConfig
-    from agent_workspace.config.channel_connections_config import ChannelConnectionsConfig
-    from agent_workspace.runtime import StreamBridge
+    from alpha.config.app_config import AppConfig
+    from alpha.config.channel_connections_config import ChannelConnectionsConfig
+    from alpha.runtime import StreamBridge
 
 # Channel name → import path for lazy loading
 _CHANNEL_REGISTRY: dict[str, str] = {
@@ -99,8 +99,8 @@ def _make_connection_repo(connection_config: ChannelConnectionsConfig | None):
         return None
 
     try:
-        from agent_workspace.persistence.channel_connections import ChannelConnectionRepository
-        from agent_workspace.persistence.engine import get_session_factory
+        from alpha.persistence.channel_connections import ChannelConnectionRepository
+        from alpha.persistence.engine import get_session_factory
     except Exception:
         logger.exception("Failed to import channel connection repository")
         return None
@@ -176,7 +176,7 @@ class ChannelService:
         auto-draining can omit it.
         """
         if app_config is None:
-            from agent_workspace.config.app_config import get_app_config
+            from alpha.config.app_config import get_app_config
 
             app_config = get_app_config()
         channels_config = {}
@@ -324,7 +324,7 @@ class ChannelService:
         Falls back to the cached ``self._config`` when config loading fails.
         """
         try:
-            from agent_workspace.config.app_config import get_app_config
+            from alpha.config.app_config import get_app_config
 
             app_config = get_app_config()
             extra = app_config.model_extra or {}
@@ -452,7 +452,7 @@ class ChannelService:
             return False
 
         try:
-            from agent_workspace.reflection import resolve_class
+            from alpha.reflection import resolve_class
 
             channel_cls = resolve_class(import_path, base_class=None)
         except Exception:
@@ -468,7 +468,7 @@ class ChannelService:
                 # guard. Wired here (like channel_store) rather than defaulted
                 # inside the connector so that directly constructed channels
                 # (tests, tooling) stay free of filesystem side effects.
-                from agent_workspace.config.paths import get_paths
+                from alpha.config.paths import get_paths
 
                 config["seen_event_store_path"] = str(Path(get_paths().base_dir) / "channels" / "buzz_seen_events.json")
             if self._connection_repo is not None:

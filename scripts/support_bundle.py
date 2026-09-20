@@ -27,7 +27,7 @@ SECRET_KEY_RE = re.compile(
     re.IGNORECASE,
 )
 # Bare-word coverage above mirrors env_policy.py's *KEY*/*SECRET*/*TOKEN*/*PASS*/
-# *CREDENTIAL*/*DSN* sandbox-env denylist (backend/packages/harness/agent_workspace/sandbox/env_policy.py):
+# *CREDENTIAL*/*DSN* sandbox-env denylist (backend/packages/harness/alpha/sandbox/env_policy.py):
 # a fixed keyword allowlist misses a secret stored under an unanticipated key name
 # inside an open-ended config dict (e.g. guardrails.provider.config, which is an
 # arbitrary dict of provider-specific kwargs). The api_key/access_key/private_key/
@@ -63,7 +63,7 @@ SECRET_FLAG_RE = re.compile(r"(?i)^--?[\w.-]*(?:api[_-]?key|token|secret|passwor
 HEADER_KEY_RE = re.compile(r"(?i)header")
 POSIX_HOME_RE = re.compile(r"(?<![\w.-])(/Users|/home)/([^/\s:]+)")
 WINDOWS_HOME_RE = re.compile(r"(?i)([A-Z]:\\Users\\)([^\\\s:]+)")
-# Must stay byte-identical to agent_workspace.utils.thread_id.THREAD_ID_PATTERN
+# Must stay byte-identical to alpha.utils.thread_id.THREAD_ID_PATTERN
 # (canonical thread ID contract); pinned by a parity test in backend/tests.
 # Kept as a local copy because this script must run even in environments
 # where the backend venv is broken.

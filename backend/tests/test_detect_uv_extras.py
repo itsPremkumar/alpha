@@ -152,7 +152,7 @@ def test_detect_from_config_redis_via_stream_bridge(tmp_path):
 def test_detect_from_config_browser_via_browser_navigate_tool(tmp_path):
     cfg = tmp_path / "config.yaml"
     cfg.write_text(
-        "tools:\n  - name: browser_navigate\n    group: browser\n    use: agent_workspace.community.browser_automation.tools:browser_navigate_tool\n",
+        "tools:\n  - name: browser_navigate\n    group: browser\n    use: alpha.community.browser_automation.tools:browser_navigate_tool\n",
     )
     assert detect.detect_from_config(cfg) == ["browser"]
 
@@ -239,7 +239,7 @@ def test_detect_from_config_ignores_use_in_nested_model_mapping(tmp_path):
     """
     cfg = tmp_path / "config.yaml"
     cfg.write_text(
-        "models:\n  - name: doubao\n    use: agent_workspace.models.patched_deepseek:PatchedChatDeepSeek\n    when_thinking_enabled:\n      use: langchain_ollama:ChatOllama\n",
+        "models:\n  - name: doubao\n    use: alpha.models.patched_deepseek:PatchedChatDeepSeek\n    when_thinking_enabled:\n      use: langchain_ollama:ChatOllama\n",
     )
     assert detect.detect_from_config(cfg) == []
 
@@ -285,7 +285,7 @@ def test_detect_from_config_ignores_use_in_nested_indentless_sequence(tmp_path):
     """A `- use:` item inside a model option is not that model's provider."""
     cfg = tmp_path / "config.yaml"
     cfg.write_text(
-        "models:\n- name: x\n  use: agent_workspace.models.patched_deepseek:PatchedChatDeepSeek\n  fallbacks:\n  - use: langchain_ollama:ChatOllama\n",
+        "models:\n- name: x\n  use: alpha.models.patched_deepseek:PatchedChatDeepSeek\n  fallbacks:\n  - use: langchain_ollama:ChatOllama\n",
     )
     assert detect.detect_from_config(cfg) == []
 

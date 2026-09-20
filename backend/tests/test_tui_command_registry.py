@@ -1,7 +1,7 @@
 """Tests for the slash-command registry (pure)."""
 
-from agent_workspace.skills.slash import RESERVED_SLASH_SKILL_NAMES
-from agent_workspace.tui.command_registry import (
+from alpha.skills.slash import RESERVED_SLASH_SKILL_NAMES
+from alpha.tui.command_registry import (
     BUILTIN_COMMANDS,
     build_registry,
     filter_commands,

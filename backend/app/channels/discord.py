@@ -14,7 +14,7 @@ from app.channels.base import Channel
 from app.channels.commands import is_known_channel_command
 from app.channels.connection_identity import attach_connection_identity
 from app.channels.message_bus import InboundMessage, InboundMessageType, InboundReservation, MessageBus, OutboundMessage, ResolvedAttachment
-from agent_workspace.branding import DISPLAY_NAME
+from alpha.branding import DISPLAY_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -775,7 +775,7 @@ class DiscordChannel(Channel):
                 )
                 return None
 
-            thread_name = f"agent_workspace-{message.author.display_name}-{message.id}"[:100]
+            thread_name = f"alpha-{message.author.display_name}-{message.id}"[:100]
             return await message.create_thread(name=thread_name)
         except self._discord_module.errors.HTTPException as exc:
             if exc.code == 50024:

@@ -1,4 +1,4 @@
-"""Unit tests for ``agent_workspace.trace_context`` validation helpers.
+"""Unit tests for ``alpha.trace_context`` validation helpers.
 
 The middleware-level end-to-end coverage lives in ``test_trace_middleware.py``;
 this file pins the character-set invariants of ``normalize_trace_id`` directly
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from agent_workspace.trace_context import (
+from alpha.trace_context import (
     _MAX_TRACE_ID_LENGTH,
     bind_trace_id,
     ensure_trace_context,

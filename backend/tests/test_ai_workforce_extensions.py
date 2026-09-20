@@ -11,26 +11,26 @@ from pathlib import Path
 import tempfile
 import time
 
-from agent_workspace.projects.contracts import (
+from alpha.projects.contracts import (
     ContractGatekeeper,
     DefinitionOfDone,
     EvidenceReceipt,
     TaskContract,
 )
-from agent_workspace.projects.decisions import Decision, DecisionLog
-from agent_workspace.projects.adr_generator import (
+from alpha.projects.decisions import Decision, DecisionLog
+from alpha.projects.adr_generator import (
     generate_markdown_adr,
     sync_all_adrs,
     read_adr_markdown,
 )
-from agent_workspace.bots.ephemeral import EphemeralBotManager
-from agent_workspace.projects.postmortem import ProjectPostmortemEngine
-from agent_workspace.models.workforce_router import (
+from alpha.bots.ephemeral import EphemeralBotManager
+from alpha.projects.postmortem import ProjectPostmortemEngine
+from alpha.models.workforce_router import (
     WorkforceModelRouter,
     ModelTier,
     get_workforce_model_router,
 )
-from agent_workspace.projects.context_router import ThreeLevelContextRouter
+from alpha.projects.context_router import ThreeLevelContextRouter
 
 
 def test_task_contract_gatekeeper(tmp_path: Path):

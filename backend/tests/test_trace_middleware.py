@@ -7,7 +7,7 @@ from starlette.testclient import TestClient
 
 from app.gateway.csrf_middleware import CORS_EXPOSED_HEADERS
 from app.gateway.trace_middleware import TraceMiddleware
-from agent_workspace.trace_context import TRACE_ID_HEADER, get_current_trace_id
+from alpha.trace_context import TRACE_ID_HEADER, get_current_trace_id
 
 
 def _make_app() -> FastAPI:
@@ -140,11 +140,11 @@ def test_create_app_wires_trace_middleware_into_the_real_stack(monkeypatch) -> N
     the run-record stamp and enhanced log records derive from, while every
     hand-wired suite still passed."""
     import app.gateway.app as app_module
-    import agent_workspace.extensions as extensions_module
-    from agent_workspace.config.app_config import AppConfig
-    from agent_workspace.config.sandbox_config import SandboxConfig
-    from agent_workspace.extensions import reset_loaded_extensions
-    from agent_workspace.extensions.registry import ExtensionRegistry
+    import alpha.extensions as extensions_module
+    from alpha.config.app_config import AppConfig
+    from alpha.config.sandbox_config import SandboxConfig
+    from alpha.extensions import reset_loaded_extensions
+    from alpha.extensions.registry import ExtensionRegistry
 
     monkeypatch.setattr(app_module, "get_app_config", lambda: AppConfig(sandbox=SandboxConfig(use="test")))
     monkeypatch.setattr(extensions_module, "load_extensions", lambda plugins: (ExtensionRegistry().build(), []))

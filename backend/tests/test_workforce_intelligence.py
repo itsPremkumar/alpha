@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from agent_workspace.benchmarks import BenchmarkCase, BenchmarkRunner, BenchmarkSuite
-from agent_workspace.evolution import EvolutionEngine
-from agent_workspace.models.task_router import route_task
-from agent_workspace.ops.monitor import ResourceReading, advise, read_resources
-from agent_workspace.planning.interview import MAX_REVIEW_ROUNDS, derive_gap_questions, new_plan, record_review
-from agent_workspace.selfrepair.engine import Diagnosis, attempt_repair, diagnose, disk_health, verify_repair
+from alpha.benchmarks import BenchmarkCase, BenchmarkRunner, BenchmarkSuite
+from alpha.evolution import EvolutionEngine
+from alpha.models.task_router import route_task
+from alpha.ops.monitor import ResourceReading, advise, read_resources
+from alpha.planning.interview import MAX_REVIEW_ROUNDS, derive_gap_questions, new_plan, record_review
+from alpha.selfrepair.engine import Diagnosis, attempt_repair, diagnose, disk_health, verify_repair
 
 
 def test_task_router_known_and_unknown_types():

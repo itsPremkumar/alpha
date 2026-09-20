@@ -1,9 +1,9 @@
 import pytest
 from pydantic import ValidationError
 
-from agent_workspace.config.app_config import AppConfig
-from agent_workspace.config.mcp_tasks_config import McpTasksConfig
-from agent_workspace.config.reload_boundary import STARTUP_ONLY_FIELDS, STARTUP_ONLY_PREFIX
+from alpha.config.app_config import AppConfig
+from alpha.config.mcp_tasks_config import McpTasksConfig
+from alpha.config.reload_boundary import STARTUP_ONLY_FIELDS, STARTUP_ONLY_PREFIX
 
 
 def test_mcp_task_runtime_is_disabled_by_default_and_bounded():

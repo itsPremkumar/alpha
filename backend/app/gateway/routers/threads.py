@@ -4,7 +4,7 @@ Combines the existing thread-local filesystem cleanup with LangGraph
 Platform-compatible thread management backed by the checkpointer.
 
 Channel values returned in state responses are serialized through
-:func:`agent_workspace.runtime.serialization.serialize_channel_values` to
+:func:`alpha.runtime.serialization.serialize_channel_values` to
 ensure LangChain message objects are converted to JSON-safe dicts
 matching the LangGraph Platform wire format expected by the
 ``useStream`` React hook.
@@ -43,21 +43,21 @@ from app.gateway.services import (
     strip_server_owned_state_metadata,
 )
 from app.gateway.utils import sanitize_log_param
-from agent_workspace.agents.thread_state import THREAD_STATE_REDUCER_FIELDS
-from agent_workspace.config.paths import Paths, get_paths
-from agent_workspace.config.summarization_config import ContextSize
-from agent_workspace.persistence.thread_meta import PROJECT_FILTER_UNSET, THREAD_ARCHIVED_METADATA_KEY, THREAD_PINNED_METADATA_KEY, THREAD_PROJECT_METADATA_KEY, ThreadOwnershipConflictError
-from agent_workspace.runtime import ThreadOperationKind, serialize_channel_values_for_api
-from agent_workspace.runtime.checkpoint_mode import CheckpointModeMismatchError, CheckpointModeReconfigurationError
-from agent_workspace.runtime.checkpoint_state import graph_reducer_channels, graph_state_schema, graph_writable_channels
-from agent_workspace.runtime.context_compaction import (
+from alpha.agents.thread_state import THREAD_STATE_REDUCER_FIELDS
+from alpha.config.paths import Paths, get_paths
+from alpha.config.summarization_config import ContextSize
+from alpha.persistence.thread_meta import PROJECT_FILTER_UNSET, THREAD_ARCHIVED_METADATA_KEY, THREAD_PINNED_METADATA_KEY, THREAD_PROJECT_METADATA_KEY, ThreadOwnershipConflictError
+from alpha.runtime import ThreadOperationKind, serialize_channel_values_for_api
+from alpha.runtime.checkpoint_mode import CheckpointModeMismatchError, CheckpointModeReconfigurationError
+from alpha.runtime.checkpoint_state import graph_reducer_channels, graph_state_schema, graph_writable_channels
+from alpha.runtime.context_compaction import (
     ContextCompactionDisabled,
     ContextCompactionFailed,
     ThreadCompactionResult,
     compact_thread_context,
 )
-from agent_workspace.runtime.events.message_seq import stamp_messages_with_seq
-from agent_workspace.runtime.goal import (
+from alpha.runtime.events.message_seq import stamp_messages_with_seq
+from alpha.runtime.goal import (
     DEFAULT_MAX_GOAL_CONTINUATIONS,
     build_goal_state,
     ensure_thread_checkpoint,
@@ -65,14 +65,14 @@ from agent_workspace.runtime.goal import (
     read_thread_goal,
     write_thread_goal,
 )
-from agent_workspace.runtime.journal import build_branch_history_seed_events
-from agent_workspace.runtime.runs.manager import ConflictError
-from agent_workspace.runtime.runs.worker import RUN_MESSAGE_IDS_METADATA_KEY, valid_duration_entry, valid_run_message_id_entry
-from agent_workspace.runtime.secret_context import redact_metadata_secrets
-from agent_workspace.runtime.user_context import get_effective_user_id
-from agent_workspace.utils.file_io import run_file_io
-from agent_workspace.utils.thread_id import ThreadId, resolve_thread_id, validate_thread_id
-from agent_workspace.utils.time import coerce_iso, now_iso
+from alpha.runtime.journal import build_branch_history_seed_events
+from alpha.runtime.runs.manager import ConflictError
+from alpha.runtime.runs.worker import RUN_MESSAGE_IDS_METADATA_KEY, valid_duration_entry, valid_run_message_id_entry
+from alpha.runtime.secret_context import redact_metadata_secrets
+from alpha.runtime.user_context import get_effective_user_id
+from alpha.utils.file_io import run_file_io
+from alpha.utils.thread_id import ThreadId, resolve_thread_id, validate_thread_id
+from alpha.utils.time import coerce_iso, now_iso
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/threads", tags=["threads"])
@@ -488,11 +488,11 @@ class ThreadSearchRequest(BaseModel):
         """Reject filter entries the SQL backend cannot compile.
 
         Enforces consistent behaviour across SQL and memory backends.
-        See ``agent_workspace.persistence.json_compat`` for the shared validators.
+        See ``alpha.persistence.json_compat`` for the shared validators.
         """
         if not v:
             return v
-        from agent_workspace.persistence.json_compat import validate_metadata_filter_key, validate_metadata_filter_value
+        from alpha.persistence.json_compat import validate_metadata_filter_key, validate_metadata_filter_value
 
         bad_entries: list[str] = []
         for key, value in v.items():
@@ -781,7 +781,7 @@ async def _delete_thread_data_with_reservation(thread_id: str, request: Request)
     # by thread_id, so leaving one alive after the owner deletes the thread lets
     # a later caller who guesses the id reuse the retained page/cookies.
     try:
-        from agent_workspace.community.browser_automation import get_browser_session_manager
+        from alpha.community.browser_automation import get_browser_session_manager
 
         await get_browser_session_manager().close_session(thread_id)
     except ImportError:
@@ -848,7 +848,7 @@ async def create_thread(body: ThreadCreateRequest, request: Request) -> ThreadRe
         return _existing_thread_response(thread_id, existing_record)
 
     # Write thread_meta so the thread appears in /threads/search immediately
-    from agent_workspace.persistence.projects import ProjectNotAssignableError
+    from alpha.persistence.projects import ProjectNotAssignableError
 
     try:
         created_record = await thread_store.create(
@@ -1053,7 +1053,7 @@ async def _branch_thread_with_reservation(
     # store re-validates the project inside the insert (same fail-closed path
     # as create/move), and the inherited id may be stale only when the project
     # was archived or deleted after the source read.
-    from agent_workspace.persistence.projects import ProjectNotAssignableError
+    from alpha.persistence.projects import ProjectNotAssignableError
 
     source_project_id = (source_metadata or {}).get(THREAD_PROJECT_METADATA_KEY)
 
@@ -1201,7 +1201,7 @@ async def search_threads(body: ThreadSearchRequest, request: Request) -> list[Th
     (SQL-backed for sqlite/postgres, Store-backed for memory mode).
     """
     from app.gateway.deps import get_thread_store
-    from agent_workspace.persistence.thread_meta import InvalidMetadataFilterError
+    from alpha.persistence.thread_meta import InvalidMetadataFilterError
 
     repo = get_thread_store(request)
     # Three-state project filter: key absent → no filter; explicit null →
@@ -1723,7 +1723,7 @@ async def _persist_run_history_metadata_background(
     audited_message_ids: set[str],
 ) -> None:
     """Best-effort history migration behind durable checkpoint admission."""
-    from agent_workspace.runtime.runs.worker import persist_run_history_metadata
+    from alpha.runtime.runs.worker import persist_run_history_metadata
 
     try:
         async with reserve_checkpoint_write(request, thread_id, user_id=user_id):

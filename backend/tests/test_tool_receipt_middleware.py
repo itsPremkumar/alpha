@@ -9,9 +9,9 @@ from langchain.agents.middleware.types import ExtendedModelResponse, ModelRespon
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.types import Command
 
-from agent_workspace.agents.middlewares.tool_receipt import TOOL_RECEIPT_KEY, TOOL_RECEIPT_LEDGER_KEY
-from agent_workspace.agents.middlewares.tool_receipt_middleware import ToolReceiptMiddleware
-from agent_workspace.agents.middlewares.tool_result_meta import TOOL_META_KEY
+from alpha.agents.middlewares.tool_receipt import TOOL_RECEIPT_KEY, TOOL_RECEIPT_LEDGER_KEY
+from alpha.agents.middlewares.tool_receipt_middleware import ToolReceiptMiddleware
+from alpha.agents.middlewares.tool_result_meta import TOOL_META_KEY
 
 
 def _request(tool_name: str = "bash") -> SimpleNamespace:
@@ -246,8 +246,8 @@ def test_delegation_only_mode_scopes_past_hidden_framework_messages():
 
 
 def _build(app_config_dict: dict) -> list:
-    from agent_workspace.agents.middlewares.tool_error_handling_middleware import _build_runtime_middlewares
-    from agent_workspace.config.app_config import AppConfig
+    from alpha.agents.middlewares.tool_error_handling_middleware import _build_runtime_middlewares
+    from alpha.config.app_config import AppConfig
 
     app_config = AppConfig.model_validate(app_config_dict)
     return _build_runtime_middlewares(app_config=app_config, include_uploads=False, include_dangling_tool_call_patch=False)

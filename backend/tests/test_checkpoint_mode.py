@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from agent_workspace.runtime.checkpoint_mode import (
+from alpha.runtime.checkpoint_mode import (
     CHECKPOINT_MODE_METADATA_KEY,
     CheckpointModeMismatchError,
     aensure_checkpoint_mode_compatible,
@@ -15,7 +15,7 @@ from agent_workspace.runtime.checkpoint_mode import (
 
 
 def test_process_mode_change_requires_restart(monkeypatch: pytest.MonkeyPatch) -> None:
-    from agent_workspace.runtime import checkpoint_mode
+    from alpha.runtime import checkpoint_mode
 
     monkeypatch.setattr(checkpoint_mode, "_frozen_checkpoint_channel_mode", None)
     assert checkpoint_mode.freeze_checkpoint_channel_mode("full") == "full"
@@ -24,7 +24,7 @@ def test_process_mode_change_requires_restart(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_process_snapshot_frequency_change_requires_restart(monkeypatch: pytest.MonkeyPatch) -> None:
-    from agent_workspace.runtime import checkpoint_mode
+    from alpha.runtime import checkpoint_mode
 
     monkeypatch.setattr(checkpoint_mode, "_frozen_checkpoint_snapshot_frequency", None)
     assert checkpoint_mode.freeze_checkpoint_snapshot_frequency(250) == 250
@@ -39,7 +39,7 @@ def test_process_snapshot_frequency_must_be_positive(
     monkeypatch: pytest.MonkeyPatch,
     snapshot_frequency: int,
 ) -> None:
-    from agent_workspace.runtime import checkpoint_mode
+    from alpha.runtime import checkpoint_mode
 
     monkeypatch.setattr(checkpoint_mode, "_frozen_checkpoint_snapshot_frequency", None)
     with pytest.raises(ValueError, match="snapshot frequency must be positive"):
@@ -48,7 +48,7 @@ def test_process_snapshot_frequency_must_be_positive(
 
 
 def test_resolve_snapshot_frequency_prefers_explicit_then_frozen_then_default(monkeypatch: pytest.MonkeyPatch) -> None:
-    from agent_workspace.runtime import checkpoint_mode
+    from alpha.runtime import checkpoint_mode
 
     monkeypatch.setattr(checkpoint_mode, "_frozen_checkpoint_snapshot_frequency", None)
     assert checkpoint_mode.resolve_checkpoint_snapshot_frequency() == 10
@@ -124,7 +124,7 @@ async def test_full_mode_accessor_rejects_real_delta_checkpoint_on_sqlite(tmp_pa
     from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
     from langgraph.types import Overwrite
 
-    from agent_workspace.runtime.checkpoint_state import CheckpointStateAccessor, build_state_mutation_graph
+    from alpha.runtime.checkpoint_state import CheckpointStateAccessor, build_state_mutation_graph
 
     config = _config()
     async with AsyncSqliteSaver.from_conn_string(str(tmp_path / "gate.db")) as saver:
@@ -150,9 +150,9 @@ async def test_full_mode_accessor_rejects_real_delta_checkpoint_on_sqlite(tmp_pa
 
 
 def test_yaml_mode_change_is_rejected_when_graph_is_reconstructed(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from agent_workspace.agents.lead_agent import agent as lead_agent
-    from agent_workspace.config.app_config import reset_app_config
-    from agent_workspace.runtime import checkpoint_mode
+    from alpha.agents.lead_agent import agent as lead_agent
+    from alpha.config.app_config import reset_app_config
+    from alpha.runtime import checkpoint_mode
 
     config_path = tmp_path / "config.yaml"
 
@@ -161,7 +161,7 @@ def test_yaml_mode_change_is_rejected_when_graph_is_reconstructed(tmp_path, monk
             "\n".join(
                 (
                     "sandbox:",
-                    "  use: agent_workspace.sandbox.local.provider:LocalSandboxProvider",
+                    "  use: alpha.sandbox.local.provider:LocalSandboxProvider",
                     "database:",
                     f"  checkpoint_channel_mode: {mode}",
                 )
@@ -189,9 +189,9 @@ def test_yaml_mode_change_is_rejected_when_graph_is_reconstructed(tmp_path, monk
 
 
 def test_yaml_snapshot_frequency_change_is_rejected_when_graph_is_reconstructed(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from agent_workspace.agents.lead_agent import agent as lead_agent
-    from agent_workspace.config.app_config import reset_app_config
-    from agent_workspace.runtime import checkpoint_mode
+    from alpha.agents.lead_agent import agent as lead_agent
+    from alpha.config.app_config import reset_app_config
+    from alpha.runtime import checkpoint_mode
 
     config_path = tmp_path / "config.yaml"
 
@@ -200,7 +200,7 @@ def test_yaml_snapshot_frequency_change_is_rejected_when_graph_is_reconstructed(
             "\n".join(
                 (
                     "sandbox:",
-                    "  use: agent_workspace.sandbox.local.provider:LocalSandboxProvider",
+                    "  use: alpha.sandbox.local.provider:LocalSandboxProvider",
                     "database:",
                     "  checkpoint_channel_mode: delta",
                     "  checkpoint_delta:",
@@ -240,7 +240,7 @@ async def test_gateway_runtime_rejects_mode_different_from_frozen_process(
     from fastapi import FastAPI
 
     from app.gateway.deps import langgraph_runtime
-    from agent_workspace.runtime import checkpoint_mode
+    from alpha.runtime import checkpoint_mode
 
     @asynccontextmanager
     async def resource(_config):
@@ -255,26 +255,26 @@ async def test_gateway_runtime_rejects_mode_different_from_frozen_process(
         "full",
     )
     monkeypatch.setattr(
-        "agent_workspace.runtime.checkpointer.async_provider.make_checkpointer",
+        "alpha.runtime.checkpointer.async_provider.make_checkpointer",
         resource,
     )
-    monkeypatch.setattr("agent_workspace.runtime.make_stream_bridge", resource)
-    monkeypatch.setattr("agent_workspace.runtime.make_store", resource)
+    monkeypatch.setattr("alpha.runtime.make_stream_bridge", resource)
+    monkeypatch.setattr("alpha.runtime.make_store", resource)
     monkeypatch.setattr(
-        "agent_workspace.persistence.engine.init_engine_from_config",
+        "alpha.persistence.engine.init_engine_from_config",
         noop,
     )
-    monkeypatch.setattr("agent_workspace.persistence.engine.close_engine", noop)
+    monkeypatch.setattr("alpha.persistence.engine.close_engine", noop)
     monkeypatch.setattr(
-        "agent_workspace.persistence.engine.get_session_factory",
+        "alpha.persistence.engine.get_session_factory",
         lambda: None,
     )
     monkeypatch.setattr(
-        "agent_workspace.runtime.events.store.make_run_event_store",
+        "alpha.runtime.events.store.make_run_event_store",
         lambda _config: object(),
     )
     monkeypatch.setattr(
-        "agent_workspace.persistence.thread_meta.make_thread_store",
+        "alpha.persistence.thread_meta.make_thread_store",
         lambda _session_factory, _store: object(),
     )
     startup_config = SimpleNamespace(
@@ -296,14 +296,14 @@ async def test_gateway_runtime_rejects_mode_different_from_frozen_process(
 def test_direct_langgraph_request_cannot_select_delta_in_full_process(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from agent_workspace.agents.lead_agent import agent as lead_agent
-    from agent_workspace.config.app_config import AppConfig
-    from agent_workspace.runtime import checkpoint_mode
-    from agent_workspace.runtime.checkpoint_mode import INTERNAL_CHECKPOINT_MODE_KEY
+    from alpha.agents.lead_agent import agent as lead_agent
+    from alpha.config.app_config import AppConfig
+    from alpha.runtime import checkpoint_mode
+    from alpha.runtime.checkpoint_mode import INTERNAL_CHECKPOINT_MODE_KEY
 
     app_config = AppConfig.model_validate(
         {
-            "sandbox": {"use": "agent_workspace.sandbox.local.provider:LocalSandboxProvider"},
+            "sandbox": {"use": "alpha.sandbox.local.provider:LocalSandboxProvider"},
             "database": {"checkpoint_channel_mode": "full"},
         }
     )
@@ -330,13 +330,13 @@ def test_direct_langgraph_request_cannot_select_delta_in_full_process(
 def test_make_lead_agent_freezes_delta_snapshot_frequency_from_app_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from agent_workspace.agents.lead_agent import agent as lead_agent
-    from agent_workspace.config.app_config import AppConfig
-    from agent_workspace.runtime import checkpoint_mode
+    from alpha.agents.lead_agent import agent as lead_agent
+    from alpha.config.app_config import AppConfig
+    from alpha.runtime import checkpoint_mode
 
     app_config = AppConfig.model_validate(
         {
-            "sandbox": {"use": "agent_workspace.sandbox.local.provider:LocalSandboxProvider"},
+            "sandbox": {"use": "alpha.sandbox.local.provider:LocalSandboxProvider"},
             "database": {"checkpoint_delta": {"snapshot_frequency": 7}},
         }
     )
@@ -355,14 +355,14 @@ def test_make_lead_agent_freezes_delta_snapshot_frequency_from_app_config(
 def test_gateway_runtime_app_config_can_supply_its_frozen_internal_mode(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from agent_workspace.agents.lead_agent import agent as lead_agent
-    from agent_workspace.config.app_config import AppConfig
-    from agent_workspace.runtime import checkpoint_mode
-    from agent_workspace.runtime.checkpoint_mode import INTERNAL_CHECKPOINT_MODE_KEY
+    from alpha.agents.lead_agent import agent as lead_agent
+    from alpha.config.app_config import AppConfig
+    from alpha.runtime import checkpoint_mode
+    from alpha.runtime.checkpoint_mode import INTERNAL_CHECKPOINT_MODE_KEY
 
     reloaded_app_config = AppConfig.model_validate(
         {
-            "sandbox": {"use": "agent_workspace.sandbox.local.provider:LocalSandboxProvider"},
+            "sandbox": {"use": "alpha.sandbox.local.provider:LocalSandboxProvider"},
             "database": {"checkpoint_channel_mode": "delta"},
         }
     )

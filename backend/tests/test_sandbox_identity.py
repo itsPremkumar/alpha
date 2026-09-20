@@ -5,7 +5,7 @@ current inline expressions as of 2026-08-30. They pin the compatibility
 contract byte-for-byte; never recompute them from the implementation.
 """
 
-from agent_workspace.sandbox.identity import (
+from alpha.sandbox.identity import (
     SANDBOX_ID_VERSION,
     derive_sandbox_scope_token,
     is_sandbox_scope_token,

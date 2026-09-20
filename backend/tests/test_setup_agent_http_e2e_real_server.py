@@ -101,7 +101,7 @@ models:
     api_key: $OPENAI_API_KEY
     base_url: $OPENAI_API_BASE
 sandbox:
-  use: agent_workspace.sandbox.local:LocalSandboxProvider
+  use: alpha.sandbox.local:LocalSandboxProvider
 agents_api:
   enabled: true
 database:
@@ -117,10 +117,10 @@ def _reset_process_singletons(monkeypatch: pytest.MonkeyPatch) -> None:
     a handful of module-level caches that production normally never resets,
     so they pick up our test-only ``AGENT_WORKSPACE_HOME`` and sqlite path:
 
-    - ``agent_workspace.config.app_config`` caches the parsed ``config.yaml``.
-    - ``agent_workspace.config.paths`` caches the ``Paths`` singleton derived from
+    - ``alpha.config.app_config`` caches the parsed ``config.yaml``.
+    - ``alpha.config.paths`` caches the ``Paths`` singleton derived from
       ``AGENT_WORKSPACE_HOME`` at first access.
-    - ``agent_workspace.persistence.engine`` caches the SQLAlchemy engine and
+    - ``alpha.persistence.engine`` caches the SQLAlchemy engine and
       session factory after the first call to ``init_engine_from_config``.
 
     ``raising=False`` keeps the fixture resilient if upstream renames or
@@ -129,9 +129,9 @@ def _reset_process_singletons(monkeypatch: pytest.MonkeyPatch) -> None:
     to call ``get_app_config()``/``get_paths()`` will surface the real
     incompatibility loudly.
     """
-    from agent_workspace.config import app_config as app_config_module
-    from agent_workspace.config import paths as paths_module
-    from agent_workspace.persistence import engine as engine_module
+    from alpha.config import app_config as app_config_module
+    from alpha.config import paths as paths_module
+    from alpha.persistence import engine as engine_module
 
     for module, attr in (
         (app_config_module, "_app_config"),
@@ -155,7 +155,7 @@ def isolated_app(isolated_agent_workspace_home: Path, monkeypatch: pytest.Monkey
 
     # Re-resolve the config from the test-only AGENT_WORKSPACE_HOME and pin its
     # sqlite path into tmp_path so the lifespan-time engine init lands there.
-    from agent_workspace.config import app_config as app_config_module
+    from alpha.config import app_config as app_config_module
 
     cfg = app_config_module.get_app_config()
     cfg.database.sqlite_dir = str(isolated_agent_workspace_home / "db")
@@ -222,18 +222,18 @@ def test_real_http_create_agent_lands_in_authenticated_user_dir(
     4. Assert SOUL.md exists under users/<authenticated_uid>/agents/<name>/.
     5. Assert NOTHING exists under users/default/agents/<name>/.
     """
-    # ``agent_workspace.agents.lead_agent.agent`` imports ``create_chat_model`` with
-    # ``from agent_workspace.models import create_chat_model`` at module load time,
+    # ``alpha.agents.lead_agent.agent`` imports ``create_chat_model`` with
+    # ``from alpha.models import create_chat_model`` at module load time,
     # rebinding the symbol into its own namespace. So the only patch that
     # intercepts the call is the bound name on ``lead_agent.agent`` — patching
-    # ``agent_workspace.models.create_chat_model`` would be too late.
+    # ``alpha.models.create_chat_model`` would be too late.
     agent_name = "real-http-agent"
 
     from starlette.testclient import TestClient
 
     with (
         patch(
-            "agent_workspace.agents.lead_agent.agent.create_chat_model",
+            "alpha.agents.lead_agent.agent.create_chat_model",
             new=_build_fake_create_chat_model(agent_name),
         ),
         TestClient(isolated_app) as client,

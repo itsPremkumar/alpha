@@ -3,9 +3,9 @@
 
 from uuid import uuid4
 
-from agent_workspace.tools.builtins.bot_roster_tool import bot_roster_tool
-from agent_workspace.tools.builtins.group_chat_tool import group_chat_tool
-from agent_workspace.tools.builtins.kanban_board_tool import kanban_board_tool
+from alpha.tools.builtins.bot_roster_tool import bot_roster_tool
+from alpha.tools.builtins.group_chat_tool import group_chat_tool
+from alpha.tools.builtins.kanban_board_tool import kanban_board_tool
 
 
 def test_bot_roster_tool_actions():

@@ -13,7 +13,7 @@ from __future__ import annotations
 import threading
 from unittest import mock
 
-from agent_workspace.agents.memory.backends.deermem.deermem.core.prompt import (
+from alpha.agents.memory.backends.deermem.deermem.core.prompt import (
     _count_tokens,
     _get_tiktoken_encoding,
     _tiktoken_encoding_cache,
@@ -30,7 +30,7 @@ class TestGetTiktokenEncoding:
     """Tests for _get_tiktoken_encoding caching and fallback."""
 
     def test_returns_none_when_tiktoken_unavailable(self, monkeypatch):
-        monkeypatch.setattr("agent_workspace.agents.memory.backends.deermem.deermem.core.prompt.TIKTOKEN_AVAILABLE", False)
+        monkeypatch.setattr("alpha.agents.memory.backends.deermem.deermem.core.prompt.TIKTOKEN_AVAILABLE", False)
         assert _get_tiktoken_encoding("cl100k_base") is None
 
     def test_returns_encoding_on_success(self, monkeypatch):
@@ -38,7 +38,7 @@ class TestGetTiktokenEncoding:
         _tiktoken_encoding_cache.pop("cl100k_base", None)
 
         fake_enc = mock.Mock()
-        monkeypatch.setattr("agent_workspace.agents.memory.backends.deermem.deermem.core.prompt.tiktoken.get_encoding", mock.Mock(return_value=fake_enc))
+        monkeypatch.setattr("alpha.agents.memory.backends.deermem.deermem.core.prompt.tiktoken.get_encoding", mock.Mock(return_value=fake_enc))
 
         enc = _get_tiktoken_encoding("cl100k_base")
         assert enc is fake_enc
@@ -47,7 +47,7 @@ class TestGetTiktokenEncoding:
         _tiktoken_encoding_cache.pop("cl100k_base", None)
 
         fake_enc = mock.Mock()
-        monkeypatch.setattr("agent_workspace.agents.memory.backends.deermem.deermem.core.prompt.tiktoken.get_encoding", mock.Mock(return_value=fake_enc))
+        monkeypatch.setattr("alpha.agents.memory.backends.deermem.deermem.core.prompt.tiktoken.get_encoding", mock.Mock(return_value=fake_enc))
 
         _get_tiktoken_encoding("cl100k_base")
         assert _tiktoken_encoding_cache["cl100k_base"] is fake_enc
@@ -109,7 +109,7 @@ class TestGetTiktokenEncoding:
         assert get_encoding.call_count == 1
 
         # Simulate the cooldown having elapsed by ageing the cached timestamp.
-        from agent_workspace.agents.memory.backends.deermem.deermem.core import prompt as prompt_module
+        from alpha.agents.memory.backends.deermem.deermem.core import prompt as prompt_module
 
         _, _failed_at = _tiktoken_encoding_cache["flaky_encoding"]
         _tiktoken_encoding_cache["flaky_encoding"] = (
@@ -173,14 +173,14 @@ class TestCountTokens:
     """Tests for _count_tokens fallback behaviour."""
 
     def test_returns_character_estimate_when_tiktoken_unavailable(self, monkeypatch):
-        monkeypatch.setattr("agent_workspace.agents.memory.backends.deermem.deermem.core.prompt.TIKTOKEN_AVAILABLE", False)
+        monkeypatch.setattr("alpha.agents.memory.backends.deermem.deermem.core.prompt.TIKTOKEN_AVAILABLE", False)
         text = "Hello, world! This is a test."
         result = _count_tokens(text)
         assert result == len(text) // 4
 
     def test_returns_character_estimate_when_encoding_fails(self, monkeypatch):
         monkeypatch.setattr(
-            "agent_workspace.agents.memory.backends.deermem.deermem.core.prompt._get_tiktoken_encoding",
+            "alpha.agents.memory.backends.deermem.deermem.core.prompt._get_tiktoken_encoding",
             lambda _name=None: None,
         )
         text = "Some text to count"
@@ -190,7 +190,7 @@ class TestCountTokens:
     def test_returns_token_count_on_success(self, monkeypatch):
         fake_enc = mock.Mock()
         fake_enc.encode.return_value = [0, 1, 2, 3]
-        monkeypatch.setattr("agent_workspace.agents.memory.backends.deermem.deermem.core.prompt._get_tiktoken_encoding", mock.Mock(return_value=fake_enc))
+        monkeypatch.setattr("alpha.agents.memory.backends.deermem.deermem.core.prompt._get_tiktoken_encoding", mock.Mock(return_value=fake_enc))
 
         text = "Hello, world!"
         result = _count_tokens(text)
@@ -212,8 +212,8 @@ class TestCountTokens:
         # Spy on both the encoding loader and tiktoken.get_encoding directly.
         get_encoding_spy = mock.Mock(side_effect=AssertionError("get_encoding must not be called"))
         loader_spy = mock.Mock(side_effect=AssertionError("_get_tiktoken_encoding must not be called"))
-        monkeypatch.setattr("agent_workspace.agents.memory.backends.deermem.deermem.core.prompt.tiktoken.get_encoding", get_encoding_spy)
-        monkeypatch.setattr("agent_workspace.agents.memory.backends.deermem.deermem.core.prompt._get_tiktoken_encoding", loader_spy)
+        monkeypatch.setattr("alpha.agents.memory.backends.deermem.deermem.core.prompt.tiktoken.get_encoding", get_encoding_spy)
+        monkeypatch.setattr("alpha.agents.memory.backends.deermem.deermem.core.prompt._get_tiktoken_encoding", loader_spy)
 
         text = "Hello, world! This is a network-free count."
         result = _count_tokens(text, use_tiktoken=False)
@@ -227,7 +227,7 @@ class TestCountTokens:
         CJK characters are ~2 chars/token, so the char-based estimate must not
         under-fill the budget the way ``len(text) // 4`` would.
         """
-        monkeypatch.setattr("agent_workspace.agents.memory.backends.deermem.deermem.core.prompt.TIKTOKEN_AVAILABLE", False)
+        monkeypatch.setattr("alpha.agents.memory.backends.deermem.deermem.core.prompt.TIKTOKEN_AVAILABLE", False)
         # "User prefers concise answers" rendered in CJK (Chinese) characters.
         text = "\u7528\u6237\u504f\u597d\u7b80\u6d01\u7684\u4e2d\u6587\u56de\u7b54\u5e76\u5173\u6ce8\u91d1\u878d\u9886\u57df"
         result = _count_tokens(text)
@@ -237,7 +237,7 @@ class TestCountTokens:
 
     def test_cjk_estimate_combines_cjk_and_non_cjk_characters(self, monkeypatch):
         """Mixed-language text should apply the CJK density only to CJK chars."""
-        monkeypatch.setattr("agent_workspace.agents.memory.backends.deermem.deermem.core.prompt.TIKTOKEN_AVAILABLE", False)
+        monkeypatch.setattr("alpha.agents.memory.backends.deermem.deermem.core.prompt.TIKTOKEN_AVAILABLE", False)
         # ASCII words mixed with CJK (Chinese) characters: "User" + "likes" + "Python and data analysis".
         text = "User\u559c\u6b22Python\u548c\u6570\u636e\u5206\u6790"
         cjk = sum(1 for ch in text if "\u4e00" <= ch <= "\u9fff")
@@ -259,7 +259,7 @@ class TestWarmTiktokenCache:
         _tiktoken_encoding_cache.pop("cl100k_base", None)
 
         fake_enc = mock.Mock()
-        monkeypatch.setattr("agent_workspace.agents.memory.backends.deermem.deermem.core.prompt.tiktoken.get_encoding", mock.Mock(return_value=fake_enc))
+        monkeypatch.setattr("alpha.agents.memory.backends.deermem.deermem.core.prompt.tiktoken.get_encoding", mock.Mock(return_value=fake_enc))
 
         assert warm_tiktoken_cache() is True
         assert _tiktoken_encoding_cache["cl100k_base"] is fake_enc
@@ -275,7 +275,7 @@ class TestWarmTiktokenCache:
         tiktoken.get_encoding.assert_not_called()
 
     def test_returns_false_when_tiktoken_unavailable(self, monkeypatch):
-        monkeypatch.setattr("agent_workspace.agents.memory.backends.deermem.deermem.core.prompt.TIKTOKEN_AVAILABLE", False)
+        monkeypatch.setattr("alpha.agents.memory.backends.deermem.deermem.core.prompt.TIKTOKEN_AVAILABLE", False)
         assert warm_tiktoken_cache() is False
 
 
@@ -299,7 +299,7 @@ class TestFormatMemoryForInjectionTokenCounting:
     def test_use_tiktoken_false_never_touches_tiktoken(self, monkeypatch):
         """With use_tiktoken=False, formatting must not call tiktoken at all."""
         get_encoding_spy = mock.Mock(side_effect=AssertionError("get_encoding must not be called"))
-        monkeypatch.setattr("agent_workspace.agents.memory.backends.deermem.deermem.core.prompt.tiktoken.get_encoding", get_encoding_spy)
+        monkeypatch.setattr("alpha.agents.memory.backends.deermem.deermem.core.prompt.tiktoken.get_encoding", get_encoding_spy)
 
         result = format_memory_for_injection(self._sample_memory(), max_tokens=2000, use_tiktoken=False)
         assert "User prefers concise answers." in result
@@ -310,7 +310,7 @@ class TestFormatMemoryForInjectionTokenCounting:
         fake_enc = mock.Mock()
         fake_enc.encode.side_effect = lambda text: list(range(len(text)))
         monkeypatch.setattr(
-            "agent_workspace.agents.memory.backends.deermem.deermem.core.prompt._get_tiktoken_encoding",
+            "alpha.agents.memory.backends.deermem.deermem.core.prompt._get_tiktoken_encoding",
             mock.Mock(return_value=fake_enc),
         )
 
@@ -331,12 +331,12 @@ class TestDeerMemConfigTokenCounting:
     """Verify DeerMemConfig.token_counting defaults and validation (moved from MemoryConfig in step 11)."""
 
     def test_default_is_tiktoken(self):
-        from agent_workspace.agents.memory.backends.deermem.deermem.config import DeerMemConfig
+        from alpha.agents.memory.backends.deermem.deermem.config import DeerMemConfig
 
         assert DeerMemConfig().token_counting == "tiktoken"
 
     def test_accepts_char(self):
-        from agent_workspace.agents.memory.backends.deermem.deermem.config import DeerMemConfig
+        from alpha.agents.memory.backends.deermem.deermem.config import DeerMemConfig
 
         assert DeerMemConfig(token_counting="char").token_counting == "char"
 
@@ -344,7 +344,7 @@ class TestDeerMemConfigTokenCounting:
         import pytest
         from pydantic import ValidationError
 
-        from agent_workspace.agents.memory.backends.deermem.deermem.config import DeerMemConfig
+        from alpha.agents.memory.backends.deermem.deermem.config import DeerMemConfig
 
         with pytest.raises(ValidationError):
             DeerMemConfig(token_counting="invalid")

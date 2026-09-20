@@ -5,8 +5,8 @@ import json
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
-from agent_workspace.subagents.context_snapshot import ParentContextSnapshot
-from agent_workspace.utils.messages import message_content_to_text
+from alpha.subagents.context_snapshot import ParentContextSnapshot
+from alpha.utils.messages import message_content_to_text
 
 
 @pytest.mark.parametrize("dispatch_id", ["dispatch", "earlier-delegation"])
@@ -150,8 +150,8 @@ def test_snapshot_keeps_tool_content_normalized_by_message_constructor(content, 
 
 @pytest.mark.parametrize("injection", ["memory", "todo"])
 def test_snapshot_excludes_real_framework_injections(injection):
-    from agent_workspace.agents.middlewares.dynamic_context_middleware import DynamicContextMiddleware
-    from agent_workspace.agents.middlewares.todo_middleware import TodoMiddleware
+    from alpha.agents.middlewares.dynamic_context_middleware import DynamicContextMiddleware
+    from alpha.agents.middlewares.todo_middleware import TodoMiddleware
 
     original = HumanMessage(content="VISIBLE_USER_REQUEST", id="user-turn")
     if injection == "memory":

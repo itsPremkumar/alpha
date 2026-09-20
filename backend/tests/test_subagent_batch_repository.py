@@ -3,9 +3,9 @@ from datetime import UTC, datetime, timedelta
 import pytest
 import pytest_asyncio
 
-from agent_workspace.config.database_config import DatabaseConfig
-from agent_workspace.persistence.engine import close_engine, get_session_factory, init_engine_from_config
-from agent_workspace.persistence.subagent_batches import SubagentBatchRepository
+from alpha.config.database_config import DatabaseConfig
+from alpha.persistence.engine import close_engine, get_session_factory, init_engine_from_config
+from alpha.persistence.subagent_batches import SubagentBatchRepository
 
 
 @pytest_asyncio.fixture(autouse=True)

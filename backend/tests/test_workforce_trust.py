@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from agent_workspace.council import CouncilEngine
-from agent_workspace.missions import MissionStore
-from agent_workspace.policy import PolicyEngine
-from agent_workspace.recovery import classify_failure, decide
+from alpha.council import CouncilEngine
+from alpha.missions import MissionStore
+from alpha.policy import PolicyEngine
+from alpha.recovery import classify_failure, decide
 
 
 @pytest.fixture()

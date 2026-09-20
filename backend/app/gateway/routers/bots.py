@@ -17,7 +17,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.gateway.deps import require_admin_user
-from agent_workspace.bots.profile import _now
+from alpha.bots.profile import _now
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/bots", tags=["bots"])
@@ -70,7 +70,7 @@ def _bot_to_response(profile) -> dict:
 
 
 def _registry():
-    from agent_workspace.bots.registry import get_bot_registry
+    from alpha.bots.registry import get_bot_registry
 
     return get_bot_registry()
 
@@ -183,7 +183,7 @@ class BotPauseRequest(BaseModel):
 @router.get("/templates", summary="List bot role templates")
 async def list_bot_templates() -> dict:
     def _list():
-        from agent_workspace.bots.templates import list_templates
+        from alpha.bots.templates import list_templates
 
         return list_templates()
 
@@ -194,7 +194,7 @@ async def list_bot_templates() -> dict:
 @router.get("/departments", summary="List standard organization departments")
 async def list_departments() -> dict:
     def _depts():
-        from agent_workspace.bots.templates import DEPARTMENTS
+        from alpha.bots.templates import DEPARTMENTS
 
         return list(DEPARTMENTS)
 
@@ -205,7 +205,7 @@ async def list_departments() -> dict:
 @router.get("/health/overview", summary="Fleet-wide bot health and liveness overview")
 async def get_fleet_health_overview() -> dict:
     def _health():
-        from agent_workspace.bots.health import get_health_monitor
+        from alpha.bots.health import get_health_monitor
 
         monitor = get_health_monitor()
         bots = _registry().list_bots()
@@ -217,7 +217,7 @@ async def get_fleet_health_overview() -> dict:
 @router.get("/organization-chart", summary="Get organization hierarchy tree and graph")
 async def get_org_chart() -> dict:
     def _chart():
-        from agent_workspace.bots.organization import get_organization_chart
+        from alpha.bots.organization import get_organization_chart
 
         return get_organization_chart(_registry())
 
@@ -229,7 +229,7 @@ async def generate_org(request: Request, body: GenerateOrgRequest) -> dict:
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
 
     def _gen():
-        from agent_workspace.bots.organization import generate_organization_for_goal
+        from alpha.bots.organization import generate_organization_for_goal
 
         return generate_organization_for_goal(body.goal, registry=_registry(), auto_provision=body.auto_provision)
 
@@ -239,7 +239,7 @@ async def generate_org(request: Request, body: GenerateOrgRequest) -> dict:
 @router.get("/kill-switch", summary="Check global kill switch and paused bots")
 async def get_kill_switch() -> dict:
     def _status():
-        from agent_workspace.bots.kill_switch import get_kill_switch_status
+        from alpha.bots.kill_switch import get_kill_switch_status
 
         return get_kill_switch_status()
 
@@ -251,7 +251,7 @@ async def set_kill_switch(request: Request, body: KillSwitchRequest) -> dict:
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
 
     def _set():
-        from agent_workspace.bots.kill_switch import set_global_kill_switch
+        from alpha.bots.kill_switch import set_global_kill_switch
 
         return set_global_kill_switch(body.active, reason=body.reason)
 
@@ -263,7 +263,7 @@ async def handle_task_handoff(request: Request, body: TaskHandoffRequest) -> dic
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
 
     def _handoff():
-        from agent_workspace.bots.handoff import execute_handoff
+        from alpha.bots.handoff import execute_handoff
 
         try:
             pkg = execute_handoff(
@@ -287,7 +287,7 @@ async def handle_task_handoff(request: Request, body: TaskHandoffRequest) -> dic
 @router.post("/work-discovery/match", summary="Rank candidate bots for a task by capability")
 async def match_bots_for_task(body: WorkDiscoveryMatchRequest) -> dict:
     def _match():
-        from agent_workspace.bots.work_discovery import match_bot_for_task
+        from alpha.bots.work_discovery import match_bot_for_task
 
         return match_bot_for_task(
             body.task_description,
@@ -304,7 +304,7 @@ async def match_bots_for_task(body: WorkDiscoveryMatchRequest) -> dict:
 @router.post("/quality-gate/verify", summary="Evaluate deliverable against acceptance quality gate")
 async def verify_quality_gate(body: QualityGateVerifyRequest) -> dict:
     def _verify():
-        from agent_workspace.bots.quality_gate import evaluate_quality_gate
+        from alpha.bots.quality_gate import evaluate_quality_gate
 
         return evaluate_quality_gate(
             body.deliverable,
@@ -324,7 +324,7 @@ async def get_org_events(
     target: str | None = None,
 ) -> dict:
     def _events():
-        from agent_workspace.bots.events import query_org_events
+        from alpha.bots.events import query_org_events
 
         return query_org_events(limit=limit, event_type=event_type, actor=actor, target=target)
 
@@ -335,7 +335,7 @@ async def get_org_events(
 @router.get("", summary="List bots")
 async def list_bots(status: str | None = None, department: str | None = None) -> dict:
     if status is not None:
-        from agent_workspace.bots.templates import BOT_STATUSES
+        from alpha.bots.templates import BOT_STATUSES
 
         if status not in BOT_STATUSES:
             raise HTTPException(status_code=422, detail=f"status must be one of {list(BOT_STATUSES)}")
@@ -384,7 +384,7 @@ async def ensure_bot(name: str, request: Request, body: BotEnsureRequest | None 
         except ValueError as exc:
             raise _validation_error(str(exc)) from exc
         # SOUL guarantee: custom SOULs keep the DM protocol section.
-        from agent_workspace.bots.dm import ensure_messaging_section
+        from alpha.bots.dm import ensure_messaging_section
 
         guarded = ensure_messaging_section(bot.soul, key)
         if guarded != bot.soul:
@@ -485,7 +485,7 @@ async def record_heartbeat(name: str, body: HeartbeatRequest | None = None) -> d
     payload = body or HeartbeatRequest()
 
     def _hb():
-        from agent_workspace.bots.health import get_health_monitor
+        from alpha.bots.health import get_health_monitor
 
         bot = _registry().get_bot(key)
         if not bot:
@@ -512,7 +512,7 @@ async def pause_specific_bot(name: str, request: Request, body: BotPauseRequest 
     payload = body or BotPauseRequest()
 
     def _pause():
-        from agent_workspace.bots.kill_switch import pause_bot
+        from alpha.bots.kill_switch import pause_bot
 
         return pause_bot(key, reason=payload.reason)
 
@@ -525,7 +525,7 @@ async def resume_specific_bot(name: str, request: Request) -> dict:
     key = _validate_bot_name(name)
 
     def _resume():
-        from agent_workspace.bots.kill_switch import resume_bot
+        from alpha.bots.kill_switch import resume_bot
 
         return resume_bot(key)
 
@@ -537,7 +537,7 @@ async def get_performance(name: str) -> dict:
     key = _validate_bot_name(name)
 
     def _perf():
-        from agent_workspace.bots.performance import get_bot_performance
+        from alpha.bots.performance import get_bot_performance
 
         try:
             return get_bot_performance(key, registry=_registry())
@@ -553,7 +553,7 @@ async def record_task(name: str, request: Request, body: RecordTaskOutcomeReques
     key = _validate_bot_name(name)
 
     def _record():
-        from agent_workspace.bots.performance import record_task_outcome
+        from alpha.bots.performance import record_task_outcome
 
         bot = record_task_outcome(
             key,
@@ -579,7 +579,7 @@ async def claim_task_endpoint(name: str, request: Request, body: TaskClaimReques
     key = _validate_bot_name(name)
 
     def _claim():
-        from agent_workspace.bots.work_discovery import claim_task
+        from alpha.bots.work_discovery import claim_task
 
         try:
             return claim_task(
@@ -600,7 +600,7 @@ async def escalate_task_endpoint(name: str, request: Request, body: EscalateTask
     key = _validate_bot_name(name)
 
     def _esc():
-        from agent_workspace.bots.handoff import escalate_task
+        from alpha.bots.handoff import escalate_task
 
         try:
             return escalate_task(
@@ -627,8 +627,8 @@ async def select_agent_endpoint(body: SelectAgentRequest) -> dict:
     """Rank bots by capability match, availability, load, and reputation."""
 
     def _select():
-        from agent_workspace.projects.membership import get_membership_store
-        from agent_workspace.projects.routing import rank_candidates, select_agent
+        from alpha.projects.membership import get_membership_store
+        from alpha.projects.routing import rank_candidates, select_agent
 
         memberships = get_membership_store().presence(body.project_id) if body.project_id else None
         ranked = rank_candidates(body.required_capabilities, exclude=set(body.exclude), limit=body.limit, memberships=memberships)
@@ -647,7 +647,7 @@ async def route_task_endpoint(body: RouteTaskRequest) -> dict:
     """Map task type to category chain with measured re-ranking (local-first)."""
 
     def _route():
-        from agent_workspace.models.task_router import route_task
+        from alpha.models.task_router import route_task
 
         return route_task(body.task_type).to_dict()
 
@@ -685,7 +685,7 @@ async def send_dm_endpoint(name: str, request: Request, body: DMSendRequest) -> 
             metadata = {**metadata, "botName": thread_meta["botName"]}
 
     def _send():
-        from agent_workspace.bots.dm import send_dm
+        from alpha.bots.dm import send_dm
 
         return send_dm(key, body.target, body.message, thread_metadata=metadata).to_dict()
 
@@ -698,7 +698,7 @@ async def list_inbox(name: str, unread_only: bool = False, limit: int = 50) -> d
     limit = max(1, min(limit, 200))
 
     def _list():
-        from agent_workspace.bots.inbox import get_bot_inbox
+        from alpha.bots.inbox import get_bot_inbox
 
         box = get_bot_inbox(key)
         return {"messages": [m.to_dict() for m in box.list(unread_only=unread_only, limit=limit)], "unread_count": box.unread_count()}
@@ -712,7 +712,7 @@ async def ack_inbox_message(name: str, delivery_id: str, request: Request) -> di
     key = _validate_bot_name(name)
 
     def _ack():
-        from agent_workspace.bots.inbox import get_bot_inbox
+        from alpha.bots.inbox import get_bot_inbox
 
         msg = get_bot_inbox(key).ack(delivery_id)
         return msg.to_dict() if msg else None
@@ -728,8 +728,8 @@ async def dm_schema(name: str) -> dict:
     key = _validate_bot_name(name)
 
     def _schema():
-        from agent_workspace.bots.dm import build_roster_snippet, message_agent_tool_schema
-        from agent_workspace.bots.registry import get_bot_registry
+        from alpha.bots.dm import build_roster_snippet, message_agent_tool_schema
+        from alpha.bots.registry import get_bot_registry
 
         profiles = [{"name": b.name, "role": b.role} for b in get_bot_registry().list_bots() if b.name != key]
         return {"schema": message_agent_tool_schema(), "roster_snippet": build_roster_snippet(profiles)}
@@ -744,8 +744,8 @@ async def bot_chat(name: str, limit: int = 20) -> dict:
     limit = max(1, min(limit, 100))
 
     def _chat():
-        from agent_workspace.bots.dm import canonical_bot_chat_id
-        from agent_workspace.bots.inbox import get_bot_inbox
+        from alpha.bots.dm import canonical_bot_chat_id
+        from alpha.bots.inbox import get_bot_inbox
 
         bot = _registry().get_bot(key)
         if bot is None:
@@ -770,7 +770,7 @@ async def backfill_soul_protocol(name: str, request: Request) -> dict:
     key = _validate_bot_name(name)
 
     def _backfill():
-        from agent_workspace.bots.dm import backfill_roster_profiles, ensure_messaging_section
+        from alpha.bots.dm import backfill_roster_profiles, ensure_messaging_section
 
         if key == "all":
             return {"updated": backfill_roster_profiles(registry=_registry())}

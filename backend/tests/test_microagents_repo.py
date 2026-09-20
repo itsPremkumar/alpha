@@ -1,9 +1,9 @@
 """Tests for Trigger-Based Dynamic MicroAgents."""
 
-from agent_workspace.skills.triggers.keyword_trigger import KeywordTrigger
-from agent_workspace.skills.triggers.models import MicroAgent, TriggerContext
-from agent_workspace.skills.triggers.path_trigger import PathTrigger
-from agent_workspace.skills.triggers.registry import MicroAgentRegistry
+from alpha.skills.triggers.keyword_trigger import KeywordTrigger
+from alpha.skills.triggers.models import MicroAgent, TriggerContext
+from alpha.skills.triggers.path_trigger import PathTrigger
+from alpha.skills.triggers.registry import MicroAgentRegistry
 
 
 def test_path_trigger_glob_matching():

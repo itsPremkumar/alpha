@@ -6,8 +6,8 @@ import importlib.util
 from dataclasses import dataclass
 from typing import Any
 
-from agent_workspace.community.browser_automation.session import browser_multi_worker_error
-from agent_workspace.config.app_config import AppConfig
+from alpha.community.browser_automation.session import browser_multi_worker_error
+from alpha.config.app_config import AppConfig
 
 
 @dataclass(frozen=True)

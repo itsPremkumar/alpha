@@ -14,21 +14,21 @@ from unittest.mock import MagicMock
 
 import pytest
 
-# Make 'app' and 'agent_workspace' importable from any working directory
+# Make 'app' and 'alpha' importable from any working directory
 sys.path.insert(0, str(Path(__file__).parent.parent / "packages" / "harness"))
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 # Break the circular import chain that exists in production code:
-#   agent_workspace.subagents.__init__
+#   alpha.subagents.__init__
 #     -> .executor (SubagentExecutor, SubagentResult)
-#       -> agent_workspace.agents.thread_state
-#         -> agent_workspace.agents.__init__
+#       -> alpha.agents.thread_state
+#         -> alpha.agents.__init__
 #           -> lead_agent.agent
 #             -> subagent_limit_middleware
-#               -> agent_workspace.subagents.executor  <-- circular!
+#               -> alpha.subagents.executor  <-- circular!
 #
-# By injecting a mock for agent_workspace.subagents.executor *before* any test module
+# By injecting a mock for alpha.subagents.executor *before* any test module
 # triggers the import, __init__.py's "from .executor import ..." succeeds
 # immediately without running the real executor module.
 _executor_mock = MagicMock()
@@ -38,7 +38,7 @@ _executor_mock.SubagentStatus = MagicMock
 _executor_mock.MAX_CONCURRENT_SUBAGENTS = 3
 _executor_mock.get_background_task_result = MagicMock()
 
-sys.modules["agent_workspace.subagents.executor"] = _executor_mock
+sys.modules["alpha.subagents.executor"] = _executor_mock
 
 
 @pytest.fixture()
@@ -72,7 +72,7 @@ def provisioner_module():
 # ---------------------------------------------------------------------------
 #
 # Repository methods read ``user_id`` from a contextvar by default
-# (see ``agent_workspace.runtime.user_context``). Without this fixture, every
+# (see ``alpha.runtime.user_context``). Without this fixture, every
 # pre-existing persistence test would raise RuntimeError because the
 # contextvar is unset. The fixture sets a default test user on every
 # test; tests that explicitly want to verify behaviour *without* a user
@@ -83,7 +83,7 @@ def provisioner_module():
 def _reset_skill_storage_singleton():
     """Reset the SkillStorage singleton between tests to prevent cross-test contamination."""
     try:
-        from agent_workspace.skills.storage import reset_skill_storage
+        from alpha.skills.storage import reset_skill_storage
     except ImportError:
         yield
         return
@@ -105,7 +105,7 @@ def _reset_frozen_checkpoint_channel_mode(monkeypatch):
     not leak across tests. Mirrors the per-test ``monkeypatch.setattr``
     resets already used in test_client.py / test_lead_agent_model_resolution.py.
     """
-    from agent_workspace.runtime import checkpoint_mode
+    from alpha.runtime import checkpoint_mode
 
     monkeypatch.setattr(checkpoint_mode, "_frozen_checkpoint_channel_mode", None)
     monkeypatch.setattr(checkpoint_mode, "_frozen_checkpoint_snapshot_frequency", None)
@@ -126,7 +126,7 @@ def _restore_title_config_singleton():
     independent regardless of order.
     """
     try:
-        from agent_workspace.config.title_config import reset_title_config
+        from alpha.config.title_config import reset_title_config
     except ImportError:
         yield
         return
@@ -147,7 +147,7 @@ def _isolate_trace_context():
     test's trace would leak into the next and quietly satisfy assertions
     about ids the test under exercise never bound.
     """
-    from agent_workspace.trace_context import bind_trace_id, reset_trace_id
+    from alpha.trace_context import bind_trace_id, reset_trace_id
 
     token = bind_trace_id(None)
     try:
@@ -169,7 +169,7 @@ def _auto_user_context(request):
         return
 
     try:
-        from agent_workspace.runtime.user_context import (
+        from alpha.runtime.user_context import (
             reset_current_user,
             set_current_user,
         )

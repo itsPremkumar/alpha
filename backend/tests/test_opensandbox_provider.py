@@ -26,8 +26,8 @@ from typing import Any
 
 import pytest
 
-from agent_workspace.community.opensandbox.provider import OpenSandboxProvider, _import_sdk
-from agent_workspace.community.opensandbox.sandbox import OpenSandboxSandbox
+from alpha.community.opensandbox.provider import OpenSandboxProvider, _import_sdk
+from alpha.community.opensandbox.sandbox import OpenSandboxSandbox
 
 
 @dataclass
@@ -253,9 +253,9 @@ def _stub_config(attrs: dict[str, Any] | None = None) -> types.SimpleNamespace:
 
 def _install(monkeypatch: pytest.MonkeyPatch, *, sdk: _FakeSandboxClass | None = None, config: dict[str, Any] | None = None) -> tuple[OpenSandboxProvider, _FakeSandboxClass]:
     fake_sdk = sdk or _FakeSandboxClass()
-    monkeypatch.setattr("agent_workspace.community.opensandbox.provider.get_app_config", lambda: _stub_config(config))
+    monkeypatch.setattr("alpha.community.opensandbox.provider.get_app_config", lambda: _stub_config(config))
     monkeypatch.setattr(
-        "agent_workspace.community.opensandbox.provider._import_sdk",
+        "alpha.community.opensandbox.provider._import_sdk",
         lambda: (fake_sdk, _FakeConnectionConfig, _FakeRunCommandOpts),
     )
     return OpenSandboxProvider(), fake_sdk
@@ -293,7 +293,7 @@ def test_missing_sdk_has_actionable_error(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 def test_provider_defers_sdk_import_until_acquire(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("agent_workspace.community.opensandbox.provider.get_app_config", lambda: _stub_config())
+    monkeypatch.setattr("alpha.community.opensandbox.provider.get_app_config", lambda: _stub_config())
     calls = 0
 
     def fail_if_called():
@@ -301,7 +301,7 @@ def test_provider_defers_sdk_import_until_acquire(monkeypatch: pytest.MonkeyPatc
         calls += 1
         raise AssertionError("SDK imported")
 
-    monkeypatch.setattr("agent_workspace.community.opensandbox.provider._import_sdk", fail_if_called)
+    monkeypatch.setattr("alpha.community.opensandbox.provider._import_sdk", fail_if_called)
     provider = OpenSandboxProvider()
     assert calls == 0
     with pytest.raises(AssertionError, match="SDK imported"):
@@ -366,7 +366,7 @@ def test_missing_connection_config_warns_about_sdk_default(monkeypatch: pytest.M
 
 
 def test_remote_http_connection_warns_without_logging_api_key(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
-    caplog.set_level(logging.DEBUG, logger="agent_workspace.community.opensandbox.provider")
+    caplog.set_level(logging.DEBUG, logger="alpha.community.opensandbox.provider")
     provider, _ = _install(
         monkeypatch,
         config={"api_key": "not-a-real-secret", "domain": "sandbox.example", "protocol": "http"},
@@ -605,7 +605,7 @@ def test_text_binary_append_and_line_ranges() -> None:
 
 
 def test_download_rejects_oversize_stream(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("agent_workspace.community.opensandbox.sandbox._MAX_DOWNLOAD_SIZE", 4)
+    monkeypatch.setattr("alpha.community.opensandbox.sandbox._MAX_DOWNLOAD_SIZE", 4)
     remote = _FakeRemote("remote")
     path = "/mnt/user-data/outputs/oversize.bin"
     remote.file_data[path] = b"12345"
@@ -780,7 +780,7 @@ async def test_cancelled_acquire_async_serializes_retry_behind_abandoned_body(mo
 
 
 def test_sandbox_id_matches_shared_identity():
-    from agent_workspace.sandbox.identity import derive_sandbox_scope_token
+    from alpha.sandbox.identity import derive_sandbox_scope_token
 
     assert OpenSandboxProvider._sandbox_id("t-1", "u-1") == derive_sandbox_scope_token(user_id="u-1", thread_id="t-1")
     assert OpenSandboxProvider._sandbox_id("t-1", "") == derive_sandbox_scope_token(user_id="", thread_id="t-1")

@@ -9,11 +9,11 @@ from typing import Any, Literal
 
 from fastapi import HTTPException
 
-from agent_workspace.persistence.scheduled_task_runs import ActiveScheduledRunConflict, ScheduledTaskAdmissionRejected
-from agent_workspace.runtime import ConflictError, RunRecord
-from agent_workspace.scheduler.schedules import next_run_at
-from agent_workspace.trace_context import ensure_trace_context
-from agent_workspace.utils.thread_id import validate_thread_id
+from alpha.persistence.scheduled_task_runs import ActiveScheduledRunConflict, ScheduledTaskAdmissionRejected
+from alpha.runtime import ConflictError, RunRecord
+from alpha.scheduler.schedules import next_run_at
+from alpha.trace_context import ensure_trace_context
+from alpha.utils.thread_id import validate_thread_id
 
 logger = logging.getLogger(__name__)
 

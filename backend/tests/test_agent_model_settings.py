@@ -14,7 +14,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from agent_workspace.config.agents_config import (
+from alpha.config.agents_config import (
     MANAGED_AGENT_CONFIG_FIELDS,
     MAX_AGENT_OUTPUT_TOKENS,
     AgentConfig,
@@ -107,7 +107,7 @@ def _write_agent(base: Path, user_id: str, name: str, body: dict) -> None:
 
 def test_load_agent_config_round_trips_model_settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
-    from agent_workspace.config import paths as paths_module
+    from alpha.config import paths as paths_module
 
     monkeypatch.setattr(paths_module, "_paths", None)
 
@@ -131,7 +131,7 @@ def test_load_agent_config_round_trips_model_settings(tmp_path: Path, monkeypatc
 
 def test_load_agent_config_without_model_settings_is_none(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
-    from agent_workspace.config import paths as paths_module
+    from alpha.config import paths as paths_module
 
     monkeypatch.setattr(paths_module, "_paths", None)
 

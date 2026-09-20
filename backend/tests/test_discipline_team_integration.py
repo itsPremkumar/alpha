@@ -1,7 +1,7 @@
 import json
 
-from agent_workspace.orchestration.discipline.team_dispatcher import CategoryTeamDispatcher
-from agent_workspace.tools.builtins import (
+from alpha.orchestration.discipline.team_dispatcher import CategoryTeamDispatcher
+from alpha.tools.builtins import (
     consult_plan_gap_analysis,
     dispatch_discipline_worker,
     review_plan_invariant_gate,

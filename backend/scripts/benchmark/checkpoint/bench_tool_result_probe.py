@@ -51,7 +51,7 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import StateGraph
 from langgraph.graph.message import add_messages
 
-from agent_workspace.agents.middlewares.tool_output_budget_middleware import ToolOutputBudgetMiddleware
+from alpha.agents.middlewares.tool_output_budget_middleware import ToolOutputBudgetMiddleware
 
 PROBE_TOOL = "probe_tool"
 
@@ -178,7 +178,7 @@ def main() -> None:
 
     outputs_dir: Path = args.outputs_dir
     outputs_dir.mkdir(parents=True, exist_ok=True)
-    tmp_dir = Path(tempfile.mkdtemp(prefix="agent_workspace-probe-"))
+    tmp_dir = Path(tempfile.mkdtemp(prefix="alpha-probe-"))
     report = run_probe(args.result_bytes, outputs_dir, tmp_dir)
 
     json.dump(report, __import__("sys").stdout, indent=2)

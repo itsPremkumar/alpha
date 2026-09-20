@@ -1,6 +1,6 @@
 import pytest
 
-from agent_workspace.mission.state_machine import (
+from alpha.mission.state_machine import (
     InvalidStateTransitionError,
     TaskState,
     TaskStateMachine,

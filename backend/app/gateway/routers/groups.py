@@ -57,7 +57,7 @@ def _validate_members(members: list[str] | None) -> list[str] | None:
 
 
 def _service():
-    from agent_workspace.groups.service import get_group_chat_service
+    from alpha.groups.service import get_group_chat_service
 
     return get_group_chat_service()
 
@@ -204,7 +204,7 @@ async def start_group_run(name: str, body: GroupRunRequest) -> dict:
     the run record for status. Returns 202 immediately — execution continues
     in the background.
     """
-    from agent_workspace.runtime.user_context import get_effective_user_id
+    from alpha.runtime.user_context import get_effective_user_id
 
     key = _validate_room_name(name)
     members = _validate_members(body.members)
@@ -217,7 +217,7 @@ async def start_group_run(name: str, body: GroupRunRequest) -> dict:
     try:
         # start_run must execute on the event loop (it spawns the background
         # task there); only the blocking parts run off-loop inside the service.
-        from agent_workspace.groups.runner import get_group_run_service
+        from alpha.groups.runner import get_group_run_service
 
         user_id: str | None = None
         try:
@@ -242,7 +242,7 @@ async def list_group_runs(name: str) -> dict:
     key = _validate_room_name(name)
 
     def _list():
-        from agent_workspace.groups.runner import get_group_run_service
+        from alpha.groups.runner import get_group_run_service
 
         return [r.to_dict() for r in get_group_run_service().list_runs(room_name=key)]
 
@@ -255,7 +255,7 @@ async def get_group_run(name: str, run_id: str) -> dict:
     key = _validate_room_name(name)
 
     def _get():
-        from agent_workspace.groups.runner import get_group_run_service
+        from alpha.groups.runner import get_group_run_service
 
         return get_group_run_service().get_run(run_id)
 
@@ -270,7 +270,7 @@ async def cancel_group_run(name: str, run_id: str) -> dict:
     key = _validate_room_name(name)
 
     def _cancel():
-        from agent_workspace.groups.runner import get_group_run_service
+        from alpha.groups.runner import get_group_run_service
 
         svc = get_group_run_service()
         run = svc.get_run(run_id)

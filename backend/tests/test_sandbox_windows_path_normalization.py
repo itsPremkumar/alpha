@@ -6,8 +6,8 @@ return forward-slash paths when the host paths use backslashes (Windows).
 
 from unittest.mock import patch
 
-from agent_workspace.sandbox.local.local_sandbox import LocalSandbox, PathMapping
-from agent_workspace.sandbox.tools import replace_virtual_paths_in_command
+from alpha.sandbox.local.local_sandbox import LocalSandbox, PathMapping
+from alpha.sandbox.tools import replace_virtual_paths_in_command
 
 # Windows-style thread data with backslash paths
 _WIN_THREAD_DATA = {
@@ -35,8 +35,8 @@ class TestReplaceVirtualPathsWindows:
         result = replace_virtual_paths_in_command(cmd, _WIN_THREAD_DATA)
         assert "\\" not in result, f"Backslash in: {result}"
 
-    @patch("agent_workspace.sandbox.tools._get_skills_host_path", return_value=r"C:\Users\admin\agent-workspace\skills")
-    @patch("agent_workspace.sandbox.tools._get_skills_container_path", return_value="/mnt/skills")
+    @patch("alpha.sandbox.tools._get_skills_host_path", return_value=r"C:\Users\admin\agent-workspace\skills")
+    @patch("alpha.sandbox.tools._get_skills_container_path", return_value="/mnt/skills")
     def test_skills_path_no_backslash(self, _mock_container, _mock_host) -> None:
         cmd = "python /mnt/skills/custom/skill/scripts/run.py"
         result = replace_virtual_paths_in_command(cmd, _WIN_THREAD_DATA)

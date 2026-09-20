@@ -10,8 +10,8 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
-from agent_workspace.config.database_config import DatabaseConfig
-from agent_workspace.persistence import engine as engine_mod
+from alpha.config.database_config import DatabaseConfig
+from alpha.persistence import engine as engine_mod
 
 
 def test_postgres_engine_kwargs_include_connection_hardening() -> None:
@@ -58,7 +58,7 @@ def test_postgres_engine_kwargs_allow_command_timeout_opt_out() -> None:
 async def test_configured_command_timeout_ends_stalled_command() -> None:
     config = DatabaseConfig(
         backend="postgres",
-        postgres_url="postgresql://user:password@localhost/agent_workspace",
+        postgres_url="postgresql://user:password@localhost/alpha",
         command_timeout=0.01,
     )
 
@@ -83,7 +83,7 @@ async def test_configured_command_timeout_ends_stalled_command() -> None:
         patch.dict(sys.modules, {"asyncpg": ModuleType("asyncpg")}),
         patch.object(engine_mod, "create_async_engine", side_effect=_create_engine),
         patch.object(engine_mod, "async_sessionmaker", return_value=MagicMock()),
-        patch("agent_workspace.persistence.bootstrap.bootstrap_schema", new=bootstrap_schema),
+        patch("alpha.persistence.bootstrap.bootstrap_schema", new=bootstrap_schema),
     ):
         try:
             await engine_mod.init_engine_from_config(config)
@@ -104,7 +104,7 @@ async def test_configured_command_timeout_ends_stalled_command() -> None:
 async def test_init_engine_from_config_preserves_longer_command_timeout_override() -> None:
     config = DatabaseConfig(
         backend="postgres",
-        postgres_url="postgresql://user:password@localhost/agent_workspace",
+        postgres_url="postgresql://user:password@localhost/alpha",
         pool_recycle=120,
         command_timeout=90,
     )
@@ -116,7 +116,7 @@ async def test_init_engine_from_config_preserves_longer_command_timeout_override
         patch.dict(sys.modules, {"asyncpg": ModuleType("asyncpg")}),
         patch.object(engine_mod, "create_async_engine", return_value=mock_engine) as create_engine,
         patch.object(engine_mod, "async_sessionmaker", return_value=MagicMock()),
-        patch("agent_workspace.persistence.bootstrap.bootstrap_schema", new=bootstrap_schema),
+        patch("alpha.persistence.bootstrap.bootstrap_schema", new=bootstrap_schema),
     ):
         try:
             await engine_mod.init_engine_from_config(config)
@@ -130,7 +130,7 @@ async def test_init_engine_from_config_preserves_longer_command_timeout_override
 
 @pytest.mark.asyncio
 async def test_init_engine_postgres_uses_hardened_kwargs() -> None:
-    url = "postgresql+asyncpg://user:password@localhost/agent_workspace"
+    url = "postgresql+asyncpg://user:password@localhost/alpha"
     mock_engine = MagicMock()
     mock_engine.dispose = AsyncMock()
     bootstrap_schema = AsyncMock()
@@ -139,7 +139,7 @@ async def test_init_engine_postgres_uses_hardened_kwargs() -> None:
         patch.dict(sys.modules, {"asyncpg": ModuleType("asyncpg")}),
         patch.object(engine_mod, "create_async_engine", return_value=mock_engine) as create_engine,
         patch.object(engine_mod, "async_sessionmaker", return_value=MagicMock()),
-        patch("agent_workspace.persistence.bootstrap.bootstrap_schema", new=bootstrap_schema),
+        patch("alpha.persistence.bootstrap.bootstrap_schema", new=bootstrap_schema),
     ):
         try:
             await engine_mod.init_engine(backend="postgres", url=url, echo=True, pool_size=12)
@@ -152,7 +152,7 @@ async def test_init_engine_postgres_uses_hardened_kwargs() -> None:
 
 @pytest.mark.asyncio
 async def test_init_engine_postgres_retry_uses_hardened_kwargs() -> None:
-    url = "postgresql+asyncpg://user:password@localhost/agent_workspace"
+    url = "postgresql+asyncpg://user:password@localhost/alpha"
     initial_engine = MagicMock()
     initial_engine.dispose = AsyncMock()
     retry_engine = MagicMock()
@@ -165,7 +165,7 @@ async def test_init_engine_postgres_retry_uses_hardened_kwargs() -> None:
         patch.object(engine_mod, "create_async_engine", side_effect=[initial_engine, retry_engine]) as create_engine,
         patch.object(engine_mod, "async_sessionmaker", return_value=MagicMock()),
         patch.object(engine_mod, "_auto_create_postgres_db", new=auto_create),
-        patch("agent_workspace.persistence.bootstrap.bootstrap_schema", new=bootstrap_schema),
+        patch("alpha.persistence.bootstrap.bootstrap_schema", new=bootstrap_schema),
     ):
         try:
             await engine_mod.init_engine(backend="postgres", url=url, echo=False, pool_size=8)
@@ -184,7 +184,7 @@ async def test_init_engine_postgres_retry_uses_hardened_kwargs() -> None:
 
 @pytest.mark.asyncio
 async def test_init_engine_sqlite_omits_postgres_kwargs_and_keeps_wal_listener(tmp_path) -> None:
-    url = f"sqlite+aiosqlite:///{tmp_path / 'agent_workspace.db'}"
+    url = f"sqlite+aiosqlite:///{tmp_path / 'alpha.db'}"
     mock_engine = MagicMock()
     mock_engine.sync_engine = object()
     mock_engine.dispose = AsyncMock()
@@ -205,7 +205,7 @@ async def test_init_engine_sqlite_omits_postgres_kwargs_and_keeps_wal_listener(t
         patch.object(engine_mod, "create_async_engine", return_value=mock_engine) as create_engine,
         patch.object(engine_mod, "async_sessionmaker", return_value=MagicMock()),
         patch("sqlalchemy.event.listens_for", new=_capture_listener),
-        patch("agent_workspace.persistence.bootstrap.bootstrap_schema", new=bootstrap_schema),
+        patch("alpha.persistence.bootstrap.bootstrap_schema", new=bootstrap_schema),
     ):
         try:
             await engine_mod.init_engine(backend="sqlite", url=url, echo=True, sqlite_dir=str(tmp_path))

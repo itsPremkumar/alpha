@@ -10,14 +10,14 @@ from langchain_core.language_models.fake_chat_models import FakeMessagesListChat
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from pydantic import PrivateAttr
 
-from agent_workspace.agents.middlewares.todo_middleware import (
+from alpha.agents.middlewares.todo_middleware import (
     TodoMiddleware,
     _format_todos,
     _has_tool_call_intent_or_error,
     _reminder_in_messages,
     _todos_in_messages,
 )
-from agent_workspace.agents.thread_state import ThreadState
+from alpha.agents.thread_state import ThreadState
 
 
 def _ai_with_write_todos():

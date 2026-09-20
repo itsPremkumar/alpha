@@ -306,7 +306,7 @@ class ReplayChatModel(BaseChatModel):
 
     @property
     def _llm_type(self) -> str:
-        return "agent_workspace-replay"
+        return "alpha-replay"
 
     def _caller_from_run_manager(self, run_manager: CallbackManagerForLLMRun | None) -> str:
         if run_manager is None:

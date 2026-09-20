@@ -181,7 +181,7 @@ def _make_boxlite_provider(config: dict[str, Any]) -> tuple[Any, dict[str, Any]]
     On BoxLite 0.9.7 only, retries a failed create after fixing missing execute
     bits on extracted ``boxlite-shim`` binaries under ``~/.boxlite/boxes``.
     """
-    from agent_workspace.community.boxlite.provider import BoxliteProvider
+    from alpha.community.boxlite.provider import BoxliteProvider
 
     sandbox_attrs = {
         "image": config.get("image") or "python:3.12-slim",
@@ -197,7 +197,7 @@ def _make_boxlite_provider(config: dict[str, Any]) -> tuple[Any, dict[str, Any]]
         sandbox_attrs["environment"] = config["environment"]
 
     with _patched_module_attr(
-        "agent_workspace.community.boxlite.provider",
+        "alpha.community.boxlite.provider",
         "get_app_config",
         lambda: _stub_config(sandbox_attrs),
     ):
@@ -219,7 +219,7 @@ def _make_boxlite_provider(config: dict[str, Any]) -> tuple[Any, dict[str, Any]]
 
 def _make_aio_provider(config: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
     """Create an AioSandboxProvider with stub config."""
-    from agent_workspace.community.aio_sandbox.aio_sandbox_provider import AioSandboxProvider
+    from alpha.community.aio_sandbox.aio_sandbox_provider import AioSandboxProvider
 
     sandbox_attrs = {
         "image": config.get("image"),
@@ -233,7 +233,7 @@ def _make_aio_provider(config: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
     }
 
     with _patched_module_attr(
-        "agent_workspace.community.aio_sandbox.aio_sandbox_provider",
+        "alpha.community.aio_sandbox.aio_sandbox_provider",
         "get_app_config",
         lambda: _stub_config(sandbox_attrs),
     ):

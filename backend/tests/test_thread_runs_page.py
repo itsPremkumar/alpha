@@ -8,7 +8,7 @@ from _router_auth_helpers import make_authed_test_app
 from fastapi.testclient import TestClient
 
 from app.gateway.routers import thread_runs
-from agent_workspace.runtime import DisconnectMode, RunRecord, RunStatus
+from alpha.runtime import DisconnectMode, RunRecord, RunStatus
 
 
 def _record(run_id: str, created_at: str) -> RunRecord:

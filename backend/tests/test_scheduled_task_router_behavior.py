@@ -8,10 +8,10 @@ from _router_auth_helpers import call_unwrapped
 from fastapi import HTTPException
 
 from app.gateway.routers import scheduled_tasks
-from agent_workspace.config.database_config import DatabaseConfig
-from agent_workspace.persistence.engine import close_engine, get_session_factory, init_engine_from_config
-from agent_workspace.persistence.scheduled_task_runs import ScheduledTaskRunRepository
-from agent_workspace.persistence.scheduled_tasks import ScheduledTaskRepository
+from alpha.config.database_config import DatabaseConfig
+from alpha.persistence.engine import close_engine, get_session_factory, init_engine_from_config
+from alpha.persistence.scheduled_task_runs import ScheduledTaskRunRepository
+from alpha.persistence.scheduled_tasks import ScheduledTaskRepository
 
 
 @pytest.mark.parametrize(

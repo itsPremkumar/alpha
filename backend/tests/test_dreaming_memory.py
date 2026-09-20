@@ -1,15 +1,15 @@
 import json
 from pathlib import Path
 
-from agent_workspace.memory.dreaming.phases import (
+from alpha.memory.dreaming.phases import (
     MemorySignal,
     run_deep_sleep_phase,
     run_dream_cycle,
     run_light_sleep_phase,
     run_rem_sleep_phase,
 )
-from agent_workspace.memory.dreaming.store import DreamStore
-from agent_workspace.tools.builtins.dreaming_tool import consolidate_memory_dream
+from alpha.memory.dreaming.store import DreamStore
+from alpha.tools.builtins.dreaming_tool import consolidate_memory_dream
 
 
 def test_dreaming_phases(tmp_path: Path):
@@ -50,8 +50,8 @@ def test_dreaming_phases(tmp_path: Path):
 
 def test_consolidate_memory_dream_tool(tmp_path: Path, monkeypatch):
     store = DreamStore(root_dir=tmp_path)
-    monkeypatch.setattr("agent_workspace.memory.dreaming.store.get_dream_store", lambda: store)
-    monkeypatch.setattr("agent_workspace.tools.builtins.dreaming_tool.get_dream_store", lambda: store)
+    monkeypatch.setattr("alpha.memory.dreaming.store.get_dream_store", lambda: store)
+    monkeypatch.setattr("alpha.tools.builtins.dreaming_tool.get_dream_store", lambda: store)
 
     payload = json.dumps([
         {"content": "Always mock external HTTP APIs during unit tests", "category": "testing"},

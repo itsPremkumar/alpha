@@ -4,18 +4,18 @@ from __future__ import annotations
 
 import time
 
-from agent_workspace.commands.backend_handlers import handle_learn, handle_moa, handle_usage
-from agent_workspace.commands.registry import command_registry
-from agent_workspace.learning.nudges import build_memory_nudge, should_nudge
-from agent_workspace.skills.curator import (
+from alpha.commands.backend_handlers import handle_learn, handle_moa, handle_usage
+from alpha.commands.registry import command_registry
+from alpha.learning.nudges import build_memory_nudge, should_nudge
+from alpha.skills.curator import (
     SkillCurator,
     curator_interval_hours,
     find_consolidation_candidates,
     propose_consolidations,
     should_run_curator,
 )
-from agent_workspace.skills.usage import SkillUsageTracker
-from agent_workspace.tools.builtins.session_search_tool import summarize_session_hits
+from alpha.skills.usage import SkillUsageTracker
+from alpha.tools.builtins.session_search_tool import summarize_session_hits
 
 
 def test_learn_usage_and_prompt():

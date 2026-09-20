@@ -26,7 +26,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from agent_workspace.skills.storage.local_skill_storage import LocalSkillStorage
+from alpha.skills.storage.local_skill_storage import LocalSkillStorage
 
 pytestmark = pytest.mark.asyncio
 
@@ -57,7 +57,7 @@ async def test_install_skill_archive_does_not_block_event_loop(tmp_path: Path, m
         return SimpleNamespace(decision="allow", reason="anchor stub")
 
     # External dependency boundary only: the security scanner is an LLM call.
-    monkeypatch.setattr("agent_workspace.skills.installer.scan_skill_content", _allow_scan)
+    monkeypatch.setattr("alpha.skills.installer.scan_skill_content", _allow_scan)
 
     # Constructor resolves paths (one-time, cached in production via
     # get_or_new_skill_storage); offloaded here so the anchor exercises only

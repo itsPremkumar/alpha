@@ -27,7 +27,7 @@ from support.detectors.repo_root import resolve_repo_root
 REPO_ROOT = resolve_repo_root(Path(__file__))
 DEFAULT_SCAN_PATHS = (
     REPO_ROOT / "backend" / "app",
-    REPO_ROOT / "backend" / "packages" / "harness" / "agent_workspace",
+    REPO_ROOT / "backend" / "packages" / "harness" / "alpha",
 )
 IGNORED_DIR_NAMES = {
     ".git",
@@ -162,7 +162,7 @@ EXACT_CALL_RULES: dict[str, _CallRule] = {
         ASYNCIO_DEFAULT_EXECUTOR,
         "Offloads synchronous work into the asyncio default executor.",
     ),
-    "agent_workspace.utils.file_io.run_file_io": _CallRule(
+    "alpha.utils.file_io.run_file_io": _CallRule(
         "INFO",
         "ASYNC_FILE_IO_OFFLOAD",
         DEDICATED_EXECUTOR,
@@ -222,7 +222,7 @@ EXACT_CALL_RULES: dict[str, _CallRule] = {
         DEDICATED_EXECUTOR,
         "Adapts an async tool for sync invocation through Alpha's dedicated tool executor.",
     ),
-    "agent_workspace.tools.sync.make_sync_tool_wrapper": _CallRule(
+    "alpha.tools.sync.make_sync_tool_wrapper": _CallRule(
         "INFO",
         "SYNC_TOOL_WRAPPER",
         DEDICATED_EXECUTOR,
@@ -451,7 +451,7 @@ class BoundaryVisitor(ast.NodeVisitor):
                     "starlette.concurrency.run_in_threadpool",
                 }:
                     kinds.add(ANYIO_WORKER_THREAD)
-                elif call_name == "agent_workspace.utils.file_io.run_file_io":
+                elif call_name == "alpha.utils.file_io.run_file_io":
                     kinds.add(DEDICATED_EXECUTOR)
                 elif self._is_run_in_executor(call_name):
                     kinds.add(self._executor_boundary_kind(node))
@@ -936,7 +936,7 @@ def inspect_configured_components(
     from langchain_core.tools import BaseTool
 
     if resolve_tool is None or resolve_model is None:
-        from agent_workspace.reflection import resolve_class, resolve_variable
+        from alpha.reflection import resolve_class, resolve_variable
 
         resolve_tool = resolve_tool or resolve_variable
         resolve_model = resolve_model or resolve_class
@@ -994,7 +994,7 @@ def _inspect_config_file(config_path: Path) -> RuntimeInventory:
     harness_path = REPO_ROOT / "backend" / "packages" / "harness"
     if str(harness_path) not in sys.path:
         sys.path.insert(0, str(harness_path))
-    from agent_workspace.config.app_config import AppConfig
+    from alpha.config.app_config import AppConfig
 
     config = AppConfig.from_file(str(config_path))
     return inspect_configured_components(config)

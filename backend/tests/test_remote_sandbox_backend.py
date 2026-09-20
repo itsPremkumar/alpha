@@ -3,11 +3,11 @@ from __future__ import annotations
 import pytest
 import requests
 
-import agent_workspace.skills.storage as storage_mod
-from agent_workspace.community.aio_sandbox import remote_backend as remote_backend_mod
-from agent_workspace.community.aio_sandbox.remote_backend import RemoteSandboxBackend
-from agent_workspace.community.aio_sandbox.sandbox_info import SandboxInfo
-from agent_workspace.skills.types import SkillCategory
+import alpha.skills.storage as storage_mod
+from alpha.community.aio_sandbox import remote_backend as remote_backend_mod
+from alpha.community.aio_sandbox.remote_backend import RemoteSandboxBackend
+from alpha.community.aio_sandbox.sandbox_info import SandboxInfo
+from alpha.skills.types import SkillCategory
 
 
 class _StubResponse:

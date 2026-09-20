@@ -1,6 +1,6 @@
 """MCP task projection tests for the run worker."""
 
-from agent_workspace.runtime.runs.worker import _project_background_tasks
+from alpha.runtime.runs.worker import _project_background_tasks
 
 
 def test_project_background_tasks_neutralizes_task_names():

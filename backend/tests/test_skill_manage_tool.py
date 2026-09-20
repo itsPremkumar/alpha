@@ -5,9 +5,9 @@ from types import SimpleNamespace
 import anyio
 import pytest
 
-from agent_workspace.skills.security_static_scanner import StaticScannerError
+from alpha.skills.security_static_scanner import StaticScannerError
 
-skill_manage_module = importlib.import_module("agent_workspace.tools.skill_manage_tool")
+skill_manage_module = importlib.import_module("alpha.tools.skill_manage_tool")
 
 
 def _skill_content(name: str, description: str = "Demo skill") -> str:
@@ -15,7 +15,7 @@ def _skill_content(name: str, description: str = "Demo skill") -> str:
 
 
 async def _async_result(decision: str, reason: str):
-    from agent_workspace.skills.security_scanner import ScanResult
+    from alpha.skills.security_scanner import ScanResult
 
     return ScanResult(decision=decision, reason=reason)
 
@@ -25,7 +25,7 @@ def _make_config(skills_root: Path):
         skills=SimpleNamespace(
             get_skills_path=lambda: skills_root,
             container_path="/mnt/skills",
-            use="agent_workspace.skills.storage.local_skill_storage:LocalSkillStorage",
+            use="alpha.skills.storage.local_skill_storage:LocalSkillStorage",
         ),
         skill_evolution=SimpleNamespace(enabled=True, moderation_model_name=None),
     )
@@ -41,13 +41,13 @@ def _make_runtime(*, thread_id: str = "thread-1", user_id: str = "default"):
 def test_skill_manage_create_and_patch(monkeypatch, tmp_path):
     skills_root = tmp_path / "skills"
     config = _make_config(skills_root)
-    monkeypatch.setattr("agent_workspace.config.get_app_config", lambda: config)
-    monkeypatch.setattr("agent_workspace.skills.security_scanner.get_app_config", lambda: config)
+    monkeypatch.setattr("alpha.config.get_app_config", lambda: config)
+    monkeypatch.setattr("alpha.skills.security_scanner.get_app_config", lambda: config)
     # Patch get_paths so UserScopedSkillStorage resolves user dirs under tmp_path
-    from agent_workspace.config.paths import Paths
+    from alpha.config.paths import Paths
 
-    monkeypatch.setattr("agent_workspace.config.paths.get_paths", lambda: Paths(base_dir=tmp_path))
-    monkeypatch.setattr("agent_workspace.config.paths._paths", None)
+    monkeypatch.setattr("alpha.config.paths.get_paths", lambda: Paths(base_dir=tmp_path))
+    monkeypatch.setattr("alpha.config.paths._paths", None)
 
     refresh_calls = []
 
@@ -89,12 +89,12 @@ def test_skill_manage_create_and_patch(monkeypatch, tmp_path):
 def test_skill_manage_patch_replaces_single_occurrence_by_default(monkeypatch, tmp_path):
     skills_root = tmp_path / "skills"
     config = _make_config(skills_root)
-    monkeypatch.setattr("agent_workspace.config.get_app_config", lambda: config)
-    monkeypatch.setattr("agent_workspace.skills.security_scanner.get_app_config", lambda: config)
-    from agent_workspace.config.paths import Paths
+    monkeypatch.setattr("alpha.config.get_app_config", lambda: config)
+    monkeypatch.setattr("alpha.skills.security_scanner.get_app_config", lambda: config)
+    from alpha.config.paths import Paths
 
-    monkeypatch.setattr("agent_workspace.config.paths.get_paths", lambda: Paths(base_dir=tmp_path))
-    monkeypatch.setattr("agent_workspace.config.paths._paths", None)
+    monkeypatch.setattr("alpha.config.paths.get_paths", lambda: Paths(base_dir=tmp_path))
+    monkeypatch.setattr("alpha.config.paths._paths", None)
 
     async def _refresh(user_id: str):
         return None
@@ -130,11 +130,11 @@ def test_skill_manage_rejects_public_skill_patch(monkeypatch, tmp_path):
     public_dir.mkdir(parents=True, exist_ok=True)
     (public_dir / "SKILL.md").write_text(_skill_content("deep-research"), encoding="utf-8")
     config = _make_config(skills_root)
-    monkeypatch.setattr("agent_workspace.config.get_app_config", lambda: config)
-    from agent_workspace.config.paths import Paths
+    monkeypatch.setattr("alpha.config.get_app_config", lambda: config)
+    from alpha.config.paths import Paths
 
-    monkeypatch.setattr("agent_workspace.config.paths.get_paths", lambda: Paths(base_dir=tmp_path))
-    monkeypatch.setattr("agent_workspace.config.paths._paths", None)
+    monkeypatch.setattr("alpha.config.paths.get_paths", lambda: Paths(base_dir=tmp_path))
+    monkeypatch.setattr("alpha.config.paths._paths", None)
 
     runtime = _make_runtime(user_id="default")
 
@@ -154,11 +154,11 @@ def test_skill_manage_rejects_public_skill_patch(monkeypatch, tmp_path):
 def test_skill_manage_sync_wrapper_supported(monkeypatch, tmp_path):
     skills_root = tmp_path / "skills"
     config = _make_config(skills_root)
-    monkeypatch.setattr("agent_workspace.config.get_app_config", lambda: config)
-    from agent_workspace.config.paths import Paths
+    monkeypatch.setattr("alpha.config.get_app_config", lambda: config)
+    from alpha.config.paths import Paths
 
-    monkeypatch.setattr("agent_workspace.config.paths.get_paths", lambda: Paths(base_dir=tmp_path))
-    monkeypatch.setattr("agent_workspace.config.paths._paths", None)
+    monkeypatch.setattr("alpha.config.paths.get_paths", lambda: Paths(base_dir=tmp_path))
+    monkeypatch.setattr("alpha.config.paths._paths", None)
 
     refresh_calls = []
 
@@ -183,12 +183,12 @@ def test_skill_manage_sync_wrapper_supported(monkeypatch, tmp_path):
 def test_skill_manage_rejects_support_path_traversal(monkeypatch, tmp_path):
     skills_root = tmp_path / "skills"
     config = _make_config(skills_root)
-    monkeypatch.setattr("agent_workspace.config.get_app_config", lambda: config)
-    monkeypatch.setattr("agent_workspace.skills.security_scanner.get_app_config", lambda: config)
-    from agent_workspace.config.paths import Paths
+    monkeypatch.setattr("alpha.config.get_app_config", lambda: config)
+    monkeypatch.setattr("alpha.skills.security_scanner.get_app_config", lambda: config)
+    from alpha.config.paths import Paths
 
-    monkeypatch.setattr("agent_workspace.config.paths.get_paths", lambda: Paths(base_dir=tmp_path))
-    monkeypatch.setattr("agent_workspace.config.paths._paths", None)
+    monkeypatch.setattr("alpha.config.paths.get_paths", lambda: Paths(base_dir=tmp_path))
+    monkeypatch.setattr("alpha.config.paths._paths", None)
 
     async def _refresh(user_id: str):
         return None
@@ -213,12 +213,12 @@ def test_skill_manage_rejects_support_path_traversal(monkeypatch, tmp_path):
 def test_skill_manage_remove_file_updates_sandbox_projection_before_return(monkeypatch, tmp_path):
     skills_root = tmp_path / "skills"
     config = _make_config(skills_root)
-    monkeypatch.setattr("agent_workspace.config.get_app_config", lambda: config)
-    monkeypatch.setattr("agent_workspace.skills.security_scanner.get_app_config", lambda: config)
-    from agent_workspace.config.paths import Paths
+    monkeypatch.setattr("alpha.config.get_app_config", lambda: config)
+    monkeypatch.setattr("alpha.skills.security_scanner.get_app_config", lambda: config)
+    from alpha.config.paths import Paths
 
-    monkeypatch.setattr("agent_workspace.config.paths.get_paths", lambda: Paths(base_dir=tmp_path))
-    monkeypatch.setattr("agent_workspace.config.paths._paths", None)
+    monkeypatch.setattr("alpha.config.paths.get_paths", lambda: Paths(base_dir=tmp_path))
+    monkeypatch.setattr("alpha.config.paths._paths", None)
 
     async def _refresh(user_id: str):
         return None
@@ -255,12 +255,12 @@ def test_skill_manage_remove_file_updates_sandbox_projection_before_return(monke
 def test_skill_manage_static_critical_blocks_create_before_llm(monkeypatch, tmp_path):
     skills_root = tmp_path / "skills"
     config = _make_config(skills_root)
-    monkeypatch.setattr("agent_workspace.config.get_app_config", lambda: config)
-    monkeypatch.setattr("agent_workspace.skills.security_scanner.get_app_config", lambda: config)
-    from agent_workspace.config.paths import Paths
+    monkeypatch.setattr("alpha.config.get_app_config", lambda: config)
+    monkeypatch.setattr("alpha.skills.security_scanner.get_app_config", lambda: config)
+    from alpha.config.paths import Paths
 
-    monkeypatch.setattr("agent_workspace.config.paths.get_paths", lambda: Paths(base_dir=tmp_path))
-    monkeypatch.setattr("agent_workspace.config.paths._paths", None)
+    monkeypatch.setattr("alpha.config.paths.get_paths", lambda: Paths(base_dir=tmp_path))
+    monkeypatch.setattr("alpha.config.paths._paths", None)
     refresh_calls = []
     llm_calls = []
 
@@ -296,12 +296,12 @@ def test_skill_manage_static_critical_blocks_create_before_llm(monkeypatch, tmp_
 def test_skill_manage_static_scan_failure_blocks_create_before_llm(monkeypatch, tmp_path):
     skills_root = tmp_path / "skills"
     config = _make_config(skills_root)
-    monkeypatch.setattr("agent_workspace.config.get_app_config", lambda: config)
-    monkeypatch.setattr("agent_workspace.skills.security_scanner.get_app_config", lambda: config)
-    from agent_workspace.config.paths import Paths
+    monkeypatch.setattr("alpha.config.get_app_config", lambda: config)
+    monkeypatch.setattr("alpha.skills.security_scanner.get_app_config", lambda: config)
+    from alpha.config.paths import Paths
 
-    monkeypatch.setattr("agent_workspace.config.paths.get_paths", lambda: Paths(base_dir=tmp_path))
-    monkeypatch.setattr("agent_workspace.config.paths._paths", None)
+    monkeypatch.setattr("alpha.config.paths.get_paths", lambda: Paths(base_dir=tmp_path))
+    monkeypatch.setattr("alpha.config.paths._paths", None)
     refresh_calls = []
     llm_calls = []
 
@@ -339,12 +339,12 @@ def test_skill_manage_per_user_isolation(monkeypatch, tmp_path):
     """Two different users must get separate custom skill directories."""
     skills_root = tmp_path / "skills"
     config = _make_config(skills_root)
-    monkeypatch.setattr("agent_workspace.config.get_app_config", lambda: config)
-    monkeypatch.setattr("agent_workspace.skills.security_scanner.get_app_config", lambda: config)
-    from agent_workspace.config.paths import Paths
+    monkeypatch.setattr("alpha.config.get_app_config", lambda: config)
+    monkeypatch.setattr("alpha.skills.security_scanner.get_app_config", lambda: config)
+    from alpha.config.paths import Paths
 
-    monkeypatch.setattr("agent_workspace.config.paths.get_paths", lambda: Paths(base_dir=tmp_path))
-    monkeypatch.setattr("agent_workspace.config.paths._paths", None)
+    monkeypatch.setattr("alpha.config.paths.get_paths", lambda: Paths(base_dir=tmp_path))
+    monkeypatch.setattr("alpha.config.paths._paths", None)
 
     async def _refresh(user_id: str):
         return None
@@ -385,7 +385,7 @@ def test_skill_manage_per_user_isolation(monkeypatch, tmp_path):
 
 
 # --- tracing wiring: the in-graph choke point (see the INVARIANT in
-# packages/harness/agent_workspace/agents/lead_agent/agent.py) ---
+# packages/harness/alpha/agents/lead_agent/agent.py) ---
 
 
 def test_scan_or_raise_does_not_attach_model_tracing(monkeypatch, tmp_path):
@@ -398,7 +398,7 @@ def test_scan_or_raise_does_not_attach_model_tracing(monkeypatch, tmp_path):
     so the flag is pinned all the way to the model factory.
     """
     config = _make_config(tmp_path / "skills")
-    monkeypatch.setattr("agent_workspace.skills.security_scanner.get_app_config", lambda: config)
+    monkeypatch.setattr("alpha.skills.security_scanner.get_app_config", lambda: config)
 
     create_kwargs = {}
 
@@ -410,7 +410,7 @@ def test_scan_or_raise_does_not_attach_model_tracing(monkeypatch, tmp_path):
         create_kwargs.update(kwargs)
         return FakeModel()
 
-    monkeypatch.setattr("agent_workspace.skills.security_scanner.create_chat_model", _fake_create_chat_model)
+    monkeypatch.setattr("alpha.skills.security_scanner.create_chat_model", _fake_create_chat_model)
 
     result = anyio.run(
         lambda: skill_manage_module._scan_or_raise(

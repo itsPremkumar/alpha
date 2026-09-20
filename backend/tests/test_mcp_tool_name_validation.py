@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
-from agent_workspace.mcp.tools import get_mcp_tools
+from alpha.mcp.tools import get_mcp_tools
 
 
 class _Args(BaseModel):
@@ -42,11 +42,11 @@ def _load(server_tools: list[StructuredTool]) -> tuple[list, MagicMock]:
 
     with (
         patch("langchain_mcp_adapters.client.MultiServerMCPClient", return_value=mock_client),
-        patch("agent_workspace.config.extensions_config.ExtensionsConfig.from_file", return_value=ext),
-        patch("agent_workspace.mcp.tools.build_servers_config", return_value={"srv": {"transport": "sse"}}),
-        patch("agent_workspace.mcp.tools.get_initial_oauth_headers", new_callable=AsyncMock, return_value={}),
-        patch("agent_workspace.mcp.tools.build_oauth_tool_interceptor", return_value=None),
-        patch("agent_workspace.mcp.tools.logger.warning") as mock_warn,
+        patch("alpha.config.extensions_config.ExtensionsConfig.from_file", return_value=ext),
+        patch("alpha.mcp.tools.build_servers_config", return_value={"srv": {"transport": "sse"}}),
+        patch("alpha.mcp.tools.get_initial_oauth_headers", new_callable=AsyncMock, return_value={}),
+        patch("alpha.mcp.tools.build_oauth_tool_interceptor", return_value=None),
+        patch("alpha.mcp.tools.logger.warning") as mock_warn,
     ):
         tools = asyncio.run(get_mcp_tools())
     return tools, mock_warn

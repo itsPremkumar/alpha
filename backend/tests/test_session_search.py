@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from agent_workspace.runtime.events.search import (
+from alpha.runtime.events.search import (
     clamp_limit,
     escape_like,
     extract_searchable_text,
@@ -14,7 +14,7 @@ from agent_workspace.runtime.events.search import (
     normalize_query,
     sanitize_fts_query,
 )
-from agent_workspace.runtime.events.store.memory import MemoryRunEventStore
+from alpha.runtime.events.store.memory import MemoryRunEventStore
 
 pytestmark = pytest.mark.anyio
 
@@ -158,7 +158,7 @@ async def test_memory_search_snippet_bounded_and_shaped():
 
 
 async def test_jsonl_search_matches_memory_contract(tmp_path):
-    from agent_workspace.runtime.events.store.jsonl import JsonlRunEventStore
+    from alpha.runtime.events.store.jsonl import JsonlRunEventStore
 
     store = JsonlRunEventStore(base_dir=tmp_path)
     await _seed_two_threads(store)
@@ -175,8 +175,8 @@ async def test_jsonl_search_matches_memory_contract(tmp_path):
 
 
 async def _sqlite_store(tmp_path):
-    from agent_workspace.persistence.engine import get_session_factory, init_engine
-    from agent_workspace.runtime.events.store.db import DbRunEventStore
+    from alpha.persistence.engine import get_session_factory, init_engine
+    from alpha.runtime.events.store.db import DbRunEventStore
 
     url = f"sqlite+aiosqlite:///{tmp_path / 'test.db'}"
     await init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
@@ -184,7 +184,7 @@ async def _sqlite_store(tmp_path):
 
 
 async def _put_as(store, user_id, **kwargs):
-    from agent_workspace.runtime.user_context import reset_current_user, set_current_user
+    from alpha.runtime.user_context import reset_current_user, set_current_user
 
     token = set_current_user(SimpleNamespace(id=user_id))
     try:
@@ -194,7 +194,7 @@ async def _put_as(store, user_id, **kwargs):
 
 
 async def test_db_search_enforces_owner_isolation(tmp_path):
-    from agent_workspace.persistence.engine import close_engine
+    from alpha.persistence.engine import close_engine
 
     store = await _sqlite_store(tmp_path)
     try:
@@ -225,7 +225,7 @@ async def test_db_search_enforces_owner_isolation(tmp_path):
 
 
 async def test_db_search_ranks_and_snippets(tmp_path):
-    from agent_workspace.persistence.engine import close_engine
+    from alpha.persistence.engine import close_engine
 
     store = await _sqlite_store(tmp_path)
     try:
@@ -256,7 +256,7 @@ async def test_db_search_ranks_and_snippets(tmp_path):
 
 
 async def test_db_search_like_fallback_stays_correct(tmp_path):
-    from agent_workspace.persistence.engine import close_engine
+    from alpha.persistence.engine import close_engine
 
     store = await _sqlite_store(tmp_path)
     try:
@@ -281,7 +281,7 @@ async def test_db_search_like_fallback_stays_correct(tmp_path):
 
 
 async def test_db_search_blank_query_returns_without_storage(tmp_path):
-    from agent_workspace.persistence.engine import close_engine
+    from alpha.persistence.engine import close_engine
 
     store = await _sqlite_store(tmp_path)
     try:
@@ -304,7 +304,7 @@ def _tool_runtime(store, user_id="u1"):
 
 
 async def _call_tool(**kwargs):
-    from agent_workspace.tools.builtins.session_search_tool import session_search_tool
+    from alpha.tools.builtins.session_search_tool import session_search_tool
 
     coroutine = getattr(session_search_tool, "coroutine", None)
     if coroutine is not None:
@@ -349,7 +349,7 @@ async def test_tool_store_unavailable_is_actionable(monkeypatch):
     def _boom():
         raise FileNotFoundError("no config anywhere")
 
-    monkeypatch.setattr("agent_workspace.config.get_app_config", _boom)
+    monkeypatch.setattr("alpha.config.get_app_config", _boom)
     out = await _call_tool(runtime=runtime, query="anything")
     assert out.startswith("Error: message store unavailable")
 

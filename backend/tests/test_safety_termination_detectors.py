@@ -2,7 +2,7 @@
 
 from langchain_core.messages import AIMessage
 
-from agent_workspace.agents.middlewares.safety_termination_detectors import (
+from alpha.agents.middlewares.safety_termination_detectors import (
     AnthropicRefusalDetector,
     GeminiSafetyDetector,
     OpenAICompatibleContentFilterDetector,

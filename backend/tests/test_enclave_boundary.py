@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from agent_workspace.security.enclave import BoundaryViolationError, TaskBoundaryPolicy
+from alpha.security.enclave import BoundaryViolationError, TaskBoundaryPolicy
 
 
 def test_boundary_validates_enclave_path(tmp_path):

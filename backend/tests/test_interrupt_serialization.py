@@ -32,7 +32,7 @@ class _StreamCollector:
 
 @pytest.mark.asyncio
 async def test_values_mode_includes_interrupt():
-    from agent_workspace.runtime.serialization import serialize
+    from alpha.runtime.serialization import serialize
 
     graph = _build_test_graph()
     collector = _StreamCollector()
@@ -51,7 +51,7 @@ async def test_values_mode_includes_interrupt():
 
 @pytest.mark.asyncio
 async def test_serialize_channel_values_keeps_interrupt():
-    from agent_workspace.runtime.serialization import serialize_channel_values
+    from alpha.runtime.serialization import serialize_channel_values
 
     interrupt_obj = Interrupt(value={"question": "Enter API key"}, id="test-interrupt-id")
     result = serialize_channel_values(

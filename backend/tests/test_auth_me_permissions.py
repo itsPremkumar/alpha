@@ -18,8 +18,8 @@ from fastapi.testclient import TestClient
 os.environ.setdefault("AUTH_JWT_SECRET", "test-secret-key-auth-me-permissions-min-32")
 
 from app.gateway.authz import Permissions  # noqa: E402
-from agent_workspace.authz.provider import AuthzDecision, AuthzReason  # noqa: E402
-from agent_workspace.config.authorization_config import AuthorizationConfig  # noqa: E402
+from alpha.authz.provider import AuthzDecision, AuthzReason  # noqa: E402
+from alpha.config.authorization_config import AuthorizationConfig  # noqa: E402
 
 _TEST_SECRET = "test-secret-key-auth-me-permissions-min-32"
 
@@ -66,7 +66,7 @@ def _setup_auth(tmp_path):
     from app.gateway import deps
     from app.gateway.auth.config import AuthConfig, set_auth_config
     from app.gateway.routers.auth import _SETUP_STATUS_CACHE, _SETUP_STATUS_INFLIGHT
-    from agent_workspace.persistence.engine import close_engine, init_engine
+    from alpha.persistence.engine import close_engine, init_engine
 
     set_auth_config(AuthConfig(jwt_secret=_TEST_SECRET))
     url = f"sqlite+aiosqlite:///{tmp_path}/auth_me.db"

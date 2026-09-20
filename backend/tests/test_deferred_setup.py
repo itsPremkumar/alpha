@@ -1,8 +1,8 @@
 from langchain_core.tools import tool as as_tool
 from langgraph.types import Command
 
-from agent_workspace.tools.builtins.tool_search import DeferredToolCatalog, build_deferred_tool_setup, build_tool_search_tool
-from agent_workspace.tools.mcp_metadata import is_mcp_tool, tag_mcp_tool
+from alpha.tools.builtins.tool_search import DeferredToolCatalog, build_deferred_tool_setup, build_tool_search_tool
+from alpha.tools.mcp_metadata import is_mcp_tool, tag_mcp_tool
 
 
 @as_tool

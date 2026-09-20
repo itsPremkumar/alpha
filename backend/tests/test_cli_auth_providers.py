@@ -5,10 +5,10 @@ import json
 import pytest
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from agent_workspace.models import openai_codex_provider as codex_provider_module
-from agent_workspace.models.claude_provider import ClaudeChatModel
-from agent_workspace.models.credential_loader import CodexCliCredential
-from agent_workspace.models.openai_codex_provider import CodexChatModel
+from alpha.models import openai_codex_provider as codex_provider_module
+from alpha.models.claude_provider import ClaudeChatModel
+from alpha.models.credential_loader import CodexCliCredential
+from alpha.models.openai_codex_provider import CodexChatModel
 
 
 def test_codex_provider_rejects_non_positive_retry_attempts():

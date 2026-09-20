@@ -19,16 +19,16 @@ from langgraph.graph import StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.types import Overwrite
 
-from agent_workspace.agents.thread_state import merge_artifacts, merge_message_writes
-from agent_workspace.config.run_ownership_config import RunOwnershipConfig
-from agent_workspace.runtime.checkpoint_state import CheckpointStateAccessor
-from agent_workspace.runtime.context_keys import CURRENT_RUN_PRE_EXISTING_MESSAGE_IDS_KEY
-from agent_workspace.runtime.events.store.memory import MemoryRunEventStore
-from agent_workspace.runtime.journal import RunJournal
-from agent_workspace.runtime.runs.manager import CancelOutcome, ConflictError, RunManager
-from agent_workspace.runtime.runs.schemas import RunStatus
-from agent_workspace.runtime.runs.store.memory import MemoryRunStore
-from agent_workspace.runtime.runs.worker import (
+from alpha.agents.thread_state import merge_artifacts, merge_message_writes
+from alpha.config.run_ownership_config import RunOwnershipConfig
+from alpha.runtime.checkpoint_state import CheckpointStateAccessor
+from alpha.runtime.context_keys import CURRENT_RUN_PRE_EXISTING_MESSAGE_IDS_KEY
+from alpha.runtime.events.store.memory import MemoryRunEventStore
+from alpha.runtime.journal import RunJournal
+from alpha.runtime.runs.manager import CancelOutcome, ConflictError, RunManager
+from alpha.runtime.runs.schemas import RunStatus
+from alpha.runtime.runs.store.memory import MemoryRunStore
+from alpha.runtime.runs.worker import (
     RollbackPoint,
     RunContext,
     _agent_factory_supports_app_config,
@@ -44,13 +44,13 @@ from agent_workspace.runtime.runs.worker import (
     _try_extract_from_message,
     run_agent,
 )
-from agent_workspace.sandbox.lease import (
+from alpha.sandbox.lease import (
     SANDBOX_COMMAND_SCOPE_CONTEXT_KEY,
     SANDBOX_LEASE_OWNER_CONTEXT_KEY,
     ensure_sandbox_lease_owner,
     get_sandbox_lease_manager,
 )
-from agent_workspace.sandbox.sandbox_provider import reset_sandbox_provider, set_sandbox_provider
+from alpha.sandbox.sandbox_provider import reset_sandbox_provider, set_sandbox_provider
 
 
 class FakeCheckpointer:
@@ -356,7 +356,7 @@ def _stub_mutation_graph(monkeypatch, *, restored_config):
     mock_graph = SimpleNamespace()
     mock_graph.aupdate_state = AsyncMock(return_value=restored_config)
     monkeypatch.setattr(
-        "agent_workspace.runtime.runs.worker.build_state_mutation_graph",
+        "alpha.runtime.runs.worker.build_state_mutation_graph",
         lambda *args, **kwargs: mock_graph,
     )
     return mock_graph
@@ -513,7 +513,7 @@ def test_large_file_tool_chunk_batcher_does_not_retain_non_file_names():
                     "id": f"call-{index}",
                     "index": 0,
                     "name": "web_search",
-                    "args": '{"query":"agent_workspace"}',
+                    "args": '{"query":"alpha"}',
                 }
             ],
         )
@@ -924,7 +924,7 @@ async def test_run_agent_schedules_terminal_run_record_cleanup():
 
 @pytest.mark.anyio
 async def test_run_agent_schedules_terminal_cleanup_when_publish_end_fails(monkeypatch):
-    import agent_workspace.runtime.runs.worker as worker_module
+    import alpha.runtime.runs.worker as worker_module
 
     class CleanupTrackingRunManager(RunManager):
         def __init__(self) -> None:
@@ -969,8 +969,8 @@ async def test_run_agent_schedules_terminal_cleanup_when_publish_end_fails(monke
 
 @pytest.mark.anyio
 async def test_run_agent_schedules_terminal_cleanup_when_completion_hook_is_cancelled(monkeypatch):
-    import agent_workspace.runtime.runs.worker as worker_module
-    from agent_workspace.runtime.journal import RunJournal
+    import alpha.runtime.runs.worker as worker_module
+    from alpha.runtime.journal import RunJournal
 
     class CleanupTrackingRunManager(RunManager):
         def __init__(self) -> None:
@@ -1130,7 +1130,7 @@ async def test_run_agent_ignores_stream_close_failure_after_abort(stream_modes, 
             del graph_input, config, stream_mode, subgraphs
             return stream
 
-    with caplog.at_level(logging.WARNING, logger="agent_workspace.runtime.runs.worker"):
+    with caplog.at_level(logging.WARNING, logger="alpha.runtime.runs.worker"):
         await run_agent(
             bridge,
             run_manager,
@@ -1203,7 +1203,7 @@ async def test_terminal_cleanup_tasks_do_not_inherit_run_context():
 
 @pytest.mark.anyio
 async def test_terminal_cycle_collection_is_coalesced_contextless_and_off_loop(monkeypatch, caplog):
-    import agent_workspace.runtime.runs.worker as worker_module
+    import alpha.runtime.runs.worker as worker_module
 
     marker: ContextVar[str | None] = ContextVar("terminal_gc_marker", default=None)
     loop_thread_id = threading.get_ident()
@@ -1249,7 +1249,7 @@ async def test_terminal_cycle_collection_is_coalesced_contextless_and_off_loop(m
 
 @pytest.mark.anyio
 async def test_run_agent_releases_terminal_runtime_callbacks():
-    from agent_workspace.runtime.journal import RunJournal
+    from alpha.runtime.journal import RunJournal
 
     run_manager = RunManager()
     record = await run_manager.create("thread-runtime-release")
@@ -1405,7 +1405,7 @@ async def test_run_agent_marks_rollback_unusable_when_capture_fails():
             yield {"messages": []}
 
     with patch(
-        "agent_workspace.runtime.runs.worker._rollback_to_pre_run_checkpoint",
+        "alpha.runtime.runs.worker._rollback_to_pre_run_checkpoint",
         new_callable=AsyncMock,
     ) as rollback:
         await run_agent(
@@ -1564,7 +1564,7 @@ async def test_run_agent_rolls_back_failed_edit_replay_and_publishes_restored_va
 
     run_manager.set_status = _set_status  # type: ignore[method-assign]
     with patch(
-        "agent_workspace.runtime.runs.worker._rollback_to_pre_run_checkpoint",
+        "alpha.runtime.runs.worker._rollback_to_pre_run_checkpoint",
         new_callable=AsyncMock,
     ) as rollback:
         rollback.return_value = True
@@ -2366,7 +2366,7 @@ def test_agent_factory_supports_app_config_returns_false_when_signature_lookup_f
         def __call__(self, **kwargs):
             return kwargs
 
-    monkeypatch.setattr("agent_workspace.runtime.runs.worker.inspect.signature", lambda _obj: (_ for _ in ()).throw(ValueError("boom")))
+    monkeypatch.setattr("alpha.runtime.runs.worker.inspect.signature", lambda _obj: (_ for _ in ()).throw(ValueError("boom")))
 
     assert _agent_factory_supports_app_config(BrokenCallable()) is False
 
@@ -2745,7 +2745,7 @@ class _TitleCheckpointer:
 @pytest.mark.anyio
 async def test_interrupted_title_finalization_blocks_new_same_thread_run(monkeypatch):
     """A cancelled run must remain active while its title-only checkpoint is finalizing."""
-    from agent_workspace.agents.middlewares.title_middleware import TitleMiddleware
+    from alpha.agents.middlewares.title_middleware import TitleMiddleware
 
     monkeypatch.setattr(
         TitleMiddleware,
@@ -2902,7 +2902,7 @@ async def test_finalizing_run_only_blocks_reject_strategy():
 @pytest.mark.anyio
 async def test_admitted_pending_replacement_does_not_steal_interrupted_title_recovery(monkeypatch):
     """The old run must still write the fallback title before releasing a serialized replacement."""
-    from agent_workspace.agents.middlewares.title_middleware import TitleMiddleware
+    from alpha.agents.middlewares.title_middleware import TitleMiddleware
 
     monkeypatch.setattr(
         TitleMiddleware,
@@ -3002,7 +3002,7 @@ async def test_admitted_pending_replacement_does_not_steal_interrupted_title_rec
 @pytest.mark.anyio
 async def test_interrupted_title_does_not_overwrite_checkpoint_from_admitted_replacement(monkeypatch):
     """A replacement run admitted by multitask interrupt must not lose its newer checkpoint."""
-    from agent_workspace.agents.middlewares.title_middleware import TitleMiddleware
+    from alpha.agents.middlewares.title_middleware import TitleMiddleware
 
     monkeypatch.setattr(
         TitleMiddleware,
@@ -3193,7 +3193,7 @@ async def test_replacement_run_waits_for_prior_finalizing_run():
 @pytest.mark.anyio
 async def test_ensure_interrupted_title_reloads_latest_checkpoint_before_write():
     """If the checkpoint advances before the title write, preserve the newer messages."""
-    from agent_workspace.config.title_config import TitleConfig
+    from alpha.config.title_config import TitleConfig
 
     old_checkpoint = {
         "id": "ckpt-old",
@@ -3252,7 +3252,7 @@ async def test_ensure_interrupted_title_bumps_channel_version_and_declares_it_in
     and pass ``{"title": next_version}`` so the fallback title actually survives
     a fresh ``aget_tuple`` after the worker's finally hook.
     """
-    from agent_workspace.agents.middlewares.title_middleware import TitleMiddleware
+    from alpha.agents.middlewares.title_middleware import TitleMiddleware
 
     monkeypatch.setattr(
         TitleMiddleware,
@@ -3302,7 +3302,7 @@ async def test_ensure_interrupted_title_bumps_channel_version_and_declares_it_in
 @pytest.mark.anyio
 async def test_ensure_interrupted_title_writes_graph_input_fallback_without_checkpoint(monkeypatch):
     """When no checkpoint exists, graph_input should still seed the fallback title write."""
-    from agent_workspace.agents.middlewares.title_middleware import TitleMiddleware
+    from alpha.agents.middlewares.title_middleware import TitleMiddleware
 
     captured_state: dict[str, Any] = {}
 
@@ -3338,7 +3338,7 @@ async def test_ensure_interrupted_title_bumps_existing_string_version(monkeypatc
     version is a string (some savers use UUID-shaped versions), the helper must
     still produce a strictly different value rather than overwriting in place.
     """
-    from agent_workspace.agents.middlewares.title_middleware import TitleMiddleware
+    from alpha.agents.middlewares.title_middleware import TitleMiddleware
 
     monkeypatch.setattr(
         TitleMiddleware,
@@ -3406,7 +3406,7 @@ async def test_ensure_interrupted_title_round_trip_with_real_sqlite_checkpointer
     from langgraph.checkpoint.base import empty_checkpoint
     from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
-    from agent_workspace.config.title_config import TitleConfig
+    from alpha.config.title_config import TitleConfig
 
     db_path = str(tmp_path / "ckpt.db")
     thread_cfg = {"configurable": {"thread_id": "thread-1", "checkpoint_ns": ""}}
@@ -3490,7 +3490,7 @@ def test_bump_channel_version_falls_back_on_broken_get_next_version():
 @pytest.mark.anyio
 async def test_ensure_interrupted_title_handles_none_messages_channel(monkeypatch):
     """A partially-initialized checkpoint with ``messages=None`` must not crash."""
-    from agent_workspace.config.title_config import TitleConfig
+    from alpha.config.title_config import TitleConfig
 
     initial_checkpoint = {
         "id": "ckpt-1",
@@ -3513,7 +3513,7 @@ async def test_ensure_interrupted_title_propagates_aput_error_to_caller(monkeypa
     This test pins the contract: the helper itself does NOT silently eat saver errors,
     so a structural saver regression remains visible in the logs at the call site.
     """
-    from agent_workspace.agents.middlewares.title_middleware import TitleMiddleware
+    from alpha.agents.middlewares.title_middleware import TitleMiddleware
 
     monkeypatch.setattr(
         TitleMiddleware,
@@ -3544,7 +3544,7 @@ async def test_ensure_interrupted_title_idempotent_across_repeated_calls(monkeyp
     """
     from langgraph.checkpoint.memory import InMemorySaver
 
-    from agent_workspace.agents.middlewares.title_middleware import TitleMiddleware
+    from alpha.agents.middlewares.title_middleware import TitleMiddleware
 
     monkeypatch.setattr(
         TitleMiddleware,
@@ -3584,7 +3584,7 @@ async def test_ensure_interrupted_title_preserves_non_title_channel_versions(mon
     ``dict(channel_versions)`` and would have erroneously declared every
     channel as "needs new blob" on DB savers.
     """
-    from agent_workspace.agents.middlewares.title_middleware import TitleMiddleware
+    from alpha.agents.middlewares.title_middleware import TitleMiddleware
 
     monkeypatch.setattr(
         TitleMiddleware,
@@ -3624,7 +3624,7 @@ async def test_worker_finally_block_swallows_helper_exceptions(monkeypatch):
     running. This pins the integration of helper + finally try/except, not just
     the helper itself.
     """
-    import agent_workspace.runtime.runs.worker as worker_module
+    import alpha.runtime.runs.worker as worker_module
 
     helper_called = asyncio.Event()
 
@@ -3759,7 +3759,7 @@ async def test_worker_discards_buffered_journal_events_after_ownership_loss(monk
             self.record_middleware("buffered", name="test", hook="after", action="record", changes={})
             journals.append(self)
 
-    monkeypatch.setattr("agent_workspace.runtime.journal.RunJournal", BufferedRunJournal)
+    monkeypatch.setattr("alpha.runtime.journal.RunJournal", BufferedRunJournal)
 
     event_store = TrackingRunEventStore()
     run_manager = RunManager()

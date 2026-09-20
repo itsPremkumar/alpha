@@ -18,19 +18,19 @@ import pytest
 from langchain_core.documents import Document
 from langchain_core.messages import AIMessage, HumanMessage
 
-from agent_workspace.agents.memory.backends.openviking.config import OpenVikingConfig
-from agent_workspace.agents.memory.backends.openviking.openviking_manager import (
+from alpha.agents.memory.backends.openviking.config import OpenVikingConfig
+from alpha.agents.memory.backends.openviking.openviking_manager import (
     OpenVikingMemoryManager,
     _canonical_peer_id,
     _session_id,
 )
-from agent_workspace.agents.memory.manager import (
+from alpha.agents.memory.manager import (
     MemoryManagerError,
     MemoryReadError,
     _scan_backends,
     reset_memory_manager,
 )
-from agent_workspace.agents.middlewares.dynamic_context_middleware import DynamicContextMiddleware
+from alpha.agents.middlewares.dynamic_context_middleware import DynamicContextMiddleware
 
 
 class _CommitPolicy:
@@ -174,7 +174,7 @@ def _use_actor_peer(peer_id: str | None):
 
 @pytest.fixture
 def official_integration(monkeypatch: pytest.MonkeyPatch) -> None:
-    import agent_workspace.agents.memory.backends.openviking.openviking_manager as module
+    import alpha.agents.memory.backends.openviking.openviking_manager as module
 
     monkeypatch.setattr(
         module,
@@ -276,7 +276,7 @@ def test_read_failure_capability_matches_policy(
 
 
 def test_official_loader_uses_standalone_package() -> None:
-    from agent_workspace.agents.memory.backends.openviking.openviking_manager import (
+    from alpha.agents.memory.backends.openviking.openviking_manager import (
         _load_official_integration,
     )
 
@@ -376,11 +376,11 @@ def test_unreachable_context_read_raise_aborts_dynamic_context_injection(
         failure_policy={"read": "raise"},
     )
     monkeypatch.setattr(
-        "agent_workspace.agents.memory.get_memory_manager",
+        "alpha.agents.memory.get_memory_manager",
         lambda: manager,
     )
     monkeypatch.setattr(
-        "agent_workspace.agents.middlewares.dynamic_context_middleware.resolve_runtime_user_id",
+        "alpha.agents.middlewares.dynamic_context_middleware.resolve_runtime_user_id",
         lambda runtime: "alice",
     )
     middleware = DynamicContextMiddleware()
@@ -403,11 +403,11 @@ def test_strict_scope_mismatch_uses_required_read_error(
         failure_policy={"read": "raise"},
     )
     monkeypatch.setattr(
-        "agent_workspace.agents.memory.get_memory_manager",
+        "alpha.agents.memory.get_memory_manager",
         lambda: manager,
     )
     monkeypatch.setattr(
-        "agent_workspace.agents.middlewares.dynamic_context_middleware.resolve_runtime_user_id",
+        "alpha.agents.middlewares.dynamic_context_middleware.resolve_runtime_user_id",
         lambda runtime: "bob",
     )
     middleware = DynamicContextMiddleware()
@@ -437,11 +437,11 @@ def test_unreachable_context_read_fail_open_returns_no_injected_context(
         failure_policy={"read": "fail_open"},
     )
     monkeypatch.setattr(
-        "agent_workspace.agents.memory.get_memory_manager",
+        "alpha.agents.memory.get_memory_manager",
         lambda: manager,
     )
     monkeypatch.setattr(
-        "agent_workspace.agents.middlewares.dynamic_context_middleware.resolve_runtime_user_id",
+        "alpha.agents.middlewares.dynamic_context_middleware.resolve_runtime_user_id",
         lambda runtime: "alice",
     )
     middleware = DynamicContextMiddleware()
@@ -491,11 +491,11 @@ async def test_unreachable_context_read_raise_aborts_async_dynamic_context_injec
         failure_policy={"read": "raise"},
     )
     monkeypatch.setattr(
-        "agent_workspace.agents.memory.get_memory_manager",
+        "alpha.agents.memory.get_memory_manager",
         lambda: manager,
     )
     monkeypatch.setattr(
-        "agent_workspace.agents.middlewares.dynamic_context_middleware.resolve_runtime_user_id",
+        "alpha.agents.middlewares.dynamic_context_middleware.resolve_runtime_user_id",
         lambda runtime: "alice",
     )
     middleware = DynamicContextMiddleware()
@@ -780,18 +780,18 @@ def test_corrupt_cursor_fails_closed_instead_of_replaying_history(
 
 
 def test_peer_mapping_is_stable_and_namespaces_are_disjoint() -> None:
-    assert _canonical_peer_id(None, "agent_workspace") == "agent_workspace"
-    assert _canonical_peer_id("Research", "agent_workspace") == "research"
-    assert _canonical_peer_id("agent_workspace", "agent_workspace").startswith("df-agent-")
-    assert _canonical_peer_id("-research", "agent_workspace").startswith("df-agent-")
-    assert _canonical_peer_id("df-agent-custom", "agent_workspace").startswith("df-agent-")
+    assert _canonical_peer_id(None, "alpha") == "alpha"
+    assert _canonical_peer_id("Research", "alpha") == "research"
+    assert _canonical_peer_id("alpha", "alpha").startswith("df-agent-")
+    assert _canonical_peer_id("-research", "alpha").startswith("df-agent-")
+    assert _canonical_peer_id("df-agent-custom", "alpha").startswith("df-agent-")
     assert (
         len(
             {
-                _canonical_peer_id(None, "agent_workspace"),
-                _canonical_peer_id("agent_workspace", "agent_workspace"),
-                _canonical_peer_id("-research", "agent_workspace"),
-                _canonical_peer_id("df-agent-custom", "agent_workspace"),
+                _canonical_peer_id(None, "alpha"),
+                _canonical_peer_id("alpha", "alpha"),
+                _canonical_peer_id("-research", "alpha"),
+                _canonical_peer_id("df-agent-custom", "alpha"),
             }
         )
         == 4

@@ -35,7 +35,7 @@ class ChannelStore:
 
     def __init__(self, path: str | Path | None = None) -> None:
         if path is None:
-            from agent_workspace.config.paths import get_paths
+            from alpha.config.paths import get_paths
 
             path = Path(get_paths().base_dir) / "channels" / "store.json"
         self._path = Path(path)

@@ -29,10 +29,10 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import StateGraph
 from langgraph.types import Command, interrupt
 
-from agent_workspace.agents.thread_state import merge_message_writes
-from agent_workspace.runtime.checkpoint_cache.memory import MemoryCheckpointHistoryCache
-from agent_workspace.runtime.checkpoint_state import CheckpointStateAccessor
-from agent_workspace.runtime.checkpointer.cached_saver import CachedHistorySaver
+from alpha.agents.thread_state import merge_message_writes
+from alpha.runtime.checkpoint_cache.memory import MemoryCheckpointHistoryCache
+from alpha.runtime.checkpoint_state import CheckpointStateAccessor
+from alpha.runtime.checkpointer.cached_saver import CachedHistorySaver
 
 STEPS = 5
 SNAPSHOT_FREQUENCY = 2

@@ -1,4 +1,4 @@
-"""Tests for agent_workspace.models.factory.create_chat_model."""
+"""Tests for alpha.models.factory.create_chat_model."""
 
 from __future__ import annotations
 
@@ -6,12 +6,12 @@ import pytest
 from langchain.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage
 
-from agent_workspace.config.app_config import AppConfig
-from agent_workspace.config.model_config import ModelConfig
-from agent_workspace.config.sandbox_config import SandboxConfig
-from agent_workspace.models import factory as factory_module
-from agent_workspace.models import openai_codex_provider as codex_provider_module
-from agent_workspace.reflection import resolve_class
+from alpha.config.app_config import AppConfig
+from alpha.config.model_config import ModelConfig
+from alpha.config.sandbox_config import SandboxConfig
+from alpha.models import factory as factory_module
+from alpha.models import openai_codex_provider as codex_provider_module
+from alpha.reflection import resolve_class
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -21,7 +21,7 @@ from agent_workspace.reflection import resolve_class
 def _make_app_config(models: list[ModelConfig]) -> AppConfig:
     return AppConfig(
         models=models,
-        sandbox=SandboxConfig(use="agent_workspace.sandbox.local:LocalSandboxProvider"),
+        sandbox=SandboxConfig(use="alpha.sandbox.local:LocalSandboxProvider"),
     )
 
 
@@ -389,7 +389,7 @@ def test_required_thinking_profile_keeps_base_payload_when_runtime_requests_disa
         name="glm-5.3-flash",
         display_name="GLM-5.3-Flash",
         description=None,
-        use="agent_workspace.models.patched_deepseek:PatchedChatDeepSeek",
+        use="alpha.models.patched_deepseek:PatchedChatDeepSeek",
         model="glm-5.3-flash",
         api_base="https://api.z.ai/api/paas/v4",
         api_key="test-key",
@@ -917,7 +917,7 @@ def test_codex_provider_disables_reasoning_when_thinking_disabled(monkeypatch):
         [
             _make_model(
                 "codex",
-                use="agent_workspace.models.openai_codex_provider:CodexChatModel",
+                use="alpha.models.openai_codex_provider:CodexChatModel",
                 supports_thinking=True,
                 supports_reasoning_effort=True,
             )
@@ -937,7 +937,7 @@ def test_codex_provider_preserves_explicit_reasoning_effort(monkeypatch):
         [
             _make_model(
                 "codex",
-                use="agent_workspace.models.openai_codex_provider:CodexChatModel",
+                use="alpha.models.openai_codex_provider:CodexChatModel",
                 supports_thinking=True,
                 supports_reasoning_effort=True,
             )
@@ -957,7 +957,7 @@ def test_codex_provider_defaults_reasoning_effort_to_medium(monkeypatch):
         [
             _make_model(
                 "codex",
-                use="agent_workspace.models.openai_codex_provider:CodexChatModel",
+                use="alpha.models.openai_codex_provider:CodexChatModel",
                 supports_thinking=True,
                 supports_reasoning_effort=True,
             )
@@ -977,7 +977,7 @@ def test_codex_provider_strips_unsupported_max_tokens(monkeypatch):
         [
             _make_model(
                 "codex",
-                use="agent_workspace.models.openai_codex_provider:CodexChatModel",
+                use="alpha.models.openai_codex_provider:CodexChatModel",
                 supports_thinking=True,
                 supports_reasoning_effort=True,
                 max_tokens=4096,
@@ -997,7 +997,7 @@ def test_thinking_disabled_vllm_chat_template_format(monkeypatch):
     wte = {"extra_body": {"chat_template_kwargs": {"thinking": True}}}
     model = _make_model(
         "vllm-qwen",
-        use="agent_workspace.models.vllm_provider:VllmChatModel",
+        use="alpha.models.vllm_provider:VllmChatModel",
         supports_thinking=True,
         when_thinking_enabled=wte,
     )
@@ -1024,7 +1024,7 @@ def test_thinking_disabled_vllm_enable_thinking_format(monkeypatch):
     wte = {"extra_body": {"chat_template_kwargs": {"enable_thinking": True}}}
     model = _make_model(
         "vllm-qwen-enable",
-        use="agent_workspace.models.vllm_provider:VllmChatModel",
+        use="alpha.models.vllm_provider:VllmChatModel",
         supports_thinking=True,
         when_thinking_enabled=wte,
     )
@@ -1166,13 +1166,13 @@ def test_openai_responses_api_settings_are_passed_to_chatopenai(monkeypatch):
 
 @pytest.mark.parametrize("model_id", ["mimo-v2.5-pro", "mimo-v2.5", "mimo-v2-flash"])
 def test_create_chat_model_resolves_patched_mimo_provider(model_id):
-    from agent_workspace.models.patched_mimo import PatchedChatMiMo
+    from alpha.models.patched_mimo import PatchedChatMiMo
 
     model = ModelConfig(
         name=f"{model_id}-thinking",
         display_name=f"{model_id} Thinking",
         description=None,
-        use="agent_workspace.models.patched_mimo:PatchedChatMiMo",
+        use="alpha.models.patched_mimo:PatchedChatMiMo",
         model=model_id,
         api_key="test-key",
         base_url="https://api.xiaomimimo.com/v1",
@@ -1209,7 +1209,7 @@ def test_no_duplicate_kwarg_when_reasoning_effort_in_config_and_thinking_disable
         name="doubao-model",
         display_name="Doubao 1.8",
         description=None,
-        use="agent_workspace.models.patched_deepseek:PatchedChatDeepSeek",
+        use="alpha.models.patched_deepseek:PatchedChatDeepSeek",
         model="doubao-seed-1-8-250315",
         reasoning_effort="high",  # user-set extra field in config.yaml
         supports_thinking=True,
@@ -1342,12 +1342,12 @@ def test_stream_chunk_timeout_popped_for_non_openai_provider_when_user_set_it(mo
 # stream_chunk_timeout mechanism) but was NOT in the original ChatOpenAI /
 # PatchedChatOpenAI allowlist.
 _STREAM_TIMEOUT_OPENAI_SUBCLASS_USE_PATHS = [
-    "agent_workspace.models.vllm_provider:VllmChatModel",
-    "agent_workspace.models.mindie_provider:MindIEChatModel",
-    "agent_workspace.models.patched_deepseek:PatchedChatDeepSeek",
-    "agent_workspace.models.patched_mimo:PatchedChatMiMo",
-    "agent_workspace.models.patched_stepfun:PatchedChatStepFun",
-    "agent_workspace.models.patched_minimax:PatchedChatMiniMax",
+    "alpha.models.vllm_provider:VllmChatModel",
+    "alpha.models.mindie_provider:MindIEChatModel",
+    "alpha.models.patched_deepseek:PatchedChatDeepSeek",
+    "alpha.models.patched_mimo:PatchedChatMiMo",
+    "alpha.models.patched_stepfun:PatchedChatStepFun",
+    "alpha.models.patched_minimax:PatchedChatMiniMax",
 ]
 
 
@@ -1402,7 +1402,7 @@ def test_stream_chunk_timeout_240_reaches_real_mimo_constructor(monkeypatch):
     """
     model = _make_model_with_extras(
         "mimo",
-        use="agent_workspace.models.patched_mimo:PatchedChatMiMo",
+        use="alpha.models.patched_mimo:PatchedChatMiMo",
         api_key="sk-dummy",
         base_url="http://localhost:8000/v1",
     )
@@ -1473,9 +1473,9 @@ def test_api_base_preserved_for_provider_that_declares_it(monkeypatch):
     ``base_url`` and break every Doubao / Kimi config in ``config.example.yaml``, which document
     ``api_base`` for exactly this class.
     """
-    from agent_workspace.models.patched_deepseek import PatchedChatDeepSeek
+    from alpha.models.patched_deepseek import PatchedChatDeepSeek
 
-    cfg = _make_app_config([_make_model_with_extras("ds", use="agent_workspace.models.patched_deepseek:PatchedChatDeepSeek", api_base="http://ds/v3")])
+    cfg = _make_app_config([_make_model_with_extras("ds", use="alpha.models.patched_deepseek:PatchedChatDeepSeek", api_base="http://ds/v3")])
     captured: dict = {}
     _patch_factory(monkeypatch, cfg, model_class=_capturing_class(PatchedChatDeepSeek, captured))
 
@@ -1533,9 +1533,9 @@ def test_known_config_keys_emit_no_warning(monkeypatch, caplog):
 
 def test_api_base_normalized_for_patched_chatopenai(monkeypatch):
     """The PatchedChatOpenAI subclass is in the OpenAI-compatible family and must normalize too."""
-    from agent_workspace.models.patched_openai import PatchedChatOpenAI
+    from alpha.models.patched_openai import PatchedChatOpenAI
 
-    cfg = _make_app_config([_make_model_with_extras("patched", use="agent_workspace.models.patched_openai:PatchedChatOpenAI", api_base="http://localhost:4001/v1")])
+    cfg = _make_app_config([_make_model_with_extras("patched", use="alpha.models.patched_openai:PatchedChatOpenAI", api_base="http://localhost:4001/v1")])
     captured: dict = {}
     _patch_factory(monkeypatch, cfg, model_class=_capturing_class(PatchedChatOpenAI, captured))
 
@@ -1596,11 +1596,11 @@ def test_no_unknown_key_warning_for_non_openai_class(monkeypatch, caplog):
 # and was NOT in the original ChatOpenAI / PatchedChatOpenAI allowlist. PatchedChatDeepSeek is
 # deliberately absent: it declares `api_base` itself and is covered by the preservation test above.
 _OPENAI_SUBCLASS_USE_PATHS_WITHOUT_API_BASE = [
-    "agent_workspace.models.vllm_provider:VllmChatModel",
-    "agent_workspace.models.mindie_provider:MindIEChatModel",
-    "agent_workspace.models.patched_mimo:PatchedChatMiMo",
-    "agent_workspace.models.patched_stepfun:PatchedChatStepFun",
-    "agent_workspace.models.patched_minimax:PatchedChatMiniMax",
+    "alpha.models.vllm_provider:VllmChatModel",
+    "alpha.models.mindie_provider:MindIEChatModel",
+    "alpha.models.patched_mimo:PatchedChatMiMo",
+    "alpha.models.patched_stepfun:PatchedChatStepFun",
+    "alpha.models.patched_minimax:PatchedChatMiniMax",
 ]
 
 
@@ -1658,7 +1658,7 @@ def test_api_base_reaches_real_minimax_constructor_as_base_url(monkeypatch):
         [
             _make_model_with_extras(
                 "minimax",
-                use="agent_workspace.models.patched_minimax:PatchedChatMiniMax",
+                use="alpha.models.patched_minimax:PatchedChatMiniMax",
                 api_key="sk-dummy",
                 api_base="https://api.minimax.io/v1",
             )
@@ -1717,7 +1717,7 @@ def test_model_overrides_none_is_a_noop(monkeypatch):
 def test_codex_still_strips_overridden_max_tokens(monkeypatch):
     """Codex drops max_tokens even when it arrived via an override, so the
     provider-specific normalization still governs the merged value."""
-    cfg = _make_app_config([_make_model("codex", use="agent_workspace.models.openai_codex_provider:CodexChatModel")])
+    cfg = _make_app_config([_make_model("codex", use="alpha.models.openai_codex_provider:CodexChatModel")])
     captured: dict = {}
     monkeypatch.setattr(factory_module, "get_app_config", lambda: cfg)
     monkeypatch.setattr(factory_module, "resolve_class", lambda path, base: _capturing_class(codex_provider_module.CodexChatModel, captured))

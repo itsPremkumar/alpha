@@ -1,7 +1,7 @@
 import os
 import tempfile
 
-from agent_workspace.blackboard import (
+from alpha.blackboard import (
     ALL_20_PLANES,
     BlackboardEngine,
     BlackboardPersistence,

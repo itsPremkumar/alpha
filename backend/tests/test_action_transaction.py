@@ -1,7 +1,7 @@
 import tempfile
 from pathlib import Path
 
-from agent_workspace.action import (
+from alpha.action import (
     ActionPrimitive,
     ActionRequest,
     ActionTransaction,

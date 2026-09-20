@@ -23,7 +23,7 @@ from app.channels.dingtalk import (
     _normalize_conversation_type,
 )
 from app.channels.message_bus import InboundMessageType, MessageBus, OutboundMessage
-from agent_workspace.config.paths import VIRTUAL_PATH_PREFIX
+from alpha.config.paths import VIRTUAL_PATH_PREFIX
 
 
 def _run(coro):

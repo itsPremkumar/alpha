@@ -2,8 +2,8 @@
 
 import pytest
 
-from agent_workspace.agents.middlewares.title_middleware import TitleMiddleware
-from agent_workspace.config.title_config import TitleConfig, get_title_config, set_title_config
+from alpha.agents.middlewares.title_middleware import TitleMiddleware
+from alpha.config.title_config import TitleConfig, get_title_config, set_title_config
 
 
 class TestTitleConfig:

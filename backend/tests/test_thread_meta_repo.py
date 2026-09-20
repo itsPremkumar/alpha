@@ -6,12 +6,12 @@ import logging
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from agent_workspace.persistence.thread_meta import THREAD_PINNED_METADATA_KEY, InvalidMetadataFilterError, ThreadMetaRepository
+from alpha.persistence.thread_meta import THREAD_PINNED_METADATA_KEY, InvalidMetadataFilterError, ThreadMetaRepository
 
 
 @pytest.fixture
 async def repo(tmp_path):
-    from agent_workspace.persistence.engine import close_engine, get_session_factory, init_engine
+    from alpha.persistence.engine import close_engine, get_session_factory, init_engine
 
     url = f"sqlite+aiosqlite:///{tmp_path / 'test.db'}"
     await init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
@@ -356,7 +356,7 @@ class TestThreadMetaRepository:
         await repo.create("t1", metadata={"env": "prod"})
         await repo.create("t2", metadata={"env": "staging"})
 
-        with caplog.at_level(logging.WARNING, logger="agent_workspace.persistence.thread_meta.sql"):
+        with caplog.at_level(logging.WARNING, logger="alpha.persistence.thread_meta.sql"):
             with pytest.raises(InvalidMetadataFilterError, match="rejected") as exc_info:
                 await repo.search(metadata={"bad;key": "x"})
         assert any("bad;key" in r.message for r in caplog.records)
@@ -369,7 +369,7 @@ class TestThreadMetaRepository:
         await repo.create("t1", metadata={"env": "prod"})
         await repo.create("t2", metadata={"env": "staging"})
 
-        with caplog.at_level(logging.WARNING, logger="agent_workspace.persistence.thread_meta.sql"):
+        with caplog.at_level(logging.WARNING, logger="alpha.persistence.thread_meta.sql"):
             results = await repo.search(metadata={"env": "prod", "bad;key": "x"})
         ids = {r["thread_id"] for r in results}
         assert ids == {"t1"}
@@ -404,7 +404,7 @@ class TestThreadMetaRepository:
         await repo.create("t1", metadata={"env": "prod"})
         await repo.create("t2", metadata={"env": "staging"})
 
-        with caplog.at_level(logging.WARNING, logger="agent_workspace.persistence.thread_meta.sql"):
+        with caplog.at_level(logging.WARNING, logger="alpha.persistence.thread_meta.sql"):
             with pytest.raises(InvalidMetadataFilterError, match="rejected"):
                 await repo.search(metadata={1: "x"})
         assert any("1" in r.message for r in caplog.records)
@@ -415,7 +415,7 @@ class TestThreadMetaRepository:
         await repo.create("t1", metadata={"env": "prod"})
         await repo.create("t2", metadata={"env": "staging"})
 
-        with caplog.at_level(logging.WARNING, logger="agent_workspace.persistence.thread_meta.sql"):
+        with caplog.at_level(logging.WARNING, logger="alpha.persistence.thread_meta.sql"):
             with pytest.raises(InvalidMetadataFilterError, match="rejected"):
                 await repo.search(metadata={"env": ["prod", "staging"]})
 
@@ -425,7 +425,7 @@ class TestThreadMetaRepository:
         await repo.create("t1", metadata={"env": "prod"})
         await repo.create("t2", metadata={"env": "staging"})
 
-        with caplog.at_level(logging.WARNING, logger="agent_workspace.persistence.thread_meta.sql"):
+        with caplog.at_level(logging.WARNING, logger="alpha.persistence.thread_meta.sql"):
             with pytest.raises(InvalidMetadataFilterError, match="rejected"):
                 await repo.search(metadata={"a.b": "anything"})
         assert any("a.b" in r.message for r in caplog.records)
@@ -513,7 +513,7 @@ class TestThreadMetaRepository:
 
     @pytest.mark.anyio
     async def test_membership_exposed_via_reserved_metadata_key(self, repo):
-        from agent_workspace.persistence.thread_meta import THREAD_PROJECT_METADATA_KEY
+        from alpha.persistence.thread_meta import THREAD_PROJECT_METADATA_KEY
 
         record = await repo.create("t1", user_id="u1")
         assert THREAD_PROJECT_METADATA_KEY not in record["metadata"]
@@ -527,8 +527,8 @@ class TestThreadMetaRepository:
         dict IS the ORM row's ``metadata_json`` object, so reading a member
         thread mutates the row in place and a later update in the same session
         persists ``agent_workspace_project_id`` into stored user metadata."""
-        from agent_workspace.persistence.projects import ProjectRepository
-        from agent_workspace.persistence.thread_meta.model import ThreadMetaRow
+        from alpha.persistence.projects import ProjectRepository
+        from alpha.persistence.thread_meta.model import ThreadMetaRow
 
         projects = ProjectRepository(repo._sf)
         p = await projects.create(name="P", user_id="u1")
@@ -561,7 +561,7 @@ class TestThreadMetaRepository:
 
     @pytest.mark.anyio
     async def test_set_project_moves_and_preserves_updated_at(self, repo):
-        from agent_workspace.persistence.projects import ProjectRepository
+        from alpha.persistence.projects import ProjectRepository
 
         projects = ProjectRepository(repo._sf)
         p = await projects.create(name="P", user_id="u1")
@@ -579,7 +579,7 @@ class TestThreadMetaRepository:
 
     @pytest.mark.anyio
     async def test_set_project_rejects_foreign_thread_foreign_project_archived(self, repo):
-        from agent_workspace.persistence.projects import ProjectRepository
+        from alpha.persistence.projects import ProjectRepository
 
         projects = ProjectRepository(repo._sf)
         mine = await projects.create(name="mine", user_id="u1")
@@ -605,11 +605,11 @@ class TestThreadMetaRepository:
         POST /api/threads (create) and /threads/{id}/move.
         """
         from app.gateway.services import _ensure_thread_metadata
-        from agent_workspace.persistence.projects import ProjectRepository
-        from agent_workspace.persistence.thread_meta.model import ThreadMetaRow
-        from agent_workspace.runtime.runs.manager import RunRecord
-        from agent_workspace.runtime.runs.schemas import DisconnectMode, RunStatus
-        from agent_workspace.runtime.runs.worker import RunContext
+        from alpha.persistence.projects import ProjectRepository
+        from alpha.persistence.thread_meta.model import ThreadMetaRow
+        from alpha.runtime.runs.manager import RunRecord
+        from alpha.runtime.runs.schemas import DisconnectMode, RunStatus
+        from alpha.runtime.runs.worker import RunContext
 
         projects = ProjectRepository(repo._sf)
         project = await projects.create(name="P")
@@ -624,7 +624,7 @@ class TestThreadMetaRepository:
 
     @pytest.mark.anyio
     async def test_create_with_project_assignment_and_rejection(self, repo):
-        from agent_workspace.persistence.projects import ProjectNotAssignableError, ProjectRepository
+        from alpha.persistence.projects import ProjectNotAssignableError, ProjectRepository
 
         projects = ProjectRepository(repo._sf)
         p = await projects.create(name="P", user_id="u1")
@@ -638,8 +638,8 @@ class TestThreadMetaRepository:
 
     @pytest.mark.anyio
     async def test_search_project_filter_three_states(self, repo):
-        from agent_workspace.persistence.projects import ProjectRepository
-        from agent_workspace.persistence.thread_meta.base import PROJECT_FILTER_UNSET
+        from alpha.persistence.projects import ProjectRepository
+        from alpha.persistence.thread_meta.base import PROJECT_FILTER_UNSET
 
         projects = ProjectRepository(repo._sf)
         p = await projects.create(name="P", user_id="u1")
@@ -658,7 +658,7 @@ class TestThreadMetaRepository:
         """§5.2 race: move-vs-delete resolves to cleared membership or rejection."""
         import asyncio
 
-        from agent_workspace.persistence.projects import ProjectRepository
+        from alpha.persistence.projects import ProjectRepository
 
         projects = ProjectRepository(repo._sf)
         for i in range(10):
@@ -685,7 +685,7 @@ class TestThreadMetaRepository:
         metadata references a deleted project."""
         import asyncio
 
-        from agent_workspace.persistence.projects import ProjectNotAssignableError, ProjectRepository
+        from alpha.persistence.projects import ProjectNotAssignableError, ProjectRepository
 
         projects = ProjectRepository(repo._sf)
 
@@ -718,7 +718,7 @@ class TestJsonMatchCompilation:
         from sqlalchemy import Column, MetaData, String, Table, create_engine
         from sqlalchemy.types import JSON
 
-        from agent_workspace.persistence.json_compat import json_match
+        from alpha.persistence.json_compat import json_match
 
         metadata = MetaData()
         t = Table("t", metadata, Column("data", JSON), Column("id", String))
@@ -759,7 +759,7 @@ class TestJsonMatchCompilation:
         from sqlalchemy.dialects import postgresql
         from sqlalchemy.types import JSON
 
-        from agent_workspace.persistence.json_compat import json_match
+        from alpha.persistence.json_compat import json_match
 
         metadata = MetaData()
         t = Table("t", metadata, Column("data", JSON), Column("id", String))
@@ -800,7 +800,7 @@ class TestJsonMatchCompilation:
         from sqlalchemy import Column, MetaData, String, Table
         from sqlalchemy.types import JSON
 
-        from agent_workspace.persistence.json_compat import json_match
+        from alpha.persistence.json_compat import json_match
 
         metadata = MetaData()
         t = Table("t", metadata, Column("data", JSON), Column("id", String))
@@ -818,7 +818,7 @@ class TestJsonMatchCompilation:
         from sqlalchemy import Column, MetaData, String, Table
         from sqlalchemy.types import JSON
 
-        from agent_workspace.persistence.json_compat import json_match
+        from alpha.persistence.json_compat import json_match
 
         metadata = MetaData()
         t = Table("t", metadata, Column("data", JSON), Column("id", String))
@@ -832,7 +832,7 @@ class TestJsonMatchCompilation:
         from sqlalchemy.dialects import mysql
         from sqlalchemy.types import JSON
 
-        from agent_workspace.persistence.json_compat import json_match
+        from alpha.persistence.json_compat import json_match
 
         metadata = MetaData()
         t = Table("t", metadata, Column("data", JSON), Column("id", String))
@@ -845,7 +845,7 @@ class TestJsonMatchCompilation:
         from sqlalchemy import Column, MetaData, String, Table
         from sqlalchemy.types import JSON
 
-        from agent_workspace.persistence.json_compat import json_match
+        from alpha.persistence.json_compat import json_match
 
         metadata = MetaData()
         t = Table("t", metadata, Column("data", JSON), Column("id", String))
@@ -865,7 +865,7 @@ class TestJsonMatchCompilation:
         from sqlalchemy.dialects import postgresql
         from sqlalchemy.types import JSON
 
-        from agent_workspace.persistence.json_compat import json_match
+        from alpha.persistence.json_compat import json_match
 
         metadata = MetaData()
         t = Table("t", metadata, Column("data", JSON), Column("id", String))
@@ -883,7 +883,7 @@ class TestJsonMatchCompilation:
 
 class TestJsonValueMatches:
     def test_distinguishes_missing_null_bool_int_and_float(self):
-        from agent_workspace.persistence.json_compat import json_value_matches
+        from alpha.persistence.json_compat import json_value_matches
 
         assert json_value_matches({}, "value", None) is False
         assert json_value_matches({"value": None}, "value", None) is True

@@ -9,8 +9,8 @@ import pytest
 from langchain_core.messages import ToolMessage
 from langgraph.prebuilt.tool_node import ToolCallRequest
 
-from agent_workspace.sandbox import hashline
-from agent_workspace.sandbox.hashline import (
+from alpha.sandbox import hashline
+from alpha.sandbox.hashline import (
     MAX_HASHLINE_LINES,
     REVISION_TOKEN_CHARS,
     format_hashline,
@@ -36,7 +36,7 @@ def _make_request(name, args, messages=(), tool_call_id="call-1"):
 
 
 def _middleware(files: dict[str, str]):
-    from agent_workspace.agents.middlewares.read_before_write_middleware import ReadBeforeWriteMiddleware
+    from alpha.agents.middlewares.read_before_write_middleware import ReadBeforeWriteMiddleware
 
     def reader(_runtime, path):
         normalized = posixpath.normpath(path)
@@ -233,7 +233,7 @@ def test_stale_anchor_beats_valid_mark():
 
 
 def test_tool_schemas_expose_hashline_params():
-    from agent_workspace.sandbox import tools as sandbox_tools
+    from alpha.sandbox import tools as sandbox_tools
 
     assert "hashline" in sandbox_tools.read_file_tool.args
     assert "anchor_hash" in sandbox_tools.write_file_tool.args
@@ -241,7 +241,7 @@ def test_tool_schemas_expose_hashline_params():
 
 
 def test_async_variants_forward_new_params():
-    from agent_workspace.sandbox import tools as sandbox_tools
+    from alpha.sandbox import tools as sandbox_tools
 
     assert "hashline" in inspect.signature(sandbox_tools._read_file_tool_async).parameters
     assert "anchor_hash" in inspect.signature(sandbox_tools._write_file_tool_async).parameters

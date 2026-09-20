@@ -1,4 +1,4 @@
-"""Tests for agent_workspace.models.patched_stepfun.PatchedChatStepFun."""
+"""Tests for alpha.models.patched_stepfun.PatchedChatStepFun."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 
 
 def _make_model(**kwargs):
-    from agent_workspace.models.patched_stepfun import PatchedChatStepFun
+    from alpha.models.patched_stepfun import PatchedChatStepFun
 
     return PatchedChatStepFun(
         model="step-3.7-flash",
@@ -24,7 +24,7 @@ def _make_model(**kwargs):
 
 
 def test_is_lc_serializable_returns_true():
-    from agent_workspace.models.patched_stepfun import PatchedChatStepFun
+    from alpha.models.patched_stepfun import PatchedChatStepFun
 
     assert PatchedChatStepFun.is_lc_serializable() is True
 
@@ -41,26 +41,26 @@ def test_lc_secrets_contains_stepfun_api_key_mapping():
 
 
 def test_extract_reasoning_from_dict_with_reasoning():
-    from agent_workspace.models.patched_stepfun import _extract_reasoning
+    from alpha.models.patched_stepfun import _extract_reasoning
 
     assert _extract_reasoning({"reasoning": "thinking..."}) == "thinking..."
 
 
 def test_extract_reasoning_from_dict_with_reasoning_content():
-    from agent_workspace.models.patched_stepfun import _extract_reasoning
+    from alpha.models.patched_stepfun import _extract_reasoning
 
     assert _extract_reasoning({"reasoning_content": "thinking..."}) == "thinking..."
 
 
 def test_extract_reasoning_prefers_reasoning_content_over_reasoning():
-    from agent_workspace.models.patched_stepfun import _extract_reasoning
+    from alpha.models.patched_stepfun import _extract_reasoning
 
     result = _extract_reasoning({"reasoning_content": "deepseek", "reasoning": "native"})
     assert result == "deepseek"
 
 
 def test_extract_reasoning_missing_returns_sentinel():
-    from agent_workspace.models.patched_stepfun import _MISSING, _extract_reasoning
+    from alpha.models.patched_stepfun import _MISSING, _extract_reasoning
 
     assert _extract_reasoning({}) is _MISSING
     assert _extract_reasoning({"reasoning": None}) is _MISSING

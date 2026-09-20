@@ -2,13 +2,13 @@
 
 import pytest
 
-from agent_workspace.security.shell_ast.analyzer import (
+from alpha.security.shell_ast.analyzer import (
     RiskLevel,
     ShellASTSecurityAnalyzer,
 )
-from agent_workspace.security.shell_ast.ast_nodes import NodeType
-from agent_workspace.security.shell_ast.parser import ShellASTParser
-from agent_workspace.security.shell_ast.policy import (
+from alpha.security.shell_ast.ast_nodes import NodeType
+from alpha.security.shell_ast.parser import ShellASTParser
+from alpha.security.shell_ast.policy import (
     ConfirmationPolicy,
     ExecutionDecision,
     ShellSecurityException,

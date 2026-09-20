@@ -6,17 +6,17 @@ import shutil
 import tempfile
 import unittest
 
-from agent_workspace.tools.builtins.code_agentic_core import (
+from alpha.tools.builtins.code_agentic_core import (
     auto_test_and_repair,
     generate_repo_map,
     manage_code_checkpoint,
 )
-from agent_workspace.tools.builtins.astra_security_tool import astra_security_manage
-from agent_workspace.tools.builtins.discipline_team_tool import (
+from alpha.tools.builtins.astra_security_tool import astra_security_manage
+from alpha.tools.builtins.discipline_team_tool import (
     consult_plan_gap_analysis,
     review_plan_invariant_gate,
 )
-from agent_workspace.tools.builtins.mission_hierarchy_tool import (
+from alpha.tools.builtins.mission_hierarchy_tool import (
     manage_mission_hierarchy,
     schedule_work_queue,
 )
@@ -82,7 +82,7 @@ class TestCodeAgenticAndFrontierTools(unittest.TestCase):
     def test_astra_security_manage(self):
         check_path = astra_security_manage.invoke({
             "action": "check_path",
-            "path": "backend/packages/harness/agent_workspace",
+            "path": "backend/packages/harness/alpha",
         })
         data = json.loads(check_path)
         self.assertEqual(data.get("status"), "allowed")

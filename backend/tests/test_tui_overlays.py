@@ -4,9 +4,9 @@ import asyncio
 
 import pytest
 
-from agent_workspace.client import StreamEvent
-from agent_workspace.tui.app import AgentWorkspaceTUI, SelectScreen
-from agent_workspace.tui.cli import LaunchPlan
+from alpha.client import StreamEvent
+from alpha.tui.app import AgentWorkspaceTUI, SelectScreen
+from alpha.tui.cli import LaunchPlan
 
 
 class _FakeClient:

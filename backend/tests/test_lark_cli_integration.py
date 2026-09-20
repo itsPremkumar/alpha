@@ -26,13 +26,13 @@ from fastapi.testclient import TestClient
 from app.gateway.auth.models import User
 from app.gateway.deps import get_config
 from app.gateway.routers import integrations as integrations_router
-from agent_workspace.config import paths as paths_module
-from agent_workspace.config.paths import Paths
-from agent_workspace.integrations import lark_cli
-from agent_workspace.sandbox.tools import _lark_cli_env_from_runtime
-from agent_workspace.skills.storage import reset_skill_storage
-from agent_workspace.skills.storage.user_scoped_skill_storage import UserScopedSkillStorage
-from agent_workspace.skills.types import SkillCategory
+from alpha.config import paths as paths_module
+from alpha.config.paths import Paths
+from alpha.integrations import lark_cli
+from alpha.sandbox.tools import _lark_cli_env_from_runtime
+from alpha.skills.storage import reset_skill_storage
+from alpha.skills.storage.user_scoped_skill_storage import UserScopedSkillStorage
+from alpha.skills.types import SkillCategory
 
 # The managed Lark CLI sandbox runtime is a Linux artifact: provisioning
 # validates the POSIX executability bit (`st_mode & 0o111`) of `bin/lark-cli`
@@ -81,7 +81,7 @@ def _config(skills_root: Path):
         skills=SimpleNamespace(
             get_skills_path=lambda: skills_root,
             container_path="/mnt/skills",
-            use="agent_workspace.skills.storage.local_skill_storage:LocalSkillStorage",
+            use="alpha.skills.storage.local_skill_storage:LocalSkillStorage",
         )
     )
 
@@ -525,7 +525,7 @@ def test_aio_install_provisions_matching_linux_sandbox_runtime(monkeypatch, tmp_
     (skills_root / "public").mkdir(parents=True)
     (skills_root / "custom").mkdir()
     config = _config(skills_root)
-    config.sandbox = SimpleNamespace(use="agent_workspace.community.aio_sandbox:AioSandboxProvider")
+    config.sandbox = SimpleNamespace(use="alpha.community.aio_sandbox:AioSandboxProvider")
     archive = _make_lark_cli_source_zip(tmp_path)
     provisioned_versions: list[str] = []
 
@@ -552,7 +552,7 @@ def test_remote_provisioner_install_skips_gateway_sandbox_runtime(monkeypatch, t
     (skills_root / "custom").mkdir()
     config = _config(skills_root)
     config.sandbox = SimpleNamespace(
-        use="agent_workspace.community.aio_sandbox:AioSandboxProvider",
+        use="alpha.community.aio_sandbox:AioSandboxProvider",
         provisioner_url="http://provisioner:8002",
     )
     archive = _make_lark_cli_source_zip(tmp_path)
@@ -577,7 +577,7 @@ def test_remote_provisioner_install_skips_gateway_sandbox_runtime(monkeypatch, t
 
 def test_status_runtime_mode_none_for_non_aio(monkeypatch, tmp_path) -> None:
     config = _config(tmp_path / "skills")
-    config.sandbox = SimpleNamespace(use="agent_workspace.sandbox.local:LocalSandboxProvider")
+    config.sandbox = SimpleNamespace(use="alpha.sandbox.local:LocalSandboxProvider")
     mode, ready, detail = lark_cli._resolve_sandbox_runtime_readiness(config, probe=True)
     assert mode == "none"
     assert ready is False
@@ -588,7 +588,7 @@ def test_status_runtime_mode_none_for_non_aio(monkeypatch, tmp_path) -> None:
 def test_status_runtime_mode_gateway_download_ready(monkeypatch, tmp_path) -> None:
     _patch_paths(monkeypatch, tmp_path / "home")
     config = _config(tmp_path / "skills")
-    config.sandbox = SimpleNamespace(use="agent_workspace.community.aio_sandbox:AioSandboxProvider")
+    config.sandbox = SimpleNamespace(use="alpha.community.aio_sandbox:AioSandboxProvider")
 
     # Stage a valid runtime dir so validation passes.
     runtime = lark_cli.lark_cli_managed_sandbox_dir()
@@ -610,7 +610,7 @@ def test_status_runtime_mode_gateway_download_ready(monkeypatch, tmp_path) -> No
 def test_status_runtime_mode_gateway_download_not_ready(monkeypatch, tmp_path) -> None:
     _patch_paths(monkeypatch, tmp_path / "home")
     config = _config(tmp_path / "skills")
-    config.sandbox = SimpleNamespace(use="agent_workspace.community.aio_sandbox:AioSandboxProvider")
+    config.sandbox = SimpleNamespace(use="alpha.community.aio_sandbox:AioSandboxProvider")
     mode, ready, detail = lark_cli._resolve_sandbox_runtime_readiness(config, probe=True)
     assert mode == "gateway-download"
     assert ready is False
@@ -620,7 +620,7 @@ def test_status_runtime_mode_gateway_download_not_ready(monkeypatch, tmp_path) -
 def test_status_runtime_mode_init_container_ready(monkeypatch, tmp_path) -> None:
     config = _config(tmp_path / "skills")
     config.sandbox = SimpleNamespace(
-        use="agent_workspace.community.aio_sandbox:AioSandboxProvider",
+        use="alpha.community.aio_sandbox:AioSandboxProvider",
         provisioner_url="http://provisioner:8002",
     )
     monkeypatch.setattr(lark_cli, "_probe_provisioner_capabilities", lambda _config: {"lark_cli_init_image": True, "lark_cli_broker_image": False})
@@ -633,7 +633,7 @@ def test_status_runtime_mode_init_container_ready(monkeypatch, tmp_path) -> None
 def test_status_runtime_mode_broker_supersedes_init_container(monkeypatch, tmp_path) -> None:
     config = _config(tmp_path / "skills")
     config.sandbox = SimpleNamespace(
-        use="agent_workspace.community.aio_sandbox:AioSandboxProvider",
+        use="alpha.community.aio_sandbox:AioSandboxProvider",
         provisioner_url="http://provisioner:8002",
     )
     # Broker (Pattern B) wins even when the init image is also configured.
@@ -647,7 +647,7 @@ def test_status_runtime_mode_broker_supersedes_init_container(monkeypatch, tmp_p
 def test_status_runtime_mode_init_container_not_configured(monkeypatch, tmp_path) -> None:
     config = _config(tmp_path / "skills")
     config.sandbox = SimpleNamespace(
-        use="agent_workspace.community.aio_sandbox:AioSandboxProvider",
+        use="alpha.community.aio_sandbox:AioSandboxProvider",
         provisioner_url="http://provisioner:8002",
     )
     monkeypatch.setattr(lark_cli, "_probe_provisioner_capabilities", lambda _config: {"lark_cli_init_image": False, "lark_cli_broker_image": False})
@@ -660,7 +660,7 @@ def test_status_runtime_mode_init_container_not_configured(monkeypatch, tmp_path
 def test_status_runtime_mode_init_container_unreachable(monkeypatch, tmp_path) -> None:
     config = _config(tmp_path / "skills")
     config.sandbox = SimpleNamespace(
-        use="agent_workspace.community.aio_sandbox:AioSandboxProvider",
+        use="alpha.community.aio_sandbox:AioSandboxProvider",
         provisioner_url="http://provisioner:8002",
     )
     monkeypatch.setattr(lark_cli, "_probe_provisioner_capabilities", lambda _config: None)
@@ -673,7 +673,7 @@ def test_status_runtime_mode_init_container_unreachable(monkeypatch, tmp_path) -
 def test_status_runtime_probe_skipped_when_not_requested(monkeypatch, tmp_path) -> None:
     config = _config(tmp_path / "skills")
     config.sandbox = SimpleNamespace(
-        use="agent_workspace.community.aio_sandbox:AioSandboxProvider",
+        use="alpha.community.aio_sandbox:AioSandboxProvider",
         provisioner_url="http://provisioner:8002",
     )
 
@@ -699,7 +699,7 @@ def test_sandbox_lark_broker_active_uses_tight_hot_path_timeout(monkeypatch, tmp
     _reset_broker_mode_cache()
     config = _config(tmp_path / "skills")
     config.sandbox = SimpleNamespace(
-        use="agent_workspace.community.aio_sandbox:AioSandboxProvider",
+        use="alpha.community.aio_sandbox:AioSandboxProvider",
         provisioner_url="http://provisioner:8002",
     )
     seen: dict[str, float] = {}
@@ -721,7 +721,7 @@ def test_sandbox_lark_broker_active_caches_negative_result(monkeypatch, tmp_path
     _reset_broker_mode_cache()
     config = _config(tmp_path / "skills")
     config.sandbox = SimpleNamespace(
-        use="agent_workspace.community.aio_sandbox:AioSandboxProvider",
+        use="alpha.community.aio_sandbox:AioSandboxProvider",
         provisioner_url="http://provisioner:8002",
     )
     calls = {"n": 0}
@@ -744,7 +744,7 @@ def test_sandbox_lark_broker_active_false_without_remote_provisioner(monkeypatch
     """Local AIO (no provisioner URL) never probes and is never broker mode."""
     _reset_broker_mode_cache()
     config = _config(tmp_path / "skills")
-    config.sandbox = SimpleNamespace(use="agent_workspace.community.aio_sandbox:AioSandboxProvider")
+    config.sandbox = SimpleNamespace(use="alpha.community.aio_sandbox:AioSandboxProvider")
 
     def _fail(_config, *, timeout):  # pragma: no cover - must not be called
         raise AssertionError("no provisioner should be probed without a provisioner_url")

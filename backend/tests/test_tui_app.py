@@ -10,10 +10,10 @@ import threading
 import pytest
 from textual.containers import VerticalScroll
 
-from agent_workspace.client import StreamEvent
-from agent_workspace.tui.app import AgentWorkspaceTUI
-from agent_workspace.tui.cli import LaunchPlan
-from agent_workspace.tui.view_state import SystemMessage
+from alpha.client import StreamEvent
+from alpha.tui.app import AgentWorkspaceTUI
+from alpha.tui.cli import LaunchPlan
+from alpha.tui.view_state import SystemMessage
 
 
 class _FakeClient:
@@ -117,7 +117,7 @@ async def test_help_command_renders_system_row_without_calling_agent():
 
 @pytest.mark.asyncio
 async def test_help_text_matches_command_registry():
-    from agent_workspace.tui.command_registry import format_command_help
+    from alpha.tui.command_registry import format_command_help
 
     app = AgentWorkspaceTUI(_FakeSession(), LaunchPlan(mode="tui"))
     async with app.run_test() as pilot:

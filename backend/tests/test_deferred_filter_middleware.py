@@ -2,7 +2,7 @@
 
 from langchain_core.tools import tool as as_tool
 
-from agent_workspace.agents.middlewares.deferred_tool_filter_middleware import DeferredToolFilterMiddleware
+from alpha.agents.middlewares.deferred_tool_filter_middleware import DeferredToolFilterMiddleware
 
 
 @as_tool

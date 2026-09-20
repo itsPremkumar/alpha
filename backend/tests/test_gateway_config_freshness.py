@@ -22,14 +22,14 @@ from fastapi.testclient import TestClient
 
 from app.gateway import deps as gateway_deps
 from app.gateway.deps import get_config
-from agent_workspace.config.app_config import (
+from alpha.config.app_config import (
     AppConfig,
     pop_current_app_config,
     push_current_app_config,
     reset_app_config,
     set_app_config,
 )
-from agent_workspace.config.sandbox_config import SandboxConfig
+from alpha.config.sandbox_config import SandboxConfig
 
 
 @pytest.fixture(autouse=True)
@@ -57,7 +57,7 @@ database:
     path.write_text(
         f"""
 sandbox:
-  use: agent_workspace.sandbox.local.provider:LocalSandboxProvider
+  use: alpha.sandbox.local.provider:LocalSandboxProvider
 log_level: {log_level}
 {database}""".strip()
         + "\n",

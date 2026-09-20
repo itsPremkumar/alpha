@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from agent_workspace.config.sandbox_config import SandboxConfig, SandboxNetworkConfig
+from alpha.config.sandbox_config import SandboxConfig, SandboxNetworkConfig
 
 
 def test_sandbox_network_defaults_to_open() -> None:

@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 
 from app.gateway.deps import get_config
 from app.gateway.routers import uploads
-from agent_workspace.sandbox.lease import get_sandbox_lease_manager
+from alpha.sandbox.lease import get_sandbox_lease_manager
 
 
 class ChunkedUpload:

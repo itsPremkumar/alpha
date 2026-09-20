@@ -10,12 +10,12 @@ from pathlib import Path
 import tempfile
 import pytest
 
-from agent_workspace.config.agent_preset_config import resolve_agent_preset
-from agent_workspace.tools.builtins.visual_verification_tool import visual_verify_artifact
-from agent_workspace.learning.reflexion import ReflexionEngine, get_reflexion_engine
-from agent_workspace.tools.builtins.reflexion_tool import manage_reflexion_memory
-from agent_workspace.state.handoff import SessionHandoffManager, SessionHandoffPackage, get_handoff_manager
-from agent_workspace.tools.builtins.boulder_checkpoint_tool import boulder_checkpoint_manage
+from alpha.config.agent_preset_config import resolve_agent_preset
+from alpha.tools.builtins.visual_verification_tool import visual_verify_artifact
+from alpha.learning.reflexion import ReflexionEngine, get_reflexion_engine
+from alpha.tools.builtins.reflexion_tool import manage_reflexion_memory
+from alpha.state.handoff import SessionHandoffManager, SessionHandoffPackage, get_handoff_manager
+from alpha.tools.builtins.boulder_checkpoint_tool import boulder_checkpoint_manage
 
 
 class TestAutopilotGatewayPresetResolution:

@@ -18,11 +18,11 @@ from app.channels.commands import is_known_channel_command, strip_leading_mentio
 from app.channels.connection_identity import attach_connection_identity
 from app.channels.message_bus import InboundMessage, InboundMessageType, InboundReservation, MessageBus, OutboundMessage, ResolvedAttachment
 from app.channels.sandbox_files import sync_file_to_thread_sandbox
-from agent_workspace.branding import DISPLAY_NAME
-from agent_workspace.config.paths import VIRTUAL_PATH_PREFIX, get_paths
-from agent_workspace.runtime.user_context import get_effective_user_id
-from agent_workspace.sandbox.sandbox_provider import get_sandbox_provider
-from agent_workspace.uploads.manager import UnsafeUploadPathError, claim_unique_filename, normalize_filename, write_upload_file_no_symlink
+from alpha.branding import DISPLAY_NAME
+from alpha.config.paths import VIRTUAL_PATH_PREFIX, get_paths
+from alpha.runtime.user_context import get_effective_user_id
+from alpha.sandbox.sandbox_provider import get_sandbox_provider
+from alpha.uploads.manager import UnsafeUploadPathError, claim_unique_filename, normalize_filename, write_upload_file_no_symlink
 
 logger = logging.getLogger(__name__)
 

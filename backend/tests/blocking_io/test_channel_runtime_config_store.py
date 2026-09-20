@@ -32,8 +32,8 @@ from app.gateway.routers.channel_connections import (
     configure_channel_provider_runtime,
     disconnect_channel_provider_runtime,
 )
-from agent_workspace.config.app_config import AppConfig, reset_app_config, set_app_config
-from agent_workspace.config.channel_connections_config import ChannelConnectionsConfig
+from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
+from alpha.config.channel_connections_config import ChannelConnectionsConfig
 
 # Pre-import: the handlers import this module lazily; the import's file IO
 # must happen at collection time, not on the event loop under the gate.
@@ -44,7 +44,7 @@ pytestmark = pytest.mark.asyncio
 
 @pytest.fixture(autouse=True)
 def _stub_app_config():
-    set_app_config(AppConfig.model_validate({"sandbox": {"use": "agent_workspace.sandbox.local:LocalSandboxProvider"}}))
+    set_app_config(AppConfig.model_validate({"sandbox": {"use": "alpha.sandbox.local:LocalSandboxProvider"}}))
     yield
     reset_app_config()
 

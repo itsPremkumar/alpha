@@ -19,14 +19,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from agent_workspace.agents.memory import (
+from alpha.agents.memory import (
     MemoryManager,
     get_memory_manager,
     reset_memory_manager,
 )
-from agent_workspace.agents.memory.backends.deermem.deer_mem import DeerMem
-from agent_workspace.agents.memory.backends.noop.noop_manager import NoopMemoryManager
-from agent_workspace.config.memory_config import MemoryConfig, get_memory_config, set_memory_config
+from alpha.agents.memory.backends.deermem.deer_mem import DeerMem
+from alpha.agents.memory.backends.noop.noop_manager import NoopMemoryManager
+from alpha.config.memory_config import MemoryConfig, get_memory_config, set_memory_config
 
 
 @pytest.fixture(autouse=True)
@@ -44,10 +44,10 @@ def _isolate_memory_manager():
     [
         ("deermem", DeerMem),
         ("noop", NoopMemoryManager),
-        ("agent_workspace.agents.memory.backends.deermem.deer_mem.DeerMem", DeerMem),
-        ("agent_workspace.agents.memory.backends.deermem.deer_mem:DeerMem", DeerMem),
-        ("agent_workspace.agents.memory.backends.noop.noop_manager.NoopMemoryManager", NoopMemoryManager),
-        ("agent_workspace.agents.memory.backends.noop.noop_manager:NoopMemoryManager", NoopMemoryManager),
+        ("alpha.agents.memory.backends.deermem.deer_mem.DeerMem", DeerMem),
+        ("alpha.agents.memory.backends.deermem.deer_mem:DeerMem", DeerMem),
+        ("alpha.agents.memory.backends.noop.noop_manager.NoopMemoryManager", NoopMemoryManager),
+        ("alpha.agents.memory.backends.noop.noop_manager:NoopMemoryManager", NoopMemoryManager),
     ],
 )
 def test_resolves_configured_backend(manager_class: str, expected: type[MemoryManager]) -> None:
@@ -128,9 +128,9 @@ def test_migration_drops_file_style_legacy_storage_path(caplog) -> None:
     NotADirectoryError. Dropping lets the factory inject runtime_home (per-user
     location unchanged). Non-file legacy fields still migrate; empty values are
     skipped silently (#1, #6)."""
-    from agent_workspace.config.memory_config import load_memory_config_from_dict
+    from alpha.config.memory_config import load_memory_config_from_dict
 
-    with caplog.at_level("WARNING", logger="agent_workspace.config.memory_config"):
+    with caplog.at_level("WARNING", logger="alpha.config.memory_config"):
         load_memory_config_from_dict({"storage_path": "memory.json", "max_facts": 50})
     cfg = get_memory_config()
     assert "storage_path" not in cfg.backend_config  # file-style dropped
@@ -142,7 +142,7 @@ def test_empty_storage_path_factory_injects_runtime_home(tmp_path, monkeypatch) 
     """Empty/absent storage_path -> factory injects runtime_home() as the root, so
     per-user memory lands at {runtime_home}/users/{uid}/memory.json (matches
     pre-abstraction per-user location). Pins the zero-config default (reviewer #1)."""
-    import agent_workspace.config.runtime_paths as rp
+    import alpha.config.runtime_paths as rp
 
     monkeypatch.setattr(rp, "runtime_home", lambda: tmp_path)
     set_memory_config(MemoryConfig(manager_class="deermem"))  # no storage_path
@@ -184,7 +184,7 @@ def test_deermem_shutdown_flush_drains_a_pending_update() -> None:
     """End-to-end: a pending update sitting in DeerMem's queue is drained
     within the timeout on shutdown_flush (the loss-on-exit bug the ABC method
     fixes). The drain skips inter-item sleep so the budget goes to LLM calls."""
-    from agent_workspace.agents.memory.backends.deermem.deermem.core.queue import ConversationContext
+    from alpha.agents.memory.backends.deermem.deermem.core.queue import ConversationContext
 
     reset_memory_manager()
     set_memory_config(MemoryConfig(manager_class="deermem"))

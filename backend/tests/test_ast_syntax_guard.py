@@ -6,7 +6,7 @@ import json
 import pytest
 from pathlib import Path
 
-from agent_workspace.safety.ast_syntax_guard import (
+from alpha.safety.ast_syntax_guard import (
     validate_syntax_precommit,
     _validate_python_syntax,
     _validate_json_syntax,

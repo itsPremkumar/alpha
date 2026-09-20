@@ -37,7 +37,7 @@ from app.gateway.auth.session_cookie_state import SKIP_AUTH_CSRF_COOKIE_STATE_AT
 from app.gateway.auth.user_provisioning import get_or_provision_oidc_user
 from app.gateway.csrf_middleware import CSRF_COOKIE_NAME, _request_origin, auth_csrf_cookie_settings, generate_csrf_token, is_secure_request
 from app.gateway.deps import get_current_user_from_request, get_local_provider
-from agent_workspace.config.auth_config import OIDCProviderConfig
+from alpha.config.auth_config import OIDCProviderConfig
 
 logger = logging.getLogger(__name__)
 
@@ -197,8 +197,8 @@ def _login_throttle_policy() -> tuple[int, float]:
     ``get_app_config`` re-hashes the config file on every call, and the login
     endpoint is unauthenticated.
     """
-    from agent_workspace.config.app_config import get_app_config
-    from agent_workspace.config.auth_config import LocalAuthConfig
+    from alpha.config.app_config import get_app_config
+    from alpha.config.auth_config import LocalAuthConfig
 
     try:
         local = get_app_config().auth.local
@@ -383,7 +383,7 @@ async def _record_login_failure(ip: str) -> None:
         # long as the file stays broken. Count under the model defaults so
         # the throttle fails closed (the next check reads the broken config
         # before authenticate), then re-raise.
-        from agent_workspace.config.auth_config import LocalAuthConfig
+        from alpha.config.auth_config import LocalAuthConfig
 
         fallback = LocalAuthConfig()
         _record_failure_under_policy(ip, fallback.max_login_attempts, fallback.lockout_seconds)
@@ -446,7 +446,7 @@ def _local_registration_enabled() -> bool:
     ``/register`` reads this fresh on every request (``get_app_config`` reloads on file
     change); ``/setup-status`` may serve it up to 60s stale via its per-IP result cache.
     """
-    from agent_workspace.config.app_config import get_app_config
+    from alpha.config.app_config import get_app_config
 
     try:
         return get_app_config().auth.local.allow_registration
@@ -884,7 +884,7 @@ async def list_auth_providers():
     Returns only safe frontend metadata — no secrets, endpoints, or
     internal configuration.
     """
-    from agent_workspace.config.app_config import get_app_config
+    from alpha.config.app_config import get_app_config
 
     app_config = get_app_config()
     oidc_config = app_config.auth.oidc
@@ -917,7 +917,7 @@ async def oauth_login(
     and PKCE parameters. The ``next`` query parameter specifies where to
     redirect after successful login (default: /workspace).
     """
-    from agent_workspace.config.app_config import get_app_config
+    from alpha.config.app_config import get_app_config
 
     app_config = get_app_config()
     oidc_config = app_config.auth.oidc
@@ -999,7 +999,7 @@ async def oauth_callback(
     the ID token, provisions/links the Alpha user, and sets the
     session cookie.
     """
-    from agent_workspace.config.app_config import get_app_config
+    from alpha.config.app_config import get_app_config
 
     app_config = get_app_config()
     oidc_config = app_config.auth.oidc

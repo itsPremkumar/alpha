@@ -10,7 +10,7 @@ the checkpoint state-accessor build (``abuild_checkpoint_state_accessor`` ->
 ``build_thread_checkpoint_state_accessor``).
 
 Under the strict Blockbuster context (this directory's conftest), any
-blocking IO reached from ``agent_workspace.*`` while on the event loop raises
+blocking IO reached from ``alpha.*`` while on the event loop raises
 ``BlockingError``. ``get_available_tools`` is injected here as a **blocking
 probe** (real file IO): what must be pinned is that the assembly call never
 executes on the event loop, not that today's assembly happens to be cheap —
@@ -33,17 +33,17 @@ from unittest.mock import AsyncMock
 import pytest
 from langchain_core.messages import ToolMessage
 
-from agent_workspace.config.extensions_config import ExtensionsConfig
-from agent_workspace.extensions import get_agent_build_extensions
-from agent_workspace.runtime.events.store.memory import MemoryRunEventStore
-from agent_workspace.runtime.runs.manager import RunManager
-from agent_workspace.runtime.runs.worker import RunContext, run_agent
-from agent_workspace.subagents.config import SubagentConfig
+from alpha.config.extensions_config import ExtensionsConfig
+from alpha.extensions import get_agent_build_extensions
+from alpha.runtime.events.store.memory import MemoryRunEventStore
+from alpha.runtime.runs.manager import RunManager
+from alpha.runtime.runs.worker import RunContext, run_agent
+from alpha.subagents.config import SubagentConfig
 
 # importlib.import_module binds the real module: the package attribute
-# ``agent_workspace.tools.builtins.task_tool`` is shadowed by the StructuredTool.
-task_tool_module = importlib.import_module("agent_workspace.tools.builtins.task_tool")
-batch_service_module = importlib.import_module("agent_workspace.subagents.batch_service")
+# ``alpha.tools.builtins.task_tool`` is shadowed by the StructuredTool.
+task_tool_module = importlib.import_module("alpha.tools.builtins.task_tool")
+batch_service_module = importlib.import_module("alpha.subagents.batch_service")
 # Imported at module scope: the first import of app.gateway.services pulls in
 # fastapi/pydantic, whose one-time metadata reads must not run inside a gated
 # test item.
@@ -102,7 +102,7 @@ async def test_task_tool_assembles_off_loop(monkeypatch, tmp_path):
     (tmp_path / "probe.txt").write_text("probe body", encoding="utf-8")
     observed_threads: list = []
     monkeypatch.setattr(
-        "agent_workspace.tools.get_available_tools",
+        "alpha.tools.get_available_tools",
         _blocking_probe_tools(tmp_path / "probe.txt", observed_threads),
     )
     monkeypatch.setattr(task_tool_module, "SubagentStatus", _FakeSubagentStatus)
@@ -165,7 +165,7 @@ async def test_batch_item_assembles_off_loop(monkeypatch, tmp_path):
     (tmp_path / "probe.txt").write_text("probe body", encoding="utf-8")
     observed_threads: list = []
     monkeypatch.setattr(
-        "agent_workspace.tools.get_available_tools",
+        "alpha.tools.get_available_tools",
         _blocking_probe_tools(tmp_path / "probe.txt", observed_threads),
     )
     monkeypatch.setattr(batch_service_module, "SubagentStatus", _FakeSubagentStatus)
@@ -269,7 +269,7 @@ async def test_run_agent_assembles_off_loop(monkeypatch, tmp_path):
     def _factory(*, config):
         observed_threads.append(threading.current_thread())
         observed_extensions.append(get_agent_build_extensions())
-        # Real production blocking read (executed inside a agent_workspace.* frame):
+        # Real production blocking read (executed inside a alpha.* frame):
         # trips the strict gate when the factory runs on the loop.
         ExtensionsConfig.from_file()
         return _DummyStreamAgent()
@@ -319,7 +319,7 @@ async def test_state_accessor_build_assembles_off_loop(monkeypatch, tmp_path):
         # probe regardless of what earlier tests left cached.
         def _factory(*, config):
             observed_threads.append(threading.current_thread())
-            # Real production blocking read (executed inside a agent_workspace.* frame):
+            # Real production blocking read (executed inside a alpha.* frame):
             # trips the strict gate when the factory runs on the loop.
             ExtensionsConfig.from_file()
             return SimpleNamespace()
@@ -335,7 +335,7 @@ async def test_state_accessor_build_assembles_off_loop(monkeypatch, tmp_path):
 
 
 async def test_extensions_config_read_trips_the_gate(monkeypatch, tmp_path):
-    """Meta-check: reading the extensions config from ``agent_workspace.*`` code on
+    """Meta-check: reading the extensions config from ``alpha.*`` code on
     the event loop must raise BlockingError — the exact syscall class issue
     #5172 is about — so the anchors above cannot go vacuously green. (The
     probe's own ``read_text`` trips through the same gate, proven here with

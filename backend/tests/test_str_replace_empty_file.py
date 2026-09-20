@@ -16,8 +16,8 @@ boundary and rewrote the file while still returning ``"OK"``. An empty
 from pathlib import Path
 from types import SimpleNamespace
 
-from agent_workspace.sandbox.local.local_sandbox import LocalSandbox
-from agent_workspace.sandbox.tools import str_replace_tool
+from alpha.sandbox.local.local_sandbox import LocalSandbox
+from alpha.sandbox.tools import str_replace_tool
 
 
 def _local_runtime(tmp_path: Path) -> SimpleNamespace:
@@ -46,8 +46,8 @@ def _str_replace(
     runtime = _local_runtime(tmp_path)
     target = tmp_path / "outputs" / "empty.txt"
     target.write_text(content, encoding="utf-8")
-    monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_sandbox_initialized", lambda runtime: LocalSandbox("t1"))
-    monkeypatch.setattr("agent_workspace.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
+    monkeypatch.setattr("alpha.sandbox.tools.ensure_sandbox_initialized", lambda runtime: LocalSandbox("t1"))
+    monkeypatch.setattr("alpha.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
     result = str_replace_tool.func(
         runtime=runtime,
         description="replace in empty file",

@@ -7,11 +7,11 @@ import pytest_asyncio
 from sqlalchemy import event
 from sqlalchemy.exc import IntegrityError
 
-from agent_workspace.config.database_config import DatabaseConfig
-from agent_workspace.persistence.engine import close_engine, get_engine, get_session_factory, init_engine_from_config
-from agent_workspace.persistence.mcp_tasks import DuplicateMcpRemoteTaskError, McpTaskRepository
-from agent_workspace.persistence.mcp_tasks.model import McpTaskRow
-from agent_workspace.persistence.thread_meta.model import ThreadMetaRow
+from alpha.config.database_config import DatabaseConfig
+from alpha.persistence.engine import close_engine, get_engine, get_session_factory, init_engine_from_config
+from alpha.persistence.mcp_tasks import DuplicateMcpRemoteTaskError, McpTaskRepository
+from alpha.persistence.mcp_tasks.model import McpTaskRow
+from alpha.persistence.thread_meta.model import ThreadMetaRow
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -182,7 +182,7 @@ async def test_create_observes_delete_and_recreate_at_insert_boundary(tmp_path):
             return
         replaced = True
         insert_statement = statement
-        with contextlib.closing(sqlite3.connect(tmp_path / "agent_workspace.db")) as connection:
+        with contextlib.closing(sqlite3.connect(tmp_path / "alpha.db")) as connection:
             with connection:
                 connection.execute("DELETE FROM threads_meta WHERE thread_id = ?", ("thread-1",))
                 connection.execute(

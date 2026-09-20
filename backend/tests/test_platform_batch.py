@@ -115,7 +115,7 @@ async def test_signal_poll_and_send_against_fake_wrapper(bus, fake_signal):
 
 
 def test_stt_graceful_paths(tmp_path):
-    from agent_workspace.media.stt import stt_available, transcribe_file
+    from alpha.media.stt import stt_available, transcribe_file
 
     missing = transcribe_file(tmp_path / "nope.wav")
     assert missing.ok is False and "not found" in missing.reason
@@ -127,7 +127,7 @@ def test_stt_graceful_paths(tmp_path):
 
 
 def test_local_probe_ssrf_guard():
-    from agent_workspace.models.local import probe_openai_compatible
+    from alpha.models.local import probe_openai_compatible
 
     refused = probe_openai_compatible("http://169.254.169.254/latest/meta-data/")
     assert refused.reachable is False and "SSRF" in refused.reason
@@ -136,7 +136,7 @@ def test_local_probe_ssrf_guard():
 
 
 def test_local_probe_fake_server(fake_signal):
-    from agent_workspace.models.local import probe_openai_compatible
+    from alpha.models.local import probe_openai_compatible
 
     class _ModelsHandler(_FakeSignalHandler):
         def do_GET(self):
@@ -190,7 +190,7 @@ def test_undo_target_finder():
 
 
 def test_context_files_loader(tmp_path):
-    from agent_workspace.context_files import find_context_files, load_context_files
+    from alpha.context_files import find_context_files, load_context_files
 
     repo = tmp_path / "repo"
     sub = repo / "pkg"
@@ -221,7 +221,7 @@ def test_pairing_connect_code_flow():
 
 
 def test_fallback_chain_fault_injection():
-    from agent_workspace.models.fallback import FallbackChatModel, ModelFallbackExhaustedError
+    from alpha.models.fallback import FallbackChatModel, ModelFallbackExhaustedError
 
     class _Flaky:
         def __init__(self, behavior):

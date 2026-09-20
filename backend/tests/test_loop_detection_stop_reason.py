@@ -23,15 +23,15 @@ from unittest.mock import AsyncMock
 import pytest
 from langchain_core.messages import AIMessage
 
-from agent_workspace.runtime import RunContext, RunManager, RunStatus
-from agent_workspace.runtime.runs.worker import run_agent
+from alpha.runtime import RunContext, RunManager, RunStatus
+from alpha.runtime.runs.worker import run_agent
 
 
 @pytest.mark.asyncio
 async def test_worker_surfaces_stop_reason_from_loop_detection():
     """The worker persists ``stop_reason=loop_capped`` when the real
     LoopDetectionMiddleware triggers a hard stop during streaming."""
-    from agent_workspace.agents.middlewares.loop_detection_middleware import LoopDetectionMiddleware
+    from alpha.agents.middlewares.loop_detection_middleware import LoopDetectionMiddleware
 
     run_manager = RunManager()
     record = await run_manager.create("thread-1")
@@ -94,8 +94,8 @@ async def test_worker_surfaces_stop_reason_from_loop_detection():
 async def test_worker_surfaces_stop_reason_from_token_budget():
     """The worker persists ``stop_reason=token_capped`` when the real
     TokenBudgetMiddleware triggers a hard stop during streaming."""
-    from agent_workspace.agents.middlewares.token_budget_middleware import TokenBudgetMiddleware
-    from agent_workspace.config.token_budget_config import TokenBudgetConfig
+    from alpha.agents.middlewares.token_budget_middleware import TokenBudgetMiddleware
+    from alpha.config.token_budget_config import TokenBudgetConfig
 
     run_manager = RunManager()
     record = await run_manager.create("thread-1")
@@ -163,8 +163,8 @@ async def test_worker_surfaces_stop_reason_from_safety_finish_reason():
     SafetyFinishReasonMiddleware strips tool_calls on a safety termination."""
     from unittest.mock import MagicMock
 
-    from agent_workspace.agents.middlewares.safety_finish_reason_middleware import SafetyFinishReasonMiddleware
-    from agent_workspace.agents.middlewares.safety_termination_detectors import SafetyTermination
+    from alpha.agents.middlewares.safety_finish_reason_middleware import SafetyFinishReasonMiddleware
+    from alpha.agents.middlewares.safety_termination_detectors import SafetyTermination
 
     # A detector that always fires, simulating any provider safety signal.
     always_detector = MagicMock()
@@ -225,7 +225,7 @@ async def test_worker_surfaces_stop_reason_from_safety_finish_reason():
 async def test_worker_surfaces_stop_reason_from_model_length_finish_reason():
     """The worker persists ``stop_reason=model_length_capped`` when the
     provider caps a terminal assistant response with ``finish_reason=length``."""
-    from agent_workspace.agents.middlewares.model_length_finish_reason_middleware import ModelLengthFinishReasonMiddleware
+    from alpha.agents.middlewares.model_length_finish_reason_middleware import ModelLengthFinishReasonMiddleware
 
     mw = ModelLengthFinishReasonMiddleware()
     captured_runtime: list[Any] = [None]
@@ -278,7 +278,7 @@ async def test_worker_surfaces_stop_reason_from_model_length_finish_reason():
 async def test_worker_surfaces_stop_reason_from_subagent_limit():
     """The worker persists ``stop_reason=subagent_limit_capped`` when the
     real SubagentLimitMiddleware hits the total per-run cap."""
-    from agent_workspace.agents.middlewares.subagent_limit_middleware import SubagentLimitMiddleware
+    from alpha.agents.middlewares.subagent_limit_middleware import SubagentLimitMiddleware
 
     # max_total=1: first delegation exhausts the cap.
     mw = SubagentLimitMiddleware(max_concurrent=3, max_total=1)

@@ -23,10 +23,10 @@ from datetime import UTC, datetime
 import pytest
 
 from app.scheduler.service import ScheduledTaskService
-from agent_workspace.config.database_config import DatabaseConfig
-from agent_workspace.persistence.engine import close_engine, get_session_factory, init_engine_from_config
-from agent_workspace.persistence.scheduled_task_runs import ActiveScheduledRunConflict, ScheduledTaskRunRepository
-from agent_workspace.persistence.scheduled_tasks import ScheduledTaskRepository
+from alpha.config.database_config import DatabaseConfig
+from alpha.persistence.engine import close_engine, get_session_factory, init_engine_from_config
+from alpha.persistence.scheduled_task_runs import ActiveScheduledRunConflict, ScheduledTaskRunRepository
+from alpha.persistence.scheduled_tasks import ScheduledTaskRepository
 
 pytestmark = pytest.mark.asyncio
 

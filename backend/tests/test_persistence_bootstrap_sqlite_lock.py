@@ -1,6 +1,6 @@
 """Regression tests for the per-engine SQLite bootstrap lock cache.
 
-The cache (``agent_workspace.persistence.bootstrap._SQLITE_LOCKS``) maps an engine
+The cache (``alpha.persistence.bootstrap._SQLITE_LOCKS``) maps an engine
 to the ``asyncio.Lock`` that serialises its in-process bootstrap. It is keyed
 by the engine object itself via ``WeakKeyDictionary`` -- not ``id(engine)`` --
 to avoid two failure modes that are silent in production (one long-lived
@@ -29,8 +29,8 @@ import weakref
 import pytest
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from agent_workspace.persistence import bootstrap as bootstrap_mod
-from agent_workspace.persistence.bootstrap import _get_sqlite_local_lock
+from alpha.persistence import bootstrap as bootstrap_mod
+from alpha.persistence.bootstrap import _get_sqlite_local_lock
 
 
 def _make_engine():

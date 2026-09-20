@@ -110,7 +110,7 @@ class PostgresInboundDedupeStore:
     def _resolve_session_factory(self) -> Any:
         if self._session_factory is not None:
             return self._session_factory
-        from agent_workspace.persistence.engine import get_session_factory
+        from alpha.persistence.engine import get_session_factory
 
         sf = get_session_factory()
         if sf is None:

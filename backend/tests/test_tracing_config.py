@@ -1,11 +1,11 @@
-"""Tests for agent_workspace.config.tracing_config."""
+"""Tests for alpha.config.tracing_config."""
 
 from __future__ import annotations
 
 import pytest
 
-from agent_workspace.config import tracing_config as tracing_module
-from agent_workspace.config.tracing_config import reset_tracing_config
+from alpha.config import tracing_config as tracing_module
+from alpha.config.tracing_config import reset_tracing_config
 
 
 def _reset_tracing_cache() -> None:

@@ -412,7 +412,7 @@ models:
     api_key: sk-live-secret
 tools:
   - name: web_search
-    use: agent_workspace.community.brave.tools:web_search_tool
+    use: alpha.community.brave.tools:web_search_tool
     api_key: brave-secret
 channels:
   slack:

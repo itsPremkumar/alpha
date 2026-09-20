@@ -17,13 +17,13 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.gateway.routers import models as models_router
-from agent_workspace.authz.provider import AuthzDecision, AuthzReason
-from agent_workspace.authz.rbac import RbacAuthorizationProvider
-from agent_workspace.config.app_config import AppConfig
-from agent_workspace.config.authorization_config import AuthorizationConfig
-from agent_workspace.config.model_config import ModelConfig
-from agent_workspace.config.sandbox_config import SandboxConfig
-from agent_workspace.config.token_usage_config import TokenUsageConfig
+from alpha.authz.provider import AuthzDecision, AuthzReason
+from alpha.authz.rbac import RbacAuthorizationProvider
+from alpha.config.app_config import AppConfig
+from alpha.config.authorization_config import AuthorizationConfig
+from alpha.config.model_config import ModelConfig
+from alpha.config.sandbox_config import SandboxConfig
+from alpha.config.token_usage_config import TokenUsageConfig
 
 # ── Helpers ────────────────────────────────────────────────────────────
 
@@ -43,7 +43,7 @@ def _make_app_config(model_names: list[str]) -> AppConfig:
     """Build a minimal AppConfig with the given model names."""
     return AppConfig(
         models=[ModelConfig(name=n, model=n, use="langchain_openai:ChatOpenAI") for n in model_names],
-        sandbox=SandboxConfig(use="agent_workspace.sandbox.local:LocalSandboxProvider"),
+        sandbox=SandboxConfig(use="alpha.sandbox.local:LocalSandboxProvider"),
         token_usage=TokenUsageConfig(enabled=False),
         authorization=AuthorizationConfig(),
     )
@@ -391,7 +391,7 @@ def _enable_runtime_authorization(monkeypatch, provider) -> AuthorizationConfig:
     Returns an enabled AuthorizationConfig the caller assigns to app_config.
     """
     monkeypatch.setattr(
-        "agent_workspace.agents.lead_agent.agent.resolve_authorization_provider",
+        "alpha.agents.lead_agent.agent.resolve_authorization_provider",
         lambda config: provider,
     )
     return AuthorizationConfig(enabled=True, fail_closed=True, default_role="user")
@@ -399,7 +399,7 @@ def _enable_runtime_authorization(monkeypatch, provider) -> AuthorizationConfig:
 
 def test_authorize_model_name_disabled_is_noop():
     """When authorization is disabled, model name is returned unchanged."""
-    from agent_workspace.agents.lead_agent.agent import _authorize_model_name
+    from alpha.agents.lead_agent.agent import _authorize_model_name
 
     app_config = _make_app_config(["gpt-4", "claude-3"])
     # AuthorizationConfig() defaults to enabled=False.
@@ -409,7 +409,7 @@ def test_authorize_model_name_disabled_is_noop():
 
 def test_authorize_model_name_allowed_returns_same(monkeypatch):
     """Allowed model → returned unchanged."""
-    from agent_workspace.agents.lead_agent.agent import _authorize_model_name
+    from alpha.agents.lead_agent.agent import _authorize_model_name
 
     provider = RbacAuthorizationProvider(
         roles={"user": {"models": {"allow": ["gpt-4", "claude-3"]}}},
@@ -423,7 +423,7 @@ def test_authorize_model_name_allowed_returns_same(monkeypatch):
 
 def test_authorize_model_name_denied_falls_back_gracefully(monkeypatch):
     """Denied model → falls back to first allowed model (RFC §9)."""
-    from agent_workspace.agents.lead_agent.agent import _authorize_model_name
+    from alpha.agents.lead_agent.agent import _authorize_model_name
 
     provider = RbacAuthorizationProvider(
         roles={"user": {"models": {"allow": ["claude-3"]}}},
@@ -437,7 +437,7 @@ def test_authorize_model_name_denied_falls_back_gracefully(monkeypatch):
 
 def test_authorize_model_name_all_denied_fail_closed_raises(monkeypatch):
     """All models denied + fail_closed → ValueError."""
-    from agent_workspace.agents.lead_agent.agent import _authorize_model_name
+    from alpha.agents.lead_agent.agent import _authorize_model_name
 
     provider = RbacAuthorizationProvider(
         roles={"user": {"models": {"allow": []}}},
@@ -451,7 +451,7 @@ def test_authorize_model_name_all_denied_fail_closed_raises(monkeypatch):
 
 def test_authorize_model_name_all_denied_fail_open_returns_original(monkeypatch):
     """All models denied + fail_open → returns original model name."""
-    from agent_workspace.agents.lead_agent.agent import _authorize_model_name
+    from alpha.agents.lead_agent.agent import _authorize_model_name
 
     provider = RbacAuthorizationProvider(
         roles={"user": {"models": {"allow": []}}},
@@ -463,7 +463,7 @@ def test_authorize_model_name_all_denied_fail_open_returns_original(monkeypatch)
         default_role="user",
     )
     monkeypatch.setattr(
-        "agent_workspace.agents.lead_agent.agent.resolve_authorization_provider",
+        "alpha.agents.lead_agent.agent.resolve_authorization_provider",
         lambda config: provider,
     )
 
@@ -501,12 +501,12 @@ def test_authorize_model_name_custom_provider_list_vs_use_divergence(monkeypatch
     app_config = _make_app_config(["gpt-4", "claude-3"])
     app_config.authorization = AuthorizationConfig(enabled=True, fail_closed=True, default_role="user")
     monkeypatch.setattr(
-        "agent_workspace.agents.lead_agent.agent.resolve_authorization_provider",
+        "alpha.agents.lead_agent.agent.resolve_authorization_provider",
         lambda config: _ListButNotUseProvider(),
     )
 
     # gpt-4 is listable but denied for use → falls back to claude-3
-    from agent_workspace.agents.lead_agent.agent import _authorize_model_name
+    from alpha.agents.lead_agent.agent import _authorize_model_name
 
     result = _authorize_model_name("gpt-4", context=_rbac_context(), app_config=app_config)
     assert result != "gpt-4"
@@ -541,11 +541,11 @@ def test_authorize_model_name_custom_provider_no_usable_fallback_fail_closed(mon
     app_config = _make_app_config(["gpt-4", "claude-3"])
     app_config.authorization = AuthorizationConfig(enabled=True, fail_closed=True, default_role="user")
     monkeypatch.setattr(
-        "agent_workspace.agents.lead_agent.agent.resolve_authorization_provider",
+        "alpha.agents.lead_agent.agent.resolve_authorization_provider",
         lambda config: _AllListNoneUseProvider(),
     )
 
-    from agent_workspace.agents.lead_agent.agent import _authorize_model_name
+    from alpha.agents.lead_agent.agent import _authorize_model_name
 
     # gpt-4 denied for use; fallback candidates also denied → ValueError
     with pytest.raises(ValueError, match="No models are authorized"):
@@ -572,11 +572,11 @@ def test_authorize_model_name_custom_provider_no_usable_fallback_fail_open(monke
     app_config = _make_app_config(["gpt-4", "claude-3"])
     app_config.authorization = AuthorizationConfig(enabled=True, fail_closed=False, default_role="user")
     monkeypatch.setattr(
-        "agent_workspace.agents.lead_agent.agent.resolve_authorization_provider",
+        "alpha.agents.lead_agent.agent.resolve_authorization_provider",
         lambda config: _AllListNoneUseProvider(),
     )
 
-    from agent_workspace.agents.lead_agent.agent import _authorize_model_name
+    from alpha.agents.lead_agent.agent import _authorize_model_name
 
     result = _authorize_model_name("gpt-4", context=_rbac_context(), app_config=app_config)
     assert result == "gpt-4"
@@ -608,7 +608,7 @@ def test_client_ensure_agent_enforces_model_use_when_authorized(monkeypatch):
 
     provider = RbacAuthorizationProvider(roles={"user": {"models": {"allow": ["claude-3"]}}})
     monkeypatch.setattr(
-        "agent_workspace.agents.lead_agent.agent.resolve_authorization_provider",
+        "alpha.agents.lead_agent.agent.resolve_authorization_provider",
         lambda config: provider,
     )
     captured_name = _stub_client_assembly(monkeypatch)
@@ -636,7 +636,7 @@ def test_client_ensure_agent_resolves_none_default_before_authorization(monkeypa
     # Deny the default ``gpt-4``; the gate must fallback to ``claude-3``.
     provider = RbacAuthorizationProvider(roles={"user": {"models": {"allow": ["claude-3"]}}})
     monkeypatch.setattr(
-        "agent_workspace.agents.lead_agent.agent.resolve_authorization_provider",
+        "alpha.agents.lead_agent.agent.resolve_authorization_provider",
         lambda config: provider,
     )
     captured_name = _stub_client_assembly(monkeypatch)
@@ -674,32 +674,32 @@ def _stub_client_assembly(monkeypatch) -> dict[str, str]:
     """
     captured: dict[str, str] = {}
     monkeypatch.setattr(
-        "agent_workspace.client.create_chat_model",
+        "alpha.client.create_chat_model",
         lambda **kwargs: captured.__setitem__("name", kwargs.get("name")) or object(),
     )
-    monkeypatch.setattr("agent_workspace.client.create_agent", lambda **kwargs: object())
-    monkeypatch.setattr("agent_workspace.client.build_middlewares", lambda *args, **kwargs: [])
-    monkeypatch.setattr("agent_workspace.client.AgentWorkspaceClient._get_tools", staticmethod(lambda *, model_name, subagent_enabled: []))  # noqa: ARG005
-    monkeypatch.setattr("agent_workspace.client.get_enabled_skills_for_config", lambda app_config: [])  # noqa: ARG005
+    monkeypatch.setattr("alpha.client.create_agent", lambda **kwargs: object())
+    monkeypatch.setattr("alpha.client.build_middlewares", lambda *args, **kwargs: [])
+    monkeypatch.setattr("alpha.client.AgentWorkspaceClient._get_tools", staticmethod(lambda *, model_name, subagent_enabled: []))  # noqa: ARG005
+    monkeypatch.setattr("alpha.client.get_enabled_skills_for_config", lambda app_config: [])  # noqa: ARG005
     monkeypatch.setattr(
-        "agent_workspace.client.build_skill_search_setup",
+        "alpha.client.build_skill_search_setup",
         lambda skills, *, enabled, container_base_path: SimpleNamespace(describe_skill_tool=None, skill_names=frozenset()),  # noqa: ARG005
     )
     monkeypatch.setattr(
-        "agent_workspace.client.assemble_deferred_tools",
+        "alpha.client.assemble_deferred_tools",
         lambda tools, *, enabled: ([], SimpleNamespace(deferred_names=frozenset())),  # noqa: ARG005
     )
-    monkeypatch.setattr("agent_workspace.client.build_mcp_routing_middleware", lambda *args, **kwargs: None)  # noqa: ARG005
-    monkeypatch.setattr("agent_workspace.client.get_mcp_routing_hints_prompt_section", lambda *args, **kwargs: "")  # noqa: ARG005
-    monkeypatch.setattr("agent_workspace.client.apply_prompt_template", lambda **kwargs: "")  # noqa: ARG005
-    monkeypatch.setattr("agent_workspace.client.get_thread_state_schema", lambda *args, **kwargs: object())  # noqa: ARG005
-    monkeypatch.setattr("agent_workspace.client.normalize_middleware_state_schemas", lambda schemas, mode, freq: [])  # noqa: ARG005
-    monkeypatch.setattr("agent_workspace.client.get_effective_user_id", lambda: "user-123")
+    monkeypatch.setattr("alpha.client.build_mcp_routing_middleware", lambda *args, **kwargs: None)  # noqa: ARG005
+    monkeypatch.setattr("alpha.client.get_mcp_routing_hints_prompt_section", lambda *args, **kwargs: "")  # noqa: ARG005
+    monkeypatch.setattr("alpha.client.apply_prompt_template", lambda **kwargs: "")  # noqa: ARG005
+    monkeypatch.setattr("alpha.client.get_thread_state_schema", lambda *args, **kwargs: object())  # noqa: ARG005
+    monkeypatch.setattr("alpha.client.normalize_middleware_state_schemas", lambda schemas, mode, freq: [])  # noqa: ARG005
+    monkeypatch.setattr("alpha.client.get_effective_user_id", lambda: "user-123")
     # ``apply_tool_authorization`` (called with the empty tool list above) still
     # resolves a provider via ``tool_filter.resolve_authorization_provider``; route
     # it at an allow-all RBAC provider so the empty list stays empty.
     monkeypatch.setattr(
-        "agent_workspace.authz.tool_filter.resolve_authorization_provider",
+        "alpha.authz.tool_filter.resolve_authorization_provider",
         lambda config: RbacAuthorizationProvider(roles={"user": {"tools": {"allow": "*"}}}),
     )
     return captured
@@ -707,7 +707,7 @@ def _stub_client_assembly(monkeypatch) -> dict[str, str]:
 
 def _bare_client(app_config):
     """Construct a ``AgentWorkspaceClient`` without running ``__init__``."""
-    from agent_workspace.client import AgentWorkspaceClient
+    from alpha.client import AgentWorkspaceClient
 
     client = AgentWorkspaceClient.__new__(AgentWorkspaceClient)
     client._app_config = app_config

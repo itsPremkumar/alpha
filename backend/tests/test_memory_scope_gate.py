@@ -2,10 +2,10 @@ import copy
 import logging
 from unittest.mock import MagicMock
 
-from agent_workspace.agents.memory.backends.deermem.deermem.config import DeerMemConfig
-from agent_workspace.agents.memory.backends.deermem.deermem.core.storage import MemoryStorage
-from agent_workspace.agents.memory.backends.deermem.deermem.core.updater import MemoryUpdater, _extract_text, _normalize_memory_update_data
-from agent_workspace.agents.memory.manager import _host_default_extraction_callback
+from alpha.agents.memory.backends.deermem.deermem.config import DeerMemConfig
+from alpha.agents.memory.backends.deermem.deermem.core.storage import MemoryStorage
+from alpha.agents.memory.backends.deermem.deermem.core.updater import MemoryUpdater, _extract_text, _normalize_memory_update_data
+from alpha.agents.memory.manager import _host_default_extraction_callback
 
 
 def _memory(facts: list[dict[str, object]] | None = None) -> dict[str, object]:

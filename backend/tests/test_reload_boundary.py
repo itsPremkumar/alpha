@@ -3,7 +3,7 @@
 Bytedance/agent-workspace issue #3144: the hot-reload boundary is the contract
 between gateway dependencies that resolve ``AppConfig`` every request and the
 infrastructure that captures the snapshot once at startup. The registry in
-``agent_workspace.config.reload_boundary`` is the machine-readable source of truth;
+``alpha.config.reload_boundary`` is the machine-readable source of truth;
 these tests pin the registry against the actual Pydantic schema so a future
 field rename / addition / boundary change cannot silently drift.
 """
@@ -12,15 +12,15 @@ from __future__ import annotations
 
 import pytest
 
-from agent_workspace.config.app_config import AppConfig
-from agent_workspace.config.reload_boundary import (
+from alpha.config.app_config import AppConfig
+from alpha.config.reload_boundary import (
     STARTUP_ONLY_FIELDS,
     STARTUP_ONLY_PREFIX,
     format_field_description,
     is_startup_only_field,
     iter_startup_only_field_paths,
 )
-from agent_workspace.config.skills_config import SkillsConfig
+from alpha.config.skills_config import SkillsConfig
 
 
 def test_registry_has_a_reason_for_every_field():

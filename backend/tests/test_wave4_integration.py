@@ -1,6 +1,6 @@
 import json
 
-from agent_workspace.tools.builtins import (
+from alpha.tools.builtins import (
     audit_finish_first_evidence,
     check_or_set_autonomy_profile,
     deliberate_artifact_quality,

@@ -18,7 +18,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.gateway.authz import require_permission
-from agent_workspace.utils.thread_id import ThreadId
+from alpha.utils.thread_id import ThreadId
 
 router = APIRouter(prefix="/api/threads/{thread_id}/agent-messages", tags=["agent-messages"])
 
@@ -39,7 +39,7 @@ def _validate_agent_name(value: str, field: str = "agent name") -> str:
 
 
 def _roster(thread_id: str):
-    from agent_workspace.subagents.messaging import get_agent_roster
+    from alpha.subagents.messaging import get_agent_roster
 
     return get_agent_roster(thread_id)
 
@@ -94,7 +94,7 @@ async def send_agent_message(thread_id: ThreadId, body: SendMessageRequest) -> d
     if mode not in _VALID_MODES:
         raise HTTPException(status_code=422, detail=f"mode must be one of {list(_VALID_MODES)}")
     kind = body.kind.strip().lower()
-    from agent_workspace.subagents.messaging import MESSAGE_KINDS
+    from alpha.subagents.messaging import MESSAGE_KINDS
 
     if kind not in MESSAGE_KINDS:
         raise HTTPException(status_code=422, detail=f"kind must be one of {list(MESSAGE_KINDS)}")

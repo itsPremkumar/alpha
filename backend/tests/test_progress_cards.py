@@ -1,7 +1,7 @@
 import json
 
-from agent_workspace.canvas.progress_card import ProgressCardStore
-from agent_workspace.tools.builtins.progress_card_tool import update_progress_card
+from alpha.canvas.progress_card import ProgressCardStore
+from alpha.tools.builtins.progress_card_tool import update_progress_card
 
 
 def test_progress_card_lifecycle():

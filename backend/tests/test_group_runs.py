@@ -26,9 +26,9 @@ class _NoModelConfig:
 @pytest.fixture(autouse=True)
 def _isolated_home(tmp_path, monkeypatch):
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
-    import agent_workspace.bots.registry as bot_reg
-    import agent_workspace.groups.runner as runner
-    import agent_workspace.groups.service as grp_svc
+    import alpha.bots.registry as bot_reg
+    import alpha.groups.runner as runner
+    import alpha.groups.service as grp_svc
 
     monkeypatch.setattr(bot_reg, "_global_registry", None)
     monkeypatch.setattr(bot_reg, "_global_registry_path", None)
@@ -38,14 +38,14 @@ def _isolated_home(tmp_path, monkeypatch):
     monkeypatch.setattr(runner, "_global_runner_path", None)
     # Deterministic: no chat models, so background execution fails fast with
     # a clear room receipt instead of calling providers.
-    import agent_workspace.config as agent_workspace_config
+    import alpha.config as agent_workspace_config
 
     monkeypatch.setattr(agent_workspace_config, "get_app_config", lambda: _NoModelConfig())
     yield
 
 
 async def _wait_for_terminal(run_id: str, timeout_seconds: float = 30.0):
-    from agent_workspace.groups.runner import get_group_run_service
+    from alpha.groups.runner import get_group_run_service
 
     async def _poll():
         while True:
@@ -66,8 +66,8 @@ async def test_gateway_mounts_group_run_routes() -> None:
 
 
 async def test_start_run_announces_and_fails_fast_without_models() -> None:
-    from agent_workspace.groups.runner import get_group_run_service
-    from agent_workspace.groups.service import get_group_chat_service
+    from alpha.groups.runner import get_group_run_service
+    from alpha.groups.service import get_group_chat_service
 
     svc = get_group_run_service()
     run = svc.start_run("alpha", "Research the topic", members=["architect", "coder"])
@@ -86,7 +86,7 @@ async def test_start_run_announces_and_fails_fast_without_models() -> None:
 
 
 async def test_cancel_running_run() -> None:
-    from agent_workspace.groups.runner import get_group_run_service
+    from alpha.groups.runner import get_group_run_service
 
     svc = get_group_run_service()
     run = svc.start_run("beta", "Do things", members=["architect"])
@@ -98,7 +98,7 @@ async def test_cancel_running_run() -> None:
 
 
 async def test_list_runs_filters_by_room() -> None:
-    from agent_workspace.groups.runner import get_group_run_service
+    from alpha.groups.runner import get_group_run_service
 
     svc = get_group_run_service()
     first = svc.start_run("gamma", "Objective one", members=["architect"])
@@ -113,7 +113,7 @@ async def test_list_runs_filters_by_room() -> None:
 
 
 async def test_router_start_run_returns_202_record() -> None:
-    from agent_workspace.groups.runner import get_group_run_service
+    from alpha.groups.runner import get_group_run_service
 
     body = groups.GroupRunRequest(objective="Ship the feature", members=["architect"])
     record = await groups.start_group_run("omega", body)

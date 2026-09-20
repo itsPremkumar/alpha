@@ -4,9 +4,9 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.scheduler.service import ScheduledTaskService
-from agent_workspace.runtime import ConflictError, RunStatus
-from agent_workspace.runtime.runs.manager import RunRecord
-from agent_workspace.runtime.runs.schemas import DisconnectMode
+from alpha.runtime import ConflictError, RunStatus
+from alpha.runtime.runs.manager import RunRecord
+from alpha.runtime.runs.schemas import DisconnectMode
 
 
 class DummyTaskRepo:

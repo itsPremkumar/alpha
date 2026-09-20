@@ -14,7 +14,7 @@ from fastapi import HTTPException, status
 
 from app.gateway.auth.local_provider import LocalAuthProvider
 from app.gateway.auth.oidc import OIDCIdentity
-from agent_workspace.config.auth_config import OIDCProviderConfig
+from alpha.config.auth_config import OIDCProviderConfig
 
 logger = logging.getLogger(__name__)
 

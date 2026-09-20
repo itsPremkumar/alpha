@@ -1,6 +1,6 @@
 import json
 
-from agent_workspace.tools.builtins.variation_operator_tool import run_variation_operator_step
+from alpha.tools.builtins.variation_operator_tool import run_variation_operator_step
 
 
 def test_variation_operator_tool_actions():

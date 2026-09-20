@@ -2,8 +2,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from agent_workspace.mcp.tasks import TaskReference, TaskStatus, TaskSubmitRequest
-from agent_workspace.mcp.tasks.ordinary import McpTaskProtocolError, OrdinaryMcpTaskDriver
+from alpha.mcp.tasks import TaskReference, TaskStatus, TaskSubmitRequest
+from alpha.mcp.tasks.ordinary import McpTaskProtocolError, OrdinaryMcpTaskDriver
 
 
 class FakeCaller:

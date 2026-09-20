@@ -3,7 +3,7 @@
 import ast
 import pytest
 
-from agent_workspace.reasoning.introspective_tree_search import (
+from alpha.reasoning.introspective_tree_search import (
     CompositeRewardEvaluator,
     IntrospectiveTreeSearchEngine,
     MCTSAction,

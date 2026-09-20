@@ -6,7 +6,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.gateway.routers import input_polish
-from agent_workspace.utils import oneshot_llm
+from alpha.utils import oneshot_llm
 
 
 def _config(

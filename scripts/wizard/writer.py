@@ -81,14 +81,14 @@ def _yaml_dump(data: Any) -> str:
 
 def _default_tools() -> list[dict[str, Any]]:
     return [
-        {"name": "image_search", "use": "agent_workspace.community.image_search.tools:image_search_tool", "group": "web", "max_results": 5},
-        {"name": "ls", "use": "agent_workspace.sandbox.tools:ls_tool", "group": "file:read"},
-        {"name": "read_file", "use": "agent_workspace.sandbox.tools:read_file_tool", "group": "file:read"},
-        {"name": "glob", "use": "agent_workspace.sandbox.tools:glob_tool", "group": "file:read"},
-        {"name": "grep", "use": "agent_workspace.sandbox.tools:grep_tool", "group": "file:read"},
-        {"name": "write_file", "use": "agent_workspace.sandbox.tools:write_file_tool", "group": "file:write"},
-        {"name": "str_replace", "use": "agent_workspace.sandbox.tools:str_replace_tool", "group": "file:write"},
-        {"name": "bash", "use": "agent_workspace.sandbox.tools:bash_tool", "group": "bash"},
+        {"name": "image_search", "use": "alpha.community.image_search.tools:image_search_tool", "group": "web", "max_results": 5},
+        {"name": "ls", "use": "alpha.sandbox.tools:ls_tool", "group": "file:read"},
+        {"name": "read_file", "use": "alpha.sandbox.tools:read_file_tool", "group": "file:read"},
+        {"name": "glob", "use": "alpha.sandbox.tools:glob_tool", "group": "file:read"},
+        {"name": "grep", "use": "alpha.sandbox.tools:grep_tool", "group": "file:read"},
+        {"name": "write_file", "use": "alpha.sandbox.tools:write_file_tool", "group": "file:write"},
+        {"name": "str_replace", "use": "alpha.sandbox.tools:str_replace_tool", "group": "file:write"},
+        {"name": "bash", "use": "alpha.sandbox.tools:bash_tool", "group": "bash"},
     ]
 
 
@@ -137,13 +137,13 @@ def _build_tools(
     if include_write_tools:
         tools.extend(
             [
-                {"name": "write_file", "use": "agent_workspace.sandbox.tools:write_file_tool", "group": "file:write"},
-                {"name": "str_replace", "use": "agent_workspace.sandbox.tools:str_replace_tool", "group": "file:write"},
+                {"name": "write_file", "use": "alpha.sandbox.tools:write_file_tool", "group": "file:write"},
+                {"name": "str_replace", "use": "alpha.sandbox.tools:str_replace_tool", "group": "file:write"},
             ]
         )
 
     if include_bash_tool:
-        tools.append({"name": "bash", "use": "agent_workspace.sandbox.tools:bash_tool", "group": "bash"})
+        tools.append({"name": "bash", "use": "alpha.sandbox.tools:bash_tool", "group": "bash"})
 
     return tools
 
@@ -188,7 +188,7 @@ def build_minimal_config(
     web_fetch_use: str | None = None,
     web_fetch_tool_name: str = "web_fetch",
     web_fetch_extra_config: dict | None = None,
-    sandbox_use: str = "agent_workspace.sandbox.local:LocalSandboxProvider",
+    sandbox_use: str = "alpha.sandbox.local:LocalSandboxProvider",
     allow_host_bash: bool = False,
     include_bash_tool: bool = False,
     include_write_tools: bool = True,
@@ -237,7 +237,7 @@ def build_minimal_config(
     data["tools"] = tools
     sandbox_config = deepcopy(data.get("sandbox") if isinstance(data.get("sandbox"), dict) else {})
     sandbox_config["use"] = sandbox_use
-    if sandbox_use == "agent_workspace.sandbox.local:LocalSandboxProvider":
+    if sandbox_use == "alpha.sandbox.local:LocalSandboxProvider":
         sandbox_config["allow_host_bash"] = allow_host_bash
     else:
         sandbox_config.pop("allow_host_bash", None)
@@ -271,7 +271,7 @@ def write_config_yaml(
     web_fetch_use: str | None = None,
     web_fetch_tool_name: str = "web_fetch",
     web_fetch_extra_config: dict | None = None,
-    sandbox_use: str = "agent_workspace.sandbox.local:LocalSandboxProvider",
+    sandbox_use: str = "alpha.sandbox.local:LocalSandboxProvider",
     allow_host_bash: bool = False,
     include_bash_tool: bool = False,
     include_write_tools: bool = True,

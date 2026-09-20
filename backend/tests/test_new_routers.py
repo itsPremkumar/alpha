@@ -8,7 +8,7 @@ from tempfile import TemporaryDirectory
 import pytest
 from fastapi import HTTPException
 
-from agent_workspace.security.credential_vault import get_credential_vault
+from alpha.security.credential_vault import get_credential_vault
 from app.gateway.routers.credentials import (
     CredentialSubmitRequest,
     clear_credentials,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from agent_workspace.browser.cdp_bridge import (
+from alpha.browser.cdp_bridge import (
     BrowserTabInfo,
     CDPBrowserBridge,
     CDPSecurityPolicy,

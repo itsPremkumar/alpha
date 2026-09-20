@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from agent_workspace.config.scheduler_config import SchedulerConfig
+from alpha.config.scheduler_config import SchedulerConfig
 
 
 def test_scheduler_config_defaults():

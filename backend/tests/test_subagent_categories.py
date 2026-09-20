@@ -9,17 +9,17 @@ import pytest
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
-from agent_workspace.config.app_config import AppConfig
-from agent_workspace.config.subagents_config import SubagentCategoryConfig, SubagentsAppConfig
-from agent_workspace.subagents.categories import (
+from alpha.config.app_config import AppConfig
+from alpha.config.subagents_config import SubagentCategoryConfig, SubagentsAppConfig
+from alpha.subagents.categories import (
     CategoryResolutionError,
     apply_category,
     get_category,
     list_category_names,
 )
-from agent_workspace.subagents.config import SubagentConfig
+from alpha.subagents.config import SubagentConfig
 
-task_tool_module = importlib.import_module("agent_workspace.tools.builtins.task_tool")
+task_tool_module = importlib.import_module("alpha.tools.builtins.task_tool")
 
 
 class FakeSubagentStatus(Enum):
@@ -248,7 +248,7 @@ def _patch_executor_harness(monkeypatch, captured, base_config=None):
     )
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: lambda _event: None)
     monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [])
     return captured
 
 

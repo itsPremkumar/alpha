@@ -2,9 +2,9 @@
 
 import json
 
-from agent_workspace.mission.compiler import MissionCompiler
-from agent_workspace.mission.models import Mission, RiskTier
-from agent_workspace.tools.builtins.compile_mission_tool import compile_mission
+from alpha.mission.compiler import MissionCompiler
+from alpha.mission.models import Mission, RiskTier
+from alpha.tools.builtins.compile_mission_tool import compile_mission
 
 
 def test_mission_compiler_intent_and_latent_needs():

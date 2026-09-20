@@ -7,8 +7,8 @@ import secrets
 from types import SimpleNamespace
 from typing import Any
 
-from agent_workspace.config.paths import make_safe_user_id
-from agent_workspace.runtime.user_context import DEFAULT_USER_ID
+from alpha.config.paths import make_safe_user_id
+from alpha.runtime.user_context import DEFAULT_USER_ID
 
 INTERNAL_AUTH_HEADER_NAME = "X-Agent-Workspace-Internal-Token"
 LEGACY_INTERNAL_AUTH_HEADER_NAME = "X-Agent-Workspace-Internal-Token"

@@ -32,7 +32,7 @@ def run_agent() -> Callable[[str], str]:
 
     if not live_tests_enabled():
         pytest.skip("live tests are opt-in: set MONOCLE_LIVE_TESTS=1")
-    pytest.importorskip("agent_workspace", reason="Alpha app not importable in this venv")
+    pytest.importorskip("alpha", reason="Alpha app not importable in this venv")
 
     from dotenv import load_dotenv
 

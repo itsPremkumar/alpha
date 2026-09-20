@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from agent_workspace.company.responsibility import ResponsibilityEngine
+from alpha.company.responsibility import ResponsibilityEngine
 
 
 def test_responsibility_survival_and_failover_ladder():

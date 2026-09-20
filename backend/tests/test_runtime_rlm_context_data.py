@@ -1,5 +1,5 @@
 
-from agent_workspace.runtime.rlm import ContextStore, ContextTransformer, RLMEngine
+from alpha.runtime.rlm import ContextStore, ContextTransformer, RLMEngine
 
 
 def test_context_store_registration_and_immutability():

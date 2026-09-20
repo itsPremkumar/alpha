@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from agent_workspace.company import (
+from alpha.company import (
     AutonomousCompanyEngine,
     DepartmentType,
     OrgState,

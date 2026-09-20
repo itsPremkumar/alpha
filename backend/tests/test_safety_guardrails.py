@@ -1,6 +1,6 @@
 """Unit tests for Ethical and Safety Guardrails."""
 
-from agent_workspace.safety.guard import SafetyGuard
+from alpha.safety.guard import SafetyGuard
 
 
 def test_safety_guard_destructive_commands():

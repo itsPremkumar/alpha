@@ -2,7 +2,7 @@
 
 import pytest
 
-from agent_workspace.safety.comment_guard import (
+from alpha.safety.comment_guard import (
     LazyCommentDetectedError,
     check_for_lazy_comments,
 )

@@ -61,10 +61,10 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import StateGraph
 from langgraph.graph.message import add_messages
 
-from agent_workspace.agents.thread_state import merge_message_writes
-from agent_workspace.config.database_config import DEFAULT_CHECKPOINT_SNAPSHOT_FREQUENCY
-from agent_workspace.runtime.checkpoint_mode import inject_checkpoint_mode
-from agent_workspace.runtime.checkpoint_state import CheckpointStateAccessor
+from alpha.agents.thread_state import merge_message_writes
+from alpha.config.database_config import DEFAULT_CHECKPOINT_SNAPSHOT_FREQUENCY
+from alpha.runtime.checkpoint_mode import inject_checkpoint_mode
+from alpha.runtime.checkpoint_state import CheckpointStateAccessor
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import checkpoint_bench_common as _common  # noqa: E402
@@ -488,8 +488,8 @@ def _wrap_history_cache(saver: Any) -> Any:
     the cold read genuinely cold: the write-phase cache is discarded, mirroring
     a process restart (cache lifetime == checkpointer CM lifetime).
     """
-    from agent_workspace.runtime.checkpoint_cache.memory import MemoryCheckpointHistoryCache
-    from agent_workspace.runtime.checkpointer.cached_saver import CachedHistorySaver
+    from alpha.runtime.checkpoint_cache.memory import MemoryCheckpointHistoryCache
+    from alpha.runtime.checkpointer.cached_saver import CachedHistorySaver
 
     return CachedHistorySaver(
         saver,
@@ -761,7 +761,7 @@ def _worker_main(encoded_case: str, *, profile_path: Path | None = None) -> int:
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
         print(json.dumps({"schema_version": SCHEMA_VERSION, "benchmark_version": BENCHMARK_VERSION, "success": False, "error": _safe_error(exc)}, separators=(",", ":")))
         return 2
-    with tempfile.TemporaryDirectory(prefix="agent_workspace-checkpoint-benchmark-") as temp_dir:
+    with tempfile.TemporaryDirectory(prefix="alpha-checkpoint-benchmark-") as temp_dir:
         if profile_path is None:
             row = _run_case(case, work_dir=Path(temp_dir))
         else:

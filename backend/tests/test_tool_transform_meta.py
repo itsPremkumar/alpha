@@ -7,7 +7,7 @@ sniffing output wording.
 
 from langchain_core.messages import ToolMessage
 
-from agent_workspace.agents.middlewares.tool_transform_meta import (
+from alpha.agents.middlewares.tool_transform_meta import (
     TOOL_TRANSFORMS_KEY,
     append_tool_transform,
     read_tool_transforms,
@@ -42,7 +42,7 @@ def test_read_drops_entries_without_a_string_kind():
 def test_mcp_source_projection_is_credential_free_and_defaults_transport():
     from langchain_core.tools import tool as make_tool
 
-    from agent_workspace.tools.mcp_metadata import get_mcp_source, tag_mcp_tool
+    from alpha.tools.mcp_metadata import get_mcp_source, tag_mcp_tool
 
     @make_tool
     def probe(x: str) -> str:
@@ -63,7 +63,7 @@ def test_gateway_treats_the_transform_trail_as_server_owned():
 def test_mcp_source_is_absent_when_no_server_name_is_supplied():
     from langchain_core.tools import tool as make_tool
 
-    from agent_workspace.tools.mcp_metadata import get_mcp_source, tag_mcp_tool
+    from alpha.tools.mcp_metadata import get_mcp_source, tag_mcp_tool
 
     @make_tool
     def probe(x: str) -> str:

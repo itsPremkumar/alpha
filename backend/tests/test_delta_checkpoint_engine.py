@@ -1,5 +1,5 @@
 
-from agent_workspace.runtime.checkpoint import (
+from alpha.runtime.checkpoint import (
     CheckpointEngine,
     CheckpointStrategy,
 )

@@ -7,7 +7,7 @@ import sys
 from types import ModuleType
 from unittest.mock import MagicMock, patch
 
-from agent_workspace.utils.file_conversion import (
+from alpha.utils.file_conversion import (
     _ASYNC_THRESHOLD_BYTES,
     _MIN_CHARS_PER_PAGE,
     MAX_OUTLINE_ENTRIES,
@@ -103,7 +103,7 @@ class TestDoConvert:
         docx.write_bytes(b"PK fake docx")
 
         with patch(
-            "agent_workspace.utils.file_conversion._convert_with_markitdown",
+            "alpha.utils.file_conversion._convert_with_markitdown",
             return_value="# Markdown from MarkItDown",
         ) as mock_md:
             result = _do_convert(docx, "auto")
@@ -120,14 +120,14 @@ class TestDoConvert:
 
         with (
             patch(
-                "agent_workspace.utils.file_conversion._convert_pdf_with_pymupdf4llm",
+                "alpha.utils.file_conversion._convert_pdf_with_pymupdf4llm",
                 return_value=dense_text,
             ),
             patch(
-                "agent_workspace.utils.file_conversion._pymupdf_output_too_sparse",
+                "alpha.utils.file_conversion._pymupdf_output_too_sparse",
                 return_value=False,
             ),
-            patch("agent_workspace.utils.file_conversion._convert_with_markitdown") as mock_md,
+            patch("alpha.utils.file_conversion._convert_with_markitdown") as mock_md,
         ):
             result = _do_convert(pdf, "auto")
 
@@ -141,15 +141,15 @@ class TestDoConvert:
 
         with (
             patch(
-                "agent_workspace.utils.file_conversion._convert_pdf_with_pymupdf4llm",
+                "alpha.utils.file_conversion._convert_pdf_with_pymupdf4llm",
                 return_value="x" * 612,  # 19.7 chars/page for 31-page doc
             ),
             patch(
-                "agent_workspace.utils.file_conversion._pymupdf_output_too_sparse",
+                "alpha.utils.file_conversion._pymupdf_output_too_sparse",
                 return_value=True,
             ),
             patch(
-                "agent_workspace.utils.file_conversion._convert_with_markitdown",
+                "alpha.utils.file_conversion._convert_with_markitdown",
                 return_value="OCR result via MarkItDown",
             ) as mock_md,
         ):
@@ -167,10 +167,10 @@ class TestDoConvert:
 
         with (
             patch(
-                "agent_workspace.utils.file_conversion._convert_pdf_with_pymupdf4llm",
+                "alpha.utils.file_conversion._convert_pdf_with_pymupdf4llm",
                 return_value=sparse_text,
             ),
-            patch("agent_workspace.utils.file_conversion._convert_with_markitdown") as mock_md,
+            patch("alpha.utils.file_conversion._convert_with_markitdown") as mock_md,
         ):
             result = _do_convert(pdf, "pymupdf4llm")
 
@@ -183,9 +183,9 @@ class TestDoConvert:
         pdf.write_bytes(b"%PDF-1.4 fake")
 
         with (
-            patch("agent_workspace.utils.file_conversion._convert_pdf_with_pymupdf4llm") as mock_pymu,
+            patch("alpha.utils.file_conversion._convert_pdf_with_pymupdf4llm") as mock_pymu,
             patch(
-                "agent_workspace.utils.file_conversion._convert_with_markitdown",
+                "alpha.utils.file_conversion._convert_with_markitdown",
                 return_value="MarkItDown result",
             ),
         ):
@@ -201,11 +201,11 @@ class TestDoConvert:
 
         with (
             patch(
-                "agent_workspace.utils.file_conversion._convert_pdf_with_pymupdf4llm",
+                "alpha.utils.file_conversion._convert_pdf_with_pymupdf4llm",
                 return_value=None,  # None signals not installed
             ),
             patch(
-                "agent_workspace.utils.file_conversion._convert_with_markitdown",
+                "alpha.utils.file_conversion._convert_with_markitdown",
                 return_value="MarkItDown fallback",
             ) as mock_md,
         ):
@@ -220,21 +220,21 @@ class TestGetPdfConverter:
         cfg = MagicMock()
         cfg.uploads = {"pdf_converter": "markitdown"}
 
-        with patch("agent_workspace.utils.file_conversion.get_app_config", return_value=cfg):
+        with patch("alpha.utils.file_conversion.get_app_config", return_value=cfg):
             assert _get_pdf_converter() == "markitdown"
 
     def test_reads_attribute_backed_uploads_config(self):
         cfg = MagicMock()
         cfg.uploads = MagicMock(pdf_converter="pymupdf4llm")
 
-        with patch("agent_workspace.utils.file_conversion.get_app_config", return_value=cfg):
+        with patch("alpha.utils.file_conversion.get_app_config", return_value=cfg):
             assert _get_pdf_converter() == "pymupdf4llm"
 
     def test_invalid_value_falls_back_to_auto(self):
         cfg = MagicMock()
         cfg.uploads = {"pdf_converter": "not-a-real-converter"}
 
-        with patch("agent_workspace.utils.file_conversion.get_app_config", return_value=cfg):
+        with patch("alpha.utils.file_conversion.get_app_config", return_value=cfg):
             assert _get_pdf_converter() == "auto"
 
 
@@ -245,9 +245,9 @@ class TestConvertFileToMarkdown:
         pdf.write_bytes(b"%PDF-1.4 " + b"x" * 100)  # well under 1 MB
 
         with (
-            patch("agent_workspace.utils.file_conversion._get_pdf_converter", return_value="auto"),
+            patch("alpha.utils.file_conversion._get_pdf_converter", return_value="auto"),
             patch(
-                "agent_workspace.utils.file_conversion._do_convert",
+                "alpha.utils.file_conversion._do_convert",
                 return_value="# Small PDF",
             ) as mock_convert,
             patch("asyncio.to_thread") as mock_thread,
@@ -270,9 +270,9 @@ class TestConvertFileToMarkdown:
             return fn(*args, **kwargs)
 
         with (
-            patch("agent_workspace.utils.file_conversion._get_pdf_converter", return_value="auto"),
+            patch("alpha.utils.file_conversion._get_pdf_converter", return_value="auto"),
             patch(
-                "agent_workspace.utils.file_conversion._do_convert",
+                "alpha.utils.file_conversion._do_convert",
                 return_value="# Large PDF",
             ),
             patch("asyncio.to_thread", side_effect=fake_to_thread) as mock_thread,
@@ -289,9 +289,9 @@ class TestConvertFileToMarkdown:
         pdf.write_bytes(b"%PDF-1.4 fake")
 
         with (
-            patch("agent_workspace.utils.file_conversion._get_pdf_converter", return_value="auto"),
+            patch("alpha.utils.file_conversion._get_pdf_converter", return_value="auto"),
             patch(
-                "agent_workspace.utils.file_conversion._do_convert",
+                "alpha.utils.file_conversion._do_convert",
                 side_effect=RuntimeError("conversion failed"),
             ),
         ):
@@ -306,9 +306,9 @@ class TestConvertFileToMarkdown:
         chinese_content = "# 中文报告\n\n这是测试内容。"
 
         with (
-            patch("agent_workspace.utils.file_conversion._get_pdf_converter", return_value="auto"),
+            patch("alpha.utils.file_conversion._get_pdf_converter", return_value="auto"),
             patch(
-                "agent_workspace.utils.file_conversion._do_convert",
+                "alpha.utils.file_conversion._do_convert",
                 return_value=chinese_content,
             ),
         ):

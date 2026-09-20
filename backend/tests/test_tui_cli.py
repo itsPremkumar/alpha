@@ -2,7 +2,7 @@
 
 import pytest
 
-from agent_workspace.tui.cli import LaunchPlan, build_parser, plan_launch
+from alpha.tui.cli import LaunchPlan, build_parser, plan_launch
 
 
 def plan(argv, *, stdin_tty=True, stdout_tty=True, env=None):
@@ -10,7 +10,7 @@ def plan(argv, *, stdin_tty=True, stdout_tty=True, env=None):
 
 
 def test_top_level_help_points_to_extension_management():
-    assert "agent_workspace extensions --help" in build_parser().format_help()
+    assert "alpha extensions --help" in build_parser().format_help()
 
 
 def test_bare_command_on_tty_launches_tui():

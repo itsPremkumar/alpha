@@ -7,11 +7,11 @@ from pathlib import Path
 import pytest
 from jsonschema import Draft202012Validator
 
-from agent_workspace.skills.review import LocalDirectoryReader, analyze_skill_package, stable_json_dumps
-from agent_workspace.skills.review.cli import main as review_cli_main
-from agent_workspace.skills.review.models import PackageLimits, normalize_relative_path
-from agent_workspace.skills.review.readers import ArchivePackageReader, parse_skill_uri
-from agent_workspace.skills.review.renderer import build_static_report, render_report_markdown
+from alpha.skills.review import LocalDirectoryReader, analyze_skill_package, stable_json_dumps
+from alpha.skills.review.cli import main as review_cli_main
+from alpha.skills.review.models import PackageLimits, normalize_relative_path
+from alpha.skills.review.readers import ArchivePackageReader, parse_skill_uri
+from alpha.skills.review.renderer import build_static_report, render_report_markdown
 
 CONTRACTS_DIR = Path(__file__).resolve().parents[2] / "contracts" / "skill_review"
 
@@ -41,7 +41,7 @@ def test_review_core_accepts_minimal_valid_skill(tmp_path):
     _validate_contract("package_snapshot.v1.schema.json", snapshot)
     _validate_contract("review_facts.v1.schema.json", facts)
     _validate_contract("review_report.v1.schema.json", report)
-    assert facts["schema_version"] == "agent_workspace.skill-review.facts.v1"
+    assert facts["schema_version"] == "alpha.skill-review.facts.v1"
     assert facts["subject"]["declared_name"] == "demo-skill"
     assert facts["summary"]["blockers"] == 0
     assert facts["subject"]["package_digest"].startswith("sha256:")
@@ -278,7 +278,7 @@ def test_static_report_renders_chinese_labels(tmp_path):
     report = build_static_report(facts, completed_at="2026-07-10T00:00:00Z")
     markdown = render_report_markdown(report, facts, locale="zh")
 
-    assert report["schema_version"] == "agent_workspace.skill-review.report.v1"
+    assert report["schema_version"] == "alpha.skill-review.report.v1"
     assert "## 摘要" in markdown
     assert "publish_candidate" in markdown
 

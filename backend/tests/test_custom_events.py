@@ -16,11 +16,11 @@ from langgraph.errors import GraphInterrupt
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Interrupt
 
-from agent_workspace.subagents.config import SubagentConfig
-from agent_workspace.utils import custom_events as custom_events_module
-from agent_workspace.utils.custom_events import aemit_custom_event, emit_custom_event
+from alpha.subagents.config import SubagentConfig
+from alpha.utils import custom_events as custom_events_module
+from alpha.utils.custom_events import aemit_custom_event, emit_custom_event
 
-task_tool_module = importlib.import_module("agent_workspace.tools.builtins.task_tool")
+task_tool_module = importlib.import_module("alpha.tools.builtins.task_tool")
 
 
 class _State(TypedDict):
@@ -149,7 +149,7 @@ async def test_real_task_tool_events_reach_astream_events(monkeypatch):
     monkeypatch.setattr(task_tool_module, "get_subagent_config", lambda _name: config)
     monkeypatch.setattr(task_tool_module, "get_background_task_result", lambda _task_id: completed)
     monkeypatch.setattr(task_tool_module, "cleanup_background_task", lambda _task_id: None)
-    monkeypatch.setattr("agent_workspace.tools.get_available_tools", lambda **_kwargs: [])
+    monkeypatch.setattr("alpha.tools.get_available_tools", lambda **_kwargs: [])
 
     agent = create_agent(
         model=_TaskCallingModel(),

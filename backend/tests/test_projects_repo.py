@@ -2,12 +2,12 @@
 
 import pytest
 
-from agent_workspace.persistence.projects import ProjectRepository
+from alpha.persistence.projects import ProjectRepository
 
 
 @pytest.fixture
 async def repo(tmp_path):
-    from agent_workspace.persistence.engine import close_engine, get_session_factory, init_engine
+    from alpha.persistence.engine import close_engine, get_session_factory, init_engine
 
     url = f"sqlite+aiosqlite:///{tmp_path / 'test.db'}"
     await init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
@@ -72,7 +72,7 @@ class TestProjectRepository:
 
     @pytest.mark.anyio
     async def test_delete_clears_membership_and_keeps_thread(self, repo, tmp_path):
-        from agent_workspace.persistence.thread_meta import ThreadMetaRepository
+        from alpha.persistence.thread_meta import ThreadMetaRepository
 
         threads = ThreadMetaRepository(repo._sf)
         p = await repo.create(name="P", user_id="u1")

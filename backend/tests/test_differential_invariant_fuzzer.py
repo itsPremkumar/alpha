@@ -2,7 +2,7 @@
 
 import pytest
 
-from agent_workspace.testing.differential_invariant_fuzzer import (
+from alpha.testing.differential_invariant_fuzzer import (
     BoundaryValueGenerator,
     DifferentialInvariantFuzzer,
     run_differential_regression_oracle,

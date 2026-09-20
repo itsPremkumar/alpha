@@ -19,11 +19,11 @@ from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.tools import tool as as_tool
 
-from agent_workspace.agents.middlewares.deferred_tool_filter_middleware import DeferredToolFilterMiddleware
-from agent_workspace.skills.tool_policy import filter_tools_by_skill_allowed_tools
-from agent_workspace.skills.types import Skill
-from agent_workspace.tools.builtins.tool_search import DeferredToolSetup, assemble_deferred_tools, build_deferred_tool_setup
-from agent_workspace.tools.mcp_metadata import tag_mcp_tool
+from alpha.agents.middlewares.deferred_tool_filter_middleware import DeferredToolFilterMiddleware
+from alpha.skills.tool_policy import filter_tools_by_skill_allowed_tools
+from alpha.skills.types import Skill
+from alpha.tools.builtins.tool_search import DeferredToolSetup, assemble_deferred_tools, build_deferred_tool_setup
+from alpha.tools.mcp_metadata import tag_mcp_tool
 
 
 @as_tool
@@ -97,7 +97,7 @@ def test_fail_closed_when_mcp_survives_without_setup(monkeypatch):
     module global, so patch it in ``tool_search`` (its home module).
     """
     monkeypatch.setattr(
-        "agent_workspace.tools.builtins.tool_search.build_deferred_tool_setup",
+        "alpha.tools.builtins.tool_search.build_deferred_tool_setup",
         lambda tools, *, enabled: DeferredToolSetup(None, frozenset(), None),
     )
     with pytest.raises(RuntimeError, match="fail-closed"):

@@ -69,9 +69,9 @@ def _stub_app_config(monkeypatch):
     same pattern).
     """
     import app.gateway.app as app_module
-    from agent_workspace.config.app_config import AppConfig
-    from agent_workspace.config.sandbox_config import SandboxConfig
-    from agent_workspace.extensions import reset_loaded_extensions, reset_runtime_diagnostics
+    from alpha.config.app_config import AppConfig
+    from alpha.config.sandbox_config import SandboxConfig
+    from alpha.extensions import reset_loaded_extensions, reset_runtime_diagnostics
 
     config = AppConfig(sandbox=SandboxConfig(use="test"))
     monkeypatch.setattr(app_module, "get_app_config", lambda: config)

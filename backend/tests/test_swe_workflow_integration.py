@@ -1,9 +1,9 @@
 """End-to-end integration test exercising all OpenHands advanced subsystems together."""
 
-from agent_workspace.agent.oracle import OracleService
-from agent_workspace.context.condenser import PipelineCondenser
-from agent_workspace.critic import AgentFinishedCritic, CriticPipeline, EmptyPatchCritic
-from agent_workspace.events.stream import (
+from alpha.agent.oracle import OracleService
+from alpha.context.condenser import PipelineCondenser
+from alpha.critic import AgentFinishedCritic, CriticPipeline, EmptyPatchCritic
+from alpha.events.stream import (
     CmdOutputObservation,
     CmdRunAction,
     CriticObservation,
@@ -11,10 +11,10 @@ from agent_workspace.events.stream import (
     FileEditAction,
     FileEditObservation,
 )
-from agent_workspace.reasoning.tom import TheoryOfMindConsultant
-from agent_workspace.security.shell_ast import ConfirmationPolicy, ExecutionDecision
-from agent_workspace.skills.triggers import MicroAgentRegistry, TriggerContext
-from agent_workspace.workspace_changes.patch_synthesizer import PatchSynthesizer
+from alpha.reasoning.tom import TheoryOfMindConsultant
+from alpha.security.shell_ast import ConfirmationPolicy, ExecutionDecision
+from alpha.skills.triggers import MicroAgentRegistry, TriggerContext
+from alpha.workspace_changes.patch_synthesizer import PatchSynthesizer
 
 
 def test_openhands_full_engineering_workflow(tmp_path):

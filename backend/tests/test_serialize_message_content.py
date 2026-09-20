@@ -8,7 +8,7 @@ See: https://github.com/bytedance/agent-workspace/issues/1149
 
 from langchain_core.messages import ToolMessage
 
-from agent_workspace.client import AgentWorkspaceClient
+from alpha.client import AgentWorkspaceClient
 
 # ---------------------------------------------------------------------------
 # _serialize_message

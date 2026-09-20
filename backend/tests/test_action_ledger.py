@@ -8,7 +8,7 @@ from threading import Barrier
 
 import pytest
 
-from agent_workspace.ledger import MAX_LIST_LIMIT, ActionIntent, ActionLedger, ActionReceipt
+from alpha.ledger import MAX_LIST_LIMIT, ActionIntent, ActionLedger, ActionReceipt
 
 
 def test_lifecycle_is_append_only_and_survives_reload(tmp_path):

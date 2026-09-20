@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from agent_workspace.community.browserless import tools
-from agent_workspace.community.browserless.browserless_client import BrowserlessClient, BrowserlessFetchResult, BrowserlessScreenshotResult
+from alpha.community.browserless import tools
+from alpha.community.browserless.browserless_client import BrowserlessClient, BrowserlessFetchResult, BrowserlessScreenshotResult
 
 
 class AsyncMock(MagicMock):
@@ -25,13 +25,13 @@ class TestBrowserlessClient:
         """fetch_html returns the rendered HTML as a plain string on success.
 
         Regression guard for the fetch_html() public string contract:
-        BrowserlessClient is re-exported from agent_workspace.community.browserless.__all__,
+        BrowserlessClient is re-exported from alpha.community.browserless.__all__,
         so harness consumers that call string methods, compare the result, or pass
         it directly to a parser must keep getting a str back. Status-aware callers
         (e.g. web_fetch_tool) use fetch_html_with_status() instead - see
         test_fetch_html_with_status_surfaces_target_status_headers below.
         """
-        with patch("agent_workspace.community.browserless.browserless_client.httpx.AsyncClient") as mock_cls:
+        with patch("alpha.community.browserless.browserless_client.httpx.AsyncClient") as mock_cls:
             mock_ctx = MagicMock()
             mock_cls.return_value.__aenter__.return_value = mock_ctx
 
@@ -64,7 +64,7 @@ class TestBrowserlessClient:
         HTML string regardless of the target status; only fetch_html_with_status()
         exposes the richer result.
         """
-        with patch("agent_workspace.community.browserless.browserless_client.httpx.AsyncClient") as mock_cls:
+        with patch("alpha.community.browserless.browserless_client.httpx.AsyncClient") as mock_cls:
             mock_ctx = MagicMock()
             mock_cls.return_value.__aenter__.return_value = mock_ctx
 
@@ -92,7 +92,7 @@ class TestBrowserlessClient:
         apart. This richer result is opt-in via fetch_html_with_status(); plain
         fetch_html() stays a str (see test_fetch_html_success above).
         """
-        with patch("agent_workspace.community.browserless.browserless_client.httpx.AsyncClient") as mock_cls:
+        with patch("alpha.community.browserless.browserless_client.httpx.AsyncClient") as mock_cls:
             mock_ctx = MagicMock()
             mock_cls.return_value.__aenter__.return_value = mock_ctx
 
@@ -115,7 +115,7 @@ class TestBrowserlessClient:
 
     async def test_fetch_html_empty_response(self):
         """fetch_html returns error for empty response."""
-        with patch("agent_workspace.community.browserless.browserless_client.httpx.AsyncClient") as mock_cls:
+        with patch("alpha.community.browserless.browserless_client.httpx.AsyncClient") as mock_cls:
             mock_ctx = MagicMock()
             mock_cls.return_value.__aenter__.return_value = mock_ctx
 
@@ -131,7 +131,7 @@ class TestBrowserlessClient:
 
     async def test_fetch_html_http_error(self):
         """fetch_html returns error for non-200 status."""
-        with patch("agent_workspace.community.browserless.browserless_client.httpx.AsyncClient") as mock_cls:
+        with patch("alpha.community.browserless.browserless_client.httpx.AsyncClient") as mock_cls:
             mock_ctx = MagicMock()
             mock_cls.return_value.__aenter__.return_value = mock_ctx
 
@@ -147,7 +147,7 @@ class TestBrowserlessClient:
 
     async def test_fetch_html_timeout(self):
         """fetch_html returns timeout error."""
-        with patch("agent_workspace.community.browserless.browserless_client.httpx.AsyncClient") as mock_cls:
+        with patch("alpha.community.browserless.browserless_client.httpx.AsyncClient") as mock_cls:
             mock_ctx = MagicMock()
             mock_cls.return_value.__aenter__.return_value = mock_ctx
             import httpx
@@ -160,7 +160,7 @@ class TestBrowserlessClient:
 
     async def test_fetch_html_with_token(self):
         """fetch_html includes token in payload when set."""
-        with patch("agent_workspace.community.browserless.browserless_client.httpx.AsyncClient") as mock_cls:
+        with patch("alpha.community.browserless.browserless_client.httpx.AsyncClient") as mock_cls:
             mock_ctx = MagicMock()
             mock_cls.return_value.__aenter__.return_value = mock_ctx
 
@@ -178,7 +178,7 @@ class TestBrowserlessClient:
 
     async def test_fetch_html_with_wait_for_selector(self):
         """fetch_html sends waitForSelector when selector is set."""
-        with patch("agent_workspace.community.browserless.browserless_client.httpx.AsyncClient") as mock_cls:
+        with patch("alpha.community.browserless.browserless_client.httpx.AsyncClient") as mock_cls:
             mock_ctx = MagicMock()
             mock_cls.return_value.__aenter__.return_value = mock_ctx
 
@@ -196,7 +196,7 @@ class TestBrowserlessClient:
 
     async def test_fetch_html_with_reject_params(self):
         """fetch_html sends reject params when set."""
-        with patch("agent_workspace.community.browserless.browserless_client.httpx.AsyncClient") as mock_cls:
+        with patch("alpha.community.browserless.browserless_client.httpx.AsyncClient") as mock_cls:
             mock_ctx = MagicMock()
             mock_cls.return_value.__aenter__.return_value = mock_ctx
 
@@ -219,7 +219,7 @@ class TestBrowserlessClient:
 
     async def test_capture_screenshot_success(self):
         """capture_screenshot posts to /screenshot and returns image bytes."""
-        with patch("agent_workspace.community.browserless.browserless_client.httpx.AsyncClient") as mock_cls:
+        with patch("alpha.community.browserless.browserless_client.httpx.AsyncClient") as mock_cls:
             mock_ctx = MagicMock()
             mock_cls.return_value.__aenter__.return_value = mock_ctx
 
@@ -270,7 +270,7 @@ class TestBrowserlessClient:
 
     async def test_capture_screenshot_http_error(self):
         """capture_screenshot returns a bounded error on non-200 responses."""
-        with patch("agent_workspace.community.browserless.browserless_client.httpx.AsyncClient") as mock_cls:
+        with patch("alpha.community.browserless.browserless_client.httpx.AsyncClient") as mock_cls:
             mock_ctx = MagicMock()
             mock_cls.return_value.__aenter__.return_value = mock_ctx
 
@@ -289,7 +289,7 @@ class TestBrowserlessClient:
 
     async def test_capture_screenshot_empty_response(self):
         """capture_screenshot returns a clear error for empty binary content."""
-        with patch("agent_workspace.community.browserless.browserless_client.httpx.AsyncClient") as mock_cls:
+        with patch("alpha.community.browserless.browserless_client.httpx.AsyncClient") as mock_cls:
             mock_ctx = MagicMock()
             mock_cls.return_value.__aenter__.return_value = mock_ctx
 
@@ -312,7 +312,7 @@ class TestBrowserlessTools:
 
     async def test_get_browserless_client_uses_env_token_fallback(self):
         """Browserless tools use BROWSERLESS_TOKEN when config omits token."""
-        with patch("agent_workspace.community.browserless.tools._get_tool_config") as mock_cfg:
+        with patch("alpha.community.browserless.tools._get_tool_config") as mock_cfg:
             mock_cfg.return_value = {"base_url": "https://production-sfo.browserless.io"}
             with patch.dict("os.environ", {"BROWSERLESS_TOKEN": "env-token"}, clear=True):
                 client = tools._get_browserless_client("web_capture")
@@ -320,7 +320,7 @@ class TestBrowserlessTools:
         assert client.token == "env-token"
 
     def _client_with_config(self, cfg: dict):
-        with patch("agent_workspace.community.browserless.tools._get_tool_config") as mock_cfg:
+        with patch("alpha.community.browserless.tools._get_tool_config") as mock_cfg:
             mock_cfg.return_value = cfg
             with patch.dict("os.environ", {}, clear=True):
                 return tools._get_browserless_client("web_capture")
@@ -349,7 +349,7 @@ class TestBrowserlessTools:
         """YAML `timeout_s: off` parses as False; 0.0 would time out every request."""
         assert self._client_with_config({"timeout_s": False}).timeout_s == 30.0
 
-    @patch("agent_workspace.community.browserless.tools._get_browserless_client")
+    @patch("alpha.community.browserless.tools._get_browserless_client")
     async def test_web_fetch_tool_success(self, mock_get_client):
         """web_fetch_tool successfully fetches and extracts content."""
         mock_client = MagicMock()
@@ -362,51 +362,51 @@ class TestBrowserlessTools:
         )
         mock_get_client.return_value = mock_client
 
-        with patch("agent_workspace.community.browserless.tools._get_tool_config", return_value=None):
+        with patch("alpha.community.browserless.tools._get_tool_config", return_value=None):
             result = await tools.web_fetch_tool.ainvoke("https://example.com/article")
 
         assert "Error:" not in result
         assert "warning:" not in result
 
-    @patch("agent_workspace.community.browserless.tools._get_browserless_client")
+    @patch("alpha.community.browserless.tools._get_browserless_client")
     async def test_web_fetch_tool_error(self, mock_get_client):
         """web_fetch_tool returns error when fetch fails."""
         mock_client = MagicMock()
         mock_client.fetch_html_with_status = AsyncMock(return_value="Error: Browserless returned empty response")
         mock_get_client.return_value = mock_client
 
-        with patch("agent_workspace.community.browserless.tools._get_tool_config", return_value=None):
+        with patch("alpha.community.browserless.tools._get_tool_config", return_value=None):
             result = await tools.web_fetch_tool.ainvoke("https://example.com")
 
         assert result.startswith("Error:")
 
-    @patch("agent_workspace.community.browserless.tools._get_browserless_client")
+    @patch("alpha.community.browserless.tools._get_browserless_client")
     async def test_web_fetch_tool_exception(self, mock_get_client):
         """web_fetch_tool returns error when client raises exception."""
         mock_client = MagicMock()
         mock_client.fetch_html_with_status = AsyncMock(side_effect=Exception("Unexpected error"))
         mock_get_client.return_value = mock_client
 
-        with patch("agent_workspace.community.browserless.tools._get_tool_config", return_value=None):
+        with patch("alpha.community.browserless.tools._get_tool_config", return_value=None):
             result = await tools.web_fetch_tool.ainvoke("https://example.com")
 
         assert result.startswith("Error:")
 
-    @patch("agent_workspace.community.browserless.tools._get_browserless_client")
+    @patch("alpha.community.browserless.tools._get_browserless_client")
     async def test_web_fetch_tool_rejects_metadata_ip(self, mock_get_client):
         """web_fetch_tool blocks the cloud-metadata link-local endpoint."""
-        with patch("agent_workspace.community.browserless.tools._get_tool_config", return_value=None):
+        with patch("alpha.community.browserless.tools._get_tool_config", return_value=None):
             result = await tools.web_fetch_tool.ainvoke("http://169.254.169.254/latest/meta-data/")
 
         assert "private, loopback, or metadata" in result
         mock_get_client.assert_not_called()
 
-    @patch("agent_workspace.community.browserless.tools._get_browserless_client")
+    @patch("alpha.community.browserless.tools._get_browserless_client")
     async def test_web_fetch_tool_rejects_dns_resolving_to_private(self, mock_get_client):
         """web_fetch_tool blocks hostnames that resolve to internal IPs."""
-        with patch("agent_workspace.community.browserless.tools._get_tool_config", return_value=None):
+        with patch("alpha.community.browserless.tools._get_tool_config", return_value=None):
             with patch(
-                "agent_workspace.community.browserless.tools._resolve_host_addresses",
+                "alpha.community.browserless.tools._resolve_host_addresses",
                 return_value=[ipaddress.ip_address("10.0.0.5")],
             ):
                 result = await tools.web_fetch_tool.ainvoke("https://internal.example.com/")
@@ -414,7 +414,7 @@ class TestBrowserlessTools:
         assert "private, loopback, or metadata" in result
         mock_get_client.assert_not_called()
 
-    @patch("agent_workspace.community.browserless.tools._get_browserless_client")
+    @patch("alpha.community.browserless.tools._get_browserless_client")
     async def test_web_fetch_tool_allows_private_when_opted_in(self, mock_get_client):
         """web_fetch_tool allows internal targets only when explicitly configured."""
         mock_client = MagicMock()
@@ -427,13 +427,13 @@ class TestBrowserlessTools:
         )
         mock_get_client.return_value = mock_client
 
-        with patch("agent_workspace.community.browserless.tools._get_tool_config", return_value={"allow_private_addresses": True}):
+        with patch("alpha.community.browserless.tools._get_tool_config", return_value={"allow_private_addresses": True}):
             result = await tools.web_fetch_tool.ainvoke("http://10.0.0.5/dashboard")
 
         assert "Error:" not in result
         mock_client.fetch_html_with_status.assert_called_once()
 
-    @patch("agent_workspace.community.browserless.tools._get_browserless_client")
+    @patch("alpha.community.browserless.tools._get_browserless_client")
     async def test_web_fetch_tool_warns_on_target_error_status(self, mock_get_client):
         """web_fetch_tool surfaces a warning when the fetched page itself errored.
 
@@ -453,13 +453,13 @@ class TestBrowserlessTools:
         )
         mock_get_client.return_value = mock_client
 
-        with patch("agent_workspace.community.browserless.tools._get_tool_config", return_value=None):
+        with patch("alpha.community.browserless.tools._get_tool_config", return_value=None):
             result = await tools.web_fetch_tool.ainvoke("https://example.com/missing")
 
         assert "Error:" not in result
         assert "warning: target page responded 404 Not Found" in result
 
-    @patch("agent_workspace.community.browserless.tools._get_browserless_client")
+    @patch("alpha.community.browserless.tools._get_browserless_client")
     async def test_web_fetch_tool_no_warning_for_normal_target_status(self, mock_get_client):
         """web_fetch_tool does not warn when the target page responded normally.
 
@@ -476,7 +476,7 @@ class TestBrowserlessTools:
         )
         mock_get_client.return_value = mock_client
 
-        with patch("agent_workspace.community.browserless.tools._get_tool_config", return_value=None):
+        with patch("alpha.community.browserless.tools._get_tool_config", return_value=None):
             result = await tools.web_fetch_tool.ainvoke("https://example.com/article")
 
         assert "Error:" not in result
@@ -517,15 +517,15 @@ class TestBrowserlessTools:
             )
         )
 
-        with patch("agent_workspace.community.browserless.tools._get_tool_config", return_value=None):
-            with patch("agent_workspace.community.browserless.tools._get_browserless_client", return_value=fetch_client):
+        with patch("alpha.community.browserless.tools._get_tool_config", return_value=None):
+            with patch("alpha.community.browserless.tools._get_browserless_client", return_value=fetch_client):
                 fetch_result = await tools.web_fetch_tool.ainvoke("https://example.com/missing")
 
             with patch(
-                "agent_workspace.community.browserless.tools._resolve_host_addresses",
+                "alpha.community.browserless.tools._resolve_host_addresses",
                 return_value=[ipaddress.ip_address("93.184.216.34")],
             ):
-                with patch("agent_workspace.community.browserless.tools._get_browserless_client", return_value=capture_client):
+                with patch("alpha.community.browserless.tools._get_browserless_client", return_value=capture_client):
                     capture_command = await tools.web_capture_tool.coroutine(
                         runtime=runtime,
                         url="https://example.com/missing",
@@ -537,7 +537,7 @@ class TestBrowserlessTools:
         assert "warning: target page responded 404 Not Found" in fetch_result
         assert "warning: target page responded 404 Not Found" in capture_message
 
-    @patch("agent_workspace.community.browserless.tools._get_browserless_client")
+    @patch("alpha.community.browserless.tools._get_browserless_client")
     async def test_web_capture_tool_writes_artifact(self, mock_get_client, tmp_path):
         """web_capture_tool writes screenshots into thread outputs and presents the artifact."""
         outputs_dir = tmp_path / "outputs"
@@ -556,7 +556,7 @@ class TestBrowserlessTools:
         )
         mock_get_client.return_value = mock_client
 
-        with patch("agent_workspace.community.browserless.tools._get_tool_config") as mock_cfg:
+        with patch("alpha.community.browserless.tools._get_tool_config") as mock_cfg:
             mock_cfg.side_effect = lambda name: {
                 "web_capture": {
                     "full_page": False,
@@ -571,7 +571,7 @@ class TestBrowserlessTools:
             }.get(name)
 
             with patch(
-                "agent_workspace.community.browserless.tools._resolve_host_addresses",
+                "alpha.community.browserless.tools._resolve_host_addresses",
                 return_value=[ipaddress.ip_address("93.184.216.34")],
             ):
                 result = await tools.web_capture_tool.coroutine(
@@ -605,8 +605,8 @@ class TestBrowserlessTools:
         outputs_dir.mkdir()
         runtime = SimpleNamespace(state={"thread_data": {"outputs_path": str(outputs_dir)}})
 
-        with patch("agent_workspace.community.browserless.tools._get_tool_config", return_value=None):
-            with patch("agent_workspace.community.browserless.tools._get_browserless_client") as mock_get_client:
+        with patch("alpha.community.browserless.tools._get_tool_config", return_value=None):
+            with patch("alpha.community.browserless.tools._get_browserless_client") as mock_get_client:
                 result = await tools.web_capture_tool.coroutine(
                     runtime=runtime,
                     url="file:///etc/passwd",
@@ -624,8 +624,8 @@ class TestBrowserlessTools:
         outputs_dir.mkdir()
         runtime = SimpleNamespace(state={"thread_data": {"outputs_path": str(outputs_dir)}})
 
-        with patch("agent_workspace.community.browserless.tools._get_tool_config", return_value=None):
-            with patch("agent_workspace.community.browserless.tools._get_browserless_client") as mock_get_client:
+        with patch("alpha.community.browserless.tools._get_tool_config", return_value=None):
+            with patch("alpha.community.browserless.tools._get_browserless_client") as mock_get_client:
                 result = await tools.web_capture_tool.coroutine(
                     runtime=runtime,
                     url="http://localhost:8080/admin",
@@ -643,8 +643,8 @@ class TestBrowserlessTools:
         outputs_dir.mkdir()
         runtime = SimpleNamespace(state={"thread_data": {"outputs_path": str(outputs_dir)}})
 
-        with patch("agent_workspace.community.browserless.tools._get_tool_config", return_value=None):
-            with patch("agent_workspace.community.browserless.tools._get_browserless_client") as mock_get_client:
+        with patch("alpha.community.browserless.tools._get_tool_config", return_value=None):
+            with patch("alpha.community.browserless.tools._get_browserless_client") as mock_get_client:
                 result = await tools.web_capture_tool.coroutine(
                     runtime=runtime,
                     url="http://169.254.169.254/latest/meta-data/",
@@ -661,12 +661,12 @@ class TestBrowserlessTools:
         outputs_dir.mkdir()
         runtime = SimpleNamespace(state={"thread_data": {"outputs_path": str(outputs_dir)}})
 
-        with patch("agent_workspace.community.browserless.tools._get_tool_config", return_value=None):
+        with patch("alpha.community.browserless.tools._get_tool_config", return_value=None):
             with patch(
-                "agent_workspace.community.browserless.tools._resolve_host_addresses",
+                "alpha.community.browserless.tools._resolve_host_addresses",
                 return_value=[ipaddress.ip_address("10.0.0.5")],
             ):
-                with patch("agent_workspace.community.browserless.tools._get_browserless_client") as mock_get_client:
+                with patch("alpha.community.browserless.tools._get_browserless_client") as mock_get_client:
                     result = await tools.web_capture_tool.coroutine(
                         runtime=runtime,
                         url="https://internal.example.com/",
@@ -694,8 +694,8 @@ class TestBrowserlessTools:
             )
         )
 
-        with patch("agent_workspace.community.browserless.tools._get_tool_config", return_value={"allow_private_addresses": True}):
-            with patch("agent_workspace.community.browserless.tools._get_browserless_client", return_value=mock_client):
+        with patch("alpha.community.browserless.tools._get_tool_config", return_value={"allow_private_addresses": True}):
+            with patch("alpha.community.browserless.tools._get_browserless_client", return_value=mock_client):
                 result = await tools.web_capture_tool.coroutine(
                     runtime=runtime,
                     url="http://10.0.0.5/dashboard",
@@ -723,12 +723,12 @@ class TestBrowserlessTools:
             )
         )
 
-        with patch("agent_workspace.community.browserless.tools._get_tool_config", return_value=None):
+        with patch("alpha.community.browserless.tools._get_tool_config", return_value=None):
             with patch(
-                "agent_workspace.community.browserless.tools._resolve_host_addresses",
+                "alpha.community.browserless.tools._resolve_host_addresses",
                 return_value=[ipaddress.ip_address("93.184.216.34")],
             ):
-                with patch("agent_workspace.community.browserless.tools._get_browserless_client", return_value=mock_client):
+                with patch("alpha.community.browserless.tools._get_browserless_client", return_value=mock_client):
                     result = await tools.web_capture_tool.coroutine(
                         runtime=runtime,
                         url="https://example.com/missing",
@@ -757,12 +757,12 @@ class TestBrowserlessTools:
             )
         )
 
-        with patch("agent_workspace.community.browserless.tools._get_tool_config", return_value=None):
+        with patch("alpha.community.browserless.tools._get_tool_config", return_value=None):
             with patch(
-                "agent_workspace.community.browserless.tools._resolve_host_addresses",
+                "alpha.community.browserless.tools._resolve_host_addresses",
                 return_value=[ipaddress.ip_address("93.184.216.34")],
             ):
-                with patch("agent_workspace.community.browserless.tools._get_browserless_client", return_value=mock_client):
+                with patch("alpha.community.browserless.tools._get_browserless_client", return_value=mock_client):
                     result = await tools.web_capture_tool.coroutine(
                         runtime=runtime,
                         url="https://example.com/",
@@ -774,14 +774,14 @@ class TestBrowserlessTools:
         assert (outputs_dir / "report.png").read_bytes() == b"existing"
         assert (outputs_dir / "report-1.png").read_bytes() == b"\x89PNG\r\n\x1a\nnew"
 
-    @patch("agent_workspace.community.browserless.tools._get_browserless_client")
+    @patch("alpha.community.browserless.tools._get_browserless_client")
     async def test_web_capture_tool_missing_outputs_path_returns_error(self, mock_get_client):
         """web_capture_tool requires ThreadDataMiddleware outputs_path."""
         runtime = SimpleNamespace(state={"thread_data": {}})
 
-        with patch("agent_workspace.community.browserless.tools._get_tool_config", return_value=None):
+        with patch("alpha.community.browserless.tools._get_tool_config", return_value=None):
             with patch(
-                "agent_workspace.community.browserless.tools._resolve_host_addresses",
+                "alpha.community.browserless.tools._resolve_host_addresses",
                 return_value=[ipaddress.ip_address("93.184.216.34")],
             ):
                 result = await tools.web_capture_tool.coroutine(

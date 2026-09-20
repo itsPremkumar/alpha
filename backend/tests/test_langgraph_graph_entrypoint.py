@@ -38,15 +38,15 @@ def test_langgraph_graph_factory_is_a_concrete_lazy_module_export():
             f"{module_name}:{variable_name} must be a concrete module export "
             "for LangGraph Server"
         )
-        assert "agent_workspace.agents.lead_agent" not in sys.modules, (
+        assert "alpha.agents.lead_agent" not in sys.modules, (
             "publishing the graph factory must keep heavyweight agent imports lazy"
         )
 
         calls = []
-        fake_lead_agent = ModuleType("agent_workspace.agents.lead_agent")
+        fake_lead_agent = ModuleType("alpha.agents.lead_agent")
         fake_lead_agent.__path__ = []
         fake_lead_agent.make_lead_agent = lambda config: calls.append(("factory", config)) or "graph"
-        fake_prompt = ModuleType("agent_workspace.agents.lead_agent.prompt")
+        fake_prompt = ModuleType("alpha.agents.lead_agent.prompt")
         fake_prompt.prime_enabled_skills_cache = lambda: calls.append(("prime", None))
         sys.modules[fake_lead_agent.__name__] = fake_lead_agent
         sys.modules[fake_prompt.__name__] = fake_prompt

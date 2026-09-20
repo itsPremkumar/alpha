@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from agent_workspace.persistence.feedback.model import FEEDBACK_CATEGORIES, validate_category
+from alpha.persistence.feedback.model import FEEDBACK_CATEGORIES, validate_category
 from scripts.benchmark.feedback_export.export import (
     EXPORT_PROTOCOL_ID,
     SCHEMA_VERSION,

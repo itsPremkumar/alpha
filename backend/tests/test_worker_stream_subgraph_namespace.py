@@ -22,15 +22,15 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from packaging.version import Version
 
-from agent_workspace.runtime.runs import worker
-from agent_workspace.runtime.runs.manager import RunRecord, RunStartOutcome
-from agent_workspace.runtime.runs.schemas import DisconnectMode, RunStatus
-from agent_workspace.runtime.runs.worker import (
+from alpha.runtime.runs import worker
+from alpha.runtime.runs.manager import RunRecord, RunStartOutcome
+from alpha.runtime.runs.schemas import DisconnectMode, RunStatus
+from alpha.runtime.runs.worker import (
     _compose_sse_event,
     _publish_stream_item,
     _unpack_stream_item,
 )
-from agent_workspace.runtime.stream_bridge.memory import MemoryStreamBridge
+from alpha.runtime.stream_bridge.memory import MemoryStreamBridge
 
 SUBAGENT_NS = ("tools:call_subagent_1",)
 
@@ -275,27 +275,27 @@ _THREAD_ID = "thread-subgraph-stream-integration"
 def real_executor_module():
     """Swap the conftest MagicMock for the real subagent executor module.
 
-    conftest.py mocks ``agent_workspace.subagents.executor`` to break a package-init
-    import cycle; by the time this fixture runs every other agent_workspace module is
+    conftest.py mocks ``alpha.subagents.executor`` to break a package-init
+    import cycle; by the time this fixture runs every other alpha module is
     already imported, so a fresh import of the real module is safe.
     """
-    original = sys.modules.get("agent_workspace.subagents.executor")
-    sys.modules.pop("agent_workspace.subagents.executor", None)
-    subagents_pkg = sys.modules.get("agent_workspace.subagents")
+    original = sys.modules.get("alpha.subagents.executor")
+    sys.modules.pop("alpha.subagents.executor", None)
+    subagents_pkg = sys.modules.get("alpha.subagents")
     if subagents_pkg is not None and hasattr(subagents_pkg, "executor"):
         delattr(subagents_pkg, "executor")
 
-    module = importlib.import_module("agent_workspace.subagents.executor")
+    module = importlib.import_module("alpha.subagents.executor")
     # Hermetic in CI (no config.yaml) — same defaults as test_subagent_executor.
     module.get_app_config = lambda: SimpleNamespace(tool_search=SimpleNamespace(enabled=False))
     module.build_tracing_callbacks = lambda: []
     yield module
 
     if original is not None:
-        sys.modules["agent_workspace.subagents.executor"] = original
+        sys.modules["alpha.subagents.executor"] = original
     else:
-        sys.modules.pop("agent_workspace.subagents.executor", None)
-    subagents_pkg = sys.modules.get("agent_workspace.subagents")
+        sys.modules.pop("alpha.subagents.executor", None)
+    subagents_pkg = sys.modules.get("alpha.subagents")
     if subagents_pkg is not None and hasattr(subagents_pkg, "executor"):
         delattr(subagents_pkg, "executor")
 
@@ -378,7 +378,7 @@ def _build_delegating_parent_graph(executor_module, monkeypatch, *, child_emits_
     from langgraph.config import get_stream_writer
     from langgraph.graph import END, START, MessagesState, StateGraph
 
-    from agent_workspace.subagents.config import SubagentConfig
+    from alpha.subagents.config import SubagentConfig
 
     child_builder = StateGraph(MessagesState)
     child_builder.add_node(
@@ -579,7 +579,7 @@ class TestMessageSeqStamping:
 
     @staticmethod
     async def _seeded_store():
-        from agent_workspace.runtime.events.store.memory import MemoryRunEventStore
+        from alpha.runtime.events.store.memory import MemoryRunEventStore
 
         store = MemoryRunEventStore()
         await store.put(
@@ -593,7 +593,7 @@ class TestMessageSeqStamping:
 
     @pytest.mark.asyncio
     async def test_root_values_frame_stamps_a_persisted_message(self):
-        from agent_workspace.runtime.runs.worker import _MessageSeqStamper
+        from alpha.runtime.runs.worker import _MessageSeqStamper
 
         bridge = _FakeBridge()
         await _publish_stream_item(
@@ -614,7 +614,7 @@ class TestMessageSeqStamping:
     async def test_a_message_not_in_the_feed_is_left_unstamped(self):
         """A message still streaming has no seq yet — and needs none: appending
         it at the tail is already its correct position."""
-        from agent_workspace.runtime.runs.worker import _MessageSeqStamper
+        from alpha.runtime.runs.worker import _MessageSeqStamper
 
         bridge = _FakeBridge()
         await _publish_stream_item(
@@ -634,7 +634,7 @@ class TestMessageSeqStamping:
     @pytest.mark.asyncio
     async def test_subgraph_frames_are_not_stamped(self):
         """A subagent frame does not belong to the thread feed's ordering."""
-        from agent_workspace.runtime.runs.worker import _MessageSeqStamper
+        from alpha.runtime.runs.worker import _MessageSeqStamper
 
         bridge = _FakeBridge()
         await _publish_stream_item(
@@ -671,7 +671,7 @@ class TestMessageSeqStamping:
     async def test_a_resolved_identity_is_not_looked_up_twice(self):
         """Only a frame carrying messages it has not seen costs a query — in a
         real run that is the compaction frame, not every frame."""
-        from agent_workspace.runtime.runs.worker import _MessageSeqStamper
+        from alpha.runtime.runs.worker import _MessageSeqStamper
 
         store = await self._seeded_store()
         calls: list[list[str]] = []
@@ -710,7 +710,7 @@ class TestMessageSeqStamping:
         afterwards rolls past the history page and compacts is exactly the
         misplacement this stamper exists to prevent (#4696 review).
         """
-        from agent_workspace.runtime.runs.worker import _MessageSeqStamper
+        from alpha.runtime.runs.worker import _MessageSeqStamper
 
         store = await self._seeded_store()
         generation = 0
@@ -740,7 +740,7 @@ class TestMessageSeqStamping:
         carries a streaming message — a query per frame on exactly the long
         threads this stamper is careful to cost one query in.
         """
-        from agent_workspace.runtime.runs.worker import _MessageSeqStamper
+        from alpha.runtime.runs.worker import _MessageSeqStamper
 
         store = await self._seeded_store()
         calls: list[list[str]] = []
@@ -766,7 +766,7 @@ class TestMessageSeqStamping:
         The except clause degrades the frame to "no seq"; treating that answer
         as final would make one failed query as permanent as a real miss.
         """
-        from agent_workspace.runtime.runs.worker import _MessageSeqStamper
+        from alpha.runtime.runs.worker import _MessageSeqStamper
 
         store = await self._seeded_store()
         generation = 0
@@ -798,7 +798,7 @@ class TestMessageSeqStamping:
         The feed's earliest-seq-wins rule makes a resolved answer final, so an
         advancing feed must not turn the positive cache into a per-write query.
         """
-        from agent_workspace.runtime.runs.worker import _MessageSeqStamper
+        from alpha.runtime.runs.worker import _MessageSeqStamper
 
         store = await self._seeded_store()
         calls: list[list[str]] = []
@@ -828,8 +828,8 @@ class TestMessageSeqStamping:
         one connected to the journal, and a lambda pointing at the wrong object
         fails silently — the stamper simply keeps every miss.
         """
-        from agent_workspace.runtime.journal import RunJournal
-        from agent_workspace.runtime.runs.worker import _build_seq_stamper
+        from alpha.runtime.journal import RunJournal
+        from alpha.runtime.runs.worker import _build_seq_stamper
 
         store = await self._seeded_store()
         journal = RunJournal("r1", "t1", store, flush_threshold=100)
@@ -852,7 +852,7 @@ class TestMessageSeqStamping:
     @pytest.mark.asyncio
     async def test_a_run_without_a_journal_still_builds_a_stamper(self):
         """No writer to report feed growth is not a reason to stop stamping."""
-        from agent_workspace.runtime.runs.worker import _build_seq_stamper
+        from alpha.runtime.runs.worker import _build_seq_stamper
 
         stamper = _build_seq_stamper(await self._seeded_store(), "t1", None)
 
@@ -871,9 +871,9 @@ class TestMessageSeqStamping:
         exactly the background runs that need it. The stamper therefore
         soft-resolves the id once, when it is built, the same way the
         worker's write paths beside it do (unset → no filter)."""
-        from agent_workspace.persistence.engine import close_engine, get_session_factory, init_engine
-        from agent_workspace.runtime.events.store.db import DbRunEventStore
-        from agent_workspace.runtime.runs.worker import _MessageSeqStamper
+        from alpha.persistence.engine import close_engine, get_session_factory, init_engine
+        from alpha.runtime.events.store.db import DbRunEventStore
+        from alpha.runtime.runs.worker import _MessageSeqStamper
 
         url = f"sqlite+aiosqlite:///{tmp_path / 'seqs.db'}"
         await init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))

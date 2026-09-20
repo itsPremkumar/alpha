@@ -38,7 +38,7 @@ def base_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     would otherwise survive into this one and short-circuit the scan.
     """
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
-    from agent_workspace.config import paths as paths_module
+    from alpha.config import paths as paths_module
 
     monkeypatch.setattr(paths_module, "_paths", None)
     _invalidate_cache()

@@ -6,12 +6,12 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.scheduler.service import ScheduledTaskService
-from agent_workspace.config.database_config import DatabaseConfig
-from agent_workspace.persistence.engine import close_engine, get_session_factory, init_engine_from_config
-from agent_workspace.persistence.run import RunRepository
-from agent_workspace.persistence.scheduled_task_runs import ScheduledTaskRunRepository
-from agent_workspace.persistence.scheduled_tasks import ScheduledTaskRepository
-from agent_workspace.runtime import ConflictError
+from alpha.config.database_config import DatabaseConfig
+from alpha.persistence.engine import close_engine, get_session_factory, init_engine_from_config
+from alpha.persistence.run import RunRepository
+from alpha.persistence.scheduled_task_runs import ScheduledTaskRunRepository
+from alpha.persistence.scheduled_tasks import ScheduledTaskRepository
+from alpha.runtime import ConflictError
 
 pytestmark = pytest.mark.asyncio
 

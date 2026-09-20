@@ -20,8 +20,8 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy import text
 
-from agent_workspace.config.database_config import DatabaseConfig
-from agent_workspace.persistence.engine import close_engine, get_engine, init_engine_from_config
+from alpha.config.database_config import DatabaseConfig
+from alpha.persistence.engine import close_engine, get_engine, init_engine_from_config
 
 POSTGRES_URL = os.getenv("AGENT_WORKSPACE_TEST_POSTGRES_URL")
 
@@ -74,7 +74,7 @@ async def test_oauth_identity_uniqueness_enforced_end_to_end():
     try:
         from app.gateway.auth.models import User
         from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
-        from agent_workspace.persistence.engine import get_session_factory
+        from alpha.persistence.engine import get_session_factory
 
         repo = SQLiteUserRepository(get_session_factory())
 

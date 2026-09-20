@@ -12,8 +12,8 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from langgraph.checkpoint.base import empty_checkpoint, uuid6
 from langgraph.checkpoint.memory import InMemorySaver
 
-from agent_workspace.runtime import RunStatus
-from agent_workspace.utils.messages import ORIGINAL_USER_CONTENT_KEY
+from alpha.runtime import RunStatus
+from alpha.utils.messages import ORIGINAL_USER_CONTENT_KEY
 
 
 def _checkpoint(

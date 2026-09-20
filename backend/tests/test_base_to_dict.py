@@ -10,7 +10,7 @@ from __future__ import annotations
 from sqlalchemy import Integer, MetaData, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from agent_workspace.persistence.base import Base, _column_keys
+from alpha.persistence.base import Base, _column_keys
 
 
 class _Widget(Base):

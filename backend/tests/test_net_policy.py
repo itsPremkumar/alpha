@@ -1,4 +1,4 @@
-from agent_workspace.safety.net_policy import NetworkPolicyGuard
+from alpha.safety.net_policy import NetworkPolicyGuard
 
 
 def test_net_policy_blocks_loopback_and_private():

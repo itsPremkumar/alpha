@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from agent_workspace.agents.middlewares.review_guard_middleware import (
+from alpha.agents.middlewares.review_guard_middleware import (
     ReviewGuardMiddleware,
     ReviewGuardMiddlewareState,
     _calculate_comment_ratio,
@@ -13,7 +13,7 @@ from agent_workspace.agents.middlewares.review_guard_middleware import (
     _WRITE_TOOL_NAMES,
     build_review_guard_middleware,
 )
-from agent_workspace.config.review_guard_config import ReviewGuardConfig
+from alpha.config.review_guard_config import ReviewGuardConfig
 
 
 class TestHelperFunctions:

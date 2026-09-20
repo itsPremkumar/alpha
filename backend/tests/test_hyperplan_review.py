@@ -1,6 +1,6 @@
 ﻿"""Tests for Adversarial Hyperplan Multi-Reviewer Pipeline."""
 
-from agent_workspace.planning.hyperplan import HyperplanPipeline
+from alpha.planning.hyperplan import HyperplanPipeline
 
 
 def test_hyperplan_approves_comprehensive_plan():

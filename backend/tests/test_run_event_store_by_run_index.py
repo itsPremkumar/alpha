@@ -11,7 +11,7 @@ drift from the reference behavior.
 
 import pytest
 
-from agent_workspace.runtime.events.store.memory import MemoryRunEventStore
+from alpha.runtime.events.store.memory import MemoryRunEventStore
 
 
 def _ref_messages_by_run(records, thread_id, run_id, *, limit=50, before_seq=None, after_seq=None):

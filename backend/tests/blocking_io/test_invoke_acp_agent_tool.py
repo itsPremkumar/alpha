@@ -10,14 +10,14 @@ from typing import Any
 import acp
 import pytest
 
-from agent_workspace.config.acp_config import ACPAgentConfig
-from agent_workspace.tools.builtins import invoke_acp_agent_tool as acp_tool
+from alpha.config.acp_config import ACPAgentConfig
+from alpha.tools.builtins import invoke_acp_agent_tool as acp_tool
 
 pytestmark = pytest.mark.asyncio
 
 
 async def test_invoke_acp_agent_setup_does_not_block_event_loop(monkeypatch, tmp_path) -> None:
-    from agent_workspace.config import paths as paths_module
+    from alpha.config import paths as paths_module
 
     configured_paths = SimpleNamespace(
         base_dir=tmp_path,

@@ -2,14 +2,14 @@
 
 import json
 
-from agent_workspace.kanban.store import KanbanStore
-from agent_workspace.planning.autonomous import AutonomousPlan, AutonomousPlanner, detect_domains, review_wave
-from agent_workspace.planning.profiles import (
+from alpha.kanban.store import KanbanStore
+from alpha.planning.autonomous import AutonomousPlan, AutonomousPlanner, detect_domains, review_wave
+from alpha.planning.profiles import (
     install_profiles,
     profile_spec_to_managed_definition,
     profile_spec_to_subagent_config,
 )
-from agent_workspace.tools.builtins.autoplan_tool import build_autonomous_plan
+from alpha.tools.builtins.autoplan_tool import build_autonomous_plan
 
 
 def test_detect_domains_covers_main_tracks():
@@ -196,7 +196,7 @@ def test_replan_preserves_done_and_bumps_revision():
 
 
 def test_duplicate_request_reuses_board_without_cloning(tmp_path):
-    from agent_workspace.kanban.store import KanbanStore
+    from alpha.kanban.store import KanbanStore
 
     store = KanbanStore(storage_path=tmp_path / "boards.json")
     first = AutonomousPlanner().plan("Add a health-check endpoint with tests", kanban_store=store)

@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import pytest
 
-from agent_workspace.benchmarks import get_benchmark_runner
-from agent_workspace.benchmarks.suites import register_eval_suites
-from agent_workspace.scheduler.blueprints import get_blueprint, list_blueprints
-from agent_workspace.scheduler.cron_manager import CronManager
-from agent_workspace.scheduler.guards import contains_credential, guard_scheduled_prompt, scan_prompt_injection
-from agent_workspace.scheduler.incidents import IncidentTracker
-from agent_workspace.scheduler.wake_gate import should_wake, wrap_executor_with_gate
+from alpha.benchmarks import get_benchmark_runner
+from alpha.benchmarks.suites import register_eval_suites
+from alpha.scheduler.blueprints import get_blueprint, list_blueprints
+from alpha.scheduler.cron_manager import CronManager
+from alpha.scheduler.guards import contains_credential, guard_scheduled_prompt, scan_prompt_injection
+from alpha.scheduler.incidents import IncidentTracker
+from alpha.scheduler.wake_gate import should_wake, wrap_executor_with_gate
 
 
 @pytest.fixture(autouse=True)

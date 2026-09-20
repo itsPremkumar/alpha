@@ -1,6 +1,6 @@
 """Tests for Multi-Repo Semantic Knowledge Lake and Symbol Tracer."""
 
-from agent_workspace.knowledge.codebase_knowledge_lake import (
+from alpha.knowledge.codebase_knowledge_lake import (
     CodebaseKnowledgeLake,
     CrossServiceSymbolTracer,
 )

@@ -2,8 +2,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from agent_workspace.config.extensions_config import ExtensionsConfig
-from agent_workspace.mcp.tasks.runtime import (
+from alpha.config.extensions_config import ExtensionsConfig
+from alpha.mcp.tasks.runtime import (
     McpTaskConfigurationError,
     set_mcp_task_config_snapshot,
     validate_mcp_task_config_snapshot,

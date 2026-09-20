@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from agent_workspace.config.agents_config import (
+from alpha.config.agents_config import (
     AgentConfig,
     GitHubAgentConfig,
     GitHubBinding,
@@ -107,7 +107,7 @@ def _write_agent(base: Path, user_id: str, name: str, body: dict) -> None:
 def test_load_agent_config_reads_github_block(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
     # Reset the singleton so the new HOME is picked up.
-    from agent_workspace.config import paths as paths_module
+    from alpha.config import paths as paths_module
 
     monkeypatch.setattr(paths_module, "_paths", None)
 
@@ -138,7 +138,7 @@ def test_load_agent_config_reads_github_block(tmp_path: Path, monkeypatch: pytes
 
 def test_load_agent_config_without_github_block_is_none(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
-    from agent_workspace.config import paths as paths_module
+    from alpha.config import paths as paths_module
 
     monkeypatch.setattr(paths_module, "_paths", None)
 
@@ -200,7 +200,7 @@ def test_distinct_repo_bindings_allowed() -> None:
 def test_load_agent_config_rejects_duplicate_repo_bindings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """End-to-end: load_agent_config surfaces the validator error from YAML."""
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
-    from agent_workspace.config import paths as paths_module
+    from alpha.config import paths as paths_module
 
     monkeypatch.setattr(paths_module, "_paths", None)
 

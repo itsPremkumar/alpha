@@ -17,7 +17,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.gateway.routers import skills as skills_router
-from agent_workspace.config.extensions_config import (
+from alpha.config.extensions_config import (
     ExtensionsConfig,
     McpServerConfig,
     SkillStateConfig,

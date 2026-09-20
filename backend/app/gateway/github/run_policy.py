@@ -38,7 +38,7 @@ async def inject_github_credentials(msg: InboundMessage, run_context: dict[str, 
         same process. A Python callable does not survive that
         encoding (``TypeError: Type is not JSON serializable: function``).
         The harness side (``_github_env_from_runtime`` in
-        ``packages/harness/agent_workspace/sandbox/tools.py``) already accepts
+        ``packages/harness/alpha/sandbox/tools.py``) already accepts
         either a ``str`` or a zero-arg sync callable from
         ``runtime.context["github_token"]``; only the ``str`` shape
         round-trips through the SDK transport, so that is what we

@@ -1,5 +1,5 @@
 
-from agent_workspace.planning.compiler import (
+from alpha.planning.compiler import (
     CognitiveCompiler,
     ExecutionPlanIR,
     PlanValidityMonitor,

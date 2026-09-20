@@ -9,8 +9,8 @@ from langchain_core.callbacks.manager import ahandle_event
 from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.types import Command
 
-from agent_workspace.runtime.events.store.memory import MemoryRunEventStore
-from agent_workspace.runtime.journal import RunJournal
+from alpha.runtime.events.store.memory import MemoryRunEventStore
+from alpha.runtime.journal import RunJournal
 
 pytestmark = pytest.mark.asyncio
 

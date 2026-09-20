@@ -54,7 +54,7 @@ def _observed_extensions(observer=None):
     """
     from dataclasses import replace
 
-    from agent_workspace.extensions import get_agent_build_extensions
+    from alpha.extensions import get_agent_build_extensions
 
     return replace(get_agent_build_extensions(), context_compaction_observers=(("test-source", observer or (lambda event, context=None: None)),))
 
@@ -68,7 +68,7 @@ def test_source_hashes_are_computed_on_content_directly_not_a_stringified_copy()
     """
     from langchain_core.messages import HumanMessage
 
-    from agent_workspace.agents.middlewares.summarization_middleware import AgentWorkspaceSummarizationMiddleware
+    from alpha.agents.middlewares.summarization_middleware import AgentWorkspaceSummarizationMiddleware
 
     a = HumanMessage(content=[{"type": "text", "text": "hi"}, {"b": 1, "a": 2}])
     b = HumanMessage(content=[{"type": "text", "text": "hi"}, {"a": 2, "b": 1}])
@@ -109,7 +109,7 @@ def _runtime(thread_id: str | None = "thread-1") -> SimpleNamespace:
 
 
 def _middleware(*, trigger=("messages", 4), keep=("messages", 2), extensions=_UNOBSERVED):
-    from agent_workspace.agents.middlewares.summarization_middleware import AgentWorkspaceSummarizationMiddleware
+    from alpha.agents.middlewares.summarization_middleware import AgentWorkspaceSummarizationMiddleware
 
     model = MagicMock()
     model.invoke.return_value = SimpleNamespace(text="compressed summary")
@@ -127,7 +127,7 @@ def _middleware(*, trigger=("messages", 4), keep=("messages", 2), extensions=_UN
 class TestSummarizationEmitsTheEvent:
     @pytest.mark.asyncio
     async def test_a_compaction_notifies_observers_once(self, monkeypatch):
-        from agent_workspace.agents.middlewares import summarization_middleware
+        from alpha.agents.middlewares import summarization_middleware
 
         events = []
         monkeypatch.setattr(
@@ -153,7 +153,7 @@ class TestSummarizationEmitsTheEvent:
 
     @pytest.mark.asyncio
     async def test_no_event_is_emitted_when_the_trigger_does_not_fire(self, monkeypatch):
-        from agent_workspace.agents.middlewares import summarization_middleware
+        from alpha.agents.middlewares import summarization_middleware
 
         events = []
         monkeypatch.setattr(
@@ -183,7 +183,7 @@ class TestAnInstallWithNoObserverPaysNothing:
     def test_the_sources_are_not_hashed_when_nothing_observes(self):
         from dataclasses import replace
 
-        from agent_workspace.extensions import get_agent_build_extensions
+        from alpha.extensions import get_agent_build_extensions
 
         unobserved = replace(get_agent_build_extensions(), context_compaction_observers=())
         middleware = _middleware(extensions=unobserved)
@@ -200,8 +200,8 @@ class TestAnInstallWithNoObserverPaysNothing:
         """The skip must cost the run nothing but the hashes."""
         from dataclasses import replace
 
-        from agent_workspace.agents.middlewares import summarization_middleware
-        from agent_workspace.extensions import get_agent_build_extensions
+        from alpha.agents.middlewares import summarization_middleware
+        from alpha.extensions import get_agent_build_extensions
 
         events = []
         monkeypatch.setattr(summarization_middleware, "notify_context_compacted", lambda event, extensions=None: events.append(event))
