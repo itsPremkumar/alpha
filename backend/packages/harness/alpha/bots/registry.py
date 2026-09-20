@@ -203,7 +203,15 @@ class BotRegistry:
         Existing bots are returned untouched.
         """
         key = name.lower().strip()
-        spec = get_template(template) if template else None
+        # Fall back to the bot's own name when no template was passed. Canonical
+        # slugs (coder, reviewer, sentinel, ...) must resolve to their catalog
+        # entry even without an explicit template=. Without this,
+        # get_or_create("sentinel") silently produced a GENERIC bot: right name,
+        # but a placeholder role, the default department and the generic SOUL
+        # instead of the Sentinel safety contract. Found only by exercising the
+        # real /api/bots/sentinel/ensure endpoint, not by unit tests.
+        resolved_template = template or key
+        spec = get_template(resolved_template)
         if template and spec is None:
             raise ValueError(f"Unknown bot template '{template}'.")
         with self._lock:
@@ -213,7 +221,16 @@ class BotRegistry:
             # Auto-provision new bot on demand
             assigned_role = role or (spec["role"] if spec else None) or _infer_role_from_name(key)
             assigned_display = display_name or (spec["display"] if spec else None) or key.capitalize()
-            assigned_soul = soul or generate_default_soul(key, assigned_role)
+            # The Sentinel is the one bot allowed to change code and commit
+            # unattended, so it must never receive the generic SOUL. Same rule
+            # as _ensure_default_roster, applied here because get_or_create is
+            # the path the /api/bots/{name}/ensure endpoint uses.
+            if soul:
+                assigned_soul = soul
+            elif resolved_template == "sentinel":
+                assigned_soul = generate_sentinel_soul(key)
+            else:
+                assigned_soul = generate_default_soul(key, assigned_role)
             assigned_avatar = avatar if avatar is not None else (spec["avatar"] if spec else "")
             assigned_dept = department or (spec.get("department") if spec else "engineering")
             assigned_reports = reports_to or (spec.get("reports_to") if spec else None)
