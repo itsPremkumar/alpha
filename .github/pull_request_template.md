@@ -63,7 +63,7 @@ Fixes #
 
 ## AI assistance
 
-<!-- Agent Workspace is an AI project — most PRs here use AI coding tools, and that's
+<!-- Alpha is an AI project — most PRs here use AI coding tools, and that's
      welcome. Disclosing it just helps reviewers calibrate how closely to read the
      diff. Please fill all three; don't delete the section. -->
 

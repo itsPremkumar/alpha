@@ -12,9 +12,9 @@ guide rather than expecting full detail here:
 - **[frontend/AGENTS.md](frontend/AGENTS.md)** — frontend depth: Next.js App Router layout,
   thread/streaming data flow, code style, commands.
 
-## What is Agent Workspace
+## What is Alpha
 
-Agent Workspace is a LangGraph-based AI super-agent system with a full-stack architecture. The
+Alpha is a LangGraph-based AI super-agent system with a full-stack architecture. The
 backend runs a "super agent" with sandboxed execution, persistent memory, subagent
 delegation, and extensible tools (built-in, MCP, community), all per-thread isolated. The
 frontend is a Next.js chat UI. External IM platforms (Feishu, Slack, Telegram, Discord,
