@@ -102,6 +102,60 @@ class BotProfile:
         overrides["namespace"] = self.memory_namespace()
         return overrides
 
+    def effective_capabilities(
+        self,
+        candidate_tools: list[str] | None = None,
+        *,
+        enabled_skills: list[str] | None = None,
+        available_mcp_servers: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Resolve what this bot can actually do, for preview and audit.
+
+        There was no way to ask "what can this bot use?" — ``toolsets`` and
+        ``skills`` are stored on the profile, but nothing combined them with the
+        role ring or the configured skill/MCP allowlists into one answer. That
+        made the declared surface invisible to operators and to the UI.
+
+        Pure and side-effect free: pass the candidate names in, get the resolved
+        surface back. ``candidate_tools=None`` means "cannot resolve tools yet",
+        which yields ``None`` rather than a misleading empty list.
+        """
+        allowed_tools: list[str] | None = None
+        if candidate_tools is not None:
+            from agent_workspace.bots.permissions import ToolPermissionGate
+
+            gate = ToolPermissionGate()
+            kept: list[str] = []
+            for name in candidate_tools:
+                allowed, _reason, requires_approval = gate.check_permission(
+                    self.role, name
+                )
+                if allowed or requires_approval:
+                    kept.append(name)
+            allowed_tools = kept
+
+        skills = list(self.skills)
+        if enabled_skills is not None:
+            declared = set(self.skills)
+            skills = [s for s in enabled_skills if s in declared]
+
+        servers = list(self.mcp_servers)
+        if available_mcp_servers is not None and self.mcp_servers:
+            configured = set(available_mcp_servers)
+            servers = [s for s in self.mcp_servers if s in configured]
+
+        return {
+            "bot": self.name,
+            "role": self.role,
+            "model": self.model or "inherit",
+            "agent_preset": self.agent_preset or "default",
+            "tools": allowed_tools,
+            "skills": skills,
+            "mcp_servers": servers,
+            "memory_namespace": self.memory_namespace(),
+            "epoch": self.capability_fingerprint(),
+        }
+
     def capability_fingerprint(self) -> str:
         """Compute a deterministic 12-hex digest of the bot's capability surface.
 
