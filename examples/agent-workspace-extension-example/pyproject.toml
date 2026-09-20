@@ -14,9 +14,6 @@ dependencies = [
 [project.entry-points."alpha.extensions"]
 example = "agent_workspace_extension_example:install"
 
-[project.entry-points."alpha.extensions"]
-example = "agent_workspace_extension_example:install"
-
 [project.optional-dependencies]
 dev = [
     "httpx>=0.28,<1",

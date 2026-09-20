@@ -35,6 +35,9 @@ backend/scripts/benchmark/*.jsonl
 config.yaml
 mcp_config.json
 extensions_config.json
+# Runtime lock files written by the Gateway next to those configs.
+.*.json.lock
+*.json.lock
 
 # IDE
 .idea/
@@ -43,8 +46,6 @@ extensions_config.json
 # Coverage report
 coverage.xml
 coverage/
-.agent-workspace/
-.alpha/
 .agent-workspace/
 .alpha/
 .claude/
@@ -85,5 +86,13 @@ config.yaml.bak
 backend/.agent_workspace_projects/
 .deerflow_projects/
 .workbuddy-ai/
+
+# OS / editor noise
+**/.DS_Store
+**/Thumbs.db
+
+# Local tooling state (not part of the app)
+.hypothesis/
+.ruff_cache/
 
 

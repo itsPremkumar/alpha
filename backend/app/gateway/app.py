@@ -7,6 +7,11 @@ from agent_workspace_extension_api import EXTENSION_PRINCIPAL_RESOLVER_KEY, Exte
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
+from alpha.branding import DISPLAY_NAME
+from alpha.config import app_config as agent_workspace_app_config
+from alpha.logging_config import DEFAULT_LOG_DATE_FORMAT, DEFAULT_LOG_FORMAT, configure_logging
+from alpha.tracing.monocle import setup_monocle_tracing_if_enabled
+from alpha.uploads.manager import cleanup_stale_upload_staging_files
 from app.gateway.auth_disabled import AUTH_SOURCE_INTERNAL, AUTH_SOURCE_PAT, warn_if_auth_disabled_enabled
 from app.gateway.auth_middleware import AuthMiddleware
 from app.gateway.browser_capability import ensure_browser_runtime_available
@@ -52,6 +57,7 @@ from app.gateway.routers import (
     models,
     openai_compat,
     ops,
+    ops_integration,
     plan_mode,
     policy,
     projects,
@@ -72,11 +78,6 @@ from app.gateway.routers import (
 )
 from app.gateway.security_headers_middleware import SecurityHeadersMiddleware
 from app.gateway.trace_middleware import TraceMiddleware
-from alpha.branding import DISPLAY_NAME
-from alpha.config import app_config as agent_workspace_app_config
-from alpha.logging_config import DEFAULT_LOG_DATE_FORMAT, DEFAULT_LOG_FORMAT, configure_logging
-from alpha.tracing.monocle import setup_monocle_tracing_if_enabled
-from alpha.uploads.manager import cleanup_stale_upload_staging_files
 
 AppConfig = agent_workspace_app_config.AppConfig
 get_app_config = agent_workspace_app_config.get_app_config
@@ -123,9 +124,9 @@ async def _ensure_admin_user(app: FastAPI) -> None:
     """
     from sqlalchemy import select
 
-    from app.gateway.deps import get_local_provider
     from alpha.persistence.engine import get_session_factory
     from alpha.persistence.user.model import UserRow
+    from app.gateway.deps import get_local_provider
 
     try:
         provider = get_local_provider()
@@ -395,8 +396,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception:
             logger.exception("No IM channels configured or channel service failed to start")
 
-        from app.gateway.services import launch_mcp_task_notification_run
-        from app.mcp_tasks import McpTaskService
         from alpha.config.extensions_config import ExtensionsConfig
         from alpha.config.mcp_tasks_config import McpTasksConfig
         from alpha.mcp.task_tool_caller import McpTaskToolCaller
@@ -411,6 +410,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             set_mcp_task_submitter,
             validate_mcp_task_runtime_configuration,
         )
+        from app.gateway.services import launch_mcp_task_notification_run
+        from app.mcp_tasks import McpTaskService
 
         task_extensions_config = ExtensionsConfig.from_file()
         mcp_tasks_config = getattr(startup_config, "mcp_tasks", McpTasksConfig())
@@ -455,8 +456,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 set_mcp_task_submitter(mcp_task_service)
                 app.state.mcp_tasks_available = True
 
-        from app.subagent_batches import SubagentBatchService
         from alpha.subagents.batch_runtime import set_subagent_batch_submitter
+        from app.subagent_batches import SubagentBatchService
 
         batch_repo = getattr(app.state, "subagent_batch_repo", None)
         app.state.subagent_batches_available = False
@@ -475,7 +476,58 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 set_subagent_batch_submitter(batch_service)
                 app.state.subagent_batches_available = True
 
+        # Autonomy supervisor: single owner of the self-running subsystem loops
+        # (sentinel, perpetual daemon, review-queue observer, skill curator,
+        # enterprise heartbeat). Disabled by default per-loop; the master switch
+        # lives at autonomy.enabled. Started last so its loops never race the
+        # fail-closed startup path above.
+        try:
+            from alpha.events.bus import configure_event_bus
+            from app.gateway.autonomy.supervisor import get_autonomy_supervisor
+
+            autonomy_cfg = startup_config.autonomy
+            configure_event_bus(
+                enabled=autonomy_cfg.bus.enabled,
+                queue_maxsize=autonomy_cfg.bus.queue_maxsize,
+                handler_timeout_seconds=autonomy_cfg.bus.handler_timeout_seconds,
+            )
+            autonomy_supervisor = get_autonomy_supervisor(autonomy_cfg)
+            app.state.autonomy_supervisor = autonomy_supervisor
+            if autonomy_cfg.enabled:
+                await autonomy_supervisor.start()
+        except Exception:
+            logger.exception("Autonomy supervisor failed to start (non-fatal)")
+
+        # Opt-in capabilities (alpha.capabilities.catalog). Nothing loads unless
+        # the operator enables an id under `capabilities:` in config.yaml, and a
+        # failing subsystem is reported by /api/ops/integration-health instead of
+        # blocking startup.
+        try:
+            from alpha.capabilities import load_enabled_capabilities
+
+            capabilities_cfg = startup_config.capabilities
+            loaded = await asyncio.to_thread(load_enabled_capabilities, capabilities_cfg)
+            app.state.capabilities = loaded
+            if loaded:
+                logger.info("Loaded opt-in capabilities: %s", ", ".join(sorted(loaded)))
+        except Exception:
+            logger.exception("Capability loader failed (non-fatal)")
+
         yield
+
+        # Stop the supervisor FIRST: its loops must not observe a half-stopped
+        # stack (channels/scheduler already draining below).
+        autonomy_supervisor = getattr(app.state, "autonomy_supervisor", None)
+        if autonomy_supervisor is not None:
+            try:
+                await asyncio.wait_for(
+                    autonomy_supervisor.stop(),
+                    timeout=_SHUTDOWN_HOOK_TIMEOUT_SECONDS,
+                )
+            except TimeoutError:
+                logger.warning("Autonomy supervisor shutdown exceeded %.1fs; proceeding.", _SHUTDOWN_HOOK_TIMEOUT_SECONDS)
+            except Exception:
+                logger.exception("Failed to stop autonomy supervisor")
 
         try:
             await auth.close_oidc_service()
@@ -856,6 +908,7 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
 
     # Features API is mounted at /api/features
     app.include_router(features.router)
+    app.include_router(ops_integration.router)
 
     # Console API (cross-thread observability) is mounted at /api/console
     app.include_router(console.router)

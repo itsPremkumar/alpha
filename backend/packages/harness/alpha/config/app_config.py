@@ -15,6 +15,8 @@ from alpha.config.agent_storage_config import AgentStorageConfig
 from alpha.config.agents_api_config import AgentsApiConfig, load_agents_api_config_from_dict
 from alpha.config.auth_config import AuthAppConfig
 from alpha.config.authorization_config import AuthorizationConfig, load_authorization_config_from_dict
+from alpha.config.autonomy_config import AutonomyConfig
+from alpha.config.capabilities_config import CapabilitiesConfig
 from alpha.config.channel_connections_config import ChannelConnectionsConfig
 from alpha.config.checkpointer_config import CheckpointerConfig, load_checkpointer_config_from_dict
 from alpha.config.database_config import DatabaseConfig
@@ -271,6 +273,8 @@ class AppConfig(BaseModel):
     read_before_write: ReadBeforeWriteConfig = Field(default_factory=ReadBeforeWriteConfig, description="Read-before-write file gate middleware configuration")
     review_guard: ReviewGuardConfig = Field(default_factory=ReviewGuardConfig, description="Review guard middleware configuration (comment density, role-scoped writes)")
     safety_finish_reason: SafetyFinishReasonConfig = Field(default_factory=SafetyFinishReasonConfig, description="Provider safety-filter finish_reason interception middleware configuration")
+    autonomy: AutonomyConfig = Field(default_factory=AutonomyConfig, description="Self-running subsystems: event bus, observe-only middlewares and background loops (AutonomySupervisor).")
+    capabilities: CapabilitiesConfig = Field(default_factory=CapabilitiesConfig, description="Opt-in capability subsystems (see alpha.capabilities.catalog); all off unless enabled here.")
     auth: AuthAppConfig = Field(default_factory=AuthAppConfig, description="Authentication configuration (local + OIDC SSO)")
     model_config = ConfigDict(extra="allow")
     database: DatabaseConfig = Field(
@@ -592,8 +596,7 @@ class AppConfig(BaseModel):
                     # empty value and let the integration that actually needs
                     # the key fail loudly when it is used.
                     logger.warning(
-                        "Environment variable %s is not set; config value %s resolved to an empty string. "
-                        "Set it in .env or the environment to enable this integration.",
+                        "Environment variable %s is not set; config value %s resolved to an empty string. Set it in .env or the environment to enable this integration.",
                         env_name,
                         config,
                     )

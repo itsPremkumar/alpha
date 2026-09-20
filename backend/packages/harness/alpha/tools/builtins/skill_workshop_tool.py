@@ -50,7 +50,7 @@ def synthesize_reusable_skill(
 
     if not draft.is_valid:
         return (
-            f"Draft generated but failed quality review gates:\n"
+            "Draft generated but failed quality review gates:\n"
             + "\n".join(f"- {f}" for f in draft.findings)
         )
 

@@ -112,14 +112,14 @@ class TestLearningForkMiddleware:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_no_thread_id_returns_none(self, config, state, runtime):
+    async def test_no_thread_id_returns_none(self, middleware, state, runtime):
         runtime.context = {}
         with patch("langgraph.config.get_config", return_value={"configurable": {}}):
             result = await middleware.after_agent(state, runtime)
             assert result is None
 
     @pytest.mark.asyncio
-    async def test_no_messages_returns_none(self, config, state, runtime):
+    async def test_no_messages_returns_none(self, middleware, state, runtime):
         state["messages"] = []
         result = await middleware.after_agent(state, runtime)
         assert result is None

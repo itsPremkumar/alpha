@@ -43,7 +43,6 @@ class ModelEndpointConfig:
 
     def get_next_available_key(self) -> str | None:
         """Round-robin through keys, preferring those not currently in cooldown."""
-        now = time.time()
         n = len(self.api_keys)
         for i in range(n):
             idx = (self._key_index + i) % n

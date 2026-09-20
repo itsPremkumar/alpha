@@ -17,10 +17,9 @@ from alpha.company.archetypes import (
 from alpha.company.attendance import AttendanceLedgerEngine, AttendanceStatus, BotHeartbeat
 from alpha.company.bot_medic import BotMedicEngine
 from alpha.company.discovery import ContinuousWorkDiscoveryEngine
-from alpha.company.executive import ExecutiveDigest, ExecutiveIntelligenceLayer
 from alpha.company.enterprise_kanban import EnterpriseKanbanAdapter, HermesKanbanAdapter
-from alpha.company.group_chat import GroupChatEngine
-from alpha.company.swarm_bridge import HermesLocalBridge, SwarmLocalBridge
+from alpha.company.executive import ExecutiveDigest, ExecutiveIntelligenceLayer
+from alpha.company.group_chat import GroupChannel, GroupChatEngine, GroupMessage
 from alpha.company.kanban import CompanyKanbanEngine
 from alpha.company.kpi import KPIEngine
 from alpha.company.models import (
@@ -38,6 +37,7 @@ from alpha.company.production_line import ProductionLineEngine
 from alpha.company.responsibility import ResponsibilityEngine
 from alpha.company.self_improvement import ContinuousSelfImprovementEngine
 from alpha.company.strategy import StrategicPlanningEngine, StrategyReplanReport
+from alpha.company.swarm_bridge import HermesLocalBridge, SwarmLocalBridge
 
 logger = logging.getLogger(__name__)
 

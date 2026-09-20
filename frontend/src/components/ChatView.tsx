@@ -60,6 +60,7 @@ const AgentsSection = lazy(() => import("@/components/sections/AgentsSection").t
 const TeamOpsSection = lazy(() => import("@/components/sections/TeamOpsSection").then((m) => ({ default: m.TeamOpsSection })));
 const ChannelsSection = lazy(() => import("@/components/sections/ChannelsSection").then((m) => ({ default: m.ChannelsSection })));
 const SystemSection = lazy(() => import("@/components/sections/SystemSection").then((m) => ({ default: m.SystemSection })));
+const IntegrationSection = lazy(() => import("@/components/sections/IntegrationSection").then((m) => ({ default: m.IntegrationSection })));
 const WorkforceSection = lazy(() => import("@/components/sections/WorkforceSection").then((m) => ({ default: m.WorkforceSection })));
 const WarRoomSection = lazy(() => import("@/components/sections/WarRoomSection").then((m) => ({ default: m.WarRoomSection })));
 
@@ -975,6 +976,10 @@ export default function ChatView() {
         ) : view === "system" ? (
           <Suspense fallback={<SectionFallback />}>
             <SystemSection threadId={activeThreadId} browserActive={features.browserControl} />
+          </Suspense>
+        ) : view === "integration" ? (
+          <Suspense fallback={<SectionFallback />}>
+            <IntegrationSection />
           </Suspense>
         ) : (
           <>

@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from langchain.tools import tool
-from langgraph.runtime import Runtime
 
 from alpha.tools.code_mode.bridge import execute_code_mode
 from alpha.tools.code_mode.tool import get_default_bridge
+from alpha.tools.types import Runtime
 
 
 @tool("code_mode", parse_docstring=True)

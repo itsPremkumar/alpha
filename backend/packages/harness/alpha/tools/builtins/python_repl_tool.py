@@ -3,17 +3,17 @@
 from __future__ import annotations
 
 from langchain.tools import tool
-from langgraph.runtime import Runtime
 
 from alpha.sandbox.repl.session import get_repl_session
+from alpha.tools.types import Runtime
 
 
 @tool("python_repl", parse_docstring=True)
 async def python_repl_tool(
     code: str,
+    runtime: Runtime,
     timeout: float = 30.0,
     session_id: str | None = None,
-    runtime: Runtime | None = None,
 ) -> str:
     """Execute Python code in a persistent, stateful REPL kernel.
 

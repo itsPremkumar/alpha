@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from langchain.tools import tool
-from langgraph.runtime import Runtime
 
 from alpha.subagents.messaging import DeliveryMode, get_agent_roster
+from alpha.tools.types import Runtime
 
 
 def _resolve_thread_id(runtime: Runtime | None) -> str:

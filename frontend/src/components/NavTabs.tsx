@@ -20,6 +20,7 @@ import {
   SquareKanban,
   Factory,
   Building2,
+  PlugZap,
 } from "lucide-react";
 
 export type WorkspaceView =
@@ -40,7 +41,8 @@ export type WorkspaceView =
   | "team"
   | "channels"
   | "workforce"
-  | "system";
+  | "system"
+  | "integration";
 
 export const WORKSPACE_TABS: Array<{ id: WorkspaceView; label: string; icon: React.ReactNode; blurb: string }> = [
   { id: "chat", label: "Chat", icon: <MessageSquare className="size-3.5" />, blurb: "Talk to the agent" },
@@ -61,6 +63,7 @@ export const WORKSPACE_TABS: Array<{ id: WorkspaceView; label: string; icon: Rea
   { id: "channels", label: "Channels", icon: <Plug className="size-3.5" />, blurb: "Chat apps & integrations" },
   { id: "workforce", label: "Workforce", icon: <Factory className="size-3.5" />, blurb: "Bot inbox, presence, curator & oversight" },
   { id: "system", label: "System", icon: <ServerCog className="size-3.5" />, blurb: "Live status, shortcuts, apps" },
+  { id: "integration", label: "Integration", icon: <PlugZap className="size-3.5" />, blurb: "Wiring status & opt-in capabilities" },
 ];
 
 /** Wrapping tab bar: everything visible, nothing hidden in menus. */

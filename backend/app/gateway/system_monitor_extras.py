@@ -414,6 +414,7 @@ def sample_internet_quality(
                     "successes": host_successes,
                     "rtt_ms": round(sum(host_latencies) / len(host_latencies), 1) if host_latencies else None,
                     "min_rtt_ms": round(min(host_latencies), 1) if host_latencies else None,
+                    "checked_at": _now(),
                 }
             )
 

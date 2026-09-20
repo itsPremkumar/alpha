@@ -48,10 +48,20 @@ Thumbs.db
 conf.yaml
 web/
 docs/
+references/
 examples/
 assets/
 tests/
 *.log
+**/.hypothesis/
+**/.ruff_cache/
+**/.pytest_cache/
+**/tsconfig.tsbuildinfo
+electron/
+.workbuddy-ai/
+.agent/
+.agent_workspace_projects/
+backend/.agent_workspace_projects/
 
 # Exclude directories not needed in Docker context
 # Frontend build only needs frontend/

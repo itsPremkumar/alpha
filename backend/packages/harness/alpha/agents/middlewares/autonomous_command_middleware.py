@@ -10,11 +10,12 @@ Automatically identifies and initiates slash command workflows at the exact corr
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, List, Optional, override
+from collections.abc import Callable
+from typing import Any, override
 
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import ModelRequest, ModelResponse
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import SystemMessage, ToolMessage
 
 from alpha.commands.autonomous_engine import (
     AutonomousDetectionResult,
@@ -44,7 +45,9 @@ class AutonomousCommandMiddleware(AgentMiddleware):
         latest_user_text = ""
         for msg in reversed(messages):
             if is_real_user_message(msg):
-                latest_user_text = get_original_user_content_text(msg)
+                latest_user_text = get_original_user_content_text(
+                    getattr(msg, "content", ""), getattr(msg, "additional_kwargs", None)
+                )
                 break
 
         directive_injected = False

@@ -11,8 +11,8 @@ import collections
 import logging
 import re
 import time
-from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, List, Optional
+from dataclasses import asdict, dataclass
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +83,7 @@ class AutonomousTeammateMesh:
 
     def send_dm(self, sender: str, target: str, message: str) -> DMReceipt:
         clean_target = target.strip()
-        if clean_target not in self.roster and not "/" in clean_target:
+        if clean_target not in self.roster and "/" not in clean_target:
             raise ValueError(f"Unknown recipient '{clean_target}'. Available teammates: {list(self.roster.keys())}")
 
         if len(message) > MESSAGE_MAX_CHARS:

@@ -164,7 +164,7 @@ models:
     display_name: Union Alpha (OpenRouter)
     description: "Anonymous-provider preview; prompts and completions may be retained. Verify provider terms before sending sensitive data."
     use: langchain_openai:ChatOpenAI
-    model: stealth/union-alpha
+    model: unbiased/pareto
     base_url: https://openrouter.ai/api/v1
     api_key: $OPENROUTER_API_KEY
     context_window: 262144
@@ -3025,3 +3025,43 @@ authorization:
 #                                         # also match a host-owned table name.
 #     config:
 #       label: example                    # extension-private values, if any
+
+# ============================================================================
+# Autonomy (self-running subsystems)
+# ============================================================================
+# Single supervisor owns every background loop. Flags off = zero activity.
+# Per-loop ids: sentinel, perpetual, review_queue, skill_curator,
+# enterprise_heartbeat. A loop id absent from `loops` stays DISABLED.
+autonomy:
+  enabled: true                 # master switch for the supervisor + event bus
+  bus:
+    enabled: true
+    queue_maxsize: 256
+    handler_timeout_seconds: 30.0
+  metacognition:                # observe-only middleware (never changes replies)
+    enabled: true
+    confidence: 0.8
+    window: 5
+  continual_harness:            # inject learned directives into context
+    enabled: true
+  loops: {}
+  # Example: enable the observe-only sentinel pass every 10 minutes
+  # loops:
+  #   sentinel:
+  #     enabled: true
+  #     interval_seconds: 600.0
+
+# ============================================================================
+# Opt-in capabilities (see backend/packages/harness/alpha/capabilities/catalog.py)
+# ============================================================================
+# Complete but OPTIONAL subsystems. Every id below is off unless flipped to
+# true; enabling nothing changes no runtime behaviour. Ids: teammate_mesh,
+# micro_compaction, moa_engine, promptbreeder, retrospective_engine,
+# github_bridge, stop_guard, autonomous_curator, autonomous_learning_graph,
+# memory_nudges, mcp_gateway, active_memory, local_llm_failover,
+# dag_orchestrator, message_converters, lane_scheduler, canary_sandbox,
+# net_policy, self_repo_guard, container_runner, mcp_lifecycle,
+# yield_handoff, cnp_auction, trajectory_compressor, sdlc_engine.
+capabilities:
+  enabled: true                 # master switch for the capability loader
+  capabilities: {}              # per-capability opt-in, e.g. { net_policy: true }

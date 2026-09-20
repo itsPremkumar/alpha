@@ -528,6 +528,14 @@ def build_middlewares(
 
     middlewares.append(DynamicContextMiddleware(agent_name=agent_name, app_config=resolved_app_config))
 
+    # Continual Harness injection — learned directives, project memories and
+    # failure rules from local + global harness state. Fail-open: disk or state
+    # errors degrade to "no reminder" and never break agent assembly.
+    if resolved_app_config.autonomy.continual_harness.enabled:
+        from alpha.agents.middlewares.continual_harness_middleware import ContinualHarnessMiddleware
+
+        middlewares.append(ContinualHarnessMiddleware())
+
     # Deterministically load a full SKILL.md when the user starts the turn with
     # /skill-name. This keeps the base system prompt metadata-only while giving
     # explicit user activation priority over model-side relevance guessing.
@@ -548,7 +556,6 @@ def build_middlewares(
     from alpha.agents.middlewares.autonomous_command_middleware import AutonomousCommandMiddleware
 
     middlewares.append(AutonomousCommandMiddleware())
-
 
     # Observe the final tool_search Command after every inner policy/result
     # transformer has run. Tool wrappers are first-in-list outermost, so this
@@ -603,6 +610,19 @@ def build_middlewares(
     # Add TokenUsageMiddleware when token_usage tracking is enabled
     if resolved_app_config.token_usage.enabled:
         middlewares.append(TokenUsageMiddleware())
+
+    # Metacognitive observer — records tool outcomes and logs strategy-switch
+    # signals. Observe-only and fail-open: it can never mutate state or break a
+    # run. Integrated here so the metacognition subsystem is actually live.
+    if resolved_app_config.autonomy.metacognition.enabled:
+        from alpha.agents.middlewares.metacognitive_middleware import MetacognitiveMiddleware
+
+        middlewares.append(
+            MetacognitiveMiddleware(
+                confidence=resolved_app_config.autonomy.metacognition.confidence,
+                window=resolved_app_config.autonomy.metacognition.window,
+            )
+        )
 
     # Add TitleMiddleware
     middlewares.append(
@@ -709,6 +729,7 @@ def build_middlewares(
 
     # FinishFirstVerifierMiddleware — audits evidence on code modifications to prevent false completion
     from alpha.agents.middlewares.finish_first_verifier_middleware import FinishFirstVerifierMiddleware
+
     middlewares.append(FinishFirstVerifierMiddleware())
 
     # SafetyFinishReasonMiddleware — suppress tool execution when the provider

@@ -5,11 +5,11 @@ from __future__ import annotations
 from typing import Literal
 
 from langchain.tools import tool
-from langgraph.runtime import Runtime
 
 from alpha.harness.continual.refine import ContinualRefinementEngine
 from alpha.harness.continual.snapshots import HarnessSnapshotManager
 from alpha.harness.continual.state import HarnessKind, HarnessScope, HarnessState
+from alpha.tools.types import Runtime
 
 
 @tool("harness_refine", parse_docstring=True)
