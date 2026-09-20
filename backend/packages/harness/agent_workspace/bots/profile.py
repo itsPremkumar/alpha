@@ -86,6 +86,24 @@ class BotProfile:
         """
         return (self.memory_scope or self.name).strip().lower()
 
+    def memory_storage_key(self) -> str:
+        """Path-safe form of :meth:`memory_namespace` for use as a directory name.
+
+        Bot names are operator-supplied and may contain separators, dots or
+        ``..``. :meth:`memory_namespace` is the logical key; this is what may be
+        joined onto a filesystem path. Without the sanitisation a bot named
+        ``../../etc`` could point its memory store outside the intended root.
+        """
+        import re
+
+        raw = self.memory_namespace()
+        safe = re.sub(r"[^a-z0-9._-]+", "-", raw)
+        # Collapse dot-runs: "a/../b" becomes "a-..-b", and ".." is still a
+        # traversal segment on its own.
+        safe = re.sub(r"\.{2,}", ".", safe)
+        safe = safe.strip("-.")
+        return safe or "bot"
+
     def effective_memory_settings(self) -> dict[str, Any]:
         """Only the memory fields this bot actually overrides.
 
