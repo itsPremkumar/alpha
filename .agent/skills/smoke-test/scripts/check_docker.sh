@@ -56,7 +56,7 @@ if [ -n "$port_2026_usage" ]; then
 
         process_command="$(ps -p "$pid" -o command= 2>/dev/null || true)"
         case "$process_command" in
-            *[Dd]eer[Ff]low*|*[Dd]eerflow*|*[Nn]ginx*agent_workspace*|*agent_workspace/*[Nn]ginx*)
+            *[Dd]eer[Ff]low*|*[Dd]eerflow*|*[Nn]ginx*alpha*|*alpha/*[Nn]ginx*)
                 agent_workspace_process_found=1
                 ;;
         esac

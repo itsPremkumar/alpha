@@ -4,27 +4,27 @@
 
 ### 1. Core Implementation Files
 
-#### [`packages/harness/agent_workspace/agents/thread_state.py`](../packages/harness/agent_workspace/agents/thread_state.py)
+#### [`packages/harness/alpha/agents/thread_state.py`](../packages/harness/alpha/agents/thread_state.py)
 - ✅ Added `title: str | None = None` field to `ThreadState`
 
-#### [`packages/harness/agent_workspace/config/title_config.py`](../packages/harness/agent_workspace/config/title_config.py) (New)
+#### [`packages/harness/alpha/config/title_config.py`](../packages/harness/alpha/config/title_config.py) (New)
 - ✅ Created `TitleConfig` configuration class
 - ✅ Supports configuration options: `enabled`, `max_words`, `max_chars`, `model_name`, `prompt_template`
 - ✅ Provided `get_title_config()` and `set_title_config()` functions
 - ✅ Provided `load_title_config_from_dict()` to load configuration from file/dict
 
-#### [`packages/harness/agent_workspace/agents/middlewares/title_middleware.py`](../packages/harness/agent_workspace/agents/middlewares/title_middleware.py) (New)
+#### [`packages/harness/alpha/agents/middlewares/title_middleware.py`](../packages/harness/alpha/agents/middlewares/title_middleware.py) (New)
 - ✅ Created `TitleMiddleware` class
 - ✅ Implemented `_should_generate_title()` check
 - ✅ Defaults to generating a local fallback title, avoiding extra LLM latency before streaming completes; supports LLM title generation when `model_name` is explicitly configured
 - ✅ Implemented `after_model()` / `aafter_model()` hooks, triggered automatically after the initial turn
 - ✅ Included fallback policy (uses leading characters of user message if LLM is unconfigured or fails)
 
-#### [`packages/harness/agent_workspace/config/app_config.py`](../packages/harness/agent_workspace/config/app_config.py)
+#### [`packages/harness/alpha/config/app_config.py`](../packages/harness/alpha/config/app_config.py)
 - ✅ Imported `load_title_config_from_dict`
 - ✅ Loaded title configuration in `from_file()`
 
-#### [`packages/harness/agent_workspace/agents/lead_agent/agent.py`](../packages/harness/agent_workspace/agents/lead_agent/agent.py)
+#### [`packages/harness/alpha/agents/lead_agent/agent.py`](../packages/harness/alpha/agents/lead_agent/agent.py)
 - ✅ Imported `TitleMiddleware`
 - ✅ Registered into `middleware` list: `[SandboxMiddleware(), TitleMiddleware()]`
 
@@ -126,14 +126,14 @@ To persist titles during local development:
 # checkpointer.py
 from langgraph.checkpoint.sqlite import SqliteSaver
 
-checkpointer = SqliteSaver.from_conn_string("agent_workspace.db")
+checkpointer = SqliteSaver.from_conn_string("alpha.db")
 ```
 
 ```json
 // langgraph.json
 {
   "graphs": {
-    "lead_agent": "agent_workspace.agents:lead_agent"
+    "lead_agent": "alpha.agents:lead_agent"
   },
   "checkpointer": "checkpointer:checkpointer"
 }

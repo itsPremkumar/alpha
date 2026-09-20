@@ -241,7 +241,7 @@ backend/.agent-workspace/threads/
    - Handles upload, listing, and deletion requests
    - Executes optional document conversion via markitdown
 
-2. **Uploads Middleware** (`packages/harness/agent_workspace/agents/middlewares/uploads_middleware.py`)
+2. **Uploads Middleware** (`packages/harness/alpha/agents/middlewares/uploads_middleware.py`)
    - Inspects `additional_kwargs.files` on the incoming message
    - Injects `<current_uploads>` context into the Agent's turn
    - Historical uploads queried on-demand via `list_uploaded_files`

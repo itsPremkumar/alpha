@@ -222,9 +222,9 @@ no services required:
 
 ```bash
 uv pip install 'agent-workspace-harness[tui]'   # optional 'textual' dependency
-agent_workspace                                 # launch the TUI
-agent_workspace --print "summarize this repo"   # headless one-shot
-agent_workspace --recursion-limit 250 --print "run a longer task"
+alpha                                 # launch the TUI
+alpha --print "summarize this repo"   # headless one-shot
+alpha --recursion-limit 250 --print "run a longer task"
 ```
 
 Sessions opened in the TUI appear in the Web UI sidebar (it writes the shared
@@ -236,8 +236,8 @@ Sessions opened in the TUI appear in the Web UI sidebar (it writes the shared
 
 ```
 backend/
-├── packages/harness/           # agent-workspace-harness package (import: agent_workspace.*)
-│   └── agent_workspace/
+├── packages/harness/           # agent-workspace-harness package (import: alpha.*)
+│   └── alpha/
 │       ├── agents/             # Agent system
 │       │   ├── lead_agent/     # Main agent (factory, prompts)
 │       │   ├── middlewares/    # Middleware components
@@ -262,7 +262,7 @@ backend/
 │       ├── guardrails/         # Pre-tool-call authorization providers
 │       ├── tracing/            # Tracer factory & trace metadata
 │       ├── uploads/            # Uploads manager
-│       ├── tui/                # Terminal UI (`agent_workspace` console script)
+│       ├── tui/                # Terminal UI (`alpha` console script)
 │       ├── community/          # Community tools & providers
 │       ├── reflection/         # Dynamic module loading
 │       └── utils/              # Utilities
@@ -469,7 +469,7 @@ across processes; per-engine `asyncio.Lock` inside one SQLite process) and
 idempotent against pre-existing schemas (empty / legacy / versioned).
 
 When you add or change an ORM model, ship the change as a new revision under
-`packages/harness/agent_workspace/persistence/migrations/versions/`:
+`packages/harness/alpha/persistence/migrations/versions/`:
 
 ```bash
 make migrate-rev MSG="add foo column to runs"
@@ -477,7 +477,7 @@ make migrate-rev MSG="add foo column to runs"
 
 The target invokes `scripts/_autogen_revision.py`, which builds a fresh temp
 SQLite at `head` and diffs the live models against it — so a clean checkout
-does not need a pre-existing `./data/agent_workspace.db`. Review the generated file
+does not need a pre-existing `./data/alpha.db`. Review the generated file
 and switch raw `op.add_column` / `op.drop_column` calls to the idempotent
 helpers in `migrations/_helpers.py` before committing. There is no
 `make migrate` / `make migrate-stamp` target on purpose — Gateway startup is

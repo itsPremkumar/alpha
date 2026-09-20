@@ -90,8 +90,8 @@ alpha/
 │   │   ├── main.py          # FastAPI app entry
 │   │   └── middleware/      # Custom middleware
 │   ├── packages/
-│   │   ├── harness/         # Agent framework (agent_workspace.*)
-│   │   │   ├── agent_workspace/
+│   │   ├── harness/         # Agent framework (alpha.*)
+│   │   │   ├── alpha/
 │   │   │   │   ├── agent/       # Core agent logic
 │   │   │   │   ├── memory/      # Memory systems
 │   │   │   │   ├── tools/       # Built-in tools
@@ -600,7 +600,7 @@ Description of what this skill does.
 
 3. **Implementation** (main.py)
 ```python
-from agent_workspace.skills import Skill, tool
+from alpha.skills import Skill, tool
 
 class MySkill(Skill):
     name = "my-skill"

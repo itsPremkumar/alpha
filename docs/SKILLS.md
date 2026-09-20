@@ -178,8 +178,8 @@ Provide usage examples.
 
 ### Main Entry Point (main.py)
 ```python
-from agent_workspace.skills import Skill, tool, workflow
-from agent_workspace.skills.decorators import requires_config
+from alpha.skills import Skill, tool, workflow
+from alpha.skills.decorators import requires_config
 
 class MySkill(Skill):
     """Skill description for the registry."""
@@ -281,13 +281,13 @@ Skills register tools dynamically. Example categories:
 ```bash
 # Generate from template
 cd skills/public
-python -m agent_workspace.skills.create_skill my-new-skill
+python -m alpha.skills.create_skill my-new-skill
 ```
 
 #### 2. Implement Tools
 ```python
 # tools/my_tool.py
-from agent_workspace.skills import tool
+from alpha.skills import tool
 from pydantic import BaseModel, Field
 
 class MyToolInput(BaseModel):
@@ -306,7 +306,7 @@ async def my_tool(input: MyToolInput) -> dict:
 #### 3. Register Tools
 ```python
 # main.py
-from agent_workspace.skills import Skill
+from alpha.skills import Skill
 from .tools.my_tool import my_tool
 
 class MySkill(Skill):
@@ -337,7 +337,7 @@ async def test_my_tool(skill):
 #### 5. Run Skill Review
 ```bash
 # Automated review
-cd backend && python -m agent_workspace.skills.review skills/public/my-skill
+cd backend && python -m alpha.skills.review skills/public/my-skill
 
 # Or via API
 curl -X POST http://localhost:8001/api/skills/review \
@@ -425,7 +425,7 @@ make extension-install SOURCE=git+https://github.com/org/integration-skills.git
 ### Hot Reload (Development)
 ```bash
 # Watch for changes
-cd backend && python -m agent_workspace.skills.watch skills/public/my-skill
+cd backend && python -m alpha.skills.watch skills/public/my-skill
 ```
 
 ## Skill Curation System
@@ -544,7 +544,7 @@ cd backend && python -m pytest tests/skills/test_my_skill_integration.py -v
 ### Load Testing
 ```bash
 # Benchmark skill performance
-cd backend && python -m agent_workspace.skills.benchmark my-skill
+cd backend && python -m alpha.skills.benchmark my-skill
 ```
 
 ## Troubleshooting

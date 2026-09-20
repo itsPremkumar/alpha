@@ -68,7 +68,7 @@ agent-workspace/
 │   ├── Makefile                    # Per-module backend commands (dev, gateway, test, lint, migrate-rev)
 │   ├── extensions/sources/         # Deployable snapshots of locally installed Python extensions
 │   ├── packages/extension-api/     # agent-workspace-extension-api package (import: agent_workspace_extension_api.*) — public extension contract
-│   ├── packages/harness/           # agent-workspace-harness package (import: agent_workspace.*) — agent framework
+│   ├── packages/harness/           # agent-workspace-harness package (import: alpha.*) — agent framework
 │   └── app/                        # FastAPI Gateway + IM channels (import: app.*)
 ├── frontend/                       # Next.js frontend (pnpm) — see frontend/AGENTS.md
 ├── docker/                         # docker-compose files, nginx config, provisioner
@@ -87,12 +87,12 @@ Third-party extensions are loaded from a top-level `plugins:` list in `config.ya
 kept out of the API-writable `extensions_config.json`). Packaged extensions can contribute
 middleware, task lifecycle, system-model observers, Gateway services, and FastAPI HTTP
 routers; the [reference extension](examples/agent-workspace-extension-example/) demonstrates all
-five. Manage them with `agent_workspace extensions install/upgrade/list/enable/disable/remove` or the root
+five. Manage them with `alpha extensions install/upgrade/list/enable/disable/remove` or the root
 `make extension-*` wrappers. Every mutation requires a Gateway restart, and both build
 hooks and extension code execute with Gateway privileges, so only trusted operator sources
 belong in this path. The manager transaction, accepted source forms, lock discipline, and
 contribution contract live in
-[the extensions guide](backend/packages/harness/agent_workspace/extensions/AGENTS.md).
+[the extensions guide](backend/packages/harness/alpha/extensions/AGENTS.md).
 
 Runtime config lives at the **repo root**: copy `config.example.yaml` → `config.yaml`
 (main app config) and `extensions_config.example.json` → `extensions_config.json` (MCP
@@ -124,7 +124,7 @@ Scheduled-task note:
 - Busy scheduled occurrences are persisted as `queued`; `launching` is a short lease-fenced claim, `running` remains the normal Gateway run lifecycle, and `scheduler.queue_timeout_seconds` bounds the durable wait. Do not reintroduce skip-on-overlap or count waiting rows against `max_concurrent_runs`.
 
 Workforce layer note (Bot Mode + self-improvement + projects):
-- Harness: `packages/harness/agent_workspace/projects/` (membership, locks, constitution,
+- Harness: `packages/harness/alpha/projects/` (membership, locks, constitution,
   events/state, decisions, context, routing, workspace, handoffs, evidence, goals,
   conflicts — file-backed under `runtime_home()/projects/`, see its `AGENTS.md`),
   `bots/dm.py` + `bots/inbox.py` (fire-and-forget DMs, server-side attribution),
@@ -262,13 +262,13 @@ scripts and their tests before treating inherited CI workflows as working.
 
 Production cognitive memory requires a server-resolved owner and stores state
 under `Paths.user_dir(owner) / "cognitive_memory"` (`users/{owner}/cognitive_memory`).
-`backend/packages/harness/agent_workspace/memory/cognitive/engine.py:41` owns the per-owner,
+`backend/packages/harness/alpha/memory/cognitive/engine.py:41` owns the per-owner,
 per-directory process cache, locks and atomic fsync-backed snapshots; missing
 owners and corrupt-state load failures fail closed. Explicit `storage_dir`
 instances stay independent of the cache. Retained persistent records, not display
 pages, belong in snapshots; working memory stays ephemeral. These locks do not
 provide multi-process coherence. Keep HTTP/model-supplied owners and paths out of
-this boundary; see `backend/packages/harness/agent_workspace/memory/cognitive/AGENTS.md`
+this boundary; see `backend/packages/harness/alpha/memory/cognitive/AGENTS.md`
 for the detailed contract and current semantic-capacity caveat.
 
 ## Cross-Cutting Conventions

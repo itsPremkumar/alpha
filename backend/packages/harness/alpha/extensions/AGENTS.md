@@ -8,9 +8,9 @@ execution boundary. A plugin marked `required: true` fails Gateway construction 
 cannot load; optional plugins fail open with attributed diagnostics.
 
 Packaged extensions use one PEP 621 entry point in the
-`agent_workspace.extensions` group, for example
+`alpha.extensions` group, for example
 `example = "agent_workspace_extension_example:install"`. The operator CLI is dispatched from
-the existing `agent_workspace` console script to `extensions/cli.py` and exposes only these
+the existing `alpha` console script to `extensions/cli.py` and exposes only these
 surfaces: `install SOURCE [--yes]`, `upgrade SOURCE [--yes]`, `list`, `enable NAME`,
 `disable NAME`, and `remove NAME`. `NAME` resolves against the entry-point name, distribution name, or
 `module:install` value. The root `make extension-*` targets are convenience wrappers;
@@ -139,7 +139,7 @@ trigger project validation before the operator can list, disable, or remove it, 
 fresh checkout can still install the non-extension environment from the existing lock. After CLI
 entry, the manager owns the controlled locked sync.
 
-The public package is `packages/extension-api/` and must never import `agent_workspace` or carry
+The public package is `packages/extension-api/` and must never import `alpha` or carry
 framework dependencies. Extensions declare any FastAPI, LangChain, or LangGraph imports
 themselves. Its registry contract exposes seven contribution kinds: middleware
 contributors, task-lifecycle contributors, system-model-call observers, agent-assembly
@@ -180,7 +180,7 @@ stays supported.
 
 `SubagentExecutor` publishes the same descriptor kind for each delegated agent
 on `self.assembly_descriptor`. The projection itself lives in
-`agent_workspace/agents/assembly_descriptor.py`: a middleware that implements
+`alpha/agents/assembly_descriptor.py`: a middleware that implements
 `release_policy_parameters()` owns its own identity, and probing private
 attributes is the marked fallback for the ones that do not.
 

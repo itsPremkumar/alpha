@@ -54,7 +54,7 @@ This document provides a comprehensive overview of the Alpha backend architectur
 
 The agent runtime is embedded in the FastAPI Gateway and built on LangGraph for robust multi-agent workflow orchestration. Nginx rewrites `/api/langgraph/*` to Gateway's native `/api/*` routes, so the public API remains compatible with LangGraph SDK clients without running a separate LangGraph server.
 
-**Entry Point**: `packages/harness/agent_workspace/agents/lead_agent/agent.py:make_lead_agent`
+**Entry Point**: `packages/harness/alpha/agents/lead_agent/agent.py:make_lead_agent`
 
 **Key Responsibilities**:
 - Agent creation and configuration
@@ -70,7 +70,7 @@ It is not the default service entrypoint; scripts and Docker deployments run the
 {
   "agent": {
     "type": "agent",
-    "path": "agent_workspace.agents:make_lead_agent"
+    "path": "alpha.agents:make_lead_agent"
   }
 }
 ```
@@ -163,7 +163,7 @@ class ThreadState(AgentState):
               ▼                                         ▼
 ┌─────────────────────────┐              ┌─────────────────────────┐
 │  LocalSandboxProvider   │              │  AioSandboxProvider     │
-│  (packages/harness/agent_workspace/sandbox/local.py) │              │  (packages/harness/agent_workspace/community/)       │
+│  (packages/harness/alpha/sandbox/local.py) │              │  (packages/harness/alpha/community/)       │
 │                         │              │                         │
 │  - Singleton instance   │              │  - Docker-based         │
 │  - Direct execution     │              │  - Isolated containers  │
@@ -197,7 +197,7 @@ class ThreadState(AgentState):
 
 ┌─────────────────────┐  ┌─────────────────────┐  ┌─────────────────────┐
 │   Built-in Tools    │  │  Configured Tools   │  │     MCP Tools       │
-│  (packages/harness/agent_workspace/tools/)       │  │  (config.yaml)      │  │  (extensions.json)  │
+│  (packages/harness/alpha/tools/)       │  │  (config.yaml)      │  │  (extensions.json)  │
 ├─────────────────────┤  ├─────────────────────┤  ├─────────────────────┤
 │ - present_files     │  │ - web_search        │  │ - github            │
 │ - ask_clarification │  │ - web_fetch         │  │ - filesystem        │
@@ -213,7 +213,7 @@ class ThreadState(AgentState):
                                    ▼
                       ┌─────────────────────────┐
                       │   get_available_tools() │
-                      │   (packages/harness/agent_workspace/tools/__init__)  │
+                      │   (packages/harness/alpha/tools/__init__)  │
                       └─────────────────────────┘
 ```
 
@@ -222,7 +222,7 @@ class ThreadState(AgentState):
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                          Model Factory                                   │
-│                     (packages/harness/agent_workspace/models/factory.py)                              │
+│                     (packages/harness/alpha/models/factory.py)                              │
 └─────────────────────────────────────────────────────────────────────────┘
 
 config.yaml:
@@ -269,7 +269,7 @@ config.yaml:
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                          MCP Integration                                 │
-│                        (packages/harness/agent_workspace/mcp/manager.py)                              │
+│                        (packages/harness/alpha/mcp/manager.py)                              │
 └─────────────────────────────────────────────────────────────────────────┘
 
 extensions_config.json:
@@ -307,7 +307,7 @@ extensions_config.json:
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                          Skills System                                   │
-│                       (packages/harness/agent_workspace/skills/loader.py)                             │
+│                       (packages/harness/alpha/skills/loader.py)                             │
 └─────────────────────────────────────────────────────────────────────────┘
 
 Directory Structure:

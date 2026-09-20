@@ -302,8 +302,8 @@ The middleware intelligently preserves message context:
 
 ### Code Structure
 
-- **Configuration**: `packages/harness/agent_workspace/config/summarization_config.py`
-- **Integration**: `packages/harness/agent_workspace/agents/lead_agent/agent.py`
+- **Configuration**: `packages/harness/alpha/config/summarization_config.py`
+- **Integration**: `packages/harness/alpha/agents/lead_agent/agent.py`
 - **Middleware**: Uses `langchain.agents.middleware.SummarizationMiddleware`
 
 ### Middleware Order

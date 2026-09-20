@@ -110,8 +110,8 @@ const configTemplatesDir = isPackaged
 
 const userDataRoot = app.getPath('userData');
 const projectDir = path.join(userDataRoot, 'project');
-const agent_workspaceHomeDir = fs.existsSync(path.join(userDataRoot, 'agent_workspace-home'))
-  ? path.join(userDataRoot, 'agent_workspace-home')
+const agent_workspaceHomeDir = fs.existsSync(path.join(userDataRoot, 'alpha-home'))
+  ? path.join(userDataRoot, 'alpha-home')
   : path.join(userDataRoot, 'agent-workspace-home');
 const logsDir = path.join(userDataRoot, 'logs');
 const mainLogFile = path.join(logsDir, 'main.log');
@@ -227,7 +227,7 @@ function broadcastStatus(message, detail) {
   for (const win of BrowserWindow.getAllWindows()) {
     try {
       win.webContents.send('agent-workspace:status', payload);
-      win.webContents.send('agent_workspace:status', payload);
+      win.webContents.send('alpha:status', payload);
     } catch {
       // Window may be closing; ignore.
     }
@@ -1075,13 +1075,13 @@ if (!gotLock) {
   });
 
   ipcMain.handle('agent-workspace:status', () => runtimeStatus);
-  ipcMain.handle('agent_workspace:status', () => runtimeStatus);
+  ipcMain.handle('alpha:status', () => runtimeStatus);
   ipcMain.handle('agent-workspace:open-user-data', () => shell.openPath(userDataRoot));
-  ipcMain.handle('agent_workspace:open-user-data', () => shell.openPath(userDataRoot));
+  ipcMain.handle('alpha:open-user-data', () => shell.openPath(userDataRoot));
   ipcMain.handle('agent-workspace:get-auto-start', () => getAutoStartState());
-  ipcMain.handle('agent_workspace:get-auto-start', () => getAutoStartState());
+  ipcMain.handle('alpha:get-auto-start', () => getAutoStartState());
   ipcMain.handle('agent-workspace:set-auto-start', (_event, enabled) => applyAutoStartSetting(enabled));
-  ipcMain.handle('agent_workspace:set-auto-start', (_event, enabled) => applyAutoStartSetting(enabled));
+  ipcMain.handle('alpha:set-auto-start', (_event, enabled) => applyAutoStartSetting(enabled));
 
   app.whenReady().then(() => {
     createSplash();

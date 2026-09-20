@@ -1,13 +1,13 @@
 ### Agent System
 
-**Lead Agent** (`packages/harness/agent_workspace/agents/lead_agent/agent.py`):
+**Lead Agent** (`packages/harness/alpha/agents/lead_agent/agent.py`):
 - Entry point: `make_lead_agent(config: RunnableConfig)` registered in `langgraph.json`.
   Its signature and bare-graph return type are a published ABI: LangGraph Server calls it
   directly, so neither may change.
 - `assemble_lead_agent(config, *, app_config=None) -> LeadAgentAssembly(graph, descriptor)`
   is the richer entry point the Gateway uses; `make_lead_agent` is a thin wrapper returning
   `.graph`. The descriptor is built by
-  `agent_workspace/agents/assembly_descriptor.py::build_assembly_descriptor()` and captures what
+  `alpha/agents/assembly_descriptor.py::build_assembly_descriptor()` and captures what
   only the factory knows — the model resolved after runtime overrides, the rendered prompt
   hash, the tool list left by authorization, and the composed middleware stack in order.
   Consumers of a factory result must unwrap `.graph` defensively (see
@@ -19,7 +19,7 @@
 - **Prompt-layer trust boundaries**: every string that enters a model context has a source, and the source's trust level decides its channel. Framework-owned authority text (report contracts, pointer notes, workflow rules) rides the system channel; anything model-supplied or user-influenceable (delegated task text, acceptance criteria, tool results) rides the untrusted channel — the `HumanMessage` that `InputSanitizationMiddleware` escapes and boundary-frames. Before adding prompt text, ask of every data source in it: what is its trust level, and which channel should it ride? Never interpolate untrusted values into framework-owned system text, even neutralized — natural-language injection survives tag escaping (PR #5090 review).
 - Each assembly renders the system prompt and composes middleware exactly once; the same prompt and middleware objects must be passed to both `create_agent()` and the assembly descriptor so extension observations match the running graph, including Custom Agent `allowed_subagents` scope.
 
-**ThreadState** (`packages/harness/agent_workspace/agents/thread_state.py`):
+**ThreadState** (`packages/harness/alpha/agents/thread_state.py`):
 - Extends `AgentState` with: `sandbox`, `thread_data`, `title`, `artifacts`, `todos`, `uploaded_files`, `viewed_images`, `goal`, `promoted`, `delegations`, `skill_context`, `summary_text`
 - Uses custom reducers: `merge_artifacts` (deduplicate), `merge_viewed_images` (merge/clear), `merge_goal` (preserve the active goal across ordinary state updates unless the goal writer replaces it), `merge_promoted` (catalog-hash-scoped deferred tool promotions), `merge_delegations` (append task delegation entries, same id latest wins, terminal status never downgraded, capped to the most recent entries), and `merge_skill_context` (dedupe active-skill references by path, keep the most recently read entries; entries store a name/path/description reference, not the SKILL.md body). `summary_text` is a LastValue channel updated by summarization and projected into model requests as durable context data instead of being stored as a `messages` item.
 - Delta-mode `merge_message_writes` normalizes the current message state once,
@@ -43,4 +43,4 @@
   graph integrations must do the same. If it is absent, enforcement deliberately
   counts the thread's full delegation ledger (fail-restrictive) and emits a warning.
 
-**Direct subagent runtime**: `create_agent_workspace_agent(..., subagent_runtime=runtime)` is the explicit dependency-injection path for direct graph callers. Reuse one `agent_workspace.subagents.SubagentRuntime` across every graph that belongs to the same application capacity boundary. With the default subagent feature it binds middleware concurrency/total limits, the ordinary `task` tool, one real execution controller, and any active durable-batch submitter to the same snapshot. A caller-owned batch repository requires `await runtime.start()` (or `async with runtime`) before graph construction and `stop()` at shutdown; the factory fails closed while that worker is stopped, and already-built bound batch tools must fail unavailable after it stops rather than falling through to another process-global submitter. The factory never creates SQL infrastructure, renders the caller-owned `system_prompt`, or mounts Gateway API/UI routes. Full middleware takeover cannot be combined with this runtime; direct callers and custom subagent middleware remain responsible for model-visible call-policy wording.
+**Direct subagent runtime**: `create_agent_workspace_agent(..., subagent_runtime=runtime)` is the explicit dependency-injection path for direct graph callers. Reuse one `alpha.subagents.SubagentRuntime` across every graph that belongs to the same application capacity boundary. With the default subagent feature it binds middleware concurrency/total limits, the ordinary `task` tool, one real execution controller, and any active durable-batch submitter to the same snapshot. A caller-owned batch repository requires `await runtime.start()` (or `async with runtime`) before graph construction and `stop()` at shutdown; the factory fails closed while that worker is stopped, and already-built bound batch tools must fail unavailable after it stops rather than falling through to another process-global submitter. The factory never creates SQL infrastructure, renders the caller-owned `system_prompt`, or mounts Gateway API/UI routes. Full middleware takeover cannot be combined with this runtime; direct callers and custom subagent middleware remain responsible for model-visible call-policy wording.

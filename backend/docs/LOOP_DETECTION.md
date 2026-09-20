@@ -2,7 +2,7 @@
 
 `LoopDetectionMiddleware` owns call-pattern detection. Its place in the chain
 and audit contract are documented in the
-[middleware guide](../packages/harness/agent_workspace/agents/middlewares/AGENTS.md).
+[middleware guide](../packages/harness/alpha/agents/middlewares/AGENTS.md).
 
 ## Run-scoped state
 

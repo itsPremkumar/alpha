@@ -257,7 +257,7 @@ Set `memory.token_counting: char` to prevent network access.
 
 #### Configuration
 
-The schema lives in `agent_workspace/config/memory_config.py`.
+The schema lives in `alpha/config/memory_config.py`.
 Do not duplicate its complete field list here.
 
 Keep these cross-component constraints in sync:

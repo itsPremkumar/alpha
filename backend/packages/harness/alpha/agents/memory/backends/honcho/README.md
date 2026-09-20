@@ -20,7 +20,7 @@ memory:
     workspace_prefix: agent-workspace-u-   # one isolated workspace per user id
     # workspace_overrides: {}    # map specific user ids to custom workspaces
     # user_peer_overrides: {}    # map specific user ids to custom peer names
-    assistant_peer: agent_workspace
+    assistant_peer: alpha
     message_char_limit: 8000
     max_injection_chars: 6000
     timeout_seconds: 10

@@ -202,9 +202,9 @@ detect_sandbox_mode() {
         }
     ' "$config_file")
 
-    if [[ "$sandbox_use" == *"agent_workspace.sandbox.local:LocalSandboxProvider"* ]] || [[ "$sandbox_use" == *"agent_workspace.sandbox.local:LocalSandboxProvider"* ]]; then
+    if [[ "$sandbox_use" == *"alpha.sandbox.local:LocalSandboxProvider"* ]] || [[ "$sandbox_use" == *"alpha.sandbox.local:LocalSandboxProvider"* ]]; then
         echo "local"
-    elif [[ "$sandbox_use" == *"agent_workspace.community.aio_sandbox:AioSandboxProvider"* ]] || [[ "$sandbox_use" == *"agent_workspace.community.aio_sandbox:AioSandboxProvider"* ]]; then
+    elif [[ "$sandbox_use" == *"alpha.community.aio_sandbox:AioSandboxProvider"* ]] || [[ "$sandbox_use" == *"alpha.community.aio_sandbox:AioSandboxProvider"* ]]; then
         if [ -n "$provisioner_url" ]; then
             echo "provisioner"
         else

@@ -63,7 +63,7 @@ name with Alpha's existing guardrail configuration:
 guardrails:
   enabled: true
   provider:
-    use: agent_workspace.guardrails.builtin:AllowlistProvider
+    use: alpha.guardrails.builtin:AllowlistProvider
     config:
       denied_tools: ["openviking_forget"]
 ```
@@ -492,7 +492,7 @@ needs logic (signing, exchanging the secret for another token, routing on the
 tool name):
 
 ```python
-from agent_workspace.runtime.secret_context import extract_request_secrets
+from alpha.runtime.secret_context import extract_request_secrets
 
 
 def build_auth_interceptor():
@@ -517,7 +517,7 @@ node injects the runtime into any tool parameter named `runtime`, which is how
 both the pooled stdio wrapper and `langchain-mcp-adapters`' HTTP/SSE tool
 receive it. When the call originates outside a tool node, fall back to
 `langgraph.runtime.get_runtime()` (see
-`agent_workspace/mcp/context_headers.py::_current_runtime`).
+`alpha/mcp/context_headers.py::_current_runtime`).
 
 Supply the credential on each run request through `config.context.secrets`:
 

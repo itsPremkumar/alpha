@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agent_workspace.dev/contracts/skill_review/review_facts.v1.schema.json",
+  "$id": "https://alpha.dev/contracts/skill_review/review_facts.v1.schema.json",
   "title": "Alpha Skill Review Facts v1",
   "type": "object",
   "required": ["schema_version", "subject", "profile", "completeness", "summary", "findings", "resources", "evals", "analyzer_errors"],
   "properties": {
-    "schema_version": { "const": "agent_workspace.skill-review.facts.v1" },
+    "schema_version": { "const": "alpha.skill-review.facts.v1" },
     "subject": {
       "type": "object",
       "required": ["display_ref", "source", "package_digest"],
@@ -17,7 +17,7 @@
         "package_digest": { "type": "string" }
       }
     },
-    "profile": { "enum": ["agent_workspace", "agentskills"] },
+    "profile": { "enum": ["alpha", "agentskills"] },
     "completeness": {
       "type": "object",
       "required": ["package_enumerated", "text_content_complete", "truncated", "not_assessed"],

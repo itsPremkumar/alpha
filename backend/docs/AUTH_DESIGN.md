@@ -65,7 +65,7 @@ Upon successful authentication, `AuthMiddleware` injects identity into:
 
 - `request.state.user`
 - `request.state.auth`
-- `agent_workspace.runtime.user_context` (`ContextVar`)
+- `alpha.runtime.user_context` (`ContextVar`)
 
 The `ContextVar` serves as the runtime boundary: the Gateway layer populates identity, while underlying persistence layers read the active user without circular dependencies on `app.gateway.auth`.
 

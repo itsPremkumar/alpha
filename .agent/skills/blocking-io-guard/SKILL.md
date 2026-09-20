@@ -1,6 +1,6 @@
 ---
 name: blocking-io-guard
-description: Ensure async-path backend code that could block the asyncio event loop is protected by a teeth-verified runtime anchor in tests/blocking_io/. Use when changing backend Python under app/, packages/harness/agent_workspace/, or scripts/, when running a blocking-IO triage round over the whole repo, or when a reviewer/CI asks for blocking-IO coverage. Runs a deterministic scan (changed-lines or full-repo), routes each candidate, drafts/extends an anchor, and proves it fails when the blocking IO regresses.
+description: Ensure async-path backend code that could block the asyncio event loop is protected by a teeth-verified runtime anchor in tests/blocking_io/. Use when changing backend Python under app/, packages/harness/alpha/, or scripts/, when running a blocking-IO triage round over the whole repo, or when a reviewer/CI asks for blocking-IO coverage. Runs a deterministic scan (changed-lines or full-repo), routes each candidate, drafts/extends an anchor, and proves it fails when the blocking IO regresses.
 ---
 
 # Blocking-IO Guard Skill
@@ -17,7 +17,7 @@ detector domain — it is not needed to execute the steps below.
 ## When to use
 
 - Your change touches Python under `backend/app/`,
-  `backend/packages/harness/agent_workspace/`, or `backend/scripts/` and may run on
+  `backend/packages/harness/alpha/`, or `backend/scripts/` and may run on
   the async event loop (Mode A). If unsure, run Step 0 — it answers
   deterministically.
 - You are doing a maintenance triage round over the existing codebase

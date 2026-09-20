@@ -12,7 +12,7 @@ the default AIO Docker sandbox in
 
 ```yaml
 sandbox:
-  use: agent_workspace.community.boxlite:BoxliteProvider
+  use: alpha.community.boxlite:BoxliteProvider
   image: python:3.12-slim         # any OCI image (default: python:3.12-slim)
   memory_mib: 1024                # per-box memory cap (optional)
   cpus: 2                         # per-box vCPUs (optional)
@@ -59,7 +59,7 @@ and reclaimed by the same thread on the next acquire.
 ## Contract coverage
 
 The full `Sandbox` surface is implemented. File operations run as shell commands
-inside the box and reuse `agent_workspace.sandbox.search`, mirroring `e2b_sandbox`:
+inside the box and reuse `alpha.sandbox.search`, mirroring `e2b_sandbox`:
 
 - `execute_command` — `sh -lc`, with per-call env and timeout.
 - `read_file` / `write_file` / `update_file` — `cat` and chunked `base64` (binary-safe, no arg-size limit).

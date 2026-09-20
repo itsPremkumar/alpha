@@ -123,8 +123,8 @@ postgresql:
     repository: postgres
     tag: "16"
   auth:
-    database: agent_workspace
-    username: agent_workspace
+    database: alpha
+    username: alpha
     # -- Password auto-generated (32 chars, persisted across upgrades) when
     #    empty. Ignored if existingSecret is set.
     password: ""
@@ -148,7 +148,7 @@ postgresql:
   #    `databaseUrl` (chart wraps it into a Secret for you) or an
   #    `existingSecret` you manage (key `database-url`).
   external:
-    # -- Full DSN, e.g. postgresql://user:pass@host:5432/agent_workspace. Chart
+    # -- Full DSN, e.g. postgresql://user:pass@host:5432/alpha. Chart
     #    writes it into the Secret so it never touches the gateway env directly.
     databaseUrl: ""
     # -- Secret you manage (key `database-url`). Use this with External Secrets
@@ -262,7 +262,7 @@ config: |
   #     request_timeout: 600.0
 
   sandbox:
-    use: agent_workspace.community.aio_sandbox:AioSandboxProvider
+    use: alpha.community.aio_sandbox:AioSandboxProvider
     provisioner_url: http://provisioner:8002
     image: enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest
     port: 8080
@@ -325,7 +325,7 @@ config: |
     # because they are not comparable. The Agent cannot see the IDs.
     # - name: knowledge_search
     #   group: knowledge
-    #   use: agent_workspace.community.ragflow.tools:knowledge_search_tool
+    #   use: alpha.community.ragflow.tools:knowledge_search_tool
     #   base_url: http://ragflow:9380
     #   api_key: $RAGFLOW_API_KEY
     #   datasets:  # Optional operator-controlled allowlist
@@ -347,7 +347,7 @@ config: |
     # reference identifiers stay hidden from the Agent.
     # - name: knowledge_search
     #   group: knowledge
-    #   use: agent_workspace.community.lightrag.tools:knowledge_search_tool
+    #   use: alpha.community.lightrag.tools:knowledge_search_tool
     #   base_url: http://lightrag:9621
     #   api_key: $LIGHTRAG_API_KEY
     #   mode: mix
@@ -358,39 +358,39 @@ config: |
     #   max_total_chars: 8000
     - name: web_search
       group: web
-      use: agent_workspace.community.ddg_search.tools:web_search_tool
+      use: alpha.community.ddg_search.tools:web_search_tool
       max_results: 5
     - name: web_fetch
       group: web
-      use: agent_workspace.community.jina_ai.tools:web_fetch_tool
+      use: alpha.community.jina_ai.tools:web_fetch_tool
       timeout: 10
     - name: image_search
       group: web
-      use: agent_workspace.community.image_search.tools:image_search_tool
+      use: alpha.community.image_search.tools:image_search_tool
       max_results: 5
     - name: ls
       group: file:read
-      use: agent_workspace.sandbox.tools:ls_tool
+      use: alpha.sandbox.tools:ls_tool
     - name: read_file
       group: file:read
-      use: agent_workspace.sandbox.tools:read_file_tool
+      use: alpha.sandbox.tools:read_file_tool
     - name: glob
       group: file:read
-      use: agent_workspace.sandbox.tools:glob_tool
+      use: alpha.sandbox.tools:glob_tool
       max_results: 200
     - name: grep
       group: file:read
-      use: agent_workspace.sandbox.tools:grep_tool
+      use: alpha.sandbox.tools:grep_tool
       max_results: 100
     - name: write_file
       group: file:write
-      use: agent_workspace.sandbox.tools:write_file_tool
+      use: alpha.sandbox.tools:write_file_tool
     - name: str_replace
       group: file:write
-      use: agent_workspace.sandbox.tools:str_replace_tool
+      use: alpha.sandbox.tools:str_replace_tool
     - name: bash
       group: bash
-      use: agent_workspace.sandbox.tools:bash_tool
+      use: alpha.sandbox.tools:bash_tool
 
 # -- Initial Alpha extensions_config.json content (MCP servers + skill
 #    state). The Gateway copies this ConfigMap seed into its writable home

@@ -89,7 +89,7 @@ The simplest option. Ships with Alpha. Block or allow tools by name. No external
 guardrails:
   enabled: true
   provider:
-    use: agent_workspace.guardrails.builtin:AllowlistProvider
+    use: alpha.guardrails.builtin:AllowlistProvider
     config:
       denied_tools: ["bash", "write_file"]
 ```
@@ -101,7 +101,7 @@ You can also use an allowlist (only these tools are permitted):
 guardrails:
   enabled: true
   provider:
-    use: agent_workspace.guardrails.builtin:AllowlistProvider
+    use: alpha.guardrails.builtin:AllowlistProvider
     config:
       allowed_tools: ["web_search", "read_file", "ls"]
 ```
@@ -156,12 +156,12 @@ An OAP passport is just a JSON file. You can create one by hand following the [O
 
 ```bash
 pip install aport-agent-guardrails
-aport setup --framework agent_workspace
+aport setup --framework alpha
 ```
 
 This creates:
-- `~/.aport/agent_workspace/config.yaml` -- evaluator config (local or API mode)
-- `~/.aport/agent_workspace/aport/passport.json` -- OAP passport with capabilities and limits
+- `~/.aport/alpha/config.yaml` -- evaluator config (local or API mode)
+- `~/.aport/alpha/aport/passport.json` -- OAP passport with capabilities and limits
 
 **config.yaml (using APort as the provider):**
 ```yaml
@@ -220,7 +220,7 @@ class MyGuardrailProvider:
     name = "my-company"
 
     def evaluate(self, request):
-        from agent_workspace.guardrails.provider import GuardrailDecision, GuardrailReason
+        from alpha.guardrails.provider import GuardrailDecision, GuardrailReason
 
         # Example: block any bash command containing "delete"
         if request.tool_name == "bash" and "delete" in str(request.tool_input):
@@ -278,7 +278,7 @@ import asyncio
 import json
 from pathlib import Path
 
-from agent_workspace.guardrails.provider import GuardrailDecision, GuardrailReason
+from alpha.guardrails.provider import GuardrailDecision, GuardrailReason
 
 
 class ContextAwareGuardrailProvider:
@@ -507,12 +507,12 @@ Standard codes used by the [OAP specification](https://github.com/aporthq/aport-
 
 Alpha loads providers via `resolve_variable()` -- the same mechanism used for models, tools, and sandbox providers. The `use:` field is a Python class path: `package.module:ClassName`.
 
-The provider is instantiated with `**config` kwargs if `config:` is set, plus `framework="agent_workspace"` is always injected. Accept `**kwargs` to stay forward-compatible:
+The provider is instantiated with `**config` kwargs if `config:` is set, plus `framework="alpha"` is always injected. Accept `**kwargs` to stay forward-compatible:
 
 ```python
 class YourProvider:
     def __init__(self, framework: str = "generic", **kwargs):
-        # framework="agent_workspace" tells you which config dir to use
+        # framework="alpha" tells you which config dir to use
         ...
 ```
 
@@ -532,7 +532,7 @@ guardrails:
 
   # Provider: loaded by class path via resolve_variable
   provider:
-    use: agent_workspace.guardrails.builtin:AllowlistProvider
+    use: alpha.guardrails.builtin:AllowlistProvider
     config:  # optional kwargs passed to provider.__init__
       denied_tools: ["bash"]
 ```
@@ -554,16 +554,16 @@ uv run python -m pytest tests/test_guardrail_middleware.py -v
 ## Files
 
 ```
-packages/harness/agent_workspace/guardrails/
+packages/harness/alpha/guardrails/
     __init__.py              # Public exports
     provider.py              # GuardrailProvider protocol, GuardrailRequest, GuardrailDecision
     middleware.py             # GuardrailMiddleware (AgentMiddleware subclass)
     builtin.py               # AllowlistProvider (zero deps)
 
-packages/harness/agent_workspace/config/
+packages/harness/alpha/config/
     guardrails_config.py     # GuardrailsConfig Pydantic model + singleton
 
-packages/harness/agent_workspace/agents/middlewares/
+packages/harness/alpha/agents/middlewares/
     tool_error_handling_middleware.py  # Registers GuardrailMiddleware in chain
 
 config.example.yaml          # Three provider options documented

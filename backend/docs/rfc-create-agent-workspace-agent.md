@@ -68,8 +68,8 @@ Omitting arguments retains standard `config.yaml` resolution (fully backwards-co
 ### 3.1 `AgentWorkspaceClient` — Sole Public API
 
 ```python
-from agent_workspace.client import AgentWorkspaceClient
-from agent_workspace.agents.features import RuntimeFeatures
+from alpha.client import AgentWorkspaceClient
+from alpha.agents.features import RuntimeFeatures
 
 client = AgentWorkspaceClient(
     # 1. config — overrides arbitrary config.yaml keys
@@ -78,7 +78,7 @@ client = AgentWorkspaceClient(
         "memory": {"max_facts": 50, "enabled": True},
         "title": {"enabled": False},
         "summarization": {"enabled": True, "trigger": [{"type": "tokens", "value": 10000}]},
-        "sandbox": {"use": "agent_workspace.sandbox.local:LocalSandboxProvider"},
+        "sandbox": {"use": "alpha.sandbox.local:LocalSandboxProvider"},
     },
 
     # 2. features — replaces built-in middleware implementations
@@ -113,7 +113,7 @@ client = AgentWorkspaceClient(extra_middleware=[MyAuditMiddleware()])
 # Usage 5: Standalone SDK without files
 client = AgentWorkspaceClient(config={
     "models": [{"name": "gpt-4o", "use": "langchain_openai:ChatOpenAI", ...}],
-    "tools": [{"name": "bash", "use": "agent_workspace.sandbox.tools:bash_tool", "group": "bash"}],
+    "tools": [{"name": "bash", "use": "alpha.sandbox.tools:bash_tool", "group": "bash"}],
     "memory": {"enabled": True},
 })
 ```
@@ -162,7 +162,7 @@ class RuntimeFeatures:
 Custom middlewares declare placement relative to existing middlewares:
 
 ```python
-from agent_workspace.agents import Next, Prev
+from alpha.agents import Next, Prev
 
 @Next(SandboxMiddleware)
 class MyAuditMiddleware(AgentMiddleware):

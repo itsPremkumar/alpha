@@ -9,7 +9,7 @@ sandbox and the local-virtualization BoxLite backend.
 
 ```yaml
 sandbox:
-  use: agent_workspace.community.tenki:TenkiSandboxProvider
+  use: alpha.community.tenki:TenkiSandboxProvider
   api_key: $TENKI_API_KEY   # falls back to TENKI_API_KEY / TENKI_AUTH_TOKEN env var
   base_url: https://tenki.cloud  # optional; SDK default when omitted
   image: my-base-image      # optional; Tenki account default base image when omitted
@@ -57,7 +57,7 @@ lose its sandbox to Tenki's default lifetime mid-conversation.
 ## Contract coverage
 
 The full `Sandbox` surface is implemented. File transport uses Tenki's native `sandbox.fs`
-API; directory and content search shell out and reuse `agent_workspace.sandbox.search`,
+API; directory and content search shell out and reuse `alpha.sandbox.search`,
 mirroring `e2b_sandbox`:
 
 - `execute_command` — `sh -lc`, with per-call env and timeout.

@@ -52,7 +52,7 @@ Then reference it in `langgraph.json`:
 ```json
 {
   "graphs": {
-    "lead_agent": "agent_workspace.agents:lead_agent"
+    "lead_agent": "alpha.agents:lead_agent"
   },
   "checkpointer": "checkpointer:checkpointer"
 }
@@ -73,7 +73,7 @@ title:
 Or programmatically in Python:
 
 ```python
-from agent_workspace.config.title_config import TitleConfig, set_title_config
+from alpha.config.title_config import TitleConfig, set_title_config
 
 set_title_config(TitleConfig(
     enabled=True,
@@ -247,11 +247,11 @@ async def _agenerate_title_result(self, state: TitleMiddlewareState) -> dict | N
 
 ## Related Files
 
-- [`packages/harness/agent_workspace/agents/thread_state.py`](../packages/harness/agent_workspace/agents/thread_state.py) - ThreadState definition
-- [`packages/harness/agent_workspace/agents/middlewares/title_middleware.py`](../packages/harness/agent_workspace/agents/middlewares/title_middleware.py) - TitleMiddleware implementation
-- [`packages/harness/agent_workspace/config/title_config.py`](../packages/harness/agent_workspace/config/title_config.py) - Configuration management
+- [`packages/harness/alpha/agents/thread_state.py`](../packages/harness/alpha/agents/thread_state.py) - ThreadState definition
+- [`packages/harness/alpha/agents/middlewares/title_middleware.py`](../packages/harness/alpha/agents/middlewares/title_middleware.py) - TitleMiddleware implementation
+- [`packages/harness/alpha/config/title_config.py`](../packages/harness/alpha/config/title_config.py) - Configuration management
 - [`config.yaml`](../../config.example.yaml) - Configuration file
-- [`packages/harness/agent_workspace/agents/lead_agent/agent.py`](../packages/harness/agent_workspace/agents/lead_agent/agent.py) - Middleware registration
+- [`packages/harness/alpha/agents/lead_agent/agent.py`](../packages/harness/alpha/agents/lead_agent/agent.py) - Middleware registration
 
 ## References
 

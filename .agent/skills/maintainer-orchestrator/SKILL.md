@@ -1,5 +1,5 @@
 ---
-name: agent_workspace-maintainer-orchestrator
+name: alpha-maintainer-orchestrator
 description: "Use when a Alpha maintainer needs comment-only GitHub issue or PR handling: resolve issue/PR scopes with gh, analyze issues, post or draft issue comments, perform PR review comments, review PR or issue batches, compare competing PRs that target the same issue, give fix strategy, risk classification, and validation guidance. Intended for maintainers and trusted local agents, not general contributors."
 ---
 
@@ -214,7 +214,7 @@ In these cases, return a compact failure report with the attempted command path 
 
 Treat these as high-signal areas for issue comments and PR findings:
 
-- `backend/packages/harness/agent_workspace/` must not import `app.*`.
+- `backend/packages/harness/alpha/` must not import `app.*`.
 - App may depend on harness; harness must stay publishable and app-agnostic.
 - Frontend thread/message behavior and Gateway/LangGraph-compatible SSE are contract surfaces.
 - Sandbox permissions, bash/file-write tools, skill installation, and remote execution are security-sensitive.

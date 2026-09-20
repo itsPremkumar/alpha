@@ -4,14 +4,14 @@ on:
   pull_request:
     paths:
       - "docker/sandbox-network-proxy/**"
-      - "backend/packages/harness/agent_workspace/community/aio_sandbox/network_proxy.py"
+      - "backend/packages/harness/alpha/community/aio_sandbox/network_proxy.py"
       - ".github/workflows/sandbox-network-proxy-image.yaml"
   push:
     branches:
       - main
     paths:
       - "docker/sandbox-network-proxy/**"
-      - "backend/packages/harness/agent_workspace/community/aio_sandbox/network_proxy.py"
+      - "backend/packages/harness/alpha/community/aio_sandbox/network_proxy.py"
       - ".github/workflows/sandbox-network-proxy-image.yaml"
 env:
   REGISTRY: ghcr.io

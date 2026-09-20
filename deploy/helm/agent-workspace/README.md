@@ -139,7 +139,7 @@ config: |
       api_key: $OPENAI_API_KEY
       request_timeout: 600.0
   sandbox:
-    use: agent_workspace.community.aio_sandbox:AioSandboxProvider
+    use: alpha.community.aio_sandbox:AioSandboxProvider
     provisioner_url: http://provisioner:8002
   database:
     backend: postgres
@@ -165,19 +165,19 @@ config: |
   tools:
     - name: web_search
       group: web
-      use: agent_workspace.community.ddg_search.tools:web_search_tool
+      use: alpha.community.ddg_search.tools:web_search_tool
       max_results: 5
     - name: web_fetch
       group: web
-      use: agent_workspace.community.jina_ai.tools:web_fetch_tool
+      use: alpha.community.jina_ai.tools:web_fetch_tool
       timeout: 10
     - name: image_search
       group: web
-      use: agent_workspace.community.image_search.tools:image_search_tool
+      use: alpha.community.image_search.tools:image_search_tool
       max_results: 5
     - name: bash
       group: bash
-      use: agent_workspace.sandbox.tools:bash_tool
+      use: alpha.sandbox.tools:bash_tool
     # also: ls, read_file, glob, grep, write_file, str_replace (see values.yaml)
 ```
 
@@ -242,8 +242,8 @@ kubectl -n agent-workspace exec deploy/agent-workspace-provisioner -- curl -s lo
     external:
       host: mydb.example.com   # or set databaseUrl / existingSecret
       port: 5432
-      database: agent_workspace
-      username: agent_workspace
+      database: alpha
+      username: alpha
       password: changeme
   ```
 - **Graceful shutdown & memory drain.** The gateway pod sets `terminationGracePeriodSeconds` (default 45s, overridable via `gateway.terminationGracePeriodSeconds`) plus an optional `preStop` sleep (`gateway.preStopSleepSeconds`, default 5s). The grace period MUST exceed the Gateway's graceful-shutdown work — channel stop (~5s) plus the memory-queue drain (`memory.shutdown_flush_timeout_seconds`, default 30s) plus a buffer — because the drain runs on a daemon thread and K8s SIGKILLs anything still running at the end of the grace window. K8s defaults to 30s, which SIGKILLs the drain mid-flight and silently re-introduces the memory loss the drain is fixing. **When you raise `memory.shutdown_flush_timeout_seconds`, raise `gateway.terminationGracePeriodSeconds` to match** (channel stop + drain + buffer).

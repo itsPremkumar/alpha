@@ -72,7 +72,7 @@ run-admission core.
 
 **A1. Mission entity (durable, above threads).** New `missions` store
 (SQLAlchemy model + alembic revision via `make migrate-rev`; reuse
-`agent_workspace/persistence` engine patterns): id, owner, objective, constraints
+`alpha/persistence` engine patterns): id, owner, objective, constraints
 JSON, budget, schedule, status, linked thread_ids, artifact manifest.
 Gateway router `app/gateway/routers/missions.py` (CRUD + `POST /launch` →
 `launch_scheduled_thread_run` path reuse). Frontend: workspace missions page
@@ -82,7 +82,7 @@ Acceptance: mission survives restart; runs launched from it journal back to it.
 
 **A2. Capability registry.** Static + measured capabilities: agent/subagent
 specs advertise `{name, domain, risk_class, models, tools, cost_class, envs}`.
-Fit: new `harness/agent_workspace/capabilities/` (registry + Pydantic schema) fed by
+Fit: new `harness/alpha/capabilities/` (registry + Pydantic schema) fed by
 `subagents/registry.py` + `extensions_config` tool surface; Gateway
 `GET /api/capabilities`; console UI badges (extend `routers/console.py`).
 Reuse operator's `capability_registry.py` shape (domains × criticality).
@@ -90,7 +90,7 @@ Acceptance: orchestrator selects worker by capability query, never by
 hard-coded name, in at least one path (researcher selection).
 
 **A3. Policy/risk engine + adaptive autonomy.** Per-call `allow|deny|approval`
-from risk class × impact (new `harness/agent_workspace/policy/`); config
+from risk class × impact (new `harness/alpha/policy/`); config
 `policy:` section (default fail-closed, matching current posture).
 Acceptance: low-risk reads auto-pass, deletes/shell prompt approval cards.
 
@@ -275,7 +275,7 @@ Ported scopes (docs only, incl. recovery): Union Alpha configuration baseline +
 cognitive-memory owner contract (`AGENTS.md` before Cross-Cutting Conventions),
 Union Alpha model configuration (`README.md`), Display-Identity contract
 (`backend/AGENTS.md`), owner-scoped goals contract
-(`backend/packages/harness/agent_workspace/goals/AGENTS.md`, verified identical to ULT
+(`backend/packages/harness/alpha/goals/AGENTS.md`, verified identical to ULT
 source so no copy was needed), root `verify` script (`package.json`), and
 recovery-policy scope notes. Sources: `agent-workspace-ultimate-harness` (ULT) and
 `rebrand-wt` (REBRAND Display-Identity hunk).

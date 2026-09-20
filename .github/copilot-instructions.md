@@ -143,12 +143,12 @@ Root-level orchestration and config:
 
 Backend core:
 
-- `backend/packages/harness/agent_workspace/agents/` - lead agent, middleware chain, memory
+- `backend/packages/harness/alpha/agents/` - lead agent, middleware chain, memory
 - `backend/app/gateway/` - FastAPI gateway API
-- `backend/packages/harness/agent_workspace/sandbox/` - sandbox provider + tool wrappers
-- `backend/packages/harness/agent_workspace/subagents/` - subagent registry/execution
-- `backend/packages/harness/agent_workspace/mcp/` - MCP integration
-- `backend/langgraph.json` - graph entrypoint (`agent_workspace.agents:make_lead_agent`)
+- `backend/packages/harness/alpha/sandbox/` - sandbox provider + tool wrappers
+- `backend/packages/harness/alpha/subagents/` - subagent registry/execution
+- `backend/packages/harness/alpha/mcp/` - MCP integration
+- `backend/langgraph.json` - graph entrypoint (`alpha.agents:make_lead_agent`)
 - `backend/pyproject.toml` - Python deps and `requires-python`
 - `backend/ruff.toml` - lint/format policy
 - `backend/tests/` - backend unit and integration-like tests

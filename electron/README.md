@@ -31,7 +31,7 @@ Your data (config, threads, memory, logs) lives per-user under
 | Location | Contents |
 | -------- | -------- |
 | `project\` | `config.yaml`, `extensions_config.json` — edit your keys here |
-| `agent_workspace-home\` | threads, memory, SQLite state |
+| `alpha-home\` | threads, memory, SQLite state |
 | `backend-venv\`, `python\` | auto-provisioned backend environment (do not touch) |
 | `logs\` | `main.log`, `gateway.log`, `frontend.log` |
 

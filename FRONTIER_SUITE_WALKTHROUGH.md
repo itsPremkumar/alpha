@@ -26,9 +26,9 @@ All 6 frontier modules and their corresponding agent-callable built-in tools hav
 ## 2. Frontier Subsystems Implemented
 
 ### Feature 1: Introspective Language Agent Tree Search (I-MCTS / CodeTree)
-- **Module Path**: [`backend/packages/harness/agent_workspace/reasoning/introspective_tree_search.py`](file:///c:/Users/PREM%20KUMAR/Videos/alpha/backend/packages/harness/agent_workspace/reasoning/introspective_tree_search.py)
+- **Module Path**: [`backend/packages/harness/alpha/reasoning/introspective_tree_search.py`](file:///c:/Users/PREM%20KUMAR/Videos/alpha/backend/packages/harness/alpha/reasoning/introspective_tree_search.py)
 - **Tool Name**: `run_introspective_tree_search`
-- **Wrapper**: [`backend/packages/harness/agent_workspace/tools/builtins/introspective_tree_search_tool.py`](file:///c:/Users/PREM%20KUMAR/Videos/alpha/backend/packages/harness/agent_workspace/tools/builtins/introspective_tree_search_tool.py)
+- **Wrapper**: [`backend/packages/harness/alpha/tools/builtins/introspective_tree_search_tool.py`](file:///c:/Users/PREM%20KUMAR/Videos/alpha/backend/packages/harness/alpha/tools/builtins/introspective_tree_search_tool.py)
 - **Capabilities**:
   - Implements Monte Carlo Tree Search (MCTS) combined with Language Agent Tree Search (LATS) for complex debugging and code synthesis.
   - State nodes capture modified files, git shadow checkpoints, thought traces, validation feedback, and visit counts.
@@ -38,9 +38,9 @@ All 6 frontier modules and their corresponding agent-callable built-in tools hav
   - **Pruning & Early Termination**: Prunes branches with fatal syntax errors or severe regressions; terminates immediately upon discovering a provably valid green state (reward >= 0.98).
 
 ### Feature 2: AST Dynamic Program Slicing & Blast-Radius Engine
-- **Module Path**: [`backend/packages/harness/agent_workspace/coding/program_slicing_engine.py`](file:///c:/Users/PREM%20KUMAR/Videos/alpha/backend/packages/harness/agent_workspace/coding/program_slicing_engine.py)
+- **Module Path**: [`backend/packages/harness/alpha/coding/program_slicing_engine.py`](file:///c:/Users/PREM%20KUMAR/Videos/alpha/backend/packages/harness/alpha/coding/program_slicing_engine.py)
 - **Tool Name**: `compute_program_slice`
-- **Wrapper**: [`backend/packages/harness/agent_workspace/tools/builtins/program_slicing_tool.py`](file:///c:/Users/PREM%20KUMAR/Videos/alpha/backend/packages/harness/agent_workspace/tools/builtins/program_slicing_tool.py)
+- **Wrapper**: [`backend/packages/harness/alpha/tools/builtins/program_slicing_tool.py`](file:///c:/Users/PREM%20KUMAR/Videos/alpha/backend/packages/harness/alpha/tools/builtins/program_slicing_tool.py)
 - **Capabilities**:
   - Builds Program Dependence Graphs (PDG) combining Control Dependence Graphs (CDG) and Data Dependence Graphs (DDG) across Python functions, classes, and statements.
   - **Backward Slicing**: Given a crash site or assertion line, traverses def-use chains and control parents to compute the minimal causal statement slice that influences the failing variable, filtering out unrelated code.
@@ -48,9 +48,9 @@ All 6 frontier modules and their corresponding agent-callable built-in tools hav
   - Generates surgical slicing reports to guide compact, regression-free code modifications.
 
 ### Feature 3: Differential Invariant Synthesis & Regression Oracle
-- **Module Path**: [`backend/packages/harness/agent_workspace/testing/differential_invariant_fuzzer.py`](file:///c:/Users/PREM%20KUMAR/Videos/alpha/backend/packages/harness/agent_workspace/testing/differential_invariant_fuzzer.py)
+- **Module Path**: [`backend/packages/harness/alpha/testing/differential_invariant_fuzzer.py`](file:///c:/Users/PREM%20KUMAR/Videos/alpha/backend/packages/harness/alpha/testing/differential_invariant_fuzzer.py)
 - **Tool Name**: `run_differential_regression_oracle`
-- **Wrapper**: [`backend/packages/harness/agent_workspace/tools/builtins/differential_invariant_fuzzer_tool.py`](file:///c:/Users/PREM%20KUMAR/Videos/alpha/backend/packages/harness/agent_workspace/tools/builtins/differential_invariant_fuzzer_tool.py)
+- **Wrapper**: [`backend/packages/harness/alpha/tools/builtins/differential_invariant_fuzzer_tool.py`](file:///c:/Users/PREM%20KUMAR/Videos/alpha/backend/packages/harness/alpha/tools/builtins/differential_invariant_fuzzer_tool.py)
 - **Capabilities**:
   - Automatically synthesizes property-based differential tests between pre-patch (baseline) and post-patch (modified) revisions.
   - Executes dual shadow sandboxes with randomized boundary value generators across integers, floats, strings, booleans, lists, and dicts.
@@ -59,9 +59,9 @@ All 6 frontier modules and their corresponding agent-callable built-in tools hav
   - Computes Differential Behavioral Consistency Score ($0.0$ to $1.0$).
 
 ### Feature 4: Autonomous Environment Auto-Healing & Dependency Reconciler
-- **Module Path**: [`backend/packages/harness/agent_workspace/runtime/environment_auto_healer.py`](file:///c:/Users/PREM%20KUMAR/Videos/alpha/backend/packages/harness/agent_workspace/runtime/environment_auto_healer.py)
+- **Module Path**: [`backend/packages/harness/alpha/runtime/environment_auto_healer.py`](file:///c:/Users/PREM%20KUMAR/Videos/alpha/backend/packages/harness/alpha/runtime/environment_auto_healer.py)
 - **Tool Name**: `diagnose_and_heal_environment`
-- **Wrapper**: [`backend/packages/harness/agent_workspace/tools/builtins/environment_auto_healer_tool.py`](file:///c:/Users/PREM%20KUMAR/Videos/alpha/backend/packages/harness/agent_workspace/tools/builtins/environment_auto_healer_tool.py)
+- **Wrapper**: [`backend/packages/harness/alpha/tools/builtins/environment_auto_healer_tool.py`](file:///c:/Users/PREM%20KUMAR/Videos/alpha/backend/packages/harness/alpha/tools/builtins/environment_auto_healer_tool.py)
 - **Capabilities**:
   - Autonomous inspection of build manifests (`pyproject.toml`, `requirements.txt`, `package.json`, `Cargo.toml`).
   - Diagnoses error logs for `ModuleNotFoundError`, missing C/C++ shared libraries (`.dll`, `.so`, `.dylib`), and version conflicts (`ResolutionImpossible`).
@@ -70,9 +70,9 @@ All 6 frontier modules and their corresponding agent-callable built-in tools hav
   - Virtualenv health checker: Inspects python executable, site-packages existence, and write permissions.
 
 ### Feature 5: Structural 3-Way AST Conflict Reconciler (SWE-EVO)
-- **Module Path**: [`backend/packages/harness/agent_workspace/editing/structural_ast_reconciler.py`](file:///c:/Users/PREM%20KUMAR/Videos/alpha/backend/packages/harness/agent_workspace/editing/structural_ast_reconciler.py)
+- **Module Path**: [`backend/packages/harness/alpha/editing/structural_ast_reconciler.py`](file:///c:/Users/PREM%20KUMAR/Videos/alpha/backend/packages/harness/alpha/editing/structural_ast_reconciler.py)
 - **Tool Name**: `reconcile_structural_ast_conflicts`
-- **Wrapper**: [`backend/packages/harness/agent_workspace/tools/builtins/structural_ast_reconciler_tool.py`](file:///c:/Users/PREM%20KUMAR/Videos/alpha/backend/packages/harness/agent_workspace/tools/builtins/structural_ast_reconciler_tool.py)
+- **Wrapper**: [`backend/packages/harness/alpha/tools/builtins/structural_ast_reconciler_tool.py`](file:///c:/Users/PREM%20KUMAR/Videos/alpha/backend/packages/harness/alpha/tools/builtins/structural_ast_reconciler_tool.py)
 - **Capabilities**:
   - Eliminates crude line-based git conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`) via semantic 3-way AST node reconciliation across Base, Ours, and Theirs.
   - Import Reconciliation: Automatically sorts, unifies, and deduplicates direct imports and from-imports across modules.
@@ -81,9 +81,9 @@ All 6 frontier modules and their corresponding agent-callable built-in tools hav
   - Unparses unified AST directly to clean, valid Python source code.
 
 ### Feature 6: Contrastive Trajectory Replay & Negative-Path Memory
-- **Module Path**: [`backend/packages/harness/agent_workspace/memory/contrastive_trajectory_replay.py`](file:///c:/Users/PREM%20KUMAR/Videos/alpha/backend/packages/harness/agent_workspace/memory/contrastive_trajectory_replay.py)
+- **Module Path**: [`backend/packages/harness/alpha/memory/contrastive_trajectory_replay.py`](file:///c:/Users/PREM%20KUMAR/Videos/alpha/backend/packages/harness/alpha/memory/contrastive_trajectory_replay.py)
 - **Tool Names**: `query_contrastive_memory`, `record_trajectory_outcome`
-- **Wrapper**: [`backend/packages/harness/agent_workspace/tools/builtins/contrastive_trajectory_replay_tool.py`](file:///c:/Users/PREM%20KUMAR/Videos/alpha/backend/packages/harness/agent_workspace/tools/builtins/contrastive_trajectory_replay_tool.py)
+- **Wrapper**: [`backend/packages/harness/alpha/tools/builtins/contrastive_trajectory_replay_tool.py`](file:///c:/Users/PREM%20KUMAR/Videos/alpha/backend/packages/harness/alpha/tools/builtins/contrastive_trajectory_replay_tool.py)
 - **Capabilities**:
   - Dual-contrastive episodic memory buffer storing task attempts:
     `(Failure Signature, Erroneous Hypothesis, Failed Patch, Winning Resolution)`.
@@ -96,11 +96,11 @@ All 6 frontier modules and their corresponding agent-callable built-in tools hav
 ## 3. Tool Registry Integration
 
 All 7 tool functions are registered and exported through:
-1. `backend/packages/harness/agent_workspace/tools/builtins/__init__.py`:
+1. `backend/packages/harness/alpha/tools/builtins/__init__.py`:
    - Imported and exported in `__all__`.
-2. `backend/packages/harness/agent_workspace/tools/tools.py`:
+2. `backend/packages/harness/alpha/tools/tools.py`:
    - Imported and added to `BUILTIN_TOOLS`.
-3. Standalone wrapper modules in `backend/packages/harness/agent_workspace/tools/builtins/`.
+3. Standalone wrapper modules in `backend/packages/harness/alpha/tools/builtins/`.
 
 ---
 

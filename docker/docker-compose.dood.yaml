@@ -2,7 +2,7 @@
 #
 # Mounts the host Docker socket into the gateway container so that
 # AioSandboxProvider running in pure-Docker mode — config.yaml:
-#   sandbox.use: agent_workspace.community.aio_sandbox:AioSandboxProvider
+#   sandbox.use: alpha.community.aio_sandbox:AioSandboxProvider
 # with NO provisioner_url — can start per-thread sandbox containers via the
 # host Docker daemon.
 #

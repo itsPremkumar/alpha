@@ -17,7 +17,7 @@ Bridges external messaging platforms (Feishu, Slack, Telegram, Discord, DingTalk
   Buzz seen-event shutdown stays bounded and retryable: `aflush()` awaits any in-flight write, attempts at most one final snapshot, leaves a still-changing generation dirty for fail-open replay, and returns without a live persistence timer. A Gateway cancellation does not cancel the underlying worker-thread write; `BuzzChannel.stop()` tracks cleanup completion separately from transport admission so ChannelService can retry the retained channel without racing a second snapshot against that write. The store is quiesced before stop (including the already-stopped guard), so a timed-out relay task that records after stop only marks data dirty and cannot schedule detached file work; a repeated `stop()` still drains that dirty state, while `BuzzChannel.start()` explicitly resumes scheduling and flushes it automatically.
 - `github.py` - Webhook-driven GitHub channel. Inbound messages come from `POST /api/webhooks/github`; outbound is log-only because GitHub agents post explicitly with `gh` from their sandbox when they choose to comment or create a PR
 - `app/gateway/routers/channel_connections.py` - Browser-facing user connection and disconnect APIs
-- `agent_workspace.persistence.channel_connections` - SQL-backed user-owned connection, optional credential, connect state, and conversation store
+- `alpha.persistence.channel_connections` - SQL-backed user-owned connection, optional credential, connect state, and conversation store
 
 **Message Flow**:
 1. External platform -> Channel impl -> `MessageBus.publish_inbound()`

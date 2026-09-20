@@ -68,7 +68,7 @@ Introduce two built-in sandbox tools:
 - `grep`
 
 Located in:
-- `backend/packages/harness/agent_workspace/sandbox/tools.py`
+- `backend/packages/harness/alpha/sandbox/tools.py`
 
 And included by default under the `file:read` tool group in `config.example.yaml`.
 

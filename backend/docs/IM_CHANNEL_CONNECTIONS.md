@@ -276,7 +276,7 @@ sequenceDiagram
 - [AGENTS.md](../AGENTS.md) → "IM Channels System" — the index view in `backend/AGENTS.md` (configuration knobs, message flow, component list)
 - [GITHUB_AGENTS.md](GITHUB_AGENTS.md) — webhook-driven GitHub channel, agent bindings, fan-out, token lifecycle
 - `app/channels/manager.py` — dispatcher, `_channel_storage_user_id`, `_handle_chat`, `_handle_streaming_chat`
-- `agent_workspace.persistence.channel_connections` — SQL tables (`channel_connections`, `channel_oauth_states`, `channel_conversations`, `channel_credentials`) and `upsert_connection` / `consume_oauth_state` / `find_connection_by_external_identity`
+- `alpha.persistence.channel_connections` — SQL tables (`channel_connections`, `channel_oauth_states`, `channel_conversations`, `channel_credentials`) and `upsert_connection` / `consume_oauth_state` / `find_connection_by_external_identity`
 
 ---
 
@@ -454,7 +454,7 @@ For providers with an `allowed_users` allowlist (Telegram, Slack, DingTalk, WeCh
 
 ## Runtime Model
 
-Connection records live in SQL tables under `agent_workspace.persistence.channel_connections`:
+Connection records live in SQL tables under `alpha.persistence.channel_connections`:
 
 - `channel_connections`: owner user, provider identity, workspace/guild/team, status, metadata.
 - `channel_oauth_states`: one-time connect codes and Telegram deep-link state.

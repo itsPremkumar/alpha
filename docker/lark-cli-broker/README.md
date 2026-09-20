@@ -29,7 +29,7 @@ resolves a Python 3 interpreter and execs the **shim body** (`bin/lark-cli-shim.
 beside it (by its baked-in absolute path, since `$0` is the bare command name
 when run off `PATH`); both are written from the in-process
 `LARK_CLI_BROKER_LAUNCHER_TEMPLATE` / `LARK_CLI_BROKER_SHIM_SCRIPT`
-(`agent_workspace.integrations.lark_broker`), so the image's copies can never drift from
+(`alpha.integrations.lark_broker`), so the image's copies can never drift from
 the Gateway's. Splitting the sh launcher from the Python body means broker mode
 does **not** hard-depend on `python3` resolving via a `#!/usr/bin/env python3`
 shebang: if no `python3`/`python` is on the sandbox `PATH`, the launcher exits

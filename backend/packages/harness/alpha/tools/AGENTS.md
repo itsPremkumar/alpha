@@ -1,4 +1,4 @@
-### Tool System (`packages/harness/agent_workspace/tools/`)
+### Tool System (`packages/harness/alpha/tools/`)
 
 `get_available_tools(groups, include_mcp, model_name, subagent_enabled)` assembles:
 1. **Config-defined tools** - Resolved from `config.yaml` via `resolve_variable()`
@@ -22,7 +22,7 @@ Scheduled-task runtime note:
 
 Durable MCP task-management tools are added only while the process-local task submitter is installed. They expose bounded local task fields, including whether cancellation was requested, but never the remote handle. Cancellation records that request durably and returns immediately; the background service owns the remote call and retries. These remain ordinary business tools under an active skill's `allowed-tools` policy and must be declared explicitly.
 
-**Community tools** (`packages/harness/agent_workspace/community/`): optional integrations, each in its own subpackage and wired through `config.yaml`. Documented examples:
+**Community tools** (`packages/harness/alpha/community/`): optional integrations, each in its own subpackage and wired through `config.yaml`. Documented examples:
 - `tavily/` - Web search (5 results default) and web fetch (4KB limit)
 - `sofya/` - Web search (5 results default, per-result content capped at 2000 chars) and web fetch (4KB limit)
 - `jina_ai/` - Web fetch via Jina reader API with readability extraction

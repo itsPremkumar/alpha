@@ -136,7 +136,7 @@ smoke-test/
 The following warnings can appear during smoke testing and do not block a successful result:
 - Feishu/Lark SSL errors in Gateway logs (certificate verification failure) can be ignored if that channel is not enabled
 - Warnings in Gateway logs about missing methods in the custom checkpointer, such as `adelete_for_runs` or `aprune`, do not affect the core functionality
-- The `frontend_check.sh` script automatically handles authentication. When auth is enabled it registers / logs in a smoke-test user (`smoke-test@agent_workspace.dev` by default) to verify the real `/workspace/*` pages. The registration may produce a log entry from the auth provider, which is expected and harmless.
+- The `frontend_check.sh` script automatically handles authentication. When auth is enabled it registers / logs in a smoke-test user (`smoke-test@alpha.dev` by default) to verify the real `/workspace/*` pages. The registration may produce a log entry from the auth provider, which is expected and harmless.
 
 ## Key Tools
 

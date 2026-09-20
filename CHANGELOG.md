@@ -62,8 +62,8 @@ This section accumulates work toward the **2.1.0** milestone
   API/SDK clients reading the old flat fields must read `backend_config` instead.
   ([#4122])
 - **memory:** Custom `memory.storage_class` moved: the old default path
-  `agent_workspace.agents.memory.storage.FileMemoryStorage` no longer exists (now
-  `agent_workspace.agents.memory.backends.deermem.deermem.core.storage.FileMemoryStorage`).
+  `alpha.agents.memory.storage.FileMemoryStorage` no longer exists (now
+  `alpha.agents.memory.backends.deermem.deermem.core.storage.FileMemoryStorage`).
   Custom `MemoryStorage` subclasses must accept `config` in `__init__` (was
   no-arg). A broken/old `storage_class` logs an error and falls back to
   `FileMemoryStorage` (won't crash) -- update the path + signature to restore it.
@@ -412,7 +412,7 @@ This section accumulates work toward the **2.1.0** milestone
 
 - **extensions:** An out-of-tree Python extension system: extensions can
   contribute middleware, task-lifecycle and system-model observers, Gateway
-  services, and HTTP routers, and are managed with `agent_workspace extensions`
+  services, and HTTP routers, and are managed with `alpha extensions`
   install/enable/disable/remove. ([#4636], [#4684], [#4780])
 - **extensions:** Extensions can observe what the agent did - message
   provenance, middleware policy declarations, agent-assembly fingerprints,
@@ -490,7 +490,7 @@ This section accumulates work toward the **2.1.0** milestone
 
 - **observability:** Trace-id correlation with enhanced logging and agent
   observability via Monocle. ([#3902], [#4024])
-- **tooling:** A Hermes-like terminal workbench (`agent_workspace` CLI) backed by
+- **tooling:** A Hermes-like terminal workbench (`alpha` CLI) backed by
   `AgentWorkspaceClient`, plus a redacted community support-bundle generator. ([#3760],
   [#3886])
 - **setup:** The setup wizard now asks whether OpenAI-compatible gateway models
@@ -1363,7 +1363,7 @@ This section accumulates work toward the **2.1.0** milestone
   ([#5206])
 - **runtime:** Cancelled workspace-change snapshot captures drain their
   already-running scan and clean up the per-run text cache instead of
-  leaking `agent_workspace-workspace-changes-*` directories, while metadata-only
+  leaking `alpha-workspace-changes-*` directories, while metadata-only
   captures propagate cancellation promptly without waiting on the scan.
   ([#5232], [#5234])
 - **persistence:** Gateway startup tolerates a database already migrated to

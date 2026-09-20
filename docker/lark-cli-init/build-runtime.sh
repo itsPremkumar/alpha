@@ -66,7 +66,7 @@ done
 
 # Arch-dispatch launcher. Kept byte-identical to
 # LARK_CLI_SANDBOX_LAUNCHER_SCRIPT in
-# backend/packages/harness/agent_workspace/integrations/lark_cli.py
+# backend/packages/harness/alpha/integrations/lark_cli.py
 # (a unit test asserts the two never drift).
 cat > "${DEST}/bin/lark-cli" <<'LAUNCHER'
 #!/bin/sh

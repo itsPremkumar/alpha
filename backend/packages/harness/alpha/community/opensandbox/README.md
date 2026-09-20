@@ -14,7 +14,7 @@ pip install "agent-workspace-harness[opensandbox]"
 
 ```yaml
 sandbox:
-  use: agent_workspace.community.opensandbox:OpenSandboxProvider
+  use: alpha.community.opensandbox:OpenSandboxProvider
   image: python:3.11
   # api_key: $OPEN_SANDBOX_API_KEY
   # domain: localhost:8080

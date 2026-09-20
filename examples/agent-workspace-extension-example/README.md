@@ -2,7 +2,7 @@
 
 This directory is a compact, standalone Python package showing all five Alpha
 extension contribution kinds. It depends on the public
-`agent-workspace-extension-api` contract and never imports `agent_workspace.*` or `app.*`.
+`agent-workspace-extension-api` contract and never imports `alpha.*` or `app.*`.
 
 The contract package intentionally has no framework dependencies. An extension
 must therefore declare every framework it imports itself; this example explicitly
@@ -93,11 +93,11 @@ URL. SSH Git URLs are rejected because the stock Docker builder does not
 forward host SSH credentials. The direct CLI surface, run from `backend/`, is:
 
 ```text
-uv run --frozen --no-group extensions agent_workspace extensions install <source> [--yes] [--required]
-uv run --frozen --no-group extensions agent_workspace extensions list
-uv run --frozen --no-group extensions agent_workspace extensions enable <name>
-uv run --frozen --no-group extensions agent_workspace extensions disable <name>
-uv run --frozen --no-group extensions agent_workspace extensions remove <name>
+uv run --frozen --no-group extensions alpha extensions install <source> [--yes] [--required]
+uv run --frozen --no-group extensions alpha extensions list
+uv run --frozen --no-group extensions alpha extensions enable <name>
+uv run --frozen --no-group extensions alpha extensions disable <name>
+uv run --frozen --no-group extensions alpha extensions remove <name>
 ```
 
 `--yes` is intended only for automation that has already reviewed and trusted
@@ -126,10 +126,10 @@ authenticated browser session when authentication is enabled.
 ## Packaging entry point
 
 Managed packages expose exactly one standard PEP 621 entry point in the
-`agent_workspace.extensions` group. This example declares:
+`alpha.extensions` group. This example declares:
 
 ```toml
-[project.entry-points."agent_workspace.extensions"]
+[project.entry-points."alpha.extensions"]
 example = "agent_workspace_extension_example:install"
 ```
 

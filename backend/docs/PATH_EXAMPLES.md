@@ -144,7 +144,7 @@ async function uploadAndProcess(threadId: string, file: File) {
 
 ```python
 from pathlib import Path
-from agent_workspace.agents.middlewares.thread_data_middleware import THREAD_DATA_BASE_DIR
+from alpha.agents.middlewares.thread_data_middleware import THREAD_DATA_BASE_DIR
 
 def process_uploaded_file(thread_id: str, filename: str):
     # Construct host filesystem path

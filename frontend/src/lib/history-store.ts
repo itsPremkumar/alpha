@@ -9,7 +9,7 @@ import { ChatMessage, Thread } from "@/types/chat";
  * reloads and offline gaps. Export/import moves history between browsers.
  */
 
-const KEY = "agent_workspace.chatstore.v1";
+const KEY = "alpha.chatstore.v1";
 const MAX_THREADS = 100;
 const MAX_MSGS_PER_THREAD = 300;
 const MAX_CONTENT_CHARS = 20000;

@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agent_workspace.dev/contracts/skill_review/waiver_manifest.v1.schema.json",
+  "$id": "https://alpha.dev/contracts/skill_review/waiver_manifest.v1.schema.json",
   "title": "Alpha Skill Review Waiver Manifest v1",
   "type": "object",
   "required": ["schema_version", "waivers"],
   "properties": {
-    "schema_version": { "const": "agent_workspace.skill-review-waivers.v1" },
+    "schema_version": { "const": "alpha.skill-review-waivers.v1" },
     "waivers": {
       "type": "array",
       "maxItems": 256,

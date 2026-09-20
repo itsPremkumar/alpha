@@ -5,7 +5,7 @@
 #
 # Prerequisites for full quality (else graceful stub mode):
 #   ollama pull llama3.1 nomic-embed-text
-#   cd backend && uv pip install 'agent_workspace-harness[mem0oss]'
+#   cd backend && uv pip install 'alpha-harness[mem0oss]'
 #   # mem0oss extra = ["mem0ai", "ollama", "qdrant-client"]
 #
 # memory:

@@ -2,7 +2,7 @@
 
 ## 1. Problem
 
-Gateway (`app/gateway/routers/skills.py`, `uploads.py`) and Client (`agent_workspace/client.py`) each independently implement the same business logic:
+Gateway (`app/gateway/routers/skills.py`, `uploads.py`) and Client (`alpha/client.py`) each independently implement the same business logic:
 
 ### Skill Installation
 
@@ -36,11 +36,11 @@ Gateway (`app/gateway/routers/skills.py`, `uploads.py`) and Client (`agent_works
 
 ```
 app.gateway.routers.skills  ──┐
-app.gateway.routers.uploads ──┤── calls ──→  agent_workspace.skills.installer
-agent_workspace.client             ──┘              agent_workspace.uploads.manager
+app.gateway.routers.uploads ──┤── calls ──→  alpha.skills.installer
+alpha.client             ──┘              alpha.uploads.manager
 ```
 
-- Shared modules live in the harness layer (`agent_workspace.*`), pure business logic, no FastAPI dependency
+- Shared modules live in the harness layer (`alpha.*`), pure business logic, no FastAPI dependency
 - Gateway handles HTTP adaptation (`UploadFile` → bytes, exceptions → `HTTPException`)
 - Client handles local adaptation (`Path` → copy, exceptions → Python exceptions)
 - Satisfies `test_harness_boundary.py` constraint: harness never imports app
@@ -58,7 +58,7 @@ Replaces stringly-typed routing (`"already exists" in str(e)`) with typed except
 
 ## 3. New Modules
 
-### 3.1 `agent_workspace.skills.installer`
+### 3.1 `alpha.skills.installer`
 
 ```python
 # Safety checks
@@ -84,7 +84,7 @@ install_skill_from_archive(zip_path, *, skills_root=None) -> dict
 class SkillAlreadyExistsError(ValueError)
 ```
 
-### 3.2 `agent_workspace.uploads.manager`
+### 3.2 `alpha.uploads.manager`
 
 ```python
 # Directory management
@@ -132,7 +132,7 @@ enrich_file_listing(result, thread_id) -> dict     # Adds URLs, stringifies size
 
 ### 4.2 Client Slimming
 
-**`agent_workspace/client.py`**:
+**`alpha/client.py`**:
 - Remove `_get_uploads_dir` static method
 - Remove ~50 lines of inline zip handling in `install_skill`
 - `install_skill` delegates to `install_skill_from_archive()`

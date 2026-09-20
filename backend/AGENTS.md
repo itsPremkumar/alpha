@@ -2,7 +2,7 @@
 
 ## Self-repair verification contract
 
-`packages/harness/agent_workspace/selfrepair/engine.py` currently provides symptom
+`packages/harness/alpha/selfrepair/engine.py` currently provides symptom
 classification and disk-health observations, not automatic repair execution.
 `verify_repair` returns false with an explicit missing-verifier reason;
 `attempt_repair` refuses unimplemented actions without changing runtime state.
@@ -23,14 +23,14 @@ Alpha is a LangGraph-based AI super agent system with a full-stack architecture.
 - **Provisioner** (port 8002, optional in Docker dev): Started only when sandbox is configured for provisioner/Kubernetes mode
 
 **Runtime**:
-- `make dev`, Docker dev, and production all run the agent runtime in Gateway via `RunManager` + `run_agent()` + `StreamBridge` (`packages/harness/agent_workspace/runtime/`). Nginx exposes that runtime at `/api/langgraph/*` and rewrites it to Gateway's native `/api/*` routers.
+- `make dev`, Docker dev, and production all run the agent runtime in Gateway via `RunManager` + `run_agent()` + `StreamBridge` (`packages/harness/alpha/runtime/`). Nginx exposes that runtime at `/api/langgraph/*` and rewrites it to Gateway's native `/api/*` routers.
 - Gateway streams `write_file` and `str_replace` argument deltas in bounded batches for multi-mode `messages-tuple` consumers; single-mode message consumers retain the original per-chunk contract. Non-message frames flush pending batches, and `values` remains an optional complete-state snapshot rather than a prerequisite for batching.
 - With `stream_subgraphs`, subgraph frames keep their namespace in the SSE event name (`values|<ns>`, LangGraph Platform style) instead of impersonating root frames — a delegated subagent inherits the parent checkpoint namespace, so publishing its `values` snapshot as bare `values` replaces the whole thread view in SDK clients (#4399). Root-only consumers (file-tool chunk batcher, subagent event persistence, LLM error-fallback detection) ignore namespaced frames. The web frontend does not request subgraph streaming; subtask progress rides root-namespace `task_*` custom events.
 - Background subagent identity is deliberately split: the provider `tool_call_id` remains the correlation key for `ToolMessage`, `task_*` SSE events, persisted lifecycle events, frontend cards, and the public `ExtensionData.scope_id` contract (stored as `SubagentResult.external_task_id`), while `SubagentExecutor.execute_async()` generates a full server-side `execution_id` for `SubagentResult.task_id`, the process-wide registry, polling, cancellation, timeout handling, and cleanup. Provider IDs are not globally unique across parent runs, so they must never become registry ownership keys; scheduler closures retain their own `SubagentResult` rather than resolving ownership again through the mutable registry. Terminal subagent token usage travels in the current run's `ToolMessage.additional_kwargs` and is attributed from message state, never through a process-global provider-ID cache.
 - Scheduled-task executions must reuse that same Gateway run lifecycle. The scheduler may decide *when* work runs, but it must dispatch through the existing run path rather than introducing a parallel execution stack. Scheduled launches pass `scheduler.recursion_limit` (default 1000, matching the web UI's `recursion_limit: 1000`, clamped by `max_recursion_limit`) via `launch_scheduled_thread_run`; the value is read from `get_app_config()` at dispatch, so a YAML edit applies to the next scheduled run without a Gateway restart.
 - The background scheduler is single-instance by default. `scheduler.multi_instance=true` opts into lease-aware recovery across Gateway instances and requires shared Postgres, `run_ownership.heartbeat_enabled=true`, and `run_events.backend=db`; otherwise startup rejects the configuration. Live scheduled runs are preserved when a peer starts; expired launch claims return to the durable queue, expired run leases are atomically taken over, stale launch writes are fenced by lease ownership, and the Postgres advisory-locked budget makes `max_concurrent_runs` a shared global cap for `launching`/`running` rows.
-- Long-running MCP work uses a separate durable task runtime (`McpTaskService` + `mcp_tasks`, lease-based recovery) rather than keeping remote task IDs or status polling inside the Agent loop; only submit remains Agent-visible, the database is the source of truth, and `ThreadState` receives only a bounded current-thread projection. Full contract (leases, cancellation fencing, delivery idempotency, management-tool exposure): [packages/harness/agent_workspace/mcp/AGENTS.md](packages/harness/agent_workspace/mcp/AGENTS.md).
-- MCP task notification retries, dead-lettering, and the cancel endpoint's worker-stopped 503 are part of that same contract — see [packages/harness/agent_workspace/mcp/AGENTS.md](packages/harness/agent_workspace/mcp/AGENTS.md).
+- Long-running MCP work uses a separate durable task runtime (`McpTaskService` + `mcp_tasks`, lease-based recovery) rather than keeping remote task IDs or status polling inside the Agent loop; only submit remains Agent-visible, the database is the source of truth, and `ThreadState` receives only a bounded current-thread projection. Full contract (leases, cancellation fencing, delivery idempotency, management-tool exposure): [packages/harness/alpha/mcp/AGENTS.md](packages/harness/alpha/mcp/AGENTS.md).
+- MCP task notification retries, dead-lettering, and the cancel endpoint's worker-stopped 503 are part of that same contract — see [packages/harness/alpha/mcp/AGENTS.md](packages/harness/alpha/mcp/AGENTS.md).
 - Scheduled-task dispatch permits one active occurrence per task via `uq_scheduled_task_run_active` (`task_id WHERE status IN ('queued','launching','running')`). Durable `queued` rows survive restarts; only lease-fenced `launching` may call Gateway launch; `running` references the durable run. Stable admission idempotency keys reuse that run after recovery. Reused-thread `ConflictError` returns `launching` to `queued`; other launch errors become `failed`. Atomic queue claims enforce `max_concurrent_runs`, excluding waiting rows. Repeated triggers coalesce; same-thread FIFO blocks behind older active rows. Queue admission, PATCH/resume, pause and delete lock the parent before the occurrence, freezing active task definitions. Pause/delete atomically cancel `queued` work but reject `launching`/`running`; PATCH/resume reject all active states. Only queued conflicts offer pause cancellation. Manual triggers may queue/run while paused. Recovery locks task/run pairs in task-id/run-id order and restores `run_id`, `started_at` and live errors before releasing launch claims. Launch/failure/timeout updates use one parent-first transaction to prevent interleaved claims. Queue timeout fails the occurrence and advances scheduled work to prevent immediate requeue. Repository boundaries coerce serialized timestamps before SQL `DateTime` binding.
 - `POST /api/scheduled-tasks/preview-cron` requires authenticated `threads:read`. Bounded cron previews call the shared scheduler calculator in `asyncio.to_thread`, preserving its DST semantics. Capture the optional aware reference once; return UTC and offset-bearing local occurrences without acquiring task/thread/run stores or dispatching work. This advisory API does not reserve execution.
 - `extensions_config.json` is written at runtime by the Gateway (`PUT`/`PATCH /api/mcp/config`, the MCP enable switch, skill updates), so the production compose mounts it read-write while `config.yaml` stays `:ro`; Helm copies its ConfigMap seed into a writable home-volume directory before Gateway starts. Every read-modify-write holds both `extensions_config_write_lock` and the sidecar advisory `extensions_config_file_lock`, because the process-local lock alone loses updates across workers. Docker mounts the compose file as its own mount point, and Linux refuses `rename()` over a mount point with `EBUSY` even when the mount is writable — so `atomic_write_extensions_config` keeps the temp-file-plus-rename path and falls back to an in-place overwrite only on `EBUSY`. That fallback is deliberately non-atomic (a crash mid-write truncates the file); it exists because the alternative is a write that can never succeed, and only its first occurrence per target is logged at warning level. Any other `errno` still propagates. Pinned by `tests/test_compose_extensions_config_writable.py`, `tests/test_extensions_config_atomic_write.py`, and `tests/test_helm_extensions_config_writable.py`.
@@ -46,9 +46,9 @@ agent-workspace/
 │   ├── langgraph.json         # LangGraph Studio graph configuration
 │   ├── packages/
 │   │   ├── extension-api/     # public, host-independent extension contracts (import: agent_workspace_extension_api.*)
-│   │   └── harness/           # agent-workspace-harness package (import: agent_workspace.*)
+│   │   └── harness/           # agent-workspace-harness package (import: alpha.*)
 │   │       ├── pyproject.toml
-│   │       └── agent_workspace/
+│   │       └── alpha/
 │   │           ├── agents/            # LangGraph agent system
 │   │           │   ├── lead_agent/    # Main agent (factory + system prompt)
 │   │           │   ├── middlewares/   # middleware components (see Middleware Chain section)
@@ -208,37 +208,37 @@ More specific `AGENTS.md` files in backend code directories contain the subsyste
 
 ### Display Identity
 
-`packages/harness/agent_workspace/branding.py` owns the static `DISPLAY_NAME` (`Alpha`) for default prompt identity, channel display messages, Gateway documentation, and selected actionable errors. It has no configuration or environment dependencies. Do not use it for package/class names, runtime folders, API keys/routes, headers, or other protocol identifiers. Custom agent names and user-managed content remain untouched. Regression coverage: `tests/test_display_branding.py` and the channel connection suites.
+`packages/harness/alpha/branding.py` owns the static `DISPLAY_NAME` (`Alpha`) for default prompt identity, channel display messages, Gateway documentation, and selected actionable errors. It has no configuration or environment dependencies. Do not use it for package/class names, runtime folders, API keys/routes, headers, or other protocol identifiers. Custom agent names and user-managed content remain untouched. Regression coverage: `tests/test_display_branding.py` and the channel connection suites.
 
 ### Harness / App Split
 
 The backend is split into two layers with a strict dependency direction:
 
-- **Harness** (`packages/harness/agent_workspace/`): Publishable agent framework package (`agent-workspace-harness`). Import prefix: `agent_workspace.*`. Contains agent orchestration, tools, sandbox, models, MCP, skills, config — everything needed to build and run agents.
+- **Harness** (`packages/harness/alpha/`): Publishable agent framework package (`agent-workspace-harness`). Import prefix: `alpha.*`. Contains agent orchestration, tools, sandbox, models, MCP, skills, config — everything needed to build and run agents.
 - **App** (`app/`): Unpublished application code. Import prefix: `app.*`. Contains the FastAPI Gateway API and IM channel integrations (Feishu, Slack, Telegram, DingTalk).
 
-**Dependency rule**: App imports agent_workspace, but agent_workspace never imports app. This boundary is enforced by `tests/test_harness_boundary.py` which runs in CI.
+**Dependency rule**: App imports alpha, but alpha never imports app. This boundary is enforced by `tests/test_harness_boundary.py` which runs in CI.
 
 **Import conventions**:
 ```python
 # Harness internal
-from agent_workspace.agents import make_lead_agent
-from agent_workspace.models import create_chat_model
+from alpha.agents import make_lead_agent
+from alpha.models import create_chat_model
 
 # App internal
 from app.gateway.app import app
 from app.channels.service import start_channel_service
 
 # App → Harness (allowed)
-from agent_workspace.config import get_app_config
+from alpha.config import get_app_config
 
 # Harness → App (FORBIDDEN — enforced by test_harness_boundary.py)
 # from app.gateway.routers.uploads import ...  # ← will fail CI
 ```
 
-Package import hygiene: the `agent_workspace.agents` and `agent_workspace.subagents` package
+Package import hygiene: the `alpha.agents` and `alpha.subagents` package
 roots expose heavyweight graph/executor entrypoints lazily. The
-`agent_workspace.agents:make_lead_agent` LangGraph Server entrypoint is a concrete thin
+`alpha.agents:make_lead_agent` LangGraph Server entrypoint is a concrete thin
 module-level function because the server resolves graph factories directly from
 the module dictionary; the wrapper keeps the lead-agent and skill-cache imports
 inside the function so importing the package remains lightweight. Internal
@@ -269,7 +269,7 @@ decisions — and `disable_clarification` is no milder than `non_interactive`.
 - Run both offline targets before and after your change: `make test` and `make test-blocking-io`
 - Tests must pass before a feature is considered complete
 - For lightweight config/utility modules, prefer pure unit tests with no external dependencies
-- If a module causes circular import issues in tests, add a `sys.modules` mock in `tests/conftest.py` (see existing example for `agent_workspace.subagents.executor`)
+- If a module causes circular import issues in tests, add a `sys.modules` mock in `tests/conftest.py` (see existing example for `alpha.subagents.executor`)
 
 ```bash
 # Run default offline tests
@@ -395,7 +395,7 @@ Outlines use ATX syntax (1–6 hashes, space/tab separator, ≤3 leading spaces)
 - Files stored in thread-isolated directories under the resolving user's bucket (`users/{user_id}/threads/{thread_id}/user-data/uploads`). For IM channels the owner is threaded explicitly via the `user_id=` kwarg (see IM Channels → Owner-scoped file storage); HTTP/embedded callers resolve it from `get_effective_user_id()`
 - Duplicate filenames within one request get `_N` suffixes to prevent overwrites.
 - Gateway HTTP uploads stage bytes as `.upload-*.part` files and atomically replace the destination only after size validation. These staging files are hidden from upload listings, agent upload context, and sandbox listing/search tools, and swept on Gateway startup if a hard crash leaves one behind.
-- Gateway HTTP upload/list/delete handlers offload filesystem work through `agent_workspace.utils.file_io.run_file_io`, a dedicated ContextVar-preserving file IO executor. Non-mounted sandbox uploads acquire sandboxes with `SandboxProvider.acquire_async()` and offload `read_bytes()` plus `sandbox.update_file()` together.
+- Gateway HTTP upload/list/delete handlers offload filesystem work through `alpha.utils.file_io.run_file_io`, a dedicated ContextVar-preserving file IO executor. Non-mounted sandbox uploads acquire sandboxes with `SandboxProvider.acquire_async()` and offload `read_bytes()` plus `sandbox.update_file()` together.
 - Mounted uploads skip sandbox acquire/sync. AIO remote/provisioner requires accurate `sandbox.thread_data_mounts: true`; omission keeps backend auto-detection.
 - `UploadsMiddleware` caps outline titles at 200 characters and previews at 2000 including markers. Titles use `original_user_content`, not upload-prefixed content; attachment-only titles use a sanitized, bounded filename or count.
 

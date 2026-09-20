@@ -13,9 +13,9 @@ DOC_PATH="${DOC_PATH:-/en/docs}"
 # protected /workspace/* routes redirect anonymous requests to /login.
 # We detect auth, register / log in a smoke-test user, and pass the session
 # cookie to all curl calls so the real pages are verified, not the login form.
-SMOKE_TEST_EMAIL="${SMOKE_TEST_EMAIL:-smoke-test@agent_workspace.dev}"
+SMOKE_TEST_EMAIL="${SMOKE_TEST_EMAIL:-smoke-test@alpha.dev}"
 SMOKE_TEST_PASSWORD="${SMOKE_TEST_PASSWORD:-SmokeTest123!}"
-COOKIE_JAR=$(mktemp /tmp/agent_workspace-smoke-cookies.XXXXXX)
+COOKIE_JAR=$(mktemp /tmp/alpha-smoke-cookies.XXXXXX)
 trap 'rm -f "$COOKIE_JAR"' EXIT
 CURL_AUTH_OPTS=""
 

@@ -171,7 +171,7 @@ export async function rollCall(): Promise<PresenceEntry[]> {
 
 /* ---------------- Read tracking (local; backend marks read on fetch) ---------------- */
 
-const SEEN_KEY = "agent_workspace.msgseen.v1";
+const SEEN_KEY = "alpha.msgseen.v1";
 
 function loadSeen(): Record<string, string> {
   try {

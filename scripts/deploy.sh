@@ -293,7 +293,7 @@ detect_sandbox_mode() {
         }
     ' "$AGENT_WORKSPACE_CONFIG_PATH")
 
-    if [[ "$sandbox_use" == *"agent_workspace.community.aio_sandbox:AioSandboxProvider"* ]] || [[ "$sandbox_use" == *"agent_workspace.community.aio_sandbox:AioSandboxProvider"* ]]; then
+    if [[ "$sandbox_use" == *"alpha.community.aio_sandbox:AioSandboxProvider"* ]] || [[ "$sandbox_use" == *"alpha.community.aio_sandbox:AioSandboxProvider"* ]]; then
         if [ -n "$provisioner_url" ]; then
             echo "provisioner"
         else

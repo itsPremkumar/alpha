@@ -23,6 +23,6 @@
   replacement alone cannot prevent lost updates. Legacy shared snapshots are
   not automatically imported; migration and broader tool exposure remain open.
 - Entry points: `backend/app/gateway/routers/memory.py:579` and
-  `backend/packages/harness/agent_workspace/tools/builtins/cognitive_memory_tool.py:29`.
+  `backend/packages/harness/alpha/tools/builtins/cognitive_memory_tool.py:29`.
   Regressions: `backend/tests/test_cognitive_memory_isolation.py` and
   `backend/tests/test_cognitive_memory.py`.

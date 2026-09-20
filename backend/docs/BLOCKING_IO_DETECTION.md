@@ -41,7 +41,7 @@ pattern that is invisible to the current detector.
 ## Runtime detector
 
 The runtime detector is the CI regression guard. It uses Blockbuster to fail a
-focused test when code under `app.*` or `agent_workspace.*` performs blocking IO on
+focused test when code under `app.*` or `alpha.*` performs blocking IO on
 the asyncio event-loop thread.
 
 Run it from `backend/`:
@@ -102,7 +102,7 @@ _PROJECT_BLOCKING_RULES = (
         BlockBusterFunction(
             subprocess.Popen,
             "__init__",
-            scanned_modules=["app", "agent_workspace"],
+            scanned_modules=["app", "alpha"],
         ),
     ),
 )

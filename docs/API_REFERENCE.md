@@ -776,7 +776,7 @@ All endpoints return standard error format:
 ### Python (AgentWorkspaceClient)
 
 ```python
-from agent_workspace.client import AgentWorkspaceClient
+from alpha.client import AgentWorkspaceClient
 
 client = AgentWorkspaceClient(base_url="http://localhost:2026")
 client.authenticate(token="your-token")

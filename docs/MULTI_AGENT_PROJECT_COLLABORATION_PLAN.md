@@ -117,7 +117,7 @@ entry point. Everything the UI and the API touches goes through it.
    └────────────────────┘   └────────────────────┘   └────────────────────┘
 ```
 
-**`ProjectCrewService`** (`backend/packages/harness/agent_workspace/projects/crew.py`) — new, ~200 lines, pure composition over existing code:
+**`ProjectCrewService`** (`backend/packages/harness/alpha/projects/crew.py`) — new, ~200 lines, pure composition over existing code:
 
 ```python
 def ensure_crew(project_id) -> CrewView:        # idempotent; safe to call on every read
@@ -184,7 +184,7 @@ it L1/L2/L3 proportionally instead of truncating tail-first.
 
 Extract to a shared module so all surfaces use one implementation:
 
-**New:** `backend/packages/harness/agent_workspace/bots/mentions.py`
+**New:** `backend/packages/harness/alpha/bots/mentions.py`
 ```python
 MENTION_PATTERN = re.compile(r"@([A-Za-z0-9_-]+)")
 def parse_mentions(text, members, *, roster=None) -> list[str]

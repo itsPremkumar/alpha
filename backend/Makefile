@@ -67,7 +67,7 @@ detect-blocking-io:
 # `bootstrap_schema`, so there is intentionally no `migrate` / `migrate-stamp`
 # target -- the single execution path keeps ops mistakes off the table.
 # The script builds a fresh temp SQLite at head, then diffs the live models
-# against it, so a clean checkout does NOT need a pre-existing ./data/agent_workspace.db.
+# against it, so a clean checkout does NOT need a pre-existing ./data/alpha.db.
 migrate-rev:
 	@if [ -z "$(MSG)" ]; then echo 'usage: make migrate-rev MSG="describe the change"'; exit 1; fi
 	PYTHONPATH=. PYTHONIOENCODING=utf-8 PYTHONUTF8=1 uv run python scripts/_autogen_revision.py "$(MSG)"

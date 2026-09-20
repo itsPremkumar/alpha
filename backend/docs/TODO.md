@@ -11,7 +11,7 @@
 - [x] Add Plan Mode with TodoList middleware
 - [x] Add vision model support with ViewImageMiddleware
 - [x] Skills system with SKILL.md format
-- [x] Replace `time.sleep(5)` with `asyncio.sleep()` in `packages/harness/agent_workspace/tools/builtins/task_tool.py` (subagent polling)
+- [x] Replace `time.sleep(5)` with `asyncio.sleep()` in `packages/harness/alpha/tools/builtins/task_tool.py` (subagent polling)
 
 ## Planned Features
 
@@ -22,7 +22,7 @@
 - [ ] Support for more document formats in upload
 - [ ] Skill marketplace / remote skill installation
 - [ ] Optimize async concurrency in agent hot path (IM channels multi-task scenario)
-- [ ] Replace `subprocess.run()` with `asyncio.create_subprocess_shell()` in `packages/harness/agent_workspace/sandbox/local/local_sandbox.py`
+- [ ] Replace `subprocess.run()` with `asyncio.create_subprocess_shell()` in `packages/harness/alpha/sandbox/local/local_sandbox.py`
   - Replace sync `requests` with `httpx.AsyncClient` in community tools (tavily, jina_ai, firecrawl, infoquest, image_search)
   - [x] Replace sync `model.invoke()` with async `model.ainvoke()` in title_middleware and memory updater
   - Consider `asyncio.to_thread()` wrapper for remaining blocking file I/O

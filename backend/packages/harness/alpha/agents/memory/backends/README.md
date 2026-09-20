@@ -81,10 +81,10 @@ Implement the ones your backend supports; the rest inherit the default raise.
 ### 4. Portability (the golden rule)
 
 > [!IMPORTANT]
-> A backend talks to the host through exactly **two channels**: (1) the ABC method arguments (`manager.py`), and (2) the `backend_config` dict. The **only** `from agent_workspace` import allowed anywhere in your backend folder is the ABC contract line in `<name>_manager.py`:
+> A backend talks to the host through exactly **two channels**: (1) the ABC method arguments (`manager.py`), and (2) the `backend_config` dict. The **only** `from alpha` import allowed anywhere in your backend folder is the ABC contract line in `<name>_manager.py`:
 
 ```python
-from agent_workspace.agents.memory.manager import MemoryManager
+from alpha.agents.memory.manager import MemoryManager
 ```
 
 Change that one line (and only that line) to port the backend to another agent. **Do not import agent-workspace path helpers, config singletons, or models** - get `storage_path` and everything else from `backend_config`.
@@ -106,12 +106,12 @@ These are backend-agnostic. Don't touch them when swapping backends (unless you'
 
 | File | Role |
 |---|---|
-| `packages/harness/agent_workspace/agents/memory/manager.py` | ABC + factory + scanner |
-| `packages/harness/agent_workspace/agents/middlewares/memory_middleware.py` | `after_agent` -> `manager.add` |
-| `packages/harness/agent_workspace/agents/memory/summarization_hook.py` | summarization -> `manager.add_nowait` |
-| `packages/harness/agent_workspace/agents/lead_agent/prompt.py` | `_get_memory_context` -> `manager.get_context` |
+| `packages/harness/alpha/agents/memory/manager.py` | ABC + factory + scanner |
+| `packages/harness/alpha/agents/middlewares/memory_middleware.py` | `after_agent` -> `manager.add` |
+| `packages/harness/alpha/agents/memory/summarization_hook.py` | summarization -> `manager.add_nowait` |
+| `packages/harness/alpha/agents/lead_agent/prompt.py` | `_get_memory_context` -> `manager.get_context` |
 | `app/gateway/routers/memory.py` | HTTP endpoints -> `manager.*` (direct call + try/except `NotImplementedError`) |
-| `packages/harness/agent_workspace/config/memory_config.py` | shared 4 fields (`enabled` / `injection_enabled` / `manager_class` / `backend_config`) |
+| `packages/harness/alpha/config/memory_config.py` | shared 4 fields (`enabled` / `injection_enabled` / `manager_class` / `backend_config`) |
 | `frontend/src/components/workspace/settings/memory-settings-page.tsx` | frontend memory page (assumes DeerMem shape) |
 
 > [!NOTE]
@@ -144,7 +144,7 @@ The optional `honcho/` backend is a remote-only HTTP adapter for user-model memo
 | `workspace_prefix` | str | `agent-workspace-u-` | Prefix for isolated workspaces; each user gets one workspace named `{prefix}{sanitized_id}` |
 | `workspace_overrides` | dict | `{}` | Map specific user ids to custom workspace names; overrides the prefix-based derivation. Values must be non-empty (parse error otherwise). Mapping several users to one workspace shares its search index across them (see Workspace Resolution) |
 | `user_peer_overrides` | dict | `{}` | Map specific user ids to custom names for the user's own peer; overrides the stable-id derivation. Values must be non-empty (parse error otherwise) |
-| `assistant_peer` | str | `agent_workspace` | Default peer name for the assistant when storing messages |
+| `assistant_peer` | str | `alpha` | Default peer name for the assistant when storing messages |
 | `message_char_limit` | int | `8000` | Character limit per message; longer messages are truncated. Must be `> 0` (zero empties the write; a negative value is a Python suffix slice, not a cap) |
 | `max_injection_chars` | int | `6000` | Character limit for injected memory into the system prompt. Must be `> 0` |
 | `failure_policy.read` | str | `fail_open` | Recall failure handling: `fail_open` (log and return empty) or `fail_closed` (rethrow) |
@@ -156,4 +156,4 @@ The optional `honcho/` backend is a remote-only HTTP adapter for user-model memo
 ## Reference
 
 - **Template**: `noop/` - minimal implementation with full docstrings; copy and go.
-- **Contract + factory**: `packages/harness/agent_workspace/agents/memory/manager.py` (`MemoryManager` base, `MemoryCallbacks`, `get_memory_manager` factory).
+- **Contract + factory**: `packages/harness/alpha/agents/memory/manager.py` (`MemoryManager` base, `MemoryCallbacks`, `get_memory_manager` factory).

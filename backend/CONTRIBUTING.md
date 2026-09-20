@@ -64,7 +64,7 @@ make dev
 
 ```
 backend/
-├── packages/harness/agent_workspace/  # agent-workspace-harness package (import: agent_workspace.*)
+├── packages/harness/alpha/  # agent-workspace-harness package (import: alpha.*)
 │   ├── agents/                 # Agent system
 │   │   ├── lead_agent/         # Main agent (agent.py factory, prompt.py)
 │   │   ├── middlewares/        # Agent middleware chain
@@ -86,7 +86,7 @@ backend/
 │   ├── guardrails/             # Pre-tool-call authorization providers
 │   ├── tracing/                # Tracer factory & trace metadata
 │   ├── uploads/                # Uploads manager
-│   ├── tui/                    # Terminal UI (`agent_workspace` console script)
+│   ├── tui/                    # Terminal UI (`alpha` console script)
 │   ├── community/              # Community tools (tavily/, jina_ai/, firecrawl/, …)
 │   ├── reflection/             # Dynamic module loading
 │   └── utils/                  # Utilities
@@ -200,7 +200,7 @@ Example test:
 
 ```python
 import pytest
-from agent_workspace.models.factory import create_chat_model
+from alpha.models.factory import create_chat_model
 
 def test_create_chat_model_with_valid_name():
     """Test that a valid model name creates a model instance."""
@@ -242,10 +242,10 @@ Include in your PR description:
 
 ### Adding New Tools
 
-1. Create tool in `packages/harness/agent_workspace/tools/builtins/` or `packages/harness/agent_workspace/community/`:
+1. Create tool in `packages/harness/alpha/tools/builtins/` or `packages/harness/alpha/community/`:
 
 ```python
-# packages/harness/agent_workspace/tools/builtins/my_tool.py
+# packages/harness/alpha/tools/builtins/my_tool.py
 from langchain_core.tools import tool
 
 @tool
@@ -267,15 +267,15 @@ def my_tool(param: str) -> str:
 tools:
   - name: my_tool
     group: my_group
-    use: agent_workspace.tools.builtins.my_tool:my_tool
+    use: alpha.tools.builtins.my_tool:my_tool
 ```
 
 ### Adding New Middleware
 
-1. Create middleware in `packages/harness/agent_workspace/agents/middlewares/`:
+1. Create middleware in `packages/harness/alpha/agents/middlewares/`:
 
 ```python
-# packages/harness/agent_workspace/agents/middlewares/my_middleware.py
+# packages/harness/alpha/agents/middlewares/my_middleware.py
 from langchain.agents import AgentState
 from langchain.agents.middleware import AgentMiddleware
 from langgraph.runtime import Runtime
@@ -307,8 +307,8 @@ into the agent state, or `None` when they only observe state.
 ```yaml
 extensions:
   middlewares:
-    - agent_workspace.agents.middlewares.my_middleware:MyMiddleware
-    - class: agent_workspace.agents.middlewares.my_middleware:MyMiddleware
+    - alpha.agents.middlewares.my_middleware:MyMiddleware
+    - class: alpha.agents.middlewares.my_middleware:MyMiddleware
       kwargs:
         max_tool_calls: 5
 ```
@@ -338,7 +338,7 @@ subagent pipelines. Packaged extensions registered through the top-level
 code that needs committed, programmatic lead-only wiring can use
 `build_middlewares(..., custom_middlewares=[MyMiddleware()])` at the
 `build_middlewares` call in
-`packages/harness/agent_workspace/agents/lead_agent/agent.py` (reached through
+`packages/harness/alpha/agents/lead_agent/agent.py` (reached through
 `make_lead_agent`).
 
 ### Adding New API Endpoints
@@ -374,7 +374,7 @@ app.include_router(my_router.router)
 
 When adding new configuration options:
 
-1. Update `packages/harness/agent_workspace/config/app_config.py` with new fields
+1. Update `packages/harness/alpha/config/app_config.py` with new fields
 2. Add default values in `config.example.yaml`
 3. Document in `docs/CONFIGURATION.md`
 

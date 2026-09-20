@@ -15,7 +15,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
-      - 'backend/packages/harness/agent_workspace/community/aio_sandbox/**'
+      - 'backend/packages/harness/alpha/community/aio_sandbox/**'
       - 'backend/tests/test_aio_sandbox_local_backend.py'
       - '.github/workflows/sandbox-image-smoke.yml'
 

@@ -63,7 +63,7 @@ Hook into agent execution phases.
 ```python
 # extension/lifecycle.py
 from agent_workspace_extension_api import TaskLifecycleHook
-from agent_workspace.types import AgentState
+from alpha.types import AgentState
 
 class MetricsHook(TaskLifecycleHook):
     async def on_task_start(self, state: AgentState) -> None:
@@ -93,7 +93,7 @@ Monitor agent state changes.
 ```python
 # extension/observer.py
 from agent_workspace_extension_api import SystemModelObserver
-from agent_workspace.types import SystemEvent
+from alpha.types import SystemEvent
 
 class AlertObserver(SystemModelObserver):
     async def on_event(self, event: SystemEvent) -> None:
@@ -189,7 +189,7 @@ classifiers = [
     "Framework :: Alpha Extension",
 ]
 
-[project.entry-points."agent_workspace.extensions"]
+[project.entry-points."alpha.extensions"]
 my-extension = "my_extension.manifest:ExtensionManifest"
 
 [tool.uv.sources]
@@ -642,7 +642,7 @@ python -c "import pstats; p = pstats.Stats('ext_profile.stats'); p.sort_stats('c
 
 ### From v1 Extensions
 - Manifest class renamed from `Extension` to `ExtensionManifest`
-- Entry point changed from `extension` to `agent_workspace.extensions`
+- Entry point changed from `extension` to `alpha.extensions`
 - Config schema now uses JSON Schema (was custom)
 - Middleware signature changed (Request/Response objects)
 

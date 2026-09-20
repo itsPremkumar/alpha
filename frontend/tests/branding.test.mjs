@@ -62,11 +62,11 @@ test("chat history storage key, content and export identity work properly", (t) 
     messages: { "agent-workspace-thread": [{ id: "agent-workspace-message", role: "assistant", content: "Alpha saved message" }] },
     meta: { "agent-workspace-thread": { botName: "lead_agent", goal: null } },
   };
-  storage.set("agent_workspace.chatstore.v1", JSON.stringify(fixture));
+  storage.set("alpha.chatstore.v1", JSON.stringify(fixture));
   assert.deepEqual(history.loadStore().threads, fixture.threads);
   history.clearLocalStore();
   assert.deepEqual(history.importStoreJson(JSON.stringify(fixture)), { threads: 1, messages: 1 });
-  assert.deepEqual([...storage.keys()], ["agent_workspace.chatstore.v1"]);
+  assert.deepEqual([...storage.keys()], ["alpha.chatstore.v1"]);
   const exported = JSON.parse(history.exportStoreJson());
   assert.equal(exported.app, fixture.app);
   assert.equal(exported.version, fixture.version);

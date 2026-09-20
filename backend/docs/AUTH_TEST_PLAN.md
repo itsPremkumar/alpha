@@ -21,7 +21,7 @@ The following tests must be executed under each mode.
 
 ```bash
 # Clear existing data
-rm -f backend/.agent-workspace/data/agent_workspace.db
+rm -f backend/.agent-workspace/data/alpha.db
 
 # Start standard mode (Gateway embedded runtime)
 make dev
@@ -519,7 +519,7 @@ curl -s -X POST $BASE/api/v1/auth/register \
 
 ```bash
 # Inspect database
-sqlite3 backend/.agent-workspace/data/agent_workspace.db "SELECT email, password_hash FROM users LIMIT 3;"
+sqlite3 backend/.agent-workspace/data/alpha.db "SELECT email, password_hash FROM users LIMIT 3;"
 ```
 
 **Expected:** `password_hash` starts with `$2b$` (bcrypt format)
@@ -743,19 +743,19 @@ curl -s -X POST http://localhost:2026/api/threads/search \
 
 ### 5.3 Database Schema Compatibility
 
-#### TC-UPG-05: Empty agent_workspace.db Initializes Schema Without Default Users
+#### TC-UPG-05: Empty alpha.db Initializes Schema Without Default Users
 
 ```bash
-ls -la backend/.agent-workspace/data/agent_workspace.db
-sqlite3 backend/.agent-workspace/data/agent_workspace.db "SELECT COUNT(*) FROM users;"
+ls -la backend/.agent-workspace/data/alpha.db
+sqlite3 backend/.agent-workspace/data/alpha.db "SELECT COUNT(*) FROM users;"
 ```
 
 **Expected:** File exists, `sqlite3` shows `users` table with `needs_setup` and `token_version` columns; before calling `/initialize`, user count is 0
 
-#### TC-UPG-06: agent_workspace.db WAL Mode
+#### TC-UPG-06: alpha.db WAL Mode
 
 ```bash
-sqlite3 backend/.agent-workspace/data/agent_workspace.db "PRAGMA journal_mode;"
+sqlite3 backend/.agent-workspace/data/alpha.db "PRAGMA journal_mode;"
 ```
 
 **Expected:** Returns `wal`
@@ -806,9 +806,9 @@ make dev
 ```
 
 **Expected:**
-- [ ] Service starts up normally (ignores `agent_workspace.db`, unauthenticated code does not error)
+- [ ] Service starts up normally (ignores `alpha.db`, unauthenticated code does not error)
 - [ ] Legacy conversation data remains accessible
-- [ ] Existing `agent_workspace.db` file does not impact operation
+- [ ] Existing `alpha.db` file does not impact operation
 
 #### TC-UPG-12: Upgrade to Auth Branch Again
 
@@ -819,8 +819,8 @@ make dev
 ```
 
 **Expected:**
-- [ ] Recognizes existing `agent_workspace.db`, does not duplicate admin
-- [ ] Legacy admin account can still log in (if `agent_workspace.db` was preserved)
+- [ ] Recognizes existing `alpha.db`, does not duplicate admin
+- [ ] Legacy admin account can still log in (if `alpha.db` was preserved)
 
 ### 5.7 Admin Initialization & reset_admin
 
@@ -829,7 +829,7 @@ make dev
 #### TC-UPG-13: Restart Without Initialized Admin Does Not Create Defaults
 
 ```bash
-rm -f backend/.agent-workspace/data/agent_workspace.db
+rm -f backend/.agent-workspace/data/alpha.db
 make dev
 make stop
 
@@ -943,7 +943,7 @@ for i in 1 2 3; do
 done
 
 # Check admin count
-sqlite3 backend/.agent-workspace/data/agent_workspace.db \
+sqlite3 backend/.agent-workspace/data/alpha.db \
   "SELECT COUNT(*) FROM users WHERE system_role='admin';"
 ```
 
@@ -1088,7 +1088,7 @@ curl -s -X POST $BASE/api/v1/auth/register \
 wait
 
 # Verify user count
-sqlite3 backend/.agent-workspace/data/agent_workspace.db \
+sqlite3 backend/.agent-workspace/data/alpha.db \
   "SELECT COUNT(*) FROM users WHERE email='race@example.com';"
 ```
 
@@ -1198,12 +1198,12 @@ curl -s -w "%{http_code}" -X DELETE "$BASE/api/threads/$TID" \
 ```bash
 cd backend
 python -m app.gateway.auth.reset_admin
-cp .agent-workspace/admin_initial_credentials.txt /tmp/agent_workspace-reset-p1.txt
-P1=$(awk -F': ' '/^password:/ {print $2}' /tmp/agent_workspace-reset-p1.txt)
+cp .agent-workspace/admin_initial_credentials.txt /tmp/alpha-reset-p1.txt
+P1=$(awk -F': ' '/^password:/ {print $2}' /tmp/alpha-reset-p1.txt)
 
 python -m app.gateway.auth.reset_admin
-cp .agent-workspace/admin_initial_credentials.txt /tmp/agent_workspace-reset-p2.txt
-P2=$(awk -F': ' '/^password:/ {print $2}' /tmp/agent_workspace-reset-p2.txt)
+cp .agent-workspace/admin_initial_credentials.txt /tmp/alpha-reset-p2.txt
+P2=$(awk -F': ' '/^password:/ {print $2}' /tmp/alpha-reset-p2.txt)
 ```
 
 **Expected:**
@@ -1417,9 +1417,9 @@ done
 >
 > Prerequisites:
 > - Set `AUTH_JWT_SECRET` in `.env` (otherwise sessions are invalidated on every container restart)
-> - Mount `AGENT_WORKSPACE_HOME` to a host directory (persisting `agent_workspace.db`)
+> - Mount `AGENT_WORKSPACE_HOME` to a host directory (persisting `alpha.db`)
 
-#### TC-DOCKER-01: agent_workspace.db Volume Persistence
+#### TC-DOCKER-01: alpha.db Volume Persistence
 
 ```bash
 # Start container
@@ -1434,13 +1434,13 @@ curl -s -X POST $BASE/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email":"docker-test@example.com","password":"DockerTest1!"}' -w "\nHTTP %{http_code}"
 
-# Verify agent_workspace.db on host filesystem
-ls -la ${AGENT_WORKSPACE_HOME:-backend/.agent-workspace}/data/agent_workspace.db
-sqlite3 ${AGENT_WORKSPACE_HOME:-backend/.agent-workspace}/data/agent_workspace.db \
+# Verify alpha.db on host filesystem
+ls -la ${AGENT_WORKSPACE_HOME:-backend/.agent-workspace}/data/alpha.db
+sqlite3 ${AGENT_WORKSPACE_HOME:-backend/.agent-workspace}/data/alpha.db \
   "SELECT email FROM users WHERE email='docker-test@example.com';"
 ```
 
-**Expected:** agent_workspace.db resides in the host `AGENT_WORKSPACE_HOME` directory, query shows newly registered users.
+**Expected:** alpha.db resides in the host `AGENT_WORKSPACE_HOME` directory, query shows newly registered users.
 
 #### TC-DOCKER-02: Session Persistence Across Container Restarts
 

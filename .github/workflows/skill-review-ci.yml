@@ -5,7 +5,7 @@ on:
     branches: ["main", "2.0.x-dev"]
     paths:
       - "skills/public/**"
-      - "backend/packages/harness/agent_workspace/skills/review/**"
+      - "backend/packages/harness/alpha/skills/review/**"
       - "contracts/skill_review/**"
       - "scripts/review_changed_public_skills.py"
       - "scripts/skill_review_waivers.py"
@@ -17,7 +17,7 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "skills/public/**"
-      - "backend/packages/harness/agent_workspace/skills/review/**"
+      - "backend/packages/harness/alpha/skills/review/**"
       - "contracts/skill_review/**"
       - "scripts/review_changed_public_skills.py"
       - "scripts/skill_review_waivers.py"

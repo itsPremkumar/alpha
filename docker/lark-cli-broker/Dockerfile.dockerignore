@@ -6,7 +6,7 @@
 # from a repo-root context and must COPY:
 #   - docker/lark-cli-init/build-runtime.sh
 #   - docker/lark-cli-broker/entrypoint.sh
-#   - backend/packages/harness/agent_workspace/integrations/lark_broker.py
+#   - backend/packages/harness/alpha/integrations/lark_broker.py
 # so `docker/` and `backend/` must NOT be excluded here. Patterns are relative to
 # the build context root (the repo root).
 

@@ -6,7 +6,7 @@ select = ["E", "F", "I", "UP"]
 ignore = []
 
 [lint.isort]
-known-first-party = ["agent_workspace", "app"]
+known-first-party = ["alpha", "app"]
 
 [format]
 quote-style = "double"

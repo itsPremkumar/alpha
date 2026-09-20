@@ -19,7 +19,7 @@ The two paths serve fundamentally divergent consumer execution models:
 | Dimension | Gateway Path | AgentWorkspaceClient Path |
 |---|---|---|
 | Entrypoint | FastAPI `/runs/stream` endpoint | `AgentWorkspaceClient.stream(message)` |
-| Trigger Layer | `runtime/runs/worker.py::run_agent` | `packages/harness/agent_workspace/client.py::AgentWorkspaceClient.stream` |
+| Trigger Layer | `runtime/runs/worker.py::run_agent` | `packages/harness/alpha/client.py::AgentWorkspaceClient.stream` |
 | Execution Model | `async def` + `agent.astream()` | Sync generator + `agent.stream()` |
 | Event Transport | `StreamBridge` (asyncio Queue) + `sse_consumer` | Direct `yield` |
 | Serialization | `serialize(chunk)` → Pure JSON dict, matching LangGraph Platform wire format | `StreamEvent.data`, preserving native LangChain objects |
@@ -82,7 +82,7 @@ flowchart LR
 | `custom` | Explicit user code call to `StreamWriter.write()` | Arbitrary dict | Application defined |
 | `on_custom_event` | Explicit user code call to `dispatch_custom_event()`; consumed via `astream_events(version="v2")` | `name` + arbitrary `data` | Application defined |
 
-Alpha internal events must be emitted using sync or async helpers in `agent_workspace.utils.custom_events`, and each built-in payload must carry a non-empty string `type`. Payloads missing a valid `type` enter only the `custom` stream and will not appear in `astream_events`. The helper writes to the `custom` stream first, followed by a best-effort callback dispatch; the callback name is set to the payload's `type`, retaining the full payload in `data`. Gateway / Web UI / `AgentWorkspaceClient` custom streams remain unchanged while `astream_events` consumers observe identical events. Callback dispatch exceptions are logged at debug level without interrupting writer pipelines.
+Alpha internal events must be emitted using sync or async helpers in `alpha.utils.custom_events`, and each built-in payload must carry a non-empty string `type`. Payloads missing a valid `type` enter only the `custom` stream and will not appear in `astream_events`. The helper writes to the `custom` stream first, followed by a best-effort callback dispatch; the callback name is set to the payload's `type`, retaining the full payload in `data`. Gateway / Web UI / `AgentWorkspaceClient` custom streams remain unchanged while `astream_events` consumers observe identical events. Callback dispatch exceptions are logged at debug level without interrupting writer pipelines.
 
 ### Three Naming Schemes Across Protocol Layers
 
@@ -287,13 +287,13 @@ Observations:
 
 | Area | Location |
 |---|---|
-| Embedded streaming client | `packages/harness/agent_workspace/client.py::AgentWorkspaceClient.stream` |
-| Embedded ToolMessage artifact serialization | `packages/harness/agent_workspace/client.py::_tool_message_event` / `_serialize_message` |
-| `chat()` delta accumulator | `packages/harness/agent_workspace/client.py::AgentWorkspaceClient.chat` |
-| Gateway async stream worker | `packages/harness/agent_workspace/runtime/runs/worker.py::run_agent` |
+| Embedded streaming client | `packages/harness/alpha/client.py::AgentWorkspaceClient.stream` |
+| Embedded ToolMessage artifact serialization | `packages/harness/alpha/client.py::_tool_message_event` / `_serialize_message` |
+| `chat()` delta accumulator | `packages/harness/alpha/client.py::AgentWorkspaceClient.chat` |
+| Gateway async stream worker | `packages/harness/alpha/runtime/runs/worker.py::run_agent` |
 | HTTP SSE frame serialization | `app/gateway/services.py::sse_consumer` / `format_sse` |
-| Wire serialization | `packages/harness/agent_workspace/runtime/serialization.py` |
-| LangGraph mode translation | `packages/harness/agent_workspace/runtime/runs/worker.py:117-121` |
+| Wire serialization | `packages/harness/alpha/runtime/serialization.py` |
+| LangGraph mode translation | `packages/harness/alpha/runtime/runs/worker.py:117-121` |
 | Feishu card delta updates | `app/channels/manager.py::_handle_streaming_chat` |
 | Channel streaming accumulation | `app/channels/manager.py::_merge_stream_text` |
 | Frontend supported stream modes | `frontend/src/core/api/stream-mode.ts` |

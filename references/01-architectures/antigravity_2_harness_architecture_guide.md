@@ -4114,7 +4114,7 @@ Use these as the authoritative starting points and re-check them before implemen
     https://github.com/bytedance/agent-workspace/blob/main/frontend/src/content/en/introduction/index.mdx
 
 11. Alpha core concepts  
-    https://agent_workspace.tech/en/docs/introduction/core-concepts
+    https://alpha.tech/en/docs/introduction/core-concepts
 
 12. Hermes Agent tools and orchestration  
     https://github.com/hermes-agent-org/hermes/blob/main/website/docs/user-guide/features/tools.md

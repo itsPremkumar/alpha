@@ -176,7 +176,7 @@ Every advanced feature in Alpha is engineered for production-grade reliability a
 
 ## 4. Complete Subsystem Reference (All 89 Harness Engines)
 
-Every directory in `backend/packages/harness/agent_workspace/` represents a dedicated functional engine in Alpha:
+Every directory in `backend/packages/harness/alpha/` represents a dedicated functional engine in Alpha:
 
 | # | Subsystem Engine | Architectural Purpose |
 | :- | :--- | :--- |

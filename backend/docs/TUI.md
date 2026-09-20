@@ -1,6 +1,6 @@
 # Alpha Terminal Workbench (TUI)
 
-`agent_workspace` is a terminal-native workbench for the Alpha harness. It runs
+`alpha` is a terminal-native workbench for the Alpha harness. It runs
 **embedded** over `AgentWorkspaceClient` — no Gateway, frontend, nginx, or Docker
 services required — while honoring the same `config.yaml`, checkpointer, skills,
 memory, MCP, and sandbox settings as the rest of Alpha.
@@ -19,21 +19,21 @@ Launch modes:
 
 | Command | Behavior |
 |---|---|
-| `agent_workspace` | Launch the TUI when stdin/stdout are TTYs |
-| `agent_workspace --tui` | Force the TUI (clear diagnostic if `textual` is missing) |
-| `agent_workspace --tui-transparent` | Use the terminal's default background when launching the TUI |
-| `agent_workspace --cli` | Force headless/classic mode for one invocation |
-| `agent_workspace chat` | Same TUI conversation surface |
-| `agent_workspace --continue` | Resume the most recent thread |
-| `agent_workspace --resume THREAD` | Resume a thread by id |
-| `agent_workspace --print "question"` | Headless one-shot answer to stdout |
-| `agent_workspace --json "question"` | Headless newline-delimited `StreamEvent`s |
-| `agent_workspace --recursion-limit 250 --print "question"` | Set the headless agent-loop super-step limit |
-| `echo "q" \| agent_workspace --print` | Read the message from stdin |
-| `AGENT_WORKSPACE_TUI=1 agent_workspace` | Force the TUI via environment |
-| `AGENT_WORKSPACE_TUI_TRANSPARENT=1 agent_workspace` | Persist terminal-background rendering via environment |
+| `alpha` | Launch the TUI when stdin/stdout are TTYs |
+| `alpha --tui` | Force the TUI (clear diagnostic if `textual` is missing) |
+| `alpha --tui-transparent` | Use the terminal's default background when launching the TUI |
+| `alpha --cli` | Force headless/classic mode for one invocation |
+| `alpha chat` | Same TUI conversation surface |
+| `alpha --continue` | Resume the most recent thread |
+| `alpha --resume THREAD` | Resume a thread by id |
+| `alpha --print "question"` | Headless one-shot answer to stdout |
+| `alpha --json "question"` | Headless newline-delimited `StreamEvent`s |
+| `alpha --recursion-limit 250 --print "question"` | Set the headless agent-loop super-step limit |
+| `echo "q" \| alpha --print` | Read the message from stdin |
+| `AGENT_WORKSPACE_TUI=1 alpha` | Force the TUI via environment |
+| `AGENT_WORKSPACE_TUI_TRANSPARENT=1 alpha` | Persist terminal-background rendering via environment |
 
-If no TTY is available and no headless flag is given, `agent_workspace` prints guidance
+If no TTY is available and no headless flag is given, `alpha` prints guidance
 instead of hanging.
 
 Transparent rendering is opt-in; the solid Alpha palette remains the default.
@@ -126,7 +126,7 @@ checkpointer, so a TUI thread would otherwise be invisible in the sidebar.
 `threads_meta` row — owned by the local default user (`"default"`) — into the
 **same** database the Gateway reads, and syncs the generated title afterward.
 This requires only the shared `threads_meta` store (built via
-`agent_workspace.persistence.engine.init_engine_from_config`), **not** the Gateway
+`alpha.persistence.engine.init_engine_from_config`), **not** the Gateway
 process. When the database backend is `memory` (no SQL store) the writer
 degrades to a silent no-op and the TUI still works.
 

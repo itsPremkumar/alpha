@@ -163,7 +163,7 @@ class ReActAgent(BaseAgent, ABC):
 | Layer | Technology |
 |---|---|
 | Agent runtime | LangGraph-compatible super-agent (Python, `uv`) |
-| Backend | FastAPI Gateway (`app/gateway`) + harness package (`agent_workspace`); routers for bots, memory, skills, MCP, runs, supervision, ops, channels … |
+| Backend | FastAPI Gateway (`app/gateway`) + harness package (`alpha`); routers for bots, memory, skills, MCP, runs, supervision, ops, channels … |
 | Frontend | Next.js 15 App Router (pnpm), SSE streaming |
 | Desktop | Electron (bundled Node 22 + uv, NSIS installer) |
 | Deployment | `make dev` / Docker Compose: nginx 2026 → Gateway 8001, frontend 3000, optional provisioner 8002 |

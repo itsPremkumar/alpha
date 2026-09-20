@@ -260,8 +260,8 @@ agent-workspace/
 │       ├── nginx.conf      # Nginx config for Docker
 │       └── nginx.local.conf # Nginx config for local dev
 ├── backend/                 # Backend application
-│   ├── packages/harness/   # agent-workspace-harness package (import: agent_workspace.*)
-│   │   └── agent_workspace/ # Agents, tools, sandbox, MCP, skills, config
+│   ├── packages/harness/   # agent-workspace-harness package (import: alpha.*)
+│   │   └── alpha/ # Agents, tools, sandbox, MCP, skills, config
 │   ├── app/                # FastAPI Gateway + IM channels (import: app.*)
 │   │   ├── gateway/        # Gateway API and LangGraph-compatible runtime (port 8001)
 │   │   └── channels/       # IM channel integrations

@@ -63,8 +63,8 @@ auth:
     providers:
       keycloak:
         display_name: Keycloak
-        issuer: http://localhost:8080/realms/agent_workspace
-        client_id: agent_workspace
+        issuer: http://localhost:8080/realms/alpha
+        client_id: alpha
         client_secret: $KEYCLOAK_CLIENT_SECRET
         redirect_uri: http://localhost:8001/api/v1/auth/callback/keycloak
         scopes:
@@ -173,10 +173,10 @@ docker run -d \
 
 1. Open the Keycloak admin console: http://localhost:8080
 2. Log in with `admin` / `admin`
-3. Create a new realm called `agent_workspace`
-4. In the `agent_workspace` realm, go to **Clients** → **Create client**
+3. Create a new realm called `alpha`
+4. In the `alpha` realm, go to **Clients** → **Create client**
 5. Configure:
-   - **Client ID**: `agent_workspace`
+   - **Client ID**: `alpha`
    - **Client authentication**: On (makes it a confidential client)
    - **Standard flow**: Enabled
    - **Valid redirect URIs**: `http://localhost:8001/api/v1/auth/callback/keycloak`
@@ -187,7 +187,7 @@ docker run -d \
 
 ### 3. Create a Test User
 
-1. In the `agent_workspace` realm, go to **Users** → **Add user**
+1. In the `alpha` realm, go to **Users** → **Add user**
 2. Set **Username**: `testuser`
 3. Set **Email**: `testuser@example.com`
 4. Set **Email verified**: On
@@ -207,8 +207,8 @@ auth:
     providers:
       keycloak:
         display_name: Keycloak
-        issuer: http://localhost:8080/realms/agent_workspace
-        client_id: agent_workspace
+        issuer: http://localhost:8080/realms/alpha
+        client_id: alpha
         client_secret: $KEYCLOAK_CLIENT_SECRET
         redirect_uri: http://localhost:8001/api/v1/auth/callback/keycloak
         scopes:

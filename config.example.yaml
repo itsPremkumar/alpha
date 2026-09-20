@@ -25,7 +25,7 @@ config_version: 45
 # ============================================================================
 # Logging
 # ============================================================================
-# Log level for agent_workspace modules (debug/info/warning/error)
+# Log level for alpha modules (debug/info/warning/error)
 log_level: info
 
 # Trace ids are always issued and always returned in the `X-Trace-Id` response
@@ -141,7 +141,7 @@ max_recursion_limit: 1000
 #
 # providers:
 #   doubao-shared:
-#     use: agent_workspace.models.patched_deepseek:PatchedChatDeepSeek
+#     use: alpha.models.patched_deepseek:PatchedChatDeepSeek
 #     api_base: https://ark.cn-beijing.volces.com/api/v3
 #     api_key: $VOLCENGINE_API_KEY
 #     timeout: 600.0
@@ -180,7 +180,7 @@ models:
   # Example: Volcengine (Doubao) model
   # - name: doubao-seed-1.8
   #   display_name: Doubao-Seed-1.8
-  #   use: agent_workspace.models.patched_deepseek:PatchedChatDeepSeek
+  #   use: alpha.models.patched_deepseek:PatchedChatDeepSeek
   #   model: doubao-seed-1-8-251228
   #   api_base: https://ark.cn-beijing.volces.com/api/v3
   #   api_key: $VOLCENGINE_API_KEY
@@ -206,7 +206,7 @@ models:
   #
   # - name: glm-5.2-cp
   #   display_name: GLM-5.2 (Coding Plan)
-  #   use: agent_workspace.models.patched_deepseek:PatchedChatDeepSeek
+  #   use: alpha.models.patched_deepseek:PatchedChatDeepSeek
   #   model: glm-5.2
   #   api_base: https://ark.cn-beijing.volces.com/api/coding/v3
   #   api_key: $VOLCENGINE_API_KEY
@@ -226,7 +226,7 @@ models:
   #
   # - name: deepseek-v4-pro-cp
   #   display_name: DeepSeek-V4-Pro (Coding Plan)
-  #   use: agent_workspace.models.patched_deepseek:PatchedChatDeepSeek
+  #   use: alpha.models.patched_deepseek:PatchedChatDeepSeek
   #   model: deepseek-v4-pro
   #   api_base: https://ark.cn-beijing.volces.com/api/coding/v3
   #   api_key: $VOLCENGINE_API_KEY
@@ -257,7 +257,7 @@ models:
   #
   # - name: glm-5.3-flash
   #   display_name: GLM-5.3-Flash
-  #   use: agent_workspace.models.patched_deepseek:PatchedChatDeepSeek
+  #   use: alpha.models.patched_deepseek:PatchedChatDeepSeek
   #   model: glm-5.3-flash
   #   api_base: https://api.z.ai/api/paas/v4
   #   api_key: $ZAI_API_KEY
@@ -389,7 +389,7 @@ models:
   # https://docs.cloud.google.com/vertex-ai/generative-ai/docs/thought-signatures
   # - name: gemini-2.5-pro-thinking
   #   display_name: Gemini 2.5 Pro (Thinking)
-  #   use: agent_workspace.models.patched_openai:PatchedChatOpenAI
+  #   use: alpha.models.patched_openai:PatchedChatOpenAI
   #   model: google/gemini-2.5-pro-preview   # model name as expected by your gateway
   #   api_key: $GEMINI_API_KEY
   #   base_url: https://<your-openai-compat-gateway>/v1
@@ -422,7 +422,7 @@ models:
   # See: https://platform.xiaomimimo.com/docs/en-US/usage-guide/passing-back-reasoning_content
   # - name: mimo-v2.5-pro
   #   display_name: MiMo V2.5 Pro
-  #   use: agent_workspace.models.patched_mimo:PatchedChatMiMo
+  #   use: alpha.models.patched_mimo:PatchedChatMiMo
   #   model: mimo-v2.5-pro
   #   api_key: $MIMO_API_KEY
   #   base_url: https://api.xiaomimimo.com/v1
@@ -443,7 +443,7 @@ models:
   # Example: DeepSeek V4 model (with thinking support)
   # - name: deepseek-v4
   #   display_name: DeepSeek V4 (Thinking)
-  #   use: agent_workspace.models.patched_deepseek:PatchedChatDeepSeek
+  #   use: alpha.models.patched_deepseek:PatchedChatDeepSeek
   #   model: deepseek-v4-pro
   #   api_key: $DEEPSEEK_API_KEY
   #   timeout: 600.0
@@ -463,7 +463,7 @@ models:
   # Example: Kimi K2.5 model
   # - name: kimi-k2.5
   #   display_name: Kimi K2.5
-  #   use: agent_workspace.models.patched_deepseek:PatchedChatDeepSeek
+  #   use: alpha.models.patched_deepseek:PatchedChatDeepSeek
   #   model: kimi-k2.5
   #   api_base: https://api.moonshot.cn/v1
   #   api_key: $MOONSHOT_API_KEY
@@ -514,7 +514,7 @@ models:
   # Docs: https://platform.stepfun.com/docs/api-reference/chat-completions
   # - name: step-3.7-flash
   #   display_name: Step 3.7 Flash
-  #   use: agent_workspace.models.patched_stepfun:PatchedChatStepFun
+  #   use: alpha.models.patched_stepfun:PatchedChatStepFun
   #   model: step-3.7-flash
   #   api_key: $STEPFUN_API_KEY
   #   base_url: https://api.stepfun.com/v1
@@ -536,7 +536,7 @@ models:
   # Docs: https://platform.minimax.io/docs/api-reference/text-openai-api
   # - name: minimax-m3
   #   display_name: MiniMax M3
-  #   use: agent_workspace.models.patched_minimax:PatchedChatMiniMax
+  #   use: alpha.models.patched_minimax:PatchedChatMiniMax
   #   model: MiniMax-M3
   #   api_key: $MINIMAX_API_KEY
   #   base_url: https://api.minimax.io/v1
@@ -571,7 +571,7 @@ models:
   # "user name must be consistent (2013)".
   # - name: minimax-m2.7
   #   display_name: MiniMax M2.7
-  #   use: agent_workspace.models.patched_minimax:PatchedChatMiniMax
+  #   use: alpha.models.patched_minimax:PatchedChatMiniMax
   #   model: MiniMax-M2.7
   #   api_key: $MINIMAX_API_KEY
   #   base_url: https://api.minimax.io/v1
@@ -584,7 +584,7 @@ models:
 
   # - name: minimax-m2.7-highspeed
   #   display_name: MiniMax M2.7 Highspeed
-  #   use: agent_workspace.models.patched_minimax:PatchedChatMiniMax
+  #   use: alpha.models.patched_minimax:PatchedChatMiniMax
   #   model: MiniMax-M2.7-highspeed
   #   api_key: $MINIMAX_API_KEY
   #   base_url: https://api.minimax.io/v1
@@ -600,7 +600,7 @@ models:
   # Docs: https://platform.minimaxi.com/docs/api-reference/text-openai-api
   # - name: minimax-m3
   #   display_name: MiniMax M3
-  #   use: agent_workspace.models.patched_minimax:PatchedChatMiniMax
+  #   use: alpha.models.patched_minimax:PatchedChatMiniMax
   #   model: MiniMax-M3
   #   api_key: $MINIMAX_API_KEY
   #   base_url: https://api.minimaxi.com/v1
@@ -635,7 +635,7 @@ models:
   # "user name must be consistent (2013)".
   # - name: minimax-m2.7
   #   display_name: MiniMax M2.7
-  #   use: agent_workspace.models.patched_minimax:PatchedChatMiniMax
+  #   use: alpha.models.patched_minimax:PatchedChatMiniMax
   #   model: MiniMax-M2.7
   #   api_key: $MINIMAX_API_KEY
   #   base_url: https://api.minimaxi.com/v1
@@ -648,7 +648,7 @@ models:
 
   # - name: minimax-m2.7-highspeed
   #   display_name: MiniMax M2.7 Highspeed
-  #   use: agent_workspace.models.patched_minimax:PatchedChatMiniMax
+  #   use: alpha.models.patched_minimax:PatchedChatMiniMax
   #   model: MiniMax-M2.7-highspeed
   #   api_key: $MINIMAX_API_KEY
   #   base_url: https://api.minimaxi.com/v1
@@ -694,7 +694,7 @@ models:
   # multi-turn tool-call conversations:
   # - name: atlascloud-qwen3-thinking
   #   display_name: Qwen3 235B Thinking (Atlas Cloud)
-  #   use: agent_workspace.models.patched_openai:PatchedChatOpenAI
+  #   use: alpha.models.patched_openai:PatchedChatOpenAI
   #   model: qwen/qwen3-235b-a22b-thinking-2507
   #   api_key: $ATLASCLOUD_API_KEY
   #   base_url: https://api.atlascloud.ai/v1
@@ -720,7 +720,7 @@ models:
   # `vllm serve ... --reasoning-parser <parser>`.
   # - name: qwen3-32b-vllm
   #   display_name: Qwen3 32B (vLLM)
-  #   use: agent_workspace.models.vllm_provider:VllmChatModel
+  #   use: alpha.models.vllm_provider:VllmChatModel
   #   model: Qwen/Qwen3-32B
   #   api_key: $VLLM_API_KEY
   #   base_url: http://localhost:8000/v1
@@ -740,7 +740,7 @@ models:
   # Example: Qwen3-Coder deployed on MindIE Engine
   # - name: Qwen3_Coder_480B_MindIE
   #   display_name: Qwen3-Coder-480B (MindIE)
-  #   use: agent_workspace.models.mindie_provider:MindIEChatModel
+  #   use: alpha.models.mindie_provider:MindIEChatModel
   #   model: Qwen3-Coder-480B-A35B-Instruct-Client
   #   base_url: http://localhost:8989/v1
   #   api_key: $OPENAI_API_KEY
@@ -804,7 +804,7 @@ tools:
   # reach the model.
   # - name: knowledge_search
   #   group: knowledge
-  #   use: agent_workspace.community.ragflow.tools:knowledge_search_tool
+  #   use: alpha.community.ragflow.tools:knowledge_search_tool
   #   base_url: http://localhost:9380  # Docker: use a backend-reachable URL
   #   api_key: $RAGFLOW_API_KEY
   #   datasets:  # Optional operator-controlled allowlist
@@ -829,7 +829,7 @@ tools:
   # Internal chunk and reference identifiers never reach the model.
   # - name: knowledge_search
   #   group: knowledge
-  #   use: agent_workspace.community.lightrag.tools:knowledge_search_tool
+  #   use: alpha.community.lightrag.tools:knowledge_search_tool
   #   base_url: http://localhost:9621  # Docker: use a backend-reachable URL
   #   api_key: $LIGHTRAG_API_KEY  # Omit only for unauthenticated trusted servers
   #   mode: mix
@@ -842,7 +842,7 @@ tools:
   # Web search tool (uses DuckDuckGo, no API key required)
   - name: web_search
     group: web
-    use: agent_workspace.community.ddg_search.tools:web_search_tool
+    use: alpha.community.ddg_search.tools:web_search_tool
     max_results: 5
     # backend: auto          # DDGS backend(s): auto, duckduckgo, brave, wikipedia, etc.
     # region: wt-wt          # wt-wt is normalized for Wikipedia when backend includes auto/all/wikipedia.
@@ -854,7 +854,7 @@ tools:
   # For Docker deployments, use the Docker service name instead of localhost.
   # - name: web_search
   #   group: web
-  #   use: agent_workspace.community.searxng.tools:web_search_tool
+  #   use: alpha.community.searxng.tools:web_search_tool
   #   base_url: http://localhost:8088   # SearXNG instance URL (default: :8088; Docker: http://searxng:8080)
   #   max_results: 5                     # Maximum number of search results
 
@@ -864,7 +864,7 @@ tools:
   # Avoid putting literal API keys in config.yaml; use the $VAR form instead.
   # - name: web_search
   #   group: web
-  #   use: agent_workspace.community.serper.tools:web_search_tool
+  #   use: alpha.community.serper.tools:web_search_tool
   #   max_results: 5   # capped at 10 by the Serper provider
   #   # api_key: $SERPER_API_KEY  # Optional explicit env-var reference
 
@@ -873,7 +873,7 @@ tools:
   # with the same key. Sign up at https://serply.io (docs: https://serply.io/docs)
   # - name: web_search
   #   group: web
-  #   use: agent_workspace.community.serply.tools:web_search_tool
+  #   use: alpha.community.serply.tools:web_search_tool
   #   max_results: 5                 # Serply accepts 1-100 per request
   #   # vertical: search             # search (default), news, or scholar
   #   # gl: us                       # Optional country code for the results
@@ -886,21 +886,21 @@ tools:
   # `backend: brave` option above, this calls the official Brave API directly.
   # - name: web_search
   #   group: web
-  #   use: agent_workspace.community.brave.tools:web_search_tool
+  #   use: alpha.community.brave.tools:web_search_tool
   #   max_results: 5                  # Capped at 20 by the Brave Search API
   #   # api_key: $BRAVE_SEARCH_API_KEY  # Optional if the env var is set
 
   # Web search tool (requires Tavily API key)
   # - name: web_search
   #   group: web
-  #   use: agent_workspace.community.tavily.tools:web_search_tool
+  #   use: alpha.community.tavily.tools:web_search_tool
   #   max_results: 5
   #   # api_key: $TAVILY_API_KEY  # Set if needed
 
   # Web search tool (uses InfoQuest, requires InfoQuest API key)
   # - name: web_search
   #   group: web
-  #   use: agent_workspace.community.infoquest.tools:web_search_tool
+  #   use: alpha.community.infoquest.tools:web_search_tool
   #   # Used to limit the scope of search results, only returns content within the specified time range. Set to -1 to disable time filtering
   #   search_time_range: 10
 
@@ -910,7 +910,7 @@ tools:
   # SecretId/SecretKey for this provider.
   # - name: web_search
   #   group: web
-  #   use: agent_workspace.community.tencent_wsa.tools:web_search_tool
+  #   use: alpha.community.tencent_wsa.tools:web_search_tool
   #   max_results: 5                 # 1-50; values above 10 request Tencent's Cnt option
   #                                    # (requires a Tencent plan that supports Cnt)
   #   # mode: 0                      # Optional: 0=web, 1=VR, 2=mixed
@@ -919,7 +919,7 @@ tools:
   # Web search tool (uses Exa, requires EXA_API_KEY)
   # - name: web_search
   #   group: web
-  #   use: agent_workspace.community.exa.tools:web_search_tool
+  #   use: alpha.community.exa.tools:web_search_tool
   #   max_results: 5
   #   search_type: auto  # Options: auto, neural, keyword
   #   contents_max_characters: 1000
@@ -928,7 +928,7 @@ tools:
   # Web search tool (uses Firecrawl, requires FIRECRAWL_API_KEY)
   # - name: web_search
   #   group: web
-  #   use: agent_workspace.community.firecrawl.tools:web_search_tool
+  #   use: alpha.community.firecrawl.tools:web_search_tool
   #   max_results: 5
   #   # api_key: $FIRECRAWL_API_KEY
 
@@ -940,7 +940,7 @@ tools:
   # https://groundroute.ai/keys
   # - name: web_search
   #   group: web
-  #   use: agent_workspace.community.groundroute.tools:web_search_tool
+  #   use: alpha.community.groundroute.tools:web_search_tool
   #   max_results: 5                  # Clamped to 1-50 by GroundRoute
   #   # api_key: $GROUNDROUTE_API_KEY  # Optional if the env var is set
 
@@ -948,7 +948,7 @@ tools:
   # self-host or cloud. Cloud requires CRW_API_KEY; self-host may need no key.)
   # - name: web_search
   #   group: web
-  #   use: agent_workspace.community.fastcrw.tools:web_search_tool
+  #   use: alpha.community.fastcrw.tools:web_search_tool
   #   max_results: 5
   #   # api_key: $CRW_API_KEY
   #   # base_url: https://fastcrw.com/api   # default cloud; set to e.g. http://localhost:3000 for self-host
@@ -960,7 +960,7 @@ tools:
   # Avoid putting literal API keys in config.yaml; use the $VAR form instead.
   # - name: web_search
   #   group: web
-  #   use: agent_workspace.community.sofya.tools:web_search_tool
+  #   use: alpha.community.sofya.tools:web_search_tool
   #   max_results: 5                # capped at 20 by the Sofya provider
   #   # search_depth: basic         # basic reads the result pages, snippets returns snippets only
   #   contents_max_characters: 2000 # per-result content cap; 0 disables it
@@ -974,7 +974,7 @@ tools:
   # Comment out the Jina AI web_fetch entry below before enabling this one.
   # - name: web_fetch
   #   group: web
-  #   use: agent_workspace.community.browserless.tools:web_fetch_tool
+  #   use: alpha.community.browserless.tools:web_fetch_tool
   #   base_url: http://localhost:3032    # Browserless instance URL (default: :3032; Docker: http://browserless:3000)
   #   # token: $BROWSERLESS_TOKEN        # API token (required for Browserless Cloud; optional for self-hosted)
   #   timeout_s: 30                       # Request timeout in seconds
@@ -998,7 +998,7 @@ tools:
   # Comment out the Jina AI web_fetch entry below before enabling this one.
   # - name: web_fetch
   #   group: web
-  #   use: agent_workspace.community.crawl4ai.tools:web_fetch_tool
+  #   use: alpha.community.crawl4ai.tools:web_fetch_tool
   #   base_url: http://localhost:11235   # Crawl4AI server URL (Docker: http://crawl4ai:11235)
   #   token: $CRAWL4AI_TOKEN              # Bearer token; required by Crawl4AI >= 0.9
   #   timeout: 30                         # Request timeout in seconds
@@ -1013,7 +1013,7 @@ tools:
   # of localhost.
   # - name: web_capture
   #   group: web
-  #   use: agent_workspace.community.browserless.tools:web_capture_tool
+  #   use: alpha.community.browserless.tools:web_capture_tool
   #   base_url: http://localhost:3032       # Browserless instance URL (Docker: http://browserless:3000)
   #   # token: $BROWSERLESS_TOKEN           # Required for Browserless Cloud; optional for self-hosted
   #   timeout_s: 30                         # Request timeout in seconds (`timeout` also accepted)
@@ -1043,7 +1043,7 @@ tools:
   # canonically from browser_navigate and shared by every browser tool + Live.
   # - name: browser_navigate
   #   group: browser
-  #   use: agent_workspace.community.browser_automation.tools:browser_navigate_tool
+  #   use: alpha.community.browser_automation.tools:browser_navigate_tool
   #   headless: true                   # Set false only for local, trusted debugging
   #   timeout_ms: 30000                # Per-action navigation/interaction timeout
   #   viewport_width: 1280
@@ -1066,39 +1066,39 @@ tools:
   #   # Keep GATEWAY_WORKERS=1 while this tool group is enabled.
   # - name: browser_snapshot
   #   group: browser
-  #   use: agent_workspace.community.browser_automation.tools:browser_snapshot_tool
+  #   use: alpha.community.browser_automation.tools:browser_snapshot_tool
   # - name: browser_click
   #   group: browser
-  #   use: agent_workspace.community.browser_automation.tools:browser_click_tool
+  #   use: alpha.community.browser_automation.tools:browser_click_tool
   # - name: browser_type
   #   group: browser
-  #   use: agent_workspace.community.browser_automation.tools:browser_type_tool
+  #   use: alpha.community.browser_automation.tools:browser_type_tool
   # - name: browser_get_text
   #   group: browser
-  #   use: agent_workspace.community.browser_automation.tools:browser_get_text_tool
+  #   use: alpha.community.browser_automation.tools:browser_get_text_tool
   #   max_chars: 8000                  # Truncation cap for browser_get_text output
   # - name: browser_back
   #   group: browser
-  #   use: agent_workspace.community.browser_automation.tools:browser_back_tool
+  #   use: alpha.community.browser_automation.tools:browser_back_tool
   # - name: browser_screenshot
   #   group: browser
-  #   use: agent_workspace.community.browser_automation.tools:browser_screenshot_tool
+  #   use: alpha.community.browser_automation.tools:browser_screenshot_tool
   # - name: browser_close
   #   group: browser
-  #   use: agent_workspace.community.browser_automation.tools:browser_close_tool
+  #   use: alpha.community.browser_automation.tools:browser_close_tool
 
   # Web fetch tool (uses Exa)
   # NOTE: Only one web_fetch provider can be active at a time.
   # Comment out the Jina AI web_fetch entry below before enabling this one.
   # - name: web_fetch
   #   group: web
-  #   use: agent_workspace.community.exa.tools:web_fetch_tool
+  #   use: alpha.community.exa.tools:web_fetch_tool
   #   # api_key: $EXA_API_KEY
 
   # Web fetch tool (uses Jina AI reader)
   - name: web_fetch
     group: web
-    use: agent_workspace.community.jina_ai.tools:web_fetch_tool
+    use: alpha.community.jina_ai.tools:web_fetch_tool
     timeout: 10
     # Optional proxy for restricted networks / Docker / WSL.
     # Use host.docker.internal instead of 127.0.0.1 when the proxy runs on the host.
@@ -1108,7 +1108,7 @@ tools:
   # Web fetch tool (uses InfoQuest)
   # - name: web_fetch
   #   group: web
-  #   use: agent_workspace.community.infoquest.tools:web_fetch_tool
+  #   use: alpha.community.infoquest.tools:web_fetch_tool
   #   # Overall timeout for the entire crawling process (in seconds). Set to positive value to enable, -1 to disable
   #   timeout: 10
   #   # Waiting time after page loading (in seconds). Set to positive value to enable, -1 to disable
@@ -1119,7 +1119,7 @@ tools:
   # Web fetch tool (uses Firecrawl, requires FIRECRAWL_API_KEY)
   # - name: web_fetch
   #   group: web
-  #   use: agent_workspace.community.firecrawl.tools:web_fetch_tool
+  #   use: alpha.community.firecrawl.tools:web_fetch_tool
   #   # api_key: $FIRECRAWL_API_KEY
 
   # Web fetch tool (uses GroundRoute, requires GROUNDROUTE_API_KEY)
@@ -1128,7 +1128,7 @@ tools:
   # Comment out the Jina AI web_fetch entry above before enabling this one.
   # - name: web_fetch
   #   group: web
-  #   use: agent_workspace.community.groundroute.tools:web_fetch_tool
+  #   use: alpha.community.groundroute.tools:web_fetch_tool
   #   # api_key: $GROUNDROUTE_API_KEY
 
   # Web fetch tool (uses fastCRW - Firecrawl-compatible web scraper, single binary,
@@ -1137,7 +1137,7 @@ tools:
   # Comment out the Jina AI web_fetch entry above before enabling this one.
   # - name: web_fetch
   #   group: web
-  #   use: agent_workspace.community.fastcrw.tools:web_fetch_tool
+  #   use: alpha.community.fastcrw.tools:web_fetch_tool
   #   # api_key: $CRW_API_KEY
   #   # base_url: https://fastcrw.com/api   # default cloud; set to e.g. http://localhost:3000 for self-host
   #   # allow_private_addresses: false      # SSRF guard: keep false in production. Set true ONLY for intentional internal targets.
@@ -1148,20 +1148,20 @@ tools:
   # Comment out the Jina AI web_fetch entry above before enabling this one.
   # - name: web_fetch
   #   group: web
-  #   use: agent_workspace.community.sofya.tools:web_fetch_tool
+  #   use: alpha.community.sofya.tools:web_fetch_tool
   #   # api_key: $SOFYA_API_KEY
 
   # Image search tool (uses DuckDuckGo)
   # Use this to find reference images before image generation
   - name: image_search
     group: web
-    use: agent_workspace.community.image_search.tools:image_search_tool
+    use: alpha.community.image_search.tools:image_search_tool
     max_results: 5
 
   # Image search tool (uses InfoQuest)
   # - name: image_search
   #   group: web
-  #   use: agent_workspace.community.infoquest.tools:image_search_tool
+  #   use: alpha.community.infoquest.tools:image_search_tool
   #   # Used to limit the scope of image search results, only returns content within the specified time range. Set to -1 to disable time filtering
   #   image_search_time_range: 10
   #   # Image size filter. Options: "l" (large), "m" (medium), "i" (icon).
@@ -1173,7 +1173,7 @@ tools:
   # Avoid putting literal API keys in config.yaml; use the $VAR form instead.
   # - name: image_search
   #   group: web
-  #   use: agent_workspace.community.serper.tools:image_search_tool
+  #   use: alpha.community.serper.tools:image_search_tool
   #   max_results: 5   # capped at 10 by the Serper provider
   #   # api_key: $SERPER_API_KEY  # Optional explicit env-var reference
 
@@ -1183,7 +1183,7 @@ tools:
   # Avoid putting literal API keys in config.yaml; use the $VAR form instead.
   # - name: image_search
   #   group: web
-  #   use: agent_workspace.community.brave.tools:image_search_tool
+  #   use: alpha.community.brave.tools:image_search_tool
   #   max_results: 5   # capped at 200 by Brave Image Search
   #   # country: US
   #   # search_lang: en
@@ -1194,36 +1194,36 @@ tools:
   # File operations tools
   - name: ls
     group: file:read
-    use: agent_workspace.sandbox.tools:ls_tool
+    use: alpha.sandbox.tools:ls_tool
 
   - name: read_file
     group: file:read
-    use: agent_workspace.sandbox.tools:read_file_tool
+    use: alpha.sandbox.tools:read_file_tool
 
   - name: glob
     group: file:read
-    use: agent_workspace.sandbox.tools:glob_tool
+    use: alpha.sandbox.tools:glob_tool
     max_results: 200
 
   - name: grep
     group: file:read
-    use: agent_workspace.sandbox.tools:grep_tool
+    use: alpha.sandbox.tools:grep_tool
     max_results: 100
 
   - name: write_file
     group: file:write
-    use: agent_workspace.sandbox.tools:write_file_tool
+    use: alpha.sandbox.tools:write_file_tool
 
   - name: str_replace
     group: file:write
-    use: agent_workspace.sandbox.tools:str_replace_tool
+    use: alpha.sandbox.tools:str_replace_tool
 
   # Bash execution tool
   # Active only when using an isolated shell sandbox or when
   # sandbox.allow_host_bash: true explicitly opts into host bash.
   - name: bash
     group: bash
-    use: agent_workspace.sandbox.tools:bash_tool
+    use: alpha.sandbox.tools:bash_tool
 
 # ============================================================================
 # Tool Search Configuration (Deferred Tool Loading)
@@ -1394,11 +1394,11 @@ safety_finish_reason:
   # Example — extend the OpenAI-compatible detector for a Chinese provider
   # whose gateway uses a non-standard finish_reason token:
   # detectors:
-  #   - use: agent_workspace.agents.middlewares.safety_termination_detectors:OpenAICompatibleContentFilterDetector
+  #   - use: alpha.agents.middlewares.safety_termination_detectors:OpenAICompatibleContentFilterDetector
   #     config:
   #       finish_reasons: ["content_filter", "sensitive", "risk_control"]
-  #   - use: agent_workspace.agents.middlewares.safety_termination_detectors:AnthropicRefusalDetector
-  #   - use: agent_workspace.agents.middlewares.safety_termination_detectors:GeminiSafetyDetector
+  #   - use: alpha.agents.middlewares.safety_termination_detectors:AnthropicRefusalDetector
+  #   - use: alpha.agents.middlewares.safety_termination_detectors:GeminiSafetyDetector
   #
   # Example — add a custom detector for an in-house provider:
   # detectors:
@@ -1434,7 +1434,7 @@ uploads:
   pdf_converter: auto
 
 sandbox:
-  use: agent_workspace.sandbox.local:LocalSandboxProvider
+  use: alpha.sandbox.local:LocalSandboxProvider
   # Host bash execution is disabled by default because LocalSandboxProvider is
   # not a secure isolation boundary for shell access. Enable only for fully
   # trusted, single-user local workflows.
@@ -1474,7 +1474,7 @@ sandbox:
 # On other platforms: Uses Docker
 # Uncomment to use:
 # sandbox:
-#   use: agent_workspace.community.aio_sandbox:AioSandboxProvider
+#   use: alpha.community.aio_sandbox:AioSandboxProvider
 #
 #   # Optional: Container image to use (works with both Docker and Apple Container)
 #   # Default: enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest
@@ -1575,7 +1575,7 @@ sandbox:
 #   #                                # owner). Liveness is deliberately independent
 #   #                                # of idle_timeout: renewal keeps running even
 #   #                                # at idle_timeout: 0.
-#   #   key_prefix: agent_workspace:sandbox:owner
+#   #   key_prefix: alpha:sandbox:owner
 #   #
 #   # NOTE: the redis ownership store is fail-closed, matching the stream bridge's
 #   # fail-hard policy. Redis.from_url is lazy so a down Redis does not block
@@ -1596,7 +1596,7 @@ sandbox:
 # Requires the boxlite runtime and host virtualization support (KVM on Linux,
 # Hypervisor.framework on macOS).
 # sandbox:
-#   use: agent_workspace.community.boxlite:BoxliteProvider
+#   use: alpha.community.boxlite:BoxliteProvider
 #   image: python:3.12-slim
 #
 #   # Optional: Per-box memory and CPU limits.
@@ -1623,7 +1623,7 @@ sandbox:
 # Each sandbox_id gets a dedicated Pod in k3s, managed by the provisioner.
 # Recommended for production or advanced users who want better isolation and scalability.:
 # sandbox:
-#   use: agent_workspace.community.aio_sandbox:AioSandboxProvider
+#   use: alpha.community.aio_sandbox:AioSandboxProvider
 #   provisioner_url: http://provisioner:8002
 #   # API key for provisioner authentication. Must match PROVISIONER_API_KEY
 #   # set on the provisioner container. Both sides must have the same value set;
@@ -1638,7 +1638,7 @@ sandbox:
 # in an in-process warm pool and are reclaimed by the same user/thread without a
 # cold start. Requires the optional SDK: pip install "agent-workspace-harness[tenki]".
 # sandbox:
-#   use: agent_workspace.community.tenki:TenkiSandboxProvider
+#   use: alpha.community.tenki:TenkiSandboxProvider
 #   # api_key: $TENKI_API_KEY        # falls back to TENKI_API_KEY / TENKI_AUTH_TOKEN env var
 #   # base_url: https://tenki.cloud  # optional; SDK default when omitted
 #   # image: my-base-image           # optional; Tenki account default base image when omitted
@@ -1661,7 +1661,7 @@ sandbox:
 # in-process warm pool and are reclaimed only by the same user/thread. Requires
 # the optional SDK: pip install "agent-workspace-harness[opensandbox]".
 # sandbox:
-#   use: agent_workspace.community.opensandbox:OpenSandboxProvider
+#   use: alpha.community.opensandbox:OpenSandboxProvider
 #   image: python:3.11
 #   # api_key: $OPEN_SANDBOX_API_KEY  # optional when the SDK env var is set
 #   # domain: localhost:8080          # optional; OPEN_SANDBOX_DOMAIN fallback
@@ -2061,7 +2061,7 @@ memory:
   #   owner_user_id: default
   #   api_key_env: OPENVIKING_API_KEY
   #   timeout_seconds: 30
-  #   default_peer_id: agent_workspace
+  #   default_peer_id: alpha
   #   max_seen_message_ids: 512 # bounded hash-only capture cursor
   #   startup_policy: fail_fast
   #   failure_policy:
@@ -2090,7 +2090,7 @@ memory:
   #   workspace_prefix: agent-workspace-u-   # one isolated workspace per user id
   #   # workspace_overrides: {}    # map specific user ids to custom workspaces
   #   # user_peer_overrides: {}    # map specific user ids to custom peer names
-  #   assistant_peer: agent_workspace
+  #   assistant_peer: alpha
   backend_config:
     storage_path: ""            # empty = agent-workspace base_dir (factory injects absolute runtime_home); a non-empty path is the root DIRECTORY (per-user memory under {storage_path}/users/{uid}/memory.json)
     storage_class: file         # file (default) or a dotted MemoryStorage class path; invalid persistent backends fail fast
@@ -2219,10 +2219,10 @@ skill_evolution:
 #
 # checkpointer:
 #   type: postgres
-#   connection_string: postgresql://user:password@localhost:5432/agent_workspace
+#   connection_string: postgresql://user:password@localhost:5432/alpha
 #   # Optional: place LangGraph checkpointer/store tables in this schema.
 #   # Leave empty to use the server default search_path, usually public.
-#   postgres_schema: agent_workspace
+#   postgres_schema: alpha
 
 # ============================================================================
 # Database
@@ -2277,7 +2277,7 @@ skill_evolution:
 #   # Optional: place Alpha ORM tables and LangGraph checkpointer/store
 #   # tables in this schema. Leave empty to use the server default
 #   # search_path, usually public.
-#   postgres_schema: agent_workspace
+#   postgres_schema: alpha
 #
 # postgres_schema only takes effect for new tables. On startup Alpha runs
 # CREATE SCHEMA IF NOT EXISTS and pins the connection search_path; it never
@@ -2291,32 +2291,32 @@ skill_evolution:
 #      rows stay invisible in `public`. Moving the ORM tables but leaving
 #      `alembic_version` behind is especially dangerous -- bootstrap then treats
 #      the target schema as unversioned, re-baselines it, and replays migrations.
-#        CREATE SCHEMA IF NOT EXISTS agent_workspace;
+#        CREATE SCHEMA IF NOT EXISTS alpha;
 #        -- Application ORM tables:
-#        ALTER TABLE public.runs                  SET SCHEMA agent_workspace;
-#        ALTER TABLE public.run_events            SET SCHEMA agent_workspace;
-#        ALTER TABLE public.threads_meta          SET SCHEMA agent_workspace;
-#        ALTER TABLE public.feedback              SET SCHEMA agent_workspace;
-#        ALTER TABLE public.users                 SET SCHEMA agent_workspace;
-#        ALTER TABLE public.agents                SET SCHEMA agent_workspace;
+#        ALTER TABLE public.runs                  SET SCHEMA alpha;
+#        ALTER TABLE public.run_events            SET SCHEMA alpha;
+#        ALTER TABLE public.threads_meta          SET SCHEMA alpha;
+#        ALTER TABLE public.feedback              SET SCHEMA alpha;
+#        ALTER TABLE public.users                 SET SCHEMA alpha;
+#        ALTER TABLE public.agents                SET SCHEMA alpha;
 #        -- IM channel tables:
-#        ALTER TABLE public.channel_connections   SET SCHEMA agent_workspace;
-#        ALTER TABLE public.channel_credentials   SET SCHEMA agent_workspace;
-#        ALTER TABLE public.channel_oauth_states  SET SCHEMA agent_workspace;
-#        ALTER TABLE public.channel_conversations SET SCHEMA agent_workspace;
+#        ALTER TABLE public.channel_connections   SET SCHEMA alpha;
+#        ALTER TABLE public.channel_credentials   SET SCHEMA alpha;
+#        ALTER TABLE public.channel_oauth_states  SET SCHEMA alpha;
+#        ALTER TABLE public.channel_conversations SET SCHEMA alpha;
 #        -- Scheduled-task tables:
-#        ALTER TABLE public.scheduled_tasks       SET SCHEMA agent_workspace;
-#        ALTER TABLE public.scheduled_task_runs   SET SCHEMA agent_workspace;
+#        ALTER TABLE public.scheduled_tasks       SET SCHEMA alpha;
+#        ALTER TABLE public.scheduled_task_runs   SET SCHEMA alpha;
 #        -- Alembic migration state (REQUIRED -- see note above):
-#        ALTER TABLE public.alembic_version       SET SCHEMA agent_workspace;
+#        ALTER TABLE public.alembic_version       SET SCHEMA alpha;
 #      The Alpha-owned set grows over time; discover any tables the list
 #      above misses (as the Alpha DB owner/role) with:
 #        SELECT table_name FROM information_schema.tables WHERE table_schema='public';
 #      LangGraph checkpointer/store table names also vary by version -- list them
-#      the same way, then ALTER ... SET SCHEMA agent_workspace for each (e.g. checkpoints,
+#      the same way, then ALTER ... SET SCHEMA alpha for each (e.g. checkpoints,
 #      checkpoint_blobs, checkpoint_writes, checkpoint_migrations, store,
 #      store_migrations).
-#   3. Set postgres_schema: agent_workspace here and restart.
+#   3. Set postgres_schema: alpha here and restart.
 #   4. Verify with `SHOW search_path;` and a smoke test (create a run, read
 #      its history). The `public` schema should gain no new Alpha tables.
 database:
@@ -2755,7 +2755,7 @@ run_ownership:
 # guardrails:
 #   enabled: true
 #   provider:
-#     use: agent_workspace.guardrails.builtin:AllowlistProvider
+#     use: alpha.guardrails.builtin:AllowlistProvider
 #     config:
 #       denied_tools: ["bash", "write_file"]
 
@@ -2802,7 +2802,7 @@ run_ownership:
 #   fail_closed: true            # block on provider error / unresolved identity
 #   default_role: user           # applied when user_role is None; built-in RBAC requires this role below
 #   provider:
-#     use: agent_workspace.authz.rbac:RbacAuthorizationProvider
+#     use: alpha.authz.rbac:RbacAuthorizationProvider
 #     config:
 #       # A known role with no policy for a resource is unrestricted for it.
 #       # Define both `tools` and `routes` wherever access should be constrained.

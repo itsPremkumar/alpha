@@ -1,4 +1,4 @@
-### Subagent System (`packages/harness/agent_workspace/subagents/`)
+### Subagent System (`packages/harness/alpha/subagents/`)
 
 **Context**: Capture after validation, before setup. Keep genuine replies, even hidden clarifications; exclude framework state and unpaired calls. Mark unserializable media as omitted.
 

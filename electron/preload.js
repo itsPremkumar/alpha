@@ -21,10 +21,10 @@ const bridgeApi = {
   onStatus(callback) {
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on('agent-workspace:status', listener);
-    ipcRenderer.on('agent_workspace:status', listener);
+    ipcRenderer.on('alpha:status', listener);
     return () => {
       ipcRenderer.removeListener('agent-workspace:status', listener);
-      ipcRenderer.removeListener('agent_workspace:status', listener);
+      ipcRenderer.removeListener('alpha:status', listener);
     };
   },
 
@@ -57,4 +57,4 @@ const bridgeApi = {
 };
 
 contextBridge.exposeInMainWorld('agentWorkspace', bridgeApi);
-contextBridge.exposeInMainWorld('agent_workspace', bridgeApi);
+contextBridge.exposeInMainWorld('alpha', bridgeApi);

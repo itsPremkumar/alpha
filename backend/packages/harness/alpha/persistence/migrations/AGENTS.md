@@ -1,4 +1,4 @@
-### Schema Migrations (`packages/harness/agent_workspace/persistence/migrations/`)
+### Schema Migrations (`packages/harness/alpha/persistence/migrations/`)
 
 Alpha's application tables (`runs`, `threads_meta`, `feedback`, `users`, `run_events`, plus the four `channel_*` tables) are owned by alembic via a **hybrid bootstrap** strategy. LangGraph's checkpointer tables (`checkpoints`, `checkpoint_blobs`, `checkpoint_writes`, `checkpoint_migrations`) live in the same database but are owned by LangGraph and excluded from alembic's view via `migrations/_env_filters.py::include_object`.
 
@@ -86,7 +86,7 @@ cd backend && make migrate-rev MSG="add foo column to runs"
 This invokes `alembic revision --autogenerate` against the live ORM models. Review the generated file under `migrations/versions/` and switch raw `op.add_column` / `op.drop_column` calls to the idempotent helpers from `_helpers.py` before committing. There is no `make migrate` / `make migrate-stamp` target on purpose — routine upgrades execute at Gateway startup; the documented offline recovery is reserved for the audited out-of-tree schema.
 
 **Extension-owned tables.** An extension that persists data owns its schema
-end to end and must not register models against `agent_workspace.persistence.base.Base`
+end to end and must not register models against `alpha.persistence.base.Base`
 — doing so makes the host's empty-DB `create_all` create the extension's tables
 on installs that never enabled it. The convention is:
 
@@ -119,7 +119,7 @@ on installs that never enabled it. The convention is:
   extension table — and no LangGraph table — is ever reflected. The exposed
   path is running `alembic revision --autogenerate` directly from the
   migrations directory, where `alembic.ini` points `sqlalchemy.url` at a real
-  `./data/agent_workspace.db`. That is the same path `LANGGRAPH_OWNED_TABLES` covers,
+  `./data/alpha.db`. That is the same path `LANGGRAPH_OWNED_TABLES` covers,
   which is why that exclusion exists even though the throwaway-DB script
   landed in the same commit;
 - an independent alembic chain with its own

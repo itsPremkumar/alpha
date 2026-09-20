@@ -44,9 +44,9 @@ extensions_config.json
 coverage.xml
 coverage/
 .agent-workspace/
-.agent_workspace/
+.alpha/
 .agent-workspace/
-.agent_workspace/
+.alpha/
 .claude/
 skills/custom/*
 logs/

@@ -86,7 +86,7 @@ This writes a newly generated random password to `.agent-workspace/admin_initial
 Delete the unified SQLite database, restart, and revisit `/setup` to create a fresh admin:
 
 ```bash
-rm -f backend/.agent-workspace/data/agent_workspace.db
+rm -f backend/.agent-workspace/data/alpha.db
 # Restart service and visit http://localhost:2026/setup
 ```
 
@@ -94,7 +94,7 @@ rm -f backend/.agent-workspace/data/agent_workspace.db
 
 | File | Content |
 |---|---|
-| `.agent-workspace/data/agent_workspace.db` | Unified SQLite database (users, threads_meta, runs, feedback, and application data) |
+| `.agent-workspace/data/alpha.db` | Unified SQLite database (users, threads_meta, runs, feedback, and application data) |
 | `.agent-workspace/users/{user_id}/threads/{thread_id}/user-data/` | User thread workspace, uploads, and outputs |
 | `.agent-workspace/users/{user_id}/memory.json` | User-level memory |
 | `.agent-workspace/users/{user_id}/agents/{agent_name}/` | User custom agent configuration, SOUL prompt, and agent memory |
@@ -126,7 +126,7 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 
 - **Local Development** (`make dev`): Gateway embedded runtime is fully compatible; if no admin exists, visit `/setup` to initialize.
 - **Gateway Embedded Runtime**: Standard scripts, Docker dev, and production deployments all serve auth and LangGraph-compatible APIs via the Gateway.
-- **Docker Deployment**: Fully compatible; `.agent-workspace/data/agent_workspace.db` requires a persistent volume mount.
+- **Docker Deployment**: Fully compatible; `.agent-workspace/data/alpha.db` requires a persistent volume mount.
 - **IM Channels** (Feishu/Slack/Telegram): Communicate via internal Gateway authentication using the `default` user namespace.
 - **AgentWorkspaceClient** (Embedded): In-process execution does not go through HTTP and is unaffected by HTTP auth.
 

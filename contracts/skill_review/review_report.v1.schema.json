@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agent_workspace.dev/contracts/skill_review/review_report.v1.schema.json",
+  "$id": "https://alpha.dev/contracts/skill_review/review_report.v1.schema.json",
   "title": "Alpha Skill Review Report v1",
   "type": "object",
   "required": ["schema_version", "subject", "review", "readiness", "assurance", "dimensions", "issues", "evidence", "recommended_actions"],
   "properties": {
-    "schema_version": { "const": "agent_workspace.skill-review.report.v1" },
+    "schema_version": { "const": "alpha.skill-review.report.v1" },
     "subject": {
       "type": "object",
       "required": ["display_ref", "package_digest"],

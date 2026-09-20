@@ -1691,7 +1691,7 @@ Alpha already provides the pieces that are especially useful here: subagents, pe
 I would add:
 
 ```text
-agent_workspace/
+alpha/
 │
 ├── harness/
 │

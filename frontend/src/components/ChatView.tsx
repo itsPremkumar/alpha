@@ -768,7 +768,7 @@ export default function ChatView() {
       const blob = new Blob([exportStoreJson()], { type: "application/json" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = `agent_workspace-history-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `alpha-history-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       window.setTimeout(() => URL.revokeObjectURL(a.href), 5000);
       flash("History downloaded — keep it safe or move it to another browser.");

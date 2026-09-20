@@ -79,16 +79,16 @@ print()
 
 MIGRATIONS = {
     1: {
-        'description': 'Rename module paths to agent_workspace.*',
+        'description': 'Rename module paths to alpha.*',
         'replacements': [
-            ('src.community.', 'agent_workspace.community.'),
-            ('src.sandbox.', 'agent_workspace.sandbox.'),
-            ('src.models.', 'agent_workspace.models.'),
-            ('src.tools.', 'agent_workspace.tools.'),
-            ('agent_workspace.community.', 'agent_workspace.community.'),
-            ('agent_workspace.sandbox.', 'agent_workspace.sandbox.'),
-            ('agent_workspace.models.', 'agent_workspace.models.'),
-            ('agent_workspace.tools.', 'agent_workspace.tools.'),
+            ('src.community.', 'alpha.community.'),
+            ('src.sandbox.', 'alpha.sandbox.'),
+            ('src.models.', 'alpha.models.'),
+            ('src.tools.', 'alpha.tools.'),
+            ('alpha.community.', 'alpha.community.'),
+            ('alpha.sandbox.', 'alpha.sandbox.'),
+            ('alpha.models.', 'alpha.models.'),
+            ('alpha.tools.', 'alpha.tools.'),
         ],
     },
     # Future migrations go here:

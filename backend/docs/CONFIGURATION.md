@@ -44,9 +44,9 @@ models:
 - OpenAI (`langchain_openai:ChatOpenAI`)
 - Anthropic (`langchain_anthropic:ChatAnthropic`)
 - DeepSeek (`langchain_deepseek:ChatDeepSeek`)
-- Xiaomi MiMo (`agent_workspace.models.patched_mimo:PatchedChatMiMo`)
-- Claude Code OAuth (`agent_workspace.models.claude_provider:ClaudeChatModel`)
-- Codex CLI (`agent_workspace.models.openai_codex_provider:CodexChatModel`)
+- Xiaomi MiMo (`alpha.models.patched_mimo:PatchedChatMiMo`)
+- Claude Code OAuth (`alpha.models.claude_provider:ClaudeChatModel`)
+- Codex CLI (`alpha.models.openai_codex_provider:CodexChatModel`)
 - Any LangChain-compatible provider
 
 CLI-backed provider examples:
@@ -55,14 +55,14 @@ CLI-backed provider examples:
 models:
   - name: gpt-5.4
     display_name: GPT-5.4 (Codex CLI)
-    use: agent_workspace.models.openai_codex_provider:CodexChatModel
+    use: alpha.models.openai_codex_provider:CodexChatModel
     model: gpt-5.4
     supports_thinking: true
     supports_reasoning_effort: true
 
   - name: claude-sonnet-4.6
     display_name: Claude Sonnet 4.6 (Claude Code OAuth)
-    use: agent_workspace.models.claude_provider:ClaudeChatModel
+    use: alpha.models.claude_provider:ClaudeChatModel
     model: claude-sonnet-4-6
     max_tokens: 4096
     supports_thinking: true
@@ -166,13 +166,13 @@ HTTP 400 INVALID_ARGUMENT: function call `<tool>` in the N. content block is
 missing a `thought_signature`.
 ```
 
-Standard `langchain_openai:ChatOpenAI` silently drops `thought_signature` when serialising messages.  Use `agent_workspace.models.patched_openai:PatchedChatOpenAI` instead — it re-injects the tool-call signatures (sourced from `AIMessage.additional_kwargs["tool_calls"]`) into every outgoing payload:
+Standard `langchain_openai:ChatOpenAI` silently drops `thought_signature` when serialising messages.  Use `alpha.models.patched_openai:PatchedChatOpenAI` instead — it re-injects the tool-call signatures (sourced from `AIMessage.additional_kwargs["tool_calls"]`) into every outgoing payload:
 
 ```yaml
 models:
   - name: gemini-2.5-pro-thinking
     display_name: Gemini 2.5 Pro (Thinking)
-    use: agent_workspace.models.patched_openai:PatchedChatOpenAI
+    use: alpha.models.patched_openai:PatchedChatOpenAI
     model: google/gemini-2.5-pro-preview   # model name as expected by your gateway
     api_key: $GEMINI_API_KEY
     base_url: https://<your-openai-compat-gateway>/v1
@@ -189,7 +189,7 @@ For Gemini accessed **without** thinking (e.g. via OpenRouter where thinking is 
 
 **MiMo with thinking via OpenAI-compatible API**:
 
-MiMo returns `reasoning_content` on assistant messages in thinking mode. In multi-turn agent conversations with tool calls, subsequent requests must preserve that historical `reasoning_content` on assistant messages or the MiMo API can return HTTP 400. Standard `langchain_openai:ChatOpenAI` drops this provider-specific field, so use `agent_workspace.models.patched_mimo:PatchedChatMiMo`:
+MiMo returns `reasoning_content` on assistant messages in thinking mode. In multi-turn agent conversations with tool calls, subsequent requests must preserve that historical `reasoning_content` on assistant messages or the MiMo API can return HTTP 400. Standard `langchain_openai:ChatOpenAI` drops this provider-specific field, so use `alpha.models.patched_mimo:PatchedChatMiMo`:
 
 For pay-as-you-go API keys (`sk-...`), use `https://api.xiaomimimo.com/v1`. For Token Plan keys (`tp-...`), use the regional Token Plan Base URL shown in the MiMo console, such as `https://token-plan-cn.xiaomimimo.com/v1`. MiMo documents these key types as separate and non-interchangeable.
 
@@ -199,7 +199,7 @@ For pay-as-you-go API keys (`sk-...`), use `https://api.xiaomimimo.com/v1`. For 
 models:
   - name: mimo-v2.5-pro
     display_name: MiMo V2.5 Pro
-    use: agent_workspace.models.patched_mimo:PatchedChatMiMo
+    use: alpha.models.patched_mimo:PatchedChatMiMo
     model: mimo-v2.5-pro
     api_key: $MIMO_API_KEY
     base_url: https://api.xiaomimimo.com/v1
@@ -235,7 +235,7 @@ tool_groups:
 tools:
   - name: knowledge_search
     group: knowledge
-    use: agent_workspace.community.ragflow.tools:knowledge_search_tool
+    use: alpha.community.ragflow.tools:knowledge_search_tool
     base_url: http://localhost:9380
     api_key: $RAGFLOW_API_KEY
     datasets:
@@ -299,7 +299,7 @@ tool_groups:
 tools:
   - name: knowledge_search
     group: knowledge
-    use: agent_workspace.community.lightrag.tools:knowledge_search_tool
+    use: alpha.community.lightrag.tools:knowledge_search_tool
     base_url: http://localhost:9621
     api_key: $LIGHTRAG_API_KEY
     mode: mix
@@ -423,7 +423,7 @@ Configure specific tools available to the agent:
 tools:
   - name: web_search
     group: web
-    use: agent_workspace.community.tavily.tools:web_search_tool
+    use: alpha.community.tavily.tools:web_search_tool
     max_results: 5
     # api_key: $TAVILY_API_KEY  # Optional
 ```
@@ -445,7 +445,7 @@ Browserless can be configured as an opt-in visual capture tool:
 tools:
   - name: web_capture
     group: web
-    use: agent_workspace.community.browserless.tools:web_capture_tool
+    use: alpha.community.browserless.tools:web_capture_tool
     base_url: http://localhost:3032
     # token: $BROWSERLESS_TOKEN
     output_format: png
@@ -501,20 +501,20 @@ Alpha supports multiple sandbox execution modes. Configure your preferred mode i
 **Local Execution** (runs sandbox code directly on the host machine):
 ```yaml
 sandbox:
-   use: agent_workspace.sandbox.local:LocalSandboxProvider # Local execution
+   use: alpha.sandbox.local:LocalSandboxProvider # Local execution
    allow_host_bash: false # default; host bash is disabled unless explicitly re-enabled
 ```
 
 **Docker Execution** (runs sandbox code in isolated Docker containers):
 ```yaml
 sandbox:
-   use: agent_workspace.community.aio_sandbox:AioSandboxProvider # Docker-based sandbox
+   use: alpha.community.aio_sandbox:AioSandboxProvider # Docker-based sandbox
 ```
 
 **BoxLite micro-VM Sandbox** (runs sandbox code in daemonless OCI micro-VMs):
 ```yaml
 sandbox:
-   use: agent_workspace.community.boxlite:BoxliteProvider
+   use: alpha.community.boxlite:BoxliteProvider
    image: python:3.12-slim
    memory_mib: 1024                 # optional per-box memory cap
    cpus: 2                          # optional per-box vCPUs
@@ -543,7 +543,7 @@ This mode runs each sandbox in an isolated Kubernetes Pod on your **host machine
 
 ```yaml
 sandbox:
-   use: agent_workspace.community.aio_sandbox:AioSandboxProvider
+   use: alpha.community.aio_sandbox:AioSandboxProvider
    provisioner_url: http://provisioner:8002
 ```
 
@@ -556,7 +556,7 @@ the same thread user-data directories, opt out of that extra transfer:
 
 ```yaml
 sandbox:
-  use: agent_workspace.community.aio_sandbox:AioSandboxProvider
+  use: alpha.community.aio_sandbox:AioSandboxProvider
   provisioner_url: http://provisioner:8002
   thread_data_mounts: true
 ```
@@ -574,7 +574,7 @@ See [Provisioner Setup Guide](../../docker/provisioner/README.md) for detailed c
 
 ```yaml
 sandbox:
-   use: agent_workspace.community.e2b_sandbox:E2BSandboxProvider
+   use: alpha.community.e2b_sandbox:E2BSandboxProvider
    api_key: $E2B_API_KEY            # required; or set the E2B_API_KEY env var
    template: code-interpreter-v1     # e2b sandbox template id
    # domain: e2b.dev                # optional; for self-hosted e2b deployments
@@ -640,7 +640,7 @@ Notes specific to `E2BSandboxProvider`:
 
 ```yaml
 sandbox:
-   use: agent_workspace.community.opensandbox:OpenSandboxProvider
+   use: alpha.community.opensandbox:OpenSandboxProvider
    image: python:3.11
    api_key: $OPEN_SANDBOX_API_KEY     # optional when the SDK env var is set
    domain: localhost:8080             # OPEN_SANDBOX_DOMAIN fallback
@@ -682,7 +682,7 @@ Choose between local execution or Docker-based isolation:
 **Option 1: Local Sandbox** (default, simpler setup):
 ```yaml
 sandbox:
-  use: agent_workspace.sandbox.local:LocalSandboxProvider
+  use: alpha.sandbox.local:LocalSandboxProvider
   allow_host_bash: false
 ```
 
@@ -700,7 +700,7 @@ services:
 
 ```yaml
 sandbox:
-  use: agent_workspace.sandbox.local:LocalSandboxProvider
+  use: alpha.sandbox.local:LocalSandboxProvider
   mounts:
     - host_path: /app/.agent-workspace/knowledge
       container_path: /mnt/knowledge
@@ -712,7 +712,7 @@ If the configured `host_path` is not visible to the gateway process, Alpha logs 
 **Option 2: Docker Sandbox** (isolated, more secure):
 ```yaml
 sandbox:
-  use: agent_workspace.community.aio_sandbox:AioSandboxProvider
+  use: alpha.community.aio_sandbox:AioSandboxProvider
   port: 8080
   auto_start: true
   container_prefix: agent-workspace-sandbox
@@ -732,7 +732,7 @@ Local Docker AIO sandboxes can opt into an outbound policy:
 
 ```yaml
 sandbox:
-  use: agent_workspace.community.aio_sandbox:AioSandboxProvider
+  use: alpha.community.aio_sandbox:AioSandboxProvider
   network:
     mode: allowlist
     allow_domains:
@@ -864,7 +864,7 @@ Use the custom image in local Docker or Apple Container mode with `sandbox.image
 
 ```yaml
 sandbox:
-  use: agent_workspace.community.aio_sandbox:AioSandboxProvider
+  use: alpha.community.aio_sandbox:AioSandboxProvider
   image: your-registry/your-aio-sandbox:tag
 ```
 
@@ -1014,8 +1014,8 @@ before exposing an instance to untrusted input.
 
 | Mode | `config.yaml` | Host Docker socket | Isolation |
 |------|---------------|--------------------|-----------|
-| `local` (default) | `agent_workspace.sandbox.local:LocalSandboxProvider` | Not mounted | Commands run **inside the gateway container** on its filesystem. Not a strong boundary — `allow_host_bash` is `false` by default and should stay off for untrusted workloads. |
-| `aio` (pure DooD) | `agent_workspace.community.aio_sandbox:AioSandboxProvider` (no `provisioner_url`) | **Mounted** (opt-in overlay) | Sandbox containers are started via the host Docker daemon. |
+| `local` (default) | `alpha.sandbox.local:LocalSandboxProvider` | Not mounted | Commands run **inside the gateway container** on its filesystem. Not a strong boundary — `allow_host_bash` is `false` by default and should stay off for untrusted workloads. |
+| `aio` (pure DooD) | `alpha.community.aio_sandbox:AioSandboxProvider` (no `provisioner_url`) | **Mounted** (opt-in overlay) | Sandbox containers are started via the host Docker daemon. |
 | `provisioner` (Kubernetes) | `AioSandboxProvider` + `provisioner_url` | Not mounted | Sandbox pods are created through the provisioner's K8s API over HTTP. Strongest isolation. |
 
 #### The Docker socket is host root

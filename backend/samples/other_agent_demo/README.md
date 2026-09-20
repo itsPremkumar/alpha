@@ -1,8 +1,8 @@
 # DeerMem portability demo (other-agent integration)
 
 `backends/deermem/` is a **self-contained, portable** memory backend. It has
-exactly **one** `from agent_workspace` line -- the ABC contract
-(`from agent_workspace.agents.memory.manager import MemoryManager` in `deer_mem.py`).
+exactly **one** `from alpha` line -- the ABC contract
+(`from alpha.agents.memory.manager import MemoryManager` in `deer_mem.py`).
 Everything else is relative imports within the folder. So another agent can
 adopt DeerMem in three steps, with **zero agent-workspace code**.
 
@@ -17,7 +17,7 @@ adopt DeerMem in three steps, with **zero agent-workspace code**.
    `backends/`. Change exactly **one line** in `deer_mem.py`:
    ```python
    # from
-   from agent_workspace.agents.memory.manager import MemoryManager
+   from alpha.agents.memory.manager import MemoryManager
    # to (your agent's vendored contract)
    from <your_agent>.memory.manager import MemoryManager
    ```

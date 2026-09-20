@@ -23,7 +23,7 @@
 # from docker/lark-cli-init) into /opt/lark-cli, so the sidecar has a real binary.
 #
 # The shim itself is written from the in-process constant
-# LARK_CLI_BROKER_SHIM_SCRIPT (agent_workspace.integrations.lark_broker), so the image's
+# LARK_CLI_BROKER_SHIM_SCRIPT (alpha.integrations.lark_broker), so the image's
 # shim can never drift from the Gateway's copy.
 #
 # Build (defaults to the pinned version below):
@@ -62,7 +62,7 @@ ENV LARK_CLI_VERSION=${LARK_CLI_VERSION}
 
 COPY --from=builder /opt/lark-cli /opt/lark-cli
 # Single stdlib-only module drives both install-shim and serve.
-COPY backend/packages/harness/agent_workspace/integrations/lark_broker.py /opt/broker/lark_broker.py
+COPY backend/packages/harness/alpha/integrations/lark_broker.py /opt/broker/lark_broker.py
 COPY docker/lark-cli-broker/entrypoint.sh /usr/local/bin/lark-cli-broker
 RUN chmod +x /usr/local/bin/lark-cli-broker
 
