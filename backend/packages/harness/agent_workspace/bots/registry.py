@@ -12,7 +12,12 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from agent_workspace.bots.profile import BotProfile, _now, generate_default_soul
+from agent_workspace.bots.profile import (
+    BotProfile,
+    _now,
+    generate_default_soul,
+    generate_sentinel_soul,
+)
 from agent_workspace.bots.templates import BOT_STATUSES, get_template
 
 logger = logging.getLogger(__name__)
@@ -91,7 +96,13 @@ class BotRegistry:
                 spec = get_template(slug)
                 if spec is None:
                     continue
-                soul = generate_default_soul(slug, spec["role"])
+                # The Sentinel is the one bot permitted to change code and
+                # commit unattended, so it gets a soul encoding the repair
+                # loop's safety contract rather than the generic one.
+                if slug == "sentinel":
+                    soul = generate_sentinel_soul(slug)
+                else:
+                    soul = generate_default_soul(slug, spec["role"])
                 bot = BotProfile(
                     name=slug,
                     display_name=spec["display"],

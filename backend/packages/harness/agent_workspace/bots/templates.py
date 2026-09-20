@@ -128,6 +128,26 @@ BOT_TEMPLATES: dict[str, dict[str, Any]] = {
         "responsibilities": ["System uptime", "Incident triage", "Resource monitoring", "Crash recovery"],
         "capabilities": ["incident_response", "health_monitoring", "recovery_automation"],
     },
+    "sentinel": {
+        "display": "Sentinel",
+        "role": "Autonomous Reliability Sentinel & Self-Repair Loop",
+        "avatar": "🛡️",
+        "department": "operations",
+        "reports_to": "sre",
+        "responsibilities": [
+            "Continuous system monitoring",
+            "Root-cause diagnosis",
+            "Bounded automated repair",
+            "Verification gating",
+        ],
+        "capabilities": [
+            "log_analysis",
+            "root_cause_analysis",
+            "patch_synthesis",
+            "test_verification",
+            "safe_commit",
+        ],
+    },
     "devops": {
         "display": "DevOps",
         "role": "DevOps & Infrastructure Engineer",
