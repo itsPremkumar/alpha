@@ -329,6 +329,11 @@ capability wiring §5b, UI).
 
 ## 10. git status snapshot (for the next agent's baseline)
 
+**Pushed:** pass-2 work is on `origin/main` as commit **`4d2e720`**
+(`ddd6747..4d2e720`, 48 files, +5332/−60). Two throwaway scratch files were
+deliberately left untracked: `scripts/_check_pil.py` and
+`scripts/_run_check_pil.ps1` (2–5 lines, hardcoded local paths).
+
 Run `git status --short` to confirm tidy state. Baseline from the **pass-2** snapshot (2026-09-20) — note the new `capabilities/`, `frontend/src/**` and `examples/` entries versus pass 1:
 
 ```
