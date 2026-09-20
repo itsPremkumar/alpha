@@ -318,6 +318,40 @@ class BotRegistry:
             self._save()
             return bot
 
+    def add_routine(
+        self,
+        name: str,
+        routine_name: str,
+        schedule: str,
+        action: str,
+        *,
+        enabled: bool = True,
+        **extra: Any,
+    ) -> dict[str, Any] | None:
+        """Add or replace a routine on a bot. None when the bot does not exist."""
+        key = name.lower().strip()
+        with self._lock:
+            bot = self._bots.get(key)
+            if bot is None:
+                return None
+            routine = bot.add_routine(
+                routine_name, schedule, action, enabled=enabled, **extra
+            )
+        self._save()
+        return routine
+
+    def remove_routine(self, name: str, routine_name: str) -> bool:
+        """Remove a routine from a bot. False when either does not exist."""
+        key = name.lower().strip()
+        with self._lock:
+            bot = self._bots.get(key)
+            if bot is None:
+                return False
+            removed = bot.remove_routine(routine_name)
+        if removed:
+            self._save()
+        return removed
+
     def list_bots(
         self,
         *,

@@ -95,6 +95,70 @@ class BotProfile:
         self.archived_at = _now()
         self.updated_at = _now()
 
+    # ── Routines ──────────────────────────────────────────────────────────
+    # ``routines`` was a free-form list[dict] with no structure, no validation
+    # and no API, so nothing could safely read or write it. These helpers own
+    # the shape: name, schedule (cron or interval), action, enabled.
+
+    @property
+    def enabled_routines(self) -> list[dict[str, Any]]:
+        """Only the routines currently switched on."""
+        return [r for r in self.routines if r.get("enabled", True)]
+
+    def get_routine(self, name: str) -> dict[str, Any] | None:
+        key = (name or "").strip().lower()
+        for r in self.routines:
+            if (r.get("name") or "").strip().lower() == key:
+                return r
+        return None
+
+    def add_routine(
+        self,
+        name: str,
+        schedule: str,
+        action: str,
+        *,
+        enabled: bool = True,
+        **extra: Any,
+    ) -> dict[str, Any]:
+        """Add (or replace) a named routine.
+
+        Names are unique per bot, so adding the same name twice updates the
+        existing routine rather than silently creating a duplicate that would
+        then run twice.
+        """
+        clean = (name or "").strip()
+        if not clean:
+            raise ValueError("routine name must be non-empty")
+        if not (schedule or "").strip():
+            raise ValueError(f"routine '{clean}' requires a schedule (cron or interval)")
+        if not (action or "").strip():
+            raise ValueError(f"routine '{clean}' requires an action")
+
+        routine: dict[str, Any] = {
+            "name": clean,
+            "schedule": schedule.strip(),
+            "action": action.strip(),
+            "enabled": bool(enabled),
+            **extra,
+        }
+        existing = self.get_routine(clean)
+        if existing is not None:
+            self.routines[self.routines.index(existing)] = routine
+        else:
+            self.routines.append(routine)
+        self.updated_at = _now()
+        return routine
+
+    def remove_routine(self, name: str) -> bool:
+        """Remove a routine by name. Returns True when one was removed."""
+        existing = self.get_routine(name)
+        if existing is None:
+            return False
+        self.routines.remove(existing)
+        self.updated_at = _now()
+        return True
+
     def memory_namespace(self) -> str:
         """The namespace this bot's memories live under.
 
