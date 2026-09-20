@@ -1,6 +1,6 @@
 {
   "name": "agent-workspace-desktop",
-  "productName": "Agent Workspace",
+  "productName": "Alpha",
   "version": "2.1.0",
   "private": true,
   "description": "Agent Workspace desktop shell for Windows — Electron window that orchestrates the local Gateway API and Next.js frontend.",

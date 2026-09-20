@@ -341,6 +341,36 @@ When using `make dev` from root, the frontend automatically connects through ngi
 
 ## Key Features
 
+### Host System Monitor
+
+`app/gateway/system_monitor_service.py` samples CPU, RAM, disk, network and
+processes via `psutil` (optional — it degrades to stdlib when absent) and is
+served by `app/gateway/routers/system_monitor.py`.
+
+`app/gateway/system_monitor_extras.py` adds what psutil cannot see, which on
+Windows is most of it:
+
+| Area | Baseline | Extras add |
+|---|---|---|
+| GPU | `nvidia-smi` only; WMI names with no counters | CIM adapter identity for all vendors, AMD `rocm-smi`, host-wide utilization via GPU Engine counters |
+| Thermals | none on Windows (`sensors_temperatures()` is empty) | psutil package temp, else ACPI thermal zone (CIM first; `wmic` is deprecated and commonly blocked) |
+| Disk / ROM | partition usage + IO counters | physical-disk health, media/bus type, capacity, derived IOPS and throughput |
+| Internet | one TCP connect → one RTT | multi-target probes, packet loss, DNS latency, quality grade, cached public IP, opt-in throughput probe |
+
+Rules for this layer:
+
+- **Every sampler is best-effort.** Independently guarded, timeout-bounded,
+  expensive results cached, and it must never raise into the sampling tick.
+  A locked-down host degrades to `None`, not to a 500.
+- **No bandwidth surprises.** Public IP is cached 10 minutes; the throughput
+  probe is opt-in (`include_speedtest`) because it deliberately consumes data.
+- **Be honest about attribution.** Windows GPU Engine counters are host-wide and
+  cannot be attributed to one adapter, so with several adapters no adapter
+  claims the number — it is exposed separately as
+  `gpu_system_utilization_percent`, and per-GPU `utilization_scope` says
+  `unavailable`. Only a single-adapter host may fold it into that adapter.
+- Kill switch: `AGENT_WORKSPACE_ADVANCED_MONITOR=0` disables all extras.
+
 ### Web Search Recency
 
 DDG, Brave, Tavily, SearXNG, and Sofya `web_search` share optional

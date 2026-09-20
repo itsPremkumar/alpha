@@ -28,22 +28,10 @@ class ProjectResponse(BaseModel):
     updated_at: str
 
 
-class CrewAgent(BaseModel):
-    """One agent to attach to a project.
-
-    ``role`` overrides the request-level default, so a project can be staffed
-    with mixed roles in a single call.
-    """
-
-    name: str = Field(..., min_length=1, max_length=64)
-    role: str | None = Field(default=None, max_length=64)
-
-
 class ProjectCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=128)
     instructions: str = ""
     presentation: dict = Field(default_factory=dict)
-    agents: list[CrewAgent] = Field(default_factory=list, max_length=64)
 
 
 class ProjectPatchRequest(BaseModel):
@@ -100,21 +88,7 @@ def _not_found() -> HTTPException:
 @require_permission("projects", "write")
 async def create_project(body: ProjectCreateRequest, request: Request) -> ProjectResponse:
     repo = get_project_repo(request)
-    row = await repo.create(name=body.name, instructions=body.instructions, presentation=body.presentation)
-
-    # Staffing at creation time is the whole point of the crew layer: a project
-    # created with 2+ agents comes back with its group room already provisioned.
-    if body.agents:
-        pairs = [(a.name.strip().lower(), a.role or "worker") for a in body.agents]
-
-        def _staff():
-            from agent_workspace.projects.crew import get_crew_service
-
-            get_crew_service().attach(row["id"], pairs)
-
-        await asyncio.to_thread(_staff)
-
-    return _to_response(row)
+    return _to_response(await repo.create(name=body.name, instructions=body.instructions, presentation=body.presentation))
 
 
 @router.get("", response_model=ProjectListResponse)
@@ -227,7 +201,6 @@ async def join_project(project_id: str, body: JoinRequest, request: Request) -> 
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.projects.crew import get_crew_service
         from agent_workspace.projects.events import get_event_bus
         from agent_workspace.projects.membership import get_membership_store
         from agent_workspace.projects.workspace import ensure_workspace
@@ -235,8 +208,6 @@ async def join_project(project_id: str, body: JoinRequest, request: Request) -> 
         ensure_workspace(project_id)
         m = get_membership_store().join(project_id, body.bot_name, body.role_in_project)
         get_event_bus(project_id).emit("agent_joined", m.bot_name, {"role": m.role_in_project})
-        # Reconcile the group room so the legacy path cannot drift from the crew.
-        get_crew_service().ensure_crew(project_id)
         return m.to_dict()
 
     return await asyncio.to_thread(_do)
@@ -248,15 +219,12 @@ async def leave_project(project_id: str, body: LeaveRequest, request: Request) -
     await _require_project(project_id, request)
 
     def _do():
-        from agent_workspace.projects.crew import get_crew_service
         from agent_workspace.projects.events import get_event_bus
         from agent_workspace.projects.membership import get_membership_store
 
         ok = get_membership_store().leave(project_id, body.bot_name)
         if ok:
             get_event_bus(project_id).emit("agent_left", body.bot_name.lower().strip(), {})
-            # Reconcile the room (and park it if the crew drops to one agent).
-            get_crew_service().ensure_crew(project_id)
         return {"left": ok}
 
     return await asyncio.to_thread(_do)
@@ -291,126 +259,6 @@ async def project_presence(project_id: str, request: Request) -> dict:
 
         rows = get_membership_store().presence(project_id)
         return {"project_id": project_id, "members": [m.to_dict() for m in rows], "count": len(rows)}
-
-    return await asyncio.to_thread(_do)
-
-
-# ---------------------------------------------------------------------------
-# Crew layer: membership + group room + shared memory as one coherent unit.
-# ---------------------------------------------------------------------------
-
-
-class AgentsAttachRequest(BaseModel):
-    agents: list[CrewAgent] = Field(..., min_length=1, max_length=64)
-    role: str = Field(default="worker", max_length=64)
-
-
-class CollaborationPatchRequest(BaseModel):
-    orchestration_mode: str | None = None
-    moderator: str | None = None
-    max_concurrent_speakers: int | None = None
-    mention_policy: str | None = None
-    auto_handoff: bool | None = None
-    conflict_policy: str | None = None
-    lock_policy: str | None = None
-    require_evidence: bool | None = None
-    memory_budget_chars: int | None = None
-    transcript_digest_n: int | None = None
-    standup_interval_turns: int | None = None
-
-
-@router.get("/{project_id}/crew")
-@require_permission("projects", "read")
-async def project_crew(project_id: str, request: Request) -> dict:
-    """One payload with everything the crew UI needs: members, room, settings, memory."""
-    await _require_project(project_id, request)
-
-    def _do():
-        from agent_workspace.projects.crew import get_crew_service
-
-        return get_crew_service().ensure_crew(project_id).to_dict()
-
-    return await asyncio.to_thread(_do)
-
-
-@router.post("/{project_id}/agents")
-@require_permission("projects", "write")
-async def attach_agents(project_id: str, body: AgentsAttachRequest, request: Request) -> dict:
-    """Attach agents in bulk; the group room is provisioned at the 2nd member."""
-    await _require_project(project_id, request)
-
-    def _do():
-        from agent_workspace.projects.crew import get_crew_service
-
-        pairs = [(a.name.strip().lower(), a.role or body.role) for a in body.agents]
-        return get_crew_service().attach(project_id, pairs, role=body.role).to_dict()
-
-    return await asyncio.to_thread(_do)
-
-
-@router.delete("/{project_id}/agents/{bot_name}")
-@require_permission("projects", "write")
-async def detach_agent(project_id: str, bot_name: str, request: Request) -> dict:
-    """Remove an agent, release its locks, and reconcile the room."""
-    await _require_project(project_id, request)
-
-    def _do():
-        from agent_workspace.projects.crew import get_crew_service
-
-        return get_crew_service().detach(project_id, bot_name).to_dict()
-
-    return await asyncio.to_thread(_do)
-
-
-@router.patch("/{project_id}/collaboration")
-@require_permission("projects", "write")
-async def patch_collaboration(project_id: str, body: CollaborationPatchRequest, request: Request) -> dict:
-    """Update coordination policy and re-apply it to the room immediately."""
-    await _require_project(project_id, request)
-    patch = body.model_dump(exclude_none=True)
-    if not patch:
-        raise HTTPException(status_code=422, detail="No collaboration settings supplied")
-
-    def _do():
-        from agent_workspace.projects.crew import get_crew_service
-        from agent_workspace.projects.events import get_event_bus
-
-        get_crew_service().set_collaboration(project_id, **patch)
-        get_event_bus(project_id).emit("collaboration_updated", "supervisor", patch)
-        return get_crew_service().ensure_crew(project_id).to_dict()
-
-    try:
-        return await asyncio.to_thread(_do)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-
-@router.get("/{project_id}/memory")
-@require_permission("projects", "read")
-async def project_memory(project_id: str, request: Request) -> dict:
-    """Level-2 shared memory as an agent would see it — includes the transcript digest."""
-    await _require_project(project_id, request)
-
-    def _do():
-        from agent_workspace.projects.context_router import get_three_level_router
-
-        return get_three_level_router().get_project_memory(project_id)
-
-    return await asyncio.to_thread(_do)
-
-
-@router.post("/{project_id}/memory/compact")
-@require_permission("projects", "write")
-async def compact_project_memory(project_id: str, request: Request) -> dict:
-    """Force transcript compaction; `compacted` is 0 when already inside budget."""
-    await _require_project(project_id, request)
-
-    def _do():
-        from agent_workspace.projects.crew import get_crew_service
-
-        crew = get_crew_service()
-        report = crew.compact_transcript(project_id)
-        return {"project_id": project_id, **(report or {"compacted": 0})}
 
     return await asyncio.to_thread(_do)
 

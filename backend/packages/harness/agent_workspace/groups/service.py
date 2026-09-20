@@ -68,6 +68,15 @@ class GroupChatService:
         except Exception:
             logger.warning("Group rooms save failed", exc_info=True)
 
+    def persist(self) -> None:
+        """Flush in-memory room mutations to disk.
+
+        The crew layer (``projects/crew.py``) reconciles room membership against
+        project membership and needs an explicit flush point; going through
+        ``post_message`` just to trigger a save would pollute the transcript.
+        """
+        self._save()
+
     def get_or_create_room(
         self,
         name: str,

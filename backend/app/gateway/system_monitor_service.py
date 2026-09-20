@@ -41,6 +41,8 @@ from collections import deque
 from datetime import datetime
 from typing import Any
 
+from app.gateway import system_monitor_extras as _extras
+
 logger = logging.getLogger(__name__)
 
 try:  # Optional dependency - degrade gracefully when absent.
@@ -59,6 +61,9 @@ RAM_CRITICAL_PERCENT = 90.0
 DISK_LOW_PERCENT = 90.0
 DISK_CRITICAL_PERCENT = 95.0
 CPU_HIGH_PERCENT = 90.0
+# Advanced telemetry thresholds (see system_monitor_extras.py).
+GPU_HOT_CELSIUS = 85.0
+CPU_THROTTLE_CELSIUS = 95.0
 
 # Reliable host for the internet reachability probe (Cloudflare DNS).
 _INTERNET_PROBE_HOST = "1.1.1.1"
@@ -247,6 +252,11 @@ class SystemMonitorService:
         # GPU cache.
         self._gpu_cache: list[dict[str, Any]] = []
         self._gpu_cache_time: float = 0.0
+        # Advanced telemetry deltas (disk IOPS needs the previous counter set).
+        self._prev_disks: dict[str, Any] | None = None
+        self._prev_advanced_time: float = 0.0
+        # Host-wide GPU utilization when per-adapter attribution is impossible.
+        self._gpu_system_utilization: float | None = None
         # Top-process cache (served instantly; refreshed in the background).
         self._process_cache: dict[str, Any] | None = None
         self._process_cache_time: float = 0.0
@@ -524,7 +534,38 @@ class SystemMonitorService:
             "battery": has_psutil,
             "process_monitoring": has_psutil,
             "load_average": hasattr(os, "getloadavg"),
+            # Advanced telemetry (app/gateway/system_monitor_extras.py).
+            "advanced": _extras.enabled(),
+            "gpu_utilization": self._gpu_utilization_supported(),
+            "gpu_amd": any(g.get("vendor") == "AMD" for g in self._gpu_cache),
+            "internet_quality": _extras.enabled(),
+            "storage_health": self._storage_health_supported(),
+            "cpu_thermal": self._cpu_thermal_supported(),
         }
+
+    def _gpu_utilization_supported(self) -> bool:
+        if not _extras.enabled():
+            return any(g.get("utilization_percent") is not None for g in self._gpu_cache)
+        try:
+            return bool(_extras.sample_gpus().get("utilization_supported"))
+        except Exception:
+            return False
+
+    def _storage_health_supported(self) -> bool:
+        if not _extras.enabled():
+            return False
+        try:
+            return bool(_extras.sample_storage_health().get("supported"))
+        except Exception:
+            return False
+
+    def _cpu_thermal_supported(self) -> bool:
+        if not _extras.enabled():
+            return False
+        try:
+            return bool(_extras.sample_cpu_thermal().get("supported"))
+        except Exception:
+            return False
 
     # -- sampler internals ----------------------------------------------
 
@@ -646,7 +687,11 @@ class SystemMonitorService:
 
         disks = self._disks_for_tick(now)
         gpus = self._gpus_for_tick(now)
-        internet = _check_internet()
+        internet = self._sample_internet()
+        advanced = self._sample_advanced(now, disks)
+        if advanced.get("cpu_thermal") and cpu is not None:
+            cpu["temperature_c"] = advanced["cpu_thermal"].get("temperature_c")
+            cpu["thermal_throttling"] = advanced["cpu_thermal"].get("throttling")
         battery = self._sample_battery()
         sensors = self._sample_sensors()
         system = self._sample_host(now)
@@ -664,6 +709,8 @@ class SystemMonitorService:
             "gpus": gpus,
             # Legacy alias: first GPU or None.
             "gpu": gpus[0] if gpus else None,
+            # Host-wide GPU utilization, used when no single adapter can claim it.
+            "gpu_system_utilization_percent": self._gpu_system_utilization,
             "network": network,
             "internet": internet,
             "system": system,
@@ -671,11 +718,60 @@ class SystemMonitorService:
             "alpha": alpha,
             "battery": battery,
             "sensors": sensors,
+            "cpu_thermal": advanced.get("cpu_thermal"),
+            "storage": advanced.get("storage"),
+            "disk_performance": advanced.get("disk_performance"),
             "processes": None,  # on-demand via GET /api/system/processes
             "capabilities": self.get_capabilities(),
             "psutil_available": _psutil is not None,
         }
         return snapshot
+
+    # -- advanced telemetry (cross-vendor GPU, internet quality, ROM health) --
+
+    def _sample_internet(self) -> dict[str, Any]:
+        """Multi-target internet quality, keeping the legacy key contract."""
+        if not _extras.enabled():
+            return _check_internet()
+        try:
+            quality = _extras.sample_internet_quality()
+        except Exception:
+            logger.debug("Advanced internet sampling failed", exc_info=True)
+            return _check_internet()
+        probes = quality.get("probes") or []
+        return {
+            "reachable": bool(quality.get("reachable")),
+            "rtt_ms": quality.get("rtt_ms"),
+            "host": probes[0].get("host", _INTERNET_PROBE_HOST) if probes else _INTERNET_PROBE_HOST,
+            "probes": probes,
+            "quality": quality.get("quality"),
+            "avg_rtt_ms": quality.get("avg_rtt_ms"),
+            "packet_loss_percent": quality.get("packet_loss_percent"),
+            "dns_latency_ms": quality.get("dns_latency_ms"),
+            "public_ip": quality.get("public_ip"),
+            "reachable_targets": quality.get("reachable_targets"),
+            "total_targets": quality.get("total_targets"),
+            "checked_at": quality.get("checked_at"),
+        }
+
+    def _sample_advanced(self, now: float, disks: list[dict[str, Any]]) -> dict[str, Any]:
+        """CPU thermal, physical-disk health and disk throughput in one pass."""
+        empty = {"cpu_thermal": None, "storage": None, "disk_performance": None}
+        if not _extras.enabled():
+            return empty
+        try:
+            elapsed = (now - self._prev_advanced_time) if self._prev_advanced_time else 0.0
+            performance = _extras.sample_disk_performance(disks, previous=self._prev_disks, elapsed=elapsed) if elapsed > 0 and self._prev_disks is not None else {"read_mbps": None, "write_mbps": None, "iops": None, "disks": []}
+            self._prev_disks = {"disks": disks}
+            self._prev_advanced_time = now
+            return {
+                "cpu_thermal": _extras.sample_cpu_thermal(),
+                "storage": _extras.sample_storage_health(),
+                "disk_performance": performance,
+            }
+        except Exception:
+            logger.debug("Advanced telemetry sampling failed", exc_info=True)
+            return empty
 
     # -- per-area samplers (each failure-contained) ----------------------
 
@@ -1067,10 +1163,32 @@ class SystemMonitorService:
             with self._lock:
                 return [dict(g) for g in self._gpu_cache]
         gpus = _query_nvidia_gpus() or _query_wmi_gpu_names()
+        # Cross-vendor upgrade. The baseline probes leave Intel, AMD and
+        # integrated GPUs with names but no counters, so they read 0% forever.
+        # Prefer the advanced readout only when it genuinely says more.
+        if _extras.enabled():
+            try:
+                advanced_gpu = _extras.sample_gpus()
+                self._gpu_system_utilization = advanced_gpu.get("system_utilization_percent")
+                if self._richer_gpu_set(advanced_gpu, gpus):
+                    gpus = advanced_gpu.get("gpus") or []
+            except Exception:
+                logger.debug("Advanced GPU sampling failed", exc_info=True)
         with self._lock:
             self._gpu_cache = gpus
             self._gpu_cache_time = now
             return [dict(g) for g in gpus]
+
+    @staticmethod
+    def _richer_gpu_set(advanced: dict[str, Any], current: list[dict[str, Any]]) -> bool:
+        """True when the advanced probe adds information the baseline lacks."""
+        candidates = advanced.get("gpus") or []
+        if not candidates:
+            return False
+        if not current:
+            return True
+        current_has_util = any(g.get("utilization_percent") is not None for g in current)
+        return bool(advanced.get("utilization_supported") and not current_has_util)
 
     # -- alerts ----------------------------------------------------------
 
@@ -1098,6 +1216,7 @@ class SystemMonitorService:
             },
             "gpus": [],
             "gpu": None,
+            "gpu_system_utilization_percent": None,
             "network": {
                 "bytes_sent": 0,
                 "bytes_recv": 0,
@@ -1142,6 +1261,9 @@ class SystemMonitorService:
             "alpha": None,
             "battery": None,
             "sensors": None,
+            "cpu_thermal": None,
+            "storage": None,
+            "disk_performance": None,
             "processes": None,
             "capabilities": {
                 "psutil": _psutil is not None,
@@ -1241,6 +1363,59 @@ class SystemMonitorService:
                     "severity": "critical",
                     "category": "network",
                     "message": "No internet connectivity (probe to 1.1.1.1:53 failed).",
+                    "value": None,
+                    "threshold": None,
+                    "timestamp": now,
+                }
+            )
+        elif (internet.get("packet_loss_percent") or 0.0) >= 25.0:
+            alerts.append(
+                {
+                    "key": "internet_unstable",
+                    "severity": "warning",
+                    "category": "network",
+                    "message": f"Internet is unstable ({internet.get('packet_loss_percent')}% packet loss).",
+                    "value": internet.get("packet_loss_percent"),
+                    "threshold": 25.0,
+                    "timestamp": now,
+                }
+            )
+        for gpu in snapshot.get("gpus") or []:
+            if not isinstance(gpu, dict):
+                continue
+            temperature = gpu.get("temperature_c")
+            if temperature is not None and temperature >= GPU_HOT_CELSIUS:
+                alerts.append(
+                    {
+                        "key": "gpu_hot",
+                        "severity": "warning",
+                        "category": "gpu",
+                        "message": f"GPU {gpu.get('name') or '?'} is running hot ({temperature} C).",
+                        "value": temperature,
+                        "threshold": GPU_HOT_CELSIUS,
+                        "timestamp": now,
+                    }
+                )
+        thermal = snapshot.get("cpu_thermal") or {}
+        if thermal.get("throttling"):
+            alerts.append(
+                {
+                    "key": "cpu_throttling",
+                    "severity": "critical",
+                    "category": "cpu",
+                    "message": f"CPU is thermally throttling ({thermal.get('temperature_c')} C).",
+                    "value": thermal.get("temperature_c"),
+                    "threshold": 95.0,
+                    "timestamp": now,
+                }
+            )
+        for name in (snapshot.get("storage") or {}).get("unhealthy") or []:
+            alerts.append(
+                {
+                    "key": "disk_unhealthy",
+                    "severity": "critical",
+                    "category": "disk",
+                    "message": f"Physical disk '{name}' reports a non-healthy status.",
                     "value": None,
                     "threshold": None,
                     "timestamp": now,

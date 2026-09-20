@@ -1,4 +1,7 @@
-const name = "Agent Workspace";
+// The product is Alpha. This single constant is what every user-facing surface
+// reads (window title, sidebar, chat landing, metadata), so it is the only place
+// the display name needs to change.
+const name = "Alpha";
 
 export const branding = Object.freeze({
   name,

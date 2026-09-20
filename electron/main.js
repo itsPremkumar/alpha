@@ -1,9 +1,9 @@
 'use strict';
 
 /**
- * Agent Workspace Desktop — Electron main process.
+ * Alpha Desktop — Electron main process.
  *
- * Windows-stable orchestration for the Agent Workspace stack:
+ * Windows-stable orchestration for the Alpha stack:
  *   Gateway API (FastAPI/uvicorn, default `127.0.0.1:8201`) + Next.js frontend
  *   (default `127.0.0.1:3000`) inside a single native window. No nginx is used
  *   here: the Next.js server rewrites /api/* directly to the Gateway
@@ -328,7 +328,11 @@ async function isAgentWorkspaceFrontend(frontendUrl) {
     } finally {
       clearTimeout(timer);
     }
-    return text.includes('__next') || text.includes('Agent Workspace') || text.includes('Agent Workspace');
+    // '__next' is the reliable Next.js marker; the display name is a secondary
+    // signal. It was previously listed twice with the old name, so after the
+    // rename to Alpha both copies were dead and the probe silently rested on
+    // '__next' alone.
+    return text.includes('__next') || text.includes(APP_NAME);
   } catch {
     return false;
   }

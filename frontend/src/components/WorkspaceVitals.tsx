@@ -140,7 +140,7 @@ export function WorkspaceVitals({ className = "" }: { className?: string }) {
         {vitals.online ? "Gateway online" : "Gateway offline"}
       </Badge>
 
-      <span title={`Agent Workspace version ${vitals.version}`} className="inline-flex items-center gap-1 text-muted-foreground whitespace-nowrap">
+      <span title={`Alpha version ${vitals.version}`} className="inline-flex items-center gap-1 text-muted-foreground whitespace-nowrap">
         <Cpu className="size-3" />
         <span className="font-medium tabular-nums">v{vitals.version}</span>
       </span>

@@ -152,6 +152,17 @@ class ThreeLevelContextRouter:
             "updated_at": _now(),
         }
 
+        # The conversation itself is shared memory too. Without this the crew
+        # holds meetings that evaporate: an agent joining later, or one whose
+        # context rolled over, has no record of what was agreed or who asked it
+        # for something. See projects/memory_bridge.py.
+        try:
+            from agent_workspace.projects.memory_bridge import build_memory_extras
+
+            base_memory.update(build_memory_extras(project_id))
+        except Exception:
+            logger.debug("Transcript digest unavailable for %s", project_id, exc_info=True)
+
         if p.exists():
             try:
                 with open(p, encoding="utf-8") as f:

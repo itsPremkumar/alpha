@@ -16,7 +16,7 @@ const { branding } = await loadModule("lib/branding.ts");
 const history = await loadModule("lib/history-store.ts");
 
 test("neutral branding has a single immutable display name", () => {
-  assert.equal(branding.name, "Agent Workspace");
+  assert.equal(branding.name, "Alpha");
   assert.equal(branding.assistantLabel, `${branding.name} Assistant`);
   assert.ok(Object.isFrozen(branding));
   for (const value of Object.values(branding)) {

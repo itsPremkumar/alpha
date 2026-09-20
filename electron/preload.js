@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Agent Workspace Desktop preload script.
+ * Alpha Desktop preload script.
  *
  * Runs in an isolated world before the page loads. Only exposes a minimal
  * API over IPC — no Node.js access is leaked to the renderer. Writes are
