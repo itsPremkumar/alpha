@@ -1,4 +1,4 @@
-# Agent Workspace - Unified System Launcher for Windows (PowerShell)
+﻿# Agent Workspace - Unified System Launcher for Windows (PowerShell)
 # Usage:
 #   .\start.ps1               # Start full stack and open web browser
 #   .\start.ps1 -NoBrowser    # Start full stack without auto-opening browser
