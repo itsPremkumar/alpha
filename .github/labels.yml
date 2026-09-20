@@ -1,4 +1,4 @@
-# Declarative label source of truth for Agent Workspace.
+# Declarative label source of truth for Alpha.
 #
 # This file is the single source of truth for repository labels used by the
 # auto-labeling workflows (.github/workflows/pr-labeler.yml, pr-triage.yml,

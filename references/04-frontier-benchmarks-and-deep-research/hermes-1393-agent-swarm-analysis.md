@@ -1820,7 +1820,7 @@ The current ecosystem already has several pieces:
 
 **Paperclip:** organization hierarchy, persistent AI employees, budgets and governance/control plane. ([GitHub][18])
 
-**Agent Workspace:** long-horizon super-agent runtime with subagents, memory, sandboxing and extensible skills/tools. ([GitHub][19])
+**Alpha:** long-horizon super-agent runtime with subagents, memory, sandboxing and extensible skills/tools. ([GitHub][19])
 
 **MetaGPT:** role-specialized software-company workflow with explicit SOPs for product/architecture/engineering stages. ([GitHub][20])
 

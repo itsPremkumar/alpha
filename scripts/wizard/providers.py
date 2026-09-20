@@ -193,7 +193,7 @@ LLM_PROVIDERS: list[LLMProvider] = [
             "max_tokens": 131072,
             "context_window": 1000000,
             "supports_thinking": True,
-            # GLM-5.3-Flash only accepts low/high/max, while Agent Workspace's current
+            # GLM-5.3-Flash only accepts low/high/max, while Alpha's current
             # generic UI can emit minimal/medium. Keep provider effort control
             # disabled until model-specific reasoning capabilities are exposed.
             "supports_reasoning_effort": False,

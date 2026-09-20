@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# chat.sh — Send a message to Agent Workspace and collect the streaming response.
+# chat.sh — Send a message to Alpha and collect the streaming response.
 #
 # Usage:
 #   bash chat.sh "Your question here"
@@ -26,8 +26,8 @@ MODE="${3:-pro}"
 # --- Health check ---
 HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${GATEWAY_URL}/health" 2>/dev/null || echo "000")
 if [ "$HTTP_CODE" = "000" ] || [ "$HTTP_CODE" -ge 400 ]; then
-  echo "ERROR: Agent Workspace is not reachable at ${GATEWAY_URL} (HTTP ${HTTP_CODE})" >&2
-  echo "Make sure Agent Workspace is running. Start it with: cd <agent_workspace-dir> && make dev" >&2
+  echo "ERROR: Alpha is not reachable at ${GATEWAY_URL} (HTTP ${HTTP_CODE})" >&2
+  echo "Make sure Alpha is running. Start it with: cd <agent_workspace-dir> && make dev" >&2
   exit 1
 fi
 
@@ -221,7 +221,7 @@ else:
     # Check for error events
     for event_type, data_str in events:
         if event_type == "error":
-            print(f"ERROR from Agent Workspace: {data_str}", file=sys.stderr)
+            print(f"ERROR from Alpha: {data_str}", file=sys.stderr)
             sys.exit(1)
     print("No AI response found in the stream.", file=sys.stderr)
     if len(raw) < 2000:

@@ -4,7 +4,7 @@
 
 A reference architecture for a general-purpose autonomous computer agent designed to execute long-horizon digital work across browsers, desktop applications, terminals, files, APIs, development environments, research workflows, data tools, creative software, and multi-agent teams.
 
-This document synthesizes public architecture patterns from OpenAI GPT-6 Astra / Responses computer environments, Anthropic Claude Fable 5.1 / Claude Code / Managed Agents, NVIDIA AVO / OpenShell, and Moonshot Kimi K3, plus current agent-system research and open-source systems such as Agent Workspace and OpenHands.
+This document synthesizes public architecture patterns from OpenAI GPT-6 Astra / Responses computer environments, Anthropic Claude Fable 5.1 / Claude Code / Managed Agents, NVIDIA AVO / OpenShell, and Moonshot Kimi K3, plus current agent-system research and open-source systems such as Alpha and OpenHands.
 
 ## Executive conclusion
 

@@ -1,4 +1,4 @@
-"""Private runtime context keys shared across Agent Workspace runtime components."""
+"""Private runtime context keys shared across Alpha runtime components."""
 
 from typing import Final
 

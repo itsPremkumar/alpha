@@ -186,7 +186,7 @@ This report was compiled using:
 
 ---
 
-**Report Prepared By:** Github Deep Research by Agent Workspace
+**Report Prepared By:** Github Deep Research by Alpha
 **Date:** {REPORT_DATE}
 **Report Version:** 1.0
 **Status:** Complete

@@ -1,5 +1,5 @@
 {{/*
-Common helpers for the Agent Workspace chart.
+Common helpers for the Alpha chart.
 */}}
 
 {{- define "agent-workspace.name" -}}
@@ -37,7 +37,7 @@ imagePullSecrets:
 {{- end }}
 {{- end -}}
 
-{{/* Fully-qualified image refs for the three Agent Workspace images.
+{{/* Fully-qualified image refs for the three Alpha images.
      When `image.registry` is empty, omit the prefix so the ref is
      `agent-workspace-gateway:latest` (local-image mode, imagePullPolicy: Never). */}}
 {{- define "agent-workspace.gatewayImage" -}}

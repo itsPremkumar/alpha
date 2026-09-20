@@ -15,7 +15,7 @@
 
 ## 0. Adaptation principles (binding on every item)
 
-1. **Extend, don't duplicate.** Agent Workspace already owns scheduler durability,
+1. **Extend, don't duplicate.** Alpha already owns scheduler durability,
    run lifecycle, cost tracking, skill review. Import the missing mechanism,
    never a parallel system.
 2. **Fail-closed + additive contracts.** New behavior defaults OFF or
@@ -41,7 +41,7 @@ no-op, failure isolation, no prompt-cache churn (token-delta soak).
 Accept: proposals appear without changing any prompt bytes. Effort: M.
 
 ### H2. FTS5 session recall â†’ `tools/builtins/session_search_tool.py` (NEW) — DONE 2026-09-13
-Hermes `session_search` (discover/scroll/read) + FTS5/trigram store. Agent Workspace:
+Hermes `session_search` (discover/scroll/read) + FTS5/trigram store. Alpha:
 FTS virtual table over `run_events` (alembic migration; memory/JSONL stores
 substring-fallback, same API), `after_seq` cursor (precedent: subtask paging),
 cron/background demotion rule, owner-scoped rows. Gateway `GET
@@ -68,7 +68,7 @@ tombstones. Accept: proposeâ†’scanâ†’approveâ†’installâ†’use
 
 ### H5. Programmatic tool-calling â†’ sandbox `execute_python` tool (NEW)
 Hermes `code_execution_tool.py`: one program, RPC stubs, single-turn
-multi-step. Agent Workspace: new builtin running inside the thread sandbox (acquire
+multi-step. Alpha: new builtin running inside the thread sandbox (acquire
 + command-scope lease precedents); stdio-only returns; read-only+compute
 subset first behind `tools.groups`; blocklist mirrors delegation thinking
 (no nested `task`, no memory writes, no network unless sandbox allows).
@@ -91,28 +91,28 @@ Hermes batch/JSONL/XML + 16k compressor (protected head/tail). Exporter
 Tests: schema round-trip. Effort: S/M. (Full eval plane = parent F1.)
 
 ### H9. Unified channel command catalog â†’ `app/channels/commands.py` (NEW)
-Hermes 114 `CommandDef`s shared by CLI/Telegram/Slack. Agent Workspace channels
+Hermes 114 `CommandDef`s shared by CLI/Telegram/Slack. Alpha channels
 implement per-platform handling; extract shared catalog (`help`, `status`,
 `new`, `skills`, `usage`) every adapter serves. Tests: catalog parity per
 adapter. Effort: M.
 
 ### H10. Delegation spill + depth guard â†’ executor + middleware
 Hermes `max_summary_chars` spill-to-disk + `max_spawn_depth` + default-deny
-child approvals. Agent Workspace: bounded ordinary-task results with spill file +
+child approvals. Alpha: bounded ordinary-task results with spill file +
 read-back handle (batches already bound theirs); `subagents.max_depth`
 enforced beside `max_total_per_run` (`subagent_limit_middleware.py`);
 child approval default-deny list (extend executor blocklist). Tests: spill
 round-trip, depth rejection message, approval prompt. Effort: M.
 
 ### H11. Skill trust tiers + quarantine â†’ skill install path
-Hermes `builtin|trusted|community` + hub scanning. Agent Workspace HAS SkillScan;
+Hermes `builtin|trusted|community` + hub scanning. Alpha HAS SkillScan;
 add tier labels to skill metadata + quarantine dir for fresh installs
 pending first review (ties H4 queue). Tests: tier gating, quarantine escape
 none. Effort: S/M.
 
 ### H12. ACP server mode â†’ `app/acp_server/` (NEW, serves IDEs)
 We HAVE `invoke_acp_agent_tool` (consume) + `acp_agents` config. Reverse it:
-serve Agent Workspace runs over ACP stdio/WS so VS Code/Zed/JetBrains drive us
+serve Alpha runs over ACP stdio/WS so VS Code/Zed/JetBrains drive us
 (Hermes `acp_adapter/` mirror-image). Sessions map to threads; approvals map
 to D1 cards. Tests: protocol conformance against ACP fixtures. Effort: L.
 High strategic value (every IDE becomes our frontend).

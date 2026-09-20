@@ -1,6 +1,6 @@
 ---
 name: skill-reviewer
-description: Reviews Agent Workspace skill packages for readiness, triggers, safety boundaries, resources, and evidence. Invoke when users ask to audit, grade, or production-check an existing skill.
+description: Reviews Alpha skill packages for readiness, triggers, safety boundaries, resources, and evidence. Invoke when users ask to audit, grade, or production-check an existing skill.
 allowed-tools:
   - review_skill_package
 ---

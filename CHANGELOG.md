@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Agent Workspace are documented in this file.
+All notable changes to Alpha are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -40,7 +40,7 @@ This section accumulates work toward the **2.1.0** milestone
   PVC materialization is implemented. ([#4178])
 - **sandbox:** E2B now enforces `sandbox.replicas` as a process-local capacity
   limit. The default `wait` policy waits for `acquire_timeout`, then fails the
-  agent turn. Agent Workspace does not retry the turn automatically. Use `burst` with
+  agent turn. Alpha does not retry the turn automatically. Use `burst` with
   `burst_limit` to permit bounded extra VMs. The `reject` policy can remove one
   warm VM before it returns a capacity error. ([#4391])
 - **skills:** A directory containing `SKILL.md` is now a runtime package
@@ -273,7 +273,7 @@ This section accumulates work toward the **2.1.0** milestone
 - **mcp:** Per-server `tool_call_timeout` for MCP tool calls, and routing hints
   that guide the model to the right server. ([#3843], [#4004])
 - **mcp:** Add an official OpenViking `/mcp` example that exposes the native
-  tool set through Agent Workspace's generic MCP client. ([#4745])
+  tool set through Alpha's generic MCP client. ([#4745])
 - **community:** Agentic browser control as a first-class thread capability -
   Playwright-backed browser sessions the agent operates while the user observes
   or takes over from the workspace. ([#4187])
@@ -316,7 +316,7 @@ This section accumulates work toward the **2.1.0** milestone
   completion notifications surface in the chat UI. ([#4665], [#4690],
   [#4833])
 - **mcp:** Shared MCP servers can inject per-user credentials: a single
-  server entry authenticates each Agent Workspace user with their own header
+  server entry authenticates each Alpha user with their own header
   value, unmapped users are denied by default, and stored credentials are
   masked in Gateway API responses. ([#4868])
 - **mcp:** Per-server `tool_name_prefix` option lets servers that already
@@ -1097,7 +1097,7 @@ This section accumulates work toward the **2.1.0** milestone
 - **frontend:** Reuse the shared clipboard fallback when copying the Lark
   authorization link, so the copy action works in browsers without the
   Clipboard API. ([#4767])
-- **frontend:** Use consistent "Agent Workspace" casing in the composer disclaimer
+- **frontend:** Use consistent "Alpha" casing in the composer disclaimer
   and fix the "What's New" heading on the landing page. ([#4970])
 - **channels:** Bound inbound intake with a fixed worker pool and bounded
   admission queues, and await real cross-thread tasks on shutdown, so
@@ -1593,7 +1593,7 @@ This section accumulates work toward the **2.1.0** milestone
 
 ## [2.0.0] — 2026-06-15
 
-Agent Workspace 2.0 is a ground-up rewrite around a "super agent" harness with
+Alpha 2.0 is a ground-up rewrite around a "super agent" harness with
 sub-agents, persistent memory, sandbox execution, and an extensible
 skills/tools system. It shares no code with the 1.x line, which now lives on
 the [`main-1.x` branch](https://github.com/bytedance/agent-workspace/tree/main-1.x).

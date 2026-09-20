@@ -1,4 +1,4 @@
-"""Authorization decorators and context for Agent Workspace.
+"""Authorization decorators and context for Alpha.
 
 Inspired by LangGraph Auth system: https://github.com/langchain-ai/langgraph/blob/main/libs/sdk-py/langgraph_sdk/auth/__init__.py
 

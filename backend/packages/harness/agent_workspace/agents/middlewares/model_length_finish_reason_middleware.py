@@ -4,7 +4,7 @@ Background — see issue bytedance/agent-workspace#4271.
 
 Some providers stop generation because the output budget is exhausted and
 surface that through ``finish_reason='length'`` while still returning assistant
-content. Agent Workspace should preserve that content for audit, but it should not
+content. Alpha should preserve that content for audit, but it should not
 silently treat the run as an uncapped clean completion when the provider has
 explicitly signaled truncation.
 

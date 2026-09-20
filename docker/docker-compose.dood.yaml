@@ -1,4 +1,4 @@
-# Agent Workspace — Docker-out-of-Docker (DooD) overlay (OPT-IN, NOT loaded by default)
+# Alpha — Docker-out-of-Docker (DooD) overlay (OPT-IN, NOT loaded by default)
 #
 # Mounts the host Docker socket into the gateway container so that
 # AioSandboxProvider running in pure-Docker mode — config.yaml:

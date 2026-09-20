@@ -1,6 +1,6 @@
 """Tests for ToolResultSanitizationMiddleware (remote tool-result injection guard).
 
-Agent Workspace neutralizes framework/injection tags in the genuine user message. These
+Alpha neutralizes framework/injection tags in the genuine user message. These
 tests pin the same neutralization onto remote tool results (web_fetch /
 web_search / image_search / web_capture), and confirm local tool output is left
 untouched.

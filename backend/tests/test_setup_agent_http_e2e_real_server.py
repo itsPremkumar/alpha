@@ -55,7 +55,7 @@ def _build_fake_create_chat_model(agent_name: str):
 
 @pytest.fixture
 def isolated_agent_workspace_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """Stand up an isolated Agent Workspace data root + config under tmp_path.
+    """Stand up an isolated Alpha data root + config under tmp_path.
 
     - Sets ``AGENT_WORKSPACE_HOME`` so paths land under tmp_path, not the real
       ``.agent-workspace`` directory.

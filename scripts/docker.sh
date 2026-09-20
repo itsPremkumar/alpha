@@ -53,7 +53,7 @@ require_compose_file() {
         return 0
     fi
     echo -e "${YELLOW}✗ ${COMPOSE_FILE} not found at ${DOCKER_DIR}/${COMPOSE_FILE}${NC}"
-    echo "Run this from the Agent Workspace repository root, e.g. 'make docker-start'."
+    echo "Run this from the Alpha repository root, e.g. 'make docker-start'."
     echo "Do not run 'docker compose -f docker/${COMPOSE_FILE}' from inside docker/ — that resolves to docker/docker/${COMPOSE_FILE}."
     exit 1
 }
@@ -242,7 +242,7 @@ docker_available() {
 # Initialize: pre-pull the sandbox image so first Pod startup is fast
 init() {
     echo "=========================================="
-    echo "  Agent Workspace Init — Pull Sandbox Image"
+    echo "  Alpha Init — Pull Sandbox Image"
     echo "=========================================="
     echo ""
 
@@ -314,7 +314,7 @@ start() {
     fi
 
     echo "=========================================="
-    echo "  Starting Agent Workspace Docker Development"
+    echo "  Starting Alpha Docker Development"
     echo "=========================================="
     echo ""
 
@@ -370,7 +370,7 @@ start() {
             echo -e "${YELLOW}============================================================${NC}"
             echo -e "${YELLOW}  config.yaml has been created from config.example.yaml.${NC}"
             echo -e "${YELLOW}  Please edit config.yaml to set your API keys and model   ${NC}"
-            echo -e "${YELLOW}  configuration before starting Agent Workspace.           ${NC}"
+            echo -e "${YELLOW}  configuration before starting Alpha.           ${NC}"
             echo -e "${YELLOW}============================================================${NC}"
             echo ""
             echo -e "${YELLOW}  Recommended: run 'make setup' before starting Docker.    ${NC}"
@@ -403,7 +403,7 @@ start() {
     cd "$DOCKER_DIR" && $COMPOSE_CMD up --build -d --remove-orphans $services
     echo ""
     echo "=========================================="
-    echo "  Agent Workspace Docker is starting!"
+    echo "  Alpha Docker is starting!"
     echo "=========================================="
     echo ""
     echo "  🌐 Application: http://localhost:2026"
@@ -470,7 +470,7 @@ stop() {
 restart() {
     compose_preflight
     echo "========================================"
-    echo "  Restarting Agent Workspace Docker Services"
+    echo "  Restarting Alpha Docker Services"
     echo "========================================"
     echo ""
     echo -e "${BLUE}Restarting containers...${NC}"
@@ -485,7 +485,7 @@ restart() {
 
 # Show help
 help() {
-    echo "Agent Workspace Docker Management Script"
+    echo "Alpha Docker Management Script"
     echo ""
     echo "Usage: $0 <command> [options]"
     echo ""

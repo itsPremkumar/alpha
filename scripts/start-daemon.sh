@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# start-daemon.sh — Start Agent Workspace in daemon (background) mode
+# start-daemon.sh — Start Alpha in daemon (background) mode
 #
 # Thin wrapper around serve.sh --daemon.
 # Kept for backward compatibility.

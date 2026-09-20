@@ -57,7 +57,7 @@ async def cancel_background_task(
     runtime: Runtime,
     task: Annotated[
         str | None,
-        "Optional exact task name or Agent Workspace task ID. Omit it only when one active task exists.",
+        "Optional exact task name or Alpha task ID. Omit it only when one active task exists.",
     ] = None,
 ) -> dict[str, Any]:
     """Cancel one active background task in this chat.
@@ -80,5 +80,5 @@ async def cancel_background_task(
     return {
         "cancelled": public["status"] == "cancelled",
         "task": public,
-        "message": "Cancellation requested. Agent Workspace will keep retrying safely if the remote server is temporarily unavailable.",
+        "message": "Cancellation requested. Alpha will keep retrying safely if the remote server is temporarily unavailable.",
     }

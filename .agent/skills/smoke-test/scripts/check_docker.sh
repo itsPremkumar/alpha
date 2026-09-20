@@ -65,9 +65,9 @@ $(printf '%s\n' "$port_2026_usage" | awk 'NR > 1 {print $2}')
 EOF
 
     if [ "$agent_workspace_process_found" -eq 1 ]; then
-        echo "✓ Port 2026 is occupied by Agent Workspace"
+        echo "✓ Port 2026 is occupied by Alpha"
     else
-        echo "✗ Port 2026 must be free before starting Agent Workspace"
+        echo "✗ Port 2026 must be free before starting Alpha"
         exit 1
     fi
 else

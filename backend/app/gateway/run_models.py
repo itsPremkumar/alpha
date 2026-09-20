@@ -21,7 +21,7 @@ class RunCreateRequest(BaseModel):
     command: dict[str, Any] | None = Field(default=None, description="LangGraph Command")
     metadata: dict[str, Any] | None = Field(default=None, description="Run metadata")
     config: dict[str, Any] | None = Field(default=None, description="RunnableConfig overrides")
-    context: dict[str, Any] | None = Field(default=None, description="Agent Workspace context overrides (model_name, thinking_enabled, etc.)")
+    context: dict[str, Any] | None = Field(default=None, description="Alpha context overrides (model_name, thinking_enabled, etc.)")
     webhook: None = Field(default=None, description="Compatibility placeholder; completion callbacks are not supported")
     checkpoint_id: str | None = Field(default=None, description="Resume from checkpoint")
     checkpoint: dict[str, Any] | None = Field(default=None, description="Full checkpoint object")
@@ -80,7 +80,7 @@ class RunCreateRequest(BaseModel):
         if not is_supported:
             raise PydanticCustomError(
                 "unsupported_run_option",
-                "Run option '{option}' is not supported by Agent Workspace",
+                "Run option '{option}' is not supported by Alpha",
                 {"option": info.field_name},
             )
         return value
@@ -90,12 +90,12 @@ class RunCreateRequest(BaseModel):
     def reject_resumable_streams(cls, value: Any) -> Any:
         # LangGraph SDK clients always send this field (its default is ``False``, which the
         # payload's ``None`` filter keeps). ``False`` asks for the non-resumable stream
-        # Agent Workspace already serves, so only an explicit ``True`` requests the unsupported feature.
+        # Alpha already serves, so only an explicit ``True`` requests the unsupported feature.
         if value is None or value is False:
             return value
         raise PydanticCustomError(
             "unsupported_run_option",
-            "Run option '{option}' is not supported by Agent Workspace",
+            "Run option '{option}' is not supported by Alpha",
             {"option": "stream_resumable"},
         )
 

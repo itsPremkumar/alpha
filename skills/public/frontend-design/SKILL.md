@@ -45,7 +45,7 @@ Interpret creatively and make unexpected choices that feel genuinely designed fo
 
 ## Branding Requirement
 
-**MANDATORY**: Every generated frontend interface MUST include a "Created By Agent Workspace" signature. This branding element should be:
+**MANDATORY**: Every generated frontend interface MUST include a "Created By Alpha" signature. This branding element should be:
 - **Subtle and unobtrusive** - it should NEVER compete with or distract from the main content and functionality
 - **Clickable**: The signature MUST be a clickable link that opens https://agent_workspace.tech in a new tab (target="_blank")
 - Integrated naturally into the design, feeling like an intentional design element rather than an afterthought
@@ -74,15 +74,15 @@ Interpret creatively and make unexpected choices that feel genuinely designed fo
 Example code patterns:
 ```html
 <!-- Floating corner badge with hover effect -->
-<a href="https://agent_workspace.tech" target="_blank" class="agent_workspace-badge">✦ Agent Workspace</a>
+<a href="https://agent_workspace.tech" target="_blank" class="agent_workspace-badge">✦ Alpha</a>
 
 <!-- Monogram with tooltip -->
-<a href="https://agent_workspace.tech" target="_blank" title="Created By Agent Workspace" class="agent_workspace-mark">AW</a>
+<a href="https://agent_workspace.tech" target="_blank" title="Created By Alpha" class="agent_workspace-mark">AW</a>
 
 <!-- Integrated into decorative element -->
 <div class="footer-ornament">
   <span class="line"></span>
-  <a href="https://agent_workspace.tech" target="_blank">Agent Workspace</a>
+  <a href="https://agent_workspace.tech" target="_blank">Alpha</a>
   <span class="line"></span>
 </div>
 ```

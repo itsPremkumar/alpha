@@ -1,4 +1,4 @@
-"""Production readiness pre-flight check for Agent Workspace.
+"""Production readiness pre-flight check for Alpha.
 
 Validates the things that most often break a production deployment, before
 you deploy it. Run from the repository root:
@@ -129,7 +129,7 @@ def check_env(failures: list[str], warnings: list[str]) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Agent Workspace production readiness pre-flight check")
+    parser = argparse.ArgumentParser(description="Alpha production readiness pre-flight check")
     parser.add_argument("--strict", action="store_true", help="treat warnings as failures (CI gate)")
     args = parser.parse_args()
 

@@ -1,4 +1,4 @@
-# Agent Workspace Production Environment
+# Alpha Production Environment
 # Usage: make up
 #
 # Services:
@@ -45,7 +45,7 @@ services:
   nginx:
     image: nginx:alpine
     container_name: agent-workspace-nginx
-    # Loopback-only by default: Agent Workspace's agent can execute commands, so the
+    # Loopback-only by default: Alpha's agent can execute commands, so the
     # documented default deployment is a local trusted environment. A bare
     # "${PORT}:2026" would bind 0.0.0.0 instead, which does not match that.
     # Set BIND_HOST=0.0.0.0 only behind your own TLS/auth front door, and

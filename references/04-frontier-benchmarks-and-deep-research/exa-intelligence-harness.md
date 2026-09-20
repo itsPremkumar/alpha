@@ -2,7 +2,7 @@ Yes. What you are describing is a step beyond a normal coding agent:
 
 > **The harness itself continuously observes its behavior, discovers where it is weak or wasting effort, proposes changes to its own code/config/prompts/skills/tools/workflows, creates isolated candidate versions, evaluates them against real workloads and regression suites, and promotes only changes that produce measured improvement.**
 
-That architecture is now supported by several important research/codebases, but the pieces are fragmented. The best approach for your Agent Workspace-based harness is to combine them into a dedicated **Recursive Self-Development Engine (RSDE)** rather than letting the main agent arbitrarily rewrite itself.
+That architecture is now supported by several important research/codebases, but the pieces are fragmented. The best approach for your Alpha-based harness is to combine them into a dedicated **Recursive Self-Development Engine (RSDE)** rather than letting the main agent arbitrarily rewrite itself.
 
 The most directly relevant work I found is **Darwin Gödel Machine**, which iteratively modifies its own agent code and evaluates the resulting agents; **Live-SWE-agent**, which evolves its scaffold during runtime while solving software tasks; **AlphaEvolve**, which combines LLM-generated program mutations with automated evaluators and evolutionary selection; and **Exo**, which explicitly treats the entire agent harness—including prompts, memory, tools and policies—as an evolutionary object. ([GitHub][1])
 
@@ -206,7 +206,7 @@ add verification procedure
 deprecate bad skill
 ```
 
-Agent Workspace already has a strong foundation for this: skills are modular capability packages loaded progressively, and its 2.0 architecture includes memory, skills, tools, sandboxes and subagents. ([GitHub][2])
+Alpha already has a strong foundation for this: skills are modular capability packages loaded progressively, and its 2.0 architecture includes memory, skills, tools, sandboxes and subagents. ([GitHub][2])
 
 ### Evolution Layer D — Tools
 
@@ -1044,7 +1044,7 @@ CPU/memory quota
 execution timeout
 ```
 
-OpenAI's current agent tooling exposes sandboxed workspaces and tool/guardrail mechanisms, while Agent Workspace explicitly treats sandboxed execution as a core part of its long-horizon architecture. ([OpenAI GitHub][9])
+OpenAI's current agent tooling exposes sandboxed workspaces and tool/guardrail mechanisms, while Alpha explicitly treats sandboxed execution as a core part of its long-horizon architecture. ([OpenAI GitHub][9])
 
 ---
 
@@ -1296,7 +1296,7 @@ evaluate
 install skill
 ```
 
-This is especially compatible with the modular skill systems in Agent Workspace and DeepAgents, where skills are explicit capability packages and are dynamically discovered/loaded rather than hardcoding everything into the base prompt. ([GitHub][2])
+This is especially compatible with the modular skill systems in Alpha and DeepAgents, where skills are explicit capability packages and are dynamically discovered/loaded rather than hardcoding everything into the base prompt. ([GitHub][2])
 
 ---
 
@@ -1682,11 +1682,11 @@ That is the core of what I would build.
 
 ---
 
-# 33. The architecture inside your existing Agent Workspace-based harness
+# 33. The architecture inside your existing Alpha-based harness
 
-Since your project is already based on Agent Workspace 2.0, you don't need to throw away the existing foundation.
+Since your project is already based on Alpha 2.0, you don't need to throw away the existing foundation.
 
-Agent Workspace already provides the pieces that are especially useful here: subagents, persistent memory, sandbox execution, skills, tools, context management and long-horizon orchestration. Its current architecture also explicitly separates the reusable harness layer from the application layer, which is useful for making your self-development system a clean subsystem rather than coupling it to UI/channel code. ([GitHub][2])
+Alpha already provides the pieces that are especially useful here: subagents, persistent memory, sandbox execution, skills, tools, context management and long-horizon orchestration. Its current architecture also explicitly separates the reusable harness layer from the application layer, which is useful for making your self-development system a clean subsystem rather than coupling it to UI/channel code. ([GitHub][2])
 
 I would add:
 
@@ -2086,7 +2086,7 @@ Worth studying for the architecture idea of treating the **whole harness**—pro
 
 Useful for your modular substrate: planning, filesystem, subagents, permissions, skills and context management. ([GitHub][15])
 
-### Agent Workspace 2.0
+### Alpha 2.0
 
 Useful because it is already your base and provides the long-horizon harness infrastructure you need. ([GitHub][2])
 
@@ -2262,7 +2262,7 @@ That is the architecture I would target for your **agent-workspace-desktop next 
 
 One especially important design principle is to make **the evaluator harder to modify than the agent being evaluated**. Otherwise your system can evolve toward becoming better at convincing itself that it improved rather than actually improving.
 
-The current research landscape strongly supports combining recursive self-modification (DGM/Live-SWE), evolutionary candidate search (AlphaEvolve), runtime feedback/memory (Reflexion), modular skills/subagents/sandboxes (Agent Workspace/DeepAgents), and deterministic automation/security gates (GitHub/OpenRewrite/Dependabot) rather than relying on a single RSI technique. ([GitHub][1])
+The current research landscape strongly supports combining recursive self-modification (DGM/Live-SWE), evolutionary candidate search (AlphaEvolve), runtime feedback/memory (Reflexion), modular skills/subagents/sandboxes (Alpha/DeepAgents), and deterministic automation/security gates (GitHub/OpenRewrite/Dependabot) rather than relying on a single RSI technique. ([GitHub][1])
 
 I would make this **RSDE layer a first-class subsystem of your harness**, not just another agent/skill.
 

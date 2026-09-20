@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Collect Kubernetes sandbox pod memory snapshots for Agent Workspace.
+"""Collect Kubernetes sandbox pod memory snapshots for Alpha.
 
 This script is intentionally lightweight: it shells out to ``kubectl`` and
 emits either JSON or Markdown so maintainers can compare sandbox backends and
@@ -295,7 +295,7 @@ def build_report(
 def render_markdown(report: dict[str, Any]) -> str:
     summary = report["summary"]
     lines = [
-        "# Agent Workspace Sandbox Memory Profile",
+        "# Alpha Sandbox Memory Profile",
         "",
         f"- Captured at: `{report['captured_at']}`",
         f"- Namespace: `{report['namespace']}`",

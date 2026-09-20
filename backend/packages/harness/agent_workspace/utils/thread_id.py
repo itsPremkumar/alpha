@@ -1,4 +1,4 @@
-"""Canonical thread identifier validation shared across Agent Workspace backends."""
+"""Canonical thread identifier validation shared across Alpha backends."""
 
 from __future__ import annotations
 

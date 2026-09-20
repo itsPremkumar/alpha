@@ -1,6 +1,6 @@
 apiVersion: v2
 name: agent-workspace
-description: Agent Workspace — LangGraph-based AI super-agent (gateway + frontend + nginx + sandbox provisioner) deployed to Kubernetes.
+description: Alpha — LangGraph-based AI super-agent (gateway + frontend + nginx + sandbox provisioner) deployed to Kubernetes.
 type: application
 version: 2.1.0
 appVersion: "2.1.0"
@@ -12,4 +12,4 @@ keywords:
 home: https://github.com/bytedance/agent-workspace
 icon: https://raw.githubusercontent.com/bytedance/agent-workspace/main/frontend/public/images/deer.svg
 maintainers:
-  - name: Agent Workspace
+  - name: Alpha

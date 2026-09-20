@@ -1321,7 +1321,7 @@ def test_distribution_identifier_uses_pep_503_normalization(tmp_path: Path) -> N
     _write_host_project(root)
     config_path = root / "config.yaml"
     config_path.write_text(
-        "plugins:\n  - name: demo\n    package: Agent Workspace_Extension.Demo\n    use: demo_extension:install\n    enabled: true\n",
+        "plugins:\n  - name: demo\n    package: Alpha_Extension.Demo\n    use: demo_extension:install\n    enabled: true\n",
         encoding="utf-8",
     )
 
@@ -1378,7 +1378,7 @@ def test_cli_reports_invalid_config_without_a_traceback(
 
     captured = capsys.readouterr()
     assert exit_code == 1
-    assert "invalid Agent Workspace config YAML" in captured.err
+    assert "invalid Alpha config YAML" in captured.err
     assert "Traceback" not in captured.err
 
 
@@ -1430,7 +1430,7 @@ def test_agent_workspace_extensions_remove_uninstalls_dependency_source_and_acti
     assert exit_code == 0
     output = capsys.readouterr().out
     assert "Removed demo" in output
-    assert "Restart Agent Workspace" in output
+    assert "Restart Alpha" in output
     config = yaml.safe_load((root / "config.yaml").read_text(encoding="utf-8"))
     assert config["plugins"] == []
     assert not (root / "backend" / "extensions" / "sources" / "agent-workspace-extension-demo").exists()
@@ -1455,7 +1455,7 @@ def test_remove_one_configured_instance_keeps_its_shared_distribution_runnable(
     second = {
         **installed,
         "name": "second",
-        "package": "Agent Workspace_Extension.Demo",
+        "package": "Alpha_Extension.Demo",
         "config": {"instance": 2},
     }
     config_path.write_text(

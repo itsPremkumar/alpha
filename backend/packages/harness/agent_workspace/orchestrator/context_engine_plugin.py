@@ -1,7 +1,7 @@
 """1. Context Engine plugin slot (bootstrap/ingest/assemble/compact).
 
 OpenClaw 2026.3.7 added a ContextEngine plugin slot with full lifecycle
-hooks. Agent Workspace already owns agent_workspace.context.engine.ContextEngine
+hooks. Alpha already owns agent_workspace.context.engine.ContextEngine
 (assemble + watchdog compaction). This module adds the missing generic
 slot so operators can plug custom bootstrap/ingest logic without forking
 the core engine. Additive: default engine behavior is unchanged.

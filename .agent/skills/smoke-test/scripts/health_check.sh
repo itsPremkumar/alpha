@@ -72,7 +72,7 @@ if [ "$mode" = "docker" ]; then
         echo "✓ Containers are running:"
         docker ps --format "  - {{.Names}} ({{.Status}})"
     else
-        echo "✗ No Agent Workspace-related containers are running"
+        echo "✗ No Alpha-related containers are running"
         all_passed=false
     fi
 else

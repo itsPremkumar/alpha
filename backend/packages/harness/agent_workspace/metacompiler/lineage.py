@@ -31,8 +31,8 @@ class MetaLineageStore:
             blueprint_id="bp_gen0_seed",
             generation=0,
             parent_id=None,
-            name="Agent Workspace-ASI-Seed",
-            architecture_tag="Agent Workspace-ASI-v1.0",
+            name="Alpha-ASI-Seed",
+            architecture_tag="Alpha-ASI-v1.0",
             mutation_notes="Initial seed production agent",
         )
         self._blueprints[seed.blueprint_id] = seed

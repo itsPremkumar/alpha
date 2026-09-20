@@ -1,4 +1,4 @@
-"""``E2BSandboxProvider`` — Agent Workspace :class:`SandboxProvider` for e2b cloud.
+"""``E2BSandboxProvider`` — Alpha :class:`SandboxProvider` for e2b cloud.
 
 Configuration is read from :class:`SandboxConfig`. E2B reports unknown
 provider fields during startup.
@@ -291,7 +291,7 @@ class E2BSandboxProvider(SandboxProvider):
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        # Active sandboxes, keyed by Agent Workspace-side sandbox id (== e2b id).
+        # Active sandboxes, keyed by Alpha-side sandbox id (== e2b id).
         self._sandboxes: dict[str, E2BSandbox] = {}
         # (user_id, thread_id, skills_root) -> sandbox id for fast in-process
         # lookup. The provider snapshots the root at startup, but keeping it in
@@ -1281,7 +1281,7 @@ class E2BSandboxProvider(SandboxProvider):
             self._complete_reserved_remote_op(sandbox_id, remote_destroyed=remote_destroyed)
             raise
 
-        # Materialise Agent Workspace's virtual path layout (/mnt/user-data/...) inside
+        # Materialise Alpha's virtual path layout (/mnt/user-data/...) inside
         # the e2b VM. Without this step shell commands the agent emits — which
         # use the same /mnt/user-data prefix as LocalSandbox / AioSandbox — fail
         # with PermissionError because /mnt is owned by root in the e2b
@@ -1882,7 +1882,7 @@ class E2BSandboxProvider(SandboxProvider):
         return None, True
 
     def _bootstrap_sandbox_paths(self, client: E2BClientSandbox) -> None:
-        """Materialise Agent Workspace's virtual path layout inside the e2b VM.
+        """Materialise Alpha's virtual path layout inside the e2b VM.
 
         The local / docker sandboxes expose ``/mnt/user-data/{workspace,uploads,
         outputs}`` and ``/mnt/acp-workspace`` as writable directories, and the
@@ -2238,7 +2238,7 @@ class E2BSandboxProvider(SandboxProvider):
     ) -> None:
         """Mirror agent artifacts from the e2b VM back to host thread dirs.
 
-        Agent Workspace's ``/api/threads/{tid}/artifacts/...`` endpoint resolves
+        Alpha's ``/api/threads/{tid}/artifacts/...`` endpoint resolves
         files against the host-side per-thread ``user-data/`` tree (see
         :meth:`Paths.sandbox_outputs_dir`). LocalSandbox writes there
         directly via path mappings, so the endpoint just works for the

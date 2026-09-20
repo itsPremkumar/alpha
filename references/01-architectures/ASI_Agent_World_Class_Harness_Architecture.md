@@ -57,9 +57,9 @@ OpenClaw's current design emphasizes a trusted gateway, untrusted execution, det
 
 **Reusable pattern:** “always on” should mean “durable and supervised,” not “unrestricted.”
 
-### Agent Workspace 2.0: integrated super-agent harness
+### Alpha 2.0: integrated super-agent harness
 
-Agent Workspace 2.0 is a ground-up super-agent harness built around subagents, persistent memory, sandbox execution, an extensible skills/tools system, context management, and long-horizon runs. Its documentation explicitly frames the harness as a runtime environment, not merely a model wrapper or graph. [19][20][21]
+Alpha 2.0 is a ground-up super-agent harness built around subagents, persistent memory, sandbox execution, an extensible skills/tools system, context management, and long-horizon runs. Its documentation explicitly frames the harness as a runtime environment, not merely a model wrapper or graph. [19][20][21]
 
 **Reusable pattern:** package the hard infrastructure behind a stable runtime API so users add capabilities without rebuilding the execution engine.
 
@@ -934,7 +934,7 @@ Recovery policies:
 10. ask human
 11. terminate safely
 
-Implement loop detection using semantic state + tool patterns, not only repeated exact commands. Agent Workspace 2.0 and OpenClaw both expose practical loop/sandbox/run controls that are useful references. [19][17]
+Implement loop detection using semantic state + tool patterns, not only repeated exact commands. Alpha 2.0 and OpenClaw both expose practical loop/sandbox/run controls that are useful references. [19][17]
 
 ---
 
@@ -1459,7 +1459,7 @@ The important property is not the exact code. It is the separation of **intent �
 
 ---
 
-## 23. What makes this different from Hermes / OpenClaw / Agent Workspace / Claude Code / Codex-style systems
+## 23. What makes this different from Hermes / OpenClaw / Alpha / Claude Code / Codex-style systems
 
 | Capability | Typical strong agent | Proposed architecture |
 |---|---|---|
@@ -1482,7 +1482,7 @@ The important property is not the exact code. It is the separation of **intent �
 | Observability | logs/traces | replayable trajectories + artifact/evidence graph |
 | Evolution | manual updates | shadow/canary promotion pipeline |
 
-This is not simply “Agent Workspace + more tools.” It is closer to a **small operating system for agents**: an executive control plane above multiple interchangeable agent runtimes and a hard security/data plane below them.
+This is not simply “Alpha + more tools.” It is closer to a **small operating system for agents**: an executive control plane above multiple interchangeable agent runtimes and a hard security/data plane below them.
 
 ---
 
@@ -1773,7 +1773,7 @@ The Model Router prevents the architecture from becoming obsolete when a better 
 
 The result should behave less like a chatbot and more like an **agent operating system**: it receives objectives, constructs plans, obtains capabilities dynamically, creates temporary workers, uses multiple execution environments, validates its own work, recovers when wrong, remembers what was learned, and improves only through measurable and reversible change.
 
-That is the architecture direction most justified by the current 2026 frontier evidence. It also directly incorporates the most transferable lessons from AVO, OpenShell, Claude's long-running harness work, Astra/CUA, Hermes, OpenClaw, Agent Workspace, MCP, A2A, and current agent evaluation research. [1][2][5][9][13][16][19][26][28]
+That is the architecture direction most justified by the current 2026 frontier evidence. It also directly incorporates the most transferable lessons from AVO, OpenShell, Claude's long-running harness work, Astra/CUA, Hermes, OpenClaw, Alpha, MCP, A2A, and current agent evaluation research. [1][2][5][9][13][16][19][26][28]
 
 ---
 
@@ -1815,9 +1815,9 @@ That is the architecture direction most justified by the current 2026 frontier e
 
 [18] OpenClaw, “Gateway Exposure Runbook,” 2026. https://github.com/openclaw/openclaw/blob/main/docs/gateway/security/exposure-runbook.md
 
-[19] ByteDance, “Agent Workspace 2.0,” 2026. https://github.com/bytedance/agent-workspace
+[19] ByteDance, “Alpha 2.0,” 2026. https://github.com/bytedance/agent-workspace
 
-[20] ByteDance Agent Workspace, “Core Concepts,” 2026. https://github.com/bytedance/agent-workspace/blob/main/frontend/src/content/en/introduction/core-concepts.mdx
+[20] ByteDance Alpha, “Core Concepts,” 2026. https://github.com/bytedance/agent-workspace/blob/main/frontend/src/content/en/introduction/core-concepts.mdx
 
 [21] LangChain, “Deep Agents overview,” 2026. https://docs.langchain.com/oss/python/deepagents/overview
 

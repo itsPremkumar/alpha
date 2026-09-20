@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cross-platform config bootstrap script for Agent Workspace."""
+"""Cross-platform config bootstrap script for Alpha."""
 
 from __future__ import annotations
 

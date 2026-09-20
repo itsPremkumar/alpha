@@ -611,11 +611,11 @@ class LocalContainerBackend(SandboxBackend):
     def _persisted_sandbox_mode(self, sandbox: _ContainerInspection, sandbox_id: str) -> str | None:
         """Classify an inspected container without claiming or mutating it.
 
-        Matching Agent Workspace identity labels are authoritative. Unlabelled
+        Matching Alpha identity labels are authoritative. Unlabelled
         containers can only be legacy ``open`` sandboxes: open mode preserves
         the historical name-based discovery contract, while a restricted
         process accepts the narrower legacy shape of the configured image with
-        a published API port. Any partial/mismatched Agent Workspace identity is left
+        a published API port. Any partial/mismatched Alpha identity is left
         unmanaged so a configurable prefix cannot turn a sidecar or unrelated
         labelled container into a sandbox.
         """
@@ -626,7 +626,7 @@ class LocalContainerBackend(SandboxBackend):
         identity_keys_present = any(key in labels for key in ("agent_workspace.role", "agent_workspace.sandbox_id", "agent_workspace.network_mode"))
 
         if role == "sandbox" and labelled_id == sandbox_id:
-            # A missing/unknown value still proves Agent Workspace ownership, but it
+            # A missing/unknown value still proves Alpha ownership, but it
             # cannot be adopted under any current policy. Returning a sentinel
             # routes it through the fenced replacement path.
             return labelled_mode or "unknown"
@@ -1210,7 +1210,7 @@ class LocalContainerBackend(SandboxBackend):
             persisted_mode = self._persisted_sandbox_mode(sandbox_inspection, sandbox_id)
             if persisted_mode is None:
                 logger.warning(
-                    "Container %s uses the sandbox name but lacks a compatible Agent Workspace identity; leaving it unmanaged",
+                    "Container %s uses the sandbox name but lacks a compatible Alpha identity; leaving it unmanaged",
                     container_name,
                 )
                 return None
@@ -1613,7 +1613,7 @@ class LocalContainerBackend(SandboxBackend):
             # handoff. FOWNER is specifically required by the newer 1.11.x
             # startup path (regression-tested against 1.11.0), which chmods
             # /run/user/1000 after capabilities are dropped. Images that do
-            # not perform that chmod do not need FOWNER; Agent Workspace deliberately
+            # not perform that chmod do not need FOWNER; Alpha deliberately
             # keeps this compatibility allowlist version-agnostic instead of
             # guessing from mutable tags/digests or arbitrary custom images.
             # The root nginx master also writes gem-owned logs under

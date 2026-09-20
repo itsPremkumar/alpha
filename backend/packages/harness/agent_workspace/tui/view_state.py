@@ -1,4 +1,4 @@
-"""Pure view-state reducer for the Agent Workspace TUI.
+"""Pure view-state reducer for the Alpha TUI.
 
 This module has **no** Textual / rendering dependency. It models the visible
 conversation as an immutable list of typed rows and a small set of actions,

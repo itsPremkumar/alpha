@@ -66,7 +66,7 @@ class LocalLLMFailoverRouter:
         model_name = None
 
         try:
-            req = urllib.request.Request(probe_url, headers={"User-Agent": "Agent Workspace-Watchdog"})
+            req = urllib.request.Request(probe_url, headers={"User-Agent": "Alpha-Watchdog"})
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 if resp.status in (200, 204):
                     reachable = True

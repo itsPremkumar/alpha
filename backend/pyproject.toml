@@ -94,8 +94,8 @@ default-groups = ["dev", "extensions"]
 # pin is not grounded in any API incompatibility: websockets 16's only
 # breaking change is requiring Python >=3.10 (we require >=3.12), the sdk
 # only imports `websockets.asyncio.client`/`websockets.exceptions` (both
-# 16-compatible), and Agent Workspace never uses the sdk's WebSocket transport
-# (httpx/SSE only). Agent Workspace does have one direct consumer of its own: the Buzz
+# 16-compatible), and Alpha never uses the sdk's WebSocket transport
+# (httpx/SSE only). Alpha does have one direct consumer of its own: the Buzz
 # channel (`app/channels/buzz.py`) imports the top-level `websockets` package and
 # calls `websockets.connect()`, which in 16.0 is the same asyncio client the sdk
 # uses, re-exported at the package root -- so it is covered by the same

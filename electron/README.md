@@ -1,6 +1,6 @@
-# Agent Workspace Desktop (Windows · Electron)
+# Alpha Desktop (Windows · Electron)
 
-A one-click Windows app for Agent Workspace. It opens **straight into the 2.0 chat**
+A one-click Windows app for Alpha. It opens **straight into the 2.0 chat**
 — no login screen, no setup wizard, no landing page — and runs everything
 locally: the AI Gateway API plus the chat UI inside a single native window.
 
@@ -10,7 +10,7 @@ locally: the AI Gateway API plus the chat UI inside a single native window.
 2. If Windows SmartScreen warns about an unrecognized app (the installer is
    unsigned), choose **More info → Run anyway**. The installer works
    per-user — no administrator rights needed.
-3. Launch **Agent Workspace** from the Start menu or desktop shortcut.
+3. Launch **Alpha** from the Start menu or desktop shortcut.
 
 **You need nothing pre-installed.** The installer bundles its own Node.js
 and `uv` runtimes; on first launch the app automatically provisions Python
@@ -142,7 +142,7 @@ geometric mark. Re-run the script after editing it, then rebuild.
 
 1. Single-instance lock — a second launch just focuses the open window.
 2. Per-user data dir prepared; default configs seeded (never overwritten).
-3. Gateway: a **verified** Agent Workspace health endpoint on the preferred port is
+3. Gateway: a **verified** Alpha health endpoint on the preferred port is
    reused, otherwise the next free port is taken and the Gateway spawned.
    A service that crashes during startup aborts boot immediately with the
    exit code and a pointer to `gateway.log` (no silent 10-minute hangs).
@@ -167,7 +167,7 @@ geometric mark. Re-run the script after editing it, then rebuild.
   (e.g. your own `:8001`), or a machine-wide `AGENT_WORKSPACE_ENV`/`ENVIRONMENT`
   is set to production (the app warns about this), or you passed
   `--require-login`.
-- **Port already in use** — the app reuses a verified-healthy Agent Workspace
+- **Port already in use** — the app reuses a verified-healthy Alpha
   service and otherwise moves to the next free port. `Tools → Copy app URLs`
   shows the actual URLs.
 - **“frontend build missing”** (on `npm start`) — run `npm run build:frontend`.

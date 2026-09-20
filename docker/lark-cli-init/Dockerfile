@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 #
-# Agent Workspace "lark-cli init" image (Pattern A).
+# Alpha "lark-cli init" image (Pattern A).
 #
 # Purpose: provide the sandbox `lark-cli` runtime binary to a Kubernetes sandbox
 # Pod via an init container + shared `emptyDir`, instead of downloading Linux

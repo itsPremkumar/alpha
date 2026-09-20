@@ -1,4 +1,4 @@
-"""Summarization middleware extensions for Agent Workspace."""
+"""Summarization middleware extensions for Alpha."""
 
 from __future__ import annotations
 
@@ -607,7 +607,7 @@ class AgentWorkspaceSummarizationMiddleware(SummarizationMiddleware):
         than reconstructed later.
 
         Hashes ``message.content`` directly, never ``str(message.content)``:
-        Agent Workspace messages are routinely multimodal (``list[dict]`` content, e.g.
+        Alpha messages are routinely multimodal (``list[dict]`` content, e.g.
         ``view_image_middleware``'s injected image payloads), and ``str()`` on a
         dict renders insertion order, so pre-stringifying would make two
         logically identical messages hash differently. ``canonical_hash`` exists

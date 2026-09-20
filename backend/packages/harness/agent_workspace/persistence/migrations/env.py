@@ -1,6 +1,6 @@
-"""Alembic environment for Agent Workspace application tables.
+"""Alembic environment for Alpha application tables.
 
-ONLY manages Agent Workspace's tables (runs, threads_meta, feedback, users,
+ONLY manages Alpha's tables (runs, threads_meta, feedback, users,
 run_events, channel_connections, channel_credentials, channel_oauth_states,
 channel_conversations).
 

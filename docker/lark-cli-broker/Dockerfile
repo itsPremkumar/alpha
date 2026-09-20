@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 #
-# Agent Workspace "lark-cli broker" image (Pattern B, issue #4338).
+# Alpha "lark-cli broker" image (Pattern B, issue #4338).
 #
 # Purpose: hold `lark-cli` + the per-user Lark credentials in a long-running
 # sidecar and expose only the command surface over loopback, so the plaintext

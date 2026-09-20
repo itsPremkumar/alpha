@@ -1,6 +1,6 @@
 # Blocking IO detection usage and maintenance
 
-This document describes how to use and maintain Agent Workspace backend blocking-IO
+This document describes how to use and maintain Alpha backend blocking-IO
 detection for async event-loop safety.
 
 The goal is narrow: find and prevent synchronous IO from blocking backend
@@ -86,7 +86,7 @@ backend/tests/support/detectors/blocking_io_runtime.py
 ```
 
 Add them to `_PROJECT_BLOCKING_RULES`, not directly inside individual tests.
-Keeping rules centralized makes it clear which extra primitives Agent Workspace
+Keeping rules centralized makes it clear which extra primitives Alpha
 expects Blockbuster to catch.
 
 Example shape:

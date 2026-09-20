@@ -153,7 +153,7 @@ class TestBuildVolumes:
         assert extra_vol.host_path.type == "DirectoryOrCreate"
 
     def test_extra_mount_uses_userdata_pvc_when_configured(self, provisioner_module):
-        """PVC mode should use the same Agent Workspace data PVC for runtime config mounts."""
+        """PVC mode should use the same Alpha data PVC for runtime config mounts."""
         provisioner_module.SKILLS_PVC_NAME = ""
         provisioner_module.USERDATA_PVC_NAME = "userdata-pvc"
         provisioner_module.AGENT_WORKSPACE_HOST_BASE_DIR = "/state"
@@ -395,7 +395,7 @@ class TestBuildVolumeMounts:
         assert extra_mount.sub_path is None
 
     def test_extra_mount_uses_pvc_subpath(self, provisioner_module):
-        """PVC extra mounts should point at the same user-scoped Agent Workspace path."""
+        """PVC extra mounts should point at the same user-scoped Alpha path."""
         provisioner_module.SKILLS_PVC_NAME = ""
         provisioner_module.USERDATA_PVC_NAME = "userdata-pvc"
         provisioner_module.AGENT_WORKSPACE_HOST_BASE_DIR = "/state"

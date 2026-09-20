@@ -1,4 +1,4 @@
-"""Strict Blockbuster runtime context scoped to Agent Workspace business code.
+"""Strict Blockbuster runtime context scoped to Alpha business code.
 
 Creates a `BlockBuster` instance with `scanned_modules=("app", "agent_workspace")`
 so that test infrastructure (pytest, langchain, importlib, third-party libs)
@@ -18,7 +18,7 @@ from blockbuster import BlockBuster, BlockBusterFunction, BlockingError
 
 _SCANNED_MODULES: tuple[str, ...] = ("app", "agent_workspace")
 
-# Add Agent Workspace-local rules here only when Blockbuster's default rule set misses
+# Add Alpha-local rules here only when Blockbuster's default rule set misses
 # a generic blocking primitive used by production code. If a path is invisible
 # because no test exercises it, add a production-path runtime anchor instead.
 _PROJECT_BLOCKING_RULES: tuple[tuple[str, BlockBusterFunction], ...] = ()

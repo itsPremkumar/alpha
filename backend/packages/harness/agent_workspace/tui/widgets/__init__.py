@@ -1,1 +1,1 @@
-"""Textual widgets for the Agent Workspace TUI."""
+"""Textual widgets for the Alpha TUI."""

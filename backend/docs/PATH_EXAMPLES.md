@@ -2,7 +2,7 @@
 
 ## Three Path Types
 
-The Agent Workspace file upload system returns three distinct path representations, each tailored to specific operational contexts:
+The Alpha file upload system returns three distinct path representations, each tailored to specific operational contexts:
 
 ### 1. Actual Filesystem Path (`path`)
 

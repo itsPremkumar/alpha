@@ -1,1 +1,1 @@
-# Agent Workspace Setup Wizard package
+# Alpha Setup Wizard package

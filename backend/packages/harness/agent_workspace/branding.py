@@ -1,1 +1,1 @@
-DISPLAY_NAME = "Agent Workspace"
+DISPLAY_NAME = "Alpha"

@@ -187,7 +187,7 @@ def apply_logging_level(name: str | None) -> None:
 
 
 class AppConfig(BaseModel):
-    """Config for the Agent Workspace application"""
+    """Config for the Alpha application"""
 
     log_level: str = Field(
         default="info",
@@ -710,7 +710,7 @@ def _load_and_cache_app_config(config_path: str | None = None) -> AppConfig:
 
 
 def get_app_config() -> AppConfig:
-    """Get the Agent Workspace config instance.
+    """Get the Alpha config instance.
 
     Returns a cached singleton instance and automatically reloads it when the
     underlying config file path or content signature changes. Use

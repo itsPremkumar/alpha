@@ -3,7 +3,7 @@
 OpenClaw 2.0 binds every exec approval to (request, command, session,
 person) with an audit trail, plus opt-in auto-mode (policy first,
 low-risk auto-pass, human for high-risk) and approve-once for recurring
-tasks. Agent Workspace has guardrails + ask_clarification; this adds the
+tasks. Alpha has guardrails + ask_clarification; this adds the
 custody envelope + reusable store without changing existing tool flow.
 """
 
@@ -53,7 +53,7 @@ class ApprovalCustodyStore:
     """In-memory custody ledger with approve-once support.
 
     Persistent backends can subclass and override save/lookup; default is
-    process-local (same durability contract as Agent Workspace's memory RunRecord
+    process-local (same durability contract as Alpha's memory RunRecord
     grace period — durable history stays in RunStore).
     """
 

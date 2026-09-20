@@ -1,5 +1,5 @@
 #!/bin/sh
-# Agent Workspace lark-cli init container entrypoint (Pattern A).
+# Alpha lark-cli init container entrypoint (Pattern A).
 #
 # Copies the staged sandbox runtime layout into the shared emptyDir the
 # provisioner mounts into both this init container and the main sandbox

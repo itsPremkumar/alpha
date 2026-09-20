@@ -1,6 +1,6 @@
 # Authentication Upgrade Guide
 
-Agent Workspace includes a built-in authentication module. This document is intended for users upgrading from an unauthenticated version.
+Alpha includes a built-in authentication module. This document is intended for users upgrading from an unauthenticated version.
 
 For the complete design, see [AUTH_DESIGN.md](AUTH_DESIGN.md).
 

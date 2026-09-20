@@ -32,7 +32,7 @@ class SwarmBotMetadata(BaseModel):
 
 
 class SwarmLocalBridge:
-    """Discovers and imports local agent bot profiles into Agent Workspace Company OS."""
+    """Discovers and imports local agent bot profiles into Alpha Company OS."""
 
     def __init__(self, swarm_dir: Path | str | None = None):
         if swarm_dir:

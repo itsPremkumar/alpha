@@ -1,4 +1,4 @@
-"""Helpers for the Agent Workspace Monocle behavioural tests.
+"""Helpers for the Alpha Monocle behavioural tests.
 
 Kept out of ``conftest.py`` so nothing imports ``conftest`` as a module.
 Monocle instrumentation is owned by the Test Tools validator (installed by the
@@ -31,10 +31,10 @@ def live_tests_enabled() -> bool:
 
 
 def run_agent_workspace(message: str) -> str:
-    """Run the Agent Workspace agent once and return its response text.
+    """Run the Alpha agent once and return its response text.
 
     The model is resolved from ``config.yaml`` (no hardcoded override) so the
-    live test exercises Agent Workspace's own model-resolution path.
+    live test exercises Alpha's own model-resolution path.
     """
     from agent_workspace.client import AgentWorkspaceClient
 

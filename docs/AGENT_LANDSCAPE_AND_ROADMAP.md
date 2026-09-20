@@ -1,4 +1,4 @@
-# Open-Source Agent Landscape — Research & Feature Roadmap for Agent Workspace
+# Open-Source Agent Landscape — Research & Feature Roadmap for Alpha
 
 **Date:** 2026-09-20 · **Status:** research + proposal (no code changes)
 

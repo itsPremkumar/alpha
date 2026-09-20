@@ -1,4 +1,4 @@
-# electron-builder configuration for the Agent Workspace Windows desktop app.
+# electron-builder configuration for the Alpha Windows desktop app.
 #
 # Build order on Windows (run from the `electron/` directory):
 #   1. npm install            # installs electron + electron-builder
@@ -18,7 +18,7 @@
 # backend directory.
 
 appId: ai.agent-workspace.desktop
-productName: Agent Workspace
+productName: Alpha
 copyright: Copyright © 2026 Prem Kumar
 
 directories:
@@ -94,5 +94,5 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: Agent Workspace
+  shortcutName: Alpha
   artifactName: Agent-Workspace-Setup-${version}.exe

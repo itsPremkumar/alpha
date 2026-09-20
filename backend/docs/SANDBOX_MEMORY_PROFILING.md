@@ -3,7 +3,7 @@
 This guide records a repeatable baseline before changing the sandbox runtime.
 Issue #3213 reports per-sandbox memory near 1 GiB in Kubernetes. Before adding
 or recommending a new provider, capture the current AIO sandbox baseline and
-compare candidates with the same Agent Workspace workload.
+compare candidates with the same Alpha workload.
 
 ## What to Measure
 
@@ -73,9 +73,9 @@ the same workload and record:
 ## PR Guidance
 
 Do not claim that a new provider fixes high-concurrency memory usage until the
-same Agent Workspace workload has been measured on both the current AIO sandbox and the
+same Alpha workload has been measured on both the current AIO sandbox and the
 candidate backend.
 
 For an experimental provider PR, prefer `Related to #3213` unless the PR also
-includes reproducible Agent Workspace workload data that demonstrates the target memory
+includes reproducible Alpha workload data that demonstrates the target memory
 reduction and preserves uploads, outputs, artifacts, and isolation behavior.

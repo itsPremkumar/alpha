@@ -3402,7 +3402,7 @@ class TestChannelManager:
         _run(go())
 
     def test_each_topic_creates_new_thread(self):
-        """Messages with distinct topic_ids should each create a new Agent Workspace thread."""
+        """Messages with distinct topic_ids should each create a new Alpha thread."""
         from app.channels.manager import ChannelManager
 
         async def go():
@@ -3454,7 +3454,7 @@ class TestChannelManager:
         _run(go())
 
     def test_same_topic_reuses_thread(self, monkeypatch):
-        """Messages with the same topic_id should reuse the same Agent Workspace thread."""
+        """Messages with the same topic_id should reuse the same Alpha thread."""
         from app.channels.manager import ChannelManager
 
         monkeypatch.delenv("AGENT_WORKSPACE_AUTH_DISABLED", raising=False)
@@ -5450,7 +5450,7 @@ class TestChannelManagerBoundIdentityPolicy:
         is exempt from the per-sender bound-identity gate, even when
         ``require_bound_identity=True`` is on for interactive IM channels in the
         same deployment. This is what lets GitHub webhook deliveries reach the
-        agent: they are HMAC-authenticated at the route, and the sender→Agent Workspace
+        agent: they are HMAC-authenticated at the route, and the sender→Alpha
         binding lives in the agent's config.yaml ownership, not in the
         channel-connections table.
         """
@@ -9671,9 +9671,9 @@ class TestTelegramInboundMessages:
             update = _make_telegram_update(
                 "group",
                 message_id=13,
-                text="/data-analysis@Agent WorkspaceBot analyze uploads/foo.csv",
+                text="/data-analysis@AlphaBot analyze uploads/foo.csv",
             )
-            context = SimpleNamespace(bot=SimpleNamespace(username="Agent WorkspaceBot"))
+            context = SimpleNamespace(bot=SimpleNamespace(username="AlphaBot"))
             await ch._on_text(update, context)
 
             msg = await asyncio.wait_for(bus.get_inbound(), timeout=2)
@@ -9806,8 +9806,8 @@ class TestTelegramInboundMessages:
             ch = TelegramChannel(bus=bus, config={"bot_token": "test-token"})
             ch._main_loop = asyncio.get_running_loop()
 
-            update = _make_telegram_update("group", message_id=33, text="/status@Agent WorkspaceBot")
-            context = SimpleNamespace(bot=SimpleNamespace(username="Agent WorkspaceBot"))
+            update = _make_telegram_update("group", message_id=33, text="/status@AlphaBot")
+            context = SimpleNamespace(bot=SimpleNamespace(username="AlphaBot"))
             await ch._cmd_generic(update, context)
 
             msg = await asyncio.wait_for(bus.get_inbound(), timeout=2)
@@ -9945,8 +9945,8 @@ class TestSlackTextEscaping:
         # syntax for a real markdown link must survive untouched -- if
         # escaping ran after conversion instead, this would corrupt into
         # `&lt;url|label&gt;` and Slack would render a dead link.
-        sent = self._sent_text("See [Agent Workspace docs](https://example.com/docs) for more.")
-        assert "<https://example.com/docs|Agent Workspace docs>" in sent
+        sent = self._sent_text("See [Alpha docs](https://example.com/docs) for more.")
+        assert "<https://example.com/docs|Alpha docs>" in sent
         assert "&lt;" not in sent
         assert "&gt;" not in sent
 
@@ -10770,7 +10770,7 @@ def test_merge_stream_text_normal_append():
 # ---------------------------------------------------------------------------
 # LIVE-TEST FINDING 1 (critical, data disclosure): _accumulate_stream_text
 # decided what streamed payloads become displayable assistant text by REJECTING
-# only payloads whose ``type`` contained "tool".  Agent Workspace injects hidden
+# only payloads whose ``type`` contained "tool".  Alpha injects hidden
 # context -- memory facts (DynamicContextMiddleware) and durable context
 # (DurableContextMiddleware) -- as hidden HumanMessages whose ``type`` is
 # "human", and DynamicContextMiddleware also rewrites the user's own turn into
@@ -10793,7 +10793,7 @@ def _get_accumulate_stream_text():
     return _accumulate_stream_text
 
 
-_MEMORY_LEAK_TEXT = "<memory>\nFacts:\n- [context | 0.70] User interacts with the assistant through the Agent Workspace chat channel.\n</memory>"
+_MEMORY_LEAK_TEXT = "<memory>\nFacts:\n- [context | 0.70] User interacts with the assistant through the Alpha chat channel.\n</memory>"
 
 
 def test_accumulate_stream_text_rejects_hidden_memory_human_message():

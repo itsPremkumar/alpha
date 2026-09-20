@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 #
-# Agent Workspace gateway dev entrypoint — runs inside the docker-compose-dev gateway
+# Alpha gateway dev entrypoint — runs inside the docker-compose-dev gateway
 # container. Extracted from docker/docker-compose-dev.yaml's inline `command:`
 # (PR #2767, addressing review on Issue #2754).
 #

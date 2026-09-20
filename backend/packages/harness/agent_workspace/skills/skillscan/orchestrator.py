@@ -1,4 +1,4 @@
-"""Native deterministic scanning for Agent Workspace skills.
+"""Native deterministic scanning for Alpha skills.
 
 ``scan_archive_preflight()`` and ``scan_skill_dir()`` are synchronous pure
 functions of their inputs; async callers must dispatch them off the event

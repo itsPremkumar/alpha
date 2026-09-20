@@ -2,7 +2,7 @@
 
 ## Overview
 
-This implementation delivers five foundational, enterprise-grade autonomous subsystems into the Agent Workspace backend architecture. Designed according to frontier autonomous agent paradigms, these systems provide operational self-sufficiency, strict security isolation, fine-grained concurrency control, and zero-polling event reactivity while strictly respecting monorepo harness/app architectural boundaries and avoiding trademark designations.
+This implementation delivers five foundational, enterprise-grade autonomous subsystems into the Alpha backend architecture. Designed according to frontier autonomous agent paradigms, these systems provide operational self-sufficiency, strict security isolation, fine-grained concurrency control, and zero-polling event reactivity while strictly respecting monorepo harness/app architectural boundaries and avoiding trademark designations.
 
 ---
 

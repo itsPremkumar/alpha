@@ -831,7 +831,7 @@ class SubagentExecutor:
             oauth_id: Subject id at the external identity provider.
             run_id: Parent run id, so delegated guardrail decisions attribute to
                 the same run as the lead agent.
-            agent_workspace_trace_id: Agent Workspace request-level correlation id propagated
+            agent_workspace_trace_id: Alpha request-level correlation id propagated
                 from the parent run for Langfuse metadata correlation. Falls
                 back to the ambient trace so the attribute is always a real
                 id, never ``None``.

@@ -1,6 +1,6 @@
 name: Nightly Build
 
-# Nightly build of the three Agent Workspace container images (backend, frontend,
+# Nightly build of the three Alpha container images (backend, frontend,
 # provisioner) and the Helm chart, published to GHCR from the default branch.
 #
 # This mirrors the tag-driven release workflows (container.yaml + chart.yaml)

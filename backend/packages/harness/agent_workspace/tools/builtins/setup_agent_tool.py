@@ -20,7 +20,7 @@ def setup_agent(
     runtime: Runtime,
     skills: list[str] | None = None,
 ) -> Command:
-    """Setup the custom Agent Workspace agent.
+    """Setup the custom Alpha agent.
 
     Args:
         soul: Full SOUL.md content defining the agent's personality and behavior.

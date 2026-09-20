@@ -1,1 +1,1 @@
-"""Harness root package for Agent Workspace extensions."""
+"""Harness root package for Alpha extensions."""

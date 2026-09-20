@@ -1,6 +1,6 @@
 """14. End-to-end trace propagation (run -> subagent -> memory).
 
-Agent Workspace already issues X-Trace-Id unconditionally (trace_context.py) and
+Alpha already issues X-Trace-Id unconditionally (trace_context.py) and
 records agent_workspace_trace_id on runs/checkpoints/Langfuse. What's missing is
 explicit propagation into subagent delegation + background memory writes,
 so logs correlate across hops. These helpers are pure dict/context ops —

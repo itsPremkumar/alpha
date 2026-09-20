@@ -723,7 +723,7 @@ async def _ensure_thread_for_goal(thread_id: str, request: Request) -> None:
 async def delete_thread_data(thread_id: str, request: Request) -> ThreadDeleteResponse:
     """Delete local persisted filesystem data for a thread.
 
-    Cleans Agent Workspace-managed thread directories, removes checkpoint data,
+    Cleans Alpha-managed thread directories, removes checkpoint data,
     and removes the thread_meta row from the configured ThreadMetaStore
     (sqlite or memory).
     """

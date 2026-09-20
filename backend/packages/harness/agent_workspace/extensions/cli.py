@@ -18,7 +18,7 @@ _SOURCE_ENV = "AGENT_WORKSPACE_EXTENSION_SOURCE"
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="agent_workspace extensions",
-        description="Install and manage trusted Python extensions for this Agent Workspace checkout.",
+        description="Install and manage trusted Python extensions for this Alpha checkout.",
     )
     commands = parser.add_subparsers(dest="command", required=True)
     install = commands.add_parser("install", help="install an extension and enable it in config.yaml")
@@ -77,7 +77,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     print("Extension installation cancelled.", file=sys.stderr)
                     return 2
             installed = manager.install(source, yes=trusted, required=args.required)
-            print(f"Installed and enabled {installed.name} ({installed.distribution}). Restart Agent Workspace to load it.")
+            print(f"Installed and enabled {installed.name} ({installed.distribution}). Restart Alpha to load it.")
             return 0
         if args.command == "upgrade":
             source = _source_argument(args)
@@ -92,15 +92,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                     print("Extension upgrade cancelled.", file=sys.stderr)
                     return 2
             installed = manager.upgrade(source, yes=trusted)
-            print(f"Upgraded {installed.name} ({installed.distribution}). Restart Agent Workspace to load it.")
+            print(f"Upgraded {installed.name} ({installed.distribution}). Restart Alpha to load it.")
             return 0
         if args.command == "disable":
             name = manager.set_enabled(_name_argument(args), enabled=False)
-            print(f"Disabled {name}. Restart Agent Workspace to apply the change.")
+            print(f"Disabled {name}. Restart Alpha to apply the change.")
             return 0
         if args.command == "enable":
             name = manager.set_enabled(_name_argument(args), enabled=True)
-            print(f"Enabled {name}. Restart Agent Workspace to apply the change.")
+            print(f"Enabled {name}. Restart Alpha to apply the change.")
             return 0
         if args.command == "list":
             configured = manager.list_configured()
@@ -111,7 +111,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         if args.command == "remove":
             name = manager.remove(_name_argument(args))
-            print(f"Removed {name}. Restart Agent Workspace to apply the change.")
+            print(f"Removed {name}. Restart Alpha to apply the change.")
             return 0
     except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as exc:
         print(f"extension command failed: {exc}", file=sys.stderr)
@@ -143,11 +143,11 @@ def find_project_root() -> Path:
         candidate = Path(configured).expanduser().resolve()
         if (candidate / "backend" / "pyproject.toml").is_file():
             return candidate
-        raise FileNotFoundError(f"AGENT_WORKSPACE_PROJECT_ROOT is not a Agent Workspace checkout: {candidate}")
+        raise FileNotFoundError(f"AGENT_WORKSPACE_PROJECT_ROOT is not a Alpha checkout: {candidate}")
 
     candidates = (Path.cwd(), *Path.cwd().parents)
     for candidate in candidates:
         candidate = candidate.resolve()
         if (candidate / "backend" / "pyproject.toml").is_file():
             return candidate
-    raise FileNotFoundError("could not find a Agent Workspace checkout; set AGENT_WORKSPACE_PROJECT_ROOT")
+    raise FileNotFoundError("could not find a Alpha checkout; set AGENT_WORKSPACE_PROJECT_ROOT")

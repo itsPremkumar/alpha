@@ -1,6 +1,6 @@
-"""Agent Workspace application persistence layer (SQLAlchemy 2.0 async ORM).
+"""Alpha application persistence layer (SQLAlchemy 2.0 async ORM).
 
-This module manages Agent Workspace's own application data -- runs metadata,
+This module manages Alpha's own application data -- runs metadata,
 thread ownership, cron jobs, users. It is completely separate from
 LangGraph's checkpointer, which manages graph execution state.
 

@@ -1,12 +1,12 @@
-# Agent Workspace Streaming Architecture
+# Alpha Streaming Architecture
 
-This document explains how Agent Workspace delivers LangGraph agent event streams end-to-end to two classes of consumers: HTTP clients and embedded Python callers. It covers why two distinct paths must coexist, their contracts, and the non-obvious invariants within the system.
+This document explains how Alpha delivers LangGraph agent event streams end-to-end to two classes of consumers: HTTP clients and embedded Python callers. It covers why two distinct paths must coexist, their contracts, and the non-obvious invariants within the system.
 
 ---
 
 ## TL;DR
 
-- Agent Workspace maintains **two parallel** streaming pipelines: the **Gateway path** (async / HTTP SSE / JSON serialization) serving web browsers and IM channels; and the **AgentWorkspaceClient path** (sync / in-process / native LangChain objects) serving Jupyter notebooks, scripts, and tests. They **cannot be merged** due to fundamentally different consumer execution models.
+- Alpha maintains **two parallel** streaming pipelines: the **Gateway path** (async / HTTP SSE / JSON serialization) serving web browsers and IM channels; and the **AgentWorkspaceClient path** (sync / in-process / native LangChain objects) serving Jupyter notebooks, scripts, and tests. They **cannot be merged** due to fundamentally different consumer execution models.
 - Both paths originate from the `create_agent()` factory, centered around subscribing to LangGraph's `stream_mode=["values", "messages", "custom"]`. `values` represents node-level state snapshots, `messages` delivers LLM token-level deltas, and `custom` handles explicit `StreamWriter` events. Built-in custom events are also dispatched as `on_custom_event` callbacks under `astream_events(version="v2")` for callback-driven consumers like AG-UI. **These modes are independent event sources, not levels of granularity**; consumers must subscribe to the modes they need.
 - The embedded client maintains three distinct `set[str]` instances for every `stream()` invocation: `seen_ids` / `streamed_ids` / `counted_usage_ids`. While seemingly similar, they enforce **three completely separate invariants** and must not be combined.
 
@@ -65,7 +65,7 @@ flowchart LR
 
     LG -->|"After each node completes"| V["values: Full state snapshot"]
     Node1 -->|"For each token yielded by LLM"| M["messages: (AIMessageChunk, meta)"]
-    Node1 -->|"emit_custom_event()"| E["Agent Workspace custom event helper"]
+    Node1 -->|"emit_custom_event()"| E["Alpha custom event helper"]
     E -->|"StreamWriter.write()"| C["custom: Arbitrary dict"]
     E -->|"dispatch_custom_event()"| A["astream_events(v2): on_custom_event"]
 
@@ -82,7 +82,7 @@ flowchart LR
 | `custom` | Explicit user code call to `StreamWriter.write()` | Arbitrary dict | Application defined |
 | `on_custom_event` | Explicit user code call to `dispatch_custom_event()`; consumed via `astream_events(version="v2")` | `name` + arbitrary `data` | Application defined |
 
-Agent Workspace internal events must be emitted using sync or async helpers in `agent_workspace.utils.custom_events`, and each built-in payload must carry a non-empty string `type`. Payloads missing a valid `type` enter only the `custom` stream and will not appear in `astream_events`. The helper writes to the `custom` stream first, followed by a best-effort callback dispatch; the callback name is set to the payload's `type`, retaining the full payload in `data`. Gateway / Web UI / `AgentWorkspaceClient` custom streams remain unchanged while `astream_events` consumers observe identical events. Callback dispatch exceptions are logged at debug level without interrupting writer pipelines.
+Alpha internal events must be emitted using sync or async helpers in `agent_workspace.utils.custom_events`, and each built-in payload must carry a non-empty string `type`. Payloads missing a valid `type` enter only the `custom` stream and will not appear in `astream_events`. The helper writes to the `custom` stream first, followed by a best-effort callback dispatch; the callback name is set to the payload's `type`, retaining the full payload in `data`. Gateway / Web UI / `AgentWorkspaceClient` custom streams remain unchanged while `astream_events` consumers observe identical events. Callback dispatch exceptions are logged at debug level without interrupting writer pipelines.
 
 ### Three Naming Schemes Across Protocol Layers
 

@@ -1,9 +1,9 @@
-# Agent Workspace - Stop all running services
+# Alpha - Stop all running services
 # Usage: .\stop.ps1
 
 $ErrorActionPreference = "SilentlyContinue"
 
-Write-Host "`nStopping Agent Workspace services..." -ForegroundColor Yellow
+Write-Host "`nStopping Alpha services..." -ForegroundColor Yellow
 
 $targetPorts = @(8001, 3000, 8201, 2026)
 $killedCount = 0
@@ -41,33 +41,33 @@ foreach ($port in $targetPorts) {
     }
 }
 
-# 2. Sweep stale Agent Workspace frontend wrappers that hold no port (e.g. a hung
+# 2. Sweep stale Alpha frontend wrappers that hold no port (e.g. a hung
 # `next dev` whose listener died but whose compile loop is still running).
 try {
     $stale = Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
         Where-Object { $_.CommandLine -like "*agent-workspace*frontend*" -or $_.CommandLine -like "*alpha*frontend*" }
     foreach ($p in $stale) {
         if (Get-Process -Id $p.ProcessId -ErrorAction SilentlyContinue) {
-            Write-Host "  -> Terminating stale Agent Workspace frontend process (PID: $($p.ProcessId))" -ForegroundColor Gray
+            Write-Host "  -> Terminating stale Alpha frontend process (PID: $($p.ProcessId))" -ForegroundColor Gray
             if (Stop-Tree -ProcessId $p.ProcessId) { $killedCount++ }
         }
     }
 } catch {}
 
-# 3. Sweep stale Agent Workspace gateway processes.
+# 3. Sweep stale Alpha gateway processes.
 try {
     $staleGw = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
         Where-Object { $_.CommandLine -like "*app.gateway.app*" }
     foreach ($p in $staleGw) {
         if (Get-Process -Id $p.ProcessId -ErrorAction SilentlyContinue) {
-            Write-Host "  -> Terminating stale Agent Workspace gateway process (PID: $($p.ProcessId))" -ForegroundColor Gray
+            Write-Host "  -> Terminating stale Alpha gateway process (PID: $($p.ProcessId))" -ForegroundColor Gray
             if (Stop-Tree -ProcessId $p.ProcessId) { $killedCount++ }
         }
     }
 } catch {}
 
 if ($killedCount -gt 0) {
-    Write-Host "[OK] All Agent Workspace services stopped ($killedCount process tree(s) terminated).`n" -ForegroundColor Green
+    Write-Host "[OK] All Alpha services stopped ($killedCount process tree(s) terminated).`n" -ForegroundColor Green
 } else {
-    Write-Host "[OK] No active Agent Workspace services were running.`n" -ForegroundColor Green
+    Write-Host "[OK] No active Alpha services were running.`n" -ForegroundColor Green
 }

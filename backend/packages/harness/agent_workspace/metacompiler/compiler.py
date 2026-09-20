@@ -27,8 +27,8 @@ class AgentMetaCompiler:
         """Synthesize candidate next-generation agent architecture (Gen N+1) from parent."""
         next_gen = parent.generation + 1
         blueprint_id = f"bp_gen{next_gen}_{uuid.uuid4().hex[:6]}"
-        name = f"Agent Workspace-ASI-Gen{next_gen}"
-        arch_tag = f"Agent Workspace-ASI-v{next_gen + 1}.0"
+        name = f"Alpha-ASI-Gen{next_gen}"
+        arch_tag = f"Alpha-ASI-v{next_gen + 1}.0"
 
         # 1. Reasoning Strategy Mutation
         strategy_progression = [
@@ -137,7 +137,7 @@ class AgentMetaCompiler:
     def synthesize_specialist(domain: str, parent: AgentBlueprint) -> AgentBlueprint:
         """Synthesize a domain-specialized descendant agent from the parent blueprint."""
         spec_id = f"bp_spec_{domain}_{uuid.uuid4().hex[:6]}"
-        spec_name = f"Agent Workspace-{domain.replace('_', ' ').title()}-Specialist"
+        spec_name = f"Alpha-{domain.replace('_', ' ').title()}-Specialist"
         arch_tag = f"{parent.architecture_tag}-{domain.upper()}"
 
         tools = list(parent.tool_bindings)

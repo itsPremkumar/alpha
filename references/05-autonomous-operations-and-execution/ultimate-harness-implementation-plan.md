@@ -17,12 +17,12 @@
 
 ## 0. Foundation decision (merged verdict — both analyses agree)
 
-Agent Workspace 2.0 stays the canonical execution kernel. Do NOT merge repositories.
+Alpha 2.0 stays the canonical execution kernel. Do NOT merge repositories.
 Borrow patterns through adapters, plugins, skills, worker services, contracts:
 
 | Layer | Decision | Donor pattern |
 |---|---|---|
-| Core runtime (runs, streams, checkpoints, sandbox) | KEEP Agent Workspace | — |
+| Core runtime (runs, streams, checkpoints, sandbox) | KEEP Alpha | — |
 | Orchestration (planner/router/team policies) | ADD as policies | OmO categories + Claude Code teams |
 | Memory/learning | ADD as pluggable subsystem | Hermes loop + Letta layers |
 | Gateway/channels | EXTEND (pairing, scoping) | OpenClaw + Hermes adapters |
@@ -41,7 +41,7 @@ Redis is an existing extra; S3 artifacts new and optional). SQLite-first local
 operation is preserved. Its 13 phases are compressed below into an executable
 sequence ordered by dependency, risk, and visible value.
 
-## 1. Target architecture (Agent Workspace-grounded)
+## 1. Target architecture (Alpha-grounded)
 
 ```
 USER / EVENTS / CHANNELS (existing app/channels + pairing/scope extensions)

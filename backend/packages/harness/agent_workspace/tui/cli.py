@@ -1,4 +1,4 @@
-"""Command-line entry point and launch-mode planning for the Agent Workspace TUI.
+"""Command-line entry point and launch-mode planning for the Alpha TUI.
 
 ``plan_launch`` is a pure decision function (fully unit-tested): given argv, TTY
 state and the environment, it decides whether to open the terminal UI or run a
@@ -48,7 +48,7 @@ def _positive_int(value: str) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="agent-workspace",
-        description="Agent Workspace terminal workbench — a TUI over the embedded Agent Workspace harness.",
+        description="Alpha terminal workbench — a TUI over the embedded Alpha harness.",
         epilog="Extension management: agent_workspace extensions --help",
         add_help=True,
     )
@@ -194,7 +194,7 @@ def plan_launch(
 # --------------------------------------------------------------------------- #
 
 _HEADLESS_HELP = """\
-agent_workspace — Agent Workspace terminal workbench
+agent_workspace — Alpha terminal workbench
 
   agent_workspace                      launch the terminal UI (TTY required)
   agent_workspace --tui                force the terminal UI

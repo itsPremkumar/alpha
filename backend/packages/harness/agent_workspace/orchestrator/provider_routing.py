@@ -1,6 +1,6 @@
 """2-3. Provider fallback chain + auth rotation + UtilityModel + per-channel override.
 
-Agent Workspace already ships agent_workspace.models.fallback.FallbackChatModel (per-call
+Alpha already ships agent_workspace.models.fallback.FallbackChatModel (per-call
 failover) and agent_workspace.models.failover (multi-key rotation). This module
 adds the missing routing layer OpenClaw 2.0 has:
 

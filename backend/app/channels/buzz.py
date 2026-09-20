@@ -1,4 +1,4 @@
-"""Buzz (Nostr) channel: Agent Workspace as a member of a Buzz workspace relay.
+"""Buzz (Nostr) channel: Alpha as a member of a Buzz workspace relay.
 
 One NIP-42-authenticated WebSocket to ``relay_url``. Inbound kind-9 chat events are
 gated (pubkey allowlist, then mention/DM/thread-follow) and published to the bus;
@@ -209,7 +209,7 @@ def _is_auth_required_close(reason: str) -> bool:
     return (reason or "").strip().lower().startswith(_AUTH_REQUIRED_CLOSE_PREFIX)
 
 
-# Agent Workspace's hidden model-context wrappers. These are literal tags this codebase
+# Alpha's hidden model-context wrappers. These are literal tags this codebase
 # injects into the model's input and never into an assistant reply:
 # ``DynamicContextMiddleware`` wraps recalled memory in ``<memory>`` and the date
 # reminder in ``<system-reminder>``; ``DurableContextMiddleware`` wraps the
@@ -486,7 +486,7 @@ class BuzzChannel(Channel):
         connect/auth handshake: it is genuinely live, but the relay stamps it with
         its own clock and it is already in the past by the time the post-auth REQ
         goes out. ``MEMBERSHIP_LOOKBACK_SECONDS`` of slack behind the moment the
-        socket opened covers both that window and relay/Agent Workspace clock skew. Cost of
+        socket opened covers both that window and relay/Alpha clock skew. Cost of
         the slack: at most the last minute of membership changes replayed, which is
         idempotent (``_ensure_chat_subscription`` no-ops on an already-subscribed
         channel, and ``_handle_membership_event`` only re-runs discovery when the
@@ -931,11 +931,11 @@ class BuzzChannel(Channel):
 
         Every ``EVENT`` is signature-verified (``buzz_nostr.verify_event``) here,
         at the single entry point, BEFORE either handler runs. The relay operator
-        is not necessarily the Agent Workspace operator on a team-run Buzz relay, and
+        is not necessarily the Alpha operator on a team-run Buzz relay, and
         ``ev["pubkey"]`` is just a field in a relay-supplied JSON object -- without
         this check a malicious or compromised relay could name any allowlisted
         author it liked and trigger tool-executing runs, or bind a victim's pubkey
-        to an attacker's Agent Workspace account through ``/connect``. Both handlers make
+        to an attacker's Alpha account through ``/connect``. Both handlers make
         authorization decisions from the event (the chat gate uses ``pubkey`` as
         the principal; kind-39000 metadata can relax the mention requirement), so
         verifying at the choke point rather than inside each one leaves no path
@@ -1119,10 +1119,10 @@ class BuzzChannel(Channel):
         tags — the caller only confirms *some* p-tagged mention exists (see
         ``mentioned`` in ``_handle_chat_event``), never that the specific leading
         token names *us*. When a second ``@token`` immediately follows the first
-        (e.g. "@Alice, @Agent Workspace help"), guessing that the first one is ours risks
+        (e.g. "@Alice, @Alpha help"), guessing that the first one is ours risks
         silently discarding a different member's mention while leaving ours
         untouched, so the conservative choice is to leave the text completely
-        alone rather than guess. The common single-mention case ("@Agent Workspace
+        alone rather than guess. The common single-mention case ("@Alpha
         hello") remains unambiguous and is still stripped.
         """
         stripped = text.lstrip()
@@ -1130,7 +1130,7 @@ class BuzzChannel(Channel):
             return text.strip()
         _, sep, rest = stripped.partition(" ")
         if not sep:
-            return stripped  # "@Agent Workspace" alone: nothing to strip without losing the whole message
+            return stripped  # "@Alpha" alone: nothing to strip without losing the whole message
         if rest.lstrip().startswith("@"):
             return text.strip()  # ambiguous multi-mention prefix: don't guess which one is ours
         return rest.strip() or stripped
@@ -1246,7 +1246,7 @@ class BuzzChannel(Channel):
         Without this the bind is write-only: ``connection_id`` / ``owner_user_id``
         stay ``None``, so ``ChannelManager`` runs the turn under a synthetic
         pubkey-derived user with its own memory and file buckets instead of the
-        bound Agent Workspace account, and revoking the connection has no runtime effect.
+        bound Alpha account, and revoking the connection has no runtime effect.
 
         ``fallback_without_workspace`` stays off (unlike discord/dingtalk/wecom,
         whose workspace is legitimately absent for DMs): ``_bind_connection``
@@ -1408,7 +1408,7 @@ class BuzzChannel(Channel):
         to the caller *and* still clears the stale target — see the ``finally``
         comment for why both matter.
 
-        DEFENSE IN DEPTH: text carrying one of Agent Workspace's hidden model-context
+        DEFENSE IN DEPTH: text carrying one of Alpha's hidden model-context
         wrappers is refused outright. The real fix is one layer up
         (``manager._accumulate_stream_text`` now allowlists assistant message
         types instead of denylisting tool ones), but this connector is the one

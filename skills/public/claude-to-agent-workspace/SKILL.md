@@ -1,16 +1,16 @@
 ---
 name: claude-to-agent-workspace
-description: "Interact with Agent Workspace AI agent platform via its HTTP API. Use this skill when the user wants to send messages or questions to Agent Workspace for research/analysis, start a Agent Workspace conversation thread, check Agent Workspace status or health, list available models/skills/agents in Agent Workspace, manage Agent Workspace memory, upload files to Agent Workspace threads, or delegate complex research tasks to Agent Workspace. Also use when the user mentions agent workspace or wants to run a deep research task that Agent Workspace can handle."
+description: "Interact with Alpha AI agent platform via its HTTP API. Use this skill when the user wants to send messages or questions to Alpha for research/analysis, start a Alpha conversation thread, check Alpha status or health, list available models/skills/agents in Alpha, manage Alpha memory, upload files to Alpha threads, or delegate complex research tasks to Alpha. Also use when the user mentions alpha or wants to run a deep research task that Alpha can handle."
 ---
 
-# Agent Workspace Skill
+# Alpha Skill
 
-Communicate with a running Agent Workspace instance via its HTTP API. Agent Workspace is an AI agent platform
+Communicate with a running Alpha instance via its HTTP API. Alpha is an AI agent platform
 built on LangGraph that orchestrates sub-agents for research, code execution, web browsing, and more.
 
 ## Architecture
 
-Agent Workspace exposes two API surfaces behind an Nginx reverse proxy:
+Alpha exposes two API surfaces behind an Nginx reverse proxy:
 
 | Service        | Direct Port | Via Proxy                        | Purpose                          |
 |----------------|-------------|----------------------------------|----------------------------------|
@@ -40,7 +40,7 @@ AGENT_WORKSPACE_LANGGRAPH_URL="${AGENT_WORKSPACE_LANGGRAPH_URL:-$AGENT_WORKSPACE
 
 ### 1. Health Check
 
-Verify Agent Workspace is running:
+Verify Alpha is running:
 
 ```bash
 curl -s "$AGENT_WORKSPACE_GATEWAY_URL/health"
@@ -205,7 +205,7 @@ The stream returns SSE events. To extract the final AI response from a `values` 
 
 ## Error Handling
 
-- If health check fails, Agent Workspace is not running. Inform the user they need to start it.
+- If health check fails, Alpha is not running. Inform the user they need to start it.
 - If the stream returns an error event, extract and display the error message.
 - Common issues: port not open, services still starting up, config errors.
 

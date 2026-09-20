@@ -1,4 +1,4 @@
-"""Continual Harness package for Agent Workspace."""
+"""Continual Harness package for Alpha."""
 
 from agent_workspace.harness.continual.state import (
     HarnessEntry,

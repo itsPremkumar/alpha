@@ -8,13 +8,13 @@ from wizard.ui import ask_multi_choice, print_header, print_info, print_success
 
 
 CHANNEL_CONNECTION_OPTIONS: tuple[tuple[str, str, str], ...] = (
-    ("telegram", "Telegram", "direct messages through your Agent Workspace bot"),
+    ("telegram", "Telegram", "direct messages through your Alpha bot"),
     ("slack", "Slack", "workspace messages and mentions"),
-    ("discord", "Discord", "server messages through your Agent Workspace bot"),
-    ("feishu", "Feishu / Lark", "messages through your Agent Workspace app"),
-    ("dingtalk", "DingTalk", "Stream Push messages through your Agent Workspace bot"),
-    ("wechat", "WeChat", "iLink messages through your Agent Workspace bot"),
-    ("wecom", "WeCom", "messages through your Agent Workspace AI bot"),
+    ("discord", "Discord", "server messages through your Alpha bot"),
+    ("feishu", "Feishu / Lark", "messages through your Alpha app"),
+    ("dingtalk", "DingTalk", "Stream Push messages through your Alpha bot"),
+    ("wechat", "WeChat", "iLink messages through your Alpha bot"),
+    ("wecom", "WeCom", "messages through your Alpha AI bot"),
 )
 
 
@@ -25,7 +25,7 @@ class ChannelConnectionsStepResult:
 
 def run_channels_step(step_label: str = "Step 4/5") -> ChannelConnectionsStepResult:
     print_header(f"{step_label} · IM Channels (optional)")
-    print_info("Choose which IM channels should appear in the Agent Workspace sidebar and Settings.")
+    print_info("Choose which IM channels should appear in the Alpha sidebar and Settings.")
     print_info("Credentials can be entered later from the browser with Connect or Modify.")
     print()
 

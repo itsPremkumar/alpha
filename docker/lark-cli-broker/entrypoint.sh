@@ -1,5 +1,5 @@
 #!/bin/sh
-# Agent Workspace lark-cli broker entrypoint (Pattern B, issue #4338).
+# Alpha lark-cli broker entrypoint (Pattern B, issue #4338).
 #
 # Dispatches to one of two modes on the single stdlib-only module:
 #

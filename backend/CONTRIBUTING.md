@@ -1,6 +1,6 @@
-# Contributing to Agent Workspace Backend
+# Contributing to Alpha Backend
 
-Thank you for your interest in contributing to Agent Workspace! This document provides guidelines and instructions for contributing to the backend codebase.
+Thank you for your interest in contributing to Alpha! This document provides guidelines and instructions for contributing to the backend codebase.
 
 ## Table of Contents
 
@@ -437,4 +437,4 @@ If you have questions about contributing:
 2. Look for similar issues or PRs on GitHub
 3. Open a discussion or issue on GitHub
 
-Thank you for contributing to Agent Workspace!
+Thank you for contributing to Alpha!

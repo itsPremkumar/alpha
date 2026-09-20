@@ -4,7 +4,7 @@ Lives at the top-level package (not ``agent_workspace.runtime``) so it can be
 imported from ``agent_workspace.agents.thread_state`` without pulling in the heavy
 ``agent_workspace.runtime`` package __init__ (which eagerly imports the runs
 machinery). Anchored from ``agent_workspace.agents.thread_state`` so every process
-that builds a Agent Workspace graph (gateway, workers, in-process LangGraph
+that builds a Alpha graph (gateway, workers, in-process LangGraph
 runtime, tests) runs with the fixes in place.
 """
 
@@ -108,13 +108,13 @@ def _as_overwrite(value: Any) -> tuple[bool, Any]:
     """Local stand-in for langgraph's private ``_get_overwrite``.
 
     Matches only the public ``Overwrite`` *class* form - the sole form
-    Agent Workspace's write paths produce for these Union channels (the branch and
+    Alpha's write paths produce for these Union channels (the branch and
     ``/state`` routes wrap replace-style writes in ``Overwrite(...)``).
     Avoiding the underscored ``_get_overwrite`` import keeps an upstream
     refactor that drops it - plausibly the very release that fixes the bug -
     from failing this module's import and crashing startup before the probe
     can stand the patch down. The dict sentinel form upstream also accepts is
-    an internal serialization detail Agent Workspace never emits into these channels.
+    an internal serialization detail Alpha never emits into these channels.
     """
     if isinstance(value, Overwrite):
         return True, value.value

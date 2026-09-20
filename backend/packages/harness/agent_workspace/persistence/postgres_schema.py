@@ -1,7 +1,7 @@
 """PostgreSQL schema helpers (Issue #3380).
 
 Centralizes the driver-specific ways of pinning a connection's
-``search_path`` to a target schema. The two PostgreSQL drivers Agent Workspace
+``search_path`` to a target schema. The two PostgreSQL drivers Alpha
 uses expect different mechanisms:
 
 - **asyncpg** (app ORM engine): only honours ``server_settings`` passed

@@ -49,14 +49,14 @@ def test_tool_message_becomes_tool_step_with_output():
         "id": "tool-1",
         "name": "web_search",
         "tool_call_id": "call_1",
-        "content": "Result: Agent Workspace is a LangGraph super-agent.",
+        "content": "Result: Alpha is a LangGraph super-agent.",
     }
 
     step = build_subagent_step(message, task_id="call_task", message_index=2)
 
     assert step["kind"] == "tool"
     assert step["tool_name"] == "web_search"
-    assert step["text"] == "Result: Agent Workspace is a LangGraph super-agent."
+    assert step["text"] == "Result: Alpha is a LangGraph super-agent."
     assert step["truncated"] is False
     assert "tool_calls" not in step
 

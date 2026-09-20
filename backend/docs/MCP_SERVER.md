@@ -1,6 +1,6 @@
 # MCP (Model Context Protocol) Configuration
 
-Agent Workspace supports configurable MCP servers and skills to extend its capabilities, which are loaded from a dedicated `extensions_config.json` file in the project root directory.
+Alpha supports configurable MCP servers and skills to extend its capabilities, which are loaded from a dedicated `extensions_config.json` file in the project root directory.
 
 ## Setup
 
@@ -17,7 +17,7 @@ Agent Workspace supports configurable MCP servers and skills to extend its capab
 ## OpenViking MCP Tools
 
 OpenViking's official server exposes a Streamable HTTP MCP endpoint at `/mcp`.
-Agent Workspace connects to it through the same generic MCP client used for other HTTP
+Alpha connects to it through the same generic MCP client used for other HTTP
 servers:
 
 ```json
@@ -39,25 +39,25 @@ Set `OPENVIKING_API_KEY` to a normal owner-bound OpenViking **USER API key**.
 The key determines the OpenViking account and user. Do not use a root/admin
 key, trusted mode, or add `X-OpenViking-Account`, `X-OpenViking-User`, or
 `X-OpenViking-Actor-Peer` headers for this personal single-owner setup.
-`X-API-Key` is used here because Agent Workspace expands a whole-string `$ENV_VAR`
+`X-API-Key` is used here because Alpha expands a whole-string `$ENV_VAR`
 value without storing a credential in the checked-in configuration.
 If `OPENVIKING_API_KEY` is missing or empty during initialization, OpenViking
-authentication fails and Agent Workspace skips that MCP server, so no OpenViking tools
-appear. Changing only the environment variable does not invalidate Agent Workspace's
+authentication fails and Alpha skips that MCP server, so no OpenViking tools
+appear. Changing only the environment variable does not invalidate Alpha's
 already-populated, file-signature-based MCP tool cache; after setting or fixing
-the key, restart Agent Workspace, modify and re-save the extensions config, or call the
+the key, restart Alpha, modify and re-save the extensions config, or call the
 MCP cache-reset endpoint at `POST /api/mcp/cache/reset`.
 
-OpenViking owns the tool schemas and behavior. Agent Workspace performs the standard
+OpenViking owns the tool schemas and behavior. Alpha performs the standard
 MCP initialization and discovery flow, prefixes the discovered names with
 `openviking_` by default, and routes calls back through the generic MCP client.
-For capability parity with other official OpenViking harnesses, Agent Workspace exposes
+For capability parity with other official OpenViking harnesses, Alpha exposes
 the native `forget` tool with the other discovered tools. `forget` permanently
 deletes a `viking://` URI and should be called only after explicit user
-confirmation; Agent Workspace does not enforce that confirmation.
+confirmation; Alpha does not enforce that confirmation.
 
 Operators who do not want agents to call `forget` can block its default visible
-name with Agent Workspace's existing guardrail configuration:
+name with Alpha's existing guardrail configuration:
 
 ```yaml
 guardrails:
@@ -84,9 +84,9 @@ container, such as `http://openviking:1933/mcp` for a shared Compose network or
 
 The `parallel-search` entry in `extensions_config.example.json` is disabled by
 default. To opt in, copy that entry into `mcpServers` in your root
-`extensions_config.json`, set `"enabled": true`, and restart Agent Workspace. It connects
+`extensions_config.json`, set `"enabled": true`, and restart Alpha. It connects
 to `https://search.parallel.ai/mcp` over HTTP and adds Parallel's search and fetch
-tools. With Agent Workspace's default tool-name prefix, the agent sees
+tools. With Alpha's default tool-name prefix, the agent sees
 `parallel-search_web_search` and `parallel-search_web_fetch`. Existing search
 providers and defaults stay unchanged.
 
@@ -108,11 +108,11 @@ For higher rate limits, optionally add this `headers` field to the
 }
 ```
 
-Set `PARALLEL_AUTHORIZATION` in the Agent Workspace backend's environment to the full
-value `Bearer <your-parallel-api-key>`, then restart Agent Workspace. Include `Bearer `
-in the environment variable because Agent Workspace expands only whole-string
+Set `PARALLEL_AUTHORIZATION` in the Alpha backend's environment to the full
+value `Bearer <your-parallel-api-key>`, then restart Alpha. Include `Bearer `
+in the environment variable because Alpha expands only whole-string
 `$ENV_VAR` references, not `Bearer $ENV_VAR`. Keep the actual key out of committed
-files. Remove the `headers` field and restart Agent Workspace to return to anonymous
+files. Remove the `headers` field and restart Alpha to return to anonymous
 access. See the
 [Parallel Search MCP documentation](https://docs.parallel.ai/integrations/mcp/search-mcp)
 for details.
@@ -175,7 +175,7 @@ top-level `config.yaml -> tool_search.auto_promote_top_k` setting.
 
 ## Tool Name Prefixes
 
-Agent Workspace prefixes discovered MCP tool names with `<server_name>_` by default.
+Alpha prefixes discovered MCP tool names with `<server_name>_` by default.
 This avoids collisions when two enabled servers expose tools with the same
 name. A server that already namespaces its own tools can opt out:
 
@@ -196,7 +196,7 @@ With this setting, a server tool named `semantic_scholar_search_papers` keeps
 that name instead of becoming
 `semantic-scholar_semantic_scholar_search_papers`. The default is `true` for
 backward compatibility. Disable it only when every resulting tool name remains
-unique across the enabled servers. Stdio tools continue to use Agent Workspace's
+unique across the enabled servers. Stdio tools continue to use Alpha's
 persistent per-thread session pool regardless of this setting.
 
 ## Server Timeouts
@@ -235,21 +235,21 @@ never returns the matching MCP response cannot stall the task poller. Other
 
 ## Filesystem MCP Servers
 
-Agent Workspace already provides built-in file tools for thread-scoped workspace access.
-Do not add an MCP filesystem server for the same Agent Workspace workspace. The
+Alpha already provides built-in file tools for thread-scoped workspace access.
+Do not add an MCP filesystem server for the same Alpha workspace. The
 overlapping file tools use different path semantics, which can make LLM tool
 selection and file access behavior unstable.
 
-Agent Workspace does not currently adapt the MCP Roots mode for filesystem servers. In
-particular, it does not publish per-thread MCP roots or map Agent Workspace sandbox
+Alpha does not currently adapt the MCP Roots mode for filesystem servers. In
+particular, it does not publish per-thread MCP roots or map Alpha sandbox
 paths such as `/mnt/user-data/...` to paths accepted by
-`@modelcontextprotocol/server-filesystem`. Use Agent Workspace's built-in file tools
-for Agent Workspace workspace files.
+`@modelcontextprotocol/server-filesystem`. Use Alpha's built-in file tools
+for Alpha workspace files.
 
 ## Durable Background Tasks with Ordinary MCP Tools
 
 An MCP server can expose a fast `submit` tool plus `status` and `cancel` tools
-for long-running work. Agent Workspace keeps the remote task ID in SQL and polls it
+for long-running work. Alpha keeps the remote task ID in SQL and polls it
 outside the Agent run, so the model does not have to remember or repeatedly
 send that ID.
 
@@ -264,7 +264,7 @@ mcp_tasks:
 ```
 
 Then bind exact remote tool names in `extensions_config.json`. These names are
-the server's raw names, before Agent Workspace adds any `<server_name>_` prefix:
+the server's raw names, before Alpha adds any `<server_name>_` prefix:
 
 ```json
 {
@@ -297,12 +297,12 @@ are never parsed as a task protocol:
   `running`, `input_required`, `completed`, `failed`, or `cancelled`. It may
   also return `result`, `result_artifact` (`uri` plus `mime_type`), `error`,
   `error_code`, `input_required`, and a finite positive
-  `poll_after_seconds`. Agent Workspace caps that remote scheduling hint at 24 hours.
+  `poll_after_seconds`. Alpha caps that remote scheduling hint at 24 hours.
 - `cancel_report({"task_id":"remote-123"})` is idempotent and returns the
   actual terminal status: `cancelled`, `completed`, or `failed`.
 
 For the status tool, `isError: true` means that the status call itself failed;
-Agent Workspace records a bounded snippet of its first text content block and retries
+Alpha records a bounded snippet of its first text content block and retries
 with capped exponential backoff. It does not infer that the remote task failed,
 because MCP tool errors do not distinguish transient from permanent conditions.
 A server must report a permanent remote-task failure through a normal tool
@@ -323,7 +323,7 @@ both SQLite and PostgreSQL.
 `error_code: "task_not_found"` is a permanent failure. Network and transport
 errors remain retryable with capped exponential backoff; the query API reports
 `tracking_degraded` after repeated failures. Oversized JSON results are not
-cut into invalid JSON: Agent Workspace stores a text preview, marks
+cut into invalid JSON: Alpha stores a text preview, marks
 `result_truncated`, and preserves any external `result_artifact` reference.
 
 Only submit remains in the Agent's normal tool list. Status and cancel are
@@ -335,7 +335,7 @@ runtime-internal. Query the current thread through:
 Task toolsets require `database.backend: sqlite` or `postgres`; startup fails
 instead of falling back to a synchronous submit when persistence or the task
 runtime is disabled. Restart recovery also requires the remote service to keep
-the task alive and recognize its ID after Agent Workspace reconnects. A stdio server
+the task alive and recognize its ID after Alpha reconnects. A stdio server
 must therefore persist its own tasks; multi-instance deployments should
 normally use an independently running HTTP/SSE service.
 
@@ -346,17 +346,17 @@ authentication for a task toolset. `headers_from_context` follows the same
 rule: submit is awaited inside the Agent run and carries the mapped headers,
 while status and cancel polls skip them and authenticate with the server's
 static or OAuth credentials — so `on_missing: "deny"` guards the submit but not
-those polls. Declaring both on one server logs a warning at startup. Restart Agent Workspace after changing
+those polls. Declaring both on one server logs a warning at startup. Restart Alpha after changing
 `mcp_tasks`, `task_toolsets`, `mcpInterceptors`, or any connection,
 authentication, transport, or timeout setting on a task-enabled server.
-Agent Workspace rejects task-tool reloads that no longer match the Gateway's startup
+Alpha rejects task-tool reloads that no longer match the Gateway's startup
 snapshot instead of discovering tools with new settings while the background
 poller still calls the old endpoint. Agent-facing description/routing changes
 and changes to servers without task toolsets remain hot-reloadable.
 
 ## OAuth Support (HTTP/SSE MCP Servers)
 
-For `http` and `sse` MCP servers, Agent Workspace supports OAuth token acquisition and automatic token refresh.
+For `http` and `sse` MCP servers, Alpha supports OAuth token acquisition and automatic token refresh.
 
 - Supported grants: `client_credentials`, `refresh_token`
 - Configure per-server `oauth` block in `extensions_config.json`
@@ -465,7 +465,7 @@ The caller supplies the values on each run request:
   them and use the server's static/OAuth credentials. See *Durable Background
   Tasks* above.
 
-Use `user_auth` instead when the credential belongs to a configured Agent Workspace
+Use `user_auth` instead when the credential belongs to a configured Alpha
 user rather than to the individual request.
 
 ## Custom Tool Interceptors
@@ -553,13 +553,13 @@ Deployments that previously sent `metadata.auth_token` or `config.metadata.auth_
    logs, snapshots, exports, and backups.
 
 Current history APIs hide legacy `metadata.auth_token` and `config.metadata.auth_token` values, but hiding a response does not erase
-material already retained by those systems. Restarting or upgrading Agent Workspace does
+material already retained by those systems. Restarting or upgrading Alpha does
 not rotate credentials or perform historical cleanup; operators must complete
 both actions explicitly.
 
 ## How It Works
 
-MCP servers expose tools that are automatically discovered and integrated into Agent Workspace’s agent system at runtime. Once enabled, these tools become available to agents without additional code changes.
+MCP servers expose tools that are automatically discovered and integrated into Alpha’s agent system at runtime. Once enabled, these tools become available to agents without additional code changes.
 
 ## Example Capabilities
 

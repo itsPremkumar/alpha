@@ -1,7 +1,7 @@
 """Request trace context helpers.
 
-The value stored here is Agent Workspace's request-level correlation id. It is
-separate from Langfuse's own trace id and from Agent Workspace run ids.
+The value stored here is Alpha's request-level correlation id. It is
+separate from Langfuse's own trace id and from Alpha run ids.
 
 **This ContextVar is the only source of a trace id.** Every path that reaches a
 run binds one first: the Gateway ``TraceMiddleware`` for HTTP, and

@@ -516,7 +516,7 @@ def test_create_support_bundle_writes_ai_triage_entrypoints(tmp_path, monkeypatc
             "returncode": 1,
             "stdout": "\n".join(
                 [
-                    "Agent Workspace Health Check",
+                    "Alpha Health Check",
                     "  ✗ Node.js  (v20.19.5)",
                     "      → Node.js 22+ required. Install from https://nodejs.org/",
                     "  ✗ config.yaml found",
@@ -586,8 +586,8 @@ def test_create_support_bundle_writes_ai_triage_entrypoints(tmp_path, monkeypatc
     assert "### Expected behavior" in issue_draft
     assert "### Steps to reproduce" in issue_draft
     assert "### Relevant logs" in issue_draft
-    assert "Agent Workspace Health Check" in issue_draft
-    assert "### How are you running Agent Workspace?" in issue_draft
+    assert "Alpha Health Check" in issue_draft
+    assert "### How are you running Alpha?" in issue_draft
     assert "<REQUIRED: choose Local, Docker, CI, or Other>" in issue_draft
     assert "### Operating system" in issue_draft
     assert "macOS" in issue_draft

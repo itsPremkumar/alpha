@@ -1,4 +1,4 @@
-"""A compact, standalone Agent Workspace extension exercising every contribution kind."""
+"""A compact, standalone Alpha extension exercising every contribution kind."""
 
 from __future__ import annotations
 

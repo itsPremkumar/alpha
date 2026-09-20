@@ -1,4 +1,4 @@
-"""Pluggable memory for Agent Workspace.
+"""Pluggable memory for Alpha.
 
 The shared, backend-agnostic core: the :class:`MemoryManager` contract, the
 :func:`get_memory_manager` singleton factory, and :func:`reset_memory_manager`.

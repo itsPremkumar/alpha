@@ -1,6 +1,6 @@
-"""E2B cloud sandbox provider for Agent Workspace.
+"""E2B cloud sandbox provider for Alpha.
 
-This package implements Agent Workspace's :class:`Sandbox` / :class:`SandboxProvider`
+This package implements Alpha's :class:`Sandbox` / :class:`SandboxProvider`
 contract on top of the `e2b` / `e2b_code_interpreter` cloud sandbox SDK.
 
 Configuration example (``config.yaml``)::

@@ -22,7 +22,7 @@ upgrades, and pinning conflicts with tracking latest). Instead:
   fallback (no external URL injection);
 * every archive member passes structural guards (zip-slip / symlink /
   executable-binary / size / required-skill completeness / ``SKILL.md`` parse);
-* a **content** SHA-256 over the extracted skill tree, after Agent Workspace's shared
+* a **content** SHA-256 over the extracted skill tree, after Alpha's shared
   guidance is injected, is recorded in the manifest, so a reinstall whose
   effective skill content changed is detectable/auditable even when GitHub
   re-packs identical content with different archive bytes.
@@ -30,7 +30,7 @@ upgrades, and pinning conflicts with tracking latest). Instead:
 Runtime coupling: the npm-installed ``lark-cli`` binary version is pinned in
 ``backend/Dockerfile`` (``ARG LARK_CLI_NPM_VERSION``) and
 ``docker/docker-compose*.yaml`` as a bootstrap fallback. The admin install path
-also manages a writable Agent Workspace-owned Gateway CLI under
+also manages a writable Alpha-owned Gateway CLI under
 ``.agent-workspace/integrations/lark-cli/gateway-cli`` and prefers it over the system
 PATH, so users do not need to run terminal installation commands. Reinstalling
 the integration refreshes both the managed Gateway CLI and the skill pack to the
@@ -1150,7 +1150,7 @@ def _mkdir_under_private_boundary(path: Path) -> None:
 
 
 def lark_cli_managed_gateway_dir() -> Path:
-    """Gateway-scoped Agent Workspace-managed lark-cli install root."""
+    """Gateway-scoped Alpha-managed lark-cli install root."""
     return get_paths().base_dir / "integrations" / INTEGRATION_ID / "gateway-cli"
 
 
@@ -1459,7 +1459,7 @@ def _lark_cli_managed_path() -> str | None:
 
 
 def lark_cli_env_overlay(user_id: str, *, sandbox_paths: bool = False, broker: bool = False) -> dict[str, str]:
-    """Environment overlay for lark-cli using Agent Workspace-managed credentials.
+    """Environment overlay for lark-cli using Alpha-managed credentials.
 
     The directories are per-user so a local trusted-mode login cannot bleed across
     accounts.
@@ -2100,7 +2100,7 @@ def _resolve_lark_cli_path() -> str | None:
 
 
 def _ensure_managed_gateway_lark_cli() -> LarkCliProbe:
-    """Install/update the Agent Workspace-managed Gateway lark-cli.
+    """Install/update the Alpha-managed Gateway lark-cli.
 
     This is called by the admin install endpoint so non-technical users do not
     need to install ``@larksuite/cli`` in a terminal. If npm/GitHub are not
@@ -2618,7 +2618,7 @@ def _download_lark_archive(version: str) -> Path:
 def _content_sha256(root: Path, skill_names: set[str]) -> str:
     """SHA-256 over effective installed skill contents (not archive bytes).
 
-    The caller computes this after injecting Agent Workspace's shared guidance, so the
+    The caller computes this after injecting Alpha's shared guidance, so the
     digest covers both official extracted files and the guidance users/agents
     actually read. It remains stable across GitHub re-packs of identical
     content. Paths and bytes are hashed in sorted order for determinism.
@@ -2801,9 +2801,9 @@ def _append_agent_workspace_lark_shared_guidance(root: Path) -> None:
 
 {_AGENT_WORKSPACE_LARK_SHARED_GUIDANCE_MARKER}
 
-## Agent Workspace Authorization Entry
+## Alpha Authorization Entry
 
-In Agent Workspace, if `lark-cli auth status` or a business command indicates unconfigured, not logged in, expired token, or missing user authorization:
+In Alpha, if `lark-cli auth status` or a business command indicates unconfigured, not logged in, expired token, or missing user authorization:
 
 1. Do not ask the user to run `lark-cli config init`, `lark-cli auth login`, or `lark-cli auth login --device-code` in the terminal.
 2. Reply to the user with this clickable link: [Open Lark / Feishu Authorization Settings](?settings=integrations).

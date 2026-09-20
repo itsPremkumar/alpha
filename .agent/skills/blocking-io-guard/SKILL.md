@@ -6,7 +6,7 @@ description: Ensure async-path backend code that could block the asyncio event l
 # Blocking-IO Guard Skill
 
 Help a contributor ship backend async changes together with the runtime anchor
-that lets Agent Workspace's blocking-IO CI gate actually see the new code. The dynamic
+that lets Alpha's blocking-IO CI gate actually see the new code. The dynamic
 detector only catches blocking IO on paths a test executes — this skill closes
 that gap, either for your own diff or for a repo-wide triage round.
 

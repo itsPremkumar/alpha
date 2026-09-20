@@ -2,7 +2,7 @@
 
 ``backend/Dockerfile`` copies the backend tree wholesale (``COPY backend ./backend``),
 so every path under ``backend/`` that ``.dockerignore`` does not exclude is shipped
-into the image. The runtime directories are written by a *running* Agent Workspace, not by
+into the image. The runtime directories are written by a *running* Alpha, not by
 a build or local deployment:
 
 - Exact ``.env`` files hold deployment secrets at the repository root and in
@@ -13,7 +13,7 @@ a build or local deployment:
   ``backend/Makefile`` and written by agent runs.
 
 Leaving them in the context has two consequences. Anyone who builds an image on a
-host that has run Agent Workspace bakes that state — including the JWT secret and the user
+host that has run Alpha bakes that state — including the JWT secret and the user
 database — into the image. And because the Gateway container creates some of those
 directories as root, the build client eventually cannot read them and the build
 fails outright::

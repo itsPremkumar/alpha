@@ -17,7 +17,7 @@ def project_root() -> Path:
 
 
 def runtime_home() -> Path:
-    """Return the writable Agent Workspace state directory."""
+    """Return the writable Alpha state directory."""
     if env_home := os.getenv("AGENT_WORKSPACE_HOME"):
         return Path(env_home).resolve()
     return project_root() / ".agent-workspace"

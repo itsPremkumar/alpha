@@ -1,4 +1,4 @@
-"""Agent Workspace :class:`Sandbox` adapter for an OpenSandbox sync client."""
+"""Alpha :class:`Sandbox` adapter for an OpenSandbox sync client."""
 
 from __future__ import annotations
 
@@ -77,7 +77,7 @@ def execution_stdout(execution: Any) -> str:
 
 
 def format_execution(execution: Any) -> str:
-    """Combine stdout, result text, and stderr using Agent Workspace's string contract."""
+    """Combine stdout, result text, and stderr using Alpha's string contract."""
     output = execution_stdout(execution)
     result = _join_event_text(item.text for item in getattr(execution, "result", []) if getattr(item, "text", None) is not None)
     output = _append_output(output, result)

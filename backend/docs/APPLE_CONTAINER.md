@@ -1,10 +1,10 @@
 # Apple Container Support
 
-Agent Workspace now supports Apple Container as the preferred container runtime on macOS, with automatic fallback to Docker.
+Alpha now supports Apple Container as the preferred container runtime on macOS, with automatic fallback to Docker.
 
 ## Overview
 
-Starting with this version, Agent Workspace automatically detects and uses Apple Container on macOS when available, falling back to Docker when:
+Starting with this version, Alpha automatically detects and uses Apple Container on macOS when available, falling back to Docker when:
 - Apple Container is not installed
 - Running on non-macOS platforms
 
@@ -155,7 +155,7 @@ The project includes a unified cleanup script that handles both runtimes:
 
 **Usage:**
 ```bash
-# Clean up all Agent Workspace sandbox containers
+# Clean up all Alpha sandbox containers
 ./scripts/cleanup-containers.sh agent-workspace-sandbox
 
 # Custom prefix

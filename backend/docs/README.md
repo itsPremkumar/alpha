@@ -1,6 +1,6 @@
 # Documentation
 
-This directory contains detailed documentation for the Agent Workspace backend.
+This directory contains detailed documentation for the Alpha backend.
 
 ## Quick Links
 
@@ -35,7 +35,7 @@ This directory contains detailed documentation for the Agent Workspace backend.
 
 ## Getting Started
 
-1. **New to Agent Workspace?** Start with [SETUP.md](SETUP.md) for quick installation
+1. **New to Alpha?** Start with [SETUP.md](SETUP.md) for quick installation
 2. **Configuring the system?** See [CONFIGURATION.md](CONFIGURATION.md)
 3. **Understanding the architecture?** Read [ARCHITECTURE.md](ARCHITECTURE.md)
 4. **Building integrations?** Check [API.md](API.md) for API reference

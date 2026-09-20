@@ -28,7 +28,7 @@ def _reset_storages():
 
 @pytest.fixture
 def base_dir(tmp_path: Path) -> Path:
-    """Provide a temp directory as the Agent Workspace base_dir."""
+    """Provide a temp directory as the Alpha base_dir."""
     return tmp_path
 
 

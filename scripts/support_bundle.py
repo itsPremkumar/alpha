@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create a redacted Agent Workspace support bundle for community troubleshooting."""
+"""Create a redacted Alpha support bundle for community troubleshooting."""
 
 from __future__ import annotations
 
@@ -569,7 +569,7 @@ def render_issue_summary(triage: dict[str, Any]) -> str:
     doctor = triage["doctor"]
     versions = triage["versions"]
     lines = [
-        "## Agent Workspace support bundle summary",
+        "## Alpha support bundle summary",
         "",
         f"- Triage status: {triage['status']}",
         f"- Active signals: {', '.join(triage['active_signals']) or 'none'}",
@@ -650,7 +650,7 @@ def render_ai_issue_draft(triage: dict[str, Any], issue_summary: str, doctor: di
     lines = [
         "# AI issue draft",
         "",
-        "Use this when a coding agent or AI assistant files a Agent Workspace bug report.",
+        "Use this when a coding agent or AI assistant files a Alpha bug report.",
         "Do not file this issue until every REQUIRED placeholder is replaced.",
         "Do not invent if unknown; ask the reporter for missing reproduction facts instead.",
         "",
@@ -696,7 +696,7 @@ def render_ai_issue_draft(triage: dict[str, Any], issue_summary: str, doctor: di
         _doctor_excerpt(doctor),
         "```",
         "",
-        "### How are you running Agent Workspace?",
+        "### How are you running Alpha?",
         "",
         "<REQUIRED: choose Local, Docker, CI, or Other>",
         "",
@@ -746,7 +746,7 @@ def render_ai_issue_draft(triage: dict[str, Any], issue_summary: str, doctor: di
 def render_bundle_readme(triage: dict[str, Any]) -> str:
     """Render the support bundle README."""
     lines = [
-        "# Agent Workspace Support Bundle",
+        "# Alpha Support Bundle",
         "",
         "## Start here",
         "",
@@ -881,7 +881,7 @@ def create_support_bundle(
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     repo_root = Path(__file__).resolve().parents[1]
-    parser.add_argument("--project-root", type=Path, default=repo_root, help="Agent Workspace project root")
+    parser.add_argument("--project-root", type=Path, default=repo_root, help="Alpha project root")
     parser.add_argument("--config", type=Path, default=None, help="Path to config.yaml")
     parser.add_argument("--extensions-config", type=Path, default=None, help="Path to extensions_config.json")
     parser.add_argument("--thread-id", default=None, help="Optional thread id to include file manifests for")

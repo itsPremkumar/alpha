@@ -1,7 +1,7 @@
 """Core orchestrator additions (OpenClaw 2.0-inspired), additive-only.
 
 This package unifies 15 advanced orchestrator capabilities on top of the
-existing Agent Workspace harness modules. It never replaces existing owners:
+existing Alpha harness modules. It never replaces existing owners:
 
 - context engine -> wraps agent_workspace.context.engine.ContextEngine
 - provider routing -> builds on agent_workspace.models.fallback / failover

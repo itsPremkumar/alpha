@@ -219,7 +219,7 @@ _MIDDLEWARE_DECLARATIONS = [
     ("agent_workspace.agents.middlewares.loop_detection_middleware", "LoopDetectionMiddleware", _make_loop_detection_middleware),
     ("agent_workspace.agents.middlewares.subagent_limit_middleware", "SubagentLimitMiddleware", _make_subagent_limit_middleware),
     ("agent_workspace.agents.middlewares.terminal_response_middleware", "TerminalResponseMiddleware", _make_terminal_response_middleware),
-    # Agent Workspace's own subclass, not the LangChain base class re-exported into
+    # Alpha's own subclass, not the LangChain base class re-exported into
     # this module under the same import path (TodoListMiddleware).
     ("agent_workspace.agents.middlewares.todo_middleware", "TodoMiddleware", _make_todo_middleware),
     ("agent_workspace.agents.middlewares.token_budget_middleware", "TokenBudgetMiddleware", _make_token_budget_middleware),

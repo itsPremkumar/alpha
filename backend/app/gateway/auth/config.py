@@ -1,4 +1,4 @@
-"""Authentication configuration for Agent Workspace."""
+"""Authentication configuration for Alpha."""
 
 import logging
 import os

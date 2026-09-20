@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Agent Workspace backend provides comprehensive file upload capabilities, supporting multi-file uploads and optional automated conversion of Office documents and PDFs into Markdown.
+The Alpha backend provides comprehensive file upload capabilities, supporting multi-file uploads and optional automated conversion of Office documents and PDFs into Markdown.
 
 ## Feature Highlights
 

@@ -1,4 +1,4 @@
-"""Persistent Continual Harness State for Agent Workspace (inspired by Prime Agent).
+"""Persistent Continual Harness State for Alpha (inspired by Prime Agent).
 
 The state model records supplemental prompt notes, memories, skill descriptors,
 and reusable subagent configurations in session-local and global stores.

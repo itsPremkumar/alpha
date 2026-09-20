@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 def _default_local_base_dir() -> Path:
-    """Return the caller project's writable Agent Workspace state directory."""
+    """Return the caller project's writable Alpha state directory."""
     return runtime_home()
 
 
@@ -101,7 +101,7 @@ def join_host_path(base: str, *parts: str) -> str:
 
 class Paths:
     """
-    Centralized path configuration for Agent Workspace application data.
+    Centralized path configuration for Alpha application data.
 
     Directory layout (host side):
         {base_dir}/

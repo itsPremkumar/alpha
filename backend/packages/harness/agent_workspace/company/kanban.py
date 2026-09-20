@@ -1,4 +1,4 @@
-"""Native Autonomous Kanban Engine & Audit Activity Logging for Agent Workspace Organizations."""
+"""Native Autonomous Kanban Engine & Audit Activity Logging for Alpha Organizations."""
 
 from __future__ import annotations
 

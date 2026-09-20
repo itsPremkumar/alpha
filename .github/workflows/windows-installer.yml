@@ -1,6 +1,6 @@
 name: Windows Desktop Installer
 
-# Builds the self-contained Agent Workspace Windows installer (NSIS .exe) on a
+# Builds the self-contained Alpha Windows installer (NSIS .exe) on a
 # clean runner and publishes it. The bundle ships its own portable Node and uv
 # (see electron/scripts/fetch-runtime.mjs), so end users need nothing
 # pre-installed.

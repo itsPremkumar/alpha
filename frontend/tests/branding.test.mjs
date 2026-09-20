@@ -58,8 +58,8 @@ test("chat history storage key, content and export identity work properly", (t) 
   const fixture = {
     app: "agent-workspace-chat-history",
     version: 1,
-    threads: [{ thread_id: "agent-workspace-thread", title: "Agent Workspace conversation" }],
-    messages: { "agent-workspace-thread": [{ id: "agent-workspace-message", role: "assistant", content: "Agent Workspace saved message" }] },
+    threads: [{ thread_id: "agent-workspace-thread", title: "Alpha conversation" }],
+    messages: { "agent-workspace-thread": [{ id: "agent-workspace-message", role: "assistant", content: "Alpha saved message" }] },
     meta: { "agent-workspace-thread": { botName: "lead_agent", goal: null } },
   };
   storage.set("agent_workspace.chatstore.v1", JSON.stringify(fixture));

@@ -1,4 +1,4 @@
-# Agent Workspace Helm chart values
+# Alpha Helm chart values
 #
 # Copy to my-values.yaml, edit, and install with:
 #   helm install agent-workspace deploy/helm/agent-workspace -n agent-workspace --create-namespace -f my-values.yaml
@@ -6,7 +6,7 @@
 # -- Target namespace (also used as the K8s sandbox namespace for provisioner-spawned Pods).
 namespace: agent-workspace
 
-# -- Image registry & tag for the three Agent Workspace images you build+push.
+# -- Image registry & tag for the three Alpha images you build+push.
 #    Required: set `registry` to your registry (e.g. ghcr.io/yourorg).
 image:
   registry: ""              # REQUIRED, e.g. ghcr.io/yourorg
@@ -246,7 +246,7 @@ ingress:
     secretName: ""
     # hosts: []   # defaults to [ingress.host]
 
-# -- Agent Workspace config.yaml content. Secrets MUST stay as $VAR references — never
+# -- Alpha config.yaml content. Secrets MUST stay as $VAR references — never
 #    inline literal secret values here. The default enables provisioner sandbox.
 config: |
   config_version: 45
@@ -392,7 +392,7 @@ config: |
       group: bash
       use: agent_workspace.sandbox.tools:bash_tool
 
-# -- Initial Agent Workspace extensions_config.json content (MCP servers + skill
+# -- Initial Alpha extensions_config.json content (MCP servers + skill
 #    state). The Gateway copies this ConfigMap seed into its writable home
 #    volume only when no runtime file exists. With persistence enabled, API
 #    updates and the original seed survive pod replacement and Helm upgrades;

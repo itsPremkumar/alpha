@@ -2,12 +2,12 @@
 
 MiniMax's OpenAI-compatible chat completions API can return structured
 ``reasoning_details`` when ``extra_body.reasoning_split=true`` is enabled.
-``langchain_openai.ChatOpenAI`` currently ignores that field, so Agent Workspace's
+``langchain_openai.ChatOpenAI`` currently ignores that field, so Alpha's
 frontend never receives reasoning content in the shape it expects.
 
 This adapter preserves ``reasoning_split`` in the request payload and maps the
 provider-specific reasoning field into ``additional_kwargs.reasoning_content``,
-which Agent Workspace already understands.
+which Alpha already understands.
 """
 
 from __future__ import annotations
@@ -121,7 +121,7 @@ class PatchedChatMiniMax(ChatOpenAI):
     def _strip_user_message_names(payload: dict) -> None:
         """Drop the per-message ``name`` field from user-role messages.
 
-        Agent Workspace middlewares tag user messages with internal provenance names
+        Alpha middlewares tag user messages with internal provenance names
         (``user-input``, ``summary``, ``loop_warning``, ...). ``langchain_openai``
         serializes those into the OpenAI-compatible request, but MiniMax requires
         every user-role ``name`` to be identical and otherwise rejects the request

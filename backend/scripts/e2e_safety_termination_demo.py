@@ -1,4 +1,4 @@
-"""End-to-end demo: SafetyFinishReasonMiddleware on the real Agent Workspace lead-agent.
+"""End-to-end demo: SafetyFinishReasonMiddleware on the real Alpha lead-agent.
 
 What it proves
 --------------

@@ -1,4 +1,4 @@
-"""Logging setup helpers for Agent Workspace."""
+"""Logging setup helpers for Alpha."""
 
 from __future__ import annotations
 
@@ -84,7 +84,7 @@ def _trace_formatter(format_name: str | None) -> logging.Formatter:
 
 
 def configure_logging(config: object) -> None:
-    """Configure Agent Workspace logging from an AppConfig-like object.
+    """Configure Alpha logging from an AppConfig-like object.
 
     With logging enhancement disabled this preserves the previous
     ``basicConfig + apply_logging_level`` behavior. With enhancement enabled,

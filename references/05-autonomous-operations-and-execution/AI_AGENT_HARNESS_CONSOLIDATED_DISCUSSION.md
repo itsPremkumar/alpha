@@ -4,7 +4,7 @@
 
 **Current project:** `github.com/itsPremkumar/agent-workspace-desktop`
 
-**Base:** ByteDance Agent Workspace / Agent Workspace 2.x
+**Base:** ByteDance Alpha / Alpha 2.x
 
 **Date:** 2026-09-16
 
@@ -86,7 +86,7 @@ The harness should be capable of both:
 
 # 3. Base Architecture Direction
 
-The project is based on Agent Workspace because it provides useful primitives for long-running agents, including:
+The project is based on Alpha because it provides useful primitives for long-running agents, including:
 
 - subagents
 - skills
@@ -2607,7 +2607,7 @@ The system can improve behavior without modifying model weights.
 
 ---
 
-## Agent Workspace
+## Alpha
 
 Relevant as the project foundation for:
 

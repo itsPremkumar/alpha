@@ -24,7 +24,7 @@ host that does not serve it.
 ``Permissions-Policy`` deliberately leaves ``microphone`` at its default:
 the frontend voice-input uses browser speech recognition, which needs a
 microphone grant. Only ``camera`` and ``geolocation`` are disabled, which no
-Agent Workspace surface uses.
+Alpha surface uses.
 """
 
 from __future__ import annotations

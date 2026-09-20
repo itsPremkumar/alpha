@@ -1,4 +1,4 @@
-"""Bot Mode and Autonomous Persona Engine for Agent Workspace."""
+"""Bot Mode and Autonomous Persona Engine for Alpha."""
 
 from agent_workspace.bots.epoch import CapabilityEpochManager
 from agent_workspace.bots.events import get_org_event_store, log_org_event, query_org_events

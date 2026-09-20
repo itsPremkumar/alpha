@@ -26,7 +26,7 @@ _REMOVED_CUSTOM_HTTP_FIELDS = frozenset(
 
 @dataclass(frozen=True, slots=True)
 class OpenVikingConfig:
-    """Credential-bound connection settings and existing Agent Workspace policy."""
+    """Credential-bound connection settings and existing Alpha policy."""
 
     base_url: str
     storage_path: str

@@ -1,6 +1,6 @@
 # Alpha Gateway & Agent Harness Backend
 
-Agent Workspace is a LangGraph-based AI super agent with sandbox execution, persistent memory, and extensible tool integration. The backend enables AI agents to execute code, browse the web, manage files, delegate tasks to subagents, and retain context across conversations - all in isolated, per-thread environments.
+Alpha is a LangGraph-based AI super agent with sandbox execution, persistent memory, and extensible tool integration. The backend enables AI agents to execute code, browse the web, manage files, delegate tasks to subagents, and retain context across conversations - all in isolated, per-thread environments.
 
 ---
 
@@ -134,7 +134,7 @@ FastAPI application providing REST endpoints for frontend integration:
 | `GET /api/threads/{id}/runs/{run_id}/events` | Debug/audit events for one run; filter `event_types=context:memory` for effective memory identity |
 | `POST /api/threads/{id}/uploads` | Upload files (auto-converts PDF/PPT/Excel/Word to Markdown, rejects directory paths, auto-renames duplicate filenames in one request) |
 | `GET /api/threads/{id}/uploads/list` | List uploaded files |
-| `DELETE /api/threads/{id}` | Delete Agent Workspace-managed local thread data after LangGraph thread deletion; unexpected failures are logged server-side and return a generic 500 detail |
+| `DELETE /api/threads/{id}` | Delete Alpha-managed local thread data after LangGraph thread deletion; unexpected failures are logged server-side and return a generic 500 detail |
 | `GET /api/threads/{id}/artifacts/{path}` | Serve generated artifacts |
 
 ### IM Channels
@@ -143,7 +143,7 @@ The IM bridge supports Feishu, Slack, and Telegram. Slack and Telegram still use
 
 Discord registers each typing-indicator loop before inbound message handling yields and refuses to start new typing work after the channel stops. Typing tasks are owned by the dedicated Discord event loop, so normal shutdown schedules bounded cancellation, awaiting, and map cleanup on that loop before closing the client. The Discord worker also drains the tasks in its `finally` block while its loop is still usable, covering disconnect and exception exits; if `stop()` encounters an already-stopped foreign loop, it never awaits those loop-bound tasks from the main loop. This serializes registration and cleanup across the main and Discord threads while preventing shutdown hangs and cross-loop `RuntimeError`s.
 
-For Feishu card updates, Agent Workspace stores the running card's `message_id` per inbound message and patches that same card until the run finishes, preserving the existing `OK` / `DONE` reaction flow. When a follow-up arrives inside an existing Feishu topic while another turn is still running, the later message now waits on the mapped Agent Workspace `thread_id`, receives a queued/running card on that exact source message, and keeps a compact source-message blockquote in subsequent patches so rapid consecutive questions remain distinguishable.
+For Feishu card updates, Alpha stores the running card's `message_id` per inbound message and patches that same card until the run finishes, preserving the existing `OK` / `DONE` reaction flow. When a follow-up arrives inside an existing Feishu topic while another turn is still running, the later message now waits on the mapped Alpha `thread_id`, receives a queued/running card on that exact source message, and keeps a compact source-message blockquote in subsequent patches so rapid consecutive questions remain distinguishable.
 
 ---
 
@@ -292,12 +292,12 @@ uv run langgraph dev --allow-blocking
 
 Run it from `backend/` so the CLI discovers `langgraph.json`. The in-memory
 server is intended for development and testing, not production deployment. The
-flag permits Agent Workspace's synchronous configuration and graph-factory setup
+flag permits Alpha's synchronous configuration and graph-factory setup
 during local Studio requests; it is not a production-server setting. Its local
 Studio authentication and registered graph discovery are handled automatically;
 no custom connection headers are required. Assistant ownership/provenance is
 stamped by the server, and normal assistant-version selection remains available.
-Before the locked local runtime loads its persisted development store, Agent Workspace
+Before the locked local runtime loads its persisted development store, Alpha
 repairs legacy assistant rows and version history so older metadata cannot
 reactivate server-only privileges or be discarded by runtime startup cleanup.
 Run `uv sync` after dependency changes; this compatibility path requires the
@@ -327,7 +327,7 @@ Key sections:
 
 Provider note:
 - `models[*].use` references provider classes by module path (for example `langchain_openai:ChatOpenAI`).
-- If a provider module is missing, Agent Workspace now returns an actionable error with install guidance (for example `uv add langchain-google-genai`).
+- If a provider module is missing, Alpha now returns an actionable error with install guidance (for example `uv add langchain-google-genai`).
 
 ### Extensions Configuration (`extensions_config.json`)
 
@@ -397,7 +397,7 @@ deferred schemas before the model call.
 
 ### LangSmith Tracing
 
-Agent Workspace has built-in [LangSmith](https://smith.langchain.com) integration for observability. When enabled, all LLM calls, agent runs, tool executions, and middleware processing are traced and visible in the LangSmith dashboard.
+Alpha has built-in [LangSmith](https://smith.langchain.com) integration for observability. When enabled, all LLM calls, agent runs, tool executions, and middleware processing are traced and visible in the LangSmith dashboard.
 
 **Setup:**
 
@@ -415,7 +415,7 @@ LANGSMITH_PROJECT=xxx
 
 ### Langfuse Tracing
 
-Agent Workspace also supports [Langfuse](https://langfuse.com) observability for LangChain-compatible runs.
+Alpha also supports [Langfuse](https://langfuse.com) observability for LangChain-compatible runs.
 
 Add the following to your `.env` file:
 
@@ -430,9 +430,9 @@ If you are using a self-hosted Langfuse deployment, set `LANGFUSE_BASE_URL` to y
 
 ### Dual Provider Behavior
 
-If both LangSmith and Langfuse are enabled, Agent Workspace initializes and attaches both callbacks so the same run data is reported to both systems.
+If both LangSmith and Langfuse are enabled, Alpha initializes and attaches both callbacks so the same run data is reported to both systems.
 
-If a provider is explicitly enabled but required credentials are missing, or the provider callback cannot be initialized, Agent Workspace raises an error when tracing is initialized during model creation instead of silently disabling tracing.
+If a provider is explicitly enabled but required credentials are missing, or the provider callback cannot be initialized, Alpha raises an error when tracing is initialized during model creation instead of silently disabling tracing.
 
 **Docker:** In `docker-compose.yaml`, tracing is disabled by default (`LANGSMITH_TRACING=false`). Set `LANGSMITH_TRACING=true` and/or `LANGFUSE_TRACING=true` in your `.env`, together with the required credentials, to enable tracing in containerized deployments.
 
@@ -460,7 +460,7 @@ restart the Gateway during an active run.
 
 ### Schema Migrations
 
-Agent Workspace's application tables (`runs`, `threads_meta`, `feedback`, `users`,
+Alpha's application tables (`runs`, `threads_meta`, `feedback`, `users`,
 `run_events`, and the `channel_*` tables) are owned by alembic. The Gateway
 runs `alembic upgrade head` automatically on startup via
 `bootstrap_schema(engine, backend=...)`, so operators do not run `alembic`

@@ -1,10 +1,10 @@
 # User Authentication and Isolation Design
 
-This document describes the design of Agent Workspace's built-in authentication and tenant isolation module. It covers browser login, OIDC/SSO, platform trust access (IM Channels and Internal Auth), API authentication, CSRF protection, per-user isolation, initial setup, password reset, and upgrade migrations.
+This document describes the design of Alpha's built-in authentication and tenant isolation module. It covers browser login, OIDC/SSO, platform trust access (IM Channels and Internal Auth), API authentication, CSRF protection, per-user isolation, initial setup, password reset, and upgrade migrations.
 
 ## Design Goals
 
-The core objective of the authentication module is to elevate Agent Workspace from a single-user local tool into a multi-tenant agent runtime, propagating authenticated user identity consistently across HTTP APIs, the LangGraph-compatible runtime, the filesystem, memory, custom agents, and feedback records.
+The core objective of the authentication module is to elevate Alpha from a single-user local tool into a multi-tenant agent runtime, propagating authenticated user identity consistently across HTTP APIs, the LangGraph-compatible runtime, the filesystem, memory, custom agents, and feedback records.
 
 Design constraints:
 
@@ -138,7 +138,7 @@ All other endpoints require an `access_token` cookie. Requests with invalid or e
 
 ## CSRF Protection
 
-Agent Workspace enforces Double Submit Cookies:
+Alpha enforces Double Submit Cookies:
 - Server sets `csrf_token` cookie.
 - Frontend includes matching `X-CSRF-Token` header on state-changing requests (`POST`, `PUT`, `DELETE`, `PATCH`).
 - Server validates using constant-time comparison (`secrets.compare_digest`).

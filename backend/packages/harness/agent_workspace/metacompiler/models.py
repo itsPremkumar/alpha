@@ -32,8 +32,8 @@ class AgentBlueprint:
     blueprint_id: str = field(default_factory=lambda: f"bp_{uuid.uuid4().hex[:8]}")
     generation: int = 0
     parent_id: str | None = None
-    name: str = "Agent Workspace-ASI-Seed"
-    architecture_tag: str = "Agent Workspace-ASI-v1"
+    name: str = "Alpha-ASI-Seed"
+    architecture_tag: str = "Alpha-ASI-v1"
     system_prompt_template: str = (
         "You are an autonomous ASI agent. Observe environment state, form hypotheses, "
         "verify evidence via epistemic belief graph, execute minimal high-leverage actions, "

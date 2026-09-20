@@ -1,4 +1,4 @@
-# Agent Workspace - Unified Development Environment
+# Alpha - Unified Development Environment
 
 .PHONY: help config config-upgrade check check-agent-guidance install extension-install extension-upgrade extension-list extension-enable extension-disable extension-remove setup doctor prod-check support-bundle detect-thread-boundaries detect-blocking-io dev dev-daemon start start-daemon nginx stop up down clean docker-init docker-start docker-stop docker-logs docker-logs-frontend docker-logs-gateway docker-logs-redis setup-sandbox verify checkpoint rollback guardrails context safe-exec
 
@@ -22,7 +22,7 @@ endif
 FRONTEND_PNPM = $(PYTHON) ../scripts/pnpm.py
 
 help:
-	@echo "Agent Workspace Development Commands:"
+	@echo "Alpha Development Commands:"
 	@echo "  make setup           - Interactive setup wizard (recommended for new users)"
 	@echo "                           Unattended: make setup SETUP_ARGS=--non-interactive"
 	@echo "  make doctor          - Check configuration and system requirements"

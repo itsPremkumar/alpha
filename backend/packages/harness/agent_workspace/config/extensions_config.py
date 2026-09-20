@@ -104,7 +104,7 @@ class McpTaskToolsetConfig(BaseModel):
 class McpUserScopedAuthConfig(BaseModel):
     """Per-user credential injection for a shared MCP server (HTTP/SSE transports).
 
-    Maps Agent Workspace user ids to credential header values so that one configured
+    Maps Alpha user ids to credential header values so that one configured
     MCP server can serve several users, each authenticated to the remote
     service with their own credential. The credential for the authenticated
     user is injected into every tool call by the built-in user-scoped auth
@@ -119,7 +119,7 @@ class McpUserScopedAuthConfig(BaseModel):
     header: str = Field(default="Authorization", description="HTTP header to set with the resolved user credential")
     users: dict[str, str] = Field(
         default_factory=dict,
-        description="Map of Agent Workspace user id to full credential header value (e.g. 'Bearer <token>'); values support $ENV_VAR references",
+        description="Map of Alpha user id to full credential header value (e.g. 'Bearer <token>'); values support $ENV_VAR references",
     )
     on_missing: Literal["deny", "passthrough"] = Field(
         default="deny",
@@ -216,7 +216,7 @@ class McpServerConfig(BaseModel):
     oauth: McpOAuthConfig | None = Field(default=None, description="OAuth configuration (for sse or http type)")
     user_auth: McpUserScopedAuthConfig | None = Field(
         default=None,
-        description="Per-user credential injection (for sse or http type): map Agent Workspace user ids to per-user credential header values",
+        description="Per-user credential injection (for sse or http type): map Alpha user ids to per-user credential header values",
     )
     headers_from_context: McpContextHeadersConfig | None = Field(
         default=None,

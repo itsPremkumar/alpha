@@ -363,7 +363,7 @@ def test_idle_timeout_zero_is_preserved_and_disables_reaper(monkeypatch):
 
 
 def test_create_box_passes_prefixed_sandbox_id_as_name(monkeypatch):
-    """_create_box gives BoxLite a Agent Workspace-owned name prefix."""
+    """_create_box gives BoxLite a Alpha-owned name prefix."""
     monkeypatch.setattr(
         "agent_workspace.community.boxlite.provider.get_app_config",
         lambda: _stub_config(),
@@ -392,7 +392,7 @@ def test_create_box_passes_prefixed_sandbox_id_as_name(monkeypatch):
 
 
 def test_startup_reconciliation_adopts_prefixed_existing_boxes(monkeypatch):
-    """Existing Agent Workspace-named BoxLite boxes are adopted into the warm pool."""
+    """Existing Alpha-named BoxLite boxes are adopted into the warm pool."""
     monkeypatch.setattr(
         "agent_workspace.community.boxlite.provider.get_app_config",
         lambda: _stub_config(),

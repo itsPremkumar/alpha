@@ -77,7 +77,7 @@ class MemoryCallbacks:
         """Post-LLM-call hook for host-owned observation. Default: no-op.
 
         This callback keeps the vendorable DeerMem backend independent from
-        Agent Workspace's extension API. It is invoked for both provider success and
+        Alpha's extension API. It is invoked for both provider success and
         failure, and backend callers isolate exceptions raised by an
         implementation.
         """

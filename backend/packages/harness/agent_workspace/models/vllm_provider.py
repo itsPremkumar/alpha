@@ -45,9 +45,9 @@ _CUMULATIVE_USAGE_TRACKER_IDLE_SECONDS = 60 * 60
 
 
 def _normalize_vllm_chat_template_kwargs(payload: dict[str, Any]) -> None:
-    """Map Agent Workspace's legacy ``thinking`` toggle to vLLM/Qwen's ``enable_thinking``.
+    """Map Alpha's legacy ``thinking`` toggle to vLLM/Qwen's ``enable_thinking``.
 
-    Agent Workspace originally documented ``extra_body.chat_template_kwargs.thinking``
+    Alpha originally documented ``extra_body.chat_template_kwargs.thinking``
     for vLLM, but vLLM 0.19.0's Qwen reasoning parser reads
     ``chat_template_kwargs.enable_thinking``. Normalize the payload just before
     it is sent so existing configs keep working and flash mode can truly

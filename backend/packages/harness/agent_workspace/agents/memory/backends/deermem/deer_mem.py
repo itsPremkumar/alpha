@@ -1,6 +1,6 @@
 """DeerMem -- the default :class:`MemoryManager` backend (self-contained).
 
-DeerMem wraps the Agent Workspace memory machinery (the five ``core/`` modules:
+DeerMem wraps the Alpha memory machinery (the five ``core/`` modules:
 storage / queue / updater / prompt / message_processing) behind the
 backend-neutral :class:`~agent_workspace.agents.memory.manager.MemoryManager`
 contract. DeerMem owns its storage / queue / updater as ``PrivateAttr`` dependencies
@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 
 
 def _resolve_agent_name(agent_name: str | None) -> str:
-    """Return Agent Workspace's case-insensitive canonical agent identifier."""
+    """Return Alpha's case-insensitive canonical agent identifier."""
     return agent_name.lower() if agent_name is not None else DEFAULT_AGENT_BUCKET
 
 

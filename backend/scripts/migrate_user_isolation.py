@@ -268,7 +268,7 @@ def _build_owner_map_from_db(paths: Paths) -> dict[str, str]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Migrate Agent Workspace data to per-user layout")
+    parser = argparse.ArgumentParser(description="Migrate Alpha data to per-user layout")
     parser.add_argument("--dry-run", action="store_true", help="Log actions without making changes")
     parser.add_argument(
         "--user-id",

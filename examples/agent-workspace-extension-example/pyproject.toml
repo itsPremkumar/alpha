@@ -1,7 +1,7 @@
 [project]
 name = "agent-workspace-extension-example"
 version = "0.1.0"
-description = "A compact standalone example covering every Agent Workspace extension contribution kind"
+description = "A compact standalone example covering every Alpha extension contribution kind"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

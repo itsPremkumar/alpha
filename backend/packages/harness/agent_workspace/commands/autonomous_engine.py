@@ -1,4 +1,4 @@
-"""Autonomous Command Lifecycle Engine for Agent Workspace.
+"""Autonomous Command Lifecycle Engine for Alpha.
 
 Automatically identifies the exact required slash command based on:
 1. User intent & semantic task requirements

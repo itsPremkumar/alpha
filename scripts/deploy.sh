@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# deploy.sh - Build, start, or stop Agent Workspace production services
+# deploy.sh - Build, start, or stop Alpha production services
 #
 # Commands:
 #   deploy.sh                    — build + start
@@ -324,7 +324,7 @@ fi
 
 if [ "$CMD" = "build" ]; then
     echo "=========================================="
-    echo "  Agent Workspace — Building Images"
+    echo "  Alpha — Building Images"
     echo "=========================================="
     echo ""
 
@@ -342,7 +342,7 @@ fi
 # ── Banner ────────────────────────────────────────────────────────────────────
 
 echo "=========================================="
-echo "  Agent Workspace Production Deployment"
+echo "  Alpha Production Deployment"
 echo "=========================================="
 echo ""
 
@@ -392,7 +392,7 @@ echo ""
 # ── Start / Up ───────────────────────────────────────────────────────────────
 
 report_startup_failure() {
-    echo -e "${RED}✗ Agent Workspace services failed to become ready.${NC}" >&2
+    echo -e "${RED}✗ Alpha services failed to become ready.${NC}" >&2
     echo '  If Docker Compose reports "unknown flag: --wait", upgrade to a version that' >&2
     echo '  supports `docker compose up --wait`.' >&2
     echo "  Container status:" >&2
@@ -423,7 +423,7 @@ fi
 
 echo ""
 echo "=========================================="
-echo "  Agent Workspace is running!"
+echo "  Alpha is running!"
 echo "=========================================="
 echo ""
 RESOLVED_PORT="$(read_dotenv_value PORT)"

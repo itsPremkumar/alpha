@@ -549,7 +549,7 @@ def merge_run_context_overrides(config: dict[str, Any], context: Mapping[str, An
 
 
 async def resolve_trusted_internal_owner_for_attribution(request: Request, owner_user_id: str | None) -> Any | None:
-    """Resolve the Agent Workspace user used only for trusted internal attribution."""
+    """Resolve the Alpha user used only for trusted internal attribution."""
 
     if not owner_user_id:
         return None
@@ -1456,7 +1456,7 @@ async def start_run(
         config = build_run_config(thread_id, body.config, run_metadata, assistant_id=body.assistant_id)
         await apply_checkpoint_to_run_config(config, body=body, thread_id=thread_id, request=request)
 
-        # Merge Agent Workspace-specific context overrides into both ``configurable`` and ``context``.
+        # Merge Alpha-specific context overrides into both ``configurable`` and ``context``.
         # The ``context`` field is a custom extension for the langgraph-compat layer
         # that carries agent configuration (model_name, thinking_enabled, etc.).
         # Only agent-relevant keys are forwarded; unknown keys (e.g. thread_id) are ignored.
@@ -1695,7 +1695,7 @@ def _mcp_task_notification_prompt(event: dict[str, Any]) -> str:
         "Explain the update clearly and concisely. Do not expose or ask for a remote task ID. "
         "When status is input_required, show the question but explain that this MCP integration "
         "cannot resume the remote task with user input yet. When tracking_degraded is true, explain "
-        "that Agent Workspace will continue retrying at a lower frequency."
+        "that Alpha will continue retrying at a lower frequency."
     )
     return f"{instruction}\n\n{payload}"
 

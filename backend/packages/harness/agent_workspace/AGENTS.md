@@ -1,6 +1,6 @@
 ### Request Trace Context (`packages/harness/agent_workspace/trace_context.py`)
 
-Agent Workspace's request-level correlation id — the `X-Trace-Id` header and the `agent_workspace_trace_id` key. Not Langfuse's trace id, not `run_id`, not the short subagent `trace_id` log label.
+Alpha's request-level correlation id — the `X-Trace-Id` header and the `agent_workspace_trace_id` key. Not Langfuse's trace id, not `run_id`, not the short subagent `trace_id` log label.
 
 **The ContextVar is the only source.** Every path that reaches a run binds one first; downstream treats the id as a plain `str`, no `if trace_id:` guards.
 
@@ -55,9 +55,9 @@ drift.
 - `stream(message, thread_id)` — subscribes to LangGraph `stream_mode=["values", "messages", "custom"]` and yields `StreamEvent`:
   - `"values"` — state snapshot (title, messages, artifacts, summary_text); `summary_text` is the current summary or `None` when absent and is forwarded on every snapshot, including unchanged summaries and resets. AI text already delivered via `messages` mode is **not** re-synthesized here to avoid duplicate deliveries; serialized `ToolMessage` entries preserve a non-`None` native `artifact`
   - `"messages-tuple"` — per-chunk update: for AI text this is a **delta** (concat per `id` to rebuild the full message); tool calls and tool results are emitted once each, and tool results preserve a non-`None` native `artifact`
-  - `"custom"` — forwarded from `StreamWriter`; Agent Workspace-built-in custom events are dual-emitted through `agent_workspace.utils.custom_events`, so `astream_events(version="v2")` consumers also receive one `on_custom_event` with `name=payload["type"]` and the unchanged payload as `data`
+  - `"custom"` — forwarded from `StreamWriter`; Alpha-built-in custom events are dual-emitted through `agent_workspace.utils.custom_events`, so `astream_events(version="v2")` consumers also receive one `on_custom_event` with `name=payload["type"]` and the unchanged payload as `data`
   - `"end"` — stream finished (carries cumulative `usage` counted once per message id)
-- **Custom-event invariant** — production Agent Workspace emitters must use `emit_custom_event` / `aemit_custom_event`, not call `StreamWriter` alone. Every built-in payload must carry a non-empty string `type`; typeless payloads remain writer-only and are intentionally absent from `astream_events`. The writer runs first and remains authoritative for Gateway, Web UI, and embedded-client compatibility; callback dispatch is best-effort and must not break that path. Async graph hooks must await the async helper rather than invoking synchronous dispatch on a running event loop.
+- **Custom-event invariant** — production Alpha emitters must use `emit_custom_event` / `aemit_custom_event`, not call `StreamWriter` alone. Every built-in payload must carry a non-empty string `type`; typeless payloads remain writer-only and are intentionally absent from `astream_events`. The writer runs first and remains authoritative for Gateway, Web UI, and embedded-client compatibility; callback dispatch is best-effort and must not break that path. Async graph hooks must await the async helper rather than invoking synchronous dispatch on a running event loop.
 - Agent created lazily via `create_agent()` + `build_middlewares()`, same as `make_lead_agent`
 - Cache graphs by effective storage `user_id` in every auth mode because prompts and middleware bind user SOUL, skills, and storage. `stream()` must materialize it before worker or isolated-loop boundaries.
 - Supports `checkpointer` parameter for state persistence across turns

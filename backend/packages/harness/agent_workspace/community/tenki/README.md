@@ -1,6 +1,6 @@
 # Tenki backend
 
-Runs each Agent Workspace sandbox as a [Tenki](https://tenki.cloud) cloud sandbox — an
+Runs each Alpha sandbox as a [Tenki](https://tenki.cloud) cloud sandbox — an
 isolated microVM created from a stock base image, with no daemon or local
 virtualization to manage. A cloud-hosted alternative to the container-based AIO
 sandbox and the local-virtualization BoxLite backend.
@@ -32,7 +32,7 @@ pip install "agent-workspace-harness[tenki]"
 ```
 
 The `tenki` package (which provides the `tenki_sandbox` module) is an optional
-Agent Workspace harness extra, not part of the default install. Get an API key from
+Alpha harness extra, not part of the default install. Get an API key from
 <https://tenki.cloud/docs/sandbox/sdk>.
 
 ## Design
@@ -66,7 +66,7 @@ mirroring `e2b_sandbox`:
 - `list_dir` / `glob` / `grep` — `find` / `grep` with busybox-portable flags (the fs API is single-level and has no content search); results filtered/capped in Python and reported back under `/mnt/user-data`.
 
 Tenki sandboxes run as the unprivileged `tenki` user with `/mnt` root-owned, so
-Agent Workspace's `/mnt/user-data` virtual prefix is remapped under the writable
+Alpha's `/mnt/user-data` virtual prefix is remapped under the writable
 `home_dir` (like `e2b_sandbox`). The provider also best-effort `sudo`-symlinks
 `/mnt/user-data` → `home_dir` at create time so agent shell commands using the
 literal `/mnt/...` path still work; if `sudo` is unavailable the file APIs keep

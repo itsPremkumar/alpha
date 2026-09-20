@@ -1,4 +1,4 @@
-"""ChannelManager — consumes inbound messages and dispatches them to the Agent Workspace agent via Gateway."""
+"""ChannelManager — consumes inbound messages and dispatches them to the Alpha agent via Gateway."""
 
 from __future__ import annotations
 
@@ -566,7 +566,7 @@ def _stream_payload_type(payload: Mapping[str, Any]) -> str:
     Two payload shapes reach this function and they name the message type in
     different places:
 
-    * The shape Agent Workspace's own gateway emits (``runtime/serialization.py``
+    * The shape Alpha's own gateway emits (``runtime/serialization.py``
       calls ``model_dump()``): ``type`` is the LangChain literal directly --
       ``"ai"`` / ``"AIMessageChunk"`` / ``"human"`` / ``"tool"`` / ``"system"``.
     * LangChain's ``to_json()`` constructor shape, which
@@ -601,7 +601,7 @@ def _is_assistant_stream_type(payload_type: str) -> bool:
     """Is this message type assistant output, i.e. displayable in an IM channel?
 
     An ALLOWLIST, deliberately.  The previous denylist ("reject anything whose
-    type contains 'tool'") published every other message type, and Agent Workspace
+    type contains 'tool'") published every other message type, and Alpha
     writes hidden model context into the ``messages`` channel as ordinary
     messages: ``DynamicContextMiddleware`` injects the ``<memory>`` block as a
     hidden ``HumanMessage`` (``type == "human"``) and rewrites the user's own
@@ -640,7 +640,7 @@ def _accumulate_stream_text(
 
     A bare ``str`` payload -- previously accepted here and buffered under the
     current message id -- carries no type information at all, so it cannot be
-    attributed to the assistant.  Nothing in Agent Workspace produces it (the gateway
+    attributed to the assistant.  Nothing in Alpha produces it (the gateway
     always serializes a ``messages-tuple`` chunk as ``[message_dict, metadata]``
     via ``runtime/serialization.py::serialize_messages_tuple``), and a runtime
     that did emit raw text deltas would emit hidden context the same way, with
@@ -786,13 +786,13 @@ def _safe_user_id_for_run(raw_user_id: str) -> str:
 
 
 def _channel_storage_user_id(msg: InboundMessage) -> str | None:
-    """Resolve the canonical Agent Workspace user id for a channel-triggered message.
+    """Resolve the canonical Alpha user id for a channel-triggered message.
 
     Single source of truth for both the agent **run identity**
     (``_resolve_run_params`` → ``run_context["user_id"]``) and the **file/artifact
     storage bucket** (``receive_file`` / ``_ingest_inbound_files`` /
     ``_prepare_artifact_delivery``), so the bucket the agent reads/writes always
-    matches where channel files are staged. Prefer the bound Agent Workspace owner,
+    matches where channel files are staged. Prefer the bound Alpha owner,
     otherwise fall back to the sanitized raw platform user id. Without that
     fallback, an unbound auth-enabled channel would run under ``safe(msg.user_id)``
     but stage files under ``get_effective_user_id()`` (the dispatcher task's unset
@@ -1005,7 +1005,7 @@ async def _ingest_inbound_files(thread_id: str, msg: InboundMessage, *, user_id:
 
 
 class ChannelManager:
-    """Core dispatcher that bridges IM channels to the Agent Workspace agent.
+    """Core dispatcher that bridges IM channels to the Alpha agent.
 
     It reads from the MessageBus inbound queue, creates/reuses threads on
     Gateway's LangGraph-compatible API, sends messages via ``runs.wait``, and publishes
@@ -1467,8 +1467,8 @@ class ChannelManager:
         configurable["checkpoint_ns"] = ""
         configurable["thread_id"] = thread_id
 
-        # ``user_id`` drives Agent Workspace-owned memory, files, and thread buckets.
-        # For browser-connected IM channels, prefer the Agent Workspace account that
+        # ``user_id`` drives Alpha-owned memory, files, and thread buckets.
+        # For browser-connected IM channels, prefer the Alpha account that
         # owns the connection. Preserve the raw platform user under
         # ``channel_user_id`` for platform-facing lookups and audits.
         run_context_identity: dict[str, Any] = {"thread_id": thread_id}
@@ -1939,7 +1939,7 @@ class ChannelManager:
             return None
         # Webhook-authenticated channels (GitHub) opt out via
         # ChannelRunPolicy.requires_bound_identity=False. Authenticity is
-        # enforced at the webhook route by HMAC, and the "sender → Agent Workspace
+        # enforced at the webhook route by HMAC, and the "sender → Alpha
         # user" binding is encoded in the agent's config.yaml ownership, not
         # in the channel-connections table — there is no per-sender
         # /connect handshake to perform.
@@ -1958,7 +1958,7 @@ class ChannelManager:
 
         # The manager is the run-creation security boundary, so it does not
         # trust mutable InboundMessage identity fields by themselves. Re-read
-        # the binding by provider identity before creating Agent Workspace threads or
+        # the binding by provider identity before creating Alpha threads or
         # runs. If the asserted identity does not match, keep only the
         # server-side connection fields as outbound routing hints.
         connection = await self._connection_repo.find_connection_by_external_identity(
@@ -2204,7 +2204,7 @@ class ChannelManager:
         client = self._get_client()
         storage_user_id = _channel_storage_user_id(msg)
 
-        # Look up the existing Agent Workspace thread, creating one if this is the
+        # Look up the existing Alpha thread, creating one if this is the
         # first message for the chat. topic_id may be None (e.g. Telegram
         # private chats) — the store handles this by using the "channel:chat_id"
         # key without a topic suffix.

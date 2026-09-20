@@ -1,4 +1,4 @@
-Yes. For your **Agent Workspace-based harness**, I would make this a first-class subsystem rather than calling it simply “self-improvement.”
+Yes. For your **Alpha-based harness**, I would make this a first-class subsystem rather than calling it simply “self-improvement.”
 
 # Recursive Self-Development Engine — RSD Engine
 
@@ -1806,7 +1806,7 @@ That is the **recursive** part.
 
 ---
 
-# 44. What I would actually build in your Agent Workspace project
+# 44. What I would actually build in your Alpha project
 
 Given your current architecture, I would add:
 
@@ -2227,7 +2227,7 @@ with:
 
 as its major internal components.
 
-That gives your Agent Workspace project a substantially more precise concept than simply calling it an "RSI agent."
+That gives your Alpha project a substantially more precise concept than simply calling it an "RSI agent."
 
 And the existing work suggests you should **combine ideas rather than copy one project**: DGM gives you recursive agent-code evolution; AlphaEvolve/FunSearch give you evaluator-driven evolutionary program search; ShinkaEvolve gives you an open-source evolutionary framework with archives/islands; Voyager gives you persistent procedural skill acquisition; and AI Scientist gives you an open-ended research/experiment/review loop. ([arXiv][1])
 

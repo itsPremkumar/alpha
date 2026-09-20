@@ -170,7 +170,7 @@ Exiting after_*:         MODEL → [13] → [11] → ... → [6] → [3] → [2]
 > The last middleware in the list executes its `after_model` **first**.
 > `ClarificationMiddleware` resides at the end of the list, ensuring it intercepts model output before all other hooks.
 
-## Comparison: True Onion vs Agent Workspace Pipeline
+## Comparison: True Onion vs Alpha Pipeline
 
 ### True Onion Model (e.g. Koa / Express)
 
@@ -214,9 +214,9 @@ sequenceDiagram
     deactivate A
 ```
 
-### Agent Workspace Pipeline Reality
+### Alpha Pipeline Reality
 
-Agent Workspace is structured as a pipeline rather than a strict onion. Most middlewares implement only a single hook with no symmetrical wrapping. In multi-turn tool calling, `before_model` and `after_model` execute in a loop:
+Alpha is structured as a pipeline rather than a strict onion. Most middlewares implement only a single hook with no symmetrical wrapping. In multi-turn tool calling, `before_model` and `after_model` execute in a loop:
 
 ```mermaid
 sequenceDiagram
@@ -275,7 +275,7 @@ Hard dependencies exist in only 2 locations:
 
 ### Summary Comparison
 
-| | True Onion | Agent Workspace Pipeline |
+| | True Onion | Alpha Pipeline |
 |---|---|---|
 | Middleware Structure | Symmetrical before + after | Mostly single-phase hooks |
 | Activation Lifetime | Nested (outer spans inner) | Linear / Pipeline steps |

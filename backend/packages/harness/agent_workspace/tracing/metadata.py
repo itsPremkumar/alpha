@@ -49,7 +49,7 @@ def build_langfuse_trace_metadata(
         model_name: Model name; emitted as ``model:<name>`` in ``langfuse_tags``.
         environment: Deployment env (e.g. ``"production"``); emitted as
             ``env:<value>`` in ``langfuse_tags``.
-        agent_workspace_trace_id: Optional Agent Workspace request trace id; falls back to
+        agent_workspace_trace_id: Optional Alpha request trace id; falls back to
             the current request trace context when omitted. Always emitted --
             it is what ties a Langfuse trace back to the log lines and the
             ``X-Trace-Id`` the same request returned.

@@ -2335,7 +2335,7 @@ ADVANCED RSI
 □ Meta-evolution
 ```
 
-For your **Agent Workspace-based harness**, this is the direction I would take: treat **RSI as a separate Evolution OS layer above the normal agent runtime**, with the normal agents doing work and the RSI subsystem continuously measuring, experimenting with, and safely promoting better versions. OpenHands' separation of agent/runtime/workspace and its persistence model provide useful architectural patterns, while DGM, AlphaEvolve and Shinka provide the strongest directly relevant ideas for the evolutionary layer. ([GitHub][2])
+For your **Alpha-based harness**, this is the direction I would take: treat **RSI as a separate Evolution OS layer above the normal agent runtime**, with the normal agents doing work and the RSI subsystem continuously measuring, experimenting with, and safely promoting better versions. OpenHands' separation of agent/runtime/workspace and its persistence model provide useful architectural patterns, while DGM, AlphaEvolve and Shinka provide the strongest directly relevant ideas for the evolutionary layer. ([GitHub][2])
 
 [1]: https://arxiv.org/abs/2505.22954?utm_source=chatgpt.com "Darwin Godel Machine: Open-Ended Evolution of Self-Improving Agents"
 [2]: https://github.com/OpenHands/docs/blob/main/sdk/arch/design.mdx?utm_source=chatgpt.com "docs/sdk/arch/design.mdx at main · OpenHands/docs · GitHub"

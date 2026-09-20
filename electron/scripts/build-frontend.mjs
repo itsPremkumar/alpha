@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Build the Agent Workspace frontend as a Next.js standalone server for Electron.
+ * Build the Alpha frontend as a Next.js standalone server for Electron.
  *
  * Steps:
  *   1. Ensure frontend dependencies are installed (corepack pnpm).

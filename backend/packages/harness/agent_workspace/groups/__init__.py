@@ -1,4 +1,4 @@
-"""Multi-Agent Group Chat Engine for Agent Workspace."""
+"""Multi-Agent Group Chat Engine for Alpha."""
 
 from agent_workspace.groups.orchestration import GroupOrchestrator
 from agent_workspace.groups.quorum import Proposal, QuorumEngine

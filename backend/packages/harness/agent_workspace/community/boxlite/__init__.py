@@ -1,8 +1,8 @@
-"""BoxLite micro-VM backend for Agent Workspace sandboxes.
+"""BoxLite micro-VM backend for Alpha sandboxes.
 
 Integrates `BoxLite <https://github.com/boxlite-ai/boxlite>`_ — a daemonless,
 OCI-native micro-VM runtime (libkrun/KVM on Linux, Hypervisor.framework on
-macOS) — behind Agent Workspace's :class:`Sandbox` / :class:`SandboxProvider` contract.
+macOS) — behind Alpha's :class:`Sandbox` / :class:`SandboxProvider` contract.
 Each sandbox is a hardware-isolated VM with its own kernel that runs any OCI
 image unchanged. See https://github.com/bytedance/agent-workspace/issues/3936.
 
@@ -27,7 +27,7 @@ Install the optional runtime before selecting this provider::
     pip install "agent-workspace-harness[boxlite]"
 
 Host requirement: BoxLite boots micro-VMs, so a Linux host needs KVM (nested
-virtualization when Agent Workspace itself runs inside a cloud VM); macOS uses
+virtualization when Alpha itself runs inside a cloud VM); macOS uses
 Hypervisor.framework.
 """
 

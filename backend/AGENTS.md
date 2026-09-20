@@ -14,7 +14,7 @@ in `tests/test_workforce_intelligence.py`.
 
 ## Project Overview
 
-Agent Workspace is a LangGraph-based AI super agent system with a full-stack architecture. The backend provides a "super agent" with sandbox execution, persistent memory, subagent delegation, and extensible tool integration - all operating in per-thread isolated environments.
+Alpha is a LangGraph-based AI super agent system with a full-stack architecture. The backend provides a "super agent" with sandbox execution, persistent memory, subagent delegation, and extensible tool integration - all operating in per-thread isolated environments.
 
 **Architecture**:
 - **Gateway API** (port 8001): REST API plus embedded LangGraph-compatible agent runtime
@@ -208,7 +208,7 @@ More specific `AGENTS.md` files in backend code directories contain the subsyste
 
 ### Display Identity
 
-`packages/harness/agent_workspace/branding.py` owns the static `DISPLAY_NAME` (`Agent Workspace`) for default prompt identity, channel display messages, Gateway documentation, and selected actionable errors. It has no configuration or environment dependencies. Do not use it for package/class names, runtime folders, API keys/routes, headers, or other protocol identifiers. Custom agent names and user-managed content remain untouched. Regression coverage: `tests/test_display_branding.py` and the channel connection suites.
+`packages/harness/agent_workspace/branding.py` owns the static `DISPLAY_NAME` (`Alpha`) for default prompt identity, channel display messages, Gateway documentation, and selected actionable errors. It has no configuration or environment dependencies. Do not use it for package/class names, runtime folders, API keys/routes, headers, or other protocol identifiers. Custom agent names and user-managed content remain untouched. Regression coverage: `tests/test_display_branding.py` and the channel connection suites.
 
 ### Harness / App Split
 

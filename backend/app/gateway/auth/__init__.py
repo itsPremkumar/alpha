@@ -1,4 +1,4 @@
-"""Authentication module for Agent Workspace.
+"""Authentication module for Alpha.
 
 This module provides:
 - JWT-based authentication

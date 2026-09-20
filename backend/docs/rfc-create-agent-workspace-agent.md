@@ -25,7 +25,7 @@ make_lead_agent
 | Configuration Source | Pure parameters | YAML files | **Parameters first, config fallback** |
 | Built-in Capabilities | None | Sandbox/Memory/Skills/Subagents | **Composable on demand + admin APIs** |
 | User Interface | `graph.invoke(state)` | Internal only | **`client.chat("hello")`** |
-| Target Audience | LangChain developers | Internal harness | **All Agent Workspace users** |
+| Target Audience | LangChain developers | Internal harness | **All Alpha users** |
 
 ## 2. Design Principles
 

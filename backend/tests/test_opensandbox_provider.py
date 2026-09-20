@@ -1,7 +1,7 @@
 """Unit tests for the optional OpenSandbox community provider.
 
 The real ``opensandbox`` SDK is deliberately not required for this suite.  The
-tests pin Agent Workspace's adapter contract with a small synchronous fake: lazy
+tests pin Alpha's adapter contract with a small synchronous fake: lazy
 dependency loading, scoped lifecycle reuse, command forwarding, native file
 transport, search parsing, path guards, and terminal-session eviction.
 """

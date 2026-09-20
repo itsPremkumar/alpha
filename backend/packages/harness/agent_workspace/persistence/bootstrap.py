@@ -1,4 +1,4 @@
-"""Hybrid schema bootstrap for Agent Workspace's application tables.
+"""Hybrid schema bootstrap for Alpha's application tables.
 
 Replaces the unconditional ``Base.metadata.create_all`` at Gateway startup.
 Combines two ideas:
@@ -15,14 +15,14 @@ Three-branch decision (see ``_decide_state``)
 
 | DB state                                      | Action                                  |
 |-----------------------------------------------|-----------------------------------------|
-| empty (no Agent Workspace tables)                    | ``create_all`` + ``alembic stamp head`` |
-| legacy (Agent Workspace tables, no alembic)          | ``create_all`` (baseline tables only, as backfill) + ``stamp 0001_baseline`` + ``upgrade head`` |
+| empty (no Alpha tables)                    | ``create_all`` + ``alembic stamp head`` |
+| legacy (Alpha tables, no alembic)          | ``create_all`` (baseline tables only, as backfill) + ``stamp 0001_baseline`` + ``upgrade head`` |
 | versioned (one locally known revision)        | ``alembic upgrade head``                |
 | reviewed forward revision with local columns | warn and skip migration                 |
 | unknown, empty, or multiple revision rows     | refuse to start                         |
 
 The legacy branch handles pre-alembic databases that already have at least one
-Agent Workspace-owned table. ``create_all`` runs first because stamping at
+Alpha-owned table. ``create_all`` runs first because stamping at
 ``0001_baseline`` makes alembic skip the baseline's own ``create_table`` DDL on
 the subsequent upgrade -- so any baseline table introduced into
 ``Base.metadata`` after the user's DB was first provisioned (e.g. the
@@ -437,7 +437,7 @@ def _decide_state(state: dict[str, bool]) -> str:
 
 
 def _run_create_all_sync(sync_conn: Any) -> None:
-    """Create all Agent Workspace-owned tables on *sync_conn*."""
+    """Create all Alpha-owned tables on *sync_conn*."""
     # Import here to ensure all model classes are registered with Base.metadata.
     from agent_workspace.persistence.base import Base
 
@@ -574,7 +574,7 @@ async def _sqlite_lock(engine: AsyncEngine):
     Why not a cross-process OS file lock? It would work, but it adds a hard
     dependency on platform-specific ``fcntl`` / ``msvcrt`` calls for a
     deployment shape (multi-process SQLite) that's already discouraged for
-    Agent Workspace. The 30s ``busy_timeout`` plus idempotent revisions cover the
+    Alpha. The 30s ``busy_timeout`` plus idempotent revisions cover the
     realistic case; truly multi-instance deployments should use Postgres.
 
     Note: the 30s ``busy_timeout`` is set by the engine event hooks in

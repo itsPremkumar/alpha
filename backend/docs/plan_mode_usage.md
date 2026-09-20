@@ -1,6 +1,6 @@
 # Plan Mode with TodoList Middleware
 
-This document describes how to enable and use the Plan Mode feature with TodoList middleware in Agent Workspace 2.0.
+This document describes how to enable and use the Plan Mode feature with TodoList middleware in Alpha 2.0.
 
 ## Overview
 
@@ -179,10 +179,10 @@ config = RunnableConfig(
 
 ## Custom Prompts
 
-Agent Workspace uses custom `system_prompt` and `tool_description` for the TodoListMiddleware that match the overall Agent Workspace prompt style:
+Alpha uses custom `system_prompt` and `tool_description` for the TodoListMiddleware that match the overall Alpha prompt style:
 
 ### System Prompt Features
-- Uses XML tags (`<todo_list_system>`) for structure consistency with Agent Workspace's main prompt
+- Uses XML tags (`<todo_list_system>`) for structure consistency with Alpha's main prompt
 - Emphasizes CRITICAL rules and best practices
 - Clear "When to Use" vs "When NOT to Use" guidelines
 - Focuses on real-time updates and immediate task completion
@@ -198,7 +198,7 @@ The custom prompts are defined in `_create_todo_list_middleware()` in `/Users/he
 
 ## Notes
 
-- TodoList middleware uses LangChain's built-in `TodoListMiddleware` with **custom Agent Workspace-style prompts**
+- TodoList middleware uses LangChain's built-in `TodoListMiddleware` with **custom Alpha-style prompts**
 - Plan mode is **disabled by default** (`is_plan_mode=False`) to maintain backward compatibility
 - The middleware is positioned before `ClarificationMiddleware` to allow todo management during clarification flows
-- Custom prompts emphasize the same principles as Agent Workspace's main system prompt (clarity, action-oriented, critical rules)
+- Custom prompts emphasize the same principles as Alpha's main system prompt (clarity, action-oriented, critical rules)

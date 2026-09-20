@@ -1,6 +1,6 @@
-"""AgentWorkspaceClient — Embedded Python client for Agent Workspace agent system.
+"""AgentWorkspaceClient — Embedded Python client for Alpha agent system.
 
-Provides direct programmatic access to Agent Workspace's agent capabilities
+Provides direct programmatic access to Alpha's agent capabilities
 without requiring LangGraph Server or Gateway API processes.
 
 Usage:
@@ -143,9 +143,9 @@ class StreamEvent:
 
 
 class AgentWorkspaceClient:
-    """Embedded Python client for Agent Workspace agent system.
+    """Embedded Python client for Alpha agent system.
 
-    Provides direct programmatic access to Agent Workspace's agent capabilities
+    Provides direct programmatic access to Alpha's agent capabilities
     without requiring LangGraph Server or Gateway API processes.
 
     Note:
@@ -750,7 +750,7 @@ class AgentWorkspaceClient:
         thread_id: str | None = None,
         **kwargs,
     ) -> Generator[StreamEvent, None, None]:
-        """Stream a conversation turn with a Agent Workspace request trace context.
+        """Stream a conversation turn with a Alpha request trace context.
 
         The embedded entry point, and like every other one it binds a trace id
         for the turn so logs, Langfuse metadata, and delegated work correlate.

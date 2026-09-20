@@ -1,4 +1,4 @@
-"""Agent Workspace's extension mechanism (host side).
+"""Alpha's extension mechanism (host side).
 
 The public contracts live in the separate `agent-workspace-extension-api` package;
 this module implements loading, registration, middleware injection and the

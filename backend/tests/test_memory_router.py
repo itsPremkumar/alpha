@@ -100,7 +100,7 @@ def test_export_memory_route_preserves_source_error() -> None:
 def test_import_memory_route_returns_imported_memory() -> None:
     app = FastAPI()
     app.include_router(memory.router)
-    imported_memory = _sample_memory(facts=[{"id": "fact_import", "content": "User works on Agent Workspace.", "category": "context", "confidence": 0.87, "createdAt": "2026-03-20T00:00:00Z", "source": "manual"}])
+    imported_memory = _sample_memory(facts=[{"id": "fact_import", "content": "User works on Alpha.", "category": "context", "confidence": 0.87, "createdAt": "2026-03-20T00:00:00Z", "source": "manual"}])
 
     mock_mgr = MagicMock()
     mock_mgr.import_memory.return_value = imported_memory

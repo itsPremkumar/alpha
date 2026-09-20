@@ -1,4 +1,4 @@
-"""Collaborative Kanban Board Engine for Agent Workspace."""
+"""Collaborative Kanban Board Engine for Alpha."""
 
 from agent_workspace.kanban.bridge import KanbanGroupBridge
 from agent_workspace.kanban.dependency import DependencyGraph

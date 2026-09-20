@@ -1,6 +1,6 @@
 # BoxLite backend
 
-Runs each Agent Workspace sandbox as a [BoxLite](https://github.com/boxlite-ai/boxlite)
+Runs each Alpha sandbox as a [BoxLite](https://github.com/boxlite-ai/boxlite)
 micro-VM — a daemonless, OCI-native VM with its own kernel (libkrun/KVM on Linux,
 Hypervisor.framework on macOS). Motivated by the resource/cold-start pain with
 the default AIO Docker sandbox in
@@ -31,20 +31,20 @@ Install the optional runtime before selecting this provider:
 pip install "agent-workspace-harness[boxlite]"
 ```
 
-The `boxlite` package is an optional Agent Workspace harness extra, not part of the
+The `boxlite` package is an optional Alpha harness extra, not part of the
 default install. It is also limited to the host platforms and architectures
 where BoxLite publishes wheels and can boot micro-VMs. Unsupported development
-hosts, such as Windows, should use another sandbox provider or run Agent Workspace from
+hosts, such as Windows, should use another sandbox provider or run Alpha from
 a supported Linux/macOS environment.
 
 **Host requirement:** BoxLite boots micro-VMs, so a Linux host needs KVM — i.e.
-nested virtualization when Agent Workspace runs inside a cloud VM. macOS uses
+nested virtualization when Alpha runs inside a cloud VM. macOS uses
 Hypervisor.framework. This is the main deployment constraint to weigh vs. the
 container-based providers.
 
 ## Design
 
-Agent Workspace's `Sandbox` contract is synchronous; BoxLite's SDK is async-native and
+Alpha's `Sandbox` contract is synchronous; BoxLite's SDK is async-native and
 its box handles are event-loop-affine. The provider owns **one** private asyncio
 loop on a daemon thread and marshals every coroutine onto it via
 `run_coroutine_threadsafe`. BoxLite boxes are named deterministically from

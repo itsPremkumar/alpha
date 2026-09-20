@@ -1,4 +1,4 @@
-Agent Workspace has been deployed.
+Alpha has been deployed.
 
   namespace: {{ include "agent-workspace.namespace" . }}
 

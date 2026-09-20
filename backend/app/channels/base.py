@@ -383,8 +383,8 @@ class Channel(ABC):
 
         Args:
             msg: The inbound message, possibly containing file metadata in msg.files.
-            thread_id: The resolved Agent Workspace thread ID for sandbox path context.
-            user_id: Optional Agent Workspace storage user ID for user-scoped channel workers.
+            thread_id: The resolved Alpha thread ID for sandbox path context.
+            user_id: Optional Alpha storage user ID for user-scoped channel workers.
 
         Returns:
             The (possibly modified) InboundMessage, with text and/or files updated as needed.

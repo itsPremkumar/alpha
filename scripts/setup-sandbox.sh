@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pre-pull sandbox container image for Agent Workspace
+# Pre-pull sandbox container image for Alpha
 
 set -uo pipefail
 

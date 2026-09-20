@@ -105,7 +105,7 @@ async def _ensure_admin_user(app: FastAPI) -> None:
 
     After admin creation, migrate orphan threads from the LangGraph
     store (metadata.user_id unset) to the admin account. This is the
-    "no-auth → with-auth" upgrade path: users who ran Agent Workspace without
+    "no-auth → with-auth" upgrade path: users who ran Alpha without
     authentication have existing LangGraph thread data that needs an
     owner assigned.
         First boot (no admin exists):

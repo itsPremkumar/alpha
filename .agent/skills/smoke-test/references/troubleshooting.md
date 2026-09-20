@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-This document lists common issues encountered during Agent Workspace smoke testing and how to resolve them.
+This document lists common issues encountered during Alpha smoke testing and how to resolve them.
 
 ## Code Update Issues
 
@@ -160,7 +160,7 @@ Error: listen EADDRINUSE: address already in use :::2026
    taskkill /PID <PID> /F  # Windows
    ```
 
-3. Or stop Agent Workspace services first:
+3. Or stop Alpha services first:
    ```bash
    make stop
    ```
@@ -568,7 +568,7 @@ docker stats
 docker exec -it agent-workspace-gateway sh
 ```
 
-#### Clean Up All Agent Workspace-Related Containers and Images
+#### Clean Up All Alpha-Related Containers and Images
 ```bash
 make docker-stop
 cd docker && docker compose -p agent-workspace-dev -f docker-compose-dev.yaml down -v

@@ -186,7 +186,7 @@ dependencies = [
     # Other dependencies
 ]
 classifiers = [
-    "Framework :: Agent Workspace Extension",
+    "Framework :: Alpha Extension",
 ]
 
 [project.entry-points."agent_workspace.extensions"]

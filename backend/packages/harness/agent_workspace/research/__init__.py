@@ -1,4 +1,4 @@
-"""Research and Deep Investigation capabilities for Agent Workspace."""
+"""Research and Deep Investigation capabilities for Alpha."""
 
 from __future__ import annotations
 

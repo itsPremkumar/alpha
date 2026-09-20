@@ -1,4 +1,4 @@
-"""OpenSandbox-backed community ``SandboxProvider`` for Agent Workspace."""
+"""OpenSandbox-backed community ``SandboxProvider`` for Alpha."""
 
 from __future__ import annotations
 

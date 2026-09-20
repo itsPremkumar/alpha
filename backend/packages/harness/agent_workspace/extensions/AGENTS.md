@@ -235,7 +235,7 @@ skip its successors, and must not reach the worker's deferred-interrupt path, wh
 end an otherwise successful run as cancelled. `KeyboardInterrupt` / `SystemExit` still
 propagate.
 
-System-model-call observers cover Agent Workspace-owned model invocations that do not pass
+System-model-call observers cover Alpha-owned model invocations that do not pass
 through middleware model-call wrappers: goal evaluation, memory extraction, title
 generation, and summarization. They receive a request/result snapshot, duration, and the
 active task store when one exists; detached system work receives an isolated store. All
@@ -335,7 +335,7 @@ route handlers.
 The memory kind reaches those observers through a different shape, and the difference is
 deliberate rather than an oversight to be "aligned" away. DeerMem must stay vendorable and
 cannot import the extension API, so it reports through the `MemoryCallbacks.on_memory_llm_result`
-host hook, which the Agent Workspace-side callbacks translate into an observation and submit
+host hook, which the Alpha-side callbacks translate into an observation and submit
 without awaiting. It also guards its provider call with `BaseException` rather than
 `Exception`, which is safe precisely because that whole path runs on a worker thread — the
 debounce timer, or the executor `update_memory` offloads to — where cancelling the awaiting

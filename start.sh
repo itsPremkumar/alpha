@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Agent Workspace — Unified Super-Agent Platform launcher for Linux / macOS / WSL
+# Alpha — Unified Super-Agent Platform launcher for Linux / macOS / WSL
 # Usage: ./start.sh
 
 set -e
@@ -8,7 +8,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$REPO_ROOT"
 
 echo -e "\033[1;36m========================================================\033[0m"
-echo -e "\033[1;36m    Agent Workspace — Unified Super-Agent Platform     \033[0m"
+echo -e "\033[1;36m    Alpha — Unified Super-Agent Platform     \033[0m"
 echo -e "\033[1;36m========================================================\033[0m"
 
 # 1. Check prerequisites
@@ -53,7 +53,7 @@ node scripts/dev.mjs > "$REPO_ROOT/logs/frontend.log" 2>&1 &
 FRONTEND_PID=$!
 
 cleanup() {
-    echo -e "\nShutting down Agent Workspace..."
+    echo -e "\nShutting down Alpha..."
     kill $GATEWAY_PID $FRONTEND_PID 2>/dev/null || true
     exit 0
 }
@@ -70,7 +70,7 @@ for i in {1..45}; do
 done
 
 echo -e "\033[1;32m========================================================\033[0m"
-echo -e "\033[1;32m   Agent Workspace is LIVE! Access at: http://localhost:3000   \033[0m"
+echo -e "\033[1;32m   Alpha is LIVE! Access at: http://localhost:3000   \033[0m"
 echo -e "\033[1;32m========================================================\033[0m"
 echo "Press [Ctrl+C] to stop all services."
 

@@ -54,7 +54,7 @@ def handle_skill_create(args: str, context: Optional[Dict[str, Any]] = None) -> 
 name: {skill_name}
 description: {description}
 version: 1.0.0
-author: Autonomous Agent Workspace Agent
+author: Autonomous Alpha Agent
 tags: [custom, autonomous, workflow]
 ---
 
@@ -402,7 +402,7 @@ def handle_doctor(args: str, context: Optional[Dict[str, Any]] = None) -> Comman
         ("Sandbox Provider", f"{config.sandbox.use.split('.')[-1]}", True),
     ]
 
-    out = ["=== Agent Workspace System Doctor ==="]
+    out = ["=== Alpha System Doctor ==="]
     for name, val, ok in checks:
         icon = "[OK]" if ok else "[FAIL]"
         out.append(f"{icon} {name:<22}: {val}")

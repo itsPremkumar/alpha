@@ -142,7 +142,7 @@ async def batch_task(
     max_live_items: int | None = None,
     max_running_items: int | None = None,
 ) -> Command:
-    """Submit many independent items to Agent Workspace's explicit durable batch mode.
+    """Submit many independent items to Alpha's explicit durable batch mode.
 
     Use this only when every item is independent, idempotent or read-only, and
     can be completed without another item's output. This tool returns a batch

@@ -49,7 +49,7 @@ No single project dominates every layer.
 A particularly strong synthesis would combine:
 
 - **Hermes** — learning loop, skills, persistent memory, channels, cron, bot mode, model/provider flexibility, subagents, remote terminal backends, trajectory tooling. [1][2][3]
-- **Agent Workspace 2.0** — super-agent packaging around skills, memory, sandboxes, tools, subagents and long-horizon tasks. [4]
+- **Alpha 2.0** — super-agent packaging around skills, memory, sandboxes, tools, subagents and long-horizon tasks. [4]
 - **Deep Agents** — opinionated long-horizon harness with filesystem, subagents, context management, persistence/checkpointing and model agnosticism. [5]
 - **Letta / Letta Code** — stateful agents, persistent identity/memory, self-modification of memory/skills/prompts and harness mods, plus always-on operation. [6]
 - **Claude Code / Fable-style systems** — plan/execute coding, long-running work, multi-agent collaboration, visual verification, skills and strong tool use.
@@ -159,11 +159,11 @@ Hermes v0.21.x has a **Bot Mode** where profiles become named bots with their ow
 
 ---
 
-# 4. Agent Workspace 2.0
+# 4. Alpha 2.0
 
 **Category:** open-source super-agent harness.
 
-Agent Workspace 2.0 is a ground-up rewrite positioned as an open-source super-agent harness for research, coding and creation. It combines subagents, memory, skills, sandboxes, tools and a message gateway, and is built on LangGraph/LangChain. It is explicitly designed for tasks ranging from minutes to hours. [4]
+Alpha 2.0 is a ground-up rewrite positioned as an open-source super-agent harness for research, coding and creation. It combines subagents, memory, skills, sandboxes, tools and a message gateway, and is built on LangGraph/LangChain. It is explicitly designed for tasks ranging from minutes to hours. [4]
 
 ### Strong features
 
@@ -182,7 +182,7 @@ Agent Workspace 2.0 is a ground-up rewrite positioned as an open-source super-ag
 
 ### Architectural value
 
-Agent Workspace is especially good as a **reference for packaging a complete harness**, rather than just exposing an agent loop.
+Alpha is especially good as a **reference for packaging a complete harness**, rather than just exposing an agent loop.
 
 ```text
 Super Agent
@@ -778,7 +778,7 @@ Legend: **● strong**, **◐ present/useful**, **○ limited/not central**, **�
 | System | Long Horizon | Memory | Subagents | Skills | MCP | Computer/GUI | Sandbox | Scheduling | Eval/Trace | Self-improve | Model Agnostic |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | Hermes | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● |
-| Agent Workspace 2 | ● | ● | ● | ● | ● | ◐ | ● | ◐ | ● | ◐ | ● |
+| Alpha 2 | ● | ● | ● | ● | ● | ◐ | ● | ◐ | ● | ◐ | ● |
 | Deep Agents | ● | ◐ | ● | ● | ● | ◐ | ● | ◐ | ● | ○ | ● |
 | Letta Code | ● | ● | ◐ | ● | ◐ | ◐ | ◐ | ● | ● | ● | ● |
 | Claude Code | ● | ◐ | ● | ● | ● | ◐ | ● | ◐ | ● | ◐ | ◐ |
@@ -808,7 +808,7 @@ This table is a synthesis rather than a vendor-published benchmark.
 
 ## Best long-horizon execution
 
-**Top references:** Fable-style systems, Agent Workspace 2.0, Deep Agents, Hermes, Letta Code, OpenHands.
+**Top references:** Fable-style systems, Alpha 2.0, Deep Agents, Hermes, Letta Code, OpenHands.
 
 Why: persistent state, context management, checkpoints, tools and recovery are treated as first-class infrastructure.
 
@@ -820,7 +820,7 @@ Hermes has explicit skill/memory learning and session recall; Letta goes deeper 
 
 ## Best multi-agent collaboration
 
-**Top references:** Anthropic-style orchestrator/worker systems, Hermes Bot Mode, CrewAI, Strands, Microsoft Agent Framework, OpenAI Agents SDK, Agent Workspace.
+**Top references:** Anthropic-style orchestrator/worker systems, Hermes Bot Mode, CrewAI, Strands, Microsoft Agent Framework, OpenAI Agents SDK, Alpha.
 
 ## Best coding architecture
 
@@ -949,7 +949,7 @@ If building one high-end architecture, the recommended feature inheritance is:
 | Source | Feature to inherit |
 |---|---|
 | Hermes | Learning loop, skills from experience, memory nudges, profiles/bots, cron, channels, remote terminal backends, trajectory generation |
-| Agent Workspace | Super-agent packaging, skills + sandbox + memory + subagents |
+| Alpha | Super-agent packaging, skills + sandbox + memory + subagents |
 | Deep Agents | Filesystem-first long-horizon harness, context offloading, isolated subagents, checkpointing |
 | Letta | Stateful identity, mutable memory, skill/prompt learning, self-configuration, always-on agents |
 | Claude Code | coding loop, plan/execute separation, terminal-first work, agent teams, project rules |
@@ -1164,7 +1164,7 @@ Build this:
                        └──────► better agent
 ```
 
-The best architecture is therefore a **hybrid of Hermes + Agent Workspace + Deep Agents + Letta + Claude Code/Fable patterns + OpenAI/Codex runtime controls + Agent Zero computer environment + Strands/Mastra/CrewAI workflow primitives + SWE-agent evaluation**.
+The best architecture is therefore a **hybrid of Hermes + Alpha + Deep Agents + Letta + Claude Code/Fable patterns + OpenAI/Codex runtime controls + Agent Zero computer environment + Strands/Mastra/CrewAI workflow primitives + SWE-agent evaluation**.
 
 ---
 
@@ -1176,7 +1176,7 @@ The best architecture is therefore a **hybrid of Hermes + Agent Workspace + Deep
 
 [3] Nous Research, **Hermes Scheduled Tasks / MCP / tools documentation** — cron automation, persistent-memory jobs, MCP integration and broad tool registry. https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/cron.md
 
-[4] ByteDance, **Agent Workspace 2.0 README** — super-agent harness, skills, memory, sandboxes, tools, subagents, LangGraph/LangChain. https://github.com/bytedance/agent-workspace
+[4] ByteDance, **Alpha 2.0 README** — super-agent harness, skills, memory, sandboxes, tools, subagents, LangGraph/LangChain. https://github.com/bytedance/agent-workspace
 
 [5] LangChain, **Deep Agents README / documentation** — long-horizon harness, subagents, filesystem, context management, persistence, model agnosticism. https://github.com/langchain-ai/deepagents
 

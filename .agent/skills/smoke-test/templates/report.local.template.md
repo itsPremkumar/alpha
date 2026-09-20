@@ -1,4 +1,4 @@
-# Agent Workspace Smoke Test Report
+# Alpha Smoke Test Report
 
 **Test Date**: {{test_date}}  
 **Test Environment**: {{test_environment}}  
@@ -159,7 +159,7 @@ Commit Message: {{git_commit_message}}
 ## Recommendations and Next Steps
 
 ### If the Test Passes
-1. [ ] Visit http://localhost:2026 to start using Agent Workspace
+1. [ ] Visit http://localhost:2026 to start using Alpha
 2. [ ] Configure your preferred model if it is not configured yet
 3. [ ] Explore available skills
 4. [ ] Refer to the documentation to learn more features

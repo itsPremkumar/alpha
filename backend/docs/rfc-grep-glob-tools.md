@@ -1,8 +1,8 @@
-# [RFC] Adding `grep` and `glob` Search Tools to Agent Workspace
+# [RFC] Adding `grep` and `glob` Search Tools to Alpha
 
 ## Summary
 
-This RFC proposes adding two first-class, built-in file search tools to Agent Workspace:
+This RFC proposes adding two first-class, built-in file search tools to Alpha:
 
 - `glob`: Rapidly locate files matching a path pattern.
 - `grep`: Rapidly locate matching content patterns and summarize candidate locations.
@@ -13,7 +13,7 @@ Crucially: **These tools must be read-only, structured, bounded, and auditable n
 
 ## Problem
 
-Agent Workspace's current file tool suite covers:
+Alpha's current file tool suite covers:
 
 - `ls`: Inspect directory hierarchies
 - `read_file`: Read file contents
@@ -28,7 +28,7 @@ While sufficient for completing tasks, codebase exploration is inefficient:
 3. Falling back to `bash` loses structured output, complicating truncation, pagination, auditing, and cross-sandbox consistency.
 4. In local sandboxes where host bash is disabled for security, `bash` is unavailable, leaving the agent without efficient read-only search capabilities.
 
-Conclusion: Agent Workspace lacks a dedicated, structured **filesystem search layer**.
+Conclusion: Alpha lacks a dedicated, structured **filesystem search layer**.
 
 ## Goals
 
@@ -161,7 +161,7 @@ Reasons:
 The correct approach:
 - `glob` traverses paths using standard library routines.
 - `grep` scans files iteratively in Python.
-- Agent Workspace controls formatting, truncation, and output contracts.
+- Alpha controls formatting, truncation, and output contracts.
 
 ### B. Enforce Path Validation Rules
 

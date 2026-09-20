@@ -1,10 +1,10 @@
 # Setup Guide
 
-Quick setup instructions for Agent Workspace.
+Quick setup instructions for Alpha.
 
 ## Configuration Setup
 
-Agent Workspace uses a YAML configuration file that should be placed in the **project root directory**.
+Alpha uses a YAML configuration file that should be placed in the **project root directory**.
 
 ### Steps
 
@@ -40,7 +40,7 @@ Agent Workspace uses a YAML configuration file that should be placed in the **pr
 
 - **Location**: `config.yaml` should be in `agent-workspace/` (project root)
 - **Git**: `config.yaml` is automatically ignored by git (contains secrets)
-- **Runtime root**: Set `AGENT_WORKSPACE_PROJECT_ROOT` if Agent Workspace may start from outside the project root
+- **Runtime root**: Set `AGENT_WORKSPACE_PROJECT_ROOT` if Alpha may start from outside the project root
 - **Runtime data**: State defaults to `.agent-workspace` under the project root; set `AGENT_WORKSPACE_HOME` to move it
 - **Skills**: Skills default to `skills/` under the project root; set `AGENT_WORKSPACE_SKILLS_PATH` or `skills.path` to move them
 

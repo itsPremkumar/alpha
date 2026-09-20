@@ -1,11 +1,11 @@
-# Agent Workspace Terminal Workbench (TUI)
+# Alpha Terminal Workbench (TUI)
 
-`agent_workspace` is a terminal-native workbench for the Agent Workspace harness. It runs
+`agent_workspace` is a terminal-native workbench for the Alpha harness. It runs
 **embedded** over `AgentWorkspaceClient` — no Gateway, frontend, nginx, or Docker
 services required — while honoring the same `config.yaml`, checkpointer, skills,
-memory, MCP, and sandbox settings as the rest of Agent Workspace.
+memory, MCP, and sandbox settings as the rest of Alpha.
 
-![Agent Workspace TUI](../../docs/tui/tui-preview.svg)
+![Alpha TUI](../../docs/tui/tui-preview.svg)
 
 ## Install & run
 
@@ -36,7 +36,7 @@ Launch modes:
 If no TTY is available and no headless flag is given, `agent_workspace` prints guidance
 instead of hanging.
 
-Transparent rendering is opt-in; the solid Agent Workspace palette remains the default.
+Transparent rendering is opt-in; the solid Alpha palette remains the default.
 The transparent mode uses Textual's `ansi_default` background for the main
 screen, header, transcript, status, palette, composer, and modal surfaces while
 keeping truecolor foregrounds and selection highlights. Combine
@@ -85,7 +85,7 @@ return to the bottom with `PageDown`.
 `/help` `/new` `/clear` `/goal` `/threads` (`/switch`) `/model` `/skills` `/tools`
 `/mcp` `/memory` `/uploads` `/usage` `/config` `/quit`, plus
 `/<skill-name> task` to activate any enabled skill for the current turn (same
-semantics as elsewhere in Agent Workspace). `/model` and `/threads` open modal pickers.
+semantics as elsewhere in Alpha). `/model` and `/threads` open modal pickers.
 
 `/clear` removes the current transcript rows from the terminal display only; it keeps the active thread and persisted conversation intact. During an active run, `/new` and `/clear` ask you to wait for the run to finish instead of resetting in-flight display state.
 Use `/goal <condition>` to set the active thread goal, `/goal` to show it, and

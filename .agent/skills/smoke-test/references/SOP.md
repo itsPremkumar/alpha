@@ -1,12 +1,12 @@
-# Agent Workspace Smoke Test Standard Operating Procedure (SOP)
+# Alpha Smoke Test Standard Operating Procedure (SOP)
 
-This document describes the detailed operating steps for each phase of the Agent Workspace smoke test.
+This document describes the detailed operating steps for each phase of the Alpha smoke test.
 
 ## Phase 1: Code Update Check
 
 ### 1.1 Confirm Current Directory
 
-**Objective**: Verify that the current working directory is the Agent Workspace project root.
+**Objective**: Verify that the current working directory is the Alpha project root.
 
 **Steps**:
 1. Run `pwd` to view the current working directory
@@ -140,7 +140,7 @@ This document describes the detailed operating steps for each phase of the Agent
    lsof -i :8001  # Gateway
    ```
 
-**Success Criteria**: All ports are free, or they are occupied only by Agent Workspace-related processes.
+**Success Criteria**: All ports are free, or they are occupied only by Alpha-related processes.
 
 **Failure Handling**:
 - If a port is occupied, ask the user to stop the related process
@@ -184,7 +184,7 @@ This document describes the detailed operating steps for each phase of the Agent
 **Steps**:
 1. Run `lsof -i :2026` (macOS/Linux) or `netstat -ano | findstr :2026` (Windows)
 
-**Success Criteria**: Port 2026 is free, or it is occupied only by a Agent Workspace-related process.
+**Success Criteria**: Port 2026 is free, or it is occupied only by a Alpha-related process.
 
 **Failure Handling**:
 - If the port is occupied by another process, ask the user to stop that process or change the configuration

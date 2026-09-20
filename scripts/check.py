@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cross-platform dependency checker for Agent Workspace."""
+"""Cross-platform dependency checker for Alpha."""
 
 from __future__ import annotations
 

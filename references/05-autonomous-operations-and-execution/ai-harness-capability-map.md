@@ -227,7 +227,7 @@ Also:
 * escalation
 * resource limits
 
-Agent Workspace's newer runtime work is already moving toward persisted runs, interrupted-run hydration and explicit cancellation semantics, which is exactly the kind of infrastructure your project should have. ([GitHub][2])
+Alpha's newer runtime work is already moving toward persisted runs, interrupted-run hydration and explicit cancellation semantics, which is exactly the kind of infrastructure your project should have. ([GitHub][2])
 
 ---
 
@@ -360,7 +360,7 @@ What does the agent need RIGHT NOW?
 
 rather than dumping everything into the context window.
 
-Agent Workspace explicitly treats context engineering as a core part of its long-horizon architecture. ([GitHub][3])
+Alpha explicitly treats context engineering as a core part of its long-horizon architecture. ([GitHub][3])
 
 ---
 
@@ -639,7 +639,7 @@ delete
 sudo/admin
 ```
 
-Agent Workspace identifies sandboxed execution as one of the fundamental capabilities that separates a real long-horizon harness from a simple LLM application. ([GitHub][1])
+Alpha identifies sandboxed execution as one of the fundamental capabilities that separates a real long-horizon harness from a simple LLM application. ([GitHub][1])
 
 ---
 
@@ -821,7 +821,7 @@ network failure
 authentication failure
 ```
 
-Agent Workspace itself has configurable loop detection, and its maintainers have identified trajectory-level evaluation as necessary beyond ordinary unit testing. ([GitHub][2])
+Alpha itself has configurable loop detection, and its maintainers have identified trajectory-level evaluation as necessary beyond ordinary unit testing. ([GitHub][2])
 
 ---
 
@@ -1103,7 +1103,7 @@ Did it get stuck?
 Did it produce unnecessary work?
 ```
 
-This is directly aligned with current Agent Workspace evaluation discussions, where maintainers note that final-answer tests alone cannot capture trajectory quality. ([GitHub][8])
+This is directly aligned with current Alpha evaluation discussions, where maintainers note that final-answer tests alone cannot capture trajectory quality. ([GitHub][8])
 
 ---
 

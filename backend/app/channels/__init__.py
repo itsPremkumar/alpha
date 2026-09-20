@@ -1,7 +1,7 @@
-"""IM Channel integration for Agent Workspace.
+"""IM Channel integration for Alpha.
 
 Provides a pluggable channel system that connects external messaging platforms
-(Feishu/Lark, Slack, Telegram) to the Agent Workspace agent via the ChannelManager,
+(Feishu/Lark, Slack, Telegram) to the Alpha agent via the ChannelManager,
 which uses ``langgraph-sdk`` to communicate with Gateway's LangGraph-compatible API.
 """
 

@@ -65,7 +65,7 @@ class DiscordChannel(Channel):
 
         # Session tracking: channel_id -> Discord thread_id (in-memory, persisted to JSON).
         # Uses a dedicated JSON file separate from ChannelStore, which maps IM
-        # conversations to Agent Workspace thread IDs — a different concern.
+        # conversations to Alpha thread IDs — a different concern.
         self._active_threads: dict[str, str] = {}
         # Reverse-lookup set for O(1) thread ID checks (avoids O(n) scan of _active_threads.values()).
         self._active_thread_ids: set[str] = set()

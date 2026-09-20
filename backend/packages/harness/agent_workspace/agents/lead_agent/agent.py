@@ -343,7 +343,7 @@ def _create_todo_list_middleware(is_plan_mode: bool) -> TodoMiddleware | None:
     if not is_plan_mode:
         return None
 
-    # Custom prompts matching Agent Workspace's style
+    # Custom prompts matching Alpha's style
     system_prompt = """
 <todo_list_system>
 You have access to the `write_todos` tool to help you manage and track complex multi-step objectives.

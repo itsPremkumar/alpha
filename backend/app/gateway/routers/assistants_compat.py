@@ -50,7 +50,7 @@ def _get_default_assistant() -> AssistantResponse:
         name="lead_agent",
         config={},
         metadata={"created_by": "system"},
-        description="Agent Workspace lead agent",
+        description="Alpha lead agent",
         created_at=now,
         updated_at=now,
         version=1,

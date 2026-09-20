@@ -6,7 +6,7 @@ NOT a unit test. Run manually with DEEPSEEK_API_KEY in the environment:
 
 It:
   1. serves a tiny local HTML form,
-  2. builds an isolated Agent Workspace config (DeepSeek model + browser tool group),
+  2. builds an isolated Alpha config (DeepSeek model + browser tool group),
   3. runs a real agent turn that must navigate, type, submit, and read the result,
   4. asserts the agent-visible tool trace shows the browser loop actually ran.
 """
@@ -19,7 +19,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
-FORM_PAGE = """<!doctype html><html><head><title>Agent Workspace Browser Test</title></head>
+FORM_PAGE = """<!doctype html><html><head><title>Alpha Browser Test</title></head>
 <body>
 <h1>Sign-in demo</h1>
 <form method="GET" action="/welcome">

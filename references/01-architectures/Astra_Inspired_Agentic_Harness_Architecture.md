@@ -1,7 +1,7 @@
 # Astra-Inspired Adaptive Autonomous Agent Runtime
-## Architecture & Implementation Guide for the Agent Workspace-Based Harness
+## Architecture & Implementation Guide for the Alpha-Based Harness
 
-> **Purpose:** This document defines a production-oriented architecture for adding GPT-6 Astra-inspired agent-runtime capabilities to a Agent Workspace-based desktop harness. It is intentionally **model-agnostic**: Astra can be one model provider, while the runtime remains usable with other cloud and local models.
+> **Purpose:** This document defines a production-oriented architecture for adding GPT-6 Astra-inspired agent-runtime capabilities to a Alpha-based desktop harness. It is intentionally **model-agnostic**: Astra can be one model provider, while the runtime remains usable with other cloud and local models.
 
 ---
 
@@ -31,7 +31,7 @@ The goal is not to reproduce GPT-6 Astra itself. The goal is to reproduce the **
 
 OpenAI's current documentation says GPT-6 Astra supports asynchronous tool calling, mid-turn steering, changing reasoning effort during a conversation while preserving cache, computer use, structured outputs, programmatic tool calling, multi-agent orchestration, prompt caching, persisted reasoning, compaction and pro mode. Astra is available through the Responses API using `gpt-6-astra`. [Official model guidance](https://developers.openai.com/api/docs/guides/latest-model)
 
-The architecture below converts those capabilities into **runtime primitives** that can be implemented around Agent Workspace.
+The architecture below converts those capabilities into **runtime primitives** that can be implemented around Alpha.
 
 ---
 
@@ -2927,7 +2927,7 @@ Benchmark
 Deploy only if safe and better
 ```
 
-That is the **Astra-inspired autonomous harness direction** I recommend for your Agent Workspace-based project.
+That is the **Astra-inspired autonomous harness direction** I recommend for your Alpha-based project.
 
 ---
 
@@ -2965,7 +2965,7 @@ Astra can then be one of the highest-capability reasoning engines inside that ru
 Your strongest differentiator becomes the combination:
 
 ```text
-Agent Workspace
+Alpha
 +
 Astra-style computer use
 +
@@ -2990,4 +2990,4 @@ trajectory evaluation
 recursive self-development
 ```
 
-That is substantially more ambitious than simply adding another model to Agent Workspace.
+That is substantially more ambitious than simply adding another model to Alpha.

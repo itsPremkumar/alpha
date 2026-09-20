@@ -3,7 +3,7 @@
 not asyncio.gather, not threading) hitting the SAME users table at the same
 time, comparing SQLite vs Postgres at 2/4/8/16 workers.
 
-This tests exactly the scenario Agent Workspace's own docs describe
+This tests exactly the scenario Alpha's own docs describe
 (CONFIGURATION.md line 325): "Multi-worker deployments (GATEWAY_WORKERS > 1)
 must use the Postgres database backend... SQLite silently ignores row-level
 locks" -- multiple Gateway PROCESSES, each with its own connection, not

@@ -31,13 +31,13 @@ Cool? Cool.
 
 ---
 
-## Agent Workspace Environment (⚠️ READ THIS FIRST)
+## Alpha Environment (⚠️ READ THIS FIRST)
 
-If you are running inside a **Agent Workspace** sandboxed agent environment (you have access to the `skill_manage` tool), you MUST follow these rules for all skill file operations. These override the generic file-writing and packaging instructions below.
+If you are running inside a **Alpha** sandboxed agent environment (you have access to the `skill_manage` tool), you MUST follow these rules for all skill file operations. These override the generic file-writing and packaging instructions below.
 
 ### Why this matters
 
-In Agent Workspace, the sandbox filesystem is isolated. Files written with `write_file` land in `/mnt/user-data/outputs/`, which is a **per-thread output directory** — new chats cannot see files there. Skills must be persisted through the dedicated `skill_manage` tool so they are stored in the per-user skill directory and immediately visible to all future chats.
+In Alpha, the sandbox filesystem is isolated. Files written with `write_file` land in `/mnt/user-data/outputs/`, which is a **per-thread output directory** — new chats cannot see files there. Skills must be persisted through the dedicated `skill_manage` tool so they are stored in the per-user skill directory and immediately visible to all future chats.
 
 ### Use `skill_manage` for all skill file operations
 
@@ -54,7 +54,7 @@ In Agent Workspace, the sandbox filesystem is isolated. Files written with `writ
 
 1. **NEVER use sandbox `write_file` to create or modify skill files** (SKILL.md, scripts/, references/, assets/). These would land in `/mnt/user-data/outputs/` and be invisible to future chats. Always use `skill_manage` instead.
 
-2. **Skip the `package_skill.py` step**. In Agent Workspace, `skill_manage` already persists the skill to the correct per-user directory. No `.skill` packaging or manual install is needed. The skill is immediately available in all new chats.
+2. **Skip the `package_skill.py` step**. In Alpha, `skill_manage` already persists the skill to the correct per-user directory. No `.skill` packaging or manual install is needed. The skill is immediately available in all new chats.
 
 3. **Skip the `present_files` step for skills**. Skills are NOT deliverables — they are persisted via `skill_manage` and auto-loaded by the skill system. Only use `present_files` for non-skill outputs (eval reports, benchmarks, etc.).
 
@@ -64,7 +64,7 @@ In Agent Workspace, the sandbox filesystem is isolated. Files written with `writ
 
 6. **Updating an existing skill**: use `skill_manage(action="edit")` or `skill_manage(action="patch")`. Do NOT copy to `/tmp/` first — `skill_manage` handles the per-user storage directly.
 
-### Workflow in Agent Workspace
+### Workflow in Alpha
 
 The core loop is the same, but the persistence mechanism changes:
 

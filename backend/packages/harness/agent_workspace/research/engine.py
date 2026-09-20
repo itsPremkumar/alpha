@@ -1,4 +1,4 @@
-"""Advanced Deep Research Engine for Agent Workspace.
+"""Advanced Deep Research Engine for Alpha.
 
 Implements multi-lane search planning (5-Pass Strategy), autonomous content fetching,
 recursive gap and contradiction analysis, strict citation verification, and publication-ready
@@ -522,7 +522,7 @@ class DeepResearchEngine:
         md_lines = [
             f"# Deep Research Report: {topic}",
             "",
-            "> **Autonomous Research Brief** | Synthesized by Agent Workspace Deep Research Superintelligence",
+            "> **Autonomous Research Brief** | Synthesized by Alpha Deep Research Superintelligence",
             f"> *Date:* {datetime.now(timezone.utc).strftime('%B %d, %Y')} | *Verified Sources:* {len(sources)} | *Methodology:* 5-Pass Multi-Lane Search",
             "",
             "---",
@@ -582,7 +582,7 @@ class DeepResearchEngine:
             [
                 "",
                 "---",
-                "*Report generated automatically adhering to the strict Agent Workspace citation and empirical evidence contract.*",
+                "*Report generated automatically adhering to the strict Alpha citation and empirical evidence contract.*",
             ]
         )
 

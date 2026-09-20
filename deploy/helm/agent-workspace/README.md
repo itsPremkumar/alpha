@@ -1,6 +1,6 @@
-# Agent Workspace Helm Chart
+# Alpha Helm Chart
 
-Deploys the full Agent Workspace stack to Kubernetes: **gateway** (backend + embedded
+Deploys the full Alpha stack to Kubernetes: **gateway** (backend + embedded
 LangGraph runtime), **frontend** (Next.js), **nginx** (internal reverse proxy
 preserving the compose routing), and the **provisioner** (K8s-native sandbox
 that spawns code-execution Pods on demand).
@@ -12,7 +12,7 @@ Kubernetes resources. No existing repo files are modified.
 
 - A Kubernetes cluster (Docker Desktop K8s, OrbStack, kind, k3d, or a real cluster).
 - `kubectl` + `helm` 3.8+ installed (OCI registry support stabilized in 3.8; earlier 3.x needs `HELM_EXPERIMENTAL_OCI=1`).
-- The three Agent Workspace images — either the published ones (see "Install the
+- The three Alpha images — either the published ones (see "Install the
   published chart" below) or built locally (see step 1).
 - An Ingress controller (e.g. ingress-nginx) if you enable `ingress`.
 
@@ -123,7 +123,7 @@ The default ingress annotations permit a 100 MiB local `.skill` archive plus
 multipart framing, stream request bodies without ingress buffering, and allow
 up to 600 seconds for validation. If you replace `ingress.annotations`,
 preserve equivalent size, streaming, and response-timeout settings for your
-ingress controller or local skill uploads may fail before Agent Workspace completes
+ingress controller or local skill uploads may fail before Alpha completes
 the installation.
 
 Provide your model config under `config` (keep secrets as `$VAR` references —

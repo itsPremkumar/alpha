@@ -1,4 +1,4 @@
-# Agent Workspace - One-Click Installer for Windows (PowerShell)
+# Alpha - One-Click Installer for Windows (PowerShell)
 # Usage: .\install.ps1
 
 [CmdletBinding()]
@@ -20,7 +20,7 @@ if (-not $env:PATHEXT -or $env:PATHEXT -notlike "*.EXE*") {
 }
 
 Write-Host "`n========================================================" -ForegroundColor Cyan
-Write-Host "    Agent Workspace - Automated Setup & Installation    " -ForegroundColor Cyan
+Write-Host "    Alpha - Automated Setup & Installation    " -ForegroundColor Cyan
 Write-Host "========================================================`n" -ForegroundColor Cyan
 
 # 1. Check & locate uv
@@ -200,6 +200,6 @@ if (-not $SkipFrontend) {
 Write-Host "`n========================================================" -ForegroundColor Green
 Write-Host "           Installation Completed Successfully!          " -ForegroundColor Green
 Write-Host "========================================================" -ForegroundColor Green
-Write-Host "`nTo start Agent Workspace and open the web browser, simply run:" -ForegroundColor Cyan
+Write-Host "`nTo start Alpha and open the web browser, simply run:" -ForegroundColor Cyan
 Write-Host "   .\start.ps1" -ForegroundColor White
 Write-Host "or double-click start.bat`n" -ForegroundColor White

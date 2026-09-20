@@ -41,7 +41,7 @@ the upstream `all-in-one-sandbox` sandbox image.
 CI publishes multi-arch (`linux/amd64,linux/arm64`) images to
 `ghcr.io/<owner>/agent-workspace-lark-cli-init:<lark-cli-version>` via
 `.github/workflows/lark-cli-images.yaml` (run it with a `lark_cli_version` input,
-or push a `lark-cli-v*` tag). This is decoupled from the Agent Workspace `v*` release
+or push a `lark-cli-v*` tag). This is decoupled from the Alpha `v*` release
 because the image tracks the upstream `larksuite/cli` version.
 
 ## Wiring it into the provisioner

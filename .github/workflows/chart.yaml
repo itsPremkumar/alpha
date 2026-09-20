@@ -1,6 +1,6 @@
 name: Publish Helm Chart
 
-# Publishes the Agent Workspace Helm chart as an OCI artifact to GHCR alongside the
+# Publishes the Alpha Helm chart as an OCI artifact to GHCR alongside the
 # container images (see container.yaml). Triggers on the same `v*` tags.
 #
 # On pull requests touching the chart or config.example.yaml, `validate-chart`

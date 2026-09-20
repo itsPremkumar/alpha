@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Agent Workspace — Automated installer for Linux / macOS / WSL
+# Alpha — Automated installer for Linux / macOS / WSL
 # Usage: ./install.sh
 
 set -e
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$REPO_ROOT"
 
-echo "=== Agent Workspace Setup ==="
+echo "=== Alpha Setup ==="
 
 if ! command -v uv >/dev/null 2>&1; then
     echo "Installing uv..."

@@ -15,7 +15,7 @@ To move beyond `static_only`, evidence must include:
 
 - subject digest;
 - model ID;
-- runtime or Agent Workspace version;
+- runtime or Alpha version;
 - prompt inputs;
 - tool trace;
 - outputs;

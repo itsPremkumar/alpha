@@ -1,7 +1,7 @@
 """Bounded self-improvement delegation loop (DeepSeek-Harness-style tool-ralph).
 
 ``tool-ralph`` in DeepSeek Harness loops a workflow until a completion promise
-holds, bounded by ``maxRounds``. This tool is the Agent Workspace equivalent for
+holds, bounded by ``maxRounds``. This tool is the Alpha equivalent for
 delegated work: it runs a task through a subagent, checks the deterministic
 acceptance verdict for the completion promise, and retries — feeding each
 round's shortfall back in — until the promise holds or ``max_rounds`` is

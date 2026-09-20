@@ -31,7 +31,7 @@ Setup: Copy `config.example.yaml` to `config.yaml` in the **project root** direc
 Infrastructure fields are **restart-required**. The authoritative list lives in `packages/harness/agent_workspace/config/reload_boundary.py::STARTUP_ONLY_FIELDS` and is mirrored by the standardised `"startup-only:"` prefix on the corresponding `Field(description=...)` in `AppConfig` or an explicitly registered nested config model, so IDE hover on those fields surfaces the reason inline (no need to context-switch into this table). Currently registered: `plugins`, `database`, `checkpointer`, `run_events`, `agent_storage`, `stream_bridge`, `sandbox`, `skills.container_path`, `log_level`, `logging`, `channels`, `channel_connections`, `scheduler`, `mcp_tasks`, `subagent_runtime`, `subagent_batches`, `run_ownership`, `dedupe_storage`. Adding a new restart-required field requires updating the registry; drift is pinned by `tests/test_reload_boundary.py`. `scheduler.recursion_limit` is the exception inside that section: it is read from `get_app_config()` at each scheduled dispatch, so a YAML edit applies to the next run without restarting the poller.
 
 **Persistence backend resolution**: the unified `database` section selects the
-Gateway's LangGraph checkpointer, LangGraph Store, and Agent Workspace SQL repositories.
+Gateway's LangGraph checkpointer, LangGraph Store, and Alpha SQL repositories.
 The deprecated `checkpointer` section remains backward compatible and, when
 present, overrides `database` for the LangGraph checkpointer and Store only;
 application repositories continue to use `database`.
@@ -67,7 +67,7 @@ Extensions are optional only in the fallback *search* mode (priority 3-4 above):
 **`config.yaml`** key sections:
 - `models[]` - LLM configs with `use` class path, `supports_thinking`, `supports_vision`, provider-specific fields
 - `logging.enhance` - Log output only (`enabled`, `format`): whether log records carry a `trace_id` field, and in which format. Trace ids are issued unconditionally — the Gateway `X-Trace-Id` header and Langfuse `agent_workspace_trace_id` metadata are always present whatever this says (see the Request Trace Context section in `packages/harness/agent_workspace/AGENTS.md`); restart-required
-- vLLM reasoning models should use `agent_workspace.models.vllm_provider:VllmChatModel`; for Qwen-style parsers prefer `when_thinking_enabled.extra_body.chat_template_kwargs.enable_thinking`, and Agent Workspace will also normalize the older `thinking` alias
+- vLLM reasoning models should use `agent_workspace.models.vllm_provider:VllmChatModel`; for Qwen-style parsers prefer `when_thinking_enabled.extra_body.chat_template_kwargs.enable_thinking`, and Alpha will also normalize the older `thinking` alias
 - `tools[]` - Tool configs with `use` variable path and `group`
 - `tool_groups[]` - Logical groupings for tools
 - `agent_presets{}` - Named per-session toolset bundles (`tool_groups`, `include_mcp`, `subagent_enabled`, `disabled_tools`, `allow_update_agent`); requested per run via `agent_preset`, hot-reloaded, unknown names fall back to `standard`

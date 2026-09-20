@@ -1,4 +1,4 @@
-"""Built-in guardrail providers that ship with Agent Workspace."""
+"""Built-in guardrail providers that ship with Alpha."""
 
 from agent_workspace.guardrails.provider import GuardrailDecision, GuardrailReason, GuardrailRequest
 

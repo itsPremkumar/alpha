@@ -1,7 +1,7 @@
-"""``BoxliteProvider`` — Agent Workspace :class:`SandboxProvider` backed by BoxLite.
+"""``BoxliteProvider`` — Alpha :class:`SandboxProvider` backed by BoxLite.
 
 Integrates `BoxLite <https://github.com/boxlite-ai/boxlite>`_ — a daemonless,
-OCI-native micro-VM runtime — as a Agent Workspace sandbox backend. See
+OCI-native micro-VM runtime — as a Alpha sandbox backend. See
 https://github.com/bytedance/agent-workspace/issues/3936.
 
 Config is read off :class:`SandboxConfig` (``extra="allow"``), so BoxLite keys
@@ -44,7 +44,7 @@ T = TypeVar("T")
 DEFAULT_IMAGE = "python:3.12-slim"
 _BOX_NAME_PREFIX = "agent-workspace-boxlite-"
 _NO_ACTIVE_IDENTITY = object()
-# Agent Workspace's virtual prefixes, materialised on the box rootfs at start so the
+# Alpha's virtual prefixes, materialised on the box rootfs at start so the
 # Sandbox file APIs (which address /mnt/user-data/...) resolve natively.
 _VIRTUAL_DIRS = (
     f"{VIRTUAL_PATH_PREFIX}/workspace",
@@ -91,7 +91,7 @@ def _import_sync_boxlite_runtime():
 class _EventLoopThread:
     """A private asyncio event loop running on a dedicated daemon thread.
 
-    BoxLite is async-native and its box handles are loop-affine, while Agent Workspace's
+    BoxLite is async-native and its box handles are loop-affine, while Alpha's
     ``Sandbox`` contract is synchronous and may be invoked from arbitrary
     ``asyncio.to_thread`` workers. Owning one loop here and marshalling every
     coroutine onto it via ``run_coroutine_threadsafe`` gives a stable, thread-safe
@@ -169,7 +169,7 @@ def _run_sync_adapter[T](coro: Awaitable[T], *, timeout: float | None = None) ->
 
 
 class BoxliteProvider(WarmPoolLifecycleMixin[BoxliteBox], SandboxProvider):
-    """Run each Agent Workspace sandbox as a BoxLite micro-VM."""
+    """Run each Alpha sandbox as a BoxLite micro-VM."""
 
     uses_thread_data_mounts = False
     needs_upload_permission_adjustment = True
@@ -298,9 +298,9 @@ class BoxliteProvider(WarmPoolLifecycleMixin[BoxliteBox], SandboxProvider):
         box_to_close.close()
 
     def _reconcile_orphans(self) -> None:
-        """Adopt Agent Workspace-owned BoxLite boxes left by a previous provider/process.
+        """Adopt Alpha-owned BoxLite boxes left by a previous provider/process.
 
-        BoxLite boxes are discovered by a Agent Workspace-specific name prefix. Adopted
+        BoxLite boxes are discovered by a Alpha-specific name prefix. Adopted
         boxes enter the warm pool so the normal idle reaper can reclaim them.
         """
         try:
@@ -446,7 +446,7 @@ class BoxliteProvider(WarmPoolLifecycleMixin[BoxliteBox], SandboxProvider):
                 cpus=self._config["cpus"],
             )
             await box.start()
-            # Materialise Agent Workspace's virtual prefixes so file ops resolve natively.
+            # Materialise Alpha's virtual prefixes so file ops resolve natively.
             await box.exec("sh", "-lc", mkdir_cmd)
             return box
 

@@ -1,4 +1,4 @@
-"""Pure-argument factory for Agent Workspace agents.
+"""Pure-argument factory for Alpha agents.
 
 ``create_agent_workspace_agent`` accepts plain Python arguments — it does not load
 YAML or install process-global runtime dependencies. It is the SDK-level entry
@@ -79,7 +79,7 @@ def create_agent_workspace_agent(
     name: str = "default",
     subagent_runtime: SubagentRuntime | None = None,
 ) -> CompiledStateGraph:
-    """Create a Agent Workspace agent from plain Python arguments.
+    """Create a Alpha agent from plain Python arguments.
 
     The factory assembly itself reads no config files. Pass ``subagent_runtime``
     when direct SDK-created graphs must share an explicit native-subagent

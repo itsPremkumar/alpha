@@ -1,6 +1,6 @@
-"""Tenki cloud sandbox provider for Agent Workspace.
+"""Tenki cloud sandbox provider for Alpha.
 
-Integrates `Tenki <https://tenki.cloud>`_ cloud sandboxes behind Agent Workspace's
+Integrates `Tenki <https://tenki.cloud>`_ cloud sandboxes behind Alpha's
 :class:`Sandbox` / :class:`SandboxProvider` contract. Each sandbox is an
 isolated cloud microVM created from a stock base image; the full contract is
 implemented — ``execute_command`` plus ``read_file`` / ``write_file`` /
