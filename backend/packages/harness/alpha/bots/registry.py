@@ -29,6 +29,11 @@ _DEFAULT_BOT_DIR = "bots"
 SENTINEL_OBSERVE_ROUTINE = "sentinel-observe"
 SENTINEL_OBSERVE_SCHEDULE = "*/5 * * * *"
 
+#: The role a bot got when it was auto-provisioned WITHOUT its catalog template
+#: (the pre-fix behaviour). Used by repair_placeholder_profiles() to identify
+#: bots that need repairing without touching deliberately customised ones.
+PLACEHOLDER_ROLE = "Autonomous Specialist Teammate"
+
 
 def _default_storage_path() -> Path:
     """Resolve the bot roster file under the writable runtime home.
@@ -124,6 +129,53 @@ class BotRegistry:
                 self._apply_sentinel_defaults(bot)
                 self._bots[slug] = bot
             self._save()
+
+    def repair_placeholder_profiles(self) -> list[str]:
+        """Repair bots that were auto-provisioned with placeholder values.
+
+        Before the template-slug fix, ``get_or_create("sentinel")`` (and any
+        other canonical slug) produced a bot with a placeholder role, the
+        default department and the generic SOUL, because the template catalog
+        was only consulted when ``template=`` was passed explicitly. Those bots
+        are persisted, and ``get_or_create`` returns existing bots untouched, so
+        the bug survived the fix for anything already created.
+
+        Only bots whose role is still exactly the placeholder AND whose name
+        matches a catalog template are repaired, so a bot whose role was
+        deliberately customised is never overwritten.
+
+        Returns the names that were repaired.
+        """
+        spec_by_name = {}
+        repaired: list[str] = []
+        with self._lock:
+            bots = list(self._bots.values())
+
+        for bot in bots:
+            if bot.role != PLACEHOLDER_ROLE:
+                continue
+            spec = get_template(bot.name)
+            if spec is None:
+                continue
+            with self._lock:
+                current = self._bots.get(bot.name)
+                if current is None or current.role != PLACEHOLDER_ROLE:
+                    continue
+                current.role = spec["role"]
+                current.department = spec.get("department", current.department)
+                current.display_name = spec.get("display", current.display_name)
+                current.avatar = spec.get("avatar", current.avatar)
+                current.capabilities = list(spec.get("capabilities", current.capabilities))
+                if bot.name == "sentinel" and "Never commit on red" not in (current.soul or ""):
+                    current.soul = generate_sentinel_soul(bot.name)
+                repaired.append(bot.name)
+            spec_by_name[bot.name] = spec
+
+        if repaired:
+            if "sentinel" in repaired:
+                self._apply_sentinel_defaults(self._bots["sentinel"])
+            self._save()
+        return repaired
 
     @staticmethod
     def _apply_sentinel_defaults(bot: "BotProfile") -> None:
