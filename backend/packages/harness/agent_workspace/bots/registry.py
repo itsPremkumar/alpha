@@ -24,6 +24,11 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_BOT_DIR = "bots"
 
+#: The Sentinel's scheduled repair pass, registered on provisioning so the loop
+#: has a trigger rather than only being runnable by hand.
+SENTINEL_OBSERVE_ROUTINE = "sentinel-observe"
+SENTINEL_OBSERVE_SCHEDULE = "*/5 * * * *"
+
 
 def _default_storage_path() -> Path:
     """Resolve the bot roster file under the writable runtime home.
@@ -116,8 +121,31 @@ class BotRegistry:
                     responsibilities=list(spec.get("responsibilities", [])),
                     capabilities=list(spec.get("capabilities", [])),
                 )
+                self._apply_sentinel_defaults(bot)
                 self._bots[slug] = bot
             self._save()
+
+    @staticmethod
+    def _apply_sentinel_defaults(bot: "BotProfile") -> None:
+        """Give the Sentinel its own memory namespace and its scheduled pass.
+
+        Called whenever a Sentinel profile is created, by any path, so the bot
+        never ends up as a half-configured shell: the repair loop needs a
+        trigger, and its repair history should not mix into the shared pool.
+
+        Idempotent — re-provisioning does not duplicate the routine.
+        """
+        if bot.name != "sentinel":
+            return
+        if not bot.memory_scope:
+            bot.memory_scope = "sentinel"
+        if bot.get_routine(SENTINEL_OBSERVE_ROUTINE) is None:
+            bot.add_routine(
+                SENTINEL_OBSERVE_ROUTINE,
+                SENTINEL_OBSERVE_SCHEDULE,
+                "sentinel.run_once",
+                description="Scan for faults, repair bounded set, verify, commit",
+            )
 
     def _load(self) -> None:
         if not self.storage_path.exists():
@@ -208,6 +236,7 @@ class BotRegistry:
                 capabilities=assigned_caps,
                 succession_fallback=succession_fallback,
             )
+            self._apply_sentinel_defaults(bot)
             self._bots[key] = bot
             self._save()
             return bot
