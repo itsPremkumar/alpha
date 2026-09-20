@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Snapshot the working tree (Hermes-style checkpoint) and restore on demand.
