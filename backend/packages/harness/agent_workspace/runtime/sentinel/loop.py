@@ -33,6 +33,12 @@ KNOWN_KINDS: frozenset[str] = frozenset({
     "missing_file",
     "permission_error",
     "connectivity",
+    # A UTF-8 .ps1 with non-ASCII content but no BOM. Windows PowerShell 5.1
+    # decodes BOM-less scripts as ANSI, corrupting string literals so the file
+    # cannot be parsed at all. Registered because the fix is purely mechanical
+    # (prepend EF BB BF), is idempotent, and is verifiable by asking PowerShell
+    # to parse the file.
+    "missing_bom",
 })
 
 
