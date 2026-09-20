@@ -9,9 +9,18 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol, TypeVar
 
 logger = logging.getLogger(__name__)
+
+
+class NamedTool(Protocol):
+    """Anything with a tool name - keeps the filter reusable across tool types."""
+
+    name: str
+
+
+ToolT = TypeVar("ToolT", bound=NamedTool)
 
 
 @dataclass
@@ -137,6 +146,45 @@ DEFAULT_ROLE_RINGS: dict[str, RolePermissionRing] = {
 }
 
 ROLE_PERMISSION_RINGS = DEFAULT_ROLE_RINGS
+
+
+def filter_tools_by_role(
+    tools: list[ToolT],
+    bot_role: str | None,
+    gate: ToolPermissionGate | None = None,
+    *,
+    enabled: bool = True,
+) -> list[ToolT]:
+    """Pure, testable helper: drop tools a bot role may not execute.
+
+    Bot profiles declare a ``toolsets`` capability, but until now nothing
+    consulted it at runtime, so a Researcher could still be handed write or
+    shell tools. This enforces the declared role ring at assembly time.
+
+    Tools that merely require human approval are **kept** here: they are a
+    legitimate part of the toolset and must be surfaced so the runtime can ask,
+    rather than silently vanishing.
+
+    Args:
+        tools: Candidate tools (anything exposing ``.name``).
+        bot_role: Role/name of the acting bot. ``None``/empty means "not a bot".
+        gate: Gate instance to consult; a default one is built when omitted.
+        enabled: Master switch. When False the list is returned untouched, which
+            is the default posture until an operator opts in.
+    """
+    if not enabled or not bot_role:
+        return tools
+    resolved = gate or ToolPermissionGate()
+    kept: list[ToolT] = []
+    for tool in tools:
+        allowed, _reason, requires_approval = resolved.check_permission(bot_role, tool.name)
+        if allowed or requires_approval:
+            kept.append(tool)
+        else:
+            logger.debug(
+                "Tool %s withheld from role %s by permission ring", tool.name, bot_role
+            )
+    return kept
 
 
 class ToolPermissionGate:
