@@ -32,6 +32,12 @@ from alpha.runtime.sentinel.runner import (
     SentinelRunner,
     make_default_fix_fns,
 )
+from alpha.runtime.sentinel.scheduler import (
+    ACTIONS,
+    RoutineRun,
+    RoutineScheduler,
+    interval_seconds,
+)
 from alpha.runtime.sentinel.signals import (
     DEFAULT_SEVERITY,
     SEVERITIES,
@@ -47,6 +53,7 @@ from alpha.runtime.sentinel.signals import (
 from alpha.runtime.sentinel.verify import CheckResult, Verifier, VerifyReport
 
 __all__ = [
+    "ACTIONS",
     "AttemptRecord",
     "CheckResult",
     "Checkpoint",
@@ -56,6 +63,8 @@ __all__ = [
     "DEFAULT_SEVERITY",
     "KNOWN_KINDS",
     "LoopOutcome",
+    "RoutineRun",
+    "RoutineScheduler",
     "RunReport",
     "SEVERITIES",
     "SentinelRunner",
@@ -71,6 +80,7 @@ __all__ = [
     "commit",
     "compute_fingerprint",
     "dedupe",
+    "interval_seconds",
     "is_forbidden_path",
     "loop",
     "make_default_fix_fns",
