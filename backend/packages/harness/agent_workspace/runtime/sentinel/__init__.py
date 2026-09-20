@@ -27,6 +27,11 @@ from agent_workspace.runtime.sentinel.commit import (
     validate_paths,
 )
 from agent_workspace.runtime.sentinel.loop import KNOWN_KINDS, LoopOutcome, SentinelLoop
+from agent_workspace.runtime.sentinel.runner import (
+    RunReport,
+    SentinelRunner,
+    make_default_fix_fns,
+)
 from agent_workspace.runtime.sentinel.signals import (
     DEFAULT_SEVERITY,
     SEVERITIES,
@@ -51,7 +56,9 @@ __all__ = [
     "DEFAULT_SEVERITY",
     "KNOWN_KINDS",
     "LoopOutcome",
+    "RunReport",
     "SEVERITIES",
+    "SentinelRunner",
     "SOURCES",
     "SafetyError",
     "SentinelLoop",
@@ -66,6 +73,7 @@ __all__ = [
     "dedupe",
     "is_forbidden_path",
     "loop",
+    "make_default_fix_fns",
     "normalize_message",
     "sort_by_severity",
     "validate_paths",
