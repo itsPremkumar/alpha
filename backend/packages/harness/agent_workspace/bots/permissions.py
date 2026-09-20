@@ -197,8 +197,20 @@ class ToolPermissionGate:
 
     def _resolve_ring(self, role: str) -> RolePermissionRing:
         r = (role or "").lower().strip()
+
+        # Privileged rings must match EXACTLY. The old code used a bare substring
+        # test (`if k in r`) for every ring, so "not-an-admin",
+        # "readonly-admin-auditor" and "team-lead-backup" all resolved to an
+        # allow_all ring and were granted every tool - a privilege escalation
+        # reachable from any free-text role string.
         for k, ring in self.rings.items():
-            if k in r:
+            if ring.allow_all and k == r:
+                return ring
+
+        # Unprivileged rings may keep fuzzy matching: matching the wrong one is
+        # fail-safe here, because it can only grant a narrower set.
+        for k, ring in self.rings.items():
+            if not ring.allow_all and k in r:
                 return ring
         # Fallback default: general worker (can read, message, ask)
         return RolePermissionRing(
