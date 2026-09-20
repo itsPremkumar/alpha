@@ -56,14 +56,60 @@ class BotProfile:
     )
     # Bot-owned routines (Master Inventory #9)
     routines: list[dict[str, Any]] = field(default_factory=list)
+    # ------------------------------------------------------------------
+    # Bot-owned memory. Every field is None by default, meaning "inherit the
+    # host/global memory config". Set any of them to give this bot its own
+    # memory behaviour and namespace.
+    # ------------------------------------------------------------------
+    memory_enabled: bool | None = None
+    memory_scope: str | None = None
+    """Namespace key for this bot's memories. Defaults to the bot name."""
+    memory_mode: str | None = None
+    """``"middleware"`` (passive summarization) or ``"tool"`` (model calls
+    memory tools). ``None`` inherits the global setting."""
+    memory_injection_enabled: bool | None = None
+    # Per-bot overrides for the rest of the agentic surface.
+    mcp_servers: list[str] = field(default_factory=list)
+    """MCP servers this bot may use. Empty means no additional restriction."""
+    agent_preset: str | None = None
+    """Named agent preset (see ``agent_presets`` in config). None = default."""
     metadata: dict[str, Any] = field(default_factory=dict)
     created_at: str = field(default_factory=_now)
     updated_at: str = field(default_factory=_now)
 
+    def memory_namespace(self) -> str:
+        """The namespace this bot's memories live under.
+
+        Defaults to the bot name so each bot gets its own memory by default
+        rather than sharing one global pool, while still letting an operator
+        point several bots at a shared namespace when that is intended.
+        """
+        return (self.memory_scope or self.name).strip().lower()
+
+    def effective_memory_settings(self) -> dict[str, Any]:
+        """Only the memory fields this bot actually overrides.
+
+        Callers merge this over the global memory config, so ``None`` always
+        means "leave the host setting alone" instead of "false".
+        """
+        overrides: dict[str, Any] = {}
+        if self.memory_enabled is not None:
+            overrides["enabled"] = self.memory_enabled
+        if self.memory_mode is not None:
+            overrides["mode"] = self.memory_mode
+        if self.memory_injection_enabled is not None:
+            overrides["injection_enabled"] = self.memory_injection_enabled
+        overrides["namespace"] = self.memory_namespace()
+        return overrides
+
     def capability_fingerprint(self) -> str:
         """Compute a deterministic 12-hex digest of the bot's capability surface.
 
-        Hashed surface includes: name, role, soul content, model, sorted toolsets, and sorted skills.
+        Hashed surface includes: name, role, soul content, model, sorted
+        toolsets, sorted skills, the memory namespace/mode, the agent preset and
+        the MCP server list. Memory and MCP are part of the capability surface:
+        changing what a bot can remember or which servers it can reach is a real
+        capability change, so the epoch must move with it.
         """
         surface = {
             "name": self.name.lower().strip(),
@@ -72,6 +118,11 @@ class BotProfile:
             "model": self.model or "default",
             "toolsets": sorted(self.toolsets),
             "skills": sorted(self.skills),
+            "memory_namespace": self.memory_namespace(),
+            "memory_mode": self.memory_mode or "inherit",
+            "memory_enabled": self.memory_enabled,
+            "agent_preset": self.agent_preset or "default",
+            "mcp_servers": sorted(self.mcp_servers),
         }
         raw_json = json.dumps(surface, sort_keys=True)
         return hashlib.sha256(raw_json.encode("utf-8")).hexdigest()[:12]
