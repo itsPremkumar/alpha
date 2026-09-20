@@ -318,14 +318,48 @@ class BotRegistry:
             self._save()
             return bot
 
-    def list_bots(self, *, status: str | None = None, department: str | None = None) -> list[BotProfile]:
+    def list_bots(
+        self,
+        *,
+        status: str | None = None,
+        department: str | None = None,
+        include_archived: bool = True,
+    ) -> list[BotProfile]:
+        """List bots.
+
+        ``include_archived`` defaults to True to preserve historical behaviour.
+        Callers that build a roster, org chart or routing table should pass
+        False — several did not filter at all and would otherwise offer work to
+        retired bots.
+        """
         with self._lock:
             bots = list(self._bots.values())
+        if not include_archived:
+            bots = [b for b in bots if not b.is_retired]
         if status is not None:
             bots = [b for b in bots if b.status == status]
         if department is not None:
             bots = [b for b in bots if b.department.lower() == department.lower()]
         return bots
+
+    def retire_bot(self, name: str) -> BotProfile | None:
+        """Retire a bot by name (soft delete).
+
+        The registry had no delete path at all, so bots were effectively
+        immortal. Retirement archives the profile in place — history, stats and
+        reputation are preserved so past runs stay auditable.
+
+        Returns the retired profile, or None when no such bot exists.
+        Retiring an already-retired bot is a no-op that still returns it.
+        """
+        key = name.lower().strip()
+        with self._lock:
+            bot = self._bots.get(key)
+            if bot is None:
+                return None
+            bot.retire()
+        self._save()
+        return bot
 
     def get_by_department(self, department: str) -> list[BotProfile]:
         return self.list_bots(department=department)

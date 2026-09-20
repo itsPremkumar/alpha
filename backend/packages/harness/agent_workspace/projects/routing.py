@@ -74,7 +74,8 @@ def rank_candidates(
         if getattr(m, "current_task_id", None):
             busy_by_bot[m.bot_name.lower()] = busy_by_bot.get(m.bot_name.lower(), 0) + 1
 
-    bots = reg.list_bots() if hasattr(reg, "list_bots") else []
+    # Never route work to a retired bot.
+    bots = reg.list_bots(include_archived=False) if hasattr(reg, "list_bots") else []
     out: list[Candidate] = []
     for bot in bots:
         name = bot.name.lower()

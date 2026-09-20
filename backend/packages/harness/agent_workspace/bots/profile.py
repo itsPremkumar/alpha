@@ -33,6 +33,9 @@ class BotProfile:
     # fingerprint so status flips never churn the epoch.
     avatar: str = ""
     status: str = "active"
+    # Set when the bot is retired. Kept separate from ``status`` so retiring does
+    # not destroy the pre-retirement status, and so history survives.
+    archived_at: str | None = None
     # match API & runtime tracking
     last_active: str | None = None
     version: int = 1
@@ -76,6 +79,21 @@ class BotProfile:
     metadata: dict[str, Any] = field(default_factory=dict)
     created_at: str = field(default_factory=_now)
     updated_at: str = field(default_factory=_now)
+
+    @property
+    def is_retired(self) -> bool:
+        """True when this bot has been retired (archived)."""
+        return (self.status or "").strip().lower() == "archived"
+
+    def retire(self) -> None:
+        """Retire the bot in place.
+
+        Retirement is a soft delete: the profile, its history and its stats are
+        preserved so past runs stay auditable. Nothing is removed.
+        """
+        self.status = "archived"
+        self.archived_at = _now()
+        self.updated_at = _now()
 
     def memory_namespace(self) -> str:
         """The namespace this bot's memories live under.

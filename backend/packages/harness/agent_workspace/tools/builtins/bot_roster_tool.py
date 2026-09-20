@@ -86,7 +86,8 @@ def bot_roster_tool(
 
     # 1. MONITOR FLEET HEALTH
     if action == "monitor":
-        all_bots = registry.list_bots()
+        # A retired bot must not be presented as an available teammate.
+        all_bots = registry.list_bots(include_archived=False)
         fleet = monitor.get_fleet_health(all_bots)
         summary = fleet["summary"]
         ks = get_kill_switch_status()

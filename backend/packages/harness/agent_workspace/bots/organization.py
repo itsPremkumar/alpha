@@ -18,7 +18,8 @@ logger = logging.getLogger(__name__)
 def get_organization_chart(registry: BotRegistry | None = None) -> dict[str, Any]:
     """Build a complete organizational hierarchy tree and departmental breakdown."""
     reg = registry or get_bot_registry()
-    all_bots = reg.list_bots()
+    # Retired bots must not appear in the org chart.
+    all_bots = reg.list_bots(include_archived=False)
     bots_by_name = {b.name.lower(): b for b in all_bots}
 
     # Department aggregation
