@@ -9,7 +9,9 @@ and re-executes tests up to a configurable retry limit.
 from __future__ import annotations
 
 import logging
+import random
 import re
+import time
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Callable
@@ -90,8 +92,16 @@ class SelfHealingTestRunner:
         patch_synthesizer: Callable[[TestRunResult, list[str]], str | None] | None = None,
         max_attempts: int = 3,
         auto_attach_contract_evidence: bool = True,
+        backoff_base: float = 0.0,
+        backoff_cap: float = 30.0,
     ) -> SelfHealingOutcome:
-        """Run verification loop with automatic heuristic retrieval and diagnostic retries."""
+        """Run verification loop with automatic heuristic retrieval and diagnostic retries.
+
+        ``backoff_base`` defaults to ``0`` which preserves the historical behaviour of
+        retrying immediately. Set it above zero to wait between attempts using capped
+        exponential growth with full jitter, so a failing dependency is not hammered
+        and transient faults have time to clear.
+        """
         history: list[dict[str, Any]] = []
         applied_heuristics: list[str] = []
         pm_engine = get_postmortem_engine(self.project_id)
@@ -185,6 +195,20 @@ class SelfHealingTestRunner:
                         logger.info("Applied diagnostic patch for %s on attempt %d", task_id, attempt)
                 except Exception:
                     logger.warning("Patch synthesizer failed during self-healing for %s", task_id, exc_info=True)
+
+            # Backoff before the next attempt. Capped exponential growth with full
+            # jitter (0.5x-1.5x of the nominal delay) avoids synchronised retry
+            # storms when many workers hit the same failing dependency.
+            if attempt < max_attempts and backoff_base > 0:
+                delay = min(backoff_cap, backoff_base * (2 ** (attempt - 1)))
+                delay *= 0.5 + random.random()
+                logger.info(
+                    "Backing off %.2fs before verification attempt %d/%d for %s",
+                    delay, attempt + 1, max_attempts, task_id,
+                )
+                if history:
+                    history[-1]["backoff_seconds"] = round(delay, 3)
+                time.sleep(delay)
 
         # Exhausted all attempts without passing
         last_failure = history[-1] if history else {}

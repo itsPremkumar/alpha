@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
-from typing import Any
+from typing import Any, Callable
 
 from agent_workspace.supervision.models import (
     AgentHealthStatus,
@@ -20,8 +20,24 @@ logger = logging.getLogger(__name__)
 class WatchdogRecoveryManager:
     """Coordinates automated self-healing, worker replacement, and orphan adoption."""
 
-    def __init__(self, watchdog: DeterministicWatchdog):
+    def __init__(
+        self,
+        watchdog: DeterministicWatchdog,
+        *,
+        restart_worker: Callable[[str], bool] | None = None,
+        backoff_base: float = 0.0,
+    ):
+        """Create a recovery manager.
+
+        ``restart_worker`` is the only thing that can actually restart a worker.
+        It is injected rather than assumed: the supervisor has no privileged
+        handle on the execution environment, so until a caller wires one in the
+        manager must report that a restart was *requested* rather than claim one
+        happened. ``None`` preserves the historical status-only behaviour.
+        """
         self._watchdog = watchdog
+        self._restart_worker = restart_worker
+        self._backoff_base = backoff_base
         # worker_id -> list of recovery action timestamps
         self._recovery_history: dict[str, list[dict[str, Any]]] = {}
         # parent_id -> set of child worker_ids
@@ -82,7 +98,34 @@ class WatchdogRecoveryManager:
         elif action == RecoveryAction.RESTART:
             self._watchdog.clear_anomalies(worker_id)
             self._watchdog.set_status_override(worker_id, AgentHealthStatus.RECOVERING)
-            status_msg = f"Worker {worker_id} restarted in isolated execution container."
+            restarted = False
+            if self._restart_worker is not None:
+                try:
+                    restarted = bool(self._restart_worker(worker_id))
+                except Exception:
+                    # Fault isolation: a failing restart hook must not take down
+                    # the supervision loop or lose the audit record.
+                    logger.warning(
+                        "Restart hook raised for worker %s; reporting restart as not performed",
+                        worker_id, exc_info=True,
+                    )
+                    restarted = False
+            record["restarted"] = restarted
+            if restarted:
+                status_msg = f"Worker {worker_id} restarted via wired restart hook."
+            elif self._restart_worker is None:
+                # Previously this claimed a restart unconditionally. Without a
+                # wired runner no process is actually restarted, and lying about
+                # it makes incident review useless.
+                status_msg = (
+                    f"Worker {worker_id} restart requested (no runner wired); "
+                    "status set to RECOVERING but no process was restarted."
+                )
+            else:
+                status_msg = (
+                    f"Worker {worker_id} restart hook was wired but did not report success; "
+                    "status set to RECOVERING but no process was restarted."
+                )
 
         elif action == RecoveryAction.HOT_REPLACE:
             self._watchdog.clear_anomalies(worker_id)
@@ -105,6 +148,9 @@ class WatchdogRecoveryManager:
             "action_executed": action.value,
             "status_message": status_msg,
             "timestamp": timestamp,
+            # Present on every action so callers can assert on it uniformly;
+            # only RESTART can ever set it True.
+            "restarted": bool(record.get("restarted", False)),
         }
 
     def _handle_manager_failure(self, failed_manager_id: str) -> None:
