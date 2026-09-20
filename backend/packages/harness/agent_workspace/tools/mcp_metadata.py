@@ -61,6 +61,17 @@ def get_mcp_source(tool: BaseTool) -> dict[str, str] | None:
     }
 
 
+def mcp_server_name(tool: BaseTool) -> str | None:
+    """Return the MCP server that provides ``tool``, or None for non-MCP tools.
+
+    Used to authorize MCP servers as their own resource class: RBAC already
+    defines an ``mcp_server`` resource key, so tools can be filtered by the
+    server that exposes them rather than only by their own name.
+    """
+    source = get_mcp_source(tool)
+    return source["server_name"] if source else None
+
+
 def tag_mcp_routing(tool: BaseTool, routing: Mapping[str, Any]) -> BaseTool:
     """Attach serialized MCP routing metadata to ``tool``."""
     tool.metadata = {
