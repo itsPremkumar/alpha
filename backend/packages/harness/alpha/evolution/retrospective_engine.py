@@ -35,7 +35,7 @@ class PromptEvolutionProposal:
 class RetrospectiveEngine:
     """Extracts learnings from operational friction to iteratively improve bot capabilities."""
 
-    def __init__(self, project_id: str):
+    def __init__(self, project_id: str = "default"):
         self.project_id = project_id
         self._proposals: list[PromptEvolutionProposal] = []
 

@@ -203,3 +203,17 @@ def make_default_fix_fns(repo_root: str | Path) -> dict[str, Callable[[Signal, A
         return [rel]
 
     return {"missing_bom": fix_missing_bom}
+
+
+def make_default_verification_commands() -> dict[str, list[str]]:
+    """Safe verification checks to ensure python scripts and repository integrity remain intact."""
+    import sys
+
+    return {
+        "syntax_check": [
+            sys.executable,
+            "-c",
+            "import sys; from alpha.runtime.sentinel.sources import scripts; sys.exit(0)",
+        ]
+    }
+

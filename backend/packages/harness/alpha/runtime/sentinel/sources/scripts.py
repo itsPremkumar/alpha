@@ -113,3 +113,15 @@ def apply_bom_fix(path: str | Path) -> bool:
         return False
     p.write_bytes(BOM + data)
     return True
+
+
+def verify_bom_fix(path: str | Path) -> bool:
+    """True when a .ps1 file is verified to have a BOM or has no non-ASCII characters requiring one."""
+    p = Path(path)
+    if not p.is_file():
+        return False
+    try:
+        data = p.read_bytes()
+        return has_bom(data) or not bool(non_ascii_chars(data.decode("utf-8")))
+    except Exception:
+        return False

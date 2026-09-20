@@ -1691,6 +1691,13 @@
    "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
    "wired": true,
    "state": "wired"
+  },
+  {
+   "id": "swarm_status",
+   "module": "app.gateway.autonomy.loops:swarm_status_tick",
+   "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
+   "wired": true,
+   "state": "wired"
   }
  ],
  "intentionally_unwired": [

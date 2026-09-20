@@ -164,7 +164,7 @@ models:
     display_name: Union Alpha (OpenRouter)
     description: "Anonymous-provider preview; prompts and completions may be retained. Verify provider terms before sending sensitive data."
     use: langchain_openai:ChatOpenAI
-    model: unbiased/pareto
+    model: stealth/union-alpha
     base_url: https://openrouter.ai/api/v1
     api_key: $OPENROUTER_API_KEY
     context_window: 262144
@@ -3061,7 +3061,8 @@ autonomy:
 # memory_nudges, mcp_gateway, active_memory, local_llm_failover,
 # dag_orchestrator, message_converters, lane_scheduler, canary_sandbox,
 # net_policy, self_repo_guard, container_runner, mcp_lifecycle,
-# yield_handoff, cnp_auction, trajectory_compressor, sdlc_engine.
+# yield_handoff, cnp_auction, trajectory_compressor, sdlc_engine,
+# rsi_engine, adaptive_autonomy.
 capabilities:
   enabled: true                 # master switch for the capability loader
   capabilities: {}              # per-capability opt-in, e.g. { net_policy: true }

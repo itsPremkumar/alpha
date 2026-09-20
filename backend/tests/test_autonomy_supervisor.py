@@ -147,3 +147,15 @@ async def test_event_bus_publish_subscribe_and_drop_oldest() -> None:
     status = bus.status()
     assert status["published"] == 5
     bus.unsubscribe(subscription)
+
+
+def test_register_default_loops_includes_expected_loops() -> None:
+    supervisor = AutonomySupervisor()
+    supervisor.register_default_loops()
+    loops = supervisor.status()["loops"]
+    assert "sentinel" in loops
+    assert "swarm_status" in loops
+    assert "perpetual" in loops
+    assert "review_queue" in loops
+    assert "skill_curator" in loops
+    assert "enterprise_heartbeat" in loops

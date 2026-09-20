@@ -186,6 +186,18 @@ CAPABILITY_CATALOG: dict[str, CapabilitySpec] = {
         description="Document-gated multi-agent SDLC engine.",
         kind="engine",
     ),
+    "rsi_engine": CapabilitySpec(
+        module="alpha.rsi.engine",
+        target="RSIEngine",
+        description="Recursive Self-Improvement closed-loop autonomous engine.",
+        kind="engine",
+    ),
+    "adaptive_autonomy": CapabilitySpec(
+        module="alpha.security.autonomy.policy_engine",
+        target="AutonomyPolicyEngine",
+        description="Adaptive autonomy 4-tier governance policy engine.",
+        kind="guard",
+    ),
 }
 
 

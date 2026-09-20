@@ -20,20 +20,34 @@ SyncTick = Callable[[], dict[str, Any]]
 
 def _resolve_project_root() -> Path:
     """Repository root for repo-scoped loops (sentinel scans, etc.)."""
-    # backend/app/gateway/autonomy/loops.py -> repo root is three levels up.
-    return Path(__file__).resolve().parents[3]
+    try:
+        from alpha.config.runtime_paths import project_root
+        return project_root()
+    except Exception:
+        # backend/app/gateway/autonomy/loops.py -> repo root is four levels up.
+        return Path(__file__).resolve().parents[4]
 
 
-def sentinel_tick(*, repo_root: Path | None = None) -> dict[str, Any]:
-    """One sentinel observe pass. No fix_fns configured => everything escalates.
+def sentinel_tick(*, repo_root: Path | None = None, auto_heal: bool = False) -> dict[str, Any]:
+    """One sentinel observe pass.
 
-    This is deliberately the SAFE default: the loop observes and reports; it does
-    not repair or commit anything on its own.
+    Safe default: observes and reports; escalates unknown kinds.
+    When auto_heal is True, wires default verified repair and verification routines.
     """
-    from alpha.runtime.sentinel.runner import SentinelRunner
+    from alpha.runtime.sentinel.runner import (
+        SentinelRunner,
+        make_default_fix_fns,
+        make_default_verification_commands,
+    )
 
     root = repo_root or _resolve_project_root()
-    runner = SentinelRunner(repo_root=root)
+    fix_fns = make_default_fix_fns(root) if auto_heal else None
+    verification_commands = make_default_verification_commands() if auto_heal else None
+    runner = SentinelRunner(
+        repo_root=root,
+        fix_fns=fix_fns,
+        verification_commands=verification_commands,
+    )
     report = runner.run_once()
     return report.to_dict() if hasattr(report, "to_dict") else {"summary": str(report)}
 
