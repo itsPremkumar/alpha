@@ -7,6 +7,20 @@ if TYPE_CHECKING:
     from agent_workspace.config.app_config import AppConfig
 
 
+# Conservative tool set used when a subagent declares no ``tools`` allowlist and
+# ``inherit_all`` is False. Read/search only: a subagent that has not been
+# granted specific authority should be able to look, not act.
+DEFAULT_SUBAGENT_TOOL_ALLOWLIST: tuple[str, ...] = (
+    "read_file",
+    "grep_search",
+    "list_dir",
+    "web_search",
+    "web_fetch",
+    "tool_search",
+    "describe_skill",
+)
+
+
 @dataclass
 class SubagentConfig:
     """Configuration for a subagent.
@@ -15,7 +29,12 @@ class SubagentConfig:
         name: Unique identifier for the subagent.
         description: When Claude should delegate to this subagent.
         system_prompt: The system prompt that guides the subagent's behavior.
-        tools: Optional list of tool names to allow. If None, inherits all tools.
+        tools: Optional list of tool names to allow. If None, inherits all tools
+            when ``inherit_all`` is True (the historical default); otherwise the
+            conservative ``DEFAULT_SUBAGENT_TOOL_ALLOWLIST`` applies.
+        inherit_all: When True (default, existing behaviour) a subagent with no
+            ``tools`` allowlist inherits every parent tool. Set False to require
+            an explicit allowlist, falling back to the read/search-only default.
         disallowed_tools: Optional list of tool names to deny.
         skills: Optional list of skill names to make discoverable and activatable.
                 If None, all enabled skills are available. If empty, skills are
@@ -35,6 +54,10 @@ class SubagentConfig:
     description: str
     system_prompt: str | None = None
     tools: list[str] | None = None
+    # Defaults to True to preserve historical behaviour; operators can set it
+    # False (or per-agent) so an undeclared toolset is read/search-only rather
+    # than a full inheritance of every parent tool.
+    inherit_all: bool = True
     disallowed_tools: list[str] | None = field(default_factory=lambda: ["task", "ralph_loop", "session_search"])
     # ``task`` and ``ralph_loop`` are denied so delegations cannot nest;
     # ``session_search`` is lead-only (crosses thread boundaries by design).

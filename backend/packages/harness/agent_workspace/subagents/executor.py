@@ -39,7 +39,11 @@ from agent_workspace.subagents.capacity import (
     SubagentExecutionCapacity,
     get_subagent_execution_capacity,
 )
-from agent_workspace.subagents.config import SubagentConfig, resolve_subagent_model_name
+from agent_workspace.subagents.config import (
+    DEFAULT_SUBAGENT_TOOL_ALLOWLIST,
+    SubagentConfig,
+    resolve_subagent_model_name,
+)
 from agent_workspace.subagents.context_snapshot import SNAPSHOT_SYSTEM_NOTE, ParentContextSnapshot
 from agent_workspace.subagents.report_contract import (
     build_acceptance_criteria_system_note,
@@ -737,6 +741,8 @@ def _filter_tools(
     all_tools: list[BaseTool],
     allowed: list[str] | None,
     disallowed: list[str] | None,
+    *,
+    inherit_all: bool = True,
 ) -> list[BaseTool]:
     """Filter tools based on subagent configuration.
 
@@ -744,6 +750,10 @@ def _filter_tools(
         all_tools: List of all available tools.
         allowed: Optional allowlist of tool names. If provided, only these tools are included.
         disallowed: Optional denylist of tool names. These tools are always excluded.
+        inherit_all: When True (historical default) a missing allowlist inherits
+            every tool. When False, a missing allowlist falls back to the
+            conservative read/search-only DEFAULT_SUBAGENT_TOOL_ALLOWLIST so an
+            undeclared subagent cannot act with the parent's full authority.
 
     Returns:
         Filtered list of tools.
@@ -754,6 +764,10 @@ def _filter_tools(
     if allowed is not None:
         allowed_set = set(allowed)
         filtered = [t for t in filtered if t.name in allowed_set]
+    elif not inherit_all:
+        # No declared allowlist and inheritance disallowed: least privilege.
+        fallback = set(DEFAULT_SUBAGENT_TOOL_ALLOWLIST)
+        filtered = [t for t in filtered if t.name in fallback]
 
     # Apply denylist
     if disallowed is not None:
@@ -899,6 +913,7 @@ class SubagentExecutor:
             tools,
             config.tools,
             config.disallowed_tools,
+            inherit_all=config.inherit_all,
         )
         self.tools = self._base_tools
         # Populated from the same per-user, config-filtered registry used to
