@@ -14,13 +14,13 @@ from alpha.tools.types import Runtime
 
 @tool("harness_refine", parse_docstring=True)
 def harness_refine_tool(
+    runtime: Runtime,
     action: Literal["refine", "list", "add", "rollback"],
     kind: HarnessKind | None = None,
     title: str = "",
     content: str = "",
     snapshot_id: str = "",
     scope: HarnessScope = "local",
-    runtime: Runtime | None = None,
 ) -> str:
     """Manage self-improving Continual Harness state and trigger online refinement.
 

@@ -18,7 +18,7 @@ def _resolve_thread_id(runtime: Runtime | None) -> str:
 
 @tool("agent_observe", parse_docstring=True)
 def agent_observe_tool(
-    runtime: Runtime | None = None,
+    runtime: Runtime,
 ) -> str:
     """Inspect the active family roster to discover running peer agents and their statuses.
 
@@ -40,11 +40,11 @@ def agent_observe_tool(
 
 @tool("agent_message", parse_docstring=True)
 def agent_message_tool(
+    runtime: Runtime,
     receiver_name: str,
     content: str,
     sender_name: str = "caller",
     mode: DeliveryMode = "auto",
-    runtime: Runtime | None = None,
 ) -> str:
     """Send a direct message to another active agent in the family roster.
 

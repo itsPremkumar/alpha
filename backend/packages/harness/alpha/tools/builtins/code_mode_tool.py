@@ -11,8 +11,8 @@ from alpha.tools.types import Runtime
 
 @tool("code_mode", parse_docstring=True)
 def code_mode_tool(
+    runtime: Runtime,
     code: str,
-    runtime: Runtime | None = None,
 ) -> str:
     """Execute Python code that programmatically invokes other tools via `tools.call(name, **kwargs)` or `tools.<name>(**kwargs)`.
 
