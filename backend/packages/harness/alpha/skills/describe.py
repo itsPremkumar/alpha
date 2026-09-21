@@ -78,7 +78,9 @@ def build_describe_skill_tool(
           - "chart visualization" -- keyword search, best matches (up to 5)
           - "+podcast gen" -- require "podcast" in the name, rank by remaining terms (up to 5)
         """
-        matched = catalog.search(name)
+        # Regex match first; System One appends any skill whose description
+        # matches the intent but not the wording. Falls back to the plain search.
+        matched = catalog.search_smart(name)
         if not matched:
             content = f"No skills matched: {name}"
         else:

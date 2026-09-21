@@ -53,7 +53,7 @@ class MasterDeliberationEngine:
         start_time = time.time()
 
         # 1. Strategic Routing
-        eval_result = self.router.classify(prompt, user_strategy=strategy)
+        eval_result = self.router.classify_smart(prompt, user_strategy=strategy)
         selected_strategy = eval_result.strategy
 
         # 2. Execution across Selected Strategy

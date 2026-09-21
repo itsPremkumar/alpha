@@ -1813,6 +1813,66 @@ verification:
   judge_model_name: null
 
 # ============================================================================
+# System One (Jev) Configuration
+# ============================================================================
+# Jev is a System One model by TypeSafe AI: it does NOT generate text. It takes
+# a `state` plus typed `questions` and returns calibrated decisions (choice /
+# score / boolean) with probabilities and confidence, in ~70-500ms. It cannot
+# hallucinate or produce type errors.
+#
+# Alpha uses it as the DEFAULT decision engine for classification, routing,
+# scoring and verification, and falls back to the existing heuristic/LLM path
+# whenever it is disabled, unreachable, or below `min_confidence`.
+system_one:
+  enabled: true
+  provider: "vercel-gateway"      # or "typesafe" for the TypeSafe direct API
+  api_key: "$AI_GATEWAY_API_KEY"
+  model: "typesafe-ai/jev"
+  timeout_ms: 2000
+  max_retries: 2
+  min_confidence: 0.60
+  fail_open: true
+  log_decisions: false
+  enable_skill_scan: true
+  enable_guardrails: true
+  enable_deliberation_router: true
+  enable_goal_analysis: true
+  enable_memory_escalation: true
+  enable_goal_completion: true
+  enable_browser_action: true
+  enable_injection_scan: true
+  enable_citation_support: true
+  enable_trace_verify: true
+  enable_model_routing: true
+  enable_selection: true
+  enable_rag_rerank: true
+  enable_compaction_retention: true
+  enable_acceptance: true
+  enable_epistemic: true
+  max_selection_candidates: 60
+  max_rerank_candidates: 24
+  # Browser loop guards, ported from browser-use/jev-ultrafast.
+  # A decision is made against an observed page and executed a moment later;
+  # `browser_require_fresh` re-checks the page immediately before input so a
+  # click cannot silently land on whatever now occupies that index.
+  browser_require_fresh: true
+  browser_stale_retries: 2
+  browser_ineffective_limit: 3
+  browser_max_seconds: 120
+  browser_recoveries_limit: 2
+  # Calibration: measure before you trust it.
+  # `shadow_mode` still calls System One, records the decision, then returns
+  # None — so every call site keeps running its existing LLM/heuristic path.
+  # Turn this on first, read the report, and only then turn it off to act.
+  shadow_mode: false
+  # Append every decision (site, tier, stated probability, latency) to JSONL.
+  # Implied by `shadow_mode`, because shadow without a log measures nothing.
+  record_decisions: false
+  # Where the JSONL log lives. Relative paths resolve under the Alpha state dir.
+  # Read it with: python backend/scripts/system_one_calibration.py --report
+  calibration_log_path: "system_one_decisions.jsonl"
+
+# ============================================================================
 # ACP Agents Configuration
 # ============================================================================
 # Configure external ACP-compatible agents for the built-in `invoke_acp_agent` tool.

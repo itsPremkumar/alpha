@@ -7,12 +7,11 @@ SCROLL, READ, BROWSE).
 
 from __future__ import annotations
 
-import json
 import sqlite3
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclass
@@ -133,6 +132,34 @@ class SessionSearchEngine:
         # Sort by adjusted score ascending (lower rank is more relevant in SQLite FTS5)
         results.sort(key=lambda r: r.score)
         return results[:limit]
+
+    async def asearch_discovery_smart(self, query: str, limit: int = 10) -> list[SessionSearchResult]:
+        """BM25 recall, then System One reranks by actual relevance.
+
+        BM25 finds terms; it cannot tell whether a hit answers the question.
+        The rerank only reorders what BM25 already returned, so the worst case
+        is BM25's own order — a candidate can move up, never disappear.
+        """
+        results = self.search_discovery(query, limit=limit)
+        if len(results) < 2:
+            return results
+        try:
+            from alpha.memory.rerank import apply_rerank, rerank
+
+            ranking = await rerank(query, [r.snippet for r in results], site="session_search")
+        except Exception:
+            return results
+        return apply_rerank(results, ranking)
+
+    def search_discovery_smart(self, query: str, limit: int = 10) -> list[SessionSearchResult]:
+        """Sync wrapper; falls back to BM25 inside a running loop."""
+        import asyncio
+
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(self.asearch_discovery_smart(query, limit=limit))
+        return self.search_discovery(query, limit=limit)
 
     def read_scroll_window(self, session_id: str, around_message_id: str, window_size: int = 3) -> list[dict[str, Any]]:
         """Scroll mode: returns sliding window around an anchor message."""

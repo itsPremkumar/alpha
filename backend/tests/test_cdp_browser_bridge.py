@@ -44,10 +44,50 @@ def test_cdp_browser_bridge_mock_tabs():
     attached = bridge.attach_tab("tab-1")
     assert attached.target_id == "tab-1"
 
-    # Evaluate JS
-    eval_res = bridge.evaluate_javascript("tab-1", "document.title")
-    assert eval_res["status"] == "success"
-    assert "document.title" in eval_res["expression"]
+
+@pytest.mark.asyncio
+async def test_evaluate_javascript_returns_the_real_value():
+    """It used to echo the expression back with `status: "success"`.
+
+    A fabricated result a caller cannot distinguish from a real one is the worst
+    version of the "exists but nothing reads" bug — worse, because here the value
+    *is* read and acted on. This asserts the page's answer, not the question.
+    """
+    from alpha.browser.cdp_transport import CdpTransport
+
+    class _FakeTransport:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        async def send(self, method, params=None, session_id=None):  # noqa: ARG002
+            self.calls.append(method)
+            return {"result": {"type": "string", "value": "GitHub Repository"}}
+
+        async def aclose(self) -> None:
+            pass
+
+    transport = _FakeTransport()
+    assert isinstance(transport, CdpTransport), "the bridge must accept any CdpTransport"
+    bridge = CDPBrowserBridge(transport=transport)
+    bridge.register_mock_tab(BrowserTabInfo(target_id="tab-1", title="t", url="https://github.com/x"))
+
+    result = await bridge.evaluate_javascript("tab-1", "document.title")
+
+    assert transport.calls == ["Runtime.evaluate"]
+    assert result["result"]["value"] == "GitHub Repository", "the page's answer, not the question"
+    assert "status" not in result, "there is no fabricated success flag any more"
+
+
+@pytest.mark.asyncio
+async def test_evaluate_javascript_refuses_without_a_transport():
+    """No transport means nothing was learned about the page — not an empty page."""
+    from alpha.browser.cdp_transport import CdpError
+
+    bridge = CDPBrowserBridge()
+    bridge.register_mock_tab(BrowserTabInfo(target_id="tab-1", title="t", url="https://github.com/x"))
+
+    with pytest.raises(CdpError, match="no CDP transport"):
+        await bridge.evaluate_javascript("tab-1", "document.title")
 
 
 def test_cdp_browser_bridge_security_violation():

@@ -1748,6 +1748,72 @@ def check_acceptance_criteria(
     )
 
 
+async def afill_acceptance_gaps(
+    verdict: AcceptanceVerdict,
+    *,
+    result_text: str = "",
+    task: str = "",
+    widen: bool = False,
+) -> AcceptanceVerdict:
+    """Fill the ``undecidable`` leaves of an already-computed verdict.
+
+    Split out from :func:`acheck_acceptance_criteria_smart` because the
+    deterministic check performs sandbox IO and callers run it in a thread —
+    this half is pure network and belongs on the event loop.
+
+    Narrowing-only by default: a confident "criterion not met" fills the leaf,
+    while a confident "met" leaves it UNVERIFIED. Pass ``widen=True`` once the
+    false-negative rate has been measured on real delegations.
+
+    Returns the input unchanged when System One has no signal.
+    """
+    if not verdict["unchecked"] or not (result_text or "").strip():
+        return verdict
+    try:
+        from alpha.subagents.jev_acceptance import apply_to_verdict, evaluate_criteria
+    except Exception:  # pragma: no cover - import must never break the gate
+        return verdict
+
+    leaves = verdict["leaves"]
+    undecidable = [(index, leaf["criterion"]) for index, leaf in enumerate(leaves) if not leaf["checked"] and leaf["family"] == "undecidable"]
+    if not undecidable:
+        return verdict
+
+    try:
+        judgements = await evaluate_criteria(task, result_text, [criterion for _, criterion in undecidable])
+    except Exception:
+        return verdict
+    if not judgements:
+        return verdict
+
+    # evaluate_criteria indexes from 0 over the undecidable subset; map back.
+    by_leaf_index = {undecidable[position][0]: value for position, value in judgements.items()}
+    return apply_to_verdict(dict(verdict), by_leaf_index, widen=widen)  # type: ignore[return-value]
+
+
+async def acheck_acceptance_criteria_smart(
+    acceptance_criteria: list[str] | None,
+    *,
+    result_text: str = "",
+    task: str = "",
+    widen: bool = False,
+    **kwargs: Any,
+) -> AcceptanceVerdict | None:
+    """Deterministic checklist, with System One filling the undecidable leaves.
+
+    Same signature as :func:`check_acceptance_criteria` (extra kwargs are
+    forwarded) plus the two things the semantic pass needs: the subagent's
+    ``result_text`` and the ``task`` it was given.
+
+    When System One is off, unreachable, or unsure this returns exactly what
+    :func:`check_acceptance_criteria` returns.
+    """
+    verdict = check_acceptance_criteria(acceptance_criteria, **kwargs)
+    if verdict is None:
+        return None
+    return await afill_acceptance_gaps(verdict, result_text=result_text, task=task, widen=widen)
+
+
 def validate_acceptance_verdict(value: object) -> AcceptanceVerdict | None:
     """Structural check for a persisted verdict (read side trusts nothing)."""
     if not isinstance(value, dict):

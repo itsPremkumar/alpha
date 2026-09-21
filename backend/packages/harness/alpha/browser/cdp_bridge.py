@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
 
+from alpha.browser.cdp_transport import CdpError
+
 logger = logging.getLogger(__name__)
 
 
@@ -89,9 +91,13 @@ class CDPBrowserBridge:
         self,
         cdp_endpoint: str = "http://127.0.0.1:9222",
         security_policy: CDPSecurityPolicy | None = None,
+        transport: Any = None,
     ) -> None:
         self.cdp_endpoint = cdp_endpoint.rstrip("/")
         self.security_policy = security_policy or CDPSecurityPolicy()
+        #: An injected CDP transport. Without one, ``evaluate_javascript`` cannot
+        #: reach a page and says so.
+        self._transport = transport
         self._simulated_tabs: dict[str, BrowserTabInfo] = {}
 
     def register_mock_tab(self, tab: BrowserTabInfo) -> None:
@@ -139,15 +145,36 @@ class CDPBrowserBridge:
             raise PermissionError(f"Attachment to target '{matched.url}' denied by security policy.")
         return matched
 
-    def evaluate_javascript(self, target_id: str, expression: str) -> dict[str, Any]:
-        """Execute a JavaScript snippet within the authorized target page context."""
+    async def evaluate_javascript(self, target_id: str, expression: str) -> dict[str, Any]:
+        """Run a JavaScript snippet in an authorized target page.
+
+        This used to return ``{"status": "success", "result": {"value":
+        "Evaluated: <expression>..."}}`` — a fabricated result that echoed the
+        expression back. A caller could not tell it apart from a real evaluation,
+        and the test suite asserted the echo, so the fake was pinned in place.
+        Nothing production called it, which is the only reason it was harmless.
+
+        It now does the work, and raises when it cannot. There is no transport
+        that makes a page read happen by accident, so a failure here means the
+        caller has learned nothing about the page — never that the page was
+        empty.
+        """
         tab = self.attach_tab(target_id)
-        # In a real CDP environment, this sends 'Runtime.evaluate' over WebSocket.
-        # Here we provide a deterministic simulated response for harness environments.
+        if self._transport is None:
+            raise CdpError(
+                "no CDP transport is configured; construct the bridge with a transport, "
+                "or drive the page with CdpExecutor instead"
+            )
+        response = await self._transport.send(
+            "Runtime.evaluate",
+            {"expression": expression, "returnByValue": True},
+        )
+        if response.get("exceptionDetails"):
+            detail = response["exceptionDetails"].get("text") or "evaluation failed"
+            raise CdpError(str(detail))
         return {
             "target_id": tab.target_id,
             "url": tab.url,
             "expression": expression,
-            "status": "success",
-            "result": {"value": f"Evaluated: {expression[:40]}..."},
+            "result": response.get("result") or {},
         }

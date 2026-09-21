@@ -43,7 +43,7 @@ def deliberation_tool(
 
     # ACTION: EVALUATE (Pre-flight classification)
     if action == "evaluate":
-        eval_res = DeliberationRouter.classify(prompt)
+        eval_res = DeliberationRouter.classify_smart(prompt)
         return (
             f"### 🔍 Deliberation Pre-Flight Evaluation\n"
             f"- **Difficulty**: `{eval_res.difficulty.value}`\n"

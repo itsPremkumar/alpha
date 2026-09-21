@@ -7,13 +7,12 @@ from __future__ import annotations
 
 import ast
 import json
-import os
 import shutil
 import subprocess
 import sys
 import time
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
@@ -615,8 +614,8 @@ def generate_personalized_repo_map(
         query: Active task prompt or search keywords to teleport PageRank mass toward relevant symbols.
         token_budget: Maximum token budget for the compact repo map (default 1500 tokens).
     """
-    from alpha.coding.structural_intelligence.symbol_dependency_graph import SymbolDependencyGraph
     from alpha.coding.structural_intelligence.repo_map import RepoMapGenerator
+    from alpha.coding.structural_intelligence.symbol_dependency_graph import SymbolDependencyGraph
 
     root = Path(root_path).resolve()
     if not root.is_dir():
@@ -707,7 +706,10 @@ def search_session_memory(
     from alpha.memory.session_search import SessionSearchEngine
 
     engine = SessionSearchEngine(db_path=db_path)
-    results = engine.search_discovery(query=query, limit=limit)
+    # BM25 finds terms; System One then reorders by whether the hit actually
+    # answers the query. Degrades to plain BM25 when unavailable or inside a
+    # running loop.
+    results = engine.search_discovery_smart(query=query, limit=limit)
     return json.dumps([{"session_id": r.session_id, "snippet": r.snippet, "source": r.source, "score": r.score} for r in results], indent=2)
 
 

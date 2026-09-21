@@ -15,6 +15,7 @@ import logging
 import re
 from dataclasses import dataclass
 from functools import cached_property
+from typing import Any
 
 from alpha.skills.types import Skill
 
@@ -96,7 +97,111 @@ class SkillCatalog:
         scored.sort(key=lambda x: x[0], reverse=True)
         return [s for _, s in scored][:MAX_RESULTS]
 
+    async def asearch_smart(self, query: str, *, limit: int = MAX_RESULTS) -> list[Skill]:
+        """Deterministic search, then System One re-ranks what the regex missed.
+
+        The regex hits always lead, so a literal name match can never be lost —
+        System One only appends candidates the regex scorer ranked below the cut
+        (or missed entirely, e.g. "chart" vs "visualise").
+
+        ``select:`` is returned untouched and **uncapped**: it names skills
+        explicitly, so truncating would silently drop ones the model asked for.
+        """
+        stripped = (query or "").strip()
+        if stripped.startswith("select:"):
+            return self.search(stripped)
+        base = self.search(stripped)[:limit]
+        ranked = await arank_skills(stripped, list(self.skills), limit=limit)
+        return merge_skill_results(base, ranked)[:limit]
+
+    def search_smart(self, query: str, *, limit: int = MAX_RESULTS) -> list[Skill]:
+        """Sync wrapper; returns the plain search when inside a running loop."""
+        stripped = (query or "").strip()
+        if stripped.startswith("select:"):
+            return self.search(stripped)
+        return search_skills_smart(stripped, list(self.skills), limit=limit)
+
 
 def _catalog_regex_score(pattern: re.Pattern[str], s: Skill) -> int:
     """Count regex hits across name + description for ranking."""
     return len(pattern.findall(f"{s.name} {s.description or ''}"))
+
+
+# --------------------------------------------------------------------------
+# System One ranking layer
+#
+# The regex search above is the fallback and stays the fallback. When System
+# One is available it re-ranks the whole catalog in one request and merges its
+# order *behind* the regex hits, so a literal name match can never be lost.
+# --------------------------------------------------------------------------
+
+#: How many skills go into one ranking request.
+RANK_POOL = 60
+
+
+def _rank_candidates() -> list[Any]:
+    """Imported lazily so importing the catalog never pulls in the HTTP client."""
+    from alpha.tools.selection import Candidate
+
+    return Candidate  # type: ignore[return-value]
+
+
+def build_skill_candidates(skills: list[Skill]) -> list[Any]:
+    """Adapt skills into rankable candidates."""
+    candidate_cls = _rank_candidates()
+    return [
+        candidate_cls(
+            id=s.name,
+            title=s.name,
+            summary=(s.description or "")[:280],
+            full=(s.description or "")[:1200],
+        )
+        for s in skills[:RANK_POOL]
+    ]
+
+
+async def arank_skills(query: str, skills: list[Skill], *, limit: int = MAX_RESULTS) -> list[Skill] | None:
+    """Re-rank `skills` for `query` using System One. None = no signal."""
+    if not query.strip() or len(skills) < 2:
+        return None
+    try:
+        from alpha.tools.selection import rank_candidates
+    except Exception:
+        return None
+    try:
+        ranking = await rank_candidates(query, build_skill_candidates(skills), top_n=limit, site="skill_select")
+    except Exception:
+        logger.debug("System One skill ranking unavailable.", exc_info=True)
+        return None
+    if ranking is None:
+        return None
+    by_name = {s.name: s for s in skills}
+    return [by_name[name] for name in ranking.ids if name in by_name]
+
+
+def merge_skill_results(primary: list[Skill], ranked: list[Skill] | None) -> list[Skill]:
+    """Regex results first, then anything System One ranked that they missed."""
+    if not ranked:
+        return primary
+    seen = {s.name for s in primary}
+    return [*primary, *(s for s in ranked if s.name not in seen)]
+
+
+async def asearch_skills_smart(query: str, skills: list[Skill], *, limit: int = MAX_RESULTS) -> list[Skill]:
+    """Semantic ranking on top of the deterministic catalog search."""
+    catalog = SkillCatalog(tuple(skills))
+    base = catalog.search(query)[:limit]
+    ranked = await arank_skills(query, skills, limit=limit)
+    return merge_skill_results(base, ranked)[:limit]
+
+
+def search_skills_smart(query: str, skills: list[Skill], *, limit: int = MAX_RESULTS) -> list[Skill]:
+    """Sync wrapper; returns the plain catalog search when inside a live loop."""
+    import asyncio
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(asearch_skills_smart(query, skills, limit=limit))
+    logger.debug("search_skills_smart inside a running loop; using catalog search.")
+    return SkillCatalog(tuple(skills)).search(query)[:limit]

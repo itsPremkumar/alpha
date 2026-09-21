@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
+
+logger = logging.getLogger(__name__)
+
+#: How many tools go into one System One ranking request.
+RANK_POOL = 60
 
 
 @dataclass
@@ -78,6 +85,61 @@ class UniversalToolCatalog:
             {"name": e.name, "category": e.category, "description": e.description}
             for _, e in scored[:limit]
         ]
+
+    async def asearch_smart(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
+        """Re-rank with System One, merged behind the keyword hits.
+
+        The keyword search stays authoritative for literal matches; System One
+        only adds candidates the keyword scorer missed. Falls back silently to
+        :meth:`search` whenever System One is off, unreachable, or unsure.
+        """
+        base = self.search(query, limit=limit)
+        ranked = await self._rank(query, limit)
+        if not ranked:
+            return base
+        seen = {r["name"] for r in base}
+        extra = [self._card(name) for name in ranked if name not in seen]
+        return [*base, *(e for e in extra if e)][:limit]
+
+    def search_smart(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
+        """Sync wrapper; uses the plain search when inside a running loop."""
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(self.asearch_smart(query, limit))
+        logger.debug("search_smart inside a running loop; using keyword search.")
+        return self.search(query, limit=limit)
+
+    async def _rank(self, query: str, limit: int) -> list[str]:
+        """Ordered tool names from System One, or [] when there is no signal."""
+        if not query.strip() or len(self._entries) < 2:
+            return []
+        try:
+            from alpha.tools.selection import Candidate, rank_candidates
+        except Exception:
+            return []
+        entries = list(self._entries.values())[:RANK_POOL]
+        candidates = [
+            Candidate(
+                id=e.name,
+                title=e.name,
+                summary=f"{e.category}: {e.description}"[:280],
+                full=f"{e.category}: {e.description}"[:1200],
+            )
+            for e in entries
+        ]
+        try:
+            ranking = await rank_candidates(query, candidates, top_n=limit, site="tool_select")
+        except Exception:
+            logger.debug("System One tool ranking unavailable.", exc_info=True)
+            return []
+        return ranking.ids if ranking else []
+
+    def _card(self, name: str) -> dict[str, Any] | None:
+        entry = self._entries.get(name)
+        if entry is None:
+            return None
+        return {"name": entry.name, "category": entry.category, "description": entry.description}
 
     def describe(self, tool_name: str) -> dict[str, Any]:
         """Fetch complete parameter schema and usage specification for a single tool on demand."""

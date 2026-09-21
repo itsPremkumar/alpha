@@ -24,6 +24,9 @@ from alpha.autoconfig.models import (
 
 logger = logging.getLogger(__name__)
 
+#: Call-site label recorded in the System One decision log (see evaluation/system_one_calibration.py).
+SITE = "autoconfig"
+
 
 class SelfConfigurationEngine:
     """Orchestrates autonomous intent decomposition and dynamic harness self-configuration."""
@@ -33,10 +36,91 @@ class SelfConfigurationEngine:
         self._active_profile: SelfConfigProfile | None = None
         self._analysis_history: list[GoalAnalysis] = []
 
+    def _system_one_signals(self, goal: str, context: dict[str, Any]) -> dict[str, Any]:
+        """Ask a System One model for domain / complexity / risk, else return {}.
+
+        Returns {} whenever System One is disabled, unreachable, or not
+        confident — the caller then keeps its heuristic values. System One
+        answers all three questions in a single parallel request, so this costs
+        roughly one fast call rather than three.
+        """
+        try:
+            import asyncio
+
+            from alpha.models.system_one import ChoiceQuestion, ScoreQuestion, get_system_one_client
+
+            client = get_system_one_client()
+            cfg = client.config
+            if not cfg.enabled or not cfg.enable_goal_analysis or not client.is_available():
+                return {}
+
+            async def _query() -> dict[str, Any]:
+                result = await client.evaluate(
+                    {"goal": goal[:8000], "context": context or {}},
+                    {
+                        "domain": ChoiceQuestion(
+                            instructions="Which domain does this goal belong to?",
+                            criteria={
+                                "coding": "Writing, debugging, refactoring or testing software.",
+                                "deep_research": "Investigating, surveying or comparing information.",
+                                "security_audit": "Auditing security, permissions, vulnerabilities or exploits.",
+                                "architecture": "Designing or evolving systems, frameworks or engines.",
+                                "autonomous_company": "Running or growing a business autonomously.",
+                                "general": "None of the above fit well.",
+                            },
+                        ),
+                        "complexity": ChoiceQuestion(
+                            instructions="How complex is this goal for a single strong AI agent?",
+                            criteria={
+                                "trivial": "One immediate action.",
+                                "simple": "A couple of clear steps.",
+                                "moderate": "Several steps with some planning.",
+                                "complex": "Many interdependent steps needing coordination.",
+                                "research_frontier": "Open-ended, self-improving or frontier-level ambition.",
+                            },
+                        ),
+                        "risk": ScoreQuestion(
+                            instructions="How much damage could this goal do if executed wrongly?",
+                            criteria=["Harmless", "Recoverable rework", "Affects production, money or security", "Irreversible or destructive"],
+                        ),
+                    },
+                    site=SITE,
+                )
+                if result is None:
+                    return {}
+                out: dict[str, Any] = {}
+                threshold = cfg.min_confidence
+                domain_answer = result.get("domain")
+                if domain_answer is not None and domain_answer.meets(threshold):
+                    out["domain"] = str(domain_answer.value)
+                complexity_answer = result.get("complexity")
+                if complexity_answer is not None and complexity_answer.meets(threshold):
+                    out["complexity"] = str(complexity_answer.value)
+                risk_answer = result.get("risk")
+                if risk_answer is not None and risk_answer.meets(threshold):
+                    # Score is 0..3; normalise onto the 0..1 heuristic scale.
+                    out["risk_score"] = max(0.0, min(1.0, float(risk_answer.value) / 3.0))
+                return out
+
+            # analyze_goal is sync; it runs on worker threads where no loop is
+            # active. Fall back to {} rather than blocking a live loop.
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                return asyncio.run(_query())
+            return {}
+        except Exception:
+            logger.debug("System One goal analysis unavailable; using heuristics.", exc_info=True)
+            return {}
+
     def analyze_goal(self, goal: str, context: dict[str, Any] | None = None) -> GoalAnalysis:
         """Parse, classify, and decompose goal intent to determine optimal agent parameters."""
         ctx = context or {}
         g_lower = goal.lower()
+
+        # 0. System One (Jev) pre-pass: typed, calibrated domain/complexity/risk
+        # judgements. Empty dict means "no confident answer" -> heuristics run.
+        s1 = self._system_one_signals(goal, ctx)
 
         # 1. Domain Detection
         coding_signals = ["code", "python", "test", "debug", "refactor", "api", "function", "backend", "frontend", "git", "bug", "patch"]
@@ -52,7 +136,7 @@ class SelfConfigurationEngine:
             "architecture": sum(1 for s in arch_signals if s in g_lower),
             "autonomous_company": sum(1 for s in company_signals if s in g_lower),
         }
-        domain = max(domain_scores, key=domain_scores.get) if any(domain_scores.values()) else "general"
+        domain = s1.get("domain") or (max(domain_scores, key=domain_scores.get) if any(domain_scores.values()) else "general")
 
         # 2. Complexity Assessment
         conjunctions = len(re.findall(r"\b(and also|furthermore|as well as|moreover|in addition|additionally)\b", g_lower))
@@ -73,11 +157,18 @@ class SelfConfigurationEngine:
             complexity = ComplexityLevel.SIMPLE
         else:
             complexity = ComplexityLevel.TRIVIAL
+        # System One override when it was confident enough to answer.
+        s1_complexity = s1.get("complexity")
+        if s1_complexity:
+            try:
+                complexity = ComplexityLevel(s1_complexity)
+            except ValueError:
+                logger.debug("System One returned unknown complexity '%s'; keeping heuristic.", s1_complexity)
 
         # 3. Risk Scoring (0.0 - 1.0)
         risk_signals = ["delete", "rm ", "drop ", "overwrite", "root", "sudo", "bypass", "credentials", "token", "kill"]
         risk_hits = sum(1 for r in risk_signals if r in g_lower)
-        risk_score = min(1.0, 0.1 + (risk_hits * 0.25))
+        risk_score = s1.get("risk_score") if "risk_score" in s1 else min(1.0, 0.1 + (risk_hits * 0.25))
 
         # 4. Mode and Model Tier Selection
         if has_frontier or "never stop" in g_lower:

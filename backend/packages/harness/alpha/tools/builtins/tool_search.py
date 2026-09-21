@@ -108,6 +108,55 @@ class DeferredToolCatalog:
         scored.sort(key=lambda x: x[0], reverse=True)
         return [t for _, t in scored][:MAX_RESULTS]
 
+    def search_smart(self, query: str) -> list[BaseTool]:
+        """Deterministic search, then System One re-ranks what the regex missed.
+
+        Only the free-text path benefits — ``select:`` and ``+name`` are exact
+        forms and are left alone. The regex hits always lead, so promoting a
+        tool the model named literally can never regress.
+        """
+        base = self.search(query)
+        if not query.strip() or query.startswith(("select:", "+")) or len(self.tools) < 2:
+            return base
+        order = _system_one_tool_order(query, self.tools)
+        if not order:
+            return base
+        by_name = {t.name: t for t in self.tools}
+        seen = {t.name for t in base}
+        return [*base, *(by_name[n] for n in order if n in by_name and n not in seen)][:MAX_RESULTS]
+
+
+def _system_one_tool_order(query: str, tools: tuple[BaseTool, ...]) -> list[str]:
+    """Ordered tool names from System One, or [] when there is no signal.
+
+    ``tool_search`` runs off the event loop, so this spins one when none is
+    running; inside a running loop it returns [] and the regex order stands.
+    """
+    import asyncio
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        pass
+    else:
+        return []
+    try:
+        from alpha.tools.selection import Candidate, rank_candidates
+
+        candidates = [
+            Candidate(
+                id=t.name,
+                title=t.name,
+                summary=(t.description or "")[:280],
+                full=(t.description or "")[:1200],
+            )
+            for t in tools[:60]
+        ]
+        ranking = asyncio.run(rank_candidates(query, candidates, top_n=5, site="tool_select"))
+    except Exception:
+        return []
+    return ranking.ids if ranking else []
+
 
 def _catalog_regex_score(pattern: str, t: BaseTool) -> int:
     regex = _compile_catalog_regex(pattern)
@@ -156,7 +205,9 @@ def build_tool_search_tool(catalog: DeferredToolCatalog) -> BaseTool:
           - "notebook jupyter" -- keyword search, up to max_results best matches
           - "+slack send" -- require "slack" in the name, rank by remaining terms
         """
-        matched = catalog.search(query)
+        # Regex match first; System One appends any tool whose description fits
+        # the intent but not the wording. Falls back to the plain search.
+        matched = catalog.search_smart(query)
         if not matched:
             content, names = f"No tools found matching: {query}", []
         else:

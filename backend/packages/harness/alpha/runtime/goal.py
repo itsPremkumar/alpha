@@ -30,6 +30,9 @@ from alpha.utils.time import now_iso
 
 logger = logging.getLogger(__name__)
 
+#: Call-site label recorded in the System One decision log (see evaluation/system_one_calibration.py).
+SITE = "goal"
+
 DEFAULT_MAX_GOAL_CONTINUATIONS = 8
 DEFAULT_MAX_NO_PROGRESS_CONTINUATIONS = 2
 MAX_GOAL_OBJECTIVE_CHARS = 4000
@@ -251,6 +254,78 @@ def _resolve_environment() -> str | None:
     return os.environ.get("AGENT_WORKSPACE_ENV") or os.environ.get("ENVIRONMENT")
 
 
+async def _system_one_goal_completion(goal: GoalState, conversation: str) -> GoalEvaluation | None:
+    """Fast path: judge goal completion with a System One model.
+
+    Returns None whenever System One is disabled, unreachable or not confident,
+    so the caller falls through to the LLM evaluator below. Because System One
+    returns typed values instead of generated text, there is no JSON to parse
+    and no risk of an unparseable verdict.
+    """
+    try:
+        from alpha.models.system_one import BooleanQuestion, ChoiceQuestion, get_system_one_client
+
+        client = get_system_one_client()
+        cfg = client.config
+        if not cfg.enabled or not cfg.enable_goal_completion or not client.is_available():
+            return None
+
+        result = await client.evaluate(
+            {
+                "active_goal": goal["objective"],
+                "visible_conversation_evidence": conversation[:20000],
+            },
+            {
+                "satisfied": BooleanQuestion(
+                    instructions=(
+                        "Is the active goal fully satisfied using ONLY `visible_conversation_evidence`? "
+                        "Do not assume files, commands or tests changed unless the evidence explicitly shows it."
+                    ),
+                    criteria={
+                        "true": "The evidence explicitly shows the goal was achieved.",
+                        "false": "The goal is not yet achieved, or the evidence is too weak to prove it.",
+                    },
+                ),
+                "blocker": ChoiceQuestion(
+                    instructions="What is blocking completion of the active goal?",
+                    criteria={
+                        "none": "Nothing is blocking; the goal is complete.",
+                        "missing_evidence": "The visible evidence is too weak to prove progress.",
+                        "needs_user_input": "The assistant is waiting on the user.",
+                        "run_failed": "The turn failed.",
+                        "external_wait": "Work is waiting on an outside system.",
+                        "goal_not_met_yet": "Useful autonomous work can still continue.",
+                    },
+                ),
+            },
+            site=SITE,
+        )
+        if result is None:
+            return None
+
+        threshold = cfg.min_confidence
+        satisfied_answer = result.get("satisfied")
+        if satisfied_answer is None or not satisfied_answer.meets(threshold):
+            return None
+
+        satisfied = float(satisfied_answer.value) >= 0.5
+        blocker = "none" if satisfied else "goal_not_met_yet"
+        blocker_answer = result.get("blocker")
+        if blocker_answer is not None and blocker_answer.meets(threshold):
+            candidate = str(blocker_answer.value)
+            if candidate in {"none", "missing_evidence", "needs_user_input", "run_failed", "external_wait", "goal_not_met_yet"}:
+                blocker = "none" if satisfied else candidate
+        return GoalEvaluation(
+            satisfied=satisfied,
+            blocker=blocker,
+            reason=f"System One ({result.model}) judged completion in {result.latency_ms:.0f}ms.",
+            evidence_summary="",
+        )
+    except Exception:
+        logger.debug("System One goal completion check unavailable; using LLM evaluator.", exc_info=True)
+        return None
+
+
 async def evaluate_goal_completion(
     goal: GoalState,
     messages: list[Any],
@@ -281,6 +356,13 @@ async def evaluate_goal_completion(
             reason="No visible assistant evidence is available yet.",
             evidence_summary="",
         )
+
+    # Fast path: System One (Jev) — typed, calibrated verdict in ~100ms with
+    # nothing to parse. None means "no confident answer", so we fall through to
+    # the LLM evaluator, which is the previous behaviour.
+    s1 = await _system_one_goal_completion(goal, conversation)
+    if s1 is not None:
+        return s1
 
     system_instruction = (
         "You are a strict completion evaluator for an AI coding assistant.\n"

@@ -48,8 +48,16 @@ class EpistemicBeliefEngine:
         evidence: str,
         is_supporting: bool = True,
         likelihood_ratio: float = 3.0,
+        *,
+        use_system_one: bool = True,
     ) -> Claim:
-        """Perform a Bayesian update on the claim based on observed evidence."""
+        """Perform a Bayesian update on the claim based on observed evidence.
+
+        ``likelihood_ratio`` is the fallback. When System One is available it
+        derives the ratio from the evidence itself, so "this log line proves it"
+        and "this log line is unrelated" get different weights instead of both
+        multiplying by 3.0. No signal -> the caller's constant is used unchanged.
+        """
         claim = self._claims.get(claim_id)
         if not claim:
             raise KeyError(f"Claim with id '{claim_id}' not found.")
@@ -57,6 +65,18 @@ class EpistemicBeliefEngine:
         # Compute prior odds: odds = p / (1 - p)
         p = max(0.01, min(0.99, claim.bayesian_posterior))
         prior_odds = p / (1.0 - p)
+
+        if use_system_one:
+            # Belt and braces: _system_one_likelihood already swallows
+            # everything, but a belief update must never be the reason a run
+            # fails, so the call site is defensive too.
+            try:
+                derived = self._system_one_likelihood(claim, evidence, is_supporting)
+            except Exception:
+                logger.debug("System One likelihood failed; using the fallback ratio.", exc_info=True)
+                derived = None
+            if derived is not None and derived > 0.0:
+                likelihood_ratio = derived
 
         if is_supporting:
             claim.supporting_evidence.append(evidence)
@@ -79,6 +99,21 @@ class EpistemicBeliefEngine:
             claim.status = EpistemicStatus.CONTRADICTION
 
         return claim
+
+    @staticmethod
+    def _system_one_likelihood(claim: Claim, evidence: str, is_supporting: bool) -> float | None:
+        """Derive a likelihood ratio from the evidence. None = keep the constant.
+
+        Never raises and never blocks a live loop — if either would happen the
+        caller's ``likelihood_ratio`` stands.
+        """
+        try:
+            from alpha.epistemics.jev_belief import evidence_likelihood_sync
+
+            return evidence_likelihood_sync(claim.text, evidence, supporting=is_supporting)
+        except Exception:
+            logger.debug("System One likelihood unavailable; using the fallback ratio.", exc_info=True)
+            return None
 
     def get_unverified_assumptions(self) -> list[Claim]:
         """Return claims marked as ASSUMPTION or HYPOTHESIS lacking empirical validation."""

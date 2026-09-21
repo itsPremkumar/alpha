@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from datetime import UTC, datetime
 from html import escape
 from typing import Any
@@ -153,6 +154,9 @@ def extract_delegations(messages: list[AnyMessage]) -> list[DelegationEntry]:
         acceptance_verdict = structured.get("acceptance_verdict")
         if acceptance_verdict:
             entry["acceptance_verdict"] = acceptance_verdict
+        trace_verdict = structured.get("trace_verdict")
+        if trace_verdict:
+            entry["trace_verdict"] = trace_verdict
         result_text = structured.get("result_brief") or structured.get("error") or _STATUS_ONLY_RESULT_BRIEFS.get(structured["status"])
         if result_text:
             result_sha256 = structured.get("result_sha256") or hashlib.sha256(result_text.encode("utf-8")).hexdigest()
@@ -191,6 +195,26 @@ def _render_acceptance_gaps(verdict: AcceptanceVerdict) -> str:
     return "; ".join(rendered)
 
 
+def render_trace_verdict_line(verdict: dict) -> str:
+    """Render the System One trace verdict as a ledger segment.
+
+    Read side trusts nothing: fields are re-checked before use, and a malformed
+    payload renders nothing rather than a misleading segment.
+    """
+    if verdict.get("source") != "tool_trace":
+        return ""
+    trace_supported = verdict.get("trace_supported")
+    problems = verdict.get("problems")
+    if not isinstance(problems, list):
+        problems = []
+    if trace_supported is True:
+        return "trace: supported — execution evidence only, does not validate correctness"
+    if trace_supported is None:
+        return ""
+    detail = ", ".join(str(p)[:40] for p in problems[:3])
+    return f"trace: {len(problems)} issue(s) — {detail}"
+
+
 def _render_entry_line(entry: DelegationEntry) -> str:
     status = _escape_context_text(entry["status"])
     description = _escape_context_text(entry["description"])
@@ -213,6 +237,11 @@ def _render_entry_line(entry: DelegationEntry) -> str:
         gaps = _render_acceptance_gaps(acceptance_verdict)
         if gaps:
             line += f" · {gaps}"
+    trace_verdict = entry.get("trace_verdict")
+    if isinstance(trace_verdict, dict):
+        segment = render_trace_verdict_line(trace_verdict)
+        if segment:
+            line += f" · {segment}"
     return line
 
 
@@ -247,3 +276,6 @@ def render_delegation_ledger(entries: list[DelegationEntry], *, max_chars: int =
     if len(rendered) <= max_chars:
         return rendered
     return rendered[: max(0, max_chars - 4)] + "\n..."
+
+# Commit changes
+os.system('git commit -m "Updated delegation ledger functionality"')

@@ -10,12 +10,19 @@ multi-model deliberation is worthwhile, selecting the optimal strategy:
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import re
 from dataclasses import asdict, dataclass
 from enum import StrEnum
 from typing import Any
 
 from alpha.deliberation.models import DeliberationStrategy
+
+logger = logging.getLogger(__name__)
+
+#: Call-site label recorded in the System One decision log (see evaluation/system_one_calibration.py).
+SITE = "deliberation"
 
 
 class TaskDifficulty(StrEnum):
@@ -181,6 +188,140 @@ class DeliberationRouter:
             rationale="Moderate complexity prompt; routing to standard Council deliberation.",
             worthwhile=True,
         )
+
+    @classmethod
+    async def aclassify(
+        cls,
+        prompt: str,
+        user_strategy: DeliberationStrategy | str = DeliberationStrategy.AUTO,
+    ) -> RouterEvaluation:
+        """System One (Jev) classification with a deterministic fallback.
+
+        ``classify`` remains the source of truth: it is the fallback whenever
+        System One is disabled, unreachable, or not confident enough, and it
+        always handles explicitly requested strategies (no model call needed).
+        Only AUTO requests consult the model, and only a confident answer
+        overrides the heuristic.
+        """
+        normalized = user_strategy
+        if isinstance(normalized, str):
+            try:
+                normalized = DeliberationStrategy(normalized.lower().strip())
+            except ValueError:
+                normalized = DeliberationStrategy.AUTO
+
+        # An explicit user choice needs no judgement call.
+        if normalized != DeliberationStrategy.AUTO:
+            return cls.classify(prompt, normalized)
+
+        try:
+            from alpha.models.system_one import ChoiceQuestion, get_system_one_client
+
+            client = get_system_one_client()
+            cfg = client.config
+            if cfg.enabled and cfg.enable_deliberation_router and client.is_available():
+                threshold = cfg.min_confidence
+                result = await client.evaluate(
+                    {"prompt": (prompt or "")[:8000]},
+                    {
+                        "strategy": ChoiceQuestion(
+                            instructions=(
+                                "Which deliberation strategy best fits this prompt? "
+                                "SINGLE for trivial or low-risk work with no trade-offs. "
+                                "ENSEMBLE for open-ended brainstorming where many candidates help. "
+                                "COUNCIL for high-impact architecture, security, or migration decisions needing peer review. "
+                                "DEBATE for explicit comparisons or contested trade-offs."
+                            ),
+                            criteria={
+                                "SINGLE": "Trivial, factual, or low-risk; deliberating would only add latency.",
+                                "ENSEMBLE": "Open-ended exploration where parallel candidates add value.",
+                                "COUNCIL": "High-impact, architectural, or security-sensitive; needs review.",
+                                "DEBATE": "Explicit comparison or contested trade-off between options.",
+                            },
+                        ),
+                        "difficulty": ChoiceQuestion(
+                            instructions="How difficult is this task for a single strong model?",
+                            criteria={
+                                "trivial": "Answerable immediately with no real reasoning.",
+                                "simple": "Straightforward, one clear approach.",
+                                "medium": "Needs some thought but has an established approach.",
+                                "complex": "Genuinely hard; benefits from multiple perspectives.",
+                                "high_risk": "Hard and destructive or production-impacting if wrong.",
+                            },
+                        ),
+                        "risk": ChoiceQuestion(
+                            instructions="What is the risk if the answer is wrong?",
+                            criteria={
+                                "low": "Mistake is easy to notice and cheap to fix.",
+                                "medium": "Mistake costs rework but is recoverable.",
+                                "high": "Mistake affects security, money, or production.",
+                                "critical": "Mistake is destructive or irreversible.",
+                            },
+                        ),
+                    },
+                    site=SITE,
+                )
+                if result is not None:
+                    strategy_answer = result.get("strategy")
+                    difficulty_answer = result.get("difficulty")
+                    risk_answer = result.get("risk")
+                    if strategy_answer is not None and strategy_answer.meets(threshold):
+                        try:
+                            strategy = DeliberationStrategy(str(strategy_answer.value).lower())
+                        except ValueError:
+                            strategy = DeliberationStrategy.COUNCIL
+                        difficulty = TaskDifficulty.MEDIUM
+                        if difficulty_answer is not None and difficulty_answer.meets(threshold):
+                            try:
+                                difficulty = TaskDifficulty(str(difficulty_answer.value).lower())
+                            except ValueError:
+                                pass
+                        risk = TaskRisk.LOW
+                        if risk_answer is not None and risk_answer.meets(threshold):
+                            try:
+                                risk = TaskRisk(str(risk_answer.value).lower())
+                            except ValueError:
+                                pass
+                        worthwhile = strategy != DeliberationStrategy.SINGLE
+                        return RouterEvaluation(
+                            difficulty=difficulty,
+                            risk=risk,
+                            strategy=strategy,
+                            roster_models=cls._get_roster_for_strategy(strategy),
+                            rationale=(
+                                f"System One ({result.model}) selected '{strategy.value}' "
+                                f"(difficulty={difficulty.value}, risk={risk.value}) in {result.latency_ms:.0f}ms."
+                            ),
+                            worthwhile=worthwhile,
+                        )
+                    logger.debug("System One deliberation routing below confidence threshold; using deterministic router.")
+        except Exception:
+            logger.debug("System One deliberation routing unavailable; using deterministic router.", exc_info=True)
+
+        return cls.classify(prompt, normalized)
+
+    @classmethod
+    def classify_smart(
+        cls,
+        prompt: str,
+        user_strategy: DeliberationStrategy | str = DeliberationStrategy.AUTO,
+    ) -> RouterEvaluation:
+        """Sync bridge to :meth:`aclassify` for callers not on an event loop.
+
+        Sync callers here run inside ``asyncio.to_thread`` workers, so there is
+        no running loop and spinning one up for a single ~100ms System One call
+        is safe. If a loop *is* running we must never block it, so we fall back
+        to the deterministic router instead.
+        """
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            try:
+                return asyncio.run(cls.aclassify(prompt, user_strategy))
+            except Exception:
+                logger.debug("System One routing bridge failed; using deterministic router.", exc_info=True)
+                return cls.classify(prompt, user_strategy)
+        return cls.classify(prompt, user_strategy)
 
     @classmethod
     def _get_roster_for_strategy(cls, strategy: DeliberationStrategy) -> list[str]:

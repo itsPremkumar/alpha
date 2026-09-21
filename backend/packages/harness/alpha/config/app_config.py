@@ -49,6 +49,7 @@ from alpha.config.subagent_runtime_config import SubagentRuntimeConfig
 from alpha.config.subagents_config import SubagentsAppConfig, load_subagents_config_from_dict
 from alpha.config.suggestions_config import SuggestionsConfig
 from alpha.config.summarization_config import SummarizationConfig, load_summarization_config_from_dict
+from alpha.config.system_one_config import SystemOneConfig
 from alpha.config.task_continuity_config import TaskContinuityConfig
 from alpha.config.title_config import TitleConfig, load_title_config_from_dict
 from alpha.config.token_budget_config import TokenBudgetConfig
@@ -270,6 +271,7 @@ class AppConfig(BaseModel):
     loop_detection: LoopDetectionConfig = Field(default_factory=LoopDetectionConfig, description="Loop detection middleware configuration")
     tool_progress: ToolProgressConfig = Field(default_factory=ToolProgressConfig, description="Tool progress state machine middleware configuration")
     verification: VerificationConfig = Field(default_factory=VerificationConfig, description="Subagent result verification (receipts, checklist, judge)")
+    system_one: SystemOneConfig = Field(default_factory=SystemOneConfig, description="System One (Jev) fast structured-decision engine used as the default classifier/router/scorer with LLM fallback")
     read_before_write: ReadBeforeWriteConfig = Field(default_factory=ReadBeforeWriteConfig, description="Read-before-write file gate middleware configuration")
     review_guard: ReviewGuardConfig = Field(default_factory=ReviewGuardConfig, description="Review guard middleware configuration (comment density, role-scoped writes)")
     safety_finish_reason: SafetyFinishReasonConfig = Field(default_factory=SafetyFinishReasonConfig, description="Provider safety-filter finish_reason interception middleware configuration")

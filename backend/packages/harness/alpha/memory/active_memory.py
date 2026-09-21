@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from alpha.memory.dreaming.store import get_dream_store
+
+logger = logging.getLogger(__name__)
+
+#: Call-site label recorded in the System One decision log (see evaluation/system_one_calibration.py).
+SITE = "memory_gate"
 
 
 @dataclass
@@ -32,6 +39,70 @@ class ActiveMemoryRouter:
     ):
         self.memory_files = memory_files or []
         self.escalation_threshold = escalation_threshold
+
+    def _system_one_escalation_gate(
+        self,
+        query_text: str,
+        lines: list[str],
+        top_matches: list[str],
+        top_score: float,
+    ) -> bool | None:
+        """Decide whether Tier-2 escalation is worth its cost.
+
+        Returns True (escalate), False (Tier 1 answer is enough), or None
+        (no confident opinion — caller keeps its threshold behaviour).
+
+        Tier 2 is a full LLM call, so skipping it when the local hit already
+        answers the question is the highest-value place to put a 100ms
+        decision. A confident "not needed" saves seconds and tokens.
+        """
+        try:
+            from alpha.models.system_one import BooleanQuestion, get_system_one_client
+
+            client = get_system_one_client()
+            cfg = client.config
+            if not cfg.enabled or not cfg.enable_memory_escalation or not client.is_available():
+                return None
+
+            async def _query() -> bool | None:
+                result = await client.evaluate(
+                    {
+                        "query": query_text,
+                        "top_local_matches": top_matches[:5],
+                        "local_match_score": round(top_score, 3),
+                        "memory_excerpt": lines[:60],
+                    },
+                    {
+                        "needs_deep_retrieval": BooleanQuestion(
+                            instructions=(
+                                "Do `top_local_matches` already answer `query` well enough that "
+                                "escalating to an expensive deep-reasoning retrieval pass would be wasteful? "
+                                "Answer yes if the local matches already answer it; no if deeper retrieval is genuinely needed."
+                            ),
+                            criteria={
+                                "true": "The local matches already answer the query adequately.",
+                                "false": "The local matches miss the answer; deeper retrieval is needed.",
+                            },
+                        ),
+                    },
+                    site=SITE,
+                )
+                if result is None:
+                    return None
+                answer = result.get("needs_deep_retrieval")
+                if answer is None or not answer.meets(cfg.min_confidence):
+                    return None
+                answered_by_local = float(answer.value) >= 0.5
+                return not answered_by_local  # local answered -> do not escalate
+
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                return asyncio.run(_query())
+            return None  # never block a live event loop
+        except Exception:
+            logger.debug("System One memory escalation gate unavailable; using threshold.", exc_info=True)
+            return None
 
     def _collect_memory_lines(self) -> list[str]:
         lines: list[str] = []
@@ -107,6 +178,20 @@ class ActiveMemoryRouter:
                 escalated=False,
                 reason=f"Resolved deterministically via Tier 1 with confidence {top_score:.2f}.",
             )
+
+        # Tier 1.5: System One (Jev) gate — skip the expensive Tier-2 LLM call
+        # when the local matches already answer the query.
+        if escalation_handler is not None:
+            gate = self._system_one_escalation_gate(query_text, lines, top_matches, top_score)
+            if gate is False:
+                return MemoryLookupResult(
+                    query=query_text,
+                    tier=1,
+                    matches=top_matches,
+                    confidence=max(top_score, self.escalation_threshold),
+                    escalated=False,
+                    reason=f"System One judged Tier 1 sufficient (score {top_score:.2f}); deep retrieval skipped.",
+                )
 
         # Tier 2: Escalation Check
         if escalation_handler is not None:

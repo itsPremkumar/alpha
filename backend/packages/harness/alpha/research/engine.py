@@ -8,12 +8,13 @@ Markdown report synthesis.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
 import logging
 import re
 import time
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Any
 from urllib.parse import urlparse
 
 from alpha.research.five_pass import (
@@ -22,6 +23,15 @@ from alpha.research.five_pass import (
 )
 
 logger = logging.getLogger(__name__)
+
+#: Fetched content at or above this injection risk is dropped in favour of the
+#: provider snippet. Below it the source is kept and only flagged — a page that
+#: merely mentions "AI assistant" should not silently lose its evidence.
+INJECTION_QUARANTINE_AT = 0.6
+
+#: How many extracted findings per source get a support check. One request
+#: covers them all, but a source with 40 findings is not 40x more useful.
+MAX_VERIFIED_FINDINGS = 8
 
 
 @dataclass
@@ -40,6 +50,9 @@ class EvidenceSource:
     fetched_at: float = field(default_factory=time.time)
     source_id: str = "S1"
     confidence: float = 0.9
+    injection_risk: float | None = None
+    injection_signals: list[str] = field(default_factory=list)
+    unsupported_findings: list[str] = field(default_factory=list)
 
     def __post_init__(self):
         if hasattr(self.pass_type, "value"):
@@ -119,7 +132,7 @@ class DeepResearchReport:
     markdown_content: str
     depth: int = 3
     generated_at: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+        default_factory=lambda: datetime.now(UTC).isoformat()
     )
 
     @property
@@ -229,9 +242,9 @@ class DeepResearchEngine:
         selected_lanes = search_plan.lanes
         if not include_adversarial:
             selected_lanes = [
-                l
-                for l in selected_lanes
-                if l.pass_type != SearchPassType.ADVERSARIAL_CONTRADICTION
+                lane
+                for lane in selected_lanes
+                if lane.pass_type != SearchPassType.ADVERSARIAL_CONTRADICTION
             ]
 
         # 2. Execute First-Wave Search across lanes in parallel
@@ -359,6 +372,11 @@ class DeepResearchEngine:
             content = await self.fetch_fn(source.url)
             source.content = content or source.snippet
 
+            # Fetched text is untrusted data. If it is trying to redirect the
+            # agent, fall back to the search snippet (which came from the search
+            # provider, not the page) and record why. No verdict -> no change.
+            await self._screen_for_injection(source)
+
             # Extract metrics / stats patterns
             metrics: dict[str, str] = {}
             # Match percentages
@@ -375,15 +393,95 @@ class DeepResearchEngine:
 
             # Extract bullet findings
             findings: list[str] = []
-            lines = [l.strip() for l in source.content.split("\n") if len(l.strip()) > 30]
+            lines = [line.strip() for line in source.content.split("\n") if len(line.strip()) > 30]
             for line in lines[:4]:
                 if not line.startswith("#"):
                     findings.append(line[:160])
             source.key_findings = findings or [source.snippet]
+
+            # A line extracted from a page is not the same as a page that
+            # says it. Check each finding against the content it came from.
+            await self._verify_findings(source)
         except Exception as exc:
             logger.debug("Failed to fetch content from %s: %s", source.url, exc)
             source.content = source.snippet
             source.key_findings = [source.snippet] if source.snippet else []
+
+    async def _screen_for_injection(self, source: EvidenceSource) -> None:
+        """Flag — and neutralise — prompt injection in fetched page content.
+
+        The page body is what an attacker controls. Replacing it with the
+        provider snippet keeps the source usable while removing the payload.
+        ``None`` from the scanner means "no verdict", which is never treated as
+        clean: the content stays, and the risk field stays None.
+        """
+        if not (source.content or "").strip():
+            return
+        try:
+            from alpha.security.injection import scan_content
+
+            verdict = await scan_content(source.content, source=source.url)
+        except Exception:
+            logger.debug("Injection screen unavailable for %s; source unchanged.", source.url)
+            return
+        if verdict is None:
+            return
+        source.injection_risk = verdict.risk
+        source.injection_signals = list(verdict.fired)
+        if verdict.is_injection and verdict.risk >= INJECTION_QUARANTINE_AT:
+            logger.warning(
+                "Quarantined fetched content from %s (injection risk %.2f, signals=%s); falling back to the snippet.",
+                source.url,
+                verdict.risk,
+                verdict.fired,
+            )
+            source.content = source.snippet
+            source.key_findings = [source.snippet] if source.snippet else []
+
+    async def _verify_findings(self, source: EvidenceSource) -> None:
+        """Check each extracted finding against the content it came from.
+
+        Extraction is line-shaped: any sentence over 30 characters becomes a
+        "key finding", including ones that merely sit near the real claim. This
+        asks System One whether the page actually shows each one.
+
+        Contradicted findings are dropped — carrying a claim the source
+        refutes into a report is worse than carrying nothing. Unsupported ones
+        are kept but flagged, and the source loses confidence, because
+        "unsupported" is often "this extractor picked a bad line" rather than
+        "the page is wrong".
+
+        Findings System One has no verdict on are left exactly as they are.
+        """
+        findings = [f for f in source.key_findings if f and f.strip()]
+        if not findings or not (source.content or "").strip():
+            return
+        try:
+            from alpha.agents.middlewares.citation_support import CONTRADICTED, UNSUPPORTED, judge_batch
+
+            pairs = [(source.source_id, f, source.content) for f in findings[:MAX_VERIFIED_FINDINGS]]
+            verdicts = await judge_batch(pairs)
+        except Exception:
+            logger.debug("Citation support unavailable for %s; findings unchanged.", source.url)
+            return
+        if not verdicts:
+            return
+
+        contradicted = {v.claim for v in verdicts if v.verdict == CONTRADICTED}
+        unsupported = [v.claim for v in verdicts if v.verdict == UNSUPPORTED]
+        if contradicted:
+            logger.info(
+                "Dropped %d contradicted finding(s) from %s",
+                len(contradicted),
+                source.url,
+            )
+            source.key_findings = [f for f in source.key_findings if f not in contradicted]
+            source.extracted_facts = [f for f in source.extracted_facts if f not in contradicted]
+        if unsupported:
+            source.unsupported_findings = unsupported
+        if contradicted or unsupported:
+            penalty = 0.15 * (len(contradicted) + len(unsupported))
+            source.confidence = round(max(0.10, source.confidence - penalty), 3)
 
     def _identify_research_gaps(
         self, topic: str, sources: dict[str, EvidenceSource]
@@ -523,7 +621,7 @@ class DeepResearchEngine:
             f"# Deep Research Report: {topic}",
             "",
             "> **Autonomous Research Brief** | Synthesized by Alpha Deep Research Superintelligence",
-            f"> *Date:* {datetime.now(timezone.utc).strftime('%B %d, %Y')} | *Verified Sources:* {len(sources)} | *Methodology:* 5-Pass Multi-Lane Search",
+            f"> *Date:* {datetime.now(UTC).strftime('%B %d, %Y')} | *Verified Sources:* {len(sources)} | *Methodology:* 5-Pass Multi-Lane Search",
             "",
             "---",
             "",

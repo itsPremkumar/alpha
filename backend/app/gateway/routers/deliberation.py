@@ -36,7 +36,7 @@ class DeliberationRunRequest(BaseModel):
 @router.post("/evaluate")
 async def evaluate_deliberation_feasibility(payload: DeliberationEvaluateRequest):
     """Evaluates whether deliberation is worthwhile and recommends the optimal multi-model strategy."""
-    eval_res = await asyncio.to_thread(DeliberationRouter.classify, payload.prompt)
+    eval_res = await DeliberationRouter.aclassify(payload.prompt)
     return eval_res.to_dict()
 
 

@@ -59,6 +59,7 @@ SUBAGENT_TOKEN_USAGE_KEY = "subagent_token_usage"
 SUBAGENT_TOOL_RECEIPTS_KEY = "subagent_tool_receipts"
 SUBAGENT_RECEIPT_VERDICT_KEY = "subagent_receipt_verdict"
 SUBAGENT_ACCEPTANCE_VERDICT_KEY = "subagent_acceptance_verdict"
+SUBAGENT_TRACE_VERDICT_KEY = "subagent_trace_verdict"
 SUBAGENT_METADATA_TEXT_MAX_CHARS = 2000
 
 #: The producer always emits ``hashlib.sha256(...).hexdigest()`` — 64
@@ -135,6 +136,7 @@ class StructuredSubagentResult(TypedDict):
     tool_receipts: NotRequired[list[dict[str, Any]]]
     receipt_verdict: NotRequired[ReceiptVerdict]
     acceptance_verdict: NotRequired[AcceptanceVerdict]
+    trace_verdict: NotRequired[dict[str, Any]]
 
 
 def _bound_metadata_text(text: str, cap: int = SUBAGENT_METADATA_TEXT_MAX_CHARS) -> str:
@@ -162,6 +164,7 @@ def make_subagent_additional_kwargs(
     tool_receipts: list[dict[str, Any]] | None = None,
     receipt_verdict: Mapping[str, object] | None = None,
     acceptance_verdict: Mapping[str, object] | None = None,
+    trace_verdict: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Build the ``additional_kwargs`` payload the middleware stamps.
 
@@ -205,6 +208,10 @@ def make_subagent_additional_kwargs(
     validated_acceptance = validate_acceptance_verdict(acceptance_verdict)
     if validated_acceptance is not None:
         payload[SUBAGENT_ACCEPTANCE_VERDICT_KEY] = validated_acceptance
+    if isinstance(trace_verdict, dict) and trace_verdict.get("source") == "tool_trace":
+        # Advisory only — it never gates a result. Structure-checked like every
+        # other persisted verdict because the read side trusts nothing.
+        payload[SUBAGENT_TRACE_VERDICT_KEY] = dict(trace_verdict)
     return payload
 
 

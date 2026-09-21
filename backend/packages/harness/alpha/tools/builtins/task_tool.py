@@ -614,6 +614,7 @@ def _task_result_command(
     tool_receipts: list[dict] | None = None,
     receipt_verdict: dict | None = None,
     acceptance_verdict: dict | None = None,
+    trace_verdict: dict | None = None,
 ) -> Command:
     content, metadata_error = format_subagent_result_message(status, result=result, error=error, stop_reason=stop_reason)
     if acceptance_verdict is not None:
@@ -637,6 +638,7 @@ def _task_result_command(
                         tool_receipts=tool_receipts,
                         receipt_verdict=receipt_verdict,
                         acceptance_verdict=acceptance_verdict,
+                        trace_verdict=trace_verdict,
                     ),
                 )
             ]
@@ -1104,6 +1106,33 @@ async def task_tool(
                         )
                     except Exception:
                         logger.warning(f"[trace={trace_id}] Acceptance checklist failed for task {tool_call_id}; result flows back unchecked", exc_info=True)
+                    # System One fills the leaves the deterministic pass could
+                    # not decide. Narrowing-only: it can turn UNVERIFIED into
+                    # "does not hold", never into "holds". Failure-isolated
+                    # exactly like the check above.
+                    if acceptance_verdict is not None:
+                        try:
+                            from alpha.subagents.acceptance_checks import afill_acceptance_gaps
+
+                            acceptance_verdict = await afill_acceptance_gaps(
+                                acceptance_verdict,
+                                result_text=result.result or "",
+                                task=prompt,
+                            )
+                        except Exception:
+                            logger.debug(f"[trace={trace_id}] System One acceptance fill skipped for task {tool_call_id}", exc_info=True)
+                # Semantic trace verification: does the recorded tool trace
+                # actually support the report's conclusion? Advisory only — it
+                # is carried as metadata and never gates the result.
+                trace_verdict = None
+                if receipts and (result.result or "").strip():
+                    try:
+                        from alpha.tools.trace_verify import steps_from_receipts, verify_trace
+
+                        trace = await verify_trace(prompt, result.result or "", steps_from_receipts(receipts))
+                        trace_verdict = trace.to_dict() if trace is not None else None
+                    except Exception:
+                        logger.debug(f"[trace={trace_id}] System One trace verification skipped for task {tool_call_id}", exc_info=True)
                 return _task_result_command(
                     tool_call_id=tool_call_id,
                     status="completed",
@@ -1114,6 +1143,7 @@ async def task_tool(
                     tool_receipts=receipts,
                     receipt_verdict=receipt_verdict,
                     acceptance_verdict=acceptance_verdict,
+                    trace_verdict=trace_verdict,
                 )
             elif result.status == SubagentStatus.FAILED:
                 _report_subagent_usage(runtime, result)

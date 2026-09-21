@@ -16,8 +16,8 @@ import re
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from app.gateway.deps import require_admin_user
 from alpha.bots.profile import _now
+from app.gateway.deps import require_admin_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/bots", tags=["bots"])
@@ -640,18 +640,21 @@ async def select_agent_endpoint(body: SelectAgentRequest) -> dict:
 
 class RouteTaskRequest(BaseModel):
     task_type: str = Field(..., min_length=1, max_length=64)
+    prompt: str = Field(default="", max_length=8000)
 
 
 @router.post("/route-task", summary="Route a task type to a model chain")
 async def route_task_endpoint(body: RouteTaskRequest) -> dict:
-    """Map task type to category chain with measured re-ranking (local-first)."""
+    """Map task type to category chain with measured re-ranking (local-first).
 
-    def _route():
-        from alpha.models.task_router import route_task
+    When ``prompt`` is supplied, System One additionally decides whether the
+    request needs the flagship model; escalation only ever moves up the ladder,
+    so a bad signal costs money and never quality. Omitting ``prompt`` (or
+    System One being unavailable) reproduces the previous behaviour exactly.
+    """
+    from alpha.models.task_router import aroute_task
 
-        return route_task(body.task_type).to_dict()
-
-    return await asyncio.to_thread(_route)
+    return (await aroute_task(body.task_type, body.prompt)).to_dict()
 
 
 class DMSendRequest(BaseModel):
