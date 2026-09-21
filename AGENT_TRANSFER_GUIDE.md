@@ -3,7 +3,8 @@
 **File:** `AGENT_TRANSFER_GUIDE.md` (this file)
 **Repo root:** `C:\Users\PREM KUMAR\Videos\alpha`
 **Mode:** local-only, no deletions, no auth, no remote servers
-**Last validated:** 2026-09-21 (pass 4 — frontend UI/UX overhaul, autonomy loops & self-healing verified, zero git debris, full verification)
+**Last validated:** 2026-09-21 (pass 5 — tool schema regression fixed, all 113 tool schemas OK, ALPHA_OK re-verified, commit 9b0c096)
+**Previous:** 2026-09-21 (pass 4 — frontend UI/UX overhaul, autonomy loops & self-healing verified, zero git debris, full verification)
 **Previous:** 2026-09-20 (pass 2 — orphan guard green, 25 capabilities wired, manifest 0 unwired)
 
 > REGULARLY-UPDATE RULE: this file is the single source of truth for handing
@@ -313,6 +314,47 @@ See the top of this file: **Section "Agent Transfer Guide — Alpha (main)"**. T
   with "unrecognized arguments".
 - Long commands exceed the 120 s tool timeout — use background execution, and
   redirect to an **absolute** path (relative `../../logs/...` fails).
+## 9c. PASS 5 (2026-09-21) — tool schema regression caught by smoke test, fixed & committed
+
+### Bug found by live smoke test
+The agent turn returned:
+`LLM request failed: Failed to generate JSON schema for 'harness_refine': Cannot generate a JsonSchema for core_schema.CallableSchema`
+
+### Root cause
+Four `@tool` functions declared `runtime: Runtime | None = None`. The `| None`
+union made pydantic try to schema-generate `ToolRuntime` itself, whose
+`stream_writer` field is a `Callable` — unsupported in JSON schema. This broke
+the **entire** tool list for the LLM (not just the one tool).
+
+### Fix (commit `9b0c096`)
+Changed all four to the working pattern used by memory tools: `runtime: Runtime`
+(bare, no union, no default, first positional param):
+- `code_mode_tool.py` — `code_mode_tool(runtime, code)`
+- `harness_refine_tool.py` — `harness_refine_tool(runtime, action, ...)`
+- `agent_message_tool.py` — `agent_observe_tool(runtime)`, `agent_message_tool(runtime, receiver_name, ...)`
+
+### Verification
+- `backend/scripts/check_tool_schemas.py`: **113/113 tool schemas OK** (0 failures)
+- Full agent turn: create thread → `runs/wait` → **ALPHA_OK** ✅
+- 25 integration tests pass
+- ruff check clean on all touched files
+- Manifest regenerated: 116 tools / 55 routers / 40 middlewares / 6 loops / 0 unwired
+
+### New tool added
+- `backend/scripts/check_tool_schemas.py` — runs after any tool signature change;
+  fails loudly if ANY registered tool cannot generate its JSON schema.
+
+### Where pass 5 stopped
+- All original priorities 1-5 are done and verified.
+- The E2E verifier (`scripts/verify_unified_system.py`) is still BLOCKED by the
+  sandbox `sitecustomize.py` bulk-delete shim (see §7c) — NOT a repo bug.
+- Full 150-file backend suite still NOT run (sandbox cleanup abort).
+- Remaining optional: frontend Integration tab polish, AGENTS.md doc updates.
+
+### Rule for future agents (reminder)
+Every new `@tool` that needs runtime access must use `runtime: Runtime` as a
+**bare required first parameter** — never `Runtime | None = None`. Run
+`python scripts/check_tool_schemas.py` after any tool signature change.
 - `ruff check .` from the repo root fails to parse a TOML file if any
   `pyproject.toml` has a duplicate key; fix the file, don't narrow the scope.
 - A prior note said a gateway was running on port 8001 — **it was not**. Verify
