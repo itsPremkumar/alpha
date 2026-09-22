@@ -47,9 +47,12 @@ uv run uvicorn app.gateway.app:app --host 127.0.0.1 --port 8001 > "$REPO_ROOT/lo
 GATEWAY_PID=$!
 
 # 5. Start Frontend
+#    NB: the old `node scripts/dev.mjs` referenced a file that never existed
+#    in this repo, so the frontend never started on Unix. Invoke the same
+#    binary start.ps1 uses (works with npm and pnpm node_modules layouts).
 echo -e "\033[1;33m[2/2] Starting Frontend UI on port 3000...\033[0m"
 cd "$REPO_ROOT/frontend"
-node scripts/dev.mjs > "$REPO_ROOT/logs/frontend.log" 2>&1 &
+node node_modules/next/dist/bin/next dev -p 3000 > "$REPO_ROOT/logs/frontend.log" 2>&1 &
 FRONTEND_PID=$!
 
 cleanup() {
@@ -59,19 +62,28 @@ cleanup() {
 }
 trap cleanup SIGINT SIGTERM EXIT
 
-# 6. Wait for health
+# 6. Wait for health (and report honestly: never claim LIVE on a dead gateway)
 echo "Waiting for services to become healthy..."
+GW_OK=0
 for i in {1..45}; do
     if curl -s http://127.0.0.1:8001/health >/dev/null 2>&1; then
         echo -e "\033[1;32m  [OK] Gateway is healthy!\033[0m"
+        GW_OK=1
         break
     fi
     sleep 1
 done
 
-echo -e "\033[1;32m========================================================\033[0m"
-echo -e "\033[1;32m   Alpha is LIVE! Access at: http://localhost:3000   \033[0m"
-echo -e "\033[1;32m========================================================\033[0m"
+if [ "$GW_OK" -eq 1 ]; then
+    echo -e "\033[1;32m========================================================\033[0m"
+    echo -e "\033[1;32m   Alpha is LIVE! Access at: http://localhost:3000   \033[0m"
+    echo -e "\033[1;32m========================================================\033[0m"
+else
+    echo -e "\033[1;33m========================================================\033[0m"
+    echo -e "\033[1;33m   Gateway NOT healthy after 45s - services still     \033[0m"
+    echo -e "\033[1;33m   starting or failed. Tail logs/gateway.log.         \033[0m"
+    echo -e "\033[1;33m========================================================\033[0m"
+fi
 echo "Press [Ctrl+C] to stop all services."
 
 # Open browser if available

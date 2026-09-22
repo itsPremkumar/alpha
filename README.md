@@ -479,8 +479,10 @@ Deploy the complete multi-service stack with Nginx, FastAPI Gateway, Next.js UI,
 git clone https://github.com/itsPremkumar/alpha.git
 cd alpha
 
-# 2. Configure secrets
-cp .env.production.example .env
+# 2. Configure secrets — OPTIONAL on a fresh clone: make up/deploy.sh
+#    auto-generates BETTER_AUTH_SECRET and the internal auth token on first
+#    run; copy .env only to pre-set provider API keys or override settings.
+cp .env.production.example .env   # optional
 make config
 
 # 3. Pre-flight health check
