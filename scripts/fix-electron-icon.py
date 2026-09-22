@@ -11,7 +11,7 @@ import os
 import sys
 from pathlib import Path
 
-ROOT = Path(r"C:\Users\PREM KUMAR\Videos\alpha")
+ROOT = Path(__file__).resolve().parents[1]
 ALPHA_LOGO = ROOT / "frontend" / "src" / "assets" / "images" / "alpha.png"
 ICON_512 = ROOT / "electron" / "build" / "icon-512.png"
 ICON_ICO_SRC = ROOT / "electron" / "dist" / ".icon-ico" / "icon.ico"

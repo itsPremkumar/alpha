@@ -19,7 +19,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$root = 'C:\Users\PREM KUMAR\Videos\alpha'
+$root = Split-Path $PSScriptRoot -Parent
 
 $files = @('AGENTS.md', 'CLAUDE.md', 'SOUL.md')
 if ($Scoped) { $files += @("$Scoped\AGENTS.md", "$Scoped\CLAUDE.md") }

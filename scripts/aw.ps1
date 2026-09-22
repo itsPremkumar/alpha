@@ -18,7 +18,7 @@ param(
     [string[]]$Rest
 )
 
-$root = 'C:\Users\PREM KUMAR\Videos\alpha'
+$root = Split-Path $PSScriptRoot -Parent
 Push-Location $root
 try {
     & uv run --project backend agent-workspace @Rest

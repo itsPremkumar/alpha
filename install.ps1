@@ -253,10 +253,13 @@ if ($SkipVerification) {
     $LogDir = "$RepoRoot\logs"
 
     # 1. First autonomous start (detached: the launcher becomes its own process).
+    #    NB: embed quotes around the -File path: Start-Process joins this array
+    #    WITHOUT quoting elements, so an unquoted path with spaces (any
+    #    "C:\Users\John Doe\..." install) would truncate and never start Alpha.
     Write-Host "Starting Alpha (detached)..." -ForegroundColor Yellow
     Start-Process -FilePath "powershell.exe" -ArgumentList @(
         '-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden',
-        '-File', "$RepoRoot\start.ps1", '-NoBrowser', '-WatchdogMode'
+        '-File', "`"$RepoRoot\start.ps1`"", '-NoBrowser', '-WatchdogMode'
     ) -WorkingDirectory $RepoRoot -WindowStyle Hidden | Out-Null
 
     # 2. Wait for the full dependency chain to come up (cold boot is minutes).

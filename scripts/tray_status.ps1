@@ -164,9 +164,16 @@ $ni.ContextMenuStrip = $menu
 
 function Invoke-AlphaScript {
     param([string[]]$ScriptArgs)
+    # Start-Process joins the array WITHOUT quoting elements, so any argument
+    # containing spaces (the repo path, on most machines: "C:\Users\John
+    # Doe\...") must be quoted here or powershell.exe truncates it at the
+    # first space and the script silently never runs.
+    $quoted = @($ScriptArgs | ForEach-Object {
+        if ($_ -match '\s' -and $_ -notmatch '^".*"$') { '"' + $_ + '"' } else { $_ }
+    })
     Start-Process -FilePath "powershell.exe" -ArgumentList (@(
         '-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File'
-    ) + $ScriptArgs) -WorkingDirectory $RepoRoot -WindowStyle Hidden | Out-Null
+    ) + $quoted) -WorkingDirectory $RepoRoot -WindowStyle Hidden | Out-Null
 }
 
 $mOpen.Add_Click({ Start-Process $UiUrl })

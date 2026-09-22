@@ -22,14 +22,14 @@
 [CmdletBinding()]
 param(
     [string]$Action,
-    [string]$GatewayUrl = 'http://127.0.0.1:8201/health/ready',
+    [string]$GatewayUrl = 'http://127.0.0.1:8001/health/ready',
     [switch]$Register,
     [switch]$Hourly,
     [switch]$Unregister
 )
 
 $ErrorActionPreference = 'Stop'
-$root   = 'C:\Users\PREM KUMAR\Videos\alpha'
+$root   = Split-Path $PSScriptRoot -Parent
 $task   = 'AgentWorkspaceTrigger'
 $logDir = Join-Path $root 'logs'
 $log    = Join-Path $logDir 'trigger.log'
