@@ -27,7 +27,7 @@
 services:
   # ── Redis Stream Bridge ────────────────────────────────────────────────────
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     container_name: agent-workspace-redis
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
@@ -79,8 +79,11 @@ services:
     environment:
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
       - AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL=http://gateway:8001
+    # required:false keeps `docker compose up` working on a fresh clone that
+    # has not created frontend/.env yet (deploy.sh generates what is needed).
     env_file:
-      - ../frontend/.env
+      - path: ../frontend/.env
+        required: false
     networks:
       - agent-workspace
     restart: unless-stopped
@@ -106,13 +109,16 @@ services:
     # Redis stream bridge is enabled and those limitations are acceptable.
     command: sh -c "cd backend && PYTHONPATH=. uv run --no-sync uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001 --workers ${GATEWAY_WORKERS:-1}"
     volumes:
-      - ${AGENT_WORKSPACE_CONFIG_PATH}:/app/backend/config.yaml:ro
+      # Defaults keep a fresh clone runnable without pre-exporting variables:
+      # an UNSET variable used to expand to an empty bind source, which makes
+      # Docker mount a directory where a file is expected (or fail outright).
+      - ${AGENT_WORKSPACE_CONFIG_PATH:-../config.yaml}:/app/backend/config.yaml:ro
       # Writable on purpose: the Gateway edits this file at runtime (MCP
       # enable/disable, PUT/PATCH /api/mcp/config, skill updates). config.yaml
       # above stays read-only because no API writes it.
-      - ${AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH}:/app/backend/extensions_config.json
+      - ${AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH:-../extensions_config.json}:/app/backend/extensions_config.json
       - ../skills:/app/skills:ro
-      - ${AGENT_WORKSPACE_HOME}:/app/backend/.agent-workspace
+      - ${AGENT_WORKSPACE_HOME:-../.agent-workspace}:/app/backend/.agent-workspace
       # DooD: the host Docker socket is NOT mounted by default. It is added only
       # for aio (pure-DooD) sandbox mode via the opt-in docker-compose.dood.yaml
       # overlay (appended by scripts/deploy.sh). See backend/docs/CONFIGURATION.md
@@ -136,14 +142,18 @@ services:
       - AGENT_WORKSPACE_CHANNELS_GATEWAY_URL=${AGENT_WORKSPACE_CHANNELS_GATEWAY_URL:-http://gateway:8001}
       - AGENT_WORKSPACE_INTERNAL_AUTH_TOKEN=${AGENT_WORKSPACE_INTERNAL_AUTH_TOKEN}
       # DooD path/network translation
-      - AGENT_WORKSPACE_HOST_BASE_DIR=${AGENT_WORKSPACE_HOME}
+      - AGENT_WORKSPACE_HOST_BASE_DIR=${AGENT_WORKSPACE_HOME:-../.agent-workspace}
       - AGENT_WORKSPACE_SANDBOX_HOST=host.docker.internal
       # Proxy values (HTTP_PROXY/HTTPS_PROXY/ALL_PROXY) are inherited from ../.env via env_file.
       # Only NO_PROXY is declared here so internal service hostnames are always exempt from the proxy.
+      # env_file not listed here: required:false (same fresh-clone reason as
+      # the frontend service) is applied via the shared ../.env reference
+      # below, which deploy.sh also augments with generated secrets.
       - NO_PROXY=${NO_PROXY:-}${NO_PROXY:+,}localhost,127.0.0.1,::1,gateway,frontend,nginx,provisioner,openviking,host.docker.internal
       - no_proxy=${no_proxy:-}${no_proxy:+,}localhost,127.0.0.1,::1,gateway,frontend,nginx,provisioner,openviking,host.docker.internal
     env_file:
-      - ../.env
+      - path: ../.env
+        required: false
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -184,13 +194,14 @@ services:
       # plaintext config/data are never mounted into the sandbox. Supersedes
       # LARK_CLI_INIT_IMAGE when both are set. Empty ⇒ broker off.
       - LARK_CLI_BROKER_IMAGE=${LARK_CLI_BROKER_IMAGE:-}
-      - THREADS_HOST_PATH=${AGENT_WORKSPACE_HOME}/threads
-      - AGENT_WORKSPACE_HOST_BASE_DIR=${AGENT_WORKSPACE_HOME}
+      - THREADS_HOST_PATH=${AGENT_WORKSPACE_HOME:-../.agent-workspace}/threads
+      - AGENT_WORKSPACE_HOST_BASE_DIR=${AGENT_WORKSPACE_HOME:-../.agent-workspace}
       - KUBECONFIG_PATH=/root/.kube/config
       - NODE_HOST=host.docker.internal
       - K8S_API_SERVER=https://host.docker.internal:26443
     env_file:
-      - ../.env
+      - path: ../.env
+        required: false
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
