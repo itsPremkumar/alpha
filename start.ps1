@@ -173,7 +173,7 @@ function Stop-ProcessTree {
 }
 
 function Free-PortOrExit {
-    param([int]$Port)
+    param([int]$Port, [switch]$NonFatal)
     $holders = Get-ListeningProcessIds -Port $Port
     foreach ($id in $holders) {
         Stop-ProcessTree -ProcessId $id
@@ -187,7 +187,6 @@ function Free-PortOrExit {
     }
     $still = Get-ListeningProcessIds -Port $Port
     if ($still.Count -gt 0) {
-        Write-Host "`n[ERROR] Port $Port is still in use and could not be freed." -ForegroundColor Red
         foreach ($id in $still) {
             $cmd = "(unknown)"
             try {
@@ -195,9 +194,17 @@ function Free-PortOrExit {
             } catch {}
             Write-Host "  PID $id : $cmd" -ForegroundColor Red
         }
+        # NonFatal: restart paths must never kill the launcher over a busy
+        # port - report failure and let the caller's backoff retry instead.
+        if ($NonFatal) {
+            Write-Host "[WARN] Port $Port is still in use - restart deferred (will retry)." -ForegroundColor Yellow
+            return $false
+        }
+        Write-Host "`n[ERROR] Port $Port is still in use and could not be freed." -ForegroundColor Red
         Write-Host "Stop that program (or run .\stop.ps1) and try again.`n" -ForegroundColor Yellow
         exit 1
     }
+    return $true
 }
 
 function Show-LogTail {
@@ -644,7 +651,7 @@ function Restart-GatewayService {
     Write-Host "`n[WARN] Gateway API died — auto-restarting (attempt $Attempt, backoff ${backoff}s)..." -ForegroundColor Yellow
     Show-LogTail $gatewayLogErr
     Write-HealthFile -Status "recovering" -Detail "gateway restart attempt $Attempt backoff ${backoff}s"
-    Free-PortOrExit -Port $GatewayPort
+    if (-not (Free-PortOrExit -Port $GatewayPort -NonFatal)) { return }
     Start-SleepWithHeartbeat -Seconds $backoff
     $script:gatewayProcess = Start-Process -FilePath $uvPath `
         -ArgumentList "run --no-sync uvicorn app.gateway.app:app --host 127.0.0.1 --port $GatewayPort" `
@@ -670,7 +677,7 @@ function Restart-FrontendService {
     Write-Host "`n[WARN] Frontend UI died — auto-restarting (attempt $Attempt, backoff ${backoff}s)..." -ForegroundColor Yellow
     Show-LogTail $frontendLogErr
     Write-HealthFile -Status "recovering" -Detail "frontend restart attempt $Attempt backoff ${backoff}s"
-    Free-PortOrExit -Port $FrontendPort
+    if (-not (Free-PortOrExit -Port $FrontendPort -NonFatal)) { return }
     Start-SleepWithHeartbeat -Seconds $backoff
     if ($Prod) {
         $script:frontendProcess = Start-Process -FilePath $nodePath `
@@ -692,7 +699,7 @@ function Restart-FrontendService {
         $script:frontendLastStable = [DateTime]::UtcNow
         Write-HealthFile -Status "healthy" -Detail "frontend restarted OK"
     } else {
-        Write-Host "  [WARN] Frontend did not become healthy within 180s - will retry." -ForegroundColor Yellow
+        Write-Host "  [WARN] Frontend did not become healthy within 360s - will retry." -ForegroundColor Yellow
     }
 }
 
@@ -753,27 +760,34 @@ for ($i = 1; $i -le $maxAttempts; $i++) {
     $gatewayGone = ($gatewayProcess -eq $null -or $gatewayProcess.HasExited) -and -not (Test-PortListening -Port $GatewayPort)
     $frontendGone = ($frontendProcess -eq $null -or $frontendProcess.HasExited) -and -not (Test-PortListening -Port $FrontendPort)
 
-    # If a process died early, show WHY (log tails) instead of a mystery.
+    # A service that dies DURING the boot wait is a crash to recover from,
+    # not a reason to abandon the whole startup. Exiting here made the
+    # launcher suicide on any early crash (including the watchdog killing a
+    # port tree mid-boot), which cascaded into full cold restarts and broke
+    # unattended recovery. Restart with the same exponential backoff the
+    # steady-state monitor uses; the attempt budget below still bounds a
+    # genuinely broken startup with a truthful "failed" status.
     if ($gatewayGone) {
         $code = ""
         try { $code = $gatewayProcess.ExitCode } catch {}
-        Write-Host "`n[ERROR] Gateway API exited unexpectedly with code $code." -ForegroundColor Red
-        Show-LogTail $gatewayLogOut
+        Write-Host "`n[WARN] Gateway API exited during startup (code $code) - restarting..." -ForegroundColor Yellow
         Show-LogTail $gatewayLogErr
-        Cleanup-Stack
-        exit 1
+        Reset-GatewayBackoffIfStable
+        $script:gatewayRestarts += 1
+        Restart-GatewayService -Attempt $script:gatewayRestarts
+        continue
     }
     if ($frontendGone) {
         $code = ""
         try { $code = $frontendProcess.ExitCode } catch {}
-        Write-Host "`n[ERROR] Frontend UI exited unexpectedly with code $code." -ForegroundColor Red
-        Write-Host "Common cause: another program owned port $FrontendPort. This script frees" -ForegroundColor Yellow
-        Write-Host "recorded listeners on start; a process that re-binds the port afterwards" -ForegroundColor Yellow
-        Write-Host "will still collide. Run .\stop.ps1, then check the logs below:`n" -ForegroundColor Yellow
+        Write-Host "`n[WARN] Frontend UI exited during startup (code $code) - restarting..." -ForegroundColor Yellow
+        Write-Host "Common cause: another program owned port $FrontendPort." -ForegroundColor Yellow
         Show-LogTail $frontendLogOut
         Show-LogTail $frontendLogErr
-        Cleanup-Stack
-        exit 1
+        Reset-FrontendBackoffIfStable
+        $script:frontendRestarts += 1
+        Restart-FrontendService -Attempt $script:frontendRestarts
+        continue
     }
 }
 

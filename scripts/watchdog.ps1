@@ -265,24 +265,28 @@ function Stop-StaleLauncher {
 # launcher's own component monitor (it sees the child exit and restarts it).
 function Stop-PortTree {
     param([int]$Port)
-    $freed = $false
+    # Returns "killed" (we freed a bound port), "already-free" (the port was
+    # vacant before we acted - usually the launcher mid-restart) or "stuck".
+    # The distinction keeps recovery logs honest: a vacuous pass must not be
+    # reported as a kill.
+    $result = "stuck"
     for ($round = 1; $round -le 3; $round++) {
         $ids = @()
         try {
             $ids = @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction Stop |
                 Select-Object -ExpandProperty OwningProcess -Unique)
         } catch {}
-        if (-not $ids) { $freed = $true; break }
+        if (-not $ids) { $result = $(if ($round -eq 1) { "already-free" } else { "killed" }); break }
         foreach ($id in $ids) {
             if ($id -gt 0 -and $id -ne $PID) { & taskkill /PID $id /T /F 2>&1 | Out-Null }
         }
         for ($i = 0; $i -lt 10; $i++) {
             Start-Sleep -Seconds 2
-            if (-not (Test-PortListening -Port $Port)) { $freed = $true; break }
+            if (-not (Test-PortListening -Port $Port)) { $result = "killed"; break }
         }
-        if ($freed) { break }
+        if ($result -eq "killed") { break }
     }
-    return $freed
+    return $result
 }
 
 function Restart-Component {
@@ -292,13 +296,15 @@ function Restart-Component {
     if ($script:ComponentAttempts.ContainsKey($Component)) { $n = $script:ComponentAttempts[$Component] }
     Write-RecoveryEvent -Component $Component -Action "component_restart" `
         -Result "attempt" -Reason "consecutive failures=$($script:ConsecutiveFailures), attempt $n - killing port $port tree; the launcher restarts it"
-    $freed = Stop-PortTree -Port $port
-    if ($freed) {
+    $outcome = Stop-PortTree -Port $port
+    if ($outcome -eq "killed") {
         Write-RecoveryEvent -Component $Component -Action "component_restart" -Result "killed" -Reason "port $port freed"
+    } elseif ($outcome -eq "already-free") {
+        Write-RecoveryEvent -Component $Component -Action "component_restart" -Result "noop" -Reason "port $port already free before kill (launcher likely mid-restart)"
     } else {
         Write-RecoveryEvent -Component $Component -Action "component_restart" -Result "failed" -Reason "port $port still bound"
     }
-    return $freed
+    return ($outcome -ne "stuck")
 }
 
 # Full-stack recovery: replace the launcher (if any) and start a fresh one,
@@ -381,10 +387,16 @@ function Invoke-HealthCheck {
             $launcherUptime = ([DateTime]::UtcNow - (Get-Process -Id $lp).StartTime.ToUniversalTime()).TotalSeconds
         } catch {}
     }
-    $withinFirstBoot = $launcherUptime -lt $StartupGraceSeconds
+    # Tier 1 defer: a live, heartbeating launcher in a working status owns
+    # recovery at any normal uptime. The old gate (uptime < 600 s) let this
+    # loop start killing port trees the launcher was still booting once a
+    # slow cold boot passed 10 minutes, which cascaded into endless full
+    # cold restarts. The 3x cap still bounds a wedged launcher: past it we
+    # stop deferring and escalate (component attempts -> full stack replace).
+    $workingDeferCap = $launcherUptime -lt ($StartupGraceSeconds * 3)
 
     if ($s.LauncherAlive -and $s.HeartbeatFresh) {
-        if ($working -and $withinFirstBoot) {
+        if ($working -and $workingDeferCap) {
             Write-Heartbeat -Status "deferring" -Stack $s.Summary
             if ($n -eq 1 -or ($n % 4 -eq 0)) {
                 Write-WdLog "Deferring recovery x${n}: launcher status=$($s.Status) uptime=$([int]$launcherUptime)s is fixing it ($($s.Summary))"
