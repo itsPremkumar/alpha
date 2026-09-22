@@ -6,7 +6,10 @@
 # Build context is the REPOSITORY ROOT (see docker/docker-compose.yaml), so all
 # COPY paths are prefixed with frontend/.
 
-ARG NODE_IMAGE=node:22-alpine
+# CI (lint-check.yml) typechecks and builds the frontend on Node 24, so the
+# runtime image tracks that same major: the image and the verified toolchain
+# must not drift apart. Override NODE_IMAGE for a pin or a mirror.
+ARG NODE_IMAGE=node:24-alpine
 ARG PNPM_STORE_PATH=/root/.local/share/pnpm/store
 ARG NPM_REGISTRY
 

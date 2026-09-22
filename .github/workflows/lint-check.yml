@@ -10,6 +10,17 @@ permissions:
   contents: read
 
 jobs:
+  compose-config:
+    # docker/docker-compose.yaml must interpolate and resolve on a FRESH
+    # clone (no .env): env files are optional and every bind mount source has
+    # a default. A regression there breaks first-time users, not CI, unless
+    # this gate exists.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Validate compose file (no .env present)
+        run: docker compose -f docker/docker-compose.yaml config --quiet
+
   agent-guidance:
     runs-on: ubuntu-latest
     steps:
