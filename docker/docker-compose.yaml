@@ -77,6 +77,11 @@ services:
         NPM_REGISTRY: ${NPM_REGISTRY:-}
     container_name: agent-workspace-frontend
     environment:
+      # Must be set HERE: install.sh writes NODE_ENV=development into
+      # frontend/.env for local dev, and env_file beats the image's ENV, so
+      # without this override the production container boots Next.js with a
+      # development NODE_ENV. environment: > env_file in compose precedence.
+      - NODE_ENV=production
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
       - AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL=http://gateway:8001
     # required:false keeps `docker compose up` working on a fresh clone that
