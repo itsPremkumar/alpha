@@ -18,6 +18,7 @@ import logging
 import shutil
 import tempfile
 from collections.abc import Hashable
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -249,8 +250,12 @@ class FileAgentStore(AgentStore):
                 tmp.replace(target)
                 staged.remove(tmp)
         finally:
+            # Cleanup must never replace the real failure: an exception raised
+            # from a ``finally`` block discards the in-flight one, so a locked
+            # temp file (Windows) would be reported instead of the real error.
             for tmp in staged:
-                tmp.unlink(missing_ok=True)
+                with suppress(OSError):
+                    tmp.unlink(missing_ok=True)
 
 
 def _stage_temp(target: Path, text: str) -> Path:

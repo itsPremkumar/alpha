@@ -1811,6 +1811,16 @@ verification:
   receipts_render_mode: "delegation_only"
   judge_enabled: false
   judge_model_name: null
+  # Verify a terminal agent message against the turn's own tool history before
+  # accepting it (alpha.critic). A rejected claim withdraws the terminal message
+  # and sends the agent back once with the critic's diagnostic. One retry per
+  # run, so a critic can never loop.
+  completion_critics_enabled: true
+  # Also run EmptyPatchCritic: rejects a code-modification task that finished
+  # with a clean working tree. Off by default -- it infers "a patch was
+  # expected" from keywords in the task text, so it misreads research and
+  # planning tasks.
+  completion_critics_require_patch: false
 
 # ============================================================================
 # System One (Jev) Configuration
@@ -2244,6 +2254,22 @@ memory:
     #                         = bundled core/prompts/. Supports per-agent subdirectories.
     # patterns_dir: ""            # empty = bundled defaults
     # prompts_dir: ""             # empty = bundled defaults
+
+  # User-model provider, driven by UserModelMiddleware. Injects personalised
+  # context (a summary of the user's recent interactions) as its own system
+  # message on the async agent path.
+  #
+  # provider: null (default) -> NullUserModelProvider: every hook is a no-op and
+  #   system_prompt_block returns None, so zero bytes are added to the system
+  #   channel. Wiring the middleware is byte-identical to not having it.
+  # provider: file -> FileUserModelProvider, which appends a per-user JSONL log
+  #   of (turn, observation, reflection) under storage_path.
+  #
+  # An unknown provider name, or "file" without storage_path, is logged and
+  # degrades to the null provider rather than failing agent assembly.
+  user_model:
+    provider: null
+    # storage_path: ""            # required when provider: file
 
 # ============================================================================
 # Custom Agent Management API

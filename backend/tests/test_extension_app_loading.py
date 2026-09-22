@@ -124,6 +124,14 @@ def test_create_app_mounts_extension_routers_after_all_host_routes(monkeypatch):
     assert app.state.extension_diagnostics[0].source == "router:install"
     assert "host" in app.state.extension_diagnostics[0].message
 
+    # Force auth ON for the request assertions below. The repository's `.env`
+    # ships ``AGENT_WORKSPACE_AUTH_DISABLED=1``; ``AuthMiddleware`` then injects
+    # a synthetic admin user for *every* request, so any ``/api/*`` route — not
+    # just extension routes — answers 200. Leaving that ambient would make this
+    # assertion a statement about the developer's `.env` instead of about
+    # extension routers being subject to the host's auth middleware.
+    monkeypatch.setattr("app.gateway.auth_middleware.is_auth_disabled", lambda: False)
+
     client = TestClient(app)
     assert client.get("/health").json() == {
         "status": "healthy",

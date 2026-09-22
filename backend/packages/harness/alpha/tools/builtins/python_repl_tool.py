@@ -1,7 +1,13 @@
 """Built-in RLM Python REPL tool (inspired by Prime Agent's programmatic REPL)."""
 
-from __future__ import annotations
-
+# NOTE: deliberately NO ``from __future__ import annotations`` here.
+# Under PEP 563 the ``runtime: Runtime`` annotation below is the *string*
+# "Runtime", and LangChain's injected-argument detection
+# (``_is_injected_arg_type``) inspects the annotation object — a string never
+# matches, so ``runtime`` is never registered as injected. It then lands in
+# ``args_schema`` as a required field, and any call that does not go through
+# ToolNode (which injects by the parameter *name*) fails validation with
+# "runtime: Field required". Keeping annotations as real objects fixes that.
 from langchain.tools import tool
 
 from alpha.sandbox.repl.session import get_repl_session

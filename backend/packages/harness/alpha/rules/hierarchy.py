@@ -1,4 +1,4 @@
-﻿"""Hierarchical AGENTS.md Context & Scoped Rules Engine.
+"""Hierarchical AGENTS.md Context & Scoped Rules Engine.
 
 Solves the context scaling problem in monorepos:
 1. Walks directory paths upwards to discover nested AGENTS.md files:

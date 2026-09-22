@@ -55,7 +55,9 @@ class TestDsnWithSearchPath:
         # libpq only decodes %XX in URI query values; '+' is NOT treated as a
         # space. The space MUST therefore be encoded as %20, never as '+'.
         assert "+" not in out
-        assert "options=-c%20search_path%3Dagent_workspace" in out
+        # The schema is whatever the caller passed ("alpha" here), not a
+        # hardcoded name: ``dsn_with_search_path`` takes it as an argument.
+        assert "options=-c%20search_path%3Dalpha" in out
         parts = urlsplit(out)
         query = parse_qs(parts.query)
         assert query["options"] == ["-c search_path=alpha"]

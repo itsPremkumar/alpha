@@ -10,6 +10,7 @@ import os
 import shutil
 import tempfile
 from collections.abc import Iterable
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -109,7 +110,12 @@ class LocalSkillStorage(SkillStorage):
                 make_skill_written_path_sandbox_readable(self.get_custom_skill_dir(name), target)
             finally:
                 if tmp_path is not None:
-                    tmp_path.unlink(missing_ok=True)
+                    # Cleanup must never replace the real failure: an exception
+                    # raised from a ``finally`` block discards the in-flight one,
+                    # so a locked temp file (Windows) would be reported instead
+                    # of the actual write/replace error.
+                    with suppress(OSError):
+                        tmp_path.unlink(missing_ok=True)
 
     def remove_custom_skill_file(self, name: str, relative_path: str) -> str:
         removal = ((SkillCategory.CUSTOM, Path(name)),)

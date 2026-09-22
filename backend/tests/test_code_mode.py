@@ -1,7 +1,25 @@
 import pytest
+from langgraph.prebuilt import ToolRuntime
 
 from alpha.tools.builtins.code_mode_tool import code_mode_tool
 from alpha.tools.code_mode.bridge import ToolBridge, execute_code_mode
+
+
+def _tool_runtime() -> ToolRuntime:
+    """Minimal ``ToolRuntime`` for direct tool invocation.
+
+    ``runtime`` is an injected argument — ToolNode supplies it inside the
+    graph, so a direct ``invoke``/``ainvoke`` has to pass one or validation
+    fails with "runtime: Field required".
+    """
+    return ToolRuntime(
+        state={},
+        context={},
+        config={},
+        stream_writer=lambda _: None,
+        tool_call_id="tool-call-1",
+        store=None,
+    )
 
 
 def test_tool_bridge_register_and_call():
@@ -54,7 +72,7 @@ msg = tools.echo(text="programmatic execution active")
 print(f"Output: {msg}")
 result = 42
 """
-    output = code_mode_tool.invoke({"code": script})
+    output = code_mode_tool.invoke({"code": script, "runtime": _tool_runtime()})
     assert "Programmatic Tool Invocations" in output
     assert "Output: programmatic execution active" in output
     assert "Final Result: 42" in output

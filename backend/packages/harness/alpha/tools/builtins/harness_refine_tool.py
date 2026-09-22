@@ -1,6 +1,9 @@
 """Built-in tool for managing Continual Harness state and triggering online refinement."""
 
-from __future__ import annotations
+# NOTE: no ``from __future__ import annotations`` — under PEP 563 the ``runtime: Runtime``
+# annotation below becomes the *string* "Runtime", and LangChain's injected-argument
+# detection inspects the annotation object, so a string never matches. ``runtime`` would then
+# never be registered as injected (see ``alpha.tools.types.Runtime``).
 
 from typing import Literal
 

@@ -16,7 +16,7 @@ import time
 import tomllib
 import urllib.parse
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -996,7 +996,12 @@ def _write_plugins_block(path: Path, original: str, plugins: list[Any]) -> None:
         temporary = None
     finally:
         if temporary is not None:
-            temporary.unlink(missing_ok=True)
+            # Cleanup must never replace the real failure: an exception raised
+            # from a ``finally`` block suppresses the in-flight one, so a locked
+            # temp file (Windows) would be reported instead of the actual
+            # write/replace error. Mirrors ``skills/proposals.py``.
+            with suppress(OSError):
+                temporary.unlink(missing_ok=True)
 
 
 def _plugins_block_span(original: str) -> tuple[int, int] | None:

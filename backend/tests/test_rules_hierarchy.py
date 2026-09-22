@@ -1,4 +1,4 @@
-﻿"""Tests for Hierarchical AGENTS.md Context & Scoped Rules Engine."""
+"""Tests for Hierarchical AGENTS.md Context & Scoped Rules Engine."""
 
 from pathlib import Path
 

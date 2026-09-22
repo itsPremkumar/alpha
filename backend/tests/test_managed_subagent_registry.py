@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from alpha.config.subagents_config import CustomSubagentConfig, SubagentOverrideConfig, SubagentsAppConfig
 from alpha.persistence.managed_subagents import ManagedSubagentDefinition
 from alpha.subagents import registry
+from alpha.subagents.builtins import BUILTIN_SUBAGENTS
 
 
 def _managed(name: str, *, enabled: bool = True) -> ManagedSubagentDefinition:
@@ -29,10 +30,18 @@ def test_enabled_managed_definitions_join_runtime_catalog(monkeypatch):
 
 
 def test_default_lead_catalog_preserves_builtin_defaults(monkeypatch):
+    """Built-in defaults survive the arrival of managed and config definitions.
+
+    The assertion is anchored to ``BUILTIN_SUBAGENTS`` rather than a literal name
+    list: what this test guards is that a managed or config definition never
+    *displaces* a built-in default, and a hard-coded list re-breaks every time a
+    built-in is added (it previously pinned three names and silently went stale
+    once the six ``deep-*`` specialists joined the catalog).
+    """
     monkeypatch.setattr(registry, "_managed_definitions", lambda **_: [_managed("planner")])
     config = SubagentsAppConfig()
 
-    assert registry.get_subagent_names(app_config=config) == ["general-purpose", "bash", "planner"]
+    assert registry.get_subagent_names(app_config=config) == [*BUILTIN_SUBAGENTS, "planner"]
 
     general = registry.get_subagent_config("general-purpose", app_config=config)
     assert general is not None
@@ -151,7 +160,8 @@ def test_list_subagents_checks_managed_signature_once_per_ttl_window(monkeypatch
 
     configs = registry.list_subagents(app_config=config)
 
-    assert len(configs) == 27
+    # 25 managed definitions on top of the built-in catalog, all in one load.
+    assert len(configs) == len(BUILTIN_SUBAGENTS) + 25
     assert store.signature_calls == 1
     assert store.list_calls == 1
 

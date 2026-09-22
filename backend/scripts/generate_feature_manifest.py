@@ -39,6 +39,23 @@ INTENTIONALLY_UNWIRED = [
     }
 ]
 
+# Complete subsystems with a dedicated test suite and no production consumer.
+# These are not defects and not dead code to delete: they are finished features
+# whose integration point is a product decision that has been deferred. The
+# entry exists so the next reader does not rediscover them, and
+# ``test_dormant_packages_are_still_dormant`` fails the moment one becomes
+# reachable (so the list cannot rot) or disappears (so the entry cannot dangle).
+DORMANT_PACKAGES = [
+    {
+        "id": "alpha.ledger",
+        "reason": "ActionLedger/ActionReceipt are implemented and tested (test_action_ledger.py) but nothing constructs them; there is no receipt-writing call site in the run path yet.",
+    },
+    {
+        "id": "alpha.evidence",
+        "reason": "EvidenceStore implements the evidence->candidate->evaluation->promotion cycle but has no consumer and no test suite; wiring it is feature design, not a missing call.",
+    },
+]
+
 
 def read(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="ignore")
@@ -70,8 +87,13 @@ def collect_tools() -> list[dict[str, object]]:
 
     symbol_map: dict[str, str] = {}
     for node in ast.walk(ast.parse(read(init_py))):
-        if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("."):
-            module = f"alpha.tools.builtins.{node.module.lstrip('.')}"
+        # Relative imports carry the dot in ``node.level``, NOT in
+        # ``node.module``: ``from .a2a_tool import a2a_tool`` parses as
+        # module="a2a_tool", level=1. Testing ``module.startswith(".")`` never
+        # matched, so every tool entry was emitted with an empty module and the
+        # manifest could not detect module drift.
+        if isinstance(node, ast.ImportFrom) and (node.level or 0) > 0 and node.module:
+            module = f"alpha.tools.builtins.{node.module}"
             for alias in node.names:
                 if alias.name != "*":
                     symbol_map.setdefault(alias.name, module)
@@ -182,6 +204,7 @@ def main() -> int:
         "middlewares": collect_middlewares(),
         "loops": collect_loops(),
         "intentionally_unwired": INTENTIONALLY_UNWIRED,
+        "dormant_packages": DORMANT_PACKAGES,
         "excluded_local_only": EXCLUDED_LOCAL_ONLY,
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)

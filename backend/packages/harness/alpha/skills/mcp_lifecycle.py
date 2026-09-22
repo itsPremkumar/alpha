@@ -1,4 +1,4 @@
-﻿"""Skill-Embedded On-Demand MCP Lifecycle Manager.
+"""Skill-Embedded On-Demand MCP Lifecycle Manager.
 
 Inspired by oh-my-openagent (OmO) skill-embedded MCP architecture:
 Starting 10+ MCP servers at boot consumes valuable prompt tokens with tool schemas.

@@ -12,7 +12,7 @@ import json
 import logging
 import os
 import tempfile
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from threading import RLock
 from typing import Any
@@ -140,7 +140,13 @@ class CognitiveMemorySystem:
                 os.replace(temporary_path, target_path)
             finally:
                 if temporary_path is not None:
-                    temporary_path.unlink(missing_ok=True)
+                    # Cleanup must never replace the real failure. On Windows an
+                    # open handle makes ``unlink`` raise PermissionError; raised
+                    # from a ``finally`` block it would *suppress* the original
+                    # write/replace error and send the caller chasing the wrong
+                    # cause. Mirrors the guarded cleanup in ``skills/proposals.py``.
+                    with suppress(OSError):
+                        temporary_path.unlink(missing_ok=True)
 
     @contextmanager
     def operation(self):

@@ -4,6 +4,7 @@ import json
 import os
 import tempfile
 import time
+from contextlib import suppress
 from dataclasses import asdict, dataclass, field, fields, replace
 from pathlib import Path
 from threading import RLock
@@ -133,7 +134,12 @@ class EvidenceStore:
                     os.close(descriptor)
         finally:
             if temporary is not None:
-                temporary.unlink(missing_ok=True)
+                # Cleanup must never replace the real failure: an exception
+                # raised from a ``finally`` block suppresses the in-flight one,
+                # so a locked temp file (Windows) would be reported instead of
+                # the actual write/replace error. Mirrors ``skills/proposals.py``.
+                with suppress(OSError):
+                    temporary.unlink(missing_ok=True)
 
     @staticmethod
     def _owned(records: dict[str, _Record], record_id: str, owner_id: str, state: _State) -> _Record:

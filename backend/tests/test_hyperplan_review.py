@@ -1,4 +1,4 @@
-﻿"""Tests for Adversarial Hyperplan Multi-Reviewer Pipeline."""
+"""Tests for Adversarial Hyperplan Multi-Reviewer Pipeline."""
 
 from alpha.planning.hyperplan import HyperplanPipeline
 

@@ -1,4 +1,4 @@
-﻿"""Integration tests for all Oh My OpenAgent (OmO / Sisyphus) Builtin Tools."""
+"""Integration tests for all Oh My OpenAgent (OmO / Sisyphus) Builtin Tools."""
 
 import json
 from pathlib import Path

@@ -629,19 +629,22 @@ def test_build_middlewares_uses_resolved_model_name_for_vision(monkeypatch):
     # verify the custom middleware is injected correctly.
     # With this test's default safety config enabled, the tail order is:
     #   ..., custom, TerminalResponseMiddleware, ModelLengthFinishReasonMiddleware,
-    #   FinishFirstVerifierMiddleware, SafetyFinishReasonMiddleware,
-    #   ClarificationMiddleware, so the custom mock sits at index [-6].
-    assert len(middlewares) > 0 and isinstance(middlewares[-6], MagicMock)
+    #   FinishFirstVerifierMiddleware, UserModelMiddleware,
+    #   SafetyFinishReasonMiddleware, ClarificationMiddleware,
+    #   so the custom mock sits at index [-7].
+    assert len(middlewares) > 0 and isinstance(middlewares[-7], MagicMock)
 
     from alpha.agents.middlewares.clarification_middleware import ClarificationMiddleware
     from alpha.agents.middlewares.finish_first_verifier_middleware import FinishFirstVerifierMiddleware
     from alpha.agents.middlewares.model_length_finish_reason_middleware import ModelLengthFinishReasonMiddleware
     from alpha.agents.middlewares.safety_finish_reason_middleware import SafetyFinishReasonMiddleware
     from alpha.agents.middlewares.terminal_response_middleware import TerminalResponseMiddleware
+    from alpha.agents.middlewares.user_model_middleware import UserModelMiddleware
 
-    assert isinstance(middlewares[-5], TerminalResponseMiddleware)
-    assert isinstance(middlewares[-4], ModelLengthFinishReasonMiddleware)
-    assert isinstance(middlewares[-3], FinishFirstVerifierMiddleware)
+    assert isinstance(middlewares[-6], TerminalResponseMiddleware)
+    assert isinstance(middlewares[-5], ModelLengthFinishReasonMiddleware)
+    assert isinstance(middlewares[-4], FinishFirstVerifierMiddleware)
+    assert isinstance(middlewares[-3], UserModelMiddleware)
     assert isinstance(middlewares[-2], SafetyFinishReasonMiddleware)
     assert isinstance(middlewares[-1], ClarificationMiddleware)
 
@@ -978,16 +981,24 @@ def test_build_middlewares_injects_configured_extension_middlewares(monkeypatch)
     )
 
     middleware_types = [type(m).__name__ for m in middlewares]
-    assert middleware_types[-7:] == [
+    assert middleware_types[-8:] == [
         "ConfiguredGuardMiddleware",
         "ConfiguredAuditMiddleware",
         "TerminalResponseMiddleware",
         "ModelLengthFinishReasonMiddleware",
         "FinishFirstVerifierMiddleware",
+        "UserModelMiddleware",
         "SafetyFinishReasonMiddleware",
         "ClarificationMiddleware",
     ]
     assert middlewares[middleware_types.index("ConfiguredGuardMiddleware") - 1] is manual_middleware
+
+    # The completion critics are wired into the real assembly, not merely
+    # constructible: alpha.critic shipped complete and fully tested with no
+    # caller, so nothing ever checked a terminal claim against the turn history.
+    verifier = middlewares[middleware_types.index("FinishFirstVerifierMiddleware")]
+    assert verifier.critic_pipeline is not None
+    assert [type(critic).__name__ for critic in verifier.critic_pipeline.critics] == ["AgentFinishedCritic"]
 
 
 def test_build_middlewares_passes_subagent_total_limit_from_app_config(monkeypatch):

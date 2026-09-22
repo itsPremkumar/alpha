@@ -1,4 +1,4 @@
-﻿"""Comment-Checker Guard (Lazy-Code Omission Prevention).
+"""Comment-Checker Guard (Lazy-Code Omission Prevention).
 
 Inspired by oh-my-openagent (OmO) comment-checker-core:
 Intercepts file-write and patch replacements to prevent models from deleting

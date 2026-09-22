@@ -1,4 +1,4 @@
-﻿"""Hashline Content-Hashed Editing Engine.
+"""Hashline Content-Hashed Editing Engine.
 
 Solves "The Harness Problem" (Can Bölük / oh-my-pi / oh-my-openagent):
 Models struggle with whitespace reproduction and line numbers.

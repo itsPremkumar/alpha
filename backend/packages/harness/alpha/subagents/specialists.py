@@ -38,6 +38,15 @@ class SpecialistTemplate:
     description: str
     system_prompt: str
     recommended_skills: list[str] = field(default_factory=list)
+    # Tool *names* (``BaseTool.name``), not Python symbols or module names.
+    # This list becomes the specialist's tool allowlist (see ``build_specialist``
+    # below), and ``_filter_tools`` matches on ``.name`` — a name that does not
+    # exist is dropped silently, leaving the specialist unable to call the tool
+    # it was told to use. Several of these differ from the exported symbol:
+    # ``trajectory_audit_tool`` -> ``trajectory_audit``, ``python_repl_tool`` ->
+    # ``python_repl``, ``evidence_matrix_tool`` (a module) ->
+    # ``audit_finish_first_evidence``, ``astra_security_manage`` (an alias) ->
+    # ``enterprise_security_manage``.
     recommended_tools: list[str] = field(default_factory=list)
     workspace_mode: str = "isolated"
     model_tier: str = "fast"
@@ -54,7 +63,7 @@ ARCHETYPE_REGISTRY: dict[SpecialistRoleArchetype, SpecialistTemplate] = {
         role_title="Artifact & Quality Critic",
         description="Rigorously critiques deliverables, identifying logical gaps, incomplete features, and deviations from specifications.",
         system_prompt=("You are a dedicated Quality Critic. Your mission is to identify deficiencies, unverified assumptions, code smells, and unmet criteria in the provided deliverables. Always produce constructive, actionable critique."),
-        recommended_tools=["ast_grep_search", "trajectory_audit_tool"],
+        recommended_tools=["ast_grep_search", "trajectory_audit"],
         model_tier="frontier",
     ),
     SpecialistRoleArchetype.JUDGE: SpecialistTemplate(
@@ -62,7 +71,7 @@ ARCHETYPE_REGISTRY: dict[SpecialistRoleArchetype, SpecialistTemplate] = {
         role_title="Consensus & Outcome Judge",
         description="Synthesizes parallel outputs from debating or ensemble workers, selects the superior solution, and resolves conflicts.",
         system_prompt=("You are an impartial Judge. Evaluate all presented arguments or candidate implementations. Weigh evidence, benchmark metrics, and adherence to requirements to declare the definitive winner."),
-        recommended_tools=["evidence_matrix_tool", "moa_multi_model_reasoning"],
+        recommended_tools=["audit_finish_first_evidence", "moa_multi_model_reasoning"],
         model_tier="frontier",
     ),
     SpecialistRoleArchetype.RED_TEAM: SpecialistTemplate(
@@ -94,7 +103,7 @@ ARCHETYPE_REGISTRY: dict[SpecialistRoleArchetype, SpecialistTemplate] = {
         role_title="Software Implementation Specialist",
         description="Implements production-grade code, unit tests, and refactors within Git worktree isolation.",
         system_prompt=("You are a focused Software Implementation Specialist. Write clean, robust, well-tested code. Respect architectural boundaries and ensure zero lint or test failures."),
-        recommended_tools=["hashline_edit", "python_repl_tool"],
+        recommended_tools=["hashline_edit", "python_repl"],
         workspace_mode="git_worktree",
         model_tier="fast",
     ),
@@ -103,7 +112,7 @@ ARCHETYPE_REGISTRY: dict[SpecialistRoleArchetype, SpecialistTemplate] = {
         role_title="Security & Vulnerability Auditor",
         description="Audits source code, configurations, dependencies, and network access for security risks.",
         system_prompt=("You are a Security Auditor. Inspect source files for hardcoded secrets, dangerous command execution, OWASP Top 10 vulnerabilities, and dependency CVEs."),
-        recommended_tools=["astra_security_manage", "ast_grep_search"],
+        recommended_tools=["enterprise_security_manage", "ast_grep_search"],
         model_tier="frontier",
     ),
 }

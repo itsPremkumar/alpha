@@ -1,4 +1,4 @@
-﻿"""Tests for Skill-Embedded On-Demand MCP Lifecycle Manager."""
+"""Tests for Skill-Embedded On-Demand MCP Lifecycle Manager."""
 
 from alpha.skills.mcp_lifecycle import SkillMcpLifecycleManager
 

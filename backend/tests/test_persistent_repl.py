@@ -1,9 +1,28 @@
 """Unit tests for RLM Persistent Python REPL Kernel."""
 
 import pytest
+from langgraph.prebuilt import ToolRuntime
 
 from alpha.sandbox.repl.session import ReplSession
 from alpha.tools.builtins.python_repl_tool import python_repl_tool
+
+
+def _tool_runtime() -> ToolRuntime:
+    """A minimal ``ToolRuntime`` for direct ``ainvoke`` calls.
+
+    ``runtime`` is an injected argument: in the graph, ToolNode fills it in
+    before the tool is called. Calling the tool directly does not go through
+    ToolNode, so the caller has to supply it — ``args_schema`` marks it
+    required, and omitting it fails validation.
+    """
+    return ToolRuntime(
+        state={},
+        context={"thread_id": "tool_test_thread"},
+        config={},
+        stream_writer=lambda _: None,
+        tool_call_id="tool-call-1",
+        store=None,
+    )
 
 
 @pytest.mark.asyncio
@@ -85,14 +104,18 @@ isinstance(p, Path)
 
 @pytest.mark.asyncio
 async def test_python_repl_tool():
+    runtime = _tool_runtime()
+
     out1 = await python_repl_tool.ainvoke({
         "code": "a = 50\na * 3",
         "session_id": "tool_test_session",
+        "runtime": runtime,
     })
     assert "150" in out1
 
     out2 = await python_repl_tool.ainvoke({
         "code": "a + 20",
         "session_id": "tool_test_session",
+        "runtime": runtime,
     })
     assert "70" in out2

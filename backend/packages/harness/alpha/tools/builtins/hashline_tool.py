@@ -1,4 +1,4 @@
-﻿"""Hashline Editing Builtin Tool.
+"""Hashline Editing Builtin Tool.
 
 Exposes hashline_read and hashline_edit to agents:
 - hashline_read: Reads file and tags each line with LINE#HASH| content.

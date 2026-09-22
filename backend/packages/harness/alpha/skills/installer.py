@@ -12,6 +12,7 @@ import posixpath
 import shutil
 import stat
 import zipfile
+from contextlib import suppress
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from alpha.skills.permissions import make_skill_tree_sandbox_readable
@@ -246,7 +247,12 @@ def _move_staged_skill_into_reserved_target(staging_target: Path, target: Path) 
         raise SkillAlreadyExistsError(f"Skill '{target.name}' already exists") from e
     finally:
         if reserved and not installed and target.exists():
-            shutil.rmtree(target)
+            # Rollback must never replace the real failure: an exception raised
+            # from a ``finally`` block discards the in-flight one, so a cleanup
+            # error here would be reported instead of the install failure that
+            # caused the rollback.
+            with suppress(OSError):
+                shutil.rmtree(target)
 
 
 def _findings_for_file(findings: list[StaticFinding], rel_path: str) -> list[StaticFinding]:

@@ -1,4 +1,4 @@
-﻿"""DAG Task Workflow Engine (mass-ulw / omo-dag).
+"""DAG Task Workflow Engine (mass-ulw / omo-dag).
 
 Implements dependency-ordered multi-agent execution:
 1. Declarative task graphs with nodes, categories, and dependencies.

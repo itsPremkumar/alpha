@@ -10,10 +10,16 @@ if TYPE_CHECKING:
 # Conservative tool set used when a subagent declares no ``tools`` allowlist and
 # ``inherit_all`` is False. Read/search only: a subagent that has not been
 # granted specific authority should be able to look, not act.
+# Tool *names* (``BaseTool.name``), matched by ``_filter_tools``. A name that
+# does not exist is dropped silently, so a wrong entry here quietly removes a
+# capability instead of raising. The sandbox tools are named ``grep`` and
+# ``ls`` (not ``grep_search``/``list_dir``), and ``describe_skill`` is built at
+# runtime as a closure by ``alpha.skills.describe.build_describe_skill_tool``
+# so it is absent from static tool listings.
 DEFAULT_SUBAGENT_TOOL_ALLOWLIST: tuple[str, ...] = (
     "read_file",
-    "grep_search",
-    "list_dir",
+    "grep",
+    "ls",
     "web_search",
     "web_fetch",
     "tool_search",

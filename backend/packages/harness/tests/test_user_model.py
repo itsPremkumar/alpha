@@ -97,7 +97,11 @@ class TestFileUserModelProvider:
                 f.write(json.dumps(e) + "\n")
 
         runtime.context = {"thread_id": "test-thread"}
-        with patch("alpha.agents.memory.user_model.resolve_runtime_user_id", return_value="test_user"):
+        # Patch the *source* module, not the consumer: ``initialize`` imports
+        # ``resolve_runtime_user_id`` inside the function, so the name never
+        # exists as an attribute of ``alpha.agents.memory.user_model`` and
+        # patching that target raises AttributeError.
+        with patch("alpha.runtime.user_context.resolve_runtime_user_id", return_value="test_user"):
             await provider.initialize(runtime, app_config)
 
         assert provider._user_id == "test_user"
@@ -107,7 +111,7 @@ class TestFileUserModelProvider:
     @pytest.mark.asyncio
     async def test_initialize_creates_new_file(self, provider, runtime, app_config):
         runtime.context = {"thread_id": "test-thread"}
-        with patch("alpha.agents.memory.user_model.resolve_runtime_user_id", return_value="new_user"):
+        with patch("alpha.runtime.user_context.resolve_runtime_user_id", return_value="new_user"):
             await provider.initialize(runtime, app_config)
 
         assert provider._user_id == "new_user"

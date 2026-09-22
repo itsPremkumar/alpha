@@ -1,4 +1,4 @@
-﻿"""Tests for Kibitzer Resident Memory Sidecar."""
+"""Tests for Kibitzer Resident Memory Sidecar."""
 
 from alpha.memory.kibitzer import (
     KibitzerMemoryBank,

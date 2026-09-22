@@ -1,4 +1,4 @@
-﻿"""Kibitzer Resident Memory Tool.
+"""Kibitzer Resident Memory Tool.
 
 Allows configuring long-term project knowledge and querying resident memory hints.
 """

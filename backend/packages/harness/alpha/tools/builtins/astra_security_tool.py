@@ -1,4 +1,4 @@
-﻿"""Backwards-compatibility shim for the Astra security tool.
+"""Backwards-compatibility shim for the Astra security tool.
 
 The real implementation lives in ``enclave_security_tool`` and is backed by the
 ``alpha.security.enclave`` package. The old ``security.astra`` package

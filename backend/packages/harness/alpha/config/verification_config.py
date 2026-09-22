@@ -24,3 +24,13 @@ class VerificationConfig(BaseModel):
         default=None,
         description="Model for the selective judge; falls back to the parent model when unset",
     )
+    completion_critics_enabled: bool = Field(
+        default=True,
+        description="Verify a terminal agent message against the turn's own tool history (alpha.critic) before accepting it, and send the agent back once with the critic's diagnostic when it is rejected",
+    )
+    # ``EmptyPatchCritic`` stays opt-in: it infers that a patch was expected from
+    # keywords in the task text, so it misreads research and planning tasks.
+    completion_critics_require_patch: bool = Field(
+        default=False,
+        description="Also run EmptyPatchCritic, which rejects a code-modification task that finished with a clean working tree",
+    )

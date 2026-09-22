@@ -1,11 +1,11 @@
 {
  "version": "1.0",
- "generated_at": "2026-09-21T15:44:59Z",
+ "generated_at": "2026-09-22T09:44:14Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
    "id": "present_file_tool",
-   "module": "",
+   "module": "alpha.tools.builtins.present_file_tool",
    "symbol": "present_file_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -13,7 +13,7 @@
   },
   {
    "id": "propose_skill_tool",
-   "module": "",
+   "module": "alpha.tools.builtins.propose_skill_tool",
    "symbol": "propose_skill_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -21,7 +21,7 @@
   },
   {
    "id": "ask_clarification_tool",
-   "module": "",
+   "module": "alpha.tools.builtins.clarification_tool",
    "symbol": "ask_clarification_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -29,7 +29,7 @@
   },
   {
    "id": "review_skill_package",
-   "module": "",
+   "module": "alpha.tools.builtins.review_skill_package_tool",
    "symbol": "review_skill_package",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -37,7 +37,7 @@
   },
   {
    "id": "session_search_tool",
-   "module": "",
+   "module": "alpha.tools.builtins.session_search_tool",
    "symbol": "session_search_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -45,7 +45,7 @@
   },
   {
    "id": "python_repl_tool",
-   "module": "",
+   "module": "alpha.tools.builtins.python_repl_tool",
    "symbol": "python_repl_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -53,7 +53,7 @@
   },
   {
    "id": "harness_refine_tool",
-   "module": "",
+   "module": "alpha.tools.builtins.harness_refine_tool",
    "symbol": "harness_refine_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -61,7 +61,7 @@
   },
   {
    "id": "process_handle_tool",
-   "module": "",
+   "module": "alpha.tools.builtins.process_handle_tool",
    "symbol": "process_handle_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -69,7 +69,7 @@
   },
   {
    "id": "invoke_python_skill_tool",
-   "module": "",
+   "module": "alpha.tools.builtins.executable_skill_tool",
    "symbol": "invoke_python_skill_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -77,7 +77,7 @@
   },
   {
    "id": "bot_roster_tool",
-   "module": "",
+   "module": "alpha.tools.builtins.bot_roster_tool",
    "symbol": "bot_roster_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -85,7 +85,7 @@
   },
   {
    "id": "group_chat_tool",
-   "module": "",
+   "module": "alpha.tools.builtins.group_chat_tool",
    "symbol": "group_chat_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -93,7 +93,7 @@
   },
   {
    "id": "kanban_board_tool",
-   "module": "",
+   "module": "alpha.tools.builtins.kanban_board_tool",
    "symbol": "kanban_board_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -101,7 +101,7 @@
   },
   {
    "id": "goal_engine_tool",
-   "module": "",
+   "module": "alpha.tools.builtins.goal_engine_tool",
    "symbol": "goal_engine_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -109,7 +109,7 @@
   },
   {
    "id": "canvas_widget_tool",
-   "module": "",
+   "module": "alpha.tools.builtins.canvas_widget_tool",
    "symbol": "canvas_widget_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -117,7 +117,7 @@
   },
   {
    "id": "trajectory_audit_tool",
-   "module": "",
+   "module": "alpha.tools.builtins.trajectory_audit_tool",
    "symbol": "trajectory_audit_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -125,7 +125,7 @@
   },
   {
    "id": "code_mode_tool",
-   "module": "",
+   "module": "alpha.tools.builtins.code_mode_tool",
    "symbol": "code_mode_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -133,7 +133,7 @@
   },
   {
    "id": "catalog_tool_search",
-   "module": "",
+   "module": "alpha.tools.builtins.tool_search_tool",
    "symbol": "catalog_tool_search",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -141,7 +141,7 @@
   },
   {
    "id": "catalog_tool_describe",
-   "module": "",
+   "module": "alpha.tools.builtins.tool_search_tool",
    "symbol": "catalog_tool_describe",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -149,7 +149,7 @@
   },
   {
    "id": "catalog_tool_call",
-   "module": "",
+   "module": "alpha.tools.builtins.tool_search_tool",
    "symbol": "catalog_tool_call",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -157,7 +157,7 @@
   },
   {
    "id": "cognitive_memory_tool",
-   "module": "",
+   "module": "alpha.tools.builtins.cognitive_memory_tool",
    "symbol": "cognitive_memory_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -165,7 +165,7 @@
   },
   {
    "id": "consolidate_memory_dream",
-   "module": "",
+   "module": "alpha.tools.builtins.dreaming_tool",
    "symbol": "consolidate_memory_dream",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -173,7 +173,7 @@
   },
   {
    "id": "update_progress_card",
-   "module": "",
+   "module": "alpha.tools.builtins.progress_card_tool",
    "symbol": "update_progress_card",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -181,7 +181,7 @@
   },
   {
    "id": "synthesize_reusable_skill",
-   "module": "",
+   "module": "alpha.tools.builtins.skill_workshop_tool",
    "symbol": "synthesize_reusable_skill",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -189,7 +189,7 @@
   },
   {
    "id": "request_secure_credential",
-   "module": "",
+   "module": "alpha.tools.builtins.credential_request_tool",
    "symbol": "request_secure_credential",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -197,7 +197,7 @@
   },
   {
    "id": "await_task_event",
-   "module": "",
+   "module": "alpha.tools.builtins.wake_gate_tool",
    "symbol": "await_task_event",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -205,7 +205,7 @@
   },
   {
    "id": "self_improvement_loop_tool",
-   "module": "",
+   "module": "alpha.tools.builtins.self_improvement_tool",
    "symbol": "self_improvement_loop_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -213,7 +213,7 @@
   },
   {
    "id": "ralph_loop_tool",
-   "module": "",
+   "module": "alpha.tools.builtins.self_improvement_tool",
    "symbol": "ralph_loop_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -221,7 +221,7 @@
   },
   {
    "id": "learning_graph_manage",
-   "module": "",
+   "module": "alpha.tools.builtins.learning_graph_tool",
    "symbol": "learning_graph_manage",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -229,7 +229,7 @@
   },
   {
    "id": "verify_command_approval",
-   "module": "",
+   "module": "alpha.tools.builtins.smart_approval_tool",
    "symbol": "verify_command_approval",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -237,7 +237,7 @@
   },
   {
    "id": "moa_multi_model_reasoning",
-   "module": "",
+   "module": "alpha.tools.builtins.moa_reasoning_tool",
    "symbol": "moa_multi_model_reasoning",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -245,7 +245,7 @@
   },
   {
    "id": "emergency_stop_manage",
-   "module": "",
+   "module": "alpha.tools.builtins.estop_tool",
    "symbol": "emergency_stop_manage",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -253,7 +253,7 @@
   },
   {
    "id": "skills_hub_manage",
-   "module": "",
+   "module": "alpha.tools.builtins.skills_hub_tool",
    "symbol": "skills_hub_manage",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -261,7 +261,7 @@
   },
   {
    "id": "cronjob_manage",
-   "module": "",
+   "module": "alpha.tools.builtins.cronjob_manage_tool",
    "symbol": "cronjob_manage",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -269,7 +269,7 @@
   },
   {
    "id": "browser_navigate_and_inspect",
-   "module": "",
+   "module": "alpha.tools.builtins.browser_supervisor_tool",
    "symbol": "browser_navigate_and_inspect",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -277,7 +277,7 @@
   },
   {
    "id": "hashline_read",
-   "module": "",
+   "module": "alpha.tools.builtins.hashline_tool",
    "symbol": "hashline_read",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -285,7 +285,7 @@
   },
   {
    "id": "hashline_edit",
-   "module": "",
+   "module": "alpha.tools.builtins.hashline_tool",
    "symbol": "hashline_edit",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -293,7 +293,7 @@
   },
   {
    "id": "workflow_dag_manage",
-   "module": "",
+   "module": "alpha.tools.builtins.workflow_dag_tool",
    "symbol": "workflow_dag_manage",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -301,7 +301,7 @@
   },
   {
    "id": "boulder_checkpoint_manage",
-   "module": "",
+   "module": "alpha.tools.builtins.boulder_checkpoint_tool",
    "symbol": "boulder_checkpoint_manage",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -309,7 +309,7 @@
   },
   {
    "id": "kibitzer_nudge_manage",
-   "module": "",
+   "module": "alpha.tools.builtins.kibitzer_tool",
    "symbol": "kibitzer_nudge_manage",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -317,7 +317,7 @@
   },
   {
    "id": "hyperplan_review_manage",
-   "module": "",
+   "module": "alpha.tools.builtins.hyperplan_tool",
    "symbol": "hyperplan_review_manage",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -325,7 +325,7 @@
   },
   {
    "id": "ast_grep_search",
-   "module": "",
+   "module": "alpha.tools.builtins.ast_grep_tool",
    "symbol": "ast_grep_search",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -333,7 +333,7 @@
   },
   {
    "id": "ast_grep_rewrite",
-   "module": "",
+   "module": "alpha.tools.builtins.ast_grep_tool",
    "symbol": "ast_grep_rewrite",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -341,7 +341,7 @@
   },
   {
    "id": "build_autonomous_plan",
-   "module": "",
+   "module": "alpha.tools.builtins.autoplan_tool",
    "symbol": "build_autonomous_plan",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -349,7 +349,7 @@
   },
   {
    "id": "cognitive_plan",
-   "module": "",
+   "module": "alpha.tools.builtins.cognitive_plan_tool",
    "symbol": "cognitive_plan",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -357,7 +357,7 @@
   },
   {
    "id": "deliberation_tool",
-   "module": "",
+   "module": "alpha.tools.builtins.deliberation_tool",
    "symbol": "deliberation_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -365,7 +365,7 @@
   },
   {
    "id": "company_tool",
-   "module": "",
+   "module": "alpha.tools.builtins.company_tool",
    "symbol": "company_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -373,7 +373,7 @@
   },
   {
    "id": "a2a_tool",
-   "module": "",
+   "module": "alpha.tools.builtins.a2a_tool",
    "symbol": "a2a_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -381,7 +381,7 @@
   },
   {
    "id": "goal_integrity_tool",
-   "module": "",
+   "module": "alpha.tools.builtins.goal_integrity_tool",
    "symbol": "goal_integrity_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -389,7 +389,7 @@
   },
   {
    "id": "job_tool",
-   "module": "",
+   "module": "alpha.tools.builtins.job_tool",
    "symbol": "job_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -397,7 +397,7 @@
   },
   {
    "id": "supervision_tool",
-   "module": "",
+   "module": "alpha.tools.builtins.supervision_tool",
    "symbol": "supervision_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -405,7 +405,7 @@
   },
   {
    "id": "swarm_tool",
-   "module": "",
+   "module": "alpha.tools.builtins.swarm_tool",
    "symbol": "swarm_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -413,7 +413,7 @@
   },
   {
    "id": "self_heal_diagnose",
-   "module": "",
+   "module": "alpha.tools.builtins.self_heal_tool",
    "symbol": "self_heal_diagnose",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -421,7 +421,7 @@
   },
   {
    "id": "blackboard_record_evidence",
-   "module": "",
+   "module": "alpha.tools.builtins.blackboard_tool",
    "symbol": "blackboard_record_evidence",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -429,7 +429,7 @@
   },
   {
    "id": "blackboard_query",
-   "module": "",
+   "module": "alpha.tools.builtins.blackboard_tool",
    "symbol": "blackboard_query",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -437,7 +437,7 @@
   },
   {
    "id": "query_language_server_symbol",
-   "module": "",
+   "module": "alpha.tools.builtins.lsp_intelligence_tool",
    "symbol": "query_language_server_symbol",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -445,7 +445,7 @@
   },
   {
    "id": "emit_stigmergic_event",
-   "module": "",
+   "module": "alpha.tools.builtins.stigmergic_mesh_tool",
    "symbol": "emit_stigmergic_event",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -453,7 +453,7 @@
   },
   {
    "id": "query_stigmergic_traces",
-   "module": "",
+   "module": "alpha.tools.builtins.stigmergic_mesh_tool",
    "symbol": "query_stigmergic_traces",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -461,7 +461,7 @@
   },
   {
    "id": "synthesize_runtime_tool",
-   "module": "",
+   "module": "alpha.tools.builtins.dynamic_tool_synthesizer_tool",
    "symbol": "synthesize_runtime_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -469,7 +469,7 @@
   },
   {
    "id": "list_dynamic_tools",
-   "module": "",
+   "module": "alpha.tools.builtins.dynamic_tool_synthesizer_tool",
    "symbol": "list_dynamic_tools",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -477,7 +477,7 @@
   },
   {
    "id": "run_autonomous_benchmark_eval",
-   "module": "",
+   "module": "alpha.tools.builtins.autonomous_benchmark_tool",
    "symbol": "run_autonomous_benchmark_eval",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -485,7 +485,7 @@
   },
   {
    "id": "analyze_semantic_git_delta",
-   "module": "",
+   "module": "alpha.tools.builtins.semantic_git_delta_tool",
    "symbol": "analyze_semantic_git_delta",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -493,7 +493,7 @@
   },
   {
    "id": "consolidate_cognitive_memory",
-   "module": "",
+   "module": "alpha.tools.builtins.cognitive_memory_tiering_tool",
    "symbol": "consolidate_cognitive_memory",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -501,7 +501,7 @@
   },
   {
    "id": "recall_agent_memory",
-   "module": "",
+   "module": "alpha.tools.builtins.cognitive_memory_tiering_tool",
    "symbol": "recall_agent_memory",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -509,7 +509,7 @@
   },
   {
    "id": "execute_transactional_action",
-   "module": "",
+   "module": "alpha.tools.builtins.action_transaction_tool",
    "symbol": "execute_transactional_action",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -517,7 +517,7 @@
   },
   {
    "id": "evaluate_epistemic_claim",
-   "module": "",
+   "module": "alpha.tools.builtins.epistemic_belief_tool",
    "symbol": "evaluate_epistemic_claim",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -525,7 +525,7 @@
   },
   {
    "id": "simulate_consequences",
-   "module": "",
+   "module": "alpha.tools.builtins.consequence_tool",
    "symbol": "simulate_consequences",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -533,7 +533,7 @@
   },
   {
    "id": "evaluate_agent_competence",
-   "module": "",
+   "module": "alpha.tools.builtins.agency_competence_tool",
    "symbol": "evaluate_agent_competence",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -541,7 +541,7 @@
   },
   {
    "id": "run_rsi_cycle",
-   "module": "",
+   "module": "alpha.tools.builtins.rsi_engine_tool",
    "symbol": "run_rsi_cycle",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -549,7 +549,7 @@
   },
   {
    "id": "run_variation_operator_step",
-   "module": "",
+   "module": "alpha.tools.builtins.variation_operator_tool",
    "symbol": "run_variation_operator_step",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -557,7 +557,7 @@
   },
   {
    "id": "run_nvidia_avo_step",
-   "module": "",
+   "module": "alpha.tools.builtins.variation_operator_tool",
    "symbol": "run_nvidia_avo_step",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -565,7 +565,7 @@
   },
   {
    "id": "inspect_repo_twin",
-   "module": "",
+   "module": "alpha.tools.builtins.repo_twin_tool",
    "symbol": "inspect_repo_twin",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -573,7 +573,7 @@
   },
   {
    "id": "check_metacognitive_health",
-   "module": "",
+   "module": "alpha.tools.builtins.metacognitive_tool",
    "symbol": "check_metacognitive_health",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -581,7 +581,7 @@
   },
   {
    "id": "deliberate_artifact_quality",
-   "module": "",
+   "module": "alpha.tools.builtins.quality_council_tool",
    "symbol": "deliberate_artifact_quality",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -589,7 +589,7 @@
   },
   {
    "id": "compile_five_pass_search",
-   "module": "",
+   "module": "alpha.tools.builtins.five_pass_search_tool",
    "symbol": "compile_five_pass_search",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -597,15 +597,23 @@
   },
   {
    "id": "forge_skill_from_trace",
-   "module": "",
+   "module": "alpha.tools.builtins.skill_forge_tool",
    "symbol": "forge_skill_from_trace",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
    "state": "wired"
   },
   {
+   "id": "deep_research",
+   "module": "alpha.tools.builtins.deep_research_tool",
+   "symbol": "deep_research",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
    "id": "generate_repo_map",
-   "module": "",
+   "module": "alpha.tools.builtins.code_agentic_core",
    "symbol": "generate_repo_map",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -613,7 +621,7 @@
   },
   {
    "id": "auto_test_and_repair",
-   "module": "",
+   "module": "alpha.tools.builtins.code_agentic_core",
    "symbol": "auto_test_and_repair",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -621,7 +629,7 @@
   },
   {
    "id": "manage_code_checkpoint",
-   "module": "",
+   "module": "alpha.tools.builtins.code_agentic_core",
    "symbol": "manage_code_checkpoint",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -629,7 +637,7 @@
   },
   {
    "id": "enterprise_security_manage",
-   "module": "",
+   "module": "alpha.tools.builtins.enclave_security_tool",
    "symbol": "enterprise_security_manage",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -637,7 +645,7 @@
   },
   {
    "id": "astra_security_manage",
-   "module": "",
+   "module": "alpha.tools.builtins.enclave_security_tool",
    "symbol": "astra_security_manage",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -645,7 +653,7 @@
   },
   {
    "id": "consult_plan_gap_analysis",
-   "module": "",
+   "module": "alpha.tools.builtins.discipline_team_tool",
    "symbol": "consult_plan_gap_analysis",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -653,7 +661,7 @@
   },
   {
    "id": "review_plan_invariant_gate",
-   "module": "",
+   "module": "alpha.tools.builtins.discipline_team_tool",
    "symbol": "review_plan_invariant_gate",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -661,7 +669,7 @@
   },
   {
    "id": "dispatch_discipline_worker",
-   "module": "",
+   "module": "alpha.tools.builtins.discipline_team_tool",
    "symbol": "dispatch_discipline_worker",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -669,7 +677,7 @@
   },
   {
    "id": "manage_mission_hierarchy",
-   "module": "",
+   "module": "alpha.tools.builtins.mission_hierarchy_tool",
    "symbol": "manage_mission_hierarchy",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -677,7 +685,7 @@
   },
   {
    "id": "schedule_work_queue",
-   "module": "",
+   "module": "alpha.tools.builtins.mission_hierarchy_tool",
    "symbol": "schedule_work_queue",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -685,7 +693,7 @@
   },
   {
    "id": "trace_artifact_lineage",
-   "module": "",
+   "module": "alpha.tools.builtins.artifact_lineage_tool",
    "symbol": "trace_artifact_lineage",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -693,7 +701,7 @@
   },
   {
    "id": "query_knowledge_graph",
-   "module": "",
+   "module": "alpha.tools.builtins.knowledge_graph_tool",
    "symbol": "query_knowledge_graph",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -701,7 +709,7 @@
   },
   {
    "id": "run_task_evaluation_benchmark",
-   "module": "",
+   "module": "alpha.tools.builtins.evaluation_benchmark_tool",
    "symbol": "run_task_evaluation_benchmark",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -709,7 +717,7 @@
   },
   {
    "id": "manage_model_performance_registry",
-   "module": "",
+   "module": "alpha.tools.builtins.performance_registry_tool",
    "symbol": "manage_model_performance_registry",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -717,7 +725,7 @@
   },
   {
    "id": "manage_durable_orchestration",
-   "module": "",
+   "module": "alpha.tools.builtins.durable_replay_tool",
    "symbol": "manage_durable_orchestration",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -725,7 +733,7 @@
   },
   {
    "id": "execute_sandboxed_computer_action",
-   "module": "",
+   "module": "alpha.tools.builtins.computer_worker_tool",
    "symbol": "execute_sandboxed_computer_action",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -733,7 +741,7 @@
   },
   {
    "id": "manage_context_data",
-   "module": "",
+   "module": "alpha.tools.builtins.context_as_data_tool",
    "symbol": "manage_context_data",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -741,7 +749,7 @@
   },
   {
    "id": "check_or_set_autonomy_profile",
-   "module": "",
+   "module": "alpha.tools.builtins.adaptive_autonomy_tool",
    "symbol": "check_or_set_autonomy_profile",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -749,7 +757,7 @@
   },
   {
    "id": "audit_finish_first_evidence",
-   "module": "",
+   "module": "alpha.tools.builtins.evidence_matrix_tool",
    "symbol": "audit_finish_first_evidence",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -757,7 +765,7 @@
   },
   {
    "id": "tom_consult",
-   "module": "",
+   "module": "alpha.tools.builtins.tom_consult_tool",
    "symbol": "tom_consult",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -765,7 +773,7 @@
   },
   {
    "id": "ask_oracle",
-   "module": "",
+   "module": "alpha.tools.builtins.ask_oracle_tool",
    "symbol": "ask_oracle",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -773,7 +781,7 @@
   },
   {
    "id": "reproduce_and_verify",
-   "module": "",
+   "module": "alpha.tools.builtins.reproduction_tool",
    "symbol": "reproduce_and_verify",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -781,7 +789,7 @@
   },
   {
    "id": "consult_experience",
-   "module": "",
+   "module": "alpha.tools.builtins.experience_tool",
    "symbol": "consult_experience",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -789,7 +797,7 @@
   },
   {
    "id": "compile_mission",
-   "module": "",
+   "module": "alpha.tools.builtins.compile_mission_tool",
    "symbol": "compile_mission",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -797,7 +805,7 @@
   },
   {
    "id": "compile_cognitive_plan",
-   "module": "",
+   "module": "alpha.tools.builtins.cognitive_compiler_tool",
    "symbol": "compile_cognitive_plan",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -805,7 +813,7 @@
   },
   {
    "id": "run_avo_variation",
-   "module": "",
+   "module": "alpha.tools.builtins.avo_lineage_tool",
    "symbol": "run_avo_variation",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -813,7 +821,7 @@
   },
   {
    "id": "generate_curriculum_plan",
-   "module": "",
+   "module": "alpha.tools.builtins.curriculum_tool",
    "symbol": "generate_curriculum_plan",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -821,7 +829,7 @@
   },
   {
    "id": "create_workflow_checkpoint",
-   "module": "",
+   "module": "alpha.tools.builtins.delta_checkpoint_tool",
    "symbol": "create_workflow_checkpoint",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -829,7 +837,7 @@
   },
   {
    "id": "visual_verify_artifact",
-   "module": "",
+   "module": "alpha.tools.builtins.visual_verification_tool",
    "symbol": "visual_verify_artifact",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -837,7 +845,7 @@
   },
   {
    "id": "manage_reflexion_memory",
-   "module": "",
+   "module": "alpha.tools.builtins.reflexion_tool",
    "symbol": "manage_reflexion_memory",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -845,7 +853,7 @@
   },
   {
    "id": "compile_problem_model",
-   "module": "",
+   "module": "alpha.tools.builtins.problem_model_tool",
    "symbol": "compile_problem_model",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -853,7 +861,7 @@
   },
   {
    "id": "run_introspective_tree_search",
-   "module": "",
+   "module": "alpha.tools.builtins.introspective_tree_search_tool",
    "symbol": "run_introspective_tree_search",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -861,7 +869,7 @@
   },
   {
    "id": "compute_program_slice",
-   "module": "",
+   "module": "alpha.tools.builtins.program_slicing_tool",
    "symbol": "compute_program_slice",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -869,7 +877,7 @@
   },
   {
    "id": "run_differential_regression_oracle",
-   "module": "",
+   "module": "alpha.tools.builtins.differential_invariant_fuzzer_tool",
    "symbol": "run_differential_regression_oracle",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -877,7 +885,7 @@
   },
   {
    "id": "diagnose_and_heal_environment",
-   "module": "",
+   "module": "alpha.tools.builtins.environment_auto_healer_tool",
    "symbol": "diagnose_and_heal_environment",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -885,7 +893,7 @@
   },
   {
    "id": "reconcile_structural_ast_conflicts",
-   "module": "",
+   "module": "alpha.tools.builtins.structural_ast_reconciler_tool",
    "symbol": "reconcile_structural_ast_conflicts",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -893,7 +901,7 @@
   },
   {
    "id": "query_contrastive_memory",
-   "module": "",
+   "module": "alpha.tools.builtins.contrastive_trajectory_replay_tool",
    "symbol": "query_contrastive_memory",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -901,7 +909,7 @@
   },
   {
    "id": "record_trajectory_outcome",
-   "module": "",
+   "module": "alpha.tools.builtins.contrastive_trajectory_replay_tool",
    "symbol": "record_trajectory_outcome",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -909,7 +917,7 @@
   },
   {
    "id": "delegate_to_deep_agent",
-   "module": "",
+   "module": "alpha.tools.builtins.deep_agent_tool",
    "symbol": "delegate_to_deep_agent",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -917,7 +925,7 @@
   },
   {
    "id": "list_available_deep_agents",
-   "module": "",
+   "module": "alpha.tools.builtins.deep_agent_tool",
    "symbol": "list_available_deep_agents",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
@@ -925,8 +933,24 @@
   },
   {
    "id": "inspect_deep_agent_telemetry",
-   "module": "",
+   "module": "alpha.tools.builtins.deep_agent_tool",
    "symbol": "inspect_deep_agent_telemetry",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "execute_slash_command_tool",
+   "module": "alpha.tools.builtins.autonomous_command_tool",
+   "symbol": "execute_slash_command_tool",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "identify_autonomous_command_tool",
+   "module": "alpha.tools.builtins.autonomous_command_tool",
+   "symbol": "identify_autonomous_command_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
    "state": "wired"
@@ -1649,6 +1673,13 @@
    "state": "wired"
   },
   {
+   "id": "alpha.agents.middlewares.user_model_middleware",
+   "module": "alpha.agents.middlewares.user_model_middleware",
+   "wiring_point": "alpha.agents.lead_agent.agent:middlewares | alpha.agents.middlewares.tool_error_handling_middleware:build_lead_runtime_middlewares | alpha.agents.factory",
+   "wired": true,
+   "state": "wired"
+  },
+  {
    "id": "alpha.agents.middlewares.view_image_middleware",
    "module": "alpha.agents.middlewares.view_image_middleware",
    "wiring_point": "alpha.agents.lead_agent.agent:middlewares | alpha.agents.middlewares.tool_error_handling_middleware:build_lead_runtime_middlewares | alpha.agents.factory",
@@ -1704,6 +1735,16 @@
   {
    "id": "app.gateway.services.system_monitor_service",
    "reason": "Intentional re-export shim over app.gateway.system_monitor_service; documents namespace-dir resolution (guarded by test_gateway_services_resolution)."
+  }
+ ],
+ "dormant_packages": [
+  {
+   "id": "alpha.ledger",
+   "reason": "ActionLedger/ActionReceipt are implemented and tested (test_action_ledger.py) but nothing constructs them; there is no receipt-writing call site in the run path yet."
+  },
+  {
+   "id": "alpha.evidence",
+   "reason": "EvidenceStore implements the evidence->candidate->evaluation->promotion cycle but has no consumer and no test suite; wiring it is feature design, not a missing call."
   }
  ],
  "excluded_local_only": [

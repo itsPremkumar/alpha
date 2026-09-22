@@ -1,4 +1,4 @@
-﻿"""DAG Workflow Tool (mass-ulw / omo-dag).
+"""DAG Workflow Tool (mass-ulw / omo-dag).
 
 Allows the agent to construct, plan, and verify multi-agent dependency DAGs.
 """

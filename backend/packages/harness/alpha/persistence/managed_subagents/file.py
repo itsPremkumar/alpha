@@ -7,6 +7,7 @@ import os
 import tempfile
 import threading
 from collections.abc import Hashable
+from contextlib import suppress
 from pathlib import Path
 
 from alpha.config.paths import get_paths
@@ -97,4 +98,9 @@ class FileManagedSubagentStore(ManagedSubagentStore):
             tmp_path = None
         finally:
             if tmp_path is not None:
-                tmp_path.unlink(missing_ok=True)
+                # Cleanup must never replace the real failure: an exception
+                # raised from a ``finally`` block discards the in-flight one, so
+                # a locked temp file (Windows) would be reported instead of the
+                # actual write/replace error.
+                with suppress(OSError):
+                    tmp_path.unlink(missing_ok=True)

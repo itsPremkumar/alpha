@@ -11,7 +11,13 @@ def test_get_available_subagent_names_hides_bash_when_host_bash_disabled(monkeyp
 
     names = registry_module.get_available_subagent_names()
 
-    assert names == ["general-purpose"]
+    # Assert the property under test (bash is omitted), not the exact roster.
+    # BUILTIN_SUBAGENTS grows as subagents are added (it now holds eight, not
+    # just general-purpose and bash), and the runtime also merges config.yaml
+    # custom_agents and managed definitions — an exact-equality assertion here
+    # breaks on every unrelated addition and says nothing about bash.
+    assert "bash" not in names
+    assert "general-purpose" in names
 
 
 def test_get_available_subagent_names_keeps_bash_when_allowed(monkeypatch) -> None:
@@ -19,7 +25,8 @@ def test_get_available_subagent_names_keeps_bash_when_allowed(monkeypatch) -> No
 
     names = registry_module.get_available_subagent_names()
 
-    assert names == ["general-purpose", "bash"]
+    assert "bash" in names
+    assert "general-purpose" in names
 
 
 def test_build_subagent_section_hides_bash_examples_when_unavailable(monkeypatch) -> None:

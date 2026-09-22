@@ -64,7 +64,7 @@ import urllib.parse
 import urllib.request
 import zipfile
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from ctypes import wintypes
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -1369,7 +1369,11 @@ def _write_lark_flow_generation_locked(user_id: str, generation: str) -> None:
         temp_path.chmod(0o600)
         os.replace(temp_path, path)
     finally:
-        temp_path.unlink(missing_ok=True)
+        # Cleanup must never replace the real failure: an exception raised from a
+        # ``finally`` block discards the in-flight one, so a locked temp file
+        # (Windows) would be reported instead of the actual write/replace error.
+        with suppress(OSError):
+            temp_path.unlink(missing_ok=True)
 
 
 def _advance_lark_flow_generation_locked(user_id: str) -> str:

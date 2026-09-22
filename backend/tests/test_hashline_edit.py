@@ -1,4 +1,4 @@
-﻿"""Tests for Hashline Content-Hashed Editing Engine."""
+"""Tests for Hashline Content-Hashed Editing Engine."""
 
 import pytest
 

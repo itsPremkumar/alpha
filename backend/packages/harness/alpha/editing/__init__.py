@@ -1,4 +1,4 @@
-﻿"""Hashline Content-Hashed Editing Engine.
+"""Hashline Content-Hashed Editing Engine.
 Inspired by oh-my-openagent (OmO) and oh-my-pi to solve The Harness Problem.
 """
 from alpha.editing.hashline import (

@@ -1320,8 +1320,13 @@ def test_distribution_identifier_uses_pep_503_normalization(tmp_path: Path) -> N
     root.mkdir()
     _write_host_project(root)
     config_path = root / "config.yaml"
+    # ``Agent_Workspace.Extension_Demo`` is a PEP 503-equivalent spelling of the
+    # demo distribution ``agent-workspace-extension-demo``: lowercasing and
+    # collapsing the ``-_.`` run yields the same normalized name. The test is
+    # about *that* equivalence, so the two spellings must actually be equivalent
+    # -- a different name here would silently test nothing.
     config_path.write_text(
-        "plugins:\n  - name: demo\n    package: Alpha_Extension.Demo\n    use: demo_extension:install\n    enabled: true\n",
+        "plugins:\n  - name: demo\n    package: Agent_Workspace.Extension_Demo\n    use: demo_extension:install\n    enabled: true\n",
         encoding="utf-8",
     )
 
@@ -1455,7 +1460,9 @@ def test_remove_one_configured_instance_keeps_its_shared_distribution_runnable(
     second = {
         **installed,
         "name": "second",
-        "package": "Alpha_Extension.Demo",
+        # Same distribution as ``first``, spelled the PEP 503-equivalent way, so
+        # removing ``first`` must keep the shared dependency declaration.
+        "package": "Agent_Workspace.Extension_Demo",
         "config": {"instance": 2},
     }
     config_path.write_text(

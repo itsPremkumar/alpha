@@ -1,5 +1,6 @@
 import logging
 import os
+import threading
 from collections.abc import Mapping
 from contextvars import ContextVar
 from pathlib import Path
@@ -70,6 +71,22 @@ CONFIG_FILE_DATABASE_DEFAULTS = {
     "backend": "sqlite",
     "sqlite_dir": ".agent-workspace/data",
 }
+
+
+# PyYAML ships two parsers: the pure-Python one and a libyaml-backed C one.
+# ``yaml.safe_load`` always uses the pure-Python parser, which measured ~2.9 s
+# on a 156 KB config.yaml here versus ~0.14 s for the C loader on the same
+# bytes (identical result). config.yaml is parsed on every cold
+# ``get_app_config()`` and config.example.yaml alongside it, so the choice of
+# parser is the dominant cost of process startup — and of any first call that
+# touches config from a fresh thread. Fall back transparently when libyaml is
+# not compiled in (``pip install pyyaml`` without the C extension).
+def _yaml_safe_load(stream: Any) -> Any:
+    """Parse *stream* with the fastest safe YAML loader available."""
+    c_loader = getattr(yaml, "CSafeLoader", None)
+    if c_loader is not None:
+        return yaml.load(stream, Loader=c_loader)
+    return yaml.safe_load(stream)
 
 
 class CircuitBreakerConfig(BaseModel):
@@ -434,7 +451,7 @@ class AppConfig(BaseModel):
         """
         resolved_path = cls.resolve_config_path(config_path)
         with open(resolved_path, encoding="utf-8") as f:
-            config_data = yaml.safe_load(f) or {}
+            config_data = _yaml_safe_load(f) or {}
 
         # Check config version before processing
         cls._check_config_version(config_data, resolved_path)
@@ -555,7 +572,7 @@ class AppConfig(BaseModel):
 
         try:
             with open(example_path, encoding="utf-8") as f:
-                example_data = yaml.safe_load(f)
+                example_data = _yaml_safe_load(f)
             raw = example_data.get("config_version", 0) if example_data else 0
             try:
                 example_version = int(raw)
@@ -701,6 +718,16 @@ def _get_config_mtime(config_path: Path) -> float | None:
         return None
 
 
+# Guards the cold-load path so concurrent first callers share one parse
+# instead of each parsing config.yaml (and config.example.yaml) in parallel.
+# Without it, N threads starting together pay the full load N times — measured
+# at ~6.6 s per cold load before the C-loader fix, and a thundering herd at
+# startup is exactly when several threads hit this at once. Reentrant because
+# ``AppConfig.from_file`` -> ``_apply_singleton_configs`` reaches other
+# providers that can call back into ``get_app_config()`` on the same thread.
+_app_config_lock = threading.RLock()
+
+
 def _load_and_cache_app_config(config_path: str | None = None) -> AppConfig:
     """Load config from disk and refresh cache metadata."""
     global _app_config, _app_config_path, _app_config_mtime, _app_config_signature, _app_config_is_custom
@@ -732,20 +759,37 @@ def get_app_config() -> AppConfig:
         return _app_config
 
     resolved_path = AppConfig.resolve_config_path()
-    current_mtime = _get_config_mtime(resolved_path)
     current_signature = _get_config_signature(resolved_path)
 
-    should_reload = _app_config is None or _app_config_path != resolved_path or _app_config_signature != current_signature
-    if should_reload:
-        if _app_config_path == resolved_path and _app_config_mtime is not None and current_mtime is not None and _app_config_mtime != current_mtime:
-            logger.info(
-                "Config file has been modified (mtime: %s -> %s), reloading AppConfig",
-                _app_config_mtime,
-                current_mtime,
-            )
-        elif _app_config_path == resolved_path and _app_config_signature != current_signature:
-            logger.info("Config file content signature changed, reloading AppConfig")
-        _load_and_cache_app_config(str(resolved_path))
+    # Fast path: an unchanged, already-loaded config needs no lock at all.
+    if _app_config is not None and _app_config_path == resolved_path and _app_config_signature == current_signature:
+        return _app_config
+
+    with _app_config_lock:
+        # Re-read every input under the lock: another thread may have finished
+        # the load while we waited, and reloading again would re-run
+        # ``_apply_singleton_configs`` — which resets the checkpointer and
+        # store singletons — for no reason.
+        runtime_override = _current_app_config.get()
+        if runtime_override is not None:
+            return runtime_override
+        if _app_config is not None and _app_config_is_custom:
+            return _app_config
+
+        current_mtime = _get_config_mtime(resolved_path)
+        current_signature = _get_config_signature(resolved_path)
+
+        should_reload = _app_config is None or _app_config_path != resolved_path or _app_config_signature != current_signature
+        if should_reload:
+            if _app_config_path == resolved_path and _app_config_mtime is not None and current_mtime is not None and _app_config_mtime != current_mtime:
+                logger.info(
+                    "Config file has been modified (mtime: %s -> %s), reloading AppConfig",
+                    _app_config_mtime,
+                    current_mtime,
+                )
+            elif _app_config_path == resolved_path and _app_config_signature != current_signature:
+                logger.info("Config file content signature changed, reloading AppConfig")
+            _load_and_cache_app_config(str(resolved_path))
     return _app_config
 
 

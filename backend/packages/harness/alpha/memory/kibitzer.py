@@ -1,4 +1,4 @@
-﻿"""Kibitzer Resident Memory Sidecar.
+"""Kibitzer Resident Memory Sidecar.
 
 Runs as a resident, lightweight background memory judge:
 1. Receives bounded, redacted events (prompt, tool name, arguments, results).

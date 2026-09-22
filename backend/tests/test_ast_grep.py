@@ -1,4 +1,4 @@
-﻿"""Tests for AST-Grep Structural Code Search and Rewriting Tool."""
+"""Tests for AST-Grep Structural Code Search and Rewriting Tool."""
 
 from alpha.tools.builtins.ast_grep_tool import (
     ast_grep_rewrite,

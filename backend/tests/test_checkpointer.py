@@ -437,7 +437,7 @@ class TestGetCheckpointer:
         # psycopg 3 __exit__ does not close(); the sync path must close explicitly.
         mock_conn.close.assert_called_once_with()
         called_dsn = mock_saver_cls.from_conn_string.call_args.args[0]
-        assert "options=-c%20search_path%3Dagent_workspace" in called_dsn
+        assert "options=-c%20search_path%3Dalpha" in called_dsn
         mock_saver_instance.setup.assert_called_once()
 
     def test_store_postgres_schema_creates_schema_and_sets_search_path(self):
@@ -472,7 +472,7 @@ class TestGetCheckpointer:
         # psycopg 3 __exit__ does not close(); the sync path must close explicitly.
         mock_conn.close.assert_called_once_with()
         called_dsn = mock_store_cls.from_conn_string.call_args.args[0]
-        assert "options=-c%20search_path%3Dagent_workspace" in called_dsn
+        assert "options=-c%20search_path%3Dalpha" in called_dsn
         mock_store_instance.setup.assert_called_once()
 
 
@@ -706,7 +706,7 @@ class TestAsyncCheckpointer:
         call_kwargs = mock_pool_cls.call_args
         # search_path is injected into the DSN (merged with any existing libpq
         # options), not via kwargs["options"] which would clobber DSN options.
-        assert "options=-c%20search_path%3Dagent_workspace" in call_kwargs[0][0]
+        assert "options=-c%20search_path%3Dalpha" in call_kwargs[0][0]
         assert call_kwargs[1]["check"] is mock_pool_cls.check_connection
         assert "options" not in call_kwargs[1]["kwargs"]
         mock_conn.execute.assert_awaited_once_with('CREATE SCHEMA IF NOT EXISTS "alpha"')
@@ -760,7 +760,7 @@ class TestAsyncCheckpointer:
 
         mock_pool_cls.assert_called_once()
         call_kwargs = mock_pool_cls.call_args
-        assert "options=-c%20search_path%3Dagent_workspace" in call_kwargs[0][0]
+        assert "options=-c%20search_path%3Dalpha" in call_kwargs[0][0]
         assert call_kwargs[1]["check"] is mock_pool_cls.check_connection
         assert "options" not in call_kwargs[1]["kwargs"]
         mock_conn.execute.assert_awaited_once_with('CREATE SCHEMA IF NOT EXISTS "alpha"')
@@ -847,7 +847,7 @@ class TestAsyncStore:
         mock_conn.execute.assert_awaited_once_with('CREATE SCHEMA IF NOT EXISTS "alpha"')
         mock_conn.close.assert_awaited_once()
         called_dsn = mock_store_cls.from_conn_string.call_args.args[0]
-        assert "options=-c%20search_path%3Dagent_workspace" in called_dsn
+        assert "options=-c%20search_path%3Dalpha" in called_dsn
         mock_store.setup.assert_awaited_once()
 
     @pytest.mark.anyio
@@ -888,7 +888,7 @@ class TestAsyncStore:
         mock_conn.execute.assert_awaited_once_with('CREATE SCHEMA IF NOT EXISTS "alpha"')
         mock_conn.close.assert_awaited_once()
         called_dsn = mock_store_cls.from_conn_string.call_args.args[0]
-        assert "options=-c%20search_path%3Dagent_workspace" in called_dsn
+        assert "options=-c%20search_path%3Dalpha" in called_dsn
         mock_store.setup.assert_awaited_once()
 
 

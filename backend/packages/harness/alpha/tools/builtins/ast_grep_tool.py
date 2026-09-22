@@ -1,4 +1,4 @@
-﻿"""AST-Grep Structural Code Search and Rewriting Tool.
+"""AST-Grep Structural Code Search and Rewriting Tool.
 
 Inspired by oh-my-openagent (OmO) ast-grep integration:
 Provides semantic AST-aware code matching and rewriting across languages.

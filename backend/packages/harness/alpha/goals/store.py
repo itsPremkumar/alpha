@@ -8,7 +8,7 @@ import threading
 import time
 import uuid
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
@@ -124,7 +124,12 @@ class GoalStore:
             os.replace(temporary_path, path)
         finally:
             if temporary_path is not None:
-                temporary_path.unlink(missing_ok=True)
+                # Cleanup must never replace the real failure: an exception
+                # raised from a ``finally`` block suppresses the in-flight one,
+                # so a locked temp file (Windows) would be reported instead of
+                # the actual write/replace error. Mirrors ``skills/proposals.py``.
+                with suppress(OSError):
+                    temporary_path.unlink(missing_ok=True)
 
     @staticmethod
     def _find[T: (GoalContract, PlanVersion, TaskAttempt)](records: list[T], record_id: str) -> T:

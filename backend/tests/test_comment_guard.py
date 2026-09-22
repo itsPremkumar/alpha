@@ -1,4 +1,4 @@
-﻿"""Tests for Comment-Checker Guard."""
+"""Tests for Comment-Checker Guard."""
 
 import pytest
 

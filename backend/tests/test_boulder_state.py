@@ -1,4 +1,4 @@
-﻿"""Tests for Boulder State Machine & Checkpointing."""
+"""Tests for Boulder State Machine & Checkpointing."""
 
 from pathlib import Path
 

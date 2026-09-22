@@ -1,9 +1,23 @@
 """Tests for CSRF middleware."""
 
+import pytest
 from fastapi import FastAPI
 from starlette.testclient import TestClient
 
 from app.gateway.csrf_middleware import CSRFMiddleware
+
+
+@pytest.fixture(autouse=True)
+def _force_auth_enabled(monkeypatch):
+    """Force auth ON so CSRF checks actually run.
+
+    ``should_check_csrf`` returns False whenever ``is_auth_disabled()`` is true,
+    and the repository's ``.env`` ships ``AGENT_WORKSPACE_AUTH_DISABLED=1``
+    (loaded by ``load_dotenv``). Left ambient, every 403 assertion below would
+    really be asserting a property of the developer's ``.env`` rather than of
+    the middleware — and would flip depending on the machine.
+    """
+    monkeypatch.setattr("app.gateway.csrf_middleware.is_auth_disabled", lambda: False)
 
 
 def _make_app() -> FastAPI:

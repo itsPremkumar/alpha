@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -294,6 +295,15 @@ def test_boxlite_shim_workaround_retries_after_fixing_permissions(monkeypatch, t
 
     monkeypatch.setattr(bench, "_boxlite_version", lambda: "0.9.7")
 
+    chmod_modes: list[int] = []
+    real_chmod = shim.chmod
+
+    def _spy_chmod(self, mode):
+        chmod_modes.append(mode)
+        return real_chmod(mode)
+
+    monkeypatch.setattr(type(shim), "chmod", _spy_chmod)
+
     result = bench._create_box_with_097_shim_workaround(
         _create_box,
         "sandbox-id",
@@ -302,7 +312,15 @@ def test_boxlite_shim_workaround_retries_after_fixing_permissions(monkeypatch, t
 
     assert result == "ok"
     assert calls == 2
-    assert shim.stat().st_mode & 0o111
+    if os.name == "posix":
+        assert shim.stat().st_mode & 0o111
+    else:
+        # Windows cannot represent POSIX execute bits: os.chmod only toggles
+        # the read-only attribute, so st_mode stays 0o666/0o444 and the
+        # execute bit is always 0 no matter what the workaround chmods. Assert
+        # the *intent* — that a mode carrying 0o111 was requested — instead of
+        # a result this platform cannot express.
+        assert any(mode & 0o111 for mode in chmod_modes)
 
 
 def test_boxlite_shim_workaround_loud_fails_for_other_versions(monkeypatch, tmp_path):

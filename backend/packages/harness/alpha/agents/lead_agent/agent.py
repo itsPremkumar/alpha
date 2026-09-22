@@ -445,6 +445,28 @@ Being proactive with task management demonstrates thoroughness and ensures all r
 
     return TodoMiddleware(system_prompt=system_prompt, tool_description=tool_description)
 
+def _build_completion_critic_pipeline(app_config: AppConfig):
+    """Build the terminal-claim critic pipeline, or ``None`` when disabled.
+
+    ``alpha.critic`` shipped complete and fully tested with no caller, so a
+    terminal message was never checked against the turn's own tool history.
+    ``AgentFinishedCritic`` is the default because its only rejection -- the last
+    tool action of the turn failed and the agent declared completion anyway -- is
+    unambiguous. ``EmptyPatchCritic`` is opt-in via config: it decides from
+    keywords in the task text whether a patch was expected, which misreads
+    research and planning tasks.
+    """
+    if not app_config.verification.completion_critics_enabled:
+        return None
+
+    from alpha.critic import AgentFinishedCritic, CriticPipeline
+    from alpha.critic.empty_patch import EmptyPatchCritic
+
+    critics = [AgentFinishedCritic()]
+    if app_config.verification.completion_critics_require_patch:
+        critics.append(EmptyPatchCritic())
+    return CriticPipeline(critics)
+
 
 # ThreadDataMiddleware must be before SandboxMiddleware to ensure thread_id is available
 # UploadsMiddleware should be after ThreadDataMiddleware to access thread_id
@@ -727,10 +749,21 @@ def build_middlewares(
     # a clean one.
     middlewares.append(ModelLengthFinishReasonMiddleware())
 
-    # FinishFirstVerifierMiddleware — audits evidence on code modifications to prevent false completion
+    # FinishFirstVerifierMiddleware — audits evidence on code modifications to prevent false completion,
+    # and runs the completion critics (alpha.critic) so a terminal claim is verified against the turn's
+    # own tool history before it is accepted.
     from alpha.agents.middlewares.finish_first_verifier_middleware import FinishFirstVerifierMiddleware
 
-    middlewares.append(FinishFirstVerifierMiddleware())
+    middlewares.append(FinishFirstVerifierMiddleware(critic_pipeline=_build_completion_critic_pipeline(resolved_app_config)))
+
+    # UserModelMiddleware — drives alpha.agents.memory.user_model, which shipped
+    # complete (provider ABC + null + file-backed implementations) with a test
+    # suite and no caller, so `memory.user_model` was a knob wired to nothing.
+    # Default provider is `null`, whose system_prompt_block returns None, so this
+    # is a no-op until an operator opts in.
+    from alpha.agents.middlewares.user_model_middleware import UserModelMiddleware
+
+    middlewares.append(UserModelMiddleware(app_config=resolved_app_config))
 
     # SafetyFinishReasonMiddleware — suppress tool execution when the provider
     # safety-terminated the response. Registered after the terminal-response

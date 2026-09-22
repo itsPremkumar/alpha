@@ -3,7 +3,8 @@
 **File:** `AGENT_TRANSFER_GUIDE.md` (this file)
 **Repo root:** `C:\Users\PREM KUMAR\Videos\alpha`
 **Mode:** local-only, no deletions, no auth, no remote servers
-**Last validated:** 2026-09-21 (pass 5 — tool schema regression fixed, all 113 tool schemas OK, ALPHA_OK re-verified, commit 9b0c096)
+**Last validated:** 2026-09-21 (pass 6 — orphan guard, manifest + E2E re-verified live; integration/autonomy contracts added to AGENTS.md guides; commit b4e33f2)
+**Previous:** 2026-09-21 (pass 5 — tool schema regression fixed, all 113 tool schemas OK, ALPHA_OK re-verified, commit 9b0c096)
 **Previous:** 2026-09-21 (pass 4 — frontend UI/UX overhaul, autonomy loops & self-healing verified, zero git debris, full verification)
 **Previous:** 2026-09-20 (pass 2 — orphan guard green, 25 capabilities wired, manifest 0 unwired)
 
@@ -453,3 +454,28 @@ In short: this file is a living checkpoint ledger. Every agent that touches the 
 
 **END OF FILE — AGENT_TRANSFER_GUIDE.md**
 This file IS the transfer prompt. Read it first. Update it before every handoff. The next agent continues from **Section 6 ("Where the previous agent stopped")**.
+
+## 9d. PASS 6 (2026-09-21) — orphan guard green, manifest + E2E re-verified live, AGENTS.md contracts
+
+### What pass 6 did
+- `tests/test_no_orphan_modules.py` re-ran: **6/6 pass** (230s scan, no new orphans).
+- `GET /api/ops/integration-health` re-verified live on the running gateway:
+  tools 116/116, routers 55/55, middlewares 40/40, loops 6/6 wired, 0 unwired.
+- Full agent turn re-verified: create thread → `runs/wait` with `lead_agent` →
+  ALPHA_OK response (with the pass-5 tool-schema fix in place).
+- Added "Integration health contract" + "Autonomy supervisor contract" to
+  `AGENTS.md`, and "Integration health + autonomy ownership" to
+  `backend/AGENTS.md` (per the repo's keep-docs-in-sync rule). Commit `b4e33f2`.
+
+### What pass 6 did NOT finish (carry to pass 7)
+- `pnpm typecheck` ran 10+ minutes (1200+ CPU s) without finishing — abnormal,
+  since pass 4 verified it clean and no frontend files changed since. Needs an
+  offline re-run investigation (possible tsc watch loop or stuck Next build).
+- Full 150-file backend suite and `pnpm test` still not run (still BLOCKED by
+  the sandbox `sitecustomize.py` shim for the E2E path; see §7c).
+- Frontend Integration tab polish + screenshot checklist still open.
+
+### Where pass 6 stopped
+- Guide updated with pass-6 record; AGENTS.md docs committed (`b4e33f2`).
+- Next: answer why `tsc --noEmit` hung, then run `pnpm test` + the full backend
+  suite from a non-sandboxed shell.

@@ -59,6 +59,7 @@ from alpha.tools.builtins import (
     consult_experience,
     consult_plan_gap_analysis,
     create_workflow_checkpoint,
+    deep_research,
     cronjob_manage,
     delegate_to_deep_agent,
     deliberation_tool,
@@ -234,6 +235,11 @@ BUILTIN_TOOLS = [
     deliberate_artifact_quality,
     compile_five_pass_search,
     forge_skill_from_trace,
+    # Declared by the ``deep-research`` subagent category in
+    # alpha.subagents.categories and named in that category's prompt. Without
+    # registration here the subagent allowlist filters it out silently (see
+    # ``_filter_tools``), so the subagent is told to use a tool it cannot reach.
+    deep_research,
     # Core Code Agentic Tools:
     generate_repo_map,
     auto_test_and_repair,
@@ -284,6 +290,12 @@ BUILTIN_TOOLS = [
     delegate_to_deep_agent,
     list_available_deep_agents,
     inspect_deep_agent_telemetry,
+    # Master Slash Command catalog (418 commands across 28 categories) and the
+    # lifecycle-phase router that picks one. Both were implemented, exported
+    # from ``alpha.tools.builtins`` and imported above, but never named here —
+    # so the registry dropped them and no agent could reach either one.
+    execute_slash_command_tool,
+    identify_autonomous_command_tool,
 ]
 
 

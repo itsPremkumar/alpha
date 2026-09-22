@@ -425,6 +425,16 @@ def test_make_lead_agent_passive_empty_skill_policy_preserves_mcp_and_other_tool
     mock_app_config.get_model_config.return_value = SimpleNamespace(supports_thinking=False, supports_vision=False)
     mock_app_config.tool_search.enabled = True
     mock_app_config.tool_search.auto_promote_top_k = 3
+    # ``deferred_discovery`` and ``allowed_skills`` must be real values, not
+    # MagicMock attributes. A bare MagicMock is *truthy*, so it passes the
+    # ``deferred_discovery`` check by accident while ``allowed_skills`` —
+    # whose production default is ``None`` — reads as "an operator allowlist is
+    # configured". ``set(MagicMock())`` is empty, so the ceiling in
+    # ``_load_enabled_available_skills`` silently filtered every skill away and
+    # ``describe_skill`` was never built.
+    mock_app_config.skills.deferred_discovery = True
+    mock_app_config.skills.allowed_skills = None
+    mock_app_config.skills.container_path = "/mnt/skills"
     mock_storage = SimpleNamespace(load_skills=lambda *, enabled_only: [_make_skill("example-safe-skill", [])])
 
     with prompt_module._enabled_skills_lock:
