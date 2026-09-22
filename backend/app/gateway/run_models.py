@@ -11,6 +11,25 @@ from alpha.runtime.stream_modes import RunStreamMode, UnsupportedStreamModeError
 from alpha.utils.thread_id import validate_thread_id
 
 
+class AcceptanceCriterion(BaseModel):
+    """A user-visible condition that must have independently collected evidence."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1, max_length=100, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$")
+    description: str = Field(min_length=1, max_length=2_000)
+    required_evidence_kinds: list[str] = Field(default_factory=list, max_length=8)
+
+    @field_validator("required_evidence_kinds")
+    @classmethod
+    def validate_evidence_kinds(cls, value: list[str]) -> list[str]:
+        if any(not kind or len(kind) > 64 for kind in value):
+            raise ValueError("evidence kinds must be non-empty strings up to 64 characters")
+        if len(set(value)) != len(value):
+            raise ValueError("evidence kinds must not contain duplicates")
+        return value
+
+
 class RunCreateRequest(BaseModel):
     """Validated run request used by both HTTP and internal launch paths."""
 
@@ -20,6 +39,8 @@ class RunCreateRequest(BaseModel):
     input: dict[str, Any] | None = Field(default=None, description="Graph input (e.g. {messages: [...]})")
     command: dict[str, Any] | None = Field(default=None, description="LangGraph Command")
     metadata: dict[str, Any] | None = Field(default=None, description="Run metadata")
+    acceptance_criteria: list[AcceptanceCriterion] | None = Field(default=None, max_length=32, description="Optional criteria whose evidence determines verified completion")
+    autonomous: bool = Field(default=False, description="Server-applied autonomous execution mode: planning, permitted delegation, and no clarification pauses")
     config: dict[str, Any] | None = Field(default=None, description="RunnableConfig overrides")
     context: dict[str, Any] | None = Field(default=None, description="Alpha context overrides (model_name, thinking_enabled, etc.)")
     webhook: None = Field(default=None, description="Compatibility placeholder; completion callbacks are not supported")
@@ -48,6 +69,13 @@ class RunCreateRequest(BaseModel):
         thread_id = configurable["thread_id"]
         if thread_id is not None:
             validate_thread_id(thread_id)
+        return self
+
+    @model_validator(mode="after")
+    def validate_acceptance_criterion_ids(self) -> RunCreateRequest:
+        identifiers = [criterion.id for criterion in self.acceptance_criteria or []]
+        if len(set(identifiers)) != len(identifiers):
+            raise ValueError("acceptance criteria must not contain duplicate ids")
         return self
 
     @field_validator(

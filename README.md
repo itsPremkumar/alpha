@@ -50,6 +50,22 @@
 
 ## 1. Executive Overview
 
+### Production verification contracts
+
+Run requests can optionally declare bounded acceptance criteria. Alpha persists
+the validated criteria with the run record so future verification collectors can
+attach independently checked evidence, such as test results or artifact digests.
+This does not replace the durable run lifecycle: a run can finish successfully
+while remaining unverified until sufficient evidence is recorded. See
+`docs/PRODUCTION_READINESS_TRANSFER_GUIDE.md` for the production rollout and
+operator handoff plan, and `docs/PRODUCTION_READINESS_INVENTORY.md` for the
+evidence-backed gap inventory.
+
+For prompt-to-completion workflows, set the run request's `autonomous` field to
+`true`. Alpha then applies plan mode, permitted subagent delegation, and
+non-interactive execution through the trusted Gateway path; authorization and
+sandbox policy remain enforced.
+
 **Alpha** is a unified Autonomous Multi-Agent Operating System engineered for long-horizon task execution, frontier cognitive reasoning, multi-model swarms, and exhaustive multi-hop research.
 
 Built on an asynchronous, highly distributed Python/LangGraph engine paired with a Next.js 15 web interface and an Electron Windows desktop shell, Alpha bridges raw LLM intelligence with real-world computer action. It guarantees deterministic execution through continuous goal tracking, persistent multi-session checkpointing, evolutionary prompt optimization, and formal verification gates.

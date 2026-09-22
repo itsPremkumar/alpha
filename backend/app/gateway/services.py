@@ -1378,7 +1378,13 @@ async def start_run(
 
     disconnect = DisconnectMode.cancel if body.on_disconnect == "cancel" else DisconnectMode.continue_
 
-    body_context = getattr(body, "context", None) or {}
+    body_context = dict(getattr(body, "context", None) or {})
+    if body.autonomous:
+        # This is a typed, server-applied request mode, not an untrusted
+        # ``context.non_interactive`` override. Existing authorization,
+        # tool allowlists, resource limits, and sandbox policy still apply.
+        body_context["is_plan_mode"] = True
+        body_context["subagent_enabled"] = True
     model_name = body_context.get("model_name")
     # Coerce non-string model_name values to str before truncation.
     if model_name is not None and not isinstance(model_name, str):
@@ -1452,6 +1458,12 @@ async def start_run(
         # checkpoint. The caller's own metadata keys are preserved.
         run_metadata = dict(body.metadata) if isinstance(body.metadata, dict) else {}
         run_metadata[AGENT_WORKSPACE_TRACE_METADATA_KEY] = ensure_trace_id()
+        if body.autonomous:
+            run_metadata["autonomous"] = True
+        if body.acceptance_criteria is not None:
+            # Persist the validated, canonical contract with the existing run
+            # record.  Verification is an overlay, not a second run lifecycle.
+            run_metadata["acceptance_criteria"] = [criterion.model_dump(mode="json") for criterion in body.acceptance_criteria]
 
         config = build_run_config(thread_id, body.config, run_metadata, assistant_id=body.assistant_id)
         await apply_checkpoint_to_run_config(config, body=body, thread_id=thread_id, request=request)
@@ -1461,6 +1473,17 @@ async def start_run(
         # that carries agent configuration (model_name, thinking_enabled, etc.).
         # Only agent-relevant keys are forwarded; unknown keys (e.g. thread_id) are ignored.
         merge_run_context_overrides(config, getattr(body, "context", None), internal=is_internal_caller)
+        if body.autonomous:
+            # The public context path intentionally cannot set this reserved
+            # key. Apply it only after context sanitisation so autonomous runs
+            # cannot pause to request clarification, while preserving every
+            # existing policy gate around consequential tools.
+            config.setdefault("configurable", {})["non_interactive"] = True
+            config.setdefault("context", {})["non_interactive"] = True
+            config["configurable"]["is_plan_mode"] = True
+            config["context"]["is_plan_mode"] = True
+            config["configurable"]["subagent_enabled"] = True
+            config["context"]["subagent_enabled"] = True
         if not is_internal_caller:
             # ``body.config`` is free-form and copied verbatim by
             # ``build_run_config``; scrub internal-only keys smuggled there.

@@ -69,6 +69,14 @@ def test_windows_launcher_requires_successful_readiness() -> None:
     assert "catch [System.Net.WebException]" not in frontend_probe
 
 
+def test_windows_launcher_has_netstat_fallback_for_port_ownership() -> None:
+    launcher = (REPO_ROOT / "start.ps1").read_text(encoding="utf-8")
+
+    assert "Get-NetTCPConnection" in launcher
+    assert "netstat.exe -ano -p tcp" in launcher
+    assert "WinError 10048" in launcher
+
+
 def test_windows_launcher_checks_build_failure_before_start() -> None:
     launcher = (REPO_ROOT / "start.ps1").read_text(encoding="utf-8")
     build = launcher.index("& node node_modules/next/dist/bin/next build")

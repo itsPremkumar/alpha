@@ -30,6 +30,12 @@ and stops the Gateway started by this invocation. Regression tests live in
 `backend/tests/test_gateway_startup.py` resolve Git Bash explicitly on Windows
 instead of invoking the WSL shim through bare `bash`.
 
+`start.ps1` checks listening ports through both `Get-NetTCPConnection` and a
+`netstat.exe` fallback. Some restricted Windows hosts return a false negative
+from the PowerShell cmdlet; without the fallback the launcher starts a second
+Gateway which later fails with `WinError 10048` and leaves the frontend unable
+to proxy API requests.
+
 ## Service Topology
 
 A single `make dev` / Docker stack runs four cooperating services:
