@@ -3,7 +3,10 @@
 
 [CmdletBinding()]
 param (
-    [switch]$SkipFrontend
+    [switch]$SkipFrontend,
+    # Skip the autonomous start + health/recovery verification at the end
+    # (useful for CI or unattended installs where the stack should not start).
+    [switch]$SkipVerification
 )
 
 $ErrorActionPreference = "Stop"
@@ -198,8 +201,125 @@ if (-not $SkipFrontend) {
 }
 
 Write-Host "`n========================================================" -ForegroundColor Green
-Write-Host "           Installation Completed Successfully!          " -ForegroundColor Green
+Write-Host "           Dependencies & configuration ready!           " -ForegroundColor Green
 Write-Host "========================================================" -ForegroundColor Green
-Write-Host "`nTo start Alpha and open the web browser, simply run:" -ForegroundColor Cyan
-Write-Host "   .\start.ps1" -ForegroundColor White
-Write-Host "or double-click start.bat`n" -ForegroundColor White
+
+# -- Optional: register Windows autostart ------------------------------------
+Write-Host "========================================================" -ForegroundColor Cyan
+Write-Host " Windows Autostart (recommended for always-on use)" -ForegroundColor Cyan
+Write-Host "========================================================" -ForegroundColor Cyan
+Write-Host " This registers two scheduled tasks so Alpha:" -ForegroundColor White
+Write-Host "   - Starts automatically 45s after Windows login" -ForegroundColor White
+Write-Host "   - Is verified every 5 minutes and relaunched if it crashes" -ForegroundColor White
+Write-Host ""
+
+$autostart = "Y"
+if (-not $SkipVerification) {   # non-interactive runs default to registering
+    $autostart = Read-Host "Register autostart now? [Y/n]"
+}
+$registered = $false
+if ($autostart -ne "n" -and $autostart -ne "N") {
+    try {
+        & powershell -NoProfile -ExecutionPolicy Bypass -File "$RepoRoot\scripts\register_autostart.ps1"
+        $registered = $true
+    } catch {
+        Write-Host "  [WARN] Autostart registration failed: $_" -ForegroundColor Yellow
+        Write-Host "  Run manually: .\scripts\register_autostart.ps1" -ForegroundColor Gray
+    }
+} else {
+    Write-Host "  Skipped. Run later: .\scripts\register_autostart.ps1`n" -ForegroundColor Gray
+}
+
+# -- Post-install: first autonomous start + recovery-system verification -----
+# The installer does NOT claim success until Alpha has actually started, every
+# health check passed, and the recovery chain (watchdog + scheduled tasks) is
+# confirmed live. (spec: install -> autostart -> start -> verify -> report)
+Write-Host "`n========================================================" -ForegroundColor Cyan
+Write-Host " Post-install verification: start + health + recovery" -ForegroundColor Cyan
+Write-Host "========================================================`n" -ForegroundColor Cyan
+
+$script:InstallChecks = New-Object System.Collections.ArrayList
+function Add-Check {
+    param([string]$Name, [bool]$Ok, [string]$Detail = "")
+    $status = if ($Ok) { "PASS" } else { "FAIL" }
+    $color = if ($Ok) { "Green" } else { "Red" }
+    Write-Host ("  [{0}] {1}{2}" -f $status, $Name, $(if ($Detail) { " - $Detail" } else { "" })) -ForegroundColor $color
+    [void]$script:InstallChecks.Add([pscustomobject]@{ Check = $Name; Result = $status; Detail = $Detail })
+}
+
+if ($SkipVerification) {
+    Write-Host "Verification skipped (-SkipVerification). Start manually with .\start.ps1" -ForegroundColor Yellow
+} else {
+    $LogDir = "$RepoRoot\logs"
+
+    # 1. First autonomous start (detached: the launcher becomes its own process).
+    Write-Host "Starting Alpha (detached)..." -ForegroundColor Yellow
+    Start-Process -FilePath "powershell.exe" -ArgumentList @(
+        '-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden',
+        '-File', "$RepoRoot\start.ps1", '-NoBrowser', '-WatchdogMode'
+    ) -WorkingDirectory $RepoRoot -WindowStyle Hidden | Out-Null
+
+    # 2. Wait for the full dependency chain to come up (cold boot is minutes).
+    Write-Host "Waiting for gateway + frontend (up to 10 min on first boot)..." -ForegroundColor Gray
+    $deadline = (Get-Date).AddSeconds(600)
+    $gw = $false; $fe = $false
+    while ((Get-Date) -lt $deadline) {
+        try { if ((Invoke-WebRequest 'http://127.0.0.1:8001/health/ready' -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop).StatusCode -eq 200) { $gw = $true } } catch {}
+        try { if ((Invoke-WebRequest 'http://127.0.0.1:3000/' -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop).StatusCode -eq 200) { $fe = $true } } catch {}
+        if ($gw -and $fe) { break }
+        Start-Sleep -Seconds 10
+    }
+    Add-Check "Gateway healthy (/health/ready = 200)" $gw ""
+    Add-Check "Frontend healthy (HTTP 200)" $fe ""
+
+    # 3. Launcher alive + truthful health status.
+    $lpid = 0; try { $lpid = [int](Get-Content "$LogDir\alpha.pid" -Raw -ErrorAction Stop) } catch {}
+    $lAlive = ($lpid -gt 0 -and (Get-Process -Id $lpid -ErrorAction SilentlyContinue))
+    Add-Check "Launcher process alive" $lAlive "pid=$lpid"
+    $hStatus = ""
+    try { $hStatus = [string](Get-Content "$LogDir\alpha_health.json" -Raw | ConvertFrom-Json).status } catch {}
+    Add-Check "Health status is 'healthy'" ($hStatus -eq 'healthy') "status=$hStatus"
+
+    # 4. Recovery system: Layer 4 pass must produce a live watchdog loop.
+    if ($registered) {
+        & powershell -NoProfile -ExecutionPolicy Bypass -File "$RepoRoot\scripts\watchdog.ps1" -Once 2>&1 | Out-Null
+        Start-Sleep -Seconds 5
+        $wpid = 0; try { $wpid = [int](Get-Content "$LogDir\watchdog.pid" -Raw -ErrorAction Stop) } catch {}
+        $wAlive = ($wpid -gt 0 -and (Get-Process -Id $wpid -ErrorAction SilentlyContinue))
+        Add-Check "Watchdog loop running" $wAlive "pid=$wpid"
+        $hbFresh = $false; $hbAge = -1
+        try {
+            $hb = Get-Content "$LogDir\watchdog_heartbeat.json" -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+            $hbAge = [int](([DateTime]::UtcNow - [DateTime]::Parse($hb.timestamp_utc, $null,
+                [System.Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime()).TotalSeconds)
+            $hbFresh = ($hbAge -ge 0 -and $hbAge -le 90)
+        } catch {}
+        Add-Check "Watchdog heartbeat fresh (<=90s)" $hbFresh "age=${hbAge}s"
+
+        foreach ($tn in @('Alpha_Autostart', 'Alpha_Watchdog')) {
+            $t = $null; try { $t = Get-ScheduledTask -TaskName $tn -ErrorAction Stop } catch {}
+            $ok = ($t -and ($t.State -eq 'Ready' -or $t.State -eq 'Running'))
+            Add-Check "Scheduled task $tn registered" $ok "state=$(if ($t) { $t.State } else { 'missing' })"
+        }
+    } else {
+        Add-Check "Recovery system (autostart registered)" $false "registration was skipped or failed"
+    }
+
+    # 5. Final verdict - success is only reported when everything passed.
+    $failed = @($script:InstallChecks | Where-Object Result -eq 'FAIL')
+    Write-Host "`n================= INSTALL VERIFICATION ================" -ForegroundColor White
+    $script:InstallChecks | Format-Table -AutoSize
+    if ($failed.Count -eq 0) {
+        Write-Host "Alpha is installed, running autonomously, and monitored." -ForegroundColor Green
+        Write-Host "  Web UI:      http://localhost:3000" -ForegroundColor White
+        Write-Host "  Gateway:     http://localhost:8001" -ForegroundColor White
+        Write-Host "  Stop (maintenance): .\stop.ps1    Resume: .\start.ps1" -ForegroundColor White
+        Write-Host "  Uninstall:   .\uninstall.ps1`n" -ForegroundColor White
+    } else {
+        Write-Host "INSTALLATION NOT VERIFIED - $($failed.Count) check(s) failed:" -ForegroundColor Red
+        $failed | ForEach-Object { Write-Host "  - $($_.Check) $($_.Detail)" -ForegroundColor Red }
+        Write-Host "Inspect logs\gateway.err.log, logs\frontend.err.log, logs\watchdog.log" -ForegroundColor Yellow
+        Write-Host "Then re-run: .\scripts\verify_recovery.ps1`n" -ForegroundColor Yellow
+        exit 1
+    }
+}

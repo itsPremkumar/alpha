@@ -1,13 +1,29 @@
-﻿# Alpha Watchdog — Independent process monitor
-# Runs as a separate background process. Detects when Alpha services (Gateway + Frontend)
-# are down and restarts them by relaunching start.ps1 -NoBrowser -WatchdogMode.
-# Also detects a frozen/missing launcher (stale health file) and kills+relaunches it.
+﻿# Alpha Watchdog - Layer 3 independent supervisor (with Layer 4 watchdog-of-watchdog)
+#
+# Architecture (no layer is responsible for its own recovery):
+#   Layer 4  Windows Task Scheduler  -> Alpha_Watchdog task runs -Once every 5 min
+#            and Alpha_Autostart at logon. -Once verifies THIS loop is alive,
+#            running the right installation, with a fresh heartbeat, and
+#            (re)creates it when it is missing, frozen, or stale.
+#   Layer 3  This script's loop      -> monitors gateway/frontend/launcher,
+#            escalates: defer -> component restart -> full stack restart.
+#   Layer 2  start.ps1               -> monitors and restarts its children.
+#   Layer 1  gateway, frontend, workers.
+#
+# Detachment: launcher and watchdog instances are spawned through tiny VBScript
+# shims that exit immediately, so they are ORPHANS of whoever created them.
+# Killing this watchdog (Layer 3) therefore cannot kill the launcher (Layer 2),
+# and killing the scheduled task shell cannot kill this watchdog.
+#
+# Maintenance: stop.ps1 writes logs\alpha_maintenance.json. While it exists,
+# every layer stands down - that is the only sanctioned way to keep Alpha
+# stopped. Crashes and taskkill never create the flag and are always recovered.
 #
 # Usage:
-#   .\scripts\watchdog.ps1                  # Start watchdog loop (blocks)
-#   .\scripts\watchdog.ps1 -Once           # Single check-and-heal pass (for scheduled task trigger)
-#   .\scripts\watchdog.ps1 -StartIfDown    # Start if either service is missing (at-logon trigger)
-#   .\scripts\watchdog.ps1 -Stop           # Stop the running watchdog
+#   .\scripts\watchdog.ps1             # Start watchdog loop (blocks)
+#   .\scripts\watchdog.ps1 -Once       # Layer 4 pass: verify/recreate the loop
+#   .\scripts\watchdog.ps1 -StartIfDown# Alias of -Once (logon trigger)
+#   .\scripts\watchdog.ps1 -Stop       # Stop the running loop
 
 [CmdletBinding()]
 param (
@@ -17,323 +33,545 @@ param (
 )
 
 $ErrorActionPreference = "SilentlyContinue"
-$RepoRoot   = Split-Path $PSScriptRoot -Parent
-$LogDir     = "$RepoRoot\logs"
-$WatchdogLog  = "$LogDir\watchdog.log"
-$WatchdogPid  = "$LogDir\watchdog.pid"
-$AlphaPid     = "$LogDir\alpha.pid"
-$HealthFile   = "$LogDir\alpha_health.json"
-$StartScript  = "$RepoRoot\start.ps1"
-$GatewayPort  = 8001
-$FrontendPort = 3000
-$HeartbeatMaxAgeSeconds = 120   # health file older than this = frozen launcher
-# start.ps1 legitimately needs several minutes before anything listens on
-# 8001/3000 (alembic migrations ~3 min, first Next.js compile ~90 s). Until it
-# finishes, ports are down by design, so recovery must wait instead of
-# taskkilling the launcher it is supposed to be babysitting.
-$StartupGraceSeconds = 600
-# How many consecutive 30 s checks the watchdog will let a recovering launcher
-# work on its own before taking over (8 x 30 s = 4 min, enough for the
-# gateway's own 240 s health wait plus backoff).
-$MaxDeferredRecoveries = 8
+$RepoRoot         = Split-Path $PSScriptRoot -Parent
+$LogDir           = "$RepoRoot\logs"
+$WatchdogLog      = "$LogDir\watchdog.log"
+$WatchdogPid      = "$LogDir\watchdog.pid"
+$WatchdogHeartbeat= "$LogDir\watchdog_heartbeat.json"
+$AlphaPid         = "$LogDir\alpha.pid"
+$HealthFile       = "$LogDir\alpha_health.json"
+$MaintenanceFile  = "$LogDir\alpha_maintenance.json"
+$RecoveryHistory  = "$LogDir\recovery_history.jsonl"
+$StartScript      = "$RepoRoot\start.ps1"
+$WatchdogScript   = "$RepoRoot\scripts\watchdog.ps1"
+$GatewayPort      = 8001
+$FrontendPort     = 3000
+
+$CheckIntervalSeconds     = 30
+$WatchdogHeartbeatMaxAge  = 90    # loop heartbeat older than this = frozen loop
+$LauncherHeartbeatMaxAge  = 360   # start.ps1 can legitimately pause up to 300 s in backoff
+$StartupGraceSeconds      = 600   # a launcher younger than this is still in first boot
+$MaxDeferredRecoveries    = 8     # checks we let a live launcher heal itself first
+$MaxComponentRecoveries   = 3     # per-component restarts before escalating to the stack
+$GatewayHungThreshold     = 6     # port up but no HTTP answer x 30 s = 3 min
+$FrontendHungThreshold    = 12    # cold Next.js compile measured 281 s - allow 6 min
+$ActionBackoffStart       = 30    # full-stack restart backoff (doubles, capped)
+$ActionBackoffCap         = 300
+
+$script:WatchdogStartedUtc = [DateTime]::UtcNow.ToString("o")
+$script:GwHttpFail   = 0
+$script:FeHttpFail   = 0
+$script:ConsecutiveFailures = 0
+$script:ComponentAttempts   = @{}
+$script:LastActionUtc = $null
+$script:ActionBackoff = 0
+$script:MaintenanceLogged = $false
 
 if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir -Force | Out-Null }
 
-function Write-WatchdogLog {
+# ---------------------------------------------------------------- logging ----
+function Write-WdLog {
     param([string]$Message, [string]$Level = "INFO")
-    $ts  = [DateTime]::Now.ToString("yyyy-MM-dd HH:mm:ss")
-    $line = "[$ts][$Level] $Message"
-    try { Add-Content -Path $WatchdogLog -Value $line -Encoding UTF8 -Force } catch {}
-    if ($Level -eq "ERROR") { Write-Host $line -ForegroundColor Red }
-    elseif ($Level -eq "WARN")  { Write-Host $line -ForegroundColor Yellow }
-    else  { Write-Host $line }
+    try {
+        $log = Get-Item $WatchdogLog -ErrorAction SilentlyContinue
+        if ($log -and $log.Length -gt 5MB) {
+            Move-Item -Path $WatchdogLog -Destination "$WatchdogLog.1" -Force -ErrorAction SilentlyContinue
+        }
+        Add-Content -Path $WatchdogLog -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [$Level] $Message" -Encoding UTF8
+    } catch {}
 }
 
-# ---- Stop: kill the running watchdog ----------------------------------------
-if ($Stop) {
-    if (Test-Path $WatchdogPid) {
-        $wdPid = [int](Get-Content $WatchdogPid -Raw -ErrorAction SilentlyContinue)
-        if ($wdPid -and (Get-Process -Id $wdPid -ErrorAction SilentlyContinue)) {
-            Write-Host "Stopping Alpha Watchdog (PID $wdPid)..."
-            & taskkill /PID $wdPid /T /F 2>$null | Out-Null
+# Persistent, rotation-bounded recovery history (JSON lines, no secrets).
+function Write-RecoveryEvent {
+    param([string]$Component, [string]$Action, [string]$Result, [string]$Reason = "")
+    try {
+        $evt = @{
+            timestamp_utc = [DateTime]::UtcNow.ToString("o")
+            pid           = $PID
+            component     = $Component
+            action        = $Action
+            result        = $Result
+            reason        = $Reason
+        } | ConvertTo-Json -Compress
+        $f = Get-Item $RecoveryHistory -ErrorAction SilentlyContinue
+        if ($f -and $f.Length -gt 5MB) {
+            Move-Item -Path $RecoveryHistory -Destination "$RecoveryHistory.1" -Force -ErrorAction SilentlyContinue
         }
-        Remove-Item $WatchdogPid -Force -ErrorAction SilentlyContinue
+        Add-Content -Path $RecoveryHistory -Value $evt -Encoding UTF8
+    } catch {}
+    Write-WdLog "$Component :: $Action -> $Result$(if ($Reason) { " ($Reason)" })"
+}
+
+# Atomic state writes: readers must never observe a half-written JSON file.
+function Write-StateFile {
+    param([string]$Path, [object]$Object)
+    try {
+        $json = $Object | ConvertTo-Json -Compress
+        $tmp  = "$Path.$PID.tmp"
+        [System.IO.File]::WriteAllText($tmp, $json)
+        Move-Item -Path $tmp -Destination $Path -Force -ErrorAction Stop
+    } catch {}
+}
+
+function Write-Heartbeat {
+    param([string]$Status, [string]$Stack = "")
+    Write-StateFile -Path $WatchdogHeartbeat -Object @{
+        pid                    = $PID
+        component              = "watchdog"
+        version                = "2"
+        started_utc            = $script:WatchdogStartedUtc
+        timestamp_utc          = [DateTime]::UtcNow.ToString("o")
+        status                 = $Status
+        repo_root              = $RepoRoot
+        check_interval_seconds = $CheckIntervalSeconds
+        stack                  = $Stack
     }
-    Write-Host "[OK] Watchdog stopped."
-    exit 0
 }
 
-# ---- Helpers ----------------------------------------------------------------
-function Get-ListeningPids {
+# ------------------------------------------------------------- maintenance ---
+function Test-Maintenance {
+    if (-not (Test-Path $MaintenanceFile)) { return $false }
+    try {
+        $m = Get-Content $MaintenanceFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+        return [bool]$m.active
+    } catch {
+        # Unreadable flag: respect the operator's stop rather than resurrect Alpha.
+        return $true
+    }
+}
+
+# --------------------------------------------------------------- primitives --
+function Test-PortListening {
     param([int]$Port)
-    $ids = @()
     try {
-        $conns = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction Stop
-        foreach ($c in $conns) {
-            if ($c.OwningProcess -and $c.OwningProcess -ne 0 -and -not ($ids -contains $c.OwningProcess)) {
-                $ids += $c.OwningProcess
-            }
-        }
-    } catch {}
-    try {
-        foreach ($line in (& netstat.exe -ano -p tcp 2>$null)) {
-            if ($line -match "^\s*TCP\s+\S+`:$Port\s+\S+\s+LISTENING\s+(\d+)\s*$") {
-                $pid = [int]$Matches[1]
-                if ($pid -ne 0 -and -not ($ids -contains $pid)) { $ids += $pid }
-            }
-        }
-    } catch {}
-    return $ids
+        return [bool](Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction Stop |
+            Select-Object -First 1)
+    } catch { return $false }
 }
 
-function Test-ServiceAlive {
-    param([int]$Port)
-    return (Get-ListeningPids -Port $Port).Count -gt 0
-}
-
-function Test-GatewayHealthy {
+function Test-HttpOk {
+    param([int]$Port, [string]$Path, [int]$TimeoutSec = 6)
     try {
-        $r = Invoke-WebRequest -Uri "http://127.0.0.1:$GatewayPort/health/ready" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
-        return $r.StatusCode -eq 200
+        $r = Invoke-WebRequest -Uri "http://127.0.0.1:$Port$Path" -UseBasicParsing `
+            -TimeoutSec $TimeoutSec -ErrorAction Stop
+        return ($r.StatusCode -ge 200 -and $r.StatusCode -lt 400)
     } catch { return $false }
 }
 
 function Get-HealthState {
-    # Returns @{ Status; AgeSeconds } from alpha_health.json, or $null.
     if (-not (Test-Path $HealthFile)) { return $null }
-    try {
-        $obj = Get-Content $HealthFile -Raw | ConvertFrom-Json
-        $mtime = (Get-Item $HealthFile -ErrorAction SilentlyContinue).LastWriteTimeUtc
-        $age = ([DateTime]::UtcNow - $mtime).TotalSeconds
-        return @{ Status = [string]$obj.status; AgeSeconds = $age }
-    } catch { return $null }
+    try { return (Get-Content $HealthFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop) }
+    catch { return $null }   # corrupted/partially-written JSON: treat as absent
 }
 
-function Get-RecoveryDeferral {
-    # Returns a reason string when the watchdog should WAIT instead of
-    # intervening, or $null when it may act.
-    #
-    # start.ps1 is itself self-healing (it relaunches a dead gateway/frontend
-    # and verifies health). Racing it -- taskkilling the launcher while it is
-    # 100 s into a 2-3 min gateway restart -- turned a recoverable single-service
-    # crash into a full-stack restart, which is what made startup look broken.
-    if (-not (Test-Path $AlphaPid)) { return $null }
-    $procId = [int](Get-Content $AlphaPid -Raw -ErrorAction SilentlyContinue)
-    if (-not $procId) { return $null }
-    $proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
-    if (-not $proc) { return $null }
+function Get-PidFileValue {
+    param([string]$Path)
+    if (-not (Test-Path $Path)) { return 0 }
+    try { return [int](Get-Content $Path -Raw -ErrorAction Stop) } catch { return 0 }
+}
 
-    $health = Get-HealthState
-    $status = if ($health) { [string]$health.Status } else { "" }
+function Get-FileAgeSeconds {
+    param([string]$TimestampUtc)
+    if (-not $TimestampUtc) { return [double]::MaxValue }
+    try {
+        $t = [DateTime]::Parse($TimestampUtc, $null,
+            [System.Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime()
+        $age = ([DateTime]::UtcNow - $t).TotalSeconds
+        if ($age -lt 0) { return 0 }
+        return $age
+    } catch { return [double]::MaxValue }
+}
 
-    # Initial boot: ports are down by design until migrations + Next build done.
-    if ($status -eq "starting") { return "launcher is starting (status=starting)" }
-    if (-not $status) {
+# Layer 2 liveness with PID-reuse detection: a recycled PID whose process start
+# time does not match what the launcher recorded is NOT our launcher.
+function Test-LauncherAlive {
+    $lp = Get-PidFileValue -Path $AlphaPid
+    if ($lp -le 0 -or $lp -eq $PID) { return $false }
+    $proc = Get-Process -Id $lp -ErrorAction SilentlyContinue
+    if (-not $proc) { return $false }
+    $h = Get-HealthState
+    if ($h -and $h.pid -eq $lp -and $h.launcher_started_utc) {
         try {
-            $uptime = ([DateTime]::UtcNow - $proc.StartTime.ToUniversalTime()).TotalSeconds
-            if ($uptime -lt $StartupGraceSeconds) {
-                return "launcher is $([int]$uptime)s old and has not reported health yet"
+            $recorded = [DateTime]::Parse($h.launcher_started_utc, $null,
+                [System.Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime()
+            if ([math]::Abs(($proc.StartTime.ToUniversalTime() - $recorded).TotalSeconds) -gt 30) {
+                Write-WdLog "Launcher PID $lp is a recycled PID (start-time mismatch) - treating as stale" "WARN"
+                return $false
             }
         } catch {}
-    }
-
-    # Launcher is actively healing a service itself - let it finish.
-    if ($status -like "restarting_*" -or $status -eq "degraded") {
-        return "launcher is recovering (status=$status)"
-    }
-    return $null
-}
-
-function Test-LauncherAlive {
-    # Check if start.ps1 is running and has updated its health file recently
-    if (-not (Test-Path $AlphaPid)) { return $false }
-    $pidVal = [int](Get-Content $AlphaPid -Raw -ErrorAction SilentlyContinue)
-    if (-not $pidVal) { return $false }
-    $proc = Get-Process -Id $pidVal -ErrorAction SilentlyContinue
-    if (-not $proc) { return $false }
-    # Also check heartbeat freshness. A launcher that is still starting gets a
-    # longer leash: its first boot legitimately takes minutes.
-    $health = Get-HealthState
-    if ($health) {
-        $limit = if ($health.Status -eq "running") { $HeartbeatMaxAgeSeconds } else { $StartupGraceSeconds }
-        if ($health.AgeSeconds -gt $limit) {
-            Write-WatchdogLog "Launcher PID $pidVal is alive but health file is $([int]$health.AgeSeconds)s old (status=$($health.Status), frozen?)" "WARN"
-            # Kill the frozen launcher so we can restart it
-            try { & taskkill /PID $pidVal /T /F 2>$null | Out-Null } catch {}
-            return $false
-        }
     }
     return $true
 }
 
-function Get-AlphaRestartBackoffSeconds {
-    param([int]$Attempt)
-    [Math]::Min(300, [Math]::Pow(2, [Math]::Max(0, $Attempt - 1)) * 5)
+function Test-LauncherHeartbeatFresh {
+    param($Health, [double]$MaxAge = $LauncherHeartbeatMaxAge)
+    if (-not $Health) { return $false }
+    $age = Get-FileAgeSeconds $Health.timestamp_utc
+    return ($age -le $MaxAge)
 }
 
+function Test-WatchdogHeartbeatFresh {
+    param([int]$ExpectedPid, [double]$MaxAge = $WatchdogHeartbeatMaxAge)
+    if (-not (Test-Path $WatchdogHeartbeat)) { return $false }
+    try {
+        $hb = Get-Content $WatchdogHeartbeat -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+        if ([int]$hb.pid -ne $ExpectedPid) { return $false }
+        return ((Get-FileAgeSeconds $hb.timestamp_utc) -le $MaxAge)
+    } catch { return $false }
+}
+
+# ------------------------------------------------------ detached launching ----
+# The shim is a 5-line VBScript that launches the target hidden and exits
+# immediately, so the target becomes an orphan of the shim. Nothing that
+# created the shim can later kill the target by killing its own process tree.
+function Write-Shim {
+    param([string]$Name, [string]$CommandLine)
+    $vbs = "$LogDir\$Name"
+    $dir = $RepoRoot -replace '"', '""'
+    $cmd = $CommandLine -replace '"', '""'   # VBScript string escaping
+    $text = "Option Explicit`r`n" +
+            "Dim sh`r`n" +
+            "Set sh = CreateObject(`"WScript.Shell`")`r`n" +
+            "sh.CurrentDirectory = `"$dir`"`r`n" +
+            "sh.Run `"$cmd`", 0, False`r`n"
+    try {
+        # BOM-free ANSI: wscript rejects a UTF-8 BOM on line 1.
+        $tmp = "$vbs.$PID.tmp"
+        [System.IO.File]::WriteAllText($tmp, $text, [System.Text.Encoding]::Default)
+        Move-Item -Path $tmp -Destination $vbs -Force -ErrorAction Stop
+    } catch { Write-WdLog "Failed to write shim $vbs : $($_.Exception.Message)" "ERROR"; return $null }
+    return $vbs
+}
+
+function Invoke-Detached {
+    param([string]$ShimPath)
+    if (-not $ShimPath) { return $false }
+    try {
+        Start-Process -FilePath "wscript.exe" -ArgumentList @('//B', '//Nologo', "`"$ShimPath`"") `
+            -WindowStyle Hidden -ErrorAction Stop | Out-Null
+        return $true
+    } catch { return $false }
+}
+
+function Stop-StaleLauncher {
+    $lp = Get-PidFileValue -Path $AlphaPid
+    if ($lp -gt 0 -and $lp -ne $PID -and (Get-Process -Id $lp -ErrorAction SilentlyContinue)) {
+        & taskkill /PID $lp /T /F 2>&1 | Out-Null
+        Start-Sleep -Seconds 1
+    }
+}
+
+# Kill only what holds a port: the smallest recovery that unblocks the
+# launcher's own component monitor (it sees the child exit and restarts it).
+function Stop-PortTree {
+    param([int]$Port)
+    $freed = $false
+    for ($round = 1; $round -le 3; $round++) {
+        $ids = @()
+        try {
+            $ids = @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction Stop |
+                Select-Object -ExpandProperty OwningProcess -Unique)
+        } catch {}
+        if (-not $ids) { $freed = $true; break }
+        foreach ($id in $ids) {
+            if ($id -gt 0 -and $id -ne $PID) { & taskkill /PID $id /T /F 2>&1 | Out-Null }
+        }
+        for ($i = 0; $i -lt 10; $i++) {
+            Start-Sleep -Seconds 2
+            if (-not (Test-PortListening -Port $Port)) { $freed = $true; break }
+        }
+        if ($freed) { break }
+    }
+    return $freed
+}
+
+function Restart-Component {
+    param([string]$Component)
+    $port = if ($Component -eq "gateway") { $GatewayPort } else { $FrontendPort }
+    $n = 0
+    if ($script:ComponentAttempts.ContainsKey($Component)) { $n = $script:ComponentAttempts[$Component] }
+    Write-RecoveryEvent -Component $Component -Action "component_restart" `
+        -Result "attempt" -Reason "consecutive failures=$($script:ConsecutiveFailures), attempt $n - killing port $port tree; the launcher restarts it"
+    $freed = Stop-PortTree -Port $port
+    if ($freed) {
+        Write-RecoveryEvent -Component $Component -Action "component_restart" -Result "killed" -Reason "port $port freed"
+    } else {
+        Write-RecoveryEvent -Component $Component -Action "component_restart" -Result "failed" -Reason "port $port still bound"
+    }
+    return $freed
+}
+
+# Full-stack recovery: replace the launcher (if any) and start a fresh one,
+# detached, through the VBS shim.
 function Start-AlphaStack {
-    param([int]$Attempt = 1)
-    $backoff = Get-AlphaRestartBackoffSeconds -Attempt $Attempt
-    Write-WatchdogLog "Launching Alpha stack (attempt $Attempt, backoff ${backoff}s)..." "WARN"
-    if ($backoff -gt 0) { Start-Sleep -Seconds $backoff }
-
-    # Resolve uv and node paths the same way start.ps1 does
-    $uvCandidates = @(
-        "$env:USERPROFILE\.cargo\bin\uv.exe",
-        "$env:APPDATA\uv\uv.exe",
-        "$env:LOCALAPPDATA\Programs\uv\uv.exe",
-        "$env:LOCALAPPDATA\hermes\bin\uv.exe",
-        "$env:USERPROFILE\.local\bin\uv.exe"
-    )
-    $uvPath = $null
-    foreach ($c in $uvCandidates) { if (Test-Path $c) { $uvPath = $c; break } }
-    $uvCmd = Get-Command uv.exe -ErrorAction SilentlyContinue
-    if (-not $uvPath -and $uvCmd) { $uvPath = $uvCmd.Source }
-
-    $nodePath = $null
-    foreach ($c in @("C:\nvm4w\nodejs\node.exe","$env:ProgramFiles\nodejs\node.exe","$env:LOCALAPPDATA\Programs\nodejs\node.exe")) {
-        if (Test-Path $c) { $nodePath = $c; break }
+    param([string]$Reason)
+    Stop-StaleLauncher
+    $shimCmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$StartScript`" -NoBrowser -WatchdogMode"
+    $shim = Write-Shim -Name "alpha_launch_shim.vbs" -CommandLine $shimCmd
+    if (Invoke-Detached -ShimPath $shim) {
+        Write-RecoveryEvent -Component "stack" -Action "full_restart" -Result "spawned" -Reason $Reason
+        return $true
     }
-    $nodeCmd = Get-Command node.exe -ErrorAction SilentlyContinue
-    if (-not $nodePath -and $nodeCmd) { $nodePath = $nodeCmd.Source }
-
-    # Start-Process inherits this watchdog's environment, so set the child's
-    # requirements here. (A hashtable was previously built for this and never
-    # applied, which left task-scheduler launches with a bare PATH.)
-    if ($uvPath) { $env:PATH = (Split-Path $uvPath) + ";" + $env:PATH }
-    if ($nodePath) { $env:PATH = (Split-Path $nodePath) + ";" + $env:PATH }
-    $env:AGENT_WORKSPACE_AUTH_DISABLED = "1"
-    if (-not $env:PATHEXT -or $env:PATHEXT -notlike "*.EXE*") {
-        $env:PATHEXT = ".COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.CPL"
-    }
-
-    # Launch start.ps1 hidden via a new PowerShell process
-    $psArgs = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$StartScript`" -NoBrowser -WatchdogMode"
-    $proc = Start-Process -FilePath "powershell.exe" -ArgumentList $psArgs `
-        -WorkingDirectory $RepoRoot -PassThru -WindowStyle Hidden
-    Write-WatchdogLog "Alpha launcher started: PID $($proc.Id)"
-    return $proc
+    Write-RecoveryEvent -Component "stack" -Action "full_restart" -Result "spawn_failed" -Reason $Reason
+    return $false
 }
 
-# ---- Single-check mode (for scheduled task -Once/-StartIfDown) --------------
-if ($Once -or $StartIfDown) {
-    $gwAlive = Test-ServiceAlive -Port $GatewayPort
-    $feAlive = Test-ServiceAlive -Port $FrontendPort
-    $launchAlive = Test-LauncherAlive
+# ------------------------------------------------------------- layer-3 pass ---
+function Get-StackSnapshot {
+    $gwPort = Test-PortListening -Port $GatewayPort
+    $fePort = Test-PortListening -Port $FrontendPort
 
-    Write-WatchdogLog "Health check: gateway=$gwAlive frontend=$feAlive launcher=$launchAlive"
+    if ($gwPort) {
+        if (Test-HttpOk -Port $GatewayPort -Path "/health/ready") {
+            $script:GwHttpFail = 0; $gw = "up"
+        } else {
+            $script:GwHttpFail++
+            $gw = if ($script:GwHttpFail -ge $GatewayHungThreshold) { "hung" } else { "starting" }
+        }
+    } else { $script:GwHttpFail = 0; $gw = "down" }
 
-    if ($gwAlive -and $feAlive -and $launchAlive) {
-        Write-WatchdogLog "All services healthy - nothing to do."
-        exit 0
+    if ($fePort) {
+        if (Test-HttpOk -Port $FrontendPort -Path "/") {
+            $script:FeHttpFail = 0; $fe = "up"
+        } else {
+            $script:FeHttpFail++
+            $fe = if ($script:FeHttpFail -ge $FrontendHungThreshold) { "hung" } else { "starting" }
+        }
+    } else { $script:FeHttpFail = 0; $fe = "down" }
+
+    $health      = Get-HealthState
+    $launcherOk  = Test-LauncherAlive
+    $heartFresh  = Test-LauncherHeartbeatFresh -Health $health
+    $status      = if ($health -and $health.status) { [string]$health.status } else { "unknown" }
+
+    $summary = "gateway=$gw frontend=$fe launcher=$(if ($launcherOk) { 'alive' } else { 'dead' }) " +
+               "launcher_hb=$(if ($heartFresh) { 'fresh' } else { 'stale' }) status=$status"
+    return @{
+        GatewayState = $gw; FrontendState = $fe
+        LauncherAlive = $launcherOk; HeartbeatFresh = $heartFresh
+        Status = $status; Health = $health; Summary = $summary
+    }
+}
+
+function Invoke-HealthCheck {
+    $s = Get-StackSnapshot
+
+    $everythingOk = ($s.GatewayState -eq "up") -and ($s.FrontendState -eq "up") `
+        -and $s.LauncherAlive -and $s.HeartbeatFresh
+
+    if ($everythingOk) {
+        $script:ConsecutiveFailures = 0
+        $script:ComponentAttempts   = @{}
+        $script:ActionBackoff       = 0
+        $script:MaintenanceLogged   = $false
+        Write-Heartbeat -Status "ok" -Stack $s.Summary
+        return
     }
 
-    # The launcher may be booting or healing a service itself; in that case
-    # starting a second watchdog/recovery would only fight it.
-    $deferral = Get-RecoveryDeferral
-    if ($deferral) {
-        Write-WatchdogLog "Deferring recovery: $deferral - nothing to do."
-        exit 0
-    }
+    $script:ConsecutiveFailures++
+    $n = $script:ConsecutiveFailures
 
-    # Check whether the watchdog loop itself is already running
-    if (Test-Path $WatchdogPid) {
-        $wdPid = [int](Get-Content $WatchdogPid -Raw -ErrorAction SilentlyContinue)
-        if ($wdPid -and (Get-Process -Id $wdPid -ErrorAction SilentlyContinue)) {
-            Write-WatchdogLog "Watchdog loop is already running (PID $wdPid) - leaving it to handle recovery."
-            exit 0
+    # ---- Tier 1: defer - a live launcher is already fixing it --------------
+    $working = $s.Status -in @("starting", "recovering", "restarting_gateway",
+                               "restarting_frontend", "degraded", "starting_adopting")
+    $launcherUptime = [double]::MaxValue
+    if ($s.LauncherAlive) {
+        try {
+            $lp = Get-PidFileValue -Path $AlphaPid
+            $launcherUptime = ([DateTime]::UtcNow - (Get-Process -Id $lp).StartTime.ToUniversalTime()).TotalSeconds
+        } catch {}
+    }
+    $withinFirstBoot = $launcherUptime -lt $StartupGraceSeconds
+
+    if ($s.LauncherAlive -and $s.HeartbeatFresh) {
+        if ($working -and $withinFirstBoot) {
+            Write-Heartbeat -Status "deferring" -Stack $s.Summary
+            if ($n -eq 1 -or ($n % 4 -eq 0)) {
+                Write-WdLog "Deferring recovery x${n}: launcher status=$($s.Status) uptime=$([int]$launcherUptime)s is fixing it ($($s.Summary))"
+            }
+            return
+        }
+        if ($n -le $MaxDeferredRecoveries -and $s.Status -in @("healthy", "running", "degraded", "unknown")) {
+            Write-Heartbeat -Status "deferring" -Stack $s.Summary
+            if ($n -eq 1) {
+                Write-WdLog "Deferring recovery x${n}: launcher alive (status=$($s.Status)), letting its 2 s monitor act ($($s.Summary))"
+            }
+            return
         }
     }
 
-    # Start the persistent watchdog loop in the background
-    Write-WatchdogLog "Starting persistent watchdog loop in background..." "WARN"
-    $psArgs = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$PSCommandPath`""
-    $wdProc = Start-Process -FilePath "powershell.exe" -ArgumentList $psArgs -PassThru -WindowStyle Hidden
-    Write-WatchdogLog "Watchdog loop started: PID $($wdProc.Id)"
+    # Cooldown between recovery actions - never spin at full speed.
+    if ($script:LastActionUtc -and $script:ActionBackoff -gt 0) {
+        $sinceAction = ([DateTime]::UtcNow - $script:LastActionUtc).TotalSeconds
+        if ($sinceAction -lt $script:ActionBackoff) {
+            Write-Heartbeat -Status "cooldown" -Stack $s.Summary
+            return
+        }
+    }
+
+    # ---- Tier 2: component restart (smallest safe recovery) ----------------
+    $badComponent = $null
+    if ($s.GatewayState -in @("down", "hung")) { $badComponent = "gateway" }
+    elseif ($s.FrontendState -in @("down", "hung")) { $badComponent = "frontend" }
+
+    if ($badComponent -and $s.LauncherAlive -and $s.HeartbeatFresh) {
+        $attempts = 0
+        if ($script:ComponentAttempts.ContainsKey($badComponent)) {
+            $attempts = $script:ComponentAttempts[$badComponent]
+        }
+        if ($attempts -lt $MaxComponentRecoveries) {
+            $script:ComponentAttempts[$badComponent] = $attempts + 1
+            Write-Heartbeat -Status "recovering" -Stack $s.Summary
+            $script:ConsecutiveFailures = 0
+            $script:LastActionUtc = [DateTime]::UtcNow
+            $script:ActionBackoff = 15
+            Restart-Component -Component $badComponent | Out-Null
+            return
+        }
+        Write-WdLog "$badComponent exceeded $MaxComponentRecoveries component restarts - escalating to full stack" "WARN"
+    }
+
+    # ---- Tier 3: full stack restart ---------------------------------------
+    Write-Heartbeat -Status "recovering" -Stack $s.Summary
+    $reason = "escalation after $n failing checks: $($s.Summary)"
+    $ok = Start-AlphaStack -Reason $reason
+    $script:ConsecutiveFailures = 0
+    $script:ComponentAttempts   = @{}
+    $script:LastActionUtc = [DateTime]::UtcNow
+    if ($script:ActionBackoff -eq 0) { $script:ActionBackoff = $ActionBackoffStart }
+    else { $script:ActionBackoff = [Math]::Min($ActionBackoffCap, $script:ActionBackoff * 2) }
+    if (-not $ok) { Write-WdLog "Full restart spawn failed - will retry after backoff" "ERROR" }
+}
+
+# ----------------------------------------------------------- Layer 4: -Once ---
+# Watchdog-of-watchdog. This does NOT depend on Alpha being healthy: it only
+# verifies that a correct, fresh Layer 3 loop exists for this installation and
+# recreates it when it does not. The loop then owns recovery decisions.
+function Invoke-WatchdogOfWatchdog {
+    if (Test-Maintenance) {
+        if (-not $script:MaintenanceLogged) {
+            Write-WdLog "Maintenance mode - Layer 4 pass standing down (no loop start, no recovery)"
+        }
+        return
+    }
+
+    $owner = Get-PidFileValue -Path $WatchdogPid
+    $loopOk = $false
+    if ($owner -gt 0) {
+        $proc = Get-Process -Id $owner -ErrorAction SilentlyContinue
+        if ($proc -and (Test-WatchdogHeartbeatFresh -ExpectedPid $owner)) {
+            # Must also be monitoring THIS installation, not another checkout.
+            $cmdline = ""
+            try {
+                $cmdline = (Get-CimInstance Win32_Process -Filter "ProcessId=$owner" -ErrorAction Stop).CommandLine
+            } catch {}
+            if ($cmdline -like "*$WatchdogScript*") { $loopOk = $true }
+            else { Write-WdLog "Watchdog PID $owner is not monitoring this installation ($cmdline) - replacing" "WARN" }
+        } else {
+            Write-WdLog "Watchdog loop unhealthy: pid=$owner alive=$([bool]$proc) heartbeat_fresh=$(Test-WatchdogHeartbeatFresh -ExpectedPid $owner) - repairing" "WARN"
+        }
+    } else {
+        Write-WdLog "No watchdog loop registered - starting one"
+    }
+
+    if ($loopOk) {
+        $snap = ""
+        try { $snap = (Get-StackSnapshot).Summary } catch {}
+        Write-WdLog "Watchdog loop healthy (PID $owner); $snap"
+        return
+    }
+
+    # Remove stale loop remnants, then recreate detached.
+    foreach ($pf in @($WatchdogPid)) {
+        $stalePid = Get-PidFileValue -Path $pf
+        if ($stalePid -gt 0 -and $stalePid -ne $PID -and (Get-Process -Id $stalePid -ErrorAction SilentlyContinue)) {
+            & taskkill /PID $stalePid /T /F 2>&1 | Out-Null
+            Start-Sleep -Seconds 1
+        }
+        Remove-Item $pf -Force -ErrorAction SilentlyContinue
+    }
+    Remove-Item $WatchdogHeartbeat -Force -ErrorAction SilentlyContinue
+
+    $shimCmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$WatchdogScript`""
+    $shim = Write-Shim -Name "alpha_watchdog_shim.vbs" -CommandLine $shimCmd
+    if (Invoke-Detached -ShimPath $shim) {
+        Write-RecoveryEvent -Component "watchdog" -Action "loop_recreate" -Result "spawned" -Reason "Layer 4 supervision pass"
+    } else {
+        Write-RecoveryEvent -Component "watchdog" -Action "loop_recreate" -Result "spawn_failed" -Reason "Layer 4 supervision pass"
+    }
+}
+
+# ------------------------------------------------------------------- stop -----
+function Stop-WatchdogLoop {
+    $lp = Get-PidFileValue -Path $WatchdogPid
+    if ($lp -gt 0 -and $lp -ne $PID -and (Get-Process -Id $lp -ErrorAction SilentlyContinue)) {
+        & taskkill /PID $lp /T /F 2>&1 | Out-Null
+        Write-WdLog "Stopped watchdog loop (PID $lp) on request"
+    }
+    Remove-Item $WatchdogPid -Force -ErrorAction SilentlyContinue
+    Remove-Item $WatchdogHeartbeat -Force -ErrorAction SilentlyContinue
+    if ($lp -eq $PID) { exit 0 }
+}
+
+if ($Stop) { Stop-WatchdogLoop; Write-Host "Watchdog loop stopped."; exit 0 }
+
+# ------------------------------------------------- Layer 3 loop entry point ---
+if ($Once -or $StartIfDown) {
+    Invoke-WatchdogOfWatchdog
     exit 0
 }
 
-# ---- Persistent watchdog loop -----------------------------------------------
-Write-WatchdogLog "Alpha Watchdog started (PID $PID). Monitoring every 30s."
-[string]$PID | Set-Content -Path $WatchdogPid -Encoding UTF8 -Force
-
-$script:alphaRestarts = 0
-$script:deferCount = 0
-$script:lastLaunchTime = [DateTime]::MinValue
-
-# Rotate log if >5 MB
-try {
-    if ((Get-Item $WatchdogLog -ErrorAction SilentlyContinue).Length -gt 5MB) {
-        $backup = $WatchdogLog -replace "\.log$", ".old.log"
-        Move-Item -Path $WatchdogLog -Destination $backup -Force -ErrorAction SilentlyContinue
+# ---- Duplicate-instance guard: exactly one loop may own the role -------------
+$existing = Get-PidFileValue -Path $WatchdogPid
+if ($existing -gt 0 -and $existing -ne $PID) {
+    $proc = Get-Process -Id $existing -ErrorAction SilentlyContinue
+    if ($proc -and (Test-WatchdogHeartbeatFresh -ExpectedPid $existing)) {
+        Write-WdLog "Another watchdog (PID $existing) already owns the loop - duplicate exiting"
+        exit 0
     }
-} catch {}
-
-try {
-    while ($true) {
-        Start-Sleep -Seconds 30
-
-        $gwAlive     = Test-ServiceAlive -Port $GatewayPort
-        $feAlive     = Test-ServiceAlive -Port $FrontendPort
-        $launchAlive = Test-LauncherAlive
-
-        if ($gwAlive -and $feAlive -and $launchAlive) {
-            # All good - reset backoff after 10 minutes of consecutive health
-            if (([DateTime]::UtcNow - $script:lastLaunchTime).TotalMinutes -gt 10) {
-                $script:alphaRestarts = 0
-            }
-            $script:deferCount = 0
-            continue
-        }
-
-        # Something is wrong
-        $status = "gateway=$gwAlive frontend=$feAlive launcher=$launchAlive"
-
-        # ...unless start.ps1 is itself starting up or healing the service:
-        # during that window the ports being down is expected, and killing the
-        # launcher here would convert a one-service crash into a full restart.
-        $deferral = Get-RecoveryDeferral
-        if ($deferral) {
-            if ($script:deferCount -lt $MaxDeferredRecoveries) {
-                $script:deferCount++
-                Write-WatchdogLog "Deferring recovery ($script:deferCount/$MaxDeferredRecoveries): $deferral [$status]"
-                continue
-            }
-            Write-WatchdogLog "Launcher still unhealthy after $script:deferCount deferred checks - taking over. [$status]" "WARN"
-        }
-        $script:deferCount = 0
-
-        Write-WatchdogLog "Unhealthy: $status - initiating recovery." "WARN"
-
-        # Kill stale launcher (if any) before restarting
-        if (Test-Path $AlphaPid) {
-            $stale = [int](Get-Content $AlphaPid -Raw -ErrorAction SilentlyContinue)
-            if ($stale -and (Get-Process -Id $stale -ErrorAction SilentlyContinue)) {
-                Write-WatchdogLog "Killing stale launcher PID $stale"
-                try { & taskkill /PID $stale /T /F 2>$null | Out-Null } catch {}
-                Start-Sleep -Seconds 3
-            }
-        }
-
-        $script:alphaRestarts += 1
-        $script:lastLaunchTime = [DateTime]::UtcNow
-        Start-AlphaStack -Attempt $script:alphaRestarts
-
-        # Wait for services to come up (up to 3 minutes)
-        Write-WatchdogLog "Waiting up to 180s for Alpha services to come up..."
-        $deadline = [DateTime]::UtcNow.AddSeconds(180)
-        while ([DateTime]::UtcNow -lt $deadline) {
-            Start-Sleep -Seconds 5
-            if ((Test-ServiceAlive -Port $GatewayPort) -and (Test-ServiceAlive -Port $FrontendPort)) {
-                Write-WatchdogLog "Alpha services are up after restart." "INFO"
-                break
-            }
-        }
-        if (-not (Test-ServiceAlive -Port $GatewayPort) -or -not (Test-ServiceAlive -Port $FrontendPort)) {
-            Write-WatchdogLog "Services still not up after 180s - will retry on next cycle." "WARN"
-        }
+    if ($proc) {
+        Write-WdLog "Replacing frozen watchdog PID $existing" "WARN"
+        & taskkill /PID $existing /T /F 2>&1 | Out-Null
+        Start-Sleep -Seconds 2
     }
-} finally {
-    Remove-Item $WatchdogPid -Force -ErrorAction SilentlyContinue
-    Write-WatchdogLog "Watchdog exiting."
 }
+Write-StateFile -Path $WatchdogPid -Object ([int]$PID)
+Write-Heartbeat -Status "starting"
+Write-WdLog "Watchdog loop started (PID $PID, interval ${CheckIntervalSeconds}s)"
+
+while ($true) {
+    try {
+        # Ownership: if another loop claimed the role, stand down.
+        $owner = Get-PidFileValue -Path $WatchdogPid
+        if ($owner -eq 0) { Write-StateFile -Path $WatchdogPid -Object ([int]$PID) }
+        elseif ($owner -ne $PID) {
+            Write-WdLog "Loop role taken over by PID $owner - exiting duplicate" "WARN"
+            break
+        }
+        if (Test-Maintenance) {
+            if (-not $script:MaintenanceLogged) {
+                Write-WdLog "Maintenance mode detected - watchdog standing down until .\start.ps1 resumes"
+                $script:MaintenanceLogged = $true
+            }
+            break
+        }
+        Invoke-HealthCheck
+    } catch {
+        Write-WdLog "Watchdog check error: $($_.Exception.Message)" "ERROR"
+        try { Write-Heartbeat -Status "degraded" } catch {}
+    }
+    Start-Sleep -Seconds $CheckIntervalSeconds
+}
+
+# Cleanup only what we own.
+$owner = Get-PidFileValue -Path $WatchdogPid
+if ($owner -eq $PID -or $owner -eq 0) {
+    Remove-Item $WatchdogPid -Force -ErrorAction SilentlyContinue
+    if (Test-Path $WatchdogHeartbeat) {
+        try {
+            $hbPid = [int](Get-Content $WatchdogHeartbeat -Raw | ConvertFrom-Json).pid
+            if ($hbPid -eq $PID) { Remove-Item $WatchdogHeartbeat -Force -ErrorAction SilentlyContinue }
+        } catch {}
+    }
+}
+Write-WdLog "Watchdog loop (PID $PID) exiting"

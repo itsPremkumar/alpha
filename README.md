@@ -538,7 +538,65 @@ make setup SETUP_ARGS=--non-interactive
 
 ---
 
-## 9. Configuration Essentials
+### Windows Auto-Start & Self-Healing Watchdog
+
+On Windows the stack is launched by `start.bat` / `start.ps1` (Gateway `:8001`,
+Frontend `:3000`) and stopped by `stop.bat` / `stop.ps1`.
+
+```powershell
+.\start.ps1                       # start (or resume) the stack and open the browser
+.\start.ps1 -NoBrowser            # start without opening a browser
+.\start.ps1 -Force                # restart even if a healthy launcher already owns the stack
+.\stop.ps1                        # INTENTIONAL stop: services + watchdog, enters maintenance mode
+.\uninstall.ps1                   # stop Alpha and remove all autonomous operation
+.\scripts\verify_recovery.ps1     # run the real kill/recovery test suite
+```
+
+Recovery is a four-layer hierarchy. No layer is responsible for its own
+recovery, and no layer depends on a PowerShell terminal staying open:
+
+| Layer | Component | Recovers |
+| :--- | :--- | :--- |
+| 4 | Windows Task Scheduler (`Alpha_Autostart` at logon, `Alpha_Watchdog` every 5 min, `StartWhenAvailable`, restart-on-failure) | the Layer 3 watchdog loop, via a `-Once` supervision pass |
+| 3 | `scripts/watchdog.ps1` 30 s background loop (own PID + `logs/watchdog_heartbeat.json`) | the launcher and the full stack |
+| 2 | `start.ps1` launcher (own PID + `logs/alpha_health.json` heartbeat) | Gateway/Frontend individually, with exponential backoff (3 s to 300 s, never gives up) |
+| 1 | Gateway, Frontend, workers | - |
+
+How Layer 3 escalates, cheapest action first:
+
+1. **Defer** while a live launcher reports `starting` / `recovering` /
+   `degraded` (bounded, so a wedged launcher cannot defer forever).
+2. **Component restart** - kill only the process tree holding the dead or hung
+   port; the launcher restarts just that component (max 3 attempts each).
+3. **Full-stack restart** - replace the launcher and boot a fresh stack, with
+   backoff between attempts and unlimited retries.
+
+Detection uses ports **and** real HTTP checks (`/health/ready`, frontend `/`),
+so a process that holds its port but stopped answering counts as *hung*.
+Heartbeats are refreshed during long waits, so a working launcher is never
+mistaken for a frozen one. Launcher and watchdog instances are spawned through
+short-lived VBS shims, which makes them orphans of their creator: killing the
+watchdog cannot take the launcher (or the stack) down with it.
+
+**Maintenance vs. crash.** `stop.ps1` writes `logs/alpha_maintenance.json` and
+stands every layer down - Alpha stays stopped until you run `start.ps1`, which
+clears the flag. An ordinary crash or `taskkill` never creates the flag and is
+always recovered.
+
+**Health status** in `logs/alpha_health.json` uses
+`starting | healthy | degraded | recovering | failed`, and is only `healthy`
+after both HTTP checks pass. LLM provider outages (missing/invalid OpenRouter
+key, no network) never block or crash infrastructure health.
+
+State files are written atomically (temp file + rename), PID reuse is detected
+by comparing recorded process start times, and all logs rotate at 5 MB so they
+cannot grow forever. Recovery attempts are appended to
+`logs/recovery_history.jsonl`.
+
+Logs: `logs/watchdog.log`, `logs/gateway.err.log`, `logs/frontend.log`.
+
+---
+
 
 Alpha isolates configuration across three dedicated files:
 

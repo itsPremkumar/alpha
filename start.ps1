@@ -9,6 +9,7 @@ param (
     [switch]$NoBrowser,
     [switch]$Prod,
     [switch]$WatchdogMode,   # Suppresses browser open; set by watchdog/autostart
+    [switch]$Force,          # Restart even if a healthy launcher already owns the stack
     [int]$FrontendPort = 3000,
     [int]$GatewayPort = 8001
 )
@@ -20,26 +21,68 @@ Set-Location $RepoRoot
 # ---- PID & health files (consumed by watchdog.ps1) -------------------------
 $PidFile    = "$RepoRoot\logs\alpha.pid"
 $HealthFile = "$RepoRoot\logs\alpha_health.json"
+$MaintenanceFile = "$RepoRoot\logs\alpha_maintenance.json"
+# Recorded so the watchdog can detect PID reuse: a recycled PID that does not
+# match this start time is not our launcher.
+$LauncherStartedUtc = (Get-Process -Id $PID -ErrorAction SilentlyContinue).StartTime.ToUniversalTime().ToString("o")
 
+# Health status vocabulary (shared with scripts/watchdog.ps1):
+#   starting | healthy | degraded | recovering | failed
+$script:LastHealthStatus = "starting"
+$script:LastHealthDetail = "launcher initialising"
 function Write-HealthFile {
-    param([string]$Status = "running", [string]$Detail = "")
-    $obj = @{
-        pid            = $PID
-        status         = $Status
-        detail         = $Detail
-        gateway_port   = $GatewayPort
-        frontend_port  = $FrontendPort
-        timestamp_utc  = [DateTime]::UtcNow.ToString("o")
-        repo_root      = $RepoRoot
+    param([string]$Status = "healthy", [string]$Detail = "")
+    if (-not (Test-Path (Split-Path $HealthFile))) {
+        New-Item -ItemType Directory -Path (Split-Path $HealthFile) -Force | Out-Null
     }
+    $script:LastHealthStatus = $Status
+    $script:LastHealthDetail = $Detail
+    $obj = @{
+        pid                  = $PID
+        launcher_started_utc = $LauncherStartedUtc
+        status               = $Status
+        detail               = $Detail
+        gateway_port         = $GatewayPort
+        frontend_port        = $FrontendPort
+        timestamp_utc        = [DateTime]::UtcNow.ToString("o")
+        repo_root            = $RepoRoot
+    }
+    Write-StateFile -Path $HealthFile -Object $obj
+}
+
+# Keep the heartbeat timestamp moving during long blocking waits (health waits,
+# backoff sleeps) so the watchdog never mistakes a working launcher for a
+# frozen one. Same status/detail, fresh timestamp.
+function Refresh-Heartbeat {
+    Write-HealthFile -Status $script:LastHealthStatus -Detail $script:LastHealthDetail
+}
+
+# Atomic state writes: readers (the watchdog) must never see a half-written
+# file. Write to a temp file on the same volume, then rename over the target.
+function Write-StateFile {
+    param([string]$Path, [object]$Object)
     try {
-        $obj | ConvertTo-Json -Compress | Set-Content -Path $HealthFile -Encoding UTF8 -Force
+        $json = $Object | ConvertTo-Json -Compress
+        $tmp  = "$Path.$PID.tmp"
+        [System.IO.File]::WriteAllText($tmp, $json)
+        Move-Item -Path $tmp -Destination $Path -Force -ErrorAction Stop
     } catch {}
 }
 
 function Remove-StateFiles {
     try { Remove-Item $PidFile    -Force -ErrorAction SilentlyContinue } catch {}
     try { Remove-Item $HealthFile -Force -ErrorAction SilentlyContinue } catch {}
+}
+
+# Keep logs bounded: rotate anything past 5 MB to <name>.1 before (re)starting.
+function Rotate-LogIfLarge {
+    param([string]$Path, [long]$MaxBytes = 5MB)
+    try {
+        $f = Get-Item $Path -ErrorAction SilentlyContinue
+        if ($f -and $f.Length -gt $MaxBytes) {
+            Move-Item -Path $Path -Destination ($Path -replace "\.(log|txt)$", ".1.`$1") -Force -ErrorAction SilentlyContinue
+        }
+    } catch {}
 }
 
 
@@ -246,6 +289,15 @@ $uvCandidates = @(
     "$env:ProgramData\chocolatey\bin\uv.exe"
 )
 $uvPath = Resolve-Executable -Name "uv" -ExtraCandidates $uvCandidates
+# Record a truthful FAILED state whenever we abort on a missing dependency:
+# a silent exit would leave a stale "healthy" heartbeat and confuse the chain.
+function Fail-Startup {
+    param([string]$Reason)
+    Remove-StateFiles
+    Write-HealthFile -Status "failed" -Detail $Reason
+    Write-Host "[FAILED] $Reason" -ForegroundColor Red
+    exit 1
+}
 if (-not $uvPath) {
     Write-Host "[!] 'uv' not found. Installing Astral uv package manager..." -ForegroundColor Yellow
     try {
@@ -253,14 +305,11 @@ if (-not $uvPath) {
         $env:PATH = "$env:USERPROFILE\.cargo\bin;" + $env:PATH
         $uvPath = Resolve-Executable -Name "uv" -ExtraCandidates $uvCandidates
     } catch {
-        Write-Error "Failed to install uv automatically. Please install it from https://astral.sh/uv"
-        exit 1
+        Fail-Startup "dependency missing: uv (auto-install failed) - install from https://astral.sh/uv"
     }
 }
 if (-not $uvPath) {
-    Write-Host "[ERROR] Could not locate 'uv' even after attempting installation." -ForegroundColor Red
-    Write-Host "Install it from https://astral.sh/uv and re-run this script.`n" -ForegroundColor Yellow
-    exit 1
+    Fail-Startup "dependency missing: uv not located - install from https://astral.sh/uv"
 }
 $env:PATH = (Split-Path $uvPath) + ";" + $env:PATH
 Write-Host "  uv: $uvPath" -ForegroundColor Gray
@@ -273,8 +322,7 @@ $nodePath = Resolve-Executable -Name "node" -ExtraCandidates @(
     "$env:LOCALAPPDATA\nvm4w\nodejs\node.exe"
 )
 if (-not $nodePath) {
-    Write-Error "Node.js (v22+) is required. Please install from https://nodejs.org/"
-    exit 1
+    Fail-Startup "dependency missing: Node.js v22+ - install from https://nodejs.org/"
 }
 $env:PATH = (Split-Path $nodePath) + ";" + $env:PATH
 Write-Host "  node: $nodePath" -ForegroundColor Gray
@@ -339,7 +387,53 @@ if (-not (Test-Path "$RepoRoot\logs")) {
     New-Item -ItemType Directory -Path "$RepoRoot\logs" -Force | Out-Null
 }
 
-# -- 3. Free the required ports (whole process trees) ------------------------
+# -- 3. Maintenance mode, duplicate launchers, bounded logs -------------------
+# stop.ps1 sets a maintenance flag for an intentional stop. Any real start
+# clears it: launching Alpha is itself a decision to resume autonomous
+# operation, and the watchdog must not stand down against our will.
+if (Test-Path $MaintenanceFile) {
+    try { Remove-Item $MaintenanceFile -Force -ErrorAction Stop; Write-Host "  Maintenance flag cleared - resuming autonomous operation." -ForegroundColor Yellow } catch {}
+}
+
+# Two launchers fighting over the same two ports corrupt each other's boot.
+# If an existing launcher already owns a healthy stack, exit quietly.
+# If one exists but is not healthy, take it over instead of racing it.
+if (-not $Force -and (Test-Path $PidFile)) {
+    $existingPid = 0
+    try { $existingPid = [int](Get-Content $PidFile -ErrorAction Stop) } catch { $existingPid = 0 }
+    if ($existingPid -gt 0 -and $existingPid -ne $PID) {
+        $existingProc = Get-Process -Id $existingPid -ErrorAction SilentlyContinue
+        if ($existingProc) {
+            $healthy = $false
+            try {
+                $h = Get-Content $HealthFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+                $age = ([DateTime]::UtcNow - [DateTime]::Parse($h.timestamp_utc, $null,
+                    [System.Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime()).TotalSeconds
+                $stateOk = $h.status -in @('starting', 'healthy', 'degraded', 'recovering', 'running')
+                $fresh = $age -ge 0 -and $age -lt 240
+                $portsUp = (Test-PortListening $GatewayPort) -and (Test-PortListening $FrontendPort)
+                $healthy = $stateOk -and $fresh -and $portsUp
+            } catch {}
+            if ($healthy) {
+                Write-Host "Alpha is already running (launcher PID $existingPid). Nothing to do." -ForegroundColor Green
+                Write-Host "  Use -Force to restart it anyway." -ForegroundColor Gray
+                exit 0
+            }
+            Write-Host "Replacing unhealthy launcher PID $existingPid..." -ForegroundColor Yellow
+            try { Stop-Process -Id $existingPid -Force -ErrorAction Stop } catch {}
+            Start-Sleep -Seconds 2
+        }
+    }
+}
+
+# Bounded logs: rotate before appending so no single log grows forever.
+Rotate-LogIfLarge -Path "$RepoRoot\logs\gateway.log"
+Rotate-LogIfLarge -Path "$RepoRoot\logs\gateway.err.log"
+Rotate-LogIfLarge -Path "$RepoRoot\logs\frontend.log"
+Rotate-LogIfLarge -Path "$RepoRoot\logs\frontend.err.log"
+Rotate-LogIfLarge -Path "$RepoRoot\logs\watchdog.log"
+
+# -- 4. Free the required ports (whole process trees) ------------------------
 Write-Host "Checking ports $GatewayPort and $FrontendPort..." -ForegroundColor Gray
 Free-PortOrExit -Port $GatewayPort
 Free-PortOrExit -Port $FrontendPort
@@ -363,8 +457,9 @@ $frontendLogErr = "$RepoRoot\logs\frontend.err.log"
 Remove-CaseDuplicateEnvironmentVariables
 
 # Write our PID file so the watchdog can verify this launcher is alive.
+# Atomic: a reader must never see a truncated PID.
 if (-not (Test-Path "$RepoRoot\logs")) { New-Item -ItemType Directory -Path "$RepoRoot\logs" -Force | Out-Null }
-[string]$PID | Set-Content -Path $PidFile -Encoding UTF8 -Force
+Write-StateFile -Path $PidFile -Object ([int]$PID)
 Write-HealthFile -Status "starting" -Detail "launcher initialising"
 
 Write-Host "`n[1/2] Starting Gateway API on port $GatewayPort..." -ForegroundColor Yellow
@@ -466,6 +561,7 @@ function Wait-ForHealthy {
     $deadline = [DateTime]::UtcNow.AddSeconds($MaxWaitSeconds)
     while ([DateTime]::UtcNow -lt $deadline) {
         Start-Sleep -Seconds 3
+        Refresh-Heartbeat   # the watchdog watches this timestamp
         try {
             $r = Invoke-WebRequest -Uri "http://127.0.0.1:$Port$Path" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
             if ($r.StatusCode -eq 200) { return $true }
@@ -475,14 +571,27 @@ function Wait-ForHealthy {
     return $false
 }
 
+function Start-SleepWithHeartbeat {
+    # Backoff can sleep up to 300 s; refresh the heartbeat every 30 s so the
+    # watchdog still sees a live launcher while we deliberately wait.
+    param([int]$Seconds)
+    $remaining = $Seconds
+    while ($remaining -gt 0) {
+        $chunk = [Math]::Min(30, $remaining)
+        Start-Sleep -Seconds $chunk
+        Refresh-Heartbeat
+        $remaining -= $chunk
+    }
+}
+
 function Restart-GatewayService {
     param([int]$Attempt)
     $backoff = Get-BackoffSeconds -Attempt $Attempt
     Write-Host "`n[WARN] Gateway API died — auto-restarting (attempt $Attempt, backoff ${backoff}s)..." -ForegroundColor Yellow
     Show-LogTail $gatewayLogErr
-    Write-HealthFile -Status "restarting_gateway" -Detail "attempt $Attempt backoff ${backoff}s"
+    Write-HealthFile -Status "recovering" -Detail "gateway restart attempt $Attempt backoff ${backoff}s"
     Free-PortOrExit -Port $GatewayPort
-    Start-Sleep -Seconds $backoff
+    Start-SleepWithHeartbeat -Seconds $backoff
     $script:gatewayProcess = Start-Process -FilePath $uvPath `
         -ArgumentList "run --no-sync uvicorn app.gateway.app:app --host 127.0.0.1 --port $GatewayPort" `
         -WorkingDirectory "$RepoRoot\backend" -PassThru -WindowStyle Hidden `
@@ -495,7 +604,7 @@ function Restart-GatewayService {
     if ($ok) {
         Write-Host "  [OK] Gateway is healthy after restart." -ForegroundColor Green
         $script:gatewayLastStable = [DateTime]::UtcNow
-        Write-HealthFile -Status "running" -Detail "gateway restarted OK"
+        Write-HealthFile -Status "healthy" -Detail "gateway restarted OK"
     } else {
         Write-Host "  [WARN] Gateway did not become healthy within 240s - will retry." -ForegroundColor Yellow
     }
@@ -506,9 +615,9 @@ function Restart-FrontendService {
     $backoff = Get-BackoffSeconds -Attempt $Attempt
     Write-Host "`n[WARN] Frontend UI died — auto-restarting (attempt $Attempt, backoff ${backoff}s)..." -ForegroundColor Yellow
     Show-LogTail $frontendLogErr
-    Write-HealthFile -Status "restarting_frontend" -Detail "attempt $Attempt backoff ${backoff}s"
+    Write-HealthFile -Status "recovering" -Detail "frontend restart attempt $Attempt backoff ${backoff}s"
     Free-PortOrExit -Port $FrontendPort
-    Start-Sleep -Seconds $backoff
+    Start-SleepWithHeartbeat -Seconds $backoff
     if ($Prod) {
         $script:frontendProcess = Start-Process -FilePath $nodePath `
             -ArgumentList "node_modules/next/dist/bin/next start -p $FrontendPort" `
@@ -521,11 +630,13 @@ function Restart-FrontendService {
             -RedirectStandardOutput $frontendLogOut -RedirectStandardError $frontendLogErr
     }
     Write-Host "  Frontend relaunched (PID: $($script:frontendProcess.Id)). Verifying..." -ForegroundColor Gray
-    $ok = Wait-ForHealthy -Port $FrontendPort -Path "/" -MaxWaitSeconds 180
+    # A cold Next.js compile of / took 281 s on this machine - 180 s declared
+    # a healthy frontend dead and cascaded into a full restart.
+    $ok = Wait-ForHealthy -Port $FrontendPort -Path "/" -MaxWaitSeconds 360
     if ($ok) {
         Write-Host "  [OK] Frontend is healthy after restart." -ForegroundColor Green
         $script:frontendLastStable = [DateTime]::UtcNow
-        Write-HealthFile -Status "running" -Detail "frontend restarted OK"
+        Write-HealthFile -Status "healthy" -Detail "frontend restarted OK"
     } else {
         Write-Host "  [WARN] Frontend did not become healthy within 180s - will retry." -ForegroundColor Yellow
     }
@@ -536,10 +647,10 @@ function Restart-FrontendService {
 Write-Host "`nWaiting for services to become healthy..." -ForegroundColor Yellow
 Write-Host "(First Next.js compile on Windows can take a few minutes.)" -ForegroundColor Gray
 
-# First boot is slow on purpose: alembic migrations can take ~3 minutes and the
-# first Next.js compile another ~90 s. 120 x 2 s (4 min) was too tight and made
-# a healthy boot look like a timeout, so give it 10 minutes.
-$maxAttempts = 300
+# First boot is slow: alembic migrations ~3 min, and a cold Next.js compile of
+# a single page was measured at 281 s on this machine. 450 x 2 s = 15 min of
+# patience so a slow-but-healthy boot is never mistaken for a timeout.
+$maxAttempts = 450
 $gatewayReady = $false
 $frontendReady = $false
 
@@ -618,7 +729,7 @@ if (-not $gatewayReady -or -not $frontendReady) {
     Show-LogTail $gatewayLogErr
     Show-LogTail $frontendLogOut
     Show-LogTail $frontendLogErr
-    Write-HealthFile -Status "startup_timeout"
+    Write-HealthFile -Status "failed" -Detail "startup timeout (gateway=$gatewayReady frontend=$frontendReady)"
     Cleanup-Stack
     exit 1
 }
@@ -638,7 +749,7 @@ Write-Host "http://127.0.0.1:$GatewayPort/health" -ForegroundColor Cyan
 Write-Host "========================================================" -ForegroundColor Green
 Write-Host "Press [Ctrl+C] to stop all services cleanly.`n" -ForegroundColor Yellow
 
-Write-HealthFile -Status "running" -Detail "all services healthy"
+Write-HealthFile -Status "healthy" -Detail "all services healthy"
 $script:gatewayLastStable  = [DateTime]::UtcNow
 $script:frontendLastStable = [DateTime]::UtcNow
 
@@ -667,7 +778,7 @@ try {
         if ($script:heartbeatCounter % 15 -eq 0) {
             $bothUp = (Test-PortListening -Port $GatewayPort) -and (Test-PortListening -Port $FrontendPort)
             if ($bothUp) {
-                Write-HealthFile -Status "running"
+                Write-HealthFile -Status "healthy"
             } else {
                 Write-HealthFile -Status "degraded" -Detail "waiting for gateway/frontend to return"
             }
