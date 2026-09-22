@@ -106,9 +106,11 @@ if ($killedCount -gt 0) {
     Write-Host "[OK] No active Alpha services were running.`n" -ForegroundColor Green
 }
 
-# 4. Always stop the watchdog loop: an intentional stop must stay stopped.
-#    The Alpha_Watchdog scheduled task stays enabled, but its -Once pass
-#    checks the maintenance flag first and stands down, so nothing comes back.
+# 4. Stop the watchdog loop (always: an intentional stop must stay stopped).
+#    The Alpha_Watchdog scheduled task remains enabled but its -Once pass
+#    honours the maintenance flag, so nothing is resurrected.
+#    Also retire the launcher so it cannot fight the stop: it sees the flag
+#    and exits within seconds; we force-kill only if it lingers.
 $wdPidFile   = "$LogDir\watchdog.pid"
 $wdHeartbeat = "$LogDir\watchdog_heartbeat.json"
 $stoppedWd = @()
@@ -136,6 +138,28 @@ if (Test-Path $wdHeartbeat) {
 }
 if ($stoppedWd.Count -gt 0) {
     Write-Host "  -> Watchdog loop stopped (PID $($stoppedWd -join ', '))." -ForegroundColor Gray
+}
+
+# Retire the launcher: it polls the maintenance flag every 2-3 s and exits on
+# its own (stopping children it still owns). Force it only if it lingers.
+$lpFile = "$LogDir\alpha.pid"
+if (Test-Path $lpFile) {
+    try {
+        $lp = [int](Get-Content $lpFile -Raw -ErrorAction Stop)
+        if ($lp -gt 0 -and $lp -ne $PID -and (Get-Process -Id $lp -ErrorAction SilentlyContinue)) {
+            $deadline = (Get-Date).AddSeconds(8)
+            while ((Get-Date) -lt $deadline -and (Get-Process -Id $lp -ErrorAction SilentlyContinue)) {
+                Start-Sleep -Milliseconds 500
+            }
+            if (Get-Process -Id $lp -ErrorAction SilentlyContinue) {
+                & taskkill /PID $lp /T /F 2>&1 | Out-Null
+                Write-Host "  -> Launcher (PID $lp) force-stopped after grace period." -ForegroundColor Gray
+            } else {
+                Write-Host "  -> Launcher (PID $lp) exited on the maintenance flag." -ForegroundColor Gray
+            }
+        }
+    } catch {}
+    Remove-Item $lpFile -Force -ErrorAction SilentlyContinue
 }
 Write-Host "  Alpha will stay down until you run .\start.ps1 (which clears maintenance)." -ForegroundColor Yellow
 

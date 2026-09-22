@@ -156,6 +156,52 @@ if ($existingWatch -and -not $Force) {
     Write-Host "[OK] Registered '$TaskNameWatch' (every 5 minutes)." -ForegroundColor Green
 }
 
+# ---- Task 3: Alpha_TrayStatus -- status icon in the notification area ------
+$TrayScript  = "$RepoRoot\scripts\tray_status.ps1"
+$TaskNameTray = "Alpha_TrayStatus"
+if (-not (Test-Path $TrayScript)) {
+    Write-Host "[WARN] tray_status.ps1 not found - skipping the tray indicator task." -ForegroundColor Yellow
+} else {
+    $existingTray = Get-ScheduledTask -TaskName $TaskNameTray -ErrorAction SilentlyContinue
+    if ($existingTray -and -not $Force) {
+        Write-Host "[OK] '$TaskNameTray' already registered (use -Force to re-register)." -ForegroundColor Green
+    } else {
+        if ($existingTray) {
+            Unregister-ScheduledTask -TaskName $TaskNameTray -Confirm:$false -ErrorAction SilentlyContinue
+        }
+        # No extra flags: Windows PowerShell starts -File scripts in STA mode,
+        # which WinForms (NotifyIcon) requires. Flags after -File are script
+        # parameters, so -STA must NOT be passed here.
+        $vbsTray = New-VbsLauncher -Name "Alpha_Tray_Status" `
+            -PsFile $TrayScript -PsFlags "" -WorkDir $RepoRoot
+
+        $triggerTray = New-ScheduledTaskTrigger -AtLogon -RandomDelay (New-TimeSpan -Seconds 10)
+        $actionTray  = New-ScheduledTaskAction -Execute "wscript.exe" `
+                           -Argument ('//B //Nologo "' + $vbsTray + '"')
+        $settingsTray = New-ScheduledTaskSettingsSet `
+            -AllowStartIfOnBatteries `
+            -DontStopIfGoingOnBatteries `
+            -StartWhenAvailable `
+            -MultipleInstances IgnoreNew `
+            -ExecutionTimeLimit (New-TimeSpan -Hours 0) `
+            -RestartCount 3 `
+            -RestartInterval (New-TimeSpan -Minutes 2)
+        $principalTray = New-ScheduledTaskPrincipal `
+            -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
+
+        Register-ScheduledTask `
+            -TaskName   $TaskNameTray `
+            -Action     $actionTray `
+            -Trigger    $triggerTray `
+            -Settings   $settingsTray `
+            -Principal  $principalTray `
+            -Description 'Alpha AI Agent: tray status icon showing whether Alpha is running' `
+            -Force | Out-Null
+
+        Write-Host "[OK] Registered '$TaskNameTray' (tray status icon 10 s after logon)." -ForegroundColor Green
+    }
+}
+
 Write-Host ""
 Write-Host "========================================================"  -ForegroundColor Green
 Write-Host " Autostart registration complete!"                         -ForegroundColor Green
@@ -164,6 +210,7 @@ Write-Host " Alpha will now:"                                          -Foregrou
 Write-Host "   - Start automatically ~45s after Windows login"        -ForegroundColor White
 Write-Host "   - Be checked every 5 minutes and relaunched if down"   -ForegroundColor White
 Write-Host "   - Survive crashes via multi-layer watchdog recovery"   -ForegroundColor White
+Write-Host "   - Show a live status icon in the taskbar tray"         -ForegroundColor White
 Write-Host ""
 Write-Host " To remove autostart:  .\scripts\unregister_autostart.ps1" -ForegroundColor Gray
 Write-Host ' To verify tasks:      Get-ScheduledTask -TaskName "Alpha_*"' -ForegroundColor Gray

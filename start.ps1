@@ -57,6 +57,23 @@ function Refresh-Heartbeat {
     Write-HealthFile -Status $script:LastHealthStatus -Detail $script:LastHealthDetail
 }
 
+function Test-MaintenanceMode {
+    return (Test-Path $MaintenanceFile)
+}
+
+# stop.ps1 wrote the maintenance flag: stop everything WE manage and exit so an
+# intentional stop stays stopped instead of being fought by our own monitor.
+function Stop-OnMaintenance {
+    Write-Host "Maintenance flag detected - launcher stopping managed services and exiting." -ForegroundColor Yellow
+    foreach ($p in @($script:gatewayProcess, $script:frontendProcess)) {
+        if ($p -and -not $p.HasExited) {
+            try { & taskkill /PID $p.Id /T /F 2>&1 | Out-Null } catch {}
+        }
+    }
+    Remove-StateFiles
+    exit 0
+}
+
 # Atomic state writes: readers (the watchdog) must never see a half-written
 # file. Write to a temp file on the same volume, then rename over the target.
 function Write-StateFile {
@@ -366,21 +383,53 @@ if (-not (Test-Path "$RepoRoot\.env")) {
 }
 
 
-# config.yaml
-if (-not (Test-Path "$RepoRoot\config.yaml")) {
-    Write-Host "Creating config.yaml from template..." -ForegroundColor Gray
-    Copy-Item "$RepoRoot\config.example.yaml" "$RepoRoot\config.yaml"
-}
-
-# extensions_config.json
-if (-not (Test-Path "$RepoRoot\extensions_config.json")) {
-    Write-Host "Creating extensions_config.json..." -ForegroundColor Gray
-    if (Test-Path "$RepoRoot\extensions_config.example.json") {
-        Copy-Item "$RepoRoot\extensions_config.example.json" "$RepoRoot\extensions_config.json"
+# config.yaml / extensions_config.json: validate, and if invalid, BACK UP the
+# broken file with a timestamp and regenerate from the shipped example.
+# User configuration is never silently deleted - the broken copy stays on disk
+# for inspection (last-known-good behaviour: example == shipped good config).
+function Repair-ConfigFile {
+    param(
+        [string]$Path,
+        [string]$Example,
+        [ValidateSet('json', 'nonempty')][string]$Validate,
+        [string]$Label
+    )
+    if (-not (Test-Path $Path)) {
+        Write-Host "Creating $Label from template..." -ForegroundColor Gray
+        if ($Example -and (Test-Path $Example)) { Copy-Item $Example $Path -Force }
+        elseif ($Validate -eq 'json') { Set-Content -Path $Path -Value "{}`n" }
+        else { New-Item -ItemType File -Path $Path -Force | Out-Null }
+        return
+    }
+    $broken = $false
+    if ($Validate -eq 'json') {
+        try { Get-Content $Path -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop | Out-Null }
+        catch { $broken = $true }
     } else {
-        Set-Content -Path "$RepoRoot\extensions_config.json" -Value "{}`n"
+        if (-not (Get-Item $Path).Length) { $broken = $true }
+    }
+    if ($broken) {
+        $backup = "$Path.broken-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+        try {
+            Move-Item -Path $Path -Destination $backup -Force -ErrorAction Stop
+            Write-Host "  [REPAIR] $Label is invalid - backed up to $(Split-Path $backup -Leaf)" -ForegroundColor Yellow
+            if ($Example -and (Test-Path $Example)) { Copy-Item $Example $Path -Force }
+            elseif ($Validate -eq 'json') { Set-Content -Path $Path -Value "{}`n" }
+            Write-Host "  [REPAIR] Regenerated $Label from the shipped template." -ForegroundColor Yellow
+        } catch {
+            Write-Host "  [ERROR] Could not repair $Label : $_" -ForegroundColor Red
+        }
     }
 }
+
+# config.yaml
+Repair-ConfigFile -Path "$RepoRoot\config.yaml" -Example "$RepoRoot\config.example.yaml" `
+    -Validate nonempty -Label "config.yaml"
+
+# extensions_config.json
+Repair-ConfigFile -Path "$RepoRoot\extensions_config.json" -Example "$RepoRoot\extensions_config.example.json" `
+    -Validate json -Label "extensions_config.json"
+# (.env holds secrets and is only created when absent - never rewritten.)
 
 # Ensure logs directory exists
 if (-not (Test-Path "$RepoRoot\logs")) {
@@ -396,9 +445,10 @@ if (Test-Path $MaintenanceFile) {
 }
 
 # Two launchers fighting over the same two ports corrupt each other's boot.
-# If an existing launcher already owns a healthy stack, exit quietly.
-# If one exists but is not healthy, take it over instead of racing it.
-if (-not $Force -and (Test-Path $PidFile)) {
+# If an existing launcher already owns a healthy stack, exit quietly (unless
+# -Force explicitly asked for a restart). Otherwise take over: kill the old
+# launcher FIRST so only one monitor ever owns the services.
+if (Test-Path $PidFile) {
     $existingPid = 0
     try { $existingPid = [int](Get-Content $PidFile -ErrorAction Stop) } catch { $existingPid = 0 }
     if ($existingPid -gt 0 -and $existingPid -ne $PID) {
@@ -414,12 +464,14 @@ if (-not $Force -and (Test-Path $PidFile)) {
                 $portsUp = (Test-PortListening $GatewayPort) -and (Test-PortListening $FrontendPort)
                 $healthy = $stateOk -and $fresh -and $portsUp
             } catch {}
-            if ($healthy) {
+            if ($healthy -and -not $Force) {
                 Write-Host "Alpha is already running (launcher PID $existingPid). Nothing to do." -ForegroundColor Green
                 Write-Host "  Use -Force to restart it anyway." -ForegroundColor Gray
                 exit 0
             }
-            Write-Host "Replacing unhealthy launcher PID $existingPid..." -ForegroundColor Yellow
+            $why = "unhealthy"
+            if ($Force) { $why = "forced restart" }
+            Write-Host "Replacing existing launcher PID $existingPid ($why)..." -ForegroundColor Yellow
             try { Stop-Process -Id $existingPid -Force -ErrorAction Stop } catch {}
             Start-Sleep -Seconds 2
         }
@@ -560,6 +612,7 @@ function Wait-ForHealthy {
     param([int]$Port, [string]$Path = "/", [int]$MaxWaitSeconds = 120)
     $deadline = [DateTime]::UtcNow.AddSeconds($MaxWaitSeconds)
     while ([DateTime]::UtcNow -lt $deadline) {
+        if (Test-MaintenanceMode) { Stop-OnMaintenance }
         Start-Sleep -Seconds 3
         Refresh-Heartbeat   # the watchdog watches this timestamp
         try {
@@ -577,6 +630,7 @@ function Start-SleepWithHeartbeat {
     param([int]$Seconds)
     $remaining = $Seconds
     while ($remaining -gt 0) {
+        if (Test-MaintenanceMode) { Stop-OnMaintenance }
         $chunk = [Math]::Min(30, $remaining)
         Start-Sleep -Seconds $chunk
         Refresh-Heartbeat
@@ -655,6 +709,7 @@ $gatewayReady = $false
 $frontendReady = $false
 
 for ($i = 1; $i -le $maxAttempts; $i++) {
+    if (Test-MaintenanceMode) { Stop-OnMaintenance }
     Start-Sleep -Seconds 2
 
     # Refresh the heartbeat while we wait. This loop can run for several
@@ -769,6 +824,7 @@ $exitCode = 0
 $script:heartbeatCounter = 0
 try {
     while ($true) {
+        if (Test-MaintenanceMode) { Stop-OnMaintenance }
         Start-Sleep -Seconds 2
         $script:heartbeatCounter++
         # Heartbeat every ~30 s (15 × 2s iterations). The status must reflect

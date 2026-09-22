@@ -550,6 +550,8 @@ Frontend `:3000`) and stopped by `stop.bat` / `stop.ps1`.
 .\stop.ps1                        # INTENTIONAL stop: services + watchdog, enters maintenance mode
 .\uninstall.ps1                   # stop Alpha and remove all autonomous operation
 .\scripts\verify_recovery.ps1     # run the real kill/recovery test suite
+.\scripts\verify_reboot.ps1       # after rebooting: confirm Alpha self-recovered
+.\scripts\tray_status.ps1         # tray status icon (auto-started at logon too)
 ```
 
 Recovery is a four-layer hierarchy. No layer is responsible for its own
@@ -577,6 +579,15 @@ Heartbeats are refreshed during long waits, so a working launcher is never
 mistaken for a frozen one. Launcher and watchdog instances are spawned through
 short-lived VBS shims, which makes them orphans of their creator: killing the
 watchdog cannot take the launcher (or the stack) down with it.
+
+**Tray status icon.** `scripts/tray_status.ps1` (registered as the
+`Alpha_TrayStatus` task at logon) shows Alpha's live state in the Windows
+notification area: green `A` = running/healthy, amber = starting/recovering/
+degraded, red `!` = failed, grey = stopped. Hover for the exact state and
+timestamp; left-click opens the UI; the right-click menu starts, stops
+(maintenance), restarts or exits the indicator. The icon is read-only and
+independent of Alpha, so it keeps working - and truthfully shows "Stopped" -
+while the stack is down.
 
 **Maintenance vs. crash.** `stop.ps1` writes `logs/alpha_maintenance.json` and
 stands every layer down - Alpha stays stopped until you run `start.ps1`, which

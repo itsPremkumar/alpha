@@ -76,10 +76,22 @@ if (Test-Path "$LogDir\watchdog_heartbeat.json") {
 }
 Start-Sleep -Seconds 3
 
+# Tray indicator: independent status icon (not part of supervision, but it must
+# not survive an uninstall showing state for a removed installation).
+if (Test-Path "$LogDir\tray.pid") {
+    try {
+        $tpid = [int](Get-Content "$LogDir\tray.pid" -Raw -ErrorAction Stop)
+        if ($tpid -gt 0 -and $tpid -ne $PID -and (Get-Process -Id $tpid -ErrorAction SilentlyContinue)) {
+            & taskkill /PID $tpid /T /F 2>&1 | Out-Null
+        }
+    } catch {}
+    Remove-Item "$LogDir\tray.pid" -Force -ErrorAction SilentlyContinue
+}
+
 # ---- 2. Remove scheduled tasks ---------------------------------------------
 Write-Host "Removing scheduled tasks..." -ForegroundColor Yellow
 $tasksGone = $true
-foreach ($tn in @('Alpha_Autostart', 'Alpha_Watchdog')) {
+foreach ($tn in @('Alpha_Autostart', 'Alpha_Watchdog', 'Alpha_TrayStatus')) {
     $existed = $false
     try { if (Get-ScheduledTask -TaskName $tn -ErrorAction Stop) { $existed = $true } } catch {}
     if ($existed) {
@@ -96,6 +108,7 @@ Write-Host "Removing generated launchers and state..." -ForegroundColor Yellow
 $generated = @(
     "$RepoRoot\scripts\autostart\Alpha_Autostart.vbs",
     "$RepoRoot\scripts\autostart\Alpha_Watchdog_Check.vbs",
+    "$RepoRoot\scripts\autostart\Alpha_Tray_Status.vbs",
     "$LogDir\alpha_launch_shim.vbs",
     "$LogDir\alpha_watchdog_shim.vbs",
     "$LogDir\alpha.pid",
@@ -103,6 +116,7 @@ $generated = @(
     "$LogDir\watchdog.pid",
     "$LogDir\watchdog_heartbeat.json",
     "$LogDir\alpha_maintenance.json",
+    "$LogDir\tray.pid",
     "$LogDir\recovery_history.jsonl",
     "$LogDir\recovery_history.jsonl.1",
     "$LogDir\verify_recovery_last.json"

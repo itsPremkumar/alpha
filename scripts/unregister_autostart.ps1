@@ -1,5 +1,5 @@
 ﻿# Alpha Autostart Unregistration
-# Removes the Alpha_Autostart and Alpha_Watchdog scheduled tasks.
+# Removes the Alpha_Autostart, Alpha_Watchdog and Alpha_TrayStatus tasks.
 #
 # Usage:
 #   powershell -ExecutionPolicy Bypass -File scripts\unregister_autostart.ps1
@@ -8,7 +8,7 @@ $ErrorActionPreference = "SilentlyContinue"
 
 Write-Host "`nRemoving Alpha autostart scheduled tasks..." -ForegroundColor Yellow
 
-foreach ($name in @("Alpha_Autostart", "Alpha_Watchdog")) {
+foreach ($name in @("Alpha_Autostart", "Alpha_Watchdog", "Alpha_TrayStatus")) {
     $task = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
     if ($task) {
         Unregister-ScheduledTask -TaskName $name -Confirm:$false -ErrorAction SilentlyContinue
@@ -16,6 +16,21 @@ foreach ($name in @("Alpha_Autostart", "Alpha_Watchdog")) {
     } else {
         Write-Host "  [--] Not found: $name (already removed)" -ForegroundColor Gray
     }
+}
+
+$RepoRoot = Split-Path $PSScriptRoot -Parent
+
+# Stop the tray indicator if it is running
+$TrayPid = "$RepoRoot\logs\tray.pid"
+if (Test-Path $TrayPid) {
+    try {
+        $tpid = [int](Get-Content $TrayPid -Raw -ErrorAction SilentlyContinue)
+        if ($tpid -and $tpid -ne $PID -and (Get-Process -Id $tpid -ErrorAction SilentlyContinue)) {
+            Write-Host "  Stopping tray indicator (PID $tpid)..." -ForegroundColor Gray
+            & taskkill /PID $tpid /T /F 2>$null | Out-Null
+        }
+    } catch {}
+    Remove-Item $TrayPid -Force -ErrorAction SilentlyContinue
 }
 
 # Also stop the watchdog loop if running
