@@ -8,6 +8,7 @@
 param (
     [switch]$NoBrowser,
     [switch]$Prod,
+    [switch]$WatchdogMode,   # Suppresses browser open; set by watchdog/autostart
     [int]$FrontendPort = 3000,
     [int]$GatewayPort = 8001
 )
@@ -15,6 +16,32 @@ param (
 $ErrorActionPreference = "Stop"
 $RepoRoot = $PSScriptRoot
 Set-Location $RepoRoot
+
+# ---- PID & health files (consumed by watchdog.ps1) -------------------------
+$PidFile    = "$RepoRoot\logs\alpha.pid"
+$HealthFile = "$RepoRoot\logs\alpha_health.json"
+
+function Write-HealthFile {
+    param([string]$Status = "running", [string]$Detail = "")
+    $obj = @{
+        pid            = $PID
+        status         = $Status
+        detail         = $Detail
+        gateway_port   = $GatewayPort
+        frontend_port  = $FrontendPort
+        timestamp_utc  = [DateTime]::UtcNow.ToString("o")
+        repo_root      = $RepoRoot
+    }
+    try {
+        $obj | ConvertTo-Json -Compress | Set-Content -Path $HealthFile -Encoding UTF8 -Force
+    } catch {}
+}
+
+function Remove-StateFiles {
+    try { Remove-Item $PidFile    -Force -ErrorAction SilentlyContinue } catch {}
+    try { Remove-Item $HealthFile -Force -ErrorAction SilentlyContinue } catch {}
+}
+
 
 # Windows resolves a bare command name through PATHEXT, and PowerShell refuses
 # to execute an .exe at all ("Cannot run a document in the middle of a pipeline")
@@ -50,12 +77,28 @@ Write-Host "========================================================`n" -Foregro
 function Get-ListeningProcessIds {
     param([int]$Port)
     $ids = @()
-    $conns = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
-    foreach ($c in $conns) {
-        if ($c.OwningProcess -and $c.OwningProcess -ne 0 -and -not ($ids -contains $c.OwningProcess)) {
-            $ids += $c.OwningProcess
+    # Get-NetTCPConnection is normally preferable, but it can return an empty
+    # result on restricted Windows hosts while netstat still sees the listener.
+    # That false negative let the launcher start a second Gateway which only
+    # failed much later with WinError 10048, leaving a half-working frontend.
+    try {
+        $conns = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction Stop
+        foreach ($c in $conns) {
+            if ($c.OwningProcess -and $c.OwningProcess -ne 0 -and -not ($ids -contains $c.OwningProcess)) {
+                $ids += $c.OwningProcess
+            }
         }
-    }
+    } catch {}
+    try {
+        foreach ($line in (& netstat.exe -ano -p tcp 2>$null)) {
+            if ($line -match "^\s*TCP\s+\S+`:$Port\s+\S+\s+LISTENING\s+(\d+)\s*$") {
+                $pid = [int]$Matches[1]
+                if ($pid -ne 0 -and -not ($ids -contains $pid)) {
+                    $ids += $pid
+                }
+            }
+        }
+    } catch {}
     return $ids
 }
 
@@ -319,8 +362,14 @@ $frontendLogErr = "$RepoRoot\logs\frontend.err.log"
 # spawn a child while both HTTP_PROXY and http_proxy exist (see the helper).
 Remove-CaseDuplicateEnvironmentVariables
 
+# Write our PID file so the watchdog can verify this launcher is alive.
+if (-not (Test-Path "$RepoRoot\logs")) { New-Item -ItemType Directory -Path "$RepoRoot\logs" -Force | Out-Null }
+[string]$PID | Set-Content -Path $PidFile -Encoding UTF8 -Force
+Write-HealthFile -Status "starting" -Detail "launcher initialising"
+
 Write-Host "`n[1/2] Starting Gateway API on port $GatewayPort..." -ForegroundColor Yellow
 Write-Host "  logs: logs\gateway.log, logs\gateway.err.log" -ForegroundColor Gray
+
 
 $gatewayProcess = Start-Process -FilePath $uvPath `
     -ArgumentList "run --no-sync uvicorn app.gateway.app:app --host 127.0.0.1 --port $GatewayPort" `
@@ -378,47 +427,86 @@ function Cleanup-Stack {
             & taskkill /PID $id /T /F 2>&1 | Out-Null
         }
     }
+    Remove-StateFiles
     Write-Host "[OK] All Alpha services stopped cleanly.`n" -ForegroundColor Green
 }
 
-# -- Helper for Auto-Restart -------------------------------------------------
-# Long unattended runs must survive a single-service crash: restart the dead
-# side instead of tearing the whole stack down. Bounded (max restarts per
-# rolling window) so a deterministically crashing service still surfaces
-# instead of hot-looping forever.
-$script:gatewayRestarts = 0
-$script:frontendRestarts = 0
-$script:windowStart = [DateTime]::UtcNow
-$MaxRestartsPerWindow = 5
-$RestartWindowSeconds = 300
 
-function Reset-RestartWindowIfExpired {
-    if (([DateTime]::UtcNow - $script:windowStart).TotalSeconds -gt $RestartWindowSeconds) {
-        $script:windowStart = [DateTime]::UtcNow
+# -- Helper for Auto-Restart -------------------------------------------------
+# Long unattended runs must survive service crashes without ever giving up.
+# Uses exponential backoff (3s → 6s → 12s → … → 300s max) per service.
+# Backoff counter resets after a service has been stable for 10 minutes.
+# The launcher NEVER exits due to restart-budget exhaustion — it keeps trying.
+$script:gatewayRestarts  = 0
+$script:frontendRestarts = 0
+$script:gatewayLastStable  = [DateTime]::UtcNow
+$script:frontendLastStable = [DateTime]::UtcNow
+$StableWindowSeconds       = 600   # 10-minute stability resets backoff
+
+function Get-BackoffSeconds {
+    param([int]$Attempt)
+    # 3, 6, 12, 24, 48, 96, 192, 300, 300, …
+    [Math]::Min(300, [Math]::Pow(2, $Attempt - 1) * 3)
+}
+
+function Reset-GatewayBackoffIfStable {
+    if (([DateTime]::UtcNow - $script:gatewayLastStable).TotalSeconds -gt $StableWindowSeconds) {
         $script:gatewayRestarts = 0
+    }
+}
+
+function Reset-FrontendBackoffIfStable {
+    if (([DateTime]::UtcNow - $script:frontendLastStable).TotalSeconds -gt $StableWindowSeconds) {
         $script:frontendRestarts = 0
     }
 }
 
+function Wait-ForHealthy {
+    param([int]$Port, [string]$Path = "/", [int]$MaxWaitSeconds = 120)
+    $deadline = [DateTime]::UtcNow.AddSeconds($MaxWaitSeconds)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        Start-Sleep -Seconds 3
+        try {
+            $r = Invoke-WebRequest -Uri "http://127.0.0.1:$Port$Path" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
+            if ($r.StatusCode -eq 200) { return $true }
+        } catch {}
+        if ((Get-ListeningProcessIds -Port $Port).Count -eq 0) { return $false }
+    }
+    return $false
+}
+
 function Restart-GatewayService {
     param([int]$Attempt)
-    $backoff = [Math]::Min(30, 3 * $Attempt)
-    Write-Host "`n[WARN] Gateway API died — auto-restarting (attempt $Attempt of $MaxRestartsPerWindow, backoff ${backoff}s)..." -ForegroundColor Yellow
+    $backoff = Get-BackoffSeconds -Attempt $Attempt
+    Write-Host "`n[WARN] Gateway API died — auto-restarting (attempt $Attempt, backoff ${backoff}s)..." -ForegroundColor Yellow
     Show-LogTail $gatewayLogErr
+    Write-HealthFile -Status "restarting_gateway" -Detail "attempt $Attempt backoff ${backoff}s"
     Free-PortOrExit -Port $GatewayPort
     Start-Sleep -Seconds $backoff
     $script:gatewayProcess = Start-Process -FilePath $uvPath `
         -ArgumentList "run --no-sync uvicorn app.gateway.app:app --host 127.0.0.1 --port $GatewayPort" `
         -WorkingDirectory "$RepoRoot\backend" -PassThru -WindowStyle Hidden `
         -RedirectStandardOutput $gatewayLogOut -RedirectStandardError $gatewayLogErr
-    Write-Host "  Gateway relaunched (PID: $($script:gatewayProcess.Id)). Waiting for /health/ready..." -ForegroundColor Gray
+    Write-Host "  Gateway relaunched (PID: $($script:gatewayProcess.Id)). Verifying health..." -ForegroundColor Gray
+    # 90 s was too short: this gateway needs ~2-3 min from `uv run` to answering
+    # /health/ready (env resolve + migrations + app import). Giving up early
+    # made the watchdog conclude the restart had failed and kill everything.
+    $ok = Wait-ForHealthy -Port $GatewayPort -Path "/health/ready" -MaxWaitSeconds 240
+    if ($ok) {
+        Write-Host "  [OK] Gateway is healthy after restart." -ForegroundColor Green
+        $script:gatewayLastStable = [DateTime]::UtcNow
+        Write-HealthFile -Status "running" -Detail "gateway restarted OK"
+    } else {
+        Write-Host "  [WARN] Gateway did not become healthy within 240s - will retry." -ForegroundColor Yellow
+    }
 }
 
 function Restart-FrontendService {
     param([int]$Attempt)
-    $backoff = [Math]::Min(30, 3 * $Attempt)
-    Write-Host "`n[WARN] Frontend UI died — auto-restarting (attempt $Attempt of $MaxRestartsPerWindow, backoff ${backoff}s)..." -ForegroundColor Yellow
+    $backoff = Get-BackoffSeconds -Attempt $Attempt
+    Write-Host "`n[WARN] Frontend UI died — auto-restarting (attempt $Attempt, backoff ${backoff}s)..." -ForegroundColor Yellow
     Show-LogTail $frontendLogErr
+    Write-HealthFile -Status "restarting_frontend" -Detail "attempt $Attempt backoff ${backoff}s"
     Free-PortOrExit -Port $FrontendPort
     Start-Sleep -Seconds $backoff
     if ($Prod) {
@@ -432,19 +520,40 @@ function Restart-FrontendService {
             -WorkingDirectory "$RepoRoot\frontend" -PassThru -WindowStyle Hidden `
             -RedirectStandardOutput $frontendLogOut -RedirectStandardError $frontendLogErr
     }
-    Write-Host "  Frontend relaunched (PID: $($script:frontendProcess.Id))." -ForegroundColor Gray
+    Write-Host "  Frontend relaunched (PID: $($script:frontendProcess.Id)). Verifying..." -ForegroundColor Gray
+    $ok = Wait-ForHealthy -Port $FrontendPort -Path "/" -MaxWaitSeconds 180
+    if ($ok) {
+        Write-Host "  [OK] Frontend is healthy after restart." -ForegroundColor Green
+        $script:frontendLastStable = [DateTime]::UtcNow
+        Write-HealthFile -Status "running" -Detail "frontend restarted OK"
+    } else {
+        Write-Host "  [WARN] Frontend did not become healthy within 180s - will retry." -ForegroundColor Yellow
+    }
 }
+
 
 # -- 7. Wait for Services to be Ready ----------------------------------------
 Write-Host "`nWaiting for services to become healthy..." -ForegroundColor Yellow
 Write-Host "(First Next.js compile on Windows can take a few minutes.)" -ForegroundColor Gray
 
-$maxAttempts = 120
+# First boot is slow on purpose: alembic migrations can take ~3 minutes and the
+# first Next.js compile another ~90 s. 120 x 2 s (4 min) was too tight and made
+# a healthy boot look like a timeout, so give it 10 minutes.
+$maxAttempts = 300
 $gatewayReady = $false
 $frontendReady = $false
 
 for ($i = 1; $i -le $maxAttempts; $i++) {
     Start-Sleep -Seconds 2
+
+    # Refresh the heartbeat while we wait. This loop can run for several
+    # minutes (uvicorn migrations + first Next.js compile) and start.ps1 writes
+    # no other health update during it; without this the health file goes stale,
+    # Test-LauncherAlive decides the launcher is frozen and taskkills the whole
+    # tree mid-boot -- which is exactly how "start.bat exits with code 1 and no
+    # error message" happened.
+    Write-HealthFile -Status "starting" `
+        -Detail ("waiting for services (gateway=$gatewayReady frontend=$frontendReady, attempt $i/$maxAttempts)")
 
     # Check gateway health
     if (-not $gatewayReady) {
@@ -509,6 +618,7 @@ if (-not $gatewayReady -or -not $frontendReady) {
     Show-LogTail $gatewayLogErr
     Show-LogTail $frontendLogOut
     Show-LogTail $frontendLogErr
+    Write-HealthFile -Status "startup_timeout"
     Cleanup-Stack
     exit 1
 }
@@ -528,7 +638,11 @@ Write-Host "http://127.0.0.1:$GatewayPort/health" -ForegroundColor Cyan
 Write-Host "========================================================" -ForegroundColor Green
 Write-Host "Press [Ctrl+C] to stop all services cleanly.`n" -ForegroundColor Yellow
 
-if (-not $NoBrowser) {
+Write-HealthFile -Status "running" -Detail "all services healthy"
+$script:gatewayLastStable  = [DateTime]::UtcNow
+$script:frontendLastStable = [DateTime]::UtcNow
+
+if (-not $NoBrowser -and -not $WatchdogMode) {
     Write-Host "Opening Alpha in your default web browser..." -ForegroundColor Cyan
     Start-Process $appUrl
 }
@@ -536,42 +650,45 @@ if (-not $NoBrowser) {
 # -- 9. Keep Running and Monitor ---------------------------------------------
 # Monitor the PORTS (effective liveness), not just the launcher wrapper PIDs
 # (see Update-TrackedProcess). A service counts as dead only when its port
-# goes quiet. Dead services are auto-restarted with backoff inside a bounded
-# restart budget; only an exhausted budget (or Ctrl+C) tears the stack down.
+# goes quiet. Dead services are auto-restarted with exponential backoff and the
+# launcher NEVER gives up — only Ctrl+C (or stop.ps1) shuts things down.
+# A heartbeat (Write-HealthFile) fires every ~30s so the watchdog can detect
+# a frozen launcher process.
 $exitCode = 0
+$script:heartbeatCounter = 0
 try {
     while ($true) {
         Start-Sleep -Seconds 2
-        $gatewayProcess = Update-TrackedProcess -Process $gatewayProcess -Port $GatewayPort
+        $script:heartbeatCounter++
+        # Heartbeat every ~30 s (15 × 2s iterations). The status must reflect
+        # the ACTUAL port state: writing "running" while a service is down made
+        # the watchdog think the launcher was done healing, so it took over and
+        # killed the launcher mid-restart.
+        if ($script:heartbeatCounter % 15 -eq 0) {
+            $bothUp = (Test-PortListening -Port $GatewayPort) -and (Test-PortListening -Port $FrontendPort)
+            if ($bothUp) {
+                Write-HealthFile -Status "running"
+            } else {
+                Write-HealthFile -Status "degraded" -Detail "waiting for gateway/frontend to return"
+            }
+        }
+
+        $gatewayProcess  = Update-TrackedProcess -Process $gatewayProcess  -Port $GatewayPort
         $frontendProcess = Update-TrackedProcess -Process $frontendProcess -Port $FrontendPort
-        $gatewayGone = ($gatewayProcess -eq $null -or $gatewayProcess.HasExited) -and -not (Test-PortListening -Port $GatewayPort)
+        $gatewayGone  = ($gatewayProcess  -eq $null -or $gatewayProcess.HasExited)  -and -not (Test-PortListening -Port $GatewayPort)
         $frontendGone = ($frontendProcess -eq $null -or $frontendProcess.HasExited) -and -not (Test-PortListening -Port $FrontendPort)
+
         if ($gatewayGone -or $frontendGone) {
-            Reset-RestartWindowIfExpired
-            $restarted = $false
             if ($gatewayGone) {
+                Reset-GatewayBackoffIfStable
                 $script:gatewayRestarts += 1
-                if ($script:gatewayRestarts -gt $MaxRestartsPerWindow) {
-                    Write-Host "`n[ERROR] Gateway API crashed repeatedly ($MaxRestartsPerWindow restarts in ${RestartWindowSeconds}s). Giving up — see logs\gateway.log / logs\gateway.err.log" -ForegroundColor Red
-                    Show-LogTail $gatewayLogErr
-                    $exitCode = 1
-                    break
-                }
                 Restart-GatewayService -Attempt $script:gatewayRestarts
-                $restarted = $true
             }
             if ($frontendGone) {
+                Reset-FrontendBackoffIfStable
                 $script:frontendRestarts += 1
-                if ($script:frontendRestarts -gt $MaxRestartsPerWindow) {
-                    Write-Host "`n[ERROR] Frontend UI crashed repeatedly ($MaxRestartsPerWindow restarts in ${RestartWindowSeconds}s). Giving up — see logs\frontend.log / logs\frontend.err.log" -ForegroundColor Red
-                    Show-LogTail $frontendLogErr
-                    $exitCode = 1
-                    break
-                }
                 Restart-FrontendService -Attempt $script:frontendRestarts
-                $restarted = $true
             }
-            if ($restarted) { continue }
         }
     }
 } finally {

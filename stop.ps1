@@ -1,5 +1,12 @@
-# Alpha - Stop all running services
-# Usage: .\stop.ps1
+﻿# Alpha - Stop all running services
+# Usage:
+#   .\stop.ps1                 # Stop Alpha services only
+#   .\stop.ps1 -StopWatchdog   # Also kill the watchdog loop (prevents auto-restart)
+
+[CmdletBinding()]
+param(
+    [switch]$StopWatchdog   # Also terminate the watchdog loop
+)
 
 $ErrorActionPreference = "SilentlyContinue"
 
@@ -71,3 +78,37 @@ if ($killedCount -gt 0) {
 } else {
     Write-Host "[OK] No active Alpha services were running.`n" -ForegroundColor Green
 }
+
+# 4. Optionally stop the watchdog loop (prevents auto-restart by the monitor)
+$RepoRoot = $PSScriptRoot
+if ($StopWatchdog) {
+    Write-Host "Stopping Alpha Watchdog loop..." -ForegroundColor Yellow
+    $wdPidFile = "$RepoRoot\logs\watchdog.pid"
+    if (Test-Path $wdPidFile) {
+        $wdPid = [int](Get-Content $wdPidFile -Raw -ErrorAction SilentlyContinue)
+        if ($wdPid -and (Get-Process -Id $wdPid -ErrorAction SilentlyContinue)) {
+            & taskkill /PID $wdPid /T /F 2>&1 | Out-Null
+            Write-Host "  -> Watchdog (PID $wdPid) stopped." -ForegroundColor Gray
+        }
+        Remove-Item $wdPidFile -Force -ErrorAction SilentlyContinue
+    }
+    # Also kill any powershell running watchdog.ps1
+    try {
+        $wdProcs = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+            Where-Object { $_.CommandLine -like "*watchdog.ps1*" }
+        foreach ($p in $wdProcs) {
+            if (Get-Process -Id $p.ProcessId -ErrorAction SilentlyContinue) {
+                Write-Host "  -> Terminating watchdog process (PID: $($p.ProcessId))" -ForegroundColor Gray
+                & taskkill /PID $($p.ProcessId) /T /F 2>&1 | Out-Null
+            }
+        }
+    } catch {}
+    Write-Host "  Watchdog stopped. Alpha will NOT auto-restart." -ForegroundColor Yellow
+    Write-Host "  To re-enable autostart: .\scripts\register_autostart.ps1`n" -ForegroundColor Gray
+}
+
+# 5. Clean up state files
+$pidFile    = "$RepoRoot\logs\alpha.pid"
+$healthFile = "$RepoRoot\logs\alpha_health.json"
+if (Test-Path $pidFile)    { Remove-Item $pidFile    -Force -ErrorAction SilentlyContinue }
+if (Test-Path $healthFile) { Remove-Item $healthFile -Force -ErrorAction SilentlyContinue }
