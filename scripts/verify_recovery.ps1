@@ -169,10 +169,13 @@ if (-not $SkipStackKills) {
         & taskkill /PID $lp /T /F 2>&1 | Out-Null
         Start-Sleep -Seconds 5
         Record "Launcher actually died" (-not (Get-Process -Id $lp -ErrorAction SilentlyContinue)) "killed pid=$lp"
+        # Killing the launcher takes its child services down with it, so this
+        # recovery = watchdog replacement (<=~120 s) + a FULL cold stack boot.
+        # That legitimately needs more than a single service-restart budget.
         $r = Measure-Recovery {
             $nl = Get-LauncherPid
             ($nl -gt 0 -and $nl -ne $lp -and (Get-Process -Id $nl -ErrorAction SilentlyContinue)) -and (Test-StackHealthy)
-        } $ServiceTimeout
+        } ($ServiceTimeout + 180)
         Record "Watchdog replaced the launcher and stack is healthy" $r.Ok "recovered in $($r.Seconds)s; new launcher=$(Get-LauncherPid)"
     } else {
         Record "Launcher kill precondition (launcher running)" $false "pid=$lp"
@@ -180,8 +183,14 @@ if (-not $SkipStackKills) {
 
     # --------------------------------------------------- 5. watchdog crash ---
     Write-Step "Scenario 5: kill the watchdog, Alpha must stay up, Layer 4 must restore it"
+    # Precondition: without a healthy stack, "Alpha stayed up" would just
+    # re-report scenario 4's leftover state instead of testing detachment.
+    $preOk = Wait-StackHealthy -TimeoutSec $ServiceTimeout
+    Record "Stack healthy before watchdog kill (precondition)" $preOk "gw=$(Test-GwUp) fe=$(Test-FeUp)"
     $wp = Get-WatchdogPid
-    if ($wp -gt 0 -and (Get-Process -Id $wp -ErrorAction SilentlyContinue)) {
+    if (-not $preOk) {
+        Record "Watchdog kill scenario ran" $false "skipped: stack never became healthy"
+    } elseif ($wp -gt 0 -and (Get-Process -Id $wp -ErrorAction SilentlyContinue)) {
         & taskkill /PID $wp /T /F 2>&1 | Out-Null
         Start-Sleep -Seconds 5
         Record "Watchdog loop actually died" (-not (Get-Process -Id $wp -ErrorAction SilentlyContinue)) "killed pid=$wp"
@@ -198,12 +207,16 @@ if (-not $SkipStackKills) {
 
     # ------------------------------------------------- 6. double crash --------
     Write-Step "Scenario 6: kill gateway + frontend simultaneously"
+    $preOk = Wait-StackHealthy -TimeoutSec $ServiceTimeout
+    Record "Stack healthy before double kill (precondition)" $preOk $script:WaitDetail
     foreach ($port in @($GatewayPort, $FrontendPort)) {
         $pid1 = Get-PortPid $port
         if ($pid1 -gt 0) { & taskkill /PID $pid1 /T /F 2>&1 | Out-Null }
     }
     Start-Sleep -Seconds 5
-    $r = Measure-Recovery { (Test-StackHealthy) } $ServiceTimeout
+    # A double kill forces a cold Next.js compile (~281 s) plus a cold
+    # gateway boot in parallel; give it the launcher-replacement budget too.
+    $r = Measure-Recovery { (Test-StackHealthy) } ($ServiceTimeout + 180)
     Record "Full stack recovered from simultaneous double kill" $r.Ok "recovered in $($r.Seconds)s"
 }
 
@@ -214,23 +227,34 @@ if ($IncludeMaintenance -and -not $SkipStackKills) {
     Start-Sleep -Seconds 8
     Record "stop.ps1 wrote the maintenance flag" (Test-MaintenanceFlag) ""
     Record "stop.ps1 stopped the services" ((-not (Test-GwUp)) -and (-not (Test-FeUp))) ""
-    $wdGone = -not (Get-Process -Id (Get-WatchdogPid) -ErrorAction SilentlyContinue)
-    Record "stop.ps1 stopped the watchdog loop" $wdGone "pid=$(Get-WatchdogPid)"
+    # NB: pid 0 (file removed) must count as "gone" - Get-Process -Id 0
+    # matches System Idle Process and would fake a failure here.
+    $wdPid = Get-WatchdogPid
+    $wdGone = ($wdPid -le 0) -or -not (Get-Process -Id $wdPid -ErrorAction SilentlyContinue)
+    Record "stop.ps1 stopped the watchdog loop" $wdGone "pid=$wdPid"
 
     # Layer 4 must respect maintenance instead of resurrecting Alpha.
     & powershell -NoProfile -ExecutionPolicy Bypass -File "$RepoRoot\scripts\watchdog.ps1" -Once 2>&1 | Out-Null
     Start-Sleep -Seconds 10
-    Record "Layer 4 respected maintenance (no loop recreated)" (-not (Get-Process -Id (Get-WatchdogPid) -ErrorAction SilentlyContinue)) "pid=$(Get-WatchdogPid)"
+    $wdPid = Get-WatchdogPid
+    Record "Layer 4 respected maintenance (no loop recreated)" (($wdPid -le 0) -or -not (Get-Process -Id $wdPid -ErrorAction SilentlyContinue)) "pid=$wdPid"
     Record "Alpha stayed down during maintenance" ((-not (Test-GwUp)) -and (-not (Test-FeUp))) ""
 
     # Resume: start.ps1 clears the flag and boots the stack.
+    # NB: embed quotes around -File's path: Start-Process joins the array
+    # WITHOUT quoting elements, so an unquoted path containing spaces (e.g.
+    # C:\Users\PREM KUMAR\...) is truncated at the first space and start.ps1
+    # silently never runs - that is exactly what broke the resume below.
     Start-Process -FilePath "powershell.exe" -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden',
-        '-File', "$RepoRoot\start.ps1", '-NoBrowser', '-WatchdogMode') -WorkingDirectory $RepoRoot -WindowStyle Hidden | Out-Null
+        '-File', "`"$RepoRoot\start.ps1`"", '-NoBrowser', '-WatchdogMode') -WorkingDirectory $RepoRoot -WindowStyle Hidden | Out-Null
     $r = Measure-Recovery { (-not (Test-MaintenanceFlag)) -and (Test-StackHealthy) } $ServiceTimeout
-    Record "start.ps1 cleared maintenance and brought the stack up" $r.Ok "recovered in $($r.Seconds)s"
+    # Detail shows WHICH half failed: flag still set (start died early) vs
+    # services not yet healthy (cold boot budget).
+    Record "start.ps1 cleared maintenance and brought the stack up" $r.Ok "recovered in $($r.Seconds)s flag=$([bool](Test-MaintenanceFlag)) gw=$(Test-GwUp) fe=$(Test-FeUp)"
     & powershell -NoProfile -ExecutionPolicy Bypass -File "$RepoRoot\scripts\watchdog.ps1" -Once 2>&1 | Out-Null
     Start-Sleep -Seconds 10
-    Record "Watchdog loop restored after resume" ((Get-WatchdogPid) -gt 0) "pid=$(Get-WatchdogPid)"
+    $wdPid = Get-WatchdogPid
+    Record "Watchdog loop restored after resume" (($wdPid -gt 0) -and (Get-Process -Id $wdPid -ErrorAction SilentlyContinue)) "pid=$wdPid flag=$([bool](Test-MaintenanceFlag))"
 }
 
 # ------------------------------------------------------ 8. LLM independence --
