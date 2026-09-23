@@ -157,6 +157,11 @@ from .contrastive_trajectory_replay_tool import (
     record_trajectory_outcome,
 )
 
+# Keyless web search ported from AgentEye: httpx-first fallback chain with an
+# optional ddgs fallback whose absence is reported honestly (never faked).
+from .deep_web_search_tool import deep_web_search
+from .keyless_web_search_tool import keyless_web_search
+
 __all__ = [
     "setup_agent",
     "update_agent",
@@ -290,6 +295,6 @@ __all__ = [
     "delegate_to_deep_agent",
     "list_available_deep_agents",
     "inspect_deep_agent_telemetry",
+    "keyless_web_search",
+    "deep_web_search",
 ]
-
-

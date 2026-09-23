@@ -141,6 +141,8 @@ from alpha.tools.builtins import (
     reconcile_structural_ast_conflicts,
     query_contrastive_memory,
     record_trajectory_outcome,
+    deep_web_search,
+    keyless_web_search,
 )
 from alpha.tools.mcp_metadata import tag_mcp_tool
 from alpha.tools.sync import make_sync_tool_wrapper
@@ -296,6 +298,12 @@ BUILTIN_TOOLS = [
     # so the registry dropped them and no agent could reach either one.
     execute_slash_command_tool,
     identify_autonomous_command_tool,
+    # Keyless web search ported from AgentEye: keyless_web_search runs the
+    # httpx-first fallback chain; deep_web_search runs multi-query research on
+    # top of it. Honest ok/no_results/failed statuses; optional ddgs absence
+    # names the real package instead of fabricating results.
+    keyless_web_search,
+    deep_web_search,
 ]
 
 
