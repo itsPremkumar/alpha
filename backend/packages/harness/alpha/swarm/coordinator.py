@@ -145,15 +145,33 @@ class SwarmCoordinator:
 
         scheduler = SwarmScheduler(plan)
 
+        # 0.5 Reconcile a deadlocked DAG before the finished check: if nothing
+        # is ready, nothing is running (the watchdog above already requeued or
+        # failed expired external leases), yet the plan is not finished, the
+        # remaining PENDING tasks are unreachable — a dependency failed or was
+        # cancelled, or the graph has a cycle. Without this, status stayed
+        # "running" forever and every subsequent step returned empty work.
+        ready_now = scheduler.get_ready_tasks()
+        running_now = sum(1 for t in plan.tasks.values() if t.state in (TaskNodeState.RUNNING, TaskNodeState.STRAGGLING))
+        if not ready_now and running_now == 0 and not scheduler.is_swarm_finished():
+            stranded = scheduler.fail_unrunnable_tasks()
+            if stranded:
+                self.append_event(
+                    swarm_id,
+                    "SWARM_STRANDED_TASKS_FAILED",
+                    details={"task_ids": [t.task_id for t in stranded]},
+                )
+
         # 1. Check if finished
         if scheduler.is_swarm_finished():
             plan.status = "aggregating"
             self.append_event(swarm_id, "SWARM_AGGREGATING")
             agg_result = SwarmAggregator.aggregate(plan)
             plan.completed_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            final_event = "SWARM_COMPLETED" if plan.status == "completed" else "SWARM_FAILED" if plan.status == "failed" else "SWARM_PARTIAL_SUCCESS"
             self.append_event(
                 swarm_id,
-                "SWARM_COMPLETED" if plan.status == "completed" else "SWARM_PARTIAL_SUCCESS",
+                final_event,
                 details=agg_result,
             )
             self.checkpoint(swarm_id)

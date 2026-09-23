@@ -186,6 +186,10 @@ async def run_swarm_background(swarm_id: str, request: Request):
     plan = await asyncio.to_thread(coordinator.get_swarm, swarm_id)
     if not plan:
         raise HTTPException(status_code=404, detail=f"Swarm '{swarm_id}' not found.")
+    if plan.status in ("completed", "failed", "cancelled"):
+        # Honest response instead of reporting a start that would immediately
+        # no-op: the runner refuses to resurrect terminal plans.
+        raise HTTPException(status_code=409, detail=f"Swarm '{swarm_id}' is already in terminal status '{plan.status}'.")
     coordinator.start_async(swarm_id)
     return {"status": "started_async", "swarm_id": swarm_id}
 

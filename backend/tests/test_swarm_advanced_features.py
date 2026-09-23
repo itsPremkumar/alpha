@@ -291,3 +291,164 @@ def test_swarm_advanced_harness_boundary():
         content = py_file.read_text(encoding="utf-8")
         assert "from app." not in content, f"Boundary violation in {py_file}: contains 'from app.'"
         assert "import app." not in content, f"Boundary violation in {py_file}: contains 'import app.'"
+
+
+# 10. Regression: a failed dependency must not leave the swarm "running" forever
+@pytest.mark.asyncio
+async def test_swarm_stranded_dependency_reaches_terminal_status(tmp_path):
+    """Before the fix, a PENDING task whose dependency FAILED could never become
+    ready, so the runner hit its deadlock break, skipped the aggregation gate
+    (``is_swarm_finished()`` was False) and returned ``status="running"`` —
+    permanently. Every consumer keyed off terminal status (pause/cancel/expand
+    guards) then treated a dead plan as live work."""
+    coord = SwarmCoordinator(storage_dir=tmp_path / "swarms-strand")
+    plan = SwarmPlan(
+        swarm_id="swm-strand-regression",
+        goal="Downstream work blocked by a dead upstream task",
+        mode=SwarmMode.PARALLEL,
+        status="running",
+        tasks={
+            "task-upstream": SwarmTaskNode(
+                task_id="task-upstream",
+                objective="Already failed",
+                state=TaskNodeState.FAILED,
+                error_message="boom",
+            ),
+            "task-downstream": SwarmTaskNode(
+                task_id="task-downstream",
+                objective="Never runnable",
+                state=TaskNodeState.PENDING,
+                dependencies=["task-upstream"],
+            ),
+        },
+    )
+    coord._swarms[plan.swarm_id] = plan
+
+    import asyncio
+
+    runner = AsyncSwarmRunner(coord, poll_interval=0.01)
+    result = await asyncio.wait_for(runner.run_swarm_async(plan.swarm_id), timeout=10)
+
+    assert result["status"] == "failed"
+    assert plan.status == "failed"
+    downstream = plan.tasks["task-downstream"]
+    assert downstream.state == TaskNodeState.FAILED
+    assert "unrunnable" in (downstream.error_message or "")
+    assert downstream.completed_at is not None
+    event_types = [e.event_type for e in coord.get_events(plan.swarm_id, limit=100)]
+    assert "SWARM_STRANDED_TASKS_FAILED" in event_types
+    assert "SWARM_FAILED" in event_types
+
+
+# 11. Regression: pause must suspend dispatch, not orphan the runner
+@pytest.mark.asyncio
+async def test_swarm_pause_keeps_runner_alive_and_resume_continues(tmp_path, monkeypatch):
+    """Before the fix the loop was ``while plan.status == "running"``, so a
+    pause EXITED the background task. ``resume_swarm`` then reported
+    ``resumed: True`` while nothing executed — the follow-up task stayed
+    PENDING forever behind a completed gate."""
+    import asyncio
+    import threading
+
+    import alpha.swarm.runner as runner_mod
+
+    coord = SwarmCoordinator(storage_dir=tmp_path / "swarms-pause")
+    plan = SwarmPlan(
+        swarm_id="swm-pause-regression",
+        goal="Two-stage pipeline",
+        mode=SwarmMode.PARALLEL,
+        status="running",
+        tasks={
+            "task-gate": SwarmTaskNode(task_id="task-gate", objective="Blocks", state=TaskNodeState.PENDING),
+            "task-followup": SwarmTaskNode(
+                task_id="task-followup",
+                objective="Waits for gate",
+                state=TaskNodeState.PENDING,
+                dependencies=["task-gate"],
+            ),
+        },
+    )
+    coord._swarms[plan.swarm_id] = plan
+
+    release = threading.Event()
+
+    def blocking_execute(self, task_node, plan_arg):
+        if task_node.task_id == "task-gate":
+            release.wait(timeout=10)
+        return {"summary": f"done {task_node.task_id}", "evidence": [{"source": "test", "confidence": 0.9}], "artifacts": []}
+
+    monkeypatch.setattr(runner_mod.EphemeralSubagentWorker, "execute_task", blocking_execute)
+
+    runner = AsyncSwarmRunner(coord, poll_interval=0.01)
+    runner_task = asyncio.create_task(runner.run_swarm_async(plan.swarm_id))
+
+    async def _wait_state(task_id: str, want) -> None:
+        while plan.tasks[task_id].state != want:
+            await asyncio.sleep(0.01)
+
+    await asyncio.wait_for(_wait_state("task-gate", TaskNodeState.RUNNING), timeout=5)
+    assert coord.pause_swarm(plan.swarm_id) is True
+    release.set()
+    await asyncio.wait_for(_wait_state("task-gate", TaskNodeState.COMPLETED), timeout=5)
+    await asyncio.sleep(0.2)  # several poll ticks while paused
+
+    assert not runner_task.done(), "runner must stay alive while paused"
+    assert plan.status == "paused"
+    assert plan.tasks["task-followup"].state == TaskNodeState.PENDING
+
+    assert coord.resume_swarm(plan.swarm_id) is True
+    await asyncio.wait_for(runner_task, timeout=10)
+
+    assert plan.tasks["task-followup"].state == TaskNodeState.COMPLETED
+    assert plan.status in ("completed", "partial_success")
+
+
+# 12. Regression: terminal task states must be immutable
+def test_swarm_terminal_states_are_immutable():
+    """A late worker finishing after a cancel, or a speculative backup failing
+    after the original succeeded, must not resurrect or demote a terminal task."""
+    from alpha.swarm.scheduler import SwarmScheduler
+
+    plan = SwarmPlan(swarm_id="swm-immutable", goal="g", mode=SwarmMode.PARALLEL)
+    sched = SwarmScheduler(plan)
+
+    plan.tasks["t1"] = SwarmTaskNode(task_id="t1", objective="o", state=TaskNodeState.RUNNING)
+    sched.mark_completed("t1", result_summary="first")
+    assert plan.tasks["t1"].state == TaskNodeState.COMPLETED
+    sched.mark_failed("t1", "late straggler failure")
+    assert plan.tasks["t1"].state == TaskNodeState.COMPLETED, "late failure must not demote COMPLETED"
+
+    plan.tasks["t2"] = SwarmTaskNode(task_id="t2", objective="o", state=TaskNodeState.CANCELLED)
+    sched.mark_completed("t2", result_summary="late backup result")
+    assert plan.tasks["t2"].state == TaskNodeState.CANCELLED, "late completion must not resurrect CANCELLED"
+
+    plan.tasks["t3"] = SwarmTaskNode(task_id="t3", objective="o", state=TaskNodeState.RUNNING, attempts=0)
+    sched.mark_failed("t3", "transient")
+    assert plan.tasks["t3"].state == TaskNodeState.PENDING, "retryable failure still requeues"
+    assert plan.tasks["t3"].error_message == "transient"
+
+    plan.tasks["t4"] = SwarmTaskNode(task_id="t4", objective="o", state=TaskNodeState.RUNNING, attempts=1, max_attempts=1)
+    sched.mark_failed("t4", "exhausted")
+    assert plan.tasks["t4"].state == TaskNodeState.FAILED
+
+
+# 13. Regression: background start must be idempotent per swarm
+@pytest.mark.asyncio
+async def test_swarm_background_start_is_idempotent(tmp_path):
+    """Every ``start_async`` call builds a fresh runner, so before the fix each
+    request spawned a SECOND loop over the same plan (duplicate dispatch and
+    events on a double-click). The module-level registry now returns the live task."""
+    import asyncio
+
+    coord = SwarmCoordinator(storage_dir=tmp_path / "swarms-idem")
+    plan = coord.create_swarm("Idempotent background start check", mode=SwarmMode.PARALLEL, items=["a", "b"])
+
+    runner = AsyncSwarmRunner(coord, poll_interval=0.01)
+    first = runner.start_background_swarm(plan.swarm_id)
+    second = runner.start_background_swarm(plan.swarm_id)
+    assert first is second, "second start must return the live task, not spawn a duplicate loop"
+
+    await asyncio.wait_for(first, timeout=15)
+    final = coord.get_swarm(plan.swarm_id)
+    assert final is not None
+    assert final.status in ("completed", "partial_success")

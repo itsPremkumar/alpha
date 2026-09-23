@@ -67,7 +67,15 @@ class SwarmAggregator:
 
         plan.final_result = deliverable_text
         plan.quality_score = q_result.get("score", 0.8)
-        plan.status = "completed" if q_result.get("verdict") == "passed" and not failed_tasks else "partial_success"
+        # Honest terminal status: a run where nothing completed and something
+        # failed is a failure, not a "partial success" (the old ternary
+        # reported partial_success even with zero completed tasks).
+        if failed_tasks and not completed_tasks:
+            plan.status = "failed"
+        elif q_result.get("verdict") == "passed" and not failed_tasks:
+            plan.status = "completed"
+        else:
+            plan.status = "partial_success"
 
         return {
             "deliverable": deliverable_text,

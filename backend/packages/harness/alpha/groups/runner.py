@@ -383,9 +383,17 @@ class GroupRunService:
                             if result.status.is_terminal:
                                 if result.status is SubagentStatus.COMPLETED and result.result:
                                     member_outputs[member] = result.result
-                                else:
-                                    member_outputs[member] = f"@{member} did not complete ({result.status.value}): {result.error or 'no output'}"
-                                break
+                                    break
+                                if result.status is SubagentStatus.CANCELLED:
+                                    member_outputs[member] = f"@{member} did not complete (cancelled): {result.error or 'no output'}"
+                                    break
+                                # FAILED / TIMED_OUT / empty output must feed the
+                                # retry machinery below: max_retries previously
+                                # covered only infrastructure exceptions, so the
+                                # commonest failure mode (the model call itself
+                                # failing) was recorded on the first hit and
+                                # never retried despite run.max_retries.
+                                raise RuntimeError(f"@{member} execution {result.status.value}: {result.error or 'no output'}")
                             event = self._cancel_events.get(run_id)
                             if event is not None and event.is_set():
                                 from alpha.subagents.executor import request_cancel_background_task
