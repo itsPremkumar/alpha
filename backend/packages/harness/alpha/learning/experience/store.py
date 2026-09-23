@@ -1,15 +1,96 @@
-"""ExperienceStore: Persistent store for episodic experience records."""
+"""ExperienceStore: Persistent store for episodic experience records.
+
+Storage rules (honesty contract):
+- ``add()`` is the evidence-gated intake: a record must carry a non-empty
+  ``evidence`` reference list (trace ids / observed outcomes). Without it the
+  store refuses and returns ``{"stored": False, "reason": "..."}`` — it never
+  silently accepts and never claims success on refusal.
+- ``record()`` is the legacy put kept for pre-existing callers. It refuses
+  secret/PII-shaped content for every kind, and it also enforces the evidence
+  rule for the new FACT/TIP kinds. Legacy EPISODE records may still be stored
+  without evidence so existing callers keep working (their behaviour is pinned
+  by ``tests/test_experience_memory.py`` and
+  ``tests/test_reproduction_full_integration.py``).
+- Secret/PII screening is a small pattern-only denylist of obvious shapes; it
+  contains no real credentials and never echoes the matched content back in the
+  rejection reason.
+"""
 
 from __future__ import annotations
 
 import json
 import logging
 import os
+import re
 from pathlib import Path
+from typing import Any
 
-from alpha.learning.experience.models import ExperienceRecord, OutcomeType
+from alpha.learning.experience.models import ExperienceKind, ExperienceRecord, OutcomeType
 
 logger = logging.getLogger(__name__)
+
+StoreResult = dict[str, Any]
+
+# Pattern-only denylist of obvious secret/PII shapes (no real credentials are
+# stored here, and the matched text is never echoed back to callers).
+SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"AKIA[0-9A-Z]{16}"), "AWS access key ID shape"),
+    (re.compile(r"gh[pousr]_[A-Za-z0-9]{36}"), "GitHub token shape"),
+    (re.compile(r"xox[baprs]-[A-Za-z0-9-]{10,}"), "Slack token shape"),
+    (re.compile(r"(?<![A-Za-z0-9])sk-[A-Za-z0-9]{20,}"), "OpenAI-style API key shape"),
+    (re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"), "PEM private key block"),
+    (
+        re.compile(r"eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}"),
+        "JWT-shaped token",
+    ),
+    (
+        re.compile(
+            r"(?i)\b(?:api[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token|"
+            r"password|passwd|pwd|secret)\b\s*[:=]\s*['\"][^'\"]{6,}['\"]"
+        ),
+        "credential assignment with quoted value",
+    ),
+    (
+        re.compile(r"(?i)\b(?:password|passwd|pwd|secret|token|api[_-]?key)\b\s*[:=]\s*[^\s'\"]{8,}"),
+        "credential assignment with bare value",
+    ),
+    (re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"), "email-address (PII) shape"),
+]
+
+EVIDENCE_REASON = "missing evidence: a non-empty evidence reference list (trace ids / observed outcomes) is required before this record can be stored"
+
+
+def find_secret_shape(text: str) -> str | None:
+    """Return the denylist label matching ``text``, or None when nothing matches."""
+    for pattern, label in SECRET_PATTERNS:
+        if pattern.search(text):
+            return label
+    return None
+
+
+def record_text(record: ExperienceRecord) -> str:
+    """All human-readable content of a record, screened before storage."""
+    parts = [
+        record.task_goal,
+        record.statement,
+        *record.lessons_learned,
+        *record.pitfalls_to_avoid,
+        *record.tags,
+        *record.error_types,
+        *record.modified_files,
+        json.dumps(record.metadata, default=str, ensure_ascii=False),
+    ]
+    return "\n".join(parts)
+
+
+def refusal_reason(record: ExperienceRecord, *, require_evidence: bool) -> str | None:
+    """Honest refusal reason for storing ``record``, or None when it may be stored."""
+    secret_label = find_secret_shape(record_text(record))
+    if secret_label:
+        return f"refused: content matches a secret/PII denylist pattern ({secret_label}); experience banks must not store credentials or personal data"
+    if require_evidence and not any(str(ref).strip() for ref in record.evidence):
+        return EVIDENCE_REASON
+    return None
 
 
 class ExperienceStore:
@@ -24,17 +105,57 @@ class ExperienceStore:
         elif load_defaults:
             self._load_default_experiences()
 
-    def record(self, record: ExperienceRecord) -> None:
-        """Add or update an experience record and flush to disk if path configured."""
+    def record(self, record: ExperienceRecord) -> StoreResult:
+        """Add or update an experience record and flush to disk if path configured.
+
+        Legacy-compatible put: always refuses secret/PII-shaped content, and for
+        FACT/TIP kinds additionally requires an evidence reference list.
+        EPISODE records may still be stored without evidence (backward
+        compatibility pinned by existing tests). Returns a ``StoreResult`` —
+        ``{"stored": False, "reason": ...}`` on refusal, never a silent accept.
+        """
+        reason = refusal_reason(record, require_evidence=record.kind != ExperienceKind.EPISODE)
+        if reason is not None:
+            logger.info("experience record %s refused: %s", record.experience_id, reason)
+            return {"stored": False, "reason": reason}
+        return self._put(record)
+
+    def add(self, record: ExperienceRecord) -> StoreResult:
+        """Evidence-gated intake for the FACT/TIP bank (and any new record).
+
+        Every kind must cite a non-empty ``evidence`` list and pass the
+        secret/PII denylist, otherwise the store refuses with an honest
+        ``{"stored": False, "reason": ...}`` result.
+        """
+        reason = refusal_reason(record, require_evidence=True)
+        if reason is not None:
+            logger.info("experience record %s refused: %s", record.experience_id, reason)
+            return {"stored": False, "reason": reason}
+        return self._put(record)
+
+    def _put(self, record: ExperienceRecord) -> StoreResult:
         self._records[record.experience_id] = record
         if self.storage_path:
             self._save_to_disk()
+        return {
+            "stored": True,
+            "experience_id": record.experience_id,
+            "kind": record.kind.value,
+            "confidence": record.confidence,
+        }
 
     def get(self, experience_id: str) -> ExperienceRecord | None:
         return self._records.get(experience_id)
 
     def list_all(self) -> list[ExperienceRecord]:
         return list(self._records.values())
+
+    def remove(self, experience_id: str) -> bool:
+        """Remove a record (used by experience hygiene); True when one was removed."""
+        removed = self._records.pop(experience_id, None) is not None
+        if removed and self.storage_path:
+            self._save_to_disk()
+        return removed
 
     def clear(self) -> None:
         self._records.clear()
