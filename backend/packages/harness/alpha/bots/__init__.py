@@ -1,17 +1,6 @@
 """Bot Mode and Autonomous Persona Engine for Alpha."""
 
-from alpha.bots.epoch import CapabilityEpochManager
-from alpha.bots.events import get_org_event_store, log_org_event, query_org_events
-from alpha.bots.failure_reasons import (
-    ALL_REASONS,
-    AUTO_RETRYABLE,
-    classify_agent_error,
-    is_auto_retryable,
-    is_valid_agent_name,
-)
-from alpha.bots.handoff import TaskHandoffPackage, escalate_task, execute_handoff, resolve_succession
-from alpha.bots.health import BotHealthMonitor, get_health_monitor
-from alpha.bots.inbox import BotInbox, DMMessage, get_bot_inbox
+from alpha.bots.cloning import BotCloneEngine, CloneMode, get_bot_clone_engine
 from alpha.bots.dm import (
     MESSAGE_AGENT_TOOL_NAME,
     PROTOCOL_MARKER,
@@ -28,6 +17,19 @@ from alpha.bots.dm import (
     resolve_runtime_bot_name,
     send_dm,
 )
+from alpha.bots.ephemeral import EphemeralBotManager, EphemeralLease, get_ephemeral_manager
+from alpha.bots.epoch import CapabilityEpochManager
+from alpha.bots.events import get_org_event_store, log_org_event, query_org_events
+from alpha.bots.failure_reasons import (
+    ALL_REASONS,
+    AUTO_RETRYABLE,
+    classify_agent_error,
+    is_auto_retryable,
+    is_valid_agent_name,
+)
+from alpha.bots.handoff import TaskHandoffPackage, escalate_task, execute_handoff, resolve_succession
+from alpha.bots.health import BotHealthMonitor, get_health_monitor
+from alpha.bots.inbox import BotInbox, DMMessage, get_bot_inbox
 from alpha.bots.kill_switch import (
     get_kill_switch_status,
     is_bot_paused,
@@ -37,7 +39,6 @@ from alpha.bots.kill_switch import (
     set_global_kill_switch,
 )
 from alpha.bots.organization import generate_organization_for_goal, get_organization_chart
-from alpha.bots.ephemeral import EphemeralBotManager, EphemeralLease, get_ephemeral_manager
 from alpha.bots.permissions import ROLE_PERMISSION_RINGS, ToolPermissionGate, get_permission_gate
 from alpha.bots.profile import BotProfile, generate_default_soul
 from alpha.bots.quality_gate import evaluate_quality_gate
@@ -106,4 +107,7 @@ __all__ = [
     "get_org_event_store",
     "log_org_event",
     "query_org_events",
+    "BotCloneEngine",
+    "CloneMode",
+    "get_bot_clone_engine",
 ]

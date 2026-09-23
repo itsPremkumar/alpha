@@ -12,7 +12,7 @@ import logging
 import re
 import threading
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
@@ -102,7 +102,7 @@ class EphemeralBotManager:
             tmp = self._path.with_suffix(".tmp")
             payload = {
                 "version": 1,
-                "leases": [l.to_dict() for l in self._leases.values()],
+                "leases": [lease.to_dict() for lease in self._leases.values()],
                 "updated_at": _now(),
             }
             with open(tmp, "w", encoding="utf-8") as f:
@@ -234,6 +234,34 @@ You are **{name}**, a temporary, hyper-specialized AI agent provisioned for doma
     def get_lease(self, bot_name: str) -> EphemeralLease | None:
         with self._lock:
             return self._leases.get(bot_name.lower().strip())
+
+    def register_lease(
+        self,
+        bot_name: str,
+        domain: str = "engineering",
+        prompt_objective: str = "",
+        ttl_seconds: int = 3600,
+        **kwargs: Any,
+    ) -> EphemeralLease:
+        """Register an existing bot under an ephemeral lease."""
+        clean_name = bot_name.lower().strip()
+        now_dt = datetime.now(UTC)
+        expires_dt = now_dt + timedelta(seconds=ttl_seconds)
+        lease = EphemeralLease(
+            bot_name=clean_name,
+            domain=domain,
+            prompt_objective=prompt_objective,
+            created_at=now_dt.isoformat(),
+            expires_at=expires_dt.isoformat(),
+            ttl_seconds=ttl_seconds,
+            status="active",
+        )
+        with self._lock:
+            self._leases[clean_name] = lease
+            self._save()
+        return lease
+
+    provision = register_lease
 
 
 _ephemeral_manager: EphemeralBotManager | None = None

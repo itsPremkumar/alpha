@@ -10,13 +10,13 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, Optional
+from enum import StrEnum
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
-class SDLCStage(str, Enum):
+class SDLCStage(StrEnum):
     PRD = "prd"
     ARCHITECTURE = "architecture"
     PROJECT_PLAN = "project_plan"

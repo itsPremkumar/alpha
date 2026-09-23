@@ -790,3 +790,73 @@ async def backfill_soul_protocol(name: str, request: Request) -> dict:
     if result is None:
         raise HTTPException(status_code=404, detail=f"Bot '{key}' not found")
     return result
+
+
+class BotCloneApiRequest(BaseModel):
+    target_name: str | None = None
+    mode: str = "specialist_fork"
+    specialist_directive: str | None = None
+    skills_to_add: list[str] = Field(default_factory=list)
+    tools_to_add: list[str] = Field(default_factory=list)
+    model_override: str | None = None
+    department: str | None = None
+    ttl_seconds: int = 3600
+
+
+class BotEvolveApiRequest(BaseModel):
+    improvement_directive: str = Field(..., min_length=3)
+    performance_delta: dict = Field(default_factory=dict)
+    promoted_skills: list[str] = Field(default_factory=list)
+
+
+@router.post("/{name}/clone", summary="Clone or fork a bot profile")
+async def clone_bot_endpoint(name: str, body: BotCloneApiRequest, request: Request) -> dict:
+    key = _validate_bot_name(name)
+    from alpha.bots.cloning import CloneMode, get_bot_clone_engine
+
+    def _clone():
+        engine = get_bot_clone_engine()
+        mode_val = CloneMode(body.mode) if body.mode in [m.value for m in CloneMode] else CloneMode.SPECIALIST_FORK
+        cloned = engine.clone_bot(
+            source_name=key,
+            target_name=body.target_name,
+            mode=mode_val,
+            specialist_directive=body.specialist_directive,
+            skills_to_add=body.skills_to_add,
+            tools_to_add=body.tools_to_add,
+            model_override=body.model_override,
+            department=body.department,
+            ttl_seconds=body.ttl_seconds,
+        )
+        return _bot_to_response(cloned)
+
+    try:
+        return await asyncio.to_thread(_clone)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{name}/evolve", summary="Evolve a bot to a new generation")
+async def evolve_bot_endpoint(name: str, body: BotEvolveApiRequest, request: Request) -> dict:
+    key = _validate_bot_name(name)
+    from alpha.bots.cloning import get_bot_clone_engine
+
+    def _evolve():
+        engine = get_bot_clone_engine()
+        evolved = engine.evolve_bot(
+            source_name=key,
+            performance_delta=body.performance_delta,
+            improvement_directive=body.improvement_directive,
+            promoted_skills=body.promoted_skills,
+        )
+        return _bot_to_response(evolved)
+
+    try:
+        return await asyncio.to_thread(_evolve)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+

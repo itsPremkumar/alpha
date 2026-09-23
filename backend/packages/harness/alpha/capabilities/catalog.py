@@ -198,6 +198,18 @@ CAPABILITY_CATALOG: dict[str, CapabilitySpec] = {
         description="Adaptive autonomy 4-tier governance policy engine.",
         kind="guard",
     ),
+    "dynamic_workflow_engine": CapabilitySpec(
+        module="alpha.workflow.runtime",
+        target="DynamicWorkflowEngine",
+        description="Adaptive, durable dynamic workflow execution engine.",
+        kind="engine",
+    ),
+    "bot_clone_engine": CapabilitySpec(
+        module="alpha.bots.cloning",
+        target="BotCloneEngine",
+        description="Autonomous Bot cloning, specialist forking, and generational breeding engine.",
+        kind="engine",
+    ),
 }
 
 

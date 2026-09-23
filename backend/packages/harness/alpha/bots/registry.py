@@ -178,7 +178,7 @@ class BotRegistry:
         return repaired
 
     @staticmethod
-    def _apply_sentinel_defaults(bot: "BotProfile") -> None:
+    def _apply_sentinel_defaults(bot: BotProfile) -> None:
         """Give the Sentinel its own memory namespace and its scheduled pass.
 
         Called whenever a Sentinel profile is created, by any path, so the bot
@@ -353,6 +353,14 @@ class BotRegistry:
             self._bots[key] = bot
             self._save()
             return bot
+
+    def register(self, profile: BotProfile) -> None:
+        """Register or update an explicit BotProfile in the registry."""
+        key = profile.name.lower().strip()
+        with self._lock:
+            self._bots[key] = profile
+            self._apply_sentinel_defaults(profile)
+            self._save()
 
     def update_bot(
         self,
