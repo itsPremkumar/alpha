@@ -21,7 +21,7 @@
  *   --frontend-url=<url>   Load this URL instead of spawning the frontend
  *                          (e.g. http://127.0.0.1:2026 when `make dev` runs nginx).
  *   --frontend-port=<n>    Preferred frontend port (default 3000).
- *   --gateway-port=<n>     Preferred gateway port (default 8001).
+ *   --gateway-port=<n>     Preferred gateway port (default 8201).
  *   --skip-backend         Do not spawn the Gateway (attach to an existing one).
  *   --skip-frontend        Do not spawn the frontend (attach to an existing one).
  *   --require-login        Keep the Gateway/frontend login + admin-setup screens.
@@ -306,7 +306,7 @@ async function isAgentWorkspaceGateway(gatewayBaseUrl) {
       clearTimeout(timer);
     }
     // Service identity as reported by app/gateway/app.py health_check.
-    return !!data && (data.service === 'agent-workspace-gateway' || data.service === 'agent-workspace-gateway');
+    return !!data && data.service === 'agent-workspace-gateway';
   } catch {
     return false;
   }
@@ -387,7 +387,6 @@ async function waitForHealthy(label, checkFn, timeoutMs, progressFn, abortIf) {
  */
 function applyDesktopAuthMode(env) {
   if (!args.requireLogin) {
-    env.AGENT_WORKSPACE_AUTH_DISABLED = '1';
     env.AGENT_WORKSPACE_AUTH_DISABLED = '1';
   }
   return env;
@@ -518,7 +517,7 @@ function killTree(kind) {
 // ---------------------------------------------------------------------------
 
 function isExplicitProdEnv() {
-  const value = (process.env.AGENT_WORKSPACE_ENV || process.env.AGENT_WORKSPACE_ENV || process.env.ENVIRONMENT || '').trim().toLowerCase();
+  const value = (process.env.AGENT_WORKSPACE_ENV || process.env.ENVIRONMENT || '').trim().toLowerCase();
   return value === 'prod' || value === 'production';
 }
 
@@ -644,9 +643,6 @@ function spawnBackend(gatewayPort) {
     AGENT_WORKSPACE_PROJECT_ROOT: projectDir,
     AGENT_WORKSPACE_CONFIG_PATH: path.join(projectDir, 'config.yaml'),
     AGENT_WORKSPACE_HOME: agent_workspaceHomeDir,
-    AGENT_WORKSPACE_PROJECT_ROOT: projectDir,
-    AGENT_WORKSPACE_CONFIG_PATH: path.join(projectDir, 'config.yaml'),
-    AGENT_WORKSPACE_HOME: agent_workspaceHomeDir,
     // Keep all uv-managed writes (downloaded Python, project venv) under the
     // per-user data folder: the install directory may be read-only
     // (per-machine installs) and must never be written at runtime.
@@ -680,7 +676,6 @@ function spawnFrontendDev(nodeExe, frontendPort, gatewayBaseUrl) {
   const env = applyDesktopAuthMode({
     ...process.env,
     PORT: String(frontendPort),
-    AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL: gatewayBaseUrl,
     AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL: gatewayBaseUrl,
   });
   const fArgs = [nextBin, 'dev', '--port', String(frontendPort)];
@@ -751,7 +746,6 @@ function spawnFrontendProd(nodeExe, frontendPort, gatewayBaseUrl) {
     ...process.env,
     PORT: String(frontendPort),
     HOSTNAME: '127.0.0.1',
-    AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL: gatewayBaseUrl,
     AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL: gatewayBaseUrl,
   });
   // Remove split-origin overrides if the user exported them globally: the
