@@ -22,6 +22,7 @@ import { AIModel } from "@/types/chat";
 import { fetchAvailableModels } from "@/lib/api";
 import { fetchOpsStatus, fetchOpsVersion, fetchFeatures, FeatureFlags, fetchEvolutionIdentity, EvolutionIdentity } from "@/lib/workspace";
 import { probeAll, Probe } from "@/lib/system";
+import { applyThemeMode, isThemeMode, THEME_STORAGE_KEY } from "@/lib/theme";
 import { fetchIntegrationHealth, IntegrationHealth } from "@/lib/integration";
 import { Section, StatCard, Badge, Btn, Field, inputCls, ErrorBox, Notice, SkeletonList } from "@/components/ui";
 import { errMsg } from "@/lib/http";
@@ -50,6 +51,9 @@ export function SettingsSection({ currentModel = "default", onModelChange, onOpe
   // System & connectivity state
   const [probes, setProbes] = useState<Probe[]>([]);
   const [probing, setProbing] = useState(true);
+  // True only when the probe request itself failed - the UI must never render
+  // a fabricated "0/0 subsystems online" for a failed check.
+  const [probesUnavailable, setProbesUnavailable] = useState<boolean>(false);
   const [opsVersion, setOpsVersion] = useState<string>("unknown");
   const [identity, setIdentity] = useState<EvolutionIdentity | null>(null);
   const [features, setFeatures] = useState<FeatureFlags | null>(null);
@@ -70,40 +74,40 @@ export function SettingsSection({ currentModel = "default", onModelChange, onOpe
     window.setTimeout(() => setNotice(null), 4000);
   };
 
-  // Load preferences from localStorage
+  // Load preferences from localStorage - theme resolves exactly the way
+  // ThemeController does (stored value, else "system"), so the checked card
+  // always matches what is actually applied to the document.
   useEffect(() => {
     try {
-      const savedTheme = localStorage.getItem("alpha_theme_mode") || "dark";
+      const storedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+      setThemeMode(isThemeMode(storedTheme) ? storedTheme : "system");
       const savedDensity = localStorage.getItem("alpha_density") === "compact";
       const savedSugg = localStorage.getItem("alpha_suggestions_auto") !== "false";
       const savedModel = localStorage.getItem("alpha_selected_model");
-      setThemeMode(savedTheme);
       setCompactDensity(savedDensity);
       setAutoSuggestions(savedSugg);
       if (savedModel) {
         setSelectedModel(savedModel);
       }
     } catch {
-      /* ignore storage access restrictions */
+      /* storage unavailable - ThemeController still applies "system" */
+      setThemeMode("system");
     }
   }, []);
 
   const handleThemeChange = (mode: string) => {
-    setThemeMode(mode);
+    const nextMode = isThemeMode(mode) ? mode : "system";
+    setThemeMode(nextMode);
     try {
-      localStorage.setItem("alpha_theme_mode", mode);
-      if (typeof document !== "undefined") {
-        const root = document.documentElement;
-        if (mode === "light") {
-          root.classList.remove("dark");
-        } else {
-          root.classList.add("dark");
-        }
-      }
+      localStorage.setItem(THEME_STORAGE_KEY, nextMode);
     } catch {
       /* ignore */
     }
-    flash(`Theme switched to ${mode} mode.`);
+    // Single source of truth: the shared resolver handles system-preference
+    // resolution, the classList toggle AND colorScheme - the old hand-rolled
+    // toggle skipped both, fighting the theme system's default.
+    applyThemeMode(nextMode);
+    flash(`Theme switched to ${nextMode === "system" ? "System (match OS)" : `${nextMode} mode`}.`);
   };
 
   const handleDensityChange = (compact: boolean) => {
@@ -119,17 +123,23 @@ export function SettingsSection({ currentModel = "default", onModelChange, onOpe
   const loadData = async () => {
     setProbing(true);
     setError(null);
+    setProbesUnavailable(false);
     try {
-      const [mList, pList, v, f, ih, id] = await Promise.all([
+      const [mList, pResult, v, f, ih, id] = await Promise.all([
         fetchAvailableModels().catch(() => []),
-        probeAll().catch(() => []),
+        // A failed probe request must be distinguishable from "probes ran and
+        // nothing is online" - never collapse the failure into an empty list.
+        probeAll()
+          .then((list) => ({ ok: true as const, list }))
+          .catch(() => ({ ok: false as const, list: [] as Probe[] })),
         fetchOpsVersion().catch(() => "unknown"),
         fetchFeatures().catch(() => null),
         fetchIntegrationHealth().catch(() => null),
         fetchEvolutionIdentity().catch(() => null),
       ]);
       setModels(mList);
-      setProbes(pList);
+      setProbes(pResult.list);
+      setProbesUnavailable(!pResult.ok);
       setOpsVersion(v);
       setFeatures(f);
       setIntegrationHealth(ih);
@@ -381,7 +391,13 @@ export function SettingsSection({ currentModel = "default", onModelChange, onOpe
                 <h3 className="text-sm font-semibold text-foreground">Gateway & Router Connectivity</h3>
                 <p className="text-xs text-muted-foreground mt-0.5">Real-time status of backend service endpoints</p>
               </div>
-              <Badge tone={isOnline ? "green" : "red"}>{onlineCount}/{probes.length} subsystems online</Badge>
+              <Badge tone={probing ? "gray" : probesUnavailable ? "gray" : isOnline ? "green" : "red"}>
+                {probing
+                  ? "Checking subsystems…"
+                  : probesUnavailable
+                    ? "Subsystem status unavailable"
+                    : `${onlineCount}/${probes.length} subsystems online`}
+              </Badge>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-2">
@@ -445,7 +461,7 @@ export function SettingsSection({ currentModel = "default", onModelChange, onOpe
               <p className="text-xs text-muted-foreground mt-0.5">Customize the color scheme and appearance</p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div
                 onClick={() => handleThemeChange("dark")}
                 className={`cursor-pointer rounded-xl border p-3.5 transition-all ${
@@ -455,7 +471,7 @@ export function SettingsSection({ currentModel = "default", onModelChange, onOpe
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-foreground">Dark Theme (Default)</span>
+                  <span className="text-xs font-bold text-foreground">Dark Theme</span>
                   {themeMode === "dark" && <CheckCircle2 className="size-4 text-primary" />}
                 </div>
                 <p className="text-[11px] text-muted-foreground mt-1">High-contrast dark mode tailored for developer productivity</p>
@@ -474,6 +490,21 @@ export function SettingsSection({ currentModel = "default", onModelChange, onOpe
                   {themeMode === "light" && <CheckCircle2 className="size-4 text-primary" />}
                 </div>
                 <p className="text-[11px] text-muted-foreground mt-1">Crisp light mode with clear typography and soft borders</p>
+              </div>
+
+              <div
+                onClick={() => handleThemeChange("system")}
+                className={`cursor-pointer rounded-xl border p-3.5 transition-all ${
+                  themeMode === "system"
+                    ? "border-primary bg-primary/5 ring-1 ring-primary"
+                    : "border-border/60 bg-muted/30 hover:bg-muted/60"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-foreground">System (Default)</span>
+                  {themeMode === "system" && <CheckCircle2 className="size-4 text-primary" />}
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-1">Follows your OS light/dark preference - what applies when nothing is chosen</p>
               </div>
             </div>
 
