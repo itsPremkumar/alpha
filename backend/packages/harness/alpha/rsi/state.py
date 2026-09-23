@@ -260,3 +260,9 @@ def resume() -> tuple[bool, str]:
         f"resume ok: cycle {state.cycle_id} at stage {state.stage}; repo commit matches; "
         f"evaluator manifest digest was not recorded at save time (current {fresh_sha} unverified against history)"
     )
+
+
+# Backward-compatibility aliases
+load_cycle_state = load_state
+save_cycle_state = save_state
+
