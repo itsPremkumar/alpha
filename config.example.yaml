@@ -176,6 +176,26 @@ models:
     supports_thinking: false
     supports_reasoning_effort: false
     fallbacks: []
+    # Retryable failures (429/5xx/timeouts) can fail over to the keyless
+    # free router: add `fallbacks: [alpha-free]` and uncomment the entry below.
+    # Deterministic 4xx (bad key, bad request) still surface immediately.
+
+  # Keyless free-LLM router: no API key, routes across a curated set of
+  # public anonymous gateways with per-provider failover, tri-state health,
+  # and cooldown backoff (backend ... alpha/models/free_router/). Anonymous
+  # gateway reachability changes without notice — best-effort fallback, no
+  # SLA. Never send secrets through it. Live health view:
+  # GET /api/models/free/catalog
+  # - name: alpha-free
+  #   display_name: Alpha Free (Keyless Router)
+  #   description: "Keyless fallback across public anonymous LLM gateways; prompts/completions may be retained by those gateways. No availability guarantee."
+  #   use: alpha.models.free_router:ChatFreeLLM
+  #   model: auto
+  #   max_tokens: 4096
+  #   supports_vision: false
+  #   supports_thinking: false
+  #   supports_reasoning_effort: false
+  #   fallbacks: []
 
   # Example: Volcengine (Doubao) model
   # - name: doubao-seed-1.8

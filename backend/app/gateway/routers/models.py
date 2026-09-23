@@ -3,14 +3,14 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from alpha.authz.provider import AuthzDecision, AuthzRequest
+from alpha.config.app_config import AppConfig
 from app.gateway.authz import (
     _AuthorizationUnavailable,
     _is_internal_caller,
     resolve_model_authorization,
 )
 from app.gateway.deps import get_config, get_optional_user_from_request
-from alpha.authz.provider import AuthzDecision, AuthzRequest
-from alpha.config.app_config import AppConfig
 
 logger = logging.getLogger(__name__)
 
@@ -219,3 +219,44 @@ async def local_endpoint_health(base_url: str = "http://127.0.0.1:11434") -> dic
         return probe_openai_compatible(base_url).to_dict()
 
     return await _asyncio.to_thread(_probe)
+
+
+@router.get(
+    "/models/free/catalog",
+    summary="Free LLM Provider Catalog",
+    description=(
+        "Keyless free-LLM router view: per-provider tri-state health "
+        "(true=proven, false=failing, null=unknown), discovery status, cooldowns, "
+        "and the providers currently eligible for chat. Reachability on anonymous "
+        "gateways is never guaranteed — this endpoint reports what was actually "
+        "observed, it does not promise availability."
+    ),
+)
+async def free_llm_catalog(refresh: bool = False, probe: bool = False) -> dict:
+    """Honest catalog/health view of the free-LLM router.
+
+    Args:
+        refresh: force a catalog re-discovery before answering.
+        probe: run small liveness probes first (failed probes stay
+            inconclusive and never flip a proven-healthy provider down).
+
+    Returns:
+        The router's disclosed catalog view (providers, health, eligible
+        candidates, selection-method note). Discovery/probe failures surface
+        as honest per-provider error fields, not HTTP errors.
+    """
+    import asyncio as _asyncio
+
+    def _view() -> dict:
+        from alpha.models.free_router import get_free_router
+
+        router = get_free_router()
+        if refresh:
+            router.refresh(force=True)
+        probes = router.probe() if probe else None
+        view = router.catalog_dict()
+        if probes is not None:
+            view["probes"] = probes
+        return view
+
+    return await _asyncio.to_thread(_view)
