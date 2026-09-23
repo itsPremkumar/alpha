@@ -537,3 +537,23 @@ def lesson_for(failure: object, *, project_id: str = "default", retrospective: o
             f"(proposals_emitted={len(proposals)}, matched=0); unverified — no root cause claimed."
         ),
     }
+
+
+class StrategyMemory:
+    """Convenience wrapper around functional strategy memory."""
+
+    @staticmethod
+    def get_memory() -> dict[str, StrategyStat]:
+        return get_memory()
+
+    @staticmethod
+    def prior_for(strategy: str, problem_class: str) -> StrategyStat | None:
+        return prior_for(strategy, problem_class)
+
+    @staticmethod
+    def refresh_memory() -> dict[str, StrategyStat]:
+        return refresh_memory()
+
+
+get_strategy_memory = get_memory
+
