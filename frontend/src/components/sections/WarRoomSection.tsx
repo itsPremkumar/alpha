@@ -454,7 +454,7 @@ export function WarRoomSection() {
                       <p className="text-[11px] text-muted-foreground line-clamp-2 mt-1">{rfc.summary}</p>
                       <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/40 text-[10px] text-muted-foreground">
                         <span>Author: {rfc.author_bot}</span>
-                        <span>Consensus: {(((rfc.consensus_score ?? 0) * 100)).toFixed(0)}%</span>
+                        <span>Consensus: {typeof rfc.consensus_score === "number" && Number.isFinite(rfc.consensus_score) ? `${(rfc.consensus_score * 100).toFixed(0)}%` : "—"}</span>
                       </div>
                     </button>
                   ))}
@@ -468,7 +468,7 @@ export function WarRoomSection() {
                         <div className="flex items-center justify-between">
                           <h3 className="text-sm font-bold text-foreground">{selectedRfc.title}</h3>
                           <Badge tone={selectedRfc.gating_passed ? "green" : "amber"}>
-                            Consensus: {(((selectedRfc.consensus_score ?? 0) * 100)).toFixed(0)}%
+                            Consensus: {typeof selectedRfc.consensus_score === "number" && Number.isFinite(selectedRfc.consensus_score) ? `${(selectedRfc.consensus_score * 100).toFixed(0)}%` : "—"}
                           </Badge>
                         </div>
                         <p className="text-xs text-muted-foreground mt-1">
@@ -510,7 +510,7 @@ export function WarRoomSection() {
                                   {rev.reviewer_bot} ({rev.department})
                                 </span>
                                 <Badge tone={rev.verdict === "approve" ? "green" : rev.verdict === "amend" ? "amber" : "red"}>
-                                  {rev.verdict.toUpperCase()} ({(((rev.epistemic_confidence ?? 0.85) * 100)).toFixed(0)}% conf)
+                                  {rev.verdict.toUpperCase()} ({typeof rev.epistemic_confidence === "number" && Number.isFinite(rev.epistemic_confidence) ? `${(rev.epistemic_confidence * 100).toFixed(0)}% conf` : "conf n/a"})
                                 </Badge>
                               </div>
                               <p className="text-[11px] text-muted-foreground">{rev.argument}</p>

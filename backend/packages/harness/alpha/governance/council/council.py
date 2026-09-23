@@ -68,7 +68,10 @@ class QualityCouncil:
             quorum_needed = 2
             passed = (approvals + conditionals) >= quorum_needed
 
-        # 4. Weighted score calculation
+        # 4. Weighted score: a DISCLOSED heuristic aggregate of the (themselves
+        #    disclosed) vote scores — never presented as a measured confidence.
+        #    The formula/method/baseline are exported verbatim by
+        #    QuorumVerdict.to_dict() alongside the number.
         total_conf = sum(v.confidence for v in all_votes)
         approved_conf = sum(v.confidence for v in all_votes if v.verdict == VoteVerdict.APPROVE)
         cond_conf = sum(v.confidence * 0.5 for v in all_votes if v.verdict == VoteVerdict.CONDITIONAL)

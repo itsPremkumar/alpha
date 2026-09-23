@@ -19,6 +19,10 @@ def test_wave4_quality_council_tool():
     data = json.loads(res_str)
     assert data["passed"] is True
     assert data["approvals_count"] >= 3
+    # Tool output discloses that the aggregate confidence is a heuristic.
+    assert data["confidence_baseline_disclosed"] is True
+    assert data["weighted_score_method"] == "heuristic"
+    assert data["weighted_score_formula"]
 
 
 def test_wave4_context_as_data_tool():

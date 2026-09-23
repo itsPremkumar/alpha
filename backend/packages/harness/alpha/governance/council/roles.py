@@ -3,7 +3,14 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from .models import DeliberatorVote, VoteVerdict
+from .models import (
+    CONFIDENCE_METHOD_EVIDENCE,
+    CONFIDENCE_METHOD_HEURISTIC,
+    CONFIDENCE_METHOD_UNVERIFIED,
+    NEUTRAL_CONFIDENCE_BASELINE,
+    DeliberatorVote,
+    VoteVerdict,
+)
 
 logger = logging.getLogger("alpha.governance.council.roles")
 
@@ -41,6 +48,14 @@ class IndependentCritic:
             confidence = 0.90
             reasoning = "No obvious logical flaws, unhandled edge cases, or assumption traps detected."
 
+        # Disclosed heuristic: the number is an uncalibrated rule score, not a
+        # measured probability of correctness.
+        note = (
+            "Heuristic confidence: uncalibrated rule-based score from a deterministic "
+            "keyword scan (error-handling coverage, TODO/FIXME placeholders); not a "
+            "measured probability."
+        )
+
         return DeliberatorVote(
             deliberator_name=self.name,
             role=self.role,
@@ -49,6 +64,8 @@ class IndependentCritic:
             reasoning=reasoning,
             concerns=concerns,
             required_modifications=modifications,
+            confidence_method=CONFIDENCE_METHOD_HEURISTIC,
+            confidence_note=note,
         )
 
 
@@ -61,26 +78,67 @@ class InvariantVerifier:
         concerns: list[str] = []
         modifications: list[str] = []
 
-        test_passed = metadata.get("test_passed", True)
-        exit_code = metadata.get("exit_code", 0)
-        has_tests = metadata.get("has_tests", True)
+        # Only trust execution evidence the caller actually supplied. A missing
+        # key means "no run happened" — never an assumed pass (the previous
+        # .get(..., True) defaults fabricated a passing check and then reported
+        # a confident 0.95 on top of it).
+        evidence_bits: list[str] = []
 
-        if not test_passed or exit_code != 0:
-            concerns.append(f"Ground truth execution check failed (exit code: {exit_code}).")
-            modifications.append("Fix failing tests and achieve exit code 0.")
+        if "test_passed" in metadata:
+            test_passed = bool(metadata["test_passed"])
+            evidence_bits.append(f"test_passed={test_passed}")
+            if not test_passed:
+                concerns.append("Ground truth test run reported failure.")
+                modifications.append("Fix failing tests and achieve a passing run.")
 
-        if not has_tests and ("def " in content or "function" in content):
-            concerns.append("Executable code produced without corresponding test coverage.")
-            modifications.append("Attach automated tests proving correctness.")
+        if "exit_code" in metadata:
+            exit_code = metadata["exit_code"]
+            evidence_bits.append(f"exit_code={exit_code}")
+            if exit_code != 0:
+                concerns.append(f"Ground truth execution check failed (exit code: {exit_code}).")
+                modifications.append("Fix failing tests and achieve exit code 0.")
 
-        if concerns:
+        if "has_tests" in metadata:
+            has_tests = bool(metadata["has_tests"])
+            evidence_bits.append(f"has_tests={has_tests}")
+            if not has_tests and ("def " in content or "function" in content):
+                concerns.append("Executable code produced without corresponding test coverage.")
+                modifications.append("Attach automated tests proving correctness.")
+
+        if not evidence_bits:
+            # Nothing real backs a confidence here: hold the disclosed neutral
+            # baseline and say so, instead of fabricating a "verified" 0.95.
+            verdict = VoteVerdict.APPROVE
+            confidence = NEUTRAL_CONFIDENCE_BASELINE
+            method = CONFIDENCE_METHOD_UNVERIFIED
+            note = (
+                "No test results or exit-code evidence were supplied; confidence is held "
+                "at the neutral unverified baseline (0.5) — an honest 'unknown', not a "
+                "measured confidence."
+            )
+            reasoning = (
+                "No execution evidence supplied; invariants were not verified. "
+                "Approval is procedural, not evidence-backed."
+            )
+        elif concerns:
             verdict = VoteVerdict.REJECT
             confidence = 0.95
+            method = CONFIDENCE_METHOD_EVIDENCE
+            note = (
+                f"Rule-based score over supplied execution evidence "
+                f"({', '.join(evidence_bits)}); failing checks drive this verdict. "
+                "Not a calibrated probability."
+            )
             reasoning = "Invariant violation: factual verification or test checks failed."
         else:
             verdict = VoteVerdict.APPROVE
             confidence = 0.95
-            reasoning = "System invariants and factual claims verified against test execution."
+            method = CONFIDENCE_METHOD_EVIDENCE
+            note = (
+                f"Rule-based score over supplied execution evidence "
+                f"({', '.join(evidence_bits)}); not a calibrated probability."
+            )
+            reasoning = "Supplied execution evidence (tests/exit code) shows no invariant violation."
 
         return DeliberatorVote(
             deliberator_name=self.name,
@@ -90,6 +148,8 @@ class InvariantVerifier:
             reasoning=reasoning,
             concerns=concerns,
             required_modifications=modifications,
+            confidence_method=method,
+            confidence_note=note,
         )
 
 
@@ -125,6 +185,15 @@ class SecurityReviewer:
             confidence = 0.90
             reasoning = "No high-risk commands, credential leaks, or blast-radius violations identified."
 
+        # Disclosed heuristic: an approve only means "no listed pattern matched"
+        # — it does not prove the artifact is secure.
+        note = (
+            "Heuristic confidence: uncalibrated rule-based score from a fixed "
+            "dangerous-pattern scan (rm -rf, force push, eval, hardcoded secrets); "
+            "an approve means 'no listed pattern matched', not that the artifact is "
+            "secure. Not a measured probability."
+        )
+
         return DeliberatorVote(
             deliberator_name=self.name,
             role=self.role,
@@ -133,6 +202,8 @@ class SecurityReviewer:
             reasoning=reasoning,
             concerns=concerns,
             required_modifications=modifications,
+            confidence_method=CONFIDENCE_METHOD_HEURISTIC,
+            confidence_note=note,
         )
 
 
@@ -168,6 +239,12 @@ class QualityReviewer:
             confidence = 0.90
             reasoning = "Code and document structure adhere to clean architecture standards."
 
+        # Disclosed heuristic: structural checks only; no calibration data exists.
+        note = (
+            "Heuristic confidence: uncalibrated rule-based score from structural checks "
+            "(artifact length, docstrings for .py files); not a measured probability."
+        )
+
         return DeliberatorVote(
             deliberator_name=self.name,
             role=self.role,
@@ -176,6 +253,8 @@ class QualityReviewer:
             reasoning=reasoning,
             concerns=concerns,
             required_modifications=modifications,
+            confidence_method=CONFIDENCE_METHOD_HEURISTIC,
+            confidence_note=note,
         )
 
 
@@ -221,6 +300,12 @@ class PresidingJudge:
             confidence = 0.95
             reasoning = "Consensus achieved across all council deliberators."
 
+        # Disclosed heuristic: rule-based synthesis over the specialist votes.
+        note = (
+            "Heuristic confidence: uncalibrated rule-based synthesis over the 4 "
+            "specialist votes (veto and dissent counts); not a measured probability."
+        )
+
         return DeliberatorVote(
             deliberator_name=self.name,
             role=self.role,
@@ -229,4 +314,6 @@ class PresidingJudge:
             reasoning=reasoning,
             concerns=concerns,
             required_modifications=modifications,
+            confidence_method=CONFIDENCE_METHOD_HEURISTIC,
+            confidence_note=note,
         )

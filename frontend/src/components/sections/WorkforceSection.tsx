@@ -588,7 +588,9 @@ function WarRoomTab() {
       await registerEpistemicClaim(selectedProject, {
         text: claimText.trim(),
         status: "hypothesis",
-        prior_confidence: 0.6,
+        // No invented prior confidence: the backend applies its neutral 0.5
+        // baseline for an untested hypothesis instead of the frontend seeding
+        // a plausible-looking fabricated number (was 0.6).
         falsification_test: "Automated verification suite",
       });
       setClaimText("");

@@ -204,7 +204,10 @@ export async function fetchSemanticGraph(): Promise<{
   }>("/memory/cognitive/semantic");
 }
 
-export async function addSemanticBelief(subject: string, predicate: string, object_val: string, confidence = 0.85): Promise<SemanticNodeItem> {
+// Default is the neutral unverified baseline (0.5): a belief the caller does not
+// score has no evidence behind it yet, so we never seed a plausible-looking
+// fabricated confidence (was 0.85) that the UI would render as a measured one.
+export async function addSemanticBelief(subject: string, predicate: string, object_val: string, confidence = 0.5): Promise<SemanticNodeItem> {
   return await send<SemanticNodeItem>("/memory/cognitive/semantic", "POST", { subject, predicate, object_val, confidence });
 }
 
