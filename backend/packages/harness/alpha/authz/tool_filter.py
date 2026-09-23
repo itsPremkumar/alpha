@@ -18,7 +18,6 @@ from alpha.authz.principal import build_principal_from_context
 from alpha.authz.provider import AuthorizationProvider, Principal
 from alpha.authz.runtime import resolve_authorization_provider
 from alpha.config.app_config import AppConfig
-from alpha.tools.mcp_metadata import mcp_server_name
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +96,12 @@ def _filter_mcp_tools_by_server(
     A tool can be permitted by its own name while the server backing it is not.
     RBAC already models servers as their own resource class, so check both.
     """
+    # Local import: a module-level `from alpha.tools.mcp_metadata import ...`
+    # made `import alpha.subagents.executor` circular-crash (executor → authz
+    # → tools → builtins → task_tool → executor) — tests/conftest.py mocks the
+    # whole executor module just to dodge this edge. Lazy here breaks it.
+    from alpha.tools.mcp_metadata import mcp_server_name
+
     server_names = {s for s in (mcp_server_name(t) for t in tools) if s}
     if not server_names:
         return tools

@@ -32,10 +32,13 @@ class LearningForkMiddlewareState(AgentState):
     pass
 
 
+# Real registered @tool names (alpha.agents.memory.tools / builtins). The
+# original {add_memory, recall_memory} named tools that do not exist anywhere
+# in the repo — binding them made every fork execution raise ImportError.
 _WHITELISTED_TOOL_NAMES = frozenset(
     {
-        "add_memory",
-        "recall_memory",
+        "memory_add",
+        "memory_search",
         "propose_skill",
     }
 )
@@ -62,6 +65,30 @@ def _build_digest(messages: list, max_chars: int) -> str:
         total += len(chunk)
 
     return "\n".join(reversed(parts))
+
+
+def get_memory_manager():
+    """Module-level, patchable accessor for the memory manager.
+
+    Tests replace this exact name; resolving it inside the handler with a
+    local import bypassed the patch (that mismatch already broke three
+    integration tests with AttributeError).
+    """
+    from alpha.agents.memory import get_memory_manager as _get_memory_manager
+
+    return _get_memory_manager()
+
+
+def get_skill_proposal_store():
+    """Module-level, patchable accessor for the proposal store.
+
+    ``alpha.skills.proposals`` exports no ``get_skill_proposal_store`` — the
+    store is built as ``SkillProposalStore(proposals_root())``, the same
+    construction the propose_skill tool uses.
+    """
+    from alpha.skills.proposals import SkillProposalStore, proposals_root
+
+    return SkillProposalStore(proposals_root())
 
 
 class LearningForkMiddleware(AgentMiddleware[LearningForkMiddlewareState]):
@@ -129,8 +156,8 @@ class LearningForkMiddleware(AgentMiddleware[LearningForkMiddlewareState]):
             "CONVERSATION DIGEST (newest last):\n"
             f"{digest}\n\n"
             "AVAILABLE TOOLS:\n"
-            "- add_memory: Store a factual memory for the user\n"
-            "- recall_memory: Search existing memories (read-only)\n"
+            "- memory_add: Store a factual memory for the user\n"
+            "- memory_search: Search existing memories (read-only)\n"
             "- propose_skill: Propose a new skill for admin review\n\n"
             "RULES:\n"
             "1. Only propose memories that are factual, user-specific, and durable.\n"
@@ -209,10 +236,13 @@ class LearningForkMiddleware(AgentMiddleware[LearningForkMiddlewareState]):
         if fork_model is None:
             return
 
-        # Build a minimal toolset with only whitelisted tools
-        from alpha.tools.builtins import add_memory, propose_skill_tool, recall_memory
+        # Build a minimal toolset with only whitelisted tools — the REAL
+        # registered @tool objects (the old add_memory/recall_memory names
+        # never existed; this import crashed every fork with ImportError).
+        from alpha.agents.memory.tools import memory_add_tool, memory_search_tool
+        from alpha.tools.builtins import propose_skill_tool
 
-        whitelisted_tools = [add_memory, recall_memory, propose_skill_tool]
+        whitelisted_tools = [memory_add_tool, memory_search_tool, propose_skill_tool]
 
         # Bind tools to the fork model
         fork_model_with_tools = fork_model.bind_tools(whitelisted_tools)
@@ -240,16 +270,15 @@ class LearningForkMiddleware(AgentMiddleware[LearningForkMiddlewareState]):
                     continue
 
                 try:
-                    if tool_name == "add_memory":
-                        from alpha.agents.memory import get_memory_manager
-
+                    if tool_name == "memory_add":
                         manager = self._memory_manager or get_memory_manager()
-                        await manager.add(thread_id, [response], user_id, trace_id)
+                        # aadd: async entry, keyword-only user_id/trace_id.
+                        # The old call awaited the sync, positional-incompatible
+                        # add(...) — TypeError on every memory write.
+                        await manager.aadd(thread_id, [response], user_id=user_id, trace_id=trace_id)
                         proposals_made += 1
 
                     elif tool_name == "propose_skill":
-                        from alpha.skills.proposals import get_skill_proposal_store
-
                         store = self._proposal_store or get_skill_proposal_store()
                         args = tool_call.get("args", {})
                         await store.propose(
@@ -260,12 +289,12 @@ class LearningForkMiddleware(AgentMiddleware[LearningForkMiddlewareState]):
                         )
                         proposals_made += 1
 
-                    elif tool_name == "recall_memory":
-                        # Read-only, just execute for context
-                        from alpha.agents.memory import get_memory_manager
-
+                    elif tool_name == "memory_search":
+                        # Read-only search against the store (the one-shot fork
+                        # cannot consume the results; the old code called
+                        # `manager.recall`, which does not exist at all).
                         manager = self._memory_manager or get_memory_manager()
-                        await manager.recall(thread_id, args.get("query", ""), user_id)
+                        await manager.asearch(args.get("query", ""), top_k=5, user_id=user_id)
 
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("LearningFork: tool %s failed: %s", tool_name, exc)

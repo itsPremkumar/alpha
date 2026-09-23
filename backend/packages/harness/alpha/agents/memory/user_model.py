@@ -19,6 +19,24 @@ from alpha.config.app_config import AppConfig
 
 logger = logging.getLogger(__name__)
 
+# Real registered @tool names to observe as user-model signals. The original
+# {read_file, str_replace, write_file, add_memory} set named tools that do not
+# exist anywhere in this repo, so file/skill/memory observations were never
+# captured — the provider learned from propose_skill alone.
+OBSERVED_TOOL_NAMES = frozenset(
+    {
+        "memory_add",
+        "memory_search",
+        "session_search",
+        "propose_skill",
+        "skill_manage",
+        "invoke_python_skill",
+        "code_mode",
+        "python_repl",
+        "present_files",
+    }
+)
+
 
 class UserModelProvider(abc.ABC):
     """Abstract base class for user-model providers.
@@ -211,7 +229,7 @@ class FileUserModelProvider(UserModelProvider):
 
     async def handle_tool_call(self, runtime: Runtime, tool_name: str, tool_args: dict, tool_result: Any) -> None:
         # Capture file reads, skill activations, etc. as observations
-        if tool_name in {"read_file", "str_replace", "write_file", "add_memory", "propose_skill"}:
+        if tool_name in OBSERVED_TOOL_NAMES:
             observation = f"Tool {tool_name} called"
             reflection = f"User interacted with {tool_name}"
             entry = {

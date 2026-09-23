@@ -114,7 +114,10 @@ class TestLearningForkMiddleware:
     @pytest.mark.asyncio
     async def test_no_thread_id_returns_none(self, middleware, state, runtime):
         runtime.context = {}
-        with patch("langgraph.config.get_config", return_value={"configurable": {}}):
+        # Patch the middleware's OWN binding (module-level import at line 15);
+        # patching langgraph.config leaves the already-bound name untouched and
+        # the real get_config() then raises "outside of a runnable context".
+        with patch("alpha.agents.middlewares.learning_fork_middleware.get_config", return_value={"configurable": {}}):
             result = await middleware.after_agent(state, runtime)
             assert result is None
 
@@ -126,8 +129,10 @@ class TestLearningForkMiddleware:
 
     @pytest.mark.asyncio
     async def test_whitelisted_tools_only(self, middleware):
-        assert "add_memory" in _WHITELISTED_TOOL_NAMES
-        assert "recall_memory" in _WHITELISTED_TOOL_NAMES
+        # Real registered @tool names — add_memory/recall_memory never existed
+        # as tools, which made every fork execution ImportError.
+        assert "memory_add" in _WHITELISTED_TOOL_NAMES
+        assert "memory_search" in _WHITELISTED_TOOL_NAMES
         assert "propose_skill" in _WHITELISTED_TOOL_NAMES
         assert "bash" not in _WHITELISTED_TOOL_NAMES
         assert "str_replace" not in _WHITELISTED_TOOL_NAMES
@@ -171,16 +176,19 @@ class TestLearningForkIntegration:
         mock_model = AsyncMock()
         mock_response = MagicMock()
         mock_response.tool_calls = [
-            {"name": "add_memory", "args": {"key": "value"}, "id": "call_1"},
+            {"name": "memory_add", "args": {"key": "value"}, "id": "call_1"},
             {"name": "propose_skill", "args": {"name": "test-skill", "description": "Test", "content": "..."}, "id": "call_2"},
         ]
         mock_model.ainvoke = AsyncMock(return_value=mock_response)
+        # bind_tools is SYNC; as an AsyncMock child it returned a coroutine and
+        # the fork died with "'coroutine' object has no attribute 'ainvoke'".
+        mock_model.bind_tools = MagicMock(return_value=mock_model)
 
         with patch("alpha.agents.middlewares.learning_fork_middleware.create_chat_model", return_value=mock_model):
             with patch("alpha.agents.middlewares.learning_fork_middleware.get_memory_manager") as mock_get_manager:
                 with patch("alpha.agents.middlewares.learning_fork_middleware.get_skill_proposal_store") as mock_get_store:
                     mock_manager = AsyncMock()
-                    mock_manager.add = AsyncMock()
+                    mock_manager.aadd = AsyncMock()
                     mock_get_manager.return_value = mock_manager
 
                     mock_store = AsyncMock()
@@ -191,7 +199,7 @@ class TestLearningForkIntegration:
 
         assert result is None
         mock_model.ainvoke.assert_called_once()
-        mock_manager.add.assert_called_once()
+        mock_manager.aadd.assert_called_once()
         mock_store.propose.assert_called_once()
 
     @pytest.mark.asyncio
@@ -203,17 +211,18 @@ class TestLearningForkIntegration:
         mock_model = AsyncMock()
         mock_response = MagicMock()
         mock_response.tool_calls = [
-            {"name": "add_memory", "args": {}, "id": "call_1"},
+            {"name": "memory_add", "args": {}, "id": "call_1"},
             {"name": "propose_skill", "args": {"name": "s1", "description": "d", "content": "c"}, "id": "call_2"},
             {"name": "propose_skill", "args": {"name": "s2", "description": "d", "content": "c"}, "id": "call_3"},
         ]
         mock_model.ainvoke = AsyncMock(return_value=mock_response)
+        mock_model.bind_tools = MagicMock(return_value=mock_model)
 
         with patch("alpha.agents.middlewares.learning_fork_middleware.create_chat_model", return_value=mock_model):
             with patch("alpha.agents.middlewares.learning_fork_middleware.get_memory_manager") as mock_get_manager:
                 with patch("alpha.agents.middlewares.learning_fork_middleware.get_skill_proposal_store") as mock_get_store:
                     mock_manager = AsyncMock()
-                    mock_manager.add = AsyncMock()
+                    mock_manager.aadd = AsyncMock()
                     mock_get_manager.return_value = mock_manager
 
                     mock_store = AsyncMock()
@@ -223,7 +232,7 @@ class TestLearningForkIntegration:
                     await middleware.after_agent(state, runtime)
 
         # Only 1 proposal should be made due to max_proposals_per_run=1
-        total_calls = mock_manager.add.call_count + mock_store.propose.call_count
+        total_calls = mock_manager.aadd.call_count + mock_store.propose.call_count
         assert total_calls == 1
 
     @pytest.mark.asyncio
@@ -237,11 +246,15 @@ class TestLearningForkIntegration:
             {"name": "bash", "args": {"command": "ls"}, "id": "call_1"},
         ]
         mock_model.ainvoke = AsyncMock(return_value=mock_response)
+        mock_model.bind_tools = MagicMock(return_value=mock_model)
 
         with patch("alpha.agents.middlewares.learning_fork_middleware.create_chat_model", return_value=mock_model):
             with patch("alpha.agents.middlewares.learning_fork_middleware.logger") as mock_logger:
                 await middleware.after_agent(state, runtime)
-                mock_logger.warning.assert_called()
+                # Assert the REAL whitelist warning — a generic assert_called()
+                # also fires when unrelated failures are isolated, which let
+                # this test pass while the fork died at its import line.
+                mock_logger.warning.assert_any_call("LearningFork: attempted non-whitelisted tool %s", "bash")
 
     @pytest.mark.asyncio
     async def test_model_failure_isolated(self, config, state, runtime):
@@ -262,20 +275,28 @@ class TestLearningForkIntegration:
         mock_model = AsyncMock()
         mock_response = MagicMock()
         mock_response.tool_calls = [
-            {"name": "add_memory", "args": {}, "id": "call_1"},
+            {"name": "memory_add", "args": {}, "id": "call_1"},
         ]
         mock_model.ainvoke = AsyncMock(return_value=mock_response)
+        mock_model.bind_tools = MagicMock(return_value=mock_model)
 
         with patch("alpha.agents.middlewares.learning_fork_middleware.create_chat_model", return_value=mock_model):
             with patch("alpha.agents.middlewares.learning_fork_middleware.get_memory_manager") as mock_get_manager:
                 mock_manager = AsyncMock()
-                mock_manager.add = AsyncMock(side_effect=Exception("Tool failed"))
+                mock_manager.aadd = AsyncMock(side_effect=Exception("Tool failed"))
                 mock_get_manager.return_value = mock_manager
 
                 with patch("alpha.agents.middlewares.learning_fork_middleware.logger") as mock_logger:
                     result = await middleware.after_agent(state, runtime)
                     assert result is None
-                    mock_logger.warning.assert_called()
+                    # The isolated-tool warning must name the failing tool —
+                    # a generic assert_called() also matched unrelated
+                    # warnings (e.g. the coroutine crash this test hid).
+                    warned = any(
+                        c.args and c.args[:2] == ("LearningFork: tool %s failed: %s", "memory_add")
+                        for c in mock_logger.warning.call_args_list
+                    )
+                    assert warned, mock_logger.warning.call_args_list
 
 
 class TestFactory:

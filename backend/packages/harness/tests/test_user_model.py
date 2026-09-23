@@ -159,11 +159,11 @@ class TestFileUserModelProvider:
         provider._user_id = "test_user"
         provider._entries = []
 
-        await provider.handle_tool_call(runtime, "read_file", {"path": "/foo"}, "content")
+        await provider.handle_tool_call(runtime, "memory_add", {"path": "/foo"}, "content")
 
         assert len(provider._entries) == 1
-        assert provider._entries[0]["tool"] == "read_file"
-        assert provider._entries[0]["observation"] == "Tool read_file called"
+        assert provider._entries[0]["tool"] == "memory_add"
+        assert provider._entries[0]["observation"] == "Tool memory_add called"
 
     @pytest.mark.asyncio
     async def test_handle_tool_call_ignores_non_tracked(self, provider, runtime):
@@ -179,7 +179,7 @@ class TestFileUserModelProvider:
         provider._user_id = "test_user"
         provider._entries = []
 
-        await provider.handle_tool_call(runtime, "read_file", {"path": "/foo"}, "content")
+        await provider.handle_tool_call(runtime, "memory_add", {"path": "/foo"}, "content")
 
         # Check file was written
         user_file = temp_dir / "user_model_test_user.jsonl"
@@ -188,7 +188,7 @@ class TestFileUserModelProvider:
             lines = f.readlines()
         assert len(lines) == 1
         entry = json.loads(lines[0])
-        assert entry["tool"] == "read_file"
+        assert entry["tool"] == "memory_add"
 
 
 class TestFactory:
