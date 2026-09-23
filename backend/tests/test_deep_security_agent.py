@@ -31,4 +31,9 @@ class TestDeepSecurityAgent:
         agent = DeepSecurityAuditorAgent()
         contract = agent.audit({"app.py": "eval(user_input)"}, session_id="s-sec")
         assert contract.is_success()
+        # the static scans genuinely executed and completed in this run
         assert "security:taint-analysis-completed" in contract.security_stamps
+        assert "security:credential-scan-completed" in contract.security_stamps
+        # the scan is not a pass/fail test: no oracle may claim a pass
+        assert all(oracle.get("passed") is not True for oracle in contract.test_oracles)
+        assert "unverified by re-execution" in contract.executive_summary

@@ -31,7 +31,7 @@ Return only compact synthesis with a minimal unified diff and verified checks.""
 
 DEEP_ARCHITECT_AGENT_CONFIG = SubagentConfig(
     name="deep-architect",
-    description="Autonomous multi-file refactoring specialist with AST impact analysis and atomic edits.",
+    description="Autonomous multi-file refactoring specialist with AST impact analysis and atomic edits (claims scoped to parsed targets).",
     system_prompt=SYSTEM_PROMPT,
     tools=["read_file", "bash", "ast_grep_search"],
     disallowed_tools=["task", "ralph_loop", "ask_clarification", "present_files"],
@@ -43,18 +43,29 @@ DEEP_ARCHITECT_AGENT_CONFIG = SubagentConfig(
 
 @dataclass
 class DependencyImpactGraph:
-    """Dependency impact graph for a refactoring plan."""
+    """Dependency impact graph for a refactoring plan.
+
+    Tracks which targeted files were genuinely parsed so downstream claims
+    only cover inputs that were actually observed.
+    """
 
     nodes: list[str] = field(default_factory=list)
     edges: list[tuple[str, str]] = field(default_factory=list)
+    parsed_files: list[str] = field(default_factory=list)
+    unparsed_files: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         """Return a serializable dictionary.
 
         Returns:
-            Graph dictionary.
+            Graph dictionary including parse coverage of targeted files.
         """
-        return {"nodes": list(self.nodes), "edges": [list(e) for e in self.edges]}
+        return {
+            "nodes": list(self.nodes),
+            "edges": [list(e) for e in self.edges],
+            "parsed_files": list(self.parsed_files),
+            "unparsed_files": list(self.unparsed_files),
+        }
 
 
 class DeepArchitectAgent:
@@ -77,11 +88,14 @@ class DeepArchitectAgent:
             path = Path(raw)
             graph.nodes.append(str(raw))
             if not path.is_file():
+                graph.unparsed_files.append(str(raw))
                 continue
             try:
                 tree = ast.parse(path.read_text(encoding="utf-8"))
             except Exception:
+                graph.unparsed_files.append(str(raw))
                 continue
+            graph.parsed_files.append(str(raw))
             for node in ast.walk(tree):
                 if isinstance(node, ast.Import):
                     for alias in node.names:
@@ -163,20 +177,42 @@ class DeepArchitectAgent:
             Compact handoff contract.
         """
         plan = self.plan_refactoring(goal, target_files)
+        graph = plan["impact_graph"]
+        target_count = len(target_files)
+        parsed_count = len(graph["parsed_files"])
+        unparsed_count = len(graph["unparsed_files"])
         summary = (
-            f"DeepArchitectAgent analyzed {len(target_files)} module(s) and generated an atomic "
-            f"refactoring plan with {len(plan['impact_graph']['edges'])} dependency edge(s) and "
-            f"{len(plan['circular_imports'])} circular import cycle(s). All import symbols remain "
-            f"intact under the proposed partitioning."
+            f"DeepArchitectAgent analyzed {target_count} module(s) ({parsed_count} parsed, "
+            f"{unparsed_count} unparsed) and generated an atomic refactoring plan with "
+            f"{len(graph['edges'])} dependency edge(s) and "
+            f"{len(plan['circular_imports'])} circular import cycle(s). The plan is a proposal: "
+            "no edits were applied, so symbol preservation under the partitioning is "
+            "unverified by execution."
         )
+        # Only claim the ast.parse oracle when it genuinely ran over every
+        # targeted module; otherwise report the observed shortfall honestly.
+        test_oracles: list[dict[str, Any]] = []
+        if target_count:
+            test_oracles.append(
+                {
+                    "name": "ast-parse",
+                    "command": "ast.parse targeted modules",
+                    "passed": unparsed_count == 0,
+                    "detail": f"{parsed_count}/{target_count} target module(s) parsed",
+                }
+            )
+        # An import-boundary stamp may only be issued when the acyclicity
+        # check actually covered all targeted files.
+        security_stamps = ["architect:import-acyclicity-checked"] if (target_count and not unparsed_count) else []
         contract = DeepHandoffContract(
             status=DeepExecutionStatus.SUCCESS,
             executive_summary=summary,
-            test_oracles=[{"name": "ast-parse", "command": "ast.parse targeted modules", "passed": True}],
-            security_stamps=["architect:import-boundary-verified"],
+            test_oracles=test_oracles,
+            security_stamps=security_stamps,
             invariant_assertions=[
-                "no circular import introduced",
-                "public symbols preserved",
+                f"dependency graph built from {parsed_count} of {target_count} targeted file(s)",
+                f"{len(plan['circular_imports'])} circular import cycle(s) observed in parsed graph",
+                "no edits applied; partitioning plan remains a proposal",
                 "parent received synthesis only",
             ],
             session_id=session_id,

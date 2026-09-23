@@ -6,6 +6,12 @@ isolated ephemeral scratch workspaces, and clean-context synthesis returns.
 Only typed DeepHandoffContract payloads cross the parent boundary. Raw
 terminal output, full file contents, and trace dumps stay inside the child
 sandbox and are never returned verbatim.
+
+Honesty (Stage-4c): actual execution goes through one module-level seam
+(``set_deep_agent_runner``). When no runner is configured, ``delegate``
+reports an honest ``UNRECOVERABLE_ERROR`` contract — this module never
+synthesizes a success status, test/security claims, or token counts that
+were not produced by a real run.
 """
 
 from __future__ import annotations
@@ -14,6 +20,7 @@ import tempfile
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -24,8 +31,6 @@ from alpha.subagents.deep_handoff_contract import (
     DeepTaskSpec,
     build_error_contract,
     build_partial_contract,
-    estimate_tokens,
-    truncate_to_words,
 )
 
 DEEP_AGENT_TYPES: tuple[str, ...] = (
@@ -128,6 +133,44 @@ class DeepAgentSession:
         }
 
 
+#: Single module-level seam for actually executing a deep agent run. The
+#: engine never fabricates execution: with no runner registered, ``delegate``
+#: returns an honest ``UNRECOVERABLE_ERROR`` contract instead of a
+#: synthesized success with invented oracles, stamps, and token counts.
+DeepAgentRunner = Callable[[DeepAgentSession], DeepHandoffContract]
+
+_runner_lock = threading.RLock()
+_deep_agent_runner: DeepAgentRunner | None = None
+
+
+def set_deep_agent_runner(runner: DeepAgentRunner | None) -> DeepAgentRunner | None:
+    """Register (or clear) the deep agent execution seam.
+
+    Args:
+        runner: Callable that executes one session into a contract, or None
+            to restore offline mode where delegation reports an honest
+            failure status.
+
+    Returns:
+        The previously registered runner so callers can restore it.
+    """
+    global _deep_agent_runner
+    with _runner_lock:
+        previous = _deep_agent_runner
+        _deep_agent_runner = runner
+        return previous
+
+
+def get_deep_agent_runner() -> DeepAgentRunner | None:
+    """Return the registered execution seam.
+
+    Returns:
+        The registered runner, or None when no execution backend is available.
+    """
+    with _runner_lock:
+        return _deep_agent_runner
+
+
 class HierarchicalDelegationEngine:
     """Lifecycle manager for isolated Deep Agent executions."""
 
@@ -160,56 +203,6 @@ class HierarchicalDelegationEngine:
             pass
         return str(path)
 
-    def _synthesize_contract(self, session: DeepAgentSession) -> DeepHandoffContract:
-        """Autonomously synthesize a compact contract for a session.
-
-        This heuristic synthesis stands in for a full model driven deep run in
-        offline and test environments. It never asks for human input and never
-        returns raw traces.
-
-        Args:
-            session: Active deep agent session.
-
-        Returns:
-            Compact handoff contract for the parent.
-        """
-        spec = session.spec
-        iterations = min(max(1, spec.max_iterations), 3)
-        session.iterations_used = iterations
-        consumed = min(spec.token_budget, 1200 + 150 * len(spec.target_files) + 25 * len(spec.goal))
-        session.tokens_consumed = consumed
-        summary = (
-            f"{DEEP_AGENT_DISPLAY_NAMES.get(session.agent_type, session.agent_type)} completed autonomous "
-            f"analysis of goal '{spec.goal[:220]}' across {len(spec.target_files)} targeted file(s) "
-            f"in {iterations} iteration(s). Findings were verified with bounded checks and compressed "
-            f"into actionable synthesis. No human input was requested."
-        )
-        contract = DeepHandoffContract(
-            status=DeepExecutionStatus.SUCCESS,
-            executive_summary=truncate_to_words(summary, 300),
-            unified_diff="",
-            test_oracles=[
-                {
-                    "name": "spec_validation",
-                    "command": "validate DeepTaskSpec bounds",
-                    "passed": True,
-                }
-            ],
-            security_stamps=[f"{session.agent_type}:static-checks-passed"],
-            invariant_assertions=[
-                "parent context received only compact synthesis",
-                "no raw terminal output crossed the delegation boundary",
-                "execution respected token and iteration budgets",
-            ],
-            tokens_consumed=consumed,
-            tokens_returned=0,
-            session_id=session.session_id,
-            agent_type=session.agent_type,
-            artifacts=[],
-        )
-        contract.tokens_returned = max(1, estimate_tokens(contract.to_parent_text()))
-        return contract
-
     def delegate(
         self,
         agent_type: str,
@@ -220,6 +213,13 @@ class HierarchicalDelegationEngine:
         time_budget_seconds: int = 900,
     ) -> DeepHandoffContract:
         """Spawn an isolated deep agent and return its compact contract.
+
+        The run is executed through the module-level runner seam
+        (``set_deep_agent_runner``). The returned contract's status,
+        test/security claims, and token counts are whatever that run really
+        produced. When no execution backend is available the contract
+        honestly reports ``UNRECOVERABLE_ERROR`` instead of synthesizing a
+        success result.
 
         Args:
             agent_type: Deep specialist type identifier.
@@ -256,15 +256,30 @@ class HierarchicalDelegationEngine:
         )
         with self._lock:
             self._sessions[session_id] = session
-        started = time.time()
+        runner = get_deep_agent_runner()
         try:
             if time_budget_seconds <= 0:
                 raise TimeoutError("time budget exhausted before execution")
-            contract = self._synthesize_contract(session)
+            if runner is None:
+                raise RuntimeError(
+                    "No deep agent execution backend is configured; "
+                    "delegation refuses to fabricate an execution result."
+                )
+            contract = runner(session)
+            if not contract.session_id:
+                contract.session_id = session_id
+            if not contract.agent_type:
+                contract.agent_type = normalized
             session.contract = contract
-            session.status = "completed"
+            # Token usage is whatever the real run reported — never invented.
+            session.tokens_consumed = contract.tokens_consumed
             session.completed_at = time.time()
-            _ = started
+            if contract.status == DeepExecutionStatus.SUCCESS:
+                session.status = "completed"
+            elif contract.status == DeepExecutionStatus.PARTIAL_PROGRESS:
+                session.status = "halted"
+            else:
+                session.status = "failed"
             return contract
         except TimeoutError as exc:
             partial = build_partial_contract(session_id, normalized, f"Time budget exhausted: {exc}")

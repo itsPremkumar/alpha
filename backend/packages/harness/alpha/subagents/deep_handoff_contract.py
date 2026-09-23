@@ -74,6 +74,27 @@ def estimate_tokens(text: str) -> int:
     return max(1, len(text) // ESTIMATED_CHARS_PER_TOKEN)
 
 
+def oracle_state(oracle: dict[str, Any]) -> str:
+    """Render the honest observed state of a test oracle.
+
+    Args:
+        oracle: Oracle payload.
+
+    Returns:
+        The explicit status (e.g. ``not_run``) when the payload carries one,
+        ``passed``/``failed`` for genuinely observed boolean outcomes, or
+        ``unverified`` when no observation exists — never an assumed pass.
+    """
+    if "status" in oracle:
+        return str(oracle.get("status") or "unverified")
+    passed = oracle.get("passed")
+    if passed is True:
+        return "passed"
+    if passed is False:
+        return "failed"
+    return "unverified"
+
+
 @dataclass
 class DeepTaskSpec:
     """Specification for a delegated Deep Agent task.
@@ -151,10 +172,14 @@ class DeepHandoffContract:
         status: Terminal execution status.
         executive_summary: Executive summary capped at 300 words.
         unified_diff: Minimal unified diff or patch text.
-        test_oracles: Verified test oracles (commands and outcomes).
-        security_stamps: Security audit stamps.
+        test_oracles: Observed test oracles (command and outcome); entries
+            only claim ``passed`` for checks genuinely executed, otherwise
+            they carry an honest status such as ``not_run``.
+        security_stamps: Security audit stamps for checks genuinely executed
+            during the run (empty when none ran).
         invariant_assertions: Key invariant assertions verified by the agent.
-        tokens_consumed: Tokens consumed inside the isolated run.
+        tokens_consumed: Tokens consumed inside the isolated run (real usage
+            from the run, or 0 when no usage was observed).
         tokens_returned: Estimated tokens of the parent visible synthesis.
         session_id: Isolated session identifier.
         agent_type: Specialist type that produced the contract.
@@ -213,7 +238,10 @@ class DeepHandoffContract:
             oracle_bits = []
             for oracle in self.test_oracles[:5]:
                 if isinstance(oracle, dict):
-                    oracle_bits.append(str(oracle.get("name") or oracle.get("command") or "oracle"))
+                    name = str(oracle.get("name") or oracle.get("command") or "oracle")
+                    # Render the observed state honestly (passed/failed/
+                    # not_run/unverified) — never an assumed pass.
+                    oracle_bits.append(f"{name} [{oracle_state(oracle)}]")
                 else:
                     oracle_bits.append(str(oracle))
             lines.append("oracles=" + "; ".join(oracle_bits))

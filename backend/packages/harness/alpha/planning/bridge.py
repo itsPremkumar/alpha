@@ -409,6 +409,12 @@ class AutonomousDispatchBridge:
             "UNRECOVERABLE_ERROR": "failed",
         }.get(contract_status, "failed")
 
+        # Relay the contract's honest summary; for failed runs append the
+        # real error detail so consumers see why the delegation failed.
+        summary = contract.executive_summary or f"Delegation finished with status {contract_status}."
+        if contract.error_detail:
+            summary = f"{summary} Error: {contract.error_detail[:300]}"
+
         return DispatchResult(
             dispatch_id=dispatch_id,
             plan_id=plan.plan_id,
@@ -416,12 +422,15 @@ class AutonomousDispatchBridge:
             status=status,
             execution_id=f"subagent-{contract.session_id}",
             assigned_agents=[contract.agent_type],
-            summary=contract.executive_summary or f"Delegation finished with status {contract_status}.",
+            summary=summary,
             artifacts=[contract_path],
             details={
                 "session_id": contract.session_id,
                 "agent_type": contract.agent_type,
                 "contract_status": contract_status,
+                "error_detail": contract.error_detail,
+                "test_oracles": contract.test_oracles,
+                "security_stamps": contract.security_stamps,
             },
         )
 

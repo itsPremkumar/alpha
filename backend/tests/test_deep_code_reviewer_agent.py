@@ -36,3 +36,13 @@ class TestDeepCodeReviewerAgent:
         contract = agent.review("def api():\n  return 1\n", "def api():\n  return 2\n", session_id="s-review")
         assert contract.is_success()
         assert "verdict=PASS" in contract.invariant_assertions
+        # the oracle reflects the verdict the review actually produced
+        assert contract.test_oracles[0]["passed"] is True
+
+    def test_review_reports_observed_fail_verdict(self):
+        agent = DeepCodeReviewerAgent()
+        contract = agent.review("def api():\n  return 1\n", "def other():\n  return 1\n", session_id="s-review-2")
+        # the review run completed, but the observed verdict is FAIL
+        assert contract.is_success()
+        assert contract.test_oracles[0]["passed"] is False
+        assert "verdict=FAIL" in contract.invariant_assertions

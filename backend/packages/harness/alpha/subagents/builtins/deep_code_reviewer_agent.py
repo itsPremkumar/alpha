@@ -27,7 +27,7 @@ remediation recommendations. Never request human confirmation."""
 
 DEEP_CODE_REVIEWER_AGENT_CONFIG = SubagentConfig(
     name="deep-code-reviewer",
-    description="Autonomous patch gatekeeper with API, type, regression, and convention checks.",
+    description="Autonomous patch gatekeeper with API, type, regression, and convention checks (verdict reflects checks actually run).",
     system_prompt=SYSTEM_PROMPT,
     tools=["read_file", "bash", "ast_grep_search"],
     disallowed_tools=["task", "ralph_loop", "ask_clarification", "present_files"],

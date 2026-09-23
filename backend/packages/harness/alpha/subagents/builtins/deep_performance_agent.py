@@ -1,7 +1,8 @@
 """Deep Performance and Profiling Agent.
 
-Executes non-invasive profiling, identifies algorithmic bottlenecks, and
-synthesizes optimized alternatives verified by before and after benchmarks.
+Executes non-invasive profiling, identifies algorithmic bottlenecks, and can
+synthesize optimized alternatives. Benchmark verification is claimed only when
+before/after benchmarks actually ran.
 """
 
 from __future__ import annotations
@@ -31,7 +32,7 @@ request human confirmation."""
 
 DEEP_PERFORMANCE_AGENT_CONFIG = SubagentConfig(
     name="deep-performance",
-    description="Autonomous profiling, bottleneck detection, and benchmark-verified optimization.",
+    description="Autonomous profiling, bottleneck detection, and benchmark tooling (verification claimed only when benchmarks run).",
     system_prompt=SYSTEM_PROMPT,
     tools=["read_file", "bash", "python_repl_tool"],
     disallowed_tools=["task", "ralph_loop", "ask_clarification", "present_files"],
@@ -124,17 +125,22 @@ class DeepPerformanceAgent:
             Compact handoff contract.
         """
         bottlenecks = self.detect_bottlenecks(source or "")
-        patch = "--- a/target.py\n+++ b/target.py\n@@ cache repeated work\n-from functools import lru_cache\n+from functools import lru_cache\n+@lru_cache(maxsize=1024)\n def hot_path(value):\n"
-        summary = f"DeepPerformanceAgent profiled the target and identified {len(bottlenecks)} bottleneck signal(s). A cached alternative preserves behavior while improving execution time under automated before and after assertions."
+        summary = (
+            f"DeepPerformanceAgent scanned the target with static heuristics and identified "
+            f"{len(bottlenecks)} bottleneck signal(s). No profiler or benchmark was executed in "
+            "this run, so no speedup claim is made and no optimization patch was derived."
+        )
         contract = DeepHandoffContract(
             status=DeepExecutionStatus.SUCCESS,
             executive_summary=summary,
-            unified_diff=patch,
-            test_oracles=[{"name": "benchmark-assertion", "command": "before/after benchmark", "passed": True}],
-            security_stamps=["performance:non-invasive-profile"],
+            # No benchmark ran and no patch was derived from the source, so
+            # neither a unified diff nor a passed benchmark oracle is claimed.
+            unified_diff="",
+            test_oracles=[],
+            security_stamps=[],
             invariant_assertions=[
-                "optimization preserves observable behavior",
-                "speedup verified by benchmark assertion",
+                "findings are static heuristics, not measured profiles",
+                "no benchmark executed; speedup unverified",
             ]
             + bottlenecks[:3],
             session_id=session_id,

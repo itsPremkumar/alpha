@@ -30,7 +30,7 @@ wrap dangerous sinks in sanitization guards. Never request human confirmation.""
 
 DEEP_SECURITY_AGENT_CONFIG = SubagentConfig(
     name="deep-security",
-    description="Autonomous taint analysis, credential scanning, and sanitization-guard remediation.",
+    description="Autonomous taint analysis, credential scanning, and sanitization-guard remediation (verification claimed only when scans run).",
     system_prompt=SYSTEM_PROMPT,
     tools=["read_file", "bash", "ast_grep_search"],
     disallowed_tools=["task", "ralph_loop", "ask_clarification", "present_files"],
@@ -130,16 +130,33 @@ class DeepSecurityAuditorAgent:
                     sink_names.append(str(finding.get("name")))
         patch = self.remediation_patch(sink_names[0]) if sink_names else ""
         summary = (
-            f"DeepSecurityAuditorAgent audited {len(sources)} source(s) and detected {total_findings} security relevant finding(s). Dangerous sinks are wrapped in sanitization guards with no hardcoded credentials retained in the synthesis."
+            f"DeepSecurityAuditorAgent audited {len(sources)} source(s) with static pattern scans "
+            f"and detected {total_findings} security relevant finding(s)."
+            + (
+                f" A sanitization guard was proposed for dangerous sink '{sink_names[0]}'."
+                if sink_names
+                else " No dangerous sink pattern matched, so no remediation patch was generated."
+            )
+            + " No dynamic verification or test suite ran in this run; findings and the proposed "
+            "patch are unverified by re-execution."
         )
         contract = DeepHandoffContract(
             status=DeepExecutionStatus.SUCCESS,
             executive_summary=summary,
             unified_diff=patch,
-            test_oracles=[{"name": "static-taint-scan", "command": "scan sinks and credentials", "passed": True}],
+            # The scans below genuinely executed over the provided sources;
+            # they report findings and do not constitute a pass/fail test.
+            test_oracles=[
+                {
+                    "name": "static-taint-scan",
+                    "command": "scan sinks and credentials",
+                    "status": "completed",
+                    "detail": f"{total_findings} finding(s) observed; scan reports findings, not a pass/fail test",
+                }
+            ],
             security_stamps=["security:taint-analysis-completed", "security:credential-scan-completed"],
             invariant_assertions=[
-                "untrusted inputs traced to critical sinks",
+                "static sink and credential pattern scan executed over provided sources",
                 "no credential material returned to parent",
             ],
             session_id=session_id,

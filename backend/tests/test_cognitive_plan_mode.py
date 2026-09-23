@@ -276,7 +276,12 @@ def test_autonomous_dispatch_deep_think_writes_real_trace(monkeypatch):
     assert "reasoning_steps" not in res.details
 
 
-def test_autonomous_dispatch_subagent_runs_real_delegation():
+def test_autonomous_dispatch_subagent_runs_real_delegation(monkeypatch):
+    from alpha.subagents import hierarchical_delegator as delegator_mod
+
+    # Pin the offline state: no deep-agent execution backend registered.
+    monkeypatch.setattr(delegator_mod, "_deep_agent_runner", None)
+
     plan = CognitiveMetaPlanner.evaluate_and_plan("Summarize the main points of this meeting transcript")
     # The planner has no keyword branch that selects SUBAGENT, so force the
     # paradigm to exercise this dispatcher directly.
@@ -284,13 +289,23 @@ def test_autonomous_dispatch_subagent_runs_real_delegation():
     plan.decision.assigned_specialists = ["architect"]
 
     res = AutonomousDispatchBridge.dispatch(plan)
-    assert res.status in ("completed", "partial", "failed")
+    # Offline delegation has nothing to run: the dispatcher must relay an
+    # honest failure instead of a synthesized SUCCESS (Stage-4c).
+    assert res.status == "failed"
     payloads = [a for a in res.artifacts if a.endswith("subagent_output.json")]
     assert payloads, "the delegation contract must really be written"
     payload = json.loads(Path(payloads[0]).read_text(encoding="utf-8"))
     assert res.execution_id == f"subagent-{payload['session_id']}"
-    assert res.details["contract_status"] == payload["status"]
+    assert res.details["contract_status"] == payload["status"] == "UNRECOVERABLE_ERROR"
     assert res.details["agent_type"] == payload["agent_type"]
+    # the contract carries no fabricated oracles, stamps, or token usage,
+    # and the honest failure reason reaches the consumer
+    assert payload["test_oracles"] == []
+    assert payload["security_stamps"] == []
+    assert payload["tokens_consumed"] == 0
+    assert payload["error_detail"]
+    assert "No deep agent execution backend" in res.summary
+    assert "No deep agent execution backend" in res.details["error_detail"]
 
 
 def test_autonomous_dispatch_direct_returns_model_output(monkeypatch):

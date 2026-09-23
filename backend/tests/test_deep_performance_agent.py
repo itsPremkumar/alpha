@@ -32,3 +32,9 @@ class TestDeepPerformanceAgent:
         contract = agent.optimize("for i in items:\n  results.append(work(i))", session_id="s-perf")
         assert contract.is_success()
         assert contract.session_id == "s-perf"
+        # no profiler or benchmark ran in optimize(): no derived patch, no
+        # passed oracle, no profile stamp, no speedup claim
+        assert contract.unified_diff == ""
+        assert contract.test_oracles == []
+        assert contract.security_stamps == []
+        assert "no speedup claim" in contract.executive_summary

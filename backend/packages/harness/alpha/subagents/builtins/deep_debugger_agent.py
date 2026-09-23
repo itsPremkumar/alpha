@@ -1,7 +1,8 @@
 """Deep Debugger Agent for autonomous root-cause analysis.
 
 Reproduces failures in isolation, inspects crash frames, applies spectrum-based
-fault localization heuristics, and synthesizes minimal canary-tested patches.
+fault localization heuristics, and synthesizes minimal candidate patches.
+Reproduction or canary checks are only claimed when they actually run.
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ compact root-cause post-mortem."""
 
 DEEP_DEBUGGER_AGENT_CONFIG = SubagentConfig(
     name="deep-debugger",
-    description="Autonomous root-cause analysis with fault localization and canary-tested patches.",
+    description="Autonomous root-cause analysis with fault localization and candidate patch synthesis.",
     system_prompt=SYSTEM_PROMPT,
     tools=["read_file", "bash", "python_repl_tool"],
     disallowed_tools=["task", "ralph_loop", "ask_clarification", "present_files"],
@@ -90,22 +91,22 @@ class DeepDebuggerAgent:
         try:
             ranked = self.localize_fault(failure_report, candidate_lines)
             top = ranked[0] if ranked else {"line": "", "suspiciousness": 0.0}
-            patch = self.synthesize_patch(str(top.get("line", "")), "guarded fix verified by canary check")
+            patch = self.synthesize_patch(str(top.get("line", "")))
             summary = (
-                "DeepDebuggerAgent reproduced the failure in isolation, ranked "
-                f"{len(ranked)} candidate statement(s) with spectrum-based heuristics, and "
-                f"synthesized a minimal patch targeting suspiciousness {top.get('suspiciousness', 0.0)}. "
-                "A canary check validates the candidate fix without human input."
+                "DeepDebuggerAgent ranked "
+                f"{len(ranked)} candidate statement(s) with spectrum-based heuristics against the "
+                f"provided failure report and synthesized a minimal candidate patch targeting "
+                f"suspiciousness {top.get('suspiciousness', 0.0)}. No failure reproduction or "
+                "canary test was executed in this run, so the patch remains unverified."
             )
             contract = DeepHandoffContract(
                 status=DeepExecutionStatus.SUCCESS,
                 executive_summary=summary,
                 unified_diff=patch,
-                test_oracles=[{"name": "canary-reproduction", "command": "reproduce in isolation", "passed": True}],
-                security_stamps=["debugger:reproduction-isolated"],
                 invariant_assertions=[
-                    "failure reproduced before patch synthesis",
-                    "patch is minimal and canary tested",
+                    "fault localization is heuristic over the provided candidate lines",
+                    "candidate patch targets only the highest-ranked suspicious line",
+                    "no reproduction or canary test executed; patch unverified",
                 ],
                 session_id=session_id,
                 agent_type=self.agent_type,

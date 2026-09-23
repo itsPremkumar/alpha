@@ -75,7 +75,11 @@ def delegate_to_deep_agent(
             max_iterations=iterations,
         )
         payload = contract.to_dict()
-        payload["success"] = True
+        # The delegation succeeded only when the contract says so — an
+        # UNRECOVERABLE_ERROR contract must not be reported as success.
+        payload["success"] = contract.is_success()
+        if contract.error_detail:
+            payload["error"] = contract.error_detail
         return payload
     except Exception as exc:
         return {"success": False, "error": f"Deep delegation failed: {exc}"}

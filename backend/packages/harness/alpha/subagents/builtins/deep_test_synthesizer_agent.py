@@ -24,7 +24,7 @@ with verified test oracles."""
 
 DEEP_TEST_SYNTHESIZER_AGENT_CONFIG = SubagentConfig(
     name="deep-test-synthesizer",
-    description="Autonomous property-based test generation with mutation validation.",
+    description="Autonomous property-based test generation (mutation validation claimed only when executed).",
     system_prompt=SYSTEM_PROMPT,
     tools=["read_file", "bash", "python_repl_tool"],
     disallowed_tools=["task", "ralph_loop", "ask_clarification", "present_files"],
@@ -121,20 +121,30 @@ class DeepTestSynthesizerAgent:
         """
         gaps = self.identify_coverage_gaps(coverage_report)
         test_source = self.generate_tests(module_name, function_name)
-        score = self.mutation_score(8, 10)
-        summary = f"DeepTestSynthesizerAgent closed coverage gaps in {len(gaps)} module(s) and generated property-based tests for {module_name}.{function_name} with {len(EDGE_CASE_INPUTS)} boundary classes. Mutation score is {score}."
+        summary = (
+            f"DeepTestSynthesizerAgent identified coverage gaps in {len(gaps)} module(s) and "
+            f"generated property-based test source for {module_name}.{function_name} covering "
+            f"{len(EDGE_CASE_INPUTS)} boundary classes. The generated tests were not executed "
+            "and no mutation testing was run, so no pass results or mutation score are claimed."
+        )
         contract = DeepHandoffContract(
             status=DeepExecutionStatus.SUCCESS,
             executive_summary=summary,
             unified_diff=test_source[:2000],
+            # The generated tests never ran: no passed oracles, no fabricated
+            # mutation score, no verification stamp.
             test_oracles=[
-                {"name": "synthetic-property-tests", "command": f"pytest tests for {function_name}", "passed": True},
-                {"name": "mutation-testing", "command": "mutation score evaluation", "passed": score >= 0.7},
+                {
+                    "name": "synthetic-property-tests",
+                    "command": f"pytest tests for {function_name}",
+                    "status": "not_run",
+                    "detail": "test source generated but never executed in this run",
+                }
             ],
-            security_stamps=["tests:boundary-inputs-covered"],
+            security_stamps=[],
             invariant_assertions=[
-                "generated tests kill introduced mutants",
-                "boundary inputs include unicode and null bytes",
+                "generated test source includes unicode and null-byte boundary inputs",
+                "no test execution or mutation testing performed in this run",
             ],
             session_id=session_id,
             agent_type=self.agent_type,

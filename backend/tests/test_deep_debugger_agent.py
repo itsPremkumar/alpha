@@ -31,3 +31,8 @@ class TestDeepDebuggerAgent:
         assert contract.is_success()
         assert contract.unified_diff
         assert contract.session_id == "s-debug"
+        # no reproduction or canary test ran: no passed oracle, no stamp,
+        # and the summary says the patch is unverified (Stage-4c honesty)
+        assert contract.test_oracles == []
+        assert contract.security_stamps == []
+        assert "unverified" in contract.executive_summary

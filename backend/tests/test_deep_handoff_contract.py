@@ -69,6 +69,23 @@ class TestDeepHandoffContract:
         assert restored.is_success()
         assert restored.session_id == "abc123"
 
+    def test_parent_text_renders_oracle_state_honestly(self):
+        contract = DeepHandoffContract(
+            status=DeepExecutionStatus.SUCCESS,
+            executive_summary="Synthesis.",
+            test_oracles=[
+                {"name": "unit-tests", "command": "pytest", "passed": True},
+                {"name": "security-scan", "command": "bandit", "status": "not_run"},
+                {"name": "mystery-check"},
+            ],
+        )
+        text = contract.to_parent_text()
+        # genuinely observed outcomes render as observed...
+        assert "unit-tests [passed]" in text
+        assert "security-scan [not_run]" in text
+        # ...and an oracle without an observation never renders as a pass
+        assert "mystery-check [unverified]" in text
+
     def test_compression_ratio_positive(self):
         contract = DeepHandoffContract(
             status=DeepExecutionStatus.SUCCESS,

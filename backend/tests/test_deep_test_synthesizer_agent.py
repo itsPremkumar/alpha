@@ -30,4 +30,10 @@ class TestDeepTestSynthesizerAgent:
         agent = DeepTestSynthesizerAgent()
         contract = agent.synthesize({"billing": 0.5}, "billing", "calculate_total", session_id="s-test")
         assert contract.is_success()
-        assert len(contract.test_oracles) >= 1
+        # Stage-4c honesty: the generated tests never ran, so no oracle may
+        # claim a pass, and no verification stamp or mutation score exists.
+        assert all(oracle.get("passed") is not True for oracle in contract.test_oracles)
+        assert any(oracle.get("status") == "not_run" for oracle in contract.test_oracles)
+        assert contract.security_stamps == []
+        assert "Mutation score" not in contract.executive_summary
+        assert "were not executed" in contract.executive_summary
