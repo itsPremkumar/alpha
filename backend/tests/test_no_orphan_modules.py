@@ -49,10 +49,6 @@ ALLOWED_ORPHANS: dict[str, str] = {
     # RSI Wave-3 C2a evidence bundle: provenance store read/written by C2c's
     # promotion.decide() composition at the same serialization point.
     "alpha.rsi.evidence_bundle": "RSI Wave-3 C2a evidence bundle; wired by C2c promotion.py at the wave serialization point",
-    # The workflows router module commits now (so alpha.workflow.* stay
-    # referenced), but its app.py mount hunk shares that file with in-flight
-    # voice edits; the mount lands in the gateway batch, then this entry goes.
-    "app.gateway.routers.workflows": "mounted by the held app.py hunk (shared file with in-flight voice work); mount + entry land in the gateway batch",
 }
 
 # Standalone ``python -m <module>`` entry points. Nothing imports these by

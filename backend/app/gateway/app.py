@@ -76,6 +76,7 @@ from app.gateway.routers import (
     thread_runs,
     threads,
     uploads,
+    workflows,
 )
 from app.gateway.security_headers_middleware import SecurityHeadersMiddleware
 from app.gateway.trace_middleware import TraceMiddleware
@@ -981,6 +982,7 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     app.include_router(commands.router)
     app.include_router(commands.router, prefix="/api/gateway")
     app.include_router(missions.router)
+    app.include_router(workflows.router)
     app.include_router(openai_compat.router)
     app.include_router(policy.router)
     app.include_router(council.router)

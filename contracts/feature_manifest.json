@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-09-22T09:44:14Z",
+ "generated_at": "2026-09-23T20:34:52Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -954,6 +954,22 @@
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
    "state": "wired"
+  },
+  {
+   "id": "keyless_web_search",
+   "module": "alpha.tools.builtins.keyless_web_search_tool",
+   "symbol": "keyless_web_search",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "deep_web_search",
+   "module": "alpha.tools.builtins.deep_web_search_tool",
+   "symbol": "deep_web_search",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
   }
  ],
  "routers": [
@@ -1238,6 +1254,14 @@
    "state": "wired"
   },
   {
+   "id": "app.gateway.routers.multimodal",
+   "module": "app.gateway.routers.multimodal",
+   "symbol": "router",
+   "wiring_point": "app.gateway.app:include_router",
+   "wired": true,
+   "state": "wired"
+  },
+  {
    "id": "app.gateway.routers.openai_compat",
    "module": "app.gateway.routers.openai_compat",
    "symbol": "router",
@@ -1392,6 +1416,14 @@
   {
    "id": "app.gateway.routers.uploads",
    "module": "app.gateway.routers.uploads",
+   "symbol": "router",
+   "wiring_point": "app.gateway.app:include_router",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "app.gateway.routers.workflows",
+   "module": "app.gateway.routers.workflows",
    "symbol": "router",
    "wiring_point": "app.gateway.app:include_router",
    "wired": true,
