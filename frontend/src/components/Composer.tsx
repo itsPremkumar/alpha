@@ -1,9 +1,11 @@
 "use client";
 
 import React, { useRef, useEffect, useState, useMemo } from "react";
-import { Send, Square, Wand2, Paperclip, Terminal, ChevronRight } from "lucide-react";
+import { Send, Square, Wand2, Paperclip, Terminal, ChevronRight, Mic, MicOff } from "lucide-react";
 import { AIModel, SlashCommandInfo } from "@/types/chat";
 import { fetchCommands } from "@/lib/api";
+import { transcribeAudio } from "@/lib/voice";
+import { VoiceControls } from "@/components/VoiceControls";
 import { SlashCommand } from "@/lib/commands";
 import { branding } from "@/lib/branding";
 
@@ -41,6 +43,13 @@ interface ComposerProps {
   /** Attach files to the active conversation. */
   onAttach?: (files: FileList) => void;
   uploading?: boolean;
+  /** Pasted/dropped images land here so the host can upload them. */
+  onPasteFiles?: (files: File[]) => void;
+  /** Mic dictation: host transcribes and inserts text at the cursor. */
+  onDictate?: (text: string) => void;
+  dictating?: boolean;
+  /** Honest free-model status line shown under the selector tooltip. */
+  freeNote?: string | null;
   /** All shortcut commands (for the "/" palette). */
   slashCommands?: SlashCommand[];
 }
@@ -58,6 +67,10 @@ export function Composer({
   polishing,
   onAttach,
   uploading,
+  onPasteFiles,
+  onDictate,
+  dictating,
+  freeNote,
   slashCommands,
 }: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -123,6 +136,67 @@ export function Composer({
     setInput(`${cmd.command} `);
     setIsDismissed(true);
     textareaRef.current?.focus();
+  };
+
+  // Paste images/files straight from the clipboard (screenshots, copied files).
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = Array.from(e.clipboardData?.files || []).filter((f) =>
+      f.type.startsWith("image/") || f.size > 0
+    );
+    if (files.length > 0 && onPasteFiles) {
+      e.preventDefault();
+      onPasteFiles(files);
+    }
+    // Plain text + URLs paste normally into the textarea.
+  };
+
+  // Mic dictation: record → POST /api/multimodal/stt → insert transcript.
+  const [recording, setRecording] = useState(false);
+  const [recError, setRecError] = useState<string | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const [transcribing, setTranscribing] = useState(false);
+
+  const toggleRecording = async () => {
+    if (recording) {
+      mediaRecorderRef.current?.stop();
+      return;
+    }
+    setRecError(null);
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setRecError("Mic not available in this browser.");
+        return;
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const rec = new MediaRecorder(stream);
+      chunksRef.current = [];
+      rec.ondataavailable = (ev) => {
+        if (ev.data.size > 0) chunksRef.current.push(ev.data);
+      };
+      rec.onstop = async () => {
+        setRecording(false);
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
+        if (blob.size === 0) return;
+        setTranscribing(true);
+        try {
+          const text = await transcribeAudio(blob);
+          setInput(input ? `${input}\n${text}` : text);
+          onDictate?.(text);
+          textareaRef.current?.focus();
+        } catch {
+          setRecError("Couldn't transcribe — voice may be disabled server-side.");
+        } finally {
+          setTranscribing(false);
+        }
+      };
+      mediaRecorderRef.current = rec;
+      rec.start();
+      setRecording(true);
+    } catch {
+      setRecError("Mic permission denied.");
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -203,6 +277,7 @@ export function Composer({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           placeholder="Ask anything or type / for Master Slash Commands..."
           rows={1}
           aria-label="Message the agent"
@@ -215,8 +290,8 @@ export function Composer({
             <select
               value={selectedModel}
               onChange={(e) => onSelectModel(e.target.value)}
-              className="text-xs bg-muted/60 border border-border/80 rounded-lg px-2.5 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 font-medium cursor-pointer max-w-36 truncate"
-              title="Language model for this chat"
+              className="text-xs bg-muted/60 border border-border/80 rounded-lg px-2.5 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 font-medium cursor-pointer max-w-56 truncate"
+              title={freeNote || "Language model for this chat"}
               aria-label="Language model"
             >
               {models.length === 0 ? (
@@ -265,6 +340,26 @@ export function Composer({
                 <Wand2 className={`size-4 ${polishing ? "animate-pulse text-primary" : ""}`} />
               </button>
             )}
+            {/* Mic dictation */}
+            <button
+              type="button"
+              onClick={toggleRecording}
+              disabled={transcribing || dictating}
+              className={`p-1.5 rounded-lg transition-colors disabled:opacity-40 ${
+                recording ? "text-destructive hover:bg-destructive/10" : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+              title={recording ? "Stop recording" : transcribing ? "Transcribing…" : "Dictate with mic"}
+              aria-label={recording ? "Stop recording" : "Dictate with mic"}
+            >
+              {recording ? <MicOff className="size-4 animate-pulse" /> : <Mic className={`size-4 ${transcribing ? "animate-pulse text-primary" : ""}`} />}
+            </button>
+            <VoiceControls
+              onTranscript={(text) => {
+                setInput(input ? `${input}\n${text}` : text);
+                onDictate?.(text);
+                textareaRef.current?.focus();
+              }}
+            />
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
@@ -295,6 +390,8 @@ export function Composer({
       </div>
       <div className="text-[11px] text-center text-muted-foreground mt-2">
         {branding.name} • Type <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] font-mono">/</kbd> for commands • <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] font-mono">Enter</kbd> to send • <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] font-mono">Shift + Enter</kbd> for new line
+        {recError && <span className="block text-destructive mt-1">{recError}</span>}
+        {(transcribing || dictating) && <span className="block text-primary mt-1">Transcribing voice…</span>}
       </div>
     </div>
   );

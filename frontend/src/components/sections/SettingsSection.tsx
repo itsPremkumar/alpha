@@ -27,6 +27,17 @@ import { fetchIntegrationHealth, IntegrationHealth } from "@/lib/integration";
 import { Section, StatCard, Badge, Btn, Field, inputCls, ErrorBox, Notice, SkeletonList } from "@/components/ui";
 import { errMsg } from "@/lib/http";
 import { branding } from "@/lib/branding";
+import { getCapabilities, type CapabilitiesReport } from "@/lib/multimodal";
+import { readAutoplayEnabled, writeAutoplayEnabled } from "@/lib/voice";
+
+/** Observed probe-status badge styling for the Voice & Speakers engine matrix. */
+function probeBadge(status: string): string {
+  if (status === "available") return "bg-emerald-500/10 text-emerald-400 border-emerald-500/30";
+  if (status === "not_configured") return "bg-amber-500/10 text-amber-400 border-amber-500/30";
+  if (status === "not_installed") return "bg-red-500/10 text-red-400 border-red-500/30";
+  if (status === "probe_failed") return "bg-red-500/10 text-red-400 border-red-500/30";
+  return "bg-muted text-muted-foreground border-border";
+}
 
 interface SettingsSectionProps {
   currentModel?: string;
@@ -47,6 +58,26 @@ export function SettingsSection({ currentModel = "default", onModelChange, onOpe
       setSelectedModel(currentModel);
     }
   }, [currentModel]);
+
+  // Voice & Speakers: observed multimodal capabilities + local autoplay preference.
+  const [voiceReport, setVoiceReport] = useState<CapabilitiesReport | null>(null);
+  const [voiceReportError, setVoiceReportError] = useState<string | null>(null);
+  const [voiceAutoplay, setVoiceAutoplay] = useState(false);
+
+  useEffect(() => {
+    setVoiceAutoplay(readAutoplayEnabled());
+    let alive = true;
+    getCapabilities()
+      .then((report) => {
+        if (alive) setVoiceReport(report);
+      })
+      .catch((err: unknown) => {
+        if (alive) setVoiceReportError(err instanceof Error ? err.message : String(err));
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // System & connectivity state
   const [probes, setProbes] = useState<Probe[]>([]);
@@ -610,6 +641,75 @@ export function SettingsSection({ currentModel = "default", onModelChange, onOpe
                 Clear Local Session Cache
               </Btn>
             </div>
+          </div>
+
+          <div className="rounded-2xl border border-border/70 bg-card p-4 space-y-3">
+            <h3 className="text-sm font-semibold text-foreground">Voice & Speakers</h3>
+            <p className="text-xs text-muted-foreground">
+              Wake word, speech engines, and speaker playback (observed from the gateway capabilities report).
+            </p>
+            {voiceReportError ? (
+              <ErrorBox message={`Capabilities unavailable: ${voiceReportError}`} />
+            ) : !voiceReport ? (
+              <SkeletonList rows={3} />
+            ) : (
+              <div className="space-y-3">
+                <label className="flex items-start gap-2 text-sm text-foreground cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={voiceAutoplay}
+                    onChange={(e) => {
+                      setVoiceAutoplay(e.target.checked);
+                      writeAutoplayEnabled(e.target.checked);
+                    }}
+                    className="mt-0.5 size-4 rounded border-border text-primary focus:ring-primary/40 cursor-pointer"
+                  />
+                  <span>
+                    Autoplay replies
+                    <span className="block text-[11px] text-muted-foreground">
+                      Saved in this browser; automatic playback of new replies is not wired in this build — use the speaker button on any answer.
+                    </span>
+                  </span>
+                </label>
+                {voiceReport.voice.enabled ? (
+                  <p className="text-xs text-muted-foreground">
+                    Wake word: <span className="font-mono text-foreground">{voiceReport.voice.wake_word?.engine ?? "unset"}</span>
+                    {" · threshold "}
+                    <span className="font-mono text-foreground">{voiceReport.voice.wake_word?.threshold ?? "—"}</span>
+                    {" · armed by default "}
+                    {voiceReport.voice.wake_word?.armed_default ? "yes" : "no"} (arming is always user-initiated in the UI)
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground italic">voice disabled (voice.enabled=false)</p>
+                )}
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Engine availability (observed)
+                  </span>
+                  {(["wake_word", "tts", "stt", "ocr", "vision", "image_gen"] as const).map((capability) => {
+                    const rows = voiceReport.rows.filter((row) => row.capability === capability);
+                    if (rows.length === 0) return null;
+                    return (
+                      <div key={capability} className="space-y-1">
+                        <span className="text-[11px] text-foreground">{capability.replace("_", " ")}</span>
+                        <div className="flex flex-wrap gap-1">
+                          {rows.map((row) => (
+                            <span
+                              key={`${row.tier}-${row.engine}`}
+                              title={row.detail}
+                              className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${probeBadge(row.status)}`}
+                            >
+                              {row.tier} · {row.engine}: {row.status}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="text-[10px] text-muted-foreground">{voiceReport.note}</p>
+              </div>
+            )}
           </div>
         </div>
       )}

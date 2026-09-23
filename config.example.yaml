@@ -3173,3 +3173,23 @@ autonomy:
 capabilities:
   enabled: true                 # master switch for the capability loader
   capabilities: {}              # per-capability opt-in, e.g. { net_policy: true }
+
+# ============================================================================
+# Voice & multimodal (mic / speaker / wake word - free, keyless, local fallback)
+# ============================================================================
+# Schema: alpha/config/voice_config.py. Every field has a default, so an absent
+# block behaves exactly like `voice: {enabled: true}` (no config_version bump).
+# Engines degrade honestly: missing extras answer not_installed / not_configured
+# in GET /api/multimodal/capabilities instead of pretending to work.
+voice:
+  enabled: true                   # master switch; false -> voice endpoints answer an honest 404
+  wake_word:
+    engine: openwakeword          # only openwakeword ships today
+    threshold: 0.5                # score in [0,1] at which a frame wakes the session (score is always disclosed)
+    armed_default: false          # UI starts wake-disarmed: arming is always user-initiated (privacy)
+  tts:
+    autoplay: false               # never auto-play assistant speech; use the per-message speaker button
+    voice: null                   # null -> the serving engine chooses its voice
+  stt:
+    model_size: small             # faster-whisper size: tiny/base/small/medium/large-*
+    language: null                # null -> engine auto-detects the language

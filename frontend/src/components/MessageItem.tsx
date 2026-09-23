@@ -1,14 +1,16 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Bot, User, Brain, Copy, Check, ThumbsUp, ThumbsDown, RotateCcw, Pencil, Users, ShieldCheck } from "lucide-react";
+import { Bot, User, Brain, Copy, Check, ThumbsUp, ThumbsDown, RotateCcw, Pencil, Users, ShieldCheck, FileDown } from "lucide-react";
 import { ChatMessage } from "@/types/chat";
 import { branding } from "@/lib/branding";
 import { ToolPill } from "./ToolPill";
 import { TodoBlock } from "./TodoBlock";
 import { HumanApprovalCard } from "./HumanApprovalCard";
+import { Volume2, Loader2, AlertCircle } from "lucide-react";
+import { synthesizeSpeech, MultimodalError } from "@/lib/multimodal";
 
 interface MessageItemProps {
   message: ChatMessage;
@@ -41,10 +43,90 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
 
   const displayContent = dmMatch ? dmMatch[2] : groupMatch ? groupMatch[4] : message.content;
 
+  // Speaker playback: POST /tts → objectURL → <audio>; revoke on cleanup (plan §6).
+  const [speaking, setSpeaking] = useState(false);
+  const [speechLoading, setSpeechLoading] = useState(false);
+  const [speakError, setSpeakError] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const urlRef = useRef<string | null>(null);
+
+  const stopSpeech = () => {
+    const audio = audioRef.current;
+    if (audio) {
+      audio.onended = null;
+      audio.onerror = null;
+      audio.pause();
+      audioRef.current = null;
+    }
+    if (urlRef.current) {
+      URL.revokeObjectURL(urlRef.current);
+      urlRef.current = null;
+    }
+    setSpeaking(false);
+  };
+
+  const playSpeech = async () => {
+    if (speechLoading) return;
+    if (speaking) {
+      stopSpeech();
+      return;
+    }
+    const text = displayContent.slice(0, 4000);
+    if (!text.trim()) {
+      setSpeakError("Nothing to speak in this message.");
+      return;
+    }
+    setSpeakError(null);
+    setSpeechLoading(true);
+    try {
+      const { blob } = await synthesizeSpeech(text);
+      if (blob.size === 0) throw new MultimodalError(503, "tts", "serving engine returned 0 audio bytes");
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      urlRef.current = url;
+      audioRef.current = audio;
+      audio.onended = () => stopSpeech();
+      audio.onerror = () => {
+        setSpeakError("The browser failed to play the audio.");
+        stopSpeech();
+      };
+      setSpeaking(true);
+      await audio.play();
+    } catch (err) {
+      stopSpeech();
+      setSpeakError(
+        err instanceof MultimodalError
+          ? err.attempts.length > 0
+            ? `${err.message} — ${err.formatAttempts()}`
+            : err.message
+          : err instanceof Error
+            ? err.message
+            : String(err),
+      );
+    } finally {
+      setSpeechLoading(false);
+    }
+  };
+
+  // Plan §6: revoke object URLs when the message unmounts mid-playback.
+  useEffect(() => () => stopSpeech(), []);
+
   const copyToClipboard = () => {
     navigator.clipboard.writeText(displayContent);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const downloadResponse = () => {
+    const blob = new Blob([displayContent], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${isUser ? "prompt" : "response"}-${message.id}.md`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
   };
 
   return (
@@ -158,10 +240,47 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
               type="button"
               onClick={copyToClipboard}
               className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
-              title="Copy message"
+              title={isUser ? "Copy prompt" : "Copy answer"}
+              aria-label={isUser ? "Copy prompt" : "Copy answer"}
             >
               {copied ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
             </button>
+            <button
+              type="button"
+              onClick={downloadResponse}
+              className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+              title={isUser ? "Download prompt (.md)" : "Download answer (.md)"}
+              aria-label={isUser ? "Download prompt" : "Download answer"}
+            >
+              <FileDown className="size-3.5" />
+            </button>
+            {!isUser && (
+              <button
+                type="button"
+                onClick={() => void playSpeech()}
+                className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                title={
+                  speakError
+                    ? `Speech failed: ${speakError}`
+                    : speaking
+                      ? "Stop speech"
+                      : speechLoading
+                        ? "Generating speech…"
+                        : displayContent.length > 4000
+                          ? "Listen to this answer (first 4,000 characters)"
+                          : "Listen to this answer"
+                }
+                aria-label={speaking ? "Stop speech" : "Listen to this answer"}
+              >
+                {speakError ? (
+                  <AlertCircle className="size-3.5 text-destructive" />
+                ) : speechLoading ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Volume2 className={`size-3.5 ${speaking ? "text-primary" : ""}`} />
+                )}
+              </button>
+            )}
           </div>
         </div>
 

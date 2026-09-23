@@ -111,8 +111,10 @@ def ocr_local(image: bytes) -> dict[str, Any]:
     def _rapidocr(data: bytes) -> str:
         from rapidocr_onnxruntime import RapidOCR
 
+        # LoadImage decodes raw ``bytes`` through PIL; handing it a 1-D
+        # uint8 array raises LoadImageError (ndim 1 not in [2, 3]).
         engine = RapidOCR()
-        result, _elapse = engine(np.frombuffer(data, dtype=np.uint8))
+        result, _elapse = engine(data)
         if not result:
             return ""
         return "\n".join(str(entry[1]) for entry in result if len(entry) >= 2)

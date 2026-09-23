@@ -81,15 +81,20 @@ def _unavailable(exc: MultimodalUnavailableError) -> HTTPException:
     )
 
 
-def _success_payload(result: Any) -> dict[str, Any]:
-    return {
-        "ok": True,
-        "text": result.data.get("text"),
-        "engine": result.engine,
-        "tier": result.tier,
-        "attempts": result.attempts,
-        "note": result.note,
-    }
+def _success_payload(result: Any, *, stt: bool = False) -> dict[str, Any]:
+    payload: dict[str, Any] = {"ok": True, "text": result.data.get("text")}
+    if stt:
+        # Plan §5 STT contract: {ok, text, language, engine, tier, attempts, note}.
+        payload["language"] = result.data.get("language")
+    payload.update(
+        {
+            "engine": result.engine,
+            "tier": result.tier,
+            "attempts": result.attempts,
+            "note": result.note,
+        }
+    )
+    return payload
 
 
 @router.get(
@@ -193,7 +198,7 @@ async def stt(request: Request, config: AppConfig = Depends(get_config), audio: 
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    return _success_payload(result)
+    return _success_payload(result, stt=True)
 
 
 @router.post(
@@ -338,11 +343,19 @@ async def voice_websocket(websocket: WebSocket) -> None:
     session: WakeWordSession | None = None
 
     def _make_session(voice_cfg: VoiceConfig) -> WakeWordSession:
+        # Honesty: a wake transcript must name the engine that actually produced
+        # the text (the STT chain result) — not just the wake scorer.
+        transcript_source: dict[str, Any] = {}
+
         def transcribe(pcm: bytes) -> str:
             result = _transcribe_pcm(pcm, voice_cfg)
+            transcript_source["engine"] = result.engine
+            transcript_source["tier"] = result.tier
             return str(result.data.get("text") or "")
 
-        return WakeWordSession(threshold=voice_cfg.wake_word.threshold, transcribe_fn=transcribe)
+        session = WakeWordSession(threshold=voice_cfg.wake_word.threshold, transcribe_fn=transcribe)
+        session.transcript_source = transcript_source
+        return session
 
     while True:
         try:
@@ -406,7 +419,15 @@ async def voice_websocket(websocket: WebSocket) -> None:
                     }
                 )
                 if "transcript" in event:
-                    await _send({"type": "transcript", "text": event["transcript"], "engine": session.engine_name if session else "openwakeword"})
+                    source = getattr(session, "transcript_source", None) or {}
+                    await _send(
+                        {
+                            "type": "transcript",
+                            "text": event["transcript"],
+                            "engine": source.get("engine") or (session.engine_name if session else "openwakeword"),
+                            "tier": source.get("tier"),
+                        }
+                    )
                 elif "transcript_error" in event:
                     await _send({"type": "engine", "capability": "stt", "status": "unavailable", "detail": event["transcript_error"]})
             elif int(event.get("frames", 0)) % 10 == 0:
