@@ -119,7 +119,11 @@ def test_bot_clone_engine_evolution():
     assert evolved.version == 2
     assert "citation_scoring" in evolved.skills
     assert "EVOLUTIONARY DIRECTIVE" in evolved.soul
-    assert evolved.reputation_score > 0.8
+    # Evolution NEVER inflates reputation: the caller's performance_delta is an
+    # unverified claim, so the new generation inherits the source's score and
+    # moves only through observed task outcomes (alpha.bots.performance).
+    assert evolved.reputation_score == 0.8
+    assert evolved.metadata["reputation_basis"].startswith("inherited from researcher")
 
 
 def test_workflow_bot_nodes_fail_honestly_without_executor(monkeypatch):

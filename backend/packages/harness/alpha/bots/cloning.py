@@ -200,12 +200,17 @@ class BotCloneEngine:
             reports_to=source_profile.reports_to,
             capabilities=list(source_profile.capabilities),
             version=new_version,
-            reputation_score=min(1.0, source_profile.reputation_score + 0.1),
+            # Reputation is INHERITED, never bumped by evolution: the caller's
+            # performance_delta is an unverified claim (free-form dict), and
+            # reputation moves only through observed task outcomes
+            # (alpha.bots.performance — success boost / failure penalty).
+            reputation_score=source_profile.reputation_score,
             metadata={
                 **source_profile.metadata,
                 "evolved_from": source_name,
                 "generation": new_version,
                 "performance_delta": performance_delta,
+                "reputation_basis": f"inherited from {source_name}; moves only via observed task outcomes (alpha.bots.performance)",
             },
         )
 
