@@ -1,20 +1,25 @@
 """Tests for the RSI evaluator-surface manifest (WP-A2, feature #2).
 
-Covers: a deterministic ``state="complete"`` manifest over the real surface,
-one-byte tamper detection (quarantine semantics), missing-file fail-closed
-behavior, honest SHA-256 provenance (hashes equal ``hashlib.sha256`` over the
-actual bytes), suite-version drift, and honest handling of missing/corrupt
-stored baselines.
+Covers: ``state="complete"`` over the live real surface, deterministic
+double-builds over an immutable snapshot of that surface's bytes, one-byte
+tamper detection (quarantine semantics), missing-file fail-closed behavior,
+honest SHA-256 provenance (hashes equal ``hashlib.sha256`` over the actual
+bytes), suite-version drift, and honest handling of missing/corrupt stored
+baselines.
 
 Every test pins ``AGENT_WORKSPACE_HOME`` to a temp dir (the environment does
-not isolate it) and tamper scenarios run over a temp tree — the repository's
-own surface is never written.
+not isolate it); tamper/determinism scenarios run over temp trees — the
+repository's own surface is never written. (Concurrent Wave-1 siblings *do*
+write ``backend/tests/**`` while this suite runs, which is why equal-dicts
+assertions use a frozen snapshot of the real bytes rather than the live
+tree.)
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -56,19 +61,37 @@ def _write_surface(root: Path) -> None:
         path.write_text(text, encoding="utf-8")
 
 
-def test_manifest_over_real_surface_is_complete_and_deterministic():
-    first = build_manifest()
-    second = build_manifest()
+def _snapshot_surface(src_root: Path, dst_root: Path) -> int:
+    """Copy every EVALUATOR_SURFACE file from ``src_root`` into an immutable tree."""
+    seen: set[Path] = set()
+    copied = 0
+    for pattern in EVALUATOR_SURFACE:
+        for path in src_root.glob(pattern):
+            if not path.is_file() or path in seen:
+                continue
+            rel_parts = path.relative_to(src_root).parts
+            if "__pycache__" in rel_parts:
+                continue
+            seen.add(path)
+            target = dst_root.joinpath(*rel_parts)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, target)
+            copied += 1
+    return copied
 
+
+def test_manifest_over_real_surface_is_complete_and_deterministic(tmp_path):
     assert isinstance(EVALUATOR_SURFACE, tuple)
     assert EVALUATOR_SURFACE and all(isinstance(pattern, str) for pattern in EVALUATOR_SURFACE)
-    assert first == second, "two builds over an unchanged tree must be equal"
-    assert first["version"] == MANIFEST_VERSION == 1
-    assert first["state"] == "complete"
-    assert first["missing"] == []
-    assert all(value.startswith("sha256:") for value in first["files"].values())
 
-    covered = set(first["files"])
+    # Completeness (and shape) over the *live* real surface, per plan §3 WP-A2.
+    live = build_manifest()
+    assert live["version"] == MANIFEST_VERSION == 1
+    assert live["state"] == "complete"
+    assert live["missing"] == []
+    assert all(value.startswith("sha256:") for value in live["files"].values())
+
+    covered = set(live["files"])
     assert any(rel.startswith("backend/tests/") for rel in covered)
     assert any(rel.startswith("backend/packages/harness/alpha/benchmarks/") for rel in covered)
     assert any(rel.startswith("backend/packages/harness/alpha/safety/") for rel in covered)
@@ -76,12 +99,32 @@ def test_manifest_over_real_surface_is_complete_and_deterministic():
     assert "backend/packages/harness/alpha/reproduction/gates.py" in covered
     assert "backend/packages/harness/alpha/policy/engine.py" in covered
 
-    assert first["suite_versions"], "nightly eval suites must be registered and reported"
-    for entry in first["suite_versions"].values():
+    assert live["suite_versions"], "nightly eval suites must be registered and reported"
+    for entry in live["suite_versions"].values():
         assert set(entry) == {"name", "version", "cases"}
 
-    allowed, reason = manifest_allows_cycle(first)
+    allowed, reason = manifest_allows_cycle(live)
     assert allowed is True, reason
+
+    # Determinism ("two builds, equal dicts") over an immutable snapshot of
+    # the real surface's bytes. Concurrent Wave-1 siblings create files under
+    # backend/tests/** while this test runs (observed mid-run:
+    # test_rsi_lineage.py / test_execution_mode.py / test_rsi_opportunity.py
+    # saved by other agents during the build window), so equality over the
+    # live tree would assert a race, not determinism. The snapshot freezes
+    # the inputs: any difference between the two builds can then only come
+    # from the manifest algorithm itself.
+    repo_root = Path(__file__).resolve().parents[2]
+    snapshot = tmp_path / "surface_snapshot"
+    copied = _snapshot_surface(repo_root, snapshot)
+    assert copied > 0
+
+    first = build_manifest(root=snapshot)
+    second = build_manifest(root=snapshot)
+    assert first == second, "two builds over identical bytes must be equal"
+    assert first["state"] == "complete"
+    assert first["missing"] == []
+    assert first["suite_versions"] == live["suite_versions"]
 
 
 def test_one_byte_tamper_is_detected_and_file_is_named(tmp_path):
@@ -188,8 +231,11 @@ def test_corrupt_baseline_reports_real_error_and_never_verifies():
     assert any("unreadable" in line and "JSONDecodeError" in line for line in changes), changes
 
 
-def test_store_cycle_manifest_round_trip_and_cycle_id_validation():
-    manifest = build_manifest()
+def test_store_cycle_manifest_round_trip_and_cycle_id_validation(tmp_path):
+    # A frozen tmp surface keeps store→load→verify race-free (siblings keep
+    # writing backend/tests/** in parallel with this suite).
+    _write_surface(tmp_path)
+    manifest = build_manifest(root=tmp_path)
     path = store_cycle_manifest("cycle-0001", manifest)
     assert path.name == "cycle-0001.json"
     assert json.loads(path.read_text(encoding="utf-8")) == manifest
@@ -198,7 +244,7 @@ def test_store_cycle_manifest_round_trip_and_cycle_id_validation():
 
     store_baseline(manifest)
     assert load_baseline() == manifest
-    ok, changes = verify_baseline()
+    ok, changes = verify_baseline(root=tmp_path)
     assert ok is True and changes == [], changes
 
     for unsafe in ("../escape", "nested/id", "", "."):
