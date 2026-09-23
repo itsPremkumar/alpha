@@ -69,7 +69,7 @@ cd backend && make dev
 ```bash
 cd frontend && pnpm dev
 # Frontend at http://localhost:3000 (Webpack default)
-# Or: AGENT_WORKSPACE_DEV_BUNDLER=turbo pnpm dev (Turbopack)
+# Or: pnpm dev --turbopack (Turbopack)
 ```
 
 ### Stopping

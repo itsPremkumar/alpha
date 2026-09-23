@@ -29,6 +29,8 @@ Updated: 2026-09-23 · cycle base `3910838` · remote `main` @ `https://github.c
 | `scripts/prod_check.py --strict` | ✅ | **0 failures / 0 warnings** — “production ready” (now also compares harness pyproject) |
 | `scripts/verify_versions.sh` (all version sources incl. harness) | ✅ | exit 0 in both modes via Git-bash login shell (prints all 5 figures incl. harness 2.1.0); `bash -n` exit 0 on bump+verify; note: `verify-versions.yml` gates v* tags only, so this local run is the push-cycle gate |
 | Zero-unwired-features wiring audit (`scripts/audit_frontend_wiring.py`) | ✅ | **216/216 frontend call sites → real gateway routes (454), exit 0**; found + fixed 3 real defects (see fix-log #5) |
+| Env config wiring audit (`scripts/audit_env_wiring.py`) | ✅ | **DEAD-SET 0 / SET-ONLY 0, exit 0** after two pattern fixes; no launcher sets a rename-family variable nothing reads; 57 READ-ONLY entries are optional code-defaulted knobs (incl. `AGENT_WORKSPACE_ENV` prod marker — label-only, unset by design in every shipped config) |
+| Docker compose config (prod + dev) | ✅ | docker 29.8.0 / compose v5.5.0: both files validate (exit 0; unset-secret warnings are pre-`.env` interpolation only); no host-local absolute paths; images pinned `redis:7|8-alpine`, `nginx:alpine` (no `:latest`) |
 
 ## B. Self-healing runtime (four layers)
 
@@ -42,6 +44,7 @@ Updated: 2026-09-23 · cycle base `3910838` · remote `main` @ `https://github.c
 | Watchdog behaviour under load | ✅ | watchdog.log: readiness flaps to `starting` under CPU load are **deferred** (no restart loop), gateway uptime continuous (no restart observed across probes) |
 | Live stack heartbeat | ✅ | `GET :8001/health` 200 `healthy`; `GET :8001/health/ready` 200 `database:ok checkpointer:ok`; frontend `:3000` listening; heartbeat files fresh |
 | Tray state display (state-colored icon behind `^` chevron) | 🟡 | tray process + `logs/tray.log` verified running; **visual confirmation from user pending** |
+| Unplanned full-stack recovery — **2 real events** | ✅ | OpenCode server restarts at **07:44** and **08:15** killed launcher+gateway+frontend (harness children); `watchdog.log` shows **Layer-4 `loop_recreate` + `full_restart` escalation** both times (`pid=13192 alive=False → repairing`, `escalation after 1 failing checks: gateway=down frontend=down launcher=dead`); stack healthy again within seconds, all tasks `Ready` — and the restarted gateway came up with the new config (`docs_enabled: false`, `version: 2.1.0` live) |
 
 ## C. Configuration & worldwide portability
 
@@ -59,8 +62,8 @@ Updated: 2026-09-23 · cycle base `3910838` · remote `main` @ `https://github.c
 |---|---|---|
 | `GET /health`, `GET /health/ready` | ✅ | 200 / 200 with DB + checkpointer probes OK |
 | `GET /api/ops/status` | ✅ | 200: `status ok`, `uptime_seconds`, `time_utc`, `docs_enabled` flag present |
-| `GET /api/ops/version` | 🟡 | **bug found + fixed**: resolver looked up a duplicated, non-existent dist tuple `("agent-workspace", "agent-workspace")` → always `"unknown"`. Fixed to `agent-workspace-harness → alpha → agent-workspace` with a chain-order regression test; **unit ✅ 16/16** (`test_ops_router.py` + docs-toggle); **deployment path ✅** — image runs `uv sync --locked` over the workspace that ships the harness dist, so metadata resolves in-container. **Live probe pending the controlled restart below** |
-| `/docs` `/redoc` `/openapi.json` in production | 🟡 | template/env now default off; the **running** gateway started before the `.env` change (`docs_enabled: true` on live `/api/ops/status`) → enforce on next controlled restart |
+| `GET /api/ops/version` | ✅ | **bug found + fixed**: resolver looked up a duplicated, non-existent dist tuple `("agent-workspace", "agent-workspace")` → always `"unknown"`. Fixed to `agent-workspace-harness → alpha → agent-workspace` with a chain-order regression test; **unit ✅ 16/16**; **deployment path ✅** (image ships harness dist via `uv sync --locked` workspace). **Live ✅**: `GET /api/ops/version` → `"version":"2.1.0"` after the watchdog-driven restart |
+| `/docs` `/redoc` `/openapi.json` in production | ✅ | template/env default off; **live ✅**: `/api/ops/status` → `"docs_enabled":false` confirmed on the running gateway (restart picked up `.env`) |
 
 ## E. Test debt & honesty items
 
@@ -80,7 +83,7 @@ Updated: 2026-09-23 · cycle base `3910838` · remote `main` @ `https://github.c
 |---|---|---|
 | Reboot verification | ⬜ | after reboot run: `powershell -ExecutionPolicy Bypass -File scripts\verify_reboot.ps1` |
 | Tray icon visual check | ⬜ | confirm state-colored circle behind the `^` chevron (hover/click/menu) |
-| Controlled gateway restart | ⏳ | deferred until the full backend suite completes; one restart picks up **both** `docs_enabled=false` and the `/api/ops/version` fix — then re-probe both endpoints |
+| Controlled gateway restart | ✅ | completed via the 07:44/08:15 watchdog escalations (gateway relaunched with current `.env`); live probes green: `docs_enabled: false`, `version: "2.1.0"` |
 
 ---
 
@@ -96,3 +99,9 @@ Updated: 2026-09-23 · cycle base `3910838` · remote `main` @ `https://github.c
    (c) **`/api/swarms/{id}/${action}` false positive**: `${action}` is a closed TS union; all four values (`pause|resume|cancel|step`) have real routes (`swarms.py:94–125`). Fix: documented enum-exception in the audit that re-expands and re-verifies every value each run.
    Verification ✅: audit **216/216 exit 0**; backend **97/97** (`test_channels_router` + `test_auth_middleware` + `test_csrf_middleware` + `test_feature_manifest_wiring`); frontend `tsc` exit 0 + **51/51** tests; `prod_check --strict` 0/0.
 6. **Seven mangled-rename duplicate expressions + wrong default-port doc in the desktop launcher** — same family as fix #4 (a rename collapsed `X || Y` pairs into `X || X`): `electron/main.js` set duplicate object keys (`AGENT_WORKSPACE_PROJECT_ROOT`/`CONFIG_PATH`/`HOME` in `spawnBackend`, `AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL` in both frontend spawns, `AGENT_WORKSPACE_AUTH_DISABLED` twice in `applyDesktopAuthMode`), read `process.env.AGENT_WORKSPACE_ENV` twice in `isExplicitProdEnv`, had a tautological `data.service === 'x' || data.service === 'x'` in `isAgentWorkspaceGateway`, and documented `--gateway-port` default as 8001 while the desktop actually owns **8201** (`desktop-config.json`, contradicting its own header); `frontend/next.config.mjs:9` also read the same env var twice. The duplicates were behavior-neutral (identical duplicate keys, last-wins) but are the exact pattern that caused bug #4, and the port doc was simply wrong. Fix: all seven deduped, doc corrected to 8201. Verification ✅: `node --check` on both files exit 0, electron **8/8**, adjacent-duplicate scan empty, assignment re-greps show singles, `next build` exit 0 (4/4 pages, First Load JS 197 kB) against the edited `next.config.mjs`.
+7. **Docs promised env knobs/names that nothing reads** — found by the new `scripts/audit_env_wiring.py` (SET-vs-READ sweep of `AGENT_WORKSPACE_*`/`ALPHA_*` across launchers, `.env*`, compose, docs) plus manual adjudication of its SET-ONLY list:
+   (a) **README headless/CI setup was dead**: `ALPHA_SETUP_PROVIDER`/`ALPHA_SETUP_API_KEY` (README:536) — the wizard reads `AGENT_WORKSPACE_SETUP_PROVIDER`/`AGENT_WORKSPACE_SETUP_API_KEY` (`scripts/wizard/noninteractive.py:95,152`) and nothing translates between them, so documented non-interactive setup silently ignored the provider and key. Fix: README corrected to the real names.
+   (b) **`AGENT_WORKSPACE_DEV_BUNDLER` never had a reader** (`git log -S` empty across all paths): claimed by `docs/CONFIGURATION.md`, `AGENTS.md`, `docs/DEVELOPMENT.md`. Real mechanism: `pnpm dev --turbopack`. Fix: all three docs now state the flag.
+   (c) **`AGENT_WORKSPACE_LOG_LEVEL` never had a reader**: real mechanism is `log_level:` in `config.yaml` (`AppConfig` field, `app_config.py:212`, applied by `apply_logging_level`, restart-required per `reload_boundary.py`). Fix: CONFIGURATION.md points at the real knob.
+   (d) **`SKIP_FRONTEND_BUILD` works but is not an `.env` key** (bash never reads `.env`): consumed by `Makefile:159` and `serve.sh` flag `-skip-frontend-build`; Windows `start.ps1` already reuses an existing `.next` build (`start.ps1:539`). Fix: CONFIGURATION.md states the real invocation forms.
+   Verification ✅: env audit **DEAD-SET 0 / SET-ONLY 0 exit 0** (after tightening: JS-only env-object sets, shell/make bare-`$` reads, `env.get(...)` reads); frontend wiring regression **216/216 exit 0**; `prod_check --strict` **0/0**. `AGENT_WORKSPACE_ENV` reviewed as label-only (SDK environment tag + monitor display), unset by design everywhere — recorded informational, no change.

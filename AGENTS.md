@@ -196,7 +196,7 @@ cd backend && make lint       # ruff check
 cd backend && make format     # ruff format
 
 # Frontend (see frontend/AGENTS.md for the full set)
-cd frontend && pnpm dev       # Dev server: Webpack by default (override with AGENT_WORKSPACE_DEV_BUNDLER=turbo)
+cd frontend && pnpm dev       # Dev server: Webpack by default (pnpm dev --turbopack for Turbopack)
 cd frontend && pnpm check     # Lint + type check (run before committing)
 cd frontend && pnpm test      # Unit tests
 ```

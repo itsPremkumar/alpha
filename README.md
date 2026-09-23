@@ -533,8 +533,8 @@ make doctor
 For automated Docker builds, CI/CD runners, and cloud instances:
 
 ```bash
-ALPHA_SETUP_PROVIDER=openrouter \
-ALPHA_SETUP_API_KEY=$OPENROUTER_API_KEY \
+AGENT_WORKSPACE_SETUP_PROVIDER=openrouter \
+AGENT_WORKSPACE_SETUP_API_KEY=$OPENROUTER_API_KEY \
 make setup SETUP_ARGS=--non-interactive
 ```
 

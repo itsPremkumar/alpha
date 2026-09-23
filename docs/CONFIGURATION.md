@@ -264,11 +264,14 @@ DINGTALK_CLIENT_SECRET="..."
 ```
 
 ### Optional: Feature Flags
-```bash
-AGENT_WORKSPACE_DEV_BUNDLER="webpack|turbo"
-AGENT_WORKSPACE_LOG_LEVEL="DEBUG|INFO|WARNING|ERROR"
-AGENT_WORKSPACE_SKIP_FRONTEND_BUILD="1"
-```
+
+- **Frontend dev bundler**: Webpack by default; run `pnpm dev --turbopack` for Turbopack.
+- **Gateway log level**: `log_level:` in `config.yaml` (`DEBUG|INFO|WARNING|ERROR`,
+  restart-required field in `AppConfig`).
+- **Skip frontend build**: `SKIP_FRONTEND_BUILD=1 make prod` or
+  `./scripts/serve.sh --prod --skip-frontend-build` — a make/shell variable,
+  not an `.env` key (bash does not read `.env`). On Windows, `start.ps1`
+  reuses an existing `.next` build automatically (no flag needed).
 
 ## Model Configuration Details
 
