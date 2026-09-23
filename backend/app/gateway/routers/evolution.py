@@ -24,7 +24,12 @@ class BenchmarkReport(BaseModel):
 class GateRequest(BaseModel):
     baseline: dict = Field(default_factory=dict)
     human_approved: bool = False
-    autonomous_mode: bool = True
+    #: Opt-in, mirroring alpha.evolution.engine.gate's default: omitting this
+    #: field must never grant autonomy. Omission ⇒ gated on human approval.
+    autonomous_mode: bool = Field(
+        default=False,
+        description="Opt-in autonomous gating. Defaults to False; when False, promotion requires human_approved=True (matching the evolution engine's safe default). Omission never grants autonomy.",
+    )
 
 
 @router.post("/candidates", status_code=201)
