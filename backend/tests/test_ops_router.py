@@ -36,6 +36,31 @@ def test_ops_version_falls_back_to_unknown_without_package_metadata(monkeypatch)
     assert ops_module._resolve_gateway_version() == "unknown"
 
 
+def test_ops_version_resolves_installed_harness_then_legacy_names(monkeypatch) -> None:
+    """Pin the lookup chain: agent-workspace-harness first (it carries the
+    release version), then legacy names. A duplicated name tuple previously
+    made every packaged deployment report "unknown"."""
+    looked_up: list[str] = []
+
+    def _resolver(installed: dict[str, str]):
+        def _version(name: str) -> str:
+            looked_up.append(name)
+            if name in installed:
+                return installed[name]
+            raise metadata.PackageNotFoundError(name)
+
+        return _version
+
+    monkeypatch.setattr(ops_module.metadata, "version", _resolver({"agent-workspace-harness": "2.1.0"}))
+    assert ops_module._resolve_gateway_version() == "2.1.0"
+    assert looked_up == ["agent-workspace-harness"]
+
+    looked_up.clear()
+    monkeypatch.setattr(ops_module.metadata, "version", _resolver({"agent-workspace": "9.9.9"}))
+    assert ops_module._resolve_gateway_version() == "9.9.9"
+    assert looked_up == ["agent-workspace-harness", "alpha", "agent-workspace"]
+
+
 def test_ops_status_returns_runtime_health(monkeypatch) -> None:
     monkeypatch.setattr(ops_module, "get_gateway_config", lambda: SimpleNamespace(enable_docs=False))
 

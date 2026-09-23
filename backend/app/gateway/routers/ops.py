@@ -5,8 +5,10 @@ routes expose no secrets, only the build/runtime metadata operators need for
 deploy verification, dashboards, and monitoring gates beyond ``/health`` and
 ``/health/ready`` (which stay public for orchestrator probes).
 
-* ``GET /api/ops/version`` - service name plus the installed ``agent-workspace``
-  package version (``"unknown"`` when package metadata is unavailable, e.g. an
+* ``GET /api/ops/version`` - service name plus the installed
+  ``agent-workspace-harness`` package version (the dist that carries the
+  release version; legacy ``alpha`` / ``agent-workspace`` names are tried as
+  fallbacks, and ``"unknown"`` when package metadata is unavailable, e.g. an
   unpackaged source checkout).
 * ``GET /api/ops/status`` - liveness plus process uptime, current UTC time,
   and whether the OpenAPI docs endpoints are enabled (expected ``false`` in
@@ -39,8 +41,13 @@ _PROCESS_START_MONOTONIC = time.monotonic()
 
 
 def _resolve_gateway_version() -> str:
-    """Return the installed agent-workspace / agent-workspace version, or "unknown" without metadata."""
-    for name in ("agent-workspace", "agent-workspace"):
+    """Return the installed harness package version, or "unknown" without metadata.
+
+    ``agent-workspace-harness`` is the installed dist carrying the release
+    version (kept in lockstep by scripts/bump_version.sh); the legacy names
+    remain as fallbacks for older installs.
+    """
+    for name in ("agent-workspace-harness", "alpha", "agent-workspace"):
         try:
             return metadata.version(name)
         except metadata.PackageNotFoundError:
@@ -52,7 +59,7 @@ class VersionResponse(BaseModel):
     """Deployed Gateway build identity."""
 
     service: str = Field(..., description="Gateway service name")
-    version: str = Field(..., description='Installed agent-workspace version, or "unknown" without package metadata')
+    version: str = Field(..., description='Installed agent-workspace-harness version (legacy alpha/agent-workspace fallback), or "unknown" without package metadata')
 
 
 class StatusResponse(BaseModel):

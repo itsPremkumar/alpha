@@ -9,7 +9,8 @@ you deploy it. Run from the repository root:
 Portable stdlib-only Python so it runs anywhere (no uv/pnpm needed).
 
 FAIL (exit 1):
-  - version sources disagree (backend/pyproject.toml, frontend/package.json,
+  - version sources disagree (backend/pyproject.toml,
+    backend/packages/harness/pyproject.toml, frontend/package.json,
     deploy/helm/agent-workspace/Chart.yaml version + appVersion). Fix with
     scripts/bump_version.sh <version>, like CI's verify-versions gate.
   - config.yaml or extensions_config.json missing (create with `make config`).
@@ -33,6 +34,7 @@ ROOT = Path(__file__).resolve().parent.parent
 CHART = ROOT / "deploy" / "helm" / "agent-workspace" / "Chart.yaml"
 PYPROJECT = ROOT / "backend" / "pyproject.toml"
 PACKAGE_JSON = ROOT / "frontend" / "package.json"
+HARNESS_PYPROJECT = ROOT / "backend" / "packages" / "harness" / "pyproject.toml"
 CONFIG = ROOT / "config.yaml"
 CONFIG_EXAMPLE = ROOT / "config.example.yaml"
 EXTENSIONS_CONFIG = ROOT / "extensions_config.json"
@@ -55,6 +57,8 @@ def check_versions(failures: list[str], warnings: list[str]) -> str | None:
         chart_app = re.search(r'^appVersion:\s*"?([^"\s]+)"?', chart_text, re.M).group(1)
         py_text = PYPROJECT.read_text(encoding="utf-8")
         py_version = re.search(r'^version\s*=\s*"([^"]+)"', py_text, re.M).group(1)
+        harness_text = HARNESS_PYPROJECT.read_text(encoding="utf-8")
+        harness_version = re.search(r'^version\s*=\s*"([^"]+)"', harness_text, re.M).group(1)
         js_version = json.loads(PACKAGE_JSON.read_text(encoding="utf-8"))["version"]
     except (OSError, AttributeError, KeyError, json.JSONDecodeError) as exc:
         failures.append(f"version sources unreadable: {exc}")
@@ -62,11 +66,13 @@ def check_versions(failures: list[str], warnings: list[str]) -> str | None:
 
     print(f"  Chart.yaml version/appVersion: {chart_version} / {chart_app}")
     print(f"  backend/pyproject.toml:        {py_version}")
+    print(f"  backend/packages/harness/pyproject.toml: {harness_version}")
     print(f"  frontend/package.json:         {js_version}")
     mismatched = False
     for name, actual in (
         ("Chart.yaml appVersion", chart_app),
         ("backend/pyproject.toml", py_version),
+        ("backend/packages/harness/pyproject.toml", harness_version),
         ("frontend/package.json", js_version),
     ):
         if actual != chart_version:

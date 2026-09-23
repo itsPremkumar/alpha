@@ -6,6 +6,7 @@
 #
 # Updates:
 #   backend/pyproject.toml              (version = "...")
+#   backend/packages/harness/pyproject.toml (version = "...")
 #   frontend/package.json               ("version": "...")
 #   deploy/helm/agent-workspace/Chart.yaml    (version: + appVersion:)
 #
@@ -29,21 +30,22 @@ fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PYPROJECT="$ROOT/backend/pyproject.toml"
+HARNESS="$ROOT/backend/packages/harness/pyproject.toml"
 PACKAGE="$ROOT/frontend/package.json"
 CHART="$ROOT/deploy/helm/agent-workspace/Chart.yaml"
 
-for f in "$PYPROJECT" "$PACKAGE" "$CHART"; do
+for f in "$PYPROJECT" "$HARNESS" "$PACKAGE" "$CHART"; do
   if [ ! -f "$f" ]; then
     echo "error: expected version file not found: $f" >&2
     exit 1
   fi
 done
 
-python3 - "$PYPROJECT" "$PACKAGE" "$CHART" "$VERSION" <<'PY'
+python3 - "$PYPROJECT" "$PACKAGE" "$CHART" "$HARNESS" "$VERSION" <<'PY'
 import re
 import sys
 
-pyproject, package, chart, version = sys.argv[1:5]
+pyproject, package, chart, harness, version = sys.argv[1:6]
 
 # backend/pyproject.toml — version = "..."
 with open(pyproject) as f:
@@ -77,10 +79,21 @@ if new == src:
     sys.exit(f"error: could not find version/appVersion in {chart}")
 with open(chart, "w") as f:
     f.write(new)
+
+# backend/packages/harness/pyproject.toml — version = "..."
+# (the installed dist whose version /api/ops/version reports)
+with open(harness) as f:
+    src = f.read()
+new = re.sub(r'(?m)^version\s*=\s*".*?"', f'version = "{version}"', src, count=1)
+if new == src:
+    sys.exit(f"error: no top-level 'version' field in {harness}")
+with open(harness, "w") as f:
+    f.write(new)
 PY
 
 echo "Bumped version to $VERSION in:"
 echo "  backend/pyproject.toml"
+echo "  backend/packages/harness/pyproject.toml"
 echo "  frontend/package.json"
 echo "  deploy/helm/agent-workspace/Chart.yaml (version + appVersion)"
 echo
