@@ -1,7 +1,21 @@
-"""Tests for automatic thread title generation."""
+"""Tests for automatic thread title generation.
+
+TitleConfig validation plus the integration-level coverage: a real langgraph
+runtime where the middleware hook fires inside a compiled graph and the title
+round-trips through a checkpointer, and concurrent generation. Unit behavior
+(trigger logic, generation, hook delegation, LLM-failure fallback) lives in
+``test_title_middleware_core_logic.py``.
+"""
+
+import asyncio
+import re
+from concurrent.futures import ThreadPoolExecutor
+from unittest.mock import MagicMock
 
 import pytest
+from langchain_core.messages import AIMessage, HumanMessage
 
+from alpha.agents.middlewares import title_middleware as title_middleware_module
 from alpha.agents.middlewares.title_middleware import TitleMiddleware
 from alpha.config.title_config import TitleConfig, get_title_config, set_title_config
 
@@ -69,22 +83,137 @@ class TestTitleMiddleware:
         assert middleware is not None
         assert middleware.state_schema is not None
 
-    # TODO: Add integration tests with mock Runtime
-    # def test_should_generate_title(self):
-    #     """Test title generation trigger logic."""
-    #     pass
+    @pytest.mark.parametrize(
+        "use_async",
+        [False, True],
+        ids=["invoke", "ainvoke"],
+    )
+    def test_real_graph_hook_persists_title_to_checkpointer(self, use_async):
+        """The hook fires inside a real compiled graph and the title survives
+        in the checkpointer, not just in the returned dict.
 
-    # def test_generate_title(self):
-    #     """Test title generation."""
-    #     pass
+        A second graph instance bound to the same ``InMemorySaver`` reads the
+        title back, proving the persistence path rather than in-memory state.
+        """
+        original = TitleConfig(**get_title_config().model_dump())
+        try:
+            set_title_config(TitleConfig(enabled=True, model_name=None, max_chars=60))
+            from langchain.agents import create_agent
+            from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+            from langgraph.checkpoint.memory import InMemorySaver
 
-    # def test_after_agent_hook(self):
-    #     """Test after_agent hook."""
-    #     pass
+            from alpha.agents.thread_state import ThreadState
+
+            class _FakeModel(FakeMessagesListChatModel):
+                def bind_tools(self, tools, **kwargs):  # type: ignore[override]
+                    return self
+
+            prompt_text = "Summarize this repository for me"
+            checkpointer = InMemorySaver()
+            graph = create_agent(
+                model=_FakeModel(responses=[AIMessage(content="Done. It is summarized.")]),
+                tools=[],
+                middleware=[TitleMiddleware()],
+                state_schema=ThreadState,
+                checkpointer=checkpointer,
+            )
+            config = {"configurable": {"thread_id": f"title-checkpoint-{use_async}"}}
+
+            if use_async:
+                result = asyncio.run(graph.ainvoke({"messages": [HumanMessage(content=prompt_text)]}, config=config))
+            else:
+                result = graph.invoke({"messages": [HumanMessage(content=prompt_text)]}, config=config)
+
+            # Hook fired inside the real runtime and merged its state update.
+            assert result["title"] == prompt_text
+
+            # Persistence: a fresh graph bound to the same checkpointer sees it.
+            rebound = create_agent(
+                model=_FakeModel(responses=[]),
+                tools=[],
+                middleware=[TitleMiddleware()],
+                state_schema=ThreadState,
+                checkpointer=checkpointer,
+            )
+            assert rebound.get_state(config).values.get("title") == prompt_text
+        finally:
+            set_title_config(original)
+
+    def test_concurrent_sync_title_generation_stays_isolated(self):
+        """Parallel first-turn runs share this middleware instance; no cross-talk."""
+        original = TitleConfig(**get_title_config().model_dump())
+        try:
+            set_title_config(TitleConfig(enabled=True, model_name=None, max_chars=60))
+            middleware = TitleMiddleware()
+            prompts = [f"并发问题 {i}" for i in range(24)]
+
+            def _state(prompt: str) -> dict:
+                return {
+                    "messages": [
+                        {"role": "user", "content": prompt},
+                        {"role": "assistant", "content": "好的"},
+                    ]
+                }
+
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                results = list(pool.map(lambda p: middleware._generate_title_result(_state(p)), prompts))
+
+            assert [r["title"] if r else None for r in results] == prompts
+        finally:
+            set_title_config(original)
+
+    def test_concurrent_async_title_generation_binds_each_result(self, monkeypatch):
+        """Concurrent LLM titles interleave safely: job N's answer returns to job N.
+
+        Sleeps are scrambled so completion order differs from submission order,
+        and each fake-model answer is derived from the prompt it received, so
+        any cross-task mis-binding fails the mapping.
+        """
+        original = TitleConfig(**get_title_config().model_dump())
+        try:
+            set_title_config(TitleConfig(enabled=True, model_name="title-model", max_chars=60))
+            middleware = TitleMiddleware()
+
+            async def _ainvoke(prompt, config=None, **kwargs):
+                match = re.search(r"job-(\d+)", prompt)
+                assert match is not None, "title prompt must carry the job marker"
+                index = int(match.group(1))
+                await asyncio.sleep(0.001 * (index % 5 + 1))
+                return AIMessage(content=f"Title job-{index}")
+
+            model = MagicMock()
+            model.ainvoke = _ainvoke
+            create_model_mock = MagicMock(return_value=model)
+            monkeypatch.setattr(title_middleware_module, "create_chat_model", create_model_mock)
+
+            states = [
+                {
+                    "messages": [
+                        HumanMessage(content=f"please handle job-{i} today"),
+                        AIMessage(content="ok"),
+                    ]
+                }
+                for i in range(10)
+            ]
+
+            async def _run_all():
+                return await asyncio.gather(*(middleware._agenerate_title_result(state) for state in states))
+
+            results = asyncio.run(_run_all())
+
+            assert [r["title"] for r in results] == [f"Title job-{i}" for i in range(10)]
+            assert create_model_mock.call_count == 10
+        finally:
+            set_title_config(original)
 
 
-# TODO: Add integration tests
-# - Test with real LangGraph runtime
-# - Test title persistence with checkpointer
-# - Test fallback behavior when LLM fails
-# - Test concurrent title generation
+# Coverage map for the former TODO list in this file (each claim verified):
+# - trigger logic / generation / after_model hooks with a mock Runtime:
+#   test_title_middleware_core_logic.py
+# - real LangGraph runtime + title persistence with a checkpointer:
+#   test_real_graph_hook_persists_title_to_checkpointer above (rebound-graph
+#   read), and test_runtime_lifecycle_e2e.py (_wait_for_thread_title /
+#   _wait_for_search_title assert gateway-visible persistence end to end)
+# - fallback behavior when the LLM fails: test_title_middleware_core_logic.py
+#   (test_generate_title_fallback_for_long_message et al.)
+# - concurrent title generation: the two concurrency tests above
