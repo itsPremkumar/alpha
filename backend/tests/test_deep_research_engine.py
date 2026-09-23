@@ -14,8 +14,20 @@ from alpha.research.five_pass import (
 )
 
 
+def _offline_engine() -> DeepResearchEngine:
+    """Engine bound to the explicitly-passed offline providers.
+
+    The engine's default is now the live web (honest backends); tests must
+    opt in to the deterministic mock providers by name.
+    """
+    return DeepResearchEngine(
+        search_fn=DeepResearchEngine.mock_search,
+        fetch_fn=DeepResearchEngine.mock_fetch,
+    )
+
+
 def test_engine_plan_generation():
-    engine = DeepResearchEngine()
+    engine = _offline_engine()
     topic = "Next-Generation Solid State Battery Commercialization"
     plan = engine.generate_plan(topic, depth=4)
 
@@ -52,7 +64,7 @@ def test_evidence_source_citation():
 
 
 def test_contradiction_detection():
-    engine = DeepResearchEngine()
+    engine = _offline_engine()
     s1 = EvidenceSource(
         source_id="S1",
         title="Vendor Claim",
@@ -76,7 +88,7 @@ def test_contradiction_detection():
 
 
 def test_gap_detection_and_resolution():
-    engine = DeepResearchEngine()
+    engine = _offline_engine()
     gaps = engine.identify_gaps("Solid-State Batteries", [
         EvidenceSource(
             source_id="S1",
@@ -97,7 +109,7 @@ def test_gap_detection_and_resolution():
 
 @pytest.mark.asyncio
 async def test_full_autonomous_research_execution():
-    engine = DeepResearchEngine()
+    engine = _offline_engine()
     topic = "Autonomous Edge Computing with RISC-V Processors"
     report = await engine.conduct_research(topic, depth=3, max_sources=8, include_adversarial=True)
 
@@ -109,4 +121,7 @@ async def test_full_autonomous_research_execution():
     assert "[S1]" in report.markdown_report
     assert "## Executive Summary" in report.markdown_report
     assert "## Verified Sources & Evidence Matrix" in report.markdown_report
-    assert report.overall_confidence > 0.5
+    # overall_confidence is derived from the real per-source confidences
+    # (it used to be a hardcoded 0.92 no matter what was gathered).
+    expected = sum(s.confidence for s in report.sources) / len(report.sources)
+    assert report.overall_confidence == pytest.approx(expected, abs=1e-4)

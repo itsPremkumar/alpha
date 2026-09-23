@@ -2,6 +2,7 @@ import os
 import tempfile
 import pytest
 
+from alpha.research.engine import DeepResearchEngine
 from alpha.subagents.categories import (
     apply_category,
     get_category,
@@ -12,7 +13,17 @@ from alpha.tools.builtins import deep_research
 
 
 @pytest.mark.asyncio
-async def test_deep_research_tool_invocation():
+async def test_deep_research_tool_invocation(monkeypatch):
+    # The tool's engine now defaults to live web backends (honest by
+    # default); pin it to the explicit offline providers so the test stays
+    # deterministic while every report/citation path stays real.
+    monkeypatch.setattr(
+        "alpha.tools.builtins.deep_research_tool.DeepResearchEngine",
+        lambda: DeepResearchEngine(
+            search_fn=DeepResearchEngine.mock_search,
+            fetch_fn=DeepResearchEngine.mock_fetch,
+        ),
+    )
     with tempfile.TemporaryDirectory() as tmpdir:
         report_file = os.path.join(tmpdir, "deep_report.md")
         result = await deep_research.ainvoke({

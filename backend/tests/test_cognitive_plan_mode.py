@@ -8,6 +8,7 @@ proof obligation generation, safety risk gating, autonomous dispatch execution a
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -117,48 +118,212 @@ def test_autonomous_dispatch_swarm():
     assert res.execution_id.startswith("swm-")
     assert "Autonomous Swarm spawned" in res.summary
     assert res.details["mode"] == "map_reduce"
+    # the reported artifact is the coordinator's real checkpoint file
+    # (the old code claimed an "…_plan.json" that was never written)
+    assert res.artifacts, "swarm dispatch must report its checkpoint file"
+    checkpoint = Path(res.artifacts[0])
+    assert checkpoint.name == f"{res.execution_id}.json"
+    assert checkpoint.exists()
 
 
-# 5. Autonomous Dispatch: Bot Profile
+# 5. Autonomous Dispatch: Bot Profile (real handoff, honest failure)
 def test_autonomous_dispatch_bot_profile():
     plan = CognitiveMetaPlanner.evaluate_and_plan("Implement user authentication endpoints and JWT verification")
     assert plan.decision.paradigm == ExecutionParadigm.BOT_PROFILE
 
     res = AutonomousDispatchBridge.dispatch(plan)
-    assert res.status == "completed"
+    # An accepted handoff routes work to a bot that executes later — that is
+    # a dispatch, not a completion (the old code faked "completed" instantly).
+    assert res.status == "dispatched"
     assert res.execution_id.startswith("handoff-")
     assert "coder" in res.assigned_agents
-    assert "implementation_contract.md" in res.artifacts
+    contracts = [a for a in res.artifacts if a.endswith("implementation_contract.md")]
+    assert contracts, "the implementation contract must really be written"
+    contract_file = Path(contracts[0])
+    assert contract_file.exists()
+    # the contract's content is the compiled plan report, not a placeholder
+    assert plan.markdown_report in contract_file.read_text(encoding="utf-8")
+    assert res.details["handoff_status"] == "accepted"
+    assert res.details["lead_bot"] == "coder"
 
 
-# 6. Autonomous Dispatch: MoA, Deep Research & Deep Think
-def test_autonomous_dispatch_cognitive_paradigms():
-    # MoA
-    moa_plan = CognitiveMetaPlanner.evaluate_and_plan("Multi-LLM committee review to brainstorm consensus")
-    moa_res = AutonomousDispatchBridge.dispatch(moa_plan)
+def test_bot_profile_handoff_failure_is_honest(monkeypatch):
+    plan = CognitiveMetaPlanner.evaluate_and_plan("Implement user authentication endpoints and JWT verification")
+
+    def _raise(**_kwargs):
+        raise ValueError("Recipient bot 'coder' is suspended and cannot accept work.")
+
+    monkeypatch.setattr("alpha.bots.handoff.execute_handoff", _raise)
+    res = AutonomousDispatchBridge.dispatch(plan)
+    assert res.status == "failed"
+    assert "ValueError" in res.summary
+    assert "suspended" in res.summary
+    assert res.details["error_type"] == "ValueError"
+
+
+# 6. Autonomous Dispatch: MoA, Deep Research, Deep Think, Subagent, Direct
+def _stub_invoke(prefix: str):
+    def _invoke(model_name, *, system, user):
+        return f"{prefix}[{model_name}]: response to '{user[:40]}'"
+
+    return _invoke
+
+
+def test_autonomous_dispatch_moa_runs_real_deliberation(monkeypatch):
+    from alpha.deliberation import invocation as delib_inv
+
+    monkeypatch.setattr(delib_inv, "invoke_model", _stub_invoke("STUB-MOA"))
+    plan = CognitiveMetaPlanner.evaluate_and_plan("Multi-LLM committee review to brainstorm consensus")
+    assert plan.decision.paradigm == ExecutionParadigm.MOA
+
+    moa_res = AutonomousDispatchBridge.dispatch(plan)
     assert moa_res.status == "completed"
-    assert "moa_consensus_synthesis.md" in moa_res.artifacts
-    assert moa_res.details["consensus_reached"] is True
+    # the summary is (derived from) the exact model output the engine produced
+    assert "STUB-MOA[" in moa_res.summary
+    synthesis = [a for a in moa_res.artifacts if a.endswith("moa_consensus_synthesis.md")]
+    assert synthesis and Path(synthesis[0]).read_text(encoding="utf-8") == moa_res.summary
+    assert moa_res.details["strategy_used"] == "ensemble"
+    assert isinstance(moa_res.details["confidence_score"], float)
+    assert isinstance(moa_res.details["consensus_percentage"], float)
+    # the old dispatcher hardcoded this key with a fabricated True
+    assert "consensus_reached" not in moa_res.details
 
-    # Deep Research
-    res_plan = CognitiveMetaPlanner.evaluate_and_plan("Deep investigate paper citations and market landscape")
-    res_res = AutonomousDispatchBridge.dispatch(res_plan)
-    assert res_res.status == "completed"
-    assert "verified_citations.json" in res_res.artifacts
-    assert res_res.details["citations_verified"] > 0
 
-    # Deep Think
-    think_plan = CognitiveMetaPlanner.evaluate_and_plan("Prove the complex logic puzzle and mathematical algorithm")
-    think_res = AutonomousDispatchBridge.dispatch(think_plan)
-    assert think_res.status == "completed"
-    assert "formal_reasoning_trace.md" in think_res.artifacts
-    assert think_res.details["self_critique_passed"] is True
+def test_autonomous_dispatch_moa_model_failure_is_honest(monkeypatch):
+    from alpha.deliberation import invocation as delib_inv
 
-    # Direct Agent
-    direct_plan = CognitiveMetaPlanner.evaluate_and_plan("Translate this phrase to French")
-    direct_res = AutonomousDispatchBridge.dispatch(direct_plan)
-    assert direct_res.status == "completed"
-    assert direct_res.details["coordination_overhead_seconds"] == 0.0
+    def _no_models(model_name, *, system, user):
+        raise RuntimeError("No chat models configured; deliberation cannot run.")
+
+    monkeypatch.setattr(delib_inv, "invoke_model", _no_models)
+    plan = CognitiveMetaPlanner.evaluate_and_plan("Multi-LLM committee review to brainstorm consensus")
+    res = AutonomousDispatchBridge.dispatch(plan)
+    assert res.status == "failed"
+    assert "No chat models configured" in res.summary
+
+
+def test_autonomous_dispatch_deep_research_writes_real_report(monkeypatch):
+    from alpha.research.engine import DeepResearchEngine
+
+    plan = CognitiveMetaPlanner.evaluate_and_plan("Deep investigate paper citations and market landscape")
+    assert plan.decision.paradigm == ExecutionParadigm.DEEP_RESEARCH
+
+    async def _canned_search(query, max_results=5):
+        return [
+            {
+                "title": f"Result for {query[:40]}",
+                "url": f"https://research.test/{abs(hash(query))}/",
+                "snippet": "Measured evidence with concrete numbers.",
+            }
+        ]
+
+    async def _canned_fetch(url):
+        return f"# Content for {url}\n\nEvidence body used by the pipeline."
+
+    monkeypatch.setattr(
+        "alpha.planning.bridge._build_research_engine",
+        lambda: DeepResearchEngine(search_fn=_canned_search, fetch_fn=_canned_fetch),
+    )
+
+    res = AutonomousDispatchBridge.dispatch(plan)
+    assert res.status == "completed"
+    report_files = [a for a in res.artifacts if a.endswith("deep_research_report.md")]
+    citation_files = [a for a in res.artifacts if a.endswith("verified_citations.json")]
+    assert report_files and citation_files
+    citations = json.loads(Path(citation_files[0]).read_text(encoding="utf-8"))
+    # every count is derived from the report actually written — the old
+    # dispatcher reported fixed 12/8/0 no matter what happened.
+    assert res.details["citations_verified"] == len(citations)
+    assert res.details["sources_inspected"] >= 1
+    assert (
+        res.details["sources_inspected"],
+        res.details["citations_verified"],
+        res.details["contradictions_detected"],
+    ) != (12, 8, 0)
+    assert "research.test" in Path(report_files[0]).read_text(encoding="utf-8")
+
+
+def test_autonomous_dispatch_deep_research_backend_failure_is_honest(monkeypatch):
+    plan = CognitiveMetaPlanner.evaluate_and_plan("Deep investigate paper citations and market landscape")
+
+    def _explode():
+        raise RuntimeError("No live search backend available: the `ddgs` package is not installed.")
+
+    monkeypatch.setattr("alpha.planning.bridge._build_research_engine", _explode)
+    res = AutonomousDispatchBridge.dispatch(plan)
+    assert res.status == "failed"
+    assert "No live search backend" in res.summary
+
+
+def test_autonomous_dispatch_deep_think_writes_real_trace(monkeypatch):
+    from alpha.deliberation import invocation as delib_inv
+
+    trace = "STEP 1: assumption X\nSTEP 2: inference Y\nFINAL: position Z"
+    monkeypatch.setattr(delib_inv, "invoke_model", lambda model_name, *, system, user: trace)
+    plan = CognitiveMetaPlanner.evaluate_and_plan("Prove the formal correctness and mathematical theorem of this algorithm design")
+    assert plan.decision.paradigm == ExecutionParadigm.DEEP_THINK
+
+    res = AutonomousDispatchBridge.dispatch(plan)
+    assert res.status == "completed"
+    assert res.summary == trace  # verbatim model output
+    traces = [a for a in res.artifacts if a.endswith("formal_reasoning_trace.md")]
+    assert traces and Path(traces[0]).read_text(encoding="utf-8") == trace
+    assert res.assigned_agents == [res.details["model"]]
+    assert isinstance(res.details["duration_seconds"], float)
+    # fabricated fields from the old dispatcher are gone
+    assert "confidence_score" not in res.details
+    assert "self_critique_passed" not in res.details
+    assert "reasoning_steps" not in res.details
+
+
+def test_autonomous_dispatch_subagent_runs_real_delegation():
+    plan = CognitiveMetaPlanner.evaluate_and_plan("Summarize the main points of this meeting transcript")
+    # The planner has no keyword branch that selects SUBAGENT, so force the
+    # paradigm to exercise this dispatcher directly.
+    plan.decision.paradigm = ExecutionParadigm.SUBAGENT
+    plan.decision.assigned_specialists = ["architect"]
+
+    res = AutonomousDispatchBridge.dispatch(plan)
+    assert res.status in ("completed", "partial", "failed")
+    payloads = [a for a in res.artifacts if a.endswith("subagent_output.json")]
+    assert payloads, "the delegation contract must really be written"
+    payload = json.loads(Path(payloads[0]).read_text(encoding="utf-8"))
+    assert res.execution_id == f"subagent-{payload['session_id']}"
+    assert res.details["contract_status"] == payload["status"]
+    assert res.details["agent_type"] == payload["agent_type"]
+
+
+def test_autonomous_dispatch_direct_returns_model_output(monkeypatch):
+    from alpha.deliberation import invocation as delib_inv
+
+    monkeypatch.setattr(
+        delib_inv,
+        "invoke_model",
+        lambda model_name, *, system, user: f"STUB-SINGLE: direct answer to '{user[:30]}'",
+    )
+    plan = CognitiveMetaPlanner.evaluate_and_plan("Translate this phrase to French")
+    assert plan.decision.paradigm == ExecutionParadigm.DIRECT_AGENT
+
+    res = AutonomousDispatchBridge.dispatch(plan)
+    assert res.status == "completed"
+    assert res.summary.startswith("STUB-SINGLE:")
+    assert res.assigned_agents == [res.details["model"]]
+    assert isinstance(res.details["duration_seconds"], float)
+    # canned field from the old dispatcher is gone
+    assert "coordination_overhead_seconds" not in res.details
+
+
+def test_autonomous_dispatch_direct_model_failure_is_honest(monkeypatch):
+    from alpha.deliberation import invocation as delib_inv
+
+    def _no_models(model_name, *, system, user):
+        raise RuntimeError("No chat models configured; deliberation cannot run.")
+
+    monkeypatch.setattr(delib_inv, "invoke_model", _no_models)
+    plan = CognitiveMetaPlanner.evaluate_and_plan("Translate this phrase to French")
+    res = AutonomousDispatchBridge.dispatch(plan)
+    assert res.status == "failed"
+    assert "No chat models configured" in res.summary
 
 
 # 7. Cognitive Plan Builtin Tool
@@ -218,7 +383,9 @@ async def test_gateway_plan_mode_router():
     )
     assert "plan" in disp_resp
     assert "dispatch" in disp_resp
-    assert disp_resp["dispatch"]["status"] == "completed"
+    # the handoff routes the work; the bot executes asynchronously, so the
+    # real status is "dispatched" (the old code faked "completed")
+    assert disp_resp["dispatch"]["status"] == "dispatched"
     assert disp_resp["dispatch"]["paradigm"] == "bot_profile"
 
 

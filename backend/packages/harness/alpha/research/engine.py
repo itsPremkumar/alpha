@@ -145,7 +145,14 @@ class DeepResearchReport:
 
     @property
     def overall_confidence(self) -> float:
-        return 0.92
+        """Mean confidence of the sources actually gathered (0.0 when none).
+
+        Historically this returned a hardcoded ``0.92`` regardless of the
+        evidence; it is now derived from the real per-source confidences.
+        """
+        if not self.sources:
+            return 0.0
+        return round(sum(s.confidence for s in self.sources) / len(self.sources), 4)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -188,15 +195,29 @@ class DeepResearchEngine:
         fetch_fn: FetchFn | None = None,
         domain_context: str = "technology & software engineering",
     ):
-        self.search_fn = search_fn or self._default_mock_search
-        self.fetch_fn = fetch_fn or self._default_mock_fetch
+        # No silent mock fallback: an unconfigured engine researches the live
+        # web through :mod:`alpha.research.backends` and raises honestly if no
+        # backend can be loaded. The mock providers only run when the caller
+        # passes them explicitly (tests and offline fixtures).
+        if search_fn is None or fetch_fn is None:
+            from alpha.research.backends import default_fetch_fn, default_search_fn
+
+            search_fn = search_fn or default_search_fn()
+            fetch_fn = fetch_fn or default_fetch_fn()
+        self.search_fn = search_fn
+        self.fetch_fn = fetch_fn
         self.domain_context = domain_context
 
     @staticmethod
-    async def _default_mock_search(
+    async def mock_search(
         query: str, max_results: int = 5
     ) -> list[dict[str, Any]]:
-        """Fallback mock search provider when no live network engine is configured."""
+        """Deterministic offline search provider (tests/fixtures only).
+
+        Must be passed explicitly as ``search_fn``; never used as a default,
+        because silently fabricated ``example.org`` sources were previously
+        reported as verified research.
+        """
         q_slug = re.sub(r"[^a-zA-Z0-9]+", "-", query.lower()).strip("-")
         return [
             {
@@ -212,8 +233,11 @@ class DeepResearchEngine:
         ][:max_results]
 
     @staticmethod
-    async def _default_mock_fetch(url: str) -> str:
-        """Fallback fetcher providing structured content for testing and offline runs."""
+    async def mock_fetch(url: str) -> str:
+        """Deterministic offline fetcher (tests/fixtures only).
+
+        Must be passed explicitly as ``fetch_fn``; never used as a default.
+        """
         domain = urlparse(url).netloc or "example.org"
         return (
             f"# Source Documentation from {domain}\n\n"
