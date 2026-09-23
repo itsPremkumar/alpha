@@ -14,8 +14,16 @@ export async function runCouncil(
     max_rounds: maxRounds,
   });
   const pick = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
+  // final_answer is the real DeliberationResult field the gateway returns;
+  // the older keys are kept as fallbacks for alternate response shapes.
   const out =
-    pick(d.verdict) ?? pick(d.decision) ?? pick(d.result) ?? pick(d.summary) ?? pick(d.output) ?? pick(d.text);
+    pick(d.final_answer) ??
+    pick(d.verdict) ??
+    pick(d.decision) ??
+    pick(d.result) ??
+    pick(d.summary) ??
+    pick(d.output) ??
+    pick(d.text);
   if (out) return out.slice(0, 6000);
   return JSON.stringify(d, null, 2).slice(0, 6000);
 }

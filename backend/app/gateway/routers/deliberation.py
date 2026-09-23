@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from alpha.deliberation.engine import get_master_deliberation_engine
@@ -50,11 +50,18 @@ async def run_deliberation(payload: DeliberationRunRequest):
     except ValueError:
         strategy = DeliberationStrategy.AUTO
 
-    result = await asyncio.to_thread(
-        engine.deliberate,
-        prompt=payload.prompt,
-        strategy=strategy,
-        max_rounds=payload.max_rounds,
-        code_test_command=payload.code_test_command,
-    )
+    try:
+        result = await asyncio.to_thread(
+            engine.deliberate,
+            prompt=payload.prompt,
+            strategy=strategy,
+            max_rounds=payload.max_rounds,
+            code_test_command=payload.code_test_command,
+        )
+    except RuntimeError as exc:
+        # Honest surfacing: no chat models configured, or a forced Council/
+        # Debate on a single-model config. 503 with the real reason instead
+        # of a bare 500 (and never a fabricated deliberation).
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     return result.to_dict()
+

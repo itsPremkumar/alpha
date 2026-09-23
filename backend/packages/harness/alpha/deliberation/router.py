@@ -17,6 +17,7 @@ from dataclasses import asdict, dataclass
 from enum import StrEnum
 from typing import Any
 
+from alpha.deliberation import invocation
 from alpha.deliberation.models import DeliberationStrategy
 
 logger = logging.getLogger(__name__)
@@ -130,7 +131,7 @@ class DeliberationRouter:
                 difficulty=TaskDifficulty.HIGH_RISK,
                 risk=TaskRisk.CRITICAL,
                 strategy=DeliberationStrategy.COUNCIL,
-                roster_models=["security-lead", "adversarial-critic", "independent-verifier"],
+                roster_models=invocation.configured_model_roster(),
                 rationale="Critical destructive or production-impacting operation detected; routing to high-stakes Council.",
                 worthwhile=True,
             )
@@ -141,7 +142,7 @@ class DeliberationRouter:
                 difficulty=TaskDifficulty.COMPLEX,
                 risk=TaskRisk.MEDIUM,
                 strategy=DeliberationStrategy.DEBATE,
-                roster_models=["advocate-alpha", "critic-beta", "independent-judge"],
+                roster_models=invocation.configured_model_roster(),
                 rationale="Contested architectural trade-off or comparative inquiry detected; routing to Sparse Multi-Agent Debate.",
                 worthwhile=True,
             )
@@ -152,7 +153,7 @@ class DeliberationRouter:
                 difficulty=TaskDifficulty.COMPLEX,
                 risk=TaskRisk.HIGH,
                 strategy=DeliberationStrategy.COUNCIL,
-                roster_models=["candidate-1", "candidate-2", "candidate-3", "chairman-synthesizer"],
+                roster_models=invocation.configured_model_roster(),
                 rationale="High-impact or ambiguous system decision detected; routing to 3-Stage Anonymous Peer Review Council.",
                 worthwhile=True,
             )
@@ -163,7 +164,7 @@ class DeliberationRouter:
                 difficulty=TaskDifficulty.MEDIUM,
                 risk=TaskRisk.LOW,
                 strategy=DeliberationStrategy.ENSEMBLE,
-                roster_models=["proposer-1", "proposer-2", "proposer-3", "aggregator"],
+                roster_models=invocation.configured_model_roster(),
                 rationale="Broad candidate exploration inquiry detected; routing to Parallel Ensemble.",
                 worthwhile=True,
             )
@@ -174,7 +175,7 @@ class DeliberationRouter:
                 difficulty=TaskDifficulty.TRIVIAL,
                 risk=TaskRisk.LOW,
                 strategy=DeliberationStrategy.SINGLE,
-                roster_models=["lead-model"],
+                roster_models=invocation.configured_model_roster()[:1],
                 rationale="Task is simple or low-risk; routing to single model to eliminate deliberation latency.",
                 worthwhile=False,
             )
@@ -184,7 +185,7 @@ class DeliberationRouter:
             difficulty=TaskDifficulty.MEDIUM,
             risk=TaskRisk.LOW,
             strategy=DeliberationStrategy.COUNCIL,
-            roster_models=["candidate-1", "candidate-2", "candidate-3", "chairman-synthesizer"],
+            roster_models=invocation.configured_model_roster(),
             rationale="Moderate complexity prompt; routing to standard Council deliberation.",
             worthwhile=True,
         )
@@ -325,10 +326,10 @@ class DeliberationRouter:
 
     @classmethod
     def _get_roster_for_strategy(cls, strategy: DeliberationStrategy) -> list[str]:
+        # Rosters are the genuinely configured models — the old hardcoded
+        # names ("lead-model", "advocate-alpha", "candidate-1" ...) existed
+        # nowhere and could never be invoked.
+        roster = invocation.configured_model_roster()
         if strategy == DeliberationStrategy.SINGLE:
-            return ["lead-model"]
-        if strategy == DeliberationStrategy.DEBATE:
-            return ["advocate-alpha", "critic-beta", "independent-judge"]
-        if strategy == DeliberationStrategy.ENSEMBLE:
-            return ["proposer-1", "proposer-2", "proposer-3", "aggregator"]
-        return ["candidate-1", "candidate-2", "candidate-3", "chairman-synthesizer"]
+            return roster[:1]
+        return roster
