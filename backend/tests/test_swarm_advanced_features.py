@@ -29,6 +29,30 @@ def _isolated_swarm_home(tmp_path, monkeypatch):
     coord_mod._GLOBAL_COORDINATOR = None
 
 
+@pytest.fixture(autouse=True)
+def _offline_worker_models(monkeypatch):
+    """Full-runner tests exercise dispatch/orchestration, not providers: the
+    workers now make a REAL model call (Stage 3), so bind a deterministic
+    offline model through the same `_resolve_model` seam the dedicated
+    worker-execution tests use (test_swarm_worker_execution.py)."""
+    import alpha.swarm.worker as worker_mod
+
+    class _Message:
+        def __init__(self, content):
+            self.content = content
+
+    class _OfflineModel:
+        model_name = "offline-swarm-stub"
+
+        def invoke(self, messages):
+            return _Message(f"Offline deliverable for: {messages[-1].content}")
+
+    monkeypatch.setattr(
+        worker_mod, "_resolve_model", lambda model_name, *, worker_label: _OfflineModel()
+    )
+    yield
+
+
 # 1. Autonomous Async Swarm Runner End-to-End
 @pytest.mark.asyncio
 async def test_async_swarm_runner_end_to_end(tmp_path):
