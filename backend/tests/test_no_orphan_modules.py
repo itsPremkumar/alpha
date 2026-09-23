@@ -46,6 +46,9 @@ ALLOWED_ORPHANS: dict[str, str] = {
     # RSI Wave-3 C2b human review gate: consumed by C2c's promotion.py, the
     # wave's serialization point (C2c is queued after C1/C2a/C2b).
     "alpha.rsi.review": "RSI Wave-3 C2b review gate; wired by C2c promotion.py at the wave serialization point",
+    # RSI Wave-3 C2a evidence bundle: provenance store read/written by C2c's
+    # promotion.decide() composition at the same serialization point.
+    "alpha.rsi.evidence_bundle": "RSI Wave-3 C2a evidence bundle; wired by C2c promotion.py at the wave serialization point",
     # The workflows router module commits now (so alpha.workflow.* stay
     # referenced), but its app.py mount hunk shares that file with in-flight
     # voice edits; the mount lands in the gateway batch, then this entry goes.
