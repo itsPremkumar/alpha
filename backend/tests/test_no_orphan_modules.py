@@ -30,6 +30,14 @@ ALLOWED_ORPHANS: dict[str, str] = {
     # (enclave_security_tool), which IS in BUILTIN_TOOLS. Keeps the historical
     # import path alive; see the module docstring.
     "alpha.tools.builtins.astra_security_tool": "intentional re-export shim over alpha.tools.builtins.enclave_security_tool",
+    # WP-B2 candidate factory (committed 950716a): deliberately standalone per
+    # plan §3 — its consumer (RSI cycle factory/engine wiring) lands with RSI
+    # Wave 3, so nothing references it yet by design, not by neglect.
+    "alpha.rsi.generator": "RSI WP-B2 factory; wired into the cycle by RSI Wave 3 (plan §3 WP-B2)",
+    # dynamic-workflow perceive→assemble bridge: part of the dynamic_* layer
+    # HELD uncommitted pending P0 remediation (DY-R1/R2/R3) and the P1
+    # orchestrator wiring; unwired by audit verdict, not abandoned.
+    "alpha.workflow.dynamic_bridge": "held dynamic_* layer; wiring lands with Dynamic Workflow P1 after P0 remediation",
 }
 
 # Standalone ``python -m <module>`` entry points. Nothing imports these by
