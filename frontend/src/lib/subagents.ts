@@ -40,19 +40,11 @@ export async function listLiveSubagents(): Promise<LiveSubagent[]> {
       parent: String(pick(s, ["parent_agent_id", "parent"], "")),
     }));
   } catch {
-    // Fallback: some deployments expose the registry under /subagents/live
-    try {
-      const d = await get<unknown>("/subagents/live");
-      return asList(d, ["subagents", "data"]).map((s, i) => ({
-        id: String(pick(s, ["id", "subagent_id"], `subagent-${i}`)),
-        role: String(pick(s, ["role"], "")),
-        objective: String(pick(s, ["objective", "task"], "")),
-        status: String(pick(s, ["status", "state"], "unknown")),
-        parent: String(pick(s, ["parent_agent_id", "parent"], "")),
-      }));
-    } catch {
-      return [];
-    }
+    // Exact route: GET /api/subagents/control (subagent_control.py @router.get("")). A former
+    // /subagents/live fallback was unwired on this gateway — the only match would be
+    // GET /api/subagents/{name}, a single-bot lookup that cannot serve a registry — so an
+    // unreachable gateway is the only remaining failure and honestly yields [].
+    return [];
   }
 }
 

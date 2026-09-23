@@ -26,6 +26,7 @@ class ChannelRestartResponse(BaseModel):
     message: str
 
 
+@router.get("", response_model=ChannelStatusResponse)
 @router.get("/", response_model=ChannelStatusResponse)
 async def get_channels_status() -> ChannelStatusResponse:
     """Get the status of all IM channels."""

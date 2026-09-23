@@ -28,6 +28,7 @@ Updated: 2026-09-23 · cycle base `3910838` · remote `main` @ `https://github.c
 | JSON parse (33 tracked `*.json`, `utf-8-sig`-tolerant) | ✅ | **33/33 valid** after tsconfig BOM fix |
 | `scripts/prod_check.py --strict` | ✅ | **0 failures / 0 warnings** — “production ready” (now also compares harness pyproject) |
 | `scripts/verify_versions.sh` (all version sources incl. harness) | ✅ | exit 0 in both modes via Git-bash login shell (prints all 5 figures incl. harness 2.1.0); `bash -n` exit 0 on bump+verify; note: `verify-versions.yml` gates v* tags only, so this local run is the push-cycle gate |
+| Zero-unwired-features wiring audit (`scripts/audit_frontend_wiring.py`) | ✅ | **216/216 frontend call sites → real gateway routes (454), exit 0**; found + fixed 3 real defects (see fix-log #5) |
 
 ## B. Self-healing runtime (four layers)
 
@@ -71,7 +72,7 @@ Updated: 2026-09-23 · cycle base `3910838` · remote `main` @ `https://github.c
 | Immediate fix queue #3 title TODOs | ✅ | closed (see E) |
 | Immediate fix queue #4 `channels/manager.py:119`, `memory/manager.py:216` notes | ✅ | audited: both are **accurate documentation strings, not bugs** — channel dedupe-TTL boundary (documented design note referencing upstream issue #4121) and the `supports_search` invariant error message. No code change; recorded as documented limitations |
 | Immediate fix queue #5 P2 baseline triage | ⏳ | frontend/electron portions green; backend full-suite result pending |
-| Debt scan (TODO/placeholder/`@ts-ignore`/`console.log`) | ✅ | 0 `@ts-ignore`, 0 frontend `console.log`; 53 TODO hits ~95% benign; remaining genuine items tracked in this matrix |
+| Debt scan (TODO/placeholder/`@ts-ignore`/`console.log`) | ✅ | 0 `@ts-ignore`, 0 frontend `console.log`; fresh repo-wide sweep: **58 TODO/FIXME/XXX/HACK hits, 0 genuine unfinished items** (all are kanban `TaskStatus.TODO`, `TodoMiddleware` names, LLM `{TODO: …}` prompt fill-ins, test data, `ADR-XXX` slug templates) |
 
 ## F. Blocked / user actions
 
@@ -89,3 +90,8 @@ Updated: 2026-09-23 · cycle base `3910838` · remote `main` @ `https://github.c
 2. **`frontend/tsconfig.json` carried a UTF-8 BOM** — flagged by JSON gate. Fix: stripped; evidence `tsc --noEmit` exit 0. Commit `84e5a1d`.
 3. **Stale TODO “add tests” block** — three of four promised areas were already covered elsewhere; concurrency + real-runtime persistence were genuinely missing. Fix: added them (compiled `create_agent` + `InMemorySaver` rebound-graph read; 24-thread sync isolation; scrambled-delay async binding) — 71/71 green. Commit `3910838`.
 4. **`/api/ops/version` always `"unknown"`** — `_resolve_gateway_version()` iterated a duplicated tuple of dist names that never exist; also the harness pyproject (the installed carrier of the release version) was missing from `bump_version.sh`/`verify_versions.sh`/`prod_check.py`, so any correct lookup would have drifted at the next release. Fix: lookup chain `agent-workspace-harness → alpha → agent-workspace`, harness added to all three gates, docs (`ops.py`, gateway `AGENTS.md`) updated, regression test pins the chain order. Verification ✅: 16/16 tests, `prod_check --strict` 0/0, `verify_versions.sh` exit 0 both modes, `bash -n` clean; live probe after the controlled restart.
+5. **Three unwired/shadowed frontend routes** — found by the new `scripts/audit_frontend_wiring.py` (every frontend call site vs. the imported FastAPI route table):
+   (a) **channel status panel permanently empty**: backend declared the list route as `@router.get("/")` (canonical `/api/channels/`) while the UI requests `/api/channels` → Starlette 307 → `apiFetch` sets `redirect: "error"` → fetch throws → `channelStatus()` swallowed it as `[]`. Root cause: lone slash-spelling among `""` siblings (swarms, subagents). Fix: register both spellings in `channels.py`.
+   (b) **dead `/subagents/live` fallback**: only possible match was `GET /api/subagents/{name}` (a single-bot lookup), never a registry; primary `GET /api/subagents/control` (`subagent_control.py:224`) exists. Fix: removed the fallback; unreachable gateway honestly yields `[]`.
+   (c) **`/api/swarms/{id}/${action}` false positive**: `${action}` is a closed TS union; all four values (`pause|resume|cancel|step`) have real routes (`swarms.py:94–125`). Fix: documented enum-exception in the audit that re-expands and re-verifies every value each run.
+   Verification ✅: audit **216/216 exit 0**; backend **97/97** (`test_channels_router` + `test_auth_middleware` + `test_csrf_middleware` + `test_feature_manifest_wiring`); frontend `tsc` exit 0 + **51/51** tests; `prod_check --strict` 0/0.
