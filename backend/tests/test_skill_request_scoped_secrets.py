@@ -106,22 +106,24 @@ class TestAioSandboxEnvInjection:
         sandbox._client.shell.exec_command.assert_not_called()
         assert "hello" in out
 
-    def test_env_path_uses_hard_timeout_not_no_change_timeout(self, sandbox):
+    def test_env_path_uses_hard_timeout_not_no_change_timeout(self, sandbox, monkeypatch):
         """The env path routes through bash.exec which exposes no idle/no-change
-        timeout; it must use the dedicated wall-clock ``_DEFAULT_HARD_TIMEOUT``,
-        not the legacy idle constant (same numeric value today, but distinct
-        semantics so a future change to one does not silently alter the other)."""
+        timeout; it must read the dedicated wall-clock ``_DEFAULT_HARD_TIMEOUT``,
+        not the legacy idle constant.
+
+        Both constants are 600/600.0 today, so a plain value comparison cannot
+        tell which one the call site reads (``600 == 600.0``). Pin them to
+        distinct values first: an implementation that reads the wrong constant
+        then fails, which is the contract the old ``!= or ==`` tautology
+        asserted but never enforced."""
         from alpha.community.aio_sandbox.aio_sandbox import AioSandbox
 
+        monkeypatch.setattr(AioSandbox, "_DEFAULT_HARD_TIMEOUT", 111.0)
+        monkeypatch.setattr(AioSandbox, "_DEFAULT_NO_CHANGE_TIMEOUT", 222)
         sandbox._client.bash.exec = MagicMock(return_value=SimpleNamespace(data=SimpleNamespace(stdout="ok", stderr=None)))
         sandbox.execute_command("echo hi", env={"X": "1"})
         _, kwargs = sandbox._client.bash.exec.call_args
-        assert kwargs["hard_timeout"] == AioSandbox._DEFAULT_HARD_TIMEOUT
-        assert AioSandbox._DEFAULT_HARD_TIMEOUT != AioSandbox._DEFAULT_NO_CHANGE_TIMEOUT or (
-            # Same numeric value is fine today; the contract is that they are
-            # named independently so the two call sites evolve independently.
-            AioSandbox._DEFAULT_HARD_TIMEOUT == AioSandbox._DEFAULT_NO_CHANGE_TIMEOUT
-        )
+        assert kwargs["hard_timeout"] == 111.0  # HARD, not the 222 legacy idle budget
 
     def test_env_path_retries_on_error_observation_signature(self, sandbox):
         """The env path shares the legacy persistent-shell recovery contract: if

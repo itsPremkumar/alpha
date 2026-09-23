@@ -132,7 +132,11 @@ class CompanyKanbanEngine:
             clean_dept = department.strip().lower()
             tasks = [t for t in tasks if t.department.lower() == clean_dept]
 
-        # Order by priority descending and updated_at descending
+        # Order by priority descending and updated_at descending (the comment
+        # was a lie until now: tasks came back in insertion order, so a full
+        # board silently dropped the highest-priority tasks at ``limit``).
+        rank = {TaskPriority.LOW: 0, TaskPriority.NORMAL: 1, TaskPriority.HIGH: 2, TaskPriority.CRITICAL: 3}
+        tasks.sort(key=lambda t: (rank[t.priority], t.updated_at), reverse=True)
         return tasks[:limit]
 
     def update_task_status(
@@ -265,7 +269,7 @@ class CompanyKanbanEngine:
             if p.name in existing_titles:
                 synced_count += 1
             else:
-                self.create_task(
+                task = self.create_task(
                     title=p.name,
                     body=f"Initiative owned by {p.department} led by @{p.lead_bot_name}",
                     assignee=p.lead_bot_name,
@@ -273,6 +277,9 @@ class CompanyKanbanEngine:
                     status=TaskStatus.TODO,
                     department=p.department,
                 )
+                # Register immediately so two projects sharing a name in the
+                # same batch do not each mint a duplicate card.
+                existing_titles[p.name] = task
                 new_count += 1
 
         return {
