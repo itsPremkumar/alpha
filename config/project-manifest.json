@@ -1,0 +1,14 @@
+{
+  "projectId": "alpha",
+  "name": "Alpha AI Agent",
+  "repository": {
+    "provider": "github",
+    "owner": "itsPremkumar",
+    "name": "alpha",
+    "url": "https://github.com/itsPremkumar/alpha",
+    "defaultBranch": "main"
+  },
+  "release": {
+    "channel": "stable"
+  }
+}

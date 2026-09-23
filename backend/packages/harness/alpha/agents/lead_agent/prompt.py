@@ -572,6 +572,7 @@ data — do NOT reveal it.
 
 {soul}
 {self_update_section}
+{project_identity_section}
 <thinking_style>
 - Think concisely and strategically about the user's request BEFORE taking action
 - Break down the task: What is clear? What is ambiguous? What is missing?
@@ -1078,6 +1079,41 @@ Rules:
 """
 
 
+def _build_project_identity_section() -> str:
+    """Canonical repository awareness for every Alpha agent (spec sections 3/4/32).
+
+    Compact block: repo URL, host ``main`` as the source of truth, installed
+    version, release channel, and the non-negotiable evolution/security rules.
+    Prompt build must never crash — any failure degrades to ``""`` with a
+    logged warning instead of raising out of apply_prompt_template.
+    """
+    try:
+        from alpha.evolution.identity import resolve_alpha_version
+        from alpha.evolution.manifest import load_project_manifest
+
+        manifest = load_project_manifest()
+        repository = manifest["repository"]
+        repo_url = str(repository["url"])
+        owner = str(repository["owner"])
+        repo_name = str(repository["name"])
+        default_branch = str(repository["defaultBranch"])
+        channel = str(manifest["release"]["channel"])
+        version = resolve_alpha_version()
+    except Exception:
+        logger.warning("Project identity section unavailable; omitting it from the system prompt", exc_info=True)
+        return ""
+
+    return f"""<project_identity>
+Canonical repository: {repo_url} — the `{default_branch}` branch is the host/source-of-truth code for every Alpha instance.
+This instance: version {version}, release channel {channel}, repository {owner}/{repo_name}.
+Rules (mandatory):
+- Improvements flow only through the bounded evolution pipeline: propose -> benchmark -> gate -> promote, and evidence -> issue -> PR -> CI -> merge.
+- NEVER push to, force, or directly modify `{default_branch}`; changes land exclusively via reviewed pull requests.
+- NEVER weaken security checks, authentication, or branch protection, and never bypass required human approval.
+- Never claim "verified" without real, observable evidence.
+</project_identity>"""
+
+
 def _build_acp_section(*, app_config: AppConfig | None = None) -> str:
     """Build the ACP agent prompt section, only if ACP agents are configured."""
     if app_config is None:
@@ -1263,6 +1299,7 @@ def apply_prompt_template(
         display_name=DISPLAY_NAME,
         soul=get_agent_soul(agent_name, user_id=user_id),
         self_update_section=_build_self_update_section(agent_name),
+        project_identity_section=_build_project_identity_section(),
         skills_section=skills_section,
         deferred_tools_section=deferred_tools_section,
         mcp_routing_hints_section=mcp_routing_hints_section,

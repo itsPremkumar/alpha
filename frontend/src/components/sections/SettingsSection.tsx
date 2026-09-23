@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { AIModel } from "@/types/chat";
 import { fetchAvailableModels } from "@/lib/api";
-import { fetchOpsStatus, fetchOpsVersion, fetchFeatures, FeatureFlags } from "@/lib/workspace";
+import { fetchOpsStatus, fetchOpsVersion, fetchFeatures, FeatureFlags, fetchEvolutionIdentity, EvolutionIdentity } from "@/lib/workspace";
 import { probeAll, Probe } from "@/lib/system";
 import { fetchIntegrationHealth, IntegrationHealth } from "@/lib/integration";
 import { Section, StatCard, Badge, Btn, Field, inputCls, ErrorBox, Notice, SkeletonList } from "@/components/ui";
@@ -51,6 +51,7 @@ export function SettingsSection({ currentModel = "default", onModelChange, onOpe
   const [probes, setProbes] = useState<Probe[]>([]);
   const [probing, setProbing] = useState(true);
   const [opsVersion, setOpsVersion] = useState<string>("unknown");
+  const [identity, setIdentity] = useState<EvolutionIdentity | null>(null);
   const [features, setFeatures] = useState<FeatureFlags | null>(null);
   const [integrationHealth, setIntegrationHealth] = useState<IntegrationHealth | null>(null);
 
@@ -119,18 +120,20 @@ export function SettingsSection({ currentModel = "default", onModelChange, onOpe
     setProbing(true);
     setError(null);
     try {
-      const [mList, pList, v, f, ih] = await Promise.all([
+      const [mList, pList, v, f, ih, id] = await Promise.all([
         fetchAvailableModels().catch(() => []),
         probeAll().catch(() => []),
         fetchOpsVersion().catch(() => "unknown"),
         fetchFeatures().catch(() => null),
         fetchIntegrationHealth().catch(() => null),
+        fetchEvolutionIdentity().catch(() => null),
       ]);
       setModels(mList);
       setProbes(pList);
       setOpsVersion(v);
       setFeatures(f);
       setIntegrationHealth(ih);
+      setIdentity(id);
     } catch (e) {
       setError(errMsg(e));
     } finally {
@@ -146,6 +149,15 @@ export function SettingsSection({ currentModel = "default", onModelChange, onOpe
   const gatewayProbe = probes.find((p) => p.key === "gateway");
   const isOnline = Boolean(gatewayProbe?.ok);
   const onlineCount = probes.filter((p) => p.ok === true).length;
+  const updateState = identity?.updateState ?? "unknown";
+  const updateBadgeTone =
+    updateState === "UPDATE_AVAILABLE"
+      ? "amber"
+      : updateState === "UP_TO_DATE"
+        ? "green"
+        : updateState === "CHECK_FAILED"
+          ? "red"
+          : "gray";
 
   return (
     <Section
@@ -204,7 +216,10 @@ export function SettingsSection({ currentModel = "default", onModelChange, onOpe
                 <h3 className="text-sm font-semibold text-foreground">Workspace Profile</h3>
                 <p className="text-xs text-muted-foreground mt-0.5">Instance identity and application metadata</p>
               </div>
-              <Badge tone="blue">v{opsVersion}</Badge>
+              <div className="flex items-center gap-2">
+                <Badge tone="blue">v{opsVersion}</Badge>
+                <Badge tone={updateBadgeTone}>{updateState}</Badge>
+              </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
               <div className="p-3 rounded-xl bg-muted/40 border border-border/40">
@@ -216,6 +231,20 @@ export function SettingsSection({ currentModel = "default", onModelChange, onOpe
                 <span className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider block">Runtime Architecture</span>
                 <span className="text-sm font-bold text-foreground mt-0.5 block">LangGraph + FastAPI Super-Agent</span>
                 <span className="text-xs text-muted-foreground mt-1 block">Full-stack multi-bot sandboxed orchestration</span>
+              </div>
+              <div className="p-3 rounded-xl bg-muted/40 border border-border/40">
+                <span className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider block">Canonical Repository</span>
+                <span className="text-sm font-bold text-foreground mt-0.5 block break-all">{identity?.repositoryUrl ?? "unknown"}</span>
+                <span className="text-xs text-muted-foreground mt-1 block">
+                  {`Branch ${identity?.repositoryBranch ?? "unknown"} (source of truth) · Channel ${identity?.releaseChannel ?? "unknown"}`}
+                </span>
+              </div>
+              <div className="p-3 rounded-xl bg-muted/40 border border-border/40">
+                <span className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider block">Instance & Update</span>
+                <span className="text-sm font-bold text-foreground mt-0.5 block">{identity?.agentId ?? "unknown"}</span>
+                <span className="text-xs text-muted-foreground mt-1 block">
+                  {`v${identity?.alphaVersion ?? "unknown"} · commit ${identity?.gitCommit ?? "unknown"} · update ${updateState}`}
+                </span>
               </div>
             </div>
           </div>

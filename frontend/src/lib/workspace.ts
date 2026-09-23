@@ -123,3 +123,42 @@ export async function fetchOpsStatus(): Promise<OpsStatus> {
     raw: d,
   };
 }
+
+export interface EvolutionIdentity {
+  agentId: string;
+  alphaVersion: string;
+  gitCommit: string;
+  repositoryUrl: string;
+  repositoryBranch: string;
+  releaseChannel: string;
+  updateState: string;
+  raw: Record<string, unknown>;
+}
+
+export async function fetchEvolutionIdentity(): Promise<EvolutionIdentity> {
+  try {
+    const d = await get<Record<string, unknown>>("/evolution/identity");
+    const repo = (d.repository ?? {}) as Record<string, unknown>;
+    return {
+      agentId: String(pick(d, ["agentId"], "unknown")),
+      alphaVersion: String(pick(d, ["alphaVersion"], "unknown")),
+      gitCommit: String(pick(d, ["gitCommit"], "unknown")),
+      repositoryUrl: String(pick(repo, ["url"], "unknown")),
+      repositoryBranch: String(pick(repo, ["defaultBranch"], "unknown")),
+      releaseChannel: String(pick(d, ["releaseChannel"], "unknown")),
+      updateState: String(pick(d, ["updateState"], "unknown")),
+      raw: d,
+    };
+  } catch {
+    return {
+      agentId: "unknown",
+      alphaVersion: "unknown",
+      gitCommit: "unknown",
+      repositoryUrl: "unknown",
+      repositoryBranch: "unknown",
+      releaseChannel: "unknown",
+      updateState: "unknown",
+      raw: {},
+    };
+  }
+}

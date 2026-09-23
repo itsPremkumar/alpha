@@ -668,6 +668,7 @@ def test_system_prompt_template_preserves_placeholders():
         "{agent_name}",
         "{soul}",
         "{self_update_section}",
+        "{project_identity_section}",
         "{subagent_thinking}",
         "{skills_section}",
         "{deferred_tools_section}",
