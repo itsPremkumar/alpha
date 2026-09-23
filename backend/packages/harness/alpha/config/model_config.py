@@ -1,4 +1,6 @@
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from alpha.multimodal.capabilities import MODEL_CAPABILITIES
 
 
 class ProviderConfig(BaseModel):
@@ -64,6 +66,25 @@ class ModelConfig(BaseModel):
         description="Extra settings to be passed to the model when thinking is disabled",
     )
     supports_vision: bool = Field(default_factory=lambda: False, description="Whether the model supports vision/image inputs")
+    capabilities: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Multimodal capabilities this model serves in the T1 chain (alpha.multimodal.chain): "
+            "any of tts, stt, image_gen, vision, ocr. wake_word is deliberately NOT a model capability "
+            "(it is scored locally from streamed frames). Unknown values raise at config load — a typo "
+            "must never silently disable a capability. Vision-capable models may also rely on supports_vision."
+        ),
+    )
+
+    @field_validator("capabilities")
+    @classmethod
+    def _validate_capabilities(cls, value: list[str]) -> list[str]:
+        normalized = [str(entry).strip().lower() for entry in value]
+        unknown = sorted({entry for entry in normalized if entry and entry not in MODEL_CAPABILITIES})
+        if unknown:
+            allowed = ", ".join(sorted(MODEL_CAPABILITIES))
+            raise ValueError(f"unknown model capability(ies) {unknown}; allowed: {allowed}")
+        return [entry for entry in normalized if entry]
     context_window: int | None = Field(
         default=None,
         gt=0,

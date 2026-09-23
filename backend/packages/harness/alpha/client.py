@@ -184,7 +184,7 @@ class AgentWorkspaceClient:
         model_name: str | None = None,
         thinking_enabled: bool = True,
         subagent_enabled: bool = False,
-        plan_mode: bool = False,
+        plan_mode: bool | None = None,
         agent_name: str | None = None,
         available_skills: set[str] | None = None,
         middlewares: Sequence[AgentMiddleware] | None = None,
@@ -202,7 +202,10 @@ class AgentWorkspaceClient:
             model_name: Override the default model name from config.
             thinking_enabled: Enable model's extended thinking.
             subagent_enabled: Enable subagent delegation.
-            plan_mode: Enable TodoList middleware for plan mode.
+            plan_mode: Enable TodoList middleware for plan mode. ``None``
+                (default) derives the value from the global execution mode
+                (``alpha.runtime.execution_mode.is_plan_mode()``) at
+                construction time; an explicit ``True``/``False`` always wins.
             agent_name: Name of the agent to use.
             available_skills: Optional set of skill names to make available. If None (default), all scanned skills are available.
             middlewares: Optional list of custom middlewares to inject into the agent.
@@ -233,6 +236,12 @@ class AgentWorkspaceClient:
         self._model_name = model_name
         self._thinking_enabled = thinking_enabled
         self._subagent_enabled = subagent_enabled
+        # ``None`` sentinel: derive from the unified execution mode (gap 7);
+        # explicit True/False wins, keeping every existing caller's behavior.
+        if plan_mode is None:
+            from alpha.runtime.execution_mode import is_plan_mode
+
+            plan_mode = is_plan_mode()
         self._plan_mode = plan_mode
         self._agent_name = agent_name
         self._available_skills = set(available_skills) if available_skills is not None else None
@@ -277,11 +286,17 @@ class AgentWorkspaceClient:
 
     def _get_runnable_config(self, thread_id: str, **overrides) -> RunnableConfig:
         """Build a RunnableConfig for agent invocation."""
+        plan_mode_value = overrides.get("plan_mode", self._plan_mode)
+        if plan_mode_value is None:
+            # Explicit ``None`` override also derives from the global mode.
+            from alpha.runtime.execution_mode import is_plan_mode
+
+            plan_mode_value = is_plan_mode()
         configurable = {
             "thread_id": thread_id,
             "model_name": overrides.get("model_name", self._model_name),
             "thinking_enabled": overrides.get("thinking_enabled", self._thinking_enabled),
-            "is_plan_mode": overrides.get("plan_mode", self._plan_mode),
+            "is_plan_mode": plan_mode_value,
             "subagent_enabled": overrides.get("subagent_enabled", self._subagent_enabled),
         }
         return RunnableConfig(

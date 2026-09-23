@@ -12,10 +12,8 @@ Binds top slash commands to real backend subsystems:
 from __future__ import annotations
 
 import logging
-import os
 import sys
-from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from alpha.commands.registry import CommandExecutionResult, SlashCommandDef, command_registry
 
@@ -27,7 +25,7 @@ logger = logging.getLogger(__name__)
 # ==============================================================================
 
 
-def handle_skill_create(args: str, context: Optional[Dict[str, Any]] = None) -> CommandExecutionResult:
+def handle_skill_create(args: str, context: dict[str, Any] | None = None) -> CommandExecutionResult:
     """Creates a brand new skill with frontmatter, description, tools, and instructions."""
     raw = args.strip()
     if not raw:
@@ -92,7 +90,7 @@ tags: [custom, autonomous, workflow]
         )
 
 
-def handle_skill_list(args: str, context: Optional[Dict[str, Any]] = None) -> CommandExecutionResult:
+def handle_skill_list(args: str, context: dict[str, Any] | None = None) -> CommandExecutionResult:
     """Lists all installed, builtin, and custom skills with their categories and metadata."""
     from alpha.skills.storage import get_or_new_skill_storage
 
@@ -127,7 +125,7 @@ def handle_skill_list(args: str, context: Optional[Dict[str, Any]] = None) -> Co
     )
 
 
-def handle_skill_test(args: str, context: Optional[Dict[str, Any]] = None) -> CommandExecutionResult:
+def handle_skill_test(args: str, context: dict[str, Any] | None = None) -> CommandExecutionResult:
     """Validates the syntax, frontmatter, and security requirements of a target skill."""
     skill_name = args.strip().split()[0] if args.strip() else ""
     if not skill_name:
@@ -173,7 +171,7 @@ def handle_skill_test(args: str, context: Optional[Dict[str, Any]] = None) -> Co
 # ==============================================================================
 
 
-def handle_loop_start(args: str, context: Optional[Dict[str, Any]] = None) -> CommandExecutionResult:
+def handle_loop_start(args: str, context: dict[str, Any] | None = None) -> CommandExecutionResult:
     """Starts a continuous goal-driven execution loop with self-healing and milestone tracking."""
     task_desc = args.strip() or "Continuous autonomous optimization loop"
     from alpha.harness.continuous.runner import get_goal_runner
@@ -202,7 +200,7 @@ def handle_loop_start(args: str, context: Optional[Dict[str, Any]] = None) -> Co
         )
 
 
-def handle_loop_status(args: str, context: Optional[Dict[str, Any]] = None) -> CommandExecutionResult:
+def handle_loop_status(args: str, context: dict[str, Any] | None = None) -> CommandExecutionResult:
     """Inspects the active loop, current milestones, iterations, and blockers."""
     from alpha.harness.continuous.store import get_goal_store
 
@@ -231,7 +229,7 @@ def handle_loop_status(args: str, context: Optional[Dict[str, Any]] = None) -> C
     )
 
 
-def handle_loop_pause(args: str, context: Optional[Dict[str, Any]] = None) -> CommandExecutionResult:
+def handle_loop_pause(args: str, context: dict[str, Any] | None = None) -> CommandExecutionResult:
     """Pauses the currently running loop."""
     from alpha.harness.continuous.store import get_goal_store
 
@@ -250,7 +248,7 @@ def handle_loop_pause(args: str, context: Optional[Dict[str, Any]] = None) -> Co
     )
 
 
-def handle_loop_resume(args: str, context: Optional[Dict[str, Any]] = None) -> CommandExecutionResult:
+def handle_loop_resume(args: str, context: dict[str, Any] | None = None) -> CommandExecutionResult:
     """Resumes a paused loop."""
     from alpha.harness.continuous.store import get_goal_store
 
@@ -275,7 +273,7 @@ def handle_loop_resume(args: str, context: Optional[Dict[str, Any]] = None) -> C
 # ==============================================================================
 
 
-def handle_goal_create(args: str, context: Optional[Dict[str, Any]] = None) -> CommandExecutionResult:
+def handle_goal_create(args: str, context: dict[str, Any] | None = None) -> CommandExecutionResult:
     """Creates a durable autonomous mission."""
     res = handle_loop_start(args, context)
     res.command = "/goal create"
@@ -286,14 +284,14 @@ def handle_goal_create(args: str, context: Optional[Dict[str, Any]] = None) -> C
     return res
 
 
-def handle_goal_status(args: str, context: Optional[Dict[str, Any]] = None) -> CommandExecutionResult:
+def handle_goal_status(args: str, context: dict[str, Any] | None = None) -> CommandExecutionResult:
     """Shows completion percentage, blockers, subtasks and risks."""
     res = handle_loop_status(args, context)
     res.command = "/goal status"
     return res
 
 
-def handle_goal_decompose(args: str, context: Optional[Dict[str, Any]] = None) -> CommandExecutionResult:
+def handle_goal_decompose(args: str, context: dict[str, Any] | None = None) -> CommandExecutionResult:
     """Decomposes a complex objective into milestone DAGs with proof obligations."""
     objective = args.strip() or "Standard Engineering Objective"
     from alpha.planning.meta_planner import CognitiveMetaPlanner
@@ -326,7 +324,7 @@ def handle_goal_decompose(args: str, context: Optional[Dict[str, Any]] = None) -
 # ==============================================================================
 
 
-def handle_subagent_spawn(args: str, context: Optional[Dict[str, Any]] = None) -> CommandExecutionResult:
+def handle_subagent_spawn(args: str, context: dict[str, Any] | None = None) -> CommandExecutionResult:
     """Spawns an asynchronous task-scoped specialist subagent worker."""
     parts = args.strip().split(maxsplit=1)
     role = parts[0] if parts else "specialist"
@@ -356,7 +354,7 @@ def handle_subagent_spawn(args: str, context: Optional[Dict[str, Any]] = None) -
     )
 
 
-def handle_subagent_list(args: str, context: Optional[Dict[str, Any]] = None) -> CommandExecutionResult:
+def handle_subagent_list(args: str, context: dict[str, Any] | None = None) -> CommandExecutionResult:
     """Lists all active and registered subagents in the control plane."""
     from alpha.subagents.lifecycle import get_subagent_lifecycle_manager
 
@@ -388,7 +386,7 @@ def handle_subagent_list(args: str, context: Optional[Dict[str, Any]] = None) ->
 # ==============================================================================
 
 
-def handle_doctor(args: str, context: Optional[Dict[str, Any]] = None) -> CommandExecutionResult:
+def handle_doctor(args: str, context: dict[str, Any] | None = None) -> CommandExecutionResult:
     """Runs a system health check, dependency diagnostics, and configuration validation."""
     from alpha.config import get_app_config
 
@@ -416,7 +414,7 @@ def handle_doctor(args: str, context: Optional[Dict[str, Any]] = None) -> Comman
     )
 
 
-def handle_compact(args: str, context: Optional[Dict[str, Any]] = None) -> CommandExecutionResult:
+def handle_compact(args: str, context: dict[str, Any] | None = None) -> CommandExecutionResult:
     """Manually triggers token compression and context window compaction."""
     return CommandExecutionResult(
         status="success",
@@ -427,7 +425,7 @@ def handle_compact(args: str, context: Optional[Dict[str, Any]] = None) -> Comma
     )
 
 
-def handle_security_review(args: str, context: Optional[Dict[str, Any]] = None) -> CommandExecutionResult:
+def handle_security_review(args: str, context: dict[str, Any] | None = None) -> CommandExecutionResult:
     """Performs an automated security audit of tools, permissions, and pending changes."""
     return CommandExecutionResult(
         status="success",
@@ -441,6 +439,76 @@ def handle_security_review(args: str, context: Optional[Dict[str, Any]] = None) 
             "All security invariants verified. No privilege leaks detected."
         ),
         data={"secure": True, "privilege_ring": 0},
+    )
+
+
+# ==============================================================================
+# UNIFIED EXECUTION MODE (/mode — WorkSwarm gap 7)
+# ==============================================================================
+
+
+def handle_mode(args: str, context: dict[str, Any] | None = None) -> CommandExecutionResult:
+    """Shows or sets the unified global execution mode.
+
+    With no arguments the current mode and its real note are reported (the
+    default note is disclosed when nothing is persisted — no fabricated
+    history). With an argument the mode is persisted via
+    ``alpha.runtime.execution_mode.set_mode``; a failed persistence is
+    reported as an error carrying the real reason, never as a success.
+    """
+    from alpha.runtime.execution_mode import load_mode_record, mode_path, set_mode
+
+    raw = args.strip()
+    if raw in ("", "show"):
+        record = load_mode_record()
+        side_effects = "gated (plan mode: side effects require exiting plan mode)" if record["mode"].endswith(".plan") else "policy decides (mode imposes no extra gate)"
+        return CommandExecutionResult(
+            status="success",
+            command="/mode",
+            output=(
+                "=== Execution Mode ===\n"
+                f"Mode: {record['mode']}\n"
+                f"Note: {record['note']}\n"
+                f"Persisted file: {mode_path()}\n"
+                f"Side effects: {side_effects}"
+            ),
+            data=dict(record),
+        )
+
+    if raw == "set":
+        return CommandExecutionResult(
+            status="error",
+            command="/mode",
+            output="Usage: /mode set <work.normal|work.plan|code.normal|code.plan>",
+        )
+    if raw.startswith("set "):
+        raw = raw[4:].strip()
+
+    actor = ""
+    if context:
+        actor = str(context.get("actor") or context.get("user_id") or "")
+
+    try:
+        result = set_mode(raw, actor=actor)
+    except ValueError as exc:
+        return CommandExecutionResult(
+            status="error",
+            command="/mode",
+            output=f"{exc}\nUsage: /mode [work.normal|work.plan|code.normal|code.plan] or /mode set <mode>",
+            data={"error": str(exc)},
+        )
+    if not result["persisted"]:
+        return CommandExecutionResult(
+            status="error",
+            command="/mode",
+            output=f"Execution mode NOT changed: {result['note']}",
+            data=dict(result),
+        )
+    return CommandExecutionResult(
+        status="success",
+        command="/mode",
+        output=f"Execution mode set to {result['mode']} (was {result['previous']}).\nPersisted: {mode_path()}",
+        data=dict(result),
     )
 
 
@@ -492,6 +560,8 @@ def register_all_backend_handlers() -> None:
         "/learn": handle_learn,
         "/moa": handle_moa,
         "/usage": handle_usage,
+        # Unified execution mode (WorkSwarm gap 7)
+        "/mode": handle_mode,
     }
 
     for cmd_str, handler in handlers.items():

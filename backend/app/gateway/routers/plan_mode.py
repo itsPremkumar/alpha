@@ -14,13 +14,16 @@ import logging
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
-from app.gateway.deps import require_admin_user
 from alpha.planning.bridge import AutonomousDispatchBridge
 from alpha.planning.meta_planner import CognitiveMetaPlanner
+from app.gateway.deps import require_admin_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/plan-mode", tags=["plan-mode"])
 _ADMIN_REQUIRED_DETAIL = "Admin privileges are required to trigger autonomous dispatch."
+# Same require_admin_user + module-level detail-constant pattern as dispatch;
+# mode-specific wording so the 403 states the real reason.
+_MODE_ADMIN_REQUIRED_DETAIL = "Admin privileges are required to change the execution mode."
 
 
 class PlanEvaluateRequest(BaseModel):
@@ -120,3 +123,54 @@ async def interview_review(payload: InterviewReviewRequest) -> dict:
         from fastapi import HTTPException
 
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# Unified execution mode (WorkSwarm gap 7): GET/POST /api/plan-mode/mode
+# ---------------------------------------------------------------------------
+
+
+class ExecutionModeRequest(BaseModel):
+    mode: str = Field(..., min_length=1, description="Unified execution mode: work.normal | work.plan | code.normal | code.plan.")
+    actor: str = Field(default="", max_length=128, description="Who is changing the mode (recorded on disk in the actor field).")
+
+
+@router.get("/mode")
+async def get_execution_mode() -> dict:
+    """Read the unified execution mode honestly: active mode + real note.
+
+    A missing or corrupt persisted file returns the default mode WITH its
+    disclosed note (``default: no persisted mode found``) — never a
+    fabricated last-mode, timestamp, or actor.
+    """
+    from alpha.runtime.execution_mode import mode_status
+
+    return await asyncio.to_thread(mode_status)
+
+
+@router.post("/mode")
+async def set_execution_mode(payload: ExecutionModeRequest, request: Request):
+    """Persist the unified execution mode; admin-gated like /dispatch.
+
+    Honesty contract: ``persisted: true`` is only returned after the file has
+    been re-read and proven to contain the mode. A failed write returns a 5xx
+    carrying ``persisted: false`` plus the real error; an unknown mode is 422.
+    """
+    await require_admin_user(request, detail=_MODE_ADMIN_REQUIRED_DETAIL)
+
+    from alpha.runtime.execution_mode import set_mode
+
+    try:
+        result = await asyncio.to_thread(set_mode, payload.mode, actor=payload.actor)
+    except ValueError as exc:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if not result.get("persisted"):
+        from fastapi.responses import JSONResponse
+
+        # Not a success: the file does not contain the mode. Surface the real
+        # error with an explicit failure status instead of claiming a change.
+        return JSONResponse(status_code=500, content=result)
+    return result

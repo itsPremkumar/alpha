@@ -55,6 +55,7 @@ from app.gateway.routers import (
     memory,
     missions,
     models,
+    multimodal,
     openai_compat,
     ops,
     ops_integration,
@@ -995,6 +996,9 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
 
     # Input polishing API is mounted at /api/input-polish
     app.include_router(input_polish.router)
+
+    # Multimodal/voice API (capabilities/tts/stt/ocr/image-gen + /voice WS) at /api/multimodal
+    app.include_router(multimodal.router)
 
     # User-facing IM channel connection API is mounted at /api/channels
     app.include_router(channel_connections.router)

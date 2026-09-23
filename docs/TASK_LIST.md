@@ -24,10 +24,17 @@
 
 ## 2. In flight right now (parallel)
 
-- [~] **pre-memory secret filter** subagent `ses_f32032dd3ffeCtWF3sNzZcAvcD` — `alpha/security/memory_redaction.py` + `agents/memory/manager.py` edits visible, unreported; note: `test_no_orphan_modules` currently fails on `memory_redaction` until it is wired (belongs to this agent)
+- [x] **pre-memory secret filter** — DONE, centrally verified + committed `5a1f401` (34/34 central re-run, ruff 0, dup 0; orphan gate no longer flags `memory_redaction` — the remaining flag `alpha.rsi.state` belongs to RSI A4's pending stage-persistence wiring)
 - [~] **Voice & multimodal feature** subagent `ses_f31c2a451ffemUDOb17zjh4oPI` — implementing `references/ALPHA_VOICE_MULTIMODAL_PLAN.md` (P1–P6; see §6)
 - [ ] **Queue #5 full backend suite — restart fresh** only after the two agents above land + their commits; previous run cancelled by server restart at ~19% (`logs/pytest_full_stage4.log`); expect known F/E clusters 19–24%; then triage → recovery suite → env/prod checks
-- [ ] WorkSwarm gap 7 (unified execution-mode switch) — **unassigned**; full design ready in `references/ALPHA_WORKSWARM_GAPS_IMPLEMENTATION_PLAN.md` §gap 7 (`runtime/execution_mode.py`, additive `/api/plan-mode/mode`, `/mode` command row)
+- [ ] WorkSwarm gap 7 (unified execution-mode switch) — sub `ses_f31af9edcffeojRL1dth0CHx5M` [~] running; design in `references/ALPHA_WORKSWARM_GAPS_IMPLEMENTATION_PLAN.md` §9 (`runtime/execution_mode.py`, None-sentinel factory/client derivation, additive `/api/plan-mode/mode`, honesty-pinned `test_execution_mode.py`)
+- [~] **Known-issues honesty queue** (§9 items 1–5) — sub `ses_f31af9ec0ffeJkeqh8f3eujoe2` [~] running: disclosed neutral-0.5 defaults for `enterprise.py`/`enterprise/models.py`/`rfc.py` seeds/`memory.py:562`, `GateRequest.autonomous_mode` router default → opt-in False (engine + `test_autonomous_mode_is_opt_in` already pin opt-in)
+- [x] **RSI plan main-agent review** — done; adjudication + Wave-1 dispatch recorded in §5
+- [~] **web-search port from AgentEye** subagent `ses_f3196c284ffeIuEX7xUFHK3U45` — clone user's `itsPremkumar/AgentEye` (zero-key, 80+ free backends) outside the repo; port keyless web/deep search into `alpha/tools/builtins` (httpx-first, optional-import honesty) + official manifest regen as final gate
+- [~] **UI/UX + agent-status dashboard** subagent `ses_f3196c270ffew4yOcuZEthLzMK` — frontend-only, backend read-only: fix mis-displaying UI (loading/error/empty honesty), wire existing endpoints, new Agent Activity surface; voice-owned frontend files are findings-only to it
+- [~] **remaining-plan phase map (explore, read-only)** `ses_f3196c25dffea2hjV8vyRACIir` — evidence map of self-evolving §75 Phases 2-7 + WorkSwarm §46 Phases 0-12 → disjoint implementation-wave bundles
+- [~] **OpenClaw 2.0 deep analysis + port** subagent `ses_f3187d7d9ffeFfplFRdoaJAywU` — clone `openclaw/openclaw` depth-1 to temp; feature/architecture inventory + reality-map vs Alpha; implement top 3-5 ideas in its lane (runtime ops / observability / scheduling / health: new modules + additive endpoints on unowned routers only)
+- [~] **Hermes deep analysis + port** subagent `ses_f3187d7caffeP01nk3boV7TP7L` — clone `NousResearch/hermes-agent` depth-1 to temp; inventory + reality-map; implement top 3-5 ideas in its lane (learning loop: skills/memory/evidence/persona + new modules)
 
 ## 3. Free-LLM router phase checklist (all code items closed)
 
@@ -45,14 +52,19 @@
 | 3 | Hierarchical scoped budgets | `f96dad6` | [x] done + centrally re-verified |
 | 4 | HITL human-gated workflow steps | `f96dad6` | [x] done (wired to `alpha/projects/approval_queue.py`, not `orchestrator/approvals.py` — see plan row 4b) |
 | 5 | FACT/TIP experience bank + hygiene | `ecc4f1a` | [x] done + centrally re-verified |
-| 6 | Pre-memory-write secret filter | sub `ses_f32032dd3ffeCtWF3sNzZcAvcD` | [~] running (orphan-module failure pending its wiring) |
-| 7 | Unified execution mode switch (plan/code) | **unassigned** | [ ] design ready, spawn when §2 clears |
+| 6 | Pre-memory-write secret filter | `5a1f401` (sub `ses_f32032dd3ffeCtWF3sNzZcAvcD`) | [x] done + centrally verified (34/34, ruff 0, dup 0; orphan flag on `memory_redaction` cleared) |
+| 7 | Unified execution mode switch (plan/code) | sub `ses_f31af9edcffeojRL1dth0CHx5M` | [~] running (design §9 of plan) |
 
 ## 5. RSI features ("implement all possible RSI features")
 
 - [x] `references/RSI_AGENT_ARCHITECTURE.md` present (80,717 B, user-supplied, read-only)
 - [x] `references/ALPHA_RSI_IMPLEMENTATION_PLAN.md` — reality-mapped plan complete (27-feature inventory: 11 EXISTS / 13 PARTIAL / 3 MISSING; WP-A1…D3 packages; phases A→B→C; 8 spec↔code mismatches disclosed)
-- [ ] main-agent review of RSI plan against real code (verify inventory claims, not assume) — **queued after §2 clears**
+- [x] main-agent review of RSI plan against real code — **COMPLETE, APPROVED WITH AMENDMENTS**: explore agent verified all **27 verdicts correct** (11/13/3) + all **8 mismatches accurate**; A5 closed by grep-grade `git grep` (row 3 real holdout MISSING — only simulated `council.py` previews; row 19 zero hits; row 21 MISSING with `max_budget_chars` compaction-adjacent); citation corrections A1 (2 of 3 `WorktreeManager` "used by" false), A2 (`reflection/resolvers.py` mis-cited), A3 (adjacent `alpha/company` KPI subsystem — D1 must pre-read), A4 (dup citation) + 6 spec features absent from inventory (§42 cooldown, §26/§43 release dirs, §54 error taxonomy + uncited tools) all recorded in plan **§8 adjudication addendum** (plan status → APPROVED for Wave 1; binding ownership rule: **A4 owns `rsi/engine.py`, A3 module-only**)
+- [~] **RSI Wave 1 dispatched** (6 parallel disjoint agents per plan §4): A1 lineage+archive `ses_f31aa4c06ffecNmlGIKFZ9T24k` · A2 evaluator manifest `ses_f31aa4a50ffeOZWihH2d69N6GP` · A3 holdout (module-only) `ses_f31aa4a32ffeUTcoh9A64T81NJ` · A4 state+switchboard+engine.py guard `ses_f31aa4a1bffeL2X8knMu6HQ52R` · D1 opportunity miner (observe-only) `ses_f31aa4a07ffeXegoyIya48OLD6` · D3 strategy memory `ses_f31aa494cffe64sqt43XYQB0rd`
+- [ ] central review + staged commits for Wave 1 (each report: gates re-run, honesty diff review, `test_rsi_cycle.py` green everywhere)
+- [ ] RSI Wave 2 (B1 ∥ B2 ∥ B3 ∥ D2) — spawn only after Wave-1 merges
+- [ ] RSI Wave 3 (C1 ∥ C2a ∥ C2b, then C2c last — C2c owns the `evolution.py` default flip + serialization) — after Wave 2; decide scope of the 6 un-inventoried spec features at Wave-3 review
+- [ ] matrix entries + commit per wave
 - [ ] implement RSI phases per plan with targeted tests + gates, disjoint subagents
 - [ ] matrix entry + commit per phase
 
@@ -86,12 +98,16 @@ Research done this session (web): openWakeWord (server-side wake word), edge-tts
 
 ## 9. Known-issues queue (root-cause fixes only, never disable tests)
 
-- [ ] `backend/app/gateway/routers/enterprise.py:52` — hardcoded `epistemic_confidence 0.85`
-- [ ] `backend/packages/harness/alpha/enterprise/models.py:138` — fabricated default
-- [ ] `backend/packages/harness/alpha/enterprise/rfc.py:45,52,59,100,107` — fabricated RFC defaults
-- [ ] `backend/app/gateway/routers/memory.py:562` — fabricated confidence default
-- [ ] `GateRequest.autonomous_mode=True` default (flagged in RSI plan review) — audit callers, make the autonomous path explicit + disclosed
-- [ ] `test_no_orphan_modules` failure on `alpha.security.memory_redaction` — resolves when subagent `ses_f32032dd3ffeCtWF3sNzZcAvcD` lands its wiring (verify, don't suppress)
+All five code items assigned to sub `ses_f31af9ec0ffeJkeqh8f3eujoe2` [~] running:
+
+- [ ] `backend/app/gateway/routers/enterprise.py:52` — hardcoded `epistemic_confidence 0.85` (+ same-family `epistemic_weight 0.8`)
+- [ ] `backend/packages/harness/alpha/enterprise/models.py:138` — fabricated default (+ `DebateArgument.epistemic_weight 0.8` same family)
+- [ ] `backend/packages/harness/alpha/enterprise/rfc.py:45,52,59,100,107` — fabricated seed RFC confidences → disclosed `seed_demo_data` basis, arithmetic untouched
+- [ ] `backend/app/gateway/routers/memory.py:562` — fabricated confidence default → neutral baseline + disclosure
+- [ ] `GateRequest.autonomous_mode=True` (`routers/evolution.py:27`) — engine default is False (opt-in, `test_run_acceptance_criteria.py:28` pins it) → router default aligned to opt-in False
+- [x] `test_no_orphan_modules` / `alpha.security.memory_redaction` — RESOLVED by `5a1f401` (central run flags only `alpha.rsi.state` now; re-measure the full RSI orphan set when Wave 1 lands — wire it or add an ALLOWED_ORPHANS entry with a reason, never suppress)
+- [ ] `alpha/enterprise/heartbeat.py:206` — fabricated fallback `98.5` holdout score when no active release (found during RSI adjudication, grep-grade; same family as the §2.4 simulated-holdout disclosure; `heartbeat.py` is unowned — assign with the next central honesty batch)
+- [ ] `alpha/evolution/retrospective_engine.py` — imports `get_postmortem_store` (real API: `get_postmortem_engine`; records expose `error_summary`, not `symptom`) inside its try/except → real-engine lessons always resolve honestly to "unresolved" (found by RSI D3; file unowned → next honesty batch)
 
 ## 10. Standing rules (apply to every item above)
 

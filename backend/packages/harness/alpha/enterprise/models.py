@@ -9,6 +9,18 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+#: Neutral, disclosed baseline used when no real evidence backs a score.
+#: Mirrors the deliberation-side neutral 0.5 baseline (commit b7e8f3e): an
+#: honest "unknown", never a measured confidence.
+NEUTRAL_CONFIDENCE_BASELINE = 0.5
+
+#: How a stored confidence/weight was produced. Always serialized next to the
+#: value so consumers can tell an honest baseline from a caller-supplied
+#: rating from illustrative bootstrap demo data.
+CONFIDENCE_BASIS_NEUTRAL = "neutral_baseline_0.5"  # field omitted; honest unknown
+CONFIDENCE_BASIS_CALLER_SUPPLIED = "caller_supplied"  # explicit rating supplied by the caller
+CONFIDENCE_BASIS_SEED_DEMO = "seed_demo_data"  # bootstrap demo record, not a live review
+
 
 class CSuiteRole(StrEnum):
     CEO = "ceo"      # Executive Director
@@ -135,7 +147,9 @@ class RFCReview(BaseModel):
     reviewer_bot: str
     department: str
     verdict: str  # approve, reject, amend
-    epistemic_confidence: float = 0.85  # 0.0 to 1.0
+    epistemic_confidence: float = NEUTRAL_CONFIDENCE_BASELINE  # score in [0.0, 1.0]; NOT a measured probability — see confidence_basis
+    #: "neutral_baseline_0.5" | "caller_supplied" | "seed_demo_data" — how the score was produced.
+    confidence_basis: str = CONFIDENCE_BASIS_NEUTRAL
     argument: str
     created_at: float = Field(default_factory=time.time)
 
@@ -148,7 +162,9 @@ class DebateArgument(BaseModel):
     claim: str
     evidence: str
     counter_to_id: str | None = None
-    epistemic_weight: float = 0.8
+    epistemic_weight: float = NEUTRAL_CONFIDENCE_BASELINE  # score in [0.0, 1.0]; see confidence_basis
+    #: "neutral_baseline_0.5" | "caller_supplied" | "seed_demo_data" — how the score was produced.
+    confidence_basis: str = CONFIDENCE_BASIS_NEUTRAL
     created_at: float = Field(default_factory=time.time)
 
 

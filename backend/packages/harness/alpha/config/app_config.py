@@ -60,6 +60,7 @@ from alpha.config.tool_output_config import ToolOutputConfig
 from alpha.config.tool_progress_config import ToolProgressConfig
 from alpha.config.tool_search_config import ToolSearchConfig, load_tool_search_config_from_dict
 from alpha.config.verification_config import VerificationConfig
+from alpha.config.voice_config import VoiceConfig
 from alpha.extensions.loader import ExtensionSpec
 
 load_dotenv()
@@ -275,6 +276,7 @@ class AppConfig(BaseModel):
     hooks: HooksConfig = Field(default_factory=HooksConfig, description="Claude/Codex-style shell-hook bridge configuration (disabled by default)")
     authorization: AuthorizationConfig = Field(default_factory=AuthorizationConfig, description="Fine-grained resource authorization configuration (RBAC and beyond)")
     input_polish: InputPolishConfig = Field(default_factory=InputPolishConfig, description="Pre-send input polishing configuration.")
+    voice: VoiceConfig = Field(default_factory=VoiceConfig, description="Voice & multimodal (mic/speaker/wake-word, TTS/STT/OCR/image) configuration.")
     suggestions: SuggestionsConfig = Field(default_factory=SuggestionsConfig, description="Follow-up suggestions configuration.")
     circuit_breaker: CircuitBreakerConfig = Field(default_factory=CircuitBreakerConfig, description="LLM circuit breaker configuration")
     llm_call: LlmCallConfig = Field(default_factory=LlmCallConfig, description="LLM call execution configuration (concurrency / rate shaping)")

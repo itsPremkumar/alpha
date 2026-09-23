@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from .registry import CommandCategory
 
 
@@ -54,6 +55,7 @@ def get_default_catalog_entries():
         ("/plan alternative", CommandCategory.PLANNING, "Generates alternative strategies", "/plan alternative", False),
         ("/plan freeze", CommandCategory.PLANNING, "Prevents automatic plan changes temporarily", "/plan freeze", False),
         ("/plan unfreeze", CommandCategory.PLANNING, "Re-enables adaptive replanning", "/plan unfreeze", False),
+        ("/mode", CommandCategory.PLANNING, "Shows the current unified execution mode", "/mode [work.normal|work.plan|code.normal|code.plan]", True),
         # 4. Execution Commands
         ("/run", CommandCategory.EXECUTION, "Executes current approved plan", "/run", True),
         ("/run auto", CommandCategory.EXECUTION, "Lets executive choose execution strategy", "/run auto", False),

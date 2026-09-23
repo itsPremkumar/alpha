@@ -7,8 +7,12 @@ import time
 from typing import Any
 
 from alpha.enterprise.models import (
+    CONFIDENCE_BASIS_CALLER_SUPPLIED,
+    CONFIDENCE_BASIS_NEUTRAL,
+    CONFIDENCE_BASIS_SEED_DEMO,
     DebateArgument,
     EnterpriseRFC,
+    NEUTRAL_CONFIDENCE_BASELINE,
     RFCReview,
     RFCStatus,
 )
@@ -24,7 +28,12 @@ class EnterpriseRFCProtocol:
         self._bootstrap_sample_rfcs()
 
     def _bootstrap_sample_rfcs(self) -> None:
-        """Seeds initial architectural and security RFCs for the enterprise."""
+        """Seeds initial architectural and security RFCs for the enterprise.
+
+        Every seeded review/debate score is illustrative demo data, labeled
+        ``confidence_basis="seed_demo_data"`` — never presented as a real
+        measured confidence.
+        """
         rfc_001 = EnterpriseRFC(
             rfc_id="rfc-001",
             title="RFC-001: Zero-Downtime Hot-Swap Multi-Sig Promotion Protocol",

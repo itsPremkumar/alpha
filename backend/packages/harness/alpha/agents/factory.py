@@ -71,7 +71,7 @@ def create_agent_workspace_agent(
     middleware: list[AgentMiddleware] | None = None,
     features: RuntimeFeatures | None = None,
     extra_middleware: list[AgentMiddleware] | None = None,
-    plan_mode: bool = False,
+    plan_mode: bool | None = None,
     state_schema: type | None = None,
     checkpoint_channel_mode: CheckpointChannelMode = "full",
     checkpoint_snapshot_frequency: int | None = None,
@@ -102,7 +102,10 @@ def create_agent_workspace_agent(
         Additional middlewares inserted into the auto-assembled chain via
         ``@Next``/``@Prev`` positioning.  Cannot be used with *middleware*.
     plan_mode:
-        Enable TodoMiddleware for task tracking.
+        Enable TodoMiddleware for task tracking.  ``None`` (default) derives
+        the value from the global execution mode
+        (``alpha.runtime.execution_mode.is_plan_mode()``); an explicit
+        ``True``/``False`` always wins (backward compatible).
     state_schema:
         LangGraph state type.  Defaults to ``ThreadState``.
     checkpoint_channel_mode:
@@ -161,7 +164,7 @@ def create_agent_workspace_agent(
         effective_middleware, extra_tools = _assemble_from_features(
             feat,
             name=name,
-            plan_mode=plan_mode,
+            plan_mode=_resolve_plan_mode(plan_mode),
             extra_middleware=extra_middleware or [],
             subagent_runtime=subagent_runtime,
         )
@@ -187,6 +190,25 @@ def create_agent_workspace_agent(
         checkpointer=checkpointer,
         name=name,
     )
+
+
+# ---------------------------------------------------------------------------
+# Internal: plan-mode sentinel resolution
+# ---------------------------------------------------------------------------
+
+
+def _resolve_plan_mode(plan_mode: bool | None) -> bool:
+    """Resolve the ``plan_mode`` ``None`` sentinel against the global mode.
+
+    ``None`` derives from ``alpha.runtime.execution_mode.is_plan_mode()`` (the
+    unified execution-mode switch, WorkSwarm gap 7); an explicit ``True``/
+    ``False`` always wins so existing callers keep their exact behavior.
+    """
+    if plan_mode is None:
+        from alpha.runtime.execution_mode import is_plan_mode
+
+        return is_plan_mode()
+    return bool(plan_mode)
 
 
 # ---------------------------------------------------------------------------

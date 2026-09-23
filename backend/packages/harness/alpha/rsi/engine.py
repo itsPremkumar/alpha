@@ -13,8 +13,26 @@ from alpha.rsi.models import (
     RSIResult,
     RSIStage,
 )
+from alpha.rsi.switchboard import guard_cycle_start
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_holdout_api() -> tuple[Any, Any, str | None]:
+    """Module-level seam to wave-mate A3's ``alpha.rsi.holdout`` API (stubbed in tests).
+
+    Returns ``(run_holdout, holdout_gate, error)`` per plan §3 WP-A3; ``error``
+    carries the real import/attribute failure while A3's module has not landed
+    yet (parallel-sequencing seam — never a fabricated result).
+    """
+    try:
+        from alpha.rsi import holdout as _holdout
+    except ImportError as exc:
+        return None, None, str(exc)
+    missing = [name for name in ("run_holdout", "holdout_gate") if not callable(getattr(_holdout, name, None))]
+    if missing:
+        return None, None, f"alpha.rsi.holdout is missing callable(s): {', '.join(missing)}"
+    return _holdout.run_holdout, _holdout.holdout_gate, None
 
 
 class RSIEngine:
@@ -35,6 +53,7 @@ class RSIEngine:
         force_promote: bool = False,
     ) -> RSIResult:
         """Generate a candidate and simulated evaluation preview without activation."""
+        guard_cycle_start()  # WP-A4 guarded entry: raises RuntimeError(<real reason>) when frozen; no cycle record is fabricated on refusal.
         self.stage = RSIStage.BOTTLENECK_DETECTED
 
         # 1. Generate hypothesis
@@ -131,6 +150,53 @@ class RSIEngine:
             evidence=["Simulated holdout preview; no regression benchmarks were executed."],
             evidence_kind="simulated",
         )
+
+    def run_holdout_gate(self) -> dict[str, Any]:
+        """Run wave-mate A3's real hidden-holdout gate (plan WP-A3 via A4-owned engine.py).
+
+        Calls ``alpha.rsi.holdout.run_holdout`` + ``holdout_gate`` through the
+        module-level seam ``_resolve_holdout_api`` (tests stub it). When
+        ``rsi/holdout.py`` is absent the result is honestly
+        ``status="not_available"`` with the real import error and
+        ``gate_passed=False`` — never a fabricated score or pass rate (§5.6).
+        """
+        run_holdout, holdout_gate, error = _resolve_holdout_api()
+        if run_holdout is None or holdout_gate is None:
+            return {
+                "status": "not_available",
+                "holdout": None,
+                "gate_passed": False,
+                "gate_reason": f"holdout gate unavailable: {error}",
+                "evidence_kind": "unverified",
+            }
+        try:
+            holdout_result = run_holdout()
+        except Exception as exc:
+            return {
+                "status": "error",
+                "holdout": None,
+                "gate_passed": False,
+                "gate_reason": f"holdout run failed: {exc}",
+                "evidence_kind": "unverified",
+            }
+        evidence_kind = holdout_result.get("evidence_kind", "unverified") if isinstance(holdout_result, dict) else "unverified"
+        try:
+            passed, reason = holdout_gate(holdout_result)
+        except Exception as exc:
+            return {
+                "status": "error",
+                "holdout": holdout_result,
+                "gate_passed": False,
+                "gate_reason": f"holdout gate failed: {exc}",
+                "evidence_kind": evidence_kind,
+            }
+        return {
+            "status": "ok",
+            "holdout": holdout_result,
+            "gate_passed": bool(passed),
+            "gate_reason": str(reason),
+            "evidence_kind": evidence_kind,
+        }
 
     def get_status(self) -> dict[str, Any]:
         """Return status dictionary for UI and API hydration."""
