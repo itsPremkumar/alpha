@@ -2,7 +2,8 @@
 
 import React, { useEffect, useState } from "react";
 import { fetchConsoleStats, fetchConsoleRuns, fetchConsoleUsage, fetchOpsVersion, ConsoleStats, ConsoleRun } from "@/lib/workspace";
-import { supervisionFleet, supervisionAnomalies, recoverWorker } from "@/lib/supervision";
+import { fetchFleetWorkers, fetchAnomaliesStrict, FleetWorker, recoverWorker } from "@/lib/supervision";
+import { AgentStatusPanel } from "@/components/AgentStatusPanel";
 import { Section, EmptyState, ErrorBox, StatCard, Btn, Badge, SkeletonList } from "@/components/ui";
 import { errMsg } from "@/lib/http";
 import { RefreshCw, ShieldCheck } from "lucide-react";
@@ -73,6 +74,10 @@ export function DashboardSection(props: { onOpenThread: (id: string) => void }) 
       }
     >
       {error && <ErrorBox message={error} onRetry={load} />}
+
+      {/* Agent status runs on its own endpoints, so it stays visible even when usage stats fail. */}
+      <AgentStatusPanel />
+
       {loading ? (
         <SkeletonList rows={5} />
       ) : !stats ? (
@@ -145,24 +150,51 @@ export function DashboardSection(props: { onOpenThread: (id: string) => void }) 
 }
 
 function WatchdogBlock() {
-  const [fleet, setFleet] = React.useState<Record<string, unknown> | null>(null);
+  const [workers, setWorkers] = React.useState<FleetWorker[]>([]);
   const [anomalies, setAnomalies] = React.useState<Array<Record<string, unknown>>>([]);
   const [loaded, setLoaded] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
   const [msg, setMsg] = React.useState<string | null>(null);
 
   const load = async () => {
-    const [f, a] = await Promise.all([supervisionFleet(), supervisionAnomalies()]);
-    setFleet(f);
-    setAnomalies(a);
-    setLoaded(true);
+    setError(null);
+    setLoaded(false);
+    try {
+      const [w, a] = await Promise.all([fetchFleetWorkers(), fetchAnomaliesStrict()]);
+      setWorkers(w);
+      setAnomalies(a);
+    } catch (e) {
+      // A failed watchdog fetch must say so — it is not the same as "no anomalies".
+      setWorkers([]);
+      setAnomalies([]);
+      setError(errMsg(e));
+    } finally {
+      setLoaded(true);
+    }
   };
 
   React.useEffect(() => {
-    load().catch(() => setLoaded(true));
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (!loaded) return null;
-  if (!fleet && anomalies.length === 0) return null;
+  if (!loaded) {
+    return (
+      <div className="rounded-2xl border border-border/60 bg-card p-4">
+        <p className="text-xs font-semibold">Safety watchdog</p>
+        <p className="text-[11px] text-muted-foreground mt-1">Checking worker liveness…</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-2xl border border-border/60 bg-card p-4 space-y-2">
+        <p className="text-xs font-semibold">Safety watchdog</p>
+        <ErrorBox message={`Watchdog status unavailable — ${error}`} onRetry={() => void load()} />
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-2xl border border-border/60 bg-card p-4 space-y-2">
@@ -170,12 +202,19 @@ function WatchdogBlock() {
         <ShieldCheck className="size-4 text-emerald-500" />
         <p className="text-xs font-semibold flex-1">Safety watchdog</p>
         <Badge tone={anomalies.length > 0 ? undefined : "green"}>
-          {anomalies.length > 0 ? `${anomalies.length} issue${anomalies.length > 1 ? "s" : ""}` : "all healthy"}
+          {anomalies.length > 0 ? `${anomalies.length} issue${anomalies.length > 1 ? "s" : ""}` : "no anomalies"}
         </Badge>
       </div>
       {msg && <p className="text-[11px] text-emerald-600">{msg}</p>}
+      <p className="text-[11px] text-muted-foreground">
+        {workers.length} worker{workers.length === 1 ? "" : "s"} reporting in.
+      </p>
       {anomalies.length === 0 ? (
-        <p className="text-[11px] text-muted-foreground">Workers are reporting in normally. Frozen or looping workers appear here with a one-tap fix.</p>
+        <p className="text-[11px] text-muted-foreground">
+          {workers.length === 0
+            ? "No heartbeats received yet, so there are no anomalies to report."
+            : "Workers are reporting in normally. Frozen or looping workers appear here with a one-tap fix."}
+        </p>
       ) : (
         <div className="space-y-1.5">
           {anomalies.slice(0, 8).map((a, i) => {

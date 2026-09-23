@@ -8,6 +8,8 @@
     --foreground: 224 71% 4%;
     --card: 0 0% 100%;
     --card-foreground: 224 71% 4%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 71% 4%;
     --primary: 221 83% 53%;
     --primary-foreground: 210 40% 98%;
     --secondary: 220 14% 96%;
@@ -16,6 +18,8 @@
     --muted-foreground: 220 9% 46%;
     --accent: 220 14% 94%;
     --accent-foreground: 220 9% 15%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
     --border: 220 13% 91%;
     --input: 220 13% 91%;
     --ring: 221 83% 53%;
@@ -27,6 +31,8 @@
     --foreground: 210 40% 98%;
     --card: 224 25% 9%;
     --card-foreground: 210 40% 98%;
+    --popover: 224 25% 9%;
+    --popover-foreground: 210 40% 98%;
     --primary: 217 91% 60%;
     --primary-foreground: 222 47% 11%;
     --secondary: 217 19% 16%;
@@ -35,14 +41,243 @@
     --muted-foreground: 215 20% 65%;
     --accent: 217 19% 18%;
     --accent-foreground: 210 40% 98%;
+    --destructive: 0 72% 58%;
+    --destructive-foreground: 210 40% 98%;
     --border: 217 19% 18%;
     --input: 217 19% 18%;
-    --ring: 224 76% 48%;
+    --ring: 224 76% 66%;
+  }
+
+  html {
+    min-height: 100%;
+    color-scheme: light;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  body {
+    min-height: 100%;
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    overscroll-behavior: none;
+    text-rendering: optimizeLegibility;
+  }
+
+  button,
+  a,
+  input,
+  textarea,
+  select {
+    -webkit-tap-highlight-color: transparent;
   }
 }
 
-body {
-  background-color: hsl(var(--background));
+/* Keep keyboard focus obvious even when a component removes its outline. */
+:where(a, button, input, textarea, select, summary, [tabindex]):focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+::selection {
+  background: hsl(var(--primary) / 0.22);
   color: hsl(var(--foreground));
-  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+.skip-link {
+  position: fixed;
+  left: 0.75rem;
+  top: 0.75rem;
+  z-index: 100;
+  transform: translateY(-200%);
+  border-radius: 0.75rem;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  padding: 0.625rem 0.875rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  box-shadow: 0 12px 30px hsl(224 71% 4% / 0.25);
+  transition: transform 150ms ease;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+/* Minimal Markdown typography without requiring an additional plugin. */
+.prose {
+  color: hsl(var(--foreground));
+  overflow-wrap: anywhere;
+}
+
+.prose > :first-child {
+  margin-top: 0;
+}
+
+.prose > :last-child {
+  margin-bottom: 0;
+}
+
+.prose p,
+.prose ul,
+.prose ol,
+.prose blockquote,
+.prose pre,
+.prose table {
+  margin: 0.75em 0;
+}
+
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4 {
+  color: hsl(var(--foreground));
+  font-weight: 700;
+  line-height: 1.3;
+  margin: 1.2em 0 0.55em;
+}
+
+.prose h1 { font-size: 1.35em; }
+.prose h2 { font-size: 1.2em; }
+.prose h3 { font-size: 1.08em; }
+.prose h4 { font-size: 1em; }
+
+.prose ul,
+.prose ol {
+  padding-left: 1.35rem;
+}
+
+.prose ul { list-style: disc; }
+.prose ol { list-style: decimal; }
+.prose li { margin: 0.25em 0; }
+.prose li::marker { color: hsl(var(--muted-foreground)); }
+
+.prose a {
+  color: hsl(var(--primary));
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: hsl(var(--primary) / 0.4);
+  text-underline-offset: 3px;
+}
+
+.prose a:hover {
+  text-decoration-color: hsl(var(--primary));
+}
+
+.prose strong {
+  color: hsl(var(--foreground));
+  font-weight: 700;
+}
+
+.prose blockquote {
+  border-left: 3px solid hsl(var(--primary) / 0.55);
+  color: hsl(var(--muted-foreground));
+  padding: 0.15rem 0 0.15rem 0.9rem;
+}
+
+.prose code {
+  border-radius: 0.35rem;
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+  padding: 0.12rem 0.3rem;
+  font-size: 0.9em;
+}
+
+.prose pre {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.75rem;
+  background: hsl(var(--background));
+  padding: 0.85rem 1rem;
+  line-height: 1.55;
+}
+
+.prose pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 0.82em;
+}
+
+.prose table {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.9em;
+}
+
+.prose th,
+.prose td {
+  border: 1px solid hsl(var(--border));
+  padding: 0.5rem 0.7rem;
+  text-align: left;
+}
+
+.prose th {
+  background: hsl(var(--muted));
+  font-weight: 700;
+}
+
+.prose hr {
+  border: 0;
+  border-top: 1px solid hsl(var(--border));
+  margin: 1.25rem 0;
+}
+
+/* The appearance preference is applied to the root and affects these shared
+   layout primitives without changing their component APIs. */
+html[data-density="compact"] .workspace-section {
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+}
+
+html[data-density="compact"] .message-row {
+  padding-top: 0.55rem;
+  padding-bottom: 0.55rem;
+}
+
+html[data-density="compact"] .composer-shell {
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (forced-colors: active) {
+  :where(a, button, input, textarea, select, summary, [tabindex]):focus-visible {
+    outline-color: Highlight;
+  }
 }
