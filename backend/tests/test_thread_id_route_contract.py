@@ -70,6 +70,7 @@ def test_every_thread_id_route_handler_uses_canonical_type():
 def _collect_thread_id_routes():
     """Import every gateway router and collect (method, full_path) with {thread_id}."""
     from app.gateway.routers import (
+        agent_messages,
         artifacts,
         browser,
         feedback,
@@ -85,6 +86,7 @@ def _collect_thread_id_routes():
     )
 
     routers = [
+        agent_messages,
         artifacts,
         browser,
         feedback,

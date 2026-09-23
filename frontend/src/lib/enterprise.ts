@@ -172,9 +172,9 @@ export interface EnterpriseTelemetry {
   treasury_overall_burn_rate_tpm: number;
   treasury_circuit_breakers_tripped: number;
   system_latency_p95_ms: number;
-  security_posture_score: number;
-  holdout_pass_rate_percent: number;
-  latest_release_version: string;
+  security_posture_score: number | null;
+  holdout_pass_rate_percent: number | null;
+  latest_release_version: string | null;
   stagnation_recovery_status: string;
   last_heartbeat_timestamp: string;
 }

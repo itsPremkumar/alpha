@@ -223,12 +223,12 @@ export function WarRoomSection() {
           />
           <StatCard
             label="Security Posture"
-            value={`${telemetry.security_posture_score}%`}
+            value={telemetry.security_posture_score == null ? "No scan" : `${telemetry.security_posture_score}%`}
             sub="Synthetic preview; not a security audit"
           />
           <StatCard
             label="Holdout Benchmark"
-            value={`${telemetry.holdout_pass_rate_percent}%`}
+            value={telemetry.holdout_pass_rate_percent == null ? "No active release" : `${telemetry.holdout_pass_rate_percent}%`}
             sub="Synthetic preview; no release verified"
           />
           <StatCard

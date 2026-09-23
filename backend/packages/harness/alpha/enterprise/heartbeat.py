@@ -114,13 +114,6 @@ class EnterpriseHeartbeatCoordinator:
             if d_id not in default_dept_ids:
                 self.treasury.record_token_burn(dept_id=d_id, tokens_burned=400)
 
-        # 6. Check active RFCs
-        rfcs = self.rfc_protocol.list_rfcs()
-        approved_rfcs = [r for r in rfcs if r.status.value == "approved" or r.gating_passed]
-
-        # 7. Quality Council Quorum status
-        active_release = self.council.get_active_release()
-
         # 8. Stagnation Watchdog & Keel-style Auto-Recovery
         if not advanced_tasks and all(s.status == "completed" for s in sprints):
             self._stagnation_ticks += 1
@@ -199,11 +192,11 @@ class EnterpriseHeartbeatCoordinator:
         avg_p95 = round(sum(p95_values) / max(1, len(p95_values)), 1)
 
         sec = self.discovery.get_latest_scan()
-        sec_score = sec.security_score if sec else 99.0
+        sec_score = sec.security_score if sec else None
 
         active_rel = self.council.get_active_release()
-        latest_ver = active_rel.version if active_rel else "v2.1.0"
-        holdout_score = active_rel.holdout_benchmark_score if active_rel else 98.5
+        latest_ver = active_rel.version if active_rel else None
+        holdout_score = active_rel.holdout_benchmark_score if active_rel else None
 
         return EnterpriseTelemetry(
             heartbeat_cycle=self._cycle_counter,

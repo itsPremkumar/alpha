@@ -250,7 +250,7 @@ class SecurityScanReport(BaseModel):
     scan_id: str = Field(default_factory=lambda: f"sec-{uuid.uuid4().hex[:8]}")
     files_scanned: int = 0
     ast_violations: list[dict[str, Any]] = Field(default_factory=list)
-    security_score: float = 98.5
+    security_score: float | None = None
     ast_boundary_passed: bool = True
     cve_alerts: list[str] = Field(default_factory=list)
     timestamp: float = Field(default_factory=time.time)
@@ -269,8 +269,8 @@ class EnterpriseTelemetry(BaseModel):
     treasury_overall_burn_rate_tpm: float = 0.0
     treasury_circuit_breakers_tripped: int = 0
     system_latency_p95_ms: float = 42.0
-    security_posture_score: float = 99.0
-    holdout_pass_rate_percent: float = 100.0
-    latest_release_version: str = "v2.1.0"
+    security_posture_score: float | None = None
+    holdout_pass_rate_percent: float | None = None
+    latest_release_version: str | None = None
     stagnation_recovery_status: str = "nominal"
     last_heartbeat_timestamp: str = ""
