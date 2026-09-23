@@ -25,6 +25,21 @@ Stop-reason surfacing (#3875 Phase 2):
   after the run returns; the bounded dict prevents unbounded growth on
   abandoned runs, and each subagent run builds a fresh middleware instance so
   there is no cross-run contamination.
+
+Scoped budgets:
+  When a scope id is bound via
+  :func:`alpha.config.token_budget_config.budget_scope` (contextvar set by
+  callers), newly observed token usage is *also* charged to that scope and to
+  each declared ancestor. The configured scope limits join the fraction
+  evaluation as ``min(own limit, remaining parent, ...)`` - a parent limit
+  bounds every child, so no scope can exceed its ancestors. When a scope
+  fraction hard-stops, the exhaustion detail (scope id, consumed, limit and
+  every clamped ancestor's numbers) is exposed via
+  :meth:`consume_scope_exhaustion` and stamped into ``runtime.context`` under
+  ``budget_status="BUDGET_EXHAUSTED"``. With no scope bound (the default),
+  behaviour is exactly the pre-existing per-run enforcement; scope usage
+  intentionally outlives ``after_agent`` (a workflow/goal scope spans runs)
+  and is only cleared by :meth:`reset`.
 """
 
 from __future__ import annotations
@@ -42,7 +57,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.runtime import Runtime
 
 from alpha.agents.middlewares._bounded_dict import BoundedDict
-from alpha.config.token_budget_config import TokenBudgetConfig
+from alpha.config.token_budget_config import EffectiveScopeLimits, TokenBudgetConfig, get_current_budget_scope
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +91,12 @@ class TokenBudgetMiddleware(AgentMiddleware[AgentState]):
         # ``_clear_run_state``/``after_agent`` so the executor can consume it
         # after the run returns; bounded so abandoned runs cannot leak.
         self._stop_reason: BoundedDict[str, str] = BoundedDict(1000)
+        # Scoped-budget state: usage charged per scope id (scope + ancestors)
+        # and the last scope-triggered exhaustion report per run. Scope usage
+        # deliberately survives ``_clear_run_state`` (a workflow/goal scope
+        # spans runs); bounded like everything else here.
+        self._scope_usage: BoundedDict[str, TokenUsage] = BoundedDict(1000)
+        self._scope_exhaustion: BoundedDict[str, dict[str, Any]] = BoundedDict(1000)
 
     def release_policy_parameters(self) -> dict[str, object]:
         return {"config": self._config.model_dump(mode="python")}
@@ -91,6 +112,8 @@ class TokenBudgetMiddleware(AgentMiddleware[AgentState]):
             self._seen_messages.clear()
             self._cumulative_usage.clear()
             self._stop_reason.clear()
+            self._scope_usage.clear()
+            self._scope_exhaustion.clear()
 
     def consume_stop_reason(self, run_id: str | None) -> str | None:
         """Pop and return the stop reason the hard-stop set for this run.
@@ -103,6 +126,26 @@ class TokenBudgetMiddleware(AgentMiddleware[AgentState]):
         """
         with self._lock:
             return self._stop_reason.pop(run_id, None)
+
+    def scope_usage(self, scope_id: str) -> TokenUsage | None:
+        """Cumulative tokens charged to ``scope_id`` (its own scope + descendants charged through it)."""
+        with self._lock:
+            usage = self._scope_usage.get(scope_id)
+            if usage is None:
+                return None
+            return TokenUsage(input=usage.input, output=usage.output, total=usage.total)
+
+    def consume_scope_exhaustion(self, run_id: str) -> dict[str, Any] | None:
+        """Pop the exhaustion report a scope-triggered hard stop left for this run.
+
+        Returns ``None`` when the run was not stopped by a scoped budget.
+        The report carries ``scope_id``, ``dimension``, ``consumed``,
+        ``limit`` and the ``bounders`` (each clamped ancestor's
+        limit/consumed/remaining numbers) so callers can surface an explicit,
+        honest ``BUDGET_EXHAUSTED`` outcome instead of a generic completion.
+        """
+        with self._lock:
+            return self._scope_exhaustion.pop(run_id, None)
 
     @staticmethod
     def _get_run_id(runtime: Runtime) -> str:
@@ -205,6 +248,9 @@ class TokenBudgetMiddleware(AgentMiddleware[AgentState]):
             seen = self._seen_messages.setdefault(run_id, {})
             usage_accum = self._cumulative_usage.setdefault(run_id, TokenUsage())
 
+            start_input = usage_accum.input
+            start_output = usage_accum.output
+
             for msg in messages:
                 if isinstance(msg, AIMessage) and msg.id and hasattr(msg, "usage_metadata"):
                     usage = msg.usage_metadata or {}
@@ -228,37 +274,81 @@ class TokenBudgetMiddleware(AgentMiddleware[AgentState]):
             if usage_accum.total <= 0:
                 return None
 
-            fractions = [("total", usage_accum.total, self._config.max_tokens)]
+            # Scoped accounting: charge the newly observed tokens to the bound
+            # scope and each declared ancestor. No bound scope -> default
+            # per-run behaviour, untouched.
+            scope_id = get_current_budget_scope()
+            if scope_id:
+                delta_input = usage_accum.input - start_input
+                delta_output = usage_accum.output - start_output
+                self._charge_scope(scope_id, delta_input, delta_output)
+
+            # Each entry: (reason, used, limit, scope_meta | None)
+            fractions: list[tuple[str, int, int, dict[str, Any] | None]] = [("total", usage_accum.total, self._config.max_tokens, None)]
             if self._config.max_input_tokens:
-                fractions.append(("input", usage_accum.input, self._config.max_input_tokens))
+                fractions.append(("input", usage_accum.input, self._config.max_input_tokens, None))
             if self._config.max_output_tokens:
-                fractions.append(("output", usage_accum.output, self._config.max_output_tokens))
+                fractions.append(("output", usage_accum.output, self._config.max_output_tokens, None))
+
+            if scope_id:
+                scope_limits = self._scope_limits(scope_id)
+                if scope_limits is not None:
+                    own = self._scope_usage.get(scope_id, TokenUsage())
+                    for dimension, used, limit in (
+                        ("total", own.total, scope_limits.max_tokens),
+                        ("input", own.input, scope_limits.max_input_tokens),
+                        ("output", own.output, scope_limits.max_output_tokens),
+                    ):
+                        if limit is None:
+                            continue
+                        meta = {
+                            "scope_id": scope_id,
+                            "dimension": dimension,
+                            "consumed": used,
+                            "limit": limit,
+                            "bounders": list(scope_limits.bounders),
+                        }
+                        fractions.append((f"{dimension} for scope '{scope_id}'", used, limit, meta))
 
             highest_fraction = 0.0
             trigger_reason = ""
             trigger_used = 0
             trigger_budget = 0
+            trigger_meta: dict[str, Any] | None = None
 
-            for reason, used, limit in fractions:
-                frac = used / limit
+            for reason, used, limit, meta in fractions:
+                # A non-positive effective limit (parent remaining exhausted)
+                # means the scope is over budget no matter the child's own use.
+                frac = float("inf") if limit <= 0 else used / limit
                 if frac > highest_fraction:
                     highest_fraction = frac
                     trigger_reason = reason
                     trigger_used = used
                     trigger_budget = limit
+                    trigger_meta = meta
 
             if highest_fraction >= self._config.hard_stop_threshold:
                 logger.warning("Token budget hard stop triggered for run %s: %s limit exceeded", run_id, trigger_reason)
                 # Record the stop reason so the executor can surface
                 # ``stop_reason=token_capped`` to the lead after the run
                 # returns (the hard stop itself does not raise). See
-                # ``consume_stop_reason``.
+                # ``consume_scope_exhaustion``.
                 self._stop_reason[run_id] = "token_capped"
+                # A scope-triggered stop always persists its report on the
+                # middleware (independent of runtime.context availability) so
+                # callers can surface an explicit, honest BUDGET_EXHAUSTED
+                # outcome with consumed/limit numbers - never a silently
+                # truncated "completed" run.
+                if trigger_meta is not None:
+                    self._scope_exhaustion[run_id] = dict(trigger_meta)
                 # Also write to runtime.context so the lead worker can read it
                 # without needing a reference to this middleware instance (#4176).
                 ctx = getattr(runtime, "context", None)
                 if isinstance(ctx, dict):
                     ctx["stop_reason"] = "token_capped"
+                    if trigger_meta is not None:
+                        ctx["budget_status"] = "BUDGET_EXHAUSTED"
+                        ctx["budget_exhausted"] = dict(trigger_meta)
                 stop_text = _BUDGET_EXCEEDED_MSG.format(reason=trigger_reason, used=trigger_used, budget=trigger_budget)
                 return self._build_hard_stop_update(last_msg, stop_text)
 
@@ -273,6 +363,33 @@ class TokenBudgetMiddleware(AgentMiddleware[AgentState]):
                 return None
 
             return None
+
+    def _charge_scope(self, scope_id: str, delta_input: int, delta_output: int) -> None:
+        """Charge newly observed tokens to ``scope_id`` and its declared ancestors.
+
+        Called with ``self._lock`` held. Undeclared scopes are still charged to
+        themselves (usage visibility) but enforce no configured limit.
+        """
+        if delta_input <= 0 and delta_output <= 0:
+            return
+        chain = self._config.scope_chain(scope_id)
+        charge_ids = [scope_id] + [sid for sid in chain if sid != scope_id]
+        for sid in charge_ids:
+            usage = self._scope_usage.setdefault(sid, TokenUsage())
+            usage.input += delta_input
+            usage.output += delta_output
+            usage.total += delta_input + delta_output
+
+    def _scope_limits(self, scope_id: str) -> EffectiveScopeLimits | None:
+        """Effective (ancestor-bounded) limits for the active scope, or ``None``."""
+        chain = self._config.scope_chain(scope_id)
+        if not chain:
+            return None
+        usage_snapshot: dict[str, dict[str, int]] = {}
+        for sid in chain:
+            usage = self._scope_usage.get(sid, TokenUsage())
+            usage_snapshot[sid] = {"input": usage.input, "output": usage.output, "total": usage.total}
+        return self._config.effective_scope_limits(scope_id, usage_snapshot)
 
     @override
     def after_model(self, state: AgentState, runtime: Runtime) -> dict | None:

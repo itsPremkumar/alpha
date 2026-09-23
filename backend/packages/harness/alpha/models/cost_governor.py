@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from alpha.config.runtime_paths import runtime_home
+from alpha.config.token_budget_config import get_current_budget_scope
 from alpha.projects.approval_queue import get_approval_queue
 
 logger = logging.getLogger(__name__)
@@ -24,6 +25,24 @@ logger = logging.getLogger(__name__)
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+class CircuitBreakerTrippedError(RuntimeError):
+    """Raised when a scoped charge hits a tripped circuit breaker.
+
+    The breaker hierarchy inherits: a tripped project breaker blocks every
+    scope under it, and a tripped scope blocks itself and its declared
+    children. The offending usage is still recorded before this is raised
+    (the spend is real - the exception blocks further work, never erases
+    accounting), so callers must treat it as an explicit stop signal rather
+    than a soft warning.
+    """
+
+    def __init__(self, scope_id: str, blocked_by: str, detail: str) -> None:
+        super().__init__(f"Scope '{scope_id}' blocked by tripped circuit breaker '{blocked_by}': {detail}")
+        self.scope_id = scope_id
+        self.blocked_by = blocked_by
+        self.detail = detail
 
 
 def _costs_storage_path() -> Path:
@@ -83,6 +102,31 @@ class TokenUsageRecord:
         return cls(**filtered)
 
 
+@dataclass
+class ScopeBudgetState:
+    """A scope-aware sub-budget with an inherited circuit breaker.
+
+    ``parent`` links the scope into the hierarchy (e.g. node -> workflow ->
+    project); a tripped breaker (``spent_usd >= limit_usd``) blocks this scope
+    and every declared child of it. The project-level daily budget acts as the
+    implicit root breaker for all scopes.
+    """
+
+    scope_id: str
+    limit_usd: float
+    parent: str | None = None
+    spent_usd: float = 0.0
+    tripped: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ScopeBudgetState:
+        filtered = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}
+        return cls(**filtered)
+
+
 class CostGovernor:
     """Thread-safe cost and token governor with circuit breaker enforcement."""
 
@@ -91,6 +135,7 @@ class CostGovernor:
         self._lock = threading.Lock()
         self._records: list[TokenUsageRecord] = []
         self._budgets: dict[str, BudgetConfig] = {}
+        self._scopes: dict[str, ScopeBudgetState] = {}
         self._load()
 
     def _load(self) -> None:
@@ -102,6 +147,8 @@ class CostGovernor:
             self._records = [TokenUsageRecord.from_dict(r) for r in data.get("records", [])]
             for proj_id, b_data in data.get("budgets", {}).items():
                 self._budgets[proj_id] = BudgetConfig.from_dict(b_data)
+            for scope_id, s_data in data.get("scopes", {}).items():
+                self._scopes[scope_id] = ScopeBudgetState.from_dict(s_data)
         except Exception:
             logger.warning("Failed to load cost governor records", exc_info=True)
 
@@ -112,6 +159,7 @@ class CostGovernor:
             payload = {
                 "version": 1,
                 "budgets": {k: b.to_dict() for k, b in self._budgets.items()},
+                "scopes": {k: s.to_dict() for k, s in self._scopes.items()},
                 "records": [r.to_dict() for r in self._records[-1000:]],
                 "updated_at": _now(),
             }
@@ -130,6 +178,74 @@ class CostGovernor:
         with self._lock:
             return self._budgets.get(project_id, BudgetConfig())
 
+    def set_scope_budget(self, scope_id: str, limit_usd: float, parent: str | None = None) -> None:
+        """Declare a scope-aware sub-budget linked into the scope hierarchy.
+
+        ``parent`` is the enclosing scope (e.g. node -> workflow -> project);
+        its tripped breaker will block this scope and vice-versa once this
+        scope itself trips.
+        """
+        if limit_usd <= 0:
+            raise ValueError("scope limit_usd must be positive")
+        with self._lock:
+            self._scopes[scope_id] = ScopeBudgetState(scope_id=scope_id, limit_usd=float(limit_usd), parent=parent)
+            self._save()
+
+    def get_scope_state(self, scope_id: str) -> ScopeBudgetState | None:
+        """Current sub-budget state (spend/tripped) for a scope, if declared."""
+        with self._lock:
+            return self._scopes.get(scope_id)
+
+    def _scope_chain_locked(self, scope_id: str) -> list[str]:
+        """``[scope_id, parent, ...]`` using ``self._scopes``; caller holds the lock."""
+        if scope_id not in self._scopes:
+            return []
+        chain = [scope_id]
+        cursor = self._scopes[scope_id].parent
+        while cursor is not None and cursor not in chain:
+            chain.append(cursor)
+            cursor = self._scopes[cursor].parent if cursor in self._scopes else None
+        return chain
+
+    def _find_breaker_blocker(self, project_id: str, scope_id: str) -> tuple[str, str] | None:
+        """Return ``(blocked_by, detail)`` when a tripped breaker blocks ``scope_id``.
+
+        Evaluated against pre-charge state so the charge that crosses a limit
+        is recorded (and trips its breaker); only *subsequent* charges raise.
+        The project daily budget is the implicit root breaker.
+        """
+        budget = self.get_project_budget(project_id)
+        spend = self.get_project_spend(project_id, hours=24)
+        if spend >= budget.daily_budget_usd:
+            return (f"project:{project_id}", f"project spend ${spend:.4f} >= daily budget ${budget.daily_budget_usd:.2f}")
+        with self._lock:
+            chain = self._scope_chain_locked(scope_id)
+            trips = [(sid, self._scopes[sid].spent_usd, self._scopes[sid].limit_usd, self._scopes[sid].tripped) for sid in chain if sid in self._scopes]
+        for sid, spent, limit, tripped in trips:
+            if tripped or spent >= limit:
+                return (sid, f"scope spend ${spent:.4f} >= limit ${limit:.2f}")
+        return None
+
+    def _charge_scope(self, scope_id: str, cost_usd: float) -> None:
+        """Charge cost to the scope and each declared ancestor; trip on limit."""
+        with self._lock:
+            chain = self._scope_chain_locked(scope_id)
+            changed = False
+            for sid in chain:
+                state = self._scopes.get(sid)
+                if state is None:
+                    continue
+                state.spent_usd = round(state.spent_usd + cost_usd, 6)
+                changed = True
+                if not state.tripped and state.spent_usd >= state.limit_usd:
+                    state.tripped = True
+                    logger.warning(
+                        "Circuit breaker tripped for scope %s: $%.4f of $%.2f limit",
+                        sid, state.spent_usd, state.limit_usd,
+                    )
+            if changed:
+                self._save()
+
     def record_usage(
         self,
         project_id: str,
@@ -137,8 +253,19 @@ class CostGovernor:
         model_name: str,
         input_tokens: int,
         output_tokens: int,
+        *,
+        scope_id: str | None = None,
     ) -> TokenUsageRecord:
-        """Record model execution token counts and compute dollar cost."""
+        """Record model execution token counts and compute dollar cost.
+
+        ``scope_id`` charges a scope-aware sub-budget; it defaults to the
+        scope bound via :func:`alpha.config.token_budget_config.budget_scope`
+        (``None`` = legacy per-project behaviour, unchanged). When a tripped
+        breaker (the project daily budget or any scope in the chain) blocks
+        the scope, the usage is still recorded - the spend is real - and
+        :class:`CircuitBreakerTrippedError` is raised afterwards so the caller
+        stops instead of continuing past the limit.
+        """
         clean_model = model_name.lower().strip()
         in_rate, out_rate = MODEL_COST_PER_1K.get(clean_model, MODEL_COST_PER_1K["default"])
         if clean_model.startswith("ollama/") or "local" in clean_model:
@@ -155,12 +282,24 @@ class CostGovernor:
             cost_usd=round(cost, 6),
         )
 
+        resolved_scope = scope_id if scope_id is not None else get_current_budget_scope()
+        # Evaluate blockers against PRE-charge state: the charge that crosses a
+        # limit is recorded and trips the breaker; later charges are blocked.
+        blocker = self._find_breaker_blocker(project_id, resolved_scope) if resolved_scope else None
+
         with self._lock:
             self._records.append(record)
             self._save()
 
+        if resolved_scope:
+            self._charge_scope(resolved_scope, record.cost_usd)
+
         # Check circuit breakers and auto-queue approval if near threshold
         self._check_and_enforce_guardrails(project_id, bot_name)
+
+        if blocker is not None:
+            blocked_by, detail = blocker
+            raise CircuitBreakerTrippedError(scope_id=resolved_scope or "", blocked_by=blocked_by, detail=detail)
         return record
 
     def get_project_spend(self, project_id: str, hours: int = 24) -> float:
