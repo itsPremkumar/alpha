@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from functools import cached_property
 from typing import Any
 
+from alpha.skills.retrieval import DEFAULT_MIN_SCORE, score_skills
 from alpha.skills.types import Skill
 
 logger = logging.getLogger(__name__)
@@ -60,7 +61,12 @@ class SkillCatalog:
     def search(self, query: str) -> list[Skill]:
         """Match *query* against skill names and descriptions.
 
-        Returns at most ``MAX_RESULTS`` skills, ranked by relevance.
+        Returns at most ``MAX_RESULTS`` skills, ranked by relevance. The
+        ranked modes consume the disclosed lexical score from
+        ``alpha.skills.retrieval`` (keyword/tag/tool-requirement matching, no
+        embeddings): it breaks ties inside the historic regex tiers and
+        surfaces skills the literal pattern missed entirely, so existing
+        callers automatically benefit while their documented behavior holds.
         """
         query = query.strip()
         if not query:
@@ -77,25 +83,38 @@ class SkillCatalog:
             if not parts:
                 return []  # bare "+" with no required token
             required = parts[0].lower()
-            candidates = [s for s in self.skills if required in s.name.lower()]
+            candidates = [(index, s) for index, s in enumerate(self.skills) if required in s.name.lower()]
             if len(parts) > 1:
                 pattern = _compile_catalog_regex(parts[1])
+                # Regex hit-count still ranks first (historic behavior); the
+                # disclosed retrieval score only breaks ties, and the explicit
+                # index keeps equal-score ordering identical to catalog order.
+                retrieval_scores = _retrieval_scores(parts[1], self.skills)
                 candidates.sort(
-                    key=lambda s: _catalog_regex_score(pattern, s),
-                    reverse=True,
+                    key=lambda item: (-_catalog_regex_score(pattern, item[1]), -retrieval_scores.get(item[1].name, 0.0), item[0]),
                 )
-            return candidates[:MAX_RESULTS]
+            return [s for _, s in candidates[:MAX_RESULTS]]
 
         # ── Free-text regex search ─────────────────────────────────────
         regex = _compile_catalog_regex(query)
-        scored: list[tuple[int, Skill]] = []
-        for s in self.skills:
+        retrieval_scores = _retrieval_scores(query, self.skills)
+        scored: list[tuple[int, float, int, Skill]] = []
+        for index, s in enumerate(self.skills):
             searchable = f"{s.name} {s.description or ''}"
+            retrieval_score = retrieval_scores.get(s.name, 0.0)
             if regex.search(searchable):
-                # Name match scores higher than description-only match.
-                scored.append((2 if regex.search(s.name) else 1, s))
-        scored.sort(key=lambda x: x[0], reverse=True)
-        return [s for _, s in scored][:MAX_RESULTS]
+                # Name match scores higher than description-only match; the
+                # lexical retrieval score breaks ties inside each regex tier.
+                scored.append((2 if regex.search(s.name) else 1, retrieval_score, index, s))
+            elif retrieval_score >= DEFAULT_MIN_SCORE:
+                # Retrieval-only candidate: the literal pattern missed this
+                # skill but the disclosed lexical scorer found enough overlap
+                # to pass the same min-score cutoff retrieval.py uses.
+                scored.append((0, retrieval_score, index, s))
+        # Regex tier first (-item[0]), then retrieval score, then catalog
+        # order: a superset of the old ranking, still capped at MAX_RESULTS.
+        scored.sort(key=lambda item: (-item[0], -item[1], item[2]))
+        return [s for _, _, _, s in scored][:MAX_RESULTS]
 
     async def asearch_smart(self, query: str, *, limit: int = MAX_RESULTS) -> list[Skill]:
         """Deterministic search, then System One re-ranks what the regex missed.
@@ -125,6 +144,15 @@ class SkillCatalog:
 def _catalog_regex_score(pattern: re.Pattern[str], s: Skill) -> int:
     """Count regex hits across name + description for ranking."""
     return len(pattern.findall(f"{s.name} {s.description or ''}"))
+
+
+def _retrieval_scores(query: str, skills: tuple[Skill, ...]) -> dict[str, float]:
+    """Lexical retrieval scores from ``alpha.skills.retrieval`` keyed by name.
+
+    Skills with no lexical overlap are absent (treated as 0.0). The scoring
+    method is disclosed in that module; this helper only consumes it.
+    """
+    return {match.skill.name: match.match_score for match in score_skills(query, skills)}
 
 
 # --------------------------------------------------------------------------

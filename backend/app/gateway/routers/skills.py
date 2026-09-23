@@ -12,9 +12,6 @@ from pydantic import BaseModel, Field
 from starlette.datastructures import FormData, Headers, UploadFile
 from starlette.formparsers import MultiPartException, MultiPartParser
 
-from app.gateway.deps import get_config, require_admin_user
-from app.gateway.path_utils import resolve_thread_virtual_path
-from app.gateway.skill_export import ExportClientDisconnected, SkillExportManifestResponse, SkillExportResponse, export_http_error, run_export_work
 from alpha.agents.lead_agent.prompt import clear_skills_system_prompt_cache, refresh_skills_system_prompt_cache_async, refresh_user_skills_system_prompt_cache_async
 from alpha.config.app_config import AppConfig
 from alpha.config.extensions_config import (
@@ -44,6 +41,8 @@ from alpha.skills.proposals import (
     validate_proposal_content,
     validate_proposal_name,
 )
+from alpha.skills.retrieval import DEFAULT_MIN_SCORE, DEFAULT_TOP_K
+from alpha.skills.retrieval import retrieve_skills as score_skill_retrieval
 from alpha.skills.security_scanner import scan_skill_content
 from alpha.skills.security_static_scanner import (
     StaticFinding,
@@ -54,6 +53,9 @@ from alpha.skills.security_static_scanner import (
 from alpha.skills.storage import SkillStorage, get_or_new_user_skill_storage
 from alpha.skills.types import SKILL_MD_FILE, SkillCategory
 from alpha.utils.thread_id import ThreadId
+from app.gateway.deps import get_config, require_admin_user
+from app.gateway.path_utils import resolve_thread_virtual_path
+from app.gateway.skill_export import ExportClientDisconnected, SkillExportManifestResponse, SkillExportResponse, export_http_error, run_export_work
 
 logger = logging.getLogger(__name__)
 
@@ -835,6 +837,74 @@ async def rollback_custom_skill(skill_name: str, body: SkillRollbackRequest, req
     except Exception as e:
         logger.error("Failed to roll back custom skill %s: %s", skill_name, e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to roll back custom skill: {str(e)}")
+
+
+def _retrieval_catalog(config: AppConfig) -> list[Skill]:
+    """Module-level seam: installed skills for retrieval scoring.
+
+    Tests stub this single function instead of the storage layer; the endpoint
+    runs the real lexical scorer over whatever it returns.
+    """
+    return _get_user_skill_storage(config).load_skills(enabled_only=False)
+
+
+def _skill_graph_store():
+    """Module-level seam: the persisted skill relationship graph.
+
+    Tests stub this single function instead of runtime_home() paths; the
+    endpoint runs the real graph logic over whatever it returns.
+    """
+    from alpha.learning.graph import load_skill_graph
+
+    return load_skill_graph()
+
+
+@router.get(
+    "/skills/retrieve",
+    summary="Retrieve Skills By Lexical Score",
+    description=(
+        "Scored retrieval over the installed skill catalog: keyword/tag/tool-requirement matching with per-result "
+        "evidence (matched terms/tags/tools) and an explicit score_method disclosure. Lexical heuristic only -- no "
+        "embeddings are computed and no network call is made. Capped by top_k and a min_score cutoff; an empty "
+        "catalog returns an honest empty result list, not an error."
+    ),
+)
+async def retrieve_skills(
+    query: str = Query(default="", description="Free-text query matched against skill names, descriptions, tags, and required tools."),
+    top_k: int = Query(default=DEFAULT_TOP_K, ge=1, le=50, description="Maximum number of results to return."),
+    min_score: float = Query(default=DEFAULT_MIN_SCORE, ge=0.0, le=1.0, description="Minimum match_score (heuristic, 0-1) required to be returned."),
+    config: AppConfig = Depends(get_config),
+) -> dict:
+    skills = _retrieval_catalog(config)
+    return score_skill_retrieval(query, skills, top_k=top_k, min_score=min_score).to_dict()
+
+
+@router.get(
+    "/skills/graph",
+    summary="Skill Relationship Graph",
+    description=(
+        "Directed skill relationship graph (can_feed / requires / enhances / conflicts_with / alternative_to / "
+        "produces) persisted at runtime_home()/skill_graph.json. Edge confidence starts at a documented neutral "
+        "baseline (0.5) and is never inferred from evidence counts; evidence_count records observed confirmations. "
+        "Pass start/goal/task_tags to get candidate chains with disclosed heuristic scores. An empty graph returns "
+        "an honest empty shape with an explanatory note."
+    ),
+)
+async def skill_graph(
+    start: str | None = Query(default=None, description="Chain start skill name."),
+    goal: str | None = Query(default=None, description="Chain goal skill name."),
+    task_tags: list[str] = Query(default=[], description="Task tags to seed chain suggestions lexically."),
+) -> dict:
+    def _load() -> dict:
+        from alpha.learning.graph import skill_graph_path
+
+        graph = _skill_graph_store()
+        payload = graph.to_dict()
+        payload["path"] = str(skill_graph_path())
+        payload["chains"] = graph.suggest_chains(start=start, goal=goal, task_tags=task_tags) if (start or goal or task_tags) else None
+        return payload
+
+    return await asyncio.to_thread(_load)
 
 
 @router.get(
