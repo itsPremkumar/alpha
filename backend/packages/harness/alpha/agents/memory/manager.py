@@ -8,6 +8,21 @@ the active backend from ``MemoryConfig.manager_class``.
 Swap backend = drop a ``backends/<name>/`` folder exposing ``MANAGER_CLASS``
 and set ``manager_class: <name>``. Nothing else in agent-workspace changes.
 
+Sensitive-memory filtering: every write path (``add`` / ``add_nowait`` /
+``aadd`` / ``create_fact`` / ``update_fact`` / ``import_memory``) passes its
+content through the single module-level seam :func:`redact_for_memory_write`
+before it can reach backend storage. ``MemoryManager.__init_subclass__`` wraps
+the write methods each backend DEFINES (methods inherited from this base
+already funnel through the wrapped subclass ``add``, or raise before any
+write), so one seam covers every backend and tests stub exactly one function.
+Honest metadata limits: messages carry per-message
+``additional_kwargs["memory_redaction"]`` counts/kinds, ``import_memory``
+payloads get a top-level ``memory_redaction`` key, but fact writes
+(``content: str`` has no metadata slot) and bare string elements only report
+counts/kinds via ``logger.info`` -- secret text itself is never stored or
+logged. Redaction coverage is heuristic and NOT exhaustive; see
+``alpha.security.memory_redaction``.
+
 Scope note: this phase is *pluggable only*, not black-box. Agent-side
 conventions (``enabled`` gating at call sites, ``<memory>`` wrapping in
 ``_get_memory_context``) stay where they are; they are backend-agnostic and
@@ -16,7 +31,10 @@ do not impede pluggability.
 
 from __future__ import annotations
 
+import copy
+import functools
 import importlib
+import inspect
 import logging
 import os
 import sys
@@ -29,6 +47,7 @@ from typing import Any, ClassVar, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from alpha.config.memory_config import get_memory_config
+from alpha.security.memory_redaction import Redaction, redact_for_memory, redact_mapping
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +61,230 @@ _MANAGER_CLASS_ATTR = "MANAGER_CLASS"
 _memory_manager: MemoryManager | None = None
 _backends_cache: dict[str, type[MemoryManager]] | None = None
 _manager_lock = threading.Lock()
+
+# ── Sensitive-memory filtering at the single write boundary ────────────────
+#
+# ALL long-term memory writes funnel through ``redact_for_memory_write`` (the
+# module-level seam below): ``MemoryManager.__init_subclass__`` wraps the write
+# methods each backend defines, so a test can intercept every write path by
+# monkeypatching this ONE name. The helpers are module-level (not closures) so
+# each wrapper stays a thin bind -> redact -> delegate frame.
+#: Key under which honest redaction metadata is attached to stored entries.
+MEMORY_REDACTION_METADATA_KEY = "memory_redaction"
+# Method name -> the parameter carrying caller content to redact. The names
+# match the base contract and every bundled backend's override (verified).
+_MEMORY_WRITE_METHOD_PARAMS: dict[str, str] = {
+    "add": "messages",
+    "add_nowait": "messages",
+    "aadd": "messages",
+    "create_fact": "content",
+    "update_fact": "content",
+    "import_memory": "memory_data",
+}
+# Marker set on installed wrappers so a class can never be double-wrapped.
+_WRITE_WRAPPER_MARKER = "__alpha_memory_write_boundary__"
+
+
+def _redaction_metadata(redactions: list[Redaction]) -> dict[str, Any]:
+    """Build the honest ``{"redacted_count", "redacted_kinds"}`` metadata dict.
+
+    Reports only what was actually replaced (count + sorted unique kinds); the
+    matched text never enters a ``Redaction``, so attaching this to a stored
+    entry or log line cannot re-leak the secret.
+    """
+    return {
+        "redacted_count": len(redactions),
+        "redacted_kinds": sorted({redaction.kind for redaction in redactions}),
+    }
+
+
+def _log_memory_redaction(method_name: str, redactions: list[Redaction]) -> None:
+    """Log redaction counts/kinds for a write -- never any secret text."""
+    logger.info(
+        "memory redaction: %s write replaced %d span(s); kinds=%s",
+        method_name,
+        len(redactions),
+        sorted({redaction.kind for redaction in redactions}),
+    )
+
+
+def _redact_write_element(item: Any) -> tuple[Any, list[Redaction]]:
+    """Redact one element of a write payload (message, content part, mapping).
+
+    Returns the element unchanged (same object) when nothing matched, so clean
+    messages and parts pass through the boundary without a copy.
+    """
+    if isinstance(item, str):
+        result = redact_for_memory(item)
+        return result.redacted_text, list(result.redactions)
+    if isinstance(item, dict):
+        if "role" in item or "content" in item:
+            return _redact_message_dict(item)
+        if isinstance(item.get("text"), str):
+            result = redact_for_memory(item["text"])
+            if not result.redactions:
+                return item, []
+            return {**item, "text": result.redacted_text}, list(result.redactions)
+        mapping = redact_mapping(item)
+        if not mapping.redactions:
+            return item, []
+        return mapping.redacted_payload, list(mapping.redactions)
+    if isinstance(getattr(item, "content", None), (str, list)):
+        return _redact_message_object(item)
+    return item, []
+
+
+def _redact_write_sequence(sequence: Any) -> tuple[list[Any], list[Redaction]]:
+    """Redact every element of a messages/parts sequence, aggregating reports."""
+    redacted_items: list[Any] = []
+    redactions: list[Redaction] = []
+    for item in sequence:
+        redacted_item, item_redactions = _redact_write_element(item)
+        redacted_items.append(redacted_item)
+        redactions.extend(item_redactions)
+    return redacted_items, redactions
+
+
+def _redact_message_dict(message: dict[str, Any]) -> tuple[dict[str, Any], list[Redaction]]:
+    """Redact a dict-shaped message; attach per-message metadata when copied."""
+    content = message.get("content")
+    new_content = content
+    redactions: list[Redaction] = []
+    if isinstance(content, str):
+        result = redact_for_memory(content)
+        new_content = result.redacted_text
+        redactions = list(result.redactions)
+    elif isinstance(content, list):
+        new_content, redactions = _redact_write_sequence(content)
+    if not redactions:
+        return message, []
+    return (
+        {
+            **message,
+            "content": new_content,
+            "additional_kwargs": {
+                **(message.get("additional_kwargs") or {}),
+                MEMORY_REDACTION_METADATA_KEY: _redaction_metadata(redactions),
+            },
+        },
+        redactions,
+    )
+
+
+def _redact_message_object(message: Any) -> tuple[Any, list[Redaction]]:
+    """Redact a BaseMessage-like object; copy ONLY when something matched.
+
+    The copy keeps every original ``additional_kwargs`` entry and adds the
+    honest ``memory_redaction`` metadata. If a message type cannot be copied to
+    carry redacted content, the exception propagates -- the write fails closed
+    instead of silently storing the secret.
+    """
+    content = message.content
+    if isinstance(content, str):
+        result = redact_for_memory(content)
+        if not result.redactions:
+            return message, []
+        redacted_content: Any = result.redacted_text
+        redactions = list(result.redactions)
+    else:  # list of content parts
+        redacted_content, redactions = _redact_write_sequence(content)
+        if not redactions:
+            return message, []
+    update = {
+        "content": redacted_content,
+        "additional_kwargs": {
+            **(getattr(message, "additional_kwargs", None) or {}),
+            MEMORY_REDACTION_METADATA_KEY: _redaction_metadata(redactions),
+        },
+    }
+    model_copy = getattr(message, "model_copy", None)
+    if callable(model_copy):
+        return model_copy(update=update), redactions
+    copied = copy.copy(message)
+    setattr(copied, "content", update["content"])
+    setattr(copied, "additional_kwargs", update["additional_kwargs"])
+    return copied, redactions
+
+
+def redact_for_memory_write(content: Any) -> tuple[Any, list[Redaction]]:
+    """The single write-boundary seam: redact ``content``, report honestly.
+
+    - ``str`` -> :func:`redact_for_memory` (fact content, bare strings).
+    - ``dict`` -> :func:`redact_mapping` (``import_memory`` payloads; the
+      caller-side wrapper attaches the top-level ``memory_redaction`` key).
+    - ``list`` / ``tuple`` -> per element (messages get per-message copies +
+      metadata, content parts get their ``text`` redacted; image/file parts and
+      clean elements pass through by reference).
+    - anything else passes through unchanged (nothing to redact).
+
+    Returns ``(redacted_payload, redactions)`` where ``redactions`` is the flat
+    list of replaced spans -- counts/kinds only, never matched text -- which is
+    what gets logged and summarized into metadata. Tests may monkeypatch this
+    module-level name to intercept ALL write paths at once.
+    """
+    if isinstance(content, str):
+        result = redact_for_memory(content)
+        return result.redacted_text, list(result.redactions)
+    if isinstance(content, dict):
+        mapping = redact_mapping(content)
+        return mapping.redacted_payload, list(mapping.redactions)
+    if isinstance(content, (list, tuple)):
+        items, redactions = _redact_write_sequence(content)
+        return (items if isinstance(content, list) else tuple(items)), redactions
+    return content, []
+
+
+def _wrap_memory_write_method(method_name: str, param_name: str, original: Any) -> Any:
+    """Wrap one backend-defined write method with the redaction boundary.
+
+    Binds the caller's args (preserving positional/keyword mixes via
+    ``inspect.Signature``), runs the content parameter through the seam,
+    rewrites it on the bound arguments, and delegates with a faithful
+    ``(*bound.args, **bound.kwargs)`` reconstruction. If the caller's own call
+    cannot bind (excess arguments), delegate untouched so the original method
+    raises its own binding error -- no write can happen in that case.
+    """
+    signature = inspect.signature(original)
+
+    if inspect.iscoroutinefunction(original):
+
+        @functools.wraps(original)
+        async def async_write_boundary(owner: Any, *args: Any, **kwargs: Any) -> Any:
+            try:
+                bound = signature.bind_partial(owner, *args, **kwargs)
+            except TypeError:
+                return await original(owner, *args, **kwargs)
+            if param_name in bound.arguments:
+                payload, redactions = redact_for_memory_write(bound.arguments[param_name])
+                bound.arguments[param_name] = payload
+                if redactions:
+                    _log_memory_redaction(method_name, redactions)
+                    if isinstance(payload, dict):
+                        bound.arguments[param_name] = {**payload, MEMORY_REDACTION_METADATA_KEY: _redaction_metadata(redactions)}
+            return await original(*bound.args, **bound.kwargs)
+
+        boundary = async_write_boundary
+    else:
+
+        @functools.wraps(original)
+        def sync_write_boundary(owner: Any, *args: Any, **kwargs: Any) -> Any:
+            try:
+                bound = signature.bind_partial(owner, *args, **kwargs)
+            except TypeError:
+                return original(owner, *args, **kwargs)
+            if param_name in bound.arguments:
+                payload, redactions = redact_for_memory_write(bound.arguments[param_name])
+                bound.arguments[param_name] = payload
+                if redactions:
+                    _log_memory_redaction(method_name, redactions)
+                    if isinstance(payload, dict):
+                        bound.arguments[param_name] = {**payload, MEMORY_REDACTION_METADATA_KEY: _redaction_metadata(redactions)}
+            return original(*bound.args, **bound.kwargs)
+
+        boundary = sync_write_boundary
+
+    setattr(boundary, _WRITE_WRAPPER_MARKER, True)
+    return boundary
 
 
 class MemoryCallbacks:
@@ -136,6 +379,29 @@ class MemoryManager(BaseModel):
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Wrap the write methods this backend defines with the redaction seam.
+
+        Runs at subclass creation: each supported write method DEFINED directly
+        on the class (``add`` / ``add_nowait`` / ``aadd`` / ``create_fact`` /
+        ``update_fact`` / ``import_memory``) is replaced by a wrapper that
+        funnels its content parameter through the module-level
+        :func:`redact_for_memory_write` seam before the backend body runs.
+        Methods inherited from :class:`MemoryManager` stay untouched -- the
+        base ``add_nowait`` / ``aadd`` delegate to the subclass's wrapped
+        ``add``, and unsupported fact/import methods raise before any write.
+        A marker attribute prevents double-wrapping when a backend extends
+        another backend.
+        """
+        super().__init_subclass__(**kwargs)
+        for method_name, param_name in _MEMORY_WRITE_METHOD_PARAMS.items():
+            original = cls.__dict__.get(method_name)
+            if original is None or getattr(original, _WRITE_WRAPPER_MARKER, False):
+                continue
+            if isinstance(original, (classmethod, staticmethod)) or not callable(original) or not hasattr(original, "__name__"):
+                continue
+            setattr(cls, method_name, _wrap_memory_write_method(method_name, param_name, original))
 
     # Backend-private config (factory passes it through). Backends that need to
     # parse it (DeerMem -> DeerMemConfig) do so in model_post_init / from_config.
