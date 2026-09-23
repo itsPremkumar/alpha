@@ -16,3 +16,7 @@ class SkillEvolutionConfig(BaseModel):
         default=True,
         description=("When the moderation model is unavailable, block skill writes if True (fail-closed). If False, non-executable content is allowed with a warning while executable content is still blocked."),
     )
+    auto_promote: bool = Field(
+        default=False,
+        description=("Promote skill-evolution candidates without an explicit approve flag. Defaults to off: promotion always requires recorded evaluation evidence, and with auto_promote off it additionally requires an explicit approval."),
+    )
