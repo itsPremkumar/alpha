@@ -38,6 +38,14 @@ ALLOWED_ORPHANS: dict[str, str] = {
     # HELD uncommitted pending P0 remediation (DY-R1/R2/R3) and the P1
     # orchestrator wiring; unwired by audit verdict, not abandoned.
     "alpha.workflow.dynamic_bridge": "held dynamic_* layer; wiring lands with Dynamic Workflow P1 after P0 remediation",
+    # Honest import-ready seams: their consumers are deferred by design (unit
+    # rules forbid wiring in the same unit as authoring), not abandoned.
+    "alpha.skills.creation_nudge": "Hermes S1 skill-review cadence seam; wired into the turn finalizer by a follow-up wiring unit",
+    "alpha.memory.persistence_nudge": "Hermes M2 persistence cadence seam; wired into the turn finalizer by a follow-up wiring unit",
+    "alpha.evidence.skill_usage_evidence": "Hermes E1 usage-evidence builder; consumed by the skill promotion flow in a follow-up wiring unit",
+    # RSI Wave-3 C2b human review gate: consumed by C2c's promotion.py, the
+    # wave's serialization point (C2c is queued after C1/C2a/C2b).
+    "alpha.rsi.review": "RSI Wave-3 C2b review gate; wired by C2c promotion.py at the wave serialization point",
 }
 
 # Standalone ``python -m <module>`` entry points. Nothing imports these by
