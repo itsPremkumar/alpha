@@ -23,6 +23,13 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from alpha.commands.module_a_handlers import (
+    handle_boost,
+    handle_grill_me,
+    handle_schedule,
+    handle_self_heal,
+    handle_teamwork_preview,
+)
 from alpha.commands.registry import CommandExecutionResult, SlashCommandDef, command_registry
 
 logger = logging.getLogger(__name__)
@@ -917,6 +924,12 @@ def register_all_backend_handlers() -> None:
         "/learn": handle_learn,
         "/moa": handle_moa,
         "/usage": handle_usage,
+        # Module A spec commands (real seams; see module_a_handlers.py)
+        "/boost": handle_boost,
+        "/schedule": handle_schedule,
+        "/grill-me": handle_grill_me,
+        "/teamwork-preview": handle_teamwork_preview,
+        "/self-heal": handle_self_heal,
         # Unified execution mode (WorkSwarm gap 7)
         "/mode": handle_mode,
     }

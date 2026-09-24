@@ -139,13 +139,17 @@ def test_parse_intent_exposes_all_dimensions() -> None:
 
 _TRIGGER_CASES = [
     # (prompt, implied command, registered in alpha.commands.catalog?)
-    ("Do a deep, multi-angle analysis of this failure mode before proposing fixes.", "/boost", False),
+# P5 landed real handlers for the five Module-A spec commands, so their honest
+# `registered` flag flipped False -> True (the resolver computes it from the
+# catalog; the disclosure lives in docs/TASK_LIST.md). Resolver behaviour is
+# otherwise unchanged: same command, same confidence window, same reason shape.
+    ("Do a deep, multi-angle analysis of this failure mode before proposing fixes.", "/boost", True),
     ("Keep working on this overnight until the whole migration is done.", "/goal create", True),
-    ("Back up the database every day at 3am.", "/schedule", False),
-    ("There are real trade-offs in this risky migration; ask me clarifying questions before writing code.", "/grill-me", False),
-    ("Draft a bot roster and a multi-agent coordination plan for this enterprise project.", "/teamwork-preview", False),
+    ("Back up the database every day at 3am.", "/schedule", True),
+    ("There are real trade-offs in this risky migration; ask me clarifying questions before writing code.", "/grill-me", True),
+    ("Draft a bot roster and a multi-agent coordination plan for this enterprise project.", "/teamwork-preview", True),
     ("Remember that for next time: the fix was pinning the dependency version.", "/learn", True),
-    ("The test suite is failing with a traceback after the last change.", "/self-heal", False),
+    ("The test suite is failing with a traceback after the last change.", "/self-heal", True),
 ]
 
 
