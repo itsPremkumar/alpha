@@ -40,6 +40,13 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
   const [roster, setRoster] = useState<Array<{ name: string; role: string; status: string }>>([]);
   const [presence, setPresence] = useState<Array<{ name: string; status: string; detail: string }>>([]);
   const [events, setEvents] = useState<Array<Record<string, unknown>>>([]);
+  // Per-list fetch-failure flags: every list surfaces its own failure instead
+  // of collapsing into an empty list that reads as "you have nothing here".
+  const [roomsError, setRoomsError] = useState<string | null>(null);
+  const [dmsError, setDmsError] = useState<string | null>(null);
+  const [rosterError, setRosterError] = useState<string | null>(null);
+  const [presenceError, setPresenceError] = useState<string | null>(null);
+  const [eventsError, setEventsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sel, setSel] = useState<Selection | null>(null);
@@ -59,24 +66,53 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
     if (!quiet) setLoading(true);
     setError(null);
     try {
-      const [r, p, e] = await Promise.all([
+      // Each list settles independently: one failed fetch flags only that
+      // list as unavailable — never a silent empty array.
+      const [roomsRes, presenceRes, eventsRes] = await Promise.allSettled([
         listRooms(),
         rollCall(),
-        orgEvents(15).catch(() => []),
+        orgEvents(15),
       ]);
-      setRooms(r);
-      setPresence(p);
-      setEvents(e);
+      if (roomsRes.status === "fulfilled") {
+        setRooms(roomsRes.value);
+        setRoomsError(null);
+      } else {
+        setRoomsError(errMsg(roomsRes.reason));
+      }
+      if (presenceRes.status === "fulfilled") {
+        setPresence(presenceRes.value);
+        setPresenceError(null);
+      } else {
+        setPresenceError(errMsg(presenceRes.reason));
+      }
+      if (eventsRes.status === "fulfilled") {
+        setEvents(eventsRes.value);
+        setEventsError(null);
+      } else {
+        setEventsError(errMsg(eventsRes.reason));
+      }
       if (props.threadId) {
-        const [threads, rost] = await Promise.all([
-          listDmThreads(props.threadId).catch(() => [] as DmThread[]),
-          fetchRoster(props.threadId).catch(() => []),
+        const [dmsRes, rosterRes] = await Promise.allSettled([
+          listDmThreads(props.threadId),
+          fetchRoster(props.threadId),
         ]);
-        setDms(threads);
-        setRoster(rost);
+        if (dmsRes.status === "fulfilled") {
+          setDms(dmsRes.value);
+          setDmsError(null);
+        } else {
+          setDmsError(errMsg(dmsRes.reason));
+        }
+        if (rosterRes.status === "fulfilled") {
+          setRoster(rosterRes.value);
+          setRosterError(null);
+        } else {
+          setRosterError(errMsg(rosterRes.reason));
+        }
       } else {
         setDms([]);
         setRoster([]);
+        setDmsError(null);
+        setRosterError(null);
       }
     } catch (e) {
       if (!quiet) setError(errMsg(e));
@@ -322,11 +358,36 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
             )}
           </div>
 
+          {/* Per-list failures: shown as unavailable, never as an empty list. */}
+          {(roomsError || dmsError || rosterError || presenceError) && (
+            <div className="px-3 py-2 space-y-2 border-b border-border/60">
+              {roomsError && (
+                <ErrorBox message={`Group list unavailable — failed to load, not empty. (${roomsError})`} onRetry={() => load()} />
+              )}
+              {dmsError && (
+                <ErrorBox message={`Direct threads unavailable — failed to load, not empty. (${dmsError})`} onRetry={() => load()} />
+              )}
+              {rosterError && (
+                <ErrorBox message={`Agent roster unavailable — statuses may show as unknown. (${rosterError})`} onRetry={() => load()} />
+              )}
+              {presenceError && (
+                <ErrorBox message={`Presence roll-call unavailable — failed to load, not empty. (${presenceError})`} onRetry={() => load()} />
+              )}
+            </div>
+          )}
+
           <div className="flex-1 overflow-y-auto">
             {loading ? (
               <div className="p-3"><SkeletonList rows={5} /></div>
             ) : error && convs.length === 0 ? (
               <div className="p-3"><ErrorBox message={error} onRetry={() => load()} /></div>
+            ) : convs.length === 0 && (roomsError || dmsError) ? (
+              <div className="p-3">
+                <ErrorBox
+                  message="Conversations couldn't be loaded — this is a fetch failure, not an empty inbox."
+                  onRetry={() => load()}
+                />
+              </div>
             ) : convs.length === 0 ? (
               <div className="p-3">
                 <EmptyState title="No chats yet" hint="Create a group above, or message an agent directly once a chat is open." />
@@ -497,6 +558,7 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
             roster={roster}
             presence={presence}
             events={events}
+            eventsError={eventsError}
             botNames={props.botNames}
             onClose={() => setShowDetails(false)}
             onError={setError}
@@ -545,6 +607,7 @@ function DetailsPane(props: {
   roster: Array<{ name: string; role: string; status: string }>;
   presence: Array<{ name: string; status: string; detail: string }>;
   events: Array<Record<string, unknown>>;
+  eventsError: string | null;
   botNames: string[];
   onClose: () => void;
   onError: (m: string) => void;
@@ -559,14 +622,23 @@ function DetailsPane(props: {
 }) {
   const [objective, setObjective] = useState("");
   const [runs, setRuns] = useState<Array<Record<string, unknown>>>([]);
+  const [runsError, setRunsError] = useState<string | null>(null);
   const isGroup = props.sel.kind === "group";
 
-  useEffect(() => {
-    if (props.sel.kind === "group") {
-      listRoomRuns(props.sel.name).then(setRuns).catch(() => setRuns([]));
-    } else {
+  const loadRuns = () => {
+    if (props.sel.kind !== "group") {
       setRuns([]);
+      setRunsError(null);
+      return;
     }
+    setRunsError(null);
+    listRoomRuns(props.sel.name)
+      .then(setRuns)
+      .catch((e) => setRunsError(errMsg(e)));
+  };
+
+  useEffect(() => {
+    loadRuns();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.sel]);
 
@@ -647,7 +719,12 @@ function DetailsPane(props: {
                   <Play className="size-3.5" />
                 </Btn>
               </div>
-              {runs.length > 0 && (
+              {runsError ? (
+                <ErrorBox
+                  message={`Room runs unavailable — failed to load, not empty. (${runsError})`}
+                  onRetry={loadRuns}
+                />
+              ) : runs.length > 0 && (
                 <div className="space-y-1">
                   {runs.slice(0, 5).map((r, i) => {
                     const rid = String(r.run_id ?? r.id ?? i);
@@ -700,7 +777,12 @@ function DetailsPane(props: {
           </>
         )}
 
-        {props.events.length > 0 && (
+        {props.eventsError ? (
+          <section>
+            <p className="text-[11px] font-bold mb-1.5">Recent team events</p>
+            <p className="text-[10px] text-destructive">Team events unavailable — failed to load, not empty. ({props.eventsError})</p>
+          </section>
+        ) : props.events.length > 0 && (
           <section>
             <p className="text-[11px] font-bold mb-1.5">Recent team events</p>
             <div className="space-y-1">

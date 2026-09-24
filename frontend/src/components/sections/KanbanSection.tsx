@@ -34,6 +34,11 @@ export function KanbanSection(props: { bots: BoardBot[] }) {
   const [projects, setProjects] = useState<BoardProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Separate load-failure flags: a failed projects fetch must not read as
+  // "you have no projects", and a failed server-board fetch must not silently
+  // degrade to local-only cards without saying so.
+  const [projectsError, setProjectsError] = useState<string | null>(null);
+  const [serverBoardDown, setServerBoardDown] = useState(false);
   const [search, setSearch] = useState("");
   const [botFilter, setBotFilter] = useState("all");
   const [projectFilter, setProjectFilter] = useState("all");
@@ -44,14 +49,26 @@ export function KanbanSection(props: { bots: BoardBot[] }) {
   const load = async () => {
     setLoading(true);
     setError(null);
+    setProjectsError(null);
+    setServerBoardDown(false);
     try {
       const local = loadCards();
-      listProjects().then(setProjects).catch(() => setProjects([]));
+      listProjects()
+        .then((p) => {
+          setProjects(p);
+          setProjectsError(null);
+        })
+        .catch((e) => {
+          // Keep whatever we had, but flag the failure — an empty <select>
+          // plus this banner is "unavailable", not "no projects exist".
+          setProjectsError(errMsg(e));
+        });
       try {
         const server = await listKanbanTasks();
         setCards(mergeServerCards(local, server));
       } catch {
         setCards(local);
+        setServerBoardDown(true);
       }
     } catch (e) {
       setError(errMsg(e));
@@ -129,6 +146,18 @@ export function KanbanSection(props: { bots: BoardBot[] }) {
       }
     >
       {error && <ErrorBox message={error} onRetry={load} />}
+      {projectsError && (
+        <ErrorBox
+          message={`Project list unavailable — project filter options below may be incomplete; this is a load failure, not an empty project list. (${projectsError})`}
+          onRetry={load}
+        />
+      )}
+      {serverBoardDown && (
+        <ErrorBox
+          message="Server board unavailable — showing local cards only. Server-synced tasks may be missing."
+          onRetry={load}
+        />
+      )}
 
       <div className="flex flex-col lg:flex-row gap-2">
         <div className="relative flex-1">

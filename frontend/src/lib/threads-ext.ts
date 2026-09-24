@@ -42,9 +42,14 @@ export async function branchThread(
   // the latest server-side assistant message when the caller has none.
   let messageId = opts?.messageId;
   if (!messageId) {
-    const { fetchThreadHistory } = await import("./api");
-    const history = await fetchThreadHistory(threadId);
-    messageId = [...history].reverse().find((m) => m.role === "assistant")?.id;
+    const { fetchThreadHistoryResult } = await import("./api");
+    // A failed history load must surface as that failure — never fall through
+    // to the misleading "no assistant message yet" empty-state below.
+    const history = await fetchThreadHistoryResult(threadId);
+    if (!history.ok) {
+      throw new Error(`Couldn't load this chat's history to branch from — ${history.error}`);
+    }
+    messageId = [...history.value].reverse().find((m) => m.role === "assistant")?.id;
   }
   if (!messageId) throw new Error("No assistant message to branch from yet — send a message first.");
   const d = await send<Record<string, unknown>>(

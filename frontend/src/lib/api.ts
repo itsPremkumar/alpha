@@ -2,7 +2,22 @@ import { ChatMessage, Thread, AIModel, SlashCommandInfo, SlashCommandResult, Aut
 
 import { apiFetch } from "./api-client";
 
-export async function fetchThreads(limit = 100): Promise<Thread[]> {
+/**
+ * Distinguishable fetch outcome: a FAILED load is never an empty success.
+ * Callers must branch on `ok`; an empty `value` on the ok path means the
+ * server really returned nothing.
+ */
+export type FetchResult<T> = { ok: true; value: T } | { ok: false; error: string };
+
+function failed(err: unknown): { ok: false; error: string } {
+  return { ok: false, error: err instanceof Error ? err.message : "Request failed" };
+}
+
+/**
+ * Honest thread list: failure comes back as `{ ok: false }`, never as `[]`.
+ * Use this from every surface that can show "you have no sessions".
+ */
+export async function fetchThreadsResult(limit = 100): Promise<FetchResult<Thread[]>> {
   try {
     // Backend has no GET /threads — listing lives at POST /threads/search,
     // which returns a bare array of ThreadResponse records.
@@ -11,10 +26,10 @@ export async function fetchThreads(limit = 100): Promise<Thread[]> {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ limit }),
     });
-    if (!res.ok) return [];
+    if (!res.ok) return { ok: false, error: `Thread list failed (HTTP ${res.status}).` };
     const data = await res.json();
     const list = Array.isArray(data) ? data : data.threads || [];
-    return list.map((t: any) => ({
+    return { ok: true, value: list.map((t: any) => ({
       thread_id: t.thread_id,
       // Server keeps the client-written title in metadata.title and the
       // auto-generated display name in values.title — neither is top-level.
@@ -25,11 +40,25 @@ export async function fetchThreads(limit = 100): Promise<Thread[]> {
       botName: t.metadata?.bot_name || t.bot_name || null,
       assistantId: t.assistant_id || null,
       projectId: t.metadata?.agent_workspace_project_id || t.project_id || null,
-    }));
+    })) };
   } catch (err) {
     console.error("Failed to fetch threads:", err);
-    return [];
+    return failed(err);
   }
+}
+
+/**
+ * LEGACY-COMPAT thread list: returns `[]` on failure, explicitly and ONLY for
+ * ChatView.tsx (owned by the external agent — fenced), which calls this raw
+ * inside un-awaited async helpers (ChatView.tsx:185 init Promise.all, :257
+ * reloadThreads, :277 loadMessages); rejecting there would abort the whole
+ * chat bootstrap. Every other/new caller must use fetchThreadsResult() and
+ * render `{ok:false}` as an unavailable state. Known gap reported by the
+ * wave-2 honesty audit: ChatView still merges a failed list as empty.
+ */
+export async function fetchThreads(limit = 100): Promise<Thread[]> {
+  const result = await fetchThreadsResult(limit);
+  return result.ok ? result.value : [];
 }
 
 export interface CreateThreadOptions {
@@ -79,15 +108,20 @@ function textOf(content: unknown): string {
   return "";
 }
 
-export async function fetchThreadHistory(threadId: string): Promise<ChatMessage[]> {
+/**
+ * Honest thread history: failure comes back as `{ ok: false }`, never as an
+ * empty conversation. Use this from every surface that can show "this chat
+ * has no messages".
+ */
+export async function fetchThreadHistoryResult(threadId: string): Promise<FetchResult<ChatMessage[]>> {
   try {
     // GET /threads/{id}/messages returns a bare array of run-event rows:
     // {seq, run_id, event_type, category, content: {type, content, ...}, created_at, feedback?}
     const res = await apiFetch(`/threads/${encodeURIComponent(threadId)}/messages?limit=100`);
-    if (!res.ok) return [];
+    if (!res.ok) return { ok: false, error: `Thread history failed (HTTP ${res.status}).` };
     const data = await res.json();
     const messages = Array.isArray(data) ? data : data.messages || [];
-    return messages.flatMap((m: any, idx: number) => {
+    return { ok: true, value: messages.flatMap((m: any, idx: number) => {
       // Event-store row shape (current backend).
       if (m && typeof m === "object" && ("event_type" in m || "seq" in m)) {
         const inner = m.content && typeof m.content === "object" ? m.content : {};
@@ -141,11 +175,25 @@ export async function fetchThreadHistory(threadId: string): Promise<ChatMessage[
           createdAt: m.created_at || new Date().toISOString(),
         } as ChatMessage,
       ];
-    });
+    }) };
   } catch (err) {
     console.error("Failed to fetch thread history:", err);
-    return [];
+    return failed(err);
   }
+}
+
+/**
+ * LEGACY-COMPAT thread history: returns `[]` on failure, explicitly and ONLY
+ * for ChatView.tsx (fenced — external agent), which calls this raw inside an
+ * un-awaited loadMessages() helper (ChatView.tsx:277); rejecting there would
+ * skip its local-cache fallback and stall message loading. threads-ext.ts
+ * (owned) uses fetchThreadHistoryResult() instead. Known gap reported by the
+ * wave-2 honesty audit: ChatView falls back to local cache / renders an empty
+ * conversation when the gateway is down.
+ */
+export async function fetchThreadHistory(threadId: string): Promise<ChatMessage[]> {
+  const result = await fetchThreadHistoryResult(threadId);
+  return result.ok ? result.value : [];
 }
 
 export async function fetchAvailableModels(): Promise<AIModel[]> {

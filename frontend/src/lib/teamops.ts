@@ -192,10 +192,7 @@ export async function matchBots(taskDescription: string, limit = 5): Promise<Arr
 }
 
 export async function orgEvents(limit = 30): Promise<Array<Record<string, unknown>>> {
-  try {
-    const d = await get<unknown>(`/bots/events?limit=${limit}`);
-    return asList(d, ["events", "data"]);
-  } catch {
-    return [];
-  }
+  // Failure propagates: an empty feed must not masquerade as "nothing happened".
+  const d = await get<unknown>(`/bots/events?limit=${limit}`);
+  return asList(d, ["events", "data"]);
 }
