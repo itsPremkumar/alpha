@@ -35,10 +35,25 @@ EXTENSIONS_CONFIG_TARGET = "/app/backend/extensions_config.json"
 APP_CONFIG_TARGET = "/app/backend/config.yaml"
 
 
+def _mount_target(volume: str) -> str | None:
+    """Return the container target of a short-syntax compose mount.
+
+    ``str.split(":")[1]`` is NOT the target for a mount whose source uses
+    variable interpolation with a default — ``${VAR:-../file.json}:/app/f.json``
+    contains colons inside the ``:-`` operator, so the naive index lands on the
+    ``-`` separator and the real gateway mounts are never matched. A container
+    target is always an absolute path, so the last absolute component of the
+    entry is the target (a trailing ``:ro``/``:z`` option is not absolute and is
+    therefore ignored).
+    """
+    absolute = [part for part in str(volume).split(":") if part.startswith("/")]
+    return absolute[-1] if absolute else None
+
+
 def _gateway_volume_for(target: str) -> str:
     compose = yaml.safe_load(PROD_COMPOSE.read_text(encoding="utf-8"))
     volumes = compose["services"]["gateway"]["volumes"]
-    matches = [str(entry) for entry in volumes if str(entry).split(":")[1:2] == [target]]
+    matches = [str(entry) for entry in volumes if _mount_target(str(entry)) == target]
     assert len(matches) == 1, f"expected exactly one gateway mount for {target}, got {matches}"
     return matches[0]
 
@@ -48,12 +63,18 @@ def _mount_options(volume: str) -> set[str]:
 
     Options are comma-separated, so ``ro`` can legally appear as ``ro,z`` or
     ``z,ro``. Testing the raw string for a ``:ro`` suffix would read those as
-    writable and let a read-only regression through.
+    writable and let a read-only regression through. The options are whatever
+    follows the container target, so the target is located first — an
+    interpolated source may itself contain ``:`` separators.
     """
-    parts = volume.split(":")
-    if len(parts) < 3:
+    parts = str(volume).split(":")
+    target_index = max(
+        (index for index, part in enumerate(parts) if part.startswith("/")),
+        default=None,
+    )
+    if target_index is None or target_index + 1 >= len(parts):
         return set()
-    return {option.strip() for option in parts[2].split(",") if option.strip()}
+    return {option.strip() for option in parts[target_index + 1].split(",") if option.strip()}
 
 
 @pytest.mark.parametrize(
