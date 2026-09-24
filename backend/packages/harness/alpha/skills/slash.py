@@ -14,7 +14,35 @@ from alpha.skills.types import Skill
 #: (``tests/test_slash_skill_contract.py`` here, ``slash-contract.test.ts`` on
 #: the frontend), so a reserved command or grammar change in only one language
 #: fails CI.
-RESERVED_SLASH_SKILL_NAMES = frozenset({"agent", "bootstrap", "goal", "help", "memory", "models", "new", "status"})
+#: Every channel command the gateway actually registers is reserved, so a skill
+#: named e.g. ``plan`` or ``team`` can never shadow ``/plan`` / ``/team``. The
+#: list mirrors ``app.channels.commands.KNOWN_CHANNEL_COMMANDS`` and is pinned to
+#: the shared fixture at ``contracts/slash_skill_contract.json`` by
+#: ``tests/test_slash_skill_contract.py``. NOTE: the frontend display mirror
+#: (``frontend/src/core/skills/slash.ts`` + ``slash-contract.test.ts``) previously
+#: promised by this comment DOES NOT EXIST — the frontend has no slash-skill
+#: activation parser today; building it is tracked as a discovery-plane
+#: follow-up, and this comment is corrected rather than left overstating what CI
+#: enforces.
+RESERVED_SLASH_SKILL_NAMES = frozenset(
+    {
+        "agent",
+        "approve",
+        "bootstrap",
+        "goal",
+        "help",
+        "memory",
+        "models",
+        "new",
+        "plan",
+        "project",
+        "reject",
+        "standup",
+        "status",
+        "swarm",
+        "team",
+    }
+)
 _SLASH_SKILL_RE = re.compile(r"^/([a-z0-9]+(?:-[a-z0-9]+)*)(?:\s+|$)")
 
 

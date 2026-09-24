@@ -193,7 +193,10 @@ def test_specialist_archetypes_and_dynamic_roles():
     # Dynamic role generation from prompt
     sec_contract = generate_dynamic_role("Perform security code audit looking for token leaks and CVE vulnerabilities")
     assert sec_contract.role == "security_auditor"
-    assert "astra_security_manage" in sec_contract.tools
+    # The security tool was renamed to enterprise_security_manage (the old
+    # astra_security_manage remains an alias); the role recommends the current
+    # name, so the expectation follows the product contract.
+    assert "enterprise_security_manage" in sec_contract.tools
 
     judge_contract = generate_dynamic_role("Compare debate outputs and judge the superior architectural consensus")
     assert judge_contract.role == "judge"
