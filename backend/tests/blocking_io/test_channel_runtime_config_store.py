@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import importlib
 import logging
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -26,14 +27,14 @@ from uuid import UUID
 import pytest
 from fastapi import FastAPI, Request
 
+from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
+from alpha.config.channel_connections_config import ChannelConnectionsConfig
 from app.channels.runtime_config_store import ChannelRuntimeConfigStore
 from app.gateway.routers.channel_connections import (
     ChannelRuntimeConfigRequest,
     configure_channel_provider_runtime,
     disconnect_channel_provider_runtime,
 )
-from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
-from alpha.config.channel_connections_config import ChannelConnectionsConfig
 
 # Pre-import: the handlers import this module lazily; the import's file IO
 # must happen at collection time, not on the event loop under the gate.
@@ -118,7 +119,26 @@ async def test_runtime_config_store_file_is_owner_only(tmp_path) -> None:
     )
 
     mode = await asyncio.to_thread(lambda: path.stat().st_mode & 0o777)
-    assert mode == 0o600
+    if os.name == "nt":
+        # Windows cannot express POSIX owner-only mode bits: os.chmod only
+        # toggles the read-only flag, so st_mode & 0o777 always reports the
+        # inherited default (0o666) no matter what the code asks for, and the
+        # equivalent control is the file DACL, which the stdlib cannot read
+        # portably. Pin the strongest property this platform CAN express: the
+        # atomic temp+replace path really ran and the stored secret round-trips.
+        assert path.is_file()
+        # Windows maps the read-only attribute to a CLEARED owner-write bit, so
+        # the observable invariant is the opposite of POSIX: the store's
+        # chmod(0o600) must leave the file writable (not accidentally
+        # read-only), and the atomic replace must have run.
+        assert path.stat().st_mode & 0o200, "the config file must not become read-only"
+        assert await asyncio.to_thread(store.get_provider_config, "slack") == {
+            "enabled": True,
+            "bot_token": "xoxb-ui",
+            "app_token": "xapp-ui",
+        }
+    else:
+        assert mode == 0o600
 
 
 async def test_runtime_config_store_overwrites_loose_existing_file(tmp_path) -> None:
@@ -141,7 +161,18 @@ async def test_runtime_config_store_overwrites_loose_existing_file(tmp_path) -> 
     )
 
     mode = await asyncio.to_thread(lambda: path.stat().st_mode & 0o777)
-    assert mode == 0o600
+    if os.name == "nt":
+        # See the note in test_runtime_config_store_file_is_owner_only: Windows
+        # reports inherited mode bits rather than the POSIX 0o600 the store asks
+        # for. The observable invariant here is that the loose pre-existing file
+        # was REPLACED (atomic temp+replace), not appended to: the stored
+        # payload must come back from the store's own reader.
+        assert await asyncio.to_thread(store.get_provider_config, "slack") == {
+            "enabled": True,
+            "bot_token": "xoxb-ui",
+        }
+    else:
+        assert mode == 0o600
 
 
 async def test_runtime_config_store_chmod_failure_is_logged_not_fatal(tmp_path, caplog) -> None:
@@ -171,5 +202,6 @@ async def test_runtime_config_store_chmod_failure_is_logged_not_fatal(tmp_path, 
 
     assert any("Unable to chmod temporary channel runtime config store" in record.getMessage() for record in caplog.records)
     mode = await asyncio.to_thread(lambda: path.stat().st_mode & 0o777)
-    assert mode == 0o600
+    if os.name != "nt":
+        assert mode == 0o600
     assert await asyncio.to_thread(store.get_provider_config, "slack") == {"enabled": True, "bot_token": "xoxb-ui"}
