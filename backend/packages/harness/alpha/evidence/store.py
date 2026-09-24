@@ -81,6 +81,17 @@ def _validate_state(state: _State) -> None:
         raise ValueError("Missing promoted candidate")
 
 
+def default_evidence_store() -> EvidenceStore:
+    """Store rooted in the writable Alpha state directory (per host).
+
+    Added by wave P3 so real call sites (e.g. the Finish-First verifier
+    middleware) record evidence without each inventing its own path.
+    """
+    from alpha.config.runtime_paths import runtime_home
+
+    return EvidenceStore(runtime_home() / "evidence")
+
+
 class EvidenceStore:
     def __init__(self, storage_dir: str | Path) -> None:
         self._path = Path(storage_dir).resolve() / "evidence.json"

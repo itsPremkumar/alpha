@@ -47,6 +47,17 @@ def _bounded_limit(limit: int) -> int:
     return min(limit, MAX_LIST_LIMIT)
 
 
+def default_action_ledger() -> ActionLedger:
+    """Ledger rooted in the writable Alpha state directory (per host).
+
+    Added by wave P3 so real action paths (e.g. the ESTOP tool) write
+    intent/receipt pairs without each inventing its own storage path.
+    """
+    from alpha.config.runtime_paths import runtime_home
+
+    return ActionLedger(runtime_home() / "action-ledger")
+
+
 class ActionLedger:
     def __init__(self, storage_dir: str | Path) -> None:
         self._path = Path(storage_dir).resolve() / "actions.jsonl"
