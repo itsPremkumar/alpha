@@ -353,15 +353,29 @@ async def stage_release(payload: StageReleaseRequest) -> dict[str, Any]:
 
 @router.post("/council/releases/{release_id}/benchmark")
 async def run_release_benchmark(release_id: str) -> dict[str, Any]:
-    """Runs candidate through the SWE holdout test suite and attaches benchmark signature."""
+    """Runs the candidate holdout benchmark preview and attaches its evidence basis.
+
+    The score produced by the council is a simulated preview, not a measured
+    benchmark run, so this response reports evidence_kind alongside the score
+    and explicitly declines to emit a pass verdict derived from it.
+    """
     council = get_council_quorum_engine()
     try:
         score = await asyncio.to_thread(council.run_holdout_benchmark, release_id)
         release = await asyncio.to_thread(council.get_release, release_id)
+        evidence_kind = getattr(release, "evidence_kind", "unknown") if release else "unknown"
         return {
             "release_id": release_id,
             "holdout_benchmark_score": score,
-            "holdout_passed": score >= 90.0,
+            "evidence_kind": evidence_kind,
+            # None, never a boolean pass claim: a verdict cannot be derived
+            # from a simulated score. The stored model gate
+            # (release.holdout_passed) remains False.
+            "holdout_passed": None,
+            "holdout_passed_reason": (
+                f"score is simulated (evidence_kind={evidence_kind}); "
+                "no measured benchmark ran — pass verdict unavailable"
+            ),
             "release": release.model_dump() if release else None,
         }
     except KeyError:

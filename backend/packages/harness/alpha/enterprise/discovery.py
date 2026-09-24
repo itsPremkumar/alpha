@@ -27,7 +27,13 @@ class ContinuousDiscoveryAndOptimizationEngine:
         self._bootstrap_initial_telemetry()
 
     def _bootstrap_initial_telemetry(self) -> None:
-        """Seeds baseline discovery and latency measurements."""
+        """Seeds the known feature gaps.
+
+        Latency profiles deliberately start EMPTY: no runtime latency
+        measurement source (ops/metrics, middleware timing, event-loop
+        timings) is wired to these components, so seeding baseline p50/p95/p99
+        numbers here would fabricate telemetry.
+        """
         gap_1 = FeatureGap(
             gap_id="gap-001",
             area="telemetry",
@@ -45,39 +51,8 @@ class ContinuousDiscoveryAndOptimizationEngine:
         self._gaps[gap_1.gap_id] = gap_1
         self._gaps[gap_2.gap_id] = gap_2
 
-        # Baseline latency profiles
-        self._latency_profiles["gateway_router"] = LatencyProfile(
-            component="gateway_router",
-            p50_ms=4.2,
-            p95_ms=12.8,
-            p99_ms=24.5,
-            is_bottleneck=False,
-            optimization_suggestion="Keep async offloading via asyncio.to_thread for blocking stores.",
-        )
-        self._latency_profiles["ast_boundary_scan"] = LatencyProfile(
-            component="ast_boundary_scan",
-            p50_ms=2.1,
-            p95_ms=6.4,
-            p99_ms=11.2,
-            is_bottleneck=False,
-            optimization_suggestion="AST parse tree is cached per file hash.",
-        )
-        self._latency_profiles["dag_sprint_step"] = LatencyProfile(
-            component="dag_sprint_step",
-            p50_ms=5.6,
-            p95_ms=18.3,
-            p99_ms=31.0,
-            is_bottleneck=False,
-            optimization_suggestion="Topological layer execution is bounded to 2 tasks per tick.",
-        )
-        self._latency_profiles["memory_consolidation"] = LatencyProfile(
-            component="memory_consolidation",
-            p50_ms=14.5,
-            p95_ms=48.2,
-            p99_ms=78.0,
-            is_bottleneck=False,
-            optimization_suggestion="Consolidation runs every 5 heartbeat cycles to prevent event loop starvation.",
-        )
+        # self._latency_profiles intentionally stays empty until a real
+        # measurement source exists (see profile_latencies).
 
     def discover_feature_gaps(self) -> list[FeatureGap]:
         """Proactively discovers architectural and feature gaps across the platform."""
@@ -95,10 +70,16 @@ class ContinuousDiscoveryAndOptimizationEngine:
         return list(self._gaps.values())
 
     def profile_latencies(self) -> list[LatencyProfile]:
-        """Collects latest latency metrics and identifies potential bottlenecks."""
+        """Returns the collected latency profiles.
+
+        No runtime measurement source for these components is wired yet, so
+        this honestly returns an empty list — no values are simulated and no
+        jitter is applied. The bottleneck review below only ever runs over
+        profiles that a real recorder has produced.
+        """
         now = time.time()
-        for comp, prof in self._latency_profiles.items():
-            # Apply slight simulated jitter reflecting real execution
+        for prof in self._latency_profiles.values():
+            # Stamp recency only; values come exclusively from real recordings.
             prof.last_profiled = now
             if prof.p95_ms > 100.0:
                 prof.is_bottleneck = True
@@ -171,7 +152,7 @@ class ContinuousDiscoveryAndOptimizationEngine:
                             files_checked += 1
                             filepath = os.path.join(root, file)
                             try:
-                                with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                                with open(filepath, encoding="utf-8", errors="ignore") as f:
                                     tree = ast.parse(f.read(), filename=file)
                                 violations.extend(self._inspect_ast_tree(tree, file))
                             except Exception as e:

@@ -408,9 +408,10 @@ export interface WarRoomLeaderboardEntry {
   bot_name: string;
   challenges_attempted: number;
   challenges_passed: number;
-  pass_rate: number;
-  avg_duration_seconds: number;
-  reputation_score: number;
+  // Null while the bot has no measured attempts — never an invented default.
+  pass_rate: number | null;
+  avg_duration_seconds: number | null;
+  reputation_score: number | null;
   rank: number;
 }
 

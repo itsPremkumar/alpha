@@ -1224,9 +1224,9 @@ function WarRoomTab() {
                       {lb.rank === 1 ? <Trophy className="size-3 text-amber-500" /> : `#${lb.rank}`}
                     </span>
                     <span className="font-semibold text-primary">@{lb.bot_name}</span>
-                    <span>{lb.pass_rate}%</span>
-                    <span>{lb.avg_duration_seconds}s</span>
-                    <span className="font-bold text-emerald-500">{lb.reputation_score} pts</span>
+                    <span>{lb.pass_rate == null ? "no measured data" : `${lb.pass_rate}%`}</span>
+                    <span>{lb.avg_duration_seconds == null ? "no measured data" : `${lb.avg_duration_seconds}s`}</span>
+                    <span className="font-bold text-emerald-500">{lb.reputation_score == null ? "no measured data" : `${lb.reputation_score} pts`}</span>
                   </div>
                 ))}
               </div>

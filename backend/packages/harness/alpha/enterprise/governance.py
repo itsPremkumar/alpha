@@ -93,12 +93,12 @@ class DepartmentTokenTreasury:
         if len(alloc.burn_history) > 20:
             alloc.burn_history = alloc.burn_history[-20:]
 
-        # ROI velocity calculation (tasks per 10k tokens consumed)
+        # ROI velocity calculation (tasks per 10k tokens consumed).
+        # No floor: a low measured ROI is real information about wasted spend
+        # and must not be overwritten with a flattering constant.
         if alloc.spent_tokens > 0:
             total_tasks = sum(h.get("tasks_completed", 0) for h in alloc.burn_history)
             alloc.roi_velocity = round((total_tasks / max(1, alloc.spent_tokens)) * 10000.0, 2)
-            if alloc.roi_velocity < 0.1:
-                alloc.roi_velocity = 0.85
 
         # Check circuit breaker:
         # Trip if burn rate > threshold OR instant TPM > threshold OR remaining balance <= 5% of allocation

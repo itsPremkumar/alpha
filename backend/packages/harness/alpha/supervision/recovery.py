@@ -5,7 +5,8 @@ from __future__ import annotations
 import logging
 import time
 import uuid
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from alpha.supervision.models import (
     AgentHealthStatus,
@@ -129,7 +130,12 @@ class WatchdogRecoveryManager:
 
         elif action == RecoveryAction.HOT_REPLACE:
             self._watchdog.clear_anomalies(worker_id)
-            status_msg = f"Worker {worker_id} hot-replaced by new ephemeral instance; rehydrating from last verified step checkpoint."
+            # No ephemeral replacement or checkpoint rehydration is performed
+            # by this manager; claiming either would be a false success.
+            status_msg = (
+                f"Worker {worker_id} hot-replace not implemented — no replacement or "
+                "checkpoint rehydration was performed; restart required."
+            )
 
         elif action == RecoveryAction.SUCCESSOR_HANDOFF:
             target = successor_id or f"successor-{worker_id}"
