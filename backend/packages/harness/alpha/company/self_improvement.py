@@ -25,8 +25,16 @@ class ContinuousSelfImprovementEngine:
 
         insights = [
             f"Cycle {cycle_num}: Executed {completed_tasks_count} tasks with {resolved_incidents_count} auto-remediated incidents.",
-            f"Autonomous failover kept organizational health at {state.overall_health_percent}%.",
-            f"Zero-wasted-compute preserved operational stamina across {state.sleeping_bots_count} idle specialist bots.",
+            (
+                f"Autonomous failover kept organizational health at {state.overall_health_percent}%."
+                if state.overall_health_percent is not None
+                else "Organizational health has not been measured yet; no failover health figure available."
+            ),
+            (
+                f"Zero-wasted-compute preserved operational stamina across {state.sleeping_bots_count} idle specialist bots."
+                if state.attendance_measured
+                else "No attendance pulses have been recorded yet; idle-bot count is unmeasured, not zero-by-observation."
+            ),
         ]
 
         # Domain-specific playbook improvements
@@ -49,7 +57,11 @@ class ContinuousSelfImprovementEngine:
             insights=insights,
             improved_playbooks=playbook_updates,
             calibrated_bots=calibrated_bots,
-            kpi_delta_summary=f"Health: {state.overall_health_percent}% | Active Bots: {state.active_bots_count} | Running Tasks: {state.running_tasks_count}",
+            kpi_delta_summary=(
+                f"Health: {state.overall_health_percent}% | Active Bots: {state.active_bots_count} | Running Tasks: {state.running_tasks_count}"
+                if state.overall_health_percent is not None
+                else f"Health: not yet measured | Active Bots: {state.active_bots_count} | Running Tasks: {state.running_tasks_count}"
+            ),
         )
 
         state.evolution_journal.append(record)

@@ -125,6 +125,7 @@ def get_open_source_archetype() -> ArchetypeDefinition:
             target_value=12.0,
             unit="h",
             threshold_critical=48.0,
+            basis="seed_demo_data",
         ),
         KPISpec(
             kpi_id="kpi-test-coverage",
@@ -133,6 +134,7 @@ def get_open_source_archetype() -> ArchetypeDefinition:
             target_value=95.0,
             unit="%",
             threshold_critical=85.0,
+            basis="seed_demo_data",
         ),
         KPISpec(
             kpi_id="kpi-issue-repro-rate",
@@ -141,6 +143,7 @@ def get_open_source_archetype() -> ArchetypeDefinition:
             target_value=90.0,
             unit="%",
             threshold_critical=70.0,
+            basis="seed_demo_data",
         ),
         KPISpec(
             kpi_id="kpi-cve-count",
@@ -149,6 +152,7 @@ def get_open_source_archetype() -> ArchetypeDefinition:
             target_value=0.0,
             unit="cves",
             threshold_critical=1.0,
+            basis="seed_demo_data",
         ),
     ]
 
@@ -260,6 +264,7 @@ def get_security_soc_archetype() -> ArchetypeDefinition:
             target_value=5.0,
             unit="min",
             threshold_critical=15.0,
+            basis="seed_demo_data",
         ),
         KPISpec(
             kpi_id="kpi-mttr",
@@ -268,6 +273,7 @@ def get_security_soc_archetype() -> ArchetypeDefinition:
             target_value=30.0,
             unit="min",
             threshold_critical=60.0,
+            basis="seed_demo_data",
         ),
         KPISpec(
             kpi_id="kpi-patch-pass-rate",
@@ -276,6 +282,7 @@ def get_security_soc_archetype() -> ArchetypeDefinition:
             target_value=100.0,
             unit="%",
             threshold_critical=90.0,
+            basis="seed_demo_data",
         ),
         KPISpec(
             kpi_id="kpi-compliance-score",
@@ -284,6 +291,7 @@ def get_security_soc_archetype() -> ArchetypeDefinition:
             target_value=99.0,
             unit="%",
             threshold_critical=95.0,
+            basis="seed_demo_data",
         ),
     ]
 
@@ -395,6 +403,7 @@ def get_research_lab_archetype() -> ArchetypeDefinition:
             target_value=10.0,
             unit="hypotheses",
             threshold_critical=3.0,
+            basis="seed_demo_data",
         ),
         KPISpec(
             kpi_id="kpi-reproducibility",
@@ -403,6 +412,7 @@ def get_research_lab_archetype() -> ArchetypeDefinition:
             target_value=100.0,
             unit="%",
             threshold_critical=90.0,
+            basis="seed_demo_data",
         ),
         KPISpec(
             kpi_id="kpi-sota-delta",
@@ -411,6 +421,7 @@ def get_research_lab_archetype() -> ArchetypeDefinition:
             target_value=5.0,
             unit="%",
             threshold_critical=0.0,
+            basis="seed_demo_data",
         ),
         KPISpec(
             kpi_id="kpi-peer-review-score",
@@ -419,6 +430,7 @@ def get_research_lab_archetype() -> ArchetypeDefinition:
             target_value=90.0,
             unit="%",
             threshold_critical=80.0,
+            basis="seed_demo_data",
         ),
     ]
 
@@ -545,6 +557,7 @@ def synthesize_custom_archetype(prompt: str) -> ArchetypeDefinition:
             target_value=target_val,
             unit=kpi_unit,
             threshold_critical=target_val * 0.70,
+            basis="seed_demo_data",
         ),
         KPISpec(
             kpi_id="kpi-uptime",
@@ -553,6 +566,7 @@ def synthesize_custom_archetype(prompt: str) -> ArchetypeDefinition:
             target_value=99.95,
             unit="%",
             threshold_critical=98.0,
+            basis="seed_demo_data",
         ),
         KPISpec(
             kpi_id="kpi-self-improvement-index",
@@ -561,6 +575,7 @@ def synthesize_custom_archetype(prompt: str) -> ArchetypeDefinition:
             target_value=90.0,
             unit="pts",
             threshold_critical=60.0,
+            basis="seed_demo_data",
         ),
     ]
 

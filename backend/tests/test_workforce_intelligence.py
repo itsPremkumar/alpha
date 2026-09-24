@@ -138,3 +138,26 @@ def test_selfrepair_missing_kind_has_explicit_reason():
     record = attempt_repair(diagnosis)
     assert record.outcome == "refused"
     assert record.verification
+
+
+def test_cpu_percent_is_measured_or_disclosed_never_load_scaled():
+    """cpu_percent must be real psutil utilization or None with a disclosure.
+
+    OLD behavior scaled the 1-minute load average into a percent
+    (`load_1m / cpu_count * 100`) and served it as CPU utilization.
+    """
+    reading = read_resources()
+    second = read_resources()
+    for r in (reading, second):
+        d = r.to_dict()
+        # The basis disclosure always travels with the value.
+        assert d.get("cpu_percent_basis")
+        if r.cpu_percent is None:
+            # Unavailable must say why: warm-up or unsupported host.
+            assert "warming up" in r.cpu_percent_basis or "unavailable" in r.cpu_percent_basis
+        else:
+            # A present value is a real measured utilization percentage.
+            assert 0.0 <= r.cpu_percent <= 100.0
+            assert "psutil.cpu_percent" in r.cpu_percent_basis
+    # The load average is still reported separately (load_1m) — never as a percent.
+    assert "load" not in (reading.cpu_percent_basis or "")

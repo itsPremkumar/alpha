@@ -68,3 +68,24 @@ def test_kpi_engine_autonomous_corrective_work_trigger():
 
     # Verify task recorded in history
     assert len(engine.get_triggered_tasks()) == 1
+
+
+def test_default_org_kpi_seed_values_are_disclosed_and_promoted_to_measured():
+    """Honesty pins for KPISpec.basis (repo precedent: rfc.py seed_demo_data)."""
+    engine = KPIEngine()
+
+    # Shipped seed readings are labeled as seed data, not live measurements.
+    assert all(k.basis == "seed_demo_data" for k in engine.list_kpis())
+
+    # A real update turns the seed reading into an actual measurement.
+    updated_kpi, _task = engine.update_metric("kpi-availability", 99.92)
+    assert updated_kpi.basis == "measured"
+    assert updated_kpi.current_value == 99.92
+
+    # Isolation pin: the shared default specs are deep-copied per engine, so
+    # one engine's real measurement never leaks into another engine's seeds.
+    fresh_engine = KPIEngine()
+    fresh_avail = fresh_engine.get_kpi("kpi-availability")
+    assert fresh_avail is not None
+    assert fresh_avail.basis == "seed_demo_data"
+    assert fresh_avail.current_value == 99.95

@@ -8,10 +8,10 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.gateway.routers.company import router as company_router
-from alpha.company.executive import ExecutiveIntelligenceLayer
+from alpha.company.executive import ExecutiveDigest, ExecutiveIntelligenceLayer
 from alpha.company.organization import AutonomousCompanyEngine
 from alpha.tools.builtins.company_tool import company_tool
+from app.gateway.routers.company import router as company_router
 
 
 def test_executive_intelligence_digest_generation():
@@ -27,6 +27,35 @@ def test_executive_intelligence_digest_generation():
     assert len(digest.kpi_summary) >= 1
     assert "why_idle_agents" in digest.explainability
     assert "Executive Digest" in digest.summary_markdown
+
+
+def test_executive_digest_default_health_is_unmeasured():
+    """Honesty pin: a directly-constructed digest must not invent a health score.
+
+    generate_digest() computes health from real incident counts; the old 95.0
+    class default was a fabricated value on any other construction path.
+    """
+    digest = ExecutiveDigest(org_id="org-pin-test", company_name="Pin Test Co")
+    assert digest.overall_health_percent is None
+
+
+def test_digest_kpi_summary_discloses_seed_basis():
+    """Honesty pin: seed KPI rows are disclosed, never claimed healthy/unhealthy."""
+    engine = AutonomousCompanyEngine()
+    state = engine.bootstrap_company(prompt="Autonomous AI Cloud Platform")
+    digest = ExecutiveIntelligenceLayer.generate_digest(state)
+
+    assert len(digest.kpi_summary) >= 1
+    for entry in digest.kpi_summary:
+        assert entry["basis"] == "seed_demo_data"
+
+    # The markdown KPI rows must carry the seed disclosure text.
+    kpi_lines = [ln for ln in digest.summary_markdown.splitlines() if "(Target:" in ln]
+    assert kpi_lines, "expected KPI lines in the summary markdown"
+    for line in kpi_lines:
+        assert "(seed example — not a live measurement)" in line
+        assert "🟢" not in line
+        assert "🔴" not in line
 
 
 def test_strategy_engine_pivot_and_replanning():

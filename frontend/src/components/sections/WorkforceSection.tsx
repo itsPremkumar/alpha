@@ -10,7 +10,7 @@ import {
   runBenchmarkSuite, fetchConsoleInsights, fetchOpsAdvice, listCouncilCases, fetchPendingApprovals,
   decideApproval, localEndpointHealth, fetchWarRoomData, resolveApprovalRequest,
   createCheckpoint, restoreCheckpoint, probeCanary,
-  triggerAVOIteration, registerEpistemicClaim, addEpistemicEvidence, triggerRSICycle, replayTrajectory,
+  registerEpistemicClaim, addEpistemicEvidence, triggerRSICycle, replayTrajectory,
   fetchSelfConfigStatus, inferSelfConfig, tuneSelfConfig,
   fetchMetaLineage, compileNextGenBlueprint, benchmarkBlueprint,
   fetchPerpetualStatus, startPerpetualDaemon, stopPerpetualDaemon, triggerPerpetualHeartbeat,
@@ -552,14 +552,16 @@ function WarRoomTab() {
     if (avoBusy) return;
     setAvoBusy(true);
     try {
-      await triggerAVOIteration(selectedProject, {
-        hypothesis: "Empirical optimization of active component execution path",
-        modification: "adaptive_batch_compaction",
-      });
-      setApprovalNotice("AVO preview response received; no measured improvement or deployment verified.");
-      warRoom.reload();
-    } catch (e) {
-      setApprovalNotice(`AVO error: ${errMsg(e)}`);
+      // Fail closed: POST /projects/{id}/avo/iterate requires measured
+      // correctness, performance_score and quality_score — the server no
+      // longer substitutes defaults (it used to commit versions scored
+      // 0.88/0.92 without any real evaluation). This UI has no real
+      // measurement source, so we neither post invented scores nor ask the
+      // server to invent them: nothing is committed until a real
+      // evaluation supplies measurements.
+      setApprovalNotice(
+        "AVO iteration not started: measured correctness/performance/quality scores are required and none are available client-side. No version was committed."
+      );
     } finally {
       setAvoBusy(false);
     }
@@ -694,7 +696,18 @@ function WarRoomTab() {
   const handleBenchmark = async (bpId: string) => {
     setBenchmarkingBp(bpId);
     try {
-      const res = await benchmarkBlueprint(selectedProject, bpId);
+      // The regression baseline must be stated by the caller; the server no
+      // longer defaults baseline_score. Use the active head's recorded
+      // scorecard ("match or improve current") and fail closed when no real
+      // scorecard exists instead of inventing a threshold client-side.
+      const baseline = metaLineage.data?.active_scorecard?.composite_score;
+      if (typeof baseline !== "number" || !Number.isFinite(baseline) || baseline <= 0) {
+        setApprovalNotice(
+          "Benchmark not started: no active scorecard is available to set the regression baseline (baseline_score is required and never defaulted)."
+        );
+        return;
+      }
+      const res = await benchmarkBlueprint(selectedProject, bpId, baseline);
       setApprovalNotice(`Synthetic benchmark preview: score=${res.composite_score}. Not measured regression evidence or release authorization.`);
       metaLineage.reload();
     } catch (e) {

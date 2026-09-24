@@ -218,8 +218,8 @@ export function WarRoomSection() {
           />
           <StatCard
             label="System Latency (p95)"
-            value={`${telemetry.system_latency_p95_ms}ms`}
-            sub="Synthetic preview; not measured latency"
+            value={telemetry.system_latency_p95_ms == null ? "—" : `${telemetry.system_latency_p95_ms}ms`}
+            sub={telemetry.system_latency_p95_ms == null ? "No latency profile recorded yet" : "Synthetic preview; not measured latency"}
           />
           <StatCard
             label="Security Posture"

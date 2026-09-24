@@ -171,7 +171,7 @@ export interface EnterpriseTelemetry {
   tasks_completed_count: number;
   treasury_overall_burn_rate_tpm: number;
   treasury_circuit_breakers_tripped: number;
-  system_latency_p95_ms: number;
+  system_latency_p95_ms: number | null;
   security_posture_score: number | null;
   holdout_pass_rate_percent: number | null;
   latest_release_version: string | null;
@@ -290,8 +290,8 @@ export async function promoteCouncilRelease(releaseId: string): Promise<ReleaseC
   });
 }
 
-export async function triggerEnterpriseHeartbeat(): Promise<{ cycle: number; system_latency_p95_ms: number; telemetry: EnterpriseTelemetry }> {
-  return req<{ cycle: number; system_latency_p95_ms: number; telemetry: EnterpriseTelemetry }>("/enterprise/heartbeat", {
+export async function triggerEnterpriseHeartbeat(): Promise<{ cycle: number; system_latency_p95_ms: number | null; telemetry: EnterpriseTelemetry }> {
+  return req<{ cycle: number; system_latency_p95_ms: number | null; telemetry: EnterpriseTelemetry }>("/enterprise/heartbeat", {
     method: "POST",
   });
 }

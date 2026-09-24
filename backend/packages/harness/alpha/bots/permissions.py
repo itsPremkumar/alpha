@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Protocol, TypeVar
+from typing import Any, Protocol
 
 logger = logging.getLogger(__name__)
 
@@ -18,9 +18,6 @@ class NamedTool(Protocol):
     """Anything with a tool name - keeps the filter reusable across tool types."""
 
     name: str
-
-
-ToolT = TypeVar("ToolT", bound=NamedTool)
 
 
 @dataclass
@@ -148,7 +145,7 @@ DEFAULT_ROLE_RINGS: dict[str, RolePermissionRing] = {
 ROLE_PERMISSION_RINGS = DEFAULT_ROLE_RINGS
 
 
-def filter_tools_by_role(
+def filter_tools_by_role[ToolT: NamedTool](
     tools: list[ToolT],
     bot_role: str | None,
     gate: ToolPermissionGate | None = None,
