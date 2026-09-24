@@ -88,7 +88,12 @@ def test_timeout_output_carries_authoritative_failure_marker(monkeypatch):
     exit marker so exit-status evidence (acceptance checklist) cannot read a
     partial passing summary as success."""
     monkeypatch.setattr(LocalSandbox, "_get_shell", lambda self: "/bin/sh")
-    monkeypatch.setattr(LocalSandbox, "_run_posix_command", staticmethod(lambda args, timeout, env=None: ("12 passed\n", "", 0, True)))
+    # Platform-correct runner seam (same as the fractional-timeout test above):
+    # on Windows execute_command dispatches to _run_windows_command, so patching
+    # only the POSIX runner made this test really spawn a nonexistent /bin/sh
+    # and fail with WinError 2 instead of exercising the timeout notice.
+    runner = "_run_windows_command" if os.name == "nt" else "_run_posix_command"
+    monkeypatch.setattr(LocalSandbox, runner, staticmethod(lambda args, timeout, env=None: ("12 passed\n", "", 0, True)))
 
     output = LocalSandbox("t").execute_command("make test", timeout=1)
 
