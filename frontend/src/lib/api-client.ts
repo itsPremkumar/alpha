@@ -5,11 +5,18 @@ export type ApiFailureKind = "http" | "network" | "stopped" | "response" | "rout
 export class ApiClientError extends Error {
   readonly kind: ApiFailureKind;
   readonly status: number;
+  /**
+   * The server's own failure text when the response carried one (FastAPI
+   * `detail`, or a legacy `error` string). Kept verbatim so the UI can show
+   * the REAL reason — file + line for a corrupt journal, the matched policy
+   * rule, a validation list — instead of a bare status sentence.
+   */
+  readonly detail: string | null;
 
-  constructor(kind: ApiFailureKind, status = 0) {
+  constructor(kind: ApiFailureKind, status = 0, detail: string | null = null) {
     const validStatus = Number.isInteger(status) && status >= 100 && status <= 599 ? status : 0;
     super(kind === "http"
-      ? `Request failed${validStatus ? ` (HTTP ${validStatus})` : ""}.`
+      ? `Request failed${validStatus ? ` (HTTP ${validStatus})` : ""}.${detail ? ` ${detail}` : ""}`
       : kind === "stopped" ? "Request stopped locally."
       : kind === "response" ? "The server returned an unreadable response."
       : kind === "route" ? "Invalid API route."
@@ -17,6 +24,7 @@ export class ApiClientError extends Error {
     this.name = "ApiClientError";
     this.kind = kind;
     this.status = validStatus;
+    this.detail = detail;
   }
 }
 
@@ -78,7 +86,26 @@ export function createApiClient(options: {
     } catch {
       throw new ApiClientError(init.signal?.aborted ? "stopped" : "network");
     }
-    if (!response.ok) throw new ApiClientError("http", response.status);
+    if (!response.ok) {
+      // Carry the server's own failure text (FastAPI `detail`) into the error so
+      // every caller can surface the real reason instead of a bare status line.
+      let detail: string | null = null;
+      try {
+        const data: unknown = await response.clone().json();
+        if (data && typeof data === "object") {
+          const record = data as Record<string, unknown>;
+          const candidate = record.detail ?? record.error;
+          if (typeof candidate === "string" && candidate !== "") {
+            detail = candidate;
+          } else if (Array.isArray(candidate)) {
+            detail = candidate.map((item) => String(item)).join("; ");
+          }
+        }
+      } catch {
+        // Unreadable or non-JSON body: keep the status sentence only.
+      }
+      throw new ApiClientError("http", response.status, detail);
+    }
     return response;
   };
 }
