@@ -26,6 +26,7 @@ from app.gateway.routers import (
     artifacts,
     assistants_compat,
     auth,
+    autonomy,
     benchmarks,
     bots,
     browser,
@@ -974,6 +975,7 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     app.include_router(deliberation.router)
     app.include_router(jobs.router)
     app.include_router(supervision.router)
+    app.include_router(autonomy.router)
     app.include_router(goal_contracts.router)
     app.include_router(goal_integrity.router)
     app.include_router(a2a.router)

@@ -26,6 +26,7 @@ import {
   LayoutGrid,
   Workflow,
   Hammer,
+  Radar,
 } from "lucide-react";
 
 export type WorkspaceView =
@@ -50,7 +51,8 @@ export type WorkspaceView =
   | "integration"
   | "settings"
   | "workflows"
-  | "forge";
+  | "forge"
+  | "supervisor";
 
 export type TabCategory = "core" | "collaboration" | "operations" | "system";
 
@@ -92,6 +94,7 @@ export const WORKSPACE_TABS: WorkspaceTabItem[] = [
   // System & Platform
   { id: "system", label: "System", icon: <ServerCog className="size-3.5" />, blurb: "Live status, shortcuts, apps", category: "system" },
   { id: "integration", label: "Integration", icon: <PlugZap className="size-3.5" />, blurb: "Wiring status & opt-in capabilities", category: "system" },
+  { id: "supervisor", label: "Supervisor", icon: <Radar className="size-3.5" />, blurb: "Autonomy loops, Sentinel repairs & signals", category: "system" },
   { id: "settings", label: "Settings", icon: <Settings className="size-3.5" />, blurb: "Model selection, theme, API diagnostics", category: "system", isPrimary: true },
 ];
 
