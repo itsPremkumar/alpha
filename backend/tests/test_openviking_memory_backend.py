@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import gc
 import json
+import logging
 import socket
 import threading
 import weakref
@@ -428,6 +429,7 @@ def test_unreachable_context_read_fail_open_returns_no_injected_context(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     unreachable_openviking_url: str,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     manager = _manager(
         tmp_path,
@@ -447,7 +449,17 @@ def test_unreachable_context_read_fail_open_returns_no_injected_context(
     middleware = DynamicContextMiddleware()
     state = {"messages": [HumanMessage("answer this", id="message-1")]}
 
-    assert manager.get_context("alice", agent_name="research") == ""
+    with caplog.at_level(logging.WARNING):
+        assert manager.get_context("alice", agent_name="research") == ""
+    # The httpx.ConnectTimeout must be disclosed as a degraded read — never
+    # treated as a provider answer.
+    assert "OpenViking context retrieval failed" in caplog.text
+    # The composed injection context must also be empty: no side channel
+    # (e.g. cognitive enrichment) may fabricate a success-shaped <memory>
+    # block while the configured provider is down.
+    from alpha.agents.lead_agent.prompt import _get_memory_context
+
+    assert _get_memory_context(None, app_config=None, user_id="alice") == ""
     update = middleware.before_agent(state, None)
     assert update is not None
     assert all(not str(message.id).endswith("__memory") for message in update["messages"])

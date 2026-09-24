@@ -541,8 +541,16 @@ class TestModeGating:
         assert tool_names.count("memory_search") == 1
         assert "memory_add" in tool_names
 
-    def test_lead_agent_preserves_non_memory_duplicate_tool_names(self, monkeypatch):
-        """Memory-tool collision handling should not drop unrelated duplicate tools."""
+    def test_lead_agent_skips_memory_collision_and_preserves_unrelated_tools(self, monkeypatch, caplog):
+        """Collision on a memory-tool name is skipped; unrelated tools are preserved.
+
+        The registry-realistic input is a UNIQUE-named tool list (the real
+        ``get_available_tools`` de-duplicates by name, so duplicate input names
+        are not producible in production). ``memory_search`` collides with a
+        memory tool, so exactly one copy survives and the skip is disclosed;
+        unrelated tools stay untouched and the assembled list satisfies the
+        fail-closed unique-tool-names invariant.
+        """
         from alpha.agents.lead_agent import agent as lead_agent_module
         from alpha.config.authorization_config import AuthorizationConfig
         from alpha.config.memory_config import MemoryConfig
@@ -559,7 +567,14 @@ class TestModeGating:
             lambda name, *, user_id=None: SimpleNamespace(model=None, skills=None, tool_groups=None),
         )
         monkeypatch.setattr(lead_agent_module, "_load_enabled_available_skills", lambda available_skills, *, app_config, user_id=None: [])
-        monkeypatch.setattr("alpha.tools.get_available_tools", lambda **kwargs: [_NamedTool("bash"), _NamedTool("bash")])
+        monkeypatch.setattr(
+            "alpha.tools.get_available_tools",
+            lambda **kwargs: [
+                _NamedTool("bash"),
+                _NamedTool("memory_search"),
+                _NamedTool("python_repl"),
+            ],
+        )
 
         app_config = SimpleNamespace(
             get_model_config=lambda name: SimpleNamespace(supports_thinking=False, supports_vision=False),
@@ -574,5 +589,18 @@ class TestModeGating:
         agent_kwargs = lead_agent_module._make_lead_agent({"configurable": {"agent_name": "test-agent"}}, app_config=app_config)
         tool_names = [tool.name for tool in agent_kwargs["tools"]]
 
-        assert tool_names.count("bash") == 2
+        # The colliding memory tool is appended exactly once (not twice) ...
+        assert tool_names.count("memory_search") == 1
+        # ... the other memory tool still gets appended ...
         assert tool_names.count("memory_add") == 1
+        # ... and every unrelated pre-existing tool is preserved unchanged.
+        assert tool_names.count("bash") == 1
+        assert tool_names.count("python_repl") == 1
+        # The collision skip is disclosed, not silent.
+        assert "memory_search" in caplog.text
+        assert "skipped" in caplog.text
+        # The assembled tool list still satisfies the fail-closed invariant
+        # (this is what the registry-realistic input guarantees).
+        from alpha.diagnostics.invariants import check_unique_tool_names
+
+        check_unique_tool_names(agent_kwargs["tools"])

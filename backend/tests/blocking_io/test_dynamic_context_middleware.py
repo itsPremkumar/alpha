@@ -191,10 +191,16 @@ async def test_abefore_agent_returns_none_on_timeout(
         runtime = SimpleNamespace(context={"__run_journal": journal})
         result = await mw.abefore_agent(state, runtime)
 
-    assert started.is_set()
-    assert result is None
-    release.set()
-    assert await asyncio.to_thread(finished.wait, 1)
+        assert result is None
+        # The time-box abandons the wait but never cancels a queued worker.
+        # The patch MUST stay active until that worker has run: a worker that
+        # starts after the patch is restored would call the real _inject, and
+        # the mock's lifecycle events would never be set. Lifecycle is pinned
+        # only after the worker is observed to finish (finished implies
+        # started) — never at the deadline, where the job may still be queued.
+        release.set()
+        assert await asyncio.to_thread(finished.wait, 2)
+        assert started.is_set()
     journal.record_memory_context.assert_not_called()
 
 
@@ -236,10 +242,14 @@ async def test_abefore_agent_propagates_strict_memory_timeout(
         with pytest.raises(MemoryReadError) as exc_info:
             await mw.abefore_agent(state, runtime)
 
+        # The time-box never cancels a queued worker, so the patch stays active
+        # until the worker is observed to finish (finished implies started) —
+        # not at the deadline where the job may still be queued.
+        release.set()
+        assert await asyncio.to_thread(finished.wait, 2)
+        assert started.is_set()
+
     assert isinstance(exc_info.value.__cause__, TimeoutError)
-    assert started.is_set()
-    release.set()
-    assert await asyncio.to_thread(finished.wait, 1)
 
 
 @pytest.mark.parametrize(
@@ -311,12 +321,17 @@ async def test_abefore_agent_policy_resolution_failure_does_not_replace_timeout(
             runtime = SimpleNamespace(context={})
             with pytest.raises(MemoryReadError) as exc_info:
                 await mw.abefore_agent(state, runtime)
+            # Keep the patch active until the abandoned worker has run (see
+            # test_abefore_agent_returns_none_on_timeout): a worker that starts
+            # after the patch is restored would call the real _inject and the
+            # mock's lifecycle events would never fire.
+            release.set()
+            assert await asyncio.to_thread(finished.wait, 2)
+            assert started.is_set()
     finally:
         release.set()
-        assert await asyncio.to_thread(finished.wait, 1)
 
     assert isinstance(exc_info.value.__cause__, TimeoutError)
-    assert started.is_set()
 
 
 async def test_abefore_agent_records_checkpointed_memory_on_timeout() -> None:
@@ -366,14 +381,24 @@ async def test_abefore_agent_records_checkpointed_memory_on_timeout() -> None:
             "alpha.agents.middlewares.dynamic_context_middleware._INJECT_TIMEOUT_SECONDS",
             0.01,
         ),
+        # Pin the read-failure policy explicitly. Left unresolved, whether the
+        # timeout degrades or fails closed depends on whether the worker
+        # resolves the policy INSIDE the 10ms box — a race this test must not
+        # encode (an unknown policy correctly fails closed). This test is
+        # about frozen memory staying effective on a fail-open timeout, so
+        # fail-open is set deterministically instead of by winning a race.
+        mock.patch.object(mw, "_read_failures_are_fatal", return_value=False),
     ):
         result = await mw.abefore_agent(state, runtime)
 
+        # The patch stays active until the abandoned worker has run (see
+        # test_abefore_agent_returns_none_on_timeout).
+        release.set()
+        assert await asyncio.to_thread(finished.wait, 2)
+        assert started.is_set()
+        assert result is None
+
     recorded_call = journal.record_memory_context.call_args
-    release.set()
-    assert await asyncio.to_thread(finished.wait, 1)
-    assert started.is_set()
-    assert result is None
     assert recorded_call == mock.call(
         content_sha256=hashlib.sha256(memory_content.encode("utf-8")).hexdigest(),
     )
@@ -396,23 +421,30 @@ async def test_timeout_does_not_wait_for_saturated_executor(monkeypatch, read_po
     )
     entered = threading.Event()
     release = threading.Event()
+    read_started = threading.Event()
     finished = threading.Event()
     executor = ThreadPoolExecutor(max_workers=1)
     loop = asyncio.get_running_loop()
 
-    def occupy_worker(*_args):
+    def hold_pool(*_args):
+        """Occupy the single worker until released; never signals 'finished'."""
         entered.set()
-        release.wait(timeout=2)
+        release.wait(timeout=5)
+
+    def read_worker(*_args):
+        """The injection read: must survive the deadline and still run."""
+        read_started.set()
+        release.wait(timeout=5)
         finished.set()
 
     try:
         with mock.patch.object(loop, "_default_executor", executor):
             if already_saturated:
-                executor.submit(occupy_worker)
+                executor.submit(hold_pool)
                 while not entered.is_set():
                     await asyncio.sleep(0)
             with (
-                mock.patch.object(mw, "_inject", side_effect=occupy_worker) as inject,
+                mock.patch.object(mw, "_inject", side_effect=read_worker) as inject,
                 mock.patch("alpha.agents.middlewares.dynamic_context_middleware._INJECT_TIMEOUT_SECONDS", 0.01),
             ):
                 call = mw.abefore_agent({"messages": [HumanMessage(content="hi", id="m1")]}, SimpleNamespace(context={}))
@@ -422,8 +454,20 @@ async def test_timeout_does_not_wait_for_saturated_executor(monkeypatch, read_po
                     assert isinstance(exc_info.value.__cause__, TimeoutError)
                 else:
                     assert await asyncio.wait_for(call, 0.25) is None
-                assert not finished.is_set()  # the request returned before its worker
-                assert inject.call_count == (0 if already_saturated else 1)
+                # The request returned at the deadline, before its worker
+                # could finish — and, with a saturated pool, before it even
+                # started (the read is still queued behind hold_pool).
+                assert not finished.is_set()
+                if already_saturated:
+                    assert inject.call_count == 0
+                # The time-box bounds only the wait: once the pool frees up,
+                # the queued read must still run to completion. (A cancelling
+                # time-box would have dropped the pending job, so read_started
+                # would never fire and this would fail.)
+                release.set()
+                assert await asyncio.to_thread(read_started.wait, 2)
+                assert await asyncio.to_thread(finished.wait, 2)
+                assert inject.call_count == 1
     finally:
         release.set()
         await asyncio.to_thread(executor.shutdown, wait=True, cancel_futures=True)

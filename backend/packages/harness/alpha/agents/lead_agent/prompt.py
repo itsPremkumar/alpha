@@ -896,14 +896,17 @@ def _get_memory_context(
                 sk_lines = [f"- {s.name}: {s.description} (Trigger: {s.trigger_pattern})" for s in skills]
                 cognitive_blocks.append("### Learned Procedural Playbooks\n" + "\n".join(sk_lines))
 
-            if cognitive_blocks:
+            # Cognitive data may only ENRICH memory the configured backend
+            # actually returned. When the provider read produced nothing (a
+            # disclosed fail-open after e.g. httpx.ConnectTimeout, or an empty
+            # store), substituting side-channel content here would fabricate a
+            # success-shaped <memory> block and hide the degraded read from
+            # every caller — so the enrichment is dropped instead.
+            if cognitive_blocks and memory_content.strip():
                 cog_text = "\n\n".join(cognitive_blocks)
-                if memory_content.strip():
-                    memory_content = f"{memory_content.strip()}\n\n{cog_text}"
-                else:
-                    memory_content = cog_text
+                memory_content = f"{memory_content.strip()}\n\n{cog_text}"
         except Exception:
-            pass
+            logger.debug("Failed to enrich memory context from cognitive memory", exc_info=True)
 
         if not memory_content.strip():
             return ""
