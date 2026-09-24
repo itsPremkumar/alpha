@@ -21,6 +21,7 @@ import { listThreadRuns, cancelRun } from "@/lib/runs";
 import { rateMessage } from "@/lib/feedback";
 import { suggestionsEnabled, suggestFollowUps, polishDraft } from "@/lib/assist";
 import { listCommands, executeCommand, SlashCommand } from "@/lib/commands";
+import { readAutoplayEnabled, autoplaySpeak } from "@/lib/voice";
 import {
   loadStore,
   upsertLocalThread,
@@ -36,7 +37,9 @@ import {
   importStoreJson,
 } from "@/lib/history-store";
 import { uploadFiles } from "@/lib/files";
-import { fetchGoal, setGoal, clearGoal, compactThread, fetchTokenUsage, TokenUsage } from "@/lib/threads-ext";
+import { fetchGoal, setGoal, clearGoal, compactThread, fetchTokenUsage, TokenUsage, moveThread } from "@/lib/threads-ext";
+import { listProjects, Project } from "@/lib/projects";
+import { fetchFreeCatalog } from "@/lib/freeModels";
 import { BotGallery } from "@/components/bots/BotGallery";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { BotDetailPanel } from "@/components/bots/BotDetailPanel";
@@ -112,10 +115,57 @@ export default function ChatView() {
   const [planMode, setPlanMode] = useState(false);
   const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
   const [gatewayOk, setGatewayOk] = useState<boolean | null>(null);
+  // Project scope for the active chat (creation + permission/selection in-chat).
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [pendingProjectId, setPendingProjectId] = useState<string | null>(null);
+  // Free-model catalog status (dynamic, auto-refreshed server-side TTL 300s).
+  const [freeNote, setFreeNote] = useState<string | null>(null);
+  const [freeRefreshing, setFreeRefreshing] = useState(false);
 
   const flash = (msg: string) => {
     setNotice(msg);
     window.setTimeout(() => setNotice(null), 4500);
+  };
+
+  /** Force a live re-discovery of free providers (probe = real health check). */
+  const refreshFreeCatalog = async () => {
+    setFreeRefreshing(true);
+    try {
+      const { providers, updatedAt } = await fetchFreeCatalog({ refresh: true, probe: true });
+      const healthy = providers.filter((p) => p.healthy === true).length;
+      const eligible = providers.filter((p) => p.eligible).length;
+      setFreeNote(
+        providers.length === 0
+          ? "Free catalog empty — the keyless router has no providers right now."
+          : `Free models: ${healthy}/${providers.length} healthy, ${eligible} eligible${updatedAt ? ` (updated ${updatedAt})` : ""}.`
+      );
+      flash(providers.length === 0 ? "Free catalog refreshed: no providers." : `Free catalog refreshed: ${healthy}/${providers.length} healthy.`);
+    } catch {
+      setFreeNote("Free catalog refresh failed — keyless router may be down.");
+      flash("Free catalog refresh failed.");
+    } finally {
+      setFreeRefreshing(false);
+    }
+  };
+
+  /** Project owning the active thread (server field first, pending pick fallback). */
+  const activeProjectId: string | null =
+    threads.find((t) => t.thread_id === activeThreadId)?.projectId || pendingProjectId;
+
+  /** Scope the active chat to a project (move thread, or stage for the next new chat). */
+  const handlePickProject = async (projectId: string | null) => {
+    setPendingProjectId(projectId);
+    if (!activeThreadId || activeThreadId.startsWith("local-")) {
+      flash(projectId ? "New chats will open in this project." : "Project scope cleared.");
+      return;
+    }
+    try {
+      await moveThread(activeThreadId, projectId);
+      setThreads((prev) => prev.map((x) => (x.thread_id === activeThreadId ? { ...x, projectId } : x)));
+      flash(projectId ? "Chat moved into project." : "Chat removed from project.");
+    } catch {
+      flash("Couldn't move this chat — try the Projects view.");
+    }
   };
 
   // Initial load: local history first (instant), then merge the server.
@@ -158,6 +208,19 @@ export default function ChatView() {
       setBotsLoading(false);
       setFeatures(feats);
       setSuggestionsOn(suggOn);
+      // Projects for the in-chat scope picker (quiet if unavailable).
+      listProjects().then(setProjects).catch(() => setProjects([]));
+      // Free-model catalog: dynamic server view, never fabricated client-side.
+      const renderFree = (providers: { name: string; healthy: boolean | null; eligible: boolean }[], updatedAt?: string | null) => {
+        const healthy = providers.filter((p) => p.healthy === true).length;
+        const eligible = providers.filter((p) => p.eligible).length;
+        setFreeNote(
+          providers.length === 0
+            ? "Free catalog empty — the keyless router has no providers right now."
+            : `Free models: ${healthy}/${providers.length} healthy, ${eligible} eligible${updatedAt ? ` (updated ${updatedAt})` : ""}.`
+        );
+      };
+      fetchFreeCatalog().then(({ providers, updatedAt }) => renderFree(providers, updatedAt)).catch(() => setFreeNote("Free catalog unreachable — keyless router may be down."));
       // Lightweight liveness probe for the header status pill.
       fetchOpsStatus().then(() => setGatewayOk(true)).catch(() => setGatewayOk(false));
       // Shortcut commands for the "/" palette (quiet if unavailable).
@@ -291,8 +354,8 @@ export default function ChatView() {
     setMessages([]);
     setView("chat");
     try {
-      const serverId = await createThread("New Conversation", { botName: activeBot?.name ?? null });
-      const serverThread: Thread = { ...draft, thread_id: serverId };
+      const serverId = await createThread("New Conversation", { botName: activeBot?.name ?? null, projectId: pendingProjectId });
+      const serverThread: Thread = { ...draft, thread_id: serverId, projectId: pendingProjectId };
       try {
         remapThreadId(localId, serverThread);
       } catch {
@@ -499,6 +562,15 @@ export default function ChatView() {
         showRequestFailure({ kind: "empty" });
         return;
       }
+      // TTS autoplay: the FINAL assistant reply just committed (stream complete,
+      // not aborted, non-empty) — never streaming partials, user messages, tool
+      // traces, or history replays. Default OFF: readAutoplayEnabled() is false
+      // until explicitly opted in ⇒ zero behavior change by default.
+      // autoplaySpeak re-checks the same gate (defense in depth) and hands any
+      // playback failure to the visible flash notice — never a silent swallow.
+      if (readAutoplayEnabled()) {
+        void autoplaySpeak(assistantText, { onFailure: (message) => flash(`Autoplay failed: ${message}`) });
+      }
       try {
         setUsage(await fetchTokenUsage(threadId));
       } catch {}
@@ -671,7 +743,7 @@ export default function ChatView() {
     }
   };
 
-  const handleAttach = async (files: FileList) => {
+  const handleAttach = async (files: FileList | File[]) => {
     let threadId = activeThreadId;
     if (!threadId) {
       const localId = `local-${Date.now()}`;
@@ -843,6 +915,29 @@ export default function ChatView() {
               <span className="text-xs font-semibold text-foreground truncate max-w-52">
                 {threads.find((t) => t.thread_id === activeThreadId)?.title || "Active Workspace"}
               </span>
+              {/* Project scope: create/select a project without leaving the chat. */}
+              <select
+                value={activeProjectId || ""}
+                onChange={(e) => handlePickProject(e.target.value || null)}
+                className="text-[11px] bg-muted/60 border border-border/80 rounded-lg px-2 py-0.5 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 font-medium cursor-pointer max-w-44 truncate"
+                title={projects.length === 0 ? "No projects yet — pick one after creating it in Projects" : "Project for this chat"}
+                aria-label="Project for this chat"
+              >
+                <option value="">No project</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name || "Untitled project"}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setView("projects")}
+                className="text-[11px] text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded-lg hover:bg-muted transition-colors"
+                title="Manage projects"
+              >
+                Manage
+              </button>
               <button
                 type="button"
                 onClick={() => setView("system")}
@@ -860,6 +955,17 @@ export default function ChatView() {
               </button>
               <div className="flex-1" />
               <ActiveBotPicker bots={bots} activeBot={activeBot} onPick={rememberBot} />
+              <button
+                type="button"
+                onClick={refreshFreeCatalog}
+                disabled={freeRefreshing}
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-muted/70 transition-colors disabled:opacity-40"
+                title={freeNote || "Free keyless models — click to refresh live catalog"}
+              >
+                <span className="size-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+                <span className="hidden lg:inline">{freeRefreshing ? "Refreshing free…" : freeNote ? freeNote.split(".")[0] : "Free models"}</span>
+                <span className="lg:hidden">Free</span>
+              </button>
               <button
                 type="button"
                 onClick={() => setView("settings")}
@@ -1222,6 +1328,9 @@ export default function ChatView() {
                 polishing={polishing}
                 onAttach={handleAttach}
                 uploading={uploading}
+                onPasteFiles={(files) => handleAttach(files)}
+                onDictate={(text) => flash("Dictation inserted — review and send.")}
+                freeNote={freeNote}
                 slashCommands={slashCommands}
               />
             </footer>

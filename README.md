@@ -17,6 +17,8 @@
 
 </div>
 
+> Alpha is an open-source autonomous multi-agent AI operating system: LangGraph + FastAPI backend, Next.js 15 workspace, Electron desktop, deep research, swarm workforce, sandboxed coding, and 120+ tools. Start with [Getting Started](docs/GETTING_STARTED.md), [FAQ](docs/FAQ.md), and [llms.txt](llms.txt).
+
 ---
 
 ## 📑 Table of Contents
@@ -34,8 +36,8 @@
   - [3.8 Presentation Layer: Windows Desktop & Web UI](#38-presentation-layer-windows-desktop--web-ui)
 - [4. Complete Subsystem Reference (All 89 Harness Engines)](#4-complete-subsystem-reference-all-89-harness-engines)
 - [5. Public Skills Catalog (All 24 Specialized Skills)](#5-public-skills-catalog-all-24-specialized-skills)
-- [6. Gateway API & Router Directory (All 51 Micro-Endpoints)](#6-gateway-api--router-directory-all-51-micro-endpoints)
-- [7. Complete Built-in Tools Catalog (60+ Native Tools)](#7-complete-built-in-tools-catalog-60-native-tools)
+- [6. Gateway API & Router Directory (All 57 Micro-Endpoints)](#6-gateway-api--router-directory-all-57-micro-endpoints)
+- [7. Complete Built-in Tools Catalog (120+ Native Tools)](#7-complete-built-in-tools-catalog-120-native-tools)
 - [8. Deployment & Quick Start Guide](#8-deployment--quick-start-guide)
   - [Option A: Windows Desktop Application (One-Click)](#option-a-windows-desktop-application-one-click)
   - [Option B: Docker Compose Multi-Service Stack](#option-b-docker-compose-multi-service-stack)
@@ -172,7 +174,7 @@ Every advanced feature in Alpha is engineered for production-grade reliability a
 ### 3.6 Enterprise Security Enclave & Governance
 - **Astra & Enclave Security Management**: Hardware- and software-enforced security enclaves safeguarding credentials and enforcing process isolation.
 - **Smart Command Approval Gate**: Risk-scoring engine requiring explicit operator verification before executing high-impact terminal commands.
-- **Emergency Stop (Estop)**: Instant hard-stop mechanism capable of terminating runaway loops, subagents, and background processes in under 50ms.
+- **Emergency Stop (Estop)**: Instant hard-stop mechanism capable of terminating runaway loops, subagents, and background processes.
 - **Trajectory Flight Recorder**: Cryptographically logs every reasoning step, tool call, and state transition for forensic security audits.
 - **Universal Artifact Lineage Tracing**: Tracks the full end-to-end cryptographic provenance of all generated files, code, and documentation.
 - **Deterministic Token Budgeting & Cost Telemetry**: Enforces per-run token ceilings and reports real-time financial spend with provider cache-aware pricing.
@@ -275,7 +277,7 @@ Every directory in `backend/packages/harness/alpha/` represents a dedicated func
 | 77 | `subagents` | Intent category presets (`general`, `research`, `quick`, `deep-research`), capacity limits. |
 | 78 | `supervision` | Kibitzer active supervisor nudging drifting agents back to task goals. |
 | 79 | `swarm` | Autonomous multi-agent swarms with self-organizing leader-worker topologies. |
-| 80 | `tools` | 60+ native tools spanning file I/O, coding, shell, web, search, and cognition. |
+| 80 | `tools` | 120+ native tools spanning file I/O, coding, shell, web, search, and cognition. |
 | 81 | `tracing` | End-to-end telemetry tracing supporting LangSmith, Langfuse, and Monocle. |
 | 82 | `trajectory` | Forensic trajectory flight recorder storing step-by-step reasoning and tool traces. |
 | 83 | `tui` | Terminal user interface for interactive command-line agent operation. |
@@ -319,9 +321,9 @@ Located in [`skills/public/`](./skills/public/), these skills provide pre-packag
 
 ---
 
-## 6. Gateway API & Router Directory (All 51 Micro-Endpoints)
+## 6. Gateway API & Router Directory (All 57 Micro-Endpoints)
 
-The FastAPI Gateway exposes 51 modular routers in `backend/app/gateway/routers/`:
+The FastAPI Gateway exposes 57 modular routers in `backend/app/gateway/routers/`:
 
 - `a2a.py` — Agent-to-Agent message routing and peer discovery.
 - `agent_messages.py` — Inter-agent message inbox delivery and status polling.
@@ -376,7 +378,7 @@ The FastAPI Gateway exposes 51 modular routers in `backend/app/gateway/routers/`
 
 ---
 
-## 7. Complete Built-in Tools Catalog (60+ Native Tools)
+## 7. Complete Built-in Tools Catalog (120+ Native Tools)
 
 | Tool Name | Domain | Primary Capability |
 | :--- | :--- | :--- |

@@ -21,7 +21,8 @@ Welcome to the comprehensive technical documentation for **Alpha**, the Autonomo
 - **[Troubleshooting Guide](TROUBLESHOOTING.md)**: Diagnostic flowcharts, stuck process resolution, lock contention handling, and common error remediation.
 
 ### Developer & Integration References
-- **[API Reference](API_REFERENCE.md)**: Complete endpoint reference for all 51 FastAPI Gateway routers, request/response schemas, and SSE event streaming.
+- **[FAQ](FAQ.md)**: Short citable answers for search and answer engines; agent summary in [`llms.txt`](../llms.txt).
+- **[API Reference](API_REFERENCE.md)**: Complete endpoint reference for all 57 FastAPI Gateway routers, request/response schemas, and SSE event streaming.
 - **[API Architecture](API.md)**: High-level API design principles, authentication protocols, and versioning contracts.
 - **[Configuration Reference](CONFIGURATION.md)**: Detailed specification for `config.yaml`, `extensions_config.json`, intent category presets, model chains, and environment variables.
 - **[Getting Started](GETTING_STARTED.md)**: Step-by-step setup for Windows Desktop (Electron), Docker Compose, Bare-Metal local development, and unattended CI setup.
