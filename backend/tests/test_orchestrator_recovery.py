@@ -13,11 +13,12 @@ projection on a FRESH engine after a simulated restart:
 - a fail-closed run replays FAILED with its real failed nodes;
 - a log without ``workflow_started`` is refused with the honest error.
 
-Disclosed engine gaps this suite stands on (reported, not edited): node
-evidence/output and ``iteration_counts`` are not in event payloads — replay
-mirrors them only via the caller's definition snapshot (evidence on graph
-nodes) or the terminal ``workflow_completed`` state snapshot; see the
-``alpha.orchestrator.replay`` module docstring.
+Root-caused engine gaps this suite used to disclose: ``evidence`` and
+``iteration_counts`` now ride along on every ``node_completed``/
+``node_failed`` payload and are folded by replay; committed patches are
+REBUILT and registered on the fresh engine. Graph-node ``output`` still
+comes from the caller's definition snapshot (see the ``alpha.orchestrator.
+replay`` module docstring).
 """
 
 from __future__ import annotations
@@ -116,8 +117,9 @@ def test_replay_reconstructs_completed_run_on_a_fresh_engine(registry):
     assert replayed.iteration_counts == final_run.iteration_counts
     assert replayed.metrics.get("execution_mode") == "bot"
 
-    # The caller's definition snapshot carries node evidence/output into the
-    # restart (event payloads do not journal them — disclosed engine gap).
+    # Evidence folds from the event payloads (gap 10 fix) and lands equal to
+    # the live graph; node output still comes from the caller's definition
+    # snapshot (not journaled - disclosed in the replay module docstring).
     live_graph = kernel.engine.graphs[f"wf_replay_done:v{final_run.graph_version}"]
     replayed_graph = fresh_engine.graphs[f"wf_replay_done:v{replayed.graph_version}"]
     for nid in final_run.completed_nodes:
@@ -184,7 +186,13 @@ def test_replay_folds_mode_and_patch_events(registry):
     assert new_graph.version == 2
 
     events = kernel.engine.events.get_events(run.run_id)
-    _, replayed = replay_run(events, kernel.engine.get_definition("wf_replay_patch"))
+    log_before = list(kernel.engine.events.get_events())
+    fresh_engine, replayed = replay_run(events, kernel.engine.get_definition("wf_replay_patch"))
+
+    # Gap 6 root-cause fix: the committed patch is REBUILT and registered on
+    # the fresh engine - and the rebuild still re-emits nothing.
+    assert kernel.engine.events.get_events() == log_before
+    assert "wf_replay_patch:v2" in fresh_engine.graphs
 
     assert replayed.metrics.get("execution_mode") == "bot"
     assert replayed.graph_version == 2

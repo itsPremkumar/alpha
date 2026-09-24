@@ -8,9 +8,10 @@ DY-R4 kernel contract covered here (see ``alpha/orchestrator/loop.py``):
   patch layer's optimistic-concurrency control rejects the loser with its REAL
   reason (deterministic single commit, never a silent double-commit);
 - **dispatch**: an executor that raises mid-wave yields the honest
-  ``node_failed`` (real traceback) and the kernel fail-closes the run to FAILED
-  — the engine itself leaves it RUNNING (reported engine gap, compensated in
-  the kernel without touching ``runtime.py``);
+  ``node_failed`` (real traceback under the unified ``reason`` key) and the
+  workflow engine fail-closes the run to FAILED with a single
+  ``workflow_failed``; the kernel guard detects the terminal run and emits
+  nothing (defense-in-depth), and a further dispatch emits nothing;
 - **dispatch**: an empty registry passes the engine's exact
   ``no node_runner bound ...`` refusal straight through;
 - **mode**: ``run_turn`` runs normal and bot mode through ONE kernel with the
@@ -238,7 +239,8 @@ def test_executor_exception_fails_node_and_kernel_fail_closes(registry):
 
     result = kernel.dispatch(run.run_id)
 
-    # Engine would leave this RUNNING (reported gap); the kernel fail-closes.
+    # The engine fail-closes the run itself inside execute_step (gap 1 fix);
+    # the kernel guard then sees FAILED and emits nothing (defense-in-depth).
     assert result.status == WorkflowRunStatus.FAILED
     assert result.failed_nodes == ["boom"]
     assert result.completed_nodes == []
@@ -246,13 +248,14 @@ def test_executor_exception_fails_node_and_kernel_fail_closes(registry):
     events = kernel.engine.events.get_events(run.run_id)
     node_failed = [e for e in events if e.event_type == "node_failed"]
     assert node_failed, "the executor failure must surface as an event"
-    error = str(node_failed[-1].payload.get("error", ""))
+    error = str(node_failed[-1].payload.get("reason", ""))
+    assert "error" not in node_failed[-1].payload, "gap 2: unified reason key"
     assert "executor 'test.raise' raised RuntimeError: ledger backend down" in error
     assert "Traceback (most recent call last)" in error
     assert 'File "' in error
 
     fail_closed = [e for e in events if e.event_type == "workflow_failed"]
-    assert fail_closed, "the kernel must emit an honest fail-closed event"
+    assert len(fail_closed) == 1, "engine emits it once; the kernel guard stays silent"
     reason = str(fail_closed[-1].payload.get("reason", ""))
     assert "boom" in reason and "node_failed" in reason
 

@@ -1,22 +1,18 @@
-"""Approval-lifecycle replay folds + disclosed patched-graph gap (P1 recovery).
+"""Approval-lifecycle replay folds + patched-graph registration (P1 recovery).
 
 Extends ``test_orchestrator_recovery.py`` (identity/completion/resume/patch
-folds) with the event-log folds and disclosures that suite does not touch:
+folds) with the event-log folds that suite does not touch:
 
-- ``approval_requested`` folds to ``WAITING_APPROVAL`` with the approval id —
-  together with the DISCLOSED payload gap: the log journals no per-node
-  WAITING/READY/FAILED status for approval transitions, so a replayed gated
-  node stays PENDING while the live node moves. Reported, never papered over.
-- ``approval_granted`` folds back to RUNNING with the approval id cleared;
-  ``approval_denied`` folds to FAILED.
-- a PATCHED run's replay reconstructs ``graph_version``/``patches_applied`` and
-  seeds the added node PENDING, but the fresh engine registers only the
-  definition's v1 graph — the runtime.py gap that makes dispatching a
-  replayed+patched run fall back to the definition graph (patched-in nodes
-  never scheduled). Pinned as a DISCLOSURE so fixing runtime.py must update
-  this test rather than silently re-breaking recovery.
-
-None of these tests dispatch a patched replayed run (see the gap pin above).
+- ``approval_requested`` folds to ``WAITING_APPROVAL`` with the approval id
+  AND the journaled per-node ``node_status`` (gap 7 root-cause fix), so the
+  replayed gated node is WAITING exactly like the live one.
+- ``approval_granted`` folds back to RUNNING with the approval id cleared
+  and the node READY; ``approval_denied`` folds to FAILED with the node
+  FAILED and recorded in ``failed_nodes`` (gap 8 fix).
+- a PATCHED run's replay reconstructs ``graph_version``/``patches_applied``,
+  seeds the added node PENDING, and (gap 6 root-cause fix) REBUILDS and
+  registers the patched graph on the fresh engine, so dispatching the
+  replayed run schedules the patched-in node.
 """
 
 from __future__ import annotations
@@ -87,7 +83,7 @@ def _paused_approval_run(workflow_id: str) -> tuple[ExecutionKernel, str]:
 
 
 def test_approval_requested_fold_reconstructs_waiting_status(registry):
-    """Paused run replays WAITING_APPROVAL + approval id; node status gap pinned."""
+    """Paused run replays WAITING_APPROVAL + approval id + node WAITING status."""
     kernel, run_id = _paused_approval_run("wf_replay_approval_wait")
     live = kernel.engine.get_run(run_id)
     assert live is not None
@@ -104,12 +100,10 @@ def test_approval_requested_fold_reconstructs_waiting_status(registry):
     assert replayed.completed_nodes == [] and replayed.failed_nodes == []
     assert replayed.metrics.get("execution_mode") == "normal"
 
-    # DISCLOSED payload gap (runtime.py): no per-node approval status is in the
-    # event payloads, so the gated node replays as PENDING, not WAITING. This
-    # asserts the CURRENT honest behavior — when runtime.py journals node
-    # status in approval events, this assertion must be updated deliberately.
-    assert replayed.node_states["gate"] == NodeStatus.PENDING
-    assert replayed.node_states["gate"] != live.node_states["gate"]
+    # Gap 7 root-cause fix: the approval event journals the node's WAITING
+    # status, so the replayed gated node matches the live one exactly.
+    assert replayed.node_states["gate"] == NodeStatus.WAITING
+    assert replayed.node_states["gate"] == live.node_states["gate"]
 
 
 def test_approval_granted_fold_returns_run_to_running(registry):
@@ -125,8 +119,8 @@ def test_approval_granted_fold_returns_run_to_running(registry):
 
     assert replayed.status == WorkflowRunStatus.RUNNING
     assert replayed.approval_request_id is None
-    # Same disclosed gap as above: READY is not in the log, PENDING is the fold.
-    assert replayed.node_states["gate"] == NodeStatus.PENDING
+    # Gap 7 root-cause fix: the grant journals READY, so replay folds READY.
+    assert replayed.node_states["gate"] == NodeStatus.READY
     assert replayed.completed_nodes == [] and replayed.failed_nodes == []
 
 
@@ -136,34 +130,30 @@ def test_approval_denied_fold_reconstructs_failed_run(registry):
     denied = kernel.resolve_approval(run_id, "gate", approved=False, feedback="not now")
     assert denied.status == WorkflowRunStatus.FAILED
     assert denied.node_states["gate"] == NodeStatus.FAILED
-    # Observed engine behavior (reported): denial does not append the node to
-    # ``failed_nodes`` — the run-level status carries the terminal truth.
-    assert denied.failed_nodes == []
+    # Gap 8 root-cause fix: the denied node IS recorded as a failed node.
+    assert denied.failed_nodes == ["gate"]
 
     events = kernel.engine.events.get_events(run_id)
     _, replayed = replay_run(events, kernel.engine.get_definition("wf_replay_approval_deny"))
 
     assert replayed.status == WorkflowRunStatus.FAILED
-    assert replayed.failed_nodes == []
+    assert replayed.failed_nodes == ["gate"]
     assert replayed.completed_nodes == []
-    # Disclosed gap again: node-level FAILED is not journaled in the payload.
-    assert replayed.node_states["gate"] == NodeStatus.PENDING
+    # Gap 7 + 8 root-cause fixes: the denial journals node FAILED + failed_nodes.
+    assert replayed.node_states["gate"] == NodeStatus.FAILED
 
 
-# ----------------------------------------------- disclosed patched-graph gap
+# ------------------------------------- patched-graph rebuild (gap 6 fixed)
 
 
-def test_patched_replay_reconstructs_version_without_engine_graphs(registry):
-    """Patch fold rebuilds run fields, but the fresh engine has NO v2 graph.
+def test_patched_replay_rebuilds_and_registers_the_patched_graph(registry):
+    """Patch fold rebuilds run fields AND registers the rebuilt v2 graph.
 
-    DISCLOSURE (runtime.py/engine gap, reported not edited): ``replay_run``
-    reconstructs ``run.graph_version``/``patches_applied`` from
-    ``patch_committed`` events, yet the fresh engine only ever registers the
-    definition's v1 graph. Dispatching this replayed run would therefore fall
-    back to the v1 graph and never schedule the patched-in node — so patched
-    recovery stops at state reconstruction until runtime.py registers patched
-    graphs on replay. If runtime.py starts rebuilding v2 graphs, this test
-    fails on purpose: update the disclosure, do not delete the pin.
+    Gap 6 root-cause fix: ``replay_run`` now re-applies each recorded
+    ``patch_committed`` through a quiet patch engine (zero re-emission) and
+    registers the resulting graph on the fresh engine, so dispatching the
+    replayed run schedules the patched-in node instead of silently falling
+    back to the definition's v1 graph.
     """
     registry.register(DIGEST_EXECUTOR, executors_module.local_digest_executor)
     definition = WorkflowDefinition(
@@ -182,7 +172,12 @@ def test_patched_replay_reconstructs_version_without_engine_graphs(registry):
         workflow_run_id=run.run_id,
         base_graph_version=1,
         reason="insert a verification node",
-        operations=[PatchOperation(op="add_node", args={"node": {"id": "check", "prompt": "Verify"}})],
+        operations=[
+            PatchOperation(
+                op="add_node",
+                args={"node": {"id": "check", "prompt": "Verify", "executor": DIGEST_EXECUTOR}},
+            )
+        ],
     )
     new_graph, validation = kernel.apply_patch(run.run_id, patch)
     assert validation.allowed is True
@@ -201,6 +196,17 @@ def test_patched_replay_reconstructs_version_without_engine_graphs(registry):
     assert replayed.patches_applied[0].reason == "insert a verification node"
     assert replayed.node_states["check"] == NodeStatus.PENDING
 
-    # The disclosed gap: only v1 exists on the fresh engine — no v2 graph.
-    assert sorted(fresh_engine.graphs) == ["wf_replay_patched_gap:v1"]
-    assert f"wf_replay_patched_gap:v{replayed.graph_version}" not in fresh_engine.graphs
+    # Gap 6 root-cause fix: the patch is rebuilt and registered on the fresh
+    # engine, so the replayed run resolves its v2 graph...
+    assert sorted(fresh_engine.graphs) == [
+        "wf_replay_patched_gap:v1",
+        "wf_replay_patched_gap:v2",
+    ]
+    assert f"wf_replay_patched_gap:v{replayed.graph_version}" in fresh_engine.graphs
+
+    # ...and dispatching it actually schedules the patched-in node (with the
+    # old v1 fallback, "check" could never run).
+    resumed = ExecutionKernel(engine=fresh_engine).dispatch(run.run_id)
+    assert resumed.status == WorkflowRunStatus.COMPLETED
+    assert set(resumed.completed_nodes) == {"solo", "check"}
+    assert resumed.node_states["check"] == NodeStatus.SUCCEEDED

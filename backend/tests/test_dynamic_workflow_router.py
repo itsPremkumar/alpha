@@ -12,8 +12,9 @@ kernel (claim -> dispatch -> fail-closed) and its executor registry:
   executor's REAL, independently recomputable sha256 output (the test
   recomputes the documented formula from scratch, never imports it).
 - **executor raises mid-wave**: the ``node_failed`` event carries the REAL
-  traceback summary captured at the raise site, the kernel fail-closes the run,
-  and no state artifact or evidence is fabricated.
+  traceback summary captured at the raise site (unified ``reason`` key), the
+  engine fail-closes the run with a single ``workflow_failed`` (the kernel
+  guard stays silent), and no state artifact or evidence is fabricated.
 
 The module-level ``alpha.workflow.runtime`` seam is never bound by the router;
 the registry is consulted per dispatch, so tests swap the registry module seam
@@ -207,7 +208,7 @@ async def test_step_without_runner_fails_honestly(monkeypatch):
 
     step_res = await step_workflow_run(run_id, req)
 
-    # Honest failure: no fabricated completion, the node failed, and the kernel
+    # Honest failure: no fabricated completion, the node failed, and the engine
     # fail-closed the run to a terminal failed status (never left RUNNING).
     assert step_res["completed_nodes"] == []
     assert "solo1" in step_res["failed_nodes"]
@@ -222,7 +223,7 @@ async def test_step_without_runner_fails_honestly(monkeypatch):
 
     # Fail-closed event names the failed node and points at the real reasons.
     fail_closed = [e for e in events_res["events"] if e["event_type"] == "workflow_failed"]
-    assert fail_closed, "the kernel must fail-close a run with failed nodes"
+    assert len(fail_closed) == 1, "the engine fail-closes exactly once; the kernel guard stays silent"
     fail_reason = str(fail_closed[-1]["payload"].get("reason", ""))
     assert "solo1" in fail_reason
     assert "node_failed" in fail_reason
@@ -315,18 +316,19 @@ async def test_executor_failure_surfaces_real_traceback_and_fails_closed(monkeyp
     node_failed = [e for e in events_res["events"] if e["event_type"] == "node_failed"]
     assert node_failed, "the executor failure must surface as a node_failed event"
 
-    # The REAL traceback captured at the raise site. NOTE: the engine's
-    # exception path journals the reason under ``error`` (``_fail_node`` uses
-    # ``reason``) — an upstream runtime.py inconsistency, reported not edited.
-    error = str(node_failed[-1]["payload"].get("error", ""))
+    # The REAL traceback captured at the raise site, journaled under the
+    # unified ``reason`` key (gap 2 root-cause fix: the exception path now
+    # goes through ``_fail_node`` like every other node failure).
+    error = str(node_failed[-1]["payload"].get("reason", ""))
+    assert "error" not in node_failed[-1]["payload"], "gap 2: unified reason key"
     assert "executor 'test.explode' raised ValueError: simulated executor backend unavailable" in error
     assert "Traceback (most recent call last)" in error
     assert 'File "' in error  # a real captured frame, not a fabricated summary
     assert "simulated executor backend unavailable" in error
 
-    # Kernel fail-closed event names the failed node and points at node_failed.
+    # The single fail-closed event names the failed node and points at node_failed.
     fail_closed = [e for e in events_res["events"] if e["event_type"] == "workflow_failed"]
-    assert fail_closed, "the kernel must fail-close a run whose executor raised"
+    assert len(fail_closed) == 1, "exactly one fail-closed event (engine emits; kernel guard silent)"
     fail_reason = str(fail_closed[-1]["payload"].get("reason", ""))
     assert "boom" in fail_reason
     assert "node_failed" in fail_reason
@@ -610,9 +612,9 @@ async def test_replay_endpoint_folds_log_and_reports_honest_matches(monkeypatch)
     events_after = await get_workflow_events(run_id, req)
     assert [e["event_id"] for e in events_after["events"]] == [e["event_id"] for e in events_before["events"]]
 
-    # An approval-paused run: lifecycle status folds, but the log carries no
-    # per-node WAITING payload (disclosed event-payload gap in runtime.py), so
-    # the endpoint must report the REAL node_states mismatch, not claim a match.
+    # An approval-paused run: gap 7 root-cause fix - approval events journal the
+    # per-node node_status, so the replayed WAITING gate matches live and the
+    # endpoint reports an honest full match.
     approval_body = WorkflowCreateRequest(
         id="api_wf_replay_paused",
         name="Paused Replay Workflow",
@@ -632,13 +634,10 @@ async def test_replay_endpoint_folds_log_and_reports_honest_matches(monkeypatch)
 
     paused_replay = await replay_workflow_run(paused_id, req)
     assert paused_replay["events_emitted_during_replay"] == 0
-    assert paused_replay["matches_live"] is False
-    mismatch_fields = {m["field"] for m in paused_replay["mismatches"]}
-    assert mismatch_fields == {"node_states"}  # status/approval identity DO match
-    node_states_mismatch = paused_replay["mismatches"][0]
-    assert node_states_mismatch["live"]["gate"] == "waiting"
-    assert node_states_mismatch["replayed"]["gate"] == "pending"
+    assert paused_replay["matches_live"] is True  # gap 7: WAITING folds now
+    assert paused_replay["mismatches"] == []
     assert paused_replay["replayed"]["status"] == "waiting_approval"
+    assert paused_replay["replayed"]["node_states"]["gate"] == "waiting"
 
     # Unknown run: honest 404, no fabricated projection.
     with pytest.raises(HTTPException) as excinfo:

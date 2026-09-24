@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Callable
+from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any
 
@@ -75,6 +76,36 @@ def _is_executor_state(run: WorkflowRun, key: str) -> bool:
     return isinstance(produced, list) and key in produced
 
 
+def _set_run_status(run: WorkflowRun, new_status: WorkflowRunStatus, reason: str | None = None) -> None:
+    """Transition the run to ``new_status``, journaling it in ``run.history``.
+
+    Every run-status change (completion, fail-close, budget exhaustion, approval
+    pause/resolution, deadlock) lands as one honest ``{from, to, timestamp}``
+    entry with the real ``reason`` when one exists. No-op transitions append
+    nothing, and ``start_run`` records nothing — history stays empty until
+    something actually happened.
+    """
+    if run.status == new_status:
+        return
+    now = datetime.now(UTC).isoformat()
+    entry: dict[str, Any] = {"timestamp": now, "from": run.status.value, "to": new_status.value}
+    if reason:
+        entry["reason"] = reason
+    run.history.append(entry)
+    run.status = new_status
+    run.updated_at = now
+
+
+def _sync_waiting_nodes(run: WorkflowRun) -> None:
+    """Recompute ``run.waiting_nodes`` from the per-node statuses.
+
+    The list mirrors whichever nodes are ``WAITING`` right now (currently only
+    human-approval gates set that status), so it is derived state — never a
+    hand-maintained second source of truth.
+    """
+    run.waiting_nodes = [nid for nid, status in run.node_states.items() if status == NodeStatus.WAITING]
+
+
 class DynamicWorkflowError(RuntimeError):
     """Base error for dynamic workflow execution."""
     pass
@@ -128,7 +159,9 @@ class DynamicWorkflowEngine:
             node_states={nid: NodeStatus.PENDING for nid in definition.graph.nodes},
         )
         self.runs[rid] = run
-        self.events.emit("workflow_started", rid, workflow_id=workflow_id, state=run.state)
+        # Gap 5: the logged state is a SNAPSHOT at start — later mutations of
+        # the live ``run.state`` can never rewrite what was journaled.
+        self.events.emit("workflow_started", rid, workflow_id=workflow_id, state=deepcopy(run.state))
         return run
 
     def execute_step(
@@ -153,10 +186,13 @@ class DynamicWorkflowEngine:
             WorkflowRunStatus.COMPLETED,
             WorkflowRunStatus.FAILED,
             WorkflowRunStatus.CANCELLED,
+            WorkflowRunStatus.BUDGET_EXHAUSTED,
             WorkflowRunStatus.WAITING_APPROVAL,
             WorkflowRunStatus.WAITING_EVENT,
             WorkflowRunStatus.SUSPENDED,
         ):
+            # Gap 3: BUDGET_EXHAUSTED is terminal for scheduling purposes too —
+            # a budget-spent run is never re-entered (its node already failed).
             return run
 
         runner = node_runner if node_runner is not None else get_node_runner()
@@ -179,18 +215,46 @@ class DynamicWorkflowEngine:
                 for nid in graph.nodes
             )
             if all_done:
-                run.status = WorkflowRunStatus.COMPLETED
-                run.updated_at = datetime.now(UTC).isoformat()
-                self.events.emit("workflow_completed", run.run_id, state=run.state)
+                _set_run_status(run, WorkflowRunStatus.COMPLETED)
+                self.events.emit("workflow_completed", run.run_id, state=deepcopy(run.state))
                 return run
 
             # If no ready nodes and not all done, check if waiting or deadlocked
             if run.waiting_nodes:
                 return run
 
-            # Attempt replan if deadlocked
+            # Gap 4: stagnation recovery must target a REAL node. The replanner
+            # builds insert_before/insert_after ops, and the patch validator
+            # rejects ops whose target is not in the graph — so the historical
+            # phantom target ("stagnation_recovery") made every proposal fail
+            # validation and the run silently dead-ended with a generic reason.
+            target_id = next((nid for nid in run.failed_nodes if nid in graph.nodes), None)
+            if target_id is None:
+                target_id = next(
+                    (
+                        nid
+                        for nid, status in run.node_states.items()
+                        if nid in graph.nodes and status in (NodeStatus.PENDING, NodeStatus.READY)
+                    ),
+                    None,
+                )
+
+            if target_id is None:
+                # No node could anchor a remediation patch: an honest FAILED with
+                # the disclosed no-op reason. Nothing is claimed to have been
+                # recovered, and no patch is fabricated.
+                reason = (
+                    "Deadlock: no nodes ready to execute; no PENDING/READY node exists to anchor a "
+                    "stagnation-recovery patch (no recovery attempted)."
+                )
+                _set_run_status(run, WorkflowRunStatus.FAILED, reason=reason)
+                self.events.emit("workflow_failed", run.run_id, reason=reason)
+                _sync_waiting_nodes(run)
+                return run
+
+            # Attempt replan against the real target if deadlocked
             patch = self.replanner.propose_evidence_remediation_patch(
-                "stagnation_recovery",
+                target_id,
                 "No progress achievable with current graph dependencies.",
                 graph,
                 run,
@@ -198,11 +262,18 @@ class DynamicWorkflowEngine:
             new_graph, validation = self.patch_engine.apply(run, graph, patch)
             if validation.allowed:
                 self.graphs[f"{run.workflow_id}:v{new_graph.version}"] = new_graph
+                # Same PENDING seeding apply_patch does, so the recovery node is schedulable.
+                for nid, node in new_graph.nodes.items():
+                    if nid not in run.node_states:
+                        run.node_states[nid] = node.status
                 return run
 
-            run.status = WorkflowRunStatus.FAILED
-            run.updated_at = datetime.now(UTC).isoformat()
-            self.events.emit("workflow_failed", run.run_id, reason="Deadlock: no nodes ready to execute.")
+            # The recovery proposal itself was rejected: FAILED carrying the
+            # patch layer's REAL validation reason, not a generic message.
+            reason = f"Deadlock: no nodes ready to execute; remediation patch rejected: {validation.reason}"
+            _set_run_status(run, WorkflowRunStatus.FAILED, reason=reason)
+            self.events.emit("workflow_failed", run.run_id, reason=reason)
+            _sync_waiting_nodes(run)
             return run
 
         waves = self.scheduler.partition_into_waves(graph, ready)
@@ -211,6 +282,26 @@ class DynamicWorkflowEngine:
         for nid in wave_nodes:
             self._execute_single_node(nid, graph, run, runner)
 
+        # Gap 1: fail-closed after EVERY wave — a run left with failed nodes is
+        # driven to FAILED and journals exactly ONE ``workflow_failed`` event,
+        # carrying the same reason format the orchestrator kernel's fail-closed
+        # policy used (see ExecutionKernel._fail_closed). DEFERRED while any
+        # node is still COMPENSATING so the saga compensation wave gets its
+        # chance to run first; the kernel's own guard then sees status FAILED
+        # and emits nothing — single emission on both layers.
+        if (
+            run.failed_nodes
+            and run.status in (WorkflowRunStatus.PENDING, WorkflowRunStatus.RUNNING)
+            and not any(n.status == NodeStatus.COMPENSATING for n in graph.nodes.values())
+        ):
+            failed = sorted(set(run.failed_nodes))
+            reason = (
+                f"fail-closed: {len(failed)} node(s) failed: {failed}; "
+                "see the node_failed events for the real per-node reasons"
+            )
+            _set_run_status(run, WorkflowRunStatus.FAILED, reason=reason)
+            self.events.emit("workflow_failed", run.run_id, reason=reason)
+
         # Check if all non-compensation nodes are completed
         all_done = all(
             run.node_states.get(k) in (NodeStatus.SUCCEEDED, NodeStatus.SKIPPED)
@@ -218,9 +309,11 @@ class DynamicWorkflowEngine:
             if n.type != NodeType.COMPENSATION
         )
         if all_done and run.status == WorkflowRunStatus.RUNNING:
-            run.status = WorkflowRunStatus.COMPLETED
-            self.events.emit("workflow_completed", run.run_id, state=run.state)
+            _set_run_status(run, WorkflowRunStatus.COMPLETED)
+            self.events.emit("workflow_completed", run.run_id, state=deepcopy(run.state))
 
+        # Gap 9: waiting_nodes is derived from node statuses on every step.
+        _sync_waiting_nodes(run)
         run.updated_at = datetime.now(UTC).isoformat()
         return run
 
@@ -230,8 +323,19 @@ class DynamicWorkflowEngine:
         run.node_states[node.id] = NodeStatus.FAILED
         if node.id not in run.failed_nodes:
             run.failed_nodes.append(node.id)
-        node.output = {"status": "failed", "reason": reason, **extra}
-        self.events.emit("node_failed", run.run_id, node_id=node.id, reason=reason)
+        # Gap 5: deepcopy the extras so neither the node output nor the log can
+        # be rewritten through a caller-owned mutable object.
+        node.output = {"status": "failed", "reason": reason, **deepcopy(extra)}
+        # Gap 10: evidence + iteration counts travel WITH the failure so a replay
+        # can reconstruct them without the caller's definition snapshot.
+        self.events.emit(
+            "node_failed",
+            run.run_id,
+            node_id=node.id,
+            reason=reason,
+            evidence=list(node.evidence),
+            iteration_counts=dict(run.iteration_counts),
+        )
 
     def _succeed_node(self, run: WorkflowRun, node: WorkflowNode, output: Any, **event_payload: Any) -> None:
         """Mark a node succeeded; the caller must have attached real evidence first."""
@@ -242,7 +346,11 @@ class DynamicWorkflowEngine:
         node.output = output
         if not event_payload:
             event_payload = {"output": output}
-        self.events.emit("node_completed", run.run_id, node_id=node.id, **event_payload)
+        # Gap 10: additive evidence/iteration_counts; gap 5: the logged payload
+        # is a snapshot (deepcopy), decoupled from live run/graph objects.
+        event_payload.setdefault("evidence", list(node.evidence))
+        event_payload.setdefault("iteration_counts", dict(run.iteration_counts))
+        self.events.emit("node_completed", run.run_id, node_id=node.id, **deepcopy(event_payload))
 
     def _charge_node_tokens(self, run: WorkflowRun, node: WorkflowNode, tokens: Any) -> bool:
         """Charge real runner-reported tokens against the node budget.
@@ -254,8 +362,22 @@ class DynamicWorkflowEngine:
         if node.budget and node.tokens_consumed > node.budget:
             node.status = NodeStatus.FAILED
             run.node_states[node.id] = NodeStatus.FAILED
-            run.status = WorkflowRunStatus.BUDGET_EXHAUSTED
-            self.events.emit("node_failed", run.run_id, node_id=node.id, reason="Node budget exhausted.")
+            # Gap-8-consistent bookkeeping: a budget-killed node is a failed
+            # node, so keep run.failed_nodes (fail-close/handoff/replay folds)
+            # in sync with run.node_states. BUDGET_EXHAUSTED is terminal, so
+            # this never triggers a fail-closed transition on its own.
+            if node.id not in run.failed_nodes:
+                run.failed_nodes.append(node.id)
+            # Gap 9: budget exhaustion is a real run-status transition.
+            _set_run_status(run, WorkflowRunStatus.BUDGET_EXHAUSTED, reason="Node budget exhausted.")
+            self.events.emit(
+                "node_failed",
+                run.run_id,
+                node_id=node.id,
+                reason="Node budget exhausted.",
+                evidence=list(node.evidence),
+                iteration_counts=dict(run.iteration_counts),
+            )
             return True
         return False
 
@@ -282,18 +404,23 @@ class DynamicWorkflowEngine:
         # 1. Human-in-the-loop gate
         if node.requires_approval and not node.approval_request_id:
             appr_id = f"appr_{uuid.uuid4().hex[:8]}"
+            waiting_reason = f"Node '{nid}' requires human approval before execution."
             node.approval_request_id = appr_id
             node.status = NodeStatus.WAITING
             run.node_states[nid] = NodeStatus.WAITING
-            run.status = WorkflowRunStatus.WAITING_APPROVAL
+            # Gap 9: the pause is a real run-status transition, journaled.
+            _set_run_status(run, WorkflowRunStatus.WAITING_APPROVAL, reason=waiting_reason)
             run.approval_request_id = appr_id
-            run.waiting_reason = f"Node '{nid}' requires human approval before execution."
+            run.waiting_reason = waiting_reason
+            # Gap 7: node_status rides along so a replay folds the gated node
+            # to WAITING instead of leaving it PENDING.
             self.events.emit(
                 "approval_requested",
                 run.run_id,
                 node_id=nid,
                 approval_id=appr_id,
                 prompt=node.prompt,
+                node_status=NodeStatus.WAITING.value,
             )
             return
 
@@ -303,17 +430,39 @@ class DynamicWorkflowEngine:
             if node.loop_policy.stop_condition:
                 context = {"state": run.state, "metrics": run.metrics}
                 if evaluate_condition(node.loop_policy.stop_condition, context):
-                    # Stop condition satisfied
+                    # Stop condition satisfied: a TRUE completion, journaled so a
+                    # replay folds it as succeeded (gap 11) instead of silently
+                    # dropping it the way the old no-emit path did.
                     node.status = NodeStatus.SUCCEEDED
                     run.node_states[nid] = NodeStatus.SUCCEEDED
-                    run.completed_nodes.append(nid)
+                    if nid not in run.completed_nodes:
+                        run.completed_nodes.append(nid)
+                    self.events.emit(
+                        "node_completed",
+                        run.run_id,
+                        node_id=nid,
+                        output=deepcopy(node.output),
+                        stopped_by="loop_stop_condition",
+                        evidence=list(node.evidence),
+                        iteration_counts=dict(run.iteration_counts),
+                    )
                     return
 
             if count >= node.loop_policy.max_iterations:
-                # Max loop iterations reached
+                # Max loop iterations reached: likewise a true completion (gap 11).
                 node.status = NodeStatus.SUCCEEDED
                 run.node_states[nid] = NodeStatus.SUCCEEDED
-                run.completed_nodes.append(nid)
+                if nid not in run.completed_nodes:
+                    run.completed_nodes.append(nid)
+                self.events.emit(
+                    "node_completed",
+                    run.run_id,
+                    node_id=nid,
+                    output=deepcopy(node.output),
+                    stopped_by="loop_max_iterations",
+                    evidence=list(node.evidence),
+                    iteration_counts=dict(run.iteration_counts),
+                )
                 return
             run.iteration_counts[nid] = count + 1
 
@@ -333,7 +482,14 @@ class DynamicWorkflowEngine:
                 node.status = NodeStatus.SUCCEEDED
                 run.node_states[nid] = NodeStatus.SUCCEEDED
                 run.completed_nodes.append(nid)
-                self.events.emit("node_completed", run.run_id, node_id=nid, output=cond_result)
+                self.events.emit(
+                    "node_completed",
+                    run.run_id,
+                    node_id=nid,
+                    output=cond_result,
+                    evidence=list(node.evidence),
+                    iteration_counts=dict(run.iteration_counts),
+                )
                 return
 
             elif node.type == NodeType.ROUTER:
@@ -343,7 +499,14 @@ class DynamicWorkflowEngine:
                 node.status = NodeStatus.SUCCEEDED
                 run.node_states[nid] = NodeStatus.SUCCEEDED
                 run.completed_nodes.append(nid)
-                self.events.emit("node_completed", run.run_id, node_id=nid, decisions=node.output)
+                self.events.emit(
+                    "node_completed",
+                    run.run_id,
+                    node_id=nid,
+                    decisions=node.output,
+                    evidence=list(node.evidence),
+                    iteration_counts=dict(run.iteration_counts),
+                )
                 return
 
             elif node.type == NodeType.MAP:
@@ -579,19 +742,49 @@ class DynamicWorkflowEngine:
                             stop_met = evaluate_condition(node.loop_policy.stop_condition, context)
                         count = run.iteration_counts.get(nid, 0)
                         if stop_met or count >= node.loop_policy.max_iterations:
+                            # True completion: the loop's stop condition or its
+                            # bounded iteration limit was reached (gap 11).
                             node.status = NodeStatus.SUCCEEDED
                             run.node_states[nid] = NodeStatus.SUCCEEDED
                             if nid not in run.completed_nodes:
                                 run.completed_nodes.append(nid)
+                            self.events.emit(
+                                "node_completed",
+                                run.run_id,
+                                node_id=nid,
+                                output=deepcopy(output),
+                                stopped_by=("loop_stop_condition" if stop_met else "loop_max_iterations"),
+                                evidence=list(node.evidence),
+                                iteration_counts=dict(run.iteration_counts),
+                            )
                         else:
+                            # Interim iteration: the node stays READY and OUT of
+                            # completed_nodes, and is journaled as node_iteration
+                            # (gap 11) so a mid-run replay never over-states it
+                            # as succeeded the way the old node_completed emit did.
                             node.status = NodeStatus.READY
                             run.node_states[nid] = NodeStatus.READY
+                            self.events.emit(
+                                "node_iteration",
+                                run.run_id,
+                                node_id=nid,
+                                output=deepcopy(output),
+                                evidence=list(node.evidence),
+                                iteration_counts=dict(run.iteration_counts),
+                            )
                     else:
                         node.status = NodeStatus.SUCCEEDED
                         run.node_states[nid] = NodeStatus.SUCCEEDED
                         if nid not in run.completed_nodes:
                             run.completed_nodes.append(nid)
-                    self.events.emit("node_completed", run.run_id, node_id=nid, output=output)
+                        self.events.emit(
+                            "node_completed",
+                            run.run_id,
+                            node_id=nid,
+                            output=deepcopy(output),
+                            evidence=list(node.evidence),
+                            iteration_counts=dict(run.iteration_counts),
+                        )
                 else:
                     raise RuntimeError(f"Runner reported failure for node '{nid}': {output}")
             else:
@@ -599,10 +792,11 @@ class DynamicWorkflowEngine:
                 self._fail_node(run, node, _no_runner_reason(node))
 
         except Exception as exc:
-            node.status = NodeStatus.FAILED
-            run.node_states[nid] = NodeStatus.FAILED
-            run.failed_nodes.append(nid)
-            self.events.emit("node_failed", run.run_id, node_id=nid, error=str(exc))
+            # Gap 2: the exception path unifies on ``_fail_node`` — the SAME
+            # ``reason`` key (plus the node output dict) every other node_failed
+            # carries, instead of a one-off ``error`` key. ``str(exc)`` still
+            # carries the runner's captured traceback verbatim.
+            self._fail_node(run, node, str(exc))
 
             # Trigger Saga Compensation if defined
             if node.compensation_node_id and node.compensation_node_id in graph.nodes:
@@ -643,16 +837,39 @@ class DynamicWorkflowEngine:
         if approved:
             node.status = NodeStatus.READY
             run.node_states[node_id] = NodeStatus.READY
-            run.status = WorkflowRunStatus.RUNNING
+            # Gap 9: the grant is a real run-status transition, journaled.
+            _set_run_status(run, WorkflowRunStatus.RUNNING)
             run.approval_request_id = None
             run.waiting_reason = None
-            self.events.emit("approval_granted", run_id, node_id=node_id, feedback=feedback)
+            # Gap 7: node_status lets a replay fold the granted node to READY.
+            self.events.emit(
+                "approval_granted",
+                run_id,
+                node_id=node_id,
+                feedback=feedback,
+                node_status=NodeStatus.READY.value,
+            )
         else:
             node.status = NodeStatus.FAILED
             run.node_states[node_id] = NodeStatus.FAILED
-            run.status = WorkflowRunStatus.FAILED
+            # Gap 8: a denied gate node IS a failed node of the run — recorded
+            # (deduplicated) instead of living only in the run-level status.
+            if node_id not in run.failed_nodes:
+                run.failed_nodes.append(node_id)
+            denial_reason = f"Human rejected node '{node_id}': {feedback}"
+            # Gap 9: the denial is a real run-status transition, journaled.
+            _set_run_status(run, WorkflowRunStatus.FAILED, reason=denial_reason)
             run.approval_request_id = None
-            run.waiting_reason = f"Human rejected node '{node_id}': {feedback}"
-            self.events.emit("approval_denied", run_id, node_id=node_id, feedback=feedback)
+            run.waiting_reason = denial_reason
+            # Gap 7: node_status lets a replay fold the denied node to FAILED.
+            self.events.emit(
+                "approval_denied",
+                run_id,
+                node_id=node_id,
+                feedback=feedback,
+                node_status=NodeStatus.FAILED.value,
+            )
 
+        # Gap 9: waiting_nodes is derived from node statuses after resolution.
+        _sync_waiting_nodes(run)
         return run

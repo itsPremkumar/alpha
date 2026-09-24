@@ -112,7 +112,7 @@ def test_run_turn_unbound_fails_honestly_in_both_modes(registry, monkeypatch, mo
     assert outcome.status == "failed"
     assert outcome.run_id is not None
     assert outcome.failed_nodes == ("direct",)
-    assert outcome.waves == 1  # wave 1 fails -> kernel fail-closes, no more dispatch
+    assert outcome.waves == 1  # wave 1 fails -> the engine fail-closes, no more dispatch
 
     run = kernel.engine.get_run(outcome.run_id)
     assert run is not None

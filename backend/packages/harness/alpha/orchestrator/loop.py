@@ -10,11 +10,11 @@ P1 policy the engine itself deliberately does not own:
 - **dispatch** — one scheduling wave per call through an executor resolved
   from the live executor registry (``alpha.orchestrator.executors``); an empty
   registry passes ``None`` so the engine keeps its exact honest unbound
-  refusal. After every wave the kernel applies **fail-closed**: a run left
-  RUNNING with failed nodes is driven to FAILED and an honest
-  ``workflow_failed`` event names the failed node ids (the engine stops
-  scheduling those nodes but leaves the run RUNNING — reported as an engine
-  gap, fixed here without touching ``runtime.py``).
+  refusal. Fail-close is owned by the ENGINE: after each wave
+  ``runtime.py`` drives a run left RUNNING with failed nodes to FAILED with a
+  single honest ``workflow_failed`` naming the failed node ids. The kernel
+  applies its fail-closed guard after every wave as defense-in-depth only -
+  the run is already terminal by then, so the guard emits nothing.
 - **handoff** — the section 13 cross-mode contract
   (objective/completed/findings/files/decisions/remaining) built from real run
   state and recorded as a ``handoff_created`` event; empty lists stay empty
@@ -219,7 +219,13 @@ class ExecutionKernel:
         )
 
     def _fail_closed(self, run: WorkflowRun) -> None:
-        """Drive a run that left failed nodes to a terminal FAILED status."""
+        """Defense-in-depth fail-closed guard run after every dispatch wave.
+
+    The engine itself fail-closes inside ``execute_step`` (``runtime.py``) with
+    a single ``workflow_failed``, so by the time this guard runs the run is
+    already terminal and this emits nothing; it remains only as a backstop
+    should a run ever reach here still PENDING/RUNNING with failed nodes.
+"""
         if run.failed_nodes and run.status in _FAIL_CLOSED_STATUSES:
             run.status = WorkflowRunStatus.FAILED
             run.updated_at = datetime.now(UTC).isoformat()

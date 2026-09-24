@@ -12,43 +12,59 @@ invented):
 - ``run_mode_selected``           -> ``metrics['execution_mode']`` (kernel start).
 - ``node_started``                -> node status RUNNING (+ remembered node kind).
 - ``node_completed``              -> node SUCCEEDED + completed_nodes; for the
-                                     engine's documented state-key shapes
-                                     (condition -> ``<id>_result``,
-                                     map -> ``<id>_mapped``,
-                                     reduce -> ``<id>_reduced``) the output is
-                                     folded into state, and map/reduce keys are
-                                     also recorded under
-                                     ``EXECUTOR_STATE_KEYS`` exactly as the
-                                     engine does.
-- ``node_failed``                 -> node FAILED + failed_nodes.
+                                      engine's documented state-key shapes
+                                      (condition -> ``<id>_result``,
+                                      map -> ``<id>_mapped``,
+                                      reduce -> ``<id>_reduced``) the output is
+                                      folded into state, and map/reduce keys are
+                                      also recorded under
+                                      ``EXECUTOR_STATE_KEYS`` exactly as the
+                                      engine does. The payload's ``evidence``
+                                      list is SET onto the registered graph
+                                      node and ``iteration_counts`` is folded
+                                      into the run.
+- ``node_iteration``              -> an interim bounded-loop iteration: node
+                                      READY (deliberately NOT added to
+                                      ``completed_nodes``) + evidence +
+                                      ``iteration_counts``.
+- ``node_failed``                 -> node FAILED + failed_nodes + evidence +
+                                      ``iteration_counts``.
 - ``workflow_completed``          -> terminal status + authoritative final state.
 - ``workflow_failed``             -> terminal FAILED status.
 - ``patch_committed``             -> graph_version + patches_applied + PENDING
-                                     seeding for nodes the patch added.
-- ``approval_requested/granted/denied`` -> approval status/fields.
+                                      seeding for nodes the patch added + the
+                                      patched graph is REBUILT and REGISTERED
+                                      on the fresh engine (see
+                                      :func:`_rebuild_patched_graph`), so
+                                      dispatching the replayed run schedules
+                                      patched-in nodes.
+- ``approval_requested/granted/denied`` -> approval status/fields plus the
+                                      journaled per-node ``node_status``
+                                      (WAITING/READY/FAILED); a denial also
+                                      appends the node to ``failed_nodes``.
 - ``compensation_triggered``      -> node COMPENSATING.
 
 Disclosed limitations (reported, not silently papered over):
 
-- node-level ``evidence``/``output`` payloads, per-node ``iteration_counts``,
-  and runner side-writes into ``run.state`` between start and completion are
-  NOT in the DWE event payloads, so they cannot be replayed from this log
-  alone (a terminal ``workflow_completed`` state snapshot covers the final
-  state dict).
-- loop nodes: the engine emits ``node_completed`` for an intermediate loop
-  iteration while the live run keeps the node ``ready`` and OUT of
-  ``completed_nodes`` until ``max_iterations``/stop-condition, so a MID-RUN
-  replay of a loop run over-states that node as succeeded; the terminal
-  snapshot still converges on the true final state.
-
-Fixing either belongs in ``alpha/workflow/runtime.py`` event payloads —
-do-not-touch here.
+- node-level ``output`` and graph-node ``status`` are NOT in the DWE event
+  payloads, so they cannot be replayed from this log alone: the replayed graph
+  keeps the caller's definition snapshot for those two fields (``evidence`` and
+  ``iteration_counts`` now DO fold from the payloads). Runner side-writes into
+  ``run.state`` between start and completion are likewise not journaled (the
+  terminal ``workflow_completed`` state snapshot covers the final state dict).
+- ``run.history`` / ``run.waiting_nodes`` live bookkeeping is not folded (the
+  REST compare covers status/state/completed/failed/node_states/graph_version
+  only), so a replayed run reports an empty transition history.
+- a ``patch_committed`` recorded live but no longer valid against the rebuilt
+  base graph is skipped (graph registration keeps the pre-patch version) -
+  never force-applied.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 from copy import deepcopy
+from typing import Any
 
 from alpha.workflow.events import WorkflowEvent
 from alpha.workflow.models import (
@@ -58,6 +74,7 @@ from alpha.workflow.models import (
     WorkflowRun,
     WorkflowRunStatus,
 )
+from alpha.workflow.patch import WorkflowPatchEngine
 from alpha.workflow.runtime import EXECUTOR_STATE_KEYS, DynamicWorkflowEngine
 
 # Engine state-key shapes mirrored by the fold (see module docstring).
@@ -66,6 +83,85 @@ _STATE_KEY_SUFFIXES: dict[str, str] = {
     "map": "_mapped",
     "reduce": "_reduced",
 }
+
+
+class _QuietEventSink:
+    """Drop-in ``events`` stand-in for :class:`WorkflowPatchEngine` in replay.
+
+    ``WorkflowPatchEngine.apply`` journals ``patch_committed``/``patch_rejected``
+    through ``self.events.emit``. During replay that must write NOTHING — and
+    the real ``WorkflowEventDispatcher`` would not only append to the log being
+    read, it also publishes to the global alpha event bus. So replay swaps this
+    silent sink in before touching the patch engine (zero-re-emission invariant).
+    """
+
+    def emit(self, event_type: str, run_id: str, **payload: Any) -> None:
+        return None
+
+
+def _fold_evidence_onto_graph(target_engine: DynamicWorkflowEngine, run: WorkflowRun, payload: dict[str, Any]) -> None:
+    """SET the journaled evidence onto the registered graph node (gap 10).
+
+    SET, never append: the payload carries the node's full evidence list at
+    emit time, so re-folding is idempotent and a mid-log event can't double the
+    list. Missing graph/node/evidence simply skips — nothing is invented.
+    """
+    graph = target_engine.graphs.get(f"{run.workflow_id}:v{run.graph_version}")
+    nid = payload.get("node_id")
+    evidence = payload.get("evidence")
+    if graph is None or not isinstance(nid, str) or nid not in graph.nodes or not isinstance(evidence, list):
+        return
+    graph.nodes[nid].evidence = list(evidence)
+
+
+def _fold_iteration_counts(run: WorkflowRun, payload: dict[str, Any]) -> None:
+    """Fold the journaled per-node iteration counts into the run (gap 10)."""
+    counts = payload.get("iteration_counts")
+    if isinstance(counts, dict):
+        run.iteration_counts.update({str(k): int(v) for k, v in counts.items()})
+
+
+def _fold_node_status(run: WorkflowRun, payload: dict[str, Any]) -> None:
+    """Fold the journaled per-node ``node_status`` of an approval event (gap 7).
+
+    Older logs without the field simply keep the previous PENDING fold — an
+    absent payload never gets invented into a status.
+    """
+    nid = payload.get("node_id")
+    raw = payload.get("node_status")
+    if not isinstance(nid, str) or not isinstance(raw, str):
+        return
+    try:
+        run.node_states[nid] = NodeStatus(raw)
+    except ValueError:
+        pass
+
+
+def _rebuild_patched_graph(engine: DynamicWorkflowEngine, run: WorkflowRun, patch: WorkflowPatch) -> None:
+    """Rebuild and REGISTER the graph this committed patch produced (gap 6).
+
+    Dispatching a replayed+patched run must schedule the patched-in nodes:
+    ``execute_step`` resolves its graph as ``{workflow_id}:v{graph_version}``,
+    so without this registration the fresh engine would fall back to the
+    definition's base graph and the patched-in nodes would never run.
+
+    Zero re-emission invariant: the patch engine journals through
+    ``self.events``, which is swapped for a silent sink here, and a SCRATCH run
+    absorbs the engine's own ``patches_applied``/``graph_version`` bookkeeping so
+    the replayed run keeps exactly one entry per recorded patch. If the
+    recorded patch no longer validates against the rebuilt base graph, the
+    registration is skipped (the run-level fields were still folded from the
+    log) — never force-applied.
+    """
+    base = engine.graphs.get(f"{run.workflow_id}:v{patch.base_graph_version}")
+    if base is None:
+        return
+    scratch = WorkflowRun(run_id=run.run_id, workflow_id=run.workflow_id, graph_version=patch.base_graph_version)
+    quiet_engine = WorkflowPatchEngine()
+    quiet_engine.events = _QuietEventSink()
+    new_graph, validation = quiet_engine.apply(scratch, base, patch)
+    if validation.allowed:
+        engine.graphs[f"{run.workflow_id}:v{new_graph.version}"] = new_graph
 
 
 def replay_run(
@@ -138,6 +234,19 @@ def replay_run(
                     produced = run.metrics.setdefault(EXECUTOR_STATE_KEYS, [])
                     if key not in produced:
                         produced.append(key)
+            _fold_evidence_onto_graph(target_engine, run, payload)
+            _fold_iteration_counts(run, payload)
+
+        elif kind == "node_iteration":
+            # Gap 11: an interim bounded-loop iteration. The node stays READY
+            # and is deliberately NOT added to completed_nodes (only a terminal
+            # node_completed is a completion).
+            nid = payload.get("node_id")
+            if not isinstance(nid, str):
+                continue
+            run.node_states[nid] = NodeStatus.READY
+            _fold_evidence_onto_graph(target_engine, run, payload)
+            _fold_iteration_counts(run, payload)
 
         elif kind == "node_failed":
             nid = payload.get("node_id")
@@ -146,6 +255,8 @@ def replay_run(
             run.node_states[nid] = NodeStatus.FAILED
             if nid not in run.failed_nodes:
                 run.failed_nodes.append(nid)
+            _fold_evidence_onto_graph(target_engine, run, payload)
+            _fold_iteration_counts(run, payload)
 
         elif kind == "workflow_completed":
             run.status = WorkflowRunStatus.COMPLETED
@@ -168,20 +279,28 @@ def replay_run(
                         node_data = op.args.get("node") or op.args.get("new_node")
                         if isinstance(node_data, dict) and node_data.get("id") not in run.node_states:
                             run.node_states[node_data["id"]] = NodeStatus.PENDING
+                _rebuild_patched_graph(target_engine, run, patch)
 
         elif kind == "approval_requested":
             run.status = WorkflowRunStatus.WAITING_APPROVAL
             approval_id = payload.get("approval_id")
             if isinstance(approval_id, str):
                 run.approval_request_id = approval_id
+            _fold_node_status(run, payload)
 
         elif kind == "approval_granted":
             run.status = WorkflowRunStatus.RUNNING
             run.approval_request_id = None
+            _fold_node_status(run, payload)
 
         elif kind == "approval_denied":
             run.status = WorkflowRunStatus.FAILED
             run.approval_request_id = None
+            _fold_node_status(run, payload)
+            # Gap 8 mirrors the engine: a denial fails the gated node too.
+            denied_nid = payload.get("node_id")
+            if isinstance(denied_nid, str) and denied_nid not in run.failed_nodes:
+                run.failed_nodes.append(denied_nid)
 
         elif kind == "compensation_triggered":
             nid = payload.get("node_id")

@@ -387,13 +387,15 @@ def test_unbound_runner_fails_honestly(node_type, config, monkeypatch):
     reason = str(node.output.get("reason", ""))
     assert f"no node_runner bound to execute node 'n1' (kind={node_type.value})" in reason
     assert node.evidence == []  # zero fabricated evidence
-    if node_type is not NodeType.COMPENSATION:
-        # A failed regular node keeps the run incomplete. Compensation nodes are
-        # structurally excluded from run-completion gating (pre-existing
-        # lifecycle semantics - they only execute once a saga triggers them),
-        # so a compensation-only graph still marks the run completed; the
-        # node-level contract below is what honesty requires in that case.
-        assert run.status != WorkflowRunStatus.COMPLETED
+    # Gap 1 root-cause fix: the engine fail-closes the run itself in the SAME
+    # wave (no saga compensation wave is pending here), so EVERY unbound
+    # failure now ends terminal FAILED - including the compensation-only
+    # graph, which the old completion gate used to mark COMPLETED.
+    assert run.status == WorkflowRunStatus.FAILED
+    fail_close_events = [
+        e for e in dwe.events.get_events(run.run_id) if e.event_type == "workflow_failed"
+    ]
+    assert len(fail_close_events) == 1, "exactly one fail-closed event per run"
     # No fabricated state artifacts were written either
     assert not [key for key in run.state if key.startswith("n1_")]
     if node_type is NodeType.COMPENSATION:
@@ -585,7 +587,8 @@ def test_completion_without_evidence_is_refused():
     assert run.node_states["trust_me"] == NodeStatus.FAILED
     assert "trust_me" not in run.completed_nodes
     failed_events = [e for e in dwe.events.get_events(run.run_id) if e.event_type == "node_failed"]
-    assert any("completed without evidence" in str(e.payload.get("error", "")) for e in failed_events)
+    assert any("completed without evidence" in str(e.payload.get("reason", "")) for e in failed_events)
+    assert all("error" not in e.payload for e in failed_events), "gap 2: unified reason key"
 
 
 def test_runtime_source_has_no_fabricated_execution_strings():
