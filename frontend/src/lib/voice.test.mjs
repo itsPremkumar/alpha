@@ -17,6 +17,7 @@ export async function apiFetch() { throw new Error("apiFetch stub (no network in
 const multimodalStub = `
 export class MultimodalError extends Error {}
 export async function transcribeUpload() { throw new Error("transcribeUpload stub (no network in tests)"); }
+export async function synthesizeSpeech() { throw new Error("synthesizeSpeech stub (no network in tests)"); }
 `;
 
 const toDataUrl = (source) => `data:text/javascript;charset=utf-8,${encodeURIComponent(source)}`;
@@ -41,6 +42,8 @@ const {
   parseVoiceCapabilities,
   fetchVoiceCapabilities,
   readAutoplayEnabled,
+  autoplaySpeak,
+  AUTOPLAY_STORAGE_KEY,
 } = await import(toDataUrl(code));
 
 const ALL_STATES = ["idle", "wake_armed", "listening", "processing", "speaking", ...TERMINAL_VOICE_STATES];
@@ -245,4 +248,62 @@ test("fetchVoiceCapabilities degrades to all-false when the request fails", asyn
 
 test("readAutoplayEnabled is false when localStorage is unavailable (Node)", () => {
   assert.equal(readAutoplayEnabled(), false);
+});
+
+// --- TTS autoplay wiring (ChatView final-reply consumer) --------------------
+
+test("autoplay default OFF: the consumer is never invoked without an explicit enable", async () => {
+  let invoked = 0;
+  const failures = [];
+  const result = await autoplaySpeak("final assistant reply", {
+    speak: async () => {
+      invoked += 1;
+    },
+    onFailure: (message) => failures.push(message),
+  });
+  assert.equal(readAutoplayEnabled(), false); // helper returns false without explicit enable
+  assert.equal(result, false);
+  assert.equal(invoked, 0); // consumer not invoked without enable
+  assert.deepEqual(failures, []); // nothing attempted ⇒ nothing to disclose
+});
+
+test("autoplay opt-in: explicit enable runs the consumer; failures disclose via onFailure", async () => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  const store = new Map([[AUTOPLAY_STORAGE_KEY, "1"]]);
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: (key) => (store.has(key) ? store.get(key) : null),
+      setItem: (key, value) => {
+        store.set(key, String(value));
+      },
+    },
+  });
+  try {
+    assert.equal(readAutoplayEnabled(), true);
+    const spoken = [];
+    assert.equal(
+      await autoplaySpeak("final assistant reply", {
+        speak: async (text) => {
+          spoken.push(text);
+        },
+      }),
+      true,
+    );
+    assert.deepEqual(spoken, ["final assistant reply"]);
+    const failures = [];
+    assert.equal(
+      await autoplaySpeak("final assistant reply", {
+        speak: async () => {
+          throw new Error("tts engine down");
+        },
+        onFailure: (message) => failures.push(message),
+      }),
+      false,
+    );
+    assert.deepEqual(failures, ["tts engine down"]); // visible disclosure — never a silent swallow
+  } finally {
+    if (previous) Object.defineProperty(globalThis, "localStorage", previous);
+    else delete globalThis.localStorage;
+  }
 });

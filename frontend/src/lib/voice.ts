@@ -1,5 +1,5 @@
 import { apiFetch, apiUrl } from "./api-client";
-import { transcribeUpload } from "./multimodal";
+import { synthesizeSpeech, transcribeUpload, MultimodalError } from "./multimodal";
 import type { CapabilitiesReport } from "./multimodal";
 
 export interface VoiceCapabilities {
@@ -50,8 +50,9 @@ export async function transcribeAudio(blob: Blob, filename = "dictation.webm"): 
 }
 
 // ---------------------------------------------------------------------------
-// Speaker autoplay preference (localStorage; consumed by MessageItem for replies
-// created after page load — history is never replayed).
+// Speaker autoplay preference (localStorage; consumed by autoplaySpeak for
+// replies created after page load — history is never replayed). Default OFF:
+// absent storage ⇔ disabled, so playback never fires without an explicit opt-in.
 // ---------------------------------------------------------------------------
 
 export const AUTOPLAY_STORAGE_KEY = "alpha_voice_autoplay";
@@ -69,6 +70,80 @@ export function writeAutoplayEnabled(enabled: boolean): void {
     if (typeof localStorage !== "undefined") localStorage.setItem(AUTOPLAY_STORAGE_KEY, enabled ? "1" : "0");
   } catch {
     // Storage unavailable (private mode) — the toggle simply won't persist.
+  }
+}
+
+// ---------------------------------------------------------------------------
+// TTS playback + the tts.autoplay consumer. `speak()` performs one honest
+// playback; `autoplaySpeak()` is THE gate that may invoke it after an
+// assistant reply completes — and it never runs without an explicit enable.
+// ---------------------------------------------------------------------------
+
+/** Human-readable playback failure; a MultimodalError keeps its attempt chain. */
+export function speakErrorMessage(err: unknown): string {
+  if (err instanceof MultimodalError) {
+    const attempts = err.attempts ?? [];
+    return attempts.length > 0 ? `${err.message} — ${err.formatAttempts()}` : err.message;
+  }
+  return err instanceof Error ? err.message : String(err);
+}
+
+/** Same per-request cap the per-message speaker uses (MessageItem): 4000 chars. */
+export const MAX_SPEECH_CHARS = 4000;
+
+/**
+ * One-shot playback: POST /tts → objectURL → <audio>. Resolves when playback
+ * ends; rejects with an honest error on synthesis or playback failure (never a
+ * silent no-op). Marks the voice session SPEAKING — absorbed (never hijacks an
+ * armed/capturing/processing session) — and always revokes the object URL.
+ */
+export async function speak(text: string): Promise<void> {
+  const speech = text.slice(0, MAX_SPEECH_CHARS);
+  if (!speech.trim()) throw new MultimodalError(400, "tts", "nothing to speak");
+  const { blob } = await synthesizeSpeech(speech);
+  const url = URL.createObjectURL(blob);
+  const audio = new Audio(url);
+  notifyVoicePlayback(true);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      audio.onended = () => resolve();
+      audio.onerror = () => reject(new MultimodalError(503, "tts", "the browser failed to play the audio"));
+      audio.play().catch((err: unknown) => reject(err instanceof Error ? err : new Error(String(err))));
+    });
+  } finally {
+    audio.onended = null;
+    audio.onerror = null;
+    audio.pause();
+    URL.revokeObjectURL(url);
+    notifyVoicePlayback(false);
+  }
+}
+
+export interface AutoplaySpeakHooks {
+  /** Playback implementation; tests inject a stub — the default is the real `speak`. */
+  speak?: (text: string) => Promise<void>;
+  /** Visible, non-blocking disclosure for a playback failure (e.g. the chat `flash`). */
+  onFailure?: (message: string) => void;
+}
+
+/**
+ * THE consumer of the autoplay preference (documented intent:
+ * `if (readAutoplayEnabled()) speak(assistantReply)`).
+ *
+ * Default OFF: unless autoplay is explicitly enabled, the speak implementation
+ * is NEVER invoked — nothing is ever hardcoded on. Resolves true only when
+ * playback completed; false when autoplay is off or playback failed. A failure
+ * is always handed to `onFailure` for visible disclosure — never swallowed
+ * silently. This function never rejects.
+ */
+export async function autoplaySpeak(text: string, hooks: AutoplaySpeakHooks = {}): Promise<boolean> {
+  if (!readAutoplayEnabled()) return false;
+  try {
+    await (hooks.speak ?? speak)(text);
+    return true;
+  } catch (err) {
+    hooks.onFailure?.(speakErrorMessage(err));
+    return false;
   }
 }
 
@@ -344,7 +419,7 @@ export class VoiceSession {
     this.connect();
   }
 
-  /** SPEAKING-state hooks for playback driven outside the session (MessageItem). */
+  /** SPEAKING-state hooks for playback driven outside the session (autoplay `speak`). */
   playbackStarted(): void {
     this.dispatch({ type: "play" });
   }
@@ -625,8 +700,8 @@ export class VoiceSession {
   }
 }
 
-// Single active session registry so playback elsewhere (MessageItem autoplay)
-// can honestly mark the SPEAKING state without prop-drilling the whole tree.
+// Single active session registry so playback outside the session (autoplay
+// `speak`) can honestly mark the SPEAKING state without prop-drilling the tree.
 let activeSession: VoiceSession | null = null;
 
 export function notifyVoicePlayback(active: boolean): void {

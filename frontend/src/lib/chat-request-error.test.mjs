@@ -25,7 +25,7 @@ visit(ast);
 assert.ok(sendSource);
 
 async function send(fetchResponse, { draft = "  retry me  ", newerDraft = "", abort = false, failPostStream = false } = {}) {
-  const state = { messages: [], saved: [], input: draft, error: null, loading: false, suggestions: [], followUps: 0, runs: 0 };
+  const state = { messages: [], saved: [], input: draft, error: null, loading: false, suggestions: [], followUps: 0, runs: 0, autoplay: 0 };
   const setter = (key) => (value) => { state[key] = typeof value === "function" ? value(state[key]) : value; };
   const abortRef = { current: null };
   let controllerAborted = false;
@@ -50,6 +50,11 @@ async function send(fetchResponse, { draft = "  retry me  ", newerDraft = "", ab
       return null;
     },
     suggestFollowUps: async () => { state.followUps++; return ["Next?"]; },
+    // Module-scope bindings sendMessage now references (TTS autoplay). Injected
+    // default OFF — mirrors the shipped config/localStorage default, so the
+    // real consumer must never fire in any scenario below.
+    readAutoplayEnabled: () => false,
+    autoplaySpeak: async () => { state.autoplay++; return false; },
     fetch: async () => {
       if (newerDraft) state.input = newerDraft;
       if (abort) abortRef.current.abort();
@@ -69,6 +74,7 @@ async function send(fetchResponse, { draft = "  retry me  ", newerDraft = "", ab
   if (failPostStream) assert.equal(controllerAborted, true);
   assert.equal(state.loading, false);
   assert.equal(abortRef.current, null);
+  assert.equal(state.autoplay, 0); // autoplay default OFF ⇒ consumer never invoked
   return state;
 }
 
