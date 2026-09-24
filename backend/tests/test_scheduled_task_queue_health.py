@@ -40,7 +40,14 @@ from app.scheduler.queue_health import (
     collect_queue_health,
 )
 
-NOW = datetime(2026, 9, 24, 12, 0, 0, tzinfo=UTC)
+# The queue-health report measures occurrence age against the real clock, so the
+# fixture's reference time must track the real clock too. This used to be frozen
+# at a literal ``datetime(2026, 9, 24, 12, 0, 0)``, which made every age
+# assertion a time bomb: the "5 seconds old" queued row was actually hours old
+# once the literal fell behind, so the handler correctly reported ``degraded``
+# (``oldest_queued_age_exceeds_timeout``) where the test expected ``ready``.
+# Deriving it at import keeps the fixtures meaning what they say, forever.
+NOW = datetime.now(UTC)
 URL = "/api/scheduled-tasks/queue-health"
 TASK_URL = "/api/scheduled-tasks/task-SENTINEL-ID"
 
