@@ -19,6 +19,7 @@ export const WORKSPACE_VIEW_IDS = [
   "system",
   "integration",
   "settings",
+  "workflows",
 ] as const;
 
 export type WorkspaceView = (typeof WORKSPACE_VIEW_IDS)[number];
