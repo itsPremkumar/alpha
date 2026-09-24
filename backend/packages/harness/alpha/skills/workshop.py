@@ -15,6 +15,7 @@ from typing import Any
 from alpha.config.runtime_paths import project_root
 from alpha.skills.authoring import validate_skill_draft
 from alpha.skills.forge.forge import SkillForge
+from alpha.skills.proposals import scan_proposal_markdown
 
 
 @dataclass
@@ -182,9 +183,22 @@ class SkillWorkshopEngine:
         custom_skills_dir: Path | None = None,
         overwrite: bool = False,
     ) -> Path:
-        """Validate and write SKILL.md to the target custom skills directory."""
+        """Validate, audit, then write SKILL.md to the target custom skills directory.
+
+        Audit-before-activation: the static security scan (same scanner and
+        CRITICAL block severity as the proposal queue, see
+        ``alpha.skills.proposals.scan_proposal_markdown``) runs on the EXACT
+        bytes about to be written, BEFORE any directory or file is created in
+        the target (a skill-discovery root). Blocked content raises
+        ``StaticScanBlockedError`` and nothing lands on disk, so unreviewed or
+        malicious content can never activate. Quality validation
+        (``draft.is_valid``) remains the earlier, separate gate.
+        """
         if not draft.is_valid:
             raise ValueError(f"Cannot publish invalid skill draft: {'; '.join(draft.findings)}")
+
+        full_content = f"---\nname: {draft.name}\ndescription: {draft.description}\nversion: 0.1.0\n---\n\n{draft.markdown_content}\n"
+        scan_proposal_markdown(draft.name, full_content)
 
         base_dir = custom_skills_dir or (project_root() / "skills" / "custom")
         skill_dir = base_dir / draft.name
@@ -194,6 +208,5 @@ class SkillWorkshopEngine:
         if target_file.exists() and not overwrite:
             raise FileExistsError(f"Skill '{draft.name}' already exists at {target_file}")
 
-        full_content = f"---\nname: {draft.name}\ndescription: {draft.description}\nversion: 0.1.0\n---\n\n{draft.markdown_content}\n"
         target_file.write_text(full_content, encoding="utf-8")
         return target_file

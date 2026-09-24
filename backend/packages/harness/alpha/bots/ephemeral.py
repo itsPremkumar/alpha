@@ -3,6 +3,22 @@
 Provisions on-demand, temporary domain specialist bots with custom SOUL instructions,
 finite time-to-live (TTL) leases, and automatic archival upon task completion.
 Keeps permanent bot rosters clean while providing unlimited specialized talent.
+
+Honesty + durability contract:
+
+* Fail-closed storage. A corrupt or unreadable lease store raises
+  :class:`EphemeralLeaseStoreError` — it is NEVER silently treated as an
+  empty lease set, because that would let callers believe every leased
+  specialist is gone while it is still running. A failed persist raises
+  too: a spawn that cannot record its lease must not report success.
+* Fail-closed TTL. An unparseable ``expires_at`` is treated as EXPIRED
+  (archived with ``archive_reason="invalid_expiry"``), never as
+  "still valid forever".
+* Synchronous library. File IO is blocking: callers on the asyncio event
+  loop MUST offload manager methods to a thread executor (e.g.
+  ``asyncio.to_thread`` / ``alpha.utils.file_io.run_file_io``).
+  Locks are per-instance only; separate instances/processes targeting
+  the same store can lose updates.
 """
 
 from __future__ import annotations
@@ -32,6 +48,16 @@ def _ephemeral_storage_path() -> Path:
     return runtime_home() / "bots" / "ephemeral.json"
 
 
+class EphemeralLeaseStoreError(RuntimeError):
+    """The durable ephemeral-lease store is unreadable, corrupt, or unwritable.
+
+    Raised (never swallowed) so a broken store is never mistaken for an empty
+    one: a silent empty would let a TTL loop believe every leased specialist
+    is gone while it still runs, and would let a spawn report success without
+    ever recording its lease.
+    """
+
+
 @dataclass
 class EphemeralLease:
     """Tracking record for a temporary bot lease."""
@@ -53,26 +79,39 @@ class EphemeralLease:
         filtered = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}
         return cls(**filtered)
 
+    def _expiry(self) -> datetime | None:
+        """Parse ``expires_at``; None when it is missing or unparseable."""
+        try:
+            return datetime.fromisoformat(self.expires_at)
+        except (TypeError, ValueError):
+            return None
+
+    @property
+    def expiry_is_valid(self) -> bool:
+        return self._expiry() is not None
+
     @property
     def is_expired(self) -> bool:
         if self.status != "active":
             return False
-        try:
-            exp = datetime.fromisoformat(self.expires_at)
-            return datetime.now(UTC) > exp
-        except Exception:
-            return False
+        expiry = self._expiry()
+        if expiry is None:
+            # Fail closed: an unparseable expiry cannot prove the lease is
+            # still valid, so the specialist is treated as expired (archived
+            # with archive_reason="invalid_expiry") instead of running
+            # forever on a typo.
+            return True
+        return datetime.now(UTC) > expiry
 
     @property
     def remaining_seconds(self) -> int:
         if self.status != "active":
             return 0
-        try:
-            exp = datetime.fromisoformat(self.expires_at)
-            delta = exp - datetime.now(UTC)
-            return max(0, int(delta.total_seconds()))
-        except Exception:
+        expiry = self._expiry()
+        if expiry is None:
             return 0
+        delta = expiry - datetime.now(UTC)
+        return max(0, int(delta.total_seconds()))
 
 
 class EphemeralBotManager:
@@ -90,26 +129,44 @@ class EphemeralBotManager:
         try:
             with open(self._path, encoding="utf-8") as f:
                 data = json.load(f)
-            for item in data.get("leases", []):
+        except (OSError, ValueError) as exc:
+            # Fail closed: an unreadable/corrupt store must NEVER be presented
+            # as "no active specialists" — that would let a TTL loop believe
+            # every leased bot is gone while it is still running.
+            msg = f"corrupt ephemeral lease store at {self._path}: {exc}"
+            logger.error(msg)
+            raise EphemeralLeaseStoreError(msg) from exc
+        if not isinstance(data, dict) or not isinstance(data.get("leases", []), list):
+            msg = f"corrupt ephemeral lease store at {self._path}: expected an object with a 'leases' list"
+            logger.error(msg)
+            raise EphemeralLeaseStoreError(msg)
+        for item in data["leases"]:
+            try:
                 lease = EphemeralLease.from_dict(item)
-                self._leases[lease.bot_name] = lease
-        except Exception:
-            logger.warning("Failed to load ephemeral leases", exc_info=True)
+            except (TypeError, ValueError) as exc:
+                msg = f"corrupt ephemeral lease record in {self._path}: {item!r}: {exc}"
+                logger.error(msg)
+                raise EphemeralLeaseStoreError(msg) from exc
+            self._leases[lease.bot_name] = lease
 
     def _save(self) -> None:
+        payload = {
+            "version": 1,
+            "leases": [lease.to_dict() for lease in self._leases.values()],
+            "updated_at": _now(),
+        }
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
             tmp = self._path.with_suffix(".tmp")
-            payload = {
-                "version": 1,
-                "leases": [lease.to_dict() for lease in self._leases.values()],
-                "updated_at": _now(),
-            }
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(payload, f, indent=2)
             tmp.replace(self._path)
-        except Exception:
-            logger.warning("Failed to save ephemeral leases", exc_info=True)
+        except OSError as exc:
+            # Fail closed: a mutation that could not be persisted must not
+            # report success (an in-memory-only lease vanishes on restart).
+            msg = f"failed to persist ephemeral leases to {self._path}: {exc}"
+            logger.error(msg)
+            raise EphemeralLeaseStoreError(msg) from exc
 
     def spawn_specialist(
         self,
@@ -190,7 +247,10 @@ You are **{name}**, a temporary, hyper-specialized AI agent provisioned for doma
             for lease in self._leases.values():
                 if lease.status == "active" and lease.is_expired:
                     lease.status = "expired"
-                    lease.archive_reason = "ttl_expired"
+                    # Distinguish a genuinely elapsed TTL from an unparseable
+                    # expiry so operators can see WHICH failure archived the
+                    # specialist.
+                    lease.archive_reason = "ttl_expired" if lease.expiry_is_valid else "invalid_expiry"
                     expired_bots.append(lease.bot_name)
                     registry.update_bot(lease.bot_name, status="archived")
 
