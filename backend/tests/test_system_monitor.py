@@ -283,17 +283,102 @@ def test_processes_endpoint(monkeypatch) -> None:
     assert payload["processes"]["top_cpu"][0]["name"] == "alpha"
     # Command lines must never leak through the API.
     assert "cmdline" not in payload["processes"]["top_cpu"][0]
+    # A measured process summary is not degraded.
+    assert payload["degraded"] is False
+    assert payload["reason"] is None
+
+
+def test_processes_endpoint_discloses_unsupported_host(monkeypatch) -> None:
+    """A monitor without process enumeration must disclose it, not serve zeros.
+
+    OLD behavior returned a fabricated zero-filled summary ("0 processes"
+    reads as measured). NEW: processes=null + degraded=true + reason.
+    """
+    monkeypatch.setattr(router_module, "get_system_monitor", lambda: SimpleNamespace())
+    app = FastAPI()
+    app.include_router(system_monitor.router)
+    with TestClient(app) as client:
+        response = client.get("/api/system/processes")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["processes"] is None
+    assert payload["degraded"] is True
+    assert payload["reason"] == "process enumeration unsupported on this host"
 
 
 def test_network_interfaces_endpoint(monkeypatch) -> None:
     with _client(monkeypatch) as client:
         response = client.get("/api/system/network/interfaces")
     assert response.status_code == 200
-    assert response.json()["interfaces"][0]["name"] == "Ethernet"
+    payload = response.json()
+    assert payload["interfaces"][0]["name"] == "Ethernet"
+    # A measured interface list is not degraded.
+    assert payload["degraded"] is False
+    assert payload["reason"] is None
+
+
+def test_network_interfaces_endpoint_measured_empty_is_not_degraded(monkeypatch) -> None:
+    """A successful enumeration that finds no interfaces is a measured empty.
+
+    Distinct from the degraded case below: [] + degraded=false means the host
+    genuinely reported zero interfaces.
+    """
+    fake = SimpleNamespace(get_network_interfaces=lambda: [])
+    monkeypatch.setattr(router_module, "get_system_monitor", lambda: fake)
+    app = FastAPI()
+    app.include_router(system_monitor.router)
+    with TestClient(app) as client:
+        response = client.get("/api/system/network/interfaces")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["interfaces"] == []
+    assert payload["degraded"] is False
+    assert payload["reason"] is None
+
+
+def test_network_interfaces_endpoint_discloses_unsupported_host(monkeypatch) -> None:
+    """A monitor without interface enumeration must disclose it, not serve [].
+
+    OLD behavior returned an empty list ("0 interfaces" reads as measured).
+    NEW: interfaces=null + degraded=true + reason.
+    """
+    monkeypatch.setattr(router_module, "get_system_monitor", lambda: SimpleNamespace())
+    app = FastAPI()
+    app.include_router(system_monitor.router)
+    with TestClient(app) as client:
+        response = client.get("/api/system/network/interfaces")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["interfaces"] is None
+    assert payload["degraded"] is True
+    assert payload["reason"] == "network interface enumeration unsupported on this host"
 
 
 def test_capabilities_endpoint(monkeypatch) -> None:
     with _client(monkeypatch) as client:
         response = client.get("/api/system/capabilities")
     assert response.status_code == 200
-    assert response.json()["capabilities"]["memory"] is True
+    payload = response.json()
+    assert payload["capabilities"]["memory"] is True
+    # A measured capability report is not degraded.
+    assert payload["degraded"] is False
+    assert payload["reason"] is None
+
+
+def test_capabilities_endpoint_discloses_unsupported_host(monkeypatch) -> None:
+    """A monitor that cannot report capabilities must disclose it, not guess.
+
+    OLD behavior fabricated a capability report from a mere psutil import
+    check — host-property claims with no measurement behind them. NEW:
+    capabilities=null + degraded=true + reason.
+    """
+    monkeypatch.setattr(router_module, "get_system_monitor", lambda: SimpleNamespace())
+    app = FastAPI()
+    app.include_router(system_monitor.router)
+    with TestClient(app) as client:
+        response = client.get("/api/system/capabilities")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["capabilities"] is None
+    assert payload["degraded"] is True
+    assert payload["reason"] == "capability reporting unsupported on this host"

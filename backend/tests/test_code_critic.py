@@ -96,3 +96,22 @@ def test_critic_pipeline():
         execution_history=[{"status": "success", "exit_code": 0}],
     )
     assert res.is_approved
+
+
+def test_rubric_evaluator_abstains_when_no_criteria():
+    """Zero criteria means nothing was evaluated: abstain, never APPROVED.
+
+    OLD pinned behavior returned CriticVerdict.APPROVED ("No rubrics defined;
+    evaluation passes.") — an approval for an evaluation that never ran.
+    """
+    res = RubricEvaluator().evaluate("Ship the feature")
+    assert not res.is_approved
+    assert res.verdict == CriticVerdict.WARNING
+    assert res.metadata.get("abstained") is True
+    assert "No rubric criteria defined" in res.reason
+    assert res.diagnostic_prompt is not None
+
+    # The pipeline must not launder an abstain into an approval either.
+    pipeline_res = CriticPipeline(critics=[RubricEvaluator()]).evaluate("Ship the feature")
+    assert not pipeline_res.is_approved
+    assert pipeline_res.verdict == CriticVerdict.WARNING

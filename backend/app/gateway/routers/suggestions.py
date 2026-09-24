@@ -1,16 +1,16 @@
 import json
 import logging
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 import alpha.utils.llm_text as llm_text
-from app.gateway.authz import require_permission
-from app.gateway.deps import get_config
 from alpha.config.app_config import AppConfig
 from alpha.config.suggestions_config import DEFAULT_MAX_SUGGESTIONS, MAX_SUGGESTIONS_LIMIT
 from alpha.utils.oneshot_llm import run_oneshot_llm
 from alpha.utils.thread_id import ThreadId
+from app.gateway.authz import require_permission
+from app.gateway.deps import get_config
 
 logger = logging.getLogger(__name__)
 
@@ -139,10 +139,29 @@ async def generate_suggestions(
             model_name=body.model_name,
             thread_id=thread_id,
         )
-        suggestions = _parse_json_string_list(raw) or []
-        cleaned = [s.replace("\n", " ").strip() for s in suggestions if s.strip()]
-        cleaned = cleaned[:n]
-        return SuggestionsResponse(suggestions=cleaned)
     except Exception as exc:
+        # A generation failure must be detectable by clients: a 200 with an
+        # empty list would be indistinguishable from a genuine empty result.
         logger.exception("Failed to generate suggestions: thread_id=%s err=%s", thread_id, exc)
-        return SuggestionsResponse(suggestions=[])
+        raise HTTPException(
+            status_code=502,
+            detail=f"Follow-up suggestion generation failed (upstream model error: {type(exc).__name__}).",
+        ) from exc
+
+    try:
+        parsed = _parse_json_string_list(raw)
+    except Exception:
+        parsed = None
+    if parsed is None:
+        # The model answered, but not with the required JSON array: that is a
+        # generation failure too, not a genuine "no suggestions".
+        logger.error("Unparseable suggestion response: thread_id=%s raw_type=%s", thread_id, type(raw).__name__)
+        raise HTTPException(
+            status_code=502,
+            detail="Follow-up suggestion generation failed (model response was not a parseable list of questions).",
+        )
+
+    cleaned = [s.replace("\n", " ").strip() for s in parsed if s.strip()]
+    cleaned = cleaned[:n]
+    # parsed == [] means the model genuinely returned zero suggestions.
+    return SuggestionsResponse(suggestions=cleaned)

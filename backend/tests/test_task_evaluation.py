@@ -53,3 +53,26 @@ def test_task_evaluation_summary():
     assert summary["passed_count"] == 1
     assert summary["pass_rate"] == 0.5
     assert summary["total_cost_usd"] == 0.03
+
+
+def test_unset_metrics_default_to_none_not_perfect():
+    """Unset tool_precision/verification_score must read as None, never 1.0."""
+    r = TaskEvaluationResult(task_id="t-unset", success=True)
+    assert r.tool_precision is None
+    assert r.verification_score is None
+    d = r.to_dict()
+    assert d["tool_precision"] is None
+    assert d["verification_score"] is None
+
+
+def test_summary_averages_only_measured_metrics():
+    """Averages exclude unmeasured (None) results instead of coercing them to 1.0."""
+    measured = TaskEvaluationResult(task_id="tm", success=True, tool_precision=0.5, verification_score=0.8)
+    unmeasured = TaskEvaluationResult(task_id="tu", success=True)
+    summary = EvaluationRunner.run_benchmark_summary([measured, unmeasured])
+    assert summary["avg_tool_precision"] == 0.5
+    assert summary["avg_verification_score"] == 0.8
+
+    none_summary = EvaluationRunner.run_benchmark_summary([TaskEvaluationResult(task_id="t0", success=False)])
+    assert none_summary["avg_tool_precision"] is None
+    assert none_summary["avg_verification_score"] is None

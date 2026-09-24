@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.gateway.routers import suggestions
 from alpha.trace_context import request_trace_context
 from alpha.utils import oneshot_llm
+from app.gateway.routers import suggestions
 
 
 @pytest.fixture(autouse=True)
@@ -226,7 +226,14 @@ def test_generate_suggestions_parses_output_text_block_content(monkeypatch):
     assert fake_model.ainvoke.await_args.kwargs["config"] == {"run_name": "suggest_agent"}
 
 
-def test_generate_suggestions_returns_empty_on_model_error(monkeypatch):
+def test_generate_suggestions_reports_model_error_as_502(monkeypatch):
+    """A failed generation must be detectable: 502, not a 200 with [].
+
+    Honesty pin (OLD -> NEW): OLD asserted `result.suggestions == []`, which
+    made an LLM failure indistinguishable from a genuine empty result.
+    """
+    from fastapi import HTTPException
+
     req = suggestions.SuggestionsRequest(
         messages=[suggestions.SuggestionMessage(role="user", content="Hi")],
         n=2,
@@ -238,8 +245,45 @@ def test_generate_suggestions_returns_empty_on_model_error(monkeypatch):
 
     # Bypass the require_permission decorator (which needs request +
     # thread_store) — these tests cover the parsing logic.
-    result = asyncio.run(suggestions.generate_suggestions.__wrapped__("t1", req, request=None, config=SimpleNamespace(suggestions=SimpleNamespace(enabled=True))))
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(suggestions.generate_suggestions.__wrapped__("t1", req, request=None, config=SimpleNamespace(suggestions=SimpleNamespace(enabled=True))))
 
+    assert exc_info.value.status_code == 502
+    assert "generation failed" in exc_info.value.detail
+
+
+def test_generate_suggestions_reports_unparseable_response_as_502(monkeypatch):
+    """A model answer that is not a JSON array is a failure, not an empty 200."""
+    from fastapi import HTTPException
+
+    req = suggestions.SuggestionsRequest(
+        messages=[suggestions.SuggestionMessage(role="user", content="Hi")],
+        n=2,
+        model_name=None,
+    )
+    fake_model = MagicMock()
+    fake_model.ainvoke = AsyncMock(return_value=MagicMock(content="I refuse to answer with a list."))
+    monkeypatch.setattr(oneshot_llm, "create_chat_model", lambda **kwargs: fake_model)
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(suggestions.generate_suggestions.__wrapped__("t1", req, request=None, config=SimpleNamespace(suggestions=SimpleNamespace(enabled=True))))
+
+    assert exc_info.value.status_code == 502
+    assert "not a parseable list" in exc_info.value.detail
+
+
+def test_generate_suggestions_genuine_empty_stays_200(monkeypatch):
+    """A model that legitimately returns zero suggestions is still a 200-empty."""
+    req = suggestions.SuggestionsRequest(
+        messages=[suggestions.SuggestionMessage(role="user", content="Hi")],
+        n=2,
+        model_name=None,
+    )
+    fake_model = MagicMock()
+    fake_model.ainvoke = AsyncMock(return_value=MagicMock(content="[]"))
+    monkeypatch.setattr(oneshot_llm, "create_chat_model", lambda **kwargs: fake_model)
+
+    result = asyncio.run(suggestions.generate_suggestions.__wrapped__("t1", req, request=None, config=SimpleNamespace(suggestions=SimpleNamespace(enabled=True))))
     assert result.suggestions == []
 
 
