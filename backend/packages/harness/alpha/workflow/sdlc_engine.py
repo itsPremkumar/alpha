@@ -138,7 +138,6 @@ classDiagram
 
 ## 4. Non-Functional Requirements & Security
 - Zero-trust RBAC validation
-- Sub-50ms query latency
 """
         artifact = DocumentArtifact(
             artifact_id=f"arch-{uuid.uuid4().hex[:8]}",

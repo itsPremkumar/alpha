@@ -29,6 +29,9 @@ def visual_verify_artifact(
 
     Returns:
         JSON string containing inspection score, validation results, warnings, and recommendations.
+        For non-HTML/SVG artifacts the response is status "NOT_APPLICABLE" with score null,
+        because no format-appropriate visual check exists to run. Missing expected_elements
+        always blocks "passed".
     """
     base_dir = Path(root_path).resolve() if root_path else Path.cwd()
     target_file = Path(artifact_path)
@@ -61,9 +64,13 @@ def visual_verify_artifact(
     checks: dict[str, bool] = {}
     warnings: list[str] = []
     recommendations: list[str] = []
-    score = 100
+    missing_elements: list[str] = []
+    # No score until format-appropriate checks have actually run. A score is
+    # only ever computed for HTML/SVG artifacts below — never assumed to be 100.
+    score: int | None = None
 
     if ext in (".html", ".htm"):
+        score = 100
         # 1. Check Doctype & HTML structure
         has_doctype = bool(re.search(r"<!DOCTYPE\s+html>", content, re.IGNORECASE))
         has_html_tags = bool(re.search(r"<html[\s>]", content, re.IGNORECASE)) and bool(re.search(r"</html>", content, re.IGNORECASE))
@@ -115,6 +122,7 @@ def visual_verify_artifact(
             recommendations.append("Add CSS styling to prevent unstyled plain HTML rendering.")
 
     elif ext == ".svg":
+        score = 100
         has_svg_tag = bool(re.search(r"<svg[\s>]", content, re.IGNORECASE)) and bool(re.search(r"</svg>", content, re.IGNORECASE))
         has_viewbox = bool(re.search(r'viewBox=["\'][^"\']+["\']', content, re.IGNORECASE))
         checks["valid_svg"] = has_svg_tag
@@ -129,14 +137,36 @@ def visual_verify_artifact(
             recommendations.append("Define viewBox='0 0 width height' for responsive vector scaling.")
 
     else:
+        # No format-appropriate visual checks exist for this file type.
+        # Never claim PASS/score 100 from a mere non-empty check: report
+        # NOT_APPLICABLE with an explicit disclosure and no score.
         checks["content_non_empty"] = len(content.strip()) > 0
+        not_applicable = (
+            f"NOT_APPLICABLE: visual verification has no format-specific checks for "
+            f"'{ext or 'unknown'}' files (only HTML/SVG are supported), so no score was "
+            "computed and this artifact was NOT verified. 'passed' is false because "
+            "verification did not run."
+        )
+        warnings.append(not_applicable)
         if not checks["content_non_empty"]:
-            score = 0
             warnings.append("Artifact file is completely empty.")
+        recommendations.append(
+            "Verify this artifact with a format-appropriate checker, or provide an HTML/SVG artifact."
+        )
+        return json.dumps({
+            "passed": False,
+            "score": None,
+            "artifact_path": str(target_file),
+            "file_size_bytes": len(content),
+            "checks": checks,
+            "warnings": warnings,
+            "recommendations": recommendations,
+            "status": "NOT_APPLICABLE",
+        }, indent=2)
 
-    # 6. Verify user-requested expected elements
+    # 6. Verify user-requested expected elements (visual formats only; the
+    # unsupported-format branch above returned before reaching this point)
     if expected_elements:
-        missing_elements: list[str] = []
         for elem in expected_elements:
             # Check for id, class, or tag name in content
             pattern = rf'(id=["\']{re.escape(elem)}["\']|class=["\'][^"\']*{re.escape(elem)}[^"\']*["\']|<{re.escape(elem)}[\s>])'
@@ -144,12 +174,23 @@ def visual_verify_artifact(
                 missing_elements.append(elem)
         checks["expected_elements_present"] = len(missing_elements) == 0
         if missing_elements:
-            score -= (10 * len(missing_elements))
+            score = (score or 0) - (10 * len(missing_elements))
             warnings.append(f"Missing expected UI elements or selectors: {', '.join(missing_elements)}")
             recommendations.append(f"Implement missing elements: {', '.join(missing_elements)}")
 
-    score = max(0, min(100, score))
-    passed = score >= 70 and len([w for w in warnings if "Missing standard" in w or "Broken" in w]) == 0
+    # Failures that must block `passed` regardless of the numeric score.
+    blocking_failures: list[str] = []
+    if checks.get("valid_html_structure") is False:
+        blocking_failures.append("missing <html>/<body> structural tags")
+    if checks.get("valid_svg") is False:
+        blocking_failures.append("missing <svg> root element")
+    if checks.get("assets_resolvable", True) is False:
+        blocking_failures.append("broken local asset links")
+    if missing_elements:
+        blocking_failures.append(f"missing expected UI elements: {', '.join(missing_elements)}")
+
+    score = max(0, min(100, score if score is not None else 0))
+    passed = score >= 70 and not blocking_failures
 
     return json.dumps({
         "passed": passed,
@@ -159,5 +200,6 @@ def visual_verify_artifact(
         "checks": checks,
         "warnings": warnings,
         "recommendations": recommendations,
+        "blocking_failures": blocking_failures,
         "status": "PASS" if passed else "REQUIRES_ATTENTION"
     }, indent=2)

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import sys
+
 import pytest
 from pathlib import Path
 
@@ -78,3 +80,35 @@ def test_unsupported_extensions_pass_through():
     valid, err = validate_syntax_precommit("README.md", markdown)
     assert valid is True
     assert err is None
+
+
+def test_empty_json_is_rejected_not_skipped():
+    """Empty content is invalid JSON — it must be parsed and fail, not skip."""
+    valid, err = validate_syntax_precommit("config.json", "")
+    assert valid is False
+    assert err is not None
+    assert "JSONDecodeError" in err
+
+
+def test_empty_yaml_is_parsed_not_skipped():
+    """Empty YAML is validated by an actual parse (safe_load -> None), not waved through."""
+    valid, err = validate_syntax_precommit("config.yaml", "")
+    assert valid is True
+    assert err is None
+
+
+def test_invalid_yaml_rejected():
+    valid, err = validate_syntax_precommit("config.yaml", "key: [unclosed")
+    assert valid is False
+    assert err is not None
+    assert "YAML parse error" in err
+
+
+def test_yaml_fails_closed_when_pyyaml_missing(monkeypatch):
+    """Without PyYAML, YAML writes must fail closed with a disclosed reason."""
+    monkeypatch.setitem(sys.modules, "yaml", None)
+    valid, err = validate_syntax_precommit("config.yaml", "key: value")
+    assert valid is False
+    assert err is not None
+    assert "YAML validation unavailable" in err
+    assert "PyYAML not installed" in err
