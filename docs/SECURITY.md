@@ -413,7 +413,7 @@ python scripts/export_user_data.py --user-id <id> --output /tmp/export
 
 ### Emergency Stop (Estop)
 *Tool: `emergency_stop_manage`*
-- **Sub-50ms Global Halt**: Instantly cancels active agent runs, terminates child subprocesses, and closes network connections.
+- **Global Halt**: Instantly cancels active agent runs, terminates child subprocesses, and closes network connections.
 - **Fail-Safe Rollback**: Reverts uncommitted git checkpoints and releases acquired project locks.
 
 ### Trajectory Flight Recorder

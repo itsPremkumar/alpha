@@ -90,8 +90,10 @@ export function SettingsSection({ currentModel = "default", onModelChange, onOpe
   const [features, setFeatures] = useState<FeatureFlags | null>(null);
   const [integrationHealth, setIntegrationHealth] = useState<IntegrationHealth | null>(null);
 
-  // Appearance & Preferences (persisted in localStorage)
-  const [themeMode, setThemeMode] = useState<string>("dark");
+  // Appearance & Preferences (persisted in localStorage).
+  // Initial "system": the system-preference default wins until the mount
+  // effect below loads an explicit user choice — never a phantom "dark".
+  const [themeMode, setThemeMode] = useState<string>("system");
   const [autoSuggestions, setAutoSuggestions] = useState<boolean>(true);
   const [streamSpeed, setStreamSpeed] = useState<string>("normal");
   const [compactDensity, setCompactDensity] = useState<boolean>(false);

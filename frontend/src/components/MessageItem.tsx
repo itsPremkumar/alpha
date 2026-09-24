@@ -295,7 +295,9 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
                 {message.autonomousDetection.phase}
               </span>
               <span className="text-[10px] text-muted-foreground ml-auto">
-                {Math.round(message.autonomousDetection.confidence * 100)}% confidence
+                {Number.isFinite(message.autonomousDetection.confidence)
+                  ? `${Math.round(message.autonomousDetection.confidence * 100)}% confidence`
+                  : "—"}
               </span>
             </div>
             <p className="text-[11px] text-muted-foreground">
