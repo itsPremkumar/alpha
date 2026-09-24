@@ -16,7 +16,11 @@ from alpha.bots.registry import BotRegistry, get_bot_registry
 logger = logging.getLogger(__name__)
 
 
-def _get_reputation_tier(score: float) -> str:
+def _get_reputation_tier(score: float | None) -> str:
+    if score is None:
+        # No measured reputation (zero recorded runs): disclose it instead
+        # of inventing a tier.
+        return "Unverified"
     if score >= 0.90:
         return "Elite Specialist"
     elif score >= 0.75:
@@ -58,8 +62,11 @@ def record_task_outcome(
         "avg_duration_sec": new_avg,
     }
 
-    # Dynamic reputation adjustment
-    current_rep = bot.reputation_score if bot.reputation_score is not None else 1.0
+    # Dynamic reputation adjustment. A bot with no stored score is
+    # UNVERIFIED: start from the disclosed neutral prior 0.5 — never a
+    # perfect 1.0. The run being recorded is the first piece of evidence and
+    # cannot prove elite standing.
+    current_rep = bot.reputation_score if bot.reputation_score is not None else 0.5
     if success:
         boost = 0.02
         if quality_score is not None:
@@ -114,10 +121,22 @@ def get_bot_performance(
         raise ValueError(f"Bot '{key}' not found.")
 
     stats = bot.task_stats or {"completed": 0, "failed": 0, "total_runs": 0, "avg_duration_sec": 0.0}
-    total = stats.get("total_runs", 0)
-    completed = stats.get("completed", 0)
-    success_rate = round((completed / total * 100), 1) if total > 0 else 100.0
-    rep = bot.reputation_score if bot.reputation_score is not None else 1.0
+    total = int(stats.get("total_runs", 0) or 0)
+    completed = int(stats.get("completed", 0) or 0)
+
+    # Zero recorded runs means NOTHING here has been measured. Report None
+    # with an explicit disclosure instead of fabricating a perfect 100%
+    # success rate or a 1.0 reputation. Once runs exist the success rate is
+    # computed from the real stats; a None score stays None (never coerced
+    # to 0 or 1.0 at render time).
+    if total > 0:
+        success_rate = round((completed / total * 100), 1)
+        rep = bot.reputation_score
+        basis = f"based on {total} recorded run(s)"
+    else:
+        success_rate = None
+        rep = None
+        basis = "no recorded runs — unverified"
 
     return {
         "bot_name": bot.name,
@@ -127,6 +146,7 @@ def get_bot_performance(
         "reputation_score": rep,
         "reputation_tier": _get_reputation_tier(rep),
         "success_rate_percent": success_rate,
+        "basis": basis,
         "total_runs": total,
         "completed_runs": completed,
         "failed_runs": stats.get("failed", 0),

@@ -42,6 +42,17 @@ def _validation_error(detail: str) -> HTTPException:
 
 def _bot_to_response(profile) -> dict:
     data = profile.to_dict()
+    stats = data.get("task_stats") or {}
+    recorded_runs = int(stats.get("total_runs", 0) or 0)
+    # Zero recorded runs => reputation is UNVERIFIED: report None with an
+    # explicit disclosure instead of a fabricated perfect 1.0 default.
+    # Never coerce None to 0 or 1.0 at render time.
+    if recorded_runs > 0:
+        reputation_score = data.get("reputation_score")
+        reputation_basis = f"based on {recorded_runs} recorded run(s)"
+    else:
+        reputation_score = None
+        reputation_basis = "no recorded runs — unverified"
     return {
         "name": data.get("name"),
         "display_name": data.get("display_name"),
@@ -61,7 +72,8 @@ def _bot_to_response(profile) -> dict:
         "capabilities": data.get("capabilities", []),
         "heartbeat": data.get("heartbeat"),
         "succession_fallback": data.get("succession_fallback"),
-        "reputation_score": data.get("reputation_score", 1.0),
+        "reputation_score": reputation_score,
+        "reputation_basis": reputation_basis,
         "task_stats": data.get("task_stats", {}),
         "routines": data.get("routines", []),
         "created_at": data.get("created_at"),
@@ -809,7 +821,7 @@ class BotEvolveApiRequest(BaseModel):
     promoted_skills: list[str] = Field(default_factory=list)
 
 
-@router.post("/{name}/clone", summary="Clone or fork a bot profile")
+@router.post("/{name}/clone-engine", summary="Clone or fork a bot via the clone engine")
 async def clone_bot_endpoint(name: str, body: BotCloneApiRequest, request: Request) -> dict:
     key = _validate_bot_name(name)
     from alpha.bots.cloning import CloneMode, get_bot_clone_engine
