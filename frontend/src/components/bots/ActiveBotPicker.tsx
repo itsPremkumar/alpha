@@ -134,7 +134,7 @@ export function ActiveBotPicker({ bots, activeBot, onPick }: ActiveBotPickerProp
                           setOpen(false);
                         }}
                         className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left hover:bg-muted/60 ${selected ? "bg-primary/10" : ""}`}
-                        title={`${b.role} • reputation ${(b.reputation_score ?? 0).toFixed(2)} • ${total} tasks`}
+                        title={`${b.role} • reputation ${b.reputation_score != null ? b.reputation_score.toFixed(2) : "unverified"} • ${total} tasks`}
                       >
                         <span className="relative size-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center text-sm font-bold shrink-0 overflow-hidden">
                           {b.avatar ? <span>{b.avatar}</span> : <span className="text-[10px]">{botInitials(b)}</span>}

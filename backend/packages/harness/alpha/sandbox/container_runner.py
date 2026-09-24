@@ -11,6 +11,7 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -138,6 +139,19 @@ class ContainerSandboxRunner:
             full_env = dict(os.environ)
             if env:
                 full_env.update(env)
+
+            # Root cause parity with the container branch: the container image
+            # ships its own `python`, but the host shell resolves bare `python`
+            # from PATH. On hosts where only a virtualenv interpreter exists
+            # (no system Python on PATH) the command fails with
+            # "'python' is not recognized as an internal or external command".
+            # Prepend the directory of the interpreter running this process so
+            # `python` in the command string resolves to sys.executable —
+            # equivalent to activating the harness environment — without
+            # rewriting the caller's command.
+            interpreter_dir = str(Path(sys.executable).resolve().parent)
+            host_path = full_env.get("PATH") or ""
+            full_env["PATH"] = interpreter_dir + (os.pathsep + host_path if host_path else "")
 
             proc = subprocess.run(
                 cmd_str,

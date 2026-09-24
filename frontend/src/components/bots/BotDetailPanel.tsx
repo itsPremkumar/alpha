@@ -47,7 +47,9 @@ export function BotDetailPanel({ bot, onClose, onChat }: BotDetailPanelProps) {
             <div className="rounded-xl bg-muted/40 p-2.5 text-center">
               <div className="flex items-center justify-center gap-1 text-amber-500">
                 <Star className="size-3.5" />
-                <span className="text-sm font-bold text-foreground">{(bot.reputation_score ?? 0).toFixed(2)}</span>
+                <span className="text-sm font-bold text-foreground">
+                  {bot.reputation_score != null ? bot.reputation_score.toFixed(2) : "unverified"}
+                </span>
               </div>
               <div className="text-[10px] text-muted-foreground mt-0.5">Reputation</div>
             </div>

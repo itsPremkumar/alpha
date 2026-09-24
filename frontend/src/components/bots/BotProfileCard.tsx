@@ -92,7 +92,7 @@ export function BotProfileCard({ bot, isActive, onSelect, onChat }: BotProfileCa
       <div className="flex items-center justify-between text-[11px] text-muted-foreground border-t border-border/50 pt-2.5 mt-auto">
         <span className="inline-flex items-center gap-1">
           <Star className="size-3.5 text-amber-500" />
-          {(bot.reputation_score ?? 0).toFixed(2)}
+          {bot.reputation_score != null ? bot.reputation_score.toFixed(2) : "unverified"}
           {successRate !== null && <span className="ml-1">• {successRate}% ok</span>}
         </span>
         <span>{total} tasks</span>

@@ -140,10 +140,11 @@ def bot_roster_tool(
         if skills_list:
             registry.update_bot(clean_name, skills=skills_list, bump_version=False)
 
+        reports_to_text = f"@{bot.reports_to}" if bot.reports_to else "none"
         return (
             f"✅ Successfully provisioned AI Agent: @{bot.name} ({bot.display_name})\n"
             f"Role: {bot.role}\n"
-            f"Department: {bot.department} | Reports To: @{bot.reports_to or 'None'}\n"
+            f"Department: {bot.department} | Reports To: {reports_to_text}\n"
             f"Status: {bot.status} | Epoch: `{bot.capability_fingerprint()}`\n"
             f"Capabilities: {', '.join(bot.capabilities) if bot.capabilities else 'Generalist'}"
         )
@@ -179,13 +180,29 @@ def bot_roster_tool(
         paused, pause_reason = is_bot_paused(clean_name)
         perf = get_bot_performance(clean_name, registry=registry)
 
+        # Honest rendering: with zero recorded runs the performance engine
+        # reports None for reputation/success-rate. Python's None must never
+        # leak into a value string ("None%") and no number may be invented —
+        # render "unverified" instead, and never present the zero-run default
+        # duration as a measured average.
+        rep_score = perf["reputation_score"]
+        rep_text = "unverified" if rep_score is None else str(rep_score)
+        success_rate = perf["success_rate_percent"]
+        success_text = "unverified" if success_rate is None else f"{success_rate}%"
+        avg_text = (
+            f"{perf['avg_duration_seconds']}s"
+            if perf["total_runs"] > 0
+            else "unverified (no recorded runs)"
+        )
+        reports_to_text = f"@{bot.reports_to}" if bot.reports_to else "none"
+
         return (
             f"=== Bot Profile: @{bot.name} ({bot.display_name}) {bot.avatar} ===\n"
             f"Role: {bot.role}\n"
-            f"Department: {bot.department} | Reports To: @{bot.reports_to or 'None'}\n"
+            f"Department: {bot.department} | Reports To: {reports_to_text}\n"
             f"Liveness: {liv['liveness'].upper()} | State: {bot.status} | Paused: {paused} ({pause_reason or 'No'})\n"
-            f"Reputation: {bot.reputation_score} ({perf['reputation_tier']}) | Success Rate: {perf['success_rate_percent']}%\n"
-            f"Completed Tasks: {perf['completed_runs']} | Failed: {perf['failed_runs']} | Avg Duration: {perf['avg_duration_seconds']}s\n"
+            f"Reputation: {rep_text} ({perf['reputation_tier']}) | Success Rate: {success_text}\n"
+            f"Completed Tasks: {perf['completed_runs']} | Failed: {perf['failed_runs']} | Avg Duration: {avg_text}\n"
             f"Active Task: {liv.get('active_task_id') or 'Idle / None'}\n"
             f"Epoch: `{bot.capability_fingerprint()}`\n"
             f"Capabilities: {', '.join(bot.capabilities) if bot.capabilities else 'None'}\n"
@@ -198,7 +215,9 @@ def bot_roster_tool(
         bots = registry.list_bots()
         lines = ["=== Autonomous AI Bot Roster ==="]
         for b in bots:
-            lines.append(f"- {b.avatar or '🤖'} **@{b.name}** ({b.display_name}) — `{b.role}` | Dept: `{b.department}` | Rep: `{b.reputation_score}`")
+            # An absent stored score must not render Python's None.
+            rep_text = "unverified" if b.reputation_score is None else str(b.reputation_score)
+            lines.append(f"- {b.avatar or '🤖'} **@{b.name}** ({b.display_name}) — `{b.role}` | Dept: `{b.department}` | Rep: `{rep_text}`")
         return "\n".join(lines)
 
     # 6. TASK HANDOFF
