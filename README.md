@@ -467,7 +467,7 @@ The Windows Desktop application bundles its own Node.js and `uv` runtimes—user
    npm install
    npm run dist
    ```
-2. **Run Installer**: Execute `electron/dist/Alpha-Setup-2.1.0.exe` (per-user installation, no admin privileges required).
+2. **Run Installer**: Execute `electron/dist/Agent-Workspace-Setup-2.1.0.exe` (per-user installation, no admin privileges required).
 3. **First Launch**: Configure your model API key in `%APPDATA%\alpha-desktop\project\config.yaml` and launch the app.
 
 ---

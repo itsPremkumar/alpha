@@ -46,7 +46,7 @@ virgin machine profile (bundled Node + `uv`, auto-provisioned Python and
 venv, no login, chat opens), and silent uninstall. To publish:
 
 1. `npm run dist` and take `electron/dist/Agent-Workspace-Setup-<ver>.exe`.
-2. Create a GitHub Release (e.g. tag `desktop-v2.1.0`) and attach the exe.
+2. Create a GitHub Release (e.g. tag `v2.1.0`) and attach the exe.
    Anything that serves the file works too (company drive, S3, …).
 3. Tell users: download → **More info → Run anyway** (unsigned) → launch →
    when prompted, add one model API key to
