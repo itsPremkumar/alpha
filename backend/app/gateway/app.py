@@ -41,6 +41,7 @@ from app.gateway.routers import (
     deliberation,
     deliveries,
     enterprise,
+    evidence,
     evolution,
     features,
     feedback,
@@ -991,6 +992,7 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     app.include_router(council.router)
     app.include_router(benchmarks.router)
     app.include_router(evolution.router)
+    app.include_router(evidence.router)
     app.include_router(deliveries.router)
     app.include_router(checkpoints.router)
     app.include_router(skills_workshop.router)
