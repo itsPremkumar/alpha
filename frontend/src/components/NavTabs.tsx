@@ -25,6 +25,7 @@ import {
   ChevronDown,
   LayoutGrid,
   Workflow,
+  Hammer,
 } from "lucide-react";
 
 export type WorkspaceView =
@@ -48,7 +49,8 @@ export type WorkspaceView =
   | "system"
   | "integration"
   | "settings"
-  | "workflows";
+  | "workflows"
+  | "forge";
 
 export type TabCategory = "core" | "collaboration" | "operations" | "system";
 
@@ -85,6 +87,7 @@ export const WORKSPACE_TABS: WorkspaceTabItem[] = [
   { id: "memory", label: "Memory", icon: <Brain className="size-3.5" />, blurb: "What the agent remembers", category: "operations" },
   { id: "agents", label: "Agents", icon: <Sparkles className="size-3.5" />, blurb: "Custom personas", category: "operations" },
   { id: "workflows", label: "Workflows", icon: <Workflow className="size-3.5" />, blurb: "Dynamic flows, goals, checkpoints & jobs", category: "operations" },
+  { id: "forge", label: "Forge", icon: <Hammer className="size-3.5" />, blurb: "Skill workshop, evolution, policy & benchmarks", category: "operations" },
 
   // System & Platform
   { id: "system", label: "System", icon: <ServerCog className="size-3.5" />, blurb: "Live status, shortcuts, apps", category: "system" },

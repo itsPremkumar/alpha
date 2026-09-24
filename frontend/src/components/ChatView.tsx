@@ -68,6 +68,7 @@ const WorkforceSection = lazy(() => import("@/components/sections/WorkforceSecti
 const WarRoomSection = lazy(() => import("@/components/sections/WarRoomSection").then((m) => ({ default: m.WarRoomSection })));
 const SettingsSection = lazy(() => import("@/components/sections/SettingsSection").then((m) => ({ default: m.SettingsSection })));
 const WorkflowsSection = lazy(() => import("@/components/sections/WorkflowsSection").then((m) => ({ default: m.WorkflowsSection })));
+const ForgeSection = lazy(() => import("@/components/sections/ForgeSection").then((m) => ({ default: m.ForgeSection })));
 
 function SectionFallback() {
   return (
@@ -1070,6 +1071,10 @@ export default function ChatView() {
         ) : view === "workflows" ? (
           <Suspense fallback={<SectionFallback />}>
             <WorkflowsSection />
+          </Suspense>
+        ) : view === "forge" ? (
+          <Suspense fallback={<SectionFallback />}>
+            <ForgeSection />
           </Suspense>
         ) : view === "memory" ? (
           <Suspense fallback={<SectionFallback />}>
