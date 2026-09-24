@@ -78,7 +78,7 @@ FORBIDDEN_FABRICATED_NUMBERS = ("0.89", "0.964", "96.4")
 FORBIDDEN_GENERATED_KEY_FORMS = ('"confidence"', '"score"', '"pass_rate"', '"improved": true')
 
 #: The closed gate order, written LITERALLY so implementation drift fails here.
-EXPECTED_GATES = ["lineage", "bundle_integrity", "evidence_standard", "holdout", "human_review", "evolution_route"]
+EXPECTED_GATES = ["lineage", "bundle_integrity", "evidence_standard", "holdout", "human_review", "cooldown", "evolution_route"]
 
 FIXED_CLOCK = 1_700_000_000.0
 BASELINE = {"passed": 5, "failed": 0}

@@ -1,4 +1,4 @@
-"""RSI promotion decision composer (plan WP-C2 slice C2c, features #10/#11/#15/#4 family).
+"""RSI promotion decision composer (plan WP-C2 slice C2c + Wave-4 §42/§26/§43/§54, features #10/#11/#15/#4 family).
 
 Implements the *promotion decision* component of plan
 ``references/ALPHA_RSI_IMPLEMENTATION_PLAN.md`` §3 WP-C2 for this unit's
@@ -30,7 +30,19 @@ ordered, closed gate set — :data:`GATE_ORDER` — where **every** gate runs on
                           ``approved`` decision passes; pending, rejected,
                           corrupt, or reviewer-less states fail with the
                           review module's own reason text.
-6. ``evolution_route``  — only when gates 1–5 are all ok:
+6. ``cooldown``         — Wave-4, spec §42: ``alpha.rsi.cooldown.evaluate_cooldown``
+                          over the real persisted stabilization-window record
+                          (``source_change_id``, ``cycle_id``,
+                          ``promotion_timestamp``, ``cooldown_until``),
+                          evaluated BEFORE routing so a cooling candidate is
+                          never routed. Real arithmetic on the module's
+                          injected clock: ``never_promoted``/``ready`` pass,
+                          ``cooling_down`` fails with the real remaining
+                          seconds, and a corrupt/unreadable record fails
+                          closed with the real error text. The record is
+                          written ONLY after this decision actually promotes
+                          — a failed decision never starts a cooldown.
+7. ``evolution_route``  — only when gates 1–6 are all ok:
                           :func:`route_promotion_decision` (the module-level
                           invoke seam) ->
                           ``alpha.evolution.promotion_route.route_evolution_gate``
@@ -39,39 +51,105 @@ ordered, closed gate set — :data:`GATE_ORDER` — where **every** gate runs on
                           failed, this entry discloses ``not routed: ...`` —
                           the engine is never invoked on a failed composition.
 
+Wave-4 spec surfaces composed here (each owned by a NEW sibling module,
+composed — never duplicated):
+
+- spec §42 promotion cooldown → :mod:`alpha.rsi.cooldown`: gate 6 above plus
+  the record written after a promoted decision (the store's four fields,
+  injected clock, honest ``ValueError`` validation).
+- spec §26/§43 immutable releases → :mod:`alpha.rsi.releases`: a fully-green
+  decision materializes ``runtime_home()/rsi/releases/vNNN/`` with the §43
+  manifest (``release``, ``commit``, ``parent_release``, ``candidate_id``,
+  ``artifacts``, ``evaluator_manifest``) and flips the ONE active pointer
+  atomically — release files first, ``current.json`` last; history is never
+  overwritten, and a created-but-broken pointer fails closed rather than
+  being re-created.
+- spec §54 failure taxonomy → :mod:`alpha.rsi.errors`: each FAILING segment
+  of ``decision.reason`` carries its code in brackets (``[RSI-E016]`` …),
+  WARNING logs carry the code for real exceptions, and an unclassifiable
+  failure is the designated ``RSI-E000`` — never a guessed code. Gate
+  entries stay verbatim (below).
+
+Cited-but-not-consumed surfaces (plan §8 adjudication honesty — the four
+uncited-but-existing surfaces, dispositioned explicitly): the
+``alpha.skills.security_static_scanner`` surface IS consumed for real by
+:mod:`alpha.rsi.errors` (``StaticScanBlockedError`` → ``RSI-E008``); the
+LangChain agent tools ``alpha.tools.builtins.variation_operator_tool``
+(``run_variation_operator_step``), ``alpha.tools.builtins.avo_lineage_tool``
+(``run_avo_variation``'s matches-or-improves lineage tree) and
+``alpha.tools.builtins.self_improvement_tool`` (the async tool-ralph
+subagent loop) are intentionally NOT consumed — the promotion path is
+deterministic and evidence-gated, while those surfaces drive agent-run
+state machines with their own persistence, so wiring either direction would
+fabricate a coupling that does not exist. Cited here so their uncited status
+is a disclosed decision, not an oversight.
+
 Honesty contract (plan §5 binding, non-negotiable):
 
 - ``promoted`` is True only when EVERY gate — including the routed engine
-  verdict — is ok. Any missing/failed/unverified/corrupt component means
-  ``promoted=False`` and ``reason`` joins every failing gate's real text as
-  ``<gate>: <reason>``; a passing decision's ``reason`` is the evolution
-  engine's own verdict verbatim.
+  verdict — is ok AND the Wave-4 materialization below succeeded. Any
+  missing/failed/unverified/corrupt component means ``promoted=False`` and
+  ``reason`` joins every failing gate's real text as ``<gate>: <reason>``
+  with the spec §54 code appended in brackets (``[RSI-Exxx]``); a passing
+  decision's ``reason`` is the evolution engine's own verdict verbatim (no
+  code, no suffix — pinned exact in tests).
+- Materialization (spec §26/§43 + §42) runs ONLY on a fully-green
+  composition, in this order: the immutable ``releases/vNNN/`` directory +
+  atomic single-pointer flip first, the §42 cooldown record second. A
+  release failure therefore writes NO cooldown (a decision that did not
+  materialize never opens a stabilization window); a cooldown failure after
+  a flipped pointer is disclosed as a partial state in a failed
+  ``cooldown_record`` entry — the release stays immutable, is never
+  retro-edited, and the decision lands ``promoted=False`` with the real
+  text. Every non-green path writes NOTHING to either store.
 - ``simulated`` never gates; ``unverified`` is a disclosed 0.5-neutral,
   never a pass — enforced by the landed modules whose text travels verbatim.
 - Every gate evaluation is wrapped: an exception fails THAT gate closed with
   ``failed closed: <Type>: <real text>`` and is logged at WARNING with the
-  real text (never a bare ``except``, never silence).
+  real text plus its §54 code (never a bare ``except``, never silence).
+  Gate entries always carry the landed module's verbatim reason — §54 codes
+  are appended ONLY to the composed ``decision.reason`` and to logs, so the
+  C2c passthrough contract (pinned exact in tests) never bends.
 - No invented confidence/score/rating/pass-rate fields exist anywhere in
   :class:`PromotionDecision` or its ``to_dict()`` output (a literal
-  forbidden-key set is pinned in ``tests/test_rsi_promotion.py``); this
-  module also emits no timestamp, so decisions are fully deterministic —
-  clocks belong to the evidence writers (injectable in C2a/C2b).
-- ``decide()`` is read-only except for the routed ``EvolutionEngine.gate``
-  call, whose ledger/status side effects are that real dispatch API's own
-  documented behavior.
+  forbidden-key set is pinned in ``tests/test_rsi_promotion.py``); the
+  decision still emits no timestamp of its own, so decisions stay fully
+  deterministic — every clock read sits behind a module seam
+  (``alpha.rsi.cooldown.RSI_COOLDOWN_CLOCK``,
+  ``alpha.rsi.releases.RSI_RELEASE_CLOCK``, the injectable C2a/C2b clocks)
+  and every timestamp written lives in the cooldown record or a release
+  manifest, never in the decision payload.
+- ``decide()``'s ONLY side effects are: the routed ``EvolutionEngine.gate``
+  call (that real dispatch API's own ledger/status behavior) and — for a
+  fully-green decision — one immutable release directory + one atomic
+  ``current.json`` flip + one cooldown record, each failing closed with the
+  real text if the write cannot happen. Every other path is read-only.
 
 Scope fences (plan §5): no HTTP router or endpoint, no ``app.py``, no auth,
 no feature manifest, no ``config_version``; this unit adds no
-``RISK_POLICY``/gate constants — the plan §3 "human approval by default for
-every risk class" substance is enforced unconditionally by gate 5 plus the
-``autonomous_mode=False`` pin in the wiring, and policy constants are
-deferred rather than half-shipped. The plan's broader input set (kill-switch,
-evaluator integrity, release-gate thresholds, canary probes) is NOT part of
-this assigned composition — disclosed here, never faked as present.
+``RISK_POLICY``/risk-threshold constants — the plan §3 "human approval by
+default for every risk class" substance is enforced unconditionally by gate 5
+plus the ``autonomous_mode=False`` pin in the wiring, and policy constants are
+deferred rather than half-shipped. (The ONE duration Wave-4 adds is spec §42's
+mandated stabilization window, owned by ``alpha.rsi.cooldown`` — default
+3600s, operator-visible via ``RSI_COOLDOWN_SECONDS``, a disclosed spec
+requirement, not a hidden threshold.) The plan's broader input set
+(kill-switch, evaluator-integrity gating, release-gate thresholds, canary
+probes) is NOT part of this assigned composition — disclosed here, never
+faked as present: the §43 release manifest RECORDS the real evaluator
+manifest as provenance and never gates on it.
 
-Seam: :func:`route_promotion_decision` is this module's single module-level
-invoke seam. Tests may stub ONLY that seam (to pin honest routing); every
-gate above runs the REAL landed modules.
+Seams: :func:`route_promotion_decision` remains this module's verdict seam
+(the routing tests' stub point). The §54 wiring calls
+``classify``/``classify_gate``/``annotate`` by name and the materialization
+calls ``create_release``/``record_promotion`` by name, so failure-path tests
+may monkeypatch THIS module's bindings exactly as they patch the routing
+seam — the real functions run unstubbed on every positive path (pinned in
+``tests/test_rsi_wave4.py``). ``alpha.rsi.cooldown.RSI_COOLDOWN_CLOCK``,
+``alpha.rsi.releases.RSI_RELEASE_CLOCK`` and
+``alpha.rsi.releases.RSI_EVALUATOR_MANIFEST_BUILDER`` are state seams (clock
+/ one real memoized evaluator build), never verdict seams. Every gate runs
+the REAL landed modules.
 """
 
 from __future__ import annotations
@@ -87,9 +165,12 @@ from typing import Any
 
 from alpha.config.runtime_paths import runtime_home
 from alpha.evolution.promotion_route import route_evolution_gate
+from alpha.rsi.cooldown import evaluate_cooldown, record_promotion
+from alpha.rsi.errors import annotate, classify, classify_gate
 from alpha.rsi.evidence_bundle import BUNDLES_DIR_NAME, INDEX_FILE_NAME, Bundle, verify_bundle
 from alpha.rsi.holdout import holdout_gate
 from alpha.rsi.lineage import EVIDENCE_KINDS, RsiLineageStore
+from alpha.rsi.releases import create_release
 from alpha.rsi.review import human_reviewed, review_decision
 
 logger = logging.getLogger(__name__)
@@ -104,12 +185,19 @@ __all__ = [
 
 #: The closed gate order; a decision record always carries every entry, in
 #: this order, each with its real state and reason (pinned literally in tests).
+#: ``cooldown`` (spec §42) sits BEFORE ``evolution_route``: while a
+#: stabilization window is active the engine is never routed. A fully-green
+#: decision may additionally append disclosed ``release_store`` /
+#: ``cooldown_record`` entries when §26/§43 materialization fails — post-
+#: promotion side-effect disclosures, never silent, and by design not part of
+#: this closed composition set.
 GATE_ORDER: tuple[str, ...] = (
     "lineage",
     "bundle_integrity",
     "evidence_standard",
     "holdout",
     "human_review",
+    "cooldown",
     "evolution_route",
 )
 
@@ -133,9 +221,12 @@ class PromotionDecision:
     ``gates`` entries are exactly ``{"gate", "ok", "reason"}`` — the shape the
     plan's ``promotion_decision.json`` fixtures use — with each reason
     carried verbatim from the landed module that produced it (or the
-    disclosed ``failed closed: ...`` / ``not routed: ...`` text). This
-    decision serializes no confidence, score, rating, or pass-rate field and
-    no timestamp of its own.
+    disclosed ``failed closed: ...`` / ``not routed: ...`` text); §54 codes
+    are appended only to the composed ``reason`` below, never into these
+    entries. A failing ``reason`` joins each failing entry as
+    ``<gate>: <reason> [RSI-Exxx]``. This decision serializes no
+    confidence, score, rating, or pass-rate field and no timestamp of its
+    own.
     """
 
     candidate_id: str
@@ -251,7 +342,7 @@ def _run_gate(name: str, candidate_id: str, gate: Callable[[], tuple[bool, str]]
     except Exception as exc:  # fail-closed wrapper, not silence: the real text travels AND is logged
         ok = False
         reason = f"failed closed: {type(exc).__name__}: {exc}"
-        logger.warning("RSI promotion gate %r failed closed for candidate %r: %s", name, candidate_id, reason)
+        logger.warning("RSI promotion gate %r failed closed for candidate %r: %s [%s]", name, candidate_id, reason, classify(exc))
     if not isinstance(reason, str) or not reason.strip():
         raise ValueError(f"internal error: promotion gate {name!r} returned an empty reason (every gate must disclose its real reason)")
     return {"gate": name, "ok": bool(ok), "reason": reason}
@@ -270,17 +361,82 @@ def route_promotion_decision(candidate_id: str, baseline: Mapping[str, Any] | No
     return route_evolution_gate(candidate_id, baseline, human_approved=human_approved)
 
 
+def _bookkeeping_failure(name: str, exc: Exception, candidate_id: str, *, note: str = "") -> dict[str, Any]:
+    """One disclosed post-routing failure entry: real exception text, real §54 code, logged — never swallowed.
+
+    ``name`` is ``release_store`` or ``cooldown_record`` (§26/§43/§42 side-effect
+    disclosures appended after ``evolution_route`` when materialization fails);
+    ``note`` carries honest partial-state context (e.g. which artifact DID land).
+    """
+    reason = f"failed closed: {type(exc).__name__}: {exc}{note}"
+    logger.warning("RSI promotion %s failed closed for candidate %r: %s [%s]", name, candidate_id, reason, classify(exc))
+    return {"gate": name, "ok": False, "reason": reason}
+
+
+def _materialize_promotion(candidate_id: str, gates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """§26/§43 release + §42 cooldown materialization for a fully-green, routed-OK decision.
+
+    Order is honesty-driven: the immutable ``release/`` directory is created
+    FIRST (spec §26: ``release/`` is the source of truth — a release exists
+    before any cooldown claim can reference it), then the §42 cooldown record
+    is written. A release failure therefore means NO cooldown record (cooldown
+    is promoted-only); a cooldown failure after a landed release is disclosed
+    as a ``cooldown_record`` entry carrying the real partial-state note. Each
+    failure appends its own ``{gate, ok, reason}`` entry so the deviation is
+    visible in ``gates`` — never a bare ``except: pass``.
+    """
+    payload = PromotionDecision(candidate_id=candidate_id, promoted=True, reason=gates[-1]["reason"], gates=list(gates)).to_dict()
+    cycle_id = "unknown"  # disclosed default when no lineage record exists (same precedent as the lineage gate)
+    lineage_record = RsiLineageStore().get(candidate_id)
+    if lineage_record is not None and getattr(lineage_record, "cycle_id", None):
+        cycle_id = lineage_record.cycle_id
+    entries: list[dict[str, Any]] = []
+    try:
+        create_release(candidate_id, payload)
+    except Exception as exc:
+        # Only the release entry is appended: the cooldown record was never
+        # ATTEMPTED (release-first order), so blaming the cooldown for the
+        # release's exception would misattribute the failure — the note makes
+        # the consequence explicit instead.
+        entries.append(
+            _bookkeeping_failure(
+                "release_store",
+                exc,
+                candidate_id,
+                note=" (cooldown not written: the §26/§43 release must exist before any §42 cooldown claim)",
+            )
+        )
+        return entries
+    try:
+        record_promotion(source_change_id=candidate_id, cycle_id=cycle_id)
+    except Exception as exc:
+        entries.append(_bookkeeping_failure("cooldown_record", exc, candidate_id, note=" (release materialized: the active release/ entry above stands; cooldown state is unavailable)"))
+    return entries
+
+
 def decide(candidate_id: str, *, baseline: Mapping[str, Any] | None = None) -> PromotionDecision:
     """Compose every gate into one honest promotion decision.
 
     All of :data:`GATE_ORDER` is evaluated on every call — no short-circuit —
-    so each gate contributes its REAL state and reason. Routing through the
-    evolution dispatch engine happens only when gates 1–5 are all ok; a
-    failed composition appends an explicit ``not routed: ...`` disclosure
-    instead of invoking the engine. ``promoted`` is the AND of every gate;
-    ``reason`` joins each failing entry as ``<gate>: <reason>`` (or carries
-    the engine's verbatim verdict when promoted). Exceptions inside a gate
-    fail only that gate, closed, with the real text (logged by
+    so each gate contributes its REAL state and reason. Gates 1–6 (lineage
+    through ``cooldown``, spec §42) run BEFORE routing: while a promotion
+    cooldown is active the evolution engine is never invoked, and a failed
+    gate 1–5 composition appends an explicit ``not routed: ...`` disclosure
+    instead of calling the engine. Routing through the evolution dispatch
+    engine happens only when gates 1–6 are all ok.
+
+    When every gate including ``evolution_route`` is green, §26/§43 release
+    materialization (``release/`` dir + pointer flip) runs FIRST, then the
+    §42 cooldown record is written — both only on a fully-green promoted
+    decision. A materialization failure appends a disclosed
+    ``release_store``/``cooldown_record`` entry after ``evolution_route`` and
+    lands ``promoted=False`` (fail-closed, never silent).
+
+    ``promoted`` is the AND of every gate; a failing ``reason`` joins each
+    failing entry as ``<gate>: <reason> [RSI-Exxx]`` with the spec §54 code
+    appended to the COMPOSED reason only — gate entries stay verbatim. When
+    promoted, ``reason`` carries the engine's verbatim verdict. Exceptions
+    inside a gate fail only that gate, closed, with the real text (logged by
     :func:`_run_gate`); an exception from routing itself fails the
     ``evolution_route`` entry closed the same way. ``baseline`` is the
     benchmark baseline for the engine's strictly-better comparison (``None``
@@ -293,6 +449,7 @@ def decide(candidate_id: str, *, baseline: Mapping[str, Any] | None = None) -> P
         _run_gate("evidence_standard", candidate_id, lambda: _evidence_standard_gate(candidate_id)),
         _run_gate("holdout", candidate_id, lambda: _holdout_gate(candidate_id)),
         _run_gate("human_review", candidate_id, lambda: _human_review_gate(candidate_id)),
+        _run_gate("cooldown", candidate_id, lambda: evaluate_cooldown()),  # window is store-global, not per-candidate
     ]
     if all(entry["ok"] for entry in gates):
         try:
@@ -304,7 +461,7 @@ def decide(candidate_id: str, *, baseline: Mapping[str, Any] | None = None) -> P
         except Exception as exc:  # fail-closed routing: real text disclosed AND logged, never swallowed
             routed_ok = False
             routed_reason = f"failed closed: {type(exc).__name__}: {exc}"
-            logger.warning("RSI promotion routing failed closed for candidate %r: %s", candidate_id, routed_reason)
+            logger.warning("RSI promotion routing failed closed for candidate %r: %s [%s]", candidate_id, routed_reason, classify(exc))
         if not isinstance(routed_reason, str) or not routed_reason.strip():
             # The same no-empty-reason invariant _run_gate enforces: a decision
             # may never carry an undisclosed verdict — an engine response
@@ -322,6 +479,17 @@ def decide(candidate_id: str, *, baseline: Mapping[str, Any] | None = None) -> P
             }
         )
     failing = [entry for entry in gates if not entry["ok"]]
+    if not failing:
+        # Fully green INCLUDING routing: materialize §26/§43 release first,
+        # then the §42 cooldown record. Any failure appends a disclosed entry
+        # and flips the decision closed — a promotion whose cooldown/release
+        # bookkeeping failed never reports promoted.
+        gates.extend(_materialize_promotion(candidate_id, gates))
+        failing = [entry for entry in gates if not entry["ok"]]
     if failing:
-        return PromotionDecision(candidate_id=candidate_id, promoted=False, reason="; ".join(f"{entry['gate']}: {entry['reason']}" for entry in failing), gates=gates)
+        # §54 codes annotate the COMPOSED reason only; each gate entry above
+        # keeps its landed module's verbatim text (pinned by exact-equality
+        # tests in test_rsi_promotion.py).
+        reason = "; ".join(annotate(f"{entry['gate']}: {entry['reason']}", classify_gate(entry["gate"], entry["reason"])) for entry in failing)
+        return PromotionDecision(candidate_id=candidate_id, promoted=False, reason=reason, gates=gates)
     return PromotionDecision(candidate_id=candidate_id, promoted=True, reason=gates[-1]["reason"], gates=gates)
