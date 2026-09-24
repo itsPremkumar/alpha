@@ -116,6 +116,37 @@ class UnverifiedNodeCompletionError(DynamicWorkflowError):
     pass
 
 
+def _system1_loop_termination(run: WorkflowRun, node: WorkflowNode, iteration: int) -> dict[str, Any]:
+    """Consult the System-1 reflex layer (Master Mission B) about ending a loop.
+
+    Advisory only, and deterministic runtime decides. ``terminate`` is the
+    reflex layer's PROPOSAL; ``evidence_agreement`` is the deterministic check
+    that lets the runtime act on it — the loop node must already carry real
+    evidence from earlier iterations and nothing in the run may have failed.
+    A reflex refusal never blocks a loop; a reflex "stop" without agreeing
+    evidence is journaled and ignored. Any layer error is returned as a
+    disclosed non-termination, never raised into the run.
+    """
+    try:
+        from alpha.system1.pruning import evaluate_loop_termination
+
+        objective = f"{node.prompt}\nstate: {str(run.state)[:2000]}"
+        decision = evaluate_loop_termination(objective)
+    except Exception as exc:  # noqa: BLE001 - advisory layer; disclosed, never fatal
+        return {
+            "terminate": False,
+            "probability": 0.0,
+            "reason": f"system1_unavailable: {type(exc).__name__}: {str(exc)[:200]}",
+            "evidence_agreement": False,
+        }
+    return {
+        "terminate": decision.terminate,
+        "probability": decision.probability,
+        "reason": decision.reason,
+        "evidence_agreement": bool(node.evidence) and not run.failed_nodes,
+    }
+
+
 class DynamicWorkflowEngine:
     """Production-grade Dynamic Workflow Engine."""
 
@@ -464,6 +495,39 @@ class DynamicWorkflowEngine:
                     iteration_counts=dict(run.iteration_counts),
                 )
                 return
+            # System-1 reflex hook (Master Mission B): the fast, zero-token
+            # reflex layer may PROPOSE an early loop stop. The deterministic
+            # runtime decides — the stop is taken only when the proposal comes
+            # WITH agreeing evidence (real evidence from prior iterations and
+            # nothing failed). Every consideration is journaled, including the
+            # ones that do not stop, so a replay can see what was considered.
+            reflex = _system1_loop_termination(run, node, count)
+            self.events.emit(
+                "loop_termination_considered",
+                run.run_id,
+                node_id=nid,
+                iteration=count,
+                terminate=reflex["terminate"],
+                probability=reflex["probability"],
+                reason=reflex["reason"],
+                evidence_agreement=reflex["evidence_agreement"],
+            )
+            if reflex["terminate"] and reflex["evidence_agreement"]:
+                node.status = NodeStatus.SUCCEEDED
+                run.node_states[nid] = NodeStatus.SUCCEEDED
+                if nid not in run.completed_nodes:
+                    run.completed_nodes.append(nid)
+                self.events.emit(
+                    "node_completed",
+                    run.run_id,
+                    node_id=nid,
+                    output=deepcopy(node.output),
+                    stopped_by="system1_reflex_agreement",
+                    evidence=list(node.evidence),
+                    iteration_counts=dict(run.iteration_counts),
+                )
+                return
+
             run.iteration_counts[nid] = count + 1
 
         # Mark Running
