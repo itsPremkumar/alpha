@@ -1,0 +1,84 @@
+---
+title: "Customization"
+description: "Add your own tools and middleware to the agent workspace, and where each registration path runs."
+---
+
+# Customization
+
+Alpha is extensible without forking: add a tool or a middleware, register it in
+configuration, and it joins the pipeline at a documented position.
+
+## Adding a tool
+
+Create the tool under `packages/harness/alpha/tools/builtins/` and register it
+in `config.yaml`:
+
+```yaml
+tools:
+  - name: my_tool
+    group: my_group
+    use: alpha.tools.builtins.my_tool:my_tool
+```
+
+## Adding a middleware
+
+```python
+from langchain.agents import AgentState
+from langchain.agents.middleware import AgentMiddleware
+from langgraph.runtime import Runtime
+
+class MyMiddleware(AgentMiddleware[AgentState]):
+    """Middleware description."""
+
+    def before_model(self, state: AgentState, runtime: Runtime) -> dict | None:
+        """Run before each model call."""
+        return None
+
+    def after_model(self, state: AgentState, runtime: Runtime) -> dict | None:
+        """Run after each model call."""
+        return None
+```
+
+Lifecycle hooks can return a dictionary of state updates, which LangChain merges
+into the agent state, or `None` when the hook only observes state.
+
+Register it in `config.yaml` under `extensions.middlewares` (a class path uses
+the zero-argument constructor; `{class, kwargs}` passes constructor arguments):
+
+```yaml
+extensions:
+  middlewares:
+    - alpha.agents.middlewares.my_middleware:MyMiddleware
+```
+
+Middleware class paths are trusted operator configuration: loading one executes
+Python code.
+
+## Placement
+
+On the lead-agent pipeline, it runs before the terminal-response, model-length, safety, and clarification tail; subagents have no terminal-response, model-length, or clarification stage, so configured middleware is followed by the optional safety guard, `DurableContextMiddleware`, optional `SummarizationMiddleware`, then `SubagentDateContextMiddleware` and `SystemMessageCoalescingMiddleware`.
+
+## Embedded callers
+
+`AgentWorkspaceClient(middlewares=[...])`, which builds the full lead-agent chain and places middleware before its terminal tail. `create_agent_workspace_agent(extra_middleware=[...])` instead builds a smaller feature-based lead-agent chain; unanchored extras are placed immediately before `ClarificationMiddleware`. Neither API forwards middleware to subagents.
+
+## Adding an API endpoint
+
+Create a router in `app/gateway/routers/` and include it in `app/gateway/app.py`:
+
+```python
+from fastapi import APIRouter
+
+router = APIRouter(prefix="/my-endpoint", tags=["my-endpoint"])
+
+@router.get("/")
+async def get_items():
+    """Get all items."""
+    return {"items": []}
+```
+
+```python
+from app.gateway.routers import my_router
+
+app.include_router(my_router.router)
+```

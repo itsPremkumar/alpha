@@ -1,0 +1,75 @@
+---
+title: "中间件"
+description: "自定义与配置的中间件在主 Agent 链和子 Agent 链中的执行位置与顺序。"
+---
+
+# 中间件
+
+中间件在生命周期钩子上观察或更新 Agent 状态。Alpha 先运行内置中间件,再运行可选的
+配置扩展中间件,最后由一个简短的收尾链把空的模型响应转换为可见的响应。
+
+## 编写中间件
+
+```python
+from langchain.agents import AgentState
+from langchain.agents.middleware import AgentMiddleware
+from langgraph.runtime import Runtime
+
+class MyMiddleware(AgentMiddleware[AgentState]):
+    """Middleware description."""
+
+    def before_model(self, state: AgentState, runtime: Runtime) -> dict | None:
+        """Run before each model call."""
+        print(f"Model input contains {len(state.get('messages', []))} messages")
+        return None
+
+    def after_model(self, state: AgentState, runtime: Runtime) -> dict | None:
+        """Run after each model call."""
+        messages = state.get("messages", [])
+        last_message = messages[-1] if messages else None
+        print(f"Last message type: {type(last_message).__name__ if last_message else 'none'}")
+        return None
+```
+
+生命周期钩子可以返回状态更新字典,LangChain 会将其合并进 Agent 状态;若仅观察状态则返回 `None`。
+
+## 注册中间件
+
+在 `config.yaml` 的 `extensions.middlewares` 中注册类路径(使用无参构造);
+`{class, kwargs}` 形式可传入构造参数,且 `kwargs` 必须是 JSON 类型:
+
+```yaml
+extensions:
+  middlewares:
+    - alpha.agents.middlewares.my_middleware:MyMiddleware
+    - class: alpha.agents.middlewares.my_middleware:MyMiddleware
+      kwargs:
+        max_tool_calls: 5
+```
+
+中间件类路径属于受信任的运维配置:加载它会执行 Python 代码。
+
+## 在流水线中的位置
+
+主 Agent 链的顺序:内置链(动态上下文、持续 harness、技能激活、自主命令、延迟工具审计、
+`SkillToolPolicyMiddleware`、`DurableContextMiddleware`、可选的摘要、token 用量、元认知、
+标题、记忆、学习分叉、图片查看、延迟工具过滤、`SystemMessageCoalescingMiddleware`、可选的
+子 Agent 限制、循环检测与 token 预算),然后是自定义与配置的扩展中间件（如有）,
+之后是收尾链:`TerminalResponseMiddleware`、`ModelLengthFinishReasonMiddleware`、
+完成前验证、`UserModelMiddleware` 与 `ClarificationMiddleware`。
+
+对于主 Agent 链，它位于终态响应、模型长度、安全和澄清尾部之前；子 Agent 链没有终态响应、模型长度或澄清阶段，
+因此配置中间件之后会继续执行可选的安全防护、`DurableContextMiddleware`、可选的 `SummarizationMiddleware`，随后是 `SubagentDateContextMiddleware` 和 `SystemMessageCoalescingMiddleware`。
+需要注意的是,记忆、标题生成和澄清等其他 Lead Agent 专属中间件不会在子 Agent 链中运行。
+
+## 嵌入式调用
+
+`AgentWorkspaceClient(middlewares=[...])`,它构建完整的主 Agent 链,并把中间件放在收尾链之前;
+`create_agent_workspace_agent(extra_middleware=[...])` 构建较小的按功能组装的主 Agent 链,
+未设置锚点的额外中间件紧邻 `ClarificationMiddleware` 之前放置。
+两个 API 均不会将中间件转发给子 Agent。
+
+## 每次调用都会执行的中间件
+
+运行时中间件（`InputSanitizationMiddleware` 输入清理 → `ToolOutputBudgetMiddleware` 输出预算截断 → `ToolResultSanitizationMiddleware` 工具结果清理，随后是线程数据、上传、沙箱、悬空工具调用修补和 LLM 错误处理；工具回执（如启用）、授权/guardrail（如启用）、沙箱审计、读前写后（如启用）、工具进度（如启用）和工具错误处理随后执行）
+在每次调用时都会运行;前三个用于在模型调用之前约束提示规模并清理不可信内容。

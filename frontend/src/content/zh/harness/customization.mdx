@@ -1,0 +1,83 @@
+---
+title: "自定义"
+description: "为 Agent 工作区添加自己的工具与中间件,以及各注册路径的执行位置。"
+---
+
+# 自定义
+
+无需 fork 即可扩展 Alpha:添加工具或中间件,在配置中注册,它就会在文档记录的位置加入流水线。
+
+## 添加工具
+
+在 `packages/harness/alpha/tools/builtins/` 下创建工具,并在 `config.yaml` 中注册:
+
+```yaml
+tools:
+  - name: my_tool
+    group: my_group
+    use: alpha.tools.builtins.my_tool:my_tool
+```
+
+## 添加中间件
+
+```python
+from langchain.agents import AgentState
+from langchain.agents.middleware import AgentMiddleware
+from langgraph.runtime import Runtime
+
+class MyMiddleware(AgentMiddleware[AgentState]):
+    """Middleware description."""
+
+    def before_model(self, state: AgentState, runtime: Runtime) -> dict | None:
+        """Run before each model call."""
+        return None
+
+    def after_model(self, state: AgentState, runtime: Runtime) -> dict | None:
+        """Run after each model call."""
+        return None
+```
+
+生命周期钩子可以返回状态更新字典,LangChain 会将其合并进 Agent 状态;若仅观察状态则返回 `None`。
+
+在 `config.yaml` 的 `extensions.middlewares` 中注册(类路径使用无参构造,
+`{class, kwargs}` 形式可传入构造参数):
+
+```yaml
+extensions:
+  middlewares:
+    - alpha.agents.middlewares.my_middleware:MyMiddleware
+```
+
+中间件类路径属于受信任的运维配置:加载它会执行 Python 代码。
+
+## 执行位置
+
+对于主 Agent 链，它位于终态响应、模型长度、安全和澄清尾部之前；子 Agent 链没有终态响应、模型长度或澄清阶段，
+因此配置中间件之后会继续执行可选的安全防护、`DurableContextMiddleware`、可选的 `SummarizationMiddleware`，随后是 `SubagentDateContextMiddleware` 和 `SystemMessageCoalescingMiddleware`。
+
+## 嵌入式调用
+
+`AgentWorkspaceClient(middlewares=[...])`,它构建完整的主 Agent 链,并把中间件放在收尾链之前;
+`create_agent_workspace_agent(extra_middleware=[...])` 构建较小的按功能组装的主 Agent 链。
+两个 API 均不会将中间件转发给子 Agent。
+
+## 添加 API 端点
+
+在 `app/gateway/routers/` 下创建路由,并在 `app/gateway/app.py` 中引入:
+
+```python
+from fastapi import APIRouter
+
+router = APIRouter(prefix="/my-endpoint", tags=["my-endpoint"])
+
+@router.get("/")
+async def get_items():
+    """Get all items."""
+    return {"items": []}
+```
+
+```python
+from app.gateway.routers import my_router
+
+app.include_router(my_router.router)
+```
