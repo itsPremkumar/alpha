@@ -22,6 +22,7 @@ export const WORKSPACE_VIEW_IDS = [
   "workflows",
   "forge",
   "supervisor",
+  "protocols",
 ] as const;
 
 export type WorkspaceView = (typeof WORKSPACE_VIEW_IDS)[number];

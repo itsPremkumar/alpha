@@ -70,6 +70,7 @@ const SettingsSection = lazy(() => import("@/components/sections/SettingsSection
 const WorkflowsSection = lazy(() => import("@/components/sections/WorkflowsSection").then((m) => ({ default: m.WorkflowsSection })));
 const ForgeSection = lazy(() => import("@/components/sections/ForgeSection").then((m) => ({ default: m.ForgeSection })));
 const SupervisorSection = lazy(() => import("@/components/sections/SupervisorSection").then((m) => ({ default: m.SupervisorSection })));
+const ProtocolsSection = lazy(() => import("@/components/sections/ProtocolsSection").then((m) => ({ default: m.ProtocolsSection })));
 
 function SectionFallback() {
   return (
@@ -134,7 +135,11 @@ export default function ChatView() {
   const refreshFreeCatalog = async () => {
     setFreeRefreshing(true);
     try {
-      const { providers, updatedAt } = await fetchFreeCatalog({ refresh: true, probe: true });
+      const [{ providers, updatedAt }, mList] = await Promise.all([
+        fetchFreeCatalog({ refresh: true, probe: true }),
+        fetchAvailableModels(),
+      ]);
+      setModels(mList);
       const healthy = providers.filter((p) => p.healthy === true).length;
       const eligible = providers.filter((p) => p.eligible).length;
       setFreeNote(
@@ -1080,6 +1085,10 @@ export default function ChatView() {
         ) : view === "supervisor" ? (
           <Suspense fallback={<SectionFallback />}>
             <SupervisorSection />
+          </Suspense>
+        ) : view === "protocols" ? (
+          <Suspense fallback={<SectionFallback />}>
+            <ProtocolsSection />
           </Suspense>
         ) : view === "memory" ? (
           <Suspense fallback={<SectionFallback />}>

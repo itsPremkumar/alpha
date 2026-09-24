@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-09-24T10:00:53Z",
+ "generated_at": "2026-09-24T15:28:29Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -1070,6 +1070,14 @@
    "state": "wired"
   },
   {
+   "id": "app.gateway.routers.autonomy",
+   "module": "app.gateway.routers.autonomy",
+   "symbol": "router",
+   "wiring_point": "app.gateway.app:include_router",
+   "wired": true,
+   "state": "wired"
+  },
+  {
    "id": "app.gateway.routers.benchmarks",
    "module": "app.gateway.routers.benchmarks",
    "symbol": "router",
@@ -1771,6 +1779,13 @@
   {
    "id": "enterprise_heartbeat",
    "module": "app.gateway.autonomy.loops:enterprise_heartbeat_tick",
+   "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "free_models_sync",
+   "module": "app.gateway.autonomy.loops:free_models_sync_tick",
    "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
    "wired": true,
    "state": "wired"

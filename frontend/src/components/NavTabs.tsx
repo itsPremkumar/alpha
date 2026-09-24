@@ -52,7 +52,8 @@ export type WorkspaceView =
   | "settings"
   | "workflows"
   | "forge"
-  | "supervisor";
+  | "supervisor"
+  | "protocols";
 
 export type TabCategory = "core" | "collaboration" | "operations" | "system";
 
@@ -95,6 +96,7 @@ export const WORKSPACE_TABS: WorkspaceTabItem[] = [
   { id: "system", label: "System", icon: <ServerCog className="size-3.5" />, blurb: "Live status, shortcuts, apps", category: "system" },
   { id: "integration", label: "Integration", icon: <PlugZap className="size-3.5" />, blurb: "Wiring status & opt-in capabilities", category: "system" },
   { id: "supervisor", label: "Supervisor", icon: <Radar className="size-3.5" />, blurb: "Autonomy loops, Sentinel repairs & signals", category: "system" },
+  { id: "protocols", label: "Protocols", icon: <Network className="size-3.5" />, blurb: "A2A, agent messages, deliveries & MoA", category: "system" },
   { id: "settings", label: "Settings", icon: <Settings className="size-3.5" />, blurb: "Model selection, theme, API diagnostics", category: "system", isPrimary: true },
 ];
 
