@@ -10,6 +10,14 @@ set ``MemoryConfig.manager_class`` -- nothing else in agent-workspace changes.
 DeerMem-private symbols (``format_memory_for_injection``, ``get_memory_data``,
 ``MemoryUpdater``, ``FileMemoryStorage``, ...) are NOT re-exported here -- import
 them directly from ``alpha.agents.memory.backends.deermem.deermem.core.*``.
+
+Memory-tree boundary (wave P4 documentation): this package is the AGENT-FACING
+side -- the pluggable :class:`MemoryManager` contract, its backends (DeerMem,
+OpenViking, Honcho) and the prompt-injection seam. The COGNITIVE engines
+(beliefs, traces, consolidation, kibitzer nudges, session search, dreaming,
+wiki vault) live in the sibling :mod:`alpha.memory` package and are consumed by
+the runtime, not by backends. Neither tree may import the other's internals;
+any future unification is a separate reviewed decision.
 """
 
 from alpha.agents.memory.manager import (

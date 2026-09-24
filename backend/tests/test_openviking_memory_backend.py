@@ -450,19 +450,29 @@ def test_unreachable_context_read_fail_open_returns_no_injected_context(
     state = {"messages": [HumanMessage("answer this", id="message-1")]}
 
     with caplog.at_level(logging.WARNING):
-        assert manager.get_context("alice", agent_name="research") == ""
+        # P4 honesty fix: fail_open no longer returns a bare "" (which reads as
+        # "this user has no memories"). The degraded read carries an explicit
+        # unavailability disclosure instead, so the outage can never be
+        # mistaken for an empty memory.
+        context = manager.get_context("alice", agent_name="research")
+        assert context != ""
+        assert "degraded_memory_unavailable" in context
     # The httpx.ConnectTimeout must be disclosed as a degraded read — never
     # treated as a provider answer.
     assert "OpenViking context retrieval failed" in caplog.text
-    # The composed injection context must also be empty: no side channel
-    # (e.g. cognitive enrichment) may fabricate a success-shaped <memory>
-    # block while the configured provider is down.
+    # No side channel (e.g. cognitive enrichment) may fabricate a
+    # success-shaped <memory> block while the configured provider is down: the
+    # ONLY memory block the turn sees is the degraded-unavailability one.
     from alpha.agents.lead_agent.prompt import _get_memory_context
 
-    assert _get_memory_context(None, app_config=None, user_id="alice") == ""
+    # P4: the composed injection now carries the SAME degraded disclosure
+    # (never a fabricated success-shaped block, never a silent "").
+    composed = _get_memory_context(None, app_config=None, user_id="alice")
+    assert "degraded_memory_unavailable" in composed
     update = middleware.before_agent(state, None)
     assert update is not None
-    assert all(not str(message.id).endswith("__memory") for message in update["messages"])
+    memory_messages = [m for m in update["messages"] if str(m.id).endswith("__memory")]
+    assert all("degraded_memory_unavailable" in str(m.content) for m in memory_messages)
 
 
 @pytest.mark.asyncio
@@ -486,7 +496,11 @@ async def test_unreachable_async_context_read_honors_policy(
             await manager.aget_context("alice", agent_name="research")
         assert exc_info.value.__cause__ is not None
     else:
-        assert await manager.aget_context("alice", agent_name="research") == ""
+        # P4: fail_open discloses the outage instead of returning "" (see
+        # test_unreachable_context_read_fail_open_returns_no_injected_context).
+        degraded = await manager.aget_context("alice", agent_name="research")
+        assert "degraded_memory_unavailable" in degraded
+        assert "unavailable" in degraded
 
 
 @pytest.mark.asyncio
