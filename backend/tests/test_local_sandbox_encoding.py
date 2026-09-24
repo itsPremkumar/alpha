@@ -15,6 +15,11 @@ def _open(base, file, mode="r", *args, **kwargs):
     return base(file, mode, *args, encoding=kwargs.pop("encoding", "gbk"), **kwargs)
 
 
+def _expected_windows_sandbox_env(**inherited: str) -> dict[str, str]:
+    """Include the working-directory marker synthesized for Windows children."""
+    return {"PWD": local_sandbox.os.getcwd(), **inherited}
+
+
 def test_bounded_pipe_capture_decodes_non_utf8_output_with_configured_encoding():
     capture = _BoundedPipeCapture(encoding="cp1252")
     capture.append("caf\u00e9".encode("cp1252"))
@@ -207,7 +212,7 @@ def test_execute_command_uses_powershell_command_mode_on_windows(monkeypatch):
                 "Write-Output hello",
             ],
             600,
-            {"PATH": r"C:\Windows"},
+            _expected_windows_sandbox_env(PATH=r"C:\Windows"),
         )
     ]
 
@@ -232,10 +237,10 @@ def test_execute_command_keeps_msys_path_conversion_for_host_commands_on_windows
         (
             [r"C:\Program Files\Git\bin\sh.exe", "-c", "echo hello"],
             600,
-            {
-                "PATH": r"C:\Program Files\Git\bin",
-                "MSYS2_ARG_CONV_EXCL": "/mnt/user-data",
-            },
+            _expected_windows_sandbox_env(
+                PATH=r"C:\Program Files\Git\bin",
+                MSYS2_ARG_CONV_EXCL="/mnt/user-data",
+            ),
         )
     ]
 
@@ -256,10 +261,10 @@ def test_execute_command_scopes_msys_path_conversion_exclusions_on_windows(monke
     output = LocalSandbox("t").execute_command("cat /mnt/user-data/workspace/input.txt")
 
     assert output == "ok"
-    assert calls[0][2] == {
-        "PATH": r"C:\Program Files\Git\bin",
-        "MSYS2_ARG_CONV_EXCL": "/mnt/user-data",
-    }
+    assert calls[0][2] == _expected_windows_sandbox_env(
+        PATH=r"C:\Program Files\Git\bin",
+        MSYS2_ARG_CONV_EXCL="/mnt/user-data",
+    )
 
 
 def test_execute_command_ignores_root_msys_mapping_for_host_commands_on_windows(monkeypatch):
@@ -278,7 +283,7 @@ def test_execute_command_ignores_root_msys_mapping_for_host_commands_on_windows(
     output = LocalSandbox("t").execute_command("echo hello")
 
     assert output == "ok"
-    assert calls[0][2] == {"PATH": r"C:\Program Files\Git\bin"}
+    assert calls[0][2] == _expected_windows_sandbox_env(PATH=r"C:\Program Files\Git\bin")
 
 
 def test_msys_path_conversion_exclusions_omit_blanket_patterns():
@@ -312,7 +317,7 @@ def test_execute_command_does_not_set_msys_env_for_non_msys_posix_shell_on_windo
     assert output == "ok"
     # Non-MSYS posix shell adds no MSYS_* vars; the env is the scrubbed inherited
     # environment, not None (#3861).
-    assert calls[0][2] == {"PATH": r"C:\tools"}
+    assert calls[0][2] == _expected_windows_sandbox_env(PATH=r"C:\tools")
     assert "MSYS_NO_PATHCONV" not in calls[0][2]
 
 
@@ -337,6 +342,6 @@ def test_execute_command_uses_cmd_command_mode_on_windows(monkeypatch):
         (
             [r"C:\Windows\System32\cmd.exe", "/c", "echo hello"],
             600,
-            {"PATH": r"C:\Windows"},
+            _expected_windows_sandbox_env(PATH=r"C:\Windows"),
         )
     ]

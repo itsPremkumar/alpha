@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import shutil
 import subprocess
 import sys
 import textwrap
@@ -17,50 +18,87 @@ import pytest
 from alpha.integrations import lark_broker
 from alpha.integrations.lark_broker import BrokerConfig, run_lark_cli, serve
 
-
-def _fake_lark_cli(tmp_path: Path) -> str:
-    """A stub 'lark-cli' that echoes argv, stdin, and the credential env.
-
-    Lets tests assert argv fidelity, stdin round-trip, and that the broker (not
-    the caller) controls LARKSUITE_CLI_CONFIG_DIR / DATA_DIR.
+_FAKE_LARK_CLI_SCRIPT = textwrap.dedent(
+    """\
+    import json, os, sys
+    sys.stderr.buffer.write(("ERR:" + " ".join(sys.argv[1:]) + "\\n").encode("utf-8"))
+    print(json.dumps({
+        "argv": sys.argv[1:],
+        "stdin": sys.stdin.read(),
+        "config_dir": os.environ.get("LARKSUITE_CLI_CONFIG_DIR"),
+        "data_dir": os.environ.get("LARKSUITE_CLI_DATA_DIR"),
+    }))
+    sys.exit(7 if "--boom" in sys.argv else 0)
     """
-    script = tmp_path / "fake-lark-cli"
-    script.write_text(
-        textwrap.dedent(
-            """\
-            #!/usr/bin/env python3
-            import json, os, sys
-            sys.stderr.write("ERR:" + " ".join(sys.argv[1:]) + "\\n")
-            print(json.dumps({
-                "argv": sys.argv[1:],
-                "stdin": sys.stdin.read(),
-                "config_dir": os.environ.get("LARKSUITE_CLI_CONFIG_DIR"),
-                "data_dir": os.environ.get("LARKSUITE_CLI_DATA_DIR"),
-            }))
-            sys.exit(7 if "--boom" in sys.argv else 0)
-            """
-        ),
-        encoding="utf-8",
-    )
-    script.chmod(0o755)
-    return str(script)
+).strip()
 
 
-def _config(tmp_path: Path, port: int = 0) -> BrokerConfig:
+def _fake_lark_cli() -> str:
+    """Return a cross-platform executable that runs ``_fake_lark_args``."""
+    return sys.executable
+
+
+def _fake_lark_args(*args: str) -> list[str]:
+    """Prefix the Python stub while leaving the emulated CLI argv untouched."""
+    return ["-c", _FAKE_LARK_CLI_SCRIPT, *args]
+
+
+def _native_fake_lark_cli(tmp_path: Path) -> str:
+    """Write a native stub executable for tests that exercise installed launchers."""
+    script = tmp_path / "fake-lark-cli.py"
+    script.write_text(_FAKE_LARK_CLI_SCRIPT, encoding="utf-8")
+    if os.name == "nt":
+        executable = tmp_path / "fake-lark-cli.cmd"
+        executable.write_text(
+            f'@echo off\r\n"{Path(sys.executable)}" "{script}" %*\r\n',
+            encoding="utf-8",
+        )
+    else:
+        executable = tmp_path / "fake-lark-cli"
+        executable.write_text(f"#!/usr/bin/env python3\n{_FAKE_LARK_CLI_SCRIPT}\n", encoding="utf-8")
+        executable.chmod(0o755)
+    return str(executable)
+
+
+def _config(port: int = 0) -> BrokerConfig:
     return BrokerConfig(
-        lark_cli_path=_fake_lark_cli(tmp_path),
+        lark_cli_path=_fake_lark_cli(),
         config_dir="/broker/only/config",
         data_dir="/broker/only/data",
         port=port,
     )
 
 
+def _windows_posix_sh() -> str | None:
+    candidates = [shutil.which("sh")]
+    program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
+    candidates.extend(
+        str(Path(program_files) / relative)
+        for relative in ("Git/bin/sh.exe", "Git/usr/bin/sh.exe")
+    )
+    return next((candidate for candidate in candidates if candidate and Path(candidate).is_file()), None)
+
+
+_WINDOWS_POSIX_SH = _windows_posix_sh() if os.name == "nt" else None
+requires_posix_launcher = pytest.mark.skipif(
+    os.name == "nt" and _WINDOWS_POSIX_SH is None,
+    reason="requires Git for Windows sh.exe to execute the installed POSIX launcher",
+)
+
+
+def _launcher_argv(launcher: Path, *args: str) -> list[str]:
+    if os.name != "nt":
+        return [str(launcher), *args]
+    assert _WINDOWS_POSIX_SH is not None
+    return [_WINDOWS_POSIX_SH, launcher.as_posix(), *args]
+
+
 # ── run_lark_cli (in-process, no server) ───────────────────────────────────
 
 
-def test_run_lark_cli_forwards_argv_stdin_and_credential_env(tmp_path: Path) -> None:
-    config = _config(tmp_path)
-    result = run_lark_cli(config, ["auth", "status", "--json"], b"piped-input")
+def test_run_lark_cli_forwards_argv_stdin_and_credential_env() -> None:
+    config = _config()
+    result = run_lark_cli(config, _fake_lark_args("auth", "status", "--json"), b"piped-input")
 
     assert result.exit_code == 0
     payload = json.loads(result.stdout.decode())
@@ -72,15 +110,15 @@ def test_run_lark_cli_forwards_argv_stdin_and_credential_env(tmp_path: Path) -> 
     assert result.stderr == b"ERR:auth status --json\n"
 
 
-def test_run_lark_cli_propagates_exit_code(tmp_path: Path) -> None:
-    result = run_lark_cli(_config(tmp_path), ["do", "--boom"], b"")
+def test_run_lark_cli_propagates_exit_code() -> None:
+    result = run_lark_cli(_config(), _fake_lark_args("do", "--boom"), b"")
     assert result.exit_code == 7
 
 
-def test_run_lark_cli_never_shell_interprets_args(tmp_path: Path) -> None:
+def test_run_lark_cli_never_shell_interprets_args() -> None:
     # A shell metacharacter must reach the binary as one literal arg, not run a
     # second command (shell=False, argv list).
-    result = run_lark_cli(_config(tmp_path), ["value; touch /tmp/pwned"], b"")
+    result = run_lark_cli(_config(), _fake_lark_args("value; touch /tmp/pwned"), b"")
     payload = json.loads(result.stdout.decode())
     assert payload["argv"] == ["value; touch /tmp/pwned"]
     assert not Path("/tmp/pwned").exists()
@@ -97,7 +135,13 @@ def test_run_lark_cli_missing_binary_returns_127(tmp_path: Path) -> None:
 
 @pytest.fixture
 def broker_server(tmp_path: Path):
-    server = serve(_config(tmp_path, port=0))
+    config = BrokerConfig(
+        lark_cli_path=_native_fake_lark_cli(tmp_path),
+        config_dir="/broker/only/config",
+        data_dir="/broker/only/data",
+        port=0,
+    )
+    server = serve(config)
     import threading
 
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -230,6 +274,7 @@ def test_install_shim_writes_runtime_layout(tmp_path: Path) -> None:
     assert marker == {"version": "v1.0.65", "kind": "shim"}
 
 
+@requires_posix_launcher
 def test_launcher_resolves_python_and_forwards(broker_server, tmp_path: Path) -> None:
     """The /bin/sh launcher finds python3 on PATH and execs the shim body."""
     host, port = broker_server
@@ -240,7 +285,7 @@ def test_launcher_resolves_python_and_forwards(broker_server, tmp_path: Path) ->
     # A PATH that has the python from this test runner so the launcher resolves it.
     py_dir = str(Path(sys.executable).parent)
     completed = subprocess.run(
-        [str(launcher), "do", "--boom"],
+        _launcher_argv(launcher, "do", "--boom"),
         input=b"",
         capture_output=True,
         env={
@@ -253,6 +298,7 @@ def test_launcher_resolves_python_and_forwards(broker_server, tmp_path: Path) ->
     assert b"ERR:do --boom" in completed.stderr
 
 
+@requires_posix_launcher
 def test_launcher_can_pin_interpreter_via_env(broker_server, tmp_path: Path) -> None:
     """AGENT_WORKSPACE_LARK_BROKER_PYTHON pins the interpreter for images with no python3
     on PATH (the launcher must not silently ENOEXEC)."""
@@ -262,7 +308,7 @@ def test_launcher_can_pin_interpreter_via_env(broker_server, tmp_path: Path) -> 
     launcher = dest / "bin" / "lark-cli"
 
     completed = subprocess.run(
-        [str(launcher), "ping"],
+        _launcher_argv(launcher, "ping"),
         input=b"",
         capture_output=True,
         # Deliberately no python on PATH; the pin is the only way to resolve it.
@@ -276,6 +322,7 @@ def test_launcher_can_pin_interpreter_via_env(broker_server, tmp_path: Path) -> 
     assert completed.returncode == 0
 
 
+@requires_posix_launcher
 def test_launcher_fails_loudly_without_python(tmp_path: Path) -> None:
     """With no python interpreter resolvable, the launcher exits 127 with an
     actionable message rather than an opaque ENOEXEC."""
@@ -284,7 +331,7 @@ def test_launcher_fails_loudly_without_python(tmp_path: Path) -> None:
     launcher = dest / "bin" / "lark-cli"
 
     completed = subprocess.run(
-        [str(launcher), "auth", "status"],
+        _launcher_argv(launcher, "auth", "status"),
         input=b"",
         capture_output=True,
         env={"PATH": "/nonexistent"},
@@ -318,9 +365,9 @@ def test_parse_deny_subcommands() -> None:
     assert lark_broker.parse_deny_subcommands("config show, ,") == (("config", "show"),)
 
 
-def test_denied_subcommand_is_refused_before_spawning_binary(tmp_path: Path) -> None:
+def test_denied_subcommand_is_refused_before_spawning_binary() -> None:
     config = BrokerConfig(
-        lark_cli_path=_fake_lark_cli(tmp_path),
+        lark_cli_path=_fake_lark_cli(),
         config_dir="/broker/only/config",
         data_dir="/broker/only/data",
         deny_subcommands=(("config", "show"),),
@@ -332,9 +379,9 @@ def test_denied_subcommand_is_refused_before_spawning_binary(tmp_path: Path) -> 
     assert result.stdout == b""
 
 
-def test_denied_subcommand_matches_through_leading_flags(tmp_path: Path) -> None:
+def test_denied_subcommand_matches_through_leading_flags() -> None:
     config = BrokerConfig(
-        lark_cli_path=_fake_lark_cli(tmp_path),
+        lark_cli_path=_fake_lark_cli(),
         config_dir="c",
         data_dir="d",
         deny_subcommands=(("config", "show"),),
@@ -344,14 +391,14 @@ def test_denied_subcommand_matches_through_leading_flags(tmp_path: Path) -> None
     assert result.exit_code == 126
 
 
-def test_allowed_subcommand_still_runs_with_denylist(tmp_path: Path) -> None:
+def test_allowed_subcommand_still_runs_with_denylist() -> None:
     config = BrokerConfig(
-        lark_cli_path=_fake_lark_cli(tmp_path),
+        lark_cli_path=_fake_lark_cli(),
         config_dir="c",
         data_dir="d",
         deny_subcommands=(("config", "show"),),
     )
-    result = run_lark_cli(config, ["auth", "status"], b"")
+    result = run_lark_cli(config, _fake_lark_args("auth", "status"), b"")
     assert result.exit_code == 0
     payload = json.loads(result.stdout.decode())
     assert payload["argv"] == ["auth", "status"]
