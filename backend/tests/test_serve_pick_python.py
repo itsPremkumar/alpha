@@ -5,12 +5,10 @@ python alias stubs pass Bash's own PATH lookup but cannot be exec'd through
 from __future__ import annotations
 
 import shlex
-import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
-
 from _posix_shell import posix_shell, posix_shell_env
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
