@@ -101,15 +101,25 @@ async def discover_work(payload: WorkDiscoveryRequest):
     if payload.signals is not None:
         signals = payload.signals
     else:
-        signals = [
-            {"title": "Automated security patch available for urllib3", "category": "security", "impact": 0.8, "urgency": 0.8},
-            {"title": "Memory leak reported in async task queue worker", "category": "bug", "impact": 0.9, "urgency": 0.9},
-        ]
+        # No signals supplied: never INVENT discovery signals. The previous
+        # default fabricated two findings ("Automated security patch available
+        # for urllib3", "Memory leak reported in async task queue worker")
+        # with impact/urgency scores — indistinguishable from real findings at
+        # the call site, and they became real work items. Discover nothing and
+        # say why.
+        signals = []
+
     items, should_sleep = disc_engine.discover_from_sources(signals)
     return {
         "org_id": target_id,
         "discovered_items": [i.model_dump() for i in items],
         "workers_should_sleep": should_sleep,
+        "signals_source": "caller" if payload.signals is not None else "none",
+        "disclosure": (
+            None
+            if payload.signals is not None
+            else "No discovery signals were supplied, so no work was discovered; this endpoint does not invent signals."
+        ),
     }
 
 

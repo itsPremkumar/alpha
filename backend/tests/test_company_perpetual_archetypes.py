@@ -130,12 +130,18 @@ def test_continuous_self_improvement_and_evolution_journal():
     state = engine.bootstrap_company(prompt="Autonomous AI collective", archetype=OrgArchetype.OPEN_SOURCE)
     org_id = state.org_id
 
-    # Cycle 1
+    # Cycle 1 — the retrospective no longer invents performance. No counts
+    # were supplied, no playbook synthesis ran, and no profile was
+    # calibrated, so the record says exactly that. DISCLOSED INVERSION: the
+    # old pins here required >= 2 invented playbooks and >= 2 "calibrated"
+    # bots, i.e. they certified fabricated output.
     rec1 = engine.run_retrospective(org_id)
     assert rec1.cycle_number == 1
-    assert len(rec1.insights) >= 2
-    assert len(rec1.improved_playbooks) >= 2
-    assert len(rec1.calibrated_bots) >= 2
+    assert any("not measured" in insight for insight in rec1.insights)
+    assert any("No playbook change or bot-profile calibration" in insight for insight in rec1.insights)
+    assert rec1.improved_playbooks == []
+    assert rec1.calibrated_bots == []
+    assert "not yet measured" in rec1.kpi_delta_summary
 
     # Cycle 2
     rec2 = engine.run_retrospective(org_id)
