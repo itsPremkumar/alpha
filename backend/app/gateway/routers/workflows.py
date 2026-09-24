@@ -2,19 +2,24 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from alpha.config.runtime_paths import runtime_home
 from alpha.orchestrator.executors import bind_default_executors
 from alpha.orchestrator.loop import ExecutionKernel, TurnContext, run_turn
 from alpha.orchestrator.replay import replay_run
+from alpha.workflow.event_log import DurableEventLog, DurableEventLogError
+from alpha.workflow.events import WorkflowEvent, get_event_dispatcher
 from alpha.workflow.models import (
     WorkflowDefinition,
     WorkflowGraph,
     WorkflowPatch,
 )
+from alpha.workflow.plan_graph import PlanGraphError, PlanGraphStore, PlanVersionConflict
 from alpha.workflow.runtime import DynamicWorkflowEngine
 from app.gateway.authz import require_permission
 
@@ -32,6 +37,29 @@ _GLOBAL_ENGINE = DynamicWorkflowEngine()
 # fabricated here.
 bind_default_executors()
 _KERNEL = ExecutionKernel(engine=_GLOBAL_ENGINE)
+
+# W-N1 durability: the append-only event log is attached to the GLOBAL event
+# dispatcher, so every event the engine and the loop emit is journaled without
+# touching runtime code (22+ emit sites). The store root is resolved at CALL
+# time from ``runtime_home()`` and cached per root, so a test (or a launcher)
+# that redirects ``AGENT_WORKSPACE_HOME`` gets its own store and can never
+# write into the real workspace. A sink failure is counted and disclosed by
+# the dispatcher (see ``GET /api/workflows/durability``), never swallowed.
+_DURABLE_LOGS: dict[str, DurableEventLog] = {}
+
+
+def _durable_event_sink(event: WorkflowEvent) -> None:
+    root = runtime_home() / "workflow_store"
+    key = str(root)
+    log = _DURABLE_LOGS.get(key)
+    if log is None:
+        log = DurableEventLog(root)
+        _DURABLE_LOGS[key] = log
+    log.append(event)
+
+
+get_event_dispatcher().attach_durable_sink(_durable_event_sink)
+_PLAN_STORE = PlanGraphStore()
 
 
 def get_workflow_engine() -> DynamicWorkflowEngine:
@@ -282,3 +310,170 @@ async def replay_workflow_run(run_id: str, request: Request) -> dict[str, Any]:
         "mismatches": mismatches,
         "replayed": {field: getattr(replayed, field) for field in _REPLAY_COVERED_FIELDS},
     }
+
+
+# ---------------------------------------------------------------------------
+# W-N1 durability surface (additive; every disk touch is offloaded to a thread)
+# ---------------------------------------------------------------------------
+
+
+def _store() -> DurableEventLog:
+    """The durable store for the CURRENT runtime home (env-resolved per call)."""
+    root = runtime_home() / "workflow_store"
+    key = str(root)
+    log = _DURABLE_LOGS.get(key)
+    if log is None:
+        log = DurableEventLog(root)
+        _DURABLE_LOGS[key] = log
+    return log
+
+
+@router.get("/system/durability")
+@require_permission("runs", "read")
+async def workflow_durability_status(request: Request) -> dict[str, Any]:
+    """What is journaled, where, and what failed — never a green light by default."""
+
+    def _collect() -> dict[str, Any]:
+        log = _store()
+        writable, detail = log.probe_writable()
+        runs = log.list_runs()
+        return {
+            "store_dir": str(log.root),
+            "writable": writable,
+            "writable_detail": detail,
+            "persisted_runs": runs,
+            "persisted_run_count": len(runs),
+        }
+
+    return {
+        "dispatcher": get_event_dispatcher().durable_status(),
+        "store": await asyncio.to_thread(_collect),
+    }
+
+
+@router.get("/runs/{run_id}/events/durable")
+@require_permission("runs", "read")
+async def get_durable_workflow_events(run_id: str, request: Request) -> dict[str, Any]:
+    """The append-only JSONL log for a run, plus any corrupt-tail disclosure."""
+
+    def _read() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        records, disclosures = _store().records_for(run_id)
+        return [record.model_dump(mode="json") for record in records], disclosures
+
+    records, disclosures = await asyncio.to_thread(_read)
+    return {"run_id": run_id, "count": len(records), "events": records, "corrupt_tail": disclosures}
+
+
+@router.post("/runs/{run_id}/project")
+@require_permission("runs", "create")
+async def project_workflow_run(run_id: str, request: Request) -> dict[str, Any]:
+    """Materialize the live run's projection so a fresh process can hydrate it."""
+    engine = get_workflow_engine()
+    live = engine.get_run(run_id)
+    if not live:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
+    definition = engine.get_definition(live.workflow_id)
+    prefix = f"{live.workflow_id}:v"
+    graphs = {key: graph for key, graph in engine.graphs.items() if key.startswith(prefix)}
+
+    def _write() -> dict[str, Any]:
+        log = _store()
+        records, disclosures = log.records_for(run_id)
+        if disclosures:
+            raise DurableEventLogError(
+                f"event log for run {run_id} has a corrupt tail at line {disclosures[0]['line_number']}: {disclosures[0]['error']}"
+            )
+        snapshot = log.project(
+            run=live,
+            definition=definition,
+            graphs=graphs,
+            last_event=records[-1] if records else None,
+            event_count=len(records),
+        )
+        return {
+            "run_id": run_id,
+            "status": live.status.value,
+            "last_seq": snapshot.last_seq,
+            "event_count": snapshot.event_count,
+            "graph_versions": sorted(snapshot.graphs),
+            "definition_recorded": definition is not None,
+        }
+
+    try:
+        return await asyncio.to_thread(_write)
+    except DurableEventLogError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/hydrate")
+@require_permission("runs", "create")
+async def hydrate_workflow_engine(request: Request) -> dict[str, Any]:
+    """Install persisted runs into THIS process's engine; report every refusal.
+
+    The response is the honest ``HydrationReport``: ``degraded`` names the runs
+    that were corrupt, stale, or missing pieces instead of pretending the
+    engine is whole.
+    """
+    engine = get_workflow_engine()
+
+    def _hydrate() -> dict[str, Any]:
+        return _store().hydrate(engine).model_dump(mode="json")
+
+    return await asyncio.to_thread(_hydrate)
+
+
+@router.get("/{workflow_id}/plans")
+@require_permission("runs", "read")
+async def list_workflow_plans(workflow_id: str, request: Request) -> dict[str, Any]:
+    """Durable graph-revision history for a workflow (plan-graph store)."""
+
+    def _history() -> dict[str, Any]:
+        store = PlanGraphStore(runtime_home() / "workflow_store" / "plans")
+        history = store.history(workflow_id)
+        return {
+            "workflow_id": workflow_id,
+            "versions": [record.version for record in history],
+            "count": len(history),
+            "latest_source": history[-1].source if history else None,
+        }
+
+    try:
+        return await asyncio.to_thread(_history)
+    except PlanGraphError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/{workflow_id}/plans")
+@require_permission("runs", "create")
+async def record_workflow_plan(workflow_id: str, request: Request) -> dict[str, Any]:
+    """Record the engine's current graph for this workflow as a new revision.
+
+    Refuses when that version already exists (``PlanVersionConflict``) — history
+    is append-only, never rewritten in place.
+    """
+    engine = get_workflow_engine()
+    definition = engine.get_definition(workflow_id)
+    if not definition:
+        raise HTTPException(status_code=404, detail=f"Workflow '{workflow_id}' not found.")
+    graph = engine.graphs.get(f"{workflow_id}:v{definition.graph.version}", definition.graph)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    requested_source = str(body.get("source", "manual")) if isinstance(body, dict) else "manual"
+    source = requested_source if requested_source in {"register", "patch", "replay", "hydration", "manual"} else "manual"
+    note = str(body.get("note", "")) if isinstance(body, dict) else ""
+
+    def _record() -> dict[str, Any]:
+        store = PlanGraphStore(runtime_home() / "workflow_store" / "plans")
+        record = store.record_revision(workflow_id, graph, source=source, note=note)
+        return {"workflow_id": workflow_id, "version": record.version, "source": record.source, "created_at": record.created_at}
+
+    try:
+        return await asyncio.to_thread(_record)
+    except PlanVersionConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except PlanGraphError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
