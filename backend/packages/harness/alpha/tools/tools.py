@@ -129,6 +129,7 @@ from alpha.tools.builtins import (
     verify_command_approval,
     view_image_tool,
     visual_verify_artifact,
+    verify_web_ui_visual_regression,
     manage_reflexion_memory,
     workflow_dag_manage,
     synthesize_reusable_skill,
@@ -143,6 +144,12 @@ from alpha.tools.builtins import (
     record_trajectory_outcome,
     deep_web_search,
     keyless_web_search,
+    # Free local-first OS computer use (Module C):
+    desktop_screenshot_tool,
+    desktop_inspect_ui_tree_tool,
+    desktop_mouse_action_tool,
+    desktop_keyboard_action_tool,
+    desktop_window_manage_tool,
 )
 from alpha.tools.mcp_metadata import tag_mcp_tool
 from alpha.tools.sync import make_sync_tool_wrapper
@@ -278,6 +285,12 @@ BUILTIN_TOOLS = [
     generate_curriculum_plan,
     create_workflow_checkpoint,
     visual_verify_artifact,
+    # Structural visual-regression diff over parsed accessibility trees
+    # (real element-parity math in alpha.verification.visual_e2e_engine,
+    # covered by tests/test_visual_e2e_engine.py). Defined in
+    # code_agentic_core but never exported or registered until now, which
+    # made it unreachable.
+    verify_web_ui_visual_regression,
     manage_reflexion_memory,
     compile_problem_model,
     # SOTA Frontier Agentic Software Engineering Tools:
@@ -304,6 +317,13 @@ BUILTIN_TOOLS = [
     # names the real package instead of fabricating results.
     keyless_web_search,
     deep_web_search,
+    # Free local-first OS computer use & laptop automation (Module C):
+    # zero-token accessibility grounding + sentinel-guarded desktop input.
+    desktop_screenshot_tool,
+    desktop_inspect_ui_tree_tool,
+    desktop_mouse_action_tool,
+    desktop_keyboard_action_tool,
+    desktop_window_manage_tool,
 ]
 
 

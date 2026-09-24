@@ -49,6 +49,16 @@ ALLOWED_ORPHANS: dict[str, str] = {
     # RSI Wave-3 C2a evidence bundle: provenance store read/written by C2c's
     # promotion.decide() composition at the same serialization point.
     "alpha.rsi.evidence_bundle": "RSI Wave-3 C2a evidence bundle; wired by C2c promotion.py at the wave serialization point",
+    # Honesty-audit wave-2 deletions (F8/F9): the ONLY production consumers of
+    # these engines were two unreachable fake tools — run_mutation_testing_audit
+    # (identity-lambda "test runner") and run_speculative_synthesis_tournament
+    # (string-length-as-test-results bake-off) — deleted from
+    # code_agentic_core.py because they were unregistered and fabricated
+    # results. The engines themselves are honest, test-covered libraries
+    # (tests/test_mutation_fuzzer.py, tests/test_speculative_tournament.py);
+    # production wiring lands only with a genuine test-runner seam.
+    "alpha.testing.mutation_fuzzer": "audit F8: honest mutation engine; its only consumer was the deleted fake run_mutation_testing_audit tool — dormant until a real test-runner seam wires it",
+    "alpha.synthesis.speculative_tournament": "audit F9: honest speculative-synthesis engine; its only consumer was the deleted fabricated run_speculative_synthesis_tournament tool — dormant until wired honestly",
 }
 
 # Standalone ``python -m <module>`` entry points. Nothing imports these by

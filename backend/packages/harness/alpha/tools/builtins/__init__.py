@@ -41,6 +41,7 @@ from .code_agentic_core import (
     auto_test_and_repair,
     generate_repo_map,
     manage_code_checkpoint,
+    verify_web_ui_visual_regression,
 )
 from .code_mode_tool import code_mode_tool
 from .cognitive_compiler_tool import compile_cognitive_plan
@@ -162,6 +163,16 @@ from .contrastive_trajectory_replay_tool import (
 from .deep_web_search_tool import deep_web_search
 from .keyless_web_search_tool import keyless_web_search
 
+# Free local-first OS computer use & laptop automation (Module C): guarded
+# desktop screenshot / UI-tree / mouse / keyboard / window tools.
+from .os_computer_tool import (
+    desktop_inspect_ui_tree_tool,
+    desktop_keyboard_action_tool,
+    desktop_mouse_action_tool,
+    desktop_screenshot_tool,
+    desktop_window_manage_tool,
+)
+
 __all__ = [
     "setup_agent",
     "update_agent",
@@ -276,6 +287,7 @@ __all__ = [
     "auto_test_and_repair",
     "manage_code_checkpoint",
     "visual_verify_artifact",
+    "verify_web_ui_visual_regression",
     "manage_reflexion_memory",
     "compile_problem_model",
     "execute_slash_command_tool",
@@ -297,4 +309,9 @@ __all__ = [
     "inspect_deep_agent_telemetry",
     "keyless_web_search",
     "deep_web_search",
+    "desktop_screenshot_tool",
+    "desktop_inspect_ui_tree_tool",
+    "desktop_mouse_action_tool",
+    "desktop_keyboard_action_tool",
+    "desktop_window_manage_tool",
 ]

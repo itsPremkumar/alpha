@@ -97,6 +97,44 @@ class TestVisualVerificationTool:
         assert res["checks"]["valid_svg"] is True
         assert res["checks"]["viewbox_defined"] is True
 
+    def test_verify_unsupported_format_is_not_applicable(self, tmp_path: Path):
+        """A non-visual file must never score 100/PASS from a mere non-empty check."""
+        txt_file = tmp_path / "notes.txt"
+        txt_file.write_text("some notes that are definitely non-empty", encoding="utf-8")
+        res_raw = visual_verify_artifact.invoke({"artifact_path": str(txt_file)})
+        res = json.loads(res_raw)
+        assert res["status"] == "NOT_APPLICABLE"
+        assert res["score"] is None
+        assert res["passed"] is False
+        assert any("NOT_APPLICABLE" in w for w in res["warnings"])
+
+    def test_verify_missing_expected_elements_blocks_pass(self, tmp_path: Path):
+        """Missing expected_elements must fail `passed` even when the score is high."""
+        html_file = tmp_path / "page.html"
+        html_file.write_text(
+            """<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>.x { color: red; }</style>
+</head>
+<body>
+  <div id="main-content">hello</div>
+</body>
+</html>""",
+            encoding="utf-8"
+        )
+        res_raw = visual_verify_artifact.invoke({
+            "artifact_path": str(html_file),
+            "expected_elements": ["main-content", "sidebar-drawer"],
+        })
+        res = json.loads(res_raw)
+        assert res["checks"]["expected_elements_present"] is False
+        assert res["passed"] is False
+        assert res["status"] == "REQUIRES_ATTENTION"
+        assert res["blocking_failures"]
+        assert any("Missing expected UI elements" in w for w in res["warnings"])
+
 
 class TestReflexionMemoryEngine:
     def test_record_and_query_reflections(self, tmp_path: Path):
