@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-09-23T20:34:52Z",
+ "generated_at": "2026-09-24T10:00:53Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -844,6 +844,14 @@
    "state": "wired"
   },
   {
+   "id": "verify_web_ui_visual_regression",
+   "module": "alpha.tools.builtins.code_agentic_core",
+   "symbol": "verify_web_ui_visual_regression",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
    "id": "manage_reflexion_memory",
    "module": "alpha.tools.builtins.reflexion_tool",
    "symbol": "manage_reflexion_memory",
@@ -967,6 +975,46 @@
    "id": "deep_web_search",
    "module": "alpha.tools.builtins.deep_web_search_tool",
    "symbol": "deep_web_search",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "desktop_screenshot_tool",
+   "module": "alpha.tools.builtins.os_computer_tool",
+   "symbol": "desktop_screenshot_tool",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "desktop_inspect_ui_tree_tool",
+   "module": "alpha.tools.builtins.os_computer_tool",
+   "symbol": "desktop_inspect_ui_tree_tool",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "desktop_mouse_action_tool",
+   "module": "alpha.tools.builtins.os_computer_tool",
+   "symbol": "desktop_mouse_action_tool",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "desktop_keyboard_action_tool",
+   "module": "alpha.tools.builtins.os_computer_tool",
+   "symbol": "desktop_keyboard_action_tool",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "desktop_window_manage_tool",
+   "module": "alpha.tools.builtins.os_computer_tool",
+   "symbol": "desktop_window_manage_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
    "state": "wired"

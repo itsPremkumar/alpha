@@ -210,6 +210,30 @@ CAPABILITY_CATALOG: dict[str, CapabilitySpec] = {
         description="Autonomous Bot cloning, specialist forking, and generational breeding engine.",
         kind="engine",
     ),
+    "intent_goal_engine": CapabilitySpec(
+        module="alpha.orchestration.intent",
+        target="IntentGoalEngine",
+        description="Universal prompt perception, slash-command auto-resolution & goal decomposition engine.",
+        kind="engine",
+    ),
+    "system1_reflex": CapabilitySpec(
+        module="alpha.system1.engine",
+        target="System1Engine",
+        description="Dual-process System 1 fast reflex decision harness (Jev cloud + local free CPU classifier).",
+        kind="engine",
+    ),
+    "os_computer_use": CapabilitySpec(
+        module="alpha.computer_use",
+        target="LaptopController",
+        description="Free local-first OS computer use: accessibility-tree grounding, guarded input dispatch, screenshots, sentinel safety.",
+        kind="engine",
+    ),
+    "durable_workflow_state": CapabilitySpec(
+        module="alpha.workflow.event_log",
+        target="DurableEventLog",
+        description="Append-only durable event log, run projections and graph-revision history for the DWE (kill-and-resume hydration).",
+        kind="engine",
+    ),
 }
 
 
