@@ -234,6 +234,12 @@ CAPABILITY_CATALOG: dict[str, CapabilitySpec] = {
         description="Append-only durable event log, run projections and graph-revision history for the DWE (kill-and-resume hydration).",
         kind="engine",
     ),
+    "workflow_registry": CapabilitySpec(
+        module="alpha.workflow.registry",
+        target="WorkflowRegistry",
+        description="Read-only discovery registries (capabilities, tools, skills, MCP servers, memory) behind one list/describe/health plane for dynamic-workflow planning.",
+        kind="utility",
+    ),
 }
 
 
