@@ -351,7 +351,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
         try:
             from app.gateway.services import launch_scheduled_thread_run
-            from app.scheduler import ScheduledTaskService
+            from app.scheduler import ScheduledTaskService, default_job_memory_store
 
             if getattr(app.state, "scheduled_task_repo", None) is not None and getattr(app.state, "scheduled_task_run_repo", None) is not None:
                 scheduled_task_service = ScheduledTaskService(
@@ -364,6 +364,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                     queue_timeout_seconds=startup_config.scheduler.queue_timeout_seconds,
                     multi_instance=startup_config.scheduler.multi_instance,
                     run_lease_grace_seconds=startup_config.run_ownership.grace_seconds,
+                    job_memory=default_job_memory_store(),
                 )
                 app.state.scheduled_task_service = scheduled_task_service
                 if startup_config.scheduler.enabled:
