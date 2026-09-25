@@ -56,9 +56,11 @@ returns `None` when System One is disabled, unreachable, misconfigured, or below
 `min_confidence`. `None` never means "false" — it means "use the existing path".
 
 Failure modes that degrade instead of breaking: disabled, missing key, 401/403, 429,
-529, 5xx, timeout, transport error, non-JSON body, unparseable answer, low confidence.
+529, 5xx, timeout, transport error, non-JSON body, malformed numeric/provider data,
+unparseable answer, low confidence, or an exhausted request/deadline budget.
 A circuit breaker stops callouts after `circuit_breaker_threshold` consecutive
-failures and probes again after the cooldown.
+failures and admits only one half-open probe after the cooldown. Retry-After values
+are bounded, and the whole retry sequence shares the per-call deadline.
 
 ## Where it is used
 
@@ -233,10 +235,10 @@ references, a 255-option choice, and multilingual input.
 cd backend && python -m pytest tests/test_system_one.py tests/test_system_one_variety.py -q
 ```
 
-68 hosted-provider tests in the two legacy files, plus dedicated local Laya and setup
-regressions:
+71 hosted-provider tests in the two legacy files, plus dedicated local Laya, partition, and
+setup regressions:
 
-- **`test_system_one.py`** (34) — the *fallback* contract: config, payload shapes, both
+- **`test_system_one.py`** (37) — the *fallback* contract: config, payload shapes, both
   provider vocabularies, confidence thresholds, every failure mode (disabled, missing
   key, 401/403, 429, 5xx, timeout, transport error, non-JSON), retries, circuit
   breaker, and each call site degrading correctly.
@@ -247,6 +249,8 @@ regressions:
   confidence filtering, and each integration site being driven by a Jev verdict.
 - **`test_system_one_laya.py`** — local endpoint/vocabulary/auth, keyless operation,
   preflight budget abstention, and provider-separated calibration.
+- **`test_system_one_partition.py`** — deterministic partition/tournament budgets,
+  state projection, and the 255-target browser regression.
 - **`test_system_one_laya_setup.py`** — offline checks for the isolated setup helper;
   it never downloads weights or starts a server.
 

@@ -46,10 +46,9 @@ invented):
 
 Disclosed limitations (reported, not silently papered over):
 
-- node-level ``output`` and graph-node ``status`` are NOT in the DWE event
-  payloads, so they cannot be replayed from this log alone: the replayed graph
-  keeps the caller's definition snapshot for those two fields (``evidence`` and
-  ``iteration_counts`` now DO fold from the payloads). Runner side-writes into
+- node-level ``output`` is now folded when the corresponding
+  ``node_completed``/``node_iteration`` event carries it; older logs without
+  that payload keep the caller's definition snapshot. Runner side-writes into
   ``run.state`` between start and completion are likewise not journaled (the
   terminal ``workflow_completed`` state snapshot covers the final state dict).
 - ``run.history`` / ``run.waiting_nodes`` live bookkeeping is not folded (the
@@ -112,6 +111,15 @@ def _fold_evidence_onto_graph(target_engine: DynamicWorkflowEngine, run: Workflo
     if graph is None or not isinstance(nid, str) or nid not in graph.nodes or not isinstance(evidence, list):
         return
     graph.nodes[nid].evidence = list(evidence)
+
+
+def _fold_node_output(target_engine: DynamicWorkflowEngine, run: WorkflowRun, payload: dict[str, Any]) -> None:
+    """Restore a node output only when the event actually carried one."""
+    graph = target_engine.graphs.get(f"{run.workflow_id}:v{run.graph_version}")
+    nid = payload.get("node_id")
+    if graph is None or not isinstance(nid, str) or nid not in graph.nodes or "output" not in payload:
+        return
+    graph.nodes[nid].output = deepcopy(payload.get("output"))
 
 
 def _fold_iteration_counts(run: WorkflowRun, payload: dict[str, Any]) -> None:
@@ -183,6 +191,13 @@ def replay_run(
 
     target_engine = engine if engine is not None else DynamicWorkflowEngine()
     replayed_definition = definition.model_copy(deep=True)
+    # ``definition.graph`` is a live compatibility projection and can point at
+    # the newest patched revision.  Replay starts from the immutable authored
+    # base captured at registration, then folds each recorded patch forward.
+    base_graph = getattr(definition, "_base_graph", None)
+    if base_graph is not None:
+        replayed_definition.graph = deepcopy(base_graph)
+        replayed_definition._base_graph = deepcopy(base_graph)
     target_engine.register_definition(replayed_definition)
 
     run_id = started.workflow_run_id
@@ -240,6 +255,7 @@ def replay_run(
                     if key not in produced:
                         produced.append(key)
             _fold_evidence_onto_graph(target_engine, run, payload)
+            _fold_node_output(target_engine, run, payload)
             _fold_iteration_counts(run, payload)
 
         elif kind == "node_iteration":
@@ -251,6 +267,7 @@ def replay_run(
                 continue
             run.node_states[nid] = NodeStatus.READY
             _fold_evidence_onto_graph(target_engine, run, payload)
+            _fold_node_output(target_engine, run, payload)
             _fold_iteration_counts(run, payload)
 
         elif kind == "node_failed":

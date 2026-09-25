@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
+import React, { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { ThreadSidebar } from "@/components/ThreadSidebar";
 import { MessageItem } from "@/components/MessageItem";
 import { Composer } from "@/components/Composer";
@@ -14,8 +14,7 @@ import type { StreamMessage } from "@/lib/sse-reducer";
 import { chatRequestErrorMessage, ChatRequestFailure } from "@/lib/chat-request-error";
 import { branding } from "@/lib/branding";
 import { BrandLogo } from "@/components/BrandLogo";
-import { LionPet } from "@/components/LionPet";
-import type { LionPetState } from "@/lib/lion-pet";
+import { LionPet, useLionPetActivity } from "@/components/lion-pet";
 import { WorkspaceVitals } from "@/components/WorkspaceVitals";
 import { fetchBots, touchBot } from "@/lib/bots";
 import { fetchFeatures, fetchOpsStatus, FeatureFlags } from "@/lib/workspace";
@@ -139,35 +138,10 @@ export default function ChatView() {
   // Free-model catalog status (dynamic, auto-refreshed server-side TTL 300s).
   const [freeNote, setFreeNote] = useState<string | null>(null);
   const [freeRefreshing, setFreeRefreshing] = useState(false);
-  const [lionState, setLionState] = useState<LionPetState>("idle");
-  const [lionMessage, setLionMessage] = useState<string | null>(null);
-  const lionResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const updateLion = useCallback((nextState: LionPetState, message: string, resetAfterMs = 0) => {
-    setLionState(nextState);
-    setLionMessage(message);
-    if (lionResetTimerRef.current) {
-      clearTimeout(lionResetTimerRef.current);
-      lionResetTimerRef.current = null;
-    }
-    if (resetAfterMs > 0) {
-      lionResetTimerRef.current = setTimeout(() => {
-        setLionState("idle");
-        setLionMessage(null);
-        lionResetTimerRef.current = null;
-      }, resetAfterMs);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!isLoading && messages.some((message) => Boolean(message.approvalRequest))) {
-      updateLion("waiting", "I found a decision point for you.");
-    }
-  }, [isLoading, messages, updateLion]);
-
-  useEffect(() => () => {
-    if (lionResetTimerRef.current) clearTimeout(lionResetTimerRef.current);
-  }, []);
+  const { state: lionState, message: lionMessage, update: updateLion } = useLionPetActivity({
+    isLoading,
+    hasApproval: messages.some((message) => Boolean(message.approvalRequest)),
+  });
 
   const flash = (msg: string) => {
     setNotice(msg);
@@ -1592,7 +1566,6 @@ export default function ChatView() {
       <LionPet
         state={lionState}
         message={lionMessage || undefined}
-        threadId={activeThreadId}
         onOpenChat={() => setView("chat")}
       />
 

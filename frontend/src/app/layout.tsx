@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { branding } from "@/lib/branding";
 import { ThemeController } from "@/components/ThemeController";
 import "./globals.css";
+import "@/components/lion-pet/lion-pet.css";
 
 export const metadata: Metadata = {
   applicationName: branding.name,

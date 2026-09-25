@@ -56,14 +56,27 @@ and the honesty inversions (a degraded read must not look like an empty one).
 
 ## Lion companion contract
 
-The lion companion is presentation-only. `frontend/src/components/LionPet.tsx`
-owns the in-app fixed overlay and bounded local settings; `frontend/src/lib/lion-pet.ts`
-owns state names, persistence normalization, and message sanitization. The optional
-Electron companion in `electron/pet.html` is a transparent always-on-top window,
-not a second agent runtime. The main process accepts companion state only from
-trusted local windows, clamps it to the known state set and a short message, and
-never forwards prompts, responses, thread IDs, tool output, or credentials.
-Closing the main desktop window closes the companion and follows normal service
-shutdown. Regression coverage lives in `frontend/src/lib/lion-pet.test.mjs` and
+The lion companion is presentation-only and feature-isolated under
+`frontend/src/components/lion-pet/`: `LionPet.tsx` owns rendering and
+interactions, `lion-pet-model.ts` owns looks/actions/settings and bounded
+message sanitization, `useLionPetActivity.ts` is the lifecycle adapter,
+walk/run travel is bounded to the visible viewport, and `lion-pet.css` owns
+the isolated styles. `ChatView.tsx` consumes only the
+adapter; compatibility files at `frontend/src/components/LionPet.tsx` and
+`frontend/src/lib/lion-pet.ts` are facades and must not become implementation
+locations.
+
+The optional Electron companion in `electron/pet.html` is a transparent
+always-on-top window, not a second agent runtime. Native window lifecycle and
+state sanitization live in `electron/lib/lion-pet-window.js`; `electron/main.js`
+only wires that controller to application lifecycle and IPC. The main process
+accepts companion state only from trusted local windows, clamps it to the known
+state/action/skin sets and a short message, and never forwards prompts,
+responses, thread IDs, tool output, or credentials. The controller also owns
+bounded work-area motion for native walk/run actions. The in-app pet does not put
+thread IDs in its DOM or pass them through the native bridge. Closing the main
+desktop window closes the companion and follows normal service shutdown.
+
+Regression coverage lives in `frontend/src/lib/lion-pet.test.mjs` and
 `electron/tests/lion-pet.test.mjs`; the user-facing contract is documented in
 `docs/LION_COMPANION.md`.

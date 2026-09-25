@@ -184,6 +184,11 @@ class DynamicWorkflowEngine:
             if existing.owner_id != definition.owner_id or existing.graph != definition.graph:
                 raise ValueError(f"workflow definition '{definition.id}' already exists")
             return
+        # Keep an immutable authored base separately from the compatibility
+        # graph projection.  Runtime publication may advance definition.graph
+        # to a patched revision; replay must start from the authored base to
+        # re-apply the append-only patch events honestly.
+        definition._base_graph = deepcopy(definition.graph)
         self.definitions[definition.id] = definition
         self.graphs[f"{definition.id}:v{definition.graph.version}"] = definition.graph
 
@@ -426,6 +431,11 @@ class DynamicWorkflowEngine:
             )
             new_graph, validation = self.patch_engine.apply(run, graph, patch)
             if validation.allowed:
+                # The deadlock recovery path bypasses ``apply_patch`` so it
+                # must install the private per-run graph explicitly.  Updating
+                # only the public compatibility map would let the final
+                # publication overwrite v2 with the stale v1 nodes.
+                self._run_graphs[run.run_id] = new_graph
                 self.graphs[f"{run.workflow_id}:v{new_graph.version}"] = new_graph
                 # Same PENDING seeding apply_patch does, so the recovery node is schedulable.
                 for nid, node in new_graph.nodes.items():
@@ -604,9 +614,11 @@ class DynamicWorkflowEngine:
 
         Retries are opt-in through ``RetryPolicy``.  A failure is retried only
         when its measured text matches an allowed marker (or ``*``), never on a
-        blanket assumption that every error is transient.  The final result is
-        returned unchanged so the normal evidence/failure gates remain the
-        single completion authority.
+        blanket assumption that every error is transient.  The final typed
+        result is returned unchanged so the normal evidence/failure gates
+        remain the single completion authority; a direct non-retryable runner
+        exception is re-raised to the outer engine boundary so its real reason
+        is not wrapped a second time.
         """
         if runner is None:
             return {"status": "failed", "output": _no_runner_reason(node), "evidence": "", "tokens_used": 0}
@@ -615,9 +627,13 @@ class DynamicWorkflowEngine:
         attempts = max(1, min(int(policy.max_attempts), 20))
         result: dict[str, Any] = {}
         for attempt in range(1, attempts + 1):
+            raised_exception: Exception | None = None
             try:
                 raw = runner(node, run)
-            except Exception as exc:  # noqa: BLE001 - convert to a typed result
+            except Exception as exc:  # noqa: BLE001 - preserve the real failure boundary
+                raised_exception = exc
+                if attempt >= attempts:
+                    raise
                 raw = {
                     "status": "failed",
                     "output": f"{type(exc).__name__}: {exc}",
@@ -639,6 +655,14 @@ class DynamicWorkflowEngine:
             markers = [str(marker).lower() for marker in policy.retry_on_errors]
             retryable = "*" in markers or "all" in markers or any(marker and marker in text for marker in markers)
             if not retryable:
+                # A direct runner exception is already the authoritative
+                # failure.  Let the outer engine boundary journal its exact
+                # ``str(exc)`` rather than wrapping it as a second generic
+                # "runner reported failure" error.  Typed failed results (for
+                # example ExecutorRegistry results carrying a traceback) still
+                # flow through the normal wrapper below.
+                if raised_exception is not None:
+                    raise raised_exception
                 return result
 
             delay = 0.0

@@ -45,27 +45,70 @@ logger = logging.getLogger(__name__)
 SITE = "browser"
 
 
-def _laya_element_state(element: Element) -> dict[str, Any]:
-    """Return only decision-relevant element fields for local Laya requests."""
-    return {
+def _public_element_state(
+    element: Element,
+    *,
+    option_ids: set[str] | None = None,
+    max_options: int | None = None,
+) -> dict[str, Any]:
+    """Return model-safe element fields, never execution handles.
+
+    ``Element.to_dict()`` is intentionally executor-facing and retains
+    selectors/coordinates for the action layer. Never pass that object to a
+    decision model or serialize a decision with it: the model must choose an
+    observed index, while the executor resolves that index later.
+    """
+    options = element.options
+    if option_ids is not None:
+        options = [option for option in options if str(option.get("index")) in option_ids]
+    elif max_options is not None:
+        options = options[:max_options]
+    projected: dict[str, Any] = {
         "index": element.index,
         "role": element.role,
         "label": element.label,
         "value": element.value,
         "operations": list(element.operations),
-        "options": [{"index": option.get("index"), "label": option.get("label"), "value": option.get("value"), "selected": option.get("selected", False)} for option in element.options],
+        "options": [
+            {
+                "index": option.get("index"),
+                "label": option.get("label"),
+                "value": option.get("value"),
+                "selected": option.get("selected", False),
+            }
+            for option in options
+        ],
         "checked": element.checked,
         "disabled": element.disabled,
         "expanded": element.expanded,
         "secret": element.secret,
     }
+    if len(options) < len(element.options):
+        projected["options_omitted"] = len(element.options) - len(options)
+    return projected
+
+
+def _laya_element_state(
+    element: Element,
+    *,
+    option_ids: set[str] | None = None,
+    max_options: int = 20,
+) -> dict[str, Any]:
+    """Return bounded, decision-relevant element fields for local Laya requests."""
+    return _public_element_state(element, option_ids=option_ids, max_options=max_options)
 
 
 def _laya_projection_for_ids(state: dict[str, Any], elements: list[Element], option_ids: list[str]) -> dict[str, Any]:
-    """Keep only elements represented by a target partition, including select options."""
+    """Keep only elements and select options represented by a target partition."""
     base_ids = {option_id.split(":", 1)[0] for option_id in option_ids}
     projected = dict(state)
-    projected["elements"] = [_laya_element_state(element) for element in elements if element.index in base_ids]
+    projected_elements: list[dict[str, Any]] = []
+    for element in elements:
+        if element.index not in base_ids:
+            continue
+        element_option_ids = {option_id for option_id in option_ids if option_id.startswith(f"{element.index}:")}
+        projected_elements.append(_laya_element_state(element, option_ids=element_option_ids or None))
+    projected["elements"] = projected_elements
     return projected
 
 
@@ -153,7 +196,7 @@ class BrowserDecision:
         return {
             "operation": self.operation,
             "target": self.target,
-            "element": self.element.to_dict() if self.element else None,
+            "element": _public_element_state(self.element) if self.element else None,
             "confidence": round(self.confidence, 4),
             "target_confidence": None if self.target_confidence is None else round(self.target_confidence, 4),
             "operation_probabilities": {k: round(v, 4) for k, v in self.operation_probabilities.items()},
@@ -234,6 +277,7 @@ async def choose_next_action(
         return None
 
     threshold = cli.threshold_for(tier)
+    provider = getattr(cfg, "provider", None)
 
     questions: dict[str, ChoiceQuestion] = {
         "operation": ChoiceQuestion(
@@ -265,7 +309,7 @@ async def choose_next_action(
         # provider-independent 255 ceiling. Defer an oversized head until the
         # operation has been selected; sending it in the initial fan-out would
         # make the client reject the whole request before partitioning can run.
-        if cfg.provider == PROVIDER_LAYA and len(candidates) > cli.choice_option_limit():
+        if provider == PROVIDER_LAYA and len(candidates) > cli.choice_option_limit():
             deferred_target_questions[operation] = target_question
             continue
         questions[f"{operation.lower()}_target"] = target_question
@@ -327,11 +371,11 @@ async def choose_next_action(
     # operation decision; each oversized target head gets its own partition
     # projection below. Hosted Jev keeps the complete table.
     state = full_state
-    if cfg.provider == PROVIDER_LAYA:
+    if provider == PROVIDER_LAYA:
         state = {
             "page": full_state.get("page", {}),
             "recent_actions": recent,
-            "elements": [_laya_element_state(element) for element in space.elements[:40]],
+            "elements": [_public_element_state(element, max_options=20) for element in space.elements[:40]],
             "table": {"complete": len(space.elements) > 40, "total_elements": len(space.elements)},
         }
         if failures:
@@ -380,7 +424,7 @@ async def choose_next_action(
 
         target_result: Any = result.get(f"{operation.lower()}_target")
         target_requests = 0
-        if cfg.provider == PROVIDER_LAYA and len(head) > cli.choice_option_limit():
+        if provider == PROVIDER_LAYA and len(head) > cli.choice_option_limit():
             # Laya's per-request option budget is smaller than the browser
             # element table. Partition the indexed targets rather than dropping
             # the tail; the final answer remains an index resolved below.
@@ -393,7 +437,7 @@ async def choose_next_action(
                 site=f"{SITE}:{operation.lower()}_target",
                 client=cli,
                 shortlist_per_partition=min(5, cli.choice_option_limit()),
-                deadline=(cfg.laya_max_partition_latency_ms / 1000) if cfg.provider == PROVIDER_LAYA else None,
+                deadline=(cfg.laya_max_partition_latency_ms / 1000) if provider == PROVIDER_LAYA else None,
                 state_projector=lambda ids: _laya_projection_for_ids(state, space.elements, list(ids)),
             )
             if partitioned is None:

@@ -41,6 +41,7 @@ import os
 import re
 import threading
 from collections.abc import Iterable
+from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -379,7 +380,23 @@ class DurableEventLog:
             engine.runs[snapshot.run.run_id] = snapshot.run
             hydrated.append(run_id)
             if snapshot.definition is not None:
-                engine.definitions[snapshot.definition.id] = snapshot.definition
+                definition = snapshot.definition
+                # The serialized definition may carry the latest compatibility
+                # projection, while replay needs the authored graph revision.
+                # Recover the lowest durable graph revision when available and
+                # keep it as process-local replay metadata.
+                graph_versions: list[tuple[int, WorkflowGraph]] = []
+                for key, graph in snapshot.graphs.items():
+                    prefix = f"{definition.id}:v"
+                    if not key.startswith(prefix):
+                        continue
+                    try:
+                        graph_versions.append((int(key[len(prefix) :]), graph))
+                    except ValueError:
+                        continue
+                if graph_versions:
+                    definition._base_graph = deepcopy(min(graph_versions, key=lambda item: item[0])[1])
+                engine.definitions[definition.id] = definition
             else:
                 missing_definitions.append(run_id)
             for key, graph in snapshot.graphs.items():

@@ -26,7 +26,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from alpha.config.system_one_config import RiskTier
+from alpha.config.system_one_config import PROVIDER_LAYA, RiskTier
 from alpha.models.system_one import (
     ChoiceQuestion,
     SystemOneClient,
@@ -164,7 +164,7 @@ async def rank_candidates(
             client=cli,
             shortlist_per_partition=min(refine, cli.choice_option_limit()) if refine > 0 else 1,
             question_id="pick",
-            deadline=(cfg.laya_max_partition_latency_ms / 1000) if cfg.provider == "laya" else None,
+            deadline=(cfg.laya_max_partition_latency_ms / 1000) if cfg.provider == PROVIDER_LAYA else None,
             state_projector=project_state,
         )
     except Exception as exc:
@@ -204,7 +204,7 @@ async def rank_candidates(
             client=cli,
             shortlist_per_partition=min(refine, cli.choice_option_limit()) if refine > 0 else 1,
             question_id="pick",
-            deadline=(cfg.laya_max_partition_latency_ms / 1000) if cfg.provider == "laya" else None,
+            deadline=(cfg.laya_max_partition_latency_ms / 1000) if cfg.provider == PROVIDER_LAYA else None,
             state_projector=project_state,
         )
     except Exception as exc:

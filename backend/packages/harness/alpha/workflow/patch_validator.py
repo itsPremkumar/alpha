@@ -178,7 +178,7 @@ class PatchValidator:
                 return PatchValidationResult(allowed=False, reason=f"insert_before: Target '{target_id}' not found.")
             new_node = WorkflowNode(**new_node_data) if isinstance(new_node_data, dict) else new_node_data
             if new_node.id in nodes:
-                return PatchValidationResult(allowed=False, reason=f"insert_before: Node '{new_node.id}' already exists.")
+                return PatchValidationResult(allowed=False, reason=f"Node '{new_node.id}' already exists.")
             nodes[new_node.id] = new_node
             # Redirect existing incoming edges of target_id to new_node
             for e in edges:

@@ -6,7 +6,7 @@
  * Runs in an isolated world before the page loads. Only exposes a minimal
  * API over IPC — no Node.js access is leaked to the renderer. The bridge is
  * limited to explicit user toggles plus a bounded, local-only lion companion
- * state channel; it never exposes prompts, conversation text, or Node APIs.
+ * state/action channel; it never exposes prompts, conversation text, or Node APIs.
  */
 
 const { contextBridge, ipcRenderer } = require('electron');

@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 
 class NodeStatus(StrEnum):
@@ -275,3 +275,8 @@ class WorkflowDefinition(BaseModel):
     policies: dict[str, Any] = Field(default_factory=dict)
     budget: int | None = Field(default=None, ge=0)
     triggers: list[dict[str, Any]] = Field(default_factory=list)
+
+    # The public graph is a legacy projection and may advance to the latest
+    # run revision.  Replay still needs the immutable authored base graph to
+    # re-apply patch events; keep it process-locally and out of API payloads.
+    _base_graph: WorkflowGraph | None = PrivateAttr(default=None)

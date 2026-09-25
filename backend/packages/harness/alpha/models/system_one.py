@@ -186,15 +186,37 @@ class Answer:
         Boolean answers have no confidence field, so their certainty is the
         distance of the probability from the 0.5 coin-flip midpoint, scaled to
         0..1. That makes a single `meets()` threshold meaningful across all
-        three primitive types.
+        three primitive types. Invalid provider values fail closed here as well
+        as in :meth:`validate`, because some callers use ``meets`` directly.
         """
-        if self.confidence is not None:
-            return self.confidence >= threshold
-        if self.type == "boolean":
-            try:
-                return abs(float(self.value) - 0.5) * 2 >= threshold
-            except (TypeError, ValueError):
-                return False
+        try:
+            if self.confidence is not None:
+                if not 0.0 <= self.confidence <= 1.0:
+                    return False
+                if self.type == "choice" and self.probabilities:
+                    values = list(self.probabilities.values())
+                    if any(not isinstance(value, (int, float)) or not math.isfinite(value) or not 0.0 <= value <= 1.0 for value in values):
+                        return False
+                    if abs(sum(values) - 1.0) >= 0.02:
+                        return False
+                return self.confidence >= threshold
+            if self.type == "boolean":
+                value = float(self.value)
+                if not 0.0 <= value <= 1.0:
+                    return False
+                return abs(value - 0.5) * 2 >= threshold
+            if self.type == "choice" and self.probabilities:
+                values = list(self.probabilities.values())
+                if any(not isinstance(value, (int, float)) or not math.isfinite(value) or not 0.0 <= value <= 1.0 for value in values):
+                    return False
+                if abs(sum(values) - 1.0) >= 0.02:
+                    return False
+            if self.type == "score":
+                value = float(self.value)
+                if not math.isfinite(value):
+                    return False
+        except (TypeError, ValueError, OverflowError):
+            return False
         return False
 
     def validate(self, allowed: set[str] | list[str] | dict[str, Any]) -> bool:
@@ -315,7 +337,7 @@ def _parse_answer(answer_id: str, raw: dict[str, Any]) -> Answer | None:
     if qtype in ("boolean", _NOUL_ALIAS):
         # Gateway returns "boolean"; native TypeSafe returns "noul".
         value = _finite_float(raw.get("boolean", raw.get(_NOUL_ALIAS)))
-        if value is None:
+        if value is None or not 0.0 <= value <= 1.0:
             return None
         return Answer(id=answer_id, type="boolean", value=value, probabilities=probabilities, confidence=confidence)
     if qtype == "choice":
@@ -361,6 +383,8 @@ class SystemOneClient:
         self._half_open_probe = False
         self._consecutive_failures = 0
         self._circuit_open_until = 0.0
+        self._breaker_generation = 0
+        self._in_flight = 0
 
     # -- config -----------------------------------------------------------
 
@@ -378,6 +402,12 @@ class SystemOneClient:
         self._config_from_app = False
         self._client = None
         self._client_loop = None
+        with self._lock:
+            self._half_open_probe = False
+            self._consecutive_failures = 0
+            self._circuit_open_until = 0.0
+            self._breaker_generation += 1
+            self._in_flight = 0
 
     def _resolve_api_key(self) -> str | None:
         """Resolve the API key, supporting '$ENV_VAR' indirection.
@@ -480,8 +510,6 @@ class SystemOneClient:
         self,
         state: str | dict[str, Any] | list[Any],
         questions: dict[str, Question],
-        *,
-        model: str | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "state": state,
@@ -538,24 +566,37 @@ class SystemOneClient:
 
     # -- availability -----------------------------------------------------
 
-    def _reserve_request_slot(self) -> bool:
-        """Reserve one request, allowing only one half-open breaker probe."""
+    def _reserve_request_slot(self) -> tuple[int, bool] | None:
+        """Reserve a request and return ``(breaker_generation, is_probe)``.
+
+        Closed-state calls may run concurrently. Once the breaker opens, only
+        one half-open probe is admitted; the generation fence prevents a late
+        result from an older request from changing the new breaker state.
+        """
         with self._lock:
             now = time.monotonic()
             if self._circuit_open_until and now < self._circuit_open_until:
-                return False
-            if self._circuit_open_until:
+                return None
+            is_probe = bool(self._circuit_open_until)
+            if is_probe:
                 if self._half_open_probe:
-                    return False
+                    return None
                 self._half_open_probe = True
-            return True
+            else:
+                self._in_flight += 1
+            return self._breaker_generation, is_probe
 
-    def _release_request_slot(self, *, success: bool) -> None:
+    def _release_request_slot(self, reservation: tuple[int, bool], *, success: bool) -> None:
+        generation, is_probe = reservation
         with self._lock:
-            if success:
-                self._consecutive_failures = 0
-                self._circuit_open_until = 0.0
-            self._half_open_probe = False
+            if is_probe:
+                self._half_open_probe = False
+            else:
+                self._in_flight = max(0, self._in_flight - 1)
+            if not success or generation != self._breaker_generation:
+                return
+            self._consecutive_failures = 0
+            self._circuit_open_until = 0.0
 
     def is_available(self) -> bool:
         """Cheap synchronous check: enabled, configured, breaker not open.
@@ -571,24 +612,37 @@ class SystemOneClient:
             return False
         if cfg.provider != PROVIDER_LAYA and not self._resolve_api_key():
             return False
-        if self._circuit_open_until and time.monotonic() < self._circuit_open_until:
-            return False
+        with self._lock:
+            if self._circuit_open_until and time.monotonic() < self._circuit_open_until:
+                return False
         return True
 
-    def _record_failure(self) -> None:
+    def _record_failure(self, reservation: tuple[int, bool]) -> None:
         cfg = self.config
+        generation, is_probe = reservation
         with self._lock:
+            if generation != self._breaker_generation:
+                return
             self._consecutive_failures += 1
             if self._consecutive_failures >= cfg.circuit_breaker_threshold:
                 self._circuit_open_until = time.monotonic() + cfg.circuit_breaker_cooldown_s
+                self._breaker_generation += 1
                 logger.warning(
                     "System One circuit breaker opened after %d consecutive failures; falling back for %.0fs.",
                     self._consecutive_failures,
                     cfg.circuit_breaker_cooldown_s,
                 )
+            elif is_probe:
+                # A failed half-open probe re-opens the circuit for another
+                # cooldown, even when a threshold change made the count smaller.
+                self._circuit_open_until = time.monotonic() + cfg.circuit_breaker_cooldown_s
+                self._breaker_generation += 1
 
-    def _record_success(self) -> None:
+    def _record_success(self, reservation: tuple[int, bool]) -> None:
+        generation, _is_probe = reservation
         with self._lock:
+            if generation != self._breaker_generation:
+                return
             self._consecutive_failures = 0
             self._circuit_open_until = 0.0
 
@@ -620,7 +674,8 @@ class SystemOneClient:
         """
         if not questions:
             return None
-        if not self._reserve_request_slot():
+        reservation = self._reserve_request_slot()
+        if reservation is None:
             return None
         try:
             result = await self._evaluate_impl(
@@ -629,15 +684,16 @@ class SystemOneClient:
                 min_confidence=min_confidence,
                 site=site,
                 tier=tier,
+                reservation=reservation,
             )
         except asyncio.CancelledError:
-            self._release_request_slot(success=False)
+            self._release_request_slot(reservation, success=False)
             raise
         except Exception as exc:
-            self._release_request_slot(success=False)
+            self._release_request_slot(reservation, success=False)
             logger.warning("System One unexpected error (%s); falling back.", exc)
             return None
-        self._release_request_slot(success=result is not None)
+        self._release_request_slot(reservation, success=result is not None)
         return result
 
     async def _evaluate_impl(
@@ -648,6 +704,7 @@ class SystemOneClient:
         min_confidence: float | None = None,
         site: str = "",
         tier: str | RiskTier | None = None,
+        reservation: tuple[int, bool],
     ) -> EvaluationResult | None:
         """Evaluate `state` against `questions` in one parallel request.
 
@@ -690,34 +747,33 @@ class SystemOneClient:
             request_headers["Authorization"] = f"Bearer {api_key}"
 
         started = time.monotonic()
+        deadline = started + (cfg.timeout_ms / 1000.0) * (cfg.max_retries + 1)
         last_error: str = ""
         for attempt in range(cfg.max_retries + 1):
             try:
                 client = self._get_client()
-                response = await client.post(
-                    self._endpoint(),
-                    json=payload,
-                    headers=request_headers,
-                )
-            except (httpx.TimeoutException, httpx.TransportError) as exc:
+                response = await self._post_with_deadline(client, payload, request_headers, deadline)
+            except (TimeoutError, httpx.TimeoutException, httpx.TransportError) as exc:
                 last_error = f"{type(exc).__name__}: {exc}"
-                if attempt < cfg.max_retries:
-                    await self._sleep_backoff(attempt)
+                if attempt < cfg.max_retries and await self._sleep_backoff(attempt, deadline=deadline):
                     continue
-                self._record_failure()
+                self._record_failure(reservation)
                 logger.warning("System One request failed after %d attempts (%s); falling back.", attempt + 1, last_error)
                 return None
             except Exception as exc:  # defensive: never break the caller
-                self._record_failure()
+                self._record_failure(reservation)
                 logger.warning("System One unexpected error (%s); falling back.", exc)
                 return None
 
             if response.status_code in _RETRYABLE_STATUS:
                 last_error = f"HTTP {response.status_code}"
-                if attempt < cfg.max_retries:
-                    await self._sleep_backoff(attempt, response.headers.get("retry-after"))
+                if attempt < cfg.max_retries and await self._sleep_backoff(
+                    attempt,
+                    response.headers.get("retry-after"),
+                    deadline=deadline,
+                ):
                     continue
-                self._record_failure()
+                self._record_failure(reservation)
                 logger.warning("System One returned %s after %d attempts; falling back.", last_error, attempt + 1)
                 return None
 
@@ -729,7 +785,7 @@ class SystemOneClient:
                     # Laya/Jev request; the existing call-site fallback applies.
                     logger.warning("System One rejected the typed question (HTTP 422): %s; falling back.", body)
                     return None
-                self._record_failure()
+                self._record_failure(reservation)
                 if response.status_code in (401, 403):
                     if self.config.provider == PROVIDER_LAYA:
                         logger.warning(
@@ -750,14 +806,16 @@ class SystemOneClient:
             try:
                 data = response.json()
             except ValueError:
-                self._record_failure()
+                self._record_failure(reservation)
                 logger.warning("System One returned non-JSON response; falling back.")
                 return None
 
-            self._record_success()
             result = self._to_result(data, (time.monotonic() - started) * 1000.0)
             if result is None:
+                self._record_failure(reservation)
+                logger.warning("System One returned a malformed decision payload; falling back.")
                 return None
+            self._record_success(reservation)
             self._emit_records(result, site=site, tier=tier, threshold=threshold)
             if cfg.shadow_mode:
                 logger.debug(
@@ -827,36 +885,90 @@ class SystemOneClient:
                 logger.debug("System One could not record %s: %s", qid, exc)
                 return
 
-    async def _sleep_backoff(self, attempt: int, retry_after: str | None = None) -> None:
-        """Exponential backoff with jitter, honouring Retry-After."""
+    async def _sleep_backoff(self, attempt: int, retry_after: str | None = None, deadline: float | None = None) -> bool:
+        """Back off briefly, never sleeping past the call deadline."""
         delay = None
         if retry_after:
             try:
-                delay = float(retry_after)
+                candidate = float(retry_after)
+                if math.isfinite(candidate):
+                    delay = max(0.0, min(candidate, 4.0))
             except (TypeError, ValueError):
                 delay = None
         if delay is None:
             delay = min(0.25 * (2**attempt), 4.0)
-        await asyncio.sleep(delay + random.uniform(0, 0.15))
+        delay = min(delay + random.uniform(0, 0.15), 4.0)
+        if deadline is not None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            delay = min(delay, remaining)
+        await asyncio.sleep(delay)
+        return deadline is None or time.monotonic() < deadline
 
-    def _to_result(self, data: dict[str, Any], latency_ms: float) -> EvaluationResult | None:
+    async def _post_with_deadline(
+        self,
+        client: httpx.AsyncClient,
+        payload: dict[str, Any],
+        headers: dict[str, str],
+        deadline: float,
+    ) -> httpx.Response:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("System One call deadline expired")
+        return await asyncio.wait_for(
+            client.post(self._endpoint(), json=payload, headers=headers),
+            timeout=remaining,
+        )
+
+    def _to_result(self, data: Any, latency_ms: float) -> EvaluationResult | None:
+        if not isinstance(data, dict):
+            logger.warning("System One response was not an object; falling back.")
+            return None
         raw_answers = data.get("answers")
         if not isinstance(raw_answers, dict) or not raw_answers:
             logger.warning("System One response carried no answers; falling back.")
             return None
         answers: dict[str, Answer] = {}
         for qid, raw in raw_answers.items():
-            parsed = _parse_answer(qid, raw if isinstance(raw, dict) else {})
-            if parsed is not None:
-                answers[qid] = parsed
+            if not isinstance(raw, dict):
+                return None
+            parsed = _parse_answer(str(qid), raw)
+            if parsed is None:
+                return None
+            answers[str(qid)] = parsed
         if not answers:
             return None
-        usage = data.get("usage") or {}
+        raw_usage = data.get("usage")
+        if raw_usage is None:
+            usage: dict[str, Any] = {}
+        elif isinstance(raw_usage, dict):
+            usage = raw_usage
+        else:
+            return None
+
+        def _token_count(key: str) -> int:
+            value = usage.get(key, 0)
+            number = _finite_float(value)
+            if number is None or number < 0:
+                raise ValueError(f"invalid usage.{key}")
+            return int(number)
+
+        try:
+            input_tokens = _token_count("input_tokens")
+            output_tokens = _token_count("output_tokens")
+        except (TypeError, ValueError, OverflowError):
+            return None
+        model = data.get("model", "")
+        if model is None:
+            model = ""
+        elif not isinstance(model, str):
+            return None
         return EvaluationResult(
             answers=answers,
-            model=str(data.get("model", "")),
-            input_tokens=int(usage.get("input_tokens", 0) or 0),
-            output_tokens=int(usage.get("output_tokens", 0) or 0),
+            model=model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
             latency_ms=latency_ms,
         )
 
@@ -944,7 +1056,7 @@ def _partition_instructions(instructions: Any, note: str) -> Any:
 async def evaluate_choice_partitioned(
     state: str | dict[str, Any] | list[Any],
     instructions: Any,
-    criteria: dict[str, str],
+    criteria: dict[str, Any],
     *,
     min_confidence: float | None = None,
     tier: str | RiskTier | None = None,
@@ -1021,7 +1133,7 @@ async def evaluate_choice_partitioned(
             return await asyncio.wait_for(call, timeout=remaining)
         except asyncio.CancelledError:
             raise
-        except (TimeoutError, SystemOneError, Exception) as exc:
+        except Exception as exc:
             logger.debug("Partitioned System One request failed (%s); falling back.", exc)
             return None
 
@@ -1194,6 +1306,23 @@ async def evaluate_choice_partitioned(
     )
 
 
+def _answer_matches_question(answer: Answer, question: Question) -> bool:
+    """Fail closed when a provider answer does not match its request shape."""
+    if isinstance(question, BooleanQuestion):
+        if answer.type != "boolean":
+            return False
+        try:
+            value = float(answer.value)
+        except (TypeError, ValueError, OverflowError):
+            return False
+        return math.isfinite(value) and 0.0 <= value <= 1.0
+    if isinstance(question, ChoiceQuestion):
+        return answer.type == "choice" and answer.validate(question.criteria)
+    if isinstance(question, ScoreQuestion):
+        return answer.type == "score" and answer.score is not None and math.isfinite(answer.score)
+    return False
+
+
 async def _one(
     qid: str,
     question: Question,
@@ -1216,7 +1345,7 @@ async def _one(
     if result is None:
         return None
     answer = result.get(qid)
-    if answer is None or answer.type != expected:
+    if answer is None or not _answer_matches_question(answer, question):
         return None
     if not answer.meets(threshold):
         logger.debug("System One %s below confidence %.2f (conf=%.2f); falling back.", qid, threshold, answer.confidence or 0.0)
@@ -1250,7 +1379,7 @@ async def evaluate_many(
         return {}
     if result is None:
         return {}
-    return {qid: a for qid, a in result.answers.items() if a.meets(threshold)}
+    return {qid: answer for qid, answer in result.answers.items() if qid in questions and _answer_matches_question(answer, questions[qid]) and answer.meets(threshold)}
 
 
 def config_or_none() -> SystemOneConfig | None:

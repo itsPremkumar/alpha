@@ -17,6 +17,16 @@ where the two overlap.
 - `content/` — the documentation site content (en/zh).
 - `types/` — shared TypeScript types.
 
+## Lion companion boundary
+
+The local lion companion is isolated under `components/lion-pet/`. Keep the SVG
+rig, action registry, settings normalization, lifecycle adapter, bounded local
+travel, and feature CSS inside that folder. `ChatView.tsx` may pass only
+bounded lifecycle state and an optional chat action; it must not receive prompt
+content or thread identifiers.
+The compatibility exports at `components/LionPet.tsx` and `lib/lion-pet.ts` are
+facades only. Regression coverage lives in `src/lib/lion-pet.test.mjs`.
+
 ## Adding a backend surface to the UI (the required path)
 
 1. Add `lib/<surface>.ts`: a typed client over the real routes. Map envelopes

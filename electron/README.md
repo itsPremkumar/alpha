@@ -104,6 +104,7 @@ npx electron . -- --skip-backend --skip-frontend          # attach to everything
 npx electron . -- --frontend-url=http://127.0.0.1:2026   # attach to `make dev` (nginx)
 npx electron . -- --frontend-port=3100 --gateway-port=8101
 npx electron . -- --require-login                        # keep login + admin-setup screens
+npx electron . -- --show-lion-pet                        # open Milo on the Windows desktop at startup
 npx electron . -- --verbose                              # mirror service logs to the console
 ```
 
@@ -150,17 +151,21 @@ device and Windows privacy settings, then click the voice control again.
 
 ## Lion companion
 
-Alpha includes **Milo**, a local lion companion drawn as inline SVG. In the app,
-right-click the lion to open its controls: pet it, resize it, move it, enable
-optional sound cues, hide it, or return to chat. It reacts to Alpha's bounded
-run states (`thinking`, `working`, `waiting`, `success`, and `error`) without
-putting prompts, responses, or thread data into the pet.
+Alpha includes **Milo**, a local lion companion drawn as inline SVG with
+articulated legs, layered fur and facial detail, and six looks. In the app,
+right-click the lion to open its controls: pet it, resize it, move it, choose
+one of six looks, trigger walk/run/jump/roar/pounce/play/sleep/stretch/prowl/hunt/shake/spin
+actions (walk, run, prowl, and hunt travel within the desktop work area), enable automatic
+idle actions or sound cues, hide it, or return to chat. It reacts to Alpha's
+bounded run states (`thinking`, `working`, `waiting`,
+`success`, and `error`) without putting prompts, responses, or thread data into
+the pet.
 
 In the Windows desktop build, choose **Detach** in the lion menu (or
 **Tools → Show desktop lion**) to open a transparent, always-on-top companion
-window. The native window is draggable, has a small return-to-Alpha button, and
-uses the same state channel; closing the main Alpha window closes the companion
-and stops the local services. The overlay is optional and local-only—it does not
+window. The native window is draggable, has Walk, Run, Action, Look, and a small
+return-to-Alpha button, and uses the same state channel; closing the main Alpha
+window closes the companion and stops the local services. The overlay is optional and local-only—it does not
 make requests or persist conversation content.
 
 

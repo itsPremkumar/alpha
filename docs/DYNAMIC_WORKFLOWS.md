@@ -114,7 +114,10 @@ surfaces expose the actual journal rather than an in-memory success shape:
 Projection and hydration report corrupt tails, stale projections, missing
 graphs/definitions, and skipped owner-scoped resources. Replay folds the
 validated event log into a fresh projection and reports covered-field
-mismatches; it never emits new replay events.
+mismatches; it never emits new replay events. The engine keeps the authored
+base graph separately from its compatibility projection, so replay can reapply
+patch revisions in order and restore journaled node outputs without treating a
+latest projected graph as the original template.
 
 Workflow plan revisions are append-only. Ordinary registration does not create
 an implicit revision; the explicit plan endpoint records the current graph, and

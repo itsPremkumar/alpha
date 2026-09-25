@@ -189,6 +189,109 @@ async def test_browser_large_target_head_is_partitioned_without_css_or_coordinat
 
 
 @pytest.mark.asyncio
+async def test_browser_255_targets_use_bounded_partitions_and_state_projection():
+    calls: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        calls.append(body)
+        questions = body["questions"]
+        if "operation" in questions:
+            options = list(questions["operation"]["criteria"])
+            selected = "CLICK"
+            remainder = (1.0 - 0.8) / max(1, len(options) - 1)
+            answer = {
+                "type": "choice",
+                "choice": selected,
+                "probabilities": {option: (0.8 if option == selected else remainder) for option in options},
+                "confidence": 0.9,
+            }
+            return httpx.Response(200, json={"answers": {"operation": answer}}, request=request)
+        question_id, question = next(iter(questions.items()))
+        options = list(question["criteria"])
+        selected = "255" if "255" in options else options[-1]
+        answer = _choice_answer(options, selected)
+        return httpx.Response(200, json={"answers": {question_id: answer}}, request=request)
+
+    client = _client(handler, laya_max_choice_options=20, laya_max_partition_requests=16)
+    elements = [{"role": "button", "label": f"Button {index}"} for index in range(255)]
+    decision = await choose_next_action(
+        {"url": "https://example.test", "title": "Test", "text": "Choose a button", "elements": elements},
+        "click the last button",
+        client=client,
+    )
+
+    assert decision is not None
+    assert decision.operation == "CLICK"
+    assert decision.target == "255"
+    assert decision.element is not None and decision.element.label == "Button 254"
+    assert decision.target_requests <= 16
+    assert len(calls) <= 17  # operation request plus the bounded target tournament
+    for body in calls:
+        question = next(iter(body["questions"].values()))
+        assert len(question["criteria"]) <= 20
+        if "operation" not in body["questions"]:
+            assert len(body["state"].get("elements", [])) <= 20
+
+
+@pytest.mark.asyncio
+async def test_browser_large_select_options_project_only_partition_options():
+    calls: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        calls.append(body)
+        questions = body["questions"]
+        if "operation" in questions:
+            options = list(questions["operation"]["criteria"])
+            selected = "SELECT"
+            remainder = (1.0 - 0.8) / max(1, len(options) - 1)
+            answer = {
+                "type": "choice",
+                "choice": selected,
+                "probabilities": {option: (0.8 if option == selected else remainder) for option in options},
+                "confidence": 0.9,
+            }
+            return httpx.Response(200, json={"answers": {"operation": answer}}, request=request)
+        question_id, question = next(iter(questions.items()))
+        options = list(question["criteria"])
+        selected = "1:255" if "1:255" in options else options[-1]
+        return httpx.Response(
+            200,
+            json={"answers": {question_id: _choice_answer(options, selected)}},
+            request=request,
+        )
+
+    client = _client(handler, laya_max_choice_options=20)
+    elements = [
+        {
+            "role": "select",
+            "label": "Country",
+            "options": [{"label": f"Country {index}"} for index in range(255)],
+            "selector": "#country",
+            "coords": [4, 5],
+        }
+    ]
+    decision = await choose_next_action(
+        {"url": "https://example.test", "title": "Test", "text": "Choose a country", "elements": elements},
+        "choose country 255",
+        client=client,
+    )
+
+    assert decision is not None
+    assert decision.operation == "SELECT"
+    assert decision.target == "1:255"
+    assert decision.element is not None and decision.element.label == "Country"
+    for body in calls:
+        assert "selector" not in json.dumps(body["state"])
+        assert "coords" not in json.dumps(body["state"])
+        if "operation" not in body["questions"]:
+            state_element = body["state"]["elements"][0]
+            assert len(state_element["options"]) <= 20
+            assert state_element["options_omitted"] >= 0
+
+
+@pytest.mark.asyncio
 async def test_partition_budget_returns_none_before_any_request():
     calls: list[dict[str, Any]] = []
     client = _client(_choice_handler(calls), laya_max_choice_options=5, laya_max_partition_requests=2)
