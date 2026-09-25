@@ -1,0 +1,61 @@
+name: Generated Drift Gate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/generate_feature_manifest.py'
+      - 'backend/packages/harness/alpha/tools/tools.py'
+      - 'backend/packages/harness/alpha/tools/builtins/__init__.py'
+      - 'backend/packages/harness/alpha/agents/lead_agent/agent.py'
+      - 'backend/packages/harness/alpha/agents/factory.py'
+      - 'backend/packages/harness/alpha/agents/middlewares/*_middleware.py'
+      - 'backend/app/gateway/app.py'
+      - 'backend/app/gateway/autonomy/supervisor.py'
+      - 'contracts/feature_manifest.json'
+      - 'docs/INDEX/**'
+      - 'scripts/check_generated_drift.py'
+      - '.github/workflows/generated-drift-gate.yml'
+  pull_request:
+    paths:
+      - 'backend/scripts/generate_feature_manifest.py'
+      - 'backend/packages/harness/alpha/tools/tools.py'
+      - 'backend/packages/harness/alpha/tools/builtins/__init__.py'
+      - 'backend/packages/harness/alpha/agents/lead_agent/agent.py'
+      - 'backend/packages/harness/alpha/agents/factory.py'
+      - 'backend/packages/harness/alpha/agents/middlewares/*_middleware.py'
+      - 'backend/app/gateway/app.py'
+      - 'backend/app/gateway/autonomy/supervisor.py'
+      - 'contracts/feature_manifest.json'
+      - 'docs/INDEX/**'
+      - 'scripts/check_generated_drift.py'
+      - '.github/workflows/generated-drift-gate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  generated-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Check generated artifacts are current
+        run: >-
+          python scripts/check_generated_drift.py
+          --repo-root .
+          --diff-output "${{ runner.temp }}/generated-drift.diff"
+
+      - name: Upload generated drift diff
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-drift-${{ github.run_id }}
+          path: ${{ runner.temp }}/generated-drift.diff
+          if-no-files-found: warn

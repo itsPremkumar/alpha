@@ -5,16 +5,24 @@ regenerated cheaply in CI or by a contributor. Emits one entry per capability
 with ``wired`` state and its wiring point, plus the explicit local-only
 exclusion list.
 
-Usage: cd backend && python scripts/generate_feature_manifest.py
+The default invocation remains the documented contributor command::
+
+    cd backend && python scripts/generate_feature_manifest.py
+
+CI can direct the exact same generator at a scratch directory with
+``--output-dir``.  The source tree is still read from the checkout; only the
+new manifest is written outside it.
 """
 
 from __future__ import annotations
 
+import argparse
 import ast
 import json
 import re
 import sys
 import time
+from collections.abc import Sequence
 from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parents[1]
@@ -185,8 +193,14 @@ def collect_loops() -> list[dict[str, object]]:
     ]
 
 
-def main() -> int:
-    manifest = {
+def build_manifest() -> dict[str, object]:
+    """Build the manifest without writing it.
+
+    Keeping collection separate from the write step lets the CI drift gate
+    invoke the official generator with an output directory while the default
+    command retains its historical in-tree destination.
+    """
+    return {
         "version": "1.0",
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "generator": "backend/scripts/generate_feature_manifest.py",
@@ -198,11 +212,27 @@ def main() -> int:
         "dormant_packages": DORMANT_PACKAGES,
         "excluded_local_only": EXCLUDED_LOCAL_ONLY,
     }
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(manifest, indent=1) + "\n", encoding="utf-8")
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        help=("Write feature_manifest.json into this scratch directory instead of contracts/feature_manifest.json; source files are still read from this checkout."),
+    )
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = _build_parser().parse_args(argv)
+    manifest = build_manifest()
+    output = OUT if args.output_dir is None else args.output_dir.resolve() / "feature_manifest.json"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(manifest, indent=1) + "\n", encoding="utf-8")
 
     counts = {key: len(manifest[key]) for key in ("tools", "routers", "middlewares", "loops")}
-    print(f"manifest written: {OUT}")
+    print(f"manifest written: {output}")
     print(f"counts: {counts}")
     for key in ("tools", "routers", "middlewares", "loops"):
         ids = [entry["id"] for entry in manifest[key] if not entry.get("wired", False)]

@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-09-25T00:55:36Z",
+ "generated_at": "2026-09-25T12:32:03Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -1569,6 +1569,13 @@
   {
    "id": "alpha.agents.middlewares.input_sanitization_middleware",
    "module": "alpha.agents.middlewares.input_sanitization_middleware",
+   "wiring_point": "alpha.agents.lead_agent.agent:middlewares | alpha.agents.middlewares.tool_error_handling_middleware:build_lead_runtime_middlewares | alpha.agents.factory",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "alpha.agents.middlewares.l1_memory_middleware",
+   "module": "alpha.agents.middlewares.l1_memory_middleware",
    "wiring_point": "alpha.agents.lead_agent.agent:middlewares | alpha.agents.middlewares.tool_error_handling_middleware:build_lead_runtime_middlewares | alpha.agents.factory",
    "wired": true,
    "state": "wired"
