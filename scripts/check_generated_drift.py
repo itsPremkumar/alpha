@@ -240,7 +240,9 @@ def _write_report(path: Path, lines: Sequence[str], repo_root: Path) -> str | No
 def _format_comparison(comparison: ArtifactComparison) -> list[str]:
     relative = comparison.relative_path.as_posix()
     if comparison.error:
-        return [f"ERROR {relative}: {comparison.error}"]
+        lines = [f"DRIFT {relative}: {comparison.error}"]
+        lines.extend(f"  {line.rstrip()}" for line in comparison.diff_lines)
+        return lines
     if not comparison.drifted:
         return [f"OK {relative}"]
     lines = [f"DRIFT {relative}: {comparison.changed_lines} changed line(s)"]
