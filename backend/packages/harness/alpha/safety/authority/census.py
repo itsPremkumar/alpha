@@ -126,7 +126,8 @@ _DYNAMIC_CALL_NAMES = frozenset(
 _ALLOWLIST_NAME_RE = re.compile(r"(?:allow_?list|allow(?:ed|able)?|authorized_?tools?|permitted_?tools?|disallowed_?tools?|tool_?names?|scope|scopes)", re.I)
 _APPROVAL_NAME_RE = re.compile(r"(?:approv|confirm|clarif|human|operator|ask_?human)", re.I)
 _MIDDLEWARE_NAME_RE = re.compile(r"middleware", re.I)
-_GUARD_NAME_RE = re.compile(r"(?:allowlist|authorization|authorize|check_permission|(?:^|_)(?:guard|allow)(?:$|_)|guardrail|policy|tool_permission|is_allowed|is_pat_allowed)", re.I)
+_GUARD_NAME_RE = re.compile(r"(?:allowlist|authorization|authorize|check_permission|(?:^|_)(?:guard|allow|permits?)(?:$|_)|guardrail|tool_permission|is_allowed|is_pat_allowed)", re.I)
+_POLICY_CLASS_RE = re.compile(r"policy|guard|authorization", re.I)
 _SHELL_DESTRUCTIVE_RE = re.compile(
     r"(?:\brm\s+-[rf]{1,2}\b|\bgit\s+branch\s+-D\b|\bbranch\b[^A-Za-z0-9]{0,20}-D\b|\bgit\s+push\b|\bdrop\s+(?:table|database)\b|\btruncate\s+table\b|\bcurl\b|\bwget\b|\bkubectl\b|\bterraform\s+apply\b|\bnpm\s+publish\b|\bssh\b|\bscp\b)",
     re.I,
@@ -291,9 +292,14 @@ def _posture_for_guard(node: ast.AST, allowlist_names: set[str]) -> tuple[GatePo
             op = test.ops[0]
             left_names = {item.id for item in ast.walk(test.left) if isinstance(item, ast.Name)}
             right_names = {item.id for item in ast.walk(test.comparators[0]) if isinstance(item, ast.Name)}
-            if (left_names | right_names) & allowlist_names or isinstance(op, (ast.In, ast.NotIn, ast.Is, ast.IsNot)):
-                if isinstance(op, (ast.NotIn, ast.IsNot)) and _has_return(child.body, True):
+            names_in_test = left_names | right_names
+            membership = isinstance(op, (ast.In, ast.NotIn))
+            allowlist_compare = bool(names_in_test & allowlist_names)
+            if membership or allowlist_compare:
+                if isinstance(op, ast.NotIn) and _has_return(child.body, True):
                     return GatePosture.DEFAULT_ALLOW, False, "membership test returns True for a non-member (fail-open)"
+                if isinstance(op, ast.IsNot) and allowlist_compare and _has_return(child.body, True):
+                    return GatePosture.DEFAULT_ALLOW, False, "allowlist comparison returns True for a non-member (fail-open)"
                 if isinstance(op, (ast.NotIn, ast.IsNot)) and _has_return(child.body, False):
                     return GatePosture.DEFAULT_DENY, True, "allowlist membership denies a non-member"
                 if isinstance(op, (ast.In, ast.Is)) and _has_return(child.body, True):
@@ -634,7 +640,7 @@ class _SourceVisitor(ast.NodeVisitor):
                 description=f"middleware class {node.name}",
                 rule_id="GATE-MIDDLEWARE-001",
             )
-        elif _GUARD_NAME_RE.search(node.name):
+        elif _GUARD_NAME_RE.search(node.name) or _POLICY_CLASS_RE.search(node.name):
             self._add_gate(
                 node,
                 kind=GateKind.TOOL_GUARD,
