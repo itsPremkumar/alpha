@@ -20,7 +20,7 @@
 # ============================================================================
 # Bump this number when the config schema changes.
 # Run `make config-upgrade` to merge new fields into your local config.yaml.
-config_version: 50
+config_version: 51
 
 # ============================================================================
 # Logging
@@ -2393,6 +2393,35 @@ memory:
     persona_min_memories: 3
     storage_path: null
 
+  # L1 typed working memory: scene segmentation, typed extraction, dedup/merge, quotas, recall.
+  # Requires memory.enabled as well; the schema default is false (opt-in).
+  l1:
+    enabled: true
+    mode: "chat"
+    extraction_model: null
+    debounce_seconds: 5.0
+    max_memories_per_run: 12
+    min_priority: 60
+    dedup_enabled: true
+    dedup_top_k: 5
+    quota_enabled: true
+    quota_memory_limit: 10000
+    quota_credit_limit: 1000.0
+    provenance_enabled: true
+    # Apply the retention sweep after each run.
+    retention_enabled: true
+    retention_max_records: 5000
+    # Retention sweep drops non-pinned records older than this many days.
+    retention_max_age_days: 180
+    # Inject the top L1 records into the <memory> block at recall time.
+    recall_enabled: true
+    # How many L1 records the recall seam injects.
+    recall_top_k: 5
+    persona_enabled: true
+    # Minimum persona-type records required before persona synthesis runs.
+    persona_min_memories: 3
+    storage_path: null
+
   # Affective memory: emotional tone events, decayed mood state, mood-aware recall.
   # Requires memory.enabled as well; the schema default is false (opt-in).
   affective:
@@ -2577,6 +2606,43 @@ memory:
     max_contamination_rate: 0.0
     baseline_path: null
     max_cases: null
+    storage_path: null
+
+  # Opt-in memory health plane: component health, bounded metrics, SLOs (insufficient data never passes).
+  # Requires memory.enabled as well; the schema default is false (opt-in).
+  health:
+    # Master gate; false makes every entry point a no-op.
+    enabled: false
+    # Hard cap on registered health probes.
+    max_components: 64
+    # Age at which FreshnessProbe reports degraded.
+    freshness_warning_seconds: 300.0
+    # Older age disclosed as critical freshness evidence.
+    freshness_critical_seconds: 3600.0
+    # Targets evaluated by MemoryHealth.evaluate_slo().
+    slo: []
+    # Maximum retained histogram observations per metric/label set.
+    metrics_reservoir_size: 256
+    # Severities that may emit an SLO alert.
+    alert_severities_enabled: ["info", "warn", "critical"]
+    # Optional health persistence root; None uses the runtime home.
+    storage_path: null
+
+  # Opt-in memory utility feedback plane: proposal-only retention and dedup from observed feedback.
+  # Requires memory.enabled as well; the schema default is false (opt-in).
+  utility:
+    # Master gate; false makes every facade entry point a no-op.
+    enabled: false
+    # Exponential half-life in seconds for feedback recency.
+    decay_half_life: 30.0
+    keep_threshold: 0.65
+    demote_threshold: 0.35
+    evict_threshold: 0.1
+    min_calibration_samples: 20
+    max_observations_per_scope: 1000
+    demote_budget_pressure: 0.5
+    evict_budget_pressure: 0.8
+    # Utility state root; None resolves through runtime home.
     storage_path: null
 # ============================================================================
 # Custom Agent Management API

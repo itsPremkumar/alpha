@@ -37,6 +37,8 @@ SECTIONS: dict[str, str] = {
     "scenarios": "ScenarioConfig",
     "fabric": "FabricConfig",
     "evaluation": "EvaluationConfig",
+    "health": "HealthConfig",
+    "utility": "UtilityConfig",
 }
 
 _MISSING = object()
@@ -161,6 +163,7 @@ def test_subsystem_internals_are_not_imported_by_the_config_plane() -> None:
         "'alpha.memory.policy.loader','alpha.memory.social.system','alpha.memory.affective.memory',"
         "'alpha.memory.entities.memory','alpha.memory.narrative.memory','alpha.memory.prospective.store',"
         "'alpha.memory.scenarios.router','alpha.memory.fabric.store','alpha.memory.evaluation.runner',"
+        "'alpha.memory.health.probes','alpha.memory.utility.scoring',"
         "'alpha.agents.memory.l1.pipeline','alpha.agents.memory.manager'))]; "
         "print(bad); sys.exit(1 if bad else 0)"
     )

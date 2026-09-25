@@ -29,11 +29,13 @@ from alpha.memory.entities.config import EntityConfig
 from alpha.memory.evaluation.config import EvaluationConfig
 from alpha.memory.fabric.config import FabricConfig
 from alpha.memory.fusion.config import FusionConfig
+from alpha.memory.health.config import HealthConfig
 from alpha.memory.narrative.config import NarrativeConfig
 from alpha.memory.policy.config import PolicyConfig
 from alpha.memory.prospective.config import ProspectiveConfig
 from alpha.memory.scenarios.config import ScenarioConfig
 from alpha.memory.social.config import SocialConfig
+from alpha.memory.utility.config import UtilityConfig
 
 logger = logging.getLogger(__name__)
 
@@ -53,11 +55,13 @@ _SHARED_FIELDS = frozenset(
         "evaluation",
         "fabric",
         "fusion",
+        "health",
         "narrative",
         "policy",
         "prospective",
         "scenarios",
         "social",
+        "utility",
     }
 )
 
@@ -246,6 +250,26 @@ class MemoryConfig(BaseModel):
             "precision, evidence traceability and token efficiency against "
             "explicit thresholds. Off by default; a run is an operator action, "
             "never a unit-test side effect."
+        ),
+    )
+    health: HealthConfig = Field(
+        default_factory=HealthConfig,
+        description=(
+            "Opt-in memory health and observability plane: dependency-injected "
+            "component health, bounded metric reservoirs with overflow "
+            "disclosure, and SLO evaluation where insufficient data is a "
+            "distinct, non-passing outcome. Requires memory.enabled AND "
+            "memory.health.enabled."
+        ),
+    )
+    utility: UtilityConfig = Field(
+        default_factory=UtilityConfig,
+        description=(
+            "Opt-in memory utility feedback plane: learns which stored memories "
+            "earn their space from observed feedback, and proposes (never "
+            "performs) retention and dedup actions. Scores stay labelled "
+            "heuristic until calibrated with enough samples. Requires "
+            "memory.enabled AND memory.utility.enabled."
         ),
     )
 
