@@ -44,3 +44,40 @@ TencentDB Agent Memory
 Copyright (C) 2026 Tencent
 Licensed under the MIT License
 ```
+
+## Reviewed agent-memory projects — licenses verified, NO code copied
+
+`references/ALPHA_ADVANCED_OPEN_SOURCE_AGENTIC_MEMORY_SYSTEM.md` names fifteen
+agent-memory projects plus storage engines. Before anything could be reused,
+each license was verified against the repository itself
+(`gh api repos/<owner>/<repo>/license`, checked 2026-09-25) rather than trusted
+from prose. **No code from any project below is present in this tree**; the
+table records why each was or was not eligible, so a future change does not
+have to re-derive the decision.
+
+| Project | License (verified) | Copying into Alpha |
+|---|---|---|
+| Letta / MemGPT | Apache-2.0 | Eligible with attribution — concepts adopted (tiering) |
+| Mem0 | Apache-2.0 | Eligible with attribution — concepts only so far (durable-fact extraction) |
+| MemOS | Apache-2.0 | Eligible with attribution — concepts only (memory-OS orchestration) |
+| Graphiti / Zep | Apache-2.0 | Eligible with attribution — concepts only (temporal graph) |
+| MemMachine | Apache-2.0 | Eligible with attribution — concepts only (episodic/profile/working split) |
+| Memori | Apache-2.0 | Eligible with attribution — concepts only (execution-aware capture) |
+| Cognee | Apache-2.0 | Eligible with attribution — concepts only (document/code graph) |
+| LangMem | MIT | Eligible with attribution — concepts only (pluggable memory primitives) |
+| LlamaIndex | MIT | Eligible with attribution — not used |
+| Haystack | Apache-2.0 | Eligible with attribution — not used |
+| A-MEM | MIT | Eligible with attribution — concepts only (linked notes) |
+| SimpleMem | MIT | Eligible with attribution — concepts only (semantic-lossless compression) |
+| DeerFlow | MIT | Eligible with attribution — concepts only (long-horizon memory integration) |
+| memodb-io / Memobase | Apache-2.0 | Eligible with attribution — not used |
+| **basic-memory** | **AGPL-3.0** | **NOT eligible — copyleft: ideas only, never copy** |
+| **OpenViking** (main project) | **AGPLv3** | **NOT eligible — copyleft: resource/memory/skill separation adopted conceptually only** |
+
+Storage and retrieval engines named by the plan, all permissive and therefore
+eligible if ever adopted as optional backends: FAISS (MIT), Qdrant (Apache-2.0),
+Milvus (Apache-2.0), Weaviate (BSD-3-Clause), LanceDB (Apache-2.0),
+pgvector (PostgreSQL-style permissive), Apache AGE (Apache-2.0), DuckDB (MIT).
+None is a dependency today: Alpha's canonical memory remains the local
+per-scope store plus the pluggable `MemoryManager` backend protocol, so a
+vector/graph engine can be added later without rewriting the agent.
