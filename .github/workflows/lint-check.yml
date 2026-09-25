@@ -118,3 +118,20 @@ jobs:
         run: |
           cd frontend
           BETTER_AUTH_SECRET=local-dev-secret pnpm build
+  docs-index:
+    # The documentation index is GENERATED from the docs tree, so a doc that is
+    # added, renamed or removed without regenerating it leaves navigation that
+    # silently rots. The generator fails on any unclassified document rather
+    # than guessing a section, so this gate also catches a new doc that nobody
+    # has decided where it belongs.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Check the generated documentation index is current
+        run: python scripts/check_docs_index_drift.py --json
