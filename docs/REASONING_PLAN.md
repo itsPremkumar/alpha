@@ -312,6 +312,8 @@ def resolve_reasoning_capabilities(model_config: ModelConfig) -> dict[str, bool]
 
 The fallbacks are honest in both directions: no capability is granted because a model "looks like" a known family, and a missing capability downgrades the plane to explicit reasoning rather than silently degrading quality.
 
+One knock-on the report must not omit: `ModelConfig` uses `ConfigDict(extra="allow")` (`:21,:49`), so a capability set today already survives as untyped passthrough. Adding typed fields changes the Gateway's model listing, which re-declares capabilities explicitly at `backend/app/gateway/routers/models.py:29-30` and populates them at four call sites (`:137`, `:159`, `:184`, `:568`). All four must be extended in the same change or `GET /api/models` will disagree with `config.yaml` — a field that reads `false` from the API while the factory honors it is exactly the silent downgrade this plane is supposed to avoid.
+
 ### (e) Durable run-event publication
 
 Target: `backend/packages/harness/alpha/runtime/events/catalog.py` (`:58-117`), plus `contracts/run_event_stream_contract.json`, `backend/docs/RUN_EVENT_STREAM.md`, and `backend/tests/test_run_event_stream_contract.py`.
@@ -364,3 +366,33 @@ Target: no worker patch. Patch (a) is sufficient: `CheckpointStateAccessor` (`ba
 - Loop signals each fire on a crafted stream; escalation is ordered and hard-capped.
 - No import of the shared config module, no Gateway import, no network, no global singleton leakage, and no dependency addition.
 - Ruff, duplicate-expression audit, env-wiring audit, guidance-chain comparison, and focused offline tests are reported with exact output.
+
+## 14. Gate results at `1664c76`
+
+Every command ran from the worktree root on Windows with `PYTHONPATH=<worktree>/backend;<worktree>/backend/packages/harness` and a per-run `AGENT_WORKSPACE_HOME`.
+
+| Gate | Command | Result | Exit |
+|---|---|---|---|
+| Format | `ruff format --check` (the 17 files this branch owns) | `17 files already formatted` | 0 |
+| Lint | `ruff check` (the 17 files this branch owns) | `All checks passed!` | 0 |
+| Dup expressions | `python scripts/audit_dup_expressions.py` | `duplicate-expression hits: 0` | 0 |
+| Env wiring | `python scripts/audit_env_wiring.py` | `DEAD-SET: 0 \| SET-ONLY: 0 \| READ-ONLY: 64` | 0 |
+| Guidance (diff) | `python scripts/check_agent_guidance.py --before c9b11f8 --after HEAD` | `29 AGENTS.md, 0 errors, 0 warnings` | 0 |
+| New suite | the 6 `test_reasoning_*.py` files | `93 passed in 160.91s` | 0 |
+| Adjacency | `test_harness_boundary.py` + `test_no_orphan_modules.py` | `7 passed in 680.86s` | 0 |
+| Adjacency | `test_reasoning_budget_governor.py` + `test_loop_detector.py` + `test_loop_detection_middleware.py` + `test_loop_detection_stop_reason.py` | `121 passed in 202.04s` | 0 |
+
+### Repo-wide ruff is already failing, and this branch does not add to it
+
+`ruff check .` from `backend/` reports **1039 errors** and `ruff format --check .` reports **447 files** needing reformat at this revision. `ruff check . --output-format concise` attributes **0** of them to the 17 files this branch owns. Two ruff findings inside the reasoning package — `introspective_tree_search.py` and `tom/models.py` — sit in files this branch did not touch; `git diff --exit-code c9b11f8 -- <those files>` returns 0. The `backend/Makefile` `lint`/`format` targets therefore already fail on this checkout independent of this work; the per-file gate above is the one this branch can be held to.
+
+### Two pre-existing failures, disclosed and not fixed here
+
+1. `backend/tests/test_introspective_tree_search.py::test_expand_filters_repeating_failed_hypothesis` fails — `assert len(expanded) == 1` receives 2. Cause: `introspect_failures()` builds lesson text containing only the sibling id plus the error/prune reason, while `expand()` filters with `act.hypothesis in lesson`; the test's hypothesis `"Divide by constant 10"` is therefore absent from the lesson string and never matches. Out of this branch's scope and untouched by it.
+2. `backend/tests/test_cold_imports.py` does not complete. `-k "not learning_fork"` passes (`4 passed, 1 deselected in 499.49s`); the full parametrization exceeds a 600 s budget on the fifth case, `alpha.agents.middlewares.learning_fork_middleware`. Environmental, unrelated to this branch.
+
+### Admitted limitations of this implementation
+
+- `ReasoningState.run_id` is `<timestamp><8 hex>`, not a bare timestamp: two states minted in the same microsecond by parallel subagents or replayed checkpoints would otherwise collide as identifiers.
+- A budget refusal marks its dimension **exhausted** even when residual headroom remains. This is deliberately conservative — refusing the cheap increment rather than negotiating a smaller one — and it is why the marginal-value test asserts `<=` the offered amount rather than a specific remainder.
+- The AoT token estimator is a disclosed proxy (§11), so §11's absolute numbers must not be quoted as provider-token counts.
