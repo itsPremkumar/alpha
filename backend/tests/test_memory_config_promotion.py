@@ -39,6 +39,7 @@ SECTIONS: dict[str, str] = {
     "evaluation": "EvaluationConfig",
     "health": "HealthConfig",
     "utility": "UtilityConfig",
+    "codebase": "CodebaseConfig",
 }
 
 _MISSING = object()
@@ -60,6 +61,21 @@ def _example_memory() -> dict[str, Any]:
     memory = document.get("memory")
     assert isinstance(memory, dict), "config.example.yaml must have a mapping memory section"
     return memory
+
+
+def _normalize(value: Any) -> Any:
+    """Make container representation irrelevant while keeping values strict.
+
+    A tuple default (``index_extensions``) round-trips through YAML as a list.
+    That is not configuration drift - the loader coerces it back - so comparing
+    a parsed list against a schema tuple would report a false difference on
+    every sequence-typed key. Values themselves are still compared exactly.
+    """
+    if isinstance(value, tuple | list):
+        return [_normalize(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _normalize(item) for key, item in value.items()}
+    return value
 
 
 def _schema_defaults(section: str) -> dict[str, Any]:
@@ -124,13 +140,14 @@ def test_example_config_matches_schema_defaults() -> None:
             f"schema-only={sorted(set(schema_block) - set(example_block))}"
         )
         for key, expected in schema_block.items():
-            actual = example_block[key]
+            actual = _normalize(example_block[key])
+            expected = _normalize(expected)
             override = INTENTIONAL_EXAMPLE_OVERRIDES.get((section, key), _MISSING)
             if override is _MISSING:
                 assert actual == expected, f"memory.{section}.{key}: example={actual!r} schema={expected!r}"
                 continue
             seen_overrides.add((section, key))
-            assert actual == override, f"memory.{section}.{key}: example={actual!r} sanctioned={override!r}"
+            assert actual == _normalize(override), f"memory.{section}.{key}: example={actual!r} sanctioned={override!r}"
     assert seen_overrides == set(INTENTIONAL_EXAMPLE_OVERRIDES), (
         f"sanctioned overrides that are no longer deviations: {sorted(set(INTENTIONAL_EXAMPLE_OVERRIDES) - seen_overrides)}"
     )

@@ -25,6 +25,7 @@ from pydantic import BaseModel, ConfigDict, Field
 # Additive per-type memory subsystem configs. Each package default is OFF, so
 # an existing deployment changes nothing until the operator enables the type.
 from alpha.memory.affective.config import AffectiveConfig
+from alpha.memory.codebase.config import CodebaseConfig
 from alpha.memory.entities.config import EntityConfig
 from alpha.memory.evaluation.config import EvaluationConfig
 from alpha.memory.fabric.config import FabricConfig
@@ -51,6 +52,7 @@ _SHARED_FIELDS = frozenset(
         "user_model",
         "l1",
         "affective",
+        "codebase",
         "entities",
         "evaluation",
         "fabric",
@@ -250,6 +252,16 @@ class MemoryConfig(BaseModel):
             "precision, evidence traceability and token efficiency against "
             "explicit thresholds. Off by default; a run is an operator action, "
             "never a unit-test side effect."
+        ),
+    )
+    codebase: CodebaseConfig = Field(
+        default_factory=CodebaseConfig,
+        description=(
+            "Codebase structure memory: a bounded, incrementally refreshed index of "
+            "modules, symbols and dependency edges, with cycle-safe transitive impact "
+            "analysis and disclosed skipped files. It parses source with the standard "
+            "library and never executes or imports the analysed project. Requires "
+            "memory.enabled AND memory.codebase.enabled."
         ),
     )
     health: HealthConfig = Field(

@@ -20,7 +20,7 @@
 # ============================================================================
 # Bump this number when the config schema changes.
 # Run `make config-upgrade` to merge new fields into your local config.yaml.
-config_version: 51
+config_version: 52
 
 # ============================================================================
 # Logging
@@ -2422,6 +2422,35 @@ memory:
     persona_min_memories: 3
     storage_path: null
 
+  # L1 typed working memory: scene segmentation, typed extraction, dedup/merge, quotas, recall.
+  # Requires memory.enabled as well; the schema default is false (opt-in).
+  l1:
+    enabled: true
+    mode: "chat"
+    extraction_model: null
+    debounce_seconds: 5.0
+    max_memories_per_run: 12
+    min_priority: 60
+    dedup_enabled: true
+    dedup_top_k: 5
+    quota_enabled: true
+    quota_memory_limit: 10000
+    quota_credit_limit: 1000.0
+    provenance_enabled: true
+    # Apply the retention sweep after each run.
+    retention_enabled: true
+    retention_max_records: 5000
+    # Retention sweep drops non-pinned records older than this many days.
+    retention_max_age_days: 180
+    # Inject the top L1 records into the <memory> block at recall time.
+    recall_enabled: true
+    # How many L1 records the recall seam injects.
+    recall_top_k: 5
+    persona_enabled: true
+    # Minimum persona-type records required before persona synthesis runs.
+    persona_min_memories: 3
+    storage_path: null
+
   # Affective memory: emotional tone events, decayed mood state, mood-aware recall.
   # Requires memory.enabled as well; the schema default is false (opt-in).
   affective:
@@ -2643,6 +2672,29 @@ memory:
     demote_budget_pressure: 0.5
     evict_budget_pressure: 0.8
     # Utility state root; None resolves through runtime home.
+    storage_path: null
+
+  # Codebase structure memory: modules, symbols, dependency edges, transitive impact.
+  # Requires memory.enabled as well; the schema default is false (opt-in).
+  codebase:
+    # Master index/recall gate; default is off.
+    enabled: false
+    # Maximum eligible files considered per refresh.
+    max_files: 2000
+    # Maximum bytes read from one file.
+    max_file_bytes: 1000000
+    # Maximum symbols retained per file.
+    max_symbols_per_file: 500
+    # Bounded per-repository snapshot history.
+    max_snapshot_history: 10
+    symbols_char_budget: 2400
+    module_summary_char_budget: 2400
+    impact_char_budget: 1800
+    structure_char_budget: 3000
+    max_recall_items: 20
+    max_impact_depth: 4
+    index_extensions: [".c", ".cc", ".cpp", ".cs", ".go", ".h", ".hpp", ".java", ".js", ".json", ".jsx", ".kt", ".kts", ".md", ".php", ".py", ".pyi", ".rb", ".rs", ".scala", ".sh", ".sql", ".swift", ".toml", ".ts", ".tsx", ".yaml", ".yml"]
+    # Root for per-repository JSON snapshots; None uses runtime home.
     storage_path: null
 # ============================================================================
 # Custom Agent Management API
