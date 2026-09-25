@@ -304,6 +304,9 @@ def _posture_for_guard(node: ast.AST, allowlist_names: set[str]) -> tuple[GatePo
                     return GatePosture.DEFAULT_DENY, True, "allowlist membership denies a non-member"
                 if isinstance(op, (ast.In, ast.Is)) and _has_return(child.body, True):
                     return GatePosture.DEFAULT_DENY, True, "allowlist membership is the decision"
+    for statement in _body_nodes(node):
+        if isinstance(statement, ast.Return) and statement.value is not None and not isinstance(statement.value, ast.Constant):
+            return GatePosture.DEFAULT_DENY, True, "non-constant boolean result can be false"
     body = getattr(node, "body", None)
     if isinstance(body, list):
         for index, statement in enumerate(body):
