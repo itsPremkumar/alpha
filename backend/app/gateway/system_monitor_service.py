@@ -28,6 +28,7 @@ Design notes:
 from __future__ import annotations
 
 import concurrent.futures
+import json
 import logging
 import os
 import platform
@@ -39,6 +40,7 @@ import threading
 import time
 from collections import deque
 from datetime import datetime
+from types import SimpleNamespace
 from typing import Any
 
 from app.gateway import system_monitor_extras as _extras
@@ -50,6 +52,19 @@ try:  # Optional dependency - degrade gracefully when absent.
 except Exception:  # ImportError and platform-specific load failures.
     _psutil = None  # type: ignore[assignment]
     logger.warning("psutil is not installed; the system monitor will report empty readings. Install it with `pip install psutil` to enable host metrics.")
+
+if _psutil is not None:
+    # The first swap_memory() call stats the pagefile and can cost seconds on
+    # cold hosts while holding the GIL (measured 4.6s), which would stall the
+    # Gateway event loop if it ran mid-readiness. Pre-pay that one-time cost
+    # here, during module import (see app.gateway.app's prewarm), so the
+    # first in-lifespan tick runs warm (~26ms measured).
+    _swap_prewarm_started = time.monotonic()
+    try:
+        _psutil.swap_memory()
+        logger.debug("psutil.swap_memory prewarm took %.3fs", time.monotonic() - _swap_prewarm_started)
+    except Exception:
+        logger.debug("psutil.swap_memory prewarm failed", exc_info=True)
 
 # Sampling cadence and retention: 5s ticks x 720 samples ~= 60 minutes.
 DEFAULT_INTERVAL_SECONDS = 5.0
@@ -79,6 +94,20 @@ _DISK_MOUNT_TIMEOUT_SECONDS = 6.0
 # A mount that fails this many consecutive refreshes is skipped until it
 # succeeds again (avoids re-hanging on dead network drives every refresh).
 _DISK_MOUNT_MAX_ERRORS = 3
+
+# psutil.disk_partitions() issues Windows volume queries without releasing the
+# GIL, so an in-process call freezes every thread - event loop included - for
+# 17-30+ seconds on hosts with slow volumes (measured 4.6-31.9s per call on
+# the reference host). A background refresh thread does NOT help: the GIL is
+# process-wide. The enumeration therefore runs in a child interpreter, where
+# the worker thread merely waits on a pipe (GIL released) instead of sitting
+# inside the C call (GIL held), keeping readiness and serving stall-free.
+_DISK_PARTITIONS_CHILD_TIMEOUT_SECONDS = 60.0
+_DISK_PARTITIONS_CHILD_SOURCE = (
+    "import json, psutil;"
+    "print(json.dumps([{'device': p.device, 'mountpoint': p.mountpoint, "
+    "'fstype': p.fstype, 'opts': p.opts} for p in psutil.disk_partitions(all=False)]))"
+)
 
 # GPU readout cache TTL (utilization changes; identity does not).
 _GPU_REFRESH_TTL_SECONDS = 30.0
@@ -129,6 +158,62 @@ def _check_internet() -> dict[str, Any]:
     except Exception:
         probe = {"host": _INTERNET_PROBE_HOST, "reachable": False, "rtt_ms": None, "checked_at": checked_at}
         return {"reachable": False, "rtt_ms": None, "host": _INTERNET_PROBE_HOST, "probes": [probe]}
+
+
+def _disk_partitions_via_child() -> list[Any] | None:
+    """Enumerate partitions in a child interpreter (GIL-free for this process).
+
+    Returns attribute-accessible records mirroring ``psutil.disk_partitions()``,
+    or ``None`` when the caller should keep the last-known table:
+
+    * child probe times out (a hung volume would hang this process too, so we
+      do not fall back in-process - the stale cache stays authoritative and
+      the next stale tick retries),
+    * ``psutil`` itself is unavailable.
+
+    When the child runs but fails quickly (bad interpreter, import error,
+    unparseable output), the legacy in-process call is attempted once so a
+    broken child setup degrades to the old behaviour instead of to no data.
+    """
+    if _psutil is None:
+        return None
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-c", _DISK_PARTITIONS_CHILD_SOURCE],
+            capture_output=True,
+            text=True,
+            timeout=_DISK_PARTITIONS_CHILD_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        logger.warning(
+            "Child disk_partitions probe timed out after %.0fs; keeping the last-known partition table",
+            _DISK_PARTITIONS_CHILD_TIMEOUT_SECONDS,
+        )
+        return None
+    except Exception:
+        logger.warning("Child disk_partitions probe could not start; falling back to the in-process call", exc_info=True)
+    else:
+        if completed.returncode == 0:
+            try:
+                payload = json.loads(completed.stdout or "[]")
+            except Exception:
+                logger.warning("Child disk_partitions probe returned unparseable output; using the in-process call", exc_info=True)
+            else:
+                if isinstance(payload, list):
+                    return [SimpleNamespace(**entry) for entry in payload if isinstance(entry, dict)]
+                logger.warning("Child disk_partitions probe returned an unexpected shape; using the in-process call")
+        else:
+            stderr_tail = (completed.stderr or "").strip()[-500:]
+            logger.warning(
+                "Child disk_partitions probe exited with code %s; using the in-process call: %s",
+                completed.returncode,
+                stderr_tail,
+            )
+    try:
+        return list(_psutil.disk_partitions(all=False) or [])
+    except Exception:
+        logger.debug("Disk partition enumeration failed", exc_info=True)
+        return None
 
 
 def _query_nvidia_gpus() -> list[dict[str, Any]]:
@@ -1070,9 +1155,14 @@ class SystemMonitorService:
             self._disk_cache_time = time.time()
             return
         try:
-            parts = _psutil.disk_partitions(all=False) or []
-        except Exception:
+            parts = _disk_partitions_via_child()
+        except Exception:  # Defensive: the helper is written not to raise.
             logger.debug("Disk partition enumeration failed", exc_info=True)
+            return
+        if parts is None:
+            # Keep the last-known table (or the stdlib fallback above); the
+            # next stale tick retries. Never block this worker in-process on
+            # a volume the child already failed to enumerate.
             return
         candidates: list[tuple[str, str, str, bool]] = []
         seen: set[str] = set()
