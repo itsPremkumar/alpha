@@ -78,12 +78,20 @@ class SelfConfigurationProtocol:
         """Recover an interrupted transaction before serving self-tuning."""
         recovered = self.applier.recover_pending()
         if recovered is not None:
-            self.ledger.record_recover(
-                recovered.change_set_id,
-                author="self-configuration-protocol",
-                status=recovered.status.value,
-                reason=recovered.reason,
-            )
+            try:
+                self.ledger.record_recover(
+                    recovered.change_set_id,
+                    author="self-configuration-protocol",
+                    status=recovered.status.value,
+                    reason=recovered.reason,
+                )
+            except Exception as exc:
+                return ApplyResult(
+                    change_set_id=recovered.change_set_id,
+                    status=ApplyOutcome.FAILED,
+                    reason=f"known-good config was restored but recovery provenance failed: {exc}",
+                    at=self.clock.now(),
+                )
         return recovered
 
     def run(self, change_set: ChangeSet) -> ProtocolRun:
@@ -91,7 +99,15 @@ class SelfConfigurationProtocol:
         if not self.config.enabled:
             return self._disabled_run(change_set)
 
-        self.ledger.record_propose(change_set)
+        try:
+            self.ledger.record_propose(change_set)
+        except Exception as exc:
+            audit_failure = ValidationResult(
+                ok=False,
+                errors=(ValidationIssue(code=ValidationErrorCode.VALIDATION_UNAVAILABLE, path="provenance", message=f"propose audit record failed: {exc}"),),
+                reason="provenance_unavailable",
+            )
+            return self._failed_before_apply(change_set, audit_failure, needs_human=False)
         try:
             current = self._current_document()
         except Exception as exc:
@@ -102,7 +118,17 @@ class SelfConfigurationProtocol:
             )
             return self._failed_before_apply(change_set, unreadable, needs_human=True)
         validation = self.validator.validate(change_set, current)
-        self.ledger.record_validation(change_set, validation)
+        try:
+            self.ledger.record_validation(change_set, validation)
+        except Exception as exc:
+            validation = ValidationResult(
+                ok=False,
+                errors=(ValidationIssue(code=ValidationErrorCode.VALIDATION_UNAVAILABLE, path="provenance", message=f"validation audit record failed: {exc}"),),
+                warnings=validation.warnings,
+                blast_radius_class=validation.blast_radius_class,
+                reason="provenance_unavailable",
+            )
+            return self._failed_before_apply(change_set, validation, needs_human=False)
         if validation.no_op:
             return self._disabled_run(change_set, reason=validation.reason or "self_tuning_disabled")
         if not validation.ok:
@@ -141,11 +167,41 @@ class SelfConfigurationProtocol:
                 blast_radius_class=validation.blast_radius_class,
                 reason="pre_change_health_unavailable",
             )
-            self.ledger.record_verify(change_set, unavailable)
+            try:
+                self.ledger.record_verify(change_set, unavailable)
+            except Exception as exc:
+                unavailable_validation = ValidationResult(
+                    ok=False,
+                    errors=(
+                        ValidationIssue(code=ValidationErrorCode.VALIDATION_UNAVAILABLE, path="provenance", message=f"unavailable-health audit record failed: {exc}"),
+                        *unavailable_validation.errors,
+                    ),
+                    warnings=unavailable_validation.warnings,
+                    blast_radius_class=unavailable_validation.blast_radius_class,
+                    reason="provenance_unavailable",
+                )
             return self._failed_before_apply(change_set, unavailable_validation, needs_human=True, verification=unavailable)
 
         canary = self.canary.run(change_set)
-        self.ledger.record_canary(change_set, canary)
+        try:
+            self.ledger.record_canary(change_set, canary)
+        except Exception as exc:
+            rollback = self.rollback_manager.rollback(
+                change_set,
+                reason=f"automatic rollback: canary audit record failed: {exc}",
+                requested_by="self-configuration-protocol",
+            )
+            not_run = VerificationResult(change_set_id=change_set.id, status=VerificationStatus.NOT_RUN, keep=False, reason="canary audit unavailable before global apply")
+            return ProtocolRun(
+                change_set_id=change_set.id,
+                status=rollback.status,
+                reason=f"canary audit record failed: {exc}",
+                validation=validation,
+                canary=canary,
+                apply=ApplyResult(change_set_id=change_set.id, status=ApplyOutcome.NO_OP, reason="canary audit failed before global apply", at=self.clock.now()),
+                verification=not_run,
+                rollback=rollback,
+            )
         if canary.decision is not CanaryDecision.PROMOTE:
             rollback = self.rollback_manager.rollback(
                 change_set,
@@ -165,7 +221,36 @@ class SelfConfigurationProtocol:
             )
 
         applied = self.applier.apply(change_set)
-        self.ledger.record_apply(change_set, applied.status, applied.reason)
+        try:
+            self.ledger.record_apply(change_set, applied.status, applied.reason)
+        except Exception as exc:
+            if applied.status is ApplyOutcome.APPLIED:
+                rollback = self.rollback_manager.rollback(
+                    change_set,
+                    reason=f"automatic rollback: apply audit record failed: {exc}",
+                    requested_by="self-configuration-protocol",
+                )
+                not_run = VerificationResult(change_set_id=change_set.id, status=VerificationStatus.NOT_RUN, keep=False, reason="apply audit unavailable; candidate reversed")
+                return ProtocolRun(
+                    change_set_id=change_set.id,
+                    status=rollback.status,
+                    reason=f"apply audit record failed: {exc}",
+                    validation=validation,
+                    canary=canary,
+                    apply=applied,
+                    verification=not_run,
+                    rollback=rollback,
+                )
+            not_run = VerificationResult(change_set_id=change_set.id, status=VerificationStatus.NOT_RUN, keep=False, reason="apply audit unavailable; no config write occurred")
+            return ProtocolRun(
+                change_set_id=change_set.id,
+                status=applied.status,
+                reason=f"apply audit record failed: {exc}",
+                validation=validation,
+                canary=canary,
+                apply=applied,
+                verification=not_run,
+            )
         if applied.status is not ApplyOutcome.APPLIED:
             not_run = VerificationResult(change_set_id=change_set.id, status=VerificationStatus.NOT_RUN, keep=False, reason="config was not applied")
             return ProtocolRun(
@@ -184,18 +269,67 @@ class SelfConfigurationProtocol:
             self.verifier,
             requested_by="self-configuration-protocol",
         )
-        self.ledger.record_verify(change_set, verification)
-        if verification.keep:
-            self.applier.confirm(change_set.id)
-            self.ledger.record_confirm(change_set, verification.reason)
+        try:
+            self.ledger.record_verify(change_set, verification)
+        except Exception as exc:
+            verification = VerificationResult(
+                change_set_id=change_set.id,
+                status=VerificationStatus.UNAVAILABLE,
+                keep=False,
+                reason=f"verification audit record failed: {exc}",
+                before=verification.before,
+                after=verification.after,
+            )
+            rollback = self.rollback_manager.rollback(
+                change_set,
+                reason=f"automatic rollback: {verification.reason}",
+                requested_by="self-configuration-protocol",
+            )
             return ProtocolRun(
                 change_set_id=change_set.id,
-                status=ApplyOutcome.APPLIED,
-                reason=applied.reason,
+                status=rollback.status,
+                reason=verification.reason,
                 validation=validation,
                 canary=canary,
                 apply=applied,
                 verification=verification,
+                rollback=rollback,
+            )
+        if verification.keep:
+            retention_error: str | None = None
+            try:
+                self.applier.confirm(change_set.id)
+            except Exception as exc:
+                retention_error = f"verified candidate could not be confirmed: {exc}"
+            else:
+                try:
+                    self.ledger.record_confirm(change_set, verification.reason)
+                except Exception as exc:
+                    retention_error = f"verified candidate could not be recorded in provenance: {exc}"
+            if retention_error is None:
+                return ProtocolRun(
+                    change_set_id=change_set.id,
+                    status=ApplyOutcome.APPLIED,
+                    reason=applied.reason,
+                    validation=validation,
+                    canary=canary,
+                    apply=applied,
+                    verification=verification,
+                )
+            rollback = self.rollback_manager.rollback(
+                change_set,
+                reason=f"automatic rollback: {retention_error}",
+                requested_by="self-configuration-protocol",
+            )
+            return ProtocolRun(
+                change_set_id=change_set.id,
+                status=rollback.status,
+                reason=retention_error,
+                validation=validation,
+                canary=canary,
+                apply=applied,
+                verification=verification,
+                rollback=rollback,
             )
         return ProtocolRun(
             change_set_id=change_set.id,
