@@ -177,6 +177,20 @@
       ]
     },
     {
+      "event": "values",
+      "keys": [
+        "artifacts",
+        "delegations",
+        "messages",
+        "sandbox",
+        "skill_context",
+        "thread_data",
+        "title",
+        "uploaded_files",
+        "viewed_images"
+      ]
+    },
+    {
       "event": "end",
       "keys": null
     }
