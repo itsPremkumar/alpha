@@ -3,6 +3,19 @@
 Public names are installed lazily (:pep:`562`, via
 :func:`alpha.memory._lazy_exports.install_lazy_exports`) so importing this
 package from the shared config plane stays cheap and side-effect free.
+
+Design references (implemented independently, no source copied):
+
+* Google SRE, *Release Engineering*:
+  https://sre.google/sre-book/release-engineering/
+* Google SRE, *Canarying Releases*:
+  https://sre.google/workbook/canarying-releases/
+* Martin Fowler, *Feature Toggles (aka Kill Switches)*:
+  https://martinfowler.com/articles/feature-toggles.html
+* Karl Åström and Richard Murray, *Feedback Systems* (damping, saturation,
+  and deadbands in the resource governor).
+* AWS Builders' Library, *Making retries safe with idempotent APIs*:
+  https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/
 """
 
 from __future__ import annotations
