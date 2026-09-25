@@ -172,13 +172,28 @@ def _unified_diff(
 
 
 def _expected_index_paths(repo_root: Path) -> list[Path]:
+    """Enumerate committed and present files below ``docs/INDEX``.
+
+    Git enumeration matters for a deleted generated file: a clean checkout
+    cannot discover a path that is no longer on disk.  The filesystem fallback
+    keeps the gate hermetic in the small synthetic repositories used by tests.
+    """
     index_root = repo_root / INDEX_REL
-    if not index_root.is_dir():
-        return []
-    return sorted(
-        (path.relative_to(repo_root) for path in index_root.rglob("*") if path.is_file()),
-        key=lambda path: path.as_posix(),
-    )
+    paths: set[Path] = set()
+    if index_root.is_dir():
+        paths.update(path.relative_to(repo_root) for path in index_root.rglob("*") if path.is_file())
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "-z", "--", INDEX_REL.as_posix()],
+            cwd=repo_root,
+            capture_output=True,
+            check=False,
+        )
+    except OSError:
+        result = None
+    if result is not None and result.returncode == 0:
+        paths.update(Path(item.decode("utf-8", errors="surrogateescape")) for item in result.stdout.split(b"\0") if item)
+    return sorted(paths, key=lambda path: path.as_posix())
 
 
 def _generated_path(output_dir: Path, relative_path: Path) -> Path | None:
