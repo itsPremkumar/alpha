@@ -594,6 +594,19 @@ class TestThreeWayMountEndToEnd:
             if args[0] == "--mount":
                 mount_entries[container] = args[1]
 
+        def mount_src(entry: str) -> Path:
+            """Parse the host side of a `type=bind,src=...,dst=...` mount arg.
+
+            The host side is a real OS path, so it carries native separators
+            (backslashes on Windows). Asserting a hard-coded POSIX substring made
+            this test fail on Windows even though the emitted mount was correct.
+            Compare parsed Path objects instead. The prefix/suffix split (rather
+            than splitting on every comma) keeps a path containing a comma intact.
+            """
+            prefix = "type=bind,src="
+            assert entry.startswith(prefix), entry
+            return Path(entry[len(prefix) :].partition(",dst=")[0])
+
         assert "--mount" in docker_args
         # Skills mounts must be present
         assert "/mnt/skills/public" in mount_entries
@@ -602,11 +615,11 @@ class TestThreeWayMountEndToEnd:
 
         assert "/mnt/skills/custom" in mount_entries
         assert "dst=/mnt/skills/custom" in mount_entries["/mnt/skills/custom"]
-        assert "users/noob/skills_view/custom" in mount_entries["/mnt/skills/custom"]
+        assert mount_src(mount_entries["/mnt/skills/custom"]) == skills_fs["users_dir"] / "noob" / "skills_view" / "custom"
 
         assert "/mnt/skills/integrations" in mount_entries
         assert "dst=/mnt/skills/integrations" in mount_entries["/mnt/skills/integrations"]
-        assert "users/noob/skills_view/integrations" in mount_entries["/mnt/skills/integrations"]
+        assert mount_src(mount_entries["/mnt/skills/integrations"]) == skills_fs["users_dir"] / "noob" / "skills_view" / "integrations"
 
         # noob has no per-user custom → legacy is mounted
         assert "/mnt/skills/legacy" in mount_entries
