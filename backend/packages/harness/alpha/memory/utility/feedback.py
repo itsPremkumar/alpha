@@ -84,7 +84,7 @@ class MemoryUtility:
             return None
         try:
             value = float(selected_clock() if callable(selected_clock) else selected_clock.now())
-        except (AttributeError, TypeError, ValueError, OverflowError):
+        except (AttributeError, TypeError, ValueError, OverflowError, RuntimeError):
             return None
         return value if math.isfinite(value) and value >= 0.0 else None
 
@@ -243,6 +243,8 @@ class MemoryUtility:
 
         if not self.enabled:
             return []
+        if isinstance(payloads, (UtilityObservation, Mapping)):
+            payloads = [payloads]
         return [self.observe(item, user_id=user_id, agent_name=agent_name, now=now, clock=clock) for item in payloads]
 
     def _unavailable_score(self, reason: str, sample_size: int = 0) -> ScoreResult:
@@ -281,7 +283,7 @@ class MemoryUtility:
             try:
                 candidate = float(clock() if callable(clock) else clock.now())
                 active_now = candidate if math.isfinite(candidate) and candidate >= 0.0 else None
-            except (AttributeError, TypeError, ValueError, OverflowError):
+            except (AttributeError, TypeError, ValueError, OverflowError, RuntimeError):
                 active_now = None
         return score_record(record, now=active_now, config=self.config, calibration=active_calibration)
 
@@ -303,7 +305,7 @@ class MemoryUtility:
             try:
                 candidate = float(clock() if callable(clock) else clock.now())
                 active_now = candidate if math.isfinite(candidate) and candidate >= 0.0 else None
-            except (AttributeError, TypeError, ValueError, OverflowError):
+            except (AttributeError, TypeError, ValueError, OverflowError, RuntimeError):
                 active_now = None
         if active_now is not None:
             rescored = [score_record(item, now=active_now, config=self.config, calibration=self._calibration).record for item in records]

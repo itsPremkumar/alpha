@@ -286,7 +286,10 @@ def normalize_signal(
     normalizer = FeedbackNormalizer(clock=clock, overrides=overrides)
     if seen_ids:
         normalizer.seed_ids(seen_ids)
-    return normalizer.normalize(payload, now=now)
+    result = normalizer.normalize(payload, now=now)
+    if seen_ids is not None and result.observation_id:
+        seen_ids.add(result.observation_id)
+    return result
 
 
 def normalize_observation(
