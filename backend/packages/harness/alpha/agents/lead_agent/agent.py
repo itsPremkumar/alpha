@@ -666,6 +666,21 @@ def build_middlewares(
             logger.warning("memory.mode is 'tool' but memory.enabled is false; memory tools will not be registered.")
         middlewares.append(MemoryMiddleware(agent_name=agent_name, memory_config=resolved_app_config.memory))
 
+    # Add L1MemoryMiddleware (typed working memory) alongside the manager
+    # middleware. Registration is gated by the two-level l1_enabled() check so
+    # the chain stays byte-identical when memory.l1.enabled is false.
+    from alpha.agents.memory.l1.gates import l1_enabled as l1_memory_enabled
+
+    if l1_memory_enabled(resolved_app_config.memory):
+        from alpha.agents.middlewares.l1_memory_middleware import L1MemoryMiddleware
+
+        middlewares.append(
+            L1MemoryMiddleware(
+                agent_name=agent_name,
+                memory_config=resolved_app_config.memory,
+            )
+        )
+
     # Add LearningForkMiddleware after MemoryMiddleware.
     # Runs a post-turn aux-model replay with whitelisted tools (memory + proposals).
     from alpha.agents.middlewares.learning_fork_middleware import build_learning_fork_middleware

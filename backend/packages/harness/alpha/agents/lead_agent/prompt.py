@@ -908,6 +908,38 @@ def _get_memory_context(
         except Exception:
             logger.debug("Failed to enrich memory context from cognitive memory", exc_info=True)
 
+        # L1 typed working memory: a separately-gated store appended to the
+        # same <memory> block. L1 content is real store content (never a
+        # stand-in for a failed backend read — see the cognitive rule above),
+        # so it may appear even when the configured backend returned nothing.
+        try:
+            from alpha.agents.memory.l1.gates import l1_enabled
+            from alpha.agents.memory.l1.pipeline import (
+                get_bound_l1_pipeline,
+                get_l1_pipeline,
+            )
+
+            if l1_enabled(config):
+                # An explicitly supplied app_config must govern the L1 gate AND
+                # the store it reads; otherwise the block would be gated by one
+                # config and served from another config's store.
+                l1_pipeline = (
+                    get_l1_pipeline()
+                    if app_config is None
+                    else get_bound_l1_pipeline(config)
+                )
+                l1_block = l1_pipeline.recall(
+                    user_id=user_id or resolve_runtime_user_id(None),
+                    agent_name=agent_name,
+                )
+                if l1_block.strip():
+                    if memory_content.strip():
+                        memory_content = f"{memory_content.strip()}\n\n{l1_block.strip()}"
+                    else:
+                        memory_content = l1_block.strip()
+        except Exception:
+            logger.debug("Failed to load L1 working-memory recall", exc_info=True)
+
         if not memory_content.strip():
             return ""
 

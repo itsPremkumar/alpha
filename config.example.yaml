@@ -20,7 +20,7 @@
 # ============================================================================
 # Bump this number when the config schema changes.
 # Run `make config-upgrade` to merge new fields into your local config.yaml.
-config_version: 48
+config_version: 49
 
 # ============================================================================
 # Logging
@@ -2316,6 +2316,34 @@ memory:
     provider: null
     # storage_path: ""            # required when provider: file
 
+  # --------------------------------------------------------------------------
+  # L1 typed working memory (scene segmentation + typed extraction + dedup)
+  # --------------------------------------------------------------------------
+  # Additive pipeline layered on top of the configured memory backend. Requires
+  # memory.enabled as well: BOTH gates must be true (l1_enabled()).
+  l1:
+    enabled: true
+    # Extraction/conflict prompt dialect: chat (personal) | work (team shared).
+    mode: chat
+    # Chat model for extraction/dedup/persona calls (null = host default model).
+    extraction_model: null
+    debounce_seconds: 5.0       # batches rapid turns into one extraction run
+    max_memories_per_run: 12    # upper bound per extraction call
+    min_priority: 60            # drop below this priority (-1 sentinel kept)
+    dedup_enabled: true         # batch conflict detection before writes land
+    dedup_top_k: 5              # existing candidates recalled per new memory
+    quota_enabled: true         # per-user record + credit quotas
+    quota_memory_limit: 10000
+    quota_credit_limit: 1000.0
+    provenance_enabled: true    # one generation-log entry per run
+    retention_enabled: true     # age + record-cap sweep after each run
+    retention_max_records: 5000
+    retention_max_age_days: 180
+    recall_enabled: true        # inject top L1 records into <memory>
+    recall_top_k: 5
+    persona_enabled: true       # persona profile from persona-type records
+    persona_min_memories: 3
+    storage_path: null          # null = agent runtime home (per-user layout)
 # ============================================================================
 # Custom Agent Management API
 # ============================================================================
