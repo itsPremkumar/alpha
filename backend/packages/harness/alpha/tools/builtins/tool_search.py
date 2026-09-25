@@ -33,6 +33,7 @@ from langchain_core.utils.function_calling import convert_to_openai_function
 from langgraph.types import Command
 
 from alpha.tools.mcp_metadata import get_mcp_routing, is_mcp_tool
+from alpha.tools.tool_discovery_metrics import record_current_deferred_tool_search
 
 if TYPE_CHECKING:
     from langchain.agents.middleware import AgentMiddleware
@@ -301,6 +302,7 @@ def build_tool_search_tool(catalog: DeferredToolCatalog) -> BaseTool:
         else:
             content = json.dumps([convert_to_openai_function(t) for t in matched], indent=2, ensure_ascii=False)
             names = [t.name for t in matched]
+        record_current_deferred_tool_search(names)
         return Command(
             update={
                 "promoted": {"catalog_hash": catalog_hash, "names": names},

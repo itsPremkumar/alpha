@@ -8,6 +8,7 @@ from typing import Any
 from langchain.tools import tool
 
 from alpha.tools.search.catalog import get_universal_catalog
+from alpha.tools.tool_discovery_metrics import record_tool_discovery_operation
 
 
 @tool("catalog_tool_search", parse_docstring=True)
@@ -26,9 +27,9 @@ def catalog_tool_search(
     """
     catalog = get_universal_catalog()
     results = catalog.search(query=query, limit=limit)
-    if not results:
-        return f"No tools found matching query '{query}'."
-    return json.dumps(results, indent=2)
+    result = f"No tools found matching query '{query}'." if not results else json.dumps(results, indent=2)
+    record_tool_discovery_operation("search")
+    return result
 
 
 @tool("catalog_tool_describe", parse_docstring=True)
@@ -45,7 +46,9 @@ def catalog_tool_describe(
     catalog = get_universal_catalog()
     try:
         details = catalog.describe(tool_name)
-        return json.dumps(details, indent=2)
+        result = json.dumps(details, indent=2)
+        record_tool_discovery_operation("describe")
+        return result
     except KeyError as e:
         return f"Error: {e}"
 
@@ -64,6 +67,7 @@ def catalog_tool_call(
     catalog = get_universal_catalog()
     try:
         res = catalog.call(tool_name, arguments or {})
+        record_tool_discovery_operation("promote")
         if isinstance(res, (dict, list)):
             return json.dumps(res, indent=2)
         return str(res)
