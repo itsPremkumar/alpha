@@ -34,8 +34,8 @@ What is in the box
                           ``AttemptRecord`` trail.
 :mod:`.circuit`           ``CircuitBreaker``: closed/open/half-open, failure
                           threshold, reset timeout, single-flight half-open
-                          probe, per-instance state, disclosed
-                          ``state_reason``.
+                          probe, generation-fenced permits, per-instance state,
+                          disclosed ``state_reason``.
 :mod:`.convergence`       ``ConvergenceGuard``: the anti-oscillation layer.
                           Detects repeated actions, A->B->A ping-pong,
                           no-progress runs and alternating failure signatures,
@@ -203,6 +203,7 @@ _EXPORTS = {
     "retry_call": "retry",
     # circuit
     "CircuitBreaker": "circuit",
+    "CircuitPermit": "circuit",
     "CircuitSnapshot": "circuit",
     "CircuitState": "circuit",
     # convergence
@@ -248,6 +249,7 @@ if TYPE_CHECKING:  # pragma: no cover - import-time-free type surface
     from alpha.runtime.resilience.budget import ResourceBudget as ResourceBudget
     from alpha.runtime.resilience.budget import ZeroCostMeter as ZeroCostMeter
     from alpha.runtime.resilience.circuit import CircuitBreaker as CircuitBreaker
+    from alpha.runtime.resilience.circuit import CircuitPermit as CircuitPermit
     from alpha.runtime.resilience.circuit import CircuitSnapshot as CircuitSnapshot
     from alpha.runtime.resilience.circuit import CircuitState as CircuitState
     from alpha.runtime.resilience.clock import Clock as Clock
