@@ -607,7 +607,7 @@ class TestCircuit:
         assert "awaiting single probe" in breaker.state_reason()
 
         first = breaker.acquire()
-        assert first is CircuitState.HALF_OPEN
+        assert first.is_probe is True
         assert "probe in flight" in breaker.state_reason()
         with pytest.raises(CircuitOpenError) as excinfo:
             breaker.acquire()
@@ -646,26 +646,48 @@ class TestCircuit:
         breaker.record_failure()
         assert breaker.state() is CircuitState.OPEN
         clock.advance(5.0)
-        breaker.acquire()
-        breaker.record_failure("still down")
+        failed_probe = breaker.acquire()
+        breaker.record_failure("still down", permit=failed_probe)
         assert breaker.state() is CircuitState.OPEN
         assert "probe failed" in breaker.state_reason()
         clock.advance(5.0)
-        breaker.acquire()
-        closed = breaker.record_success()
+        probe = breaker.acquire()
+        closed = breaker.record_success(permit=probe)
         assert closed.state is CircuitState.CLOSED
         assert closed.consecutive_failures == 0
         assert closed.failure_count == 0
         assert breaker.allow_request() is True
+
+    def test_a_late_result_cannot_corrupt_a_newer_window(self):
+        """Generation fence: an outcome admitted before a transition is ignored.
+
+        The same hazard is why ``SystemOneClient`` carries a ``_breaker_generation``
+        and the LLM middleware a probe token.
+        """
+        clock = ManualClock()
+        breaker = CircuitBreaker(name="provider", failure_threshold=1, reset_timeout=5.0, clock=clock)
+        admitted = breaker.acquire()
+        assert admitted.is_probe is False
+        breaker.record_failure("provider down")  # opens the window, bumps generation
+        assert breaker.state() is CircuitState.OPEN
+        stale = breaker.record_failure("late result from before the open", permit=admitted)
+        assert stale.failure_count == 1  # ignored: the window is unchanged
+        assert breaker.state() is CircuitState.OPEN
+        stale = breaker.record_success(permit=admitted)  # also ignored
+        assert breaker.state() is CircuitState.OPEN
+        stale_release = breaker.release_probe(permit=admitted)
+        assert stale_release is None
+        clock.advance(5.0)
+        assert breaker.acquire().is_probe is True
 
     def test_release_probe_lets_the_next_caller_probe(self):
         clock = ManualClock()
         breaker = CircuitBreaker(name="provider", failure_threshold=1, reset_timeout=1.0, clock=clock)
         breaker.record_failure()
         clock.advance(1.0)
-        breaker.acquire()
-        breaker.release_probe()
-        assert breaker.acquire() is CircuitState.HALF_OPEN
+        probe = breaker.acquire()
+        breaker.release_probe(probe)
+        assert breaker.acquire().is_probe is True
 
     def test_call_returns_the_real_value_and_counts_failures(self):
         clock = ManualClock()

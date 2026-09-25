@@ -22,6 +22,14 @@ Guarantees and deliberate differences
   ``_half_open_probe`` flag plus a generation fence) and
   ``alpha/agents/middlewares/llm_error_handling_middleware.py`` (which uses a
   probe token), so a future delegation is a behaviour-preserving swap.
+* **Late results cannot corrupt a newer window.** :meth:`acquire` returns a
+  :class:`CircuitPermit` stamped with the breaker's current *generation*, and
+  ``record_success``/``record_failure``/``release_probe`` ignore a permit from an
+  older generation. A call admitted before the breaker opened therefore cannot
+  re-open or close the window that replaced it. The same generation fence exists
+  in ``SystemOneClient._release_request_slot`` and the middleware's probe token;
+  without it a slow in-flight call can trip a breaker that has already recovered.
+  Passing no permit is the explicit, unfenced path.
 * **Every refusal is disclosed.** ``state_reason`` is always a non-empty human
   string; the exception carries it plus ``retry_after`` seconds.
 * **Any exception counts as a failure** in :meth:`CircuitBreaker.call`. Callers
@@ -52,7 +60,7 @@ from typing import Any
 from alpha.runtime.resilience.clock import Clock, coerce_clock, require_delay
 from alpha.runtime.resilience.errors import CircuitOpenError
 
-__all__ = ["CircuitBreaker", "CircuitSnapshot", "CircuitState", "CircuitOpenError"]
+__all__ = ["CircuitBreaker", "CircuitOpenError", "CircuitPermit", "CircuitSnapshot", "CircuitState"]
 
 
 class CircuitState(StrEnum):
@@ -61,6 +69,20 @@ class CircuitState(StrEnum):
     CLOSED = "closed"
     OPEN = "open"
     HALF_OPEN = "half_open"
+
+
+@dataclass(frozen=True, slots=True)
+class CircuitPermit:
+    """Admission token: which generation of the breaker a call was admitted to.
+
+    ``generation`` increments every time the breaker changes state, so an outcome
+    from a call admitted before a transition cannot be applied to the state that
+    replaced it.
+    """
+
+    generation: int
+    is_probe: bool = False
+    name: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,6 +124,7 @@ class CircuitBreaker:
         "_consecutive_failures",
         "_failure_count",
         "_failure_threshold",
+        "_generation",
         "_half_open_probe",
         "_lock",
         "_name",
@@ -129,6 +152,7 @@ class CircuitBreaker:
         self._failure_count = 0
         self._opened_at: float | None = None
         self._half_open_probe = False
+        self._generation = 0
         self._reason = "closed: no failures recorded"
 
     # -- introspection ----------------------------------------------------
@@ -195,10 +219,13 @@ class CircuitBreaker:
             state, _retry_after, _probe = self._derive()
             return state is not CircuitState.OPEN
 
-    def acquire(self) -> CircuitState:
+    def acquire(self) -> CircuitPermit:
         """Admit one call, taking the half-open probe slot if applicable.
 
-        Raises :class:`CircuitOpenError` when the breaker refuses.
+        Returns a :class:`CircuitPermit` stamped with the current generation;
+        pass it back to ``record_success``/``record_failure``/
+        :meth:`release_probe` so a late result cannot be applied to a newer
+        window. Raises :class:`CircuitOpenError` when the breaker refuses.
         """
         with self._lock:
             state, retry_after, probe = self._derive()
@@ -217,39 +244,58 @@ class CircuitBreaker:
                     )
                 self._half_open_probe = True
                 self._reason = f"half_open: probing recovery after {self._reset_timeout!r}s open window"
-            return state
+                return CircuitPermit(self._generation, is_probe=True, name=self._name)
+            return CircuitPermit(self._generation, is_probe=False, name=self._name)
 
-    def release_probe(self) -> None:
+    def _stale(self, permit: CircuitPermit | None) -> bool:
+        """True when a permit belongs to a superseded breaker generation."""
+        return permit is not None and permit.generation != self._generation
+
+    def release_probe(self, permit: CircuitPermit | None = None) -> None:
         """Release the half-open probe without recording an outcome.
 
         For callers whose admission is consumed by something other than a
         success/failure (a cancellation, a control-flow signal, a request that
         was abandoned). Without this the breaker would fast-fail forever waiting
-        for a probe nobody is running.
+        for a probe nobody is running. A stale ``permit`` is ignored so an older
+        call cannot release a newer call's probe.
         """
         with self._lock:
+            if self._stale(permit):
+                return
             self._half_open_probe = False
 
     # -- outcome recording ------------------------------------------------
 
-    def record_success(self) -> CircuitSnapshot:
-        """Record a success: reset the consecutive-failure count and close."""
+    def record_success(self, permit: CircuitPermit | None = None) -> CircuitSnapshot:
+        """Record a success: reset the consecutive-failure count and close.
+
+        A stale ``permit`` (from before the breaker last changed state) is
+        ignored: the call it belongs to describes a window that no longer
+        exists.
+        """
         with self._lock:
+            if self._stale(permit):
+                return self.snapshot()
             self._consecutive_failures = 0
             self._failure_count = 0
             self._opened_at = None
             self._half_open_probe = False
+            self._generation += 1
             self._reason = "closed: last call succeeded"
             return self.snapshot()
 
-    def record_failure(self, reason: str = "") -> CircuitSnapshot:
+    def record_failure(self, reason: str = "", permit: CircuitPermit | None = None) -> CircuitSnapshot:
         """Record a failure; open the circuit at the threshold.
 
         A failure while the window has elapsed (i.e. the failing call was the
         half-open probe) re-opens immediately, even if the count is below the
-        threshold: the probe is the evidence that recovery did not happen.
+        threshold: the probe is the evidence that recovery did not happen. A
+        stale ``permit`` is ignored (see :meth:`record_success`).
         """
         with self._lock:
+            if self._stale(permit):
+                return self.snapshot()
             self._consecutive_failures += 1
             self._failure_count += 1
             self._half_open_probe = False
@@ -257,9 +303,11 @@ class CircuitBreaker:
             if self._opened_at is not None and self._derive()[0] is CircuitState.HALF_OPEN:
                 self._opened_at = self._clock.now()
                 self._reason = f"open: half-open probe failed{detail}"
+                self._generation += 1
             elif self._consecutive_failures >= self._failure_threshold:
                 self._opened_at = self._clock.now()
                 self._reason = f"open: {self._consecutive_failures} consecutive failures reached threshold {self._failure_threshold}{detail}"
+                self._generation += 1
             else:
                 self._reason = f"closed: {self._consecutive_failures}/{self._failure_threshold} consecutive failures{detail}"
             return self.snapshot()
@@ -271,6 +319,7 @@ class CircuitBreaker:
             self._failure_count = 0
             self._opened_at = None
             self._half_open_probe = False
+            self._generation += 1
             self._reason = f"closed: {reason}"
             return self.snapshot()
 
@@ -283,15 +332,16 @@ class CircuitBreaker:
         re-raised unchanged; the return value is whatever ``operation``
         returned (``None`` included). A :class:`CircuitOpenError` from admission
         is raised before ``operation`` runs, so a refused call has no side
-        effect at all.
+        effect at all. The outcome is fenced by the admission permit, so a call
+        that started before a transition cannot record into the new state.
         """
-        self.acquire()
+        permit = self.acquire()
         try:
             value = operation(*args, **kwargs)
         except BaseException as exc:
-            self.record_failure(reason=type(exc).__name__)
+            self.record_failure(reason=type(exc).__name__, permit=permit)
             raise
-        self.record_success()
+        self.record_success(permit=permit)
         return value
 
     def __repr__(self) -> str:  # pragma: no cover - debug aid
