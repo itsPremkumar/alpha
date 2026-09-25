@@ -148,6 +148,34 @@ async def test_laya_abstains_before_http_when_serialized_payload_exceeds_budget(
         called = True
         return httpx.Response(200, json={}, request=_request)
 
+    client = SystemOneClient(
+        SystemOneConfig(
+            provider=PROVIDER_LAYA,
+            model="english",
+            laya_max_state_chars=12_000,
+            laya_max_request_chars=2_000,
+        )
+    )
+    _attach(client, handler)
+    result = await client.evaluate(
+        {"text": "short state"},
+        {"q": ChoiceQuestion("Which?", {f"option_{index}": "x" * 1_000 for index in range(20)})},
+    )
+
+    assert result is None
+    assert called is False
+
+
+@pytest.mark.asyncio
+async def test_laya_abstains_before_http_when_state_exceeds_budget():
+    """The state-char bound must abstain on its own, not only the request bound."""
+    called = False
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal called
+        called = True
+        return httpx.Response(200, json={}, request=_request)
+
     client = SystemOneClient(SystemOneConfig(provider=PROVIDER_LAYA, model="english", laya_max_state_chars=1_000))
     _attach(client, handler)
     result = await client.evaluate(
