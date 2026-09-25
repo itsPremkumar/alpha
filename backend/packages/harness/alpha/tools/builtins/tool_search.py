@@ -21,7 +21,7 @@ import html
 import json
 import logging
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from functools import cached_property
 from typing import TYPE_CHECKING, Annotated, Any
@@ -40,6 +40,20 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 MAX_RESULTS = 5  # Max tools returned per search
+
+# Small deterministic intent aliases keep BM25 lexical while covering the most
+# common discovery paraphrases. This mirrors the reference runtime's bounded
+# expansion without introducing a model/network dependency.
+_BM25_QUERY_ALIASES = {
+    "bug": ("issue",),
+    "defect": ("issue",),
+    "fetch": ("retrieve", "download"),
+    "price": ("cost", "pricing"),
+}
+_BM25_NAME_WEIGHT = 4.0
+_BM25_DESCRIPTION_WEIGHT = 2.0
+_BM25_PARAMETER_WEIGHT = 1.0
+_BM25_EXACT_NAME_BOOST = 1_000_000.0
 
 
 def _compile_catalog_regex(pattern: str) -> re.Pattern[str]:
@@ -109,21 +123,95 @@ class DeferredToolCatalog:
         return [t for _, t in scored][:MAX_RESULTS]
 
     def search_smart(self, query: str) -> list[BaseTool]:
-        """Deterministic search, then System One re-ranks what the regex missed.
+        """BM25 relevance with the legacy regex/System One path as fallback.
 
-        Only the free-text path benefits — ``select:`` and ``+name`` are exact
-        forms and are left alone. The regex hits always lead, so promoting a
-        tool the model named literally can never regress.
+        Only the free-text path benefits; ``select:`` and ``+name`` are exact
+        forms and are left alone. Legacy regex/literal and System One ranking
+        remain the deterministic fallback when BM25 has no usable signal.
         """
         base = self.search(query)
         if not query.strip() or query.startswith(("select:", "+")) or len(self.tools) < 2:
             return base
+
+        order = _bm25_tool_order(query, self.tools)
+        by_name = {tool.name: tool for tool in self.tools}
+        if order:
+            seen: set[str] = set()
+            ranked: list[BaseTool] = []
+            for name in [*order, *(tool.name for tool in base)]:
+                tool = by_name.get(name)
+                if tool is not None and name not in seen:
+                    seen.add(name)
+                    ranked.append(tool)
+            return ranked[:MAX_RESULTS]
+
         order = _system_one_tool_order(query, self.tools)
         if not order:
             return base
-        by_name = {t.name: t for t in self.tools}
-        seen = {t.name for t in base}
-        return [*base, *(by_name[n] for n in order if n in by_name and n not in seen)][:MAX_RESULTS]
+        seen = {tool.name for tool in base}
+        return [*base, *(by_name[name] for name in order if name in by_name and name not in seen)][:MAX_RESULTS]
+
+
+def _first_party_parameter_search_text(tool: BaseTool) -> str:
+    """Return trusted parameter names/descriptions, or empty for MCP tools."""
+    if is_mcp_tool(tool):
+        return ""
+    parameters = convert_to_openai_function(tool).get("parameters")
+    if not isinstance(parameters, Mapping):
+        return ""
+    properties = parameters.get("properties")
+    if not isinstance(properties, Mapping):
+        return ""
+
+    parts: list[str] = []
+    for name, definition in properties.items():
+        parts.append(str(name))
+        if isinstance(definition, Mapping):
+            description = definition.get("description")
+            if isinstance(description, str):
+                parts.append(description)
+    return " ".join(parts)
+
+
+def _bm25_tool_order(query: str, tools: tuple[BaseTool, ...]) -> list[str]:
+    """Return deterministic BM25 tool names, or [] when no lexical signal exists.
+
+    The BM25 algebra and tokenizer are imported from the repository's existing
+    lexical-ranking implementations rather than reimplemented here. Separate
+    field corpora provide transparent name/description/parameter weighting.
+    """
+    try:
+        from alpha.agents.memory.l1.store import _bm25_scores
+        from alpha.memory.cognitive.retrieval import _tokenize
+    except Exception:
+        return []
+
+    query_tokens = _tokenize(query)
+    for token in tuple(query_tokens):
+        query_tokens.extend(_BM25_QUERY_ALIASES.get(token, ()))
+    if not query_tokens:
+        return []
+
+    name_documents = [_tokenize(tool.name) for tool in tools]
+    description_documents = [_tokenize(tool.description or "") for tool in tools]
+    parameter_documents = [_tokenize(_first_party_parameter_search_text(tool)) for tool in tools]
+    scores = [0.0] * len(tools)
+    for documents, weight in (
+        (name_documents, _BM25_NAME_WEIGHT),
+        (description_documents, _BM25_DESCRIPTION_WEIGHT),
+        (parameter_documents, _BM25_PARAMETER_WEIGHT),
+    ):
+        for index, score in enumerate(_bm25_scores(query_tokens, documents)):
+            scores[index] += weight * score
+
+    normalized_query = "".join(_tokenize(query))
+    for index, candidate in enumerate(tools):
+        if normalized_query and normalized_query == "".join(_tokenize(candidate.name)):
+            scores[index] += _BM25_EXACT_NAME_BOOST
+
+    ranked = [(score, tool.name) for score, tool in zip(scores, tools, strict=True) if score > 0.0]
+    ranked.sort(key=lambda item: (-item[0], item[1]))
+    return [name for _, name in ranked]
 
 
 def _system_one_tool_order(query: str, tools: tuple[BaseTool, ...]) -> list[str]:
