@@ -940,6 +940,25 @@ def _get_memory_context(
         except Exception:
             logger.debug("Failed to load L1 working-memory recall", exc_info=True)
 
+        # Wave-2 typed memory surfaces (affective, prospective, entities,
+        # social, narrative): one composition seam instead of a patch per type.
+        # Each type is default-OFF and renders only real store content, so with
+        # every type off this appends nothing and the block is byte-identical.
+        try:
+            from alpha.memory.recall_composition import compose_typed_memory_blocks
+
+            composed = compose_typed_memory_blocks(
+                config,
+                user_id=user_id or resolve_runtime_user_id(None),
+                agent_name=agent_name,
+            )
+            composed_text = composed.text.strip()
+            if composed_text:
+                base = memory_content.strip()
+                memory_content = f"{base}\n\n{composed_text}" if base else composed_text
+        except Exception:
+            logger.debug('Failed to compose typed memory recall', exc_info=True)
+
         if not memory_content.strip():
             return ""
 
