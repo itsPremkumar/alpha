@@ -22,9 +22,14 @@ def _canonical(command: str) -> str:
     return command.replace(":", " ", 1)
 
 
+def _production_handler_commands() -> list[str]:
+    """Ignore test/extension registrations left on the process-global registry."""
+    return [command for command in command_registry.handler_commands() if getattr(command_registry._handlers.get(command), "__module__", "").startswith("alpha.commands.")]
+
+
 def test_every_concrete_command_handler_has_a_catalog_definition() -> None:
     catalog_names = {row[0] for row in get_default_catalog_entries()}
-    concrete_names = {_canonical(command) for command in command_registry.handler_commands()}
+    concrete_names = {_canonical(command) for command in _production_handler_commands()}
 
     missing = sorted(concrete_names - catalog_names)
     assert not missing, f"implemented command handlers are absent from the catalog: {missing}"
@@ -33,12 +38,12 @@ def test_every_concrete_command_handler_has_a_catalog_definition() -> None:
         definition = command_registry.get(command)
         assert definition is not None, f"catalog name {command!r} does not resolve in the registry"
         assert definition.registered is True, f"catalog command {command!r} is not honestly registered"
-        assert any(_canonical(bound) == command for bound in command_registry.handler_commands()), f"catalog command {command!r} has no concrete handler"
+        assert any(_canonical(bound) == command for bound in _production_handler_commands()), f"catalog command {command!r} has no concrete handler"
 
 
 def test_compatibility_aliases_are_honestly_marked_when_not_catalog_rows() -> None:
     catalog_names = {row[0] for row in get_default_catalog_entries()}
-    aliases = [command for command in command_registry.handler_commands() if command not in catalog_names]
+    aliases = [command for command in _production_handler_commands() if command not in catalog_names]
 
     for alias in aliases:
         definition = command_registry.get(alias)
