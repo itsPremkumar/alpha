@@ -27,7 +27,11 @@ test("neutral branding has a single immutable display name", () => {
 
 test("metadata and visible UI consume centralized branding", async () => {
   const consumers = {
-    "app/layout.tsx": ["title: branding.name", "description: branding.description"],
+    "app/layout.tsx": [
+      "default: branding.name",
+      "description: branding.description",
+      "${branding.name}",
+    ],
     "components/ChatView.tsx": ["branding.name", "branding.intro", "branding.assistantLabel"],
     "components/Composer.tsx": ["branding.name"],
     "components/MessageItem.tsx": ["branding.assistantLabel"],
