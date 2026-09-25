@@ -97,7 +97,11 @@ _FLAG_NAMES = frozenset(
         "disable_clarification",
         "enabled",
         "fail_closed",
+        "human_approved",
+        "is_autonomous_trigger",
         "non_interactive",
+        "operator_token",
+        "requires_approval",
         "security_fail_closed",
     }
 )
@@ -366,6 +370,10 @@ class _SourceVisitor(ast.NodeVisitor):
         dynamic: bool = False,
         tool_name: str | None = None,
     ) -> None:
+        effective_tags = set(tags)
+        lowered_path = self.state.path.casefold()
+        if any(marker in lowered_path for marker in ("/rsi/", "/evolution/", "/skills/", "/config/")) and any(marker in action.casefold() for marker in ("write", "promote", "rollback", "install", "update", "evolve", "skill")):
+            effective_tags.add("self_modification")
         self.state.operations.append(
             _RawOperation(
                 path=self.state.path,
@@ -374,7 +382,7 @@ class _SourceVisitor(ast.NodeVisitor):
                 description=description,
                 scope=self.current_scope,
                 dynamic=dynamic,
-                tags=tuple(sorted({str(tag) for tag in tags})),
+                tags=tuple(sorted(str(tag) for tag in effective_tags)),
                 tool_name=tool_name,
                 order=self._next_order(),
             )
@@ -442,6 +450,39 @@ class _SourceVisitor(ast.NodeVisitor):
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
         self._visit_function(node)
 
+    def _parameter_tool_gates(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        arguments = node.args
+        positional = [*getattr(arguments, "posonlyargs", []), *arguments.args, *arguments.kwonlyargs]
+        defaults: list[ast.AST | None] = [None] * max(0, len(positional) - len(arguments.defaults))
+        defaults.extend(arguments.defaults)
+        defaults.extend(arguments.kw_defaults)
+        for argument, default in zip(positional, defaults, strict=False):
+            lowered = argument.arg.casefold()
+            if not any(marker in lowered for marker in ("tool_names", "allowed_tools", "allowlist", "authorization_infrastructure")):
+                continue
+            collection = _literal_collection(default)
+            if collection is not None:
+                posture = GatePosture.DEFAULT_DENY if collection[0] else GatePosture.DEFAULT_ALLOW
+                names = frozenset(str(item) for item in collection[0] if isinstance(item, str))
+            elif isinstance(default, ast.Call) and _dotted_name(default.func).rsplit(".", 1)[-1] in {"list", "set", "frozenset", "tuple"} and not default.args:
+                posture = GatePosture.DEFAULT_ALLOW
+                names = frozenset()
+            elif default is None:
+                posture = GatePosture.DEFAULT_ALLOW
+                names = frozenset()
+            else:
+                posture = GatePosture.DEFAULT_DENY
+                names = frozenset()
+            self._add_gate(
+                node,
+                kind=GateKind.TOOL_GUARD,
+                name=argument.arg,
+                posture=posture,
+                description=f"tool authorization parameter {argument.arg}",
+                rule_id="GATE-TOOL-003",
+                tool_names=names,
+            )
+
     def _may_contain_flags(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
         end_line = getattr(node, "end_lineno", None)
         if not isinstance(end_line, int):
@@ -450,6 +491,8 @@ class _SourceVisitor(ast.NodeVisitor):
         markers = (
             "approval",
             "human_approved",
+            "requires_approval",
+            "is_autonomous_trigger",
             "operator_token",
             "allowlist",
             "allowed",
@@ -473,6 +516,7 @@ class _SourceVisitor(ast.NodeVisitor):
         decorators = self._decorator_info(node)
         scope = _scope_key(self.state.path, node.name, node.lineno)
         self.scopes.append(scope)
+        self._parameter_tool_gates(node)
         approval_marker, allowlist_marker = self._scan_body_flags(node) if self._may_contain_flags(node) else (False, False)
         route_capability_id: str | None = None
         for name, decorator in decorators:
@@ -536,6 +580,13 @@ class _SourceVisitor(ast.NodeVisitor):
                     tags=("tool",),
                     tool_name=tool_name,
                 )
+        if re.match(r"^(?:charge|payment|purchase|refund|billing|transfer|deploy|publish)_", node.name, re.I):
+            self._add_operation(
+                node,
+                f"authority function {node.name}",
+                f"function {node.name} is a financial/deployment surface",
+                tags=("financial", "deployment"),
+            )
         if _GUARD_NAME_RE.search(node.name) or allowlist_marker:
             posture, can_fail, reason = _posture_for_guard(node, self.allowlist_names)
             names: set[str] = set()
@@ -686,6 +737,27 @@ class _SourceVisitor(ast.NodeVisitor):
         if value is None:
             return
         names = tuple(name for target in targets for name in _target_names(target))
+        literal_value = _declared_default(value)
+        for name in names:
+            if name == "mode" and isinstance(literal_value, str) and literal_value in {"open", "isolated", "allowlist"}:
+                network_posture = GatePosture.DEFAULT_ALLOW if literal_value == "open" else GatePosture.DEFAULT_DENY
+                self._add_gate(
+                    node,
+                    kind=GateKind.SANDBOX,
+                    name="sandbox.network.mode",
+                    posture=network_posture,
+                    description=f"sandbox network mode default {literal_value}",
+                    rule_id="GATE-NETWORK-001",
+                )
+            if name == "approval" and isinstance(literal_value, str) and literal_value in {"prompt", "deny"}:
+                self._add_gate(
+                    node,
+                    kind=GateKind.APPROVAL,
+                    name="sandbox.network.approval",
+                    posture=GatePosture.DEFAULT_DENY,
+                    description=f"sandbox network approval default {literal_value}",
+                    rule_id="GATE-NETWORK-APPROVAL-001",
+                )
         for name in names:
             lowered = name.lower()
             if lowered in _SECRET_NAMES or any(secret in lowered for secret in ("secret", "credential", "password", "token")):
@@ -880,6 +952,8 @@ def _is_authority_call(name: str, node: ast.Call) -> bool:
     if leaf in {"write_text", "write_bytes", "mkdir", "touch"}:
         return True
     if leaf in _SEND_CALL_NAMES:
+        return True
+    if any(marker in leaf for marker in ("secret", "credential", "password", "api_key", "private_key", "get_token")):
         return True
     if leaf in {"charge", "checkout", "purchase", "refund", "transfer", "billing", "deploy", "release", "promote", "rollback"}:
         return True
