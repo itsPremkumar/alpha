@@ -183,9 +183,9 @@ def test_lifespan_sweeps_upload_staging_files_on_startup():
 
 
 async def _run_lifespan_with_mcp_task_config_snapshot() -> None:
-    from app.gateway.app import lifespan
     from alpha.config.extensions_config import ExtensionsConfig
     from alpha.mcp.tasks.runtime import McpTaskConfigurationError, validate_mcp_task_config_snapshot
+    from app.gateway.app import lifespan
 
     app = FastAPI()
     startup_config = SimpleNamespace(
