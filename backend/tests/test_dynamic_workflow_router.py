@@ -38,18 +38,27 @@ import alpha.orchestrator.executors as executors_module
 import alpha.workflow.runtime as runtime_module
 from alpha.orchestrator.executors import DIGEST_EXECUTOR, ExecutorRegistry
 from alpha.orchestrator.mode_mapper import NON_EXPRESSIBLE_REASONS
+from alpha.tools.builtins.workflow_dag_tool import workflow_dag_manage
 from app.gateway.routers.workflows import (
+    DynamicExecuteRequest,
+    DynamicPerceiveRequest,
     WorkflowApprovalRequest,
     WorkflowCreateRequest,
+    WorkflowReplanRequest,
     WorkflowRunCreateRequest,
     WorkflowTurnRequest,
+    compensate_workflow_run,
+    execute_dynamic_workflow,
     get_workflow,
     get_workflow_engine,
     get_workflow_events,
     get_workflow_run,
+    list_workflow_runs,
     list_workflows,
     patch_workflow_run,
+    perceive_dynamic_workflow,
     register_workflow,
+    replan_workflow_run,
     replay_workflow_run,
     resolve_approval,
     run_workflow_turn,
@@ -129,6 +138,23 @@ async def test_workflows_router_crud_and_execution(monkeypatch):
     get_res = await get_workflow("api_wf_1", req)
     assert get_res["name"] == "API Test Workflow"
     assert len(get_res["graph"]["nodes"]) == 2
+
+    # Re-registering the exact same graph is idempotent; a different graph may
+    # never replace a live workflow id underneath its runs.
+    same_res = await register_workflow(create_body, req)
+    assert same_res["id"] == "api_wf_1"
+    conflicting = create_body.model_copy(
+        update={
+            "graph": {
+                "version": 1,
+                "nodes": {"other": {"id": "other", "prompt": "different"}},
+                "edges": [],
+            }
+        }
+    )
+    with pytest.raises(HTTPException) as duplicate_exc:
+        await register_workflow(conflicting, req)
+    assert duplicate_exc.value.status_code == 409
 
     # 4. Start run (mode journaled by the kernel; default is normal mode)
     run_res = await start_workflow_run("api_wf_1", WorkflowRunCreateRequest(initial_state={"env": "test"}), req)
@@ -643,3 +669,152 @@ async def test_replay_endpoint_folds_log_and_reports_honest_matches(monkeypatch)
     with pytest.raises(HTTPException) as excinfo:
         await replay_workflow_run("run_does_not_exist", req)
     assert excinfo.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_list_workflow_runs(monkeypatch):
+    """Test GET /api/workflows/runs enumerates active runs with status."""
+    _bind_digest_registry(monkeypatch)
+    req = MagicMock()
+
+    body = WorkflowCreateRequest(
+        id="api_wf_list_runs",
+        name="List Runs Test",
+        graph={
+            "version": 1,
+            "nodes": {
+                "n1": {"id": "n1", "prompt": "Task 1", "executor": DIGEST_EXECUTOR},
+            },
+            "edges": [],
+        },
+    )
+    await register_workflow(body, req)
+    started = await start_workflow_run("api_wf_list_runs", WorkflowRunCreateRequest(), req)
+    run_id = started["run_id"]
+
+    res = await list_workflow_runs(req)
+    assert res["status"] == "ok"
+    assert isinstance(res["runs"], list)
+    run_entry = next((r for r in res["runs"] if r["run_id"] == run_id), None)
+    assert run_entry is not None
+    assert run_entry["workflow_id"] == "api_wf_list_runs"
+    assert run_entry["status"] in ("pending", "running", "completed")
+
+
+@pytest.mark.asyncio
+async def test_perceive_dynamic_workflow(monkeypatch):
+    """Test POST /api/workflows/dynamic/perceive returns perception, DAG waves, and resources."""
+    _bind_digest_registry(monkeypatch)
+    req = MagicMock()
+
+    body = DynamicPerceiveRequest(
+        prompt="/boost Build full-stack dynamic workflow with automated testing and deployment",
+        context={"non_interactive": True},
+    )
+    res = await perceive_dynamic_workflow(body, req)
+
+    assert res["status"] == "ok"
+    assert "perception" in res
+    assert "Build full-stack" in res["perception"]["raw_prompt"]
+    assert "goal" in res
+    assert len(res["goal"]["tasks"]) >= 1
+    assert len(res["goal"]["execution_waves"]) >= 1
+    assert "resources" in res
+    assert "bots" in res["resources"]
+    assert isinstance(res["resources"]["tools"], list)
+
+
+@pytest.mark.asyncio
+async def test_execute_dynamic_workflow_compile_only(monkeypatch):
+    """Test POST /api/workflows/dynamic/execute with auto_execute=False only compiles & registers."""
+    _bind_digest_registry(monkeypatch)
+    req = MagicMock()
+
+    body = DynamicExecuteRequest(
+        prompt="Design dynamic caching layer for microservices",
+        auto_execute=False,
+    )
+    res = await execute_dynamic_workflow(body, req)
+
+    assert res["status"] == "compiled"
+    assert "workflow_id" in res
+    assert res["run_id"] is None
+    assert res["task_count"] >= 1
+
+    # Verify workflow definition is registered and retrievable
+    wf_def = await get_workflow(res["workflow_id"], req)
+    assert wf_def["id"] == res["workflow_id"]
+
+
+@pytest.mark.asyncio
+async def test_execute_dynamic_workflow_end_to_end(monkeypatch):
+    """Test POST /api/workflows/dynamic/execute runs end-to-end dynamically to completion."""
+    _bind_digest_registry(monkeypatch)
+    req = MagicMock()
+
+    body = DynamicExecuteRequest(
+        prompt="/boost Automate API contract regression tests",
+        auto_execute=True,
+    )
+    res = await execute_dynamic_workflow(body, req)
+
+    assert res["status"] == "completed"
+    assert res["workflow_id"].startswith("wf_")
+    assert res["run_id"] is not None
+    assert res["completed_count"] == res["task_count"]
+    assert len(res["waves"]) >= 1
+
+
+@pytest.mark.asyncio
+async def test_replan_and_compensate_workflow_run(monkeypatch):
+    """Test POST /api/workflows/runs/{run_id}/replan and /compensate endpoints."""
+    _bind_digest_registry(monkeypatch)
+    req = MagicMock()
+
+    # Create a dynamic execution run
+    body = DynamicExecuteRequest(
+        prompt="Test replanning and saga compensation",
+        auto_execute=True,
+    )
+    res = await execute_dynamic_workflow(body, req)
+    run_id = res["run_id"]
+    assert run_id is not None
+
+    # Test replan on completed run (should report no_op since no failed nodes)
+    replan_res = await replan_workflow_run(run_id, WorkflowReplanRequest(resume=False), req)
+    assert replan_res["status"] == "no_op"
+    assert "No failed nodes" in replan_res["reason"]
+
+    # Test saga compensation rollback on completed tasks
+    comp_res = await compensate_workflow_run(run_id, req)
+    assert comp_res["status"] in ("compensated", "no_compensations", "no_targets_needed_compensation")
+    assert isinstance(comp_res["compensated_nodes"], list)
+
+
+@pytest.mark.asyncio
+async def test_workflow_dag_manage_dynamic_actions(monkeypatch):
+    """Test workflow_dag_manage agent tool with dynamic actions: perceive, decompose, boost."""
+    import json
+
+    _bind_digest_registry(monkeypatch)
+
+    # 1. Action: perceive
+    p_raw = await workflow_dag_manage.ainvoke({"action": "perceive", "prompt": "Deploy microservices to Kubernetes"})
+    p_res = json.loads(p_raw)
+    assert "raw_prompt" in p_res
+    assert "primary_domain" in p_res
+
+    # 2. Action: decompose
+    d_raw = await workflow_dag_manage.ainvoke({"action": "decompose", "prompt": "Migrate database schema with zero downtime"})
+    d_res = json.loads(d_raw)
+    assert "tasks" in d_res
+    assert len(d_res["tasks"]) >= 1
+    assert len(d_res["execution_waves"]) >= 1
+
+    # 3. Action: boost (perceive + decompose + resource assembly + live execution)
+    b_raw = await workflow_dag_manage.ainvoke({"action": "boost", "prompt": "Execute end-to-end integration pipeline"})
+    b_res = json.loads(b_raw)
+    assert b_res["status"] == "completed"
+    assert "workflow_id" in b_res
+    assert "run_id" in b_res
+    assert len(b_res["completed_nodes"]) >= 1

@@ -25,6 +25,7 @@ class NodeStatus(StrEnum):
     CANCELLED = "cancelled"
     SUSPENDED = "suspended"
     COMPENSATING = "compensating"
+    ABORTED = "aborted"
 
 
 class NodeType(StrEnum):
@@ -49,6 +50,19 @@ class NodeType(StrEnum):
     CHECKPOINT = "checkpoint"
     COMPENSATION = "compensation"
     GOAL_GATE = "goal_gate"
+    STANDARD = "standard"
+    SKILL = "skill"
+    MODEL = "model"
+    WORKFLOW = "workflow"
+    AUTOMATION = "automation"
+    PROJECT = "project"
+    COMMAND = "command"
+    HUMAN_APPROVAL = "human_approval"
+    MEMORY = "memory"
+    RESEARCH = "research"
+    VALIDATION = "validation"
+    SYSTEM = "system"
+    HANDOFF = "handoff"
 
 
 class EdgeMode(StrEnum):
@@ -67,6 +81,11 @@ class WorkflowRunStatus(StrEnum):
     FAILED = "failed"
     CANCELLED = "cancelled"
     BUDGET_EXHAUSTED = "budget_exhausted"
+    PLANNING = "planning"
+    READY = "ready"
+    MUTATING = "mutating"
+    COMPENSATING = "compensating"
+    ABORTED = "aborted"
 
 
 class RetryPolicy(BaseModel):
@@ -97,6 +116,7 @@ class WorkflowNode(BaseModel):
     id: str
     type: NodeType = NodeType.TOOL
     executor: str = "alpha.tool"
+    idempotency_key: str | None = None
     config: dict[str, Any] = Field(default_factory=dict)
     prompt: str | None = None
     category: str = "quick"
@@ -107,6 +127,7 @@ class WorkflowNode(BaseModel):
     write_scope: list[str] = Field(default_factory=list)
     requires_approval: bool = False
     approval_request_id: str | None = None
+    approval_requested_at: str | None = None
     gate_timeout_seconds: float | None = None
     compensation_node_id: str | None = None
     budget: int | None = None
@@ -137,6 +158,7 @@ class PatchOperation(BaseModel):
         "skip_node",
         "request_human",
         "request_review",
+        "retry_node",
     ]
     args: dict[str, Any] = Field(default_factory=dict)
 
@@ -191,9 +213,10 @@ class WorkflowGraph(BaseModel):
             for e in self.incoming_edges(nid):
                 deps.add(e.source)
             for dep in deps:
-                if dep in self.nodes:
-                    graph[dep].add(nid)
-                    in_degree[nid] += 1
+                if dep not in self.nodes:
+                    raise ValueError(f"Node '{nid}' depends on unknown node '{dep}'")
+                graph[dep].add(nid)
+                in_degree[nid] += 1
 
         waves: list[list[str]] = []
         current_wave = [nid for nid, deg in in_degree.items() if deg == 0]
@@ -211,8 +234,8 @@ class WorkflowGraph(BaseModel):
             current_wave = next_wave
 
         if processed != len(self.nodes):
-            # Potential cycle or loop edge detected
-            pass
+            unresolved = sorted(set(self.nodes) - {nid for wave in waves for nid in wave})
+            raise ValueError(f"Dependency cycle detected in workflow graph; unresolved nodes: {unresolved}")
 
         return waves
 
@@ -220,6 +243,7 @@ class WorkflowGraph(BaseModel):
 class WorkflowRun(BaseModel):
     run_id: str
     workflow_id: str
+    owner_id: str | None = None
     graph_version: int = 1
     status: WorkflowRunStatus = WorkflowRunStatus.PENDING
     state: dict[str, Any] = Field(default_factory=dict)
@@ -230,6 +254,8 @@ class WorkflowRun(BaseModel):
     waiting_nodes: list[str] = Field(default_factory=list)
     iteration_counts: dict[str, int] = Field(default_factory=dict)
     metrics: dict[str, Any] = Field(default_factory=dict)
+    tokens_consumed: int = 0
+    budget_limit: int | None = None
     history: list[dict[str, Any]] = Field(default_factory=list)
     patches_applied: list[WorkflowPatch] = Field(default_factory=list)
     waiting_reason: str | None = None
@@ -241,9 +267,11 @@ class WorkflowRun(BaseModel):
 class WorkflowDefinition(BaseModel):
     id: str
     name: str
+    owner_id: str | None = None
     version: str = "1.0.0"
     description: str = ""
     graph: WorkflowGraph = Field(default_factory=WorkflowGraph)
     variables: dict[str, Any] = Field(default_factory=dict)
     policies: dict[str, Any] = Field(default_factory=dict)
+    budget: int | None = Field(default=None, ge=0)
     triggers: list[dict[str, Any]] = Field(default_factory=list)

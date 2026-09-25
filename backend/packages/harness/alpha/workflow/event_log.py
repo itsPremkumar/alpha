@@ -38,6 +38,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import threading
 from collections.abc import Iterable
 from datetime import UTC, datetime
@@ -46,7 +47,7 @@ from typing import Any
 
 from alpha.config.runtime_paths import runtime_home
 from alpha.evolution.identity import atomic_write_json
-from alpha.workflow.events import WorkflowEvent
+from alpha.workflow.events import WorkflowEvent, redact_event_payload
 from alpha.workflow.models import WorkflowDefinition, WorkflowGraph, WorkflowRun
 from alpha.workflow.schemas import (
     HydrationReport,
@@ -55,6 +56,44 @@ from alpha.workflow.schemas import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Run ids become path segments.  Keep the accepted alphabet deliberately
+# narrower than arbitrary URL text so traversal and Windows reserved-name
+# tricks cannot reach outside the configured store.
+_RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+_RESERVED_WINDOWS_NAMES = {
+    "con",
+    "prn",
+    "aux",
+    "nul",
+    *(f"com{i}" for i in range(1, 10)),
+    *(f"lpt{i}" for i in range(1, 10)),
+}
+
+# Multiple Gateway workers can construct separate DurableEventLog instances
+# for the same root.  Serialize sequence allocation/append per root, not per
+# Python object.
+_ROOT_LOCKS: dict[str, threading.RLock] = {}
+_ROOT_LOCKS_GUARD = threading.Lock()
+
+
+def _root_lock(root: Path) -> threading.RLock:
+    key = str(root.resolve())
+    with _ROOT_LOCKS_GUARD:
+        lock = _ROOT_LOCKS.get(key)
+        if lock is None:
+            lock = threading.RLock()
+            _ROOT_LOCKS[key] = lock
+        return lock
+
+
+def _validate_run_id(run_id: str) -> str:
+    if not isinstance(run_id, str) or not _RUN_ID_RE.fullmatch(run_id):
+        raise DurableEventLogError(f"invalid workflow run id {run_id!r}: expected 1-128 chars of [A-Za-z0-9._-] starting alphanumeric")
+    if run_id.split(".", 1)[0].lower() in _RESERVED_WINDOWS_NAMES:
+        raise DurableEventLogError(f"invalid workflow run id {run_id!r}: reserved Windows device name")
+    return run_id
+
 
 EVENT_LOG_SCHEMA_VERSION = PersistedEventRecord.model_fields["schema_version"].default
 
@@ -74,7 +113,7 @@ class DurableEventLog:
         self.root = Path(store_dir) if store_dir is not None else runtime_home() / "workflow_store"
         self.events_dir = self.root / "events"
         self.runs_dir = self.root / "runs"
-        self._lock = threading.Lock()
+        self._lock = _root_lock(self.root)
         # per-run writer state, rebuilt lazily from disk (restart-safe)
         self._seq: dict[str, int] = {}
         self._idempotency: dict[str, set[str]] = {}
@@ -83,10 +122,10 @@ class DurableEventLog:
     # Paths
     # ------------------------------------------------------------------
     def event_log_path(self, run_id: str) -> Path:
-        return self.events_dir / f"{run_id}.jsonl"
+        return self.events_dir / f"{_validate_run_id(run_id)}.jsonl"
 
     def run_projection_path(self, run_id: str) -> Path:
-        return self.runs_dir / f"{run_id}.json"
+        return self.runs_dir / f"{_validate_run_id(run_id)}.json"
 
     def probe_writable(self) -> tuple[bool, str]:
         """Can this store accept an append right now? (start-up gate)
@@ -155,9 +194,7 @@ class DurableEventLog:
             if disclosures:
                 # A corrupt tail means the tail's seq cannot be trusted for
                 # appending: refuse rather than numbering past the damage.
-                raise DurableEventLogError(
-                    f"event log for run {run_id!r} has a corrupt tail; append refused until it is repaired: {disclosures[0]}"
-                )
+                raise DurableEventLogError(f"event log for run {run_id!r} has a corrupt tail; append refused until it is repaired: {disclosures[0]}")
             for record in self._read_records(run_id)[0]:
                 last = max(last, record.seq)
                 if record.idempotency_key:
@@ -182,21 +219,20 @@ class DurableEventLog:
                     # Stop at the FIRST bad line: everything after a corrupt
                     # line is untrustworthy ordering, so it is disclosed, not
                     # skipped, and never handed to a replay.
-                    disclosures.append(
-                        {"line_number": line_number, "error": f"{type(exc).__name__}: {exc}", "raw_prefix": stripped[:120]}
-                    )
+                    disclosures.append({"line_number": line_number, "error": f"{type(exc).__name__}: {exc}", "raw_prefix": stripped[:120]})
                     break
         return records, disclosures
 
     def append(self, event: WorkflowEvent, *, idempotency_key: str | None = None) -> PersistedEventRecord:
         """Append one event durably. Raises on any persistence failure."""
         run_id = event.workflow_run_id
+        effective_key = idempotency_key if idempotency_key is not None else event.idempotency_key
         with self._lock:
             self._load_run_state(run_id)
-            if idempotency_key is not None and idempotency_key in self._idempotency[run_id]:
+            if effective_key is not None and effective_key in self._idempotency[run_id]:
                 # Idempotent replay: the identical key is already durable.
                 for record in self._read_records(run_id)[0]:
-                    if record.idempotency_key == idempotency_key:
+                    if record.idempotency_key == effective_key:
                         return record
             seq = self._seq[run_id] + 1
             record = PersistedEventRecord(
@@ -205,8 +241,8 @@ class DurableEventLog:
                 workflow_run_id=run_id,
                 event_type=event.event_type,
                 timestamp=event.timestamp,
-                payload=json.loads(json.dumps(event.payload, default=str)),
-                idempotency_key=idempotency_key,
+                payload=redact_event_payload(json.loads(json.dumps(event.payload, default=str))),
+                idempotency_key=effective_key,
                 recorded_at=_now(),
             )
             try:
@@ -218,8 +254,8 @@ class DurableEventLog:
             except OSError as exc:
                 raise DurableEventLogError(f"failed to append event for run {run_id!r}: {exc}") from exc
             self._seq[run_id] = seq
-            if idempotency_key is not None:
-                self._idempotency[run_id].add(idempotency_key)
+            if effective_key is not None:
+                self._idempotency[run_id].add(effective_key)
             return record
 
     # ------------------------------------------------------------------
@@ -234,6 +270,7 @@ class DurableEventLog:
                 workflow_run_id=record.workflow_run_id,
                 event_type=record.event_type,
                 timestamp=record.timestamp,
+                idempotency_key=record.idempotency_key,
                 payload=record.payload,
             )
             for record in records
@@ -251,9 +288,12 @@ class DurableEventLog:
         return max((record.seq for record in records), default=0)
 
     def list_runs(self) -> list[str]:
-        if not self.runs_dir.exists():
-            return []
-        return sorted(path.stem for path in self.runs_dir.glob("*.json"))
+        run_ids: set[str] = set()
+        if self.runs_dir.exists():
+            run_ids.update(path.stem for path in self.runs_dir.glob("*.json"))
+        if self.events_dir.exists():
+            run_ids.update(path.stem for path in self.events_dir.glob("*.jsonl"))
+        return sorted(run_ids)
 
     # ------------------------------------------------------------------
     # Projection path
@@ -274,11 +314,7 @@ class DurableEventLog:
             graphs=graphs,
             last_seq=last_event.seq if last_event is not None else 0,
             event_count=event_count,
-            source_event=(
-                {"event_id": last_event.event_id, "event_type": last_event.event_type, "timestamp": last_event.timestamp}
-                if last_event is not None
-                else {}
-            ),
+            source_event=({"event_id": last_event.event_id, "event_type": last_event.event_type, "timestamp": last_event.timestamp} if last_event is not None else {}),
         )
         try:
             atomic_write_json(self.run_projection_path(run.run_id), snapshot.model_dump(mode="json"))
@@ -295,8 +331,12 @@ class DurableEventLog:
     # ------------------------------------------------------------------
     # Hydration
     # ------------------------------------------------------------------
-    def hydrate(self, engine: Any) -> HydrationReport:
-        """Install persisted runs into a fresh engine; report every refusal."""
+    def hydrate(self, engine: Any, *, owner_id: str | None = None) -> HydrationReport:
+        """Install persisted runs into a fresh engine; report every refusal.
+
+        When ``owner_id`` is supplied, runs owned by another principal are
+        treated as invisible rather than hydrated into the caller's engine.
+        """
         hydrated: list[str] = []
         skipped: list[str] = []
         corrupt: list[dict[str, str]] = []
@@ -316,6 +356,10 @@ class DurableEventLog:
                 continue
             if snapshot is None:  # pragma: no cover - list_runs saw the file
                 corrupt.append({"run_id": run_id, "error": "projection disappeared between listing and read"})
+                continue
+            if owner_id and snapshot.run.owner_id not in (None, owner_id):
+                skipped.append(run_id)
+                disclosures.append(f"run {run_id}: owner scope excludes this resource")
                 continue
             # Durable events beyond the projection mean it is behind: refuse
             # to install it as if current.
@@ -343,9 +387,7 @@ class DurableEventLog:
             graph_key = f"{snapshot.run.workflow_id}:v{snapshot.run.graph_version}"
             if graph_key not in snapshot.graphs:
                 missing_graphs.append(run_id)
-                disclosures.append(
-                    f"run {run_id}: no graph {graph_key} in the projection; continuation may refuse honestly"
-                )
+                disclosures.append(f"run {run_id}: no graph {graph_key} in the projection; continuation may refuse honestly")
 
         if not self.list_runs():
             status = "empty"

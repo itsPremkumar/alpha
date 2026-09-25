@@ -20,6 +20,15 @@ export async function transcribeUpload() { throw new Error("transcribeUpload stu
 export async function synthesizeSpeech() { throw new Error("synthesizeSpeech stub (no network in tests)"); }
 `;
 
+const speechStub = `
+export async function enqueueSpeech(text, options) {
+  return options.player(text, options.signal ?? new AbortController().signal);
+}
+export function isSpeechCancellation(error) {
+  return Boolean(error && typeof error === "object" && error.name === "AbortError");
+}
+`;
+
 const toDataUrl = (source) => `data:text/javascript;charset=utf-8,${encodeURIComponent(source)}`;
 
 const voicePath = fileURLToPath(new URL("./voice.ts", import.meta.url));
@@ -28,6 +37,7 @@ let code = ts.transpileModule(readFileSync(voicePath, "utf8"), {
 }).outputText;
 code = code.replace(/from\s+"\.\/api-client"/, `from "${toDataUrl(apiClientStub)}"`);
 code = code.replace(/from\s+"\.\/multimodal"/, `from "${toDataUrl(multimodalStub)}"`);
+code = code.replace(/from\s+"\.\/speech"/, `from "${toDataUrl(speechStub)}"`);
 
 const {
   voiceReducer,
@@ -41,9 +51,15 @@ const {
   WORKLET_SOURCE,
   parseVoiceCapabilities,
   fetchVoiceCapabilities,
+  classifyVoiceTranscriptEvent,
+  VoiceSession,
   readAutoplayEnabled,
   autoplaySpeak,
+  primeSpeakerPlayback,
   AUTOPLAY_STORAGE_KEY,
+  MAX_VOICE_SOCKET_BUFFERED_BYTES,
+  MAX_VOICE_OUTBOX_MESSAGES,
+  VOICE_AUDIO_BATCH_MS,
 } = await import(toDataUrl(code));
 
 const ALL_STATES = ["idle", "wake_armed", "listening", "processing", "speaking", ...TERMINAL_VOICE_STATES];
@@ -54,6 +70,13 @@ const ALL_EVENTS = [
   { type: "listen_stop" },
   { type: "transcript" },
   { type: "transcript_failed" },
+  { type: "conversation_start" },
+  { type: "conversation_pause" },
+  { type: "conversation_resume" },
+  { type: "conversation_stop" },
+  { type: "conversation_transcript" },
+  { type: "conversation_play" },
+  { type: "conversation_play_end" },
   { type: "play" },
   { type: "play_end" },
   { type: "engine_missing", detail: "edge" },
@@ -161,6 +184,145 @@ test("event payloads (reason/detail) never change the transition result", () => 
   assert.equal(voiceReducer("idle", { type: "ws_closed" }), "ws_closed");
   assert.equal(voiceReducer("idle", { type: "ws_closed", reason: "x" }), "ws_closed");
   assert.equal(voiceReducer("listening", { type: "engine_missing", detail: "y" }), "engine_missing");
+});
+
+test("hands-free flow pauses for a turn, speaks, and resumes the same session", () => {
+  let state = voiceReducer("idle", { type: "conversation_start" });
+  assert.equal(state, "listening");
+  state = voiceReducer(state, { type: "conversation_pause" });
+  assert.equal(state, "processing");
+  state = voiceReducer(state, { type: "conversation_transcript" });
+  assert.equal(state, "processing");
+  state = voiceReducer(state, { type: "conversation_play" });
+  assert.equal(state, "speaking");
+  state = voiceReducer(state, { type: "conversation_play_end" });
+  assert.equal(state, "processing");
+  state = voiceReducer(state, { type: "conversation_resume" });
+  assert.equal(state, "listening");
+  state = voiceReducer(state, { type: "conversation_stop" });
+  assert.equal(state, "idle");
+});
+
+test("transcript protocol classification distinguishes interim from final events", () => {
+  assert.equal(classifyVoiceTranscriptEvent({ type: "transcript_partial", text: "hel" }), "partial");
+  assert.equal(classifyVoiceTranscriptEvent({ type: "transcript", final: false, text: "hel" }), "partial");
+  assert.equal(classifyVoiceTranscriptEvent({ type: "transcript", is_final: false, text: "hel" }), "partial");
+  assert.equal(classifyVoiceTranscriptEvent({ type: "transcript", text: "hello" }), "final");
+  assert.equal(classifyVoiceTranscriptEvent({ type: "score", score: 1 }), null);
+});
+
+test("VoiceSession forwards interim events without treating them as final turns", () => {
+  const partials = [];
+  const finals = [];
+  const session = new VoiceSession({
+    onPartialTranscript: (text) => partials.push(text),
+    onTranscript: (text) => finals.push(text),
+  });
+  session.modeValue = "conversation";
+  session.stateValue = "listening";
+  session.handleServerEvent(JSON.stringify({ type: "transcript_partial", utterance_id: 1, text: "hel", final: false }));
+  session.handleServerEvent(JSON.stringify({ type: "transcript", text: "hello", final: false }));
+  assert.deepEqual(partials, ["hel", "hello"]);
+  session.handleServerEvent(JSON.stringify({ type: "transcript_partial", utterance_id: 2, text: "new" }));
+  session.handleServerEvent(JSON.stringify({ type: "transcript_partial", utterance_id: 1, text: "stale" }));
+  assert.deepEqual(partials, ["hel", "hello", "new"]);
+  assert.deepEqual(finals, []);
+  session.close();
+});
+
+test("hands-free final events pause once and suppress duplicate submissions", () => {
+  const previousWebSocket = globalThis.WebSocket;
+  class FakeWebSocket {
+    static OPEN = 1;
+    readyState = 1;
+    bufferedAmount = 0;
+    sent = [];
+    send(value) { this.sent.push(value); }
+    close() { this.readyState = 3; }
+  }
+  globalThis.WebSocket = FakeWebSocket;
+  try {
+    const finals = [];
+    const session = new VoiceSession({ onTranscript: (text) => finals.push(text) });
+    session.modeValue = "conversation";
+    session.stateValue = "listening";
+    const event = JSON.stringify({ type: "transcript", text: "hello hands free" });
+    session.handleServerEvent(event);
+    session.handleServerEvent(JSON.stringify({ type: "transcript_partial", utterance_id: 1, text: "stale" }));
+    session.handleServerEvent(event);
+    assert.deepEqual(finals, ["hello hands free"]);
+    assert.equal(session.isConversationPaused, true);
+    assert.equal(session.state, "processing");
+    session.close();
+  } finally {
+    if (previousWebSocket) globalThis.WebSocket = previousWebSocket;
+    else delete globalThis.WebSocket;
+  }
+});
+
+test("voice transport bounds audio buffering and keeps the capture worklet continuous", () => {
+  assert.ok(MAX_VOICE_SOCKET_BUFFERED_BYTES > 0);
+  assert.ok(MAX_VOICE_OUTBOX_MESSAGES > 0);
+  assert.equal(VOICE_AUDIO_BATCH_MS, 100);
+  assert.match(WORKLET_SOURCE, /process\(inputs\)/);
+  assert.match(WORKLET_SOURCE, /postMessage\(channel\.slice\(\)\)/);
+  assert.match(WORKLET_SOURCE, /return true/);
+});
+
+test("source wiring keeps one microphone owner and the local voice protocol", () => {
+  const composer = readFileSync(new URL("../components/Composer.tsx", import.meta.url), "utf8");
+  const controls = readFileSync(new URL("../components/VoiceControls.tsx", import.meta.url), "utf8");
+  const messageItem = readFileSync(new URL("../components/MessageItem.tsx", import.meta.url), "utf8");
+  const voice = readFileSync(new URL("./voice.ts", import.meta.url), "utf8");
+  const multimodal = readFileSync(new URL("./multimodal.ts", import.meta.url), "utf8");
+  const chat = readFileSync(new URL("../components/ChatView.tsx", import.meta.url), "utf8");
+  const nextConfig = readFileSync(new URL("../../next.config.mjs", import.meta.url), "utf8");
+  assert.doesNotMatch(composer, /MediaRecorder|transcribeUpload|transcribeAudio|toggleRecording/);
+  assert.match(composer, /<VoiceControls/);
+  assert.match(controls, /startConversation/);
+  assert.match(controls, /stopConversation/);
+  assert.match(controls, /onPartialTranscript/);
+  assert.match(controls, /onFinalTranscript/);
+  assert.match(controls, /microphone muted/);
+  assert.match(controls, /report === null \|\| realTimeSetupUnavailable \|\| conversationStarting/);
+  assert.match(controls, /micDisabled = terminal \|\| report === null/);
+  assert.match(controls, /primeSpeakerPlayback/);
+  assert.match(controls, /Speaker output is ready\./);
+  assert.match(controls, /microphone \+ speaker access ready/);
+  assert.match(voice, /conversation_start/);
+  assert.match(voice, /conversation_stop/);
+  assert.match(voice, /transcript_partial/);
+  assert.match(voice, /bufferedAmount/);
+  assert.equal(
+    (voice.match(/downsampleToRate\(concatFloat32\(chunks\), rate, this\.streamSampleRate\)/g) || []).length,
+    2,
+  );
+  assert.match(voice, /WakeWordSession is the legacy fixed-16 kHz scorer/);
+  assert.match(voice, /\/api\/multimodal\/voice/);
+  assert.match(voice, /enqueueSpeech\(text, \{ player: \(value, signal\) => speak\(value, \{ signal \}\) \}\)/);
+  assert.match(voice, /export async function primeSpeakerPlayback/);
+  assert.match(voice, /Speaker playback is blocked/);
+  assert.match(voice, /Allow microphone access for this site/);
+  assert.match(voice, /decodeAudioData/);
+  assert.doesNotMatch(voice, /new Audio\(/);
+  assert.match(multimodal, /\/api\/multimodal\/tts/);
+  assert.doesNotMatch(`${voice}${controls}${chat}`, /SpeechRecognition|speechSynthesis/);
+  assert.match(chat, /onVoiceTranscript/);
+  assert.match(chat, /sendMessage\(content, \{ voiceTurn: true \}\)/);
+  assert.match(chat, /SpeechSegmenter/);
+  assert.match(chat, /enqueueSpeech/);
+  assert.match(chat, /waitForSpeechIdle/);
+  assert.match(chat, /voiceConversationTurnActive/);
+  assert.match(chat, /if \(voiceTurnRef\.current\) abortRef\.current\?\.abort\(\)/);
+  assert.match(chat, /setVoiceResumeToken/);
+  assert.match(chat, /cancelSpeech\(\)/);
+  assert.match(messageItem, /enqueueSpeech/);
+  assert.match(messageItem, /primeSpeakerPlayback/);
+  assert.match(messageItem, /if \(speaking \|\| speechLoading\)/);
+  assert.match(messageItem, /player: \(value, signal\) => speak\(value, \{ signal \}\)/);
+  assert.doesNotMatch(messageItem, /new Audio|synthesizeSpeech\(/);
+  assert.match(nextConfig, /microphone=\(self\)/);
+  assert.match(nextConfig, /camera=\(\), geolocation=\(\)/);
 });
 
 test("floatToPcm16 clamps, rounds, and silences non-finite samples", () => {
@@ -302,8 +464,65 @@ test("autoplay opt-in: explicit enable runs the consumer; failures disclose via 
       false,
     );
     assert.deepEqual(failures, ["tts engine down"]); // visible disclosure — never a silent swallow
+    const cancellations = [];
+    assert.equal(
+      await autoplaySpeak("cancelled reply", {
+        speak: async () => {
+          const error = new Error("cancelled");
+          error.name = "AbortError";
+          throw error;
+        },
+        onFailure: (message) => cancellations.push(message),
+      }),
+      false,
+    );
+    assert.deepEqual(cancellations, []);
   } finally {
     if (previous) Object.defineProperty(globalThis, "localStorage", previous);
     else delete globalThis.localStorage;
+  }
+});
+
+test("speaker priming resumes the shared Web Audio context from a user gesture", async () => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "AudioContext");
+  let resumed = false;
+  let started = false;
+  let connected = false;
+  class FakeAudioContext {
+    state = "suspended";
+    sampleRate = 48_000;
+    destination = {};
+    async resume() {
+      resumed = true;
+      this.state = "running";
+    }
+    createBuffer(channels, length, sampleRate) {
+      assert.equal(channels, 1);
+      assert.equal(length, 1);
+      assert.equal(sampleRate, this.sampleRate);
+      return { channels, length, sampleRate };
+    }
+    createBufferSource() {
+      return {
+        buffer: null,
+        onended: null,
+        connect() {
+          connected = true;
+        },
+        start() {
+          started = true;
+        },
+      };
+    }
+  }
+  Object.defineProperty(globalThis, "AudioContext", { configurable: true, value: FakeAudioContext });
+  try {
+    await primeSpeakerPlayback();
+    assert.equal(resumed, true);
+    assert.equal(started, true);
+    assert.equal(connected, true);
+  } finally {
+    if (previous) Object.defineProperty(globalThis, "AudioContext", previous);
+    else delete globalThis.AudioContext;
   }
 });

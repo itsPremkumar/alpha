@@ -83,7 +83,9 @@ def _patch_ws(monkeypatch, voice: VoiceConfig, *, authenticated: bool = True, re
         AsyncMock(return_value=SimpleNamespace(id="ws-user") if authenticated else None),
     )
     monkeypatch.setattr(multimodal_router, "get_config", lambda: SimpleNamespace(voice=voice))
+    monkeypatch.setattr(multimodal_router, "resolve_route_permissions", AsyncMock(return_value=["runs:create"]))
     monkeypatch.setattr(chain, "capabilities_report", lambda: report if report is not None else _report())
+    multimodal_router._VOICE_SESSION_LIMITER.clear_for_test()
 
 
 def _stub_invoke(monkeypatch, *, result=None, error=None, calls=None):
@@ -188,7 +190,15 @@ def test_tts_returns_audio_bytes_with_engine_headers_and_forwards_payload(monkey
     capability, payload = calls[0]
     assert capability == "tts"
     assert payload["text"] == "hello alpha"  # stripped
-    assert set(payload) == {"text", "voice", "engine"}
+    assert set(payload) == {
+        "text",
+        "voice",
+        "engine",
+        "model_path",
+        "length_scale",
+        "noise_scale",
+        "volume",
+    }
 
 
 def test_tts_uses_config_default_voice_unless_request_overrides(monkeypatch):
@@ -687,7 +697,14 @@ def test_voice_ws_full_lifecycle_beacon_wake_transcript_disarm(monkeypatch):
 
     assert wake == {"type": "wake", "score": 0.92, "threshold": 0.5, "engine": "openwakeword", "frames": 11}
     # The transcript names the STT engine that produced the text — not the wake scorer.
-    assert transcript == {"type": "transcript", "text": "hello world", "engine": "faster-whisper", "tier": "T3"}
+    assert transcript == {
+        "type": "transcript",
+        "text": "hello world",
+        "language": None,
+        "engine": "faster-whisper",
+        "tier": "T3",
+        "final": True,
+    }
 
     assert odd_error["type"] == "error"
     assert odd_error["message"].startswith("InvalidFrameError: odd-length frame (3 bytes)")
@@ -739,8 +756,18 @@ def test_voice_ws_direct_transcribe_success(monkeypatch):
             ws.receive_json()  # capabilities
             ws.send_json({"type": "transcribe", "data": base64.b64encode(_FRAME).decode()})
             event = ws.receive_json()
+            ws.send_json({"type": "ping"})
+            pong = ws.receive_json()
 
-    assert event == {"type": "transcript", "text": "push to talk", "engine": "faster-whisper", "tier": "T3"}
+    assert event == {
+        "type": "transcript",
+        "text": "push to talk",
+        "language": "en",
+        "engine": "faster-whisper",
+        "tier": "T3",
+        "final": True,
+    }
+    assert pong == {"type": "status", "state": "idle", "event": "pong"}
 
 
 def test_voice_ws_direct_transcribe_exhaustion_carries_attempts(monkeypatch):
@@ -794,7 +821,10 @@ def test_voice_ws_unknown_message_type_lists_expected(monkeypatch):
             ws.send_json({"type": "nope"})
             event = ws.receive_json()
 
-    assert event == {"type": "error", "message": "unknown message type 'nope'; expected arm|disarm|audio|transcribe|ping"}
+    assert event == {
+        "type": "error",
+        "message": "unknown message type 'nope'; expected arm|disarm|audio|transcribe|conversation_start|conversation_stop|ping",
+    }
 
 
 def test_voice_ws_malformed_json_is_reported_not_fatal(monkeypatch):

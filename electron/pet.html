@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Alpha Lion Companion</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: "Segoe UI", system-ui, sans-serif;
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: transparent;
+      }
+
+      body {
+        -webkit-app-region: drag;
+        user-select: none;
+      }
+
+      #pet {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        padding: 3px 7px 8px;
+      }
+
+      #bubble {
+        position: absolute;
+        top: 4px;
+        left: 8px;
+        right: 8px;
+        min-height: 42px;
+        display: flex;
+        align-items: flex-start;
+        gap: 7px;
+        border: 1px solid rgb(251 191 36 / 0.38);
+        border-radius: 12px 12px 4px 12px;
+        background: rgb(15 23 42 / 0.94);
+        padding: 8px 10px;
+        color: #fffbeb;
+        font-size: 11px;
+        line-height: 1.35;
+        box-shadow: 0 12px 28px rgb(15 23 42 / 0.32);
+      }
+
+      #state-dot {
+        display: inline-flex;
+        flex: 0 0 auto;
+        align-items: center;
+        justify-content: center;
+        width: 17px;
+        height: 17px;
+        border-radius: 999px;
+        background: rgb(251 191 36 / 0.18);
+        color: #fcd34d;
+        font-size: 10px;
+        font-weight: 800;
+      }
+
+      #message {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      #art {
+        position: absolute;
+        left: 50%;
+        bottom: 1px;
+        width: 178px;
+        height: 178px;
+        transform: translateX(-50%);
+        transform-origin: 50% 85%;
+        filter: drop-shadow(0 16px 15px rgb(15 23 42 / 0.35));
+        animation: breathe 4.8s ease-in-out infinite;
+      }
+
+      #nameplate {
+        position: absolute;
+        left: 50%;
+        bottom: -1px;
+        transform: translateX(-50%);
+        color: #fef3c7;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        text-shadow: 0 1px 3px rgb(0 0 0 / 0.7);
+        white-space: nowrap;
+      }
+
+      #return {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        z-index: 2;
+        -webkit-app-region: no-drag;
+        width: 22px;
+        height: 22px;
+        border: 1px solid rgb(253 230 138 / 0.3);
+        border-radius: 999px;
+        background: rgb(15 23 42 / 0.8);
+        color: #fde68a;
+        cursor: pointer;
+        font-size: 13px;
+        line-height: 18px;
+      }
+
+      #return:hover { background: rgb(180 83 9 / 0.9); color: white; }
+
+      body[data-state="thinking"] #art { animation: think 1.25s ease-in-out infinite; }
+      body[data-state="working"] #art { animation: work 0.8s ease-in-out infinite; }
+      body[data-state="waiting"] #art { animation: alert 1.4s ease-in-out infinite; }
+      body[data-state="success"] #art { animation: celebrate 0.9s ease-in-out 2; }
+      body[data-state="error"] #art { animation: error 1.8s ease-in-out infinite; }
+      body[data-state="sleeping"] #art { animation: sleep 5s ease-in-out infinite; filter: saturate(0.72) brightness(0.86); }
+
+      @keyframes breathe {
+        0%, 100% { transform: translateX(-50%) translateY(0) scale(1); }
+        50% { transform: translateX(-50%) translateY(-2px) scale(1.012); }
+      }
+      @keyframes think {
+        0%, 100% { transform: translateX(-50%) rotate(-1deg) translateY(0); }
+        50% { transform: translateX(-50%) rotate(1deg) translateY(-4px); }
+      }
+      @keyframes work {
+        0%, 100% { transform: translateX(-50%) translateX(0) rotate(0); }
+        25% { transform: translateX(calc(-50% - 2px)) rotate(-1deg); }
+        75% { transform: translateX(calc(-50% + 2px)) rotate(1deg); }
+      }
+      @keyframes alert {
+        0%, 100% { transform: translateX(-50%) translateY(0) rotate(0); }
+        50% { transform: translateX(-50%) translateY(-5px) rotate(-2deg); }
+      }
+      @keyframes celebrate {
+        0%, 100% { transform: translateX(-50%) translateY(0) scale(1); }
+        35% { transform: translateX(-50%) translateY(-10px) scale(1.06) rotate(-2deg); }
+        70% { transform: translateX(-50%) translateY(-3px) scale(1.02) rotate(2deg); }
+      }
+      @keyframes error {
+        0%, 100% { transform: translateX(-50%) translateX(0); }
+        25% { transform: translateX(calc(-50% - 2px)) rotate(-1deg); }
+        75% { transform: translateX(calc(-50% + 2px)) rotate(1deg); }
+      }
+      @keyframes sleep {
+        0%, 100% { transform: translateX(-50%) translateY(2px) scale(0.98); }
+        50% { transform: translateX(-50%) translateY(5px) scale(0.96); }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        #art { animation: none; }
+      }
+    </style>
+  </head>
+  <body data-state="idle">
+    <main id="pet" aria-label="Alpha lion companion">
+      <div id="bubble" role="status" aria-live="polite">
+        <span id="state-dot" aria-hidden="true">✦</span>
+        <span id="message">The desk is quiet. I'm here when you need me.</span>
+      </div>
+      <button id="return" type="button" aria-label="Return lion to Alpha">×</button>
+      <svg id="art" viewBox="0 0 220 210" role="img" aria-label="Milo the lion companion">
+        <defs>
+          <linearGradient id="mane" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#fbbf24" />
+            <stop offset="0.55" stop-color="#d97706" />
+            <stop offset="1" stop-color="#92400e" />
+          </linearGradient>
+          <linearGradient id="face" x1="0.2" y1="0" x2="0.8" y2="1">
+            <stop offset="0" stop-color="#fde68a" />
+            <stop offset="1" stop-color="#f59e0b" />
+          </linearGradient>
+          <radialGradient id="chest" cx="50%" cy="35%" r="70%">
+            <stop offset="0" stop-color="#fff7d6" />
+            <stop offset="1" stop-color="#fbbf24" />
+          </radialGradient>
+        </defs>
+        <ellipse cx="111" cy="194" rx="67" ry="10" fill="rgb(15 23 42 / 0.25)" />
+        <path d="M153 161c35 3 40-25 24-37-11-8-27 0-22 13 3 8 13 7 17 2" fill="none" stroke="#d97706" stroke-linecap="round" stroke-width="10" />
+        <path d="M175 119c-5-9 1-18 10-17 8 1 10 10 4 15-4 4-9 5-14 2Z" fill="#92400e" />
+        <ellipse cx="111" cy="153" rx="55" ry="38" fill="url(#chest)" />
+        <ellipse cx="80" cy="177" rx="18" ry="10" fill="#f59e0b" />
+        <ellipse cx="142" cy="177" rx="18" ry="10" fill="#f59e0b" />
+        <path d="M71 177c-2 10 3 16 13 16 8 0 12-5 10-16M151 177c2 10-3 16-13 16-8 0-12-5-10-16" fill="#fef3c7" />
+        <path d="M110 22c-17 0-30 11-36 26-9-7-20-9-29-4 2 11 8 20 17 26-7 8-10 18-8 29 3 18 17 30 34 35 8 3 16 4 22 4s14-1 22-4c17-5 31-17 34-35 2-11-1-21-8-29 9-6 15-15 17-26-9-5-20-3-29 4-6-15-19-26-36-26Z" fill="url(#mane)" />
+        <circle cx="70" cy="44" r="13" fill="#f59e0b" />
+        <circle cx="150" cy="44" r="13" fill="#f59e0b" />
+        <circle cx="70" cy="44" r="6" fill="#fda4af" />
+        <circle cx="150" cy="44" r="6" fill="#fda4af" />
+        <ellipse cx="110" cy="82" rx="45" ry="43" fill="url(#face)" />
+        <ellipse cx="110" cy="97" rx="24" ry="18" fill="#fff7d6" />
+        <ellipse cx="110" cy="87" rx="9" ry="6" fill="#7c2d12" />
+        <g class="face-details">
+          <ellipse cx="91" cy="77" rx="7" ry="8" fill="#fff7ed" />
+          <ellipse cx="129" cy="77" rx="7" ry="8" fill="#fff7ed" />
+          <circle cx="91" cy="78" r="3.5" fill="#431407" />
+          <circle cx="129" cy="78" r="3.5" fill="#431407" />
+          <circle cx="93" cy="76" r="1.3" fill="white" />
+          <circle cx="131" cy="76" r="1.3" fill="white" />
+          <path d="M80 65l15 3M125 68l15-3" fill="none" stroke="#92400e" stroke-linecap="round" stroke-width="3" />
+          <path d="M100 108c4 10 16 10 20 0" fill="none" stroke="#7c2d12" stroke-linecap="round" stroke-width="3" />
+        </g>
+        <path class="state-mark" d="" fill="none" stroke="#fef3c7" stroke-linecap="round" stroke-linejoin="round" stroke-width="4" />
+      </svg>
+      <div id="nameplate">Milo · <span id="status">Ready</span></div>
+    </main>
+    <script>
+      (() => {
+        const allowed = new Set(["idle", "thinking", "working", "waiting", "success", "error", "sleeping"]);
+        const labels = {
+          idle: ["Ready", "✦"],
+          thinking: ["Thinking", "？"],
+          working: ["Working", "⚡"],
+          waiting: ["Needs you", "!"],
+          success: ["Complete", "✓"],
+          error: ["Needs attention", "!"],
+          sleeping: ["Resting", "z"],
+        };
+        const defaults = {
+          idle: "The desk is quiet. I'm here when you need me.",
+          thinking: "Paw-sing the problem...",
+          working: "I'm on it. Roaring quietly.",
+          waiting: "I found a decision point for you.",
+          success: "Task complete. Nice work, team.",
+          error: "That path hit a snag. We can retry safely.",
+          sleeping: "Resting my paws for a moment.",
+        };
+        const body = document.body;
+        const message = document.getElementById("message");
+        const status = document.getElementById("status");
+        const dot = document.getElementById("state-dot");
+        const details = document.querySelector(".face-details");
+        const mark = document.querySelector(".state-mark");
+        const bridge = window.alphaPet;
+
+        function text(value, fallback, limit) {
+          if (typeof value !== "string") return fallback;
+          const clean = value.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
+          return clean ? clean.slice(0, limit) : fallback;
+        }
+
+        function apply(payload) {
+          const state = allowed.has(payload?.state) ? payload.state : "idle";
+          const [label, symbol] = labels[state];
+          body.dataset.state = state;
+          status.textContent = label;
+          dot.textContent = symbol;
+          message.textContent = text(payload?.message, defaults[state], 160);
+          if (state === "sleeping" || state === "success") {
+            details.innerHTML = '<path d="M82 77c6 5 12 5 18 0M120 77c6 5 12 5 18 0" fill="none" stroke="#431407" stroke-linecap="round" stroke-width="3" />';
+          } else {
+            details.innerHTML = '<ellipse cx="91" cy="77" rx="7" ry="8" fill="#fff7ed" /><ellipse cx="129" cy="77" rx="7" ry="8" fill="#fff7ed" /><circle cx="91" cy="78" r="3.5" fill="#431407" /><circle cx="129" cy="78" r="3.5" fill="#431407" /><circle cx="93" cy="76" r="1.3" fill="white" /><circle cx="131" cy="76" r="1.3" fill="white" /><path d="M80 65l15 3M125 68l15-3" fill="none" stroke="#92400e" stroke-linecap="round" stroke-width="3" /><path d="M100 108c4 10 16 10 20 0" fill="none" stroke="#7c2d12" stroke-linecap="round" stroke-width="3" />';
+          }
+          if (state === "error") mark.setAttribute("d", "M101 111c5-5 13-5 18 0");
+          else if (state === "waiting") mark.setAttribute("d", "M101 111c5 4 13 4 18 0");
+          else if (state === "thinking") mark.setAttribute("d", "M143 46c8-8 16-8 23-2");
+          else if (state === "success") mark.setAttribute("d", "M151 39l5 6 11-13");
+          else if (state === "working") mark.setAttribute("d", "M156 47l8-5-8-5M164 52l8-5-8-5");
+          else if (state === "sleeping") mark.setAttribute("d", "M154 30h12M154 38h9");
+          else mark.setAttribute("d", "");
+        }
+
+        bridge?.onState?.(apply);
+        document.getElementById("return").addEventListener("click", () => bridge?.close?.());
+        apply({ state: "idle", message: "The desk is quiet. I'm here when you need me." });
+      })();
+    </script>
+  </body>
+</html>

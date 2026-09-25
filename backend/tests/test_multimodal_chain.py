@@ -6,6 +6,7 @@ exercises real engine entry points that never touch the network — nothing is
 fabricated: attempt rows always come from the code under test.
 """
 
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -21,8 +22,9 @@ from alpha.multimodal.errors import MultimodalUnavailableError
 
 @pytest.fixture(autouse=True)
 def _isolate_workspace(tmp_path, monkeypatch):
-    """Plan §8: tests isolate AGENT_WORKSPACE_HOME to a temp dir."""
+    """Plan §8: tests isolate config/home; legacy tier tests opt into automatic."""
     monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setattr(chain, "_speech_routing_mode", lambda: "automatic")
 
 
 def _unexpected(*_args, **_kwargs):
@@ -500,8 +502,9 @@ def test_t3_image_gen_has_no_local_engine():
     assert exc_info.value.rows[0]["retryable"] is None
 
 
-def test_t3_piper_without_voice_config_is_not_configured(monkeypatch):
+def test_t3_piper_without_voice_assets_is_not_configured(monkeypatch):
     monkeypatch.delenv("ALPHA_PIPER_VOICE", raising=False)
+    monkeypatch.setitem(sys.modules, "piper", SimpleNamespace())
 
     with pytest.raises(chain.TierSkip) as exc_info:
         chain._invoke_t3(Capability.TTS, {"text": "hello"}, [])
@@ -557,13 +560,13 @@ def test_probe_engine_rejects_unknown_status_as_probe_failed():
 
 
 def test_probe_import_observer_reports_installed_and_missing_modules():
-    row = chain._probe_engine("tts", "T2", "edge-tts", chain._import_observer("edge_tts"))
+    row = chain._probe_engine("tts", "T2", "json", chain._import_observer("json"))
     assert row["status"] == "available"
     assert "no engine run during this probe" in row["detail"]
 
     row = chain._probe_engine("ocr", "T3", "definitely-not-a-module-xyz", chain._import_observer("definitely_not_a_module_xyz"))
     assert row["status"] == "not_installed"
-    assert "ImportError" in row["detail"]
+    assert "ModuleNotFoundError" in row["detail"]
 
 
 def test_probe_specs_name_expected_engines_per_capability():
@@ -617,8 +620,18 @@ def test_capabilities_report_rows_voice_block_and_note(monkeypatch):
     voice_block = report["voice"]
     assert voice_block["enabled"] is True
     assert voice_block["wake_word"] == {"engine": "openwakeword", "threshold": 0.7, "armed_default": False}
-    assert voice_block["tts"] == {"autoplay": False, "voice": None}
-    assert voice_block["stt"] == {"model_size": "small", "language": None}
+    assert voice_block["routing"] == {
+        "mode": "automatic",
+        "speech_tiers": ["T1", "T2", "T3"],
+        "policy_disabled_tiers": [],
+    }
+    assert voice_block["tts"]["engine"] == "piper"
+    assert voice_block["tts"]["voice"] == "en_US-lessac-medium"
+    assert voice_block["tts"]["model_path_configured"] is False
+    assert voice_block["stt"]["model_size"] == "small"
+    assert voice_block["stt"]["local_files_only"] is True
+    assert voice_block["stt"]["model_path_configured"] is False
+    assert voice_block["streaming"]["max_sessions"] == 4
     assert "detail" not in voice_block
     assert "reachability not probed" in report["note"]
 

@@ -98,7 +98,7 @@ test("getEvolutionIdentity reads GET /api/evolution/identity and keeps honesty f
       repository: { owner: "owner", name: "repo" },
       releaseChannel: "stable",
       updateState: "IDLE",
-      capabilities: ["identity", "release_check", "evolution_ledger"],
+      capabilities: ["identity", "release_check", "evolution_ledger", "auto_update"],
     })
   );
   const identity = await f.evolution.getEvolutionIdentity();
@@ -110,7 +110,7 @@ test("getEvolutionIdentity reads GET /api/evolution/identity and keeps honesty f
   assert.equal(identity.gitCommitSource, "unavailable");
   assert.equal(identity.gitCommitNote, "git rev-parse could not run: [WinError 2]");
   assert.equal(identity.updateState, "IDLE");
-  assert.deepEqual(identity.capabilities, ["identity", "release_check", "evolution_ledger"]);
+  assert.deepEqual(identity.capabilities, ["identity", "release_check", "evolution_ledger", "auto_update"]);
   assert.deepEqual(identity.repository, { owner: "owner", name: "repo" });
 });
 
@@ -142,6 +142,15 @@ test("checkForEvolutionUpdate POSTs /api/evolution/update-check and returns the 
   assert.deepEqual(JSON.parse(f.calls[0].body), {});
   assert.equal(state.state, "UP_TO_DATE");
   assert.equal(state.latestTag, "v2.1.0");
+});
+
+test("requestEvolutionUpdate POSTs the admin-only apply handoff without a client ref", async () => {
+  const f = fixture(() => Response.json({ ok: true, state: "APPLY_REQUESTED", transaction_id: "upd-test" }));
+  const result = await f.evolution.requestEvolutionUpdate(true);
+  assert.equal(f.calls[0].url, "/api/evolution/update-apply");
+  assert.equal(f.calls[0].method, "POST");
+  assert.deepEqual(JSON.parse(f.calls[0].body), { force: true });
+  assert.equal(result.transaction_id, "upd-test");
 });
 
 test("proposeEvolutionCandidate POSTs /api/evolution/candidates with the documented body", async () => {
@@ -215,9 +224,12 @@ const ROUTE_DECORATORS = [
   '@router.get("/identity"',
   '@router.post("/update-check"',
   '@router.get("/update-state"',
+  '@router.post("/update-apply"',
+  '@router.post("/update-skip"',
+  '@router.post("/update-recover"',
 ];
 
-test("all 8 evolution routes exist in the backend router (contract pin)", { skip: !existsSync(ROUTER) }, () => {
+test("all evolution routes exist in the backend router (contract pin)", { skip: !existsSync(ROUTER) }, () => {
   const src = readFileSync(ROUTER, "utf8");
   for (const decorator of ROUTE_DECORATORS) {
     assert.ok(src.includes(decorator), `router is missing ${decorator}`);

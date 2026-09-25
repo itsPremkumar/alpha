@@ -298,12 +298,19 @@ Structured inter-agent protocol enabling distributed micro-teams:
 - **Direct Mailboxes**: Dedicated inbox queues ensure no communication loss during high-concurrency turns.
 
 ## Autonomous Swarms & Dynamic Topologies
-*Tool: `swarm_tool`*
+*Tools: `swarm_tool`; Gateway `/api/swarms`*
 
-For emergent, self-organizing problem solving:
-- **Leader Election**: Evaluates bot agency and domain competence to elect an optimal swarm leader.
-- **Dynamic Work Partitioning**: Breaks massive jobs (e.g. multi-repo migrations, vulnerability scanning) across worker swarms.
-- **Barrier Synchronization**: Enforces phase gates where all swarm workers must complete their slice before merging into the final deliverable.
+`alpha.swarm` is the lifecycle owner for autonomous swarm plans. A swarm is an explicit DAG, not an unbounded collection of background model calls:
+
+- **Admission and ownership**: `POST /api/swarms` accepts `goal` (the legacy `objective` spelling remains accepted), mode, items, concurrency, optional budgets, consensus/replan policy, and an owner-scoped `Idempotency-Key`. The server resolves the owner; clients cannot self-assert another owner. A repeated key returns the existing plan.
+- **Durable state**: each plan is checkpointed atomically and each lifecycle transition is appended to an ordered JSONL event journal. Process restart parks interrupted work as `paused`; resume issues fresh leases rather than trusting an old worker.
+- **Scheduling and recovery**: task IDs and dependencies are validated (including cycle detection). Each attempt receives a lease ID, owner, expiry, and attempt number. The watchdog renews live attempts, applies bounded retry backoff, and fences late results after expiry, cancellation, or a newer claim.
+- **Bounded resources**: `SwarmBudget` measures provider-reported tokens, tool calls, wall time, task count, replans, and consecutive failures. Provider throttling lowers effective concurrency. A consecutive-failure circuit and hard exhaustion are reported as `budget_exhausted`; no fake completion is emitted. `auto_replan` adds a deterministic repair task within the task/replan limits and leaves the original failure auditable.
+- **Communication**: the message bus keeps a bounded, topic-partitioned blackboard with idempotency keys and non-blocking subscriptions. Message content is untrusted data and is placed in the worker's human-input channel, never in a system prompt. API/tool callers cannot self-assert `trust="verified"`.
+- **Decision quality**: leader election uses disclosed capability/load/reputation inputs; consensus is an explicit weighted vote calculation with quorum, threshold, and evidence disclosure. Acceptance criteria are verified separately from task execution, so a worker can complete while the plan remains `partial_success` when evidence is missing.
+- **Operations**: use `run_async` for actual background execution, `step` for a scheduler-only tick, and `expand`/`replan` for a validated mid-flight task injection. Inspect `metrics`, `events`, `events/stream`, `messages`, `leader`, and task leases. `pause`, `resume`, and `cancel` are explicit lifecycle operations.
+
+The local JSON/JSONL adapter is atomic and restart-recoverable for a single Gateway process only. It is not a distributed lease repository or a cross-process exactly-once execution guarantee; use shared SQL persistence/leases before running multiple Gateway workers against the same swarm state.
 
 ## Subagent Delegation with Intent Category Presets
 *Tool: `task(category="...")`*
@@ -411,6 +418,25 @@ GET    /api/groups/{name}           # Get team
 POST   /api/groups/{name}/runs      # Run team
 GET    /api/groups/{name}/runs/{run_id}  # Get run status
 GET    /api/groups/{name}/runs/{run_id}/stream  # Stream run
+```
+
+### Swarms
+```
+GET    /api/swarms                         # List owner-visible plans
+POST   /api/swarms                         # Create a validated plan
+GET    /api/swarms/{id}                    # Plan, DAG, leases, and progress
+POST   /api/swarms/{id}/run-async          # Start the background runner
+POST   /api/swarms/{id}/step               # Scheduler-only tick
+POST   /api/swarms/{id}/pause|resume|cancel
+GET    /api/swarms/{id}/events              # Ordered JSONL audit projection
+GET    /api/swarms/{id}/events/stream       # SSE audit stream
+GET    /api/swarms/{id}/messages            # Bounded blackboard messages
+POST   /api/swarms/{id}/messages            # Publish untrusted observation
+POST   /api/swarms/{id}/tasks/{task}/claim  # Acquire an external lease
+POST   /api/swarms/{id}/tasks/{task}/complete
+POST   /api/swarms/{id}/expand|replan       # Validated mid-flight DAG change
+GET    /api/swarms/{id}/metrics             # Progress, budget, and acceptance state
+GET    /api/swarms/{id}/leader              # Deterministic leader election
 ```
 
 ## Configuration

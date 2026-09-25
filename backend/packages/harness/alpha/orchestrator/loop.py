@@ -62,6 +62,7 @@ _TERMINAL_STATUSES = frozenset(
         WorkflowRunStatus.WAITING_APPROVAL,
         WorkflowRunStatus.WAITING_EVENT,
         WorkflowRunStatus.SUSPENDED,
+        WorkflowRunStatus.ABORTED,
     }
 )
 
@@ -107,6 +108,7 @@ class TurnContext:
     initial_state: dict[str, Any] | None = None
     max_waves: int = 50
     handoff_to: str | None = None
+    owner_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -160,11 +162,12 @@ class ExecutionKernel:
         *,
         initial_state: dict[str, Any] | None = None,
         mode: str = "normal",
+        owner_id: str | None = None,
     ) -> WorkflowRun:
         """Start a run and journal its execution mode (normal vs bot, section 13)."""
         if mode not in MODES:
             raise ValueError(f"mode must be one of {MODES}, got {mode!r}")
-        run = self.engine.start_run(workflow_id, initial_state=initial_state)
+        run = self.engine.start_run(workflow_id, initial_state=initial_state, owner_id=owner_id)
         with self.claim(run.run_id):
             run.metrics["execution_mode"] = mode
             self.engine.events.emit("run_mode_selected", run.run_id, mode=mode)
@@ -172,12 +175,38 @@ class ExecutionKernel:
 
     # --------------------------------------------------------------- dispatch
 
-    def dispatch(self, run_id: str) -> WorkflowRun:
-        """Claim -> execute one scheduling wave -> fail-closed policy."""
-        with self.claim(run_id):
-            return self._dispatch_locked(run_id)
+    def dispatch(
+        self,
+        run_id: str,
+        *,
+        node_runner: Any | None = None,
+        compensation_runner: Any | None = None,
+        allow_registry_fallback: bool = True,
+    ) -> WorkflowRun:
+        """Claim -> execute one scheduling wave -> fail-closed policy.
 
-    def run_to_completion(self, run_id: str, max_waves: int = 50) -> tuple[WorkflowRun, int]:
+        ``allow_registry_fallback`` is for host bridges that must preserve an
+        explicitly unbound seam.  The normal REST/kernel path leaves it true,
+        so an omitted runner resolves the live executor registry.  A bridge
+        with no bound runner sets it false and passes the engine's honest
+        ``None`` refusal instead of silently acquiring a registry executor.
+        """
+        with self.claim(run_id):
+            return self._dispatch_locked(
+                run_id,
+                node_runner=node_runner,
+                compensation_runner=compensation_runner,
+                allow_registry_fallback=allow_registry_fallback,
+            )
+
+    def run_to_completion(
+        self,
+        run_id: str,
+        max_waves: int = 50,
+        *,
+        node_runner: Any | None = None,
+        compensation_runner: Any | None = None,
+    ) -> tuple[WorkflowRun, int]:
         """Dispatch waves under one claim until terminal or no progress.
 
         Returns the run and the number of waves actually dispatched. Bounded by
@@ -187,7 +216,11 @@ class ExecutionKernel:
             waves = 0
             while waves < max_waves:
                 before = self._progress_signature(run_id)
-                run = self._dispatch_locked(run_id)
+                run = self._dispatch_locked(
+                    run_id,
+                    node_runner=node_runner,
+                    compensation_runner=compensation_runner,
+                )
                 waves += 1
                 if run.status in _TERMINAL_STATUSES:
                     return run, waves
@@ -200,9 +233,22 @@ class ExecutionKernel:
                 raise KeyError(f"Run '{run_id}' not found.")
             return run, waves
 
-    def _dispatch_locked(self, run_id: str) -> WorkflowRun:
-        runner = get_executor_registry().build_runner()
-        run = self.engine.execute_step(run_id, node_runner=runner)
+    def _dispatch_locked(
+        self,
+        run_id: str,
+        *,
+        node_runner: Any | None = None,
+        compensation_runner: Any | None = None,
+        allow_registry_fallback: bool = True,
+    ) -> WorkflowRun:
+        registry = get_executor_registry()
+        runner = node_runner if node_runner is not None or not allow_registry_fallback else registry.build_runner()
+        compensation_runner = compensation_runner if compensation_runner is not None or not allow_registry_fallback else registry.build_compensation_runner()
+        run = self.engine.execute_step(
+            run_id,
+            node_runner=runner,
+            compensation_runner=compensation_runner,
+        )
         self._fail_closed(run)
         return run
 
@@ -221,11 +267,11 @@ class ExecutionKernel:
     def _fail_closed(self, run: WorkflowRun) -> None:
         """Defense-in-depth fail-closed guard run after every dispatch wave.
 
-    The engine itself fail-closes inside ``execute_step`` (``runtime.py``) with
-    a single ``workflow_failed``, so by the time this guard runs the run is
-    already terminal and this emits nothing; it remains only as a backstop
-    should a run ever reach here still PENDING/RUNNING with failed nodes.
-"""
+        The engine itself fail-closes inside ``execute_step`` (``runtime.py``) with
+        a single ``workflow_failed``, so by the time this guard runs the run is
+        already terminal and this emits nothing; it remains only as a backstop
+        should a run ever reach here still PENDING/RUNNING with failed nodes.
+        """
         if run.failed_nodes and run.status in _FAIL_CLOSED_STATUSES:
             run.status = WorkflowRunStatus.FAILED
             run.updated_at = datetime.now(UTC).isoformat()
@@ -233,10 +279,7 @@ class ExecutionKernel:
             self.engine.events.emit(
                 "workflow_failed",
                 run.run_id,
-                reason=(
-                    f"fail-closed: {len(failed)} node(s) failed: {failed}; "
-                    "see the node_failed events for the real per-node reasons"
-                ),
+                reason=(f"fail-closed: {len(failed)} node(s) failed: {failed}; see the node_failed events for the real per-node reasons"),
             )
 
     # ------------------------------------------------------------------ patch
@@ -246,13 +289,28 @@ class ExecutionKernel:
         with self.claim(run_id):
             return self.engine.apply_patch(run_id, patch)
 
+    def cancel(self, run_id: str, reason: str = "operator requested cancellation") -> WorkflowRun:
+        with self.claim(run_id):
+            return self.engine.cancel_run(run_id, reason=reason)
+
     # -------------------------------------------------------------- approvals
 
     def resolve_approval(
-        self, run_id: str, node_id: str, approved: bool, feedback: str = ""
+        self,
+        run_id: str,
+        node_id: str,
+        approved: bool,
+        feedback: str = "",
+        approval_request_id: str | None = None,
     ) -> WorkflowRun:
         with self.claim(run_id):
-            run = self.engine.resolve_approval(run_id, node_id, approved=approved, feedback=feedback)
+            run = self.engine.resolve_approval(
+                run_id,
+                node_id,
+                approved=approved,
+                feedback=feedback,
+                approval_request_id=approval_request_id,
+            )
             self._fail_closed(run)
             return run
 
@@ -280,19 +338,13 @@ class ExecutionKernel:
             if run is None:
                 raise KeyError(f"Run '{run_id}' not found.")
             definition = self.engine.get_definition(run.workflow_id)
-            graph = self.engine.graphs.get(f"{run.workflow_id}:v{run.graph_version}")
-            if graph is None and definition is not None:
-                graph = definition.graph
+            graph = self.engine._run_graph_for(run)
 
             mode_from = str(run.metrics.get("execution_mode", "normal"))
             resolved_objective = objective
             if resolved_objective is None:
                 state_objective = run.state.get("objective")
-                resolved_objective = (
-                    str(state_objective)
-                    if state_objective is not None
-                    else (definition.name if definition is not None else run.workflow_id)
-                )
+                resolved_objective = str(state_objective) if state_objective is not None else (definition.name if definition is not None else run.workflow_id)
 
             findings: list[str] = []
             if graph is not None:
@@ -301,14 +353,7 @@ class ExecutionKernel:
                     if node is not None:
                         findings.append(f"{nid}: {node.output!r}")
 
-            remaining = sorted(
-                set(run.failed_nodes)
-                | {
-                    nid
-                    for nid, status in run.node_states.items()
-                    if status.value not in ("succeeded", "skipped")
-                }
-            )
+            remaining = sorted(set(run.failed_nodes) | {nid for nid, status in run.node_states.items() if status.value not in ("succeeded", "skipped")})
             contract = HandoffContract(
                 objective=resolved_objective,
                 run_id=run.run_id,
@@ -375,6 +420,7 @@ def run_turn(
         mode=context.mode,
         prompt=prompt,
         initial_state=context.initial_state,
+        owner_id=context.owner_id,
     )
     if not mapping.expressible or mapping.run is None or mapping.workflow_id is None:
         return TurnOutcome(

@@ -8,6 +8,7 @@
  *   (default `127.0.0.1:3000`) inside a single native window. No nginx is used
  *   here: the Next.js server rewrites /api/* directly to the Gateway
  *   (see frontend/next.config.js), so only the two processes below are required.
+ *   An optional transparent lion companion window can be detached from the UI.
  *
  * Modes:
  *   electron . --dev                 Hot-reload dev servers (Next.js dev + uvicorn,
@@ -34,14 +35,18 @@
  * otherwise the next free port is picked automatically.
  */
 
-const { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell } = require('electron');
+const { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, screen, shell } = require('electron');
 const { spawn, spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
 
-const { resolveStartUrl, rewriteGatewayDestinations } = require('./lib/desktop-utils');
+const {
+  resolveStartUrl,
+  rewriteGatewayDestinations,
+  shouldGrantDesktopMediaPermission,
+} = require('./lib/desktop-utils');
 
 const APP_NAME = require('./desktop-config.json').displayName;
 // Single source of truth for desktop ports: electron/desktop-config.json
@@ -785,10 +790,186 @@ function spawnFrontendProd(nodeExe, frontendPort, gatewayBaseUrl) {
 // Windows
 // ---------------------------------------------------------------------------
 
+/**
+ * Keep Electron's native permission boundary explicit for the local Alpha
+ * renderer. Voice capture is microphone-only; camera and mixed audio/video
+ * requests are denied even if a future page accidentally asks for them.
+ * Non-media permissions retain Electron's normal behavior for the desktop
+ * shell (clipboard, notifications, and fullscreen).
+ */
+function configureDesktopMediaPermissions(webContents, frontendUrl) {
+  const permissionSession = webContents.session;
+  permissionSession.setPermissionRequestHandler((requestingWebContents, permission, callback, details) => {
+    const requestingOrigin = requestingWebContents?.getURL() || frontendUrl;
+    if (permission === 'media' || permission === 'audioCapture' || permission === 'microphone') {
+      const granted = shouldGrantDesktopMediaPermission({
+        permission,
+        requestingOrigin,
+        trustedFrontendUrl: frontendUrl,
+        details,
+      });
+      log(`Desktop ${permission} permission ${granted ? 'granted' : 'denied'}`, requestingOrigin);
+      callback(granted);
+      return;
+    }
+    if (permission === 'camera' || permission === 'videoCapture') {
+      log(`Desktop ${permission} permission denied`, requestingOrigin);
+      callback(false);
+      return;
+    }
+    callback(true);
+  });
+  permissionSession.setPermissionCheckHandler((checkingWebContents, permission, requestingOrigin, details) => {
+    const origin = requestingOrigin || checkingWebContents?.getURL() || frontendUrl;
+    if (permission === 'media' || permission === 'audioCapture' || permission === 'microphone') {
+      return shouldGrantDesktopMediaPermission({
+        permission,
+        requestingOrigin: origin,
+        trustedFrontendUrl: frontendUrl,
+        details,
+      });
+    }
+    if (permission === 'camera' || permission === 'videoCapture') return false;
+    return true;
+  });
+}
+
 let splashWindow = null;
 let mainWindow = null;
+let lionPetWindow = null;
 let appQuitting = false;
 let runtimeStatus = { dev: args.dev, packaged: isPackaged, frontendUrl: null, gatewayUrl: null };
+
+const LION_PET_STATES = new Set([
+  'idle',
+  'thinking',
+  'working',
+  'waiting',
+  'success',
+  'error',
+  'sleeping',
+]);
+let lionPetState = {
+  state: 'idle',
+  message: "The desk is quiet. I'm here when you need me.",
+};
+
+function sanitizeLionPetState(payload) {
+  const candidate = payload && typeof payload === 'object' ? payload : {};
+  const state = LION_PET_STATES.has(candidate.state) ? candidate.state : 'idle';
+  const message = typeof candidate.message === 'string'
+    ? candidate.message.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160)
+    : lionPetState.message;
+  return {
+    state,
+    message: message || 'The desk is quiet. I\'m here when you need me.',
+    visible: candidate.visible !== false,
+  };
+}
+
+function trustedLionPetSender(sender) {
+  return Boolean(
+    (mainWindow && !mainWindow.isDestroyed() && sender === mainWindow.webContents)
+    || (lionPetWindow && !lionPetWindow.isDestroyed() && sender === lionPetWindow.webContents),
+  );
+}
+
+function sendLionPetState() {
+  if (!lionPetWindow || lionPetWindow.isDestroyed()) return;
+  try {
+    lionPetWindow.webContents.send('alpha:lion-pet-state', lionPetState);
+  } catch {
+    // The companion window may be closing; its state is not durable state.
+  }
+}
+
+function closeLionPetWindow() {
+  const windowToClose = lionPetWindow;
+  lionPetWindow = null;
+  if (!windowToClose || windowToClose.isDestroyed()) return;
+  try {
+    windowToClose.destroy();
+  } catch {
+    // Best effort during shutdown.
+  }
+}
+
+function createLionPetWindow() {
+  if (lionPetWindow && !lionPetWindow.isDestroyed()) {
+    try {
+      lionPetWindow.show();
+      sendLionPetState();
+    } catch {
+      // The renderer may still be loading; ready-to-show will show it.
+    }
+    return lionPetWindow;
+  }
+
+  const workArea = screen.getPrimaryDisplay().workArea;
+  const width = 230;
+  const height = 285;
+  lionPetWindow = new BrowserWindow({
+    width,
+    height,
+    x: Math.max(workArea.x, workArea.x + workArea.width - width - 18),
+    y: Math.max(workArea.y, workArea.y + workArea.height - height - 18),
+    frame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    hasShadow: false,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    focusable: false,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'pet-preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+  lionPetWindow.setAlwaysOnTop(true, 'floating');
+  try {
+    lionPetWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  } catch {
+    // Some desktop shells expose only the primary always-on-top behavior.
+  }
+  lionPetWindow.loadFile(path.join(__dirname, 'pet.html'));
+  lionPetWindow.once('ready-to-show', () => {
+    if (lionPetWindow && !lionPetWindow.isDestroyed()) {
+      lionPetWindow.show();
+      sendLionPetState();
+    }
+  });
+  lionPetWindow.on('closed', () => {
+    lionPetWindow = null;
+  });
+  log('Desktop lion companion enabled');
+  return lionPetWindow;
+}
+
+function setLionPetVisible(visible) {
+  const nextVisible = Boolean(visible);
+  if (nextVisible) {
+    createLionPetWindow();
+  } else {
+    closeLionPetWindow();
+    log('Desktop lion companion hidden');
+  }
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try {
+      mainWindow.webContents.send('alpha:lion-pet-visibility', { visible: nextVisible });
+    } catch {
+      // The main window may be closing while the native companion is toggled.
+    }
+    buildMenu();
+  }
+  return { visible: nextVisible };
+}
 
 function createSplash() {
   splashWindow = new BrowserWindow({
@@ -829,6 +1010,7 @@ function createMainWindow(targetUrl) {
       sandbox: true,
     },
   });
+  configureDesktopMediaPermissions(mainWindow.webContents, targetUrl);
   mainWindow.loadURL(targetUrl);
   mainWindow.once('ready-to-show', () => {
     if (splashWindow) splashWindow.close();
@@ -840,6 +1022,7 @@ function createMainWindow(targetUrl) {
   });
   mainWindow.on('closed', () => {
     mainWindow = null;
+    closeLionPetWindow();
   });
   return mainWindow;
 }
@@ -859,6 +1042,10 @@ function buildMenu() {
     {
       label: '&Tools',
       submenu: [
+        {
+          label: lionPetWindow ? 'Hide &desktop lion' : 'Show &desktop lion',
+          click: () => setLionPetVisible(!lionPetWindow),
+        },
         {
           label: '&Open user-data folder',
           click: () => shell.openPath(userDataRoot),
@@ -1076,6 +1263,15 @@ if (!gotLock) {
   ipcMain.handle('alpha:get-auto-start', () => getAutoStartState());
   ipcMain.handle('agent-workspace:set-auto-start', (_event, enabled) => applyAutoStartSetting(enabled));
   ipcMain.handle('alpha:set-auto-start', (_event, enabled) => applyAutoStartSetting(enabled));
+  ipcMain.on('alpha:lion-pet-state', (event, payload) => {
+    if (!trustedLionPetSender(event.sender)) return;
+    lionPetState = sanitizeLionPetState(payload);
+    sendLionPetState();
+  });
+  ipcMain.handle('alpha:lion-pet-visible', (event, visible) => {
+    if (!trustedLionPetSender(event.sender)) return { visible: Boolean(lionPetWindow && !lionPetWindow.isDestroyed()) };
+    return setLionPetVisible(Boolean(visible));
+  });
 
   app.whenReady().then(() => {
     createSplash();
@@ -1104,6 +1300,7 @@ if (!gotLock) {
 
   app.on('before-quit', () => {
     appQuitting = true;
+    closeLionPetWindow();
     killTree('frontend');
     killTree('backend');
   });

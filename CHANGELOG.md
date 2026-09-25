@@ -10,8 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 This section accumulates work toward the **2.1.0** milestone
 ([milestone 2](https://github.com/bytedance/agent-workspace/milestone/2)).
 
+### Added
+
+- **swarm-v2-runtime:** Upgraded Alpha's existing `alpha.swarm` DAG runtime with owner-scoped idempotent admission, atomic JSON/JSONL checkpoints, lease-fenced execution and recovery, bounded communication, measured budgets/circuit breaking, deterministic auto-repair, evidence-aware acceptance/consensus, SSE/API telemetry, and a truthful TeamOps surface. Local persistence remains process-local; cross-worker exactly-once execution still requires shared SQL leases.
+- **dynamic-workflow-plane:** Added an opt-in prompt-to-workflow service with deterministic perception, registry/resource discovery, dynamic decomposition, compiled DAG execution, mode/handoff metadata, bot-mode execution, replanning, compensation, approval/control routes, append-only plan history, and fail-closed JSONL projections/hydration/replay. The default digest executor is explicitly a local graph projection and never claims domain-task acceptance; real executors and shared multi-worker leases remain host responsibilities. See [`docs/DYNAMIC_WORKFLOWS.md`](docs/DYNAMIC_WORKFLOWS.md).
+- **safe-run-recovery:** Added bounded, idempotent checkpoint continuation after Gateway restarts, expired worker leases, and recoverable model failures. Current model configuration is used for the continuation, network-disconnected SSE clients no longer cancel creator runs by default, and pending tool/MCP/custom effects stop for explicit confirmation instead of being replayed blindly. Configuration and guarantees are documented in [`docs/RUN_RECOVERY.md`](docs/RUN_RECOVERY.md).
+- **auto-update:** Added a guarded Phase-2 Git source updater with published-release/branch discovery, clean-worktree and fast-forward enforcement, immutable target/version validation, backup refs, cross-process run quiescing, config/dependency hooks, detached admin apply, health verification, automatic rollback/recovery, bounded redacted state/history, a CLI/Make surface, and optional Windows Task Scheduler supervision. It is disabled and check-only by default; Docker/Helm/Electron artifacts remain orchestrator-owned. See [`docs/AUTO_UPDATE.md`](docs/AUTO_UPDATE.md).
+- **system-one-laya:** Added the self-hosted Convai Innovations Laya provider through its Jev-compatible `/v1/systemone` transport, provider validation/defaults, keyless loopback auth, safe request preflight caps, provider-separated calibration, an isolated project-local setup/download helper, and configuration/documentation. The initial local rollout is shadow-only.
+- **lion-companion:** Added Milo, a local inline-SVG lion companion with bounded run-state reactions, petting/dragging/resizing/sound controls, reduced-motion support, and an optional sanitized transparent always-on-top Windows desktop window. See [`docs/LION_COMPANION.md`](docs/LION_COMPANION.md).
+
 ### ⚠ Breaking changes
 
+- **run-recovery:** `RunCreateRequest.on_disconnect` now defaults to `continue` rather than `cancel`. A dropped browser/SSE connection no longer stops the run; clients that relied on disconnect-as-cancel must send `on_disconnect: "cancel"` explicitly or use the cancel endpoint. Safe recovery still refuses to replay ambiguous external tool effects without review.
 - **gateway:** Request trace ids are now issued unconditionally, and every
   Gateway HTTP response carries an `X-Trace-Id` header. Previously both were
   gated behind `logging.enhance.enabled`, which now controls **log output
@@ -101,6 +111,9 @@ This section accumulates work toward the **2.1.0** milestone
   `BIND_HOST` to expose the stack on other interfaces. ([#4618])
 
 ### Added
+
+#### Voice & multimodal
+- **voice:** Added a fully local real-time conversation path: bounded PCM streaming with VAD endpointing and interim faster-whisper transcripts, final transcripts submitted through the existing chat/SSE runtime, and queued sentence-level Piper playback that starts before the full model response completes; manual autoplay and per-message replay share the same cancellable queue. The frontend explicitly allows same-origin microphone access, primes a shared Web Audio speaker from the first user gesture, and reports blocked/missing/in-use media devices. The Electron shell now grants microphone-only capture to the exact local Alpha origin and denies camera or mixed media requests through native permission request/check handlers. Speech routing defaults to `local_only`, model weights are installed explicitly with `make voice-setup`, runtime models are cached/bounded, client requests cannot select arbitrary Piper paths, and all public nginx entry points preserve the voice WebSocket upgrade. Only the configured LLM may incur a cost.
 
 #### Scheduler
 - **scheduler:** Scheduled tasks accept `interval` (`schedule_spec.every_seconds`)

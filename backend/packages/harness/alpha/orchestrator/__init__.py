@@ -26,6 +26,16 @@ from alpha.orchestrator.durable_tasks import (
     DurableTaskRuntime,
     TokenBudgetGovernor,
 )
+from alpha.orchestrator.dynamic_service import (
+    DynamicDecision,
+    DynamicPlan,
+    DynamicRequest,
+    DynamicServiceResult,
+    DynamicWorkflowService,
+    get_dynamic_workflow_service,
+    run_dynamic_turn,
+    set_dynamic_workflow_service,
+)
 from alpha.orchestrator.memory_recall import CrossThreadRecallConfig, trigger_dream_cycle
 from alpha.orchestrator.provider_routing import (
     ChannelModelOverride,
@@ -46,6 +56,11 @@ __all__ = [
     "ConcurrencyGovernor",
     "ContextEnginePlugin",
     "CrossThreadRecallConfig",
+    "DynamicDecision",
+    "DynamicPlan",
+    "DynamicRequest",
+    "DynamicServiceResult",
+    "DynamicWorkflowService",
     "DeliveryQueue",
     "DedupeCache",
     "DurableTaskRecord",
@@ -59,8 +74,11 @@ __all__ = [
     "get_acp_registry",
     "get_approval_store",
     "get_context_engine_plugin",
+    "get_dynamic_workflow_service",
     "is_secret_ref",
     "propagate_trace_to_memory",
     "resolve_secret_refs",
+    "run_dynamic_turn",
+    "set_dynamic_workflow_service",
     "trigger_dream_cycle",
 ]

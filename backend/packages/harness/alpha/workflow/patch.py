@@ -6,6 +6,7 @@ import copy
 
 from alpha.workflow.events import get_event_dispatcher
 from alpha.workflow.models import (
+    NodeStatus,
     WorkflowEdge,
     WorkflowGraph,
     WorkflowNode,
@@ -28,6 +29,18 @@ class WorkflowPatchEngine:
 
     def apply(self, run: WorkflowRun, graph: WorkflowGraph, patch: WorkflowPatch) -> tuple[WorkflowGraph, PatchValidationResult]:
         """Validate and apply a patch atomically to produce an incremented WorkflowGraph."""
+        if patch.workflow_run_id != run.run_id:
+            validation = PatchValidationResult(
+                allowed=False,
+                reason=f"patch targets run '{patch.workflow_run_id}' but engine is executing '{run.run_id}'",
+            )
+            self.events.emit(
+                "patch_rejected",
+                run.run_id,
+                reason=validation.reason,
+                patch=patch.model_dump(),
+            )
+            return graph, validation
         validation = self.validator.validate(graph, patch)
         if not validation.allowed:
             self.events.emit(
@@ -68,11 +81,25 @@ class WorkflowPatchEngine:
                 updates = args.get("updates", {})
                 if node_id in new_nodes:
                     node = new_nodes[node_id]
-                    for k, v in updates.items():
-                        if hasattr(node, k):
-                            setattr(node, k, v)
-                        else:
-                            node.config[k] = v
+                    node.config.update(updates)
+
+            elif kind == "retry_node":
+                node_id = args["node_id"]
+                if node_id in new_nodes:
+                    node = new_nodes[node_id]
+                    node.status = NodeStatus.READY
+                    node.output = None
+                    # A retry is a new attempt boundary; old evidence must not
+                    # satisfy the new completion gate or leak into replay.
+                    node.evidence = []
+                    node.approval_request_id = None
+                    node.approval_requested_at = None
+                    if node_id in run.failed_nodes:
+                        run.failed_nodes.remove(node_id)
+                    if node_id in run.completed_nodes:
+                        run.completed_nodes.remove(node_id)
+                    run.node_states[node_id] = NodeStatus.READY
+                    run.metrics.setdefault("retried_nodes", []).append(node_id)
 
             elif kind == "add_edge":
                 edge_data = args["edge"]

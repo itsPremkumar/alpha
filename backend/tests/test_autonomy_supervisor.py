@@ -159,3 +159,4 @@ def test_register_default_loops_includes_expected_loops() -> None:
     assert "review_queue" in loops
     assert "skill_curator" in loops
     assert "enterprise_heartbeat" in loops
+    assert "self_update" in loops

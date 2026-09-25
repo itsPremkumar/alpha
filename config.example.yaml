@@ -20,7 +20,7 @@
 # ============================================================================
 # Bump this number when the config schema changes.
 # Run `make config-upgrade` to merge new fields into your local config.yaml.
-config_version: 45
+config_version: 48
 
 # ============================================================================
 # Logging
@@ -1843,21 +1843,34 @@ verification:
   completion_critics_require_patch: false
 
 # ============================================================================
-# System One (Jev) Configuration
+# System One (Jev or local Laya) Configuration
 # ============================================================================
-# Jev is a System One model by TypeSafe AI: it does NOT generate text. It takes
-# a `state` plus typed `questions` and returns calibrated decisions (choice /
-# score / boolean) with probabilities and confidence, in ~70-500ms. It cannot
-# hallucinate or produce type errors.
+# A System One model does NOT generate text. It takes a `state` plus typed
+# `questions` and returns calibrated decisions (choice / score / boolean) with
+# probabilities and confidence. It cannot hallucinate or produce type errors.
 #
-# Alpha uses it as the DEFAULT decision engine for classification, routing,
-# scoring and verification, and falls back to the existing heuristic/LLM path
-# whenever it is disabled, unreachable, or below `min_confidence`.
+# Hosted routes:
+#   provider: vercel-gateway -> POST https://ai-gateway.vercel.sh/v1/evaluate
+#   provider: typesafe       -> POST https://api.typesafe.ai/v1/systemone
+#
+# Local open-weights route (Convai Innovations Laya):
+#   1. Run `python backend/scripts/system_one_laya_setup.py setup`.
+#   2. Run `python backend/scripts/system_one_laya_setup.py serve` in a
+#      separate terminal.
+#   3. Set provider to `laya`, base_url to the printed loopback URL, and
+#      choose `english`, `multilingual`, `typed-decisions`, or `""` for
+#      Laya's language-aware router. Laya uses the same `/v1/systemone`
+#      contract as TypeSafe; no separate decision schema is needed.
+#
+# Alpha uses System One as the DEFAULT decision engine for classification,
+# routing, scoring and verification, and falls back to the existing
+# heuristic/LLM path whenever it is disabled, unreachable, or below
+# `min_confidence`.
 system_one:
   enabled: true
-  provider: "vercel-gateway"      # or "typesafe" for the TypeSafe direct API
+  provider: "vercel-gateway"      # vercel-gateway | typesafe | laya
   api_key: "$AI_GATEWAY_API_KEY"
-  model: "typesafe-ai/jev"
+  model: "typesafe-ai/jev"        # Laya: english | multilingual | typed-decisions | "" (auto)
   timeout_ms: 2000
   max_retries: 2
   min_confidence: 0.60
@@ -1899,8 +1912,20 @@ system_one:
   # Implied by `shadow_mode`, because shadow without a log measures nothing.
   record_decisions: false
   # Where the JSONL log lives. Relative paths resolve under the Alpha state dir.
-  # Read it with: python backend/scripts/system_one_calibration.py --report
+  # Read it with: python backend/scripts/system_one_calibration.py
   calibration_log_path: "system_one_decisions.jsonl"
+  # Local Laya example (replace the hosted keys above, do not enable both):
+  # provider: "laya"
+  # base_url: "http://127.0.0.1:8000"
+  # api_key: null                 # optional for loopback; use $LAYA_API_KEY if protected
+  # model: "english"              # or multilingual / typed-decisions / "" for auto-router
+  # timeout_ms: 10000             # allow for a cold local load; preloading removes the cold path
+  # laya_max_state_chars: 12000   # abstain instead of truncating oversized evidence
+  # laya_max_request_chars: 24000  # bound the complete serialized request
+  # laya_max_questions: 64
+  # laya_max_choice_options: 20   # use bounded shortlist/partitioning for larger label spaces
+  # laya_max_partition_requests: 16 # per-decision local request budget; abstain if exceeded
+  # laya_max_partition_latency_ms: 60000 # total local tournament wall-clock budget
 
 # ============================================================================
 # ACP Agents Configuration
@@ -2592,11 +2617,12 @@ mcp_tasks:
   result_preview_max_chars: 2000
 
 # ============================================================================
-# Run Ownership Configuration
+# Run Ownership & Safe Recovery Configuration
 # ============================================================================
-# Controls cross-process run ownership for multi-worker deployments.
-# When GATEWAY_WORKERS > 1, each worker claims runs with a lease; the heartbeat
-# renews leases, and reconciliation recovers orphaned runs from crashed workers.
+# Controls durable run ownership and bounded checkpoint continuation. When
+# GATEWAY_WORKERS > 1, each worker claims runs with a lease; the heartbeat renews
+# leases, reconciliation terminalizes orphans, and auto_resume continues only
+# checkpoints whose next work is provably model-only.
 #
 # CLOCK-SYNC REQUIREMENT (multi-worker only): reconciliation compares another
 # worker's UTC lease timestamp against this worker's datetime.now(UTC). Worker
@@ -2617,8 +2643,16 @@ run_ownership:
   lease_seconds: 30           # Seconds before a run lease expires if not renewed.
                               # Heartbeat renews every lease_seconds / 3.
   grace_seconds: 10           # Extra seconds past expiry before reclaiming an orphaned run.
-                              # Also the cross-worker clock-skew budget — see note above.
+                              # Also the cross-worker clock-skew budget - see note above.
   heartbeat_enabled: false    # Set to true for GATEWAY_WORKERS > 1
+  auto_resume: true           # Continue recoverable runs from their latest checkpoint.
+                              # Model-only pending nodes resume automatically. A pending
+                              # tool/custom node stops with recovery_confirmation_required
+                              # because its external side effect may be unknowable.
+  resume_poll_interval_seconds: 5.0  # Durable recovery scan cadence.
+  max_resume_attempts: 3      # Bounded attempts across one recovery lineage.
+  resume_backoff_seconds: 5.0 # Delay before the next automatic continuation.
+  max_concurrent_resumes: 2   # Parallel checkpoint continuations per Gateway.
 
 # ============================================================================
 # Stream Bridge Configuration
@@ -3138,7 +3172,7 @@ authorization:
 # ============================================================================
 # Single supervisor owns every background loop. Flags off = zero activity.
 # Per-loop ids: sentinel, perpetual, review_queue, skill_curator,
-# enterprise_heartbeat. A loop id absent from `loops` stays DISABLED.
+# enterprise_heartbeat, self_update. A loop id absent from `loops` stays DISABLED.
 autonomy:
   enabled: true                 # master switch for the supervisor + event bus
   bus:
@@ -3157,6 +3191,10 @@ autonomy:
   #   sentinel:
   #     enabled: true
   #     interval_seconds: 600.0
+  #   self_update:                # guarded GitHub source updater (opt-in)
+  #     enabled: true
+  #     interval_seconds: 21600.0
+  #     jitter_seconds: 300.0
 
 # ============================================================================
 # Opt-in capabilities (see backend/packages/harness/alpha/capabilities/catalog.py)
@@ -3175,21 +3213,42 @@ capabilities:
   capabilities: {}              # per-capability opt-in, e.g. { net_policy: true }
 
 # ============================================================================
-# Voice & multimodal (mic / speaker / wake word - free, keyless, local fallback)
+# Voice & multimodal (fully local realtime voice; legacy wake word optional)
 # ============================================================================
-# Schema: alpha/config/voice_config.py. Every field has a default, so an absent
-# block behaves exactly like `voice: {enabled: true}` (no config_version bump).
-# Engines degrade honestly: missing extras answer not_installed / not_configured
-# in GET /api/multimodal/capabilities instead of pretending to work.
+# All fields are hot-reloadable and bounded. TTS/STT default to local_only, so
+# missing local packages/assets fail honestly and never fall through to a cloud
+# speech service. Model paths are operator-owned; browser voice values are safe IDs.
 voice:
-  enabled: true                   # master switch; false -> voice endpoints answer an honest 404
-  wake_word:
-    engine: openwakeword          # only openwakeword ships today
-    threshold: 0.5                # score in [0,1] at which a frame wakes the session (score is always disclosed)
-    armed_default: false          # UI starts wake-disarmed: arming is always user-initiated (privacy)
+  enabled: true                     # master switch for TTS, STT, PTT, and realtime conversation
+  routing:
+    mode: local_only                # local_only (default) | automatic (allows T1 -> T2 speech)
+  wake_word:                        # optional/manual compatibility control; not in the default voice extra
+    engine: openwakeword
+    threshold: 0.5
+    armed_default: false
   tts:
-    autoplay: false               # never auto-play assistant speech; use the per-message speaker button
-    voice: null                   # null -> the serving engine chooses its voice
+    autoplay: true
+    engine: piper
+    voice: en_US-lessac-medium      # safe ID, never a path
+    model_path: null                # null -> runtime_home()/voice/models/piper/<voice>.onnx
+    length_scale: 1.0
+    noise_scale: 0.667
+    volume: 0.9
   stt:
-    model_size: small             # faster-whisper size: tiny/base/small/medium/large-*
-    language: null                # null -> engine auto-detects the language
+    model_size: small               # setup installs this under the deployment-local model tree
+    model_path: null                # null -> runtime_home()/voice/models/faster-whisper/<model_size>
+    language: null                  # null -> automatic language detection
+    device: auto
+    compute_type: int8
+    beam_size: 1
+    local_files_only: true          # requests never download model weights
+  streaming:
+    sample_rate: 16000
+    frame_ms: 20                    # WebRTC VAD exact frame duration
+    pre_roll_ms: 200
+    speech_start_ms: 60
+    endpoint_silence_ms: 700
+    partial_interval_ms: 900
+    max_utterance_seconds: 30
+    max_frame_bytes: 65536          # decoded PCM bytes per JSON audio message
+    max_sessions: 4                 # process-local simultaneous voice WebSockets

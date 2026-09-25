@@ -60,6 +60,7 @@ class RunRow(Base):
 
     __table_args__ = (
         Index("ix_runs_thread_status", "thread_id", "status"),
+        Index("ix_runs_status_stop_reason", "status", "stop_reason"),
         Index("ix_runs_lease", "lease_expires_at"),
         Index("uq_runs_idempotency_key", "idempotency_key", unique=True),
         # Cross-process atomicity guarantee: at most one pending/running run per

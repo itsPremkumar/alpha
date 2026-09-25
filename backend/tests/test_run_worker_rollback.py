@@ -25,7 +25,7 @@ from alpha.runtime.checkpoint_state import CheckpointStateAccessor
 from alpha.runtime.context_keys import CURRENT_RUN_PRE_EXISTING_MESSAGE_IDS_KEY
 from alpha.runtime.events.store.memory import MemoryRunEventStore
 from alpha.runtime.journal import RunJournal
-from alpha.runtime.runs.manager import CancelOutcome, ConflictError, RunManager
+from alpha.runtime.runs.manager import MODEL_FAILURE_RECOVERY_REASON, CancelOutcome, ConflictError, RunManager
 from alpha.runtime.runs.schemas import RunStatus
 from alpha.runtime.runs.store.memory import MemoryRunStore
 from alpha.runtime.runs.worker import (
@@ -1499,6 +1499,7 @@ async def test_run_agent_marks_llm_error_fallback_as_error_status():
     assert fetched is not None
     assert fetched.status == RunStatus.error
     assert fetched.error == "Connection error."
+    assert fetched.stop_reason == MODEL_FAILURE_RECOVERY_REASON
     bridge.publish_end.assert_awaited_once_with(record.run_id)
 
 

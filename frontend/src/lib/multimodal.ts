@@ -26,11 +26,19 @@ export interface VoiceWakeConfig {
   armed_default: boolean | null;
 }
 
+export interface VoiceStreamingConfig {
+  sample_rate?: number | null;
+  frame_ms?: number | null;
+  max_frame_bytes?: number | null;
+  [key: string]: unknown;
+}
+
 export interface VoiceBlock {
   enabled: boolean;
   wake_word?: VoiceWakeConfig;
   tts?: { autoplay: boolean | null; voice: string | null };
   stt?: { model_size: string | null; language: string | null };
+  streaming?: VoiceStreamingConfig;
   detail?: string;
 }
 
@@ -150,6 +158,12 @@ async function request(path: string, capability: string, init: RequestInit = {})
       redirect: "error",
     });
   } catch {
+    if (init.signal?.aborted) {
+      if (typeof DOMException !== "undefined") throw new DOMException("Request cancelled", "AbortError");
+      const aborted = new Error("Request cancelled");
+      aborted.name = "AbortError";
+      throw aborted;
+    }
     throw new MultimodalError(0, capability, "The request could not be completed. Check your connection.");
   }
   if (!response.ok) throw await errorFromResponse(response, capability);
@@ -173,13 +187,14 @@ export interface TtsAudio {
  * POST /api/multimodal/tts → binary audio + X-Alpha-Engine / X-Alpha-Tier headers.
  * Never returns an empty blob: zero-byte responses are raised as exhaustion.
  */
-export async function synthesizeSpeech(text: string, options: { voice?: string; engine?: string } = {}): Promise<TtsAudio> {
+export async function synthesizeSpeech(text: string, options: { voice?: string; engine?: string; signal?: AbortSignal } = {}): Promise<TtsAudio> {
   const response = await request(
     "/api/multimodal/tts",
     "tts",
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: options.signal,
       body: JSON.stringify({
         text,
         ...(options.voice ? { voice: options.voice } : {}),

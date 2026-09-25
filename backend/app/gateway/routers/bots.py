@@ -17,6 +17,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from alpha.bots.profile import _now
+from app.gateway.authz import require_permission
 from app.gateway.deps import require_admin_user
 
 logger = logging.getLogger(__name__)
@@ -823,6 +824,8 @@ class BotEvolveApiRequest(BaseModel):
 
 @router.post("/{name}/clone-engine", summary="Clone or fork a bot via the clone engine")
 async def clone_bot_endpoint(name: str, body: BotCloneApiRequest, request: Request) -> dict:
+    if isinstance(request, Request):
+        await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     key = _validate_bot_name(name)
     from alpha.bots.cloning import CloneMode, get_bot_clone_engine
 
@@ -852,6 +855,8 @@ async def clone_bot_endpoint(name: str, body: BotCloneApiRequest, request: Reque
 
 @router.post("/{name}/evolve", summary="Evolve a bot to a new generation")
 async def evolve_bot_endpoint(name: str, body: BotEvolveApiRequest, request: Request) -> dict:
+    if isinstance(request, Request):
+        await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     key = _validate_bot_name(name)
     from alpha.bots.cloning import get_bot_clone_engine
 
@@ -872,3 +877,66 @@ async def evolve_bot_endpoint(name: str, body: BotEvolveApiRequest, request: Req
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+
+class BotWorkflowRequest(BaseModel):
+    prompt: str = Field(..., min_length=1, max_length=100_000)
+    context: dict = Field(default_factory=dict)
+    initial_state: dict = Field(default_factory=dict)
+    max_steps: int = Field(default=40, ge=1, le=200)
+    auto_execute: bool = True
+
+
+@router.post("/{name}/workflow", summary="Compile or execute a bot-mode dynamic workflow")
+@require_permission("runs", "create")
+async def run_bot_workflow_endpoint(
+    name: str,
+    body: BotWorkflowRequest,
+    request: Request,
+) -> dict:
+    """Run the shared DWE in bot mode without pretending a claim is execution.
+
+    The bot profile is server-validated before planning. A real bot executor
+    must be installed in the process-owned executor registry before
+    ``auto_execute`` can complete; otherwise the service returns the exact
+    missing-executor failure instead of treating inbox acceptance as work.
+    """
+    await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
+    key = _validate_bot_name(name)
+    profile = _registry().get_bot(key)
+    if profile is None:
+        raise HTTPException(status_code=404, detail=f"Bot '{key}' not found")
+    if getattr(profile, "is_archived", False) or getattr(profile, "status", "active") == "archived":
+        raise HTTPException(status_code=409, detail=f"Bot '{key}' is archived and cannot run workflows")
+
+    from alpha.orchestrator.dynamic_service import DynamicRequest, DynamicWorkflowService
+    from alpha.runtime.user_context import get_effective_user_id
+    from app.gateway.routers.workflows import get_workflow_kernel
+
+    owner = get_effective_user_id() if isinstance(request, Request) else None
+    # Use the Gateway-owned kernel/engine so the returned run is immediately
+    # visible to the ordinary workflow read/step/cancel/approval/replay APIs.
+    service = DynamicWorkflowService(kernel=get_workflow_kernel())
+
+    def _run() -> dict:
+        result = service.execute(
+            DynamicRequest(
+                prompt=body.prompt,
+                mode="bot",
+                context={**body.context, "bot_name": key, "owner_id": owner},
+                initial_state={**body.initial_state, "bot_name": key},
+                max_steps=body.max_steps,
+                # A bot profile is not a digest projection.  Leave the bot
+                # executor unbound unless the host explicitly registers this
+                # server-owned capability; a missing executor then fails with a
+                # real reason instead of returning false success.
+                default_executor="alpha.local.bot",
+            ),
+            auto_execute=body.auto_execute,
+            provision=body.auto_execute,
+        )
+        return result.to_dict()
+
+    try:
+        return await asyncio.to_thread(_run)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

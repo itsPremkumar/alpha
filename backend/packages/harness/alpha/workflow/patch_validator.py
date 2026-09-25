@@ -14,6 +14,7 @@ import copy
 from dataclasses import dataclass, field
 
 from alpha.workflow.models import (
+    NodeStatus,
     PatchOperation,
     WorkflowEdge,
     WorkflowGraph,
@@ -37,13 +38,12 @@ class PatchValidator:
         if patch.base_graph_version != graph.version:
             return PatchValidationResult(
                 allowed=False,
-                reason=(
-                    f"Optimistic concurrency violation: patch base version {patch.base_graph_version} "
-                    f"does not match current graph version {graph.version}."
-                ),
+                reason=(f"Optimistic concurrency violation: patch base version {patch.base_graph_version} does not match current graph version {graph.version}."),
             )
 
         # 2. Simulate patch on a cloned graph
+        if not patch.operations:
+            return PatchValidationResult(allowed=False, reason="patch contains no operations")
         simulated_nodes = copy.deepcopy(graph.nodes)
         simulated_edges = copy.deepcopy(graph.edges)
 
@@ -103,9 +103,16 @@ class PatchValidator:
             new_node_data = args.get("new_node")
             if not node_id or node_id not in nodes:
                 return PatchValidationResult(allowed=False, reason=f"replace_node: Node '{node_id}' not found.")
+            if nodes[node_id].type == "goal_gate":
+                return PatchValidationResult(allowed=False, reason=f"Cannot replace protected goal gate '{node_id}'.")
             if not new_node_data:
                 return PatchValidationResult(allowed=False, reason="replace_node: missing 'new_node'.")
             new_node = WorkflowNode(**new_node_data) if isinstance(new_node_data, dict) else new_node_data
+            if new_node.id != node_id:
+                return PatchValidationResult(
+                    allowed=False,
+                    reason=f"replace_node: new node id '{new_node.id}' must match target '{node_id}'.",
+                )
             nodes[node_id] = new_node
 
         elif kind == "update_node_config":
@@ -114,11 +121,37 @@ class PatchValidator:
             if not node_id or node_id not in nodes:
                 return PatchValidationResult(allowed=False, reason=f"update_node_config: Node '{node_id}' not found.")
             node = nodes[node_id]
-            for k, v in updates.items():
-                if hasattr(node, k):
-                    setattr(node, k, v)
-                else:
-                    node.config[k] = v
+            protected = {
+                "id",
+                "type",
+                "status",
+                "executor",
+                "requires_approval",
+                "compensation_node_id",
+                "retry_policy",
+                "loop_policy",
+            }
+            invalid = sorted(set(updates) & protected)
+            if invalid:
+                return PatchValidationResult(
+                    allowed=False,
+                    reason=f"update_node_config: fields require a typed replacement: {invalid}",
+                )
+            node.config.update(updates)
+
+        elif kind == "retry_node":
+            node_id = args.get("node_id")
+            if not node_id or node_id not in nodes:
+                return PatchValidationResult(allowed=False, reason=f"retry_node: Node '{node_id}' not found.")
+            if nodes[node_id].type == "compensation":
+                return PatchValidationResult(
+                    allowed=False,
+                    reason=f"retry_node: compensation node '{node_id}' cannot be reset as a normal task.",
+                )
+            # Retrying is a state transition, not a new graph node.  The
+            # validator only checks the target exists; the engine performs
+            # the reset under the run claim and journals it.
+            nodes[node_id].status = NodeStatus.READY
 
         elif kind == "add_edge":
             edge_data = args.get("edge")
@@ -134,6 +167,8 @@ class PatchValidator:
         elif kind == "remove_edge":
             src = args.get("source")
             tgt = args.get("target")
+            if not any(edge.source == src and edge.target == tgt for edge in edges):
+                return PatchValidationResult(allowed=False, reason=f"remove_edge: edge '{src}' -> '{tgt}' not found")
             edges[:] = [e for e in edges if not (e.source == src and e.target == tgt)]
 
         elif kind == "insert_before":
@@ -142,6 +177,8 @@ class PatchValidator:
             if not target_id or target_id not in nodes:
                 return PatchValidationResult(allowed=False, reason=f"insert_before: Target '{target_id}' not found.")
             new_node = WorkflowNode(**new_node_data) if isinstance(new_node_data, dict) else new_node_data
+            if new_node.id in nodes:
+                return PatchValidationResult(allowed=False, reason=f"insert_before: Node '{new_node.id}' already exists.")
             nodes[new_node.id] = new_node
             # Redirect existing incoming edges of target_id to new_node
             for e in edges:
@@ -155,6 +192,8 @@ class PatchValidator:
             if not src_id or src_id not in nodes:
                 return PatchValidationResult(allowed=False, reason=f"insert_after: Source '{src_id}' not found.")
             new_node = WorkflowNode(**new_node_data) if isinstance(new_node_data, dict) else new_node_data
+            if new_node.id in nodes:
+                return PatchValidationResult(allowed=False, reason=f"insert_after: Node '{new_node.id}' already exists.")
             nodes[new_node.id] = new_node
             # Redirect existing outgoing edges of src_id to new_node
             for e in edges:
@@ -175,6 +214,41 @@ class PatchValidator:
                     reason=f"create_loop: Node '{loop_node_id}' must specify a bounded loop_policy.",
                 )
             edges.append(WorkflowEdge(source=loop_node_id, target=target_node_id, condition=condition))
+
+        elif kind == "set_route":
+            src = args.get("source")
+            tgt = args.get("target")
+            if not src or src not in nodes:
+                return PatchValidationResult(allowed=False, reason=f"set_route: Source '{src}' not found.")
+            if not tgt or tgt not in nodes:
+                return PatchValidationResult(allowed=False, reason=f"set_route: Target '{tgt}' not found.")
+            condition = args.get("condition")
+            edges[:] = [edge for edge in edges if edge.source != src]
+            edges.append(WorkflowEdge(source=src, target=tgt, condition=condition))
+
+        elif kind == "update_edge_condition":
+            # The legacy DAG tool applies this operation at its call site after
+            # the core patch engine has produced the candidate graph.  Keep it
+            # a recognised/deferred operation here rather than rejecting it as
+            # unknown; the tool performs the edge lookup and reports an honest
+            # error when the referenced edge is absent.
+            return PatchValidationResult(allowed=True)
+
+        elif kind in {
+            "fan_out",
+            "fan_in",
+            "set_loop_limit",
+            "skip_node",
+            "request_human",
+            "request_review",
+        }:
+            return PatchValidationResult(
+                allowed=False,
+                reason=f"unsupported patch operation '{kind}' in the core patch engine",
+            )
+
+        else:
+            return PatchValidationResult(allowed=False, reason=f"unknown patch operation '{kind}'")
 
         return PatchValidationResult(allowed=True)
 
@@ -210,10 +284,7 @@ class PatchValidator:
 
         if cycle_nodes:
             # Verify that at least one node in the cycle defines a bounded loop policy
-            has_loop_policy = any(
-                graph.nodes[cn].loop_policy is not None and graph.nodes[cn].loop_policy.max_iterations > 0
-                for cn in cycle_nodes
-            )
+            has_loop_policy = any(graph.nodes[cn].loop_policy is not None and graph.nodes[cn].loop_policy.max_iterations > 0 for cn in cycle_nodes)
             if not has_loop_policy:
                 return PatchValidationResult(
                     allowed=False,

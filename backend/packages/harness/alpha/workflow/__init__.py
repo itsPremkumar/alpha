@@ -99,6 +99,14 @@ from alpha.workflow.scheduler import (
     WorkflowScheduler,
     WriteScopeCollisionError,
 )
+from alpha.workflow.schemas import (
+    EdgeSpec,
+    ExecutionEventRecord,
+    NodeSpec,
+    WorkflowDecisionRecord,
+    WorkflowPlanPatch,
+    WorkflowPlanVersion,
+)
 
 __all__ = [
     # Legacy DAG engine
@@ -119,6 +127,12 @@ __all__ = [
     "WorkflowEdge",
     "WorkflowRun",
     "WorkflowRunStatus",
+    "NodeSpec",
+    "EdgeSpec",
+    "WorkflowPlanVersion",
+    "WorkflowPlanPatch",
+    "ExecutionEventRecord",
+    "WorkflowDecisionRecord",
     "NodeType",
     "NodeStatus",
     "EdgeMode",

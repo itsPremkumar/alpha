@@ -13,9 +13,9 @@ export function chatRequestErrorMessage(failure: ChatRequestFailure): string {
       return `Request failed${label}. No assistant response was received. Review your draft and try again.`;
     }
     case "network":
-      return "The request could not be completed. No assistant response was received. Check your connection before retrying; the server may still be processing the request.";
+      return "The request could not be completed. No assistant response was received. Check your connection before retrying; the server may still be processing the request and its durable run can continue after reconnect.";
     case "stream":
-      return "The response stream was interrupted. Any partial response below is incomplete and has not been saved. The server may still be running; check Runs before retrying.";
+      return "The response stream was interrupted. Any partial response below is incomplete and has not been saved. The server may still be running; reconnect or reload Runs before retrying.";
     case "empty":
       return "The server returned no response content. No assistant answer was saved. Check Runs before retrying.";
     case "stopped":

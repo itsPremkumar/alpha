@@ -601,20 +601,89 @@ Content-Type: application/json
 
 ## Swarms & Group Chat API
 
-### Run Multi-Agent Team Objective
+### Create a Swarm Plan
 ```http
-POST /api/groups/{group_name}/runs
+POST /api/swarms
+Authorization: Bearer <admin-token>
+Idempotency-Key: audit-2026-09-25
 Content-Type: application/json
 
 {
-  "objective": "Perform multi-angle security assessment of auth flow",
-  "context": { "project_id": "proj-uuid" },
-  "config": {
-    "max_rounds": 5,
-    "parallel_execution": true
-  }
+  "goal": "Assess the authentication flow from five independent angles",
+  "mode": "debate",
+  "items": ["auth-api", "web-client", "mobile-client"],
+  "max_concurrency": 4,
+  "budget": {
+    "max_tokens": 120000,
+    "max_tool_calls": 80,
+    "max_wall_seconds": 900,
+    "max_tasks": 32,
+    "max_replans": 2
+  },
+  "requires_consensus": true
 }
 ```
+
+`POST /api/swarms` creates and validates a plan; it does not silently run model work. The server resolves the owner from authentication, accepts the legacy `objective` spelling when `goal` is absent, and returns the existing plan for a repeated owner-scoped idempotency key. The response includes `schema_version`, `revision`, `progress`, task DAG/lease fields, and the live budget snapshot.
+
+### Swarm Lifecycle and Execution
+```http
+GET  /api/swarms
+GET  /api/swarms/{swarm_id}
+POST /api/swarms/{swarm_id}/run-async
+POST /api/swarms/{swarm_id}/step
+POST /api/swarms/{swarm_id}/pause
+POST /api/swarms/{swarm_id}/resume
+POST /api/swarms/{swarm_id}/cancel
+```
+
+All mutations are owner-scoped and admin-authorized. `run-async` starts one process-local background runner; `step` only advances scheduling and never pretends to complete model work. Pause/resume/cancel preserve lease fencing so late worker results cannot resurrect terminal work.
+
+### Claim, Complete, and Replan Tasks
+```http
+POST /api/swarms/{swarm_id}/tasks/{task_id}/claim
+Content-Type: application/json
+
+{
+  "owner": "worker-a",
+  "lease_seconds": 90,
+  "expected_revision": 12
+}
+
+POST /api/swarms/{swarm_id}/tasks/{task_id}/complete
+Content-Type: application/json
+
+{
+  "result_summary": "Tests passed and the patch was produced.",
+  "evidence": [
+    {"criterion_id": "tests", "kind": "test_result", "passed": true, "reference": "pytest:4821"}
+  ],
+  "output_artifacts": ["artifacts/auth.patch"],
+  "lease_id": "lease-...",
+  "expected_revision": 13
+}
+
+GET /api/swarms/{swarm_id}/tasks/{task_id}
+POST /api/swarms/{swarm_id}/expand
+POST /api/swarms/{swarm_id}/replan
+```
+
+Completion is compare-and-checkpointed and lease-fenced when `lease_id` is supplied. A stale lease or revision returns `409`; an unknown task returns `404`. The optional lease field remains for older admin integrations, but new workers should always claim a task and echo its lease. Acceptance criteria are verified as a separate overlay, so a completed task can still produce `partial_success` when required evidence is absent. Expansion is all-or-nothing: the complete candidate DAG is validated before mutation and is bounded by `max_tasks`/`max_replans`.
+
+### Events, Messaging, and Telemetry
+```http
+GET  /api/swarms/{swarm_id}/events?limit=100
+GET  /api/swarms/{swarm_id}/events/stream?timeout_seconds=60
+GET  /api/swarms/{swarm_id}/messages?topic=results&since_sequence=0
+POST /api/swarms/{swarm_id}/messages
+GET  /api/swarms/{swarm_id}/metrics
+GET  /api/swarms/{swarm_id}/leader
+GET  /api/swarms/{swarm_id}/incidents
+GET  /api/swarms/{swarm_id}/memory
+GET  /api/swarms/governor/status
+```
+
+The events endpoint is an ordered JSONL-backed audit projection; the stream endpoint emits SSE frames and a final `end` event. Messages are bounded and idempotent when `idempotency_key` is supplied. API-published content is untrusted and cannot self-assert verified trust. `metrics` reports measured budget usage, task progress, event/message counts, acceptance state, and replan/round counters.
 
 ### Stream Group Run Events
 ```http
@@ -809,6 +878,19 @@ for await (const event of client.runs.stream(thread.threadId, 'Hello!')) {
   console.log(event);
 }
 ```
+
+---
+
+## Dynamic Workflow Plane
+
+The opt-in DWE surface is documented in [`DYNAMIC_WORKFLOWS.md`](DYNAMIC_WORKFLOWS.md).
+It covers `/api/workflows/dynamic/perceive`, `/api/workflows/dynamic/execute`,
+`/api/workflows/turns` with `dynamic: true`, the bot workflow adapter, bounded
+registry discovery, run step/cancel/approval/patch/replan/compensation controls,
+and durable event/projection/hydration/replay/plan-history endpoints. Workflow
+runs are owner-scoped. The default digest executor is a local graph projection
+with `acceptance_passed=false`; missing real executors, compensation callbacks,
+or verification evidence are never synthesized.
 
 ---
 

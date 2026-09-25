@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, lazy, Suspense } from "react";
+import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
 import { ThreadSidebar } from "@/components/ThreadSidebar";
 import { MessageItem } from "@/components/MessageItem";
 import { Composer } from "@/components/Composer";
@@ -14,6 +14,8 @@ import type { StreamMessage } from "@/lib/sse-reducer";
 import { chatRequestErrorMessage, ChatRequestFailure } from "@/lib/chat-request-error";
 import { branding } from "@/lib/branding";
 import { BrandLogo } from "@/components/BrandLogo";
+import { LionPet } from "@/components/LionPet";
+import type { LionPetState } from "@/lib/lion-pet";
 import { WorkspaceVitals } from "@/components/WorkspaceVitals";
 import { fetchBots, touchBot } from "@/lib/bots";
 import { fetchFeatures, fetchOpsStatus, FeatureFlags } from "@/lib/workspace";
@@ -21,7 +23,8 @@ import { listThreadRuns, cancelRun } from "@/lib/runs";
 import { rateMessage } from "@/lib/feedback";
 import { suggestionsEnabled, suggestFollowUps, polishDraft } from "@/lib/assist";
 import { listCommands, executeCommand, SlashCommand } from "@/lib/commands";
-import { readAutoplayEnabled, autoplaySpeak } from "@/lib/voice";
+import { readAutoplayEnabled, autoplaySpeak, speak } from "@/lib/voice";
+import { SpeechSegmenter, cancelSpeech, enqueueSpeech, isSpeechCancellation, waitForSpeechIdle } from "@/lib/speech";
 import {
   loadStore,
   upsertLocalThread,
@@ -95,12 +98,23 @@ export default function ChatView() {
   const [offlineDismissed, setOfflineDismissed] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const activeRunRef = useRef(false);
+  const [voiceConversationEnabled, setVoiceConversationEnabled] = useState(false);
+  const voiceConversationEnabledRef = useRef(false);
+  const [voiceTurnActive, setVoiceTurnActive] = useState(false);
+  const [voiceResumeToken, setVoiceResumeToken] = useState(0);
+  const voiceTurnRef = useRef(false);
+  const voiceTurnGenerationRef = useRef(0);
+  const voiceResumePendingRef = useRef(false);
+  const voiceScopeRef = useRef<string | null>(null);
 
   // Multi-bot-profile state
   const [bots, setBots] = useState<BotProfile[]>([]);
   const [botsLoading, setBotsLoading] = useState<boolean>(true);
   const [activeBot, setActiveBot] = useState<BotProfile | null>(null);
   const [view, setView] = useState<WorkspaceView>("chat");
+  const voiceViewRef = useRef(view);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<"general" | "models" | "connectivity" | "appearance" | "diagnostics">("general");
   const [botsTab, setBotsTab] = useState<"profiles" | "ops">("profiles");
   const [inspectedBot, setInspectedBot] = useState<BotProfile | null>(null);
 
@@ -125,10 +139,92 @@ export default function ChatView() {
   // Free-model catalog status (dynamic, auto-refreshed server-side TTL 300s).
   const [freeNote, setFreeNote] = useState<string | null>(null);
   const [freeRefreshing, setFreeRefreshing] = useState(false);
+  const [lionState, setLionState] = useState<LionPetState>("idle");
+  const [lionMessage, setLionMessage] = useState<string | null>(null);
+  const lionResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const updateLion = useCallback((nextState: LionPetState, message: string, resetAfterMs = 0) => {
+    setLionState(nextState);
+    setLionMessage(message);
+    if (lionResetTimerRef.current) {
+      clearTimeout(lionResetTimerRef.current);
+      lionResetTimerRef.current = null;
+    }
+    if (resetAfterMs > 0) {
+      lionResetTimerRef.current = setTimeout(() => {
+        setLionState("idle");
+        setLionMessage(null);
+        lionResetTimerRef.current = null;
+      }, resetAfterMs);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isLoading && messages.some((message) => Boolean(message.approvalRequest))) {
+      updateLion("waiting", "I found a decision point for you.");
+    }
+  }, [isLoading, messages, updateLion]);
+
+  useEffect(() => () => {
+    if (lionResetTimerRef.current) clearTimeout(lionResetTimerRef.current);
+  }, []);
 
   const flash = (msg: string) => {
     setNotice(msg);
     window.setTimeout(() => setNotice(null), 4500);
+  };
+
+  useEffect(() => {
+    voiceConversationEnabledRef.current = voiceConversationEnabled;
+  }, [voiceConversationEnabled]);
+
+  // Voice is scoped to this ChatView/thread. A local thread id can be remapped
+  // to its server id during the first voice turn, so that transition is kept;
+  // explicit navigation paths also stop the mode below.
+  useEffect(() => {
+    voiceViewRef.current = view;
+    const nextScope = `${view}:${activeThreadId || "new"}`;
+    const previousScope = voiceScopeRef.current;
+    if (previousScope !== null && previousScope !== nextScope) {
+      const previousView = previousScope.split(":", 1)[0];
+      const nextView = nextScope.split(":", 1)[0];
+      const localThreadRemap = voiceTurnRef.current && previousView === "chat" && nextView === "chat";
+      if (!localThreadRemap) {
+        if (voiceTurnRef.current) abortRef.current?.abort();
+        voiceTurnGenerationRef.current += 1;
+        voiceTurnRef.current = false;
+        voiceResumePendingRef.current = false;
+        voiceConversationEnabledRef.current = false;
+        setVoiceConversationEnabled(false);
+        cancelSpeech();
+      }
+    }
+    voiceScopeRef.current = nextScope;
+  }, [view, activeThreadId]);
+
+  useEffect(() => {
+    if (isLoading || !voiceResumePendingRef.current) return;
+    voiceResumePendingRef.current = false;
+    setVoiceResumeToken((token) => token + 1);
+  }, [isLoading]);
+
+  useEffect(() => () => {
+    if (voiceTurnRef.current) abortRef.current?.abort();
+    voiceTurnGenerationRef.current += 1;
+    voiceTurnRef.current = false;
+    voiceResumePendingRef.current = false;
+    cancelSpeech();
+  }, []);
+
+  const stopVoiceForNavigation = () => {
+    if (voiceTurnRef.current) abortRef.current?.abort();
+    voiceTurnGenerationRef.current += 1;
+    voiceTurnRef.current = false;
+    voiceResumePendingRef.current = false;
+    voiceConversationEnabledRef.current = false;
+    setVoiceTurnActive(false);
+    setVoiceConversationEnabled(false);
+    cancelSpeech();
   };
 
   /** Force a live re-discovery of free providers (probe = real health check). */
@@ -343,6 +439,7 @@ export default function ChatView() {
   }, [messages, isLoading, view]);
 
   const handleNewChat = async () => {
+    stopVoiceForNavigation();
     // Local-first: the chat exists instantly, the server copy follows.
     const localId = `local-${Date.now()}`;
     const draft: Thread = {
@@ -388,6 +485,7 @@ export default function ChatView() {
 
   /** Pick a specialist and scope history + projects to its space. */
   const rememberBot = (bot: BotProfile | null) => {
+    stopVoiceForNavigation();
     setActiveBot(bot);
     if (!bot) return;
     const mine = threads
@@ -406,6 +504,7 @@ export default function ChatView() {
   };
 
   const handleChatWithBot = async (bot: BotProfile) => {
+    stopVoiceForNavigation();
     setActiveBot(bot);
     setInspectedBot(null);
     setView("chat");
@@ -433,9 +532,20 @@ export default function ChatView() {
   };
 
   /** Core send: streams one answer, attaches its run id, stores everything locally. */
-  const sendMessage = async (text: string) => {
+  const sendMessage = async (text: string, options: { voiceTurn?: boolean } = {}): Promise<boolean> => {
     const content = text.trim();
-    if (!content || isLoading) return;
+    // Ref is deliberately synchronous: two voice callbacks can arrive before
+    // React has committed isLoading=true, and a second run must still be blocked.
+    const runLock = typeof activeRunRef !== "undefined" ? activeRunRef : { current: false };
+    const stopQueuedSpeech = typeof cancelSpeech === "function" ? cancelSpeech : () => undefined;
+    if (!content || isLoading || runLock.current) return false;
+    runLock.current = true;
+    const voiceTurn = options.voiceTurn === true;
+    stopQueuedSpeech();
+    setInput("");
+    setIsLoading(true);
+    setRequestError(null);
+    updateLion("thinking", "Paw-sing the request...");
 
     let threadId = activeThreadId;
     if (!threadId) {
@@ -473,10 +583,6 @@ export default function ChatView() {
     }
     const tid = threadId;
 
-    setInput("");
-    setIsLoading(true);
-    setRequestError(null);
-
     // Automatically detect and trigger slash command lifecycle at the right time
     let detection = undefined;
     try {
@@ -511,11 +617,31 @@ export default function ChatView() {
     let assistantText = "";
     let responseStarted = false;
     let deliveredMessages: ChatMessage[] = [];
+    let completed = false;
     const streamedIds = new Set<string>();
+    const speechSegmenter = voiceTurn ? new SpeechSegmenter() : null;
+    let speechFailureShown = false;
+    const enqueueVoiceSegment = (segment: string) => {
+      const value = segment.trim();
+      if (!value) return;
+      void enqueueSpeech(value, {
+        player: (valueToSpeak, signal) => speak(valueToSpeak, { signal }),
+      }).catch((error: unknown) => {
+        if (!isSpeechCancellation(error) && !speechFailureShown) {
+          speechFailureShown = true;
+          flash(`Voice speech failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      });
+    };
     const showRequestFailure = (failure: ChatRequestFailure) => {
       setMessages((prev) => prev.filter((m) => !streamedIds.has(m.id)));
       setRequestError({ threadId: tid, message: chatRequestErrorMessage(failure), draft: text, partial: assistantText });
       setInput((current) => current || text);
+      if (failure.kind === "stopped") {
+        updateLion("idle", "Stopping safely. The workspace is ready whenever you are.");
+      } else {
+        updateLion("error", "That path needs another look. I kept the draft safe.");
+      }
     };
 
     try {
@@ -525,6 +651,9 @@ export default function ChatView() {
         signal: controller.signal,
         body: JSON.stringify({
           assistant_id: activeBot?.name || "lead_agent",
+          // A transient browser/network drop must not cancel durable work;
+          // the explicit Stop action remains the cancellation boundary.
+          on_disconnect: "continue",
           stream_mode: ["messages-tuple", "values"],
           input: {
             messages: [{ role: "user", content }],
@@ -539,6 +668,7 @@ export default function ChatView() {
       });
 
       responseStarted = true;
+      updateLion("working", "I'm on it. Roaring quietly.");
       const updateStream = (partial: StreamMessage[]) => {
         deliveredMessages = partial.map((message) => ({
           id: message.runId ? JSON.stringify([message.runId, message.id]) : assistantMsgId,
@@ -550,6 +680,9 @@ export default function ChatView() {
           runId: message.runId || undefined,
         }));
         assistantText = deliveredMessages.map((message) => message.content).join("\n\n");
+        if (speechSegmenter) {
+          for (const segment of speechSegmenter.pushSnapshot(assistantText)) enqueueVoiceSegment(segment);
+        }
         for (const message of deliveredMessages) streamedIds.add(message.id);
         setMessages((prev) => [...prev.filter((message) => !streamedIds.has(message.id)), ...deliveredMessages]);
       };
@@ -564,21 +697,19 @@ export default function ChatView() {
       updateStream(result.messages);
       if (controller.signal.aborted) {
         showRequestFailure({ kind: "stopped" });
-        return;
+        return false;
       }
       if (!assistantText.trim()) {
         showRequestFailure({ kind: "empty" });
-        return;
+        return false;
       }
-      // TTS autoplay: the FINAL assistant reply just committed (stream complete,
-      // not aborted, non-empty) — never streaming partials, user messages, tool
-      // traces, or history replays. Default OFF: readAutoplayEnabled() is false
-      // until explicitly opted in ⇒ zero behavior change by default.
-      // autoplaySpeak re-checks the same gate (defense in depth) and hands any
-      // playback failure to the visible flash notice — never a silent swallow.
-      if (readAutoplayEnabled()) {
-        void autoplaySpeak(assistantText, { onFailure: (message) => flash(`Autoplay failed: ${message}`) });
+      if (speechSegmenter) {
+        for (const segment of speechSegmenter.flush()) enqueueVoiceSegment(segment);
       }
+      // The answer is committed before optional speech playback. Stopping
+      // playback must not erase a response that already streamed successfully.
+      completed = true;
+      updateLion("success", "Task complete. Nice work, team.", 4200);
       try {
         setUsage(await fetchTokenUsage(threadId));
       } catch {}
@@ -586,6 +717,18 @@ export default function ChatView() {
       try {
         appendLocalMessages(tid, deliveredMessages);
       } catch {}
+
+      if (speechSegmenter) {
+        // Keep capture paused until every already-queued local TTS segment has
+        // finished (or was cancelled by Stop). This prevents self-hearing.
+        await waitForSpeechIdle();
+      }
+      // Full-response autoplay remains the manual-text behavior. Voice turns
+      // already streamed their sentence segments above and must not overlap a
+      // second full-response request.
+      if (!voiceTurn && readAutoplayEnabled()) {
+        void autoplaySpeak(assistantText, { onFailure: (message) => flash(`Autoplay failed: ${message}`) });
+      }
 
       // Follow-up suggestions.
       if (suggestionsOn) {
@@ -608,6 +751,38 @@ export default function ChatView() {
     } finally {
       setIsLoading(false);
       abortRef.current = null;
+      runLock.current = false;
+    }
+    return completed;
+  };
+
+  const handleVoiceTranscript = async (text: string) => {
+    const content = text.trim();
+    if (!content || !voiceConversationEnabledRef.current || voiceViewRef.current !== "chat") return;
+    if (activeRunRef.current) {
+      // A final endpoint can race a manual run. Keep the session alive without
+      // creating a second run; the normal run guard remains authoritative.
+      voiceResumePendingRef.current = true;
+      return;
+    }
+    if (voiceTurnRef.current) return;
+    const generation = voiceTurnGenerationRef.current;
+    voiceTurnRef.current = true;
+    setVoiceTurnActive(true);
+    try {
+      await sendMessage(content, { voiceTurn: true });
+    } catch (error) {
+      flash(`Voice turn failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      voiceTurnRef.current = false;
+      if (generation === voiceTurnGenerationRef.current) {
+        setVoiceTurnActive(false);
+        // A navigation/stop during the run owns the outcome; do not resume into
+        // a different thread or resurrect a user-disabled conversation.
+        if (voiceConversationEnabledRef.current && voiceViewRef.current === "chat") {
+          setVoiceResumeToken((token) => token + 1);
+        }
+      }
     }
   };
 
@@ -623,6 +798,9 @@ export default function ChatView() {
 
   /** Execute a "/command" and show its result right in the chat. */
   const runSlash = async (command: string) => {
+    if (activeRunRef.current || isLoading) return;
+    activeRunRef.current = true;
+    cancelSpeech();
     let currentThreadId = activeThreadId;
     if (!currentThreadId) {
       const localId = `local-${Date.now()}`;
@@ -671,6 +849,7 @@ export default function ChatView() {
     }
     setInput("");
     setIsLoading(true);
+    updateLion("working", "Running that shortcut...");
     const reply = async (content: string) => {
       const assistantMsg: ChatMessage = {
         id: `asst-${Date.now()}`,
@@ -688,16 +867,29 @@ export default function ChatView() {
     try {
       const out = await executeCommand(command, { thread_id: tid });
       await reply(out);
+      updateLion("success", "Shortcut complete. The desk is clear.", 3600);
     } catch (e) {
       await reply(`Couldn't run that shortcut: ${e instanceof Error ? e.message : "unknown error"}`);
+      updateLion("error", "That shortcut hit a snag. Nothing was lost.");
     } finally {
       setIsLoading(false);
+      activeRunRef.current = false;
     }
   };
 
   /** Stop button: halt the stream, then cancel the run server-side (best effort). */
   const handleStop = async () => {
+    updateLion("waiting", "Stopping safely. Checking the last safe checkpoint...");
     abortRef.current?.abort();
+    cancelSpeech();
+    if (voiceTurnRef.current) {
+      voiceTurnGenerationRef.current += 1;
+      voiceTurnRef.current = false;
+      voiceResumePendingRef.current = false;
+      voiceConversationEnabledRef.current = false;
+      setVoiceTurnActive(false);
+      setVoiceConversationEnabled(false);
+    }
     if (activeThreadId) {
       try {
         const runs = await listThreadRuns(activeThreadId);
@@ -844,6 +1036,7 @@ export default function ChatView() {
   };
 
   const openThread = (id: string) => {
+    stopVoiceForNavigation();
     // Keep the bot space in sync: opening another bot's chat switches scope to it.
     const t = threads.find((x) => x.thread_id === id);
     const owner = t ? threadOwner(t) : null;
@@ -854,6 +1047,11 @@ export default function ChatView() {
     }
     setActiveThreadId(id);
     setView("chat");
+  };
+
+  const handleViewChange = (nextView: WorkspaceView) => {
+    if (nextView !== "chat") stopVoiceForNavigation();
+    setView(nextView);
   };
 
   const handleExportHistory = () => {
@@ -894,12 +1092,14 @@ export default function ChatView() {
             return bots.find((b) => b.name === o)?.display_name || o;
           }}
           onSelectThread={(id) => {
-            setActiveThreadId(id);
-            setView("chat");
+            openThread(id);
           }}
           onNewChat={handleNewChat}
           onThreadsChanged={() => reloadThreads()}
-          onBranchOpened={(id) => reloadThreads(id)}
+          onBranchOpened={(id) => {
+            stopVoiceForNavigation();
+            void reloadThreads(id);
+          }}
           onExportHistory={handleExportHistory}
           onImportHistory={handleImportHistory}
           serverOnline={gatewayOk === true}
@@ -911,7 +1111,7 @@ export default function ChatView() {
         {/* Workspace navigation */}
         <header className="border-b border-border/60 px-3 pt-2 pb-1.5 bg-card/20 shrink-0 space-y-1.5">
           <div className="overflow-x-auto">
-            <NavTabs view={view} onChange={setView} badge={{ bots: bots.length }} />
+            <NavTabs view={view} onChange={handleViewChange} badge={{ bots: bots.length }} />
           </div>
 
           {/* Live backend vitals: connectivity, usage and subsystem readiness,
@@ -1133,12 +1333,17 @@ export default function ChatView() {
         ) : view === "settings" ? (
           <Suspense fallback={<SectionFallback />}>
             <SettingsSection
+              initialTab={settingsInitialTab}
               currentModel={selectedModel}
               onModelChange={(m) => {
                 setSelectedModel(m);
                 try {
                   localStorage.setItem("alpha_selected_model", m);
                 } catch {}
+              }}
+              onModelsUpdated={async () => {
+                const mList = await fetchAvailableModels();
+                setModels(mList);
               }}
               onOpenView={(v) => setView(v)}
             />
@@ -1354,7 +1559,28 @@ export default function ChatView() {
                 uploading={uploading}
                 onPasteFiles={(files) => handleAttach(files)}
                 onDictate={(text) => flash("Dictation inserted — review and send.")}
+                onVoiceTranscript={handleVoiceTranscript}
+                voiceConversationEnabled={voiceConversationEnabled}
+                voiceConversationScopeKey={`${view}:${activeThreadId || "new"}`}
+                voiceConversationTurnActive={voiceTurnActive}
+                voiceResumeToken={voiceResumeToken}
+                onVoiceConversationStateChange={(active) => {
+                  voiceConversationEnabledRef.current = active;
+                  setVoiceConversationEnabled(active);
+                  if (!active) cancelSpeech();
+                }}
                 freeNote={freeNote}
+                onRefreshFree={refreshFreeCatalog}
+                refreshingFree={freeRefreshing}
+                onOpenModelSettings={() => {
+                  setSettingsInitialTab("models");
+                  setView("settings");
+                }}
+                onModelsUpdated={async () => {
+                  const mList = await fetchAvailableModels();
+                  setModels(mList);
+                  flash("Models updated with new API key configuration.");
+                }}
                 slashCommands={slashCommands}
               />
             </footer>
@@ -1362,6 +1588,13 @@ export default function ChatView() {
         )}
         </ErrorBoundary>
       </main>
+
+      <LionPet
+        state={lionState}
+        message={lionMessage || undefined}
+        threadId={activeThreadId}
+        onOpenChat={() => setView("chat")}
+      />
 
       <BotDetailPanel bot={inspectedBot} onClose={() => setInspectedBot(null)} onChat={handleChatWithBot} />
     </div>

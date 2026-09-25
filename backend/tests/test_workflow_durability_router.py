@@ -19,6 +19,7 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi import HTTPException
 
+from alpha.orchestrator.executors import DIGEST_EXECUTOR
 from app.gateway.routers.workflows import (
     WorkflowCreateRequest,
     WorkflowRunCreateRequest,
@@ -32,6 +33,7 @@ from app.gateway.routers.workflows import (
     record_workflow_plan,
     register_workflow,
     start_workflow_run,
+    step_workflow_run,
     workflow_durability_status,
 )
 
@@ -83,6 +85,39 @@ async def test_real_run_events_are_journaled_durably() -> None:
     # Sequence numbers are writer-assigned and monotonic, never gaps.
     seqs = [event["seq"] for event in payload["events"]]
     assert seqs == sorted(seqs) == list(range(1, len(seqs) + 1))
+
+
+@pytest.mark.asyncio
+async def test_terminal_event_automatically_projects_current_run() -> None:
+    """A normal terminal wave leaves a restart-readable projection without /project."""
+    req = MagicMock()
+    await register_workflow(
+        WorkflowCreateRequest(
+            id="wf_auto_projection",
+            name="Automatic projection",
+            graph={
+                "version": 1,
+                "nodes": {
+                    "only": {
+                        "id": "only",
+                        "prompt": "project me",
+                        "executor": DIGEST_EXECUTOR,
+                    }
+                },
+                "edges": [],
+            },
+        ),
+        req,
+    )
+    started = await start_workflow_run("wf_auto_projection", WorkflowRunCreateRequest(), req)
+    completed = await step_workflow_run(started["run_id"], req)
+    assert completed["status"] == "completed"
+
+    snapshot = _store().load_snapshot(started["run_id"])
+    assert snapshot is not None
+    assert snapshot.run.status.value == "completed"
+    assert snapshot.last_seq == _store().last_seq(started["run_id"])
+    assert "wf_auto_projection:v1" in snapshot.graphs
 
 
 @pytest.mark.asyncio

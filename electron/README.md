@@ -138,7 +138,31 @@ package: `npm install --no-save sharp`). The repo's `deer.svg`
 illustration does not rasterize usefully outside a browser, hence the
 geometric mark. Re-run the script after editing it, then rebuild.
 
-## How startup works (and fails safely)
+### Microphone and speaker access
+
+The desktop shell grants microphone-only media capture to the exact local Alpha
+frontend origin. Camera requests and mixed audio/video requests are denied. The
+voice controls still require the user to click a microphone or real-time button;
+the first explicit control also unlocks the shared Web Audio speaker output. Use
+**Test speaker and enable autoplay** in the composer to hear a local confirmation
+phrase. If microphone capture is blocked, check the operating system's input
+device and Windows privacy settings, then click the voice control again.
+
+## Lion companion
+
+Alpha includes **Milo**, a local lion companion drawn as inline SVG. In the app,
+right-click the lion to open its controls: pet it, resize it, move it, enable
+optional sound cues, hide it, or return to chat. It reacts to Alpha's bounded
+run states (`thinking`, `working`, `waiting`, `success`, and `error`) without
+putting prompts, responses, or thread data into the pet.
+
+In the Windows desktop build, choose **Detach** in the lion menu (or
+**Tools → Show desktop lion**) to open a transparent, always-on-top companion
+window. The native window is draggable, has a small return-to-Alpha button, and
+uses the same state channel; closing the main Alpha window closes the companion
+and stops the local services. The overlay is optional and local-only—it does not
+make requests or persist conversation content.
+
 
 1. Single-instance lock — a second launch just focuses the open window.
 2. Per-user data dir prepared; default configs seeded (never overwritten).

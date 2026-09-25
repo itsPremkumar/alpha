@@ -16,7 +16,10 @@ $RepoRoot       = Split-Path $PSScriptRoot -Parent
 $WatchdogScript = "$RepoRoot\scripts\watchdog.ps1"
 $TaskNameBoot   = "Alpha_Autostart"
 $TaskNameWatch  = "Alpha_Watchdog"
+$TaskNameUpdate = "Alpha_Update"
 $AutostartDir   = "$RepoRoot\scripts\autostart"
+$UpdateScript   = "$RepoRoot\scripts\auto_update.ps1"
+$UpdatePolicy   = if ($env:ALPHA_UPDATE_POLICY_PATH) { $env:ALPHA_UPDATE_POLICY_PATH } else { "$RepoRoot\config\update-policy.json" }
 
 Write-Host ""
 Write-Host "========================================================"  -ForegroundColor Cyan
@@ -68,6 +71,17 @@ function New-VbsLauncher {
     } catch {}
     [System.IO.File]::WriteAllText($vbsPath, $content, $enc)
     return $vbsPath
+}
+
+function Get-UpdateEnabled {
+    if (-not (Test-Path $UpdatePolicy)) { return $false }
+    try {
+        $policy = Get-Content $UpdatePolicy -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+        return ($policy.enabled -is [bool] -and $policy.enabled)
+    } catch {
+        Write-Host "[WARN] update policy is unreadable; updater task will not be registered." -ForegroundColor Yellow
+        return $false
+    }
 }
 
 # ---- Task 1: Alpha_Autostart -- fires 45 s after each logon -----------------
@@ -202,6 +216,52 @@ if (-not (Test-Path $TrayScript)) {
     }
 }
 
+# ---- Task 4: Alpha_Update -- opt-in source update supervisor ---------------
+# This task is created only when config/update-policy.json enables the feature.
+# It calls the detached transaction path; it never pulls or unpacks code in the
+# Task Scheduler process itself.
+$existingUpdate = Get-ScheduledTask -TaskName $TaskNameUpdate -ErrorAction SilentlyContinue
+if ((Get-UpdateEnabled) -and (Test-Path $UpdateScript)) {
+    if ($existingUpdate -and -not $Force) {
+        Write-Host "[OK] '$TaskNameUpdate' already registered (use -Force to re-register)." -ForegroundColor Green
+    } else {
+        if ($existingUpdate) {
+            Unregister-ScheduledTask -TaskName $TaskNameUpdate -Confirm:$false -ErrorAction SilentlyContinue
+        }
+        $updateFlags = "-Policy `"$UpdatePolicy`" -Command check -Auto"
+        $vbsUpdate = New-VbsLauncher -Name "Alpha_Update_Check" `
+            -PsFile $UpdateScript -PsFlags $updateFlags -WorkDir $RepoRoot
+        $triggerUpdate = New-ScheduledTaskTrigger `
+            -Once `
+            -At ((Get-Date).AddMinutes(2)) `
+            -RepetitionInterval (New-TimeSpan -Minutes 15)
+        $actionUpdate = New-ScheduledTaskAction -Execute "wscript.exe" `
+            -Argument ('//B //Nologo "' + $vbsUpdate + '"')
+        $settingsUpdate = New-ScheduledTaskSettingsSet `
+            -AllowStartIfOnBatteries `
+            -DontStopIfGoingOnBatteries `
+            -StartWhenAvailable `
+            -MultipleInstances IgnoreNew `
+            -ExecutionTimeLimit (New-TimeSpan -Minutes 10) `
+            -RestartCount 2 `
+            -RestartInterval (New-TimeSpan -Minutes 2)
+        $principalUpdate = New-ScheduledTaskPrincipal `
+            -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
+        Register-ScheduledTask `
+            -TaskName $TaskNameUpdate `
+            -Action $actionUpdate `
+            -Trigger $triggerUpdate `
+            -Settings $settingsUpdate `
+            -Principal $principalUpdate `
+            -Description 'Alpha AI Agent: guarded GitHub source update check/apply' `
+            -Force | Out-Null
+        Write-Host "[OK] Registered '$TaskNameUpdate' (every 15 minutes; policy-controlled)." -ForegroundColor Green
+    }
+} elseif ($existingUpdate) {
+    Unregister-ScheduledTask -TaskName $TaskNameUpdate -Confirm:$false -ErrorAction SilentlyContinue
+    Write-Host "[OK] Removed '$TaskNameUpdate' because the update policy is disabled." -ForegroundColor Yellow
+}
+
 Write-Host ""
 Write-Host "========================================================"  -ForegroundColor Green
 Write-Host " Autostart registration complete!"                         -ForegroundColor Green
@@ -211,6 +271,7 @@ Write-Host "   - Start automatically ~45s after Windows login"        -Foregroun
 Write-Host "   - Be checked every 5 minutes and relaunched if down"   -ForegroundColor White
 Write-Host "   - Survive crashes via multi-layer watchdog recovery"   -ForegroundColor White
 Write-Host "   - Show a live status icon in the taskbar tray"         -ForegroundColor White
+if (Get-UpdateEnabled) { Write-Host "   - Check/apply guarded GitHub source updates"  -ForegroundColor White }
 Write-Host ""
 Write-Host " To remove autostart:  .\scripts\unregister_autostart.ps1" -ForegroundColor Gray
 Write-Host ' To verify tasks:      Get-ScheduledTask -TaskName "Alpha_*"' -ForegroundColor Gray

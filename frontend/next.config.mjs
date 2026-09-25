@@ -14,6 +14,19 @@ const nextConfig = {
   // Pin the tracing root to this app: a stray package-lock.json in an ancestor
   // folder (e.g. the Windows home dir) otherwise hijacks workspace inference.
   outputFileTracingRoot: __dirname,
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          {
+            key: "Permissions-Policy",
+            value: "microphone=(self), camera=(), geolocation=()",
+          },
+        ],
+      },
+    ];
+  },
   async rewrites() {
     return [
       {

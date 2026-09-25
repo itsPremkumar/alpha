@@ -11,7 +11,6 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
-from pathlib import Path
 from typing import Any
 
 from alpha.multimodal.capabilities import Capability, CapabilityResult
@@ -24,62 +23,98 @@ OCR_ENGINES = (
 )
 
 
-def piper_tts(text: str, voice: str | None = None) -> bytes:
-    """Local offline TTS via Piper -> WAV bytes.
+def piper_tts(
+    text: str,
+    voice: str,
+    *,
+    model_path: str | None = None,
+    length_scale: float = 1.0,
+    noise_scale: float = 0.667,
+    volume: float = 0.9,
+) -> bytes:
+    """Local offline TTS through the process-cached Piper voice.
 
-    Raises :class:`alpha.multimodal.chain.TierSkip` when piper or a voice model
-    is absent (honest ``not_installed`` / ``not_configured``), so the chain can
-    record and finish without pretending audio exists.
+    The *voice* argument is a validated safe id. Filesystem selection comes only
+    from trusted config/env and is never taken from a client request.
     """
-    from alpha.multimodal.chain import SKIP_NOT_CONFIGURED, SKIP_NOT_INSTALLED, TIER_T3, TierSkip, skip_row
+    from alpha.multimodal.chain import SKIP_NOT_CONFIGURED, SKIP_NOT_INSTALLED, TIER_T3, TierExhausted, TierSkip, failure_row, skip_row
+    from alpha.multimodal.local_models import PiperModelSpec, piper_model_assets_present, resolve_piper_model_path, synthesize_with_cached_piper
 
-    voice_path = voice or os.getenv("ALPHA_PIPER_VOICE")
-    if not voice_path:
-        detail = "piper voice model not configured (set voice.tts.voice or ALPHA_PIPER_VOICE to a .onnx voice path)"
+    try:
+        path = resolve_piper_model_path(voice, model_path, os.getenv("ALPHA_PIPER_VOICE"))
+    except ValueError as exc:
+        raise TierSkip(SKIP_NOT_CONFIGURED, str(exc), rows=[skip_row(TIER_T3, "piper", SKIP_NOT_CONFIGURED, str(exc))]) from exc
+    spec = PiperModelSpec(
+        model_path=path,
+        length_scale=length_scale,
+        noise_scale=noise_scale,
+        volume=volume,
+    )
+    try:
+        import piper  # noqa: F401
+    except Exception as exc:  # noqa: BLE001 - broken optional native import is unavailable
+        detail = f"piper-tts is not installed (voice extra): {exc}"
+        raise TierSkip(SKIP_NOT_INSTALLED, detail, rows=[skip_row(TIER_T3, "piper", SKIP_NOT_INSTALLED, detail)]) from exc
+    if not piper_model_assets_present(spec):
+        detail = "piper voice model assets are not present (run voice setup or configure voice.tts.model_path; path withheld)"
         raise TierSkip(SKIP_NOT_CONFIGURED, detail, rows=[skip_row(TIER_T3, "piper", SKIP_NOT_CONFIGURED, detail)])
     try:
-        from piper import PiperVoice
+        audio = synthesize_with_cached_piper(text, spec)
     except ImportError as exc:
         detail = f"piper-tts is not installed (voice extra): {exc}"
         raise TierSkip(SKIP_NOT_INSTALLED, detail, rows=[skip_row(TIER_T3, "piper", SKIP_NOT_INSTALLED, detail)]) from exc
-
-    import io
-    import wave
-
-    path = Path(str(voice_path))
-    if not path.exists():
-        detail = f"piper voice model not found at {path.name} (path withheld)"
-        raise TierSkip(SKIP_NOT_CONFIGURED, detail, rows=[skip_row(TIER_T3, "piper", SKIP_NOT_CONFIGURED, detail)])
-
-    voice_obj = PiperVoice.load(str(path))
-    buffer = io.BytesIO()
-    # piper-tts 1.3+ ships synthesize_wav; older builds expose synthesize(.., wav_file).
-    synthesize_wav = getattr(voice_obj, "synthesize_wav", None)
-    if callable(synthesize_wav):
-        synthesize_wav(text, buffer)
-    else:
-        with wave.open(buffer, "wb") as wav_file:
-            voice_obj.synthesize(text, wav_file)
-    audio = buffer.getvalue()
+    except Exception as exc:
+        logger.warning("Local Piper synthesis failed", exc_info=True)
+        safe_error = RuntimeError("piper synthesis failed")
+        raise TierExhausted([failure_row(TIER_T3, "piper", safe_error)]) from exc
     if not audio:
-        raise RuntimeError("piper returned 0 audio bytes")
+        raise TierExhausted([failure_row(TIER_T3, "piper", RuntimeError("piper returned 0 audio bytes"))])
     return audio
 
 
-def stt_local(audio: bytes, suffix: str, model_size: str, language: str | None) -> dict[str, Any]:
-    """Local speech-to-text through the existing ``alpha.media.stt`` worker."""
+def stt_local(
+    audio: bytes,
+    suffix: str,
+    model_size: str,
+    language: str | None,
+    *,
+    model_path: str | None = None,
+    device: str = "auto",
+    compute_type: str = "int8",
+    beam_size: int = 1,
+    local_files_only: bool = True,
+) -> dict[str, Any]:
+    """Local speech-to-text through the cached ``alpha.media.stt`` worker."""
     from alpha.media import stt as media_stt
-    from alpha.multimodal.chain import SKIP_NOT_INSTALLED, TIER_T3, TierExhausted, TierSkip, failure_row, skip_row
+    from alpha.multimodal.chain import SKIP_NOT_CONFIGURED, SKIP_NOT_INSTALLED, TIER_T3, TierExhausted, TierSkip, failure_row, skip_row
 
     if not media_stt.stt_available():
         detail = "faster-whisper is not installed (voice extra); no local STT engine"
         raise TierSkip(SKIP_NOT_INSTALLED, detail, rows=[skip_row(TIER_T3, "faster-whisper", SKIP_NOT_INSTALLED, detail)])
+    if not media_stt.stt_model_available(
+        model_size=model_size,
+        model_path=model_path,
+        device=device,
+        compute_type=compute_type,
+        local_files_only=local_files_only,
+    ):
+        detail = "faster-whisper model assets are not present (run voice setup or configure voice.stt.model_path; path withheld)"
+        raise TierSkip(SKIP_NOT_CONFIGURED, detail, rows=[skip_row(TIER_T3, "faster-whisper", SKIP_NOT_CONFIGURED, detail)])
 
     handle = tempfile.NamedTemporaryFile(delete=False, suffix=suffix or ".wav")
     try:
         handle.write(audio)
         handle.close()
-        transcription = media_stt.transcribe_file(handle.name, model_size=model_size, language=language)
+        transcription = media_stt.transcribe_file(
+            handle.name,
+            model_size=model_size,
+            language=language,
+            model_path=model_path,
+            device=device,
+            compute_type=compute_type,
+            beam_size=beam_size,
+            local_files_only=local_files_only,
+        )
     finally:
         try:
             os.unlink(handle.name)
@@ -193,7 +228,14 @@ def run_t3(capability: Capability, payload: dict[str, Any], attempts: list[dict[
     if cap is Capability.TTS:
         text = str(payload.get("text") or "")
         # TierSkip propagates from piper_tts (not_installed / not_configured).
-        audio = piper_tts(text, payload.get("voice"))
+        audio = piper_tts(
+            text,
+            str(payload.get("voice") or "en_US-lessac-medium"),
+            model_path=payload.get("model_path"),
+            length_scale=float(payload.get("length_scale", 1.0)),
+            noise_scale=float(payload.get("noise_scale", 0.667)),
+            volume=float(payload.get("volume", 0.9)),
+        )
         return CapabilityResult(
             ok=True,
             capability=str(cap),
@@ -208,6 +250,11 @@ def run_t3(capability: Capability, payload: dict[str, Any], attempts: list[dict[
             str(payload.get("suffix") or ".wav"),
             str(payload.get("model_size") or "small"),
             payload.get("language"),
+            model_path=payload.get("model_path"),
+            device=str(payload.get("device") or "auto"),
+            compute_type=str(payload.get("compute_type") or "int8"),
+            beam_size=int(payload.get("beam_size") or 1),
+            local_files_only=bool(payload.get("local_files_only", True)),
         )
         return CapabilityResult(ok=True, capability=str(cap), engine=str(data.get("engine") or "faster-whisper"), data=data, note=str(data.get("note") or ""))
 

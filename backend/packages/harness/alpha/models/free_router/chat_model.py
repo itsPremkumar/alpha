@@ -111,6 +111,7 @@ class ChatFreeLLM(BaseChatModel):
     """Keyless free-LLM router chat model (see module docstring)."""
 
     model: str = "auto"
+    target_provider: str | None = None
     temperature: float | None = None
     max_tokens: int | None = None
     request_timeout: float | None = None
@@ -170,6 +171,7 @@ class ChatFreeLLM(BaseChatModel):
         routed = router.chat(
             payload,
             model=self.model,
+            target_provider=self.target_provider,
             temperature=self.temperature,
             max_tokens=self.max_tokens,
             timeout=self.request_timeout,

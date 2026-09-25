@@ -179,9 +179,7 @@ def replay_run(
     log = list(events)
     started = next((e for e in log if e.event_type == "workflow_started"), None)
     if started is None:
-        raise ValueError(
-            "event log has no 'workflow_started' event; run state cannot be replayed honestly"
-        )
+        raise ValueError("event log has no 'workflow_started' event; run state cannot be replayed honestly")
 
     target_engine = engine if engine is not None else DynamicWorkflowEngine()
     replayed_definition = definition.model_copy(deep=True)
@@ -191,6 +189,7 @@ def replay_run(
     run = WorkflowRun(
         run_id=run_id,
         workflow_id=started.payload.get("workflow_id", replayed_definition.id),
+        owner_id=started.payload.get("owner_id"),
         graph_version=replayed_definition.graph.version,
         status=WorkflowRunStatus.RUNNING,
         state=deepcopy(started.payload.get("state") or {}),
@@ -211,10 +210,15 @@ def replay_run(
             if mode is not None:
                 run.metrics["execution_mode"] = mode
 
+        elif kind == "decision_recorded":
+            run.metrics.setdefault("decisions", []).append(deepcopy(payload))
+
         elif kind == "node_started":
             nid = payload.get("node_id")
             if isinstance(nid, str):
                 run.node_states[nid] = NodeStatus.RUNNING
+                if nid not in run.active_nodes:
+                    run.active_nodes.append(nid)
                 node_type = payload.get("type")
                 if node_type is not None:
                     node_kinds[nid] = str(node_type)
@@ -224,6 +228,7 @@ def replay_run(
             if not isinstance(nid, str):
                 continue
             run.node_states[nid] = NodeStatus.SUCCEEDED
+            run.active_nodes = [active for active in run.active_nodes if active != nid]
             if nid not in run.completed_nodes:
                 run.completed_nodes.append(nid)
             suffix = _STATE_KEY_SUFFIXES.get(node_kinds.get(nid, ""))
@@ -253,10 +258,16 @@ def replay_run(
             if not isinstance(nid, str):
                 continue
             run.node_states[nid] = NodeStatus.FAILED
+            run.active_nodes = [active for active in run.active_nodes if active != nid]
             if nid not in run.failed_nodes:
                 run.failed_nodes.append(nid)
             _fold_evidence_onto_graph(target_engine, run, payload)
             _fold_iteration_counts(run, payload)
+
+        elif kind == "run_reopened":
+            run.status = WorkflowRunStatus.RUNNING
+            run.waiting_reason = None
+            run.approval_request_id = None
 
         elif kind == "workflow_completed":
             run.status = WorkflowRunStatus.COMPLETED
@@ -265,6 +276,16 @@ def replay_run(
 
         elif kind == "workflow_failed":
             run.status = WorkflowRunStatus.FAILED
+
+        elif kind == "workflow_cancelled":
+            run.status = WorkflowRunStatus.CANCELLED
+            run.active_nodes.clear()
+
+        elif kind == "node_skipped":
+            nid = payload.get("node_id")
+            if isinstance(nid, str):
+                run.node_states[nid] = NodeStatus.SKIPPED
+                _fold_evidence_onto_graph(target_engine, run, payload)
 
         elif kind == "patch_committed":
             graph_version = payload.get("graph_version")
@@ -279,6 +300,12 @@ def replay_run(
                         node_data = op.args.get("node") or op.args.get("new_node")
                         if isinstance(node_data, dict) and node_data.get("id") not in run.node_states:
                             run.node_states[node_data["id"]] = NodeStatus.PENDING
+                    elif op.op == "retry_node":
+                        retry_id = op.args.get("node_id")
+                        if isinstance(retry_id, str):
+                            run.node_states[retry_id] = NodeStatus.READY
+                            if retry_id in run.failed_nodes:
+                                run.failed_nodes.remove(retry_id)
                 _rebuild_patched_graph(target_engine, run, patch)
 
         elif kind == "approval_requested":
@@ -301,6 +328,14 @@ def replay_run(
             denied_nid = payload.get("node_id")
             if isinstance(denied_nid, str) and denied_nid not in run.failed_nodes:
                 run.failed_nodes.append(denied_nid)
+
+        elif kind == "approval_timed_out":
+            run.status = WorkflowRunStatus.FAILED
+            run.approval_request_id = None
+            _fold_node_status(run, payload)
+            timed_out_nid = payload.get("node_id")
+            if isinstance(timed_out_nid, str) and timed_out_nid not in run.failed_nodes:
+                run.failed_nodes.append(timed_out_nid)
 
         elif kind == "compensation_triggered":
             nid = payload.get("node_id")

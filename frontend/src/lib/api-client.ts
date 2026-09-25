@@ -1,4 +1,21 @@
-export const GATEWAY_BASE = (process.env.NEXT_PUBLIC_GATEWAY_URL || "/api").replace(/\/+$/, "");
+function normalizeGatewayBase(value: string): string {
+  const trimmed = value.trim().replace(/\/+$/, "");
+  if (!trimmed) return "/api";
+  // Deployments commonly set NEXT_PUBLIC_GATEWAY_URL to the Gateway origin
+  // (for example http://127.0.0.1:8001). API clients still address /api/*.
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const url = new URL(trimmed);
+      if (!url.pathname.replace(/\/+$/, "").endsWith("/api")) url.pathname = `${url.pathname.replace(/\/+$/, "")}/api`;
+      return url.toString().replace(/\/+$/, "");
+    } catch {
+      return trimmed;
+    }
+  }
+  return trimmed.endsWith("/api") ? trimmed : `${trimmed}/api`;
+}
+
+export const GATEWAY_BASE = normalizeGatewayBase(process.env.NEXT_PUBLIC_GATEWAY_URL || "/api");
 
 export type ApiFailureKind = "http" | "network" | "stopped" | "response" | "route";
 

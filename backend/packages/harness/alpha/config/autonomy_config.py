@@ -64,7 +64,7 @@ class AutonomyConfig(BaseModel):
     continual_harness: ContinualHarnessConfig = Field(default_factory=lambda: ContinualHarnessConfig(enabled=True), description="Continual Harness context injection middleware.")
     loops: dict[str, AutonomyLoopConfig] = Field(
         default_factory=dict,
-        description=("Per-loop overrides keyed by loop id (sentinel, perpetual, review_queue, skill_curator, enterprise_heartbeat). A loop id absent here uses the supervisor default, which is DISABLED."),
+        description=("Per-loop overrides keyed by loop id (sentinel, perpetual, review_queue, skill_curator, enterprise_heartbeat, self_update). A loop id absent here uses the supervisor default, which is DISABLED."),
     )
 
     def loop_config(self, loop_id: str) -> AutonomyLoopConfig:

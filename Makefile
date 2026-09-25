@@ -1,9 +1,11 @@
 # Alpha - Unified Development Environment
 
-.PHONY: help config config-upgrade check check-agent-guidance install extension-install extension-upgrade extension-list extension-enable extension-disable extension-remove setup doctor prod-check support-bundle detect-thread-boundaries detect-blocking-io dev dev-daemon start start-daemon nginx stop up down clean docker-init docker-start docker-stop docker-logs docker-logs-frontend docker-logs-gateway docker-logs-redis setup-sandbox verify checkpoint rollback guardrails context safe-exec
+.PHONY: help config config-upgrade check check-agent-guidance install voice-setup voice-verify system-one-laya-setup system-one-laya-serve system-one-laya-status extension-install extension-upgrade extension-list extension-enable extension-disable extension-remove setup doctor prod-check support-bundle update-status update-check update-apply update-recover update-skip detect-thread-boundaries detect-blocking-io dev dev-daemon start start-daemon nginx stop up down clean docker-init docker-start docker-stop docker-logs docker-logs-frontend docker-logs-gateway docker-logs-redis setup-sandbox verify checkpoint rollback guardrails context safe-exec
 
 BASH ?= bash
 BACKEND_UV_RUN = cd backend && uv run
+# Laya setup device: auto selects CUDA when nvidia-smi is available, otherwise CPU.
+DEVICE ?= auto
 
 # Detect OS for Windows compatibility
 ifeq ($(OS),Windows_NT)
@@ -28,6 +30,11 @@ help:
 	@echo "  make doctor          - Check configuration and system requirements"
 	@echo "  make prod-check      - Production readiness pre-flight (versions, config, secrets)"
 	@echo "  make support-bundle  - Create a redacted issue summary, AI draft, and evidence bundle"
+	@echo "  make update-status   - Read the guarded GitHub source-update state"
+	@echo "  make update-check    - Check the configured GitHub release/branch"
+	@echo "  make update-apply    - Apply the verified update after explicit confirmation"
+	@echo "  make update-recover  - Recover an interrupted update transaction"
+	@echo "  make update-skip VERSION=x.y.z - Skip one verified version"
 	@echo "  make config          - Generate local config files (aborts if config already exists)"
 	@echo "  make config-upgrade  - Merge new fields from config.example.yaml into config.yaml"
 	@echo "  make check           - Check if all required tools are installed"
@@ -35,6 +42,11 @@ help:
 	@echo "  make detect-thread-boundaries - Inventory backend executor/thread/event-loop boundaries"
 	@echo "  make detect-blocking-io        - Inventory blocking IO that may block the backend event loop"
 	@echo "  make install         - Install all dependencies (frontend + backend + pre-commit hooks)"
+	@echo "  make voice-setup     - Install free local Whisper + Piper models (no speech API key)"
+	@echo "  make voice-verify    - Verify local speech dependencies and model assets"
+	@echo "  make system-one-laya-setup  - Install Laya + download the selected local checkpoint (DEVICE=auto|cpu|cuda)"
+	@echo "  make system-one-laya-serve  - Run the local Laya System One server"
+	@echo "  make system-one-laya-status - Check the Laya runtime, cache, and server health"
 	@echo "  make extension-install SOURCE=... - Install and enable a trusted Python extension"
 	@echo "  make extension-upgrade SOURCE=... - Replace an installed extension and keep its config"
 	@echo "  make extension-list              - List configured Python extensions"
@@ -76,6 +88,24 @@ prod-check:
 support-bundle:
 	@$(BACKEND_UV_RUN) python ../scripts/support_bundle.py --include-doctor
 
+# Guarded source updater. `update-check` is read-only; `update-apply` is an
+# explicit operator command and refuses to run without the confirmation flag.
+update-status:
+	@$(BACKEND_UV_RUN) --no-sync python ../scripts/auto_update.py status --json
+
+update-check:
+	@$(BACKEND_UV_RUN) --no-sync python ../scripts/auto_update.py check --force --json
+
+update-apply:
+	@$(BACKEND_UV_RUN) --no-sync python ../scripts/auto_update.py apply --yes --force --json
+
+update-recover:
+	@$(BACKEND_UV_RUN) --no-sync python ../scripts/auto_update.py recover --json
+
+update-skip:
+	$(if $(strip $(VERSION)),,$(error usage: make update-skip VERSION=x.y.z))
+	@$(BACKEND_UV_RUN) --no-sync python ../scripts/auto_update.py skip --version "$(VERSION)" --json
+
 detect-thread-boundaries:
 	@$(BACKEND_UV_RUN) python ../scripts/detect_thread_boundaries.py --json-output ../.agent-workspace/thread-boundary-inventory.json
 
@@ -113,6 +143,26 @@ install:
 	@echo "If you plan to use Docker/Container-based sandbox, you can pre-pull the image:"
 	@echo "  make setup-sandbox"
 	@echo ""
+
+# Free local speech: packages plus pinned model assets. Runtime never calls a
+# paid speech API and never downloads model weights implicitly.
+voice-setup:
+	@cd backend && uv sync --locked --extra voice
+	@cd backend && uv run --no-sync python scripts/setup_voice.py
+
+voice-verify:
+	@cd backend && uv run --no-sync python scripts/setup_voice.py --verify-only --skip-warmup
+
+# Laya is intentionally installed in an ignored, project-local environment so its
+# PyTorch/Transformers stack never becomes a mandatory Alpha dependency.
+system-one-laya-setup:
+	@cd backend && uv run --no-sync python scripts/system_one_laya_setup.py setup $(if $(MODEL),--model $(MODEL),) --device $(DEVICE)
+
+system-one-laya-serve:
+	@cd backend && uv run --no-sync python scripts/system_one_laya_setup.py serve
+
+system-one-laya-status:
+	@cd backend && uv run --no-sync python scripts/system_one_laya_setup.py status
 
 extension-install: export AGENT_WORKSPACE_EXTENSION_SOURCE := $(value SOURCE)
 extension-install:

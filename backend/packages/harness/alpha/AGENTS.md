@@ -1,3 +1,19 @@
+### Guarded source auto-update (`evolution/update_engine.py`)
+
+The update engine is the Phase-2 continuation of the Phase-1 release checker.
+It only mutates a local Git source checkout: published GitHub releases (or an
+explicitly configured development branch) are resolved to an immutable commit,
+the worktree and remote identity are checked, the update is fast-forwarded
+behind a backup ref, and success is recorded only after restart/health checks.
+The engine is argv-only, rejects dirty/diverged worktrees, snapshots
+`config.yaml`/`extensions_config.json` outside Git, publishes a cross-process
+maintenance barrier, restores declared dependencies during rollback, and records
+honest pre-mutation recovery. `release_check.py` remains the stable public
+state/HTTP contract; the Gateway only queues a detached apply and requires a
+real interactive admin. Manual confirmation never bypasses `canApply` or other
+safety gates. Never add an in-place Docker/Helm/Electron update path here.
+Tests: `tests/test_auto_update.py`; operations: `docs/AUTO_UPDATE.md`.
+
 ### Request Trace Context (`packages/harness/alpha/trace_context.py`)
 
 Alpha's request-level correlation id — the `X-Trace-Id` header and the `agent_workspace_trace_id` key. Not Langfuse's trace id, not `run_id`, not the short subagent `trace_id` log label.

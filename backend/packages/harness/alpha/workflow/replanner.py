@@ -34,13 +34,19 @@ class RuntimeReplanner:
         )
 
         ops = [
-            PatchOperation(
-                op="add_node",
-                args={"node": repair_node.model_dump()},
-            ),
+            # ``insert_before`` is the atomic graph mutation; adding the same
+            # node in a separate operation was redundant and made replay
+            # depend on operation ordering.
             PatchOperation(
                 op="insert_before",
                 args={"target_node_id": failed_node_id, "node": repair_node.model_dump()},
+            ),
+            # A repair node alone cannot make the failed target schedulable
+            # again.  Reset that exact target through a typed operation; the
+            # engine removes its failed marker under the run claim.
+            PatchOperation(
+                op="retry_node",
+                args={"node_id": failed_node_id},
             ),
         ]
 
@@ -71,12 +77,12 @@ class RuntimeReplanner:
 
         ops = [
             PatchOperation(
-                op="add_node",
-                args={"node": research_node.model_dump()},
-            ),
-            PatchOperation(
                 op="insert_before",
                 args={"target_node_id": node_id, "node": research_node.model_dump()},
+            ),
+            PatchOperation(
+                op="retry_node",
+                args={"node_id": node_id},
             ),
         ]
 

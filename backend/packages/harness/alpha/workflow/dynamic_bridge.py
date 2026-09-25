@@ -39,6 +39,7 @@ import logging
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 from alpha.workflow.dynamic_assembler import AssembledResources
@@ -100,6 +101,12 @@ class DynamicWorkflowBridge:
         patch_validator: PatchValidator | None = None,
         node_runner: Callable[[WorkflowNode, WorkflowRun], dict[str, Any]] | None = None,
         compensation_runner: Callable[[SagaCompensation, WorkflowRun], Any] | None = None,
+        execution_label: str = "external",
+        owner_id: str | None = None,
+        mode: str = "normal",
+        bot_name: str | None = None,
+        require_compensation_receipt: bool = False,
+        kernel: Any | None = None,
     ) -> None:
         self.engine = engine or DynamicWorkflowEngine()
         self.replanner = replanner or RuntimeReplanner()
@@ -108,14 +115,27 @@ class DynamicWorkflowBridge:
         # fabricated, and no compensation is claimed as executed.
         self.node_runner = node_runner
         self.compensation_runner = compensation_runner
+        # A label is provenance, not a capability claim.  Callers that use the
+        # digest projection set it explicitly so acceptance remains false even
+        # though the graph mechanics completed.
+        self.execution_label = execution_label
+        self.owner_id = owner_id
+        self.bot_name = bot_name
+        self.require_compensation_receipt = require_compensation_receipt
+        self.kernel = kernel
+        if mode not in ("normal", "bot"):
+            raise ValueError(f"mode must be one of ('normal', 'bot'), got {mode!r}")
+        self.mode = mode
         # WorkflowRun has no graph field — the bridge owns its graph handle.
         self._active_graph: WorkflowGraph | None = None
         self._active_run_id: str | None = None
+        self._current_goal: DynamicGoal | None = None
 
     def build_workflow_definition(
         self,
         goal: DynamicGoal,
         resources: AssembledResources,
+        default_executor: str = "alpha.tool",
     ) -> WorkflowDefinition:
         """Compile a DynamicGoal into a concrete WorkflowDefinition graph."""
         nodes: dict[str, WorkflowNode] = {}
@@ -149,13 +169,34 @@ class DynamicWorkflowBridge:
                 # downgrade to AGENT so it requires a real runner instead of
                 # falling through to whatever default bot the engine finds.
                 node_type = NodeType.AGENT
-                config["bot_downgrade_reason"] = (
-                    f"no assembled bot carries role '{t.assigned_role}'"
-                )
+                config["bot_downgrade_reason"] = f"no assembled bot carries role '{t.assigned_role}'"
+            if self.mode == "bot" and self.bot_name:
+                # A bot-mode host may name the validated profile that owns this
+                # run. Never silently substitute the first assembled/random
+                # specialist; the executor still has to prove real bot work.
+                node_type = NodeType.BOT
+                config["bot_name"] = self.bot_name
+                config["bot_mode"] = True
+                config["requested_bot"] = self.bot_name
+            elif self.mode == "bot" and node_type == NodeType.AGENT and resources.bots:
+                # Bot mode uses the same task graph but binds executable work to
+                # a real assembled profile.  The runner still has to be bound;
+                # constructing a BOT node alone never claims completion.
+                bot_name, bot_profile = next(iter(resources.bots.items()))
+                if t.assigned_role in bot_profile.get("capabilities", []):
+                    bot_name = next(
+                        (name for name, profile in resources.bots.items() if t.assigned_role in profile.get("capabilities", [])),
+                        bot_name,
+                    )
+                node_type = NodeType.BOT
+                config["bot_name"] = bot_name
+                config["bot_mode"] = True
 
+            task_executor = getattr(t, "executor", None) or resources.metadata.get("default_executor") or default_executor
             nodes[t.task_id] = WorkflowNode(
                 id=t.task_id,
                 type=node_type,
+                executor=task_executor,
                 prompt=f"[{t.category.upper()}] {t.title}: {t.description}",
                 category=t.category,
                 depends_on=list(t.depends_on),
@@ -187,6 +228,7 @@ class DynamicWorkflowBridge:
             nodes[comp_node_id] = WorkflowNode(
                 id=comp_node_id,
                 type=NodeType.COMPENSATION,
+                executor=default_executor,
                 prompt=f"[COMPENSATION] {comp.description}",
                 category="compensation",
                 config={
@@ -194,6 +236,7 @@ class DynamicWorkflowBridge:
                     "action_type": comp.action_type,
                     "saga_action_id": comp.action_id,
                     "is_compensation": True,
+                    "requires_dedicated_compensation_executor": self.require_compensation_receipt,
                 },
             )
             if comp.target_task_id in nodes:
@@ -229,18 +272,18 @@ class DynamicWorkflowBridge:
         resources: AssembledResources,
         initial_state: dict[str, Any] | None = None,
         max_steps: int = 40,
+        default_executor: str | None = None,
     ) -> DynamicExecutionResult:
         """Register and execute the dynamic goal workflow with replanning and saga rollbacks."""
         start_time = time.time()
-        definition = self.build_workflow_definition(goal, resources)
-        self.engine.register_definition(definition)
+        eff_executor = default_executor or resources.metadata.get("default_executor") or "alpha.tool"
+        definition = self.build_workflow_definition(goal, resources, default_executor=eff_executor)
+        self.engine.register_definition(definition, allow_replace=True)
 
         # WorkflowRun has no graph field: keep the handle in bridge state.
-        graph = (
-            self.engine.graphs.get(f"{definition.id}:v{definition.graph.version}")
-            or definition.graph
-        )
+        graph = self.engine.graphs.get(f"{definition.id}:v{definition.graph.version}") or definition.graph
         self._active_graph = graph
+        self._current_goal = goal
 
         state = {
             "goal_id": goal.goal_id,
@@ -248,7 +291,16 @@ class DynamicWorkflowBridge:
             **(initial_state or {}),
         }
 
-        run = self.engine.start_run(definition.id, initial_state=state)
+        if self.kernel is not None:
+            run = self.kernel.start_run(
+                definition.id,
+                initial_state=state,
+                mode=self.mode,
+                owner_id=self.owner_id,
+            )
+        else:
+            run = self.engine.start_run(definition.id, initial_state=state, owner_id=self.owner_id)
+            self.engine.events.emit("run_mode_selected", run.run_id, mode=self.mode)
         self._active_run_id = run.run_id
         replans_count = 0
         step_idx = 0
@@ -269,8 +321,25 @@ class DynamicWorkflowBridge:
 
             try:
                 # Step the workflow engine through the injectable executor seam.
-                # None is passed through as-is: nothing is fabricated here.
-                run = self.engine.execute_step(run.run_id, node_runner=self.node_runner)
+                # When a host injects the shared kernel, dispatch through it so
+                # the same per-run claim protects the start, wave, and control
+                # operations exposed by the Gateway API.  Compensation remains
+                # a separate adapter; a normal work runner is never allowed to
+                # service a strict compensation node.
+                compensation_runner = self._compensation_node_runner if self.compensation_runner is not None else None
+                if self.kernel is not None:
+                    run = self.kernel.dispatch(
+                        run.run_id,
+                        node_runner=self.node_runner,
+                        compensation_runner=compensation_runner,
+                        allow_registry_fallback=False,
+                    )
+                else:
+                    run = self.engine.execute_step(
+                        run.run_id,
+                        node_runner=self.node_runner,
+                        compensation_runner=compensation_runner,
+                    )
             except Exception as exc:
                 # An honest engine (no runner bound) raises rather than
                 # fabricating results — propagate that honestly.
@@ -279,14 +348,13 @@ class DynamicWorkflowBridge:
                 break
 
             # Patches may publish a newer graph version — refresh our own handle.
-            graph = (
-                self.engine.graphs.get(f"{run.workflow_id}:v{run.graph_version}")
-                or graph
-            )
+            graph = self.engine._run_graph_for(run)
             self._active_graph = graph
 
             for nid, node in graph.nodes.items():
                 if node.type == NodeType.COMPENSATION:
+                    if node.status == NodeStatus.SUCCEEDED and nid not in compensated:
+                        compensated.append(nid)
                     # Saga-owned; never counted as normal task completion.
                     continue
                 node_state = run.node_states.get(nid, node.status)
@@ -294,15 +362,9 @@ class DynamicWorkflowBridge:
                 if node_state == NodeStatus.SUCCEEDED and nid not in completed:
                     # Reject fabricated success: with no runner bound, the
                     # engine's legacy default path stamps canned evidence.
-                    if self.node_runner is None and any(
-                        isinstance(ev, str) and ev.startswith(_ENGINE_DEFAULT_EVIDENCE_PREFIX)
-                        for ev in node.evidence
-                    ):
+                    if self.node_runner is None and any(isinstance(ev, str) and ev.startswith(_ENGINE_DEFAULT_EVIDENCE_PREFIX) for ev in node.evidence):
                         failed.append(nid)
-                        error_parts.append(
-                            f"node '{nid}' succeeded via engine default execution "
-                            "with no node_runner bound — fabricated result rejected"
-                        )
+                        error_parts.append(f"node '{nid}' succeeded via engine default execution with no node_runner bound — fabricated result rejected")
                         run.status = WorkflowRunStatus.FAILED
                         break
                     completed.append(nid)
@@ -313,12 +375,14 @@ class DynamicWorkflowBridge:
 
                 elif node_state == NodeStatus.FAILED and nid not in failed:
                     failed.append(nid)
-                    # WorkflowRun/WorkflowNode carry no error string — state the
-                    # honest observable reason instead of inventing one.
-                    reason = (
-                        f"node '{nid}' marked FAILED by the engine "
-                        "(no per-node error string recorded on WorkflowRun)"
-                    )
+                    # WorkflowRun has no dedicated per-node error field, but the
+                    # engine's node output is a real observable record.  Carry
+                    # its measured reason into the bridge summary instead of
+                    # replacing an unbound/executor failure with a generic
+                    # status-only sentence.
+                    reason = f"node '{nid}' marked FAILED by the engine (no per-node error string recorded on WorkflowRun)"
+                    if isinstance(node.output, dict) and node.output.get("reason"):
+                        reason = f"node '{nid}' marked FAILED: {node.output['reason']}"
 
                     # Attempt runtime replanning via the REAL replanner API
                     if replans_count < 3:
@@ -328,23 +392,32 @@ class DynamicWorkflowBridge:
                             graph=graph,
                             run=run,
                         )
-                        new_graph, validation = self.engine.apply_patch(
-                            run.run_id, replan_patch
-                        )
+                        if self.kernel is not None:
+                            new_graph, validation = self.kernel.apply_patch(run.run_id, replan_patch)
+                        else:
+                            new_graph, validation = self.engine.apply_patch(run.run_id, replan_patch)
                         if validation.allowed:
                             replans_count += 1
                             graph = new_graph
                             self._active_graph = new_graph
-                            logger.info(
-                                "Replan patch accepted for failed node '%s'.", nid
+                            # The engine fail-closes failed waves. Reopen the
+                            # exact run only after the typed retry operation
+                            # reset the target; otherwise a committed patch
+                            # would be dead on arrival.
+                            run.status = WorkflowRunStatus.RUNNING
+                            run.waiting_reason = None
+                            run.approval_request_id = None
+                            self.engine.events.emit(
+                                "run_reopened",
+                                run.run_id,
+                                reason=f"replan retry opened after failed node '{nid}'",
                             )
+                            logger.info("Replan patch accepted for failed node '%s'.", nid)
                             continue  # engine decides recovery honestly on next step
 
                     # Unrecoverable: real saga compensation (or honest decline)
                     error_parts.append(reason)
-                    comp_ok, comp_reason = self._execute_saga_compensation(
-                        run, graph, goal, completed, compensated, error_parts
-                    )
+                    comp_ok, comp_reason = self._execute_saga_compensation(run, graph, goal, completed, compensated, error_parts)
                     compensation_info = {
                         "executed": comp_ok,
                         "compensated_nodes": list(compensated),
@@ -352,6 +425,13 @@ class DynamicWorkflowBridge:
                     }
                     run.status = WorkflowRunStatus.FAILED
                     break
+
+        if step_idx >= max_steps and run.status == WorkflowRunStatus.RUNNING:
+            reason = f"step budget exhausted after {step_idx} steps without completion"
+            run.status = WorkflowRunStatus.FAILED
+            run.updated_at = datetime.now(UTC).isoformat()
+            error_parts.append(reason)
+            self.engine.events.emit("workflow_failed", run.run_id, reason=reason)
 
         duration = round((time.time() - start_time) * 1000, 2)
 
@@ -372,9 +452,7 @@ class DynamicWorkflowBridge:
             final_status = "failed"
 
         if final_status == "failed" and run.status == WorkflowRunStatus.RUNNING:
-            error_parts.append(
-                f"step budget exhausted after {step_idx} steps without completion"
-            )
+            error_parts.append(f"step budget exhausted after {step_idx} steps without completion")
 
         error_summary = "; ".join(error_parts) if error_parts else None
         if error_summary is None:
@@ -382,9 +460,7 @@ class DynamicWorkflowBridge:
             if run.waiting_reason:
                 error_summary = run.waiting_reason
             elif final_status in ("failed", "waiting", "cancelled"):
-                error_summary = (
-                    f"run '{run.run_id}' ended with status '{run.status.value}'"
-                )
+                error_summary = f"run '{run.run_id}' ended with status '{run.status.value}'"
 
         return DynamicExecutionResult(
             run_id=run.run_id,
@@ -402,12 +478,78 @@ class DynamicWorkflowBridge:
             metadata={
                 # Real WorkflowRun field (no run.graph exists)
                 "graph_version": run.graph_version,
-                "acceptance_passed": final_status == "completed",
+                "acceptance_passed": final_status == "completed" and self.execution_label != "local_digest_projection",
+                "acceptance_reason": (
+                    "digest projection completed graph mechanics only; no domain task was executed"
+                    if self.execution_label == "local_digest_projection"
+                    else ("all bound executor nodes completed with evidence" if final_status == "completed" else "run did not complete")
+                ),
+                "execution_label": self.execution_label,
+                "execution_mode": self.mode,
                 "node_runner_bound": self.node_runner is not None,
                 "compensation_runner_bound": self.compensation_runner is not None,
                 "compensation": compensation_info,
             },
         )
+
+    def _compensation_node_runner(self, node: WorkflowNode, run: WorkflowRun) -> dict[str, Any]:
+        """Adapt the typed saga callback to the engine's node-runner shape."""
+        target = node.config.get("target_rollback_node")
+        action_id = node.config.get("saga_action_id")
+        comp = (
+            next(
+                (candidate for candidate in getattr(self, "_current_goal", None).saga_compensations if candidate.target_task_id == target and (action_id is None or candidate.action_id == action_id)),
+                None,
+            )
+            if getattr(self, "_current_goal", None) is not None
+            else None
+        )
+        if comp is None or self.compensation_runner is None:
+            return {
+                "status": "failed",
+                "output": f"no compensation callback bound for target '{target}'",
+                "evidence": "",
+                "tokens_used": 0,
+            }
+        try:
+            outcome = self.compensation_runner(comp, run)
+        except Exception as exc:  # noqa: BLE001 - surface the real callback failure
+            return {
+                "status": "failed",
+                "output": f"compensation callback raised {type(exc).__name__}: {exc}",
+                "evidence": "",
+                "tokens_used": 0,
+            }
+        if self.require_compensation_receipt:
+            if not isinstance(outcome, dict) or outcome.get("status") != "completed" or not outcome.get("evidence"):
+                return {
+                    "status": "failed",
+                    "output": "compensation callback returned no typed completed receipt with evidence",
+                    "evidence": "",
+                    "tokens_used": 0,
+                }
+            return {
+                "status": "completed",
+                "output": outcome.get("output"),
+                "evidence": str(outcome["evidence"]),
+                "tokens_used": int(outcome.get("tokens_used", 0) or 0),
+            }
+        # Legacy library callbacks may return an arbitrary receipt.  Keep the
+        # compatibility path explicit; production Gateway/service bridges set
+        # require_compensation_receipt=True above.
+        if outcome is None:
+            return {
+                "status": "failed",
+                "output": "compensation callback returned no receipt",
+                "evidence": "",
+                "tokens_used": 0,
+            }
+        return {
+            "status": "completed",
+            "output": outcome,
+            "evidence": f"compensation callback returned receipt {outcome!r}",
+            "tokens_used": 0,
+        }
 
     def _execute_saga_compensation(
         self,
@@ -423,17 +565,12 @@ class DynamicWorkflowBridge:
         Returns (executed, reason). With no compensation_runner bound this never
         fabricates rollbacks: it returns (False, honest reason).
         """
-        logger.info(
-            "Running saga compensation check for failed run '%s'.", run.run_id
-        )
+        logger.info("Running saga compensation check for failed run '%s'.", run.run_id)
         if not goal.saga_compensations:
             return False, "no saga compensations declared"
 
         if self.compensation_runner is None:
-            reason = (
-                "no compensation executor bound — saga compensations NOT "
-                "executed (compensated=false)"
-            )
+            reason = "no compensation executor bound — saga compensations NOT executed (compensated=false)"
             error_parts.append(reason)
             logger.warning(reason)
             return False, reason
@@ -449,6 +586,12 @@ class DynamicWorkflowBridge:
                 executed_ok = False
                 notes.append(f"missing compensation node '{comp_node_id}'")
                 continue
+            cnode = graph.nodes[comp_node_id]
+            if cnode.status == NodeStatus.SUCCEEDED and comp_node_id in run.completed_nodes:
+                if comp_node_id not in compensated:
+                    compensated.append(comp_node_id)
+                notes.append(f"already compensated '{comp.action_id}'")
+                continue
             try:
                 outcome = self.compensation_runner(comp, run)
             except Exception as exc:
@@ -457,17 +600,21 @@ class DynamicWorkflowBridge:
                 logger.error("Saga compensation '%s' failed: %s", comp.action_id, exc)
                 continue
 
-            cnode = graph.nodes[comp_node_id]
+            if self.require_compensation_receipt and (not isinstance(outcome, dict) or outcome.get("status") != "completed" or not outcome.get("evidence")):
+                executed_ok = False
+                notes.append(f"compensation '{comp.action_id}' returned no typed completed receipt with evidence")
+                continue
+            if outcome is None:
+                executed_ok = False
+                notes.append(f"compensation '{comp.action_id}' returned no receipt")
+                continue
             cnode.status = NodeStatus.SUCCEEDED
             run.node_states[comp_node_id] = NodeStatus.SUCCEEDED
-            cnode.output = (
-                outcome
-                if outcome is not None
-                else f"Rolled back {comp.action_type}: {comp.description}"
-            )
-            cnode.evidence.append(
-                f"compensation_runner executed '{comp.action_id}'"
-            )
+            cnode.output = outcome
+            # The callback's concrete return value is recorded as the receipt;
+            # the bridge never substitutes a canned rollback string when the
+            # callback returned nothing.
+            cnode.evidence.append(f"compensation_runner executed '{comp.action_id}' with receipt {outcome!r}")
             if comp_node_id not in run.completed_nodes:
                 run.completed_nodes.append(comp_node_id)
             compensated.append(comp_node_id)

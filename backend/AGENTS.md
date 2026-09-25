@@ -1,5 +1,26 @@
 # AGENTS.md
 
+## Local real-time voice ownership
+
+`alpha.multimodal.chain` remains the single T1→T2→T3 capability seam, but
+`voice.routing.mode: local_only` is the safe default for TTS/STT: remote configured
+models and keyless/network speech providers are recorded as policy skips and cannot
+preempt local faster-whisper/Piper. Browser microphone/playback state stays in the
+frontend; the Gateway WebSocket owns bounded PCM/VAD/interim-transcript state; final
+transcripts still enter the existing thread-run/SSE lifecycle. The frontend document allows
+`microphone=(self)`, and an explicit user gesture primes the shared Web Audio speaker before
+automatic local TTS. Do not multiplex chat graph events and audio into one transport.
+
+Local speech model construction is process-cached and bounded. Runtime assets resolve under
+`runtime_home()/voice/models`, `local_files_only` is the default, and `make voice-setup`
+is the only implicit-model-download entry point. Client TTS values are safe voice IDs, not
+paths. Every WebSocket speech operation requires authentication, same-origin validation,
+`runs:create`, and the configured frame/session/utterance bounds. PTT, wake-word, and
+real-time conversation may share the socket only through explicit state transitions.
+Tests: `test_multimodal_chain.py`, `test_multimodal_router.py`,
+`test_multimodal_realtime.py`, local speech runtime tests, and
+`test_setup_voice_models.py`. Operations: `docs/VOICE_CONVERSATION.md`.
+
 ## Integration health + autonomy ownership
 
 ## Run verification overlay
@@ -45,6 +66,23 @@ as evidence. Tests: `tests/test_release_gate.py`.
  declare new loops in `register_default_loops()` with a `loops.py` adapter,
   gate them under `config.yaml -> autonomy.loops`, and expose them through
   `GET /api/ops/integration-health`.
+
+## Guarded source auto-update
+
+The Phase-2 updater lives in `packages/harness/alpha/evolution/update_engine.py`
+and is consumed by the `self_update` autonomy loop plus the operator CLI. It is
+a source-checkout transaction, not an in-place Docker/Helm/Electron updater.
+The default `config/update-policy.json` is a disabled template; unattended
+operators should keep the mutable policy outside the checkout and select it
+with `ALPHA_UPDATE_POLICY_PATH`. Application requires both policy flags plus
+the startup-scoped `autonomy.loops.self_update.enabled` setting. The engine
+refuses dirty or non-fast-forward worktrees, validates the manifest-matching
+GitHub remote, creates a Git backup ref, keeps config snapshots under runtime
+home, publishes a cross-process maintenance barrier, invokes only argv-based
+hooks, restores declared dependencies on rollback, and marks success only after
+local health checks. Gateway apply/recover routes are admin-only and only queue
+detached work; auth-disabled/internal/PAT identities cannot mutate source.
+Tests: `tests/test_auto_update.py`; operations: `docs/AUTO_UPDATE.md`.
 
 ## Self-repair verification contract
 
@@ -215,6 +253,8 @@ uv run pytest tests/test_bench_concurrency.py tests/test_bench_worker.py -q
 ```bash
 make check      # Check system requirements
 make install    # Install all dependencies (frontend + backend)
+make voice-setup # Install free local faster-whisper + Piper packages/models
+make voice-verify # Verify local speech dependencies and model assets
 make extension-install SOURCE=...  # Install and enable a trusted Python extension
 make extension-upgrade SOURCE=...  # Replace an installed extension and keep its config
 make extension-list                # List configured Python extensions
@@ -387,7 +427,82 @@ When using `make dev` from root, the frontend automatically connects through ngi
 
 ## Key Features
 
-### Host System Monitor
+### System One / Laya
+
+The System One client is provider-neutral across hosted Jev and the self-hosted
+Convai Innovations Laya decision model. Laya uses the Jev-compatible
+`/v1/systemone` contract, so it is configured under `system_one`, not `models[]`.
+Its PyTorch runtime/checkpoints are installed under ignored
+`.agent-workspace/laya`; Alpha's core dependency lock does not include the ML
+stack. Laya is keyless only on loopback, never receives hosted credentials, and
+abstains before HTTP when its state/question/choice budgets are unsafe. Keep a
+new local provider in `shadow_mode` until its provider-specific calibration is
+reviewed. Tests: `tests/test_system_one_laya.py` and
+`tests/test_system_one_laya_setup.py`.
+
+### Swarm v2 runtime
+
+The `alpha.swarm` package owns swarm lifecycle and execution. `SwarmCoordinator`
+serializes short state transitions, writes atomic plan snapshots and ordered
+JSONL events, and restores interrupted plans as paused with fresh-lease
+requirements. `SwarmScheduler` validates DAGs before mutation, assigns lease
+IDs, renews live attempts, applies retry backoff, and fences stale results.
+`AsyncSwarmRunner` records measured usage, publishes bounded task-result messages,
+enforces the consecutive-failure circuit, handles pause/resume, and reports
+`budget_exhausted`/`stalled` rather than fabricating completion. When
+`auto_replan` is enabled, a terminal failure can receive one deterministic repair
+task; blocked dependents are redirected to that task, while the original failure
+remains auditable. `SwarmAggregator` keeps execution status separate from
+acceptance criteria and optional evidence-backed consensus; duplicate voters and
+unverified acceptance evidence cannot produce a clean approval.
+
+The synchronous `swarm` tool can start the same runner through a daemon-thread
+event-loop fallback when it is invoked outside FastAPI's loop; Gateway requests
+remain on the Gateway loop. `communication.py`, `consensus.py`, and `reflection.py` are harness-layer modules;
+they do not import `app.*`. Gateway routes are owner-scoped and the model-visible
+`swarm` tool derives its owner from runtime context. Blackboard content is
+untrusted data and is placed in the worker input channel, never appended to the
+system prompt. The local JSON/JSONL store is atomic and restart-recoverable for a
+single process only; a multi-worker deployment still requires a shared SQL lease
+repository before claiming cross-process exactly-once execution. Tests:
+`tests/test_swarm_v2_runtime.py` plus the existing swarm engine/worker suites.
+
+### Dynamic workflow plane
+
+`alpha.workflow.runtime.DynamicWorkflowEngine` remains the graph runtime;
+`alpha.orchestrator.loop.ExecutionKernel` adds per-run claims, executor
+dispatch, mode journaling, handoff contracts, and fail-closed policy. The
+opt-in `alpha.orchestrator.dynamic_service.DynamicWorkflowService` composes
+perception, registry discovery, decomposition, resource assembly, graph
+compilation, and execution without replacing `RunManager` or creating a second
+parent lifecycle. The service is synchronous; async hosts must use an explicit
+worker boundary and must not claim that cancelling an await stopped a running
+node.
+
+Gateway workflow routes are owner-scoped for real HTTP requests. Dynamic
+perception is preview-only; dynamic execution, the `dynamic=true` turn seam,
+and the bot workflow route share the same executor and evidence rules. A
+`DynamicWorkflowBridge` that receives the Gateway `ExecutionKernel` starts and
+dispatches every wave through that kernel's per-run claim (and uses the same
+claim for runtime replan patches); an explicitly unbound bridge disables
+registry fallback so a live digest executor cannot masquerade as a bound host
+runner. The default digest executor is explicitly a
+`local_digest_projection` and must keep `acceptance_passed=false`; real
+model/tool/MCP/sandbox/bot executors are host bindings. Recurring prompts
+disclose the missing scheduler handoff rather than creating a competing
+automation loop.
+
+The Gateway event dispatcher writes through a redacting, schema-checked,
+fail-closed durable JSONL sink. `workflows.py` exposes bounded registry,
+durability, event, projection, hydration, replay, plan-history, approval,
+replan, compensation, cancellation, and ownership surfaces. Local persistence is
+atomic/restart-recoverable for one process only; it is not a shared lease store
+or a promise of multi-worker exactly-once execution. Tests:
+`tests/test_dynamic_workflow_service.py`, `test_dynamic_workflow_router.py`,
+`test_dynamic_workflow_engine.py`, `test_workflow_dag_edges.py`,
+`test_workflow_durability_router.py`, and `test_bot_dynamic_workflow.py`.
+Operations: [`docs/DYNAMIC_WORKFLOWS.md`](../../docs/DYNAMIC_WORKFLOWS.md).
+
 
 `app/gateway/system_monitor_service.py` samples CPU, RAM, disk, network and
 processes via `psutil` (optional — it degrades to stdlib when absent) and is

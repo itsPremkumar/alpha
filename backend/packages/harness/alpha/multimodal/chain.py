@@ -7,11 +7,12 @@ tier chain:
 * **T1** — configured models declaring the capability (``models[].capabilities``,
   or ``supports_vision`` for vision/ocr) called over their OpenAI-compatible
   HTTP API.
-* **T2** — free keyless network providers (edge-tts for tts, AI Horde
-  anonymous for image_gen). Providers with nothing honest to offer report
-  ``skipped_no_provider`` — never a fake success, never a fabricated engine.
-* **T3** — free self-hosted local engines (piper, faster-whisper via
-  ``alpha.media.stt``, rapidocr -> pytesseract, openWakeWord).
+* **T2** — free keyless network providers (AI Horde anonymous for image_gen;
+  legacy edge-tts remains an automatic-mode-only operator-installed fallback).
+  Providers with nothing honest to offer report ``skipped_no_provider``.
+* **T3** — free self-hosted local engines (Piper, cached faster-whisper via
+  ``alpha.media.stt``, rapidocr -> pytesseract). openWakeWord remains an
+  optional/manual wake-word engine, not part of normal conversation.
 
 Failover semantics: BOTH retryable and deterministic engine failures advance —
 first within the tier (provider 4xx -> next provider), then across tiers
@@ -50,6 +51,7 @@ SKIP_SKIPPED_NO_PROVIDER = "skipped_no_provider"
 SKIP_NOT_INSTALLED = "not_installed"
 SKIP_NOT_CONFIGURED = "not_configured"
 SKIP_NO_LOCAL_ENGINE = "no_local_engine"
+SKIP_POLICY_DISABLED = "policy_disabled"
 
 # The ONLY statuses the GET /api/multimodal/capabilities rows may carry.
 PROBE_STATUSES = frozenset(
@@ -58,6 +60,7 @@ PROBE_STATUSES = frozenset(
         "not_installed",
         "not_configured",
         "skipped_no_provider",
+        "policy_disabled",
         "probe_failed",
     }
 )
@@ -213,6 +216,24 @@ def _voice_config() -> Any:
         return voice
 
 
+def _speech_routing_mode() -> str:
+    """Read the hot-reloadable TTS/STT route, failing closed to local-only."""
+
+    try:
+        mode = str(getattr(getattr(_voice_config(), "routing", None), "mode", "local_only"))
+    except Exception:  # noqa: BLE001 - privacy policy must fail closed
+        return "local_only"
+    return mode if mode in {"local_only", "automatic"} else "local_only"
+
+
+def _is_speech_capability(capability: Capability) -> bool:
+    return capability in {Capability.TTS, Capability.STT}
+
+
+def _policy_disabled_detail(tier: str, capability: Capability) -> str:
+    return f"voice.routing.mode=local_only prevents {tier} execution for speech capability '{capability}'; only the local T3 engine may run"
+
+
 # ---------------------------------------------------------------------------
 # Availability matrix (GET /api/multimodal/capabilities) — observation only
 # ---------------------------------------------------------------------------
@@ -250,13 +271,84 @@ def _probe_engine(
     }
 
 
-def _import_observer(module: str) -> Callable[[], tuple[str, str]]:
+def _dependency_observer(module: str) -> Callable[[], tuple[str, str]]:
     def observe() -> tuple[str, str]:
         try:
             importlib.import_module(module)
-        except ImportError as exc:
-            return "not_installed", f"ImportError: {_detail(exc)}"
-        return "available", f"module '{module}' imports; no engine run during this probe"
+        except Exception as exc:  # noqa: BLE001 - broken optional imports are unavailable
+            return "not_installed", f"{type(exc).__name__}: {_detail(exc)}"
+        return "available", f"module '{module}' dependency imports; no engine run during this probe and no model was loaded"
+
+    return observe
+
+
+def _import_observer(module: str) -> Callable[[], tuple[str, str]]:
+    return _dependency_observer(module)
+
+
+def _stt_asset_observer() -> tuple[str, str]:
+    from alpha.media.stt import stt_model_available
+
+    stt = getattr(_voice_config(), "stt", None)
+    try:
+        present = stt_model_available(
+            model_size=str(getattr(stt, "model_size", "small")),
+            model_path=getattr(stt, "model_path", None),
+            device=str(getattr(stt, "device", "auto")),
+            compute_type=str(getattr(stt, "compute_type", "int8")),
+            local_files_only=bool(getattr(stt, "local_files_only", True)),
+        )
+    except (OSError, ValueError):
+        return "not_configured", "local faster-whisper model path is invalid or inaccessible (path withheld)"
+    if present:
+        return "available", "required faster-whisper model assets are present; weights were not loaded"
+    return "not_configured", "faster-whisper dependency can be installed, but required model assets are not present"
+
+
+def _tts_asset_observer() -> tuple[str, str]:
+    import os
+
+    from alpha.multimodal.local_models import PiperModelSpec, piper_model_assets_present, resolve_piper_model_path
+
+    tts = getattr(_voice_config(), "tts", None)
+    try:
+        path = resolve_piper_model_path(
+            str(getattr(tts, "voice", "en_US-lessac-medium")),
+            getattr(tts, "model_path", None),
+            os.getenv("ALPHA_PIPER_VOICE"),
+        )
+        present = piper_model_assets_present(
+            PiperModelSpec(
+                model_path=path,
+                length_scale=float(getattr(tts, "length_scale", 1.0)),
+                noise_scale=float(getattr(tts, "noise_scale", 0.667)),
+                volume=float(getattr(tts, "volume", 0.9)),
+            )
+        )
+    except (OSError, ValueError):
+        return "not_configured", "local Piper model path is invalid or inaccessible (path withheld)"
+    if present:
+        return "available", "required Piper voice assets are present; weights were not loaded"
+    return "not_configured", "piper dependency can be installed, but required voice model assets are not present"
+
+
+def _wake_word_dependency_observer() -> tuple[str, str]:
+    try:
+        from openwakeword import Model as _OpenWakeWordModel  # noqa: F401
+    except Exception as exc:  # noqa: BLE001 - missing/broken optional native package
+        return "not_installed", f"openwakeword is not installed or unusable: {_detail(exc)}"
+    return "available", "openwakeword Model imports; no wake model was loaded"
+
+
+def _local_speech_observer(module: str, asset_observer: Callable[[], tuple[str, str]]) -> Callable[[], tuple[str, str]]:
+    def observe() -> tuple[str, str]:
+        dependency_status, dependency_detail = _dependency_observer(module)()
+        if dependency_status != "available":
+            return dependency_status, dependency_detail
+        asset_status, asset_detail = asset_observer()
+        if asset_status == "available":
+            return "available", f"dependency installed; {asset_detail}"
+        return asset_status, f"dependency installed; {asset_detail}"
 
     return observe
 
@@ -285,6 +377,10 @@ def _t1_observer(capability: Capability) -> Callable[[], tuple[str, str]]:
 
 
 def _t2_specs(capability: Capability) -> list[tuple[str, Callable[[], tuple[str, str]]]]:
+    if _is_speech_capability(capability) and _speech_routing_mode() == "local_only":
+        engine = "edge-tts" if capability is Capability.TTS else "(none)"
+        return [(engine, lambda capability=capability: (SKIP_POLICY_DISABLED, _policy_disabled_detail(TIER_T2, capability)))]
+
     if capability is Capability.TTS:
         return [("edge-tts", _import_observer("edge_tts"))]
     if capability is Capability.IMAGE_GEN:
@@ -308,13 +404,13 @@ def _t2_specs(capability: Capability) -> list[tuple[str, Callable[[], tuple[str,
 
 def _t3_specs(capability: Capability) -> list[tuple[str, Callable[[], tuple[str, str]]]]:
     if capability is Capability.TTS:
-        return [("piper", _import_observer("piper"))]
+        return [("piper", _local_speech_observer("piper", _tts_asset_observer))]
     if capability is Capability.STT:
-        return [("faster-whisper", _import_observer("faster_whisper"))]
+        return [("faster-whisper", _local_speech_observer("faster_whisper", _stt_asset_observer))]
     if capability is Capability.OCR:
         return [("rapidocr", _import_observer("rapidocr_onnxruntime")), ("tesseract", _tesseract_observer)]
     if capability is Capability.WAKE_WORD:
-        return [("openwakeword", _import_observer("openwakeword"))]
+        return [("openwakeword", _wake_word_dependency_observer)]
     detail = {
         Capability.IMAGE_GEN: "local image generation is out of scope (not lightweight); AI Horde anonymous (T2) is the fallback",
         Capability.VISION: "no local vision engine ships with Alpha; a configured vision model (T1) serves this capability",
@@ -339,20 +435,56 @@ def capabilities_report() -> dict[str, Any]:
             rows.append(_probe_engine(capability, TIER_T3, engine, observer))
 
     voice = _voice_config()
+    tts = getattr(voice, "tts", None)
+    stt = getattr(voice, "stt", None)
+    streaming = getattr(voice, "streaming", None)
+    routing_mode = _speech_routing_mode()
+    tts_asset_status, _ = _tts_asset_observer()
+    stt_asset_status, _ = _stt_asset_observer()
     voice_block: dict[str, Any] = {
         "enabled": bool(getattr(voice, "enabled", False)),
+        "routing": {
+            "mode": routing_mode,
+            "speech_tiers": ["T3"] if routing_mode == "local_only" else ["T1", "T2", "T3"],
+            "policy_disabled_tiers": ["T1", "T2"] if routing_mode == "local_only" else [],
+        },
         "wake_word": {
             "engine": getattr(getattr(voice, "wake_word", None), "engine", None),
             "threshold": getattr(getattr(voice, "wake_word", None), "threshold", None),
             "armed_default": getattr(getattr(voice, "wake_word", None), "armed_default", None),
         },
         "tts": {
-            "autoplay": getattr(getattr(voice, "tts", None), "autoplay", None),
-            "voice": getattr(getattr(voice, "tts", None), "voice", None),
+            "autoplay": getattr(tts, "autoplay", None),
+            "engine": getattr(tts, "engine", None),
+            "voice": getattr(tts, "voice", None),
+            "length_scale": getattr(tts, "length_scale", None),
+            "noise_scale": getattr(tts, "noise_scale", None),
+            "volume": getattr(tts, "volume", None),
+            "model_path_configured": bool(getattr(tts, "model_path", None)),
+            "model_asset_present": tts_asset_status == "available",
         },
         "stt": {
-            "model_size": getattr(getattr(voice, "stt", None), "model_size", None),
-            "language": getattr(getattr(voice, "stt", None), "language", None),
+            "model_size": getattr(stt, "model_size", None),
+            "language": getattr(stt, "language", None),
+            "device": getattr(stt, "device", None),
+            "compute_type": getattr(stt, "compute_type", None),
+            "beam_size": getattr(stt, "beam_size", None),
+            "local_files_only": getattr(stt, "local_files_only", None),
+            "model_path_configured": bool(getattr(stt, "model_path", None)),
+            "model_asset_present": stt_asset_status == "available",
+        },
+        "streaming": {
+            "speech_detector": "webrtcvad-wheels",
+            "speech_detector_installed": _dependency_observer("webrtcvad")()[0] == "available",
+            "sample_rate": getattr(streaming, "sample_rate", None),
+            "frame_ms": getattr(streaming, "frame_ms", None),
+            "pre_roll_ms": getattr(streaming, "pre_roll_ms", None),
+            "speech_start_ms": getattr(streaming, "speech_start_ms", None),
+            "endpoint_silence_ms": getattr(streaming, "endpoint_silence_ms", None),
+            "partial_interval_ms": getattr(streaming, "partial_interval_ms", None),
+            "max_utterance_seconds": getattr(streaming, "max_utterance_seconds", None),
+            "max_frame_bytes": getattr(streaming, "max_frame_bytes", None),
+            "max_sessions": getattr(streaming, "max_sessions", None),
         },
     }
     observed_error = getattr(voice, "_observed_error", None)
@@ -368,9 +500,11 @@ def capabilities_report() -> dict[str, Any]:
 
 def _t1_specs_rows(capability: Capability) -> list[tuple[str, Callable[[], tuple[str, str]]]]:
     models = _models_with_capability(capability)
+    local_speech_policy = _is_speech_capability(capability) and _speech_routing_mode() == "local_only"
+    observer = (lambda capability=capability: (SKIP_POLICY_DISABLED, _policy_disabled_detail(TIER_T1, capability))) if local_speech_policy else _t1_observer(capability)
     if not models:
-        return [("(none)", _t1_observer(capability))]
-    return [(str(getattr(model, "name", model)), _t1_observer(capability)) for model in models]
+        return [("(none)", observer)]
+    return [(str(getattr(model, "name", model)), observer) for model in models]
 
 
 # ---------------------------------------------------------------------------
@@ -400,7 +534,10 @@ def _invoke_t3(capability: Capability, payload: dict[str, Any], attempts: list[d
 
 
 def invoke(capability: str | Capability, payload: dict[str, Any] | None = None) -> CapabilityResult:
-    """Run *capability* through the ordered T1 -> T2 -> T3 chain. THE seam.
+    """Run *capability* through the ordered chain. THE capability seam.
+
+    ``voice.routing.mode=local_only`` records T1/T2 policy skips for TTS/STT;
+    all other capabilities always walk T1 -> T2 -> T3.
 
     Raises:
         ValueError: unknown capability name (caller bug, honest message).
@@ -411,7 +548,13 @@ def invoke(capability: str | Capability, payload: dict[str, Any] | None = None) 
     data = dict(payload or {})
     attempts: list[dict[str, Any]] = []
     hooks = (_invoke_t1, _invoke_t2, _invoke_t3)
+    local_speech_policy = _is_speech_capability(cap) and _speech_routing_mode() == "local_only"
     for tier, hook in zip(TIER_ORDER, hooks, strict=True):
+        if local_speech_policy and tier in {TIER_T1, TIER_T2}:
+            detail = _policy_disabled_detail(tier, cap)
+            attempts.append(skip_row(tier, "(policy)", SKIP_POLICY_DISABLED, detail))
+            logger.info("capability %s tier %s skipped by local-only voice policy", cap, tier)
+            continue
         try:
             result = hook(cap, data, attempts)
         except TierSkip as skip:

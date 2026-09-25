@@ -481,7 +481,7 @@ npm run dist
 
 - **Unsigned**: SmartScreen warning, users must click "More info → Run anyway"
 - **Signed**: Requires code signing certificate (EV recommended)
-- **Auto-update**: Not implemented (manual reinstall)
+- **Auto-update**: The Electron installer remains manual-reinstall. The separate guarded source-checkout updater is documented in [AUTO_UPDATE.md](AUTO_UPDATE.md); it is not used to mutate packaged desktop binaries.
 
 ### Installation
 

@@ -8,6 +8,7 @@ Enables dynamic workflows and agents to clone, fork, and mutate Bot Profiles at 
 
 from __future__ import annotations
 
+import copy
 import logging
 import uuid
 from enum import StrEnum
@@ -70,6 +71,8 @@ class BotCloneEngine:
 
         unique_suffix = uuid.uuid4().hex[:6]
         new_name = target_name or f"{source_name}_clone_{unique_suffix}"
+        if new_name.lower() != source_profile.name.lower() and self.registry.get_bot(new_name):
+            raise ValueError(f"Bot target '{new_name}' already exists; choose a unique clone name")
 
         # Build SOUL
         new_soul = source_profile.soul
@@ -85,22 +88,35 @@ class BotCloneEngine:
         prior_lineage = source_profile.metadata.get("lineage", [])
         lineage = list(prior_lineage) + [source_name]
 
+        is_exact = mode == CloneMode.EXACT_COPY
         cloned_profile = BotProfile(
             name=new_name,
-            display_name=f"{source_profile.display_name} (Fork: {new_name})",
-            role=f"{source_profile.role} [Specialist]",
+            display_name=(source_profile.display_name if is_exact else f"{source_profile.display_name} (Fork: {new_name})"),
+            role=(source_profile.role if is_exact else f"{source_profile.role} [Specialist]"),
             soul=new_soul,
             model=model_override or source_profile.model,
             toolsets=merged_tools,
             skills=merged_skills,
             avatar=source_profile.avatar or "🤖",
-            department=department or source_profile.department,
-            reports_to=source_profile.name,
-            capabilities=merged_caps,
+            status=source_profile.status,
             version=source_profile.version + (1 if mode == CloneMode.ENHANCED_MUTATION else 0),
+            department=department or source_profile.department,
+            reports_to=source_profile.reports_to,
+            responsibilities=copy.deepcopy(source_profile.responsibilities),
+            capabilities=merged_caps,
+            heartbeat=source_profile.heartbeat,
+            succession_fallback=source_profile.succession_fallback,
+            reputation_score=source_profile.reputation_score,
+            task_stats=copy.deepcopy(source_profile.task_stats),
+            routines=copy.deepcopy(source_profile.routines),
+            memory_enabled=source_profile.memory_enabled,
             memory_scope=new_name,
+            memory_mode=source_profile.memory_mode,
+            memory_injection_enabled=source_profile.memory_injection_enabled,
+            mcp_servers=copy.deepcopy(source_profile.mcp_servers),
+            agent_preset=source_profile.agent_preset,
             metadata={
-                **source_profile.metadata,
+                **copy.deepcopy(source_profile.metadata),
                 "cloned_from": source_name,
                 "clone_mode": mode.value,
                 "lineage": lineage,
@@ -160,7 +176,7 @@ class BotCloneEngine:
         # already carries its lease_status metadata.
         self.registry.register(cloned_profile)
 
-        logger.info(f"Bot '{source_name}' successfully cloned into '{new_name}' (mode: {mode.value})")
+        logger.info("Bot '%s' cloned into '%s' (mode: %s, lease: %s)", source_name, new_name, mode.value, lease_status)
         return cloned_profile
 
     def evolve_bot(
@@ -185,7 +201,7 @@ class BotCloneEngine:
             + f"Performance telemetry baseline: {performance_delta}\n"
         )
 
-        merged_skills = list(set(source_profile.skills + (promoted_skills or [])))
+        merged_skills = list(dict.fromkeys(source_profile.skills + (promoted_skills or [])))
 
         evolved_profile = BotProfile(
             name=new_name,
@@ -196,10 +212,22 @@ class BotCloneEngine:
             toolsets=list(source_profile.toolsets),
             skills=merged_skills,
             avatar=source_profile.avatar or "🧬",
+            status=source_profile.status,
             department=source_profile.department,
             reports_to=source_profile.reports_to,
+            responsibilities=copy.deepcopy(source_profile.responsibilities),
             capabilities=list(source_profile.capabilities),
             version=new_version,
+            heartbeat=source_profile.heartbeat,
+            succession_fallback=source_profile.succession_fallback,
+            task_stats=copy.deepcopy(source_profile.task_stats),
+            routines=copy.deepcopy(source_profile.routines),
+            memory_enabled=source_profile.memory_enabled,
+            memory_scope=source_profile.memory_scope,
+            memory_mode=source_profile.memory_mode,
+            memory_injection_enabled=source_profile.memory_injection_enabled,
+            mcp_servers=copy.deepcopy(source_profile.mcp_servers),
+            agent_preset=source_profile.agent_preset,
             # Reputation is INHERITED, never bumped by evolution: the caller's
             # performance_delta is an unverified claim (free-form dict), and
             # reputation moves only through observed task outcomes
@@ -226,4 +254,10 @@ def get_bot_clone_engine() -> BotCloneEngine:
     global _GLOBAL_CLONE_ENGINE
     if _GLOBAL_CLONE_ENGINE is None:
         _GLOBAL_CLONE_ENGINE = BotCloneEngine()
+    else:
+        # Runtime-home/test isolation can replace the process registry after
+        # this helper was first called.  Keep the clone engine bound to the
+        # current authoritative roster instead of silently cloning into a
+        # stale registry object.
+        _GLOBAL_CLONE_ENGINE.registry = get_bot_registry()
     return _GLOBAL_CLONE_ENGINE

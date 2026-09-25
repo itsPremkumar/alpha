@@ -30,6 +30,7 @@ Welcome to the comprehensive technical documentation for **Alpha**, the Autonomo
 - **[Deployment Guide](DEPLOYMENT.md)**: Infrastructure orchestration across Docker Compose, Kubernetes Helm charts, Nginx load balancing, and cloud providers.
 - **[Extensions & MCP Protocol](EXTENSIONS.md)**: Integrating Model Context Protocol (MCP) servers across stdio, HTTP, and Server-Sent Events (SSE).
 - **[Memory & Persistence](MEMORY.md)**: Cognitive memory architecture, vector embeddings, episodic replay, and SQLite/PostgreSQL durable checkpoints.
+- **[Safe Run Recovery](RUN_RECOVERY.md)**: Durable checkpoint continuation, crash/network/model recovery, idempotent replay, and external-side-effect safety gates.
 
 ---
 

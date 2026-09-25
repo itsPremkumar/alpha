@@ -335,6 +335,33 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Initialize LangGraph runtime components (StreamBridge, RunManager, checkpointer, store)
     async with langgraph_runtime(app, startup_config):
         logger.info("LangGraph runtime initialised")
+        try:
+            from app.gateway.routers.workflows import hydrate_workflow_engine_from_store
+
+            workflow_hydration = await asyncio.to_thread(hydrate_workflow_engine_from_store)
+            if workflow_hydration.get("hydrated_runs"):
+                logger.info("Hydrated %d durable workflow run(s)", len(workflow_hydration["hydrated_runs"]))
+        except Exception:
+            logger.exception("Workflow state hydration failed; continuing with an explicit empty/degraded workflow view")
+
+        # Give the detached source updater a conservative active-work guard.
+        # The updater itself is still disabled by policy; this only prevents an
+        # explicitly enabled auto-apply from switching files under a live run.
+        try:
+            from alpha.evolution.update_engine import get_update_engine
+
+            run_manager = getattr(app.state, "run_manager", None)
+
+            def update_idle_callback() -> bool:
+                from alpha.evolution.update_state import write_runtime_status
+
+                active = bool(run_manager is not None and run_manager.has_active_runs_snapshot())
+                write_runtime_status(active=active, source="gateway")
+                return not active
+
+            get_update_engine().set_idle_callback(update_idle_callback)
+        except Exception:
+            logger.warning("Could not configure the source-update active-run guard.", exc_info=True)
 
         # Continuous host system monitor (RAM/disk/CPU/GPU/network/internet).
         # Best-effort and self-contained: a sampler failure must never fail the
@@ -491,6 +518,25 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             from app.gateway.autonomy.supervisor import get_autonomy_supervisor
 
             autonomy_cfg = startup_config.autonomy
+            # The update policy is the operator-facing kill switch.  When it is
+            # enabled, register the supervisor loop automatically unless the
+            # operator supplied an explicit self_update override; this keeps
+            # unattended use to one policy file while preserving the normal
+            # absent-loop-disabled contract for every other loop.
+            try:
+                from alpha.evolution.update_policy import load_update_policy
+
+                update_policy = load_update_policy()
+                if update_policy.enabled and "self_update" not in autonomy_cfg.loops:
+                    from alpha.config.autonomy_config import AutonomyLoopConfig
+
+                    autonomy_cfg.loops["self_update"] = AutonomyLoopConfig(
+                        enabled=True,
+                        interval_seconds=update_policy.check_interval_seconds,
+                        jitter_seconds=update_policy.jitter_seconds,
+                    )
+            except Exception:
+                logger.warning("Could not load auto-update policy; self_update loop remains disabled.", exc_info=True)
             configure_event_bus(
                 enabled=autonomy_cfg.bus.enabled,
                 queue_maxsize=autonomy_cfg.bus.queue_maxsize,

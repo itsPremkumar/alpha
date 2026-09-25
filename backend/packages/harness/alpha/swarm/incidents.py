@@ -33,6 +33,7 @@ class SwarmIncident:
     attempt: int = 1
     assigned_successor: str | None = None
     resolved: bool = False
+    reason: str = ""
     timestamp: str = field(default_factory=lambda: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
 
     def to_dict(self) -> dict[str, Any]:
@@ -51,8 +52,10 @@ class SwarmIncidentManager:
         swarm_id: str,
         task: SwarmTaskNode,
         error_message: str,
+        *,
+        allow_retry: bool = True,
     ) -> SwarmIncident:
-        """Records an execution failure and re-routes the task via succession fallback."""
+        """Record a failure and optionally apply a bounded succession recovery."""
         failed_worker = task.assigned_worker or "ephemeral-worker"
         incident = SwarmIncident(
             swarm_id=swarm_id,
@@ -64,17 +67,22 @@ class SwarmIncidentManager:
 
         # Trigger autonomous succession resolution
         successor = resolve_succession(failed_worker)
-        if successor and successor != failed_worker:
+        if successor and successor != failed_worker and allow_retry and task.attempts < task.max_attempts:
             task.assigned_worker = successor
             task.worker_type = "permanent_bot"
             task.state = TaskNodeState.PENDING
             task.lease_expires_at = None
+            task.lease_id = None
+            task.lease_owner = None
             incident.assigned_successor = successor
             incident.resolved = True
             logger.info(f"Swarm incident {incident.incident_id} recovered: task {task.task_id} reassigned from @{failed_worker} to successor @{successor}.")
         else:
             incident.resolved = False
-            logger.warning(f"Swarm incident {incident.incident_id} unresolved: no succession fallback available for @{failed_worker}.")
+            incident.reason = "no eligible succession fallback"
+            if successor and not allow_retry:
+                incident.reason = "succession candidate found but task retry budget is exhausted"
+            logger.warning(f"Swarm incident {incident.incident_id} unresolved: no eligible succession fallback for @{failed_worker}.")
 
         if swarm_id not in self._incidents:
             self._incidents[swarm_id] = []

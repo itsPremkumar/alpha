@@ -103,6 +103,7 @@ class AutonomySupervisor:
             ("enterprise_heartbeat", "Enterprise heartbeat cycle.", loop_adapters.enterprise_heartbeat_tick, 1800.0),
             ("swarm_status", "Telemetry-only swarm tick: report active swarm state.", loop_adapters.swarm_status_tick, 300.0),
             ("free_models_sync", "Daily discovery and health check for keyless free LLM models.", loop_adapters.free_models_sync_tick, 86400.0),
+            ("self_update", "Opt-in GitHub source update check and guarded apply.", loop_adapters.self_update_tick, 21600.0),
         )
         for loop_id, description, tick, interval in defaults:
             self.register(LoopSpec(loop_id=loop_id, description=description, tick=tick, default_interval_seconds=interval))

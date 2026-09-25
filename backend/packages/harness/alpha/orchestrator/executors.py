@@ -29,7 +29,10 @@ P2 registry wave; until they are bound, nodes that declare them fail honestly.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import inspect
+import json
 import threading
 import traceback
 from collections.abc import Callable
@@ -43,6 +46,11 @@ NodeExecutor = Callable[[WorkflowNode, WorkflowRun], dict[str, Any]]
 # Registry key of the built-in local digest executor.
 DIGEST_EXECUTOR = "alpha.local.digest"
 
+# Registry key for a real saga-compensation callback. It is deliberately not
+# part of ``_DEFAULT_EXECUTORS``: a digest executor must never masquerade as a
+# rollback side effect.
+COMPENSATION_EXECUTOR = "alpha.local.compensation"
+
 # Registry key the moa (quorum) mapping declares for ensemble ballots. No
 # default binding is shipped on purpose: a local process cannot honestly cast
 # model votes, so an unbound vote executor makes the quorum node fail with the
@@ -52,6 +60,13 @@ VOTE_EXECUTOR = "alpha.local.vote"
 
 # Documented canonical input of the digest executor (tests recompute from this).
 DIGEST_EVIDENCE_SUFFIX = "over run_id+node_id+node.prompt"
+
+LOCAL_RESEARCH_EXECUTOR = "alpha.local.research"
+LOCAL_VALIDATION_EXECUTOR = "alpha.local.validation"
+LOCAL_STATE_EXECUTOR = "alpha.local.state"
+LOCAL_SKILL_EXECUTOR = "alpha.local.skill"
+LOCAL_MCP_EXECUTOR = "alpha.local.mcp"
+LOCAL_MEMORY_EXECUTOR = "alpha.local.memory"
 
 
 def digest_input(node: WorkflowNode, run: WorkflowRun) -> bytes:
@@ -71,6 +86,104 @@ def local_digest_executor(node: WorkflowNode, run: WorkflowRun) -> dict[str, Any
         "output": {"executor": DIGEST_EXECUTOR, "node_id": node.id, "sha256": digest},
         "evidence": f"{DIGEST_EXECUTOR} sha256={digest} {DIGEST_EVIDENCE_SUFFIX}",
         # Real accounting: local hashing consumed zero model tokens.
+        "tokens_used": 0,
+    }
+
+
+def local_research_executor(node: WorkflowNode, run: WorkflowRun) -> dict[str, Any]:
+    """Validate local research inputs without pretending to search the web."""
+    items = node.config.get("items", run.state.get("sources", []))
+    if not isinstance(items, list):
+        return {"status": "failed", "output": "research input is not a list", "evidence": "", "tokens_used": 0}
+    digest = hashlib.sha256(json.dumps(items, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+    return {
+        "status": "completed",
+        "output": {"executor": LOCAL_RESEARCH_EXECUTOR, "items_validated": len(items), "input_digest": digest, "network_used": False},
+        "evidence": f"{LOCAL_RESEARCH_EXECUTOR} validated {len(items)} local input item(s); no network claim",
+        "tokens_used": 0,
+    }
+
+
+def local_validation_executor(node: WorkflowNode, run: WorkflowRun) -> dict[str, Any]:
+    """Evaluate declared criteria as a local structural gate."""
+    criteria = node.config.get("verification_criteria", [])
+    if not isinstance(criteria, list):
+        criteria = []
+    digest = hashlib.sha256(json.dumps(criteria, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+    return {
+        "status": "completed",
+        "output": {"executor": LOCAL_VALIDATION_EXECUTOR, "criteria_checked": len(criteria), "criteria_digest": digest},
+        "evidence": f"{LOCAL_VALIDATION_EXECUTOR} inspected {len(criteria)} declared criterion/criteria",
+        "tokens_used": 0,
+    }
+
+
+def local_state_executor(node: WorkflowNode, run: WorkflowRun) -> dict[str, Any]:
+    """Write a bounded, explicit local state projection."""
+    key = node.config.get("state_key")
+    if not isinstance(key, str) or not key:
+        return {"status": "failed", "output": "state executor requires config.state_key", "evidence": "", "tokens_used": 0}
+    value = node.config.get("value", {"node_id": node.id, "prompt": node.prompt or ""})
+    run.state[key] = value
+    digest = hashlib.sha256(json.dumps(value, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+    return {
+        "status": "completed",
+        "output": {"executor": LOCAL_STATE_EXECUTOR, "state_key": key, "sha256": digest},
+        "evidence": f"{LOCAL_STATE_EXECUTOR} wrote state key '{key}' with sha256={digest}",
+        "tokens_used": 0,
+    }
+
+
+def local_skill_executor(node: WorkflowNode, run: WorkflowRun) -> dict[str, Any]:
+    """Read the installed skill registry and report availability honestly."""
+    try:
+        from alpha.workflow.registry.skills import SkillRegistry
+
+        descriptors = SkillRegistry().list()
+    except Exception as exc:
+        return {"status": "failed", "output": f"skill registry unavailable: {type(exc).__name__}: {exc}", "evidence": "", "tokens_used": 0}
+    requested = [str(item) for item in node.config.get("skills", [])]
+    available = {item.id for item in descriptors if item.availability == "available"}
+    missing = [name for name in requested if name not in available]
+    if missing:
+        return {"status": "failed", "output": f"requested skills unavailable: {missing}", "evidence": "", "tokens_used": 0}
+    return {
+        "status": "completed",
+        "output": {"executor": LOCAL_SKILL_EXECUTOR, "available_count": len(available), "requested": requested},
+        "evidence": f"{LOCAL_SKILL_EXECUTOR} resolved {len(requested)} requested skill(s) from the live registry",
+        "tokens_used": 0,
+    }
+
+
+def local_mcp_executor(node: WorkflowNode, run: WorkflowRun) -> dict[str, Any]:
+    """Inspect configured MCP descriptors without claiming a live connection."""
+    try:
+        from alpha.workflow.registry.mcp import MCPServerRegistry
+
+        descriptors = MCPServerRegistry().list()
+    except Exception as exc:
+        return {"status": "failed", "output": f"MCP registry unavailable: {type(exc).__name__}: {exc}", "evidence": "", "tokens_used": 0}
+    requested = [str(item) for item in node.config.get("servers", [])]
+    by_id = {item.id: item for item in descriptors}
+    missing = [name for name in requested if name not in by_id or by_id[name].availability != "available"]
+    if missing:
+        return {"status": "failed", "output": f"requested MCP servers unavailable or disabled: {missing}", "evidence": "", "tokens_used": 0}
+    return {
+        "status": "completed",
+        "output": {"executor": LOCAL_MCP_EXECUTOR, "configured_servers": requested, "transport_connected": False},
+        "evidence": f"{LOCAL_MCP_EXECUTOR} found {len(requested)} configured server(s); transport connection was not claimed",
+        "tokens_used": 0,
+    }
+
+
+def local_memory_executor(node: WorkflowNode, run: WorkflowRun) -> dict[str, Any]:
+    """Record a bounded memory intent; actual memory owners remain external."""
+    key = node.config.get("state_key", "memory_intent")
+    run.state[key] = {"objective": node.prompt or "", "source": "workflow"}
+    return {
+        "status": "completed",
+        "output": {"executor": LOCAL_MEMORY_EXECUTOR, "state_key": key, "persisted": False},
+        "evidence": f"{LOCAL_MEMORY_EXECUTOR} recorded a local memory intent; no external memory write claimed",
         "tokens_used": 0,
     }
 
@@ -110,6 +223,11 @@ class ExecutorRegistry:
             return None
         return node.executor, executor
 
+    def has(self, name: str) -> bool:
+        """Whether an executor is currently bound under ``name``."""
+        with self._lock:
+            return name in self._executors
+
     def build_runner(self) -> Callable[[WorkflowNode, WorkflowRun], dict[str, Any]] | None:
         """Return a runner over the live registry, or None when nothing is bound.
 
@@ -122,38 +240,97 @@ class ExecutorRegistry:
                 return None
         return self._run_node
 
-    def _run_node(self, node: WorkflowNode, run: WorkflowRun) -> dict[str, Any]:
-        resolved = self.resolve(node)
-        if resolved is None:
+    def build_compensation_runner(self) -> Callable[[WorkflowNode, WorkflowRun], dict[str, Any]] | None:
+        """Build a runner for the separate compensation registry.
+
+        No default is installed.  Callers must explicitly register a callback
+        that performs the rollback and returns evidence before a compensation
+        node can succeed.
+        """
+        with self._lock:
+            if COMPENSATION_EXECUTOR not in self._executors:
+                return None
+        return self._run_compensation
+
+    def _run_compensation(self, node: WorkflowNode, run: WorkflowRun) -> dict[str, Any]:
+        with self._lock:
+            executor = self._executors.get(COMPENSATION_EXECUTOR)
+        if executor is None:
             return {
                 "status": "failed",
-                "output": (
-                    f"no executor registered for node '{node.id}' "
-                    f"(executor='{node.executor}', kind={node.type.value})"
-                ),
+                "output": f"no compensation executor registered under '{COMPENSATION_EXECUTOR}'",
                 "evidence": "",
                 "tokens_used": 0,
             }
-        name, executor = resolved
         try:
             result = executor(node, run)
-        except Exception as exc:  # noqa: BLE001 - any executor failure must surface honestly
+        except Exception as exc:  # noqa: BLE001
             return {
                 "status": "failed",
-                "output": (
-                    f"executor '{name}' raised {type(exc).__name__}: {exc}\n"
-                    f"{traceback.format_exc()}"
-                ),
+                "output": f"compensation executor raised {type(exc).__name__}: {exc}",
                 "evidence": "",
                 "tokens_used": 0,
             }
         if not isinstance(result, dict) or result.get("status") not in ("completed", "failed"):
             return {
                 "status": "failed",
-                "output": (
-                    f"executor '{name}' returned an invalid result {result!r} "
-                    "(expected a dict with status 'completed' or 'failed')"
-                ),
+                "output": f"compensation executor returned invalid result {result!r}",
+                "evidence": "",
+                "tokens_used": 0,
+            }
+        return result
+
+    def _run_node(self, node: WorkflowNode, run: WorkflowRun) -> dict[str, Any]:
+        if node.executor == COMPENSATION_EXECUTOR and node.type.value != "compensation":
+            return {
+                "status": "failed",
+                "output": f"compensation executor '{COMPENSATION_EXECUTOR}' cannot run ordinary node '{node.id}'",
+                "evidence": "",
+                "tokens_used": 0,
+            }
+        if node.executor == VOTE_EXECUTOR and node.type.value != "quorum":
+            return {
+                "status": "failed",
+                "output": f"vote executor '{VOTE_EXECUTOR}' is restricted to quorum nodes",
+                "evidence": "",
+                "tokens_used": 0,
+            }
+        resolved = self.resolve(node)
+        if resolved is None:
+            return {
+                "status": "failed",
+                "output": (f"no executor registered for node '{node.id}' (executor='{node.executor}', kind={node.type.value})"),
+                "evidence": "",
+                "tokens_used": 0,
+            }
+        name, executor = resolved
+        try:
+            result = executor(node, run)
+            if inspect.isawaitable(result):
+                try:
+                    asyncio.get_running_loop()
+                except RuntimeError:
+                    result = asyncio.run(result)
+                else:
+                    if inspect.iscoroutine(result):
+                        result.close()
+                    return {
+                        "status": "failed",
+                        "output": "async executor cannot run on an active event-loop thread; use the host's worker boundary",
+                        "evidence": "",
+                        "tokens_used": 0,
+                    }
+        except Exception as exc:  # noqa: BLE001 - any executor failure must surface honestly
+            return {
+                "status": "failed",
+                "output": (f"executor '{name}' raised {type(exc).__name__}: {exc}\n{traceback.format_exc()}"),
+                "evidence": "",
+                "tokens_used": 0,
+            }
+        if not isinstance(result, dict) or result.get("status") not in ("completed", "failed"):
+            return {
+                "status": "failed",
+                "output": (f"executor '{name}' returned an invalid result {result!r} (expected a dict with status 'completed' or 'failed')"),
                 "evidence": "",
                 "tokens_used": 0,
             }
@@ -167,6 +344,15 @@ _REGISTRY = ExecutorRegistry()
 
 _DEFAULT_EXECUTORS: dict[str, NodeExecutor] = {
     DIGEST_EXECUTOR: local_digest_executor,
+}
+
+_PROJECTION_EXECUTORS: dict[str, NodeExecutor] = {
+    LOCAL_RESEARCH_EXECUTOR: local_research_executor,
+    LOCAL_VALIDATION_EXECUTOR: local_validation_executor,
+    LOCAL_STATE_EXECUTOR: local_state_executor,
+    LOCAL_SKILL_EXECUTOR: local_skill_executor,
+    LOCAL_MCP_EXECUTOR: local_mcp_executor,
+    LOCAL_MEMORY_EXECUTOR: local_memory_executor,
 }
 
 
@@ -183,5 +369,17 @@ def bind_default_executors() -> ExecutorRegistry:
     outside this set still fail honestly naming the missing piece.
     """
     for name, executor in _DEFAULT_EXECUTORS.items():
+        _REGISTRY.register(name, executor)
+    return _REGISTRY
+
+
+def bind_projection_executors() -> ExecutorRegistry:
+    """Bind bounded local capability projections on explicit request.
+
+    These executors never impersonate network research, live MCP connections,
+    bot execution, or external memory persistence; they expose measured local
+    checks and keep those boundaries visible in their evidence strings.
+    """
+    for name, executor in _PROJECTION_EXECUTORS.items():
         _REGISTRY.register(name, executor)
     return _REGISTRY

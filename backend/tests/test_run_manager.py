@@ -1650,3 +1650,63 @@ async def test_failed_create_or_reject_unindexes_run():
         await manager.create_or_reject("thread-a", multitask_strategy="reject")
     assert manager._runs == {}
     assert "thread-a" not in manager._runs_by_thread
+
+
+@pytest.mark.anyio
+async def test_list_recovery_candidates_hydrates_only_matching_terminal_rows():
+    store = MemoryRunStore()
+    manager = RunManager(store=store)
+    await store.put("candidate", thread_id="thread-a", status="error", stop_reason="orphan_recovered")
+    await store.put("manual", thread_id="thread-b", status="interrupted", stop_reason="user_cancelled")
+    await store.put("cancelled", thread_id="thread-c", status="running")
+    assert await store.request_cancel("cancelled", action="interrupt") == "interrupt"
+    assert await store.update_status("cancelled", "interrupted", stop_reason="gateway_shutdown")
+
+    candidates = await manager.list_recovery_candidates(
+        statuses={"error", "interrupted"},
+        stop_reasons={"orphan_recovered", "gateway_shutdown"},
+        limit=10,
+    )
+
+    assert [record.run_id for record in candidates] == ["candidate"]
+    assert candidates[0].store_only is True
+
+
+@pytest.mark.anyio
+async def test_durable_cancel_winner_marks_local_record_for_shutdown_fence():
+    store = MemoryRunStore()
+    manager = RunManager(
+        store=store,
+        run_ownership_config=RunOwnershipConfig(heartbeat_enabled=True),
+    )
+    record = await manager.create("thread-cancel-fence", user_id="user-1")
+    await manager.set_status(record.run_id, RunStatus.running)
+    await store.request_cancel(record.run_id, action="interrupt")
+
+    cancel_action = await manager.set_status_if_not_cancelled(record.run_id, RunStatus.success)
+
+    assert cancel_action == "interrupt"
+    assert record.cancel_requested is True
+
+
+@pytest.mark.anyio
+async def test_transition_recovery_stop_reason_updates_store_and_live_record():
+    store = MemoryRunStore()
+    manager = RunManager(store=store)
+    record = await manager.create("thread-a", user_id="user-1")
+    await manager.set_status(record.run_id, RunStatus.error, stop_reason="orphan_recovered")
+
+    transitioned = await manager.transition_recovery_stop_reason(
+        record.run_id,
+        expected_status="error",
+        expected_stop_reason="orphan_recovered",
+        stop_reason="recovery_confirmation_required",
+        error="verify tool",
+    )
+
+    assert transitioned is True
+    assert record.stop_reason == "recovery_confirmation_required"
+    stored = await store.get(record.run_id)
+    assert stored is not None
+    assert stored["stop_reason"] == "recovery_confirmation_required"
+    assert stored["error"] == "verify tool"

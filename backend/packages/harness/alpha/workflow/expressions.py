@@ -13,6 +13,7 @@ from typing import Any
 
 class ExpressionSecurityError(ValueError):
     """Raised when an expression attempts unsafe operations or syntax."""
+
     pass
 
 
@@ -147,20 +148,26 @@ class SafeExpressionEvaluator:
             return [self._eval_node(elt, context) for elt in node.elts]
 
         elif isinstance(node, ast.Dict):
-            return {
-                self._eval_node(k, context): self._eval_node(v, context)
-                for k, v in zip(node.keys, node.values)
-            }
+            return {self._eval_node(k, context): self._eval_node(v, context) for k, v in zip(node.keys, node.values)}
 
         raise ExpressionSecurityError(f"Unsupported expression node: {type(node).__name__}")
 
 
-def evaluate_condition(condition: str | None, context: dict[str, Any]) -> bool:
-    """Helper to evaluate a condition string to a boolean."""
+def evaluate_condition_strict(condition: str | None, context: dict[str, Any]) -> bool:
+    """Evaluate a condition and surface parser/security errors to the caller."""
     if not condition:
         return True
-    evaluator = SafeExpressionEvaluator()
+    return bool(SafeExpressionEvaluator().evaluate(condition, context))
+
+
+def evaluate_condition(condition: str | None, context: dict[str, Any]) -> bool:
+    """Evaluate a condition, treating an invalid expression as false.
+
+    Scheduler predicates use this fail-closed form so one malformed branch
+    cannot activate work.  Node handlers that need an auditable failure use
+    :func:`evaluate_condition_strict` instead.
+    """
     try:
-        return bool(evaluator.evaluate(condition, context))
+        return evaluate_condition_strict(condition, context)
     except Exception:
         return False

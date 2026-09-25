@@ -136,17 +136,44 @@ Every advanced feature in Alpha is engineered for production-grade reliability a
 - **Bot Roster & SOUL Protocol**: Maintains registered autonomous bots with distinct personalities, isolated system prompts, and private inboxes.
 - **Bot Mode Direct Messaging (DMs)**: Fire-and-forget asynchronous inter-bot and user-to-bot messaging (`POST /api/bots/{name}/dm`) with server-side attribution.
 - **Multi-Agent Group Chat & Swarms**: Real-time multi-agent collaborative rooms where specialized bots brainstorm, challenge assumptions, and produce unified deliverables.
+- **Swarm v2 DAG Runtime**: Explicit dependency plans use atomic checkpoints, ordered JSONL audit events, owner-scoped admission, idempotent creation, lease-fenced task attempts, retry backoff, and restart recovery.
+- **Bounded Swarm Execution**: Token/tool-call/wall-clock/task/replan budgets, adaptive provider concurrency, watchdog recovery, pause/resume/cancel, metrics, and explicit `budget_exhausted`/`stalled` states keep autonomous runs observable and fail closed.
+- **Typed Swarm Communication & Consensus**: A bounded blackboard carries untrusted observations and task results; explicit evidence-backed votes, leader election, acceptance verification, and acceptance-sensitive aggregation distinguish execution success from verified delivery.
+- **Swarm Operations Surface**: REST/SSE APIs expose task claims and leases, revisions, events, messages, replans, progress, and leader/resource-governor telemetry; the `swarm` tool exposes the same operations to authorized agents.
 - **Real-Time Collaborative Kanban Board**: Live visual project management enabling agents to create, assign, transition, and audit cards on a shared Kanban board.
 - **Agent-to-Agent (A2A) Messaging Protocol**: Structured protocol enabling agents to dispatch peer requests, observe peer outputs, and coordinate distributed workflows.
 - **Project Workforce Layer**: Enterprise workforce management with agent↔project membership, online presence tracking, resource locking, project constitutions, and ADR memory.
 
+Swarm state is persisted locally as atomic JSON checkpoints plus append-only JSONL events. That is restart-recoverable for one Gateway process; a multi-worker deployment must provide a shared SQL lease repository before claiming cross-process exactly-once execution. See [`docs/WORKFORCE.md`](docs/WORKFORCE.md) and [`docs/API_REFERENCE.md`](docs/API_REFERENCE.md).
+
 ### 3.3 Continuous Execution Harness, Planners & Loops
+
+#### Dynamic workflow plane
+
+Alpha can opt into a full prompt-to-workflow loop: deterministic intent
+perception, capability/resource discovery, task decomposition, bounded DAG waves,
+typed graph patches, approval gates, retry/replan, evidence-gated replay, and
+saga compensation. Use `POST /api/workflows/dynamic/perceive` for a no-side-effect
+preview and `POST /api/workflows/dynamic/execute` for the correlated workflow
+run; the legacy `/api/workflows/turns` paradigm seam remains available.
+
+The built-in digest executor is deliberately a **local graph projection**, not a
+claim that a domain task ran. Dynamic responses disclose
+`execution_label="local_digest_projection"` and `acceptance_passed=false` until
+a real model/tool/MCP/sandbox/bot executor is bound. Missing executors,
+unavailable registries, failed compensation, and incomplete verification fail
+or disclose honestly. Workflow events, projections, hydration, plan history,
+and replay are exposed through the Gateway; local JSONL storage is
+restart-recoverable for one process, not a multi-worker exactly-once lease
+repository. See [`docs/DYNAMIC_WORKFLOWS.md`](docs/DYNAMIC_WORKFLOWS.md).
+
+- **Autonomous One-Prompt Planner**: Synthesizes unformatted, complex user prompts into structured, multi-step execution plans without manual intervention.
 - **Autonomous One-Prompt Planner**: Synthesizes unformatted, complex user prompts into structured, multi-step execution plans without manual intervention.
 - **Cognitive Plan Mode (8-Dimensional Strategic Evaluation)**: Evaluates tasks across clarity, safety, feasibility, reversibility, resource intensity, architectural impact, empirical evidence, and mission alignment.
 - **Mission Hierarchy & Work Queue DAG**: Builds hierarchical mission trees that decompose macro goals into dependency-ordered work queues.
 - **Continuous Goal Engine & Integrity Gate**: Monitors active task objectives, enforces verifiable completion criteria, and prevents premature or hallucinated task exits.
 - **Ralph Loop (Recursive Self-Improvement Loop)**: Executes test-driven iterative self-healing loops until code passes all unit tests and satisfies architectural invariants.
-- **Boulder Checkpointing & Durable Replay**: Saves multi-session execution snapshots allowing long-running tasks to resume seamlessly after restarts or network drops.
+- **Boulder Checkpointing & Safe Durable Replay**: Saves multi-session execution snapshots, keeps browser/network disconnects from cancelling active work, and automatically resumes model-side progress after a Gateway crash, expired worker lease, graceful restart, or recoverable model failure. Tool/MCP/custom actions stop for confirmation when an external effect may be ambiguous, preventing duplicate irreversible side effects. See [`docs/RUN_RECOVERY.md`](docs/RUN_RECOVERY.md).
 - **Kibitzer & Metacognitive Supervision**: Background supervisory processes that continuously evaluate agent reasoning to detect loops, thrashing, and prompt drift.
 
 ### 3.4 Frontier Cognitive Intelligence & Optimization
@@ -158,6 +185,7 @@ Every advanced feature in Alpha is engineered for production-grade reliability a
 - **Strategic Discipline Council**: Multi-perspective governance team performing invariant verification, gap analysis, and policy compliance audits.
 - **Quality Council & Evidence Matrix**: Deliberates artifact quality and validates finish-first empirical evidence before declaring work complete.
 - **Consequence Simulation & Problem Modeling**: Simulates potential negative outcomes, side-effects, and blast radiuses before executing irreversible actions.
+- **System One decision models**: Provider-neutral typed `choice`/`score`/`noul` decisions through hosted Jev or self-hosted [Laya](https://github.com/NandhaKishorM/laya), with confidence gating and deterministic/LLM fallback. Large Laya choice catalogs use bounded partition tournaments instead of truncation, and browser targets remain index-only. See [`docs/SYSTEM_ONE.md`](docs/SYSTEM_ONE.md).
 
 ### 3.5 Code Agentic Core & Developer Tooling
 - **Pre-Commit AST Syntax & Linter Guardrail**: Intercepts file writes across `write_file`, `str_replace`, and `hashline_edit` prior to disk commit; statically verifies AST syntax (`ast.parse`, `json.loads`, `yaml.safe_load`) and automatically rejects syntactically broken edits with compiler feedback.
@@ -188,6 +216,9 @@ Every advanced feature in Alpha is engineered for production-grade reliability a
 ### 3.8 Presentation Layer: Windows Desktop & Web UI
 - **One-Click Windows Desktop Application**: Electron shell bundling embedded Node.js and `uv` runtimes that launches directly into chat without setup wizards.
 - **Next.js 15 Web Workspace**: Modern responsive dashboard with Chat, Overview, Workforce, Projects, Kanban, Skills, and Settings views.
+- **Free Local Real-Time Voice**: Browser microphone streaming, local Whisper interim/final transcription, VAD turn endpointing, normal SSE agent streaming, sentence-level local Piper playback, and hands-free resume—with no paid speech API.
+- **Milo Lion Companion**: A local inline-SVG companion reacts to thinking, working, waiting, success, and error states; it supports petting, dragging, resizing, optional sound cues, reduced motion, and an optional transparent always-on-top Windows desktop window without forwarding prompt or conversation data. See [`docs/LION_COMPANION.md`](docs/LION_COMPANION.md).
+- **Guarded GitHub Source Auto-Update**: Published-release/branch discovery, clean-worktree and fast-forward enforcement, backup refs, detached restart, health verification, and automatic rollback. Disabled by default; see [`docs/AUTO_UPDATE.md`](docs/AUTO_UPDATE.md).
 - **Interactive Canvas & Generative UI**: Inline interactive HTML/React widgets, live SVG diagrams, KaTeX math equations, and data tables.
 
 ---
@@ -276,7 +307,7 @@ Every directory in `backend/packages/harness/alpha/` represents a dedicated func
 | 76 | `state` | Immutable state snapshots, delta tracking, and rollback capabilities. |
 | 77 | `subagents` | Intent category presets (`general`, `research`, `quick`, `deep-research`), capacity limits. |
 | 78 | `supervision` | Kibitzer active supervisor nudging drifting agents back to task goals. |
-| 79 | `swarm` | Autonomous multi-agent swarms with self-organizing leader-worker topologies. |
+| 79 | `swarm` | Owner-scoped, lease-fenced multi-agent DAG runtime with durable checkpoints, bounded communication/consensus, budgets, recovery, and explicit acceptance state. |
 | 80 | `tools` | 120+ native tools spanning file I/O, coding, shell, web, search, and cognition. |
 | 81 | `tracing` | End-to-end telemetry tracing supporting LangSmith, Langfuse, and Monocle. |
 | 82 | `trajectory` | Forensic trajectory flight recorder storing step-by-step reasoning and tool traces. |
@@ -515,7 +546,11 @@ make config
 # 2. Install dependencies for backend and frontend
 make install
 
-# 3. Start local development servers (Gateway :8001, Frontend :3000, Nginx :2026)
+# 3. Optional: install FREE local Whisper + Piper models for real-time voice.
+#    No speech API key is required; only your configured LLM may have a cost.
+make voice-setup
+
+# 4. Start local development servers (Gateway :8001, Frontend :3000, Nginx :2026)
 make dev
 ```
 
@@ -526,6 +561,48 @@ make setup
 Verify environment health:
 ```bash
 make doctor
+```
+
+Optional local Laya System One setup (Apache-2.0 weights, isolated from the core
+install):
+```bash
+make system-one-laya-setup
+make system-one-laya-serve
+```
+The Laya server runs on loopback and should be started separately from Alpha. The
+active provider and checkpoint are configured under `system_one` in `config.yaml`;
+see [`docs/SYSTEM_ONE.md`](docs/SYSTEM_ONE.md) before disabling shadow mode.
+
+#### Free real-time voice conversation
+
+Alpha can stream microphone audio to a **local faster-whisper** transcriber, send the final transcript through the normal chat SSE pipeline, and speak completed response sentences with a **local Piper** model while the rest of the answer is still streaming. No browser/cloud speech API is used; the configured LLM remains the only potentially paid component.
+
+```bash
+make voice-setup   # install packages + pinned model assets once (~550 MB)
+make voice-verify  # confirm dependencies and model files
+make dev
+```
+
+Enable **Real-time voice** in the chat composer. Its first click explicitly requests microphone permission and unlocks the browser's default speaker output; the speaker button plays a local confirmation phrase, and status reports denied/missing/in-use devices separately. Push-to-talk, cancellation, interim transcripts, silence endpointing, and automatic resume after playback are supported. See [Real-Time Voice Conversation](docs/VOICE_CONVERSATION.md) for privacy, configuration, Docker, limits, and troubleshooting.
+
+#### Guarded GitHub source auto-update
+
+Local source checkouts can opt into a safe update loop. The default is
+check-only and disabled; copy the reviewed template to an operator policy
+outside the checkout, enable both `enabled` and `auto_apply`, and point
+`ALPHA_UPDATE_POLICY_PATH` at it. A verified GitHub target can then be fetched,
+staged, installed, restarted, health-checked, and rolled back automatically.
+Keeping the mutable policy outside Git lets the updater enforce its clean
+worktree gate. The updater refuses dirty or diverged worktrees and never
+accepts a URL/ref from the browser. See [Auto-Update](docs/AUTO_UPDATE.md) for
+the complete state machine, security boundary, API, and Windows Task Scheduler
+setup.
+
+```bash
+make update-status
+make update-check
+# after reviewing the verified candidate:
+make update-apply
 ```
 
 ---

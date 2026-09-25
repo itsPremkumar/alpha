@@ -28,6 +28,10 @@ class ModelResponse(BaseModel):
     description: str | None = Field(None, description="Model description")
     supports_thinking: bool = Field(default=False, description="Whether model supports thinking mode")
     supports_reasoning_effort: bool = Field(default=False, description="Whether model supports reasoning effort")
+    provider: str | None = Field(default=None, description="Provider identifier (e.g. ovhcloud, pollinations, groq, gemini)")
+    is_free: bool = Field(default=False, description="Whether this model is free to use")
+    quota_type: str | None = Field(default=None, description="Free quota category: keyless_free, recurring_free, free_gateway, trial_credits, paid, custom")
+    free_status: str | None = Field(default=None, description="Availability/health status: online, degraded, offline, unknown")
 
 
 class TokenUsageResponse(BaseModel):
@@ -114,34 +118,78 @@ async def list_models(
                     logger.warning("Authorization provider failed while filtering models", exc_info=True)
                     visible_models = [] if fail_closed else config.models
 
-    models = [
-        ModelResponse(
-            name=model.name,
-            model=model.model,
-            display_name=model.display_name,
-            description=model.description,
-            supports_thinking=model.supports_thinking,
-            supports_reasoning_effort=model.supports_reasoning_effort,
-        )
-        for model in visible_models
-    ]
+    models = []
+    seen_names: set[str] = set()
 
-    # Include available keyless free models if free router or alpha-free is configured
+    for model in visible_models:
+        is_free_model = bool(
+            model.name in ("alpha-free", "free")
+            or model.name.startswith("free:")
+            or model.name.startswith("alpha-free:")
+            or getattr(model, "is_free", False)
+        )
+        models.append(
+            ModelResponse(
+                name=model.name,
+                model=model.model,
+                display_name=model.display_name,
+                description=model.description,
+                supports_thinking=model.supports_thinking,
+                supports_reasoning_effort=model.supports_reasoning_effort,
+                provider=getattr(model, "provider", None) or ("free" if is_free_model else None),
+                is_free=is_free_model,
+                quota_type="keyless" if is_free_model else "paid",
+                free_status="online" if is_free_model else None,
+            )
+        )
+        seen_names.add(model.name)
+
+    # Augment with active provider models (configured API keys + custom models)
+    try:
+        from alpha.models.provider_manager import get_active_provider_models
+
+        for apm in get_active_provider_models(config):
+            if apm["name"] not in seen_names:
+                models.append(
+                    ModelResponse(
+                        name=apm["name"],
+                        model=apm["model"],
+                        display_name=apm["display_name"],
+                        description=apm["description"],
+                        supports_thinking=apm["supports_thinking"],
+                        supports_reasoning_effort=False,
+                        provider=apm.get("provider"),
+                        is_free=apm.get("is_free", False),
+                        quota_type=apm.get("quota_type"),
+                        free_status=apm.get("free_status", "online"),
+                    )
+                )
+                seen_names.add(apm["name"])
+    except Exception as exc:
+        logger.debug("Could not augment models list with active provider models: %s", exc)
+
+    # Augment with available keyless free models
     try:
         from alpha.models.free_router import get_free_router
 
         free_router = get_free_router()
         for fm in free_router.available_free_models():
-            models.append(
-                ModelResponse(
-                    name=fm["id"],
-                    model=fm["model_id"],
-                    display_name=fm["name"],
-                    description=fm.get("description") or f"Keyless free model via {fm['provider']}",
-                    supports_thinking=bool(fm.get("supports_thinking", False)),
-                    supports_reasoning_effort=False,
+            if fm["id"] not in seen_names:
+                models.append(
+                    ModelResponse(
+                        name=fm["id"],
+                        model=fm.get("model_id", fm.get("id", "auto")),
+                        display_name=fm["name"],
+                        description=fm.get("description") or f"Keyless free model via {fm['provider']}",
+                        supports_thinking=bool(fm.get("supports_thinking", False)),
+                        supports_reasoning_effort=False,
+                        provider=fm.get("provider"),
+                        is_free=True,
+                        quota_type="keyless",
+                        free_status="online",
+                    )
                 )
-            )
+                seen_names.add(fm["id"])
     except Exception as exc:
         logger.debug("Could not augment models list with free models: %s", exc)
 
@@ -577,3 +625,78 @@ async def free_llm_catalog(refresh: bool = False, probe: bool = False) -> dict:
         return view
 
     return await _asyncio.to_thread(_view)
+
+
+@router.get(
+    "/models/providers",
+    summary="List Supported LLM Providers & Configuration Status",
+    description="Retrieve catalog of all supported providers (keyless, recurring free, gateways, paid, custom) and their configuration status.",
+)
+async def list_providers() -> list[dict]:
+    import asyncio as _asyncio
+
+    from alpha.models.provider_manager import get_providers_catalog
+
+    return await _asyncio.to_thread(get_providers_catalog)
+
+
+class ConfigureProviderRequest(BaseModel):
+    provider: str = Field(..., description="Provider ID (e.g. groq, gemini, openrouter, custom)")
+    api_key: str | None = Field(None, description="API Key for the provider")
+    base_url: str | None = Field(None, description="Custom base URL")
+    model_id: str | None = Field(None, description="Custom model identifier")
+    display_name: str | None = Field(None, description="Custom model display name")
+    remove: bool = Field(default=False, description="Whether to remove the key/model")
+
+
+@router.post(
+    "/models/providers/configure",
+    summary="Configure LLM Provider Credentials or Custom Model",
+    description="Save or remove API keys for a provider and dynamically register associated models.",
+)
+async def configure_provider_endpoint(body: ConfigureProviderRequest) -> dict:
+    import asyncio as _asyncio
+
+    from alpha.models.provider_manager import configure_provider
+
+    def _sync():
+        return configure_provider(
+            provider_id=body.provider,
+            api_key=body.api_key,
+            base_url=body.base_url,
+            model_id=body.model_id,
+            display_name=body.display_name,
+            remove=body.remove,
+        )
+
+    try:
+        return await _asyncio.to_thread(_sync)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.error("Failed to configure provider %s: %s", body.provider, exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to save provider configuration")
+
+
+@router.post(
+    "/models/free/probe",
+    summary="Probe and Sync Free LLM Models",
+    description="Trigger a fresh probe of all keyless free providers and sync today's available models.",
+)
+async def probe_free_models_endpoint() -> dict:
+    import asyncio as _asyncio
+
+    def _probe_and_sync():
+        from alpha.models.free_router import get_free_router
+
+        router = get_free_router()
+        probes = router.probe()
+        synced = router.sync_daily_models(force_probe=True)
+        return {
+            "probes": probes,
+            "synced_models_count": len(synced),
+            "available_models": router.available_free_models(),
+        }
+
+    return await _asyncio.to_thread(_probe_and_sync)
+

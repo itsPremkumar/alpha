@@ -77,33 +77,71 @@ class DynamicResourceAssembler:
     # Built-in tool domain index for dynamic context-aware filtering
     DOMAIN_TOOLS: dict[str, list[str]] = {
         "engineering": [
-            "read_file", "write_file", "edit_file", "view_file", "replace_file_content",
-            "grep_search", "find_by_name", "list_dir", "run_command", "auto_test_and_repair",
-            "manage_code_checkpoint", "reconcile_structural_ast_conflicts",
+            "read_file",
+            "write_file",
+            "edit_file",
+            "view_file",
+            "replace_file_content",
+            "grep_search",
+            "find_by_name",
+            "list_dir",
+            "run_command",
+            "auto_test_and_repair",
+            "manage_code_checkpoint",
+            "reconcile_structural_ast_conflicts",
         ],
         "research": [
-            "search_web", "read_url_content", "deep_research", "five_pass_search",
-            "session_search", "query_knowledge_graph",
+            "search_web",
+            "read_url_content",
+            "deep_research",
+            "five_pass_search",
+            "session_search",
+            "query_knowledge_graph",
         ],
         "skills": [
-            "synthesize_reusable_skill", "review_skill_package", "propose_skill",
-            "executable_skill_tool", "skills_hub_manage",
+            "synthesize_reusable_skill",
+            "review_skill_package",
+            "propose_skill",
+            "executable_skill_tool",
+            "skills_hub_manage",
         ],
         "bots": [
-            "bot_roster_tool", "subagent_control", "a2a_tool", "group_chat_tool",
-            "swarm_tool", "discipline_team_tool",
+            "bot_roster_tool",
+            "subagent_control",
+            "a2a_tool",
+            "group_chat_tool",
+            "swarm_tool",
+            "discipline_team_tool",
         ],
         "mcp": [
-            "mcp_metadata", "request_secure_credential", "enterprise_security_manage",
+            "mcp_metadata",
+            "request_secure_credential",
+            "enterprise_security_manage",
         ],
         "verification": [
-            "visual_verify_artifact", "trajectory_audit", "run_differential_regression_oracle",
+            "visual_verify_artifact",
+            "trajectory_audit",
+            "run_differential_regression_oracle",
             "run_task_evaluation_benchmark",
         ],
         "memory": [
-            "cognitive_memory_tool", "consolidate_cognitive_memory", "recall_agent_memory",
-            "manage_reflexion_memory", "query_contrastive_memory",
+            "cognitive_memory_tool",
+            "consolidate_cognitive_memory",
+            "recall_agent_memory",
+            "manage_reflexion_memory",
+            "query_contrastive_memory",
         ],
+    }
+
+    ROLE_DOMAINS: dict[str, str] = {
+        "lead_researcher": "research",
+        "skill_curator": "skills",
+        "code_specialist": "engineering",
+        "qa_auditor": "verification",
+        "learning_engine": "memory",
+        "mcp_coordinator": "mcp",
+        "bot_cloner": "bots",
+        "autonomous_agent": "engineering",
     }
 
     def __init__(
@@ -120,7 +158,7 @@ class DynamicResourceAssembler:
         # "unavailable" instead of fabricating MCP server specs (DY-R3).
         self.mcp_manager = mcp_manager
 
-    def assemble(self, goal: DynamicGoal, prompt: str) -> AssembledResources:
+    def assemble(self, goal: DynamicGoal, prompt: str, *, provision: bool = True) -> AssembledResources:
         """Assemble all resources synchronously or asynchronously."""
         intent = goal.intent
 
@@ -167,7 +205,8 @@ class DynamicResourceAssembler:
             )
 
             # Assign domain-specific toolsets & memory scope
-            bot_tools = self.DOMAIN_TOOLS.get(role_slug.split("_")[0], self.DOMAIN_TOOLS.get("engineering", []))
+            role_domain = self.ROLE_DOMAINS.get(role_slug, intent.primary_domain)
+            bot_tools = self.DOMAIN_TOOLS.get(role_domain, self.DOMAIN_TOOLS.get("engineering", []))
 
             # Synthesize Bot Profile
             profile = BotProfile(
@@ -177,7 +216,10 @@ class DynamicResourceAssembler:
                 soul=soul_directive,
                 model=model_tier,
                 toolsets=bot_tools[:8],
-                skills=[f"skill-{intent.primary_domain}"] if intent.primary_domain else [],
+                # Do not invent a skill id.  Real discovered skill names are
+                # attached to the assembled-resource metadata below; a
+                # profile starts with an empty, honest skill allowlist.
+                skills=[],
                 avatar="🤖" if "engineer" in role_slug else "🔬" if "research" in role_slug else "🛡️",
                 department=intent.primary_domain or "engineering",
                 memory_scope=f"scope_{bot_name}",
@@ -189,9 +231,11 @@ class DynamicResourceAssembler:
                     # SOUL directives are synthesized from templates in this
                     # layer — disclosed, never presented as generated wisdom.
                     "generation_method": "template",
+                    "provisioned": provision,
                 },
             )
-            self.bot_registry.register(profile)
+            if provision:
+                self.bot_registry.register(profile)
             provisioned_bots[bot_name] = profile.to_dict()
             bot_names.append(bot_name)
 
@@ -218,12 +262,14 @@ class DynamicResourceAssembler:
             # 4a. Search in skills hub (real seam)
             discovered = self.skills_hub.search(intent.primary_domain)
             for pkg in discovered:
-                active_skills.append({
-                    "name": pkg.name,
-                    "description": pkg.description,
-                    "status": "discovered_in_hub",
-                    "source": pkg.source,
-                })
+                active_skills.append(
+                    {
+                        "name": pkg.name,
+                        "description": pkg.description,
+                        "status": "discovered_in_hub",
+                        "source": pkg.source,
+                    }
+                )
 
             # 4b. Authoring requested but no generator bound: honest skip.
             #     (No hardcoded body, no add_to_catalog() call.)
@@ -238,10 +284,21 @@ class DynamicResourceAssembler:
                     if t not in selected_tools:
                         selected_tools.append(t)
 
-        # Ensure essential general tools are always present
+        # Ensure essential general tools are always present in the *candidate*
+        # palette, then reconcile against the production builtin registry.
         for essential in ["read_file", "write_file", "replace_file_content", "run_command", "view_file"]:
             if essential not in selected_tools:
                 selected_tools.append(essential)
+        available_tool_ids: set[str] = set()
+        unavailable_tools: list[str] = []
+        try:
+            from alpha.workflow.registry.tools import BuiltinToolRegistry
+
+            available_tool_ids = {item.id for item in BuiltinToolRegistry().list()}
+        except Exception as exc:  # registry failure is disclosed, not guessed
+            unavailable_tools.append(f"tool registry unavailable: {type(exc).__name__}: {exc}")
+        if available_tool_ids:
+            unavailable_tools.extend(tool for tool in selected_tools if tool not in available_tool_ids)
 
         # 6. Dynamic MCP acquisition — only from REAL declared specs.
         #    Honesty (DY-R3): the previous version fabricated an MCP YAML spec
@@ -259,11 +316,14 @@ class DynamicResourceAssembler:
                     mcp_generation = "unavailable — skills hub seam exposes no installed-skill manifests"
                 else:
                     for skill_name, manifest in manifests:
-                        active_mcp_servers.extend(
-                            self.mcp_manager.acquire_for_skill(skill_name, manifest)
-                        )
+                        if provision:
+                            active_mcp_servers.extend(self.mcp_manager.acquire_for_skill(skill_name, manifest))
+                        else:
+                            # Preview parses the same declared manifests but
+                            # never starts/acquires a transport.
+                            active_mcp_servers.extend(spec.server_name for spec in self.mcp_manager.parse_skill_mcp_specs(manifest))
                     if active_mcp_servers:
-                        mcp_generation = "declared_in_installed_skills"
+                        mcp_generation = "declared_in_installed_skills" if provision else "preview_only_declared_in_installed_skills"
                     else:
                         mcp_generation = "unavailable — no MCP server specs declared by installed skills"
 
@@ -277,7 +337,9 @@ class DynamicResourceAssembler:
             model_tier=model_tier,
             metadata={
                 "total_bots": len(provisioned_bots),
+                "provisioned": provision,
                 "total_tools": len(selected_tools),
+                "unavailable_tools": sorted(set(unavailable_tools)),
                 "total_skills": len(active_skills),
                 # Honest disclosure fields (DY-R3): what was and was not
                 # generated by this layer.
@@ -326,7 +388,7 @@ class DynamicResourceAssembler:
             f"Your focus: {role_desc}.\n\n"
             f"## Primary Objective\n"
             f"Execute your assigned tasks in goal: '{goal_title}'.\n"
-            f"User Context: {raw_prompt[:200]}\n\n"
+            f"Objective: {goal_title}\n\n"
             f"## Operating Principles\n"
             f"1. **Zero Guesswork**: Formulate hypotheses, examine codebase evidence, verify before marking complete.\n"
             f"2. **Strict Verification**: Every change must be backed by automated test coverage and invariant checks.\n"

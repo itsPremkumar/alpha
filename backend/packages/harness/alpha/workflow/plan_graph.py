@@ -37,6 +37,18 @@ from alpha.workflow.models import WorkflowGraph
 from alpha.workflow.schemas import SCHEMA_VERSION
 
 _WORKFLOW_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
+_ROOT_LOCKS: dict[str, threading.RLock] = {}
+_ROOT_LOCKS_GUARD = threading.Lock()
+
+
+def _root_lock(root: Path) -> threading.RLock:
+    key = str(root.resolve())
+    with _ROOT_LOCKS_GUARD:
+        lock = _ROOT_LOCKS.get(key)
+        if lock is None:
+            lock = threading.RLock()
+            _ROOT_LOCKS[key] = lock
+        return lock
 
 
 class PlanGraphError(RuntimeError):
@@ -54,6 +66,7 @@ class PlanVersion(BaseModel):
 
     schema_version: int = Field(default=SCHEMA_VERSION)
     workflow_id: str
+    owner_id: str | None = None
     version: int = Field(..., ge=0)
     graph: WorkflowGraph
     source: Literal["register", "patch", "replay", "hydration", "manual"] = "register"
@@ -69,7 +82,7 @@ class PlanGraphStore:
 
     def __init__(self, store_dir: Path | None = None) -> None:
         self.root = Path(store_dir) if store_dir is not None else runtime_home() / "workflow_store" / "plans"
-        self._lock = threading.Lock()
+        self._lock = _root_lock(self.root)
 
     # ------------------------------------------------------------------
     # Paths
@@ -106,8 +119,11 @@ class PlanGraphStore:
                 raise PlanGraphError(f"unexpected revision filename {path.name!r} in {directory}")
         return sorted(versions)
 
-    def history(self, workflow_id: str) -> list[PlanVersion]:
-        return [record for version in self.list_versions(workflow_id) if (record := self.get(workflow_id, version)) is not None]
+    def history(self, workflow_id: str, *, owner_id: str | None = None) -> list[PlanVersion]:
+        records = [record for version in self.list_versions(workflow_id) if (record := self.get(workflow_id, version)) is not None]
+        if owner_id is not None:
+            records = [record for record in records if record.owner_id == owner_id]
+        return records
 
     def latest(self, workflow_id: str) -> PlanVersion | None:
         versions = self.list_versions(workflow_id)
@@ -120,7 +136,7 @@ class PlanGraphStore:
         path = self.revision_path(record.workflow_id, record.version)
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = path.with_suffix(".tmp")
+            tmp = path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
             with tmp.open("w", encoding="utf-8") as handle:
                 json.dump(record.to_dict(), handle, indent=2)
                 handle.flush()
@@ -138,6 +154,7 @@ class PlanGraphStore:
         source: Literal["register", "patch", "replay", "hydration", "manual"] = "register",
         note: str = "",
         version: int | None = None,
+        owner_id: str | None = None,
     ) -> PlanVersion:
         """Append a revision. Version defaults to ``graph.version``."""
         target = graph.version if version is None else version
@@ -146,10 +163,8 @@ class PlanGraphStore:
         with self._lock:
             existing = self.get(workflow_id, target)
             if existing is not None:
-                raise PlanVersionConflict(
-                    f"plan revision {workflow_id!r} v{target} already exists (recorded {existing.created_at}); use compare_and_set to advance deliberately"
-                )
-            return self.save(PlanVersion(workflow_id=workflow_id, version=target, graph=graph, source=source, note=note))
+                raise PlanVersionConflict(f"plan revision {workflow_id!r} v{target} already exists (recorded {existing.created_at}); use compare_and_set to advance deliberately")
+            return self.save(PlanVersion(workflow_id=workflow_id, owner_id=owner_id, version=target, graph=graph, source=source, note=note))
 
     def compare_and_set(
         self,
@@ -159,20 +174,17 @@ class PlanGraphStore:
         new_graph: WorkflowGraph,
         source: Literal["patch", "replay", "manual"] = "patch",
         note: str = "",
+        owner_id: str | None = None,
     ) -> PlanVersion:
         """Advance the workflow to ``new_graph.version`` only if the current
         latest revision is exactly ``expected_version``."""
         with self._lock:
             latest = self.latest(workflow_id)
+            if owner_id is not None and latest is not None and latest.owner_id != owner_id:
+                raise PlanVersionConflict(f"plan workflow '{workflow_id!r}' belongs to another owner")
             current = latest.version if latest is not None else -1
             if current != expected_version:
-                raise PlanVersionConflict(
-                    f"optimistic-concurrency rejection for {workflow_id!r}: expected latest v{expected_version}, found v{current}"
-                )
+                raise PlanVersionConflict(f"optimistic-concurrency rejection for {workflow_id!r}: expected latest v{expected_version}, found v{current}")
             if new_graph.version <= current:
-                raise PlanGraphError(
-                    f"new graph version {new_graph.version} must be greater than current v{current} ({workflow_id!r})"
-                )
-            return self.save(
-                PlanVersion(workflow_id=workflow_id, version=new_graph.version, graph=new_graph, source=source, note=note)
-            )
+                raise PlanGraphError(f"new graph version {new_graph.version} must be greater than current v{current} ({workflow_id!r})")
+            return self.save(PlanVersion(workflow_id=workflow_id, owner_id=owner_id, version=new_graph.version, graph=new_graph, source=source, note=note))

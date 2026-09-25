@@ -45,12 +45,27 @@ $killedCount = 0
 function Get-ListeningProcessIds {
     param([int]$Port)
     $ids = @()
-    $conns = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
-    foreach ($c in $conns) {
-        if ($c.OwningProcess -and $c.OwningProcess -ne 0 -and -not ($ids -contains $c.OwningProcess)) {
-            $ids += $c.OwningProcess
+    try {
+        $conns = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction Stop
+        foreach ($c in $conns) {
+            if ($c.OwningProcess -and $c.OwningProcess -ne 0 -and -not ($ids -contains $c.OwningProcess)) {
+                $ids += $c.OwningProcess
+            }
         }
-    }
+    } catch {}
+    # Restricted Windows hosts can return no Get-NetTCPConnection rows even
+    # while netstat sees the listener. Keep the updater's stop path from
+    # falsely declaring the checkout quiescent and starting a duplicate stack.
+    try {
+        foreach ($line in (& netstat.exe -ano -p tcp 2>$null)) {
+            if ($line -match "^\s*TCP\s+\S+`:$Port\s+\S+\s+LISTENING\s+(\d+)\s*$") {
+                $pid = [int]$Matches[1]
+                if ($pid -ne 0 -and -not ($ids -contains $pid)) {
+                    $ids += $pid
+                }
+            }
+        }
+    } catch {}
     return $ids
 }
 

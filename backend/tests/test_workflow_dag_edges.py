@@ -66,9 +66,7 @@ def _apply_patch(key: str, operations: list[dict], base_version: int) -> str:
         "reason": "DY-R2 edge round-trip test",
         "operations": operations,
     }
-    return workflow_dag_manage.invoke(
-        {"action": "apply_patch", "key": key, "patch_json": json.dumps(patch)}
-    )
+    return workflow_dag_manage.invoke({"action": "apply_patch", "key": key, "patch_json": json.dumps(patch)})
 
 
 def _capture_graphs(monkeypatch) -> list[tuple]:
@@ -175,9 +173,7 @@ def test_remove_edge_round_trips_and_is_not_resurrected(monkeypatch):
         ],
         base_version=2,
     )
-    assert res2.startswith(
-        "Error applying patch: update_edge_condition: edge 'n2' -> 'n3' does not exist"
-    )
+    assert res2.startswith("Error applying patch: update_edge_condition: edge 'n2' -> 'n3' does not exist")
     assert len(captured) == 2
     rebuilt_base, _, _ = captured[1]
     assert ("n2", "n3") not in _edge_pairs((e.source, e.target) for e in rebuilt_base.edges)
@@ -273,9 +269,7 @@ def test_invalid_edge_ops_surface_real_errors(monkeypatch):
         [{"op": "add_edge", "args": {"edge": {"source": "n1", "target": "n3"}}}],
         base_version=42,
     )
-    assert res.startswith(
-        "Patch rejected: Optimistic concurrency violation: patch base version 42"
-    )
+    assert res.startswith("Patch rejected: Optimistic concurrency violation: patch base version 42")
 
     # 3. update_edge_condition against an edge that never existed.
     res = _apply_patch(
@@ -283,9 +277,7 @@ def test_invalid_edge_ops_surface_real_errors(monkeypatch):
         [{"op": "update_edge_condition", "args": {"source": "n1", "target": "n9", "condition": "x"}}],
         base_version=1,
     )
-    assert res.startswith(
-        "Error applying patch: update_edge_condition: edge 'n1' -> 'n9' does not exist"
-    )
+    assert res.startswith("Error applying patch: update_edge_condition: edge 'n1' -> 'n9' does not exist")
 
     # 4. An operation no layer implements must not report a fake commit.
     res = _apply_patch(key, [{"op": "fan_out", "args": {"node_id": "n1"}}], base_version=1)

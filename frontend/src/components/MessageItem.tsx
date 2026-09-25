@@ -10,7 +10,8 @@ import { ToolPill } from "./ToolPill";
 import { TodoBlock } from "./TodoBlock";
 import { HumanApprovalCard } from "./HumanApprovalCard";
 import { Volume2, Loader2, AlertCircle } from "lucide-react";
-import { synthesizeSpeech, MultimodalError } from "@/lib/multimodal";
+import { enqueueSpeech, isSpeechCancellation } from "@/lib/speech";
+import { primeSpeakerPlayback, speak, speakErrorMessage } from "@/lib/voice";
 
 interface MessageItemProps {
   message: ChatMessage;
@@ -43,31 +44,20 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
 
   const displayContent = dmMatch ? dmMatch[2] : groupMatch ? groupMatch[4] : message.content;
 
-  // Speaker playback: POST /tts → objectURL → <audio>; revoke on cleanup (plan §6).
+  // All message/voice playback shares one serial SpeechQueue.
   const [speaking, setSpeaking] = useState(false);
   const [speechLoading, setSpeechLoading] = useState(false);
   const [speakError, setSpeakError] = useState<string | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const urlRef = useRef<string | null>(null);
+  const speechAbortRef = useRef<AbortController | null>(null);
 
   const stopSpeech = () => {
-    const audio = audioRef.current;
-    if (audio) {
-      audio.onended = null;
-      audio.onerror = null;
-      audio.pause();
-      audioRef.current = null;
-    }
-    if (urlRef.current) {
-      URL.revokeObjectURL(urlRef.current);
-      urlRef.current = null;
-    }
+    speechAbortRef.current?.abort();
     setSpeaking(false);
+    setSpeechLoading(false);
   };
 
   const playSpeech = async () => {
-    if (speechLoading) return;
-    if (speaking) {
+    if (speaking || speechLoading) {
       stopSpeech();
       return;
     }
@@ -78,37 +68,28 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
     }
     setSpeakError(null);
     setSpeechLoading(true);
+    const controller = new AbortController();
+    speechAbortRef.current = controller;
     try {
-      const { blob } = await synthesizeSpeech(text);
-      if (blob.size === 0) throw new MultimodalError(503, "tts", "serving engine returned 0 audio bytes");
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      urlRef.current = url;
-      audioRef.current = audio;
-      audio.onended = () => stopSpeech();
-      audio.onerror = () => {
-        setSpeakError("The browser failed to play the audio.");
-        stopSpeech();
-      };
       setSpeaking(true);
-      await audio.play();
+      await primeSpeakerPlayback();
+      await enqueueSpeech(text, {
+        player: (value, signal) => speak(value, { signal }),
+        signal: controller.signal,
+      });
+      if (speechAbortRef.current === controller) setSpeaking(false);
     } catch (err) {
-      stopSpeech();
-      setSpeakError(
-        err instanceof MultimodalError
-          ? err.attempts.length > 0
-            ? `${err.message} — ${err.formatAttempts()}`
-            : err.message
-          : err instanceof Error
-            ? err.message
-            : String(err),
-      );
+      if (!isSpeechCancellation(err)) setSpeakError(speakErrorMessage(err));
+      if (speechAbortRef.current === controller) setSpeaking(false);
     } finally {
-      setSpeechLoading(false);
+      if (speechAbortRef.current === controller) {
+        speechAbortRef.current = null;
+        setSpeechLoading(false);
+      }
     }
   };
 
-  // Plan §6: revoke object URLs when the message unmounts mid-playback.
+  // Cancel only this message's queued/current task when its card unmounts.
   useEffect(() => () => stopSpeech(), []);
 
   const copyToClipboard = () => {

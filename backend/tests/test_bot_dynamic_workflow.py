@@ -9,6 +9,7 @@ bot-registry side effect - never fabricated evidence text.
 from __future__ import annotations
 
 import os
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -30,8 +31,10 @@ from alpha.workflow.runtime import DynamicWorkflowEngine
 from app.gateway.routers.bots import (
     BotCloneApiRequest,
     BotEvolveApiRequest,
+    BotWorkflowRequest,
     clone_bot_endpoint,
     evolve_bot_endpoint,
+    run_bot_workflow_endpoint,
 )
 
 
@@ -227,10 +230,7 @@ def test_workflow_bot_nodes_execute_through_runner_seam():
     assert graph.nodes["db_migrate"].output == "bot task done: Execute PostgreSQL zero-downtime schema migration"
     assert graph.nodes["db_migrate"].evidence == ["executor evidence for db_migrate"]
 
-    blob = (
-        f"{graph.nodes['arch_review'].output}{graph.nodes['db_migrate'].output}"
-        f"{graph.nodes['arch_review'].evidence}{graph.nodes['db_migrate'].evidence}"
-    )
+    blob = f"{graph.nodes['arch_review'].output}{graph.nodes['db_migrate'].output}{graph.nodes['arch_review'].evidence}{graph.nodes['db_migrate'].evidence}"
     assert "Executed by bot" not in blob
     assert "verified output with capability epoch" not in blob
 
@@ -279,3 +279,51 @@ async def test_bot_clone_and_evolve_endpoints():
     evolved_res = await evolve_bot_endpoint("developer", evolve_req, req)
     assert evolved_res["name"] == "developer_v2"
     assert evolved_res["version"] == 2
+
+
+@pytest.mark.asyncio
+async def test_bot_workflow_route_uses_gateway_kernel_and_named_profile(monkeypatch):
+    """Bot mode shares the Gateway kernel and never self-selects another bot."""
+    import alpha.orchestrator.dynamic_service as dynamic_service_module
+    from app.gateway.routers import bots as bots_router
+    from app.gateway.routers.workflows import get_workflow_kernel
+
+    captured: dict[str, object] = {}
+
+    class _Result:
+        def to_dict(self):
+            return {"status": "compiled", "run_id": None, "workflow_id": "wf_bot_test"}
+
+    class _Service:
+        def __init__(self, kernel):
+            captured["kernel"] = kernel
+
+        def execute(self, request, **kwargs):
+            captured["request"] = request
+            captured["kwargs"] = kwargs
+            return _Result()
+
+    profile = BotProfile(
+        name="architect",
+        display_name="Architect",
+        role="Architecture reviewer",
+        soul="Review system boundaries.",
+    )
+    monkeypatch.setattr(dynamic_service_module, "DynamicWorkflowService", _Service)
+    monkeypatch.setattr(bots_router, "_registry", lambda: SimpleNamespace(get_bot=lambda name: profile))
+    request = SimpleNamespace(
+        state=SimpleNamespace(user=SimpleNamespace(system_role="admin")),
+        _agent_workspace_test_bypass_auth=True,
+    )
+
+    result = await run_bot_workflow_endpoint(
+        "architect",
+        BotWorkflowRequest(prompt="review the architecture", auto_execute=False),
+        request,
+    )
+
+    assert result == {"status": "compiled", "run_id": None, "workflow_id": "wf_bot_test"}
+    assert captured["kernel"] is get_workflow_kernel()
+    assert captured["request"].mode == "bot"
+    assert captured["request"].context["bot_name"] == "architect"
+    assert captured["kwargs"]["provision"] is False

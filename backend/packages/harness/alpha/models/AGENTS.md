@@ -1,3 +1,10 @@
+### System One transport (`packages/harness/alpha/models/system_one.py`)
+
+- `SystemOneClient` supports hosted `vercel-gateway`, direct `typesafe`, and local `laya` providers. Laya uses the TypeSafe/Jev-compatible `POST /v1/systemone` contract, `noul` boolean questions, and the same `choice`/`score` answer parser; it is not a chat/LLM model and must not be added to `models[]`.
+- Laya may run keyless on loopback. The client must not fall back to `AI_GATEWAY_API_KEY`, `TYPESAFE_API_KEY`, or `JEV_API_KEY` for that provider; it sends no Authorization header unless `LAYA_API_KEY`/`system_one.api_key` is configured. Hosted providers still fail closed without their key.
+- Laya preflight bounds (`laya_max_state_chars`, `laya_max_questions`, `laya_max_choice_options`) abstain to the existing heuristic/LLM path before HTTP; a short checkpoint must never silently decide on truncated evidence. `evaluate_choice_partitioned()` is the provider-neutral bounded tournament for larger choice catalogs: it retains every original option for ranking, returns `None` on any failed/low-confidence stage, and obeys `laya_max_partition_requests` rather than flooding the local runtime. Calibration records carry `provider` so local Laya and hosted Jev samples are not pooled.
+- The default client resolves the current `AppConfig.system_one` on each access so provider changes in `config.yaml` do not require a restart; explicitly constructed clients remain stable until `reload()`. Tests: `tests/test_system_one_laya.py` and the existing `tests/test_system_one*.py` suites.
+
 ### Model Factory (`packages/harness/alpha/models/factory.py`)
 
 - `create_chat_model(name, thinking_enabled)` instantiates LLM from config via reflection

@@ -27,7 +27,7 @@ def store(tmp_path) -> PlanGraphStore:
 
 
 def test_record_and_read_history(store: PlanGraphStore) -> None:
-    first = store.record_revision("wf", _graph(1), source="register", note="initial")
+    first = store.record_revision("wf", _graph(1), source="register", note="initial", owner_id="owner-a")
     second = store.record_revision("wf", _graph(2), source="patch", note="add node")
 
     assert first.version == 1 and second.version == 2
@@ -36,6 +36,7 @@ def test_record_and_read_history(store: PlanGraphStore) -> None:
     assert store.latest("wf").version == 2
     assert store.get("wf", 1).graph.nodes["n1"].prompt == "work 1"
     assert store.get("wf", 99) is None
+    assert store.history("wf", owner_id="owner-b") == []
 
 
 def test_duplicate_revision_is_refused_history_is_append_only(store: PlanGraphStore) -> None:
@@ -57,6 +58,21 @@ def test_compare_and_set_advances_and_rejects_stale_writer(store: PlanGraphStore
     with pytest.raises(PlanVersionConflict, match="expected latest v1, found v2"):
         store.compare_and_set("wf", expected_version=1, new_graph=_graph(3))
     assert store.list_versions("wf") == [1, 2]
+
+
+def test_compare_and_set_rejects_a_different_owner(store: PlanGraphStore) -> None:
+    store.record_revision("wf_owned", _graph(1), owner_id="owner-a")
+
+    with pytest.raises(PlanVersionConflict, match="belongs to another owner"):
+        store.compare_and_set(
+            "wf_owned",
+            expected_version=1,
+            new_graph=_graph(2),
+            owner_id="owner-b",
+        )
+
+    assert store.list_versions("wf_owned") == [1]
+    assert store.history("wf_owned", owner_id="owner-b") == []
 
 
 def test_compare_and_set_requires_a_real_advance(store: PlanGraphStore) -> None:

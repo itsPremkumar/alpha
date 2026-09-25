@@ -202,6 +202,39 @@ class RunStore(abc.ABC):
         """
         pass
 
+    async def list_recovery_candidates(
+        self,
+        *,
+        statuses: set[str],
+        stop_reasons: set[str],
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Return terminal runs eligible for an automatic recovery pass.
+
+        Implementations must exclude rows carrying a durable cancellation
+        request; an explicit cancel is never an auto-resume candidate. The
+        compatibility default is an empty result: third-party stores that
+        predate durable recovery must fail closed rather than being scanned with
+        guessed SQL semantics. Built-in stores override this method.
+        """
+        return []
+
+    async def transition_recovery_stop_reason(
+        self,
+        run_id: str,
+        *,
+        expected_status: str,
+        expected_stop_reason: str,
+        stop_reason: str,
+        error: str | None = None,
+    ) -> bool:
+        """Compare-and-set a terminal run's recovery disposition.
+
+        The expected status/reason pair fences stale recovery workers.  A losing
+        worker must never replace a newer worker's confirmation/exhaustion state.
+        """
+        raise NotImplementedError
+
     @abc.abstractmethod
     async def start_run(self, run_id: str) -> bool:
         """Atomically transition a pending run to running.

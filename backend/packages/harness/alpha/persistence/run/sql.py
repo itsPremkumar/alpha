@@ -273,6 +273,62 @@ class RunRepository(RunStore):
             await session.commit()
             return result.rowcount != 0
 
+    async def list_recovery_candidates(
+        self,
+        *,
+        statuses: set[str],
+        stop_reasons: set[str],
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        if not statuses or not stop_reasons or limit <= 0:
+            return []
+        stmt = (
+            select(RunRow)
+            .where(
+                or_(RunRow.operation_kind == "run", RunRow.operation_kind.is_(None)),
+                RunRow.status.in_(tuple(statuses)),
+                RunRow.stop_reason.in_(tuple(stop_reasons)),
+                # A durable cancellation request is an explicit stop fence.
+                # Do not auto-resume it even if shutdown/reconciliation later
+                # writes a recoverable-looking terminal reason.
+                RunRow.cancel_action.is_(None),
+                RunRow.cancel_requested_at.is_(None),
+            )
+            .order_by(RunRow.updated_at.asc(), RunRow.run_id.asc())
+            .limit(min(limit, 1000))
+        )
+        async with self._sf() as session:
+            result = await session.execute(stmt)
+            return [self._row_to_dict(row) for row in result.scalars()]
+
+    async def transition_recovery_stop_reason(
+        self,
+        run_id: str,
+        *,
+        expected_status: str,
+        expected_stop_reason: str,
+        stop_reason: str,
+        error: str | None = None,
+    ) -> bool:
+        values: dict[str, Any] = {
+            "stop_reason": stop_reason,
+            "updated_at": datetime.now(UTC),
+        }
+        if error is not None:
+            values["error"] = error
+        async with self._sf() as session:
+            result = await session.execute(
+                update(RunRow)
+                .where(
+                    RunRow.run_id == run_id,
+                    RunRow.status == expected_status,
+                    RunRow.stop_reason == expected_stop_reason,
+                )
+                .values(**values)
+            )
+            await session.commit()
+            return result.rowcount != 0
+
     async def start_run(self, run_id: str) -> bool:
         """Start only a still-pending run; cancelled rows must not be resurrected."""
         async with self._sf() as session:

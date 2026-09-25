@@ -63,7 +63,7 @@ export async function getEvolutionIdentity(): Promise<EvolutionIdentity> {
 
 /** Persisted update state from alpha.evolution.release_check.load_update_state(). */
 export interface EvolutionUpdateState {
-  /** IDLE | CHECKING | UPDATE_AVAILABLE | UP_TO_DATE | CHECK_FAILED (or "unknown"). */
+  /** IDLE | CHECKING | UPDATE_AVAILABLE | UP_TO_DATE | CHECK_FAILED | RECOVERY_REQUIRED (or "unknown"). */
   state: string;
   checkedAt: string | null;
   installedVersion: string | null;
@@ -93,6 +93,16 @@ export async function getEvolutionUpdateState(): Promise<EvolutionUpdateState> {
 export async function checkForEvolutionUpdate(): Promise<EvolutionUpdateState> {
   const d = await send<Record<string, unknown>>("/evolution/update-check", "POST", {});
   return toUpdateState(d ?? {});
+}
+
+/**
+ * Queue the admin-only detached source transaction. The server ignores any
+ * client-supplied URL/ref; it applies only its verified persisted candidate.
+ * ``force`` confirms an attended manual handoff only and never bypasses the
+ * server's safety verdict.
+ */
+export async function requestEvolutionUpdate(force = false): Promise<Record<string, unknown>> {
+  return send<Record<string, unknown>>("/evolution/update-apply", "POST", { force });
 }
 
 /** POST /api/evolution/candidates — propose an evolvable-surface candidate (201). */

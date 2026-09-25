@@ -63,7 +63,121 @@ port is the entire external surface. Any new published port needs an explicit bi
 address; `backend/tests/test_compose_default_bind_host.py` pins this for every service in
 both compose files.
 
-## Repository Map
+## Free local real-time voice contract
+
+Voice is an end-to-end conversation path, not a second agent runtime. The browser owns
+microphone/playback state; the Gateway owns VAD endpointing and local speech inference; the
+final transcript enters the existing thread-run/SSE pipeline. Chat graph events and binary
+audio remain separate transports.
+
+`voice.routing.mode: local_only` is the default for TTS/STT. It must skip configured remote
+T1 speech models and keyless/network T2 speech providers before T3; a missing local asset
+fails honestly rather than silently sending audio to a cloud speech service. Only the LLM
+may use a paid API. Browser `SpeechRecognition`/`speechSynthesis` are not fallbacks. The frontend document
+must send `Permissions-Policy: microphone=(self)`, and the first explicit mic/speaker
+control must prime one shared Web Audio output before automatic playback. Mic/speaker
+access state and blocked-permission/device errors remain visible and honest. The Electron
+shell must explicitly grant microphone-only capture to the exact local Alpha origin and
+deny camera or mixed audio/video requests through both permission request/check handlers.
+
+Runtime speech models are process-cached and bounded. `faster-whisper` and Piper assets live
+under `Paths`/`runtime_home()`'s `voice/models` tree, are installed by `make voice-setup`,
+and are never downloaded implicitly by a request. Client TTS input is a safe voice ID, never
+an arbitrary model path. `voice.enabled=false`, WebSocket authentication/origin checks,
+`runs:create`, session/frame/utterance limits, and stale-partial suppression apply to every
+speech operation including direct PTT transcription.
+
+The public nginx configurations must forward Upgrade/Connection for
+`/api/multimodal/voice` before their generic `/api/` locations. Frontend tests must pin
+single-microphone ownership, interim/final protocol handling, automatic submission through
+`sendMessage`, sentence-level speech queueing, per-message/manual playback sharing that
+same queue, cancellation, and resume-after-playback.
+Backend tests pin local-only tier enforcement, model cache reuse, endpointing, authorization,
+and bounds. Setup and operations are documented in `docs/VOICE_CONVERSATION.md`.
+
+## Lion companion contract
+
+The lion companion is presentation-only. `frontend/src/components/LionPet.tsx`
+owns the in-app fixed overlay and bounded local settings; `frontend/src/lib/lion-pet.ts`
+owns state names, persistence normalization, and message sanitization. The optional
+Electron companion in `electron/pet.html` is a transparent always-on-top window,
+not a second agent runtime. The main process accepts companion state only from
+trusted local windows, clamps it to the known state set and a short message, and
+never forwards prompts, responses, thread IDs, tool output, or credentials.
+Closing the main desktop window closes the companion and follows normal service
+shutdown. Regression coverage lives in `frontend/src/lib/lion-pet.test.mjs` and
+`electron/tests/lion-pet.test.mjs`; the user-facing contract is documented in
+`docs/LION_COMPANION.md`.
+
+## Swarm v2 runtime contract
+
+`alpha.swarm` is the lifecycle owner for autonomous swarm plans. Plans are explicit
+DAGs with atomic JSON checkpoints, ordered JSONL audit events, bounded blackboard
+messages, lease-fenced task attempts, retry/backoff state, measured token/tool
+budgets, deterministic reflection, bounded consecutive-failure circuit breaking,
+and optional evidence-backed consensus. A late worker result is accepted only when its
+current lease still matches; cancellation, budget exhaustion, dependency failure, and
+pause/resume are separate states. `auto_replan` is a bounded deterministic repair-task
+expansion that redirects blocked dependents; it does not silently convert a failed task
+into success. The synchronous model tool may use the runner's daemon-thread fallback when
+no event loop is available.
+
+Gateway swarm reads and mutations are owner-scoped (`SwarmPlan.owner_id`); the
+`swarm` tool derives the owner from the request context and cannot self-assert a
+verified blackboard message. Model-visible blackboard content is bounded data in
+the human input channel, never an elevated system instruction. Worktree paths are
+validated as relative metadata and the worker always uses the server project root.
+
+The current persistence adapter is deliberately local and process-scoped: it is
+atomic and restart-recoverable for a single Gateway, but it is not a substitute
+for a shared SQL lease repository in a multi-worker deployment. Do not describe
+local JSON checkpoints as cross-process exactly-once execution. The v2 API/tool
+surfaces expose metrics, task leases, messages, leader election, consensus, and
+acceptance-verdict fields so operators can distinguish execution success from
+acceptance success. Regression coverage lives in
+`backend/tests/test_swarm_engine.py`, `test_swarm_advanced_features.py`,
+`test_swarm_worker_execution.py`, and `test_swarm_v2_runtime.py`.
+
+## Dynamic workflow plane
+
+`alpha.workflow.runtime.DynamicWorkflowEngine` and
+`alpha.orchestrator.loop.ExecutionKernel` own typed workflow graphs, waves,
+conditional routing, bounded loops, retries, budgets, approval waits, patch OCC,
+replanning, replay, and compensation. The opt-in
+`alpha.orchestrator.dynamic_service.DynamicWorkflowService` composes the existing
+intent, capability/resource, bot, DWE, and event seams; it does not replace
+`RunManager`, bot/group lifecycle ownership, or the scheduler. Hosts must invoke
+its synchronous child execution through their own worker boundary and must not
+assume that cancelling an await cancels an already-running node.
+
+Gateway routes are `POST /api/workflows/dynamic/perceive`,
+`POST /api/workflows/dynamic/execute`, the existing `/api/workflows/turns`
+compatibility seam (`dynamic=true` opts into the full loop), and
+`POST /api/bots/{name}/workflow`. Definitions/runs are server-owner-scoped;
+request context cannot self-assert ownership. Registry discovery is a bounded
+read-only projection, not proof that a provider is connected. Missing executors,
+skills, MCP connections, compensation callbacks, or verification evidence fail
+or disclose honestly.
+
+The default `alpha.local.digest` executor is explicitly a
+`local_digest_projection`: it hashes inputs to exercise graph mechanics and is
+never reported as domain-task acceptance. A real model/tool/MCP/sandbox/bot
+executor must be bound for domain work. Recurring prompts disclose the missing
+scheduler handoff rather than creating a second cron owner.
+
+Workflow events are appended to the durable JSONL sink before listeners run;
+the Gateway sink is fail-closed, redacts event payloads, validates paths/schema,
+and exposes durability, projection, hydration, replay, and append-only plan
+history. The local adapter is atomic and restart-recoverable for one Gateway
+process, not a shared multi-worker lease/exactly-once repository. Do not claim
+true concurrent wave parallelism or cross-process exactly-once execution until
+those coordination boundaries are implemented. Full operations and API examples
+are in [`docs/DYNAMIC_WORKFLOWS.md`](docs/DYNAMIC_WORKFLOWS.md); regression
+coverage is in `backend/tests/test_dynamic_workflow_service.py`,
+`test_dynamic_workflow_router.py`, `test_dynamic_workflow_engine.py`,
+`test_workflow_dag_edges.py`, `test_workflow_durability_router.py`, and
+`test_bot_dynamic_workflow.py`.
+
 
 ```
 agent-workspace/
@@ -158,9 +272,16 @@ make setup       # Interactive setup wizard (recommended for new users); unatten
 make doctor      # Check configuration and system requirements
 make prod-check  # Production readiness pre-flight (versions, config files, secrets)
 make support-bundle  # Generate redacted troubleshooting summary, AI issue draft, and optional zip
+make update-status   # Read durable source-update state and policy
+make update-check    # Discover a verified GitHub release/branch (read-only)
+make update-apply    # Apply the verified candidate after explicit confirmation
+make update-recover  # Recover an interrupted update transaction
+make update-skip VERSION=x.y.z  # Skip one verified version
 make config      # Generate local config files from the examples
 make check       # Check that required tools are installed
 make install     # Install all dependencies (frontend + backend + pre-commit hooks)
+make voice-setup # Install free local faster-whisper + Piper packages/models
+make voice-verify # Verify local speech dependencies and model assets
 make extension-install SOURCE=...  # Install and enable a trusted Python extension
 make extension-upgrade SOURCE=...  # Replace an installed extension and keep its config
 make extension-list                # List configured Python extensions
@@ -216,6 +337,7 @@ Corepack honors its pinned package-manager version.
 ```bash
 make config      # copy config.example.yaml -> config.yaml and extensions_config.example.json -> extensions_config.json (both gitignored)
 make install     # install frontend + backend deps and pre-commit hooks
+make voice-setup # optional: install free local Whisper + Piper models
 make dev         # then start everything
 ```
 
@@ -276,6 +398,38 @@ pages, belong in snapshots; working memory stays ephemeral. These locks do not
 provide multi-process coherence. Keep HTTP/model-supplied owners and paths out of
 this boundary; see `backend/packages/harness/alpha/memory/cognitive/AGENTS.md`
 for the detailed contract and current semantic-capacity caveat.
+
+## System One / Laya provider boundary
+
+`system_one.provider` is a validated choice between hosted Jev (`vercel-gateway`, `typesafe`) and the self-hosted Apache-2.0 Laya decision model (`laya`). Laya speaks the same `/v1/systemone` wire protocol as TypeSafe Jev (`noul` for boolean questions) but is not a chat model and must not be inserted into the `models[]` catalog. Laya's runtime and weights live under the ignored project-local `.agent-workspace/laya` environment so its PyTorch/Transformers stack is not pulled into Alpha's core lockfile. The client permits keyless loopback Laya, never forwards cloud credentials to it, and abstains before HTTP when state, question count, or choice cardinality exceeds the configured safe budget. Keep the initial local rollout in `shadow_mode`; calibration records are partitioned by provider. Reproducible setup is `make system-one-laya-setup MODEL=english DEVICE=auto` followed by `make system-one-laya-serve` and `make system-one-laya-status`.
+
+## Guarded source auto-update contract
+
+Local source checkouts may opt into the Phase-2 update engine in
+`backend/packages/harness/alpha/evolution/update_engine.py`. The committed
+`config/update-policy.json` is a disabled, credential-free template; real
+unattended deployments should keep a mutable operator policy outside the clean
+checkout and select it with `ALPHA_UPDATE_POLICY_PATH`. `main` branch tracking
+is an explicit operator choice, not the production default. The engine is a
+separate trust boundary: it requires a clean worktree, manifest-matching
+GitHub remote, allowed branch, fast-forward ancestry, stable target ref,
+optional signature verification, backup ref, and post-restart health checks. It
+uses argv-only subprocesses and never accepts a client-supplied URL/ref.
+Gateway apply routes only queue a detached transaction and are admin-only; PATs
+and auth-disabled/internal identities never receive admin capability. A
+runtime-home maintenance barrier closes new run admission before mutation, and
+manual confirmation never bypasses `canApply` or other safety gates.
+State/history/lock files live under `runtime_home()` and must never contain
+GitHub tokens or secrets. Docker images, Helm releases, and the Electron
+installer remain orchestrator-owned and are not updated in place.
+
+The `self_update` loop is registered in `AutonomySupervisor`; an enabled
+policy causes the Gateway to register it automatically, while an explicit
+`autonomy.loops.self_update` block can override/disable it. Windows autostart
+may register `Alpha_Update`, but the policy is the kill switch. Commands:
+`make update-status`, `make update-check`, `make update-apply`, and
+`make update-recover`. Full operations and recovery guidance live in
+`docs/AUTO_UPDATE.md`; tests live in `backend/tests/test_auto_update.py`.
 
 ## Integration health contract
 

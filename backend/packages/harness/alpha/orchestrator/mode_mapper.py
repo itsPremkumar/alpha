@@ -116,29 +116,19 @@ def _build_graph(paradigm: ExecutionParadigm, mode: str, prompt: str) -> tuple[W
     if paradigm == ExecutionParadigm.DIRECT_AGENT:
         node = _single_node("direct", _agent_kind(mode), prompt)
         graph = WorkflowGraph(version=1, nodes={"direct": node}, edges=[])
-        reason = (
-            "sequential archetype: one direct-agent node executed through the bound "
-            f"node_runner ({node.type.value} node kind for mode={mode})"
-        )
+        reason = f"sequential archetype: one direct-agent node executed through the bound node_runner ({node.type.value} node kind for mode={mode})"
         return graph, "sequential", reason
 
     if paradigm == ExecutionParadigm.SUBAGENT:
         node = _single_node("delegate", NodeType.SUBAGENT, prompt)
         graph = WorkflowGraph(version=1, nodes={"delegate": node}, edges=[])
-        reason = (
-            "subagent-delegation archetype: one SUBAGENT node executed through the bound "
-            "node_runner (same kind in normal and bot mode per section 13)"
-        )
+        reason = "subagent-delegation archetype: one SUBAGENT node executed through the bound node_runner (same kind in normal and bot mode per section 13)"
         return graph, "subagent-delegation", reason
 
     if paradigm == ExecutionParadigm.BOT_PROFILE:
         node = _single_node("bot_task", NodeType.BOT, prompt)
         graph = WorkflowGraph(version=1, nodes={"bot_task": node}, edges=[])
-        reason = (
-            "sequential archetype over a BOT node: the bot task itself runs through the "
-            "bound node_runner; a specialist clone is only created when node config asks "
-            "for one (never fabricated)"
-        )
+        reason = "sequential archetype over a BOT node: the bot task itself runs through the bound node_runner; a specialist clone is only created when node config asks for one (never fabricated)"
         return graph, "sequential", reason
 
     if paradigm == ExecutionParadigm.MOA:
@@ -153,11 +143,7 @@ def _build_graph(paradigm: ExecutionParadigm, mode: str, prompt: str) -> tuple[W
             },
         )
         graph = WorkflowGraph(version=1, nodes={"deliberate": node}, edges=[])
-        reason = (
-            "quorum/vote archetype: ballots are real node_runner results "
-            "(vote_source=executor); with no voting executor bound the node fails with "
-            "the real reason instead of inventing agreement"
-        )
+        reason = "quorum/vote archetype: ballots are real node_runner results (vote_source=executor); with no voting executor bound the node fails with the real reason instead of inventing agreement"
         return graph, "quorum-vote", reason
 
     if paradigm == ExecutionParadigm.DEEP_RESEARCH:
@@ -181,11 +167,7 @@ def _build_graph(paradigm: ExecutionParadigm, mode: str, prompt: str) -> tuple[W
             nodes={fan.id: fan, synthesize.id: synthesize},
             edges=[WorkflowEdge(source=fan.id, target=synthesize.id)],
         )
-        reason = (
-            "map-reduce archetype: MAP fans out over state['sources'] through the bound "
-            "node_runner and REDUCE folds only executor-produced child results; when "
-            "'sources' is absent the MAP fails with the engine's real reason"
-        )
+        reason = "map-reduce archetype: MAP fans out over state['sources'] through the bound node_runner and REDUCE folds only executor-produced child results; when 'sources' is absent the MAP fails with the engine's real reason"
         return graph, "map-reduce", reason
 
     if paradigm == ExecutionParadigm.DEEP_THINK:
@@ -197,11 +179,7 @@ def _build_graph(paradigm: ExecutionParadigm, mode: str, prompt: str) -> tuple[W
             loop_policy=LoopPolicy(max_iterations=2),
         )
         graph = WorkflowGraph(version=1, nodes={"reflect": node}, edges=[])
-        reason = (
-            "bounded-loop archetype: a LOOP node re-executes through the bound "
-            "node_runner until LoopPolicy.max_iterations (2) is reached — bounded, "
-            "never unbounded self-reflection"
-        )
+        reason = "bounded-loop archetype: a LOOP node re-executes through the bound node_runner until LoopPolicy.max_iterations (2) is reached — bounded, never unbounded self-reflection"
         return graph, "loop-bounded", reason
 
     raise ValueError(f"unmapped paradigm: {paradigm!r}")
@@ -234,10 +212,7 @@ def build_paradigm_definition(
                 paradigm=normalized,
                 expressible=False,
                 mode=mode,
-                reason=(
-                    f"unknown execution paradigm '{normalized}' has no DWE construct "
-                    "mapping — not expressible yet, no run started"
-                ),
+                reason=(f"unknown execution paradigm '{normalized}' has no DWE construct mapping — not expressible yet, no run started"),
             )
 
     if normalized in NON_EXPRESSIBLE_REASONS:
@@ -278,6 +253,7 @@ def map_paradigm(
     prompt: str = "",
     initial_state: dict[str, object] | None = None,
     workflow_id: str | None = None,
+    owner_id: str | None = None,
 ) -> ParadigmMapping:
     """Map a paradigm and start a real DWE run for it through the kernel.
 
@@ -290,8 +266,12 @@ def map_paradigm(
         return mapping
 
     kernel.engine.register_definition(mapping.definition)
-    state: dict[str, object] = {"objective": prompt} if not initial_state else dict(initial_state)
-    run = kernel.start_run(mapping.workflow_id, initial_state=state, mode=mode)
+    # The prompt is the authoritative objective for a turn.  Callers may add
+    # structured initial state (for example MAP inputs), but an empty mapping
+    # must not erase the objective needed by the handoff contract.
+    state: dict[str, object] = dict(initial_state) if initial_state is not None else {}
+    state.setdefault("objective", prompt)
+    run = kernel.start_run(mapping.workflow_id, initial_state=state, mode=mode, owner_id=owner_id)
     return ParadigmMapping(
         paradigm=mapping.paradigm,
         expressible=True,

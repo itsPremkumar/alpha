@@ -23,6 +23,7 @@ function visit(node) {
 }
 visit(ast);
 assert.ok(sendSource);
+assert.match(sendSource, /on_disconnect:\s*["']continue["']/);
 
 async function send(fetchResponse, { draft = "  retry me  ", newerDraft = "", abort = false, failPostStream = false } = {}) {
   const state = { messages: [], saved: [], input: draft, error: null, loading: false, suggestions: [], followUps: 0, runs: 0, autoplay: 0 };
@@ -55,6 +56,7 @@ async function send(fetchResponse, { draft = "  retry me  ", newerDraft = "", ab
     // real consumer must never fire in any scenario below.
     readAutoplayEnabled: () => false,
     autoplaySpeak: async () => { state.autoplay++; return false; },
+    updateLion: () => {},
     fetch: async () => {
       if (newerDraft) state.input = newerDraft;
       if (abort) abortRef.current.abort();

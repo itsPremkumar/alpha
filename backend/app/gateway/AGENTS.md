@@ -4,6 +4,8 @@ FastAPI listens on port 8001; health: `GET /health` (liveness) and `GET /health/
 
 Durable MCP notifications use internal Agent runs. Keep their trusted delivery instruction outside the user-input boundary, and frame serialized remote events as untrusted before model invocation. Strict thread existence/ownership admission dead-letters events whose task outlives its deleted chat instead of recreating the thread.
 
+**Safe run continuation** is owned by `app/gateway/run_recovery.py`, not by `RunManager` or an individual router. `RunManager` remains the sole lifecycle owner and the only producer of orphan/shutdown terminal states; the Gateway service consumes those durable states, checks the current checkpoint through a graph-required `CheckpointStateAccessor` (raw full-mode blobs cannot prove `next`/`tasks` and are rejected for recovery), and launches continuation through the same trusted `start_run` boundary used by scheduled/internal work. Only pending model/agent nodes auto-resume. Tool, MCP, custom, shell, browser, write/delete, payment, unknown, ownerless, stale-thread, exhausted, or malformed-checkpoint cases become explicit CAS-fenced stop reasons and never replay automatically. Scheduled-task and durable MCP-notification rows are also excluded because their own queue/dispatcher owns occurrence identity and completion accounting; durable cancellation requests are excluded as an explicit stop fence even if shutdown writes a recoverable-looking reason. Each continuation has a deterministic idempotency key and a persisted attempt number, so a crash between checkpoint inspection and admission cannot create duplicate workers. Network-disconnected SSE clients do not cancel creator runs by default; `POST .../cancel` remains the explicit stop path. See `packages/harness/alpha/runtime/AGENTS.md` for the full state/reason contract.
+
 CORS is same-origin by default when requests enter through nginx on port 2026. Split-origin or port-forwarded browser clients must opt in with `GATEWAY_CORS_ORIGINS` (exact origins); Gateway `CORSMiddleware` and `CSRFMiddleware` both read that variable so browser CORS and auth-origin checks stay aligned. Those clients also need `CORS_EXPOSED_HEADERS` (`csrf_middleware.py`): run-creating routes return the run's id in `Content-Location`, which is not CORS-safelisted, so JS cannot read it unless it is exposed — and the LangGraph SDK resolves run metadata from that header alone, so withholding it breaks `useStream`'s `onCreated` and thread-gated actions.
 
 Browser auth sessions are owned by `app.gateway.auth.session_cookie`. Login accepts a `remember_me` form flag, but the Gateway never stores passwords. `SessionCookiePolicy` persists the `HttpOnly access_token` cookie only for HTTPS/trusted-forwarded HTTPS, direct-host localhost HTTP, or explicit operator opt-in for insecure persistence; public HTTP sandbox URLs degrade to session cookies.
@@ -50,6 +52,20 @@ expected registered assistant row emits a drift warning so changes to
 LangGraph's internal persistence contract are observable. With current
 create/update writes and all legacy versions sanitized, ordinary
 owner-scoped assistant version selection remains enabled.
+
+**Dynamic workflow routes**: `workflows.py` owns the opt-in dynamic plane:
+`POST /dynamic/perceive` (read-only preview), `POST /dynamic/execute` (compile and
+execute), `POST /turns` with `dynamic=true` (compatibility turn seam), and the
+bot-mode `POST /api/bots/{name}/workflow` adapter. Definitions and runs are
+owner-scoped for real requests; request bodies cannot self-assert an owner.
+The registry endpoint is a bounded projection, not a live connection claim.
+The digest executor is labeled `local_digest_projection` and never satisfies
+domain acceptance. `workflows.py` also owns step/cancel/approval/patch/replan/
+compensation, append-only plan history, event/replay/projection/hydration, and
+fail-closed durable-sink status. The local event store is restart-recoverable
+for one process, not cross-process exactly-once coordination. See
+`docs/DYNAMIC_WORKFLOWS.md` and the dynamic workflow tests before changing these
+boundaries.
 
 **Routers**:
 

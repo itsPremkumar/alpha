@@ -71,6 +71,34 @@ make setup-sandbox
 
 If you skip this step, the image will be automatically pulled on first agent execution, which may take several minutes depending on your network speed.
 
+## Local Voice Setup (Optional)
+
+For fully local real-time conversation, install the optional speech runtime and pinned model assets from the repository root:
+
+```bash
+make voice-setup
+make voice-verify
+```
+
+This uses faster-whisper for microphone transcription and Piper for response speech. It requires no cloud speech API key; only the configured LLM may incur a cost. See [Real-Time Voice Conversation](../../docs/VOICE_CONVERSATION.md) for configuration, Docker, privacy, and troubleshooting.
+
+## Local Laya System One Setup (Optional)
+
+Laya is an optional, open-weights System One decision model. It is not an LLM entry
+under `models[]`; Alpha reaches it through the provider-neutral `system_one` client.
+The helper creates an isolated environment and project-local checkpoint cache:
+
+```bash
+# From the repository root
+python backend/scripts/system_one_laya_setup.py setup
+python backend/scripts/system_one_laya_setup.py serve
+```
+
+Use `--model multilingual`, `--model typed-decisions`, or `--model router` to select
+another checkpoint. Set `system_one.provider: laya` in `config.yaml`; keep
+`shadow_mode: true` while measuring. See [System One](../../docs/SYSTEM_ONE.md) for
+the wire contract, authentication, and fallback rules.
+
 ## Troubleshooting
 
 ### Config file not found
@@ -95,4 +123,5 @@ chmod 600 ../config.yaml  # Protect sensitive configuration
 ## See Also
 
 - [Configuration Guide](CONFIGURATION.md) - Detailed configuration options
+- [Real-Time Voice Conversation](../../docs/VOICE_CONVERSATION.md) - Free local STT/TTS setup and operation
 - [Architecture Overview](../CLAUDE.md) - System architecture

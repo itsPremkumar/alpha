@@ -263,3 +263,130 @@ test("plan history maps versions and keeps latest_source null when absent", asyn
   assert.deepEqual(history.versions, [1, 2]);
   assert.equal(history.latest_source, null);
 });
+
+test("listWorkflowRuns maps runs envelope and preserves statuses honestly", async () => {
+  setHttpHandler((path, method) => {
+    assert.equal(path, "/workflows/runs?status=running&limit=10");
+    assert.equal(method, "GET");
+    return {
+      runs: [
+        {
+          run_id: "run_dyn_1",
+          workflow_id: "wf_dyn_1",
+          status: "running",
+          graph_version: 3,
+          active_nodes: ["task_02"],
+          completed_nodes: ["task_01"],
+          failed_nodes: [],
+          waiting_nodes: [],
+          waiting_reason: null,
+          created_at: "2026-09-24T12:00:00Z",
+          updated_at: "2026-09-24T12:05:00Z",
+        },
+      ],
+      count: 1,
+    };
+  });
+  const runs = await wf.listWorkflowRuns({ status: "running", limit: 10 });
+  assert.equal(runs.length, 1);
+  assert.equal(runs[0].run_id, "run_dyn_1");
+  assert.equal(runs[0].status, "running");
+  assert.equal(runs[0].graph_version, 3);
+  assert.deepEqual(runs[0].completed_nodes, ["task_01"]);
+});
+
+test("perceiveDynamicWorkflow calls /dynamic/perceive and maps intent & goal", async () => {
+  setHttpHandler((path, method, payload) => {
+    assert.equal(path, "/workflows/dynamic/perceive");
+    assert.equal(method, "POST");
+    assert.equal(payload.prompt, "boost feature implementation");
+    return {
+      perception: {
+        raw_prompt: "boost feature implementation",
+        intent_type: "boost",
+        primary_domain: "engineering",
+        secondary_domains: [],
+        complexity_score: 0.85,
+        execution_tier: "multiagent_swarm",
+        detected_slash_command: null,
+        suggested_slash_command: "/swarm",
+        extracted_goals: ["Build feature"],
+      },
+      goal: {
+        goal_id: "goal_123",
+        title: "Dynamic Goal",
+        description: "Decomposed tasks",
+        tasks: [{ task_id: "t1", title: "Task 1", category: "coding", assigned_role: "coder", depends_on: [], node_type: "agent" }],
+        execution_waves: [["t1"]],
+        acceptance_criteria: ["Pass"],
+        saga_compensations: [],
+      },
+      resources: {
+        goal_id: "goal_123",
+        bots: {},
+        skills: [],
+        tools: ["read_file"],
+        mcp_servers: [],
+        model_tier: "deep_reasoning",
+      },
+    };
+  });
+  const res = await wf.perceiveDynamicWorkflow("boost feature implementation");
+  assert.equal(res.perception.intent_type, "boost");
+  assert.equal(res.perception.execution_tier, "multiagent_swarm");
+  assert.equal(res.goal.tasks.length, 1);
+});
+
+test("executeDynamicWorkflow calls /dynamic/execute and maps full telemetry", async () => {
+  setHttpHandler((path, method, payload) => {
+    assert.equal(path, "/workflows/dynamic/execute");
+    assert.equal(method, "POST");
+    assert.equal(payload.auto_execute, true);
+    return {
+      run_id: "run_exec_1",
+      workflow_id: "wf_exec_1",
+      status: "completed",
+      perception: { intent_type: "build" },
+      goal: { goal_id: "g1" },
+      resources: { tools: ["run_command"] },
+      total_steps: 5,
+      completed_nodes: ["t1", "t2"],
+      failed_nodes: [],
+      compensated_nodes: [],
+      node_outputs: { t1: "ok" },
+      replans_count: 0,
+      duration_ms: 120.5,
+      error_summary: null,
+      metadata: { acceptance_passed: true },
+    };
+  });
+  const res = await wf.executeDynamicWorkflow({ prompt: "build system", auto_execute: true });
+  assert.equal(res.run_id, "run_exec_1");
+  assert.equal(res.status, "completed");
+  assert.equal(res.total_steps, 5);
+  assert.deepEqual(res.completed_nodes, ["t1", "t2"]);
+  assert.equal(res.duration_ms, 120.5);
+});
+
+test("replanWorkflowRun and compensateWorkflowRun map responses cleanly", async () => {
+  setHttpHandler((path, method) => {
+    if (path.includes("/replan")) {
+      assert.equal(method, "POST");
+      return { status: "committed", new_graph_version: 2, patch_operations: ["add_node"], run: { run_id: "r1", workflow_id: "w1", status: "running" } };
+    }
+    if (path.includes("/compensate")) {
+      assert.equal(method, "POST");
+      return { run_id: "r1", status: "compensated", compensated_nodes: ["comp_t1"], count: 1 };
+    }
+    throw new Error(`unexpected path: ${path}`);
+  });
+  const replan = await wf.replanWorkflowRun("r1", { failed_node_id: "t1" });
+  assert.equal(replan.status, "committed");
+  assert.equal(replan.new_graph_version, 2);
+  assert.deepEqual(replan.patch_operations, ["add_node"]);
+
+  const comp = await wf.compensateWorkflowRun("r1");
+  assert.equal(comp.status, "compensated");
+  assert.deepEqual(comp.compensated_nodes, ["comp_t1"]);
+  assert.equal(comp.count, 1);
+});

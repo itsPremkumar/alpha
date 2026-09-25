@@ -196,22 +196,201 @@ export async function fetchThreadHistory(threadId: string): Promise<ChatMessage[
   return result.ok ? result.value : [];
 }
 
+export const BUILTIN_FREE_MODELS: AIModel[] = [
+  {
+    id: "alpha-free",
+    name: "✨ Alpha Free Auto-Router (No API Key)",
+    provider: "Free Router",
+    description: "Automatic failover across all verified free keyless providers (OVHcloud, Pollinations, LLM7, Vireonix, Cehpoint)",
+    is_free: true,
+    free_status: "no_key_free",
+    quota_type: "keyless_free",
+  },
+  {
+    id: "free:ovhcloud:Meta-Llama-3_3-70B-Instruct",
+    name: "LLaMA 3.3 70B (OVHcloud Free)",
+    provider: "ovhcloud",
+    description: "Meta LLaMA 3.3 70B on OVHcloud European AI Endpoints — 100% Free, No Key Needed",
+    is_free: true,
+    free_status: "no_key_free",
+    quota_type: "keyless_free",
+  },
+  {
+    id: "free:ovhcloud:Qwen3-Coder-30B-A3B-Instruct",
+    name: "Qwen3 Coder 30B (OVHcloud Free)",
+    provider: "ovhcloud",
+    description: "Qwen3 Coder 30B MoE on OVHcloud — 100% Free, No Key Needed",
+    is_free: true,
+    free_status: "no_key_free",
+    quota_type: "keyless_free",
+  },
+  {
+    id: "free:ovhcloud:Mistral-7B-Instruct-v0.3",
+    name: "Mistral 7B v0.3 (OVHcloud Free)",
+    provider: "ovhcloud",
+    description: "Fast Mistral 7B Instruct on OVHcloud — 100% Free, No Key Needed",
+    is_free: true,
+    free_status: "no_key_free",
+    quota_type: "keyless_free",
+  },
+  {
+    id: "free:pollinations:openai-fast",
+    name: "OpenAI Fast (Pollinations Free)",
+    provider: "pollinations",
+    description: "Ultra-low latency public AI router via Pollinations — No Key Needed",
+    is_free: true,
+    free_status: "no_key_free",
+    quota_type: "keyless_free",
+  },
+  {
+    id: "free:pollinations:openai",
+    name: "OpenAI Standard (Pollinations Free)",
+    provider: "pollinations",
+    description: "Standard OpenAI generation via Pollinations — No Key Needed",
+    is_free: true,
+    free_status: "no_key_free",
+    quota_type: "keyless_free",
+  },
+  {
+    id: "free:llm7:codestral-latest",
+    name: "Codestral Latest (LLM7 Free)",
+    provider: "llm7",
+    description: "Mistral Codestral coding model via LLM7 — No Key Needed",
+    is_free: true,
+    free_status: "no_key_free",
+    quota_type: "keyless_free",
+  },
+  {
+    id: "free:llm7:mistral-Nemo-Instruct-2407",
+    name: "Mistral Nemo 12B (LLM7 Free)",
+    provider: "llm7",
+    description: "Mistral Nemo 128k context model via LLM7 — No Key Needed",
+    is_free: true,
+    free_status: "no_key_free",
+    quota_type: "keyless_free",
+  },
+  {
+    id: "free:vireonix:auto",
+    name: "Vireonix Auto (Free Router)",
+    provider: "vireonix",
+    description: "Vireonix public keyless AI gateway",
+    is_free: true,
+    free_status: "no_key_free",
+    quota_type: "keyless_free",
+  },
+  {
+    id: "free:cehpoint:cehpoint-ai",
+    name: "Cehpoint AI (Free Endpoint)",
+    provider: "cehpoint",
+    description: "Cehpoint public keyless model endpoint",
+    is_free: true,
+    free_status: "no_key_free",
+    quota_type: "keyless_free",
+  },
+];
+
+export interface ProviderModelItem {
+  id: string;
+  name: string;
+  model_id: string;
+  supports_thinking?: boolean;
+  description?: string;
+}
+
+export interface LLMProviderCatalogItem {
+  id: string;
+  name: string;
+  category: "keyless_free" | "recurring_free" | "free_gateway" | "trial_credits" | "paid" | "custom";
+  key_env: string | null;
+  configured: boolean;
+  masked_key: string | null;
+  portal_url: string;
+  free_tier_note: string;
+  base_url: string | null;
+  default_models: ProviderModelItem[];
+}
+
 export async function fetchAvailableModels(): Promise<AIModel[]> {
   try {
     const res = await apiFetch(`/models`);
     if (!res.ok) throw new Error("Models endpoint error");
     const data = await res.json();
-    return (data.models || []).map((m: any) => ({
-      id: m.id || m.name,
-      name: m.display_name || m.name || m.id,
-      provider: m.provider || "Standard",
-      description: m.description || "",
-    }));
+    const serverModels: AIModel[] = (data.models || []).map((m: any) => {
+      const id = m.id || m.name;
+      const isFree = Boolean(m.is_free || id.startsWith("free:") || id === "alpha-free");
+      return {
+        id,
+        name: m.display_name || m.name || id,
+        provider: m.provider || (id.startsWith("free:") ? id.split(":")[1] : "Standard"),
+        description: m.description || "",
+        is_free: isFree,
+        free_status: m.free_status || (isFree ? "no_key_free" : undefined),
+        quota_type: m.quota_type || (isFree ? "keyless_free" : "paid"),
+        supports_tools: m.supports_tools,
+        supports_reasoning: m.supports_reasoning || m.supports_thinking,
+      };
+    });
+    const seen = new Set(serverModels.map((m) => m.id));
+    for (const fm of BUILTIN_FREE_MODELS) {
+      if (!seen.has(fm.id)) {
+        serverModels.push(fm);
+        seen.add(fm.id);
+      }
+    }
+    return serverModels;
   } catch {
-    // Live data only: no fabricated model list. Callers fall back to the
-    // server-resolved "default" model until the Gateway is reachable.
+    return BUILTIN_FREE_MODELS;
+  }
+}
+
+export async function fetchProvidersCatalog(): Promise<LLMProviderCatalogItem[]> {
+  try {
+    const res = await apiFetch(`/models/providers`);
+    if (!res.ok) throw new Error("Providers catalog error");
+    return await res.json();
+  } catch {
     return [];
   }
+}
+
+export async function configureProviderCredentials(payload: {
+  provider: string;
+  api_key?: string;
+  base_url?: string;
+  model_id?: string;
+  display_name?: string;
+  remove?: boolean;
+}): Promise<{
+  success: boolean;
+  provider: string;
+  configured: boolean;
+  masked_key?: string | null;
+  message: string;
+}> {
+  const res = await apiFetch(`/models/providers/configure`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(errText || `Failed to configure provider (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function probeFreeModels(): Promise<{
+  probes: Record<string, any>;
+  synced_models_count: number;
+  available_models: any[];
+}> {
+  const res = await apiFetch(`/models/free/probe`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    throw new Error(`Probe failed (${res.status})`);
+  }
+  return res.json();
 }
 
 export async function fetchCommands(category?: string, coreOnly?: boolean): Promise<SlashCommandInfo[]> {

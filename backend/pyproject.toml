@@ -51,6 +51,7 @@ monocle = ["agent-workspace-harness[monocle]"]
 ollama = ["agent-workspace-harness[ollama]"]
 browser = ["agent-workspace-harness[browser]"]
 memory-zh = ["agent-workspace-harness[memory-zh]"]
+voice = ["agent-workspace-harness[voice]"]
 
 [dependency-groups]
 # Managed extension packages are added here by `agent-workspace extensions install`.

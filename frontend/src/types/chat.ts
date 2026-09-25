@@ -62,6 +62,14 @@ export interface AIModel {
   name: string;
   provider: string;
   description?: string;
+  is_free?: boolean;
+  free_status?: string;
+  quota_type?: string;
+  rpm?: number;
+  rpd?: number;
+  reset_interval?: string;
+  supports_tools?: boolean;
+  supports_reasoning?: boolean;
 }
 
 export interface SlashCommandInfo {

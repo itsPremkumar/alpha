@@ -198,6 +198,45 @@ export async function startWorkflowRun(
   return toRun(d);
 }
 
+/** GET /workflows/runs → { runs: WorkflowRunListItem[], count, total } */
+export interface WorkflowRunListItem {
+  run_id: string;
+  workflow_id: string;
+  status: string;
+  graph_version: number;
+  active_nodes: string[];
+  completed_nodes: string[];
+  failed_nodes: string[];
+  waiting_nodes: string[];
+  waiting_reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function listWorkflowRuns(
+  opts: { status?: string; workflow_id?: string; limit?: number } = {},
+): Promise<WorkflowRunListItem[]> {
+  const params: string[] = [];
+  if (opts.status) params.push(`status=${encodeURIComponent(opts.status)}`);
+  if (opts.workflow_id) params.push(`workflow_id=${encodeURIComponent(opts.workflow_id)}`);
+  if (opts.limit !== undefined) params.push(`limit=${opts.limit}`);
+  const query = params.length > 0 ? `?${params.join("&")}` : "";
+  const d = await get<unknown>(`/workflows/runs${query}`);
+  return asList(d, ["runs", "data"]).map((r) => ({
+    run_id: String(pick(r, ["run_id"], "")),
+    workflow_id: String(pick(r, ["workflow_id"], "")),
+    status: String(pick(r, ["status"], "unknown")),
+    graph_version: Number(pick(r, ["graph_version"], 1)),
+    active_nodes: toStringArray(r.active_nodes),
+    completed_nodes: toStringArray(r.completed_nodes),
+    failed_nodes: toStringArray(r.failed_nodes),
+    waiting_nodes: toStringArray(r.waiting_nodes),
+    waiting_reason: typeof r.waiting_reason === "string" ? r.waiting_reason : null,
+    created_at: String(pick(r, ["created_at"], "")),
+    updated_at: String(pick(r, ["updated_at"], "")),
+  }));
+}
+
 /** GET /workflows/runs/{run_id} → WorkflowRun.model_dump() (workflows.py:161) */
 export async function getWorkflowRun(runId: string): Promise<WorkflowRun> {
   const d = await get<Record<string, unknown>>(`/workflows/runs/${encodeURIComponent(runId)}`);
@@ -216,13 +255,175 @@ export async function resolveRunApproval(
   nodeId: string,
   approved: boolean,
   feedback = "",
+  approvalRequestId?: string,
 ): Promise<WorkflowRun> {
   const d = await send<Record<string, unknown>>(
     `/workflows/runs/${encodeURIComponent(runId)}/approvals/${encodeURIComponent(nodeId)}`,
     "POST",
-    { approved, feedback },
+    { approved, feedback, ...(approvalRequestId ? { approval_request_id: approvalRequestId } : {}) },
   );
   return toRun(d);
+}
+
+export interface ReplanResult {
+  status: string;
+  new_graph_version: number;
+  patch_operations: string[];
+  run: WorkflowRun | null;
+  reason?: string | null;
+  resume_error?: string | null;
+}
+
+/** POST /workflows/runs/{run_id}/replan → autonomous failure repair & graph replanning */
+export async function replanWorkflowRun(
+  runId: string,
+  opts: { failed_node_id?: string; error_message?: string; resume?: boolean } = {},
+): Promise<ReplanResult> {
+  const body: Record<string, unknown> = { resume: opts.resume ?? true };
+  if (opts.failed_node_id) body.failed_node_id = opts.failed_node_id;
+  if (opts.error_message) body.error_message = opts.error_message;
+  const d = await send<Record<string, unknown>>(`/workflows/runs/${encodeURIComponent(runId)}/replan`, "POST", body);
+  return {
+    status: String(pick(d, ["status"], "unknown")),
+    new_graph_version: Number(pick(d, ["new_graph_version"], 0)),
+    patch_operations: toStringArray(d.patch_operations),
+    run: d.run && typeof d.run === "object" ? toRun(d.run as Record<string, unknown>) : null,
+    reason: typeof d.reason === "string" ? d.reason : null,
+    resume_error: typeof d.resume_error === "string" ? d.resume_error : null,
+  };
+}
+
+/** POST /workflows/runs/{run_id}/compensate → transactional saga rollback of completed tasks */
+export async function compensateWorkflowRun(
+  runId: string,
+): Promise<{ run_id: string; status: string; executed: boolean; compensated_nodes: string[]; count: number; reason?: string | null }> {
+  const d = await send<Record<string, unknown>>(`/workflows/runs/${encodeURIComponent(runId)}/compensate`, "POST");
+  return {
+    run_id: String(pick(d, ["run_id"], runId)),
+    status: String(pick(d, ["status"], "unknown")),
+    executed: Boolean(d.executed),
+    compensated_nodes: toStringArray(d.compensated_nodes),
+    count: Number(pick(d, ["count"], 0)),
+    reason: typeof d.reason === "string" ? d.reason : null,
+  };
+}
+
+export interface DynamicPerceiveResult {
+  perception: {
+    raw_prompt: string;
+    intent_type: string;
+    primary_domain: string;
+    secondary_domains: string[];
+    complexity_score: number;
+    execution_tier: string;
+    detected_slash_command: string | null;
+    suggested_slash_command: string | null;
+    extracted_goals: string[];
+  };
+  goal: {
+    goal_id: string;
+    title: string;
+    description: string;
+    tasks: Array<{
+      task_id: string;
+      title: string;
+      description: string;
+      category: string;
+      assigned_role: string;
+      depends_on: string[];
+      verification_cmd?: string;
+      verification_criteria?: string[];
+      node_type: string;
+    }>;
+    execution_waves: string[][];
+    acceptance_criteria: string[];
+    saga_compensations: Array<{
+      action_id: string;
+      target_task_id: string;
+      action_type: string;
+      description: string;
+    }>;
+  };
+  resources: {
+    goal_id: string;
+    bots: Record<string, Record<string, unknown>>;
+    skills: Array<Record<string, unknown>>;
+    tools: string[];
+    mcp_servers: string[];
+    model_tier: string;
+  };
+}
+
+/** POST /workflows/dynamic/perceive → dynamic intent, DAG decomposition & resource preview */
+export async function perceiveDynamicWorkflow(
+  prompt: string,
+  context?: Record<string, unknown>,
+): Promise<DynamicPerceiveResult> {
+  const d = await send<Record<string, unknown>>("/workflows/dynamic/perceive", "POST", {
+    prompt,
+    context: context ?? {},
+  });
+  return d as unknown as DynamicPerceiveResult;
+}
+
+export interface DynamicExecuteResult {
+  run_id: string | null;
+  workflow_id: string;
+  status: string;
+  perception: Record<string, unknown>;
+  goal: Record<string, unknown>;
+  resources: Record<string, unknown>;
+  total_steps: number;
+  task_count: number;
+  completed_count: number;
+  waves: string[][];
+  completed_nodes: string[];
+  failed_nodes: string[];
+  compensated_nodes: string[];
+  node_outputs: Record<string, unknown>;
+  replans_count: number;
+  duration_ms: number;
+  error_summary: string | null;
+  metadata: Record<string, unknown>;
+}
+
+/** POST /workflows/dynamic/execute → autonomous end-to-end execution of a dynamic workflow */
+export async function executeDynamicWorkflow(opts: {
+  prompt: string;
+  context?: Record<string, unknown>;
+  initial_state?: Record<string, unknown>;
+  mode?: string;
+  auto_execute?: boolean;
+  max_steps?: number;
+}): Promise<DynamicExecuteResult> {
+  const d = await send<Record<string, unknown>>("/workflows/dynamic/execute", "POST", {
+    prompt: opts.prompt,
+    context: opts.context ?? {},
+    initial_state: opts.initial_state ?? {},
+    mode: opts.mode ?? "normal",
+    auto_execute: opts.auto_execute ?? true,
+    max_steps: opts.max_steps ?? 40,
+  });
+  return {
+    run_id: d.run_id === null || d.run_id === undefined ? null : String(d.run_id),
+    workflow_id: String(pick(d, ["workflow_id"], "")),
+    status: String(pick(d, ["status"], "unknown")),
+    perception: (d.perception && typeof d.perception === "object" ? d.perception : {}) as Record<string, unknown>,
+    goal: (d.goal && typeof d.goal === "object" ? d.goal : {}) as Record<string, unknown>,
+    resources: (d.resources && typeof d.resources === "object" ? d.resources : {}) as Record<string, unknown>,
+    total_steps: Number(pick(d, ["total_steps"], 0)),
+    task_count: Number(pick(d, ["task_count"], 0)),
+    completed_count: Number(pick(d, ["completed_count"], 0)),
+    waves: Array.isArray(d.waves) ? (d.waves as string[][]) : [],
+    completed_nodes: toStringArray(d.completed_nodes),
+    failed_nodes: toStringArray(d.failed_nodes),
+    compensated_nodes: toStringArray(d.compensated_nodes),
+    node_outputs: (d.node_outputs && typeof d.node_outputs === "object" ? d.node_outputs : {}) as Record<string, unknown>,
+    replans_count: Number(pick(d, ["replans_count"], 0)),
+    duration_ms: Number(pick(d, ["duration_ms"], 0)),
+    error_summary: typeof d.error_summary === "string" ? d.error_summary : null,
+    metadata: (d.metadata && typeof d.metadata === "object" ? d.metadata : {}) as Record<string, unknown>,
+  };
 }
 
 export interface TurnOutcome {
@@ -244,6 +445,7 @@ export interface TurnRequest {
   initial_state?: Record<string, unknown>;
   max_waves?: number;
   handoff_to?: string;
+  dynamic?: boolean;
 }
 
 /** POST /workflows/turns → kernel TurnOutcome verbatim (workflows.py:223) */
@@ -254,6 +456,7 @@ export async function runWorkflowTurn(req: TurnRequest): Promise<TurnOutcome> {
   if (req.initial_state !== undefined) body.initial_state = req.initial_state;
   if (req.max_waves !== undefined) body.max_waves = req.max_waves;
   if (req.handoff_to !== undefined && req.handoff_to !== "") body.handoff_to = req.handoff_to;
+  if (req.dynamic !== undefined) body.dynamic = req.dynamic;
   const d = await send<Record<string, unknown>>("/workflows/turns", "POST", body);
   const waves = Number(pick(d, ["waves"], 0));
   return {
@@ -539,6 +742,7 @@ export interface Checkpoint {
   checkpoint_id: string;
   label: string;
   created_at: number;
+  root_path: string;
   files_count: number;
   test_passed: boolean | null;
   failure_count: number;
@@ -553,6 +757,7 @@ function toCheckpoint(c: Record<string, unknown>): Checkpoint {
     checkpoint_id: String(pick(c, ["checkpoint_id"], "")),
     label: String(pick(c, ["label"], "")),
     created_at: Number.isFinite(created) ? created : 0,
+    root_path: String(pick(c, ["root_path"], ".")),
     files_count: Number.isFinite(filesCount) ? filesCount : 0,
     // null (tests never ran) survives as null — never coerced to false/true.
     test_passed: typeof c.test_passed === "boolean" ? c.test_passed : null,

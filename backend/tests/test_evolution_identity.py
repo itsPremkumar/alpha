@@ -160,7 +160,7 @@ def test_runtime_identity_reports_honest_facts(isolated_home):
     assert identity["updateState"] in release_check.STATES
     # Honest capability list: only what is actually wired in this build.
     assert identity["capabilities"] == list(WIRED_CAPABILITIES)
-    assert set(identity["capabilities"]) == {"identity", "release_check", "evolution_ledger"}
+    assert set(identity["capabilities"]) == {"identity", "release_check", "evolution_ledger", "auto_update"}
     # Git: either a real probe result, or "unknown" with an honest source+note.
     if identity["gitCommit"] == "unknown":
         assert identity["gitCommitSource"] == "unavailable"

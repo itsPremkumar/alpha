@@ -23,6 +23,7 @@ def _resolve_project_root() -> Path:
     """Repository root for repo-scoped loops (sentinel scans, etc.)."""
     try:
         from alpha.config.runtime_paths import project_root
+
         return project_root()
     except Exception:
         # backend/app/gateway/autonomy/loops.py -> repo root is four levels up.
@@ -156,3 +157,31 @@ def free_models_sync_tick() -> dict[str, Any]:
         logger.warning("Daily free models sync failed: %s", exc)
         return {"error": f"{type(exc).__name__}: {exc}"}
 
+
+def self_update_tick() -> dict[str, Any]:
+    """Run the opt-in source-update check/apply policy.
+
+    This adapter is deliberately safe when the policy file is absent or
+    disabled: it performs no network call and no subprocess.  The actual
+    mutation is handed to a detached transaction by ``UpdateEngine`` so the
+    Gateway process never rewrites its own source tree.
+    """
+    try:
+        from alpha.evolution.update_engine import get_update_engine
+        from alpha.evolution.update_policy import load_update_policy
+
+        policy = load_update_policy()
+        if not policy.enabled:
+            return {"state": "DISABLED", "checked": False, "reason": "auto-update policy is disabled"}
+        engine = get_update_engine()
+        if engine.policy != policy:
+            # Keep the Gateway-installed idle callback while applying an
+            # operator policy edit; replacing the singleton would lose it.
+            engine.set_policy(policy)
+        return engine.check_and_maybe_apply()
+    except Exception as exc:  # adapters must not crash the autonomy supervisor
+        from alpha.evolution.update_state import redact_update_text
+
+        reason = redact_update_text(f"{type(exc).__name__}: {exc}")
+        logger.warning("Self-update tick failed closed: %s", reason)
+        return {"state": "CHECK_FAILED", "error": reason}

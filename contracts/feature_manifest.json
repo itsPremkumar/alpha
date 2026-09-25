@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-09-24T15:28:29Z",
+ "generated_at": "2026-09-25T00:55:36Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -636,6 +636,14 @@
    "state": "wired"
   },
   {
+   "id": "search_session_memory",
+   "module": "alpha.tools.builtins.code_agentic_core",
+   "symbol": "search_session_memory",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
    "id": "enterprise_security_manage",
    "module": "alpha.tools.builtins.enclave_security_tool",
    "symbol": "enterprise_security_manage",
@@ -1184,6 +1192,14 @@
   {
    "id": "app.gateway.routers.enterprise",
    "module": "app.gateway.routers.enterprise",
+   "symbol": "router",
+   "wiring_point": "app.gateway.app:include_router",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "app.gateway.routers.evidence",
+   "module": "app.gateway.routers.evidence",
    "symbol": "router",
    "wiring_point": "app.gateway.app:include_router",
    "wired": true,
@@ -1805,6 +1821,13 @@
    "state": "wired"
   },
   {
+   "id": "self_update",
+   "module": "app.gateway.autonomy.loops:self_update_tick",
+   "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
+   "wired": true,
+   "state": "wired"
+  },
+  {
    "id": "sentinel",
    "module": "app.gateway.autonomy.loops:sentinel_tick",
    "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
@@ -1832,16 +1855,7 @@
    "reason": "Intentional re-export shim over app.gateway.system_monitor_service; documents namespace-dir resolution (guarded by test_gateway_services_resolution)."
   }
  ],
- "dormant_packages": [
-  {
-   "id": "alpha.ledger",
-   "reason": "ActionLedger/ActionReceipt are implemented and tested (test_action_ledger.py) but nothing constructs them; there is no receipt-writing call site in the run path yet."
-  },
-  {
-   "id": "alpha.evidence",
-   "reason": "EvidenceStore implements the evidence->candidate->evaluation->promotion cycle but has no consumer and no test suite; wiring it is feature design, not a missing call."
-  }
- ],
+ "dormant_packages": [],
  "excluded_local_only": [
   {
    "id": "auth",

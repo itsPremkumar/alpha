@@ -100,15 +100,15 @@ monocle = ["monocle_apptrace>=0.8.8"]
 browser = ["playwright>=1.40"]
 # Optional Chinese tokenization for the FTS5 memory retrieval adapter.
 memory-zh = ["jieba>=0.42.1"]
-# Voice & multimodal capability chain (alpha.multimodal: TTS/STT/OCR/wake-word).
-# Version floors are the releases that resolved on py3.12/Windows at install
-# time; without this extra every capability answers honestly (not_installed).
+# Fully local speech + OCR runtime. Model weights are installed separately under
+# runtime_home()/voice/models; requests never download them. Legacy wake-word,
+# edge-tts, and other optional/manual engines are intentionally not required here.
 voice = [
-    "edge-tts>=7.2.8",
-    "faster-whisper>=1.2.1",
-    "openwakeword>=0.6.0",
-    "rapidocr-onnxruntime>=1.4.4",
-    "piper-tts>=1.8.0",
+    "faster-whisper>=1.2.1,<2",
+    "piper-tts>=1.8.0,<2",
+    "rapidocr-onnxruntime>=1.4.4,<2",
+    "tokenizers>=0.21,<1",
+    "webrtcvad-wheels>=2.0.11,<3",
 ]
 
 [build-system]

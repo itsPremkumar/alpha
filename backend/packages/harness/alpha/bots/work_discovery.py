@@ -62,8 +62,10 @@ def _compute_match_score(
     else:
         score += 0.10
 
-    # 4. Reputation weighting
-    score += (bot.reputation_score or 1.0) * 0.15
+    # 4. Reputation weighting.  ``None`` means unverified, not perfect;
+    # preserve a real zero score as zero rather than upgrading it.
+    reputation = bot.reputation_score if bot.reputation_score is not None else 0.5
+    score += max(0.0, min(1.0, float(reputation))) * 0.15
 
     # Bound in 0.05 - 0.99
     final_score = round(max(0.05, min(0.99, score)), 2)

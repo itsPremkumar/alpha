@@ -65,10 +65,30 @@ def test_append_and_read_roundtrip_is_monotonic(store: DurableEventLog) -> None:
     assert store.last_seq("run_b") == 0
 
 
-def test_idempotency_key_prevents_duplicate_attempt(store: DurableEventLog) -> None:
-    key = node_attempt_idempotency_key(
-        run_id="run_i", graph_version=1, node_id="n1", attempt=1, input_hash="deadbeef"
+def test_event_redaction_preserves_measured_token_telemetry() -> None:
+    captured: list[WorkflowEvent] = []
+    dispatcher = WorkflowEventDispatcher(durable_sink=captured.append)
+    dispatcher.emit(
+        "node_completed",
+        "run_redaction",
+        tokens_used=17,
+        token_budget=100,
+        token="raw-secret",
+        api_key="raw-key",
+        nested={"password": "raw-password", "token_count": 17},
     )
+
+    payload = captured[0].payload
+    assert payload["tokens_used"] == 17
+    assert payload["token_budget"] == 100
+    assert payload["nested"]["token_count"] == 17
+    assert payload["token"] == "[REDACTED]"
+    assert payload["api_key"] == "[REDACTED]"
+    assert payload["nested"]["password"] == "[REDACTED]"
+
+
+def test_idempotency_key_prevents_duplicate_attempt(store: DurableEventLog) -> None:
+    key = node_attempt_idempotency_key(run_id="run_i", graph_version=1, node_id="n1", attempt=1, input_hash="deadbeef")
     first = store.append(_event("run_i", "node_completed", node_id="n1"), idempotency_key=key)
     second = store.append(_event("run_i", "node_completed", node_id="n1"), idempotency_key=key)
 

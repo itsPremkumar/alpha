@@ -379,6 +379,7 @@ def get_all_checkpoints() -> list[dict]:
             "checkpoint_id": c.checkpoint_id,
             "label": c.label,
             "created_at": c.created_at,
+            "root_path": c.root_path,
             "files_count": len(c.files_snapshot),
             "test_passed": c.test_passed,
             "failure_count": c.failure_count,

@@ -28,18 +28,21 @@ _GLOBAL_PATCH_ENGINE = WorkflowPatchEngine()
 #: silently ALLOWS any op it has no branch for, and apply() silently drops it,
 #: so anything outside this set must be rejected by the tool instead of being
 #: reported as a commit that never happened.
-_PATCH_ENGINE_OPS = frozenset({
-    "add_node",
-    "remove_node",
-    "replace_node",
-    "update_node_config",
-    "add_edge",
-    "remove_edge",
-    "insert_before",
-    "insert_after",
-    "create_loop",
-    "set_route",
-})
+_PATCH_ENGINE_OPS = frozenset(
+    {
+        "add_node",
+        "remove_node",
+        "replace_node",
+        "update_node_config",
+        "add_edge",
+        "remove_edge",
+        "insert_before",
+        "insert_after",
+        "create_loop",
+        "set_route",
+        "retry_node",
+    }
+)
 
 #: Ops the read-only patch engine does NOT implement but this tool applies
 #: itself at the call site (see apply_patch).
@@ -148,7 +151,7 @@ def _sync_graph_to_legacy(wf: DAGWorkflow, graph: WorkflowGraph) -> None:
 @tool
 def workflow_dag_manage(
     action: str,
-    key: str,
+    key: str = "",
     name: str | None = None,
     node_id: str | None = None,
     prompt: str | None = None,
@@ -159,12 +162,74 @@ def workflow_dag_manage(
     output: str | None = None,
     patch_json: str | None = None,
 ) -> str:
-    """Manage dependency-ordered and dynamic task graphs (DAG / DWE). Actions: 'create', 'add_node', 'plan_waves', 'record_evidence', 'mark_completed', 'status', 'apply_patch', 'dynamic_status'."""
+    """Manage dependency-ordered and dynamic task graphs (DAG / DWE).
+
+    Actions include create/add_node/plan_waves/record_evidence/mark_completed/
+    status/apply_patch/dynamic_status plus perceive/decompose/boost/auto_execute.
+    """
     engine = _GLOBAL_DAG_ENGINE
 
     if action == "create":
         wf = engine.create_workflow(key, name or key)
         return f"Created workflow '{key}' ({wf.name})."
+
+    if action in ("perceive", "decompose", "boost", "auto_execute"):
+        raw_prompt = (prompt or key or "").strip()
+        if not raw_prompt:
+            return f"Error: prompt is required for action='{action}'."
+        from alpha.bots.cloning import get_bot_clone_engine
+        from alpha.bots.registry import get_bot_registry
+        from alpha.orchestrator.executors import (
+            DIGEST_EXECUTOR,
+            bind_default_executors,
+            get_executor_registry,
+        )
+        from alpha.skills.hub.discovery import get_skills_hub
+        from alpha.skills.mcp_lifecycle import SkillMcpLifecycleManager
+        from alpha.workflow.dynamic_assembler import DynamicResourceAssembler
+        from alpha.workflow.dynamic_bridge import DynamicWorkflowBridge
+        from alpha.workflow.dynamic_decomposer import get_dynamic_decomposer
+        from alpha.workflow.dynamic_perception import get_dynamic_perception_engine
+
+        intent = get_dynamic_perception_engine().perceive(raw_prompt)
+        if action == "perceive":
+            return json.dumps(intent.to_dict(), indent=2)
+
+        goal = get_dynamic_decomposer().decompose(intent, raw_prompt)
+        if action == "decompose":
+            return json.dumps(goal.to_dict(), indent=2)
+
+        assembler = DynamicResourceAssembler(
+            bot_registry=get_bot_registry(),
+            clone_engine=get_bot_clone_engine(),
+            skills_hub=get_skills_hub(),
+            mcp_manager=SkillMcpLifecycleManager(),
+        )
+        resources = assembler.assemble(goal, raw_prompt)
+        bind_default_executors()
+        runner = get_executor_registry().build_runner()
+        bridge = DynamicWorkflowBridge(
+            node_runner=runner,
+            compensation_runner=None,
+            execution_label="local_digest_projection" if runner is not None else "unbound",
+            require_compensation_receipt=True,
+        )
+        result = bridge.execute_goal(goal, resources, default_executor=DIGEST_EXECUTOR)
+        return json.dumps(
+            {
+                "action": action,
+                "run_id": result.run_id,
+                "workflow_id": result.workflow_id,
+                "status": result.status,
+                "total_steps": result.total_steps,
+                "completed_nodes": result.completed_nodes,
+                "failed_nodes": result.failed_nodes,
+                "compensated_nodes": result.compensated_nodes,
+                "replans_count": result.replans_count,
+                "duration_ms": result.duration_ms,
+            },
+            indent=2,
+        )
 
     wf = engine.get_workflow(key)
     if not wf:
@@ -239,16 +304,9 @@ def workflow_dag_manage(
             # Reject operations neither the patch engine nor this tool can
             # actually execute, instead of reporting a commit that never
             # happened (the validator/apply layer silently skips unknown ops).
-            unsupported = [
-                op.op
-                for op in patch.operations
-                if op.op not in _PATCH_ENGINE_OPS and op.op not in _TOOL_APPLIED_OPS
-            ]
+            unsupported = [op.op for op in patch.operations if op.op not in _PATCH_ENGINE_OPS and op.op not in _TOOL_APPLIED_OPS]
             if unsupported:
-                return (
-                    f"Error applying patch: unsupported operation(s) {sorted(set(unsupported))} "
-                    "- nothing was applied (no silent no-op commit)."
-                )
+                return f"Error applying patch: unsupported operation(s) {sorted(set(unsupported))} - nothing was applied (no silent no-op commit)."
 
             # Base graph MUST carry the workflow's existing edges (previously
             # built edgeless), otherwise every edge op round-trips against an
@@ -272,10 +330,7 @@ def workflow_dag_manage(
                 tgt = op.args.get("target")
                 match = next((e for e in new_graph.edges if e.source == src and e.target == tgt), None)
                 if match is None:
-                    return (
-                        f"Error applying patch: update_edge_condition: edge "
-                        f"'{src}' -> '{tgt}' does not exist in the patched graph."
-                    )
+                    return f"Error applying patch: update_edge_condition: edge '{src}' -> '{tgt}' does not exist in the patched graph."
                 match.condition = op.args.get("condition")
 
             # Sync node AND edge changes back onto the legacy workflow object
@@ -283,10 +338,7 @@ def workflow_dag_manage(
             # removals/updates - never reached the legacy graph).
             _sync_graph_to_legacy(wf, new_graph)
             _GRAPH_VERSIONS[wf.key] = new_graph.version
-            return (
-                f"Patch successfully committed. New graph version: {new_graph.version}. "
-                f"Total nodes: {len(new_graph.nodes)}. Total edges: {len(new_graph.edges)}."
-            )
+            return f"Patch successfully committed. New graph version: {new_graph.version}. Total nodes: {len(new_graph.nodes)}. Total edges: {len(new_graph.edges)}."
         except Exception as e:
             return f"Error applying patch: {e}"
 

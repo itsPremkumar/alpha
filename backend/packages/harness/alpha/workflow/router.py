@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from alpha.workflow.expressions import evaluate_condition
+from alpha.workflow.expressions import evaluate_condition_strict
 from alpha.workflow.models import WorkflowGraph, WorkflowRun
 
 
@@ -37,7 +37,7 @@ class DynamicRouter:
         # Evaluate conditional edges
         for edge in outgoing:
             if edge.condition:
-                if evaluate_condition(edge.condition, context):
+                if evaluate_condition_strict(edge.condition, context):
                     decisions.append(
                         RouteDecision(
                             target=edge.target,

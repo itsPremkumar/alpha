@@ -12,7 +12,6 @@ import pytest
 from fastapi import FastAPI
 
 import alpha.runtime as runtime_module
-from app.gateway import deps as gateway_deps
 from alpha.config.run_ownership_config import RunOwnershipConfig
 from alpha.persistence import engine as engine_module
 from alpha.persistence import thread_meta as thread_meta_module
@@ -20,6 +19,7 @@ from alpha.runtime import END_SENTINEL, MemoryStreamBridge, RunManager
 from alpha.runtime.checkpointer import async_provider as checkpointer_module
 from alpha.runtime.events import store as event_store_module
 from alpha.runtime.runs.store.memory import MemoryRunStore
+from app.gateway import deps as gateway_deps
 
 
 @asynccontextmanager
@@ -75,6 +75,26 @@ class _FakeRunManager:
         # No in-flight tasks in these startup-recovery tests; langgraph_runtime
         # drains the manager on teardown, so the double must accept the call.
         self.shutdown_calls += 1
+
+
+class _FakeRecoveryService:
+    instances: list[_FakeRecoveryService] = []
+    start_calls = 0
+    stop_calls = 0
+
+    def __init__(self, *, app, run_manager, config):
+        self.app = app
+        self.run_manager = run_manager
+        self.config = config
+        self.start_calls = 0
+        self.stop_calls = 0
+        self.instances.append(self)
+
+    async def start(self) -> None:
+        self.start_calls += 1
+
+    async def stop(self, *, timeout: float = 5.0) -> None:
+        self.stop_calls += 1
 
 
 class _FakeThreadStore:
@@ -259,6 +279,43 @@ async def test_sqlite_runtime_reconciles_orphaned_runs_on_startup(monkeypatch):
     assert thread_store.status_updates == [("thread-1", "error", None)]
     assert stream_bridge.publish_end_calls == ["run-1"]
     assert stream_bridge.cleanup_calls == [("run-1", 60.0)]
+
+
+@pytest.mark.anyio
+async def test_runtime_starts_and_stops_safe_recovery_service(monkeypatch):
+    app = FastAPI()
+    config = SimpleNamespace(
+        database=SimpleNamespace(backend="sqlite", checkpoint_channel_mode="full", checkpoint_delta=SimpleNamespace(snapshot_frequency=10)),
+        run_events=SimpleNamespace(backend="memory"),
+        run_ownership=SimpleNamespace(auto_resume=True),
+        stream_bridge=SimpleNamespace(recovered_stream_cleanup_delay_seconds=60.0),
+    )
+    _FakeRunManager.instances.clear()
+    _FakeRunManager.recovered_runs = []
+    _FakeRecoveryService.instances.clear()
+
+    async def noop(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(engine_module, "init_engine_from_config", noop)
+    monkeypatch.setattr(engine_module, "get_session_factory", lambda: None)
+    monkeypatch.setattr(engine_module, "close_engine", noop)
+    monkeypatch.setattr(runtime_module, "make_stream_bridge", lambda _config: _fake_context(_FakeStreamBridge()))
+    monkeypatch.setattr(checkpointer_module, "make_checkpointer", lambda _config: _fake_context(object()))
+    monkeypatch.setattr(runtime_module, "make_store", lambda _config: _fake_context(object()))
+    monkeypatch.setattr(thread_meta_module, "make_thread_store", lambda _sf, _store: _FakeThreadStore())
+    monkeypatch.setattr(event_store_module, "make_run_event_store", lambda _config: object())
+    monkeypatch.setattr(gateway_deps, "RunManager", _FakeRunManager)
+    monkeypatch.setattr(gateway_deps, "SafeRunRecoveryService", _FakeRecoveryService)
+
+    async with gateway_deps.langgraph_runtime(app, config):
+        assert app.state.run_recovery_service is not None
+
+    assert len(_FakeRecoveryService.instances) == 1
+    service = _FakeRecoveryService.instances[0]
+    assert service.start_calls == 1
+    assert service.stop_calls == 1
+    assert app.state.run_recovery_service is None
 
 
 @pytest.mark.anyio

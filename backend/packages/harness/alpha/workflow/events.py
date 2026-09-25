@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import logging
+import re
 import threading
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -17,10 +19,37 @@ class WorkflowEvent(BaseModel):
     workflow_run_id: str
     event_type: str
     timestamp: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
+    idempotency_key: str | None = None
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
 logger = logging.getLogger(__name__)
+# Redact credential-bearing keys, not measured accounting fields such as
+# ``tokens_used``/``token_budget``.  A broad ``token`` substring match would
+# silently destroy the very usage telemetry the workflow event log preserves.
+_SECRET_KEY_RE = re.compile(
+    r"(?:password|passwd|secret|api[_-]?key|authorization|credential|access[_-]?token|refresh[_-]?token|bearer)",
+    re.IGNORECASE,
+)
+_SECRET_EXACT_KEYS = frozenset({"token", "auth_token", "session_token"})
+
+
+def _redact_event_value(value: Any, key: str | None = None) -> Any:
+    if key and (_SECRET_KEY_RE.search(key) or key.lower() in _SECRET_EXACT_KEYS):
+        return "[REDACTED]"
+    if isinstance(value, dict):
+        return {str(k): _redact_event_value(v, str(k)) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redact_event_value(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_redact_event_value(item) for item in value)
+    return copy.deepcopy(value)
+
+
+def redact_event_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return a detached, credential-redacted payload for any persistence seam."""
+    redacted = _redact_event_value(payload)
+    return redacted if isinstance(redacted, dict) else {}
 
 
 class WorkflowEventDispatcher:
@@ -36,12 +65,22 @@ class WorkflowEventDispatcher:
     listener indistinguishable from a healthy one).
     """
 
-    def __init__(self, durable_sink: Callable[[WorkflowEvent], Any] | None = None) -> None:
+    def __init__(
+        self,
+        durable_sink: Callable[[WorkflowEvent], Any] | None = None,
+        *,
+        max_events: int = 10_000,
+    ) -> None:
         self._listeners: list[Callable[[WorkflowEvent], Any]] = []
         self._event_log: list[WorkflowEvent] = []
+        self.max_events = max(100, int(max_events))
         self._durable_sink: Callable[[WorkflowEvent], Any] | None = durable_sink
         self.durable_write_failures = 0
         self.last_durable_error: str | None = None
+        # Generic library callers retain best-effort behavior; the Gateway
+        # workflow router opts into fail-closed admission so a run cannot
+        # execute without an audit trail.
+        self.fail_closed_on_durable_error = False
 
     def subscribe(self, listener: Callable[[WorkflowEvent], Any]) -> None:
         self._listeners.append(listener)
@@ -103,13 +142,23 @@ class WorkflowEventDispatcher:
 
         threading.Thread(target=_run, name="workflow-event-bus", daemon=True).start()
 
-    def emit(self, event_type: str, run_id: str, **payload: Any) -> WorkflowEvent:
+    def emit(
+        self,
+        event_type: str,
+        run_id: str,
+        *,
+        idempotency_key: str | None = None,
+        **payload: Any,
+    ) -> WorkflowEvent:
         event = WorkflowEvent(
             workflow_run_id=run_id,
             event_type=event_type,
-            payload=payload,
+            idempotency_key=idempotency_key,
+            payload=_redact_event_value(payload),
         )
         self._event_log.append(event)
+        if len(self._event_log) > self.max_events:
+            del self._event_log[: len(self._event_log) - self.max_events]
 
         # Durable append first: the in-memory list is the fast path, the
         # JSONL log is the record that survives a restart.
@@ -126,6 +175,8 @@ class WorkflowEventDispatcher:
                     self.last_durable_error,
                     exc_info=True,
                 )
+                if self.fail_closed_on_durable_error:
+                    raise
 
         # Notify in-memory listeners
         for listener in list(self._listeners):

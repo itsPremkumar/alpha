@@ -92,6 +92,7 @@ class DynamicTaskItem:
     compensation: SagaCompensation | None = None
     node_type: NodeType = NodeType.AGENT  # was NodeType.TASK (nonexistent member); see CATEGORY_NODE_TYPES
     write_scope: list[str] = field(default_factory=list)
+    executor: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -99,6 +100,8 @@ class DynamicTaskItem:
         if self.loop_policy:
             d["loop_policy"] = self.loop_policy.model_dump()
         d["node_type"] = self.node_type.value
+        if self.executor:
+            d["executor"] = self.executor
         return d
 
 

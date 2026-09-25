@@ -36,9 +36,10 @@ it shares :data:`SCHEMA_VERSION` from this module.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alpha.workflow.models import WorkflowDefinition, WorkflowGraph, WorkflowRun
 
@@ -62,12 +63,17 @@ class PersistedEventRecord(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
     idempotency_key: str | None = Field(
         default=None,
-        description=(
-            "DOC-A §13.3 {run}:{graph_version}:{node}:{attempt}:{input_hash} key for node "
-            "attempt events; None when not applicable or a component is unavailable (never guessed)."
-        ),
+        description=("DOC-A §13.3 {run}:{graph_version}:{node}:{attempt}:{input_hash} key for node attempt events; None when not applicable or a component is unavailable (never guessed)."),
     )
     recorded_at: str = Field(description="UTC ISO timestamp assigned by the writer at append time.")
+
+    @model_validator(mode="after")
+    def _reject_future_schema(self) -> PersistedEventRecord:
+        if self.schema_version > SCHEMA_VERSION:
+            raise ValueError(f"unsupported persisted schema_version {self.schema_version}; current reader supports <= {SCHEMA_VERSION}")
+        if self.schema_version < 1:
+            raise ValueError(f"invalid persisted schema_version {self.schema_version}")
+        return self
 
 
 class PersistedRunSnapshot(BaseModel):
@@ -91,6 +97,14 @@ class PersistedRunSnapshot(BaseModel):
         default_factory=dict,
         description="Provenance: the event_id/event_type/timestamp the projection was taken at.",
     )
+
+    @model_validator(mode="after")
+    def _reject_future_schema(self) -> PersistedRunSnapshot:
+        if self.schema_version > SCHEMA_VERSION:
+            raise ValueError(f"unsupported persisted schema_version {self.schema_version}; current reader supports <= {SCHEMA_VERSION}")
+        if self.schema_version < 1:
+            raise ValueError(f"invalid persisted schema_version {self.schema_version}")
+        return self
 
 
 class HydrationReport(BaseModel):
@@ -125,3 +139,100 @@ class HydrationReport(BaseModel):
         description="Run ids whose projection carried no workflow definition.",
     )
     disclosures: list[str] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Universal workflow IR contracts
+# ---------------------------------------------------------------------------
+
+
+class NodeSpec(BaseModel):
+    """Portable node contract used by planners and external adapters."""
+
+    model_config = ConfigDict(extra="forbid")
+    id: str = Field(..., min_length=1, max_length=128)
+    kind: str = Field(..., min_length=1, max_length=64)
+    config: dict[str, Any] = Field(default_factory=dict)
+    idempotency_key: str | None = Field(default=None, max_length=512)
+    budget: int | None = Field(default=None, ge=0)
+    requires: list[str] = Field(default_factory=list)
+    on_violation: str = Field(default="fail", min_length=1, max_length=32)
+    timeout_s: float | None = Field(default=None, gt=0)
+    retry: dict[str, Any] = Field(default_factory=dict)
+
+
+class EdgeSpec(BaseModel):
+    """Portable conditional/barrier edge contract."""
+
+    model_config = ConfigDict(extra="forbid")
+    src: str = Field(..., min_length=1, max_length=128)
+    dst: str = Field(..., min_length=1, max_length=128)
+    condition: str | None = None
+    kind: Literal["normal", "conditional", "barrier"] = "normal"
+
+
+class WorkflowPlanVersion(BaseModel):
+    """Immutable topology version with provenance."""
+
+    model_config = ConfigDict(extra="forbid")
+    graph_version: int = Field(..., ge=1)
+    nodes: list[NodeSpec] = Field(default_factory=list)
+    edges: list[EdgeSpec] = Field(default_factory=list)
+    archetype: str = "sequential"
+    created_by: str = "planner"
+    parent_version: int | None = Field(default=None, ge=1)
+    why: str = ""
+
+
+class WorkflowPlanPatch(BaseModel):
+    """Portable patch envelope; the runtime's richer model remains compatible."""
+
+    model_config = ConfigDict(extra="forbid")
+    patch_id: str = Field(..., min_length=1, max_length=128)
+    base_graph_version: int = Field(..., ge=1)
+    ops: list[dict[str, Any]] = Field(default_factory=list)
+    rationale: str = ""
+    actor: str = "runtime"
+    created_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
+
+
+class ExecutionEventRecord(BaseModel):
+    """Append-only event projection contract."""
+
+    model_config = ConfigDict(extra="forbid")
+    run_id: str
+    seq: int = Field(..., ge=1)
+    type: str = Field(..., min_length=1, max_length=128)
+    node_id: str | None = None
+    payload: dict[str, Any] = Field(default_factory=dict)
+    ts: str
+    decision_ref: str | None = None
+
+
+class WorkflowDecisionRecord(BaseModel):
+    """Explainability atom for topology/resource/mutation decisions."""
+
+    model_config = ConfigDict(extra="forbid")
+    run_id: str
+    step: str
+    candidates: list[str] = Field(default_factory=list)
+    chosen: str
+    scores: dict[str, float] = Field(default_factory=dict)
+    policy_ids: list[str] = Field(default_factory=list)
+    graph_version: int = Field(..., ge=1)
+    model_id: str | None = None
+    why: str = ""
+
+
+__all__ = [
+    "SCHEMA_VERSION",
+    "PersistedEventRecord",
+    "PersistedRunSnapshot",
+    "HydrationReport",
+    "NodeSpec",
+    "EdgeSpec",
+    "WorkflowPlanVersion",
+    "WorkflowPlanPatch",
+    "ExecutionEventRecord",
+    "WorkflowDecisionRecord",
+]

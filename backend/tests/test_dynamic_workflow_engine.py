@@ -392,9 +392,7 @@ def test_unbound_runner_fails_honestly(node_type, config, monkeypatch):
     # failure now ends terminal FAILED - including the compensation-only
     # graph, which the old completion gate used to mark COMPLETED.
     assert run.status == WorkflowRunStatus.FAILED
-    fail_close_events = [
-        e for e in dwe.events.get_events(run.run_id) if e.event_type == "workflow_failed"
-    ]
+    fail_close_events = [e for e in dwe.events.get_events(run.run_id) if e.event_type == "workflow_failed"]
     assert len(fail_close_events) == 1, "exactly one fail-closed event per run"
     # No fabricated state artifacts were written either
     assert not [key for key in run.state if key.startswith("n1_")]
@@ -447,6 +445,33 @@ def test_compensation_executes_real_callback_when_runner_bound():
     assert undo.output == {"compensated": True, "target": "bad_provision", "result": "side-effects reverted"}
     assert any("rollback receipt #42" in e for e in undo.evidence)
     assert "undo_provision" in run.completed_nodes
+
+
+def test_two_runs_isolate_node_execution_state():
+    dwe = DynamicWorkflowEngine()
+    node = WorkflowNode(id="only", prompt="run")
+    graph = WorkflowGraph(nodes={"only": node}, edges=[])
+    dwe.register_definition(WorkflowDefinition(id="wf_two_runs", name="Two runs", graph=graph))
+
+    def runner(_node, run):
+        return {
+            "status": "completed",
+            "output": run.run_id,
+            "evidence": f"evidence:{run.run_id}",
+        }
+
+    first = dwe.start_run("wf_two_runs")
+    second = dwe.start_run("wf_two_runs")
+    dwe.execute_step(first.run_id, node_runner=runner)
+    dwe.execute_step(second.run_id, node_runner=runner)
+
+    first_graph = dwe._run_graphs[first.run_id]
+    second_graph = dwe._run_graphs[second.run_id]
+    assert first_graph.nodes["only"].output == first.run_id
+    assert second_graph.nodes["only"].output == second.run_id
+    assert first.completed_nodes == ["only"]
+    assert second.completed_nodes == ["only"]
+    assert first_graph is not second_graph
 
 
 def test_bounded_loop_execution():

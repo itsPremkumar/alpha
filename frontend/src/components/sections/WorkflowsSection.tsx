@@ -2,14 +2,16 @@
 
 import React, { useEffect, useState } from "react";
 import {
-  listWorkflows, createWorkflow, getWorkflow, getWorkflowRun, startWorkflowRun, stepWorkflowRun,
-  resolveRunApproval, runWorkflowTurn, getRunEvents, getDurableRunEvents, replayWorkflowRun,
+  listWorkflows, createWorkflow, getWorkflow, listWorkflowRuns, getWorkflowRun, startWorkflowRun, stepWorkflowRun,
+  resolveRunApproval, replanWorkflowRun, compensateWorkflowRun, perceiveDynamicWorkflow, executeDynamicWorkflow,
+  runWorkflowTurn, getRunEvents, getDurableRunEvents, replayWorkflowRun,
   projectWorkflowRun, patchWorkflowRun, getDurabilityStatus, hydrateWorkflowEngine,
   listWorkflowPlans, recordWorkflowPlan, listCheckpoints, createCheckpoint, getCheckpointDiff,
   rollbackCheckpoint, listJobs, submitJob, getJobLogs, cancelJob,
 } from "@/lib/workflows";
 import type {
-  WorkflowListItem, WorkflowDefinition, WorkflowRun, TurnOutcome, RunEvents, DurableRunEvents,
+  WorkflowListItem, WorkflowDefinition, WorkflowRunListItem, WorkflowRun, DynamicPerceiveResult, DynamicExecuteResult,
+  TurnOutcome, RunEvents, DurableRunEvents,
   ReplayReport, ProjectReport, DurabilityStatus, HydrationReport, PlanHistory, Checkpoint,
   CheckpointDiff, JobRecord, JobLogs,
 } from "@/lib/workflows";
@@ -21,7 +23,7 @@ import {
 import type { GoalContract, PlanVersion, TaskAttempt, IntegrityReport, Mission, AttemptStatus } from "@/lib/goals";
 import { Section, EmptyState, ErrorBox, Notice, Btn, Badge, Field, SkeletonList, inputCls } from "@/components/ui";
 import { errMsg } from "@/lib/http";
-import { RefreshCw, Plus, Check, X, Zap, Search, ScrollText, RotateCcw, GitCompare } from "lucide-react";
+import { RefreshCw, Plus, Check, X, Zap, Search, ScrollText, RotateCcw, GitCompare, Sparkles, Rocket, Eye, Wrench } from "lucide-react";
 
 type Tone = "green" | "amber" | "gray" | "blue" | "red" | "purple" | "cyan" | "indigo";
 
@@ -149,6 +151,10 @@ function WorkflowsPanel(props: { refreshKey: number; onNotice: (m: string) => vo
   const [patchText, setPatchText] = useState("");
   const [turn, setTurn] = useState({ prompt: "", mode: "normal", paradigm: "direct_agent", maxWaves: 50, handoffTo: "" });
   const [turnOutcome, setTurnOutcome] = useState<TurnOutcome | null>(null);
+  const [dynamicPrompt, setDynamicPrompt] = useState("");
+  const [dynamicPreview, setDynamicPreview] = useState<DynamicPerceiveResult | null>(null);
+  const [dynamicExecuting, setDynamicExecuting] = useState(false);
+  const [dynamicResult, setDynamicResult] = useState<DynamicExecuteResult | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -159,6 +165,39 @@ function WorkflowsPanel(props: { refreshKey: number; onNotice: (m: string) => vo
       setError(errMsg(e));
     } finally {
       setLoading(false);
+    }
+    try {
+      const rl = await listWorkflowRuns();
+      setRuns((prev) => {
+        const next = { ...prev };
+        for (const r of rl) {
+          if (!next[r.run_id]) {
+            next[r.run_id] = {
+              run_id: r.run_id,
+              workflow_id: r.workflow_id,
+              graph_version: r.graph_version,
+              status: r.status,
+              state: {},
+              node_states: {},
+              active_nodes: r.active_nodes,
+              completed_nodes: r.completed_nodes,
+              failed_nodes: r.failed_nodes,
+              waiting_nodes: r.waiting_nodes,
+              iteration_counts: {},
+              metrics: {},
+              history: [],
+              waiting_reason: r.waiting_reason,
+              approval_request_id: null,
+              created_at: r.created_at,
+              updated_at: r.updated_at,
+            };
+          }
+        }
+        return next;
+      });
+      if (activeRunId) await loadRun(activeRunId);
+    } catch {
+      // Optional run list hydration
     }
     try {
       setDurability(await getDurabilityStatus());
@@ -315,8 +354,15 @@ function WorkflowsPanel(props: { refreshKey: number; onNotice: (m: string) => vo
   const onApproval = (nodeId: string, approved: boolean) =>
     runAct(async () => {
       if (!activeRunId) return;
-      const run = await resolveRunApproval(activeRunId, nodeId, approved, approvalFeedback);
+      const run = await resolveRunApproval(
+        activeRunId,
+        nodeId,
+        approved,
+        approvalFeedback,
+        runs[activeRunId]?.approval_request_id ?? undefined,
+      );
       applyRun(run);
+      setApprovalFeedback("");
       props.onNotice(`Node "${nodeId}" ${approved ? "approved" : "denied"} — run "${run.status}".`);
     });
 
@@ -333,6 +379,78 @@ function WorkflowsPanel(props: { refreshKey: number; onNotice: (m: string) => vo
       setTurnOutcome(outcome);
       if (outcome.run_id) await loadRun(outcome.run_id);
     });
+
+  const onPerceive = async (promptOverride?: string) => {
+    const prompt = (promptOverride ?? dynamicPrompt).trim();
+    if (!prompt) {
+      setDetailError("Please enter a prompt to perceive.");
+      return;
+    }
+    setDetailError(null);
+    try {
+      const res = await perceiveDynamicWorkflow(prompt);
+      setDynamicPreview(res);
+      props.onNotice(`Perceived intent "${res.perception.intent_type}" (${res.perception.execution_tier}) with ${res.goal.tasks.length} task(s).`);
+    } catch (e) {
+      setDetailError(errMsg(e));
+    }
+  };
+
+  const onDynamicExecute = async (promptOverride?: string) => {
+    const prompt = (promptOverride ?? dynamicPrompt).trim();
+    if (!prompt) {
+      setDetailError("Please enter a prompt to execute.");
+      return;
+    }
+    setDynamicExecuting(true);
+    setDetailError(null);
+    try {
+      const res = await executeDynamicWorkflow({ prompt, auto_execute: true, max_steps: 40 });
+      setDynamicResult(res);
+      const acceptance = res.metadata.acceptance_passed === true
+        ? "domain acceptance verified"
+        : "graph projection only — domain acceptance not claimed";
+      props.onNotice(`Dynamic workflow "${res.workflow_id}" executed — status "${res.status}" (${res.completed_nodes.length} completed; ${acceptance}).`);
+      await load();
+      if (res.run_id) await loadRun(res.run_id);
+    } catch (e) {
+      setDetailError(errMsg(e));
+    } finally {
+      setDynamicExecuting(false);
+    }
+  };
+
+  const onReplan = async (runId: string) => {
+    setDetailError(null);
+    try {
+      const res = await replanWorkflowRun(runId, { resume: true });
+      if (res.status === "no_op") {
+         props.onNotice(`No replan needed for ${runId}: ${res.reason || "no failed nodes"}.`);
+       } else if (res.status === "committed_resume_failed") {
+         props.onNotice(`Replan committed, but resume failed for ${runId}: ${res.resume_error || "unknown error"}.`);
+       } else {
+         props.onNotice(`Replanned run ${runId} — graph v${res.new_graph_version} (ops: ${res.patch_operations.join(", ")}).`);
+       }
+      await loadRun(runId);
+    } catch (e) {
+      setDetailError(errMsg(e));
+    }
+  };
+
+  const onCompensate = async (runId: string) => {
+    setDetailError(null);
+    try {
+      const res = await compensateWorkflowRun(runId);
+      props.onNotice(
+         res.executed
+           ? `Compensated run ${runId} — ${res.count} task(s) rolled back.`
+           : `Compensation not executed for ${runId}: ${res.reason || res.status}.`,
+       );
+      await loadRun(runId);
+    } catch (e) {
+      setDetailError(errMsg(e));
+    }
+  };
 
   const onLoadPlans = (workflowId: string) =>
     runAct(async () => {
@@ -358,6 +476,169 @@ function WorkflowsPanel(props: { refreshKey: number; onNotice: (m: string) => vo
   return (
     <div className="space-y-4">
       {detailError && <ErrorBox message={detailError} onRetry={() => setDetailError(null)} />}
+
+      {/* Dynamic workflow graph — POST /workflows/dynamic/perceive & /execute */}
+      <div className="rounded-xl border border-primary/30 bg-card p-4 space-y-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Sparkles className="size-4 text-primary" />
+          <p className="text-sm font-semibold flex-1">
+            Dynamic Workflow Graph (boost intent)
+          </p>
+          <Badge tone="blue">Graph execution</Badge>
+          <Badge tone="purple">Perception · DAG · Saga · Self-healing</Badge>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Enter a natural-language goal. The <span className="font-mono">boost</span>{" "}
+          intent keyword (and other catalog-valid commands) automatically
+          perceives intent &amp; risk, decomposes dependencies into parallel
+          execution waves, assembles specialists &amp; tools, compiles a live
+          Workflow DAG. Execution uses only bound executors; the default digest is a graph projection,
+          never presented as domain-task completion.
+        </p>
+        <div className="flex gap-2 flex-wrap">
+          <input
+            value={dynamicPrompt}
+            onChange={(e) => {
+               setDynamicPrompt(e.target.value);
+               setDynamicPreview(null);
+               setDynamicResult(null);
+             }}
+            placeholder="boost intent: implement, test, and verify a production feature..."
+            className={inputCls + " flex-1 min-w-[260px]"}
+          />
+          <Btn
+            variant="ghost"
+            disabled={dynamicExecuting}
+            onClick={() => onPerceive()}
+            title="Perceive intent, decompose DAG, and assemble resources without starting a run"
+          >
+            <Eye className="size-3.5" /> Perceive &amp; Preview DAG
+          </Btn>
+          <Btn
+            disabled={dynamicExecuting}
+            onClick={() => onDynamicExecute()}
+            title="Compile and execute the dynamic workflow graph through its bound executors"
+          >
+            <Rocket className="size-3.5" />{" "}
+            {dynamicExecuting ? "Executing…" : "Execute dynamic graph"}
+          </Btn>
+        </div>
+        <div className="flex gap-1.5 flex-wrap text-[11px]">
+          <span className="text-muted-foreground py-0.5">Quick presets:</span>
+          {[
+            "boost Build and verify end-to-end workflow automation",
+            "boost Audit security, run full test suite, and fix regressions",
+            "boost Refactor module architecture and validate contracts",
+          ].map((preset) => (
+            <button
+              key={preset}
+              type="button"
+              onClick={() => {
+                setDynamicPrompt(preset);
+                void onPerceive(preset);
+              }}
+              className="rounded-md border border-border/60 bg-muted/40 hover:bg-muted px-2 py-0.5 font-mono text-[10px] transition"
+            >
+              {preset}
+            </button>
+          ))}
+        </div>
+
+        {dynamicPreview && (
+          <div className="rounded-lg border border-border/60 bg-muted/20 p-3 space-y-2 text-xs">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-semibold">Perceived Goal:</span>
+              <span className="font-mono">{dynamicPreview.goal.title || dynamicPreview.perception.raw_prompt}</span>
+              <Badge tone="blue">{dynamicPreview.perception.primary_domain}</Badge>
+              <Badge tone={statusTone(dynamicPreview.perception.execution_tier)}>
+                tier: {dynamicPreview.perception.execution_tier}
+              </Badge>
+              <Badge tone="gray">
+                complexity: {Math.round(dynamicPreview.perception.complexity_score * 100)}%
+              </Badge>
+              <Badge tone="green">
+                {dynamicPreview.goal.tasks.length} tasks ·{" "}
+                {dynamicPreview.goal.execution_waves.length} wave(s)
+              </Badge>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <div className="rounded-md border border-border/40 bg-background/60 p-2 space-y-1">
+                <p className="text-[11px] font-semibold">
+                  Execution Waves &amp; Saga Compensations
+                </p>
+                {dynamicPreview.goal.execution_waves.map((wave, idx) => (
+                  <div key={idx} className="text-[11px] flex items-center gap-1.5 flex-wrap">
+                    <Badge tone="purple">Wave {idx + 1}</Badge>
+                    <span className="font-mono">{wave.join(" → ")}</span>
+                  </div>
+                ))}
+                {dynamicPreview.goal.saga_compensations.length > 0 && (
+                  <p className="text-[10px] text-muted-foreground pt-1">
+                    Compensations: {dynamicPreview.goal.saga_compensations.map((c) => c.action_id).join(", ")}
+                  </p>
+                )}
+              </div>
+              <div className="rounded-md border border-border/40 bg-background/60 p-2 space-y-1">
+                <p className="text-[11px] font-semibold">
+                  Assembled Bot Specialists &amp; Tools
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  Specialists:{" "}
+                  <span className="font-mono text-foreground">
+                    {Object.keys(dynamicPreview.resources.bots).join(", ") || "default"}
+                  </span>
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  Tools:{" "}
+                  <span className="font-mono text-foreground">
+                    {dynamicPreview.resources.tools.join(", ") || "alpha.tools"}
+                  </span>
+                </p>
+                {dynamicPreview.resources.mcp_servers.length > 0 && (
+                  <p className="text-[11px] text-muted-foreground">
+                    MCP:{" "}
+                    <span className="font-mono text-foreground">
+                      {dynamicPreview.resources.mcp_servers.join(", ")}
+                    </span>
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {dynamicResult && (
+          <div className={`rounded-lg border p-3 space-y-1.5 text-xs ${
+             dynamicResult.status === "completed" && dynamicResult.metadata.acceptance_passed === true
+               ? "border-emerald-500/30 bg-emerald-500/5"
+               : dynamicResult.status === "failed"
+                 ? "border-red-500/30 bg-red-500/5"
+                 : "border-amber-500/30 bg-amber-500/5"
+           }`}>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-semibold">Dynamic Execution Result:</span>
+              <Badge tone={statusTone(dynamicResult.status)}>
+                {dynamicResult.status}
+              </Badge>
+              <span className="font-mono">
+                workflow: {dynamicResult.workflow_id}
+              </span>
+              {dynamicResult.run_id && (
+                <span className="font-mono">run: {dynamicResult.run_id}</span>
+              )}
+              <span>
+                ({dynamicResult.completed_count ?? dynamicResult.completed_nodes.length}/{dynamicResult.task_count ?? dynamicResult.total_steps}{" "}
+                tasks completed{dynamicResult.waves ? ` across ${dynamicResult.waves.length} waves` : ""})
+              </span>
+            </div>
+            <p className={dynamicResult.metadata.acceptance_passed === true ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}>
+              {dynamicResult.metadata.acceptance_passed === true
+                ? "Domain acceptance verified by the bound executor."
+                : "Graph mechanics completed only; the default digest executor does not claim domain-task acceptance."}
+            </p>
+          </div>
+        )}
+      </div>
 
       {/* Durability status — honest journal health (GET /workflows/system/durability) */}
       <div className="rounded-xl border border-border/60 bg-card p-4 space-y-2">
@@ -429,7 +710,7 @@ function WorkflowsPanel(props: { refreshKey: number; onNotice: (m: string) => vo
           <Field label="Description">
             <input value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} placeholder="What this workflow does" className={inputCls} />
           </Field>
-          <Field label="Graph (JSON, optional)" hint='WorkflowGraph shape: {"version":1,"nodes":{...},"edges":[...]}. Leave empty for an empty graph — the server validates whatever you send.'>
+          <Field label="Graph (JSON, required)" hint='WorkflowGraph shape: {"version":1,"nodes":{...},"edges":[...]}. The server requires at least one node and validates every reference.'>
             <textarea value={draft.graphJson} onChange={(e) => setDraft({ ...draft, graphJson: e.target.value })} rows={4} placeholder='{"nodes": {"n1": {"id": "n1", "type": "tool"}}, "edges": []}' className={`${inputCls} font-mono`} />
           </Field>
           <div className="flex gap-2">
@@ -574,6 +855,12 @@ function WorkflowsPanel(props: { refreshKey: number; onNotice: (m: string) => vo
               </div>
               <div className="flex gap-2 flex-wrap">
                 <Btn variant="ghost" onClick={onStep}><Zap className="size-3.5" /> Step one wave</Btn>
+                <Btn variant="ghost" onClick={() => onReplan(activeRun.run_id)} title="Synthesize failure-repair patch and advance (POST /workflows/runs/{id}/replan)">
+                  <Wrench className="size-3.5" /> Auto-Replan
+                </Btn>
+                <Btn variant="ghost" onClick={() => onCompensate(activeRun.run_id)} title="Request verified saga compensation (POST /workflows/runs/{id}/compensate)">
+                  <RotateCcw className="size-3.5" /> Request compensation
+                </Btn>
                 <Btn variant="ghost" onClick={() => loadRun(activeRun.run_id)}><RefreshCw className="size-3.5" /> Reload</Btn>
                 <Btn variant="ghost" onClick={onReplay}>Replay</Btn>
                 <Btn variant="ghost" onClick={onEvents}>Events</Btn>
@@ -582,7 +869,7 @@ function WorkflowsPanel(props: { refreshKey: number; onNotice: (m: string) => vo
               </div>
 
               {/* Human approvals — POST /workflows/runs/{id}/approvals/{node} */}
-              {activeRun.waiting_nodes.length > 0 && (
+              {activeRun.waiting_nodes.length > 0 && activeRun.status === "waiting_approval" && (
                 <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5 space-y-2">
                   <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">
                     Waiting for approval: {activeRun.waiting_nodes.join(", ")}
@@ -1130,7 +1417,7 @@ function OpsPanel(props: { refreshKey: number; onNotice: (m: string) => void }) 
     loadCheckpoints();
     loadJobs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.refreshKey]);
+  }, [props.refreshKey, jobStatus]);
 
   const act = async (fn: () => Promise<void>) => {
     setActionError(null);
@@ -1140,6 +1427,9 @@ function OpsPanel(props: { refreshKey: number; onNotice: (m: string) => void }) 
       setActionError(errMsg(e));
     }
   };
+
+  const checkpointRoot = (checkpointId: string) =>
+    checkpoints.find((checkpoint) => checkpoint.checkpoint_id === checkpointId)?.root_path || ".";
 
   const onCreateCheckpoint = () =>
     act(async () => {
@@ -1152,14 +1442,14 @@ function OpsPanel(props: { refreshKey: number; onNotice: (m: string) => void }) 
 
   const onDiff = (checkpointId: string) =>
     act(async () => {
-      const diff = await getCheckpointDiff(checkpointId, ".");
+      const diff = await getCheckpointDiff(checkpointId, checkpointRoot(checkpointId));
       setDiffs((prev) => ({ ...prev, [checkpointId]: diff }));
     });
 
   const onRollback = (checkpointId: string) =>
     act(async () => {
       if (!window.confirm(`Roll the workspace back to ${checkpointId}? Current files covered by that checkpoint will be overwritten.`)) return;
-      const result = await rollbackCheckpoint(checkpointId, ".");
+      const result = await rollbackCheckpoint(checkpointId, checkpointRoot(checkpointId));
       props.onNotice(`Rolled back to ${result.checkpoint_id} — ${result.restored_files_count} file(s) restored.`);
       await loadCheckpoints();
     });

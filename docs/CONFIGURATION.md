@@ -9,6 +9,7 @@
 | `.env` | Secrets and API keys | Repo root | No (gitignored) |
 | `config.example.yaml` | Template for config.yaml | Repo root | Yes |
 | `extensions_config.example.json` | Template for extensions_config.json | Repo root | Yes |
+| `config/update-policy.json` | Guarded local source auto-update policy (no secrets) | Repo root | Yes |
 | `.env.production.example` | Template for .env | Repo root | Yes |
 
 ## config.yaml Schema
@@ -55,6 +56,17 @@ database:
     password: string       # Use env var reference
     pool_size: integer
     max_overflow: integer
+
+# Run ownership and safe recovery (restart-required)
+run_ownership:
+  lease_seconds: integer
+  grace_seconds: integer
+  heartbeat_enabled: boolean
+  auto_resume: boolean
+  resume_poll_interval_seconds: number
+  max_resume_attempts: integer
+  resume_backoff_seconds: number
+  max_concurrent_resumes: integer
 
 # Redis Configuration
 redis:
@@ -180,6 +192,32 @@ security:
     hsts: boolean          # HTTPS only
     csp: string            # Content Security Policy
 ```
+
+## Safe Run Recovery
+
+`run_ownership.auto_resume` enables bounded continuation from durable
+checkpoints after Gateway shutdown, expired worker ownership, and recoverable
+model failure. Browser/network SSE disconnects continue by default; use the
+explicit cancel endpoint to stop work.
+
+```yaml
+run_ownership:
+  lease_seconds: 30
+  grace_seconds: 10
+  heartbeat_enabled: false       # required for GATEWAY_WORKERS > 1
+  auto_resume: true
+  resume_poll_interval_seconds: 5.0
+  max_resume_attempts: 3
+  resume_backoff_seconds: 5.0
+  max_concurrent_resumes: 2
+```
+
+The entire section is restart-required. Alpha automatically resumes only
+model/agent nodes. A pending tool, MCP, browser, shell, write/delete, payment,
+custom, or unknown node stops with `recovery_confirmation_required` because the
+external action may already have taken effect. See
+[`RUN_RECOVERY.md`](RUN_RECOVERY.md) for the complete state and side-effect
+contract.
 
 ## extensions_config.json Schema
 
@@ -336,6 +374,40 @@ DINGTALK_CLIENT_SECRET="..."
   max_tokens: 8192
   temperature: 0.7
 ```
+
+### Laya System One (local decision model)
+
+Laya is not an entry in `models[]`: it is a non-generative decision model exposed
+through the separate `system_one` section. Install and start its isolated runtime
+with:
+
+```bash
+python backend/scripts/system_one_laya_setup.py setup
+python backend/scripts/system_one_laya_setup.py serve
+```
+
+Then select it in `config.yaml`:
+
+```yaml
+system_one:
+  enabled: true
+  provider: "laya"
+  base_url: "http://127.0.0.1:8000"
+  api_key: null                 # optional for loopback
+  model: "english"              # multilingual / typed-decisions / "" for auto-router
+  shadow_mode: true             # measure before allowing decisions to act
+  record_decisions: true
+  laya_max_choice_options: 20   # partition larger catalogs instead of truncating
+  laya_max_request_chars: 24000  # bound the complete serialized request
+  laya_max_partition_requests: 16 # abstain if a local tournament exceeds budget
+  laya_max_partition_latency_ms: 60000 # total local tournament wall-clock budget
+```
+
+Laya uses the same `/v1/systemone` contract as Jev. Its weights and PyTorch runtime
+are stored under the ignored `.agent-workspace/laya` directory, so normal Alpha
+installs do not download them. A keyless Laya URL must resolve to loopback. If the
+server is exposed beyond loopback, set `LAYA_API_KEY` in both the server environment
+and `system_one.api_key`; hosted credentials are never forwarded to Laya.
 
 ### Codex CLI
 ```yaml
@@ -542,6 +614,25 @@ make prod-check
 | `Database connection failed` | Wrong DATABASE_URL | Check DB running and credentials |
 | `Redis connection failed` | Wrong REDIS_URL | Check Redis running |
 | `Port already in use` | Port conflict | Change port or stop conflicting service |
+
+## Guarded source auto-update
+
+The source updater uses the committed, credential-free
+`config/update-policy.json` rather than putting executable update commands in
+`config.yaml`. `enabled` is the hard kill switch; `auto_apply` is a separate
+unattended opt-in. The default is disabled/check-only. A manual check is safe
+to run at any time:
+
+```bash
+make update-status
+make update-check
+```
+
+An apply additionally requires a clean worktree, a fast-forward target from
+the configured GitHub remote, a backup ref, and successful post-restart health
+checks. See [AUTO_UPDATE.md](AUTO_UPDATE.md) before enabling unattended mode.
+Docker/Helm/Electron deployments should keep the policy disabled and update
+through their release orchestrator instead.
 
 ## Migration Between Versions
 

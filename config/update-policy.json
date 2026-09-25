@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "enabled": false,
+  "auto_apply": false,
+  "channel": "stable",
+  "remote": "origin",
+  "branch": "main",
+  "check_interval_seconds": 21600,
+  "jitter_seconds": 300,
+  "require_clean_worktree": true,
+  "allowed_branches": ["main"],
+  "verify_signed_commit": false,
+  "verify_release_version": true,
+  "min_free_disk_mb": 1024,
+  "keep_backups": 3,
+  "sync_dependencies": true,
+  "run_config_upgrade": true,
+  "restart_mode": "dev",
+  "health_check_attempts": 60,
+  "health_check_interval_seconds": 5,
+  "health_check_timeout_seconds": 10,
+  "startup_failure_threshold": 3,
+  "rollback_on_failure": true,
+  "restore_dependencies_on_rollback": true,
+  "respect_active_runs": true,
+  "maintenance_drain_seconds": 30,
+  "health_urls": [
+    "http://127.0.0.1:8001/health/ready",
+    "http://127.0.0.1:3000/"
+  ],
+  "description": "Safe default: checks are manual until an operator enables the autonomy loop and auto_apply."
+}

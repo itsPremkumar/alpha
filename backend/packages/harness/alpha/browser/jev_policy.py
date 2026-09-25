@@ -31,13 +31,43 @@ from alpha.browser.element_table import (
     Element,
     build_action_space,
 )
-from alpha.config.system_one_config import RiskTier
-from alpha.models.system_one import ChoiceQuestion, get_system_one_client
+from alpha.config.system_one_config import PROVIDER_LAYA, RiskTier
+from alpha.models.system_one import (
+    ChoiceQuestion,
+    PartitionedChoiceResult,
+    evaluate_choice_partitioned,
+    get_system_one_client,
+)
 
 logger = logging.getLogger(__name__)
 
 #: Call-site label recorded in the System One decision log (see evaluation/system_one_calibration.py).
 SITE = "browser"
+
+
+def _laya_element_state(element: Element) -> dict[str, Any]:
+    """Return only decision-relevant element fields for local Laya requests."""
+    return {
+        "index": element.index,
+        "role": element.role,
+        "label": element.label,
+        "value": element.value,
+        "operations": list(element.operations),
+        "options": [{"index": option.get("index"), "label": option.get("label"), "value": option.get("value"), "selected": option.get("selected", False)} for option in element.options],
+        "checked": element.checked,
+        "disabled": element.disabled,
+        "expanded": element.expanded,
+        "secret": element.secret,
+    }
+
+
+def _laya_projection_for_ids(state: dict[str, Any], elements: list[Element], option_ids: list[str]) -> dict[str, Any]:
+    """Keep only elements represented by a target partition, including select options."""
+    base_ids = {option_id.split(":", 1)[0] for option_id in option_ids}
+    projected = dict(state)
+    projected["elements"] = [_laya_element_state(element) for element in elements if element.index in base_ids]
+    return projected
+
 
 # The two rubrics below are adapted from browser-use/jev-ultrafast (MIT), which
 # tuned them against real sites. They are worth more than they look: each line
@@ -104,6 +134,8 @@ class BrowserDecision:
     target_confidence: float | None = None
     operation_probabilities: dict[str, float] = field(default_factory=dict)
     target_probabilities: dict[str, float] = field(default_factory=dict)
+    target_requests: int = 0
+    target_latency_ms: float = 0.0
     latency_ms: float = 0.0
     model: str = ""
     truncated: bool = False
@@ -126,6 +158,8 @@ class BrowserDecision:
             "target_confidence": None if self.target_confidence is None else round(self.target_confidence, 4),
             "operation_probabilities": {k: round(v, 4) for k, v in self.operation_probabilities.items()},
             "target_probabilities": {k: round(v, 4) for k, v in self.target_probabilities.items()},
+            "target_requests": self.target_requests,
+            "target_latency_ms": round(self.target_latency_ms, 1),
             "latency_ms": round(self.latency_ms, 1),
             "model": self.model,
             "truncated": self.truncated,
@@ -211,11 +245,12 @@ async def choose_next_action(
     # only elements that support that operation. A head with a single candidate
     # is already decided, so asking it would be a degenerate one-option choice.
     decided_targets: dict[str, str] = {}
+    deferred_target_questions: dict[str, ChoiceQuestion] = {}
     for operation, candidates in space.targets.items():
         if len(candidates) == 1:
             decided_targets[operation] = next(iter(candidates))
             continue
-        questions[f"{operation.lower()}_target"] = ChoiceQuestion(
+        target_question = ChoiceQuestion(
             instructions={"goal": goal, "operation": operation, "rules": [NEXT_ACTION, TARGET]},
             criteria={
                 index: {
@@ -226,6 +261,14 @@ async def choose_next_action(
                 for index, element in candidates.items()
             },
         )
+        # Laya's local option budget is smaller than the browser table's
+        # provider-independent 255 ceiling. Defer an oversized head until the
+        # operation has been selected; sending it in the initial fan-out would
+        # make the client reject the whole request before partitioning can run.
+        if cfg.provider == PROVIDER_LAYA and len(candidates) > cli.choice_option_limit():
+            deferred_target_questions[operation] = target_question
+            continue
+        questions[f"{operation.lower()}_target"] = target_question
 
     # The decision must know not just what it did, but whether it worked. This
     # list used to filter to ("action", "operation", "text") — none of which is
@@ -251,7 +294,7 @@ async def choose_next_action(
             record["evidence"] = list(evidence)
         recent.append(record)
 
-    state: dict[str, Any] = {
+    full_state: dict[str, Any] = {
         "page": {k: page_state.get(k) for k in ("url", "title", "text") if page_state.get(k)},
         "elements": [element.to_dict() for element in space.elements],
         "recent_actions": recent,
@@ -260,7 +303,7 @@ async def choose_next_action(
     # than repeat an action that already did not work.
     failures = [record for record in recent if record["ok"] is False]
     if failures:
-        state["failures"] = failures
+        full_state["failures"] = failures
     # Tell the policy when the table it is choosing from is incomplete. Without
     # this it re-decides forever against a table that cannot contain the answer,
     # and the run reads as a policy failure rather than a data limit.
@@ -277,7 +320,24 @@ async def choose_next_action(
             table["omitted"] = omitted
         if space.truncated:
             table["truncated"] = True
-        state["table"] = table
+        full_state["table"] = table
+
+    # Laya's state budget is intentionally smaller than the indexed browser
+    # table. Send a bounded, operation-relevant projection for the initial
+    # operation decision; each oversized target head gets its own partition
+    # projection below. Hosted Jev keeps the complete table.
+    state = full_state
+    if cfg.provider == PROVIDER_LAYA:
+        state = {
+            "page": full_state.get("page", {}),
+            "recent_actions": recent,
+            "elements": [_laya_element_state(element) for element in space.elements[:40]],
+            "table": {"complete": len(space.elements) > 40, "total_elements": len(space.elements)},
+        }
+        if failures:
+            state["failures"] = failures
+        if "table" in full_state:
+            state["table"] = {**full_state["table"], "complete": len(space.elements) > 40 or not full_state["table"].get("complete", True), "total_elements": len(space.elements)}
 
     try:
         result = await cli.evaluate(state, questions, min_confidence=threshold, site=SITE)
@@ -300,6 +360,8 @@ async def choose_next_action(
     target: str | None = None
     target_confidence: float | None = None
     target_probabilities: dict[str, float] = {}
+    target_requests: int = 0
+    target_latency_ms: float = 0.0
 
     if operation in decided_targets:
         # Only one candidate existed; no question was asked and none is needed.
@@ -311,20 +373,54 @@ async def choose_next_action(
         target_probabilities = {target: 1.0}
     elif operation in space.targets:
         head = space.targets[operation]
-        target_answer = result.get(f"{operation.lower()}_target")
-        if target_answer is None or not target_answer.validate(head):
-            # We know the operation but not the target: safer to abstain than
-            # to let the executor guess which element was meant.
-            logger.debug("System One target answer unusable for %s; falling back.", operation)
+        target_question = questions.get(f"{operation.lower()}_target") or deferred_target_questions.get(operation)
+        if target_question is None:
+            logger.debug("System One target question missing for %s; falling back.", operation)
             return None
-        if not target_answer.meets(threshold):
-            return None
-        target = str(target_answer.value)
+
+        target_result: Any = result.get(f"{operation.lower()}_target")
+        target_requests = 0
+        if cfg.provider == PROVIDER_LAYA and len(head) > cli.choice_option_limit():
+            # Laya's per-request option budget is smaller than the browser
+            # element table. Partition the indexed targets rather than dropping
+            # the tail; the final answer remains an index resolved below.
+            criteria = dict(target_question.criteria)
+            partitioned = await evaluate_choice_partitioned(
+                state,
+                target_question.instructions,
+                criteria,
+                min_confidence=threshold,
+                site=f"{SITE}:{operation.lower()}_target",
+                client=cli,
+                shortlist_per_partition=min(5, cli.choice_option_limit()),
+                deadline=(cfg.laya_max_partition_latency_ms / 1000) if cfg.provider == PROVIDER_LAYA else None,
+                state_projector=lambda ids: _laya_projection_for_ids(state, space.elements, list(ids)),
+            )
+            if partitioned is None:
+                return None
+            target_result = partitioned
+            target_requests = partitioned.requests
+            target_latency_ms = partitioned.latency_ms
+        if isinstance(target_result, PartitionedChoiceResult):
+            if not set(target_result.ranking).issuperset(head):
+                return None
+            target = target_result.value
+            target_confidence = target_result.confidence
+            target_probabilities = dict(target_result.probabilities)
+        else:
+            if target_result is None or not target_result.validate(head):
+                # We know the operation but not the target: safer to abstain than
+                # to let the executor guess which element was meant.
+                logger.debug("System One target answer unusable for %s; falling back.", operation)
+                return None
+            if not target_result.meets(threshold):
+                return None
+            target = str(target_result.value)
+            target_confidence = target_result.confidence
+            target_probabilities = dict(target_result.probabilities)
         element = space.resolve(operation, target)
         if element is None:
             return None
-        target_confidence = target_answer.confidence
-        target_probabilities = dict(target_answer.probabilities)
 
     return BrowserDecision(
         operation=operation,
@@ -334,7 +430,8 @@ async def choose_next_action(
         target_confidence=target_confidence,
         operation_probabilities=dict(operation_answer.probabilities),
         target_probabilities=target_probabilities,
-        latency_ms=result.latency_ms,
+        target_requests=target_requests,
+        latency_ms=result.latency_ms + target_latency_ms,
         model=result.model,
         truncated=space.truncated,
     )
