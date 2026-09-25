@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -204,11 +205,45 @@ def test_committed_real_index_is_exactly_generator_output(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    """The committed index must equal the generator's output for the COMMITTED tree.
+
+    The comparison is made against a materialisation of git-TRACKED docs, not the
+    working directory. In CI a checkout is clean and the two are identical; in a
+    developer's tree they are not, and an unrelated uncommitted document (this
+    repository routinely has several in flight at once) would otherwise make this
+    test red for a reason that has nothing to do with the index. The gate's real
+    question is "does the committed navigation still describe the committed
+    docs?", so that is exactly what is asserted here.
+    """
+    tracked_root = tmp_path / "tracked"
+    (tracked_root / "docs").mkdir(parents=True)
+    listed = subprocess.run(  # noqa: S603 - fixed argv, no shell
+        ["git", "ls-files", "--", "docs"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    tracked_docs = [line for line in listed.stdout.splitlines() if line.strip()]
+    assert tracked_docs, "git reported no tracked docs; the fixture is wrong"
+    for relative in tracked_docs:
+        source = ROOT / relative
+        target = tracked_root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(source.read_bytes())
+
     generated = tmp_path / "real-index.md"
     result = _invoke(
         generator,
         capsys,
-        ["--root", str(ROOT), "--commit", "fixture-commit", "--output", str(generated)],
+        [
+            "--root",
+            str(tracked_root),
+            "--commit",
+            "fixture-commit",
+            "--output",
+            str(generated),
+        ],
     )
 
     assert result[0] == 0, result[2] or result[1]
