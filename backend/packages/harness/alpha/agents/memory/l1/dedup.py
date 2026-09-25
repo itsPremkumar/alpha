@@ -13,6 +13,15 @@ Write semantics (mirroring the source's l1-writer): ``update``/``merge``
 REPLACE their target records in real time (targets are removed, one merged
 record lands), so retrieval never sees stale duplicates. Missing targets or
 missing decisions degrade to ``store`` — content is never silently dropped.
+
+Observation channel (added for the central capture seam, no decision path):
+``apply_decisions`` can report the ids the store CONFIRMED, so a caller can ask
+"which records did this turn actually commit?" without re-deriving anything
+(re-deriving would re-index records this module just merged away). It is an
+opt-in out-parameter: the ``{"stored", "skipped", "updated", "merged"}`` counts
+return value is unchanged, and a caller that does not pass a sink pays nothing
+— no extra read, no extra allocation, and the confirmation is skipped entirely
+when nothing was written. The channel observes; it never influences a decision.
 """
 
 from __future__ import annotations
@@ -49,9 +58,7 @@ class L1Dedup:
         self._user_id = user_id
         self._agent_name = agent_name
 
-    def _build_matches(
-        self, candidates: list[MemoryRecord]
-    ) -> list[dict[str, Any]]:
+    def _build_matches(self, candidates: list[MemoryRecord]) -> list[dict[str, Any]]:
         """Recall existing candidates per new memory (unified pool in prompt)."""
         matches: list[dict[str, Any]] = []
         recall = self._store.candidates_for_dedup(
@@ -96,9 +103,7 @@ class L1Dedup:
             "metadata": {"thread_id": thread_id, "candidate_count": len(candidates)},
         }
         try:
-            response = model.invoke(
-                f"{system_prompt}\n\n{user_prompt}", config=invoke_config
-            )
+            response = model.invoke(f"{system_prompt}\n\n{user_prompt}", config=invoke_config)
         except BaseException as exc:  # noqa: BLE001 - fail open, never crash the turn
             logger.warning("L1 dedup LLM call failed: %s", exc)
             return DedupOutcome(status="llm_error", error=str(exc)[:500])
@@ -115,6 +120,58 @@ class L1Dedup:
         return outcome
 
 
+def _confirm_committed_ids(
+    store: L1RecordStore,
+    records: list[MemoryRecord],
+    *,
+    user_id: str | None,
+    agent_name: str | None,
+) -> list[str]:
+    """Ids the STORE holds for ``records`` after the write, in commit order.
+
+    Each id is confirmed individually through ``store.get`` rather than by
+    re-reading the scope, for two reasons:
+
+    - **Cost.** A second ``list_records`` would double the read cost of every
+      write turn and would run against the whole scope. One lookup per
+      *written* record is proportional to what this run actually wrote, and
+      the caller reaches this function only when there was something to write.
+    - **Honesty.** ``put_records``' return value is not a commit receipt: it
+      counts ids that were *newly added*, so a replace-in-place (an id already
+      present in the scope) reads as a short write even though the record is
+      committed. Asking the store per id is the only primitive here that
+      separates "committed" from "intended".
+
+    Never raises. A record that cannot be confirmed is reported as absent
+    rather than guessed at, because the channel must not be able to fail a
+    capture turn. Ids are de-duplicated in first-commit order; consumers that
+    need a set should compare as a set.
+    """
+    committed: list[str] = []
+    seen: set[str] = set()
+    for record in records:
+        if record.id in seen:
+            continue
+        try:
+            landed = store.get(record.id, user_id=user_id, agent_name=agent_name) is not None
+        except Exception:  # noqa: BLE001 - an observation channel never fails a run
+            logger.warning(
+                "L1 dedup: could not confirm record %s; reporting it as absent",
+                record.id,
+                exc_info=True,
+            )
+            landed = False
+        if landed:
+            seen.add(record.id)
+            committed.append(record.id)
+        else:
+            logger.warning(
+                "L1 dedup: record %s is not in the store after the write; reporting it as absent",
+                record.id,
+            )
+    return committed
+
+
 def apply_decisions(
     store: L1RecordStore,
     candidates: list[MemoryRecord],
@@ -123,6 +180,7 @@ def apply_decisions(
     user_id: str | None = None,
     agent_name: str | None = None,
     now: float | None = None,
+    persisted_ids: list[str] | None = None,
 ) -> dict[str, int]:
     """Apply conflict decisions to the store; returns per-action counts.
 
@@ -134,9 +192,50 @@ def apply_decisions(
       / ``merged_priority`` / ``merged_timestamps`` (timestamps union falls
       back to target + candidate timestamps when the model omits them).
 
-    Returns ``{"stored": n, "skipped": n, "updated": n, "merged": n}``.
+    Returns ``{"stored": n, "skipped": n, "updated": n, "merged": n}`` — that
+    contract is unchanged for every existing caller, which keeps passing
+    nothing at all.
+
+    ``persisted_ids`` is the OPTIONAL observation channel: pass a list and it
+    is cleared, then filled with the record ids the store confirmed after the
+    write (see :func:`_confirm_committed_ids`). It answers "which records did
+    this turn actually commit?" without re-deriving anything. Leave it ``None``
+    and this function costs exactly what it did before — the confirmation only
+    runs when a sink is supplied *and* something was written.
+
+    Per-outcome id table (the only ids ``persisted_ids`` can ever receive)::
+
+        outcome                     reported ids
+        --------------------------  --------------------------------------------
+        store                       the candidate's own id.
+        skip                        none — a skipped candidate is not a record
+                                    that exists; reporting it would hand the
+                                    capture seam a phantom memory.
+        update                      the surviving id, exactly once. It is the
+                                    CANDIDATE's id (the merged record's id is
+                                    pinned to it), not the target's.
+        merge (cross-type or not)   the single survivor id, exactly once.
+        stale/unknown target_ids    none of the missing ids; the candidate
+                                    degrades to ``store`` and is reported
+                                    under its own id.
+        partial or failed write     only the ids the store confirmed. A
+                                    ``put_records`` failure still propagates
+                                    unchanged, but the out-parameter already
+                                    holds the partial truth.
+
+    Merge rule, stated once so the capture seam does not have to guess: the
+    SURVIVOR is the candidate's id (``merged.id`` is pinned to it, so this run's
+    provenance and the stored record agree). Every ``target_id`` is ABSORBED:
+    it is removed from the store and is never reported, so downstream capture
+    cannot index a record that no longer exists. A target id that is itself
+    written in the same run is never deleted (the replacement guard) and is
+    reported once, like any other committed id.
     """
     counts = {"stored": 0, "skipped": 0, "updated": 0, "merged": 0}
+    if persisted_ids is not None:
+        # Cleared on every exit path (including the empty-candidate one) so a
+        # caller reusing one list across runs can never read a stale id.
+        persisted_ids.clear()
     if not candidates:
         return counts
 
@@ -146,16 +245,12 @@ def apply_decisions(
     to_delete: set[str] = set()
 
     for candidate in candidates:
-        decision = decisions.get(candidate.id) or DedupDecision(
-            record_id=candidate.id, action="store"
-        )
+        decision = decisions.get(candidate.id) or DedupDecision(record_id=candidate.id, action="store")
         if decision.action == "skip":
             counts["skipped"] += 1
             continue
         if decision.action in ("update", "merge"):
-            target_records = [
-                existing[tid] for tid in decision.target_ids if tid in existing
-            ]
+            target_records = [existing[tid] for tid in decision.target_ids if tid in existing]
             # Stale/unknown targets: fall through to a plain store so no
             # content disappears (the source's writer behaves the same way).
             if not target_records:
@@ -173,28 +268,17 @@ def apply_decisions(
                         seen.add(stamp)
                         merged_timestamps.append(stamp)
             priorities = [candidate.priority, *[r.priority for r in target_records]]
-            merged_priority = (
-                decision.merged_priority
-                if decision.merged_priority is not None
-                else max(priorities)
-            )
+            merged_priority = decision.merged_priority if decision.merged_priority is not None else max(priorities)
             merged = MemoryRecord.create(
                 decision.merged_content or candidate.content,
-                memory_type=(
-                    decision.merged_type
-                    if decision.merged_type
-                    else (target_records[0].type if target_records else candidate.type)
-                ),
+                memory_type=(decision.merged_type if decision.merged_type else (target_records[0].type if target_records else candidate.type)),
                 priority=merged_priority,
-                scene_name=candidate.scene_name
-                or (target_records[0].scene_name if target_records else ""),
+                scene_name=candidate.scene_name or (target_records[0].scene_name if target_records else ""),
                 timestamps=merged_timestamps,
                 metadata={
                     **candidate.metadata,
                     "source": "l1_dedup_merge",
-                    "merged_from": sorted(
-                        {candidate.id, *(r.id for r in target_records)}
-                    ),
+                    "merged_from": sorted({candidate.id, *(r.id for r in target_records)}),
                 },
                 now=now,
             )
@@ -214,11 +298,18 @@ def apply_decisions(
     write_ids = {record.id for record in to_write}
     deletable = {tid for tid in to_delete if tid not in write_ids}
     if deletable:
-        store.delete_records(
-            sorted(deletable), user_id=user_id, agent_name=agent_name
-        )
+        store.delete_records(sorted(deletable), user_id=user_id, agent_name=agent_name)
     if to_write:
-        store.put_records(to_write, user_id=user_id, agent_name=agent_name)
+        try:
+            store.put_records(to_write, user_id=user_id, agent_name=agent_name)
+        finally:
+            # ``finally``, not ``else``: when the write raises part-way the sink
+            # must still carry what the store really holds. The exception
+            # continues to the caller unchanged — swallowing it here would be a
+            # capture behaviour change, and reporting the write intent instead
+            # of the partial reality would be a lie.
+            if persisted_ids is not None:
+                persisted_ids.extend(_confirm_committed_ids(store, to_write, user_id=user_id, agent_name=agent_name))
     return counts
 
 

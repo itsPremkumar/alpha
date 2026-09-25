@@ -183,6 +183,44 @@ class CaptureJob:
 
 
 # ---------------------------------------------------------------------------
+# Run report (observation channel)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(slots=True)
+class PersistedRunReport(RunReport):
+    """``RunReport`` plus the ids the store CONFIRMED for this run.
+
+    ``persisted_record_ids`` is the only answer to "which records did this
+    turn actually commit?", and it is deliberately narrow:
+
+    - It holds IDS, never payloads. A caller that needs content re-reads the
+      record by id; re-deriving records here would re-index the ones dedup
+      just merged away and would duplicate as a phantom memory.
+    - It is exactly what the store holds after the write, not what extraction
+      proposed. A skipped candidate is absent, a merge reports only its
+      survivor, and a partial or failed write reports only the ids that
+      landed (see ``dedup.apply_decisions`` for the per-outcome table).
+    - It is ``()`` for every run that wrote nothing, including a run that
+      never reached the write step.
+    - It is NOT part of ``to_dict()`` on purpose: ``to_dict()`` is the
+      generation-log entry, and widening it would change provenance output.
+      Read this attribute directly.
+
+    No truncation is applied, so nothing is silently shortened. The list is
+    bounded upstream by ``memory.l1.max_memories_per_run`` (config-validated,
+    ``le=200``) and by the per-user record quota, and it lives on the returned
+    object only — it never enters a stored artifact.
+
+    ``RunReport`` itself is left untouched, so every existing caller and the
+    ``l1.__init__`` lazy export map stay byte-identical; this subclass is an
+    ``isinstance``-compatible addition, and ``run_job`` always returns it.
+    """
+
+    persisted_record_ids: tuple[str, ...] = ()
+
+
+# ---------------------------------------------------------------------------
 # Pipeline
 # ---------------------------------------------------------------------------
 
@@ -320,9 +358,13 @@ class L1Pipeline:
 
     # -- run --------------------------------------------------------------
     def run_job(self, job: CaptureJob) -> RunReport:
-        """Execute one capture job end to end. Never raises."""
+        """Execute one capture job end to end. Never raises.
+
+        Returns a :class:`PersistedRunReport`, whose
+        ``persisted_record_ids`` are the ids the store confirmed for this run.
+        """
         started = time.monotonic()
-        report = RunReport(status="succeeded")
+        report = PersistedRunReport(status="succeeded")
         cfg = self._cfg()
         l1 = cfg.l1
         store = self._store_for()
@@ -385,9 +427,7 @@ class L1Pipeline:
         outcome = extractor.extract(
             new_messages,
             background_messages=background_messages,
-            previous_scene_name=store.last_scene(
-                job.thread_id, user_id=job.user_id, agent_name=job.agent_name
-            ),
+            previous_scene_name=store.last_scene(job.thread_id, user_id=job.user_id, agent_name=job.agent_name),
             mode=job.mode,
             thread_id=job.thread_id,
             user_id=job.user_id or "",
@@ -406,11 +446,7 @@ class L1Pipeline:
             return report
 
         # 4. Priority floor + per-run cap (the -1 strict-order sentinel wins).
-        memories = [
-            m
-            for m in outcome.memories
-            if m.priority >= l1.min_priority or m.priority == -1
-        ]
+        memories = [m for m in outcome.memories if m.priority >= l1.min_priority or m.priority == -1]
         memories.sort(key=lambda m: (-(101 if m.priority == -1 else m.priority),))
         memories = memories[: l1.max_memories_per_run]
 
@@ -449,6 +485,11 @@ class L1Pipeline:
                 return report
 
         # 6. Dedup (batch conflict detection) or direct write.
+        # The observation sink: apply_decisions fills it with the ids the
+        # STORE confirmed. It stays empty for a turn that wrote nothing, and
+        # it never feeds a decision below — the counts still come from
+        # apply_decisions alone.
+        persisted_ids: list[str] = []
         if records and l1.dedup_enabled:
             existing_count = store.count(job.user_id, job.agent_name)
             if existing_count == 0:
@@ -459,6 +500,7 @@ class L1Pipeline:
                     DedupOutcome(status="empty"),
                     user_id=job.user_id,
                     agent_name=job.agent_name,
+                    persisted_ids=persisted_ids,
                 )
             else:
                 dedup = L1Dedup(
@@ -488,6 +530,7 @@ class L1Pipeline:
                     dedup_outcome,
                     user_id=job.user_id,
                     agent_name=job.agent_name,
+                    persisted_ids=persisted_ids,
                 )
         else:
             report.dedup_status = "disabled" if not l1.dedup_enabled else "no_existing"
@@ -497,11 +540,13 @@ class L1Pipeline:
                 DedupOutcome(status="empty"),
                 user_id=job.user_id,
                 agent_name=job.agent_name,
+                persisted_ids=persisted_ids,
             )
         report.stored = counts["stored"]
         report.skipped = counts["skipped"]
         report.updated = counts["updated"]
         report.merged = counts["merged"]
+        report.persisted_record_ids = tuple(persisted_ids)
 
         # 7. Retention sweep.
         if l1.retention_enabled:
@@ -512,9 +557,7 @@ class L1Pipeline:
                 max_records=l1.retention_max_records,
                 max_age_days=l1.retention_max_age_days,
             )
-            report.retention = {
-                k: v for k, v in retention.to_dict().items() if k != "removed_ids"
-            }
+            report.retention = {k: v for k, v in retention.to_dict().items() if k != "removed_ids"}
 
         # 8. Persona refresh (only when persona memories actually landed).
         if l1.persona_enabled and (report.stored or report.updated or report.merged):
@@ -675,6 +718,7 @@ __all__ = [
     "CaptureJob",
     "KNOWN_DEDUP_STATUSES",
     "L1Pipeline",
+    "PersistedRunReport",
     "filter_capture_messages",
     "get_bound_l1_pipeline",
     "get_l1_pipeline",
