@@ -691,7 +691,9 @@ def test_no_gate_failure_is_swallowed_without_disclosure() -> None:
         assert "|| true" not in text, f"{path.name} would hide a failure"
         for index, line in enumerate(text.splitlines()):
             if "set +e" in line:
-                window = "\n".join(text.splitlines()[index : index + 14])
+                # Locality matters: the disclosure has to sit next to the line
+                # that disables errexit, not twenty lines below it.
+                window = "\n".join(text.splitlines()[index : index + 8])
                 assert re.search(r"status=\$\?", window), f"{path.name}:{index + 1} disables errexit without capturing an exit code"
                 assert "non-gating" in window, f"{path.name}:{index + 1} disables errexit without labelling itself non-gating"
 
