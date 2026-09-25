@@ -28,12 +28,25 @@ narrower than the type implies), **WAVE** (being built in the current wave),
 | 11 | Reflective / consolidative | Sleep-style consolidation, decay, salience, belief reconciliation | `alpha/memory/cognitive/consolidation.py`; `alpha/memory/dreaming/` | HAVE |
 | 12 | Hybrid retrieval | BM25 + vector + graph + recency, fused with RRF | `alpha/memory/cognitive/retrieval.py`; L1 store hybrid scoring | HAVE |
 | 13 | Typed working memory (L1) | Scene-segmented extraction with priorities, batch conflict detection, quotas, provenance, retention, persona | `alpha/agents/memory/l1/` + `l1_memory_middleware.py` + `<memory>` injection | HAVE |
-| 14 | Prospective / intentional | Future commitments and reminders: "remember to X", due dates, trigger conditions, completion | — | GAP → **WAVE** (`alpha/memory/prospective/`) |
-| 15 | Affective | Emotional tone of interactions: valence, arousal, intensity, mood trajectory, mood-aware recall | — | GAP → **WAVE** (`alpha/memory/affective/`) |
-| 16 | Autobiographical / narrative | A life story: ordered, human-readable timeline synthesized from episodes and records | — (persona profile is a summary, not a narrative) | GAP → **WAVE** (`alpha/memory/narrative/`) |
-| 17 | Entity / graph-linked | Named entities extracted from memories with alias resolution and entity-scoped recall | Semantic graph stores SPO beliefs; no entity-extraction/link index over raw memories | GAP → **WAVE** (`alpha/memory/entities/`) |
-| 18 | Social / shared | Who the agent deals with, relationships, and team-shared knowledge with audience scoping | L1 `work_*` types are team-shared; no per-audience or inter-agent relationship model | GAP → **WAVE** (`alpha/memory/social/`) |
-| 19 | Scenario-conditioned recall | Which memory surfaces matter for the kind of work in progress (coding vs research vs ops vs planning) | Memory is injected once per session or fetched by explicit search | GAP → **WAVE** (`alpha/memory/scenarios/`) |
+| 14 | Prospective / intentional | Future commitments and reminders: "remember to X", due dates, trigger conditions, completion | `alpha/memory/prospective/` (+ `memory.prospective` config) | BUILT — package + config landed; **capture/recall wiring pending** |
+| 15 | Affective | Emotional tone of interactions: valence, arousal, intensity, mood trajectory, mood-aware recall | `alpha/memory/affective/` (+ `memory.affective` config) | BUILT — package + config landed; **capture/recall wiring pending** |
+| 16 | Autobiographical / narrative | A life story: ordered, human-readable timeline synthesized from episodes and records | `alpha/memory/narrative/` (+ `memory.narrative` config) | BUILT — package + config landed; **capture/recall wiring pending** |
+| 17 | Entity / graph-linked | Named entities extracted from memories with alias resolution and entity-scoped recall | `alpha/memory/entities/` (+ `memory.entities` config) | BUILT — package + config landed; **capture/recall wiring pending** |
+| 18 | Social / shared | Who the agent deals with, relationships, and team-shared knowledge with audience scoping | `alpha/memory/social/` (+ `memory.social` config) | BUILT — package + config landed; **capture/recall wiring pending** |
+| 19 | Scenario-conditioned recall | Which memory surfaces matter for the kind of work in progress (coding vs research vs ops vs planning) | `alpha/memory/scenarios/` (+ `memory.scenarios` config) | BUILT — package + config landed; **routing/recall wiring pending** |
+
+### Cross-cutting memory infrastructure (not taxonomy rows)
+
+These are substrate, not memory *types* — they decide what gets admitted, how it
+is carried, how it is retrieved, and whether it is any good. Each is
+default-OFF with its own promoted config section and a hermetic test suite.
+
+| Component | Responsibility | Where | Status |
+|---|---|---|---|
+| Admission policy | weighted admission score, hard rules, fail-closed secret rejection, hot-reloadable policy docs | `alpha/memory/policy/` | BUILT — **not yet in the capture path** |
+| Memory fabric | canonical envelopes, namespaces, lifecycle transitions, temporal validity, forget/restore | `alpha/memory/fabric/` | BUILT — **not yet the canonical carrier** |
+| Retrieval fusion | multi-stage retrieval, weighted/RRF fusion, contradiction + MMR handling, per-type token budgets | `alpha/memory/fusion/` | BUILT — **not yet on the recall path** |
+| Evaluation harness | opt-in benchmark: extraction recall, multi-session/temporal/update accuracy, abstention, contamination, write precision, evidence traceability, token efficiency | `alpha/memory/evaluation/` | BUILT — **operator-invoked; no committed real-backend baseline yet** |
 
 ## Rules this project holds itself to
 

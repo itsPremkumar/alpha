@@ -81,3 +81,31 @@ pgvector (PostgreSQL-style permissive), Apache AGE (Apache-2.0), DuckDB (MIT).
 None is a dependency today: Alpha's canonical memory remains the local
 per-scope store plus the pluggable `MemoryManager` backend protocol, so a
 vector/graph engine can be added later without rewriting the agent.
+
+## Wave-2 memory packages — ORIGINAL Alpha code, zero third-party code
+
+The ten additive memory packages built in the second wave
+(`alpha/memory/{affective,prospective,entities,social,narrative,policy,fusion,scenarios,fabric,evaluation}/`)
+contain **no copied third-party source**. Every line is original Alpha code
+written for this repository. What they do carry is *attribution for the design
+lineage* — the paper or project whose idea informed a contract — recorded here
+so a future reader can tell inspiration from copying.
+
+| Package | Design lineage cited in its own docs | Code copied |
+|---|---|---|
+| `affective` | valence/arousal affect models; mood-aware retrieval | none |
+| `prospective` | prospective-memory reminder/obligation lifecycles | none |
+| `entities` | alias resolution and entity-linked recall | none |
+| `social` | shared/collaborative memory with audience scoping | none |
+| `narrative` | *Generative Agents: Interactive Simulacra of Human Behavior* (Park et al., UIST 2023) — reflection + importance-weighted retrieval | none |
+| `policy` | admission control, fail-closed secret rejection, hot-reloadable policy documents | none |
+| `fusion` | multi-stage retrieval, reciprocal-rank fusion, MMR diversification | none |
+| `scenarios` | context/scenario-conditioned retrieval routing | none |
+| `fabric` | canonical-envelope + lifecycle/temporal-integrity storage discipline | none |
+| `evaluation` | benchmark design only; **no LoCoMo / LongMemEval / MemBench dataset or question set was copied or bundled** — all 16 JSON cases are original, and LongMemEval is referenced solely as the name of the five-ability taxonomy | none |
+
+Two shared conventions are reused by import from inside this repository (not
+third-party code): `alpha.agents.memory.l1.paths` (`l1_root`, `safe_segment`,
+`atomic_write_text`) and `alpha.memory._lazy_exports.install_lazy_exports`.
+Copyleft projects (basic-memory AGPL-3.0, OpenViking AGPLv3) remain ideas-only
+and contributed nothing to these packages.

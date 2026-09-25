@@ -20,7 +20,7 @@
 # ============================================================================
 # Bump this number when the config schema changes.
 # Run `make config-upgrade` to merge new fields into your local config.yaml.
-config_version: 49
+config_version: 50
 
 # ============================================================================
 # Logging
@@ -867,6 +867,24 @@ tools:
     # backend: auto          # DDGS backend(s): auto, duckduckgo, brave, wikipedia, etc.
     # region: wt-wt          # wt-wt is normalized for Wikipedia when backend includes auto/all/wikipedia.
     # safesearch: moderate   # on, moderate, off
+
+  # AgentEye broad live-source search. The dependency is pinned to an immutable
+  # upstream Git commit; providers without API keys are still rate-limited and
+  # scraped search/social engines can break. Alpha applies a backend allowlist,
+  # bounded fan-out, deduplication, and safe URL/fetch limits around it.
+  - name: agent_eye_sources
+    group: web
+    use: alpha.community.agent_eye.tools:agent_eye_sources_tool
+  - name: agent_eye_search
+    group: web
+    use: alpha.community.agent_eye.tools:agent_eye_search_tool
+    max_results: 8
+    max_sources_per_query: 6
+    timeout_seconds: 30
+    use_for_deep_research: true
+    allow_fragile_backends: false
+    # Override the conservative built-in allowlist only with trusted providers.
+    # allowed_backends: [ddgs, wikipedia, github, arxiv, pubmed, openalex]
 
   # Web search tool (uses SearXNG, self-hosted, no API key required)
   # SearXNG is a free internet metasearch engine which aggregates results from
@@ -1883,6 +1901,7 @@ system_one:
   enable_memory_escalation: true
   enable_goal_completion: true
   enable_browser_action: true
+  enable_computer_action: false      # opt in after calibration; use shadow_mode first
   enable_injection_scan: true
   enable_citation_support: true
   enable_trace_verify: true
@@ -2344,6 +2363,221 @@ memory:
     persona_enabled: true       # persona profile from persona-type records
     persona_min_memories: 3
     storage_path: null          # null = agent runtime home (per-user layout)
+
+  # L1 typed working memory: scene segmentation, typed extraction, dedup/merge, quotas, recall.
+  # Requires memory.enabled as well; the schema default is false (opt-in).
+  l1:
+    enabled: true
+    mode: "chat"
+    extraction_model: null
+    debounce_seconds: 5.0
+    max_memories_per_run: 12
+    min_priority: 60
+    dedup_enabled: true
+    dedup_top_k: 5
+    quota_enabled: true
+    quota_memory_limit: 10000
+    quota_credit_limit: 1000.0
+    provenance_enabled: true
+    # Apply the retention sweep after each run.
+    retention_enabled: true
+    retention_max_records: 5000
+    # Retention sweep drops non-pinned records older than this many days.
+    retention_max_age_days: 180
+    # Inject the top L1 records into the <memory> block at recall time.
+    recall_enabled: true
+    # How many L1 records the recall seam injects.
+    recall_top_k: 5
+    persona_enabled: true
+    # Minimum persona-type records required before persona synthesis runs.
+    persona_min_memories: 3
+    storage_path: null
+
+  # Affective memory: emotional tone events, decayed mood state, mood-aware recall.
+  # Requires memory.enabled as well; the schema default is false (opt-in).
+  affective:
+    # Master switch for affective capture, mood computation, and recall.
+    enabled: false
+    # Exponential half-life used to decay old affect events.
+    half_life_hours: 72.0
+    # Maximum retained affect events per user.
+    max_events_per_user: 500
+    # Maximum remembered moments in one prompt block.
+    max_surfaced: 5
+    # Minimum confidence for ingest and recall.
+    min_confidence: 0.6
+    # Optional named model for sentiment extraction; None means no model.
+    extraction_model: null
+    enable_model_extraction: false
+    # Affective state root. None resolves to the Alpha runtime home.
+    storage_path: null
+
+  # Entity memory: entity extraction, alias merge, entity-scoped recall.
+  # Requires memory.enabled as well; the schema default is false (opt-in).
+  entities:
+    # Master switch for entity capture and recall; disabled by default.
+    enabled: false
+    # Maximum retained entities in one user's entity document.
+    max_entities_per_user: 500
+    # Maximum non-canonical aliases retained per entity.
+    max_aliases_per_entity: 12
+    # Mention count required before default entity recall exposes a node.
+    min_mentions_to_promote: 1
+    extraction_model: null
+    # Allow optional model enrichment after deterministic extraction.
+    enable_model_extraction: false
+    # Minimum deterministic name-similarity score for an implicit merge.
+    merge_similarity_threshold: 0.86
+    storage_path: null
+
+  # Narrative memory: an ordered life-story timeline synthesized from records/episodes.
+  # Requires memory.enabled as well; the schema default is false (opt-in).
+  narrative:
+    enabled: false
+    # Maximum retained events in one narrative scope.
+    max_events: 500
+    # Maximum rendered characters in one story document.
+    max_chars: 8000
+    # Maximum ordered period chapters retained in one story.
+    max_chapters: 32
+    # Importance floor used for story eligibility and eviction preference.
+    min_importance: 40.0
+    # Maximum age of an event considered by automatic story synthesis.
+    lookback_days: 365.0
+    synthesis_model: null
+    # Allow the injected model seam to refine deterministic chapters.
+    enable_model_synthesis: false
+    storage_path: null
+
+  # Prospective memory: reminders, commitments, trigger-bound obligations.
+  # Requires memory.enabled as well; the schema default is false (opt-in).
+  prospective:
+    # Master switch for prospective memory.
+    enabled: false
+    default_priority: 50
+    expiry_grace_hours: 24.0
+    max_pending_per_user: 100
+    max_surfaced_per_recall: 5
+    max_items_per_user: 1000
+    recurring_max_occurrences: 12
+    storage_path: null
+
+  # Social/shared memory: counterparts, relationship decay, default-deny audience grants.
+  # Requires memory.enabled as well; the schema default is false (opt-in).
+  social:
+    # Master switch for social memory capture and recall.
+    enabled: false
+    # Maximum retained counterparts per owner scope.
+    max_counterparts: 500
+    # Maximum retained shared facts per owner scope.
+    max_shared_facts: 1000
+    # Default relationship trust half-life in days.
+    relationship_decay_half_life_days: 30.0
+    # Sensitivity assigned when a fact does not specify one.
+    default_sensitivity: "private"
+    require_grant_for_team_scope: true
+    summary_model: null
+    enable_model_summaries: false
+    storage_path: null
+    clamping_disclosures: []
+
+  # Memory admission: weighted score + hard rules + hot-reloadable policy (fails closed).
+  # Requires memory.enabled as well; the schema default is false (opt-in).
+  policy:
+    # Master admission-policy gate.
+    enabled: false
+    # Explicit YAML path; null searches runtime home then package defaults.
+    policy_path: null
+    # Reject unknown policy document fields; unknown rules always fail.
+    strict: true
+    min_score_to_admit: 0.6
+    weights_override: null
+    # Enable conservative content-pattern secret detection.
+    secret_patterns_enabled: true
+    # Root for per-user admission provenance; null uses runtime home.
+    storage_path: null
+
+  # Retrieval fusion + typed context composition with per-memory-type token budgets.
+  # Requires memory.enabled as well; the schema default is false (opt-in).
+  fusion:
+    # Host call-site gate for multi-stage fusion; disabled by default.
+    enabled: false
+    weights: {"semantic": 0.3, "lexical": 0.2, "graph": 0.15, "temporal": 0.1, "scope_match": 0.1, "importance": 0.05, "confidence": 0.05, "task_relevance": 0.03, "access_history": 0.02}
+    # Weighted section-11 fusion or optional reciprocal-rank fusion.
+    strategy: "weighted"
+    # MMR relevance weight; 0.70 balances relevance and novelty.
+    mmr_lambda: 0.7
+    max_candidates_per_stage: 50
+    max_results: 24
+    # Hard ceiling before per-memory-type allocation.
+    total_budget_tokens: 2000
+    profile: "coding"
+    # Keep one authority/newest contradiction winner and disclose losers.
+    drop_contradictions: true
+    latency_budget_ms: 750.0
+    # Fusion state root. None resolves through the existing runtime home.
+    storage_path: null
+
+  # Scenario-conditioned recall routing over registered memory surfaces.
+  # Requires memory.enabled as well; the schema default is false (opt-in).
+  scenarios:
+    # Master gate; disabled by default.
+    enabled: false
+    # Safe fallback scenario.
+    default_scenario: "general"
+    # Optional model name for the injected seam.
+    classifier_model: null
+    # Whether the optional model seam may run.
+    enable_model_classifier: false
+    # Minimum confidence for a non-general label.
+    min_confidence: 0.55
+    # Maximum summed surface cost per plan.
+    total_budget_units: 12
+    # Maximum number of selected surfaces per plan.
+    max_surfaces: 8
+    # Freeze a plan for the first thread decision.
+    session_freeze: true
+    # Allow a valid explicit override to replace a frozen plan.
+    override_env_freeze: true
+    # Root for per-user scenario provenance.
+    storage_path: null
+
+  # Memory fabric: canonical envelopes, namespaces, lifecycle, temporal validity, forget/restore.
+  # Requires memory.enabled as well; the schema default is false (opt-in).
+  fabric:
+    # Master switch for fabric admission, transition, recall, and deletion.
+    enabled: false
+    # Default per-envelope decay pressure applied by the create seam.
+    default_decay_rate: 0.05
+    # Default retention TTL in seconds; None leaves expiry unbounded.
+    default_ttl_seconds: null
+    # Maximum tags accepted on one canonical envelope.
+    max_tags: 64
+    # Age at which a record becomes due for promotion to PURGED.
+    purge_after_days: 3650.0
+    # Age at which a record becomes due for promotion to ARCHIVED.
+    archive_after_days: 365.0
+    # Age at which a record becomes due for promotion to COMPRESSED.
+    compress_after_days: 30.0
+    # Explicitly permit secret-labelled envelopes; false is fail-closed.
+    allow_secret_classification: false
+    # Fabric state root; None resolves through the L1 runtime-home helper.
+    storage_path: null
+
+  # Opt-in memory benchmark thresholds; a run is an explicit operator action.
+  # Requires memory.enabled as well; the schema default is false (opt-in).
+  evaluation:
+    enabled: false
+    cases_dir: null
+    min_extraction_recall: 0.8
+    min_multi_session_accuracy: 0.8
+    min_temporal_accuracy: 0.8
+    min_update_accuracy: 1.0
+    min_abstention_rate: 1.0
+    max_contamination_rate: 0.0
+    baseline_path: null
+    max_cases: null
+    storage_path: null
 # ============================================================================
 # Custom Agent Management API
 # ============================================================================

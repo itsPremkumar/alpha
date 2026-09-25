@@ -5,7 +5,13 @@ reached via ``backend_config`` (a dict the factory passes to the backend's
 ``__init__``). This module holds ONLY the host-shared fields every backend /
 call site / factory reads: ``enabled`` / ``injection_enabled`` /
 ``shutdown_flush_timeout_seconds`` / ``manager_class`` / ``backend_config`` /
-``user_model`` / ``l1`` (the additive typed-memory pipeline sub-config).
+``user_model`` / ``l1`` (the additive typed-memory pipeline sub-config) and the
+per-type sub-configs for the additive memory subsystems (``affective``,
+``entities``, ``fusion``, ``narrative``, ``policy``, ``prospective``,
+``social``). Each of those types is default-OFF and owns its storage; the
+shared schema only decides whether the host may construct it. Those packages
+expose their config models with lazy package exports, so importing them here
+keeps the import graph acyclic.
 Keeping the shared schema slim is what
 makes backends swappable and portable (DeerMem's knobs do not leak onto the
 shared contract).
@@ -16,10 +22,44 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+# Additive per-type memory subsystem configs. Each package default is OFF, so
+# an existing deployment changes nothing until the operator enables the type.
+from alpha.memory.affective.config import AffectiveConfig
+from alpha.memory.entities.config import EntityConfig
+from alpha.memory.evaluation.config import EvaluationConfig
+from alpha.memory.fabric.config import FabricConfig
+from alpha.memory.fusion.config import FusionConfig
+from alpha.memory.narrative.config import NarrativeConfig
+from alpha.memory.policy.config import PolicyConfig
+from alpha.memory.prospective.config import ProspectiveConfig
+from alpha.memory.scenarios.config import ScenarioConfig
+from alpha.memory.social.config import SocialConfig
+
 logger = logging.getLogger(__name__)
 
 # Host-shared MemoryConfig fields (read by every backend / call site / factory).
-_SHARED_FIELDS = frozenset({"enabled", "mode", "injection_enabled", "shutdown_flush_timeout_seconds", "manager_class", "backend_config", "user_model", "l1"})
+_SHARED_FIELDS = frozenset(
+    {
+        "enabled",
+        "mode",
+        "injection_enabled",
+        "shutdown_flush_timeout_seconds",
+        "manager_class",
+        "backend_config",
+        "user_model",
+        "l1",
+        "affective",
+        "entities",
+        "evaluation",
+        "fabric",
+        "fusion",
+        "narrative",
+        "policy",
+        "prospective",
+        "scenarios",
+        "social",
+    }
+)
 
 # DeerMem-private fields that used to live at the top level of `memory:` in
 # config.yaml (pre-abstraction). On load they are auto-migrated into
@@ -118,6 +158,94 @@ class MemoryConfig(BaseModel):
         default_factory=lambda: L1MemoryConfig(),
         description=(
             "L1 typed-memory pipeline (scene segmentation + typed extraction + dedup/merge + quota + provenance + retention + recall). Additive on top of the existing backend behavior; gated by both memory.enabled and memory.l1.enabled."
+        ),
+    )
+    # --- Additive memory subsystems. Each is default-OFF, owns its own
+    # per-user storage, and composes at the recall seam. Enabling one never
+    # changes the configured backend's behavior; disabling one is a no-op.
+    affective: AffectiveConfig = Field(
+        default_factory=AffectiveConfig,
+        description=(
+            "Affective memory: remembered emotional tone (valence/arousal events), "
+            "decay-weighted mood state, and mood-aware recall. Requires "
+            "memory.enabled AND memory.affective.enabled."
+        ),
+    )
+    entities: EntityConfig = Field(
+        default_factory=EntityConfig,
+        description=(
+            "Entity memory: deterministic (+ optional model) entity extraction, "
+            "alias resolution/merge, and entity-scoped recall. Requires "
+            "memory.enabled AND memory.entities.enabled."
+        ),
+    )
+    narrative: NarrativeConfig = Field(
+        default_factory=NarrativeConfig,
+        description=(
+            "Narrative memory: an ordered, bounded life-story timeline synthesized "
+            "from stored records/episodes. Requires memory.enabled AND "
+            "memory.narrative.enabled."
+        ),
+    )
+    prospective: ProspectiveConfig = Field(
+        default_factory=ProspectiveConfig,
+        description=(
+            "Prospective memory: reminders, commitments, and trigger-bound "
+            "obligations with a pending -> fired -> done/expired lifecycle. "
+            "Requires memory.enabled AND memory.prospective.enabled."
+        ),
+    )
+    social: SocialConfig = Field(
+        default_factory=SocialConfig,
+        description=(
+            "Social/shared memory: counterparts, relationship state, and "
+            "audience-scoped shared facts behind default-deny grants. Requires "
+            "memory.enabled AND memory.social.enabled."
+        ),
+    )
+    policy: PolicyConfig = Field(
+        default_factory=PolicyConfig,
+        description=(
+            "Memory admission policy: weighted admission score, hard rules "
+            "(including secret rejection), and hot-reloadable policy documents "
+            "that fail closed. Requires memory.enabled AND memory.policy.enabled."
+        ),
+    )
+    fusion: FusionConfig = Field(
+        default_factory=FusionConfig,
+        description=(
+            "Retrieval fusion + context composition: multi-stage retrieval "
+            "(exact/semantic/graph/temporal/procedural), weighted fusion with "
+            "optional RRF, contradiction/MMR handling, and per-memory-type token "
+            "budgets. Requires memory.enabled AND memory.fusion.enabled."
+        ),
+    )
+    scenarios: ScenarioConfig = Field(
+        default_factory=ScenarioConfig,
+        description=(
+            "Scenario-conditioned recall routing: classify the current kind of "
+            "work, then select/weight/budget the registered memory surfaces that "
+            "matter for it. Requires memory.enabled AND memory.scenarios.enabled."
+        ),
+    )
+    fabric: FabricConfig = Field(
+        default_factory=FabricConfig,
+        description=(
+            "Memory fabric: canonical envelopes shared by every memory type, "
+            "with namespace isolation, lifecycle transitions (compress/archive/"
+            "promote/purge), temporal validity, fail-closed secret "
+            "classification, and forget/restore. Requires memory.enabled AND "
+            "memory.fabric.enabled."
+        ),
+    )
+    evaluation: EvaluationConfig = Field(
+        default_factory=EvaluationConfig,
+        description=(
+            "Opt-in memory benchmark: measured extraction recall, multi-session/"
+            "temporal/update accuracy, abstention, contamination, write "
+            "precision, evidence traceability and token efficiency against "
+            "explicit thresholds. Off by default; a run is an operator action, "
+            "never a unit-test side effect."
         ),
     )
 
