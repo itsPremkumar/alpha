@@ -244,6 +244,8 @@ def _format_comparison(comparison: ArtifactComparison) -> list[str]:
         lines.extend(f"  {line.rstrip()}" for line in comparison.diff_lines)
         return lines
     if not comparison.drifted:
+        if comparison.ignored_timestamp:
+            return [f"OK {relative} (generated_at volatile timestamp ignored)"]
         return [f"OK {relative}"]
     lines = [f"DRIFT {relative}: {comparison.changed_lines} changed line(s)"]
     if comparison.ignored_timestamp:
