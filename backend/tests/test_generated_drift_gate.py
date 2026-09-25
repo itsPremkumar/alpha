@@ -547,18 +547,26 @@ def test_lint_gate_kills_a_stalled_child_within_its_budget() -> None:
 
 
 def test_lint_gate_kills_the_whole_process_tree(tmp_path: Path) -> None:
-    """`uv run ruff` is a grandchild; killing only the parent leaks it."""
+    """`uv run ruff` is a grandchild; killing only the parent leaks it.
+
+    The parent records that it spawned the grandchild, so a failure can be told
+    apart from a race where the kill simply arrived before the spawn did.  The
+    grandchild's marker lands well after the gate's budget expires, so a
+    surviving grandchild is observable rather than inferred.
+    """
     import time
 
-    marker = tmp_path / "grandchild-survived.txt"
-    grandchild = f"import pathlib, time; time.sleep(8); pathlib.Path({str(marker)!r}).write_text('leaked')"
-    parent = f"import subprocess, sys, time; subprocess.Popen([sys.executable, '-c', {grandchild!r}]); time.sleep(600)"
+    leaked = tmp_path / "grandchild-survived.txt"
+    spawned = tmp_path / "grandchild-spawned.txt"
+    grandchild = f"import pathlib, time; time.sleep(12); pathlib.Path({str(leaked)!r}).write_text('leaked')"
+    parent = f"import pathlib, subprocess, sys, time; subprocess.Popen([sys.executable, '-c', {grandchild!r}]); pathlib.Path({str(spawned)!r}).write_text('ok'); time.sleep(600)"
 
     with pytest.raises(lint_gate.CommandTimeout):
-        lint_gate.run_command([sys.executable, "-c", parent], timeout=2)
+        lint_gate.run_command([sys.executable, "-c", parent], timeout=6)
 
-    time.sleep(10)
-    assert not marker.exists(), "a grandchild outlived the gate's timeout"
+    assert spawned.is_file(), "the grandchild was never spawned; the test raced its own fixture"
+    time.sleep(15)
+    assert not leaked.exists(), "a grandchild outlived the gate's timeout"
 
 
 def test_lint_gate_fails_when_ruff_stalls(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

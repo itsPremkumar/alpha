@@ -262,18 +262,25 @@ def _inside(path: Path, parent: Path) -> bool:
 
 
 def _kill_tree(process: subprocess.Popen[str]) -> None:
-    """Terminate a child and everything it spawned; never leave an orphan."""
+    """Terminate a child and everything it spawned; never leave an orphan.
+
+    ``taskkill /T`` walks the tree before killing, so it can itself return a
+    non-zero code when a child exits mid-walk.  A non-zero code therefore falls
+    back to killing the direct child rather than being treated as success.
+    """
     if process.poll() is not None:
         return
     if os.name == "nt":
         try:
-            subprocess.run(
+            result = subprocess.run(
                 ["taskkill", "/F", "/T", "/PID", str(process.pid)],
                 capture_output=True,
                 check=False,
                 timeout=30,
             )
         except (OSError, subprocess.SubprocessError):
+            result = None
+        if result is None or result.returncode != 0:
             process.kill()
     else:
         try:
