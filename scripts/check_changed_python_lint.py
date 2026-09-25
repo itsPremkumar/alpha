@@ -10,6 +10,21 @@ makes the remaining backlog visible without pretending it is clean.
 The file list comes from Git's trusted base/head comparison.  Deleted files are
 not linted because there is no content to check.  No files are written.
 
+ONE RULE PER FILE, NOT ONE RULE PER CALLER
+------------------------------------------
+Ruff finds a configuration by walking up from each file, and falls back to the
+configuration discovered from the *current working directory* when a file's
+directory tree has none.  Only ``backend/`` has a ``ruff.toml`` here, so an
+unconfigured file such as ``scripts/check_changed_python_lint.py`` is checked at
+line-length 88 when ruff runs from the repository root and at line-length 240
+when it runs from ``backend/``.  A gate whose verdict depends on the directory
+someone happened to launch it from is not a gate, so the changed files are
+partitioned by configuration scope: files under the backend root are checked
+with the project configuration, and everything else is checked with
+``--isolated``, which is ruff's documented default configuration and exactly
+what a contributor gets at the repository root.  The two verdicts are reported
+separately and either one fails the gate.
+
 EVERY SUBPROCESS IS BOUNDED
 ---------------------------
 A gate that hangs is not a gate, so each child process runs under an explicit
@@ -247,20 +262,42 @@ def _changed_python_paths(
     return sorted(set(paths), key=lambda path: path.as_posix())
 
 
+def _config_scopes(
+    repo_root: Path, backend_root: Path, paths: Sequence[Path]
+) -> tuple[list[Path], list[Path]]:
+    """Split changed files into (project-configured, ruff-default) groups.
+
+    Only files under the backend root have a ``ruff.toml`` above them.  The
+    other group is checked with ``--isolated`` so its verdict cannot depend on
+    the working directory the gate was launched from.
+    """
+    try:
+        scope = backend_root.relative_to(repo_root).parts
+    except ValueError:
+        scope = ("backend",)
+    inside: list[Path] = []
+    outside: list[Path] = []
+    for path in paths:
+        (inside if path.parts[: len(scope)] == scope else outside).append(path)
+    return inside, outside
+
+
 def _ruff_command(
-    backend_root: Path, subcommand: str, paths: Sequence[Path]
+    backend_root: Path,
+    subcommand: str,
+    paths: Sequence[Path],
+    *,
+    isolated: bool,
 ) -> list[str]:
     uv = shutil.which("uv")
     if uv:
-        return [
-            uv,
-            "run",
-            "--no-sync",
-            "ruff",
-            subcommand,
-            *[str(path) for path in paths],
-        ]
-    return [sys.executable, "-m", "ruff", subcommand, *[str(path) for path in paths]]
+        command = [uv, "run", "--no-sync", "ruff", subcommand]
+    else:
+        command = [sys.executable, "-m", "ruff", subcommand]
+    if isolated:
+        command.append("--isolated")
+    command.extend(str(path) for path in paths)
+    return command
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -307,12 +344,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     for path in paths:
         print(f"  {path.as_posix()}")
 
-    ruff_paths = [(repo_root / path).resolve() for path in paths]
-    commands = (
-        _ruff_command(backend_root, "check", ruff_paths),
-        _ruff_command(backend_root, "format", ["--check", *ruff_paths]),
+    project_paths, default_paths = _config_scopes(repo_root, backend_root, paths)
+    project_resolved = [(repo_root / path).resolve() for path in project_paths]
+    default_resolved = [(repo_root / path).resolve() for path in default_paths]
+    if default_paths:
+        print(
+            f"unconfigured Python files (checked with ruff defaults): {len(default_paths)}"
+        )
+        for path in default_paths:
+            print(f"  {path.as_posix()}")
+    invocations = (
+        ("check", project_resolved, False),
+        ("check", default_resolved, True),
+        ("format", ["--check", *project_resolved], False),
+        ("format", ["--check", *default_resolved], True),
     )
-    for command in commands:
+    for subcommand, targets, isolated in invocations:
+        if not targets:
+            continue
+        command = _ruff_command(backend_root, subcommand, targets, isolated=isolated)
         print("running:", _display_command(command))
         try:
             result = run_command(
@@ -330,8 +380,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         sys.stdout.flush()
         sys.stderr.flush()
         if result.returncode != 0:
+            scope = "ruff defaults" if isolated else "project config"
             print(
-                f"incremental ruff gate: FAILED (exit {result.returncode})",
+                f"incremental ruff gate: FAILED (exit {result.returncode}, {scope})",
                 file=sys.stderr,
             )
             return result.returncode

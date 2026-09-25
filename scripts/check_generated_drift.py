@@ -36,8 +36,7 @@ discloses both of them instead of tolerating them silently:
 
 Nothing else is ignored.  A missing artifact, a missing or failing generator, a
 generator timeout, malformed JSON, an unrecognised generator output, and every
-other byte are drift: apart from the ``generated_at`` value, and apart from line
-endings in the default ``normalized`` mode, every other byte is drift.
+other byte are drift.
 
 HERMETICITY
 -----------
@@ -49,7 +48,10 @@ refuses to run unless the module's published ``OUT`` constant is exactly the
 committed artifact path, and only then redirects ``OUT`` into the throwaway
 directory.  The gate never writes into the checkout.
 
-Exit codes: ``0`` clean, ``1`` drift or gate error, ``2`` usage error.
+Exit codes: ``0`` clean, ``1`` drift or gate error, ``2`` usage error.  Every
+run prints this sentence: "only the generated_at value is ignored; every other
+byte is drift", preceded by the line-ending mode that produced the verdict, so a
+green run can never be read as a stronger claim than it is.
 """
 
 from __future__ import annotations

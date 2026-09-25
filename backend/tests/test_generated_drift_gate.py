@@ -1,13 +1,17 @@
-"""Hermetic contract tests for the generated-artifact drift gate.
+"""Hermetic contract tests for the two CI gate scripts under ``scripts/``.
 
-The fixture checkouts contain a copy of the *real* official generator, so every
-test exercises the same code path CI does, including the shim's refusal to run
-when the generator's output cannot be redirected out of the checkout.
+Both gates live here because they share one failure mode worth pinning: a gate
+that hangs is not a gate, and a gate that cannot fail is worse than no gate.
 
-Line endings are the interesting part.  The official generator writes through
-``Path.write_text(...)``, which emits the host newline, while ``.gitattributes``
-pins ``*.json`` to LF in the index.  Both halves of the contract are therefore
-tested explicitly:
+The drift-gate fixture checkouts contain a copy of the *real* official
+generator, so every test exercises the same code path CI does, including the
+shim's refusal to run when the generator's output cannot be redirected out of
+the checkout.
+
+Line endings are the interesting part of the drift gate.  The official generator
+writes through ``Path.write_text(...)``, which emits the host newline, while
+``.gitattributes`` pins ``*.json`` to LF in the index.  Both halves of the
+contract are therefore tested explicitly:
 
 * ``--line-endings normalized`` (the default) *allows* a line-ending-only
   difference, and the test asserts the gate says so out loud;
@@ -15,12 +19,19 @@ tested explicitly:
   diff;
 * in neither mode may the ``ignored_timestamp`` flag describe a difference that
   is not the ``generated_at`` value.
+
+The lint-gate section drives a real child that would otherwise sleep for ten
+minutes, and asserts it is killed within its budget - the regression the review
+flagged, where a wedged ``git`` or ``ruff`` held the job open instead of failing
+it.  The CI-wiring section parses the workflows themselves, because a correct
+script that CI never runs, or a failure CI hides, is not a gate either.
 """
 
 from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -30,6 +41,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 GATE_PATH = ROOT / "scripts" / "check_generated_drift.py"
+LINT_GATE_PATH = ROOT / "scripts" / "check_changed_python_lint.py"
 GENERATOR_PATH = ROOT / "backend" / "scripts" / "generate_feature_manifest.py"
 MANIFEST_REL = Path("contracts/feature_manifest.json")
 
@@ -44,6 +56,18 @@ def _load_gate():
 
 
 gate = _load_gate()
+
+
+def _load_lint_gate():
+    spec = importlib.util.spec_from_file_location("alpha_changed_python_lint_gate_test", LINT_GATE_PATH)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+lint_gate = _load_lint_gate()
 
 
 @pytest.fixture(autouse=True)
@@ -432,6 +456,7 @@ def test_cli_rejects_bad_usage_with_exit_code_two(capsys: pytest.CaptureFixture[
 
 
 def test_docstring_and_contract_agree_on_what_is_ignored() -> None:
+    """The printed contract must be the documented contract, verbatim."""
     docstring = gate.__doc__ or ""
     help_text = gate._parser().format_help()
 
@@ -439,9 +464,32 @@ def test_docstring_and_contract_agree_on_what_is_ignored() -> None:
         assert "generated_at" in text
         assert "normalized" in text
         assert "exact" in text
-    # The old wording claimed byte fidelity while normalising newlines.
-    assert "every other byte is drift" in docstring
-    assert "byte-identical" not in docstring
+    # The exact sentence the gate prints on every run, whitespace-normalised.
+    flat = " ".join(docstring.split())
+    assert "only the generated_at value is ignored; every other byte is drift" in flat
+    # A normalised comparison must never be described as unqualified byte fidelity.
+    assert "compared on raw bytes" not in flat
+
+
+def test_lint_gate_checks_each_file_under_one_stable_rule() -> None:
+    """A verdict that depends on the caller's working directory is not a verdict.
+
+    Only ``backend/`` has a ``ruff.toml`` above it.  Measured on this host, an
+    unconfigured file such as ``scripts/check_changed_python_lint.py`` is held
+    to line-length 88 when ruff runs from the repository root and to 240 when it
+    runs from ``backend/``.  The gate therefore pins ruff to the backend root
+    and hands every unconfigured file ``--isolated`` (ruff's documented default
+    configuration), so both invocations mean the same thing forever.
+    """
+    repo = Path("C:/repo")
+    paths = [Path("backend/agents/lead.py"), Path("backend/tests/test_x.py"), Path("scripts/check_changed_python_lint.py"), Path("tools/deep/x.py")]
+    inside, outside = lint_gate._config_scopes(repo, Path("C:/repo/backend"), paths)
+
+    assert inside == [Path("backend/agents/lead.py"), Path("backend/tests/test_x.py")]
+    assert outside == [Path("scripts/check_changed_python_lint.py"), Path("tools/deep/x.py")]
+    assert "--isolated" in lint_gate._ruff_command(Path("C:/repo/backend"), "format", [Path("C:/repo/scripts/x.py")], isolated=True)
+    assert "--isolated" not in lint_gate._ruff_command(Path("C:/repo/backend"), "format", [Path("C:/repo/backend/x.py")], isolated=False)
+    assert "--isolated" in (lint_gate.__doc__ or "")
 
 
 # --------------------------------------------------------------------------
@@ -457,3 +505,201 @@ def test_this_checkout_is_a_real_measurement() -> None:
 
     assert (ROOT / gate.MANIFEST_REL).read_bytes() == before, "the gate rewrote the committed artifact"
     assert exit_code in (0, 1), "the gate must reach a verdict, never crash"
+
+
+# --------------------------------------------------------------------------
+# The incremental lint gate: a stall must fail, never hang
+# --------------------------------------------------------------------------
+
+_SLEEPER = "import time; time.sleep(600)\n"
+
+
+def _git_repo(tmp_path: Path) -> Path:
+    """A minimal two-commit repository with one clean Python file."""
+    repo = tmp_path / "lint-repo"
+    (repo / "backend").mkdir(parents=True)
+    target = repo / "backend" / "clean_module.py"
+    target.write_text("VALUE = 1\n", encoding="utf-8")
+    for args in (
+        ["init", "-q"],
+        ["config", "user.email", "gate@example.invalid"],
+        ["config", "user.name", "gate"],
+        ["config", "commit.gpgsign", "false"],
+        ["add", "-A"],
+        ["commit", "-q", "-m", "seed"],
+    ):
+        result = lint_gate.run_command(["git", *args], cwd=repo, timeout=60)
+        assert result.returncode == 0, result.stderr.decode("utf-8", errors="replace")
+    return repo
+
+
+def test_lint_gate_kills_a_stalled_child_within_its_budget() -> None:
+    """A child that starts and then wedges must not outlive its timeout."""
+    import time
+
+    started = time.monotonic()
+    with pytest.raises(lint_gate.CommandTimeout) as excinfo:
+        lint_gate.run_command([sys.executable, "-c", _SLEEPER], timeout=2)
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 60, f"the stall was not bounded: {elapsed:.1f}s"
+    assert "exceeded its 2s budget and was killed" in str(excinfo.value)
+
+
+def test_lint_gate_kills_the_whole_process_tree(tmp_path: Path) -> None:
+    """`uv run ruff` is a grandchild; killing only the parent leaks it."""
+    import time
+
+    marker = tmp_path / "grandchild-survived.txt"
+    grandchild = f"import pathlib, time; time.sleep(8); pathlib.Path({str(marker)!r}).write_text('leaked')"
+    parent = f"import subprocess, sys, time; subprocess.Popen([sys.executable, '-c', {grandchild!r}]); time.sleep(600)"
+
+    with pytest.raises(lint_gate.CommandTimeout):
+        lint_gate.run_command([sys.executable, "-c", parent], timeout=2)
+
+    time.sleep(10)
+    assert not marker.exists(), "a grandchild outlived the gate's timeout"
+
+
+def test_lint_gate_fails_when_ruff_stalls(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    """End to end: a wedged ruff must produce exit 1, not a stuck job."""
+    import time
+
+    repo = _git_repo(tmp_path)
+    base = lint_gate.run_command(["git", "rev-parse", "HEAD"], cwd=repo, timeout=60).stdout.decode().strip()
+    (repo / "backend" / "second_module.py").write_text("VALUE = 2\n", encoding="utf-8")
+    for args in (["add", "-A"], ["commit", "-q", "-m", "second"]):
+        assert lint_gate.run_command(["git", *args], cwd=repo, timeout=60).returncode == 0
+    head = lint_gate.run_command(["git", "rev-parse", "HEAD"], cwd=repo, timeout=60).stdout.decode().strip()
+    monkeypatch.setattr(lint_gate, "_ruff_command", lambda *a, **k: [sys.executable, "-c", _SLEEPER])
+
+    started = time.monotonic()
+    exit_code = lint_gate.main(["--repo-root", str(repo), "--base-ref", base, "--head-ref", head, "--ruff-timeout", "2"])
+    elapsed = time.monotonic() - started
+
+    assert exit_code == 1
+    assert elapsed < 60, f"the gate hung for {elapsed:.1f}s instead of failing"
+    assert "exceeded its 2s budget and was killed" in capsys.readouterr().err
+
+
+def test_lint_gate_fails_when_git_stalls(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    """The git side of the gate fails closed on a timeout too."""
+    repo = _git_repo(tmp_path)
+
+    def _stalled(*args, **kwargs):
+        raise lint_gate.CommandTimeout("command exceeded its 120s budget and was killed: git diff")
+
+    monkeypatch.setattr(lint_gate, "run_command", _stalled)
+
+    assert lint_gate.main(["--repo-root", str(repo), "--base-ref", "HEAD", "--head-ref", "HEAD"]) == 1
+    assert "exceeded its 120s budget" in capsys.readouterr().err
+
+
+def test_lint_gate_reports_a_clean_tree_and_rejects_unpaired_refs(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    repo = _git_repo(tmp_path)
+    head = lint_gate.run_command(["git", "rev-parse", "HEAD"], cwd=repo, timeout=60).stdout.decode().strip()
+
+    assert lint_gate.main(["--repo-root", str(repo), "--base-ref", head, "--head-ref", head]) == 0
+    assert "incremental ruff gate: 0 (no changed Python files)" in capsys.readouterr().out
+
+    assert lint_gate.main(["--base-ref", "HEAD"]) == 2
+    assert lint_gate.main(["--ruff-timeout", "0"]) == 2
+    capsys.readouterr()
+
+
+def test_lint_gate_help_documents_its_timeouts() -> None:
+    help_text = lint_gate._parser().format_help()
+
+    assert "--git-timeout" in help_text
+    assert "--ruff-timeout" in help_text
+    assert "--generator-timeout" not in help_text
+    assert "killed" in (lint_gate.__doc__ or "")
+
+
+# --------------------------------------------------------------------------
+# CI wiring: a script nobody runs, or a failure nobody sees, is not a gate
+# --------------------------------------------------------------------------
+
+WORKFLOWS = ROOT / ".github" / "workflows"
+
+
+def _workflow(name: str) -> dict:
+    import yaml
+
+    return yaml.safe_load((WORKFLOWS / name).read_text(encoding="utf-8"))
+
+
+def _steps(name: str, job: str) -> list[dict]:
+    return _workflow(name)["jobs"][job]["steps"]
+
+
+def _runs(name: str, job: str) -> str:
+    return "\n".join(str(step.get("run", "")) for step in _steps(name, job))
+
+
+def test_frontend_workflow_runs_the_branding_suite() -> None:
+    """`pnpm test` only globs src/lib, so the branding pin needs its own step."""
+    runs = _runs("frontend-unit-tests.yml", "frontend-unit-tests")
+
+    assert "pnpm test:branding" in runs
+    assert "pnpm test" in runs
+    branding = next(step for step in _steps("frontend-unit-tests.yml", "frontend-unit-tests") if "test:branding" in str(step.get("run", "")))
+    assert "continue-on-error" not in branding, "the branding pin must be able to fail the job"
+
+
+def test_generated_drift_workflow_runs_both_line_ending_modes() -> None:
+    runs = _runs("generated-drift-gate.yml", "generated-drift")
+
+    assert "--line-endings exact" in runs, "CI must pin the strict byte-fidelity check"
+    assert "--line-endings normalized" in runs, "CI must also run the disclosed default"
+    assert "--generator-timeout" in runs
+    job = _workflow("generated-drift-gate.yml")["jobs"]["generated-drift"]
+    assert job.get("timeout-minutes")
+
+
+def test_lint_workflow_gates_changed_files_with_explicit_timeouts() -> None:
+    workflow = _workflow("lint-check.yml")
+    runs = _runs("lint-check.yml", "lint-backend")
+
+    assert "scripts/check_changed_python_lint.py" in runs
+    assert runs.count("--git-timeout") == 2, "both the pull-request and push invocations need a bound"
+    assert runs.count("--ruff-timeout") == 2
+    assert workflow["jobs"]["lint-backend"].get("timeout-minutes")
+
+
+def test_docs_index_gate_is_untouched_and_still_gating() -> None:
+    """The new gate must not have disarmed the gate main already had."""
+    workflow = _workflow("lint-check.yml")
+    job = workflow["jobs"]["docs-index"]
+
+    assert "scripts/check_docs_index_drift.py --json" in "\n".join(str(step.get("run", "")) for step in job["steps"])
+    assert "continue-on-error" not in job
+    assert "if: always()" not in job, "the documentation index gate is gating, not a report"
+
+
+def test_no_gate_failure_is_swallowed_without_disclosure() -> None:
+    """`continue-on-error`, `|| true` and bare `set +e` must not appear.
+
+    The two non-gating debt reports are allowed to measure a failing checker,
+    but only because they capture its exit code, print it, label themselves
+    non-gating, and still fail when the report itself cannot be produced.  That
+    disclosure is asserted here rather than trusted to review.
+    """
+    for path in sorted(WORKFLOWS.glob("*.yml")):
+        text = path.read_text(encoding="utf-8")
+        assert "continue-on-error" not in text, f"{path.name} would hide a failure"
+        assert "|| true" not in text, f"{path.name} would hide a failure"
+        for index, line in enumerate(text.splitlines()):
+            if "set +e" in line:
+                window = "\n".join(text.splitlines()[index : index + 14])
+                assert re.search(r"status=\$\?", window), f"{path.name}:{index + 1} disables errexit without capturing an exit code"
+                assert "non-gating" in window, f"{path.name}:{index + 1} disables errexit without labelling itself non-gating"
+
+
+def test_non_gating_reports_still_fail_when_they_cannot_produce_output() -> None:
+    runs = _runs("lint-check.yml", "agent-guidance-debt-report")
+    assert "non-gating" in runs
+    assert "exit 1" in runs, "an empty report must fail the step, not pass quietly"
+    debt = _runs("lint-check.yml", "backend-ruff-debt-report")
+    assert "non-gating" in debt
+    assert "raise SystemExit" in debt
