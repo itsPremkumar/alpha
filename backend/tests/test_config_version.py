@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 
@@ -169,7 +170,17 @@ def test_version_26_config_upgrades_to_checkpoint_channel_mode(tmp_path, caplog)
     assert "outdated" in caplog.text
     assert "(version 26)" in caplog.text
 
-    env = {**os.environ, "AGENT_WORKSPACE_CONFIG_PATH": str(config_path)}
+    env = {
+        **os.environ,
+        "AGENT_WORKSPACE_CONFIG_PATH": str(config_path),
+        # Hand the real script an interpreter that already has PyYAML (the one
+        # running this test module imported yaml at collection time). The
+        # script's default `uv run python` bootstraps backend/.venv from
+        # scratch in a fresh worktree -- minutes of machine-speed,
+        # network-dependent work that exceeded this subprocess's 120s deadline
+        # under concurrent CPU load (TimeoutExpired flake).
+        "CONFIG_UPGRADE_PYTHON": sys.executable,
+    }
     result = subprocess.run(
         [_bash_command(), str(repo_root / "scripts" / "config-upgrade.sh")],
         env=env,
