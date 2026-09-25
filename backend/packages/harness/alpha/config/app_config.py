@@ -41,6 +41,7 @@ from alpha.config.runtime_paths import existing_project_file
 from alpha.config.safety_finish_reason_config import SafetyFinishReasonConfig
 from alpha.config.sandbox_config import SandboxConfig
 from alpha.config.scheduler_config import SchedulerConfig
+from alpha.config.self_tuning.config import SelfTuningConfig
 from alpha.config.skill_evolution_config import SkillEvolutionConfig
 from alpha.config.skill_scan_config import SkillScanConfig
 from alpha.config.skills_config import SkillsConfig
@@ -61,6 +62,7 @@ from alpha.config.tool_progress_config import ToolProgressConfig
 from alpha.config.tool_search_config import ToolSearchConfig, load_tool_search_config_from_dict
 from alpha.config.verification_config import VerificationConfig
 from alpha.config.voice_config import VoiceConfig
+from alpha.evolution.evidence.config import EvolutionEvidenceConfig
 from alpha.extensions.loader import ExtensionSpec
 
 load_dotenv()
@@ -261,6 +263,24 @@ class AppConfig(BaseModel):
     skills: SkillsConfig = Field(default_factory=SkillsConfig, description="Skills configuration")
     skill_scan: SkillScanConfig = Field(default_factory=SkillScanConfig, description="Native deterministic skill safety scanning configuration")
     skill_evolution: SkillEvolutionConfig = Field(default_factory=SkillEvolutionConfig, description="Agent-managed skill evolution configuration")
+    evolution_evidence: EvolutionEvidenceConfig = Field(
+        default_factory=EvolutionEvidenceConfig,
+        description=(
+            "Self-evolution evidence gate: the bar a proposed self-change must clear before it "
+            "becomes the new default. Requires a clean evaluator-integrity report, all required "
+            "gates green, a primary-metric win beyond a declared noise floor, no regression, a "
+            "rollback path, and an in-policy blast radius. Off by default."
+        ),
+    )
+    self_tuning: SelfTuningConfig = Field(
+        default_factory=SelfTuningConfig,
+        description=(
+            "Self-configuration change protocol: a proposal must pass validation, a scoped canary, "
+            "an atomic apply, a health check, and automatic rollback. Protected paths (auth, "
+            "authorization, sandbox, approvals, audit-enabling flags, enforcement ceilings) are "
+            "refused even with an operator token. Off by default."
+        ),
+    )
     extensions: ExtensionsConfig = Field(default_factory=ExtensionsConfig, description="Extensions configuration (MCP servers and skills state)")
     tool_output: ToolOutputConfig = Field(default_factory=ToolOutputConfig, description="Tool output budget protection configuration")
     tool_search: ToolSearchConfig = Field(default_factory=ToolSearchConfig, description="Tool search / deferred loading configuration")

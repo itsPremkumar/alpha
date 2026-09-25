@@ -20,7 +20,7 @@
 # ============================================================================
 # Bump this number when the config schema changes.
 # Run `make config-upgrade` to merge new fields into your local config.yaml.
-config_version: 52
+config_version: 53
 
 # ============================================================================
 # Logging
@@ -3575,6 +3575,52 @@ autonomy:
   #     enabled: true
   #     interval_seconds: 21600.0
   #     jitter_seconds: 300.0
+
+# ============================================================================
+# Self-evolution evidence gate: the bar a proposed self-change must clear before it
+# becomes the new default. A promotion additionally requires a clean
+# evaluator-integrity report, all required gates green, a primary-metric win beyond
+# the declared noise floor, no regression beyond any floor, a rollback path, and an
+# in-policy blast radius. unavailable/error/within_noise are never passes.
+# ============================================================================
+evolution_evidence:
+  enabled: false
+  primary_metric: "task_success_rate"
+  noise_floors: {task_success_rate: 0.01, authorization_isolation_rate: 0.0, recovery_success_rate: 0.0, prompt_injection_resistance_rate: 0.0, p95_seconds: 0.5}
+  # Per-metric direction: higher_is_better or lower_is_better.
+  metric_directions: {task_success_rate: "higher_is_better", authorization_isolation_rate: "higher_is_better", recovery_success_rate: "higher_is_better", prompt_injection_resistance_rate: "higher_is_better", p95_seconds: "lower_is_better"}
+  required_gates: ["evaluator_integrity", "reproducibility", "rollback_path", "blast_radius"]
+  min_sample_size: 5
+  max_sample_size_gap: 2
+  # Maximum effective blast radius for an automatic decision.
+  max_touched_paths: 40
+  # Path globs per evaluation-surface category.
+  integrity_path_globs: {tests: ["backend/tests/**/*", "tests/**/*"], threshold_config: ["backend/ruff.toml", "backend/packages/harness/pyproject.toml", "config.example.yaml", "config/update-policy.json"], benchmark_cases: ["backend/packages/harness/alpha/benchmarks/**/*", "backend/packages/harness/alpha/memory/evaluation/cases/**/*", "backend/scripts/benchmark/**/*"], metric_implementations: ["backend/packages/harness/alpha/memory/evaluation/metrics.py", "backend/packages/harness/alpha/memory/evaluation/suite.py", "backend/packages/harness/alpha/memory/evaluation/models.py", "backend/packages/harness/alpha/memory/evaluation/config.py", "backend/packages/harness/alpha/benchmarks/release_gate.py", "backend/packages/harness/alpha/benchmarks/runner.py", "backend/packages/harness/alpha/rsi/holdout.py", "backend/packages/harness/alpha/rsi/evaluator_manifest.py", "backend/packages/harness/alpha/rsi/protected_paths.py", "backend/packages/harness/alpha/rsi/review.py", "backend/packages/harness/alpha/evolution/engine.py"], gate_scripts: ["scripts/audit_dup_expressions.py", "scripts/audit_env_wiring.py", "scripts/check_agent_guidance.py", "scripts/prod_check.py"], baselines: ["**/baseline*.json", "**/*-baseline.json"], gate_self: ["backend/packages/harness/alpha/evolution/evidence/**/*"], rsi_evaluator_surface: ["backend/tests/**/*", "backend/packages/harness/alpha/benchmarks/**/*", "backend/packages/harness/alpha/benchmarks/release_gate.py", "backend/packages/harness/alpha/safety/**/*", "backend/packages/harness/alpha/reproduction/gates.py", "backend/packages/harness/alpha/policy/engine.py"]}
+  human_classification_patterns: {irreversible: ["*delete*", "*purge*", "*destroy*", "*drop*", "*truncate*", "*irreversible*", "*force-push*", "*reset-hard*"], external: ["*publish*", "*release*", "*deploy*", "*external*", "*webhook*", "*pypi*", "*npm*", "*marketplace*"], financial: ["*billing*", "*payment*", "*pricing*", "*invoice*", "*financial*", "*quota-charge*"], data_destroying: ["*migration*", "*schema*", "*drop*", "*purge*", "*destroy*", "*delete*", "*truncate*"]}
+  provenance_root: null
+  # File-name-safe identifier for the provenance chain.
+  provenance_chain_id: "evolution-evidence"
+  # Hard timeout for argv-listed gate/measurement commands.
+  command_timeout_seconds: 600.0
+  # Output cap for argv-listed commands.
+  max_output_chars: 4000
+
+# ============================================================================
+# Self-configuration change protocol. A proposal is NOT permission: only code-owned
+# targets may change, protected paths (auth, authorization, sandbox, approvals,
+# audit-enabling flags, enforcement ceilings) are refused even with an operator token,
+# and an unavailable canary, health check, or audit fails CLOSED toward the known-good
+# config.
+# ============================================================================
+self_tuning:
+  enabled: false
+  # Bounded observation window used by the injected canary clock.
+  canary_window_seconds: 60.0
+  max_step_ratio: 0.1
+  cooldown_seconds: 900.0
+  bounds_source: "registry"
+  protected_paths: ["self_tuning", "auth", "authorization", "guardrails", "sandbox", "acp_agents", "approval", "approvals", "policy", "risk", "release_gate", "kill_switch", "estop", "memory.l1.provenance_enabled", "system_one.record_decisions", "system_one.calibration_log_path", "skill_evolution.auto_promote", "skill_evolution.security_fail_closed", "token_budget", "subagents.token_budget", "subagents.max_total_per_run", "loop_detection.hard_limit", "loop_detection.tool_freq_hard_limit"]
+  verification_policy: {required_metrics: ["error_rate", "latency_ms"], higher_is_better: [], lower_is_better: ["error_rate", "latency_ms"], relative_tolerance: 0.0}
 
 # ============================================================================
 # Opt-in capabilities (see backend/packages/harness/alpha/capabilities/catalog.py)

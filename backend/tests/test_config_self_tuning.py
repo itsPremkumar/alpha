@@ -768,7 +768,43 @@ def test_every_self_tuning_config_key_has_a_behavioral_reader() -> None:
 
 
 def test_default_off_subsystem_inventory_is_derived_from_real_memory_models() -> None:
+    """The inventory must be DERIVED, so it is asserted against the live schema.
+
+    A hard-coded count was the original assertion and it was wrong twice over: it
+    had to be hand-edited every time the central owner promoted a subsystem (a
+    maintenance trap), and a correct promotion turned this test RED, which is
+    the worst possible failure mode for a guard. The properties that actually
+    matter are pinned instead:
+
+    * it equals exactly the set the live `MemoryConfig` implies,
+    * every member is a real, default-off memory path, and
+    * a representative early and a later subsystem are both present, so a
+      regression that empties or truncates the set cannot pass.
+    """
+    from alpha.config.memory_config import MemoryConfig
+
     paths = default_off_subsystem_paths()
-    assert len(paths) == 11
+    assert paths, "the derived inventory must never be empty"
+
+    memory = MemoryConfig()
+    expected = {
+        f"memory.{name}.enabled"
+        for name in MemoryConfig.model_fields
+        if getattr(getattr(memory, name, None), "enabled", None) is False
+    }
+    assert paths == expected
+
+    for path in paths:
+        assert path.startswith("memory.") and path.endswith(".enabled")
+        section = path[len("memory.") : -len(".enabled")]
+        assert section in MemoryConfig.model_fields, f"{path} is not a real config section"
+        assert getattr(getattr(memory, section), "enabled") is False
+
+    # The inventory is defined over MODEL DEFAULTS, and L1's model default is
+    # off - only `config.example.yaml` ships it enabled for fresh installs
+    # (the one sanctioned example override). So L1 belongs here, and treating
+    # its absence as the invariant would have been a wrong test.
     assert "memory.l1.enabled" in paths
+    # A first-wave and a later subsystem, so truncation cannot pass silently.
     assert "memory.affective.enabled" in paths
+    assert paths & {"memory.health.enabled", "memory.utility.enabled", "memory.codebase.enabled"}
