@@ -145,7 +145,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     for command in commands:
         print("running:", " ".join(command))
-        result = subprocess.run(command, cwd=backend_root, check=False)
+        try:
+            result = subprocess.run(command, cwd=backend_root, check=False)
+        except OSError as exc:
+            print(f"ERROR Ruff could not start: {exc}", file=sys.stderr)
+            return 1
         if result.returncode != 0:
             print(
                 f"incremental ruff gate: FAILED (exit {result.returncode})",
