@@ -171,6 +171,8 @@ jobs:
           uv run --no-sync ruff check . --output-format=json > "${{ runner.temp }}/ruff-debt.json"
           ruff_status=$?
           set -e
+          echo "FULL-REPOSITORY RUFF DEBT REPORT (non-gating): ruff_exit=$ruff_status"
+          echo "The incremental lint-backend job is the authoritative changed-file gate; this report does not claim the backlog is clean."
           python - "${{ runner.temp }}/ruff-debt.json" "$ruff_status" <<'PY'
           import json
           import pathlib
@@ -185,8 +187,7 @@ jobs:
               raise SystemExit(f"Ruff debt report is unreadable: {exc}")
           if not isinstance(findings, list):
               raise SystemExit("Ruff debt report is not a JSON finding list")
-          print(f"FULL-REPOSITORY RUFF DEBT REPORT (non-gating): ruff_exit={status}, findings={len(findings)}")
-          print("The incremental lint-backend job is the authoritative changed-file gate; this report does not claim the backlog is clean.")
+          print(f"findings={len(findings)}")
           PY
 
       - name: Upload Ruff debt report
