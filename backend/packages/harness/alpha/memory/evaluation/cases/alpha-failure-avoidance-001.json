@@ -1,0 +1,17 @@
+{
+  "id": "alpha-failure-avoidance-001",
+  "ability": "failure_avoidance",
+  "scope": {"user_id": "eval-failure-001", "agent_name": "alpha-memory-evaluation"},
+  "sessions": [
+    {
+      "session_id": "s1",
+      "events": [
+        {"id": "event-failure", "text": "A retry failed because the lock file was already held; check the lock before retrying.", "fact_id": "fact-failure", "answer": "check the lock before retrying", "expected_stored": true, "memory_type": "failure"}
+      ]
+    }
+  ],
+  "questions": [
+    {"id": "q1", "question": "What should be checked before retrying the failed operation?", "expected": "check the lock", "type": "failure_avoidance", "evidence_ids": ["event-failure"]}
+  ],
+  "metadata": {"expected_stored": ["event-failure"], "description": "Original failure-avoidance fixture derived from a synthetic incident."}
+}

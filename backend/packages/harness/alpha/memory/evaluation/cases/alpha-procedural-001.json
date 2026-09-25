@@ -1,0 +1,17 @@
+{
+  "id": "alpha-procedural-001",
+  "ability": "procedural",
+  "scope": {"user_id": "eval-procedural-001", "agent_name": "alpha-memory-evaluation"},
+  "sessions": [
+    {
+      "session_id": "s1",
+      "events": [
+        {"id": "event-procedure", "text": "For a release, run the focused tests before creating the distribution archive.", "fact_id": "fact-procedure", "answer": "run the focused tests before creating the distribution archive", "expected_stored": true, "memory_type": "procedural"}
+      ]
+    }
+  ],
+  "questions": [
+    {"id": "q1", "question": "What should be done before creating a release archive?", "expected": "run the focused tests", "type": "procedural", "evidence_ids": ["event-procedure"]}
+  ],
+  "metadata": {"expected_stored": ["event-procedure"], "description": "Original procedural-reuse fixture."}
+}

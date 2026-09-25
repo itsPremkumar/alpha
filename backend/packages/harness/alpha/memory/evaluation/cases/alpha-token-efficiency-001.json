@@ -1,0 +1,17 @@
+{
+  "id": "alpha-token-efficiency-001",
+  "ability": "token_efficiency",
+  "scope": {"user_id": "eval-token-001", "agent_name": "alpha-memory-evaluation"},
+  "sessions": [
+    {
+      "session_id": "s1",
+      "events": [
+        {"id": "event-token-fact", "text": "The nightly report is named Pulse Summary.", "fact_id": "fact-token", "answer": "Pulse Summary", "expected_stored": true}
+      ]
+    }
+  ],
+  "questions": [
+    {"id": "q1", "question": "What is the nightly report called?", "expected": "Pulse Summary", "type": "token_efficiency", "evidence_ids": ["event-token-fact"]}
+  ],
+  "metadata": {"expected_stored": ["event-token-fact"], "description": "Original compact-composition fixture for tokens-per-useful-fact measurement."}
+}

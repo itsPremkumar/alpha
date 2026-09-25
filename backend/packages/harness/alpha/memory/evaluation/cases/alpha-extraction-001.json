@@ -1,0 +1,17 @@
+{
+  "id": "alpha-extraction-001",
+  "ability": "extraction",
+  "scope": {"user_id": "eval-extraction-001", "agent_name": "alpha-memory-evaluation"},
+  "sessions": [
+    {
+      "session_id": "s1",
+      "events": [
+        {"id": "fact-amber", "text": "The status light for the Atlas project is amber.", "fact_id": "fact-amber", "answer": "amber", "expected_stored": true}
+      ]
+    }
+  ],
+  "questions": [
+    {"id": "q1", "question": "What is the Atlas project's status light?", "expected": "amber", "type": "information_extraction", "evidence_ids": ["fact-amber"]}
+  ],
+  "metadata": {"expected_stored": ["fact-amber"], "extraction_fact_ids": ["fact-amber"], "description": "Original single-fact extraction fixture."}
+}

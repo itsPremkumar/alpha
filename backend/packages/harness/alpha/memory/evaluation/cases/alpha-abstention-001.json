@@ -1,0 +1,17 @@
+{
+  "id": "alpha-abstention-001",
+  "ability": "abstention",
+  "scope": {"user_id": "eval-abstention-001", "agent_name": "alpha-memory-evaluation"},
+  "sessions": [
+    {
+      "session_id": "s1",
+      "events": [
+        {"id": "event-known-color", "text": "The meeting room is called Cedar.", "fact_id": "fact-known-color", "answer": "Cedar", "expected_stored": true}
+      ]
+    }
+  ],
+  "questions": [
+    {"id": "q-missing", "question": "What is the meeting room's Wi-Fi password?", "expects_abstention": true, "type": "abstention"}
+  ],
+  "metadata": {"description": "Original abstention fixture: a nearby fact is present, but the requested secret is not."}
+}

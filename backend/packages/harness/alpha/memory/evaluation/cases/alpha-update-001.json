@@ -1,0 +1,23 @@
+{
+  "id": "alpha-update-001",
+  "ability": "update",
+  "scope": {"user_id": "eval-update-001", "agent_name": "alpha-memory-evaluation"},
+  "sessions": [
+    {
+      "session_id": "s1",
+      "events": [
+        {"id": "event-old-preference", "timestamp": "2026-01-03T09:00:00Z", "text": "Ravi prefers tea for the morning briefing.", "fact_id": "fact-old-preference", "answer": "tea", "expected_stored": true}
+      ]
+    },
+    {
+      "session_id": "s2",
+      "events": [
+        {"id": "event-new-preference", "timestamp": "2026-01-11T09:00:00Z", "text": "Ravi now prefers coffee for the morning briefing.", "fact_id": "fact-new-preference", "answer": "coffee", "expected_stored": true}
+      ]
+    }
+  ],
+  "questions": [
+    {"id": "q-current", "question": "What does Ravi prefer for the morning briefing now?", "expected": "coffee", "superseded_values": ["tea"], "type": "knowledge_update", "evidence_ids": ["event-new-preference"]}
+  ],
+  "metadata": {"expected_stored": ["event-old-preference", "event-new-preference"], "description": "Original replacement fixture; the old value must not be returned as current."}
+}

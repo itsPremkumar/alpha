@@ -1,0 +1,24 @@
+{
+  "id": "alpha-temporal-002",
+  "ability": "temporal",
+  "scope": {"user_id": "eval-temporal-002", "agent_name": "alpha-memory-evaluation"},
+  "sessions": [
+    {
+      "session_id": "s1",
+      "events": [
+        {"id": "event-old-window", "timestamp": "2026-01-02T12:00:00Z", "text": "The old support window ended at 16:00 UTC.", "fact_id": "fact-old-window", "answer": "16:00 UTC", "expected_stored": true}
+      ]
+    },
+    {
+      "session_id": "s2",
+      "events": [
+        {"id": "event-new-window", "timestamp": "2026-01-12T12:00:00Z", "text": "The current support window ends at 18:00 UTC.", "fact_id": "fact-new-window", "answer": "18:00 UTC", "expected_stored": true}
+      ]
+    }
+  ],
+  "questions": [
+    {"id": "q-current", "question": "When does the current support window end?", "expected": "18:00 UTC", "superseded_values": ["16:00 UTC"], "type": "temporal_reasoning", "evidence_ids": ["event-new-window"]},
+    {"id": "q-before", "question": "When did the old support window end?", "expected": "16:00 UTC", "superseded_values": ["18:00 UTC"], "type": "temporal_reasoning", "evidence_ids": ["event-old-window"]}
+  ],
+  "metadata": {"expected_stored": ["event-old-window", "event-new-window"], "description": "Original temporal window fixture."}
+}

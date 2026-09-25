@@ -1,0 +1,23 @@
+{
+  "id": "alpha-update-002",
+  "ability": "update",
+  "scope": {"user_id": "eval-update-002", "agent_name": "alpha-memory-evaluation"},
+  "sessions": [
+    {
+      "session_id": "s1",
+      "events": [
+        {"id": "event-old-database", "text": "The first deployment plan uses SQLite.", "fact_id": "fact-old-database", "answer": "SQLite", "expected_stored": true}
+      ]
+    },
+    {
+      "session_id": "s2",
+      "events": [
+        {"id": "event-new-database", "text": "The deployment plan now uses PostgreSQL.", "fact_id": "fact-new-database", "answer": "PostgreSQL", "expected_stored": true}
+      ]
+    }
+  ],
+  "questions": [
+    {"id": "q-current", "question": "Which database does the deployment plan use now?", "expected": "PostgreSQL", "superseded_values": ["SQLite"], "type": "knowledge_update", "evidence_ids": ["event-new-database"]}
+  ],
+  "metadata": {"expected_stored": ["event-old-database", "event-new-database"], "description": "Original project-decision replacement fixture."}
+}
