@@ -54,13 +54,12 @@ HTML and configured textual assets, deliberately leaving SSE, fonts, images, aud
 video uncompressed at the proxy layer.
 
 Both compose files publish that entry as `"${BIND_HOST:-127.0.0.1}:${PORT:-2026}:2026"`
-— **loopback by default**, matching the README's documented deployment model; a bare
-`"${PORT}:2026"` binds `0.0.0.0`, which does not. The root `PORT` value is Docker ingress
-configuration only; local orchestration pins Next.js to `3000` so loading `.env` cannot
-make `make dev` wait on the wrong port. Nginx listening `default_server` on IPv4+IPv6 and
-the Gateway binding `0.0.0.0:8001` are container-internal on purpose: the published nginx
-port is the entire external surface. Any new published port needs an explicit bind
-address; `backend/tests/test_compose_default_bind_host.py` pins this for every service in
+— **loopback by default**; a bare `"${PORT}:2026"` binds `0.0.0.0`. The root `PORT` is
+Docker ingress config only; local orchestration pins Next.js to `3000` so loading `.env`
+cannot make `make dev` wait on the wrong port. Nginx (`default_server`, IPv4+IPv6) and
+the Gateway (`0.0.0.0:8001`) bind inside the container on purpose: the published nginx
+port is the whole external surface, so any new published port needs an explicit bind
+address. `backend/tests/test_compose_default_bind_host.py` pins this for every service in
 both compose files.
 
 ## Repository Map
@@ -129,25 +128,20 @@ Scheduled-task note:
 - Scheduled background runs are intentionally non-interactive: the lead-agent toolset excludes `ask_clarification` when `context.non_interactive=true`. That key, `disable_clarification`, and `github_token` are honored only for internally-authenticated callers; client-supplied copies are dropped from both `body.context` and `body.config`.
 - Busy scheduled occurrences are persisted as `queued`; `launching` is a short lease-fenced claim, `running` remains the normal Gateway run lifecycle, and `scheduler.queue_timeout_seconds` bounds the durable wait. Do not reintroduce skip-on-overlap or count waiting rows against `max_concurrent_runs`.
 
-Workforce layer note (Bot Mode + self-improvement + projects):
-- Harness: `packages/harness/alpha/projects/` (membership, locks, constitution,
-  events/state, decisions, context, routing, workspace, handoffs, evidence, goals,
+Workforce layer (Bot Mode + self-improvement + projects):
+- Harness: `projects/` (membership, locks, constitution, decisions, handoffs, goals,
   conflicts — file-backed under `runtime_home()/projects/`, see its `AGENTS.md`),
-  `bots/dm.py` + `bots/inbox.py` (fire-and-forget DMs, server-side attribution),
-  `skills/usage.py` + `skills/curator.py` + `skills/authoring.py` (telemetry,
-  lifecycle, `/learn` bar), `learning/review_queue.py` (idle-deferred fork reviews),
-  `deliberation/moa.py`, `scheduler/{wake_gate,blueprints,incidents,guards}.py`.
-- Per-turn injections (bot roster, repo context files) ride
-  `DynamicContextMiddleware` reminders keyed off explicit runtime context
-  (`bot_name`, `repo_root`) — never the static system prompt (prefix-cache rule).
+  `bots/dm.py` + `bots/inbox.py`, `skills/{usage,curator,authoring}.py`,
+  `learning/review_queue.py`, `deliberation/moa.py`,
+  `scheduler/{wake_gate,blueprints,incidents,guards}.py`.
+- Per-turn injections (bot roster, repo context) ride `DynamicContextMiddleware`
+  reminders keyed off runtime context (`bot_name`, `repo_root`) — never the static
+  system prompt (prefix-cache rule).
 - Gateway: `/api/projects/{id}/*`, `/api/bots/{name}/dm|inbox|chat`,
-  `/api/skills/curator|usage|tiers`, `/api/council/*`, `/api/policy/*`,
-  `/api/missions`, `/api/benchmarks`, `/api/evolution`,
-  `/api/compat/openai/chat/completions`, `/api/threads/{id}/undo`,
-  `/api/console/insights`, `/api/ops/advice`, `/api/models/local/health`,
-  Signal channel (`app/channels/signal.py`, self-hosted REST wrapper).
-- Frontend: `src/lib/workforce.ts` client + `WorkforceSection` (inbox, presence,
-  curator, automation, oversight, insights tabs) behind the `workforce` NavTab.
+  `/api/skills/curator|usage|tiers`, `/api/{council,policy,missions,benchmarks,
+  evolution}/*`, `/api/threads/{id}/undo`, `/api/console/insights`,
+  `/api/ops/advice`, Signal channel (`app/channels/signal.py`).
+- Frontend: `src/lib/workforce.ts` + `WorkforceSection` behind the `workforce` NavTab.
 
 ## Commands: Root vs. Module
 
@@ -174,11 +168,10 @@ make up / down   # Build/stop the production Docker stack (browser at localhost:
 make docker-start / docker-stop / docker-logs   # Docker development environment
 ```
 
-Production startup uses the image's pre-built Python environment with `uv run
---no-sync`, gives the Gateway a real `/health` probe, and makes `make up` wait
-for that probe before printing its success banner. A readiness failure must
-surface Compose status and recent Gateway logs instead of claiming the stack is
-running.
+Production startup runs the image's pre-built environment (`uv run --no-sync`)
+and makes `make up` wait for the Gateway `/health` probe before printing its
+banner; a readiness failure must surface Compose status and recent Gateway logs
+rather than claim the stack is running (see Service Topology).
 
 Docker log and restart commands resolve `AGENT_WORKSPACE_ROOT` from the current
 checkout before invoking Compose, matching the start and stop commands.
