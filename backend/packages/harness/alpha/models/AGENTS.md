@@ -22,3 +22,20 @@
 - Preserves vLLM's non-standard assistant `reasoning` field on full responses, streaming deltas, and follow-up tool-call turns
 - Designed for configs that enable thinking through `extra_body.chat_template_kwargs.enable_thinking` on vLLM 0.19.0 Qwen reasoning models, while accepting the older `thinking` alias
 - `cumulative_stream_usage` is an opt-in model setting (default `false`) for endpoints that repeat cumulative token totals on each streaming chunk. The provider converts snapshots to deltas only when a stable completion id is present, isolates interleaved streams by id, and leaves the original usage untouched otherwise. Per-model tracking is lock-protected and cleared on the trailing empty-`choices` frame whether or not that frame carries usage. A soft cap of 1024 ids evicts only entries idle for at least one hour; active streams may temporarily exceed the cap so eviction cannot corrupt their deltas. Regression coverage lives in `tests/test_vllm_provider.py`.
+
+## System One / Laya provider boundary
+
+`system_one.provider` is a validated choice between hosted Jev (`vercel-gateway`, `typesafe`) and the self-hosted Apache-2.0 Laya decision model (`laya`). Laya speaks the same `/v1/systemone` wire protocol as TypeSafe Jev (`noul` for boolean questions) but is not a chat model and must not be inserted into the `models[]` catalog. Laya's runtime and weights live under the ignored project-local `.agent-workspace/laya` environment so its PyTorch/Transformers stack is not pulled into Alpha's core lockfile. The client permits keyless loopback Laya, never forwards cloud credentials to it, and abstains before HTTP when state, question count, or choice cardinality exceeds the configured safe budget. Keep the initial local rollout in `shadow_mode`; calibration records are partitioned by provider. Reproducible setup is `make system-one-laya-setup MODEL=english DEVICE=auto` followed by `make system-one-laya-serve` and `make system-one-laya-status`.
+
+### System One / Laya
+
+The System One client is provider-neutral across hosted Jev and the self-hosted
+Convai Innovations Laya decision model. Laya uses the Jev-compatible
+`/v1/systemone` contract, so it is configured under `system_one`, not `models[]`.
+Its PyTorch runtime/checkpoints are installed under ignored
+`.agent-workspace/laya`; Alpha's core dependency lock does not include the ML
+stack. Laya is keyless only on loopback, never receives hosted credentials, and
+abstains before HTTP when its state/question/choice budgets are unsafe. Keep a
+new local provider in `shadow_mode` until its provider-specific calibration is
+reviewed. Tests: `tests/test_system_one_laya.py` and
+`tests/test_system_one_laya_setup.py`.

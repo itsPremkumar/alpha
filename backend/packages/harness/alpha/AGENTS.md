@@ -216,3 +216,179 @@ Enterprise-level autonomous operations platform:
    - Mounted at `/api/enterprise/*` and `/api/gateway/enterprise/*`. Visualized in War Room tab.
 Tests: `tests/test_enterprise_autonomous_software_company.py`.
 
+## Swarm v2 runtime contract
+
+`alpha.swarm` is the lifecycle owner for autonomous swarm plans. Plans are explicit
+DAGs with atomic JSON checkpoints, ordered JSONL audit events, bounded blackboard
+messages, lease-fenced task attempts, retry/backoff state, measured token/tool
+budgets, deterministic reflection, bounded consecutive-failure circuit breaking,
+and optional evidence-backed consensus. A late worker result is accepted only when its
+current lease still matches; cancellation, budget exhaustion, dependency failure, and
+pause/resume are separate states. `auto_replan` is a bounded deterministic repair-task
+expansion that redirects blocked dependents; it does not silently convert a failed task
+into success. The synchronous model tool may use the runner's daemon-thread fallback when
+no event loop is available.
+
+Gateway swarm reads and mutations are owner-scoped (`SwarmPlan.owner_id`); the
+`swarm` tool derives the owner from the request context and cannot self-assert a
+verified blackboard message. Model-visible blackboard content is bounded data in
+the human input channel, never an elevated system instruction. Worktree paths are
+validated as relative metadata and the worker always uses the server project root.
+
+The current persistence adapter is deliberately local and process-scoped: it is
+atomic and restart-recoverable for a single Gateway, but it is not a substitute
+for a shared SQL lease repository in a multi-worker deployment. Do not describe
+local JSON checkpoints as cross-process exactly-once execution. The v2 API/tool
+surfaces expose metrics, task leases, messages, leader election, consensus, and
+acceptance-verdict fields so operators can distinguish execution success from
+acceptance success. Regression coverage lives in
+`backend/tests/test_swarm_engine.py`, `test_swarm_advanced_features.py`,
+`test_swarm_worker_execution.py`, and `test_swarm_v2_runtime.py`.
+
+## Dynamic workflow plane
+
+`alpha.workflow.runtime.DynamicWorkflowEngine` and
+`alpha.orchestrator.loop.ExecutionKernel` own typed workflow graphs, waves,
+conditional routing, bounded loops, retries, budgets, approval waits, patch OCC,
+replanning, replay, and compensation. The opt-in
+`alpha.orchestrator.dynamic_service.DynamicWorkflowService` composes the existing
+intent, capability/resource, bot, DWE, and event seams; it does not replace
+`RunManager`, bot/group lifecycle ownership, or the scheduler. Hosts must invoke
+its synchronous child execution through their own worker boundary and must not
+assume that cancelling an await cancels an already-running node.
+
+Gateway routes are `POST /api/workflows/dynamic/perceive`,
+`POST /api/workflows/dynamic/execute`, the existing `/api/workflows/turns`
+compatibility seam (`dynamic=true` opts into the full loop), and
+`POST /api/bots/{name}/workflow`. Definitions/runs are server-owner-scoped;
+request context cannot self-assert ownership. Registry discovery is a bounded
+read-only projection, not proof that a provider is connected. Missing executors,
+skills, MCP connections, compensation callbacks, or verification evidence fail
+or disclose honestly.
+
+The default `alpha.local.digest` executor is explicitly a
+`local_digest_projection`: it hashes inputs to exercise graph mechanics and is
+never reported as domain-task acceptance. A real model/tool/MCP/sandbox/bot
+executor must be bound for domain work. Recurring prompts disclose the missing
+scheduler handoff rather than creating a second cron owner.
+
+Workflow events are appended to the durable JSONL sink before listeners run;
+the Gateway sink is fail-closed, redacts event payloads, validates paths/schema,
+and exposes durability, projection, hydration, replay, and append-only plan
+history. The local adapter is atomic and restart-recoverable for one Gateway
+process, not a shared multi-worker lease/exactly-once repository. Do not claim
+true concurrent wave parallelism or cross-process exactly-once execution until
+those coordination boundaries are implemented. Full operations and API examples
+are in [`docs/DYNAMIC_WORKFLOWS.md`](docs/DYNAMIC_WORKFLOWS.md); regression
+coverage is in `backend/tests/test_dynamic_workflow_service.py`,
+`test_dynamic_workflow_router.py`, `test_dynamic_workflow_engine.py`,
+`test_workflow_dag_edges.py`, `test_workflow_durability_router.py`, and
+`test_bot_dynamic_workflow.py`.
+
+## Guarded source auto-update contract
+
+Local source checkouts may opt into the Phase-2 update engine in
+`backend/packages/harness/alpha/evolution/update_engine.py`. The committed
+`config/update-policy.json` is a disabled, credential-free template; real
+unattended deployments should keep a mutable operator policy outside the clean
+checkout and select it with `ALPHA_UPDATE_POLICY_PATH`. `main` branch tracking
+is an explicit operator choice, not the production default. The engine is a
+separate trust boundary: it requires a clean worktree, manifest-matching
+GitHub remote, allowed branch, fast-forward ancestry, stable target ref,
+optional signature verification, backup ref, and post-restart health checks. It
+uses argv-only subprocesses and never accepts a client-supplied URL/ref.
+Gateway apply routes only queue a detached transaction and are admin-only; PATs
+and auth-disabled/internal identities never receive admin capability. A
+runtime-home maintenance barrier closes new run admission before mutation, and
+manual confirmation never bypasses `canApply` or other safety gates.
+State/history/lock files live under `runtime_home()` and must never contain
+GitHub tokens or secrets. Docker images, Helm releases, and the Electron
+installer remain orchestrator-owned and are not updated in place.
+
+The `self_update` loop is registered in `AutonomySupervisor`; an enabled
+policy causes the Gateway to register it automatically, while an explicit
+`autonomy.loops.self_update` block can override/disable it. Windows autostart
+may register `Alpha_Update`, but the policy is the kill switch. Commands:
+`make update-status`, `make update-check`, `make update-apply`, and
+`make update-recover`. Full operations and recovery guidance live in
+`docs/AUTO_UPDATE.md`; tests live in `backend/tests/test_auto_update.py`.
+
+## Guarded source auto-update
+
+The Phase-2 updater lives in `packages/harness/alpha/evolution/update_engine.py`
+and is consumed by the `self_update` autonomy loop plus the operator CLI. It is
+a source-checkout transaction, not an in-place Docker/Helm/Electron updater.
+The default `config/update-policy.json` is a disabled template; unattended
+operators should keep the mutable policy outside the checkout and select it
+with `ALPHA_UPDATE_POLICY_PATH`. Application requires both policy flags plus
+the startup-scoped `autonomy.loops.self_update.enabled` setting. The engine
+refuses dirty or non-fast-forward worktrees, validates the manifest-matching
+GitHub remote, creates a Git backup ref, keeps config snapshots under runtime
+home, publishes a cross-process maintenance barrier, invokes only argv-based
+hooks, restores declared dependencies on rollback, and marks success only after
+local health checks. Gateway apply/recover routes are admin-only and only queue
+detached work; auth-disabled/internal/PAT identities cannot mutate source.
+Tests: `tests/test_auto_update.py`; operations: `docs/AUTO_UPDATE.md`.
+
+### Swarm v2 runtime
+
+The `alpha.swarm` package owns swarm lifecycle and execution. `SwarmCoordinator`
+serializes short state transitions, writes atomic plan snapshots and ordered
+JSONL events, and restores interrupted plans as paused with fresh-lease
+requirements. `SwarmScheduler` validates DAGs before mutation, assigns lease
+IDs, renews live attempts, applies retry backoff, and fences stale results.
+`AsyncSwarmRunner` records measured usage, publishes bounded task-result messages,
+enforces the consecutive-failure circuit, handles pause/resume, and reports
+`budget_exhausted`/`stalled` rather than fabricating completion. When
+`auto_replan` is enabled, a terminal failure can receive one deterministic repair
+task; blocked dependents are redirected to that task, while the original failure
+remains auditable. `SwarmAggregator` keeps execution status separate from
+acceptance criteria and optional evidence-backed consensus; duplicate voters and
+unverified acceptance evidence cannot produce a clean approval.
+
+The synchronous `swarm` tool can start the same runner through a daemon-thread
+event-loop fallback when it is invoked outside FastAPI's loop; Gateway requests
+remain on the Gateway loop. `communication.py`, `consensus.py`, and `reflection.py` are harness-layer modules;
+they do not import `app.*`. Gateway routes are owner-scoped and the model-visible
+`swarm` tool derives its owner from runtime context. Blackboard content is
+untrusted data and is placed in the worker input channel, never appended to the
+system prompt. The local JSON/JSONL store is atomic and restart-recoverable for a
+single process only; a multi-worker deployment still requires a shared SQL lease
+repository before claiming cross-process exactly-once execution. Tests:
+`tests/test_swarm_v2_runtime.py` plus the existing swarm engine/worker suites.
+
+### Dynamic workflow plane
+
+`alpha.workflow.runtime.DynamicWorkflowEngine` remains the graph runtime;
+`alpha.orchestrator.loop.ExecutionKernel` adds per-run claims, executor
+dispatch, mode journaling, handoff contracts, and fail-closed policy. The
+opt-in `alpha.orchestrator.dynamic_service.DynamicWorkflowService` composes
+perception, registry discovery, decomposition, resource assembly, graph
+compilation, and execution without replacing `RunManager` or creating a second
+parent lifecycle. The service is synchronous; async hosts must use an explicit
+worker boundary and must not claim that cancelling an await stopped a running
+node.
+
+Gateway workflow routes are owner-scoped for real HTTP requests. Dynamic
+perception is preview-only; dynamic execution, the `dynamic=true` turn seam,
+and the bot workflow route share the same executor and evidence rules. A
+`DynamicWorkflowBridge` that receives the Gateway `ExecutionKernel` starts and
+dispatches every wave through that kernel's per-run claim (and uses the same
+claim for runtime replan patches); an explicitly unbound bridge disables
+registry fallback so a live digest executor cannot masquerade as a bound host
+runner. The default digest executor is explicitly a
+`local_digest_projection` and must keep `acceptance_passed=false`; real
+model/tool/MCP/sandbox/bot executors are host bindings. Recurring prompts
+disclose the missing scheduler handoff rather than creating a competing
+automation loop.
+
+The Gateway event dispatcher writes through a redacting, schema-checked,
+fail-closed durable JSONL sink. `workflows.py` exposes bounded registry,
+durability, event, projection, hydration, replay, plan-history, approval,
+replan, compensation, cancellation, and ownership surfaces. Local persistence is
+atomic/restart-recoverable for one process only; it is not a shared lease store
+or a promise of multi-worker exactly-once execution. Tests:
+`tests/test_dynamic_workflow_service.py`, `test_dynamic_workflow_router.py`,
+`test_dynamic_workflow_engine.py`, `test_workflow_dag_edges.py`,
+`test_workflow_durability_router.py`, and `test_bot_dynamic_workflow.py`.
+Operations: [`docs/DYNAMIC_WORKFLOWS.md`](../../docs/DYNAMIC_WORKFLOWS.md).

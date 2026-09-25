@@ -109,6 +109,30 @@ def test_build_subagent_runtime_middlewares_threads_app_config_to_llm_middleware
             self.args = args
             self.kwargs = kwargs
 
+    # One DISTINCT stub class per patched middleware. assert_ordering() resolves
+    # its invariants with isinstance(), so collapsing five different middlewares
+    # onto a single FakeMiddleware made every stub also match the
+    # SandboxAuditMiddleware constraint: the guard then saw "SandboxAudit" at
+    # indices 0/3/4/5 (which are legitimately OUTSIDE the receipt layer) and
+    # raised a violation for an order that is in fact correct - the real chain is
+    # ToolReceipt 7, SandboxAudit 8, ReadBeforeWrite 9, ToolErrorHandling 10.
+    # The stubs stay subclasses of FakeMiddleware, so the positional assertion
+    # below keeps working.
+    class FakeInputSanitizationMiddleware(FakeMiddleware):
+        pass
+
+    class FakeThreadDataMiddleware(FakeMiddleware):
+        pass
+
+    class FakeSandboxMiddleware(FakeMiddleware):
+        pass
+
+    class FakeDanglingToolCallMiddleware(FakeMiddleware):
+        pass
+
+    class FakeSandboxAuditMiddleware(FakeMiddleware):
+        pass
+
     class FakeLLMErrorHandlingMiddleware:
         def __init__(self, *, app_config):
             captured["app_config"] = app_config
@@ -126,29 +150,32 @@ def test_build_subagent_runtime_middlewares_threads_app_config_to_llm_middleware
     monkeypatch.setitem(
         sys.modules,
         "alpha.agents.middlewares.thread_data_middleware",
-        _module("alpha.agents.middlewares.thread_data_middleware", ThreadDataMiddleware=FakeMiddleware),
+        _module("alpha.agents.middlewares.thread_data_middleware", ThreadDataMiddleware=FakeThreadDataMiddleware),
     )
     monkeypatch.setitem(
         sys.modules,
         "alpha.sandbox.middleware",
-        _module("alpha.sandbox.middleware", SandboxMiddleware=FakeMiddleware),
+        _module("alpha.sandbox.middleware", SandboxMiddleware=FakeSandboxMiddleware),
     )
     monkeypatch.setitem(
         sys.modules,
         "alpha.agents.middlewares.dangling_tool_call_middleware",
-        _module("alpha.agents.middlewares.dangling_tool_call_middleware", DanglingToolCallMiddleware=FakeMiddleware),
+        _module(
+            "alpha.agents.middlewares.dangling_tool_call_middleware",
+            DanglingToolCallMiddleware=FakeDanglingToolCallMiddleware,
+        ),
     )
     monkeypatch.setitem(
         sys.modules,
         "alpha.agents.middlewares.sandbox_audit_middleware",
-        _module("alpha.agents.middlewares.sandbox_audit_middleware", SandboxAuditMiddleware=FakeMiddleware),
+        _module("alpha.agents.middlewares.sandbox_audit_middleware", SandboxAuditMiddleware=FakeSandboxAuditMiddleware),
     )
     monkeypatch.setitem(
         sys.modules,
         "alpha.agents.middlewares.input_sanitization_middleware",
         _module(
             "alpha.agents.middlewares.input_sanitization_middleware",
-            InputSanitizationMiddleware=FakeMiddleware,
+            InputSanitizationMiddleware=FakeInputSanitizationMiddleware,
             neutralize_untrusted_tags=lambda value: value,
         ),
     )
@@ -177,7 +204,7 @@ def test_build_subagent_runtime_middlewares_threads_app_config_to_llm_middleware
     from alpha.agents.middlewares.tool_receipt_middleware import ToolReceiptMiddleware
 
     assert len(middlewares) == 19
-    assert isinstance(middlewares[0], FakeMiddleware)  # InputSanitizationMiddleware stub
+    assert isinstance(middlewares[0], FakeInputSanitizationMiddleware)  # InputSanitizationMiddleware stub
     assert isinstance(middlewares[1], ToolOutputBudgetMiddleware)
     assert any(isinstance(m, ToolErrorHandlingMiddleware) for m in middlewares)
     # The receipt layer wraps ToolErrorHandlingMiddleware so receipts read the
