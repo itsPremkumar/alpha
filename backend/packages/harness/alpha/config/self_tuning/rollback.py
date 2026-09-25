@@ -154,7 +154,15 @@ class RollbackManager:
             terminal = ApplyResult(change_set_id=original.id, status=applied.status, reason=f"rollback failed: {applied.reason}", at=self.clock.now())
 
         if self.recorder is not None:
-            self.recorder.record_rollback(rollback_set, terminal.status, terminal.reason)
+            try:
+                self.recorder.record_rollback(rollback_set, terminal.status, terminal.reason)
+            except Exception as exc:
+                terminal = ApplyResult(
+                    change_set_id=original.id,
+                    status=ApplyOutcome.FAILED,
+                    reason=f"rollback reached {terminal.status.value} but its provenance record failed: {exc}",
+                    at=self.clock.now(),
+                )
         return terminal
 
     def verify_or_rollback(
