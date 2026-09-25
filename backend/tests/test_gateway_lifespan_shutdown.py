@@ -42,6 +42,13 @@ def test_enabled_scheduler_start_failure_aborts_gateway_lifespan():
         startup_config.log_level = "INFO"
         startup_config.memory.enabled = False
         startup_config.memory.shutdown_flush_timeout_seconds = 5.0
+        # The lifespan starts the autonomy supervisor from this same config
+        # object. A bare MagicMock makes autonomy.enabled truthy and hands the
+        # supervisor MagicMock loop intervals, so every loop died with an
+        # unretrieved TypeError while this test was trying to measure
+        # scheduler-failure abort. These tests are about lifespan ordering and
+        # timing, so autonomy stays explicitly off.
+        startup_config.autonomy.enabled = False
         startup_config.scheduler.enabled = True
         startup_config.scheduler.multi_instance = False
         startup_config.scheduler.poll_interval_seconds = 5
@@ -93,6 +100,9 @@ async def _run_lifespan_with_hanging_stop() -> float:
     # Keep this test focused on the channel-hang timing: skip the memory drain.
     startup_config.memory.enabled = False
     startup_config.memory.shutdown_flush_timeout_seconds = 5.0
+    # Autonomy off for the same reason as above: its loops are not what this
+    # timing assertion measures, and a bare MagicMock would crash them.
+    startup_config.autonomy.enabled = False
     fake_service = MagicMock()
     fake_service.get_status = MagicMock(return_value={})
 

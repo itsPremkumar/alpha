@@ -193,8 +193,15 @@ def test_gateway_cors_configuration_uses_gateway_allowlist():
 
 
 def test_frontend_rewrites_langgraph_prefix_to_gateway():
-    next_config = _read("frontend/next.config.js")
-    api_client = _read("frontend/src/core/api/api-client.ts")
+    # The frontend moved both files this contract reads: the Next config became
+    # ESM (next.config.js -> next.config.mjs) and the API client was consolidated
+    # into src/lib/api-client.ts. The test was still reading the old paths and
+    # died with FileNotFoundError, so the invariant it guards (no legacy
+    # standalone-LangGraph wiring left in the frontend) was not being checked at
+    # all. Asserted against the files that exist today; the forbidden strings are
+    # verified absent.
+    next_config = _read("frontend/next.config.mjs")
+    api_client = _read("frontend/src/lib/api-client.ts")
 
     assert "AGENT_WORKSPACE_INTERNAL_LANGGRAPH_BASE_URL" not in next_config
     assert "http://127.0.0.1:2024" not in next_config
@@ -223,10 +230,12 @@ def test_smoke_test_docs_do_not_expect_standalone_langgraph_server():
 
 
 def test_gateway_runtime_docs_do_not_reference_transition_modes():
+    # docs/CODE_CHANGE_SUMMARY_BY_FILE.md no longer exists in the tree; reading it
+    # raised FileNotFoundError and took the whole doc contract down with it. The
+    # surviving runtime docs still carry the assertion.
     docs = {
         "backend/docs/AUTH_UPGRADE.md": _read("backend/docs/AUTH_UPGRADE.md"),
         "backend/docs/AUTH_TEST_DOCKER_GAP.md": _read("backend/docs/AUTH_TEST_DOCKER_GAP.md"),
-        "docs/CODE_CHANGE_SUMMARY_BY_FILE.md": _read("docs/CODE_CHANGE_SUMMARY_BY_FILE.md"),
     }
 
     for path, content in docs.items():
