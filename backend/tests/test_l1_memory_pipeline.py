@@ -20,6 +20,7 @@ Coverage map:
 from __future__ import annotations
 
 import json
+import time
 from datetime import UTC
 from typing import Any
 
@@ -1074,7 +1075,12 @@ def test_pipeline_retention_sweep_runs_after_write(tmp_path) -> None:
 
 
 def test_pipeline_capture_is_gated_and_flush_runs_synchronously(tmp_path) -> None:
-    cfg = make_config(tmp_path, persona_enabled=False)
+    # A long debounce keeps the debounce TIMER out of this test on purpose:
+    # `capture()` arms `threading.Timer(delay, _drain)`, so with the suite's
+    # default delay of 0.0 the timer thread races `flush()` and this assertion
+    # tests whichever one the scheduler happened to favour. The timer path has
+    # its own test below (test_pipeline_debounce_timer_drains_without_flush).
+    cfg = make_config(tmp_path, persona_enabled=False, debounce_seconds=30.0)
     store = L1RecordStore(cfg.l1.storage_path)
     pipeline = L1Pipeline(config=cfg, store=store, model=FakeModel(extraction=EXTRACTION_OK))
 
@@ -1089,6 +1095,28 @@ def test_pipeline_capture_is_gated_and_flush_runs_synchronously(tmp_path) -> Non
     )
     assert gated.capture("t1", TURNS, user_id="u1") is False
     assert gated.flush() == 0
+
+
+def test_pipeline_debounce_timer_drains_without_flush(tmp_path) -> None:
+    """The debounce timer must drain a captured turn on its own.
+
+    This is the behaviour the synchronous-flush test deliberately does not
+    exercise. At `debounce_seconds=0.0` the armed timer is the drainer, so the
+    wait is bounded by a deadline and polls the store instead of sleeping a
+    fixed amount and hoping.
+    """
+    cfg = make_config(tmp_path, persona_enabled=False, debounce_seconds=0.0)
+    store = L1RecordStore(cfg.l1.storage_path)
+    pipeline = L1Pipeline(config=cfg, store=store, model=FakeModel(extraction=EXTRACTION_OK))
+
+    assert pipeline.capture("t1", TURNS, user_id="u1", agent_name="lead") is True
+
+    deadline = time.monotonic() + 10.0
+    while time.monotonic() < deadline and store.count("u1", "lead") < 2:
+        time.sleep(0.02)
+
+    assert store.count("u1", "lead") == 2, "the debounce timer must drain the queued turn"
+    assert pipeline.flush() == 0, "the timer already drained it, so nothing is left pending"
 
 
 def test_pipeline_recall_block_lists_records_and_persona(tmp_path) -> None:
