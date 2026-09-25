@@ -137,6 +137,11 @@ def test_signals_explicit_override_clock_and_idempotency() -> None:
 
     batch = normalizer.normalize_many([payload, payload])
     assert [item.status for item in batch] == [SignalStatus.DUPLICATE, SignalStatus.DUPLICATE]
+    seen: set[str] = set()
+    first = normalize_signal(payload, clock=clock, seen_ids=seen)
+    second = normalize_signal(payload, clock=clock, seen_ids=seen)
+    assert first.status == SignalStatus.ACCEPTED
+    assert second.status == SignalStatus.DUPLICATE
 
 
 def test_signals_reject_malformed_and_disclose_missing_source_or_clock() -> None:
