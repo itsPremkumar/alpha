@@ -8,6 +8,19 @@ from typing import Any
 from langchain.tools import tool
 
 from alpha.tools.search.catalog import get_universal_catalog
+from alpha.tools.tool_discovery_metrics import (
+    ERROR,
+    NO_MATCH,
+    PROMOTED,
+    REASON_CALL_RAISED,
+    REASON_ERROR_RESULT,
+    REASON_NO_RESULTS,
+    REASON_RESULTS_RETURNED,
+    REASON_SCHEMA_RETURNED,
+    classify_catalog_result,
+    current_telemetry,
+    record_call,
+)
 
 
 @tool("catalog_tool_search", parse_docstring=True)
@@ -27,7 +40,9 @@ def catalog_tool_search(
     catalog = get_universal_catalog()
     results = catalog.search(query=query, limit=limit)
     if not results:
+        record_call(current_telemetry(), kind="catalog_tool_search", outcome=NO_MATCH, reason=REASON_NO_RESULTS)
         return f"No tools found matching query '{query}'."
+    record_call(current_telemetry(), kind="catalog_tool_search", outcome=PROMOTED, reason=REASON_RESULTS_RETURNED)
     return json.dumps(results, indent=2)
 
 
@@ -43,11 +58,14 @@ def catalog_tool_describe(
         tool_name: The exact name of the tool to inspect.
     """
     catalog = get_universal_catalog()
+    telemetry = current_telemetry()
     try:
         details = catalog.describe(tool_name)
-        return json.dumps(details, indent=2)
     except KeyError as e:
+        record_call(telemetry, kind="catalog_tool_describe", outcome=ERROR, reason=REASON_ERROR_RESULT)
         return f"Error: {e}"
+    record_call(telemetry, kind="catalog_tool_describe", outcome=PROMOTED, reason=REASON_SCHEMA_RETURNED)
+    return json.dumps(details, indent=2)
 
 
 @tool("catalog_tool_call", parse_docstring=True)
@@ -62,10 +80,20 @@ def catalog_tool_call(
         arguments: Dictionary of arguments matching the schema obtained from `catalog_tool_describe`.
     """
     catalog = get_universal_catalog()
+    telemetry = current_telemetry()
     try:
         res = catalog.call(tool_name, arguments or {})
-        if isinstance(res, (dict, list)):
-            return json.dumps(res, indent=2)
-        return str(res)
     except Exception as e:
+        # A non-throwing call is not a success and neither is a throwing one:
+        # record the error outcome before the handler's error string is built.
+        record_call(telemetry, kind="catalog_tool_call", outcome=ERROR, reason=REASON_CALL_RAISED)
         return f"Error calling '{tool_name}': {e}"
+    # Telemetry only: a `catalog.call()` that returns an error-valued
+    # `ToolMessage` or an error string is an error outcome, never a promotion.
+    # `classify_catalog_result` reads the result status before anything is
+    # counted, so an error result can never reach the promotion counter.
+    outcome, reason = classify_catalog_result(res)
+    record_call(telemetry, kind="catalog_tool_call", outcome=outcome, reason=reason)
+    if isinstance(res, (dict, list)):
+        return json.dumps(res, indent=2)
+    return str(res)
