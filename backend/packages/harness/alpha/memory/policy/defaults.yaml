@@ -1,0 +1,30 @@
+# Alpha memory admission policy. Rule names/actions follow section 25 of the
+# advanced memory plan. The secret boundary is evaluated first even though the
+# plan lists it last in its illustrative YAML.
+policy:
+  secret_like:
+    action: reject
+  explicit_remember:
+    action: always_store
+  project_decision:
+    action: durable_project
+    require_provenance: true
+  user_preference:
+    action: durable_profile
+    min_confidence: 0.70
+  successful_procedure:
+    action: promote_to_skill_candidate
+    min_successes: 2
+  transient_status:
+    action: session_only
+  raw_tool_output:
+    action: episodic_archive
+score_weights:
+  importance: 0.25
+  future_utility: 0.20
+  novelty: 0.15
+  confidence: 0.15
+  recurrence: 0.10
+  task_relevance: 0.10
+  explicit_user_request: 0.05
+min_score_to_admit: 0.60
