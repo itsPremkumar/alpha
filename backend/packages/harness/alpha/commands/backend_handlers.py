@@ -659,10 +659,7 @@ def handle_compact(args: str, context: dict[str, Any] | None = None) -> CommandE
     return CommandExecutionResult(
         status="error",
         command="/compact",
-        output=(
-            "/compact did NOT run any compaction: this slash handler has no thread id, no checkpoint accessor, "
-            f"and no summarization model, so there is nothing to compact. {reason}."
-        ),
+        output=(f"/compact did NOT run any compaction: this slash handler has no thread id, no checkpoint accessor, and no summarization model, so there is nothing to compact. {reason}."),
         data={"action": "compact", "completed": False, "implemented": False, "reason": reason},
     )
 
@@ -829,13 +826,7 @@ def handle_mode(args: str, context: dict[str, Any] | None = None) -> CommandExec
         return CommandExecutionResult(
             status="success",
             command="/mode",
-            output=(
-                "=== Execution Mode ===\n"
-                f"Mode: {record['mode']}\n"
-                f"Note: {record['note']}\n"
-                f"Persisted file: {mode_path()}\n"
-                f"Side effects: {side_effects}"
-            ),
+            output=(f"=== Execution Mode ===\nMode: {record['mode']}\nNote: {record['note']}\nPersisted file: {mode_path()}\nSide effects: {side_effects}"),
             data=dict(record),
         )
 
@@ -948,8 +939,9 @@ def register_all_backend_handlers() -> None:
                 description=f"Concrete handler for {cmd_str}",
                 usage=f"{cmd_str} [args]",
                 is_core=True,
+                metadata={"registration_reason": "compatibility alias; canonical command is catalog-backed"},
             )
-            command_registry.register(new_def, handler=handler)
+            command_registry.register(new_def, handler=handler, registered=False)
 
     logger.info("Bound %d concrete backend handlers to SlashCommandRegistry.", len(handlers))
 

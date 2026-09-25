@@ -240,6 +240,12 @@ CAPABILITY_CATALOG: dict[str, CapabilitySpec] = {
         description="Read-only discovery registries (capabilities, tools, skills, MCP servers, memory) behind one list/describe/health plane for dynamic-workflow planning.",
         kind="utility",
     ),
+    "slash_commands": CapabilitySpec(
+        module="alpha.commands.registry",
+        target="SlashCommandRegistry",
+        description="Cataloged slash-command definitions and their executable handler registry.",
+        kind="utility",
+    ),
 }
 
 

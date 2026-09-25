@@ -1,10 +1,14 @@
 from __future__ import annotations
+
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
+
+COMMAND_CAPABILITY_ID = "slash_commands"
 
 
-class CommandCategory(str, Enum):
+class CommandCategory(str, Enum):  # noqa: UP042 - preserve the existing enum identity contract
     CORE = "core"
     MISSION = "mission"
     PLANNING = "planning"
@@ -44,9 +48,11 @@ class SlashCommandDef:
     is_core: bool = False
     is_autonomous_trigger: bool = False
     requires_approval: bool = False
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
+    registered: bool = False
+    capability: str = COMMAND_CAPABILITY_ID
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "command": self.command,
             "category": self.category.value,
@@ -56,6 +62,8 @@ class SlashCommandDef:
             "is_autonomous_trigger": self.is_autonomous_trigger,
             "requires_approval": self.requires_approval,
             "metadata": self.metadata,
+            "registered": self.registered,
+            "capability": self.capability,
         }
 
 
@@ -64,10 +72,10 @@ class CommandExecutionResult:
     status: str
     command: str
     output: str
-    data: Dict[str, Any] = field(default_factory=dict)
-    autonomous_directives: List[str] = field(default_factory=list)
+    data: dict[str, Any] = field(default_factory=dict)
+    autonomous_directives: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "status": self.status,
             "command": self.command,
@@ -79,19 +87,52 @@ class CommandExecutionResult:
 
 class SlashCommandRegistry:
     def __init__(self) -> None:
-        self._commands: Dict[str, SlashCommandDef] = {}
-        self._handlers: Dict[str, Callable[..., Any]] = {}
+        self._commands: dict[str, SlashCommandDef] = {}
+        self._handlers: dict[str, Callable[..., Any]] = {}
         self._register_default_catalog()
 
-    def register(self, command_def: SlashCommandDef, handler: Optional[Callable[..., Any]] = None) -> None:
+    def register(
+        self,
+        command_def: SlashCommandDef,
+        handler: Callable[..., Any] | None = None,
+        *,
+        registered: bool | None = None,
+    ) -> None:
+        """Register a definition and, when supplied, its concrete handler.
+
+        ``registered`` is explicit for compatibility aliases created outside
+        the catalog.  A dynamic alias must not claim catalog registration when
+        no catalog row exists for it.
+        """
+        if registered is not None and registered != command_def.registered:
+            command_def = SlashCommandDef(
+                command=command_def.command,
+                category=command_def.category,
+                description=command_def.description,
+                usage=command_def.usage,
+                is_core=command_def.is_core,
+                is_autonomous_trigger=command_def.is_autonomous_trigger,
+                requires_approval=command_def.requires_approval,
+                metadata=dict(command_def.metadata),
+                registered=registered,
+                capability=command_def.capability,
+            )
         self._commands[command_def.command] = command_def
         if handler:
             self._handlers[command_def.command] = handler
 
-    def get(self, command: str) -> Optional[SlashCommandDef]:
+    def has_handler(self, command: str) -> bool:
+        """Return whether a concrete handler is bound for an exact command key."""
+        return command in self._handlers
+
+    def handler_commands(self) -> list[str]:
+        """Sorted exact command keys that have concrete handlers."""
+        return sorted(self._handlers)
+
+    def get(self, command: str) -> SlashCommandDef | None:
         return self._commands.get(command)
 
-    def list_commands(self, category: Optional[CommandCategory] = None, only_core: bool = False) -> List[SlashCommandDef]:
+    def list_commands(self, category: CommandCategory | None = None, only_core: bool = False) -> list[SlashCommandDef]:
         res = list(self._commands.values())
         if category:
             res = [c for c in res if c.category == category]
@@ -99,19 +140,19 @@ class SlashCommandRegistry:
             res = [c for c in res if c.is_core]
         return sorted(res, key=lambda c: c.command)
 
-    def get_categories(self) -> List[Dict[str, Any]]:
-        counts: Dict[CommandCategory, int] = {}
+    def get_categories(self) -> list[dict[str, Any]]:
+        counts: dict[CommandCategory, int] = {}
         for c in self._commands.values():
             counts[c.category] = counts.get(c.category, 0) + 1
         return [{"category": cat.value, "count": counts.get(cat, 0)} for cat in CommandCategory]
 
-    def search(self, query: str) -> List[SlashCommandDef]:
+    def search(self, query: str) -> list[SlashCommandDef]:
         q = query.lower().strip()
         if not q:
             return self.list_commands()
         return [c for c in self._commands.values() if q in c.command.lower() or q in c.description.lower() or q in c.category.value.lower()]
 
-    def find_command(self, command_line: str) -> tuple[Optional[SlashCommandDef], str]:
+    def find_command(self, command_line: str) -> tuple[SlashCommandDef | None, str]:
         """Resolves a command line to its SlashCommandDef and remaining argument string."""
         raw = command_line.strip()
         if not raw:
@@ -150,7 +191,7 @@ class SlashCommandRegistry:
 
         return None, ""
 
-    def execute(self, command_line: str, context: Optional[Dict[str, Any]] = None) -> CommandExecutionResult:
+    def execute(self, command_line: str, context: dict[str, Any] | None = None) -> CommandExecutionResult:
         raw = command_line.strip()
         if not raw:
             return CommandExecutionResult(
@@ -182,7 +223,7 @@ class SlashCommandRegistry:
             )
 
         # Default autonomous execution / intent parsing
-        directives: List[str] = []
+        directives: list[str] = []
         if cmd_def.is_autonomous_trigger:
             directives.append(f"Execute autonomous directive for {cmd_def.command} ({cmd_def.category.value}) with args: {args_str}")
 
@@ -216,6 +257,7 @@ class SlashCommandRegistry:
                     is_core=is_core,
                     is_autonomous_trigger=is_auto,
                     requires_approval=req_app,
+                    registered=True,
                 )
             )
 
