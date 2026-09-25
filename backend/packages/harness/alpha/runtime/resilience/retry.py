@@ -37,6 +37,7 @@ References (paraphrased, nothing copied):
 
 from __future__ import annotations
 
+import inspect
 import random
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
@@ -45,6 +46,7 @@ from typing import Any
 
 from alpha.runtime.resilience.clock import Clock, Deadline, coerce_clock, require_delay, resolve_sleeper
 from alpha.runtime.resilience.errors import (
+    AsyncOperationRefused,
     ControlSignal,
     RetryAbortedError,
     RetryExhaustedError,
@@ -61,6 +63,7 @@ __all__ = [
     "RetryPolicy",
     "RetryResult",
     "classify_exception",
+    "refuse_async_operation",
     "retry_call",
 ]
 
@@ -139,6 +142,31 @@ class FullJitter:
     def __call__(self, nominal: float, attempt: int) -> float:
         base = require_delay(nominal, name="nominal delay")
         return require_delay(self.random_fn() * base, name="jittered delay")
+
+
+def refuse_async_operation(operation: Callable[[], Any], *, where: str) -> None:
+    """Refuse an ``async def`` operation handed to a SYNCHRONOUS helper.
+
+    Without this, ``retry_call``/``recover`` call the operation, get a coroutine
+    object back, and report success - certifying work that never ran while the
+    only signal is a "coroutine was never awaited" warning. Two ways in:
+
+    * the callable itself is a coroutine function (the common case), or
+    * a sync callable RETURNED a coroutine (a sync wrapper hiding an async call).
+
+    In the second case the coroutine is CLOSED before raising, so the refusal
+    does not itself leak an un-awaited coroutine warning.
+    """
+    if inspect.iscoroutinefunction(operation) or inspect.iscoroutinefunction(
+        getattr(operation, "__call__", None)
+    ):
+        name = getattr(operation, "__qualname__", None) or getattr(operation, "__name__", None)
+        msg = (
+            f"{where} received an async operation ({name!r}); the sync resilience "
+            "helpers cannot await it. Await the operation yourself and keep your "
+            "own asyncio.sleep, or use the policy/breaker directly."
+        )
+        raise AsyncOperationRefused(msg)
 
 
 def classify_exception(exc: BaseException) -> RetryDecision:
@@ -328,6 +356,7 @@ def retry_call(
     policy.attempts``; a deadline can only end it earlier. So the call performs
     at most ``policy.attempts`` executions of ``operation``.
     """
+    refuse_async_operation(operation, where="retry_call")
     resolved_clock = coerce_clock(clock)
     wait = resolve_sleeper(resolved_clock, sleeper)
     record_trail = trail if trail is not None else AttemptTrail()
@@ -349,6 +378,15 @@ def retry_call(
         started_at = resolved_clock.now()
         try:
             value = operation()
+            if inspect.iscoroutine(value):
+                # A sync wrapper that returned a coroutine: the work has not
+                # happened, and reporting success would certify nothing.
+                value.close()
+                msg = (
+                    "retry_call received a coroutine back from a sync operation; "
+                    "the work never ran. Await it yourself."
+                )
+                raise AsyncOperationRefused(msg)
         except BaseException as exc:  # classified below; terminal/abort re-raised as-is
             stop_reason = ""
             if isinstance(exc, ControlSignal):

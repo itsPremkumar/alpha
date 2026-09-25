@@ -118,7 +118,13 @@ from alpha.runtime.resilience.errors import (
     RetryExhaustedError,
 )
 from alpha.runtime.resilience.idempotency import IdempotencyClaim, IdempotencyKey, IdempotencyRegistry, IdempotencyStatus, RunOutcome
-from alpha.runtime.resilience.retry import AttemptRecord, AttemptTrail, RetryPolicy, retry_call
+from alpha.runtime.resilience.retry import (
+    AttemptRecord,
+    AttemptTrail,
+    RetryPolicy,
+    refuse_async_operation,
+    retry_call,
+)
 
 __all__ = ["NO_VALUE", "RecoveryOutcome", "RecoveryStatus", "RecoveryStep", "recover"]
 
@@ -561,6 +567,10 @@ def recover(
     """
     resolved_clock = coerce_clock(clock)
     bound_operation = _bind_step(operation)
+    # Refuse an async operation up front, before any rung runs. `recover` would
+    # otherwise call it, receive a coroutine, and report `succeeded` for work
+    # that never happened.
+    refuse_async_operation(operation, where="recover")
     ladder = _Ladder(
         trail=AttemptTrail(),
         interventions=[],
@@ -572,6 +582,10 @@ def recover(
     )
 
     if not enabled:
+        # Fail closed on an async operation even in the disabled pass-through:
+        # a pass-through that returns a coroutine would still be reporting
+        # success for work that never ran.
+        refuse_async_operation(bound_operation, where="recover")
         step = RecoveryStep(rung=-1, decision=_NO_DECISION, round_index=1, last_error=None)
         try:
             value = bound_operation(step)

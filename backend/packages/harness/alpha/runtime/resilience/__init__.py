@@ -171,6 +171,7 @@ _EXPORTS = {
     "require_delay": "clock",
     "resolve_sleeper": "clock",
     # errors
+    "AsyncOperationRefused": "errors",
     "BudgetExhaustedError": "errors",
     "CircuitOpenError": "errors",
     "ControlSignal": "errors",
@@ -200,6 +201,7 @@ _EXPORTS = {
     "RetryPolicy": "retry",
     "RetryResult": "retry",
     "classify_exception": "retry",
+    "refuse_async_operation": "retry",
     "retry_call": "retry",
     # circuit
     "CircuitBreaker": "circuit",
@@ -279,6 +281,7 @@ if TYPE_CHECKING:  # pragma: no cover - import-time-free type surface
     from alpha.runtime.resilience.convergence import ThrashSignal as ThrashSignal
     from alpha.runtime.resilience.convergence import Transition as Transition
     from alpha.runtime.resilience.convergence import is_prohibited_transition as is_prohibited_transition
+    from alpha.runtime.resilience.errors import AsyncOperationRefused as AsyncOperationRefused
     from alpha.runtime.resilience.errors import BudgetExhaustedError as BudgetExhaustedError
     from alpha.runtime.resilience.errors import CircuitOpenError as CircuitOpenError
     from alpha.runtime.resilience.errors import ControlSignal as ControlSignal
@@ -311,6 +314,7 @@ if TYPE_CHECKING:  # pragma: no cover - import-time-free type surface
     from alpha.runtime.resilience.retry import RetryPolicy as RetryPolicy
     from alpha.runtime.resilience.retry import RetryResult as RetryResult
     from alpha.runtime.resilience.retry import classify_exception as classify_exception
+    from alpha.runtime.resilience.retry import refuse_async_operation as refuse_async_operation
     from alpha.runtime.resilience.retry import retry_call as retry_call
 
 install_lazy_exports(__name__, _EXPORTS)

@@ -139,3 +139,20 @@ class IdempotencyError(ResilienceError):
     that was never claimed, and for a second write to a key that already holds
     an outcome - the at-most-once contract is not negotiable in-process.
     """
+
+
+class AsyncOperationRefused(ControlSignal):
+    """An ``async def`` operation was handed to a synchronous resilience helper.
+
+    This is a fail-CLOSED guard, and it exists because the alternative is the
+    worst possible bug in a resilience primitive: the sync wrappers call
+    ``operation()``, receive a coroutine object, and report ``succeeded`` -
+    while the work never ran and Python emits only a "coroutine was never
+    awaited" warning that is easy to miss in a busy log. A resilience kit that
+    can certify work that did not happen is worse than no kit at all, so the
+    call is refused loudly instead.
+
+    Async callers keep their own ``await``/``asyncio.sleep`` and adopt the
+    policy math and the breaker; see the package docstring for the exact
+    adoption pattern.
+    """
