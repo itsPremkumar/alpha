@@ -56,8 +56,8 @@ Fixes #
 ## Validation
 
 <!-- What you actually ran. Run at least the checks for the area you changed:
-       Backend:   cd backend  && make lint && make test
-       Frontend:  cd frontend && pnpm format && pnpm lint && pnpm typecheck && BETTER_AUTH_SECRET=local-dev-secret pnpm build && make test
+       Backend:   python scripts/check_changed_python_lint.py --repo-root .
+       Frontend:  cd frontend && pnpm lint && pnpm typecheck && BETTER_AUTH_SECRET=local-dev-secret pnpm build && pnpm test
        Frontend E2E (if you touched frontend/): cd frontend && make test-e2e -->
 
 

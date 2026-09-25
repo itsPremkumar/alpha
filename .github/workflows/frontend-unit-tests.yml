@@ -40,4 +40,4 @@ jobs:
 
       - name: Run unit tests of frontend
         working-directory: frontend
-        run: make test
+        run: pnpm test

@@ -185,14 +185,19 @@ logger.error("Run failed", run_id=run.id, error=str(e), exc_info=True)
 
 ### TypeScript (Frontend)
 
-#### Formatting
+#### Formatting and validation
 ```bash
-# Lint + type check
-cd frontend && pnpm check
+# Lint + type check (the package has no formatter script/config)
+cd frontend && pnpm lint
+cd frontend && pnpm typecheck
 
-# Format (if configured)
-cd frontend && pnpm format
+# Unit tests
+cd frontend && pnpm test
 ```
+
+The frontend currently has no Prettier, Biome, or other formatter configuration;
+CI therefore does not run a formatting step. Do not add a rewrite-in-CI script
+without first adding and documenting a real formatter.
 
 #### Conventions
 - **Files**: `PascalCase.tsx` for components, `camelCase.ts` for utilities
@@ -381,6 +386,22 @@ cd backend && python -m playwright install
 # Run E2E tests
 cd backend && python -m pytest tests/e2e/ -v
 ```
+
+## Generated-artifact drift gate
+
+The official manifest generator is the only writer for
+`contracts/feature_manifest.json`. The CI drift gate runs the same generator
+with a temporary output directory and compares the result without modifying the
+checkout:
+
+```bash
+python scripts/check_generated_drift.py --repo-root .
+```
+
+The gate ignores only the manifest's wall-clock `generated_at` field. A stale
+manifest, missing generator output, malformed JSON, or a future committed
+`docs/INDEX/` file that the official generator does not reproduce fails the
+build. On CI failure, the workflow uploads the per-file unified diff.
 
 ## Git Workflow
 
