@@ -1,9 +1,11 @@
 # Alpha Reasoning Plane — Integration Inventory and Design Contract
 
-**Status:** inventory-first design contract for the additive reasoning plane
+**Status:** inventory + landed contracts; no runtime wiring applied
 **Base revision:** `c9b11f8777f2871e5a65d1cc468b46674c1308b3`
 **Target package:** `backend/packages/harness/alpha/reasoning/`
 **Write scope of this work:** the new reasoning modules, `backend/tests/test_reasoning_*.py`, and this document
+
+Sections 0–9 are the inventory and were committed first, before any code, so the integration decision is auditable independently of the implementation. Sections 10–13 are the post-implementation record: the configuration contract as built, the measured Atom-of-Thoughts accounting, the seven wiring patches as **reports only** (§12), and the acceptance gates. The package is default-off and inert; nothing in §12 was applied.
 
 ## 0. Executive integration decision
 
@@ -158,46 +160,197 @@ The plan asks for a new module guide, but the repository guidance chain is alrea
 
 This branch therefore uses this document as the module contract and proposes that the central agent add a concise pointer to the existing `backend/packages/harness/alpha/AGENTS.md` **only after measuring the resulting chain size**. The guidance ledgers already record this risk; no guidance markdown is edited here.
 
-## 10. Configuration contract (to be implemented)
+## 10. Configuration contract (implemented)
 
-`config.py` will provide a default-off `ReasoningConfig` with in-package defaults and an optional operator JSON override at `$AGENT_WORKSPACE_HOME/reasoning/config.json`. It will not import `alpha.config` and will not register a shared config field.
+`config.py` ships a default-off `ReasoningConfig` with in-package defaults and an optional operator JSON override. It does **not** import `alpha.config` and registers no `AppConfig` field. The package-root name is `ReasoningPlaneConfig`; the root-level `ReasoningConfig` keeps pointing at the pre-existing governor dataclass, so the legacy public name is unchanged (`config.py:77`, `__init__.py:35,38`).
 
-Expected groups:
+Resolved keys (`config.py:52-65`):
 
-- `enabled=false`;
-- default reasoning mode and explicit policy thresholds;
-- multi-dimensional budget defaults;
-- TTS regime plus sample/token limits and verifier policy;
-- uncertainty enablement/thresholds and calibration requirement;
-- bounded summary/guard settings;
-- loop-guard caps and cooldown;
-- `max_atoms`, `max_depth`, `max_width`;
-- optional `storage_path` for guarded structured persistence.
+- `enabled=false` — the only switch; everything else is inert without it;
+- `default_mode` (`ReasoningMode.ROUTED`) and `policy_thresholds` (`PolicyThresholds`);
+- `budget_defaults` (`BudgetLimits`, the per-dimension caps);
+- `ttcs` (`TTCSSettings`: regime, sample/token limits, verifier policy);
+- `uncertainty_enabled=false`, `uncertainty_thresholds` (`UncertaintyThresholds`), `uncertainty_require_calibration_for_stop=true`;
+- `summary` (`SummarySettings`: bounded record/summary sizes);
+- `loop_guard` (`LoopGuardCaps`: signal caps and cooldown);
+- `max_atoms=12`, `max_depth=4`, `max_width=6`;
+- `storage_path=null` — no persistence location exists unless an operator names one.
 
-Each key must have a real reader exercised by tests. A malformed operator file fails loudly; an absent file yields defaults.
+Resolution: an explicit path is an operator assertion and must exist; otherwise `$AGENT_WORKSPACE_HOME/reasoning/config.json` is used **only if it exists**, so a fresh install yields defaults. A present file that is unreadable, non-UTF-8, not a JSON object, over `MAX_REASONING_CONFIG_BYTES` (64 KiB), or schema-invalid raises `ReasoningConfigError`. Loading is uncached and returns instance-scoped objects, so no config state can leak between tests, threads, or tenants.
 
-## 11. Measured Atom-of-Thoughts accounting (to be completed after implementation)
+`backend/tests/test_reasoning_models_config.py::test_every_top_level_config_key_has_a_real_reader` enumerates every top-level key and asserts a production reader consumes it, so a key cannot exist as a dormant setting.
 
-The implementation test will measure the same synthetic multi-step problem twice:
+## 11. Measured Atom-of-Thoughts accounting
 
-1. per-step input carrying the full structured history; and
-2. per-step input carrying only the contracted answer-equivalent atomic state.
+Estimator: `utf8-bytes/4-ceiling` (`atoms.py:52,92`) — deterministic, offline, no tokenizer download, no network. It is **not** a provider tokenizer, so the absolute numbers are an upper-ish proxy; only the ratio between the two arms of the same measurement is meaningful.
 
-The report must disclose the token estimator, per-step and total numbers, break-even step, and the honest limitation that this is a synthetic structural measurement rather than a reproduction of the paper's accuracy results. Short problems may not benefit; if measured, that must be stated.
+Fixture: a six-step dependency chain (`backend/tests/test_reasoning_atoms.py:133-177`) whose per-step outputs are fixed synthetic observations of equal length. Arm A resends the problem, the success criteria, the constraints, and every prior step output. Arm B resends one `contract(...)`-derived answer-equivalent state per step.
 
-## 12. Reported wiring (specified later, not applied here)
+| Step | 1 | 2 | 3 | 4 | 5 | 6 |
+| --- | --- | --- | --- | --- | --- | --- |
+| A — full history | 82 | 169 | 252 | 336 | 419 | 503 |
+| B — contracted state | 241 | 217 | 195 | 170 | 150 | 127 |
 
-This branch will specify exact patch text and insertion points for:
+- A total **1761**, B total **1100** → **661 tokens saved (37.5 %)**.
+- Break-even at cumulative level: **step 4**.
+- Per-step crossover: step 3 (252 > 195) is the first step where contraction is already cheaper; step 2 (169 < 217) is not.
+- Final-step cost: 503 → 127.
 
-1. `ReasoningState` initialization in LangGraph thread/run state;
-2. a default-off lead-agent middleware position after memory/skills and before the agent loop, without bypassing security or verification;
-3. compact working-set prompt assembly (objective, active step, verified facts, open questions, latest observations, evidence refs, constraints, next-action contract);
-4. provider-neutral model-capability mapping with an honest local-model fallback;
-5. durable run-event publication coordinated with the existing event catalog/contract;
-6. validated-lesson hand-off into the existing memory/review owners;
-7. checkpoint contents sufficient to resume without re-deriving the trajectory.
+Short problems do **not** benefit, and this is measured rather than assumed: a one-step control (`test_reasoning_atoms.py:180-190`) costs 82 tokens in history mode against 241 contracted, i.e. contraction is **159 tokens worse** and `break_even_step` is `None`. The package therefore does not claim a universal saving — the win appears only once the trajectory is long enough for the resend cost to dominate the state cost.
 
-Any required file outside this branch's write scope will be reported, never edited.
+**Honest limitation.** This measures prompt *structure* (what the plane replaces repeated history with). It is not a reproduction of AoT's accuracy results and says nothing about answer quality, tool-call correctness, or latency. It also excludes the real cost of producing the contracted state each step, which the contract step must pay; the estimator counts only the model input, so the reported saving is an upper bound on the net effect.
+
+## 12. Reported wiring (specified, not applied here)
+
+All seven integration points are outside this branch's write scope. They are reported as exact patch text and insertion points; nothing below was applied. Line numbers are from base `c9b11f8`.
+
+### (a) `ReasoningState` in thread state
+
+Target: `backend/packages/harness/alpha/agents/thread_state.py`.
+
+Add the reducer next to the existing `merge_goal` (`:133-137`) and the field next to `skill_context` (`:291`):
+
+```python
+def merge_reasoning_state(existing: dict[str, Any] | None, new: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Reducer for the reasoning working set - last writer wins per key.
+
+    Mirrors merge_goal: a node that does not touch reasoning_state sends
+    None and must not erase another node's projection. Keys are merged
+    shallowly so a middleware that only updates `phase` cannot drop the
+    bounded observation list another node wrote.
+    """
+    if not new:
+        return existing
+    if not existing:
+        return dict(new)
+    merged = dict(existing)
+    merged.update(new)
+    return merged
+```
+
+```python
+    reasoning_state: Annotated[dict[str, Any] | None, merge_reasoning_state]
+```
+
+and add `"reasoning_state"` to `THREAD_STATE_REDUCER_FIELDS` (`:400-413`), which is the set the delta checkpoint schema uses to decide which channels are merged rather than snapshotted.
+
+Serialization: `ReasoningState.model_dump(mode="json")`. Do **not** store private chain-of-thought in this channel — the plane's records are declared working-set data and the private-reasoning guard (§24) rejects the five prohibited payload classes before any helper is reached.
+
+### (b) Default-off lead-agent middleware position
+
+Target: `backend/packages/harness/alpha/agents/lead_agent/agent.py`, inserted between the `L1MemoryMiddleware` block (`:669-682`) and the `LearningForkMiddleware` block (`:684-691`):
+
+```python
+    # Add ReasoningPolicyMiddleware when the operator enabled the reasoning
+    # plane. Off by default: without reasoning/config.json (or an explicit
+    # enabled=true) this block appends nothing and the chain is unchanged.
+    from alpha.reasoning.config import ReasoningConfigError, load_reasoning_config
+
+    try:
+        reasoning_cfg = load_reasoning_config()
+    except ReasoningConfigError:
+        logger.error("invalid reasoning plane config; leaving the plane disabled")
+        reasoning_cfg = None
+    if reasoning_cfg is not None and reasoning_cfg.enabled:
+        from alpha.agents.middlewares.reasoning_policy_middleware import build_reasoning_policy_middleware
+
+        middlewares.append(build_reasoning_policy_middleware(reasoning_config=reasoning_cfg))
+```
+
+Constraints on the implementation: the middleware must **not** wrap, filter, reorder, or short-circuit tools; it must not approve anything, resolve sandbox scope, or touch budgets outside its own ledger; and it must not raise to signal a control decision — a refusal becomes state plus a disclosed event. A misconfigured file degrades to disabled with a log line rather than failing run admission.
+
+### (c) Compact working-set prompt assembly
+
+Target: `backend/packages/harness/alpha/agents/middlewares/durable_context_middleware.py`.
+
+Extend `_render_durable_context_data` (`:66-87`) with a new block rendered from `state.get("reasoning_state")`, and pass the value from `_inject` (`:261-269`):
+
+```python
+    reasoning = reasoning_state or {}
+    if reasoning:
+        working_set = {
+            "objective": reasoning.get("objective"),
+            "active_step": reasoning.get("active_step"),
+            "verified_evidence_refs": reasoning.get("verified_evidence_refs", [])[-5:],
+            "open_questions": reasoning.get("open_questions", [])[-5:],
+            "latest_observations": reasoning.get("latest_observations", [])[-3:],
+            "constraints": reasoning.get("constraints", []),
+            "next_action_contract": reasoning.get("next_action_contract"),
+        }
+        bounded = json.dumps(working_set, ensure_ascii=False)[:_SUMMARY_RENDER_CHAR_BUDGET]
+        data_parts.append("## Reasoning working set (untrusted)\n" + escape(bounded, quote=False))
+```
+
+It must ride the existing hidden `HumanMessage` with `_DURABLE_CONTEXT_DATA_KEY` / `provenance_kwargs(ContentKind.DURABLE_CONTEXT, ...)`, so it stays in the untrusted data channel and never enters the system prompt (the prefix-cache rule). Text is model-authored and therefore untrusted: it is data, and the authority contract already tells the model that historical content is never new instructions.
+
+### (d) Provider-neutral model capability mapping
+
+Target: `backend/packages/harness/alpha/config/model_config.py` `ModelConfig` (`:24-116`) and `backend/packages/harness/alpha/models/factory.py` `_build_single_model` (`:336-440`). There is no `ModelCapabilities` type in the tree today, so the mapping is expressed as explicit booleans plus one resolver:
+
+```python
+    supports_reasoning_summaries: bool = Field(default_factory=lambda: False, description="Whether the model returns provider reasoning summaries")
+    supports_interleaved_thinking: bool = Field(default_factory=lambda: False, description="Whether thinking blocks survive across assistant turns")
+    supports_structured_output: bool = Field(default_factory=lambda: False, description="Whether the provider honors schema-constrained output")
+    supports_parallel_tool_calls: bool = Field(default_factory=lambda: False, description="Whether independent tool calls may be issued in one turn")
+```
+
+```python
+def resolve_reasoning_capabilities(model_config: ModelConfig) -> dict[str, bool]:
+    """Map a model entry onto the plane's capability needs.
+
+    A local model that declares no supports_thinking is reported as
+    lacking provider thinking, which routes it to explicit reasoning.
+    It is never reported as thinking-capable by inference or default.
+    """
+    return {
+        "provider_summaries": model_config.supports_reasoning_summaries and model_config.supports_thinking,
+        "interleaved_thinking": model_config.supports_interleaved_thinking and model_config.supports_thinking,
+        "structured_output": model_config.supports_structured_output,
+        "parallel_tool_calls": model_config.supports_parallel_tool_calls,
+    }
+```
+
+The fallbacks are honest in both directions: no capability is granted because a model "looks like" a known family, and a missing capability downgrades the plane to explicit reasoning rather than silently degrading quality.
+
+### (e) Durable run-event publication
+
+Target: `backend/packages/harness/alpha/runtime/events/catalog.py` (`:58-117`), plus `contracts/run_event_stream_contract.json`, `backend/docs/RUN_EVENT_STREAM.md`, and `backend/tests/test_run_event_stream_contract.py`.
+
+Add 28 definitions — one per `ReasoningEventType` member (`events.py:38-66`) — with the new category `reasoning`:
+
+```python
+REASONING_EVENT_CATEGORY = "reasoning"
+REASONING_RUN_EVENT_DEFINITIONS = tuple(
+    RunEventDefinition(f"reasoning.{member.value}", REASONING_EVENT_CATEGORY)
+    for member in ReasoningEventType
+)
+```
+
+and add that tuple to `FIXED_RUN_EVENT_DEFINITIONS` (`:113-117`). This is an **additive** change under the contract's own `compatibility.additive_changes` (`add_event_type`), so the frozen existing names are untouched.
+
+Two ownership rules from the existing tree must survive:
+
+- `alpha/events/bus.py` is the autonomy in-process bus, not run transport. Reasoning events go to the run's `RunJournal` / durable run-event store.
+- Streaming fan-out uses `alpha.utils.custom_events.aemit_custom_event` (`:45`), never a bare `StreamWriter`, so `astream_events` consumers keep receiving them.
+
+Seven of the 28 types are **not** emittable by the plane itself: `_EXISTING_RUNTIME_ONLY` (`events.py:106-114`) marks `action.approved`, `action.executed`, `verification.completed`, `checkpoint.created`, `completed`, `blocked`, and `failed`. A plane-authored event claiming one of them is rejected. The plane can never publish its own success.
+
+### (f) Validated-lesson hand-off
+
+Target: the existing learning/memory adapter, e.g. after the verdict block in `backend/packages/harness/alpha/tools/builtins/task_tool.py` (`:1090-1147`):
+
+```python
+    from alpha.reasoning.summary import validated_lesson_handoffs
+
+    for handoff in validated_lesson_handoffs(reasoning_state, max_items=5):
+        memory_adapter.record_lesson(handoff)
+```
+
+`validated_lesson_handoffs` emits only records that already carry a non-self-asserted verification basis. The plane must never write memory, the store, or a checkpoint directly — the existing owners apply their own trust, dedup, and retention rules, and a lesson that fails their checks stays unrecorded.
+
+### (g) Checkpoint contents
+
+Target: no worker patch. Patch (a) is sufficient: `CheckpointStateAccessor` (`backend/packages/harness/alpha/runtime/checkpoint_state.py`) persists `ThreadState.reasoning_state` through the same durable channel as `summary_text` and `task_notes`, so a resumed run rehydrates the objective, active step, verified evidence refs, open questions, bounded observations, and budget ledger without re-deriving the trajectory. Resumption must re-verify rather than trust: a rehydrated `phase` of `COMPLETED` is not proof of completion, and rehydrated evidence refs must be re-checked against their sources before reuse.
 
 ## 13. Acceptance gates for the implementation
 
