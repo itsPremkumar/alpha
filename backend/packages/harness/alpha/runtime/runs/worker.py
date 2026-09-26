@@ -303,6 +303,7 @@ async def _persist_delivery_receipt(
 _DELIVERY_INCOMPLETE_ERROR = "Artifact delivery incomplete: no produced output artifact was presented"
 _DELIVERY_RECEIPT_FAILED_ERROR = "Artifact delivery verification failed: terminal delivery receipt could not be persisted"
 _WORKSPACE_SNAPSHOT_FAILED_ERROR = "Workspace snapshot failed: produced output artifacts could not be verified"
+_NO_ASSISTANT_OUTPUT_ERROR = "The run completed without producing an assistant message"
 
 # Stable machine-readable codes for the terminal ``error`` event. Clients and
 # the gateway correlate on these, so -- unlike the human-readable ``error``
@@ -895,6 +896,14 @@ async def run_agent(
     workspace_excluded_dir_names: frozenset[str] | None = None
     snapshot_capture_failed = False
     llm_error_fallback_message: str | None = None
+    # Stream-side evidence for the terminal-status decision. ``saw_turn_input``
+    # is this run's own input message (the turn began) and
+    # ``produced_assistant_output`` is this run's own reply. They are not
+    # interchangeable: the branch only treats "nothing was produced" as a
+    # failure once the turn demonstrably started, so an agent that streams no
+    # state at all has not failed to answer -- it never began.
+    saw_turn_input = False
+    produced_assistant_output = False
     checkpoint_rollback_completed = False
     # Bound by ``_bind_trace_id`` once runtime context installation runs; the
     # initializer keeps early preflight failures correlatable too.
@@ -1317,6 +1326,8 @@ async def run_agent(
 
         async def _stream_once(input_payload: Any, stream_config: RunnableConfig) -> None:
             nonlocal llm_error_fallback_message
+            nonlocal saw_turn_input
+            nonlocal produced_assistant_output
             file_tool_chunk_batcher = _LargeFileToolChunkBatcher() if "messages-tuple" in requested_modes else None
             try:
                 async with _checkpoint_thread_lock(thread_id):
@@ -1332,6 +1343,10 @@ async def run_agent(
                                     logger.info("Run %s abort requested — stopping", run_id)
                                     break
                                 llm_error_fallback_message = llm_error_fallback_message or _extract_llm_error_fallback_message(chunk, pre_existing_message_ids)
+                                if not (saw_turn_input and produced_assistant_output):
+                                    turn_input_seen, assistant_output_seen = _scan_new_turn_messages(chunk, pre_existing_message_ids)
+                                    saw_turn_input = saw_turn_input or turn_input_seen
+                                    produced_assistant_output = produced_assistant_output or assistant_output_seen
                                 sse_event = _lg_mode_to_sse_event(single_mode)
                                 single_payload = serialize(chunk, mode=single_mode)
                                 if single_mode == "values" and seq_stamper is not None:
@@ -1376,6 +1391,12 @@ async def run_agent(
                                 # fallback: a delegated subagent's marked fallback is the
                                 # executor's to map (task_failed), not this run's.
                                 llm_error_fallback_message = llm_error_fallback_message or _extract_llm_error_fallback_message(chunk, pre_existing_message_ids)
+                                if not (saw_turn_input and produced_assistant_output):
+                                    # Same root-frame rule applies to the turn signals: a
+                                    # subagent's input or reply is not this run's turn.
+                                    turn_input_seen, assistant_output_seen = _scan_new_turn_messages(chunk, pre_existing_message_ids)
+                                    saw_turn_input = saw_turn_input or turn_input_seen
+                                    produced_assistant_output = produced_assistant_output or assistant_output_seen
                             await _publish_stream_item(
                                 bridge=bridge,
                                 run_id=run_id,
@@ -1501,10 +1522,27 @@ async def run_agent(
                     run_id,
                     _WORKSPACE_SNAPSHOT_FAILED_ERROR,
                 )
+            # A run whose turn demonstrably began -- the user's own message
+            # reached this run's stream, or the journal recorded it reaching the
+            # model -- and which arrives here with neither an assistant message
+            # nor any recorded output produced nothing at all. The status
+            # decision below only ever consulted the artifact receipt, so such
+            # a run fell through to ``RunStatus.success`` and the client
+            # received a clean ``end`` frame after an empty answer. The turn
+            # gate keeps this precise: an agent that streamed no input and no
+            # reply never began a turn, so "produced nothing" there is not a
+            # claim about a failed answer.
+            turn_started = saw_turn_input or _journal_turn_started(journal)
+            produced_output = produced_assistant_output or _journal_produced_assistant_output(journal)
+            missing_error = None
+            if delivery_error is None and turn_started and not produced_output:
+                missing_error = _NO_ASSISTANT_OUTPUT_ERROR
+                stop_reason = stop_reason or MODEL_FAILURE_RECOVERY_REASON
+
             cancel_action = await run_manager.set_status_if_not_cancelled(
                 run_id,
-                RunStatus.error if delivery_error else RunStatus.success,
-                error=delivery_error,
+                RunStatus.error if (delivery_error or missing_error) else RunStatus.success,
+                error=delivery_error or missing_error,
                 stop_reason=stop_reason,
                 **terminal_status_kwargs,
             )
@@ -1517,6 +1555,12 @@ async def run_agent(
                     ERROR_CODE_DELIVERY_INCOMPLETE,
                     delivery_error,
                     detail={"verification": delivery_content.get("verification")},
+                )
+            elif missing_error is not None:
+                await _publish_terminal_error(
+                    ERROR_CODE_MODEL_FAILURE,
+                    missing_error,
+                    detail={"stop_reason": stop_reason},
                 )
 
     except asyncio.CancelledError:
@@ -2929,6 +2973,120 @@ def _extract_llm_error_fallback_message(value: Any, pre_existing_ids: set[str] |
         return None
 
     return walk(value)
+
+
+def _is_new_message_of_type(obj: Any, message_type: str, pre_existing_ids: set[str] | None = None) -> bool:
+    """True when ``obj`` is a message of ``message_type`` produced by *this* run.
+
+    Ids checkpointed before the run started are masked out for the same reason
+    the fallback-marker scan masks them: ``stream_mode="values"`` replays the
+    whole ``messages`` channel, so an earlier turn's message must not be
+    mistaken for this run's.
+    """
+    if pre_existing_ids:
+        msg_id = _message_id(obj)
+        if msg_id is not None and msg_id in pre_existing_ids:
+            return False
+    return _message_type(obj) == message_type
+
+
+def _scan_new_turn_messages(value: Any, pre_existing_ids: set[str] | None = None) -> tuple[bool, bool]:
+    """Return ``(turn input seen, assistant output seen)`` for one stream frame.
+
+    Walks the same frame shapes as ``_extract_llm_error_fallback_message`` -- a
+    fast path over the ``values`` ``messages`` list, then a deep walk for
+    ``updates`` / ``messages`` / tuple frames -- because the terminal-status
+    branch needs exactly the frames that scan already inspects.
+
+    Both halves come from one pass so the per-frame cost stays proportional to
+    what the fallback scan already pays, and so the two answers can never
+    disagree about which frames were examined.
+    """
+    if isinstance(value, dict):
+        messages = value.get("messages")
+        if isinstance(messages, (list, tuple)):
+            return _classify_turn_messages(messages, pre_existing_ids)
+        # No top-level "messages" -- likely an "updates" chunk (small dict keyed
+        # by node name). Fall through to the deep walk, which is cheap for it.
+
+    # Deep walk for updates / messages / tuple / list modes.
+    seen: set[int] = set()
+    flags = [False, False]
+
+    def walk(obj: Any) -> None:
+        oid = id(obj)
+        if oid in seen:
+            return
+        seen.add(oid)
+        if _is_new_message_of_type(obj, "human", pre_existing_ids):
+            flags[0] = True
+        elif _is_new_message_of_type(obj, "ai", pre_existing_ids):
+            flags[1] = True
+        if isinstance(obj, dict):
+            for item in obj.values():
+                walk(item)
+        elif isinstance(obj, (list, tuple, set)):
+            for item in obj:
+                walk(item)
+
+    walk(value)
+    return flags[0], flags[1]
+
+
+def _classify_turn_messages(messages: Any, pre_existing_ids: set[str] | None = None) -> tuple[bool, bool]:
+    """Classify a ``messages`` list as ``(turn input present, reply present)``."""
+    saw_input = False
+    saw_reply = False
+    for message in messages:
+        if _is_new_message_of_type(message, "human", pre_existing_ids):
+            saw_input = True
+        elif _is_new_message_of_type(message, "ai", pre_existing_ids):
+            saw_reply = True
+        if saw_input and saw_reply:
+            break
+    return saw_input, saw_reply
+
+
+def _journal_turn_started(journal: Any) -> bool:
+    """True when the journal recorded that this run's turn reached the model.
+
+    The stream alone cannot see a turn in ``custom``-only modes or when an
+    already-resolved input made no new frame, so the journal's recorded first
+    human message closes that gap. A journal that cannot be read counts as
+    "turn not started": with no evidence the branch must not invent a failure.
+    """
+    if journal is None:
+        return False
+    try:
+        return bool(journal.get_completion_data().get("first_human_message"))
+    except Exception:
+        return False
+
+
+def _journal_produced_assistant_output(journal: Any) -> bool:
+    """True when the journal recorded messages this run produced itself.
+
+    ``message_count`` also counts the user's own message, so a run whose model
+    never answered still reports ``1``; subtracting the recorded first human
+    message leaves only what the run generated (tool results and model
+    responses). This is the counterweight to the stream signal: a run that
+    hands its output straight to the journal -- tool results presented without
+    a root-frame assistant message -- produced output even though no assistant
+    message crossed the stream.
+
+    A journal that cannot be read must never flip a healthy run to ``error``,
+    so a read failure counts as "produced".
+    """
+    if journal is None:
+        return False
+    try:
+        completion = journal.get_completion_data()
+    except Exception:
+        return True
+    produced = int(completion.get("message_count") or 0)
+    if completion.get("first_human_message"):
+        produced -= 1
+    return produced > 0
 
 
 def _collect_pre_existing_message_ids(values: Any) -> set[str]:

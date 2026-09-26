@@ -24,7 +24,7 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.types import Command
 
 from alpha.runtime.events.store.memory import MemoryRunEventStore
@@ -258,6 +258,54 @@ async def test_llm_error_fallback_publishes_a_coded_error_event():
     )
     assert bridge.error_frames[0]["message"] == "Connection error."
     assert bridge.error_frames[0]["stop_reason"] == MODEL_FAILURE_RECOVERY_REASON
+
+
+# ---------------------------------------------------------------------------
+# A run that answered nothing
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_a_run_that_answered_nothing_publishes_a_coded_error_event():
+    """A run whose turn began but never answered must report an error.
+
+    ``RunStatus.error if delivery_error else RunStatus.success`` considered only
+    the artifact receipt. Here the user's own message reached this run's stream,
+    so the turn demonstrably began, yet the graph ended without ever appending
+    an assistant message -- no ``delivery_error`` to report. The run fell
+    through to ``RunStatus.success``: the client received a clean ``end`` frame
+    after an empty answer, and the persisted row read ``success``.
+    """
+    run_manager = RunManager()
+    record = await run_manager.create("thread-silent")
+    bridge = _RecordingBridge()
+
+    class SilentAgent:
+        async def astream(self, graph_input, config=None, stream_mode=None, subgraphs=False):
+            # Production ``values`` frames carry this run's own input message,
+            # which is what distinguishes "the turn started and went unanswered"
+            # from an agent that streamed no state at all.
+            yield {"messages": [HumanMessage(content="Reply with exactly: pong")]}
+
+    await run_agent(
+        bridge,
+        run_manager,
+        record,
+        ctx=RunContext(checkpointer=None, event_store=MemoryRunEventStore()),
+        agent_factory=lambda *, config: SilentAgent(),
+        graph_input={},
+        config={},
+    )
+
+    assert record.status == RunStatus.error
+    assert len(bridge.error_frames) == 1, "the one-terminal-error guard must hold"
+    _assert_coded_error_frame(
+        bridge.error_frames[0],
+        code=ERROR_CODE_MODEL_FAILURE,
+        run_id=record.run_id,
+        thread_id="thread-silent",
+    )
+    assert bridge.event_names.index("error") < bridge.event_names.index("end")
 
 
 # ---------------------------------------------------------------------------
