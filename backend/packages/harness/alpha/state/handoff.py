@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -29,9 +29,7 @@ class SessionHandoffPackage:
     known_failures: list[str] = field(default_factory=list)
     key_artifacts: list[str] = field(default_factory=list)
     next_action: str = ""
-    created_at: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -47,10 +45,28 @@ class SessionHandoffPackage:
             known_failures=data.get("known_failures", []),
             key_artifacts=data.get("key_artifacts", []),
             next_action=data.get("next_action", ""),
-            created_at=data.get(
-                "created_at", datetime.now(timezone.utc).isoformat()
-            ),
+            created_at=data.get("created_at", datetime.now(UTC).isoformat()),
         )
+
+
+def _replace_atomically(target: Path, payload: str) -> None:
+    """Write ``payload`` to ``target`` so no reader ever sees a partial document.
+
+    The caller has already serialized the document in full, so the only
+    operations left are creating a sibling staging file and renaming it over the
+    target. ``Path.replace`` is atomic on the same filesystem, so on any failure
+    the target keeps whatever it held before and only the staging file is
+    discarded.
+    """
+    staging = target.with_suffix(f"{target.suffix}.tmp")
+    try:
+        staging.write_text(payload, encoding="utf-8")
+        staging.replace(target)
+    except BaseException:
+        # the target is untouched until replace() runs, so drop the staging file
+        # rather than leave half-written debris for the next save to trip over
+        staging.unlink(missing_ok=True)
+        raise
 
 
 class SessionHandoffManager:
@@ -61,16 +77,21 @@ class SessionHandoffManager:
         self.handoff_dir = self.base_path / DEFAULT_HANDOFF_DIR
 
     def save_handoff(self, handoff: SessionHandoffPackage) -> Path:
-        """Persist a handoff package to disk."""
+        """Persist a handoff package to disk.
+
+        The document is serialized in full before any file is opened, then
+        written through a sibling staging file that atomically replaces the
+        target. Opening the target with mode ``"w"`` truncates it immediately
+        while ``json.dump`` only streams afterwards, so a serialization failure
+        or an interrupted write destroyed the handoff already on disk -- the
+        precise state this manager exists to preserve across sessions.
+        """
         self.handoff_dir.mkdir(parents=True, exist_ok=True)
-        filename = f"handoff_{handoff.work_id}.json"
-        target = self.handoff_dir / filename
-        with open(target, "w", encoding="utf-8") as f:
-            json.dump(handoff.to_dict(), f, indent=2)
+        payload = json.dumps(handoff.to_dict(), indent=2)
+        target = self.handoff_dir / f"handoff_{handoff.work_id}.json"
+        _replace_atomically(target, payload)
         # Also maintain a latest pointer
-        latest_target = self.handoff_dir / "latest.json"
-        with open(latest_target, "w", encoding="utf-8") as f:
-            json.dump(handoff.to_dict(), f, indent=2)
+        _replace_atomically(self.handoff_dir / "latest.json", payload)
         logger.info("Saved Session Handoff [%s] to %s", handoff.work_id, target)
         return target
 
