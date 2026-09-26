@@ -22,6 +22,7 @@ from alpha.tools.builtins import (
     astra_security_manage,
     audit_finish_first_evidence,
     auto_test_and_repair,
+    autonomy_control,
     await_task_event,
     batch_status,
     batch_task,
@@ -121,6 +122,7 @@ from alpha.tools.builtins import (
     record_trajectory_outcome,
     reproduce_and_verify,
     request_secure_credential,
+    reversible_delete,
     review_plan_invariant_gate,
     review_skill_package,
     run_autonomous_benchmark_eval,
@@ -132,6 +134,7 @@ from alpha.tools.builtins import (
     run_task_evaluation_benchmark,
     run_variation_operator_step,
     schedule_work_queue,
+    search_project_docs,
     # P4: register the canonical past-session memory search (was defined in
     # code_agentic_core but never exported/registered, so unreachable).
     search_session_memory,
@@ -268,6 +271,7 @@ BUILTIN_TOOLS = [
     # Enterprise Security Enclave & Multi-Modal Boundary Enforcement:
     enterprise_security_manage,
     astra_security_manage,
+    reversible_delete,
     # Strategic Discipline Council & Invariant Gates:
     consult_plan_gap_analysis,
     review_plan_invariant_gate,
@@ -278,6 +282,8 @@ BUILTIN_TOOLS = [
     trace_artifact_lineage,
     # Knowledge, Benchmark & Performance Evaluation:
     query_knowledge_graph,
+    search_project_docs,
+    autonomy_control,
     run_task_evaluation_benchmark,
     manage_model_performance_registry,
     # Durable Replay, Computer Fabric & Context Control:

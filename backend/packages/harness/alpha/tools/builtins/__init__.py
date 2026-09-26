@@ -8,6 +8,7 @@ from .ask_oracle_tool import ask_oracle
 from .ast_grep_tool import ast_grep_rewrite, ast_grep_search
 from .autonomous_benchmark_tool import run_autonomous_benchmark_eval
 from .autonomous_command_tool import execute_slash_command_tool, identify_autonomous_command_tool
+from .autonomy_control_tool import autonomy_control
 
 # Autonomous one-prompt planner: raw prompt -> fully decided execution plan
 from .autoplan_tool import build_autonomous_plan
@@ -140,8 +141,10 @@ from .repo_twin_tool import inspect_repo_twin
 
 # Autonomous Reproduction and Experience Memory Tools
 from .reproduction_tool import reproduce_and_verify
+from .reversible_delete_tool import reversible_delete
 from .review_skill_package_tool import review_skill_package
 from .rsi_engine_tool import run_rsi_cycle
+from .self_documentation_tool import search_project_docs
 from .self_heal_tool import self_heal_diagnose
 
 # Bounded Recursive Self-Improvement Loop
@@ -276,6 +279,9 @@ __all__ = [
     "trace_artifact_lineage",
     "manage_model_performance_registry",
     "query_knowledge_graph",
+    "search_project_docs",
+    "autonomy_control",
+    "reversible_delete",
     "run_task_evaluation_benchmark",
     "execute_sandboxed_computer_action",
     "manage_durable_orchestration",

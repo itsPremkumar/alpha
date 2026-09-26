@@ -11,6 +11,7 @@
 - [DYNAMIC_WORKFLOWS.md](DYNAMIC_WORKFLOWS.md) — Typed, evidence-gated dynamic workflow runtime.
 - [EXTENSIONS.md](EXTENSIONS.md) — Extension packages, hooks, services, and routers.
 - [LION_COMPANION.md](LION_COMPANION.md) — Local-first lion companion behavior and presentation contract.
+- [SELF_DOCUMENTATION.md](SELF_DOCUMENTATION.md) — Offline, allowlist-scoped project documentation search with line ranges, SHA-256 evidence, and digest-checked reads.
 - [SKILLS.md](SKILLS.md) — Skills packages, tools, workflows, and runtime integration.
 - [VOICE_CONVERSATION.md](VOICE_CONVERSATION.md) — Real-time local voice conversation loop.
 - [WORKFORCE.md](WORKFORCE.md) — Workforce layer for multi-agent collaboration and execution.
@@ -40,12 +41,14 @@
 ## Operations
 
 - [ALPHA_PEER_NETWORK.md](ALPHA_PEER_NETWORK.md) — Free Alpha-to-Alpha peer network: pairing, transport, and deployment.
+- [AUTONOMY_TRUTH.md](AUTONOMY_TRUTH.md) — Fail-closed autonomy readiness from server-owned evidence, secret-redacted failure classification, and bounded recovery briefs.
 - [AUTO_UPDATE.md](AUTO_UPDATE.md) — Local source auto-update behavior and operational controls.
 - [CONFIGURATION.md](CONFIGURATION.md) — Configuration reference for files, settings, and environment.
 - [DEPLOYMENT.md](DEPLOYMENT.md) — Deployment models and deployment procedures.
 - [PRODUCTION.md](PRODUCTION.md) — Production runbook for monitoring, incidents, and maintenance.
 - [PRODUCTION_READINESS_INVENTORY.md](PRODUCTION_READINESS_INVENTORY.md) — Production-readiness status, owners, and test evidence.
 - [PRODUCTION_READINESS_TRANSFER_GUIDE.md](PRODUCTION_READINESS_TRANSFER_GUIDE.md) — Production foundations and readiness transfer guidance.
+- [REVERSIBLE_DELETE.md](REVERSIBLE_DELETE.md) — Recoverable delete: how a destructive mutation is staged, bounded, and restored.
 - [RUN_RECOVERY.md](RUN_RECOVERY.md) — Safe recovery for durable runs and interrupted work.
 - [SECURITY.md](SECURITY.md) — Defense-in-depth security documentation.
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — Diagnostic procedures and solutions for common issues.

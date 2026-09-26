@@ -483,6 +483,26 @@ def test_explicit_empty_allowed_tools_keeps_only_framework_tools():
     ]
 
 
+def test_framework_safety_and_truth_tools_survive_empty_skill_allowlist():
+    restricted = _skill("restricted", [])
+    middleware = _middleware([restricted])
+    request = ModelRequestStub(
+        [
+            NamedTool("bash"),
+            NamedTool("search_project_docs"),
+            NamedTool("autonomy_control"),
+            NamedTool("reversible_delete"),
+        ],
+        state={"skill_context": [{"path": restricted.get_container_file_path()}]},
+    )
+
+    assert _tool_names(middleware._filter_model_request(request)) == [
+        "search_project_docs",
+        "autonomy_control",
+        "reversible_delete",
+    ]
+
+
 def test_active_skill_must_declare_background_task_business_tools():
     restricted = _skill("task-reader", ["list_background_tasks"])
     middleware = _middleware([restricted])

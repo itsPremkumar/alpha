@@ -235,6 +235,20 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "reasoning",
         "Default-off reasoning plane: contracts, budgeting, and wiring plan.",
     ),
+    "AUTONOMY_TRUTH.md": DocumentSpec(
+        "operations",
+        "Fail-closed autonomy readiness from server-owned evidence, secret-redacted failure "
+        "classification, and bounded recovery briefs.",
+    ),
+    "REVERSIBLE_DELETE.md": DocumentSpec(
+        "operations",
+        "Recoverable delete: how a destructive mutation is staged, bounded, and restored.",
+    ),
+    "SELF_DOCUMENTATION.md": DocumentSpec(
+        "architecture",
+        "Offline, allowlist-scoped project documentation search with line ranges, SHA-256 "
+        "evidence, and digest-checked reads.",
+    ),
     "RUN_RECOVERY.md": DocumentSpec(
         "operations", "Safe recovery for durable runs and interrupted work."
     ),

@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-09-26T00:45:20Z",
+ "generated_at": "2026-09-26T05:18:26Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -668,6 +668,14 @@
    "state": "wired"
   },
   {
+   "id": "reversible_delete",
+   "module": "alpha.tools.builtins.reversible_delete_tool",
+   "symbol": "reversible_delete",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
    "id": "consult_plan_gap_analysis",
    "module": "alpha.tools.builtins.discipline_team_tool",
    "symbol": "consult_plan_gap_analysis",
@@ -719,6 +727,22 @@
    "id": "query_knowledge_graph",
    "module": "alpha.tools.builtins.knowledge_graph_tool",
    "symbol": "query_knowledge_graph",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "search_project_docs",
+   "module": "alpha.tools.builtins.self_documentation_tool",
+   "symbol": "search_project_docs",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "autonomy_control",
+   "module": "alpha.tools.builtins.autonomy_control_tool",
+   "symbol": "autonomy_control",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
    "state": "wired"

@@ -1,14 +1,18 @@
 """Built-in autonomous-planner tool: one raw prompt -> fully decided execution plan."""
 
-from __future__ import annotations
+# NOTE: no ``from __future__ import annotations`` — LangChain's injected-argument
+# detection requires the concrete ``Runtime`` annotation object.
 
 import importlib.util
 import json
 
 from langchain.tools import tool
 
+from alpha.ops.autonomy_truth import assess_autonomy
+from alpha.ops.runtime_readiness import collect_server_readiness
 from alpha.planning.autonomous import AutonomousPlanner
 from alpha.planning.profiles import install_profiles
+from alpha.tools.types import Runtime
 
 
 def _resolve_capabilities() -> dict:
@@ -35,6 +39,7 @@ def _resolve_capabilities() -> dict:
 
 @tool("build_autonomous_plan", parse_docstring=True)
 def build_autonomous_plan(
+    runtime: Runtime,
     raw_prompt: str,
     workspace_context: str = "",
     context_metadata_json: str = "",
@@ -50,6 +55,8 @@ def build_autonomous_plan(
     per-task assignees (existing profiles or newly drafted specialist specs),
     Kanban board, skills, tool groups, cost estimate, final goal, assumptions,
     and self-review gate — so the user does nothing beyond writing the prompt.
+    A server-observed readiness preflight is embedded in the result; an unready
+    core loop is gated and cannot persist a board or install profiles.
 
     Args:
         raw_prompt: The user's raw request, verbatim.
@@ -68,10 +75,16 @@ def build_autonomous_plan(
             metadata = json.loads(context_metadata_json)
         except Exception:
             metadata = None
+    readiness_context, readiness_diagnostics = collect_server_readiness(runtime)
+    readiness = {
+        "evidence_source": "server_runtime",
+        "probe_diagnostics": readiness_diagnostics,
+        **assess_autonomy(readiness_context),
+    }
     try:
         planner = AutonomousPlanner()
         kanban_store = None
-        if persist_kanban:
+        if persist_kanban and readiness["ready"]:
             try:
                 from alpha.kanban.store import get_kanban_store
 
@@ -83,7 +96,7 @@ def build_autonomous_plan(
             workspace_context=workspace_context or None,
             context_metadata=metadata,
             max_subtasks=max_subtasks,
-            capabilities=_resolve_capabilities(),
+            capabilities={**_resolve_capabilities(), "autonomy_readiness": readiness},
             kanban_store=kanban_store,
             token_budget=int(token_budget) or None,
         )
@@ -91,7 +104,13 @@ def build_autonomous_plan(
         return json.dumps({"error": str(exc)}, indent=2)
 
     payload = plan.to_dict()
-    if install_new_profiles and plan.new_profiles:
+    payload["autonomy_readiness"] = readiness
+    if not readiness["ready"]:
+        payload["autonomy"] = "gated"
+        payload["execution_config"]["autonomy"] = "gated"
+        payload["execution_config"]["autonomy_readiness_status"] = readiness["status"]
+        payload["execution_blocked"] = readiness["status"] == "blocked"
+    if install_new_profiles and plan.new_profiles and readiness["ready"]:
         approved = [n.strip() for n in (approve_profiles or "").split(",") if n.strip()]
         try:
             from alpha.persistence.managed_subagents import get_managed_subagent_store
@@ -102,6 +121,8 @@ def build_autonomous_plan(
             payload["profile_install"] = {"errors": [{"name": "*", "error": str(exc)}]}
         if store is not None:
             payload["profile_install"] = install_profiles(plan.new_profiles, store=store, approve=approved)
+    elif install_new_profiles and plan.new_profiles:
+        payload["profile_install"] = {"note": "Profile installation blocked until server-observed autonomy readiness is ready."}
     else:
         payload["profile_install"] = {"note": "Specs only — pass install_new_profiles=true to stage them as disabled definitions."}
     return json.dumps(payload, indent=2)
