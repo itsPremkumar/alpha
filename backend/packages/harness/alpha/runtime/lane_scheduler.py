@@ -3,16 +3,27 @@
 Guarantees thread-level serialization, fair resource allocation across
 heterogeneous execution workloads (interactive chat vs. background automations),
 and corruption-free session persistence using lease-fenced writer tokens.
+
+Also hosts :class:`RunAdmissionController`, the hard-capped admission gate the
+Gateway uses to bound in-flight run tasks. ``LaneScheduler`` stays the
+queue-oriented multi-lane model; it is deliberately *not* the gate, because
+``LaneScheduler.admit_or_queue`` fails open for the interactive lane (it
+increments past the cap and still reports ``admitted=True``) and nothing drains
+its background queue but a caller that already holds a ``release_task`` handle.
+A gate that cannot say "no" cannot bound concurrency, so
+:class:`RunAdmissionController` owns the rejection decision and keeps the lane
+split for observability.
 """
 
 from __future__ import annotations
 
 import enum
+import os
 import threading
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Final
 
 
 class ExecutionLane(enum.StrEnum):
@@ -203,3 +214,262 @@ class LaneScheduler:
                     "max_background_queue": self.max_background_queue,
                 },
             }
+
+
+# ---------------------------------------------------------------------------
+# Gateway run admission control
+# ---------------------------------------------------------------------------
+
+#: Stable machine-readable rejection code. Clients, dashboards, and operator
+#: alerts match on this string, so it never changes wording.
+RUN_ADMISSION_REJECTED_CODE: Final[str] = "gateway_run_capacity_exhausted"
+
+#: Environment override for the process-wide in-flight run budget. Intended for
+#: operators who need to move the ceiling without a code change; when unset the
+#: budget is derived from the ORM connection pool (see
+#: :func:`default_max_concurrent_runs`).
+MAX_CONCURRENT_RUNS_ENV_VAR: Final[str] = "ALPHA_GATEWAY_MAX_CONCURRENT_RUNS"
+
+#: Fallback budget when the app config cannot be loaded (e.g. no ``config.yaml``
+#: in a bare unit-test environment). Matches the shipped
+#: ``DatabaseConfig.pool_size`` default of 5 scaled by
+#: :data:`RUNS_PER_POOLED_CONNECTION`.
+_DEFAULT_MAX_CONCURRENT_RUNS: Final[int] = 10
+
+#: In-flight run tasks allowed per pooled DB connection. A run holds a
+#: connection only transiently (status write, delivery receipt, completion
+#: write), so exactly one run per connection under-utilises the pool; two keeps
+#: it busy while bounding the finalization burst that causes pool starvation.
+RUNS_PER_POOLED_CONNECTION: Final[int] = 2
+
+
+@dataclass(frozen=True)
+class AdmissionDecision:
+    """Outcome of one :meth:`RunAdmissionController.try_admit` call."""
+
+    admitted: bool
+    code: str
+    active: int
+    limit: int
+    lane: ExecutionLane
+
+    def __bool__(self) -> bool:
+        return self.admitted
+
+
+class RunAdmissionRejected(RuntimeError):
+    """Raised when a run cannot be admitted within the in-flight run budget.
+
+    Carries the stable ``code`` plus the saturation numbers so the caller can
+    answer with an honest status and a retry hint instead of admitting work it
+    has no capacity to serve.
+    """
+
+    def __init__(self, decision: AdmissionDecision, *, retry_after_seconds: float) -> None:
+        super().__init__(
+            f"Gateway run capacity exhausted ({decision.active}/{decision.limit} runs in flight); retry in {retry_after_seconds:g}s"
+        )
+        self.code = decision.code
+        self.decision = decision
+        self.retry_after_seconds = retry_after_seconds
+
+
+class RunAdmissionController:
+    """Hard-bounded, await-free admission control for in-flight run tasks.
+
+    Why this exists
+    ---------------
+    The Gateway used to attach one ``asyncio.Task`` per accepted run with no
+    ceiling. Every one of those tasks ends in a burst of durable writes -- run
+    status, delivery receipt, completion row, thread title, workspace changes --
+    and all of them draw from one SQLAlchemy engine whose
+    ``database.pool_size`` defaults to 5 (``DatabaseConfig.pool_size``) with
+    ``database.command_timeout`` at 30s. More concurrent runs than pooled
+    connections means those finalization writes queue behind each other until
+    the command timeout expires, which is how a saturated Gateway starts
+    returning failed runs and, worse, leaves receipts unwritten.
+
+    Why it is synchronous
+    ---------------------
+    Run admission must not await between durable admission and task
+    attachment: a cancellation that lands in that window would strand the run
+    with no worker to observe it (see the comment above ``asyncio.create_task``
+    in ``app.gateway.services.start_run``). An ``asyncio.Semaphore`` would put
+    an await exactly there, so the gate is a plain counter under a
+    ``threading.Lock``. That is correct on the single event-loop thread that
+    calls it and stays correct if another thread ever reaches it.
+
+    Scope
+    -----
+    The budget is **per process**, which is the same granularity as the
+    connection pool it protects: N Gateway workers each allow
+    ``max_concurrent_runs`` in-flight runs. A cross-process budget would need a
+    durable lease keyed on the pool itself, which no component owns today.
+    """
+
+    def __init__(self, *, max_concurrent_runs: int, retry_after_seconds: float = 1.0) -> None:
+        if isinstance(max_concurrent_runs, bool) or not isinstance(max_concurrent_runs, int) or max_concurrent_runs < 1:
+            raise ValueError("max_concurrent_runs must be an integer >= 1")
+        if retry_after_seconds <= 0:
+            raise ValueError("retry_after_seconds must be positive")
+        self._lock = threading.Lock()
+        self.max_concurrent_runs = max_concurrent_runs
+        self.retry_after_seconds = float(retry_after_seconds)
+        self._active = 0
+        self._peak = 0
+        self._admitted = 0
+        self._rejected = 0
+        self._lane_active: dict[ExecutionLane, int] = {lane: 0 for lane in ExecutionLane}
+
+    @property
+    def active(self) -> int:
+        with self._lock:
+            return self._active
+
+    def try_admit(self, *, lane: ExecutionLane = ExecutionLane.USER_INTERACTION) -> AdmissionDecision:
+        """Take one in-flight slot, or refuse without taking one.
+
+        Never raises and never blocks: a caller that cannot be admitted still
+        gets a decision it can turn into an honest response.
+        """
+        with self._lock:
+            if self._active >= self.max_concurrent_runs:
+                self._rejected += 1
+                return AdmissionDecision(
+                    admitted=False,
+                    code=RUN_ADMISSION_REJECTED_CODE,
+                    active=self._active,
+                    limit=self.max_concurrent_runs,
+                    lane=lane,
+                )
+            self._active += 1
+            self._admitted += 1
+            if self._active > self._peak:
+                self._peak = self._active
+            self._lane_active[lane] = self._lane_active.get(lane, 0) + 1
+            return AdmissionDecision(
+                admitted=True,
+                code="",
+                active=self._active,
+                limit=self.max_concurrent_runs,
+                lane=lane,
+            )
+
+    def admit_or_raise(self, *, lane: ExecutionLane = ExecutionLane.USER_INTERACTION) -> AdmissionDecision:
+        """Take one in-flight slot or raise :class:`RunAdmissionRejected`."""
+        decision = self.try_admit(lane=lane)
+        if not decision.admitted:
+            raise RunAdmissionRejected(decision, retry_after_seconds=self.retry_after_seconds)
+        return decision
+
+    def release(self, *, lane: ExecutionLane = ExecutionLane.USER_INTERACTION) -> int:
+        """Return one in-flight slot. Returns the remaining count.
+
+        Over-releasing is a no-op rather than an error: a release for a run
+        that never took a slot must not drive the counter negative and hand out
+        capacity that does not exist.
+        """
+        with self._lock:
+            if self._active > 0:
+                self._active -= 1
+            lane_active = self._lane_active.get(lane, 0)
+            if lane_active > 0:
+                self._lane_active[lane] = lane_active - 1
+            return self._active
+
+    def snapshot(self) -> dict[str, Any]:
+        """Saturation metrics for logs and diagnostics."""
+        with self._lock:
+            return {
+                "active": self._active,
+                "peak": self._peak,
+                "limit": self.max_concurrent_runs,
+                "admitted": self._admitted,
+                "rejected": self._rejected,
+                "active_by_lane": {lane.value: count for lane, count in self._lane_active.items()},
+            }
+
+
+def default_max_concurrent_runs() -> int:
+    """Resolve the in-flight run budget for this process.
+
+    Prefers ``ALPHA_GATEWAY_MAX_CONCURRENT_RUNS`` so an operator can retune the
+    ceiling without a code change, then falls back to
+    ``AppConfig.database.pool_size`` scaled by
+    :data:`RUNS_PER_POOLED_CONNECTION`, then to a constant. Every step tolerates
+    an unloadable or stubbed config, because admission must never be the thing
+    that takes the Gateway down.
+    """
+    raw_override = os.environ.get(MAX_CONCURRENT_RUNS_ENV_VAR)
+    if raw_override is not None:
+        override = _positive_int(raw_override)
+        if override is not None:
+            return override
+    pool_size = _configured_pool_size()
+    if pool_size is None:
+        return _DEFAULT_MAX_CONCURRENT_RUNS
+    return max(1, pool_size * RUNS_PER_POOLED_CONNECTION)
+
+
+def _positive_int(raw: str) -> int | None:
+    try:
+        value = int(raw.strip())
+    except (AttributeError, ValueError):
+        return None
+    return value if value >= 1 else None
+
+
+def _configured_pool_size() -> int | None:
+    try:
+        from alpha.config.app_config import get_app_config
+
+        pool_size = get_app_config().database.pool_size
+    except Exception:
+        return None
+    if isinstance(pool_size, bool) or not isinstance(pool_size, int) or pool_size < 1:
+        return None
+    return pool_size
+
+
+_run_admission_controller: RunAdmissionController | None = None
+_run_admission_controller_lock = threading.Lock()
+
+
+def get_run_admission_controller() -> RunAdmissionController:
+    """Return the process-wide in-flight run admission controller."""
+    global _run_admission_controller
+    controller = _run_admission_controller
+    if controller is not None:
+        return controller
+    with _run_admission_controller_lock:
+        if _run_admission_controller is None:
+            _run_admission_controller = RunAdmissionController(max_concurrent_runs=default_max_concurrent_runs())
+        return _run_admission_controller
+
+
+def set_run_admission_controller(controller: RunAdmissionController | None) -> RunAdmissionController | None:
+    """Install or clear the process-wide controller; returns the previous one.
+
+    Exists for config reloads and for tests that need a deterministic budget.
+    Passing ``None`` makes the next :func:`get_run_admission_controller` call
+    re-resolve from configuration.
+    """
+    global _run_admission_controller
+    with _run_admission_controller_lock:
+        previous = _run_admission_controller
+        _run_admission_controller = controller
+    return previous
+
+
+def resolve_execution_lane(*, autonomous: bool, background: bool = False) -> ExecutionLane:
+    """Classify a run for admission accounting.
+
+    Only observability depends on this: the in-flight budget is global, so a
+    background run is refused exactly like an interactive one rather than
+    queueing unboundedly behind a lane that never drains.
+    """
+    if background:
+        return ExecutionLane.BACKGROUND_AUTONOMOUS
+    if autonomous:
+        return ExecutionLane.SYSTEM_MAINTENANCE
+    return ExecutionLane.USER_INTERACTION

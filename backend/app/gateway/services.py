@@ -12,10 +12,10 @@ import json
 import logging
 import re
 import threading
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Final
 
 from agent_workspace_extension_api import PROVENANCE_KEYS
 from fastapi import HTTPException, Request
@@ -59,6 +59,11 @@ from alpha.runtime.events.message_identity import MESSAGE_SEQ_KEY
 from alpha.runtime.goal import goal_thread_lock
 from alpha.runtime.journal import build_checkpoint_history_seed_events
 from alpha.runtime.keyed_lock import KeyedLockTable
+from alpha.runtime.lane_scheduler import (
+    RunAdmissionRejected,
+    get_run_admission_controller,
+    resolve_execution_lane,
+)
 from alpha.runtime.runs.naming import resolve_root_run_name
 from alpha.runtime.secret_context import (
     LegacyRunMetadataSecretError,
@@ -69,7 +74,7 @@ from alpha.runtime.stream_modes import normalize_stream_modes
 from alpha.runtime.user_context import reset_current_user, set_current_user
 from alpha.sandbox.lease import SANDBOX_SERVER_OWNED_CONTEXT_KEYS
 from alpha.subagents.status_contract import SUBAGENT_ACCEPTANCE_VERDICT_KEY, SUBAGENT_RECEIPT_VERDICT_KEY, SUBAGENT_TOOL_RECEIPTS_KEY
-from alpha.trace_context import AGENT_WORKSPACE_TRACE_METADATA_KEY, ensure_trace_context, ensure_trace_id
+from alpha.trace_context import AGENT_WORKSPACE_TRACE_METADATA_KEY, ensure_trace_context, ensure_trace_id, resolve_trace_id
 from alpha.utils.assembly_io import run_assembly
 from alpha.utils.messages import ORIGINAL_USER_CONTENT_KEY
 from alpha.utils.thread_id import validate_thread_id
@@ -254,10 +259,180 @@ async def _orphan_recovery_observed_after_heartbeat(
     ``stop_reason`` is written atomically with the terminal status. Only that
     explicit signal may synthesize END after a heartbeat.
     """
+    return await _orphan_recovered_terminal_record(record, run_mgr) is not None
+
+
+async def _orphan_recovered_terminal_record(
+    record: RunRecord,
+    run_mgr: RunManager,
+) -> RunRecord | None:
+    """Return the refreshed record when orphan recovery terminalized it.
+
+    Same boundary as :func:`_orphan_recovery_observed_after_heartbeat`, but it
+    hands back the refreshed record so the caller can report the recovered
+    run's real terminal status on the ``end`` frame it is about to synthesize.
+    A store-only handle is hydrated once, when the client joins, so its local
+    status is still ``running`` here and reading the durable row is the only way
+    to learn the recovered outcome.
+    """
     if not record.store_only:
-        return False
+        return None
     refreshed = await run_mgr.get(record.run_id, user_id=record.user_id)
-    return refreshed is not None and _run_is_terminal(refreshed) and refreshed.stop_reason == ORPHAN_RECOVERY_STOP_REASON
+    if refreshed is not None and _run_is_terminal(refreshed) and refreshed.stop_reason == ORPHAN_RECOVERY_STOP_REASON:
+        return refreshed
+    return None
+
+
+async def _terminal_record_at_end(
+    record: RunRecord,
+    run_mgr: RunManager,
+) -> RunRecord:
+    """Return the run's authoritative state at the moment END was observed.
+
+    ``publish_end`` is the last thing a worker does, after the terminal status
+    is staged, so this read is what turns a silent status flip into something
+    the stream can report. A locally-owned run's in-memory record is already
+    authoritative (the worker mutated that same object) and is used as-is with
+    no store round-trip; a ``store_only`` cross-worker handle was hydrated when
+    the client joined and is re-read so a store-only join cannot report a stale
+    ``running`` status as the run's outcome. A read that fails or comes back
+    non-terminal falls back to the local record, so a diagnostic lookup can
+    never cost the client its ``end`` frame.
+    """
+    if _run_is_terminal(record):
+        return record
+    refreshed = await run_mgr.get(record.run_id, user_id=record.user_id)
+    if refreshed is not None and _run_is_terminal(refreshed):
+        return refreshed
+    return record
+
+
+# ---------------------------------------------------------------------------
+# Terminal run outcome: a failed run must not look successful
+# ---------------------------------------------------------------------------
+
+#: Stable code on the ``error`` frame the Gateway synthesizes when a run
+#: reached ``RunStatus.error`` without publishing one of its own. The worker's
+#: own codes (``alpha.runtime.runs.worker.ERROR_CODE_*``) are more specific and
+#: always win, because they arrive on the stream first and are never
+#: duplicated. This one exists for the flips that happen *after* the last data
+#: frame -- an artifact-delivery gate failure, a delivery receipt that could not
+#: be persisted, lease recovery -- which used to reach the client as a bare
+#: ``end`` and read as a completed run.
+GATEWAY_TERMINAL_ERROR_CODE: Final[str] = "run_error"
+
+#: HTTP status for a run refused by the in-flight admission gate. 429 plus a
+#: ``Retry-After`` header is the honest answer: the request was well-formed and
+#: is worth repeating, the server simply has no capacity right now.
+RUN_ADMISSION_REJECTED_STATUS: Final[int] = 429
+
+
+def _status_value(record: RunRecord) -> str:
+    """The run's status as a plain wire string."""
+    status = record.status
+    return str(getattr(status, "value", status))
+
+
+def _run_trace_id(record: RunRecord) -> str:
+    """The run's server-issued trace id, falling back to the ambient one."""
+    metadata = record.metadata if isinstance(record.metadata, Mapping) else {}
+    return resolve_trace_id(metadata.get(AGENT_WORKSPACE_TRACE_METADATA_KEY))
+
+
+def terminal_end_payload(record: RunRecord) -> dict[str, Any]:
+    """Truthful payload for the ``end`` frame of a terminal run.
+
+    ``end`` used to carry ``data: null``, which reads identically whether the
+    run succeeded or whether finalization flipped it to ``error`` after the last
+    data frame -- the exact shape of the "failed run looks successful" defect.
+    A client that only branches on the event name keeps working; a client that
+    wants the outcome reads ``status`` instead of assuming it.
+
+    Keys beyond ``run_id``/``status`` are additive: ``ok`` is the convenience
+    boolean, and ``error``/``stop_reason`` appear only when the run has them.
+    """
+    payload: dict[str, Any] = {
+        "run_id": record.run_id,
+        "thread_id": record.thread_id,
+        "status": _status_value(record),
+        "ok": record.status == RunStatus.success,
+    }
+    if record.error:
+        payload["error"] = record.error
+    if record.stop_reason:
+        payload["stop_reason"] = record.stop_reason
+    return payload
+
+
+def gateway_terminal_error_payload(record: RunRecord) -> dict[str, Any]:
+    """Stable-code ``error`` payload for a failed run that never said so.
+
+    ``code`` is the contract; ``message`` is prose and may change. ``run_id``
+    doubles as ``correlation_id`` so a client can join the frame to the run API
+    and the logs, and ``trace_id`` is the same id the run record was stamped
+    with at admission.
+    """
+    status = _status_value(record)
+    return {
+        "code": GATEWAY_TERMINAL_ERROR_CODE,
+        "message": record.error or f"Run ended with status '{status}' and published no error frame",
+        "name": "RunError",
+        "status": status,
+        "run_id": record.run_id,
+        "thread_id": record.thread_id,
+        "correlation_id": record.run_id,
+        "trace_id": _run_trace_id(record),
+        "source": "gateway",
+    }
+
+
+def _terminal_end_frames(
+    record: RunRecord,
+    *,
+    error_frame_seen: bool,
+    event_id: str | None = None,
+) -> list[str]:
+    """SSE frames that close a run: at most one ``error``, then the ``end``.
+
+    ``error_frame_seen`` is set by the consumer when the producer already
+    published a terminal ``error`` on this stream. Duplicating it would give a
+    client two failures for one run, so the Gateway only speaks when the worker
+    stayed silent.
+    """
+    frames: list[str] = []
+    if record.status == RunStatus.error and not error_frame_seen:
+        frames.append(format_sse("error", gateway_terminal_error_payload(record)))
+    frames.append(format_sse("end", terminal_end_payload(record), event_id=event_id))
+    return frames
+
+
+def _run_admission_rejected_http_error(exc: RunAdmissionRejected) -> HTTPException:
+    """Translate an admission refusal into an honest HTTP response.
+
+    429 with ``Retry-After``, not a 500 and not a silent accept: the request was
+    well-formed, the server is simply at its in-flight run budget, and saying so
+    is the only answer a client can act on.
+    """
+    retry_after = max(1, int(round(exc.retry_after_seconds)))
+    logger.warning(
+        "Refusing run admission: %d/%d runs in flight (code %s, lane %s)",
+        exc.decision.active,
+        exc.decision.limit,
+        exc.code,
+        exc.decision.lane.value,
+    )
+    return HTTPException(
+        status_code=RUN_ADMISSION_REJECTED_STATUS,
+        detail={
+            "code": exc.code,
+            "message": str(exc),
+            "retry_after_seconds": retry_after,
+            "active_runs": exc.decision.active,
+            "max_concurrent_runs": exc.decision.limit,
+        },
+        headers={"Retry-After": str(retry_after)},
+    )
+
 
 
 # ---------------------------------------------------------------------------
@@ -1348,6 +1523,35 @@ async def _assert_update_admission_open() -> None:
         raise HTTPException(status_code=503, detail="Alpha is applying a source update; new runs are temporarily paused")
 
 
+#: Metadata keys that mark a run the Gateway launches on its own initiative
+#: rather than for a live client request. They only affect lane bookkeeping;
+#: the in-flight budget itself is global (see ``RunAdmissionController``).
+_BACKGROUND_RUN_METADATA_KEYS = ("scheduled_task_run_id", "mcp_task_notification")
+
+
+def _admit_run_or_reject(
+    *,
+    body_autonomous: bool,
+    run_metadata: Mapping[str, Any],
+) -> Callable[[], None]:
+    """Take one in-flight run slot, or raise :class:`RunAdmissionRejected`.
+
+    Returns the idempotent release callable for the slot. Deliberately
+    synchronous: the caller is between durable admission and task attachment,
+    where an await could strand a pending cancellation with no worker to
+    observe it. ``Callable`` rather than a bare handle so the release is
+    guaranteed to target the controller instance that granted the slot, even if
+    a config reload swaps the process-wide controller mid-run.
+    """
+    controller = get_run_admission_controller()
+    lane = resolve_execution_lane(
+        autonomous=body_autonomous,
+        background=any(key in run_metadata for key in _BACKGROUND_RUN_METADATA_KEYS),
+    )
+    decision = controller.admit_or_raise(lane=lane)
+    return lambda: controller.release(lane=decision.lane)
+
+
 async def start_run(
     body: RunCreateRequest,
     thread_id: str,
@@ -1643,6 +1847,27 @@ async def start_run(
                     return record
 
                 worker = run_after_metadata(record)
+                # In-flight run budget. Taken *after* durable admission and
+                # *before* task attachment, and it does not await, so the
+                # "no await between durable admission and task attachment"
+                # invariant below still holds: a pending cancellation landing
+                # after this point finds a worker already attached, and one
+                # landing before it is handled by the run's own startup barrier.
+                try:
+                    release_admission = _admit_run_or_reject(
+                        body_autonomous=body_autonomous,
+                        run_metadata=run_metadata,
+                    )
+                except RunAdmissionRejected as exc:
+                    # A durable row exists but no worker will ever run it, so
+                    # terminate it here. Leaving it ``pending`` would strand
+                    # the thread's active-run slot and let lease recovery
+                    # later blame a run that was refused, not executed. The
+                    # stable code goes into the row so an operator reading run
+                    # history can tell a capacity refusal from a run failure.
+                    worker.close()
+                    await run_mgr.fail_start_if_pending(record.run_id, error=f"{exc.code}: {exc}")
+                    raise _run_admission_rejected_http_error(exc) from exc
                 try:
                     # No await is allowed between durable admission and task
                     # attachment. Metadata setup runs inside the attached
@@ -1652,11 +1877,17 @@ async def start_run(
                     record.task = asyncio.create_task(worker)
                 except Exception as exc:
                     worker.close()
+                    release_admission()
                     await run_mgr.fail_start_if_pending(
                         record.run_id,
                         error=f"Failed to attach run worker: {exc}",
                     )
                     raise
+                # The slot is held for the whole worker coroutine and returned
+                # by a done callback rather than a ``finally`` inside the
+                # worker: this path may not await, and a worker cancelled
+                # mid-await still completes its task, which fires the callback.
+                record.task.add_done_callback(lambda _task: release_admission())
         except ConflictError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except UnsupportedStrategyError as exc:
@@ -1856,6 +2087,15 @@ async def sse_consumer(
     that flag. Thread-scoped ``/runs/stream`` passes True only for this
     request's reuse; default callers (joins, stateless ``/api/runs/stream``,
     tests) keep ``end`` when a terminal record's stream is gone.
+
+    Every terminal path reports the run's real status. The ``end`` frame used
+    to be a bare ``data: null``, which is the same bytes for a successful run
+    and for one that failed during finalization; it now carries
+    :func:`terminal_end_payload`, and a run that reached ``RunStatus.error``
+    without publishing an ``error`` frame of its own gets one synthesized ahead
+    of ``end`` with a stable code and correlation ids. The worker's own terminal
+    ``error`` frame, when there is one, is passed through untouched and is
+    never duplicated.
     """
     last_event_id = request.headers.get("Last-Event-ID")
     if await _terminal_record_stream_missing(bridge, record):
@@ -1874,10 +2114,14 @@ async def sse_consumer(
                 },
             )
             return
-        yield format_sse("end", None)
+        # The stream is gone, so no producer frame can arrive: the record's own
+        # status is the only outcome there is, and it may be a failure.
+        for frame in _terminal_end_frames(record, error_frame_seen=False):
+            yield frame
         return
 
     gap_emitted = False
+    error_frame_seen = False
     try:
         async for entry in bridge.subscribe(record.run_id, last_event_id=last_event_id):
             if await request.is_disconnected():
@@ -1899,16 +2143,22 @@ async def sse_consumer(
                 return
 
             if entry is HEARTBEAT_SENTINEL:
-                if await _orphan_recovery_observed_after_heartbeat(record, run_mgr):
-                    yield format_sse("end", None)
+                recovered = await _orphan_recovered_terminal_record(record, run_mgr)
+                if recovered is not None:
+                    for frame in _terminal_end_frames(recovered, error_frame_seen=error_frame_seen):
+                        yield frame
                     return
                 yield ": heartbeat\n\n"
                 continue
 
             if entry is END_SENTINEL:
-                yield format_sse("end", None, event_id=entry.id or None)
+                terminal = await _terminal_record_at_end(record, run_mgr)
+                for frame in _terminal_end_frames(terminal, error_frame_seen=error_frame_seen, event_id=entry.id or None):
+                    yield frame
                 return
 
+            if entry.event == "error":
+                error_frame_seen = True
             yield format_sse(entry.event, entry.data, event_id=entry.id or None)
 
     finally:

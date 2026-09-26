@@ -19,6 +19,7 @@ provides the narrow heartbeat fallback when the publisher is known to be gone.
 from __future__ import annotations
 
 import asyncio
+import json
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -27,6 +28,14 @@ from alpha.runtime.runs.schemas import DisconnectMode
 from alpha.runtime.stream_bridge.memory import MemoryStreamBridge
 
 THREAD_ID = "thread-wait-3265"
+
+
+def _frame_payload(frame: str) -> Any:
+    """Decode the ``data:`` line of one SSE frame."""
+    for line in frame.splitlines():
+        if line.startswith("data: "):
+            return json.loads(line[len("data: ") :])
+    raise AssertionError(f"frame has no data line: {frame!r}")
 
 
 @dataclass
@@ -271,7 +280,8 @@ class TestWaitForRunCompletion:
         asyncio.run(run())
 
     def test_sse_consumer_terminal_missing_stream_yields_end(self) -> None:
-        """Joining a terminal store-only run with no stream should emit a terminal SSE."""
+        """Joining a terminal store-only run with no stream emits a terminal SSE
+        that names the run's real status, not an opaque ``data: null``."""
         from app.gateway.services import sse_consumer
 
         async def run() -> None:
@@ -289,15 +299,23 @@ class TestWaitForRunCompletion:
 
             frames = [frame async for frame in sse_consumer(bridge, record, request, mgr)]
 
-            assert frames == ["event: end\ndata: null\n\n"]
+            assert len(frames) == 1
+            assert frames[0].startswith("event: end\n")
+            payload = _frame_payload(frames[0])
+            assert payload["run_id"] == "terminal-missing-run"
+            assert payload["thread_id"] == THREAD_ID
+            assert payload["status"] == RunStatus.success.value
+            assert payload["ok"] is True
+            # A successful run must not be given an error frame it never had.
+            assert "error" not in payload
             assert bridge.subscribed is False
 
         asyncio.run(run())
 
     def test_sse_consumer_preserves_tail_events_after_durable_terminal_status(self) -> None:
         """A durable terminal row must not overtake delayed error and END events."""
-        from app.gateway.services import sse_consumer
         from alpha.runtime.runs.store.memory import MemoryRunStore
+        from app.gateway.services import sse_consumer
 
         async def run() -> None:
             store = MemoryRunStore()
@@ -338,8 +356,8 @@ class TestWaitForRunCompletion:
 
     def test_wait_preserves_tail_events_after_durable_terminal_status(self) -> None:
         """The wait path must remain blocked until the real END is published."""
-        from app.gateway.services import wait_for_run_completion
         from alpha.runtime.runs.store.memory import MemoryRunStore
+        from app.gateway.services import wait_for_run_completion
 
         async def run() -> None:
             store = MemoryRunStore()
@@ -375,9 +393,10 @@ class TestWaitForRunCompletion:
     def test_sse_consumer_uses_explicit_orphan_recovery_liveness_boundary(
         self,
     ) -> None:
-        """A recovered orphan may synthesize END when its publisher is gone."""
-        from app.gateway.services import sse_consumer
+        """A recovered orphan may synthesize END when its publisher is gone, and
+        that synthesized END must carry the recovered run's real outcome."""
         from alpha.runtime.runs.store.memory import MemoryRunStore
+        from app.gateway.services import sse_consumer
 
         async def run() -> None:
             store = MemoryRunStore()
@@ -401,15 +420,30 @@ class TestWaitForRunCompletion:
                 stop_reason=ORPHAN_RECOVERY_STOP_REASON,
             )
 
+            error_frame = await asyncio.wait_for(anext(consumer), timeout=1.0)
             end_frame = await asyncio.wait_for(anext(consumer), timeout=1.0)
-            assert end_frame == "event: end\ndata: null\n\n"
+
+            assert error_frame.startswith("event: error\n")
+            error_payload = _frame_payload(error_frame)
+            assert error_payload["status"] == RunStatus.error.value
+            assert error_payload["message"] == "lease expired"
+            assert error_payload["run_id"] == "periodic-orphan"
+            assert error_payload["correlation_id"] == "periodic-orphan"
+            assert error_payload["trace_id"]
+
+            assert end_frame.startswith("event: end\n")
+            end_payload = _frame_payload(end_frame)
+            assert end_payload["status"] == RunStatus.error.value
+            assert end_payload["ok"] is False
+            assert end_payload["error"] == "lease expired"
+            assert end_payload["stop_reason"] == ORPHAN_RECOVERY_STOP_REASON
 
         asyncio.run(run())
 
     def test_wait_uses_explicit_orphan_recovery_liveness_boundary(self) -> None:
         """The non-streaming consumer shares the recovered-orphan boundary."""
-        from app.gateway.services import wait_for_run_completion
         from alpha.runtime.runs.store.memory import MemoryRunStore
+        from app.gateway.services import wait_for_run_completion
 
         async def run() -> None:
             store = MemoryRunStore()
