@@ -58,6 +58,25 @@ Using OpenClaw's rubric ([`03_agentic_architecture.md`](03_agentic_architecture.
 **Property 1 is the root.** Properties 2–6 are all weakened by it: a policy control inside a single
 envelope is a speed bump, not a wall. No amount of property-2 work changes that.
 
+NVIDIA states the argument directly, in the AVO security post (see
+[`05_nvidia_avo.md`](05_nvidia_avo.md)):
+
+> "Prompts, model safeguards and harness logic **can guide** an agent's behavior, but they **do not create
+> an authoritative boundary** around what it can do."
+
+> "**The harness is intentionally programmable.** … Security controls that depend on the harness behaving
+> exactly as expected **can weaken** as models, tools, and agent workflows evolve."
+
+alpha's case is strictly worse than the case NVIDIA describes, because alpha's harness is **self-modifying**
+(`bots/self_modification.py`, `metacompiler/dynamic_tool_synthesizer.py`) and the ceiling is enforced by a
+component inside it. The requirement "alpha cannot modify the component that enforces the ceiling" is
+necessary but **not sufficient** — it presumes the component cannot be reached around, and in a single
+envelope holding the credentials and the shell, it can.
+
+The correct immediate action is not to adopt a sandbox. It is to stop describing
+`bots/authority_ceiling.py` as a boundary anywhere — code comments, docs, or reports — and to record it as
+a **known, stated limitation**, the way OpenClaw records its own.
+
 **Property 3's missing half is cheap and high value.** OpenClaw's most useful security contribution is
 simply *stating which boundaries are security and which are convenience*. alpha has no such statement, so a
 reader cannot tell which controls to rely on.

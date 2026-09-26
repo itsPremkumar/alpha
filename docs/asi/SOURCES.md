@@ -126,15 +126,35 @@ All alpha claims are from files read or tests run in this session on 2026-09-26.
 The original request named two items that could not be verified from any primary source. They are recorded
 here rather than resolved by invention.
 
-### "NVIDIA avo"
+### "NVIDIA avo" — RESOLVED, and the earlier answer here was wrong
 
-No NVIDIA project by that name was found. Searches run: `openclaw 2.0 AI agent`, `NVIDIA Alpamayo
-NemoClaw agentic AI architecture self-improving 2026`, and GitHub repo search for `openclaw`,
-`openclaw agent`.
+**CORRECTION.** An earlier revision of this file recorded "NVIDIA avo" as UNCONFIRMED and speculated it
+might be **Alpamayo**. Both the UNCONFIRMED label and the speculation were wrong. AVO is real and is
+documented in [`05_nvidia_avo.md`](05_nvidia_avo.md). The original searches missed it because they were
+phrased around agent frameworks rather than the acronym itself; a direct search for `"NVIDIA AVO"` found it
+immediately. Recording the error rather than quietly overwriting it, because a wrong note in a reference
+folder is worse than no note.
 
-Most likely referent: **Alpamayo**, NVIDIA's autonomous-vehicle reasoning model, which is real and appears
-in NVIDIA's own agentic-platform framing alongside NemoClaw, Nemotron 3 and BioNeMo. If you meant something
-else by "avo", say so and I will research that instead.
+- **AVO = Agentic Variation Operators.** NVIDIA's long-horizon autonomous agent architecture.
+- Paper: **arXiv:2603.24517** — "AVO: Agentic Variation Operators for Autonomous Evolutionary Search"
+  — https://arxiv.org/abs/2603.24517
+- Primary announcement: https://developer.nvidia.com/blog/nvidia-avo-reaches-100-on-arc-agi-3-demonstrating-a-frontier-level-general-purpose-architecture-for-long-horizon-autonomous-agents/
+  — Terry Chen, Yeyin (Eva) Zhu, Zhifan Ye, Jean-Francois Puget, Humphrey Shi; 21 August 2026
+- Security companion, same day: https://forums.developer.nvidia.com/t/building-agent-systems-for-both-long-horizon-capability-and-enforceable-security/380902
+  — introduces the above/below-the-boundary design principle and NVIDIA OpenShell
+- Supports: agent-decided variation operator replacing a fixed evolutionary mutation step; persistent
+  memory plus a trajectory-level supervisor; 7-day autonomous kernel search, 500+ directions, 40 committed
+  versions, +3.5% over cuDNN and +10.5% over FlashAttention-4; 100.00 RHAE on the ARC-AGI-3 public set
+  (25/25 environments, 183/183 levels, 6,624 actions vs VISTA's 7,542) against a ~30% Claude Opus 5
+  model-only baseline; text-only 64×64 observation with no image tokens; cross-model pairing with
+  GPT-5.6 Sol showing complementary operating profiles
+- Also from the security post, load-bearing for this project's threat model: *"Security controls that
+  depend on the harness behaving exactly as expected can weaken"* — the harness is intentionally
+  programmable
+
+**Alpamayo** is separately real — NVIDIA's autonomous-vehicle reasoning model — and appears in NVIDIA's
+agentic-platform framing alongside NemoClaw, Nemotron 3 and BioNeMo. It is simply a different thing, and
+was the wrong guess.
 
 **NVIDIA NemoClaw**, confirmed and relevant: announced at GTC 2026, an open-source stack for the OpenClaw
 community providing sandboxing (OpenShell kernel-level), fleet management and audit.

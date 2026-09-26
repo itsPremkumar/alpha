@@ -33,6 +33,7 @@ see `../IMPLEMENTATION_MATRIX.md` for the same convention applied to our own wor
 | [`02_learned_orchestration.md`](02_learned_orchestration.md) | Sakana Fugu, Trinity, Conductor. Learned routing, evolutionary optimisation of an orchestrator, and intra-workflow agent isolation. The most directly transferable content here. |
 | [`03_agentic_architecture.md`](03_agentic_architecture.md) | Architectural patterns for agent systems that actually work: scaffolds, isolation, the trust boundary, evaluation, and the failure modes that recur. |
 | [`04_alpha_gap_analysis.md`](04_alpha_gap_analysis.md) | Where alpha stands against all of the above, honestly, including where alpha is ahead. |
+| [`05_nvidia_avo.md`](05_nvidia_avo.md) | NVIDIA AVO — the agent-decided variation operator, 100% on ARC-AGI-3, and the security argument that indicts alpha's single-envelope design. |
 | [`SOURCES.md`](SOURCES.md) | Every URL, what it supports, and when it was retrieved. |
 
 ## The three findings that matter most
@@ -68,12 +69,13 @@ right than the roadmap.
 
 ## Unconfirmed names
 
-Two items in the original request could not be verified from a primary source and are recorded rather than
-guessed:
+**"NVIDIA avo" — RESOLVED.** An earlier revision of this folder recorded it as unconfirmed and guessed it
+might be Alpamayo. That was wrong. AVO is **Agentic Variation Operators**, NVIDIA's long-horizon autonomous
+agent architecture (arXiv:2603.24517), and it turned out to be the most directly relevant external reference
+to alpha's architecture in this dossier. See [`05_nvidia_avo.md`](05_nvidia_avo.md). The error is recorded
+in `SOURCES.md` rather than quietly overwritten.
 
-- **"NVIDIA avo"** — no project by that name was found. The likely referent is **Alpamayo**, NVIDIA's
-  autonomous-vehicle reasoning model, which is real and is covered in `03_agentic_architecture.md`.
-- **"ChatGPT Astra"** — no model by that name was found in any primary source. Verified OpenAI models in
-  this period are GPT-5.5 and the GPT-6 Sol / Terra / Luna variants. Treated as unconfirmed.
-
-See `SOURCES.md` for what was searched.
+**"ChatGPT Astra" — still unconfirmed.** No OpenAI model by that name was found in any primary source.
+Verified OpenAI models in this period are GPT-5.5, GPT-5.6 Sol, and the GPT-6 Sol / Terra / Luna variants.
+Recorded as UNCONFIRMED. If "Astra" is a real model I failed to find, provide a source and I will research it
+properly rather than guess.
