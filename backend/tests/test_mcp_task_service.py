@@ -1072,13 +1072,15 @@ async def test_run_once_uses_exponential_backoff_and_caps_transient_errors():
     repo = FakeRepository(rows)
     registry = McpTaskDriverRegistry()
     registry.register("fake", FakeDriver(error=RuntimeError("network down")))
+    poll_interval_seconds = 5
+    max_poll_backoff_seconds = 30
     service = McpTaskService(
         repository=repo,
         drivers=registry,
-        poll_interval_seconds=5,
+        poll_interval_seconds=poll_interval_seconds,
         lease_seconds=120,
         max_concurrent_polls=3,
-        max_poll_backoff_seconds=30,
+        max_poll_backoff_seconds=max_poll_backoff_seconds,
     )
 
     started_at = datetime.now(UTC)
@@ -1086,8 +1088,28 @@ async def test_run_once_uses_exponential_backoff_and_caps_transient_errors():
     finished_at = datetime.now(UTC)
 
     released = {task_id: update for task_id, update in repo.released}
-    assert started_at + timedelta(seconds=5) <= released["task-1"]["next_poll_at"] <= finished_at + timedelta(seconds=5)
-    assert started_at + timedelta(seconds=30) <= released["task-2"]["next_poll_at"] <= finished_at + timedelta(seconds=30)
+
+    # A poll that was ATTEMPTED and failed schedules against the POST-increment
+    # error count, because `release_claim` persists `count + 1` alongside the
+    # `next_poll_at` it just wrote (persistence/mcp_tasks/sql.py). Scheduling
+    # against the pre-increment count would store a row whose
+    # `consecutive_poll_error_count` says one thing and whose `next_poll_at`
+    # encodes another, so a restart/recovery path recomputing the delay from the
+    # row would disagree with what was written.
+    #
+    # `count_current_failure=True` (service.py) is what selects this, and it is
+    # passed ONLY from the attempted-poll failure path -- a missing driver never
+    # polled, so it deliberately keeps the base interval. Asserting the base
+    # interval here would make that parameter a no-op.
+    #
+    # task-1: count 0 -> 0+1 = 1 failure persisted -> poll_interval * 2**1.
+    expected_task1 = poll_interval_seconds * (2 ** (0 + 1))
+    # task-2: count 4 -> 4+1 = 5 -> poll_interval * 2**5 = 160, over the cap.
+    expected_task2 = poll_interval_seconds * (2 ** (4 + 1))
+    assert expected_task2 > max_poll_backoff_seconds, "task-2 must actually exercise the cap, not sit below it"
+
+    assert started_at + timedelta(seconds=expected_task1) <= released["task-1"]["next_poll_at"] <= finished_at + timedelta(seconds=expected_task1), f"first attempted failure must back off one growth step (post-increment), got {released['task-1']['next_poll_at']}"
+    assert started_at + timedelta(seconds=max_poll_backoff_seconds) <= released["task-2"]["next_poll_at"] <= finished_at + timedelta(seconds=max_poll_backoff_seconds), f"transient errors must cap at {max_poll_backoff_seconds}s, got {released['task-2']['next_poll_at']}"
 
 
 @pytest.mark.asyncio
