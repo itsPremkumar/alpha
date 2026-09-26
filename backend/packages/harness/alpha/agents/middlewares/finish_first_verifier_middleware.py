@@ -17,8 +17,21 @@ On rejection the terminal message is withdrawn and the agent is sent back with
 the critic's ``diagnostic_prompt`` (same mechanism as
 ``TerminalResponseMiddleware``: ``RemoveMessage`` + ``jump_to: "model"`` plus a
 hidden reminder injected into the next model call). The retry is budgeted once
-per run so a critic can never create a loop, and a critic that raises is logged
-and ignored -- an added guard must not be able to take down a run.
+per run so a critic can never create a loop.
+
+Two paths must never turn a failure into a certified success:
+
+* the execution history handed to the critic reports each tool result's *real*
+  status. ``ToolMessage.status`` is optimistic by construction -- a failure
+  carried inside a ``Command`` wrapper keeps LangChain's ``"success"`` default
+  and the authoritative verdict lives in the normalized result meta / tool
+  receipt -- so reading ``getattr(message, "status", "success")`` certified
+  failed commands as successful. An absent, blank or unrecognized status now
+  resolves to ``"unknown"``, never to ``"success"``.
+* a critic that raises cannot vouch for the claim it was asked to check, so it
+  withholds approval instead of approving by accident. The guard is still
+  budgeted like any other rejection, so a broken verifier costs at most one
+  extra model turn and can never take a run down.
 """
 
 from __future__ import annotations
@@ -36,6 +49,8 @@ from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage, Tool
 from langgraph.runtime import Runtime
 
 from alpha.agents.middlewares._bounded_dict import BoundedDict
+from alpha.agents.middlewares.tool_receipt import TOOL_RECEIPT_KEY
+from alpha.agents.middlewares.tool_result_meta import _SUBAGENT_FAILURE_STATUSES, TOOL_META_KEY
 from alpha.critic import CriticPipeline
 
 logger = logging.getLogger(__name__)
@@ -62,7 +77,14 @@ def _record_finish_first_evidence(message: object, *, code_writes: int) -> None:
         )
         logger.debug("Recorded finish-first evidence %s", record.id)
     except Exception:
-        logger.debug("Finish-first evidence write failed; notice still injected", exc_info=True)
+        # Logged at warning, not debug: the notice still reaches the model, but
+        # the violation is then unrecorded, and a violation nobody can find
+        # afterwards is how "unverified completion" quietly becomes normal.
+        logger.warning(
+            "Finish-first evidence write failed for %s code write(s); the notice is still injected but the violation is unrecorded",
+            code_writes,
+            exc_info=True,
+        )
 
 _WRITE_TOOLS = frozenset({"write_file", "str_replace", "hashline_edit"})
 _VERIFY_TOOLS = frozenset({
@@ -74,6 +96,11 @@ _VERIFY_TOOLS = frozenset({
 _TEST_KEYWORDS = ("pytest", "npm test", "pnpm test", "cargo test", "go test", "python -m unittest")
 
 _CRITIC_REJECTION_NAME = "completion_critic_rejection"
+_CRITIC_UNAVAILABLE_REJECTION = (
+    "Critic rejection: the completion critic could not run, so this terminal claim is unverified. "
+    "Re-read this turn's own tool results -- especially the most recent action -- diagnose the error, "
+    "and only declare completion once every step has succeeded."
+)
 _FINISH_FIRST_NOTICE = (
     "\n\n> [!NOTE]\n"
     "> **[Finish-First Notice]**: Code modifications were performed in this session without an automated test verification step. "
@@ -117,6 +144,59 @@ def _exit_code(content: Any) -> int | None:
     return code if isinstance(code, int) and not isinstance(code, bool) else None
 
 
+def _stamp_status(stamp: Any) -> str | None:
+    """Read a ``status`` field off a message-carried verdict stamp, if usable."""
+    if isinstance(stamp, dict):
+        value = stamp.get("status")
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+#: Statuses a tool result can carry and have them mean what they say. Anything
+#: outside this set is reported verbatim to the critic rather than coerced.
+_KNOWN_TOOL_STATUSES = frozenset({"success", "partial_success", "error", "failed"})
+
+#: Statuses that cannot certify a terminal claim: an observed failure, or a
+#: status nobody could determine. ``"unknown"`` is deliberately *not* mapped to
+#: ``"success"`` -- an absent verdict is unverified, not a passing one.
+_UNCERTIFIABLE_TOOL_STATUSES = frozenset({"error", "failed", "unknown"})
+
+
+def _honest_tool_status(message: ToolMessage) -> str:
+    """Resolve a tool result's real status without ever inventing ``success``.
+
+    ``ToolMessage.status`` is optimistic by construction (langchain defaults it
+    to ``"success"`` and a ``Command``-wrapped failure keeps that default -- see
+    ``test_command_tool_result_semantics``), while the authoritative verdict
+    lives in the normalized result meta stamped by
+    ``ToolErrorHandlingMiddleware`` / ``normalize_tool_result`` or in the tool
+    receipt. Precedence therefore runs: LangChain's own failure marker, then
+    the meta stamp, then the receipt, then the message field. A status that is
+    absent, ``None``, blank or unrecognized resolves to ``"unknown"``.
+    """
+    raw_status = getattr(message, "status", None)
+    if raw_status == "error":
+        return "error"
+
+    additional_kwargs = getattr(message, "additional_kwargs", None) or {}
+    for stamp_key in (TOOL_META_KEY, TOOL_RECEIPT_KEY):
+        stamped = _stamp_status(additional_kwargs.get(stamp_key))
+        if stamped is not None:
+            return stamped
+
+    # Structured subagent verdicts (subagents/status_contract.py): producers put
+    # the truth here while leaving ToolMessage.status at the default. Failures
+    # are errors; any other subagent state falls through to the fields below.
+    subagent_status = additional_kwargs.get("subagent_status")
+    if isinstance(subagent_status, str) and subagent_status.strip() and subagent_status in _SUBAGENT_FAILURE_STATUSES:
+        return "error"
+
+    if isinstance(raw_status, str) and raw_status in _KNOWN_TOOL_STATUSES:
+        return raw_status
+    return "unknown"
+
+
 def _execution_history(turn_messages: list[Any]) -> list[dict[str, Any]]:
     """Shape the turn's tool results the way ``BaseCritic`` subclasses read them."""
     history: list[dict[str, Any]] = []
@@ -124,14 +204,14 @@ def _execution_history(turn_messages: list[Any]) -> list[dict[str, Any]]:
         if not isinstance(message, ToolMessage):
             continue
         text = _content_text(message.content)
-        status = getattr(message, "status", "success")
+        status = _honest_tool_status(message)
         entry: dict[str, Any] = {
             "tool_name": getattr(message, "name", "") or "",
             "status": status,
             "content": text,
             "exit_code": _exit_code(text),
         }
-        if status == "error":
+        if status in {"error", "failed"}:
             entry["error"] = text or "tool call failed"
         history.append(entry)
     return history
@@ -283,26 +363,62 @@ class FinishFirstVerifierMiddleware(AgentMiddleware[AgentState]):
         context = getattr(runtime, "context", None)
         workspace_dir = context.get("workspace_dir") if isinstance(context, dict) else None
 
+        history = _execution_history(turn_messages)
         try:
             result = self.critic_pipeline.evaluate(
                 task_description=task_description,
-                execution_history=_execution_history(turn_messages),
+                execution_history=history,
                 workspace_dir=str(workspace_dir) if workspace_dir else None,
             )
         except Exception:
-            # An added guard must never be able to take down a run.
-            logger.exception("FinishFirstVerifier: critic pipeline raised; accepting completion")
-            return None
+            # A crashing verifier has not verified anything: it must not
+            # approve the claim it failed to check. Withhold approval exactly
+            # like a rejection (same one-retry budget), so a broken guard costs
+            # one model turn and can never take the run down -- but a failed
+            # command still cannot be certified success on its way past.
+            logger.exception("FinishFirstVerifier: critic pipeline raised; withholding completion approval")
+            return self._reject(last_ai, key=key, attempts=attempts, prompt=_CRITIC_UNAVAILABLE_REJECTION)
 
-        if not result.is_rejected:
-            if result.verdict.value == "warning":
-                logger.info("FinishFirstVerifier: completion critic warning: %s", result.reason)
-            return None
+        if result.is_rejected:
+            logger.warning("FinishFirstVerifier: completion rejected: %s", result.reason)
+            return self._reject(last_ai, key=key, attempts=attempts, prompt=result.diagnostic_prompt or result.reason)
 
+        if result.verdict.value == "warning":
+            logger.info("FinishFirstVerifier: completion critic warning: %s", result.reason)
+
+        # Backstop: an approved verdict must still rest on an observable
+        # outcome. The last tool result of the turn either failed or could not
+        # be classified at all -- neither certifies completion, whatever the
+        # pipeline concluded (a custom pipeline may not read the history at all).
+        if history:
+            last_entry = history[-1]
+            if last_entry["status"] in _UNCERTIFIABLE_TOOL_STATUSES:
+                tool_name = last_entry.get("tool_name") or "unknown tool"
+                prompt = (
+                    f"Critic rejection: the most recent action ({tool_name}) reported status "
+                    f"'{last_entry['status']}', so completion cannot be certified. "
+                    "Diagnose the error, repair or re-run that step, and verify it succeeds "
+                    "before declaring completion."
+                )
+                logger.warning(
+                    "FinishFirstVerifier: completion not certified; last tool result status is %s (%s)",
+                    last_entry["status"],
+                    tool_name,
+                )
+                return self._reject(last_ai, key=key, attempts=attempts, prompt=prompt)
+
+        return None
+
+    def _reject(self, last_ai: Any, *, key: tuple[str, str], attempts: int, prompt: str) -> dict[str, Any]:
+        """Withdraw the terminal claim and send the agent back with *prompt*.
+
+        Consumes the per-run retry budget, so every rejection path (critic
+        verdict, crashing critic, uncertifiable last action) shares the same
+        single-retry ceiling.
+        """
         with self._lock:
             self._critic_retries[key] = attempts + 1
-            self._pending_prompts[key] = result.diagnostic_prompt or result.reason
-        logger.warning("FinishFirstVerifier: completion rejected: %s", result.reason)
+            self._pending_prompts[key] = prompt
         return {"messages": [RemoveMessage(id=last_ai.id)], "jump_to": "model"}
 
     def _augment_request(self, request: ModelRequest) -> ModelRequest:

@@ -302,6 +302,54 @@ async def _persist_delivery_receipt(
 
 _DELIVERY_INCOMPLETE_ERROR = "Artifact delivery incomplete: no produced output artifact was presented"
 _DELIVERY_RECEIPT_FAILED_ERROR = "Artifact delivery verification failed: terminal delivery receipt could not be persisted"
+_WORKSPACE_SNAPSHOT_FAILED_ERROR = "Workspace snapshot failed: produced output artifacts could not be verified"
+
+# Stable machine-readable codes for the terminal ``error`` event. Clients and
+# the gateway correlate on these, so -- unlike the human-readable ``error``
+# text -- they never change wording.
+ERROR_CODE_DELIVERY_INCOMPLETE: Final = "delivery_incomplete"
+ERROR_CODE_DELIVERY_RECEIPT_FAILED: Final = "delivery_receipt_failed"
+ERROR_CODE_WORKSPACE_SNAPSHOT_FAILED: Final = "workspace_snapshot_failed"
+ERROR_CODE_MODEL_FAILURE: Final = "model_failure_recovery"
+ERROR_CODE_RUN_EXCEPTION: Final = "unhandled_run_exception"
+ERROR_CODE_ROLLED_BACK: Final = "run_rolled_back"
+ERROR_CODE_RUN_ERROR: Final = "run_error"
+
+
+async def _publish_run_error_event(
+    bridge: Any,
+    *,
+    run_id: str,
+    thread_id: str,
+    code: str,
+    message: str,
+    trace_id: str | None = None,
+    detail: Mapping[str, Any] | None = None,
+) -> None:
+    """Publish the terminal ``error`` event: stable code + correlation ids.
+
+    A run that ends with ``RunStatus.error`` must say so on its own stream
+    before ``publish_end`` closes it. Without this frame a status flip that
+    happens during finalization (delivery gate, receipt write) is invisible to
+    subscribers, which is exactly how a failed run gets read as a silent
+    success. Publishing is best-effort: a bridge outage must not replace the
+    run's own error with a new one.
+    """
+    payload: dict[str, Any] = {
+        "code": code,
+        "message": message,
+        "status": RunStatus.error.value,
+        "run_id": run_id,
+        "thread_id": thread_id,
+        "correlation_id": run_id,
+        "trace_id": trace_id or ensure_trace_id(),
+    }
+    if detail:
+        payload.update(detail)
+    try:
+        await bridge.publish(run_id, "error", payload)
+    except Exception:
+        logger.warning("Run %s: failed to publish terminal error event (code=%s)", run_id, code, exc_info=True)
 
 
 def _empty_delivery_content() -> dict[str, Any]:
@@ -338,6 +386,37 @@ def _delivery_content_with_outputs(
     }
 
 
+def _delivery_content_for_outputs(
+    content: dict[str, Any],
+    produced_paths: list[str] | None,
+) -> dict[str, Any]:
+    """Attach the delivery verdict, or record that it could not be computed.
+
+    ``produced_paths is None`` means the produced-output scan failed or had no
+    baseline to diff (see ``_produced_output_paths``). Writing that into the
+    durable receipt keeps the gap visible to recovery and to clients instead of
+    persisting an empty receipt that reads exactly like "nothing was produced".
+
+    ``satisfied`` is ``None`` -- not ``False`` -- because the scan failing proves
+    nothing about the run: it may have produced artifacts it never presented, or
+    nothing at all. The uncertainty is recorded, not resolved in either
+    direction, so the durable row is never a fabricated pass *or* a fabricated
+    failure. ``source`` reuses the published error code so the receipt and the
+    stream cannot name the same condition differently.
+    """
+    if produced_paths is None:
+        return {
+            **content,
+            "verification": {
+                "source": ERROR_CODE_WORKSPACE_SNAPSHOT_FAILED,
+                "requirement": "produced_output_scan",
+                "satisfied": None,
+            },
+            "stage": "unverified",
+        }
+    return _delivery_content_with_outputs(content, produced_paths)
+
+
 def _delivery_error(content: dict[str, Any]) -> str | None:
     """Return the terminal error when no changed output was presented."""
     if not content.get("produced_paths") or content.get("satisfied") is True:
@@ -369,16 +448,26 @@ async def _produced_output_paths(
     thread_id: str,
     user_id: str | None,
     extra_excluded_dir_names: frozenset[str] | None = None,
-) -> list[str]:
-    """Detect regular output files created or modified by this run."""
+    baseline_required: bool = False,
+) -> list[str] | None:
+    """Detect regular output files created or modified by this run.
+
+    Returns ``None`` when the answer could not be produced: the post-run scan
+    raised, or there is no baseline to diff against while workspace tracking is
+    actually enabled for this run (``baseline_required``). ``None`` means
+    *unverified*, never "no outputs" -- collapsing a failed scan into ``[]``
+    makes the delivery gate pass vacuously and reports a run that really did
+    produce files as a clean success. When no tracking is configured at all
+    (no event store, no baseline), ``[]`` remains the honest answer.
+    """
     if before is None:
-        return []
+        return None if baseline_required else []
     try:
         after = await capture_workspace_snapshot(thread_id, user_id=user_id, include_text=False, extra_excluded_dir_names=extra_excluded_dir_names)
         return get_changed_output_paths(before, after)
     except Exception:
         logger.warning("Could not detect produced output artifacts for run thread %s", thread_id, exc_info=True)
-        return []
+        return None
 
 
 # Keep this streaming policy separate from middleware write-authorization sets.
@@ -807,6 +896,14 @@ async def run_agent(
     snapshot_capture_failed = False
     llm_error_fallback_message: str | None = None
     checkpoint_rollback_completed = False
+    # Bound by ``_bind_trace_id`` once runtime context installation runs; the
+    # initializer keeps early preflight failures correlatable too.
+    agent_workspace_trace_id: str | None = None
+    # Terminal ``error`` events are published at most once per run, the first
+    # (most specific) code wins, and every ``RunStatus.error`` path must reach
+    # one before ``publish_end`` closes the stream.
+    terminal_error_published = False
+    terminal_error_code: str | None = None
     # Message ids checkpointed *before* this run started. The stream loop uses
     # this set to mask out ``agent_workspace_error_fallback`` markers that belong to
     # earlier runs on the same thread — without it, one stale fallback in
@@ -839,6 +936,24 @@ async def run_agent(
     subagent_events: _SubagentEventBuffer | None = None
     started = False
 
+    async def _publish_terminal_error(code: str, message: str, *, detail: Mapping[str, Any] | None = None) -> None:
+        """Emit the run's one terminal ``error`` event (first code wins)."""
+        nonlocal terminal_error_published, terminal_error_code
+        if terminal_error_code is None:
+            terminal_error_code = code
+        if terminal_error_published:
+            return
+        terminal_error_published = True
+        await _publish_run_error_event(
+            bridge,
+            run_id=run_id,
+            thread_id=thread_id,
+            code=code,
+            message=message,
+            trace_id=agent_workspace_trace_id,
+            detail=detail,
+        )
+
     async def _finish_cancellation(
         action: str,
         *,
@@ -853,6 +968,9 @@ async def run_agent(
                 error="Rolled back by user",
                 **terminal_status_kwargs,
             )
+            # The status flip above ends the run as an error; say so on the
+            # stream while it is still open rather than only in durable state.
+            await _publish_terminal_error(ERROR_CODE_ROLLED_BACK, "Rolled back by user")
             if not restore_checkpoint:
                 return
             try:
@@ -1337,6 +1455,12 @@ async def run_agent(
             )
             if cancel_action is not None:
                 await _finish_cancellation(cancel_action)
+            else:
+                await _publish_terminal_error(
+                    ERROR_CODE_MODEL_FAILURE,
+                    error_msg,
+                    detail={"stop_reason": MODEL_FAILURE_RECOVERY_REASON},
+                )
         else:
             runtime_context = runtime.context if isinstance(runtime.context, dict) else None
             # Guard middlewares that hard-stop a run by stripping tool_calls
@@ -1360,11 +1484,23 @@ async def run_agent(
                 user_id=workspace_changes_user_id,
                 extra_excluded_dir_names=workspace_excluded_dir_names,
             )
-            delivery_content = _delivery_content_with_outputs(
+            # ``_delivery_content_for_outputs`` (not the plain outputs helper):
+            # a produced-output scan that could not run must land in the receipt
+            # as ``unverified`` rather than as an empty, passing verdict.
+            delivery_content = _delivery_content_for_outputs(
                 journal.get_delivery_content() if journal is not None else _empty_delivery_content(),
                 produced_output_paths,
             )
             delivery_error = _delivery_error(delivery_content)
+            if produced_output_paths is None and event_store is not None:
+                # The delivery gate below cannot certify anything about produced
+                # artifacts, so say so rather than letting an unverifiable run
+                # look like a verified one.
+                logger.warning(
+                    "Run %s: %s -- produced output artifacts are unverified; the delivery receipt records stage=unverified",
+                    run_id,
+                    _WORKSPACE_SNAPSHOT_FAILED_ERROR,
+                )
             cancel_action = await run_manager.set_status_if_not_cancelled(
                 run_id,
                 RunStatus.error if delivery_error else RunStatus.success,
@@ -1374,6 +1510,14 @@ async def run_agent(
             )
             if cancel_action is not None:
                 await _finish_cancellation(cancel_action)
+            elif delivery_error is not None:
+                # A durable status flip alone is invisible to stream subscribers,
+                # so say it on the stream while the stream is still open.
+                await _publish_terminal_error(
+                    ERROR_CODE_DELIVERY_INCOMPLETE,
+                    delivery_error,
+                    detail={"verification": delivery_content.get("verification")},
+                )
 
     except asyncio.CancelledError:
         await _finish_cancellation(record.abort_action)
@@ -1391,13 +1535,15 @@ async def run_agent(
         if cancel_action is not None:
             await _finish_cancellation(cancel_action)
         else:
-            await bridge.publish(
-                run_id,
-                "error",
-                {
-                    "message": error_msg,
-                    "name": type(exc).__name__,
-                },
+            # Same coded frame as every other terminal error, and routed through
+            # the one-per-run guard: a raw ``{message, name}`` publish had no
+            # code and no correlation ids, so a client could not tell this run
+            # apart from any other failed frame (and a second error frame could
+            # still be published later for the same run).
+            await _publish_terminal_error(
+                ERROR_CODE_RUN_EXCEPTION,
+                error_msg,
+                detail={"name": type(exc).__name__},
             )
 
     finally:
@@ -1469,7 +1615,7 @@ async def run_agent(
                             user_id=workspace_changes_user_id,
                             extra_excluded_dir_names=workspace_excluded_dir_names,
                         )
-                    delivery_content = _delivery_content_with_outputs(journal.get_delivery_content(), produced_output_paths)
+                    delivery_content = _delivery_content_for_outputs(journal.get_delivery_content(), produced_output_paths)
                 receipt_persisted = await _persist_delivery_receipt(
                     event_store,
                     thread_id=thread_id,
@@ -1483,6 +1629,7 @@ async def run_agent(
                         error=_DELIVERY_RECEIPT_FAILED_ERROR,
                         persist=False,
                     )
+                    await _publish_terminal_error(ERROR_CODE_DELIVERY_RECEIPT_FAILED, _DELIVERY_RECEIPT_FAILED_ERROR)
 
             if not record.ownership_lost and journal is not None and persist_completion:
                 try:
@@ -1630,6 +1777,27 @@ async def run_agent(
                     )
             if record.finalizing:
                 await run_manager.set_finalizing(run_id, False)
+
+            # Catch-all for the invariant "every ``RunStatus.error`` run says so
+            # on its own stream": any error path that reached the durable status
+            # without publishing a coded frame is published here, before
+            # ``publish_end`` closes the stream. Without it a new error path is a
+            # silent success by default. ``interrupted`` is deliberately not an
+            # error, and a fenced worker leaves publication to the peer that owns
+            # the run.
+            #
+            # NOTE (cross-workstream): ``StreamBridge.publish_end`` takes only
+            # ``run_id`` and emits no payload, so the terminal status cannot ride
+            # on the ``end`` frame from here. The gateway SSE layer
+            # (``app/gateway/services.py``) must therefore (a) forward this
+            # ``error`` frame verbatim, and (b) put the run's terminal status on
+            # the ``end`` frame it synthesizes, so a client that only looks at
+            # ``end`` cannot read an errored run as success.
+            if not record.ownership_lost and record.status == RunStatus.error and not terminal_error_published:
+                await _publish_terminal_error(
+                    ERROR_CODE_RUN_ERROR,
+                    record.error or "Run ended in an error state",
+                )
 
             await bridge.publish_end(run_id)
 
