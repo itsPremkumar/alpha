@@ -1,3 +1,30 @@
+### Workspace Snapshot Cancellation
+
+`packages/harness/alpha/workspace_changes/recorder.py`: after `_prepare_capture()`
+hands off roots, cancellation must drain text scans (`include_text=True`) before
+removing the cache the worker may still access. Metadata scans
+(`include_text=False`) own no cache: cancel promptly, let the worker continue, and
+consume/log its outcome in a completion callback. Prepare-stage cancellation retains
+its handoff/reclaim path. Regressions in
+`tests/blocking_io/test_workspace_changes_cancellation.py` must cover prompt metadata
+cancellation and text-cache drain/cleanup.
+
+### Gateway Stream Framing Contract
+
+- Gateway streams `write_file` and `str_replace` argument deltas in bounded
+  batches for multi-mode `messages-tuple` consumers; single-mode message
+  consumers retain the original per-chunk contract. Non-message frames flush
+  pending batches, and `values` remains an optional complete-state snapshot
+  rather than a prerequisite for batching.
+- With `stream_subgraphs`, subgraph frames keep their namespace in the SSE event
+  name (`values|<ns>`, LangGraph Platform style) instead of impersonating root
+  frames — a delegated subagent inherits the parent checkpoint namespace, so
+  publishing its `values` snapshot as bare `values` replaces the whole thread
+  view in SDK clients (#4399). Root-only consumers (file-tool chunk batcher,
+  subagent event persistence, LLM error-fallback detection) ignore namespaced
+  frames. The web frontend does not request subgraph streaming; subtask progress
+  rides root-namespace `task_*` custom events.
+
 ### Safe Run Auto-Recovery
 
 Gateway run creation defaults SSE disconnects to `on_disconnect=continue`; the explicit cancel endpoint remains the user stop mechanism. Startup and periodic lease reconciliation still terminalize orphaned active rows as `error/orphan_recovered`, but `app.gateway.run_recovery.SafeRunRecoveryService` then performs a bounded durable scan and creates a new idempotent run from the latest safe checkpoint. Graceful shutdown persists `stop_reason=gateway_shutdown`; provider fallback persists `model_failure`. Recovery lineage is carried in run metadata (`recovery_attempt`, `resumed_from_run_id`, `auto_recovery`) and bounded by `run_ownership.max_resume_attempts` with a deterministic `auto-recovery:<source_run_id>` admission key.

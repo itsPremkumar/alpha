@@ -154,3 +154,40 @@ Every agent invocation passes through a deterministic sequence of middleware lay
 | **7** | `ToolAssemblyMiddleware` | Assembles native tools, MCP server tools, and enabled skills. |
 | **8** | `TrajectoryAuditMiddleware` | Logs every event to the cryptographic flight recorder. |
 | **9** | `RunJournalCallback` | Emits real-time SSE step events to the UI and WebSocket channels. |
+
+---
+
+## 6. Autonomous AI Software Enterprise Platform
+
+`backend/packages/harness/alpha/enterprise/` is the enterprise-level autonomous
+operations platform:
+
+1. **Dynamic Enterprise Hierarchy & C-Suite Swarm**:
+   - 4 leadership roles: Executive Director (CEO), Lead Architect (CTO),
+     Product & Market Strategist (CPO), and Quality & Security Director (CISO).
+   - 5 core departments: Engineering, Architecture, Security, Performance, and
+     Documentation with leader-worker reporting trees and capability contracts
+     (`CapabilityContract`).
+2. **Mission-to-Sprint Pipeline & Dynamic DAG Execution**:
+   - Strategic missions decompose into Epics, Technical Specs with Definition of
+     Done (DoD), and dynamic DAG sprints with topological dependency layers.
+3. **Cross-Department Blackboard & RFC Protocol**:
+   - Formal RFC proposals, multi-agent reviews, and epistemic debate threads with
+     epistemic confidence weighting. Consensus gating enforces quorum and a
+     >= 0.75 score before dynamic execution.
+4. **Department Token Treasury & Fiscal Governance**:
+   - Allocations, rolling burn rate monitoring (TPM), ROI velocity tracking, and
+     automated circuit breakers that throttle rogue or exhausted departments.
+5. **Quality Council Quorum & Cryptographic Multi-Sig Releases**:
+   - 3 required cryptographic attestations (`CTO_ARCH`, `SWE_BENCHMARK`,
+     `CISO_ASTRA`) verifying holdout benchmark pass rate >= 90% and AST boundary
+     isolation before zero-downtime hot-swap promotion.
+6. **Continuous Discovery, Latency Profiling & AST Boundary Scans**:
+   - Integrated into cyclic heartbeats with Keel-style auto-recovery from
+     stagnation.
+7. **Gateway REST API & Next.js War Room UI**:
+   - Mounted at `/api/enterprise/*` and `/api/gateway/enterprise/*`. Visualized in
+     the War Room tab.
+
+Regression coverage:
+`backend/tests/test_enterprise_autonomous_software_company.py`.

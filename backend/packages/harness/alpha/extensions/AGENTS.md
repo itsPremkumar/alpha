@@ -1,3 +1,22 @@
+### `extensions_config.json` Write Discipline
+
+`extensions_config.json` is written at runtime by the Gateway (`PUT`/`PATCH
+/api/mcp/config`, the MCP enable switch, skill updates), so production compose
+mounts it read-write while `config.yaml` stays `:ro`; Helm copies its ConfigMap
+seed into a writable home-volume directory before Gateway starts. Every
+read-modify-write holds both `extensions_config_write_lock` and the sidecar
+advisory `extensions_config_file_lock` — the process-local lock alone loses
+updates across workers. Docker mounts that file as its own mount point and Linux
+refuses `rename()` over a mount point (`EBUSY`) even when it is writable, so
+`atomic_write_extensions_config` keeps temp-file+rename and falls back to an
+in-place overwrite **only** on `EBUSY`; that fallback is deliberately
+non-atomic (a crash mid-write truncates the file) and exists because the
+alternative can never succeed. It is logged at warning level once per target;
+any other `errno` propagates. Pinned by
+`tests/test_compose_extensions_config_writable.py`,
+`tests/test_extensions_config_atomic_write.py` and
+`tests/test_helm_extensions_config_writable.py`.
+
 ### Python Extension System (Runtime and Distribution)
 
 Third-party Python packages can expose an `install(registry, config)` function and be

@@ -101,43 +101,50 @@ NEXT_PUBLIC_APP_URL="https://your-domain.com"
 ```
 
 #### Optional .env Variables
+Only the variables the stack actually reads are listed. Verified against
+`docker/docker-compose.yaml` (the `${...}` references), `.env.example`,
+`backend/app/gateway/config.py`, `backend/app/gateway/deps.py` and the
+`os.environ` reads in `backend/packages/harness/alpha/`.
+
 ```bash
-# Nginx
-BIND_HOST="0.0.0.0"  # Or specific IP
+# Nginx / published port
+BIND_HOST="0.0.0.0"          # defaults to 127.0.0.1 (loopback only)
 PORT="2026"
 
 # Gateway
+GATEWAY_HOST="0.0.0.0"
 GATEWAY_PORT="8001"
-GATEWAY_WORKERS="4"
+GATEWAY_WORKERS="4"          # >1 requires database.backend=postgres, run_events.backend=db
 
-# Frontend
-FRONTEND_PORT="3000"
+# Frontend -> Gateway (SSR + /api rewrites; docker-compose already sets these)
+AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL="http://gateway:8001"
+NEXT_PUBLIC_GATEWAY_URL="http://localhost:2026"
 
-# Provisioner (if using K8s sandbox)
-PROVISIONER_ENABLED="false"
-PROVISIONER_PORT="8002"
+# Browser CORS allowlist for split-origin deployments (exact origins)
+GATEWAY_CORS_ORIGINS="http://localhost:3000,http://127.0.0.1:3000"
+AGENT_WORKSPACE_TRUSTED_ORIGINS="http://localhost:3000,http://localhost:2026"
 
-# Database
-POSTGRES_PASSWORD="secure-password"
-POSTGRES_USER="alpha"
-POSTGRES_DB="alpha"
+# Database / Redis: one URL each, not discrete POSTGRES_*/REDIS_PASSWORD keys
+DATABASE_URL="postgresql://alpha:password@postgres:5432/alpha"
+REDIS_URL="redis://redis:6379/0"
 
-# Redis
-REDIS_PASSWORD="secure-password"
+# Sandbox: provider, image and limits live in config.yaml `sandbox:`
+# (cpu_cores, memory_mb, ...) or in AGENT_WORKSPACE_SANDBOX_* env overrides.
+# There are no SANDBOX_MODE / SANDBOX_DOCKER_IMAGE / SANDBOX_CPU_LIMIT /
+# SANDBOX_MEMORY_LIMIT variables. Provisioner mode instead needs:
+# PROVISIONER_API_KEY="..."
 
-# Sandbox
-SANDBOX_MODE="docker"  # local, docker, provisioner
-SANDBOX_DOCKER_IMAGE="ghcr.io/itsPremkumar/alpha-sandbox:latest"
-SANDBOX_CPU_LIMIT="2.0"
-SANDBOX_MEMORY_LIMIT="4g"
-
-# Logging
-LOG_LEVEL="INFO"
-
-# Rate Limiting
-RATE_LIMIT_ENABLED="true"
-RATE_LIMIT_RPM="300"
+# Log level is a config.yaml key (`log_level: info`), not a LOG_LEVEL env var.
 ```
+
+There is no `FRONTEND_PORT`, `PROVISIONER_ENABLED`, `PROVISIONER_PORT`,
+`POSTGRES_PASSWORD`, `POSTGRES_USER`, `POSTGRES_DB`, `REDIS_PASSWORD`,
+`SANDBOX_MODE`, `SANDBOX_DOCKER_IMAGE`, `SANDBOX_CPU_LIMIT`,
+`SANDBOX_MEMORY_LIMIT`, `LOG_LEVEL`, `RATE_LIMIT_ENABLED` or `RATE_LIMIT_RPM`
+variable: nothing in this repository reads any of them, and the Gateway ships no
+rate-limiting middleware. The frontend port is fixed in `frontend/package.json`
+(`next dev -p 3000` / `next start -p 3000`) and is what nginx proxies to
+(`$frontend_upstream frontend:3000`).
 
 ### Docker Compose Files
 

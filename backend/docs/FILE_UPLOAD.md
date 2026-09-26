@@ -276,3 +276,29 @@ backend/.agent-workspace/threads/
 2. Verify `thread_id` matches across requests.
 3. Confirm file exists in `backend/.agent-workspace/threads/{thread_id}/user-data/uploads/`.
 4. For non-local sandboxes, ensure upload route completes sandbox synchronization without errors.
+
+---
+
+## Agent-facing upload contract
+
+- `POST /api/threads/{thread_id}/uploads` accepts PDF, PPT, Excel, and Word
+  (converted via `markitdown`); directories are rejected before copying so uploads
+  stay all-or-nothing, one conversion worker serves a request called from an active
+  event loop, and duplicate filenames in one request get `_N` suffixes.
+- Files land in thread-isolated directories under the resolving user's bucket
+  (`users/{user_id}/threads/{thread_id}/user-data/uploads`); IM channels thread the
+  owner explicitly via the `user_id=` kwarg and HTTP/embedded callers resolve it from
+  `get_effective_user_id()`.
+- HTTP uploads stage bytes as `.upload-*.part` files and atomically replace the
+  destination only after size validation; staging files are hidden from listings,
+  agent upload context and sandbox search tools, and swept at startup after a hard
+  crash.
+- Upload/list/delete offload filesystem work through
+  `alpha.utils.file_io.run_file_io` (a ContextVar-preserving executor).
+  Non-mounted sandbox uploads acquire via `SandboxProvider.acquire_async()` and
+  offload `read_bytes()` + `sandbox.update_file()` together; mounted uploads skip
+  acquire/sync, and AIO remote/provisioner needs an accurate
+  `sandbox.thread_data_mounts: true`.
+- `UploadsMiddleware` caps outline titles at 200 characters and previews at 2000
+  including markers. Titles use `original_user_content`, not upload-prefixed content;
+  attachment-only titles use a sanitized, bounded filename or count.

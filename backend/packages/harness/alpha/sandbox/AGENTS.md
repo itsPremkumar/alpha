@@ -1,5 +1,43 @@
 ### Sandbox System (`packages/harness/alpha/sandbox/`)
 
+### AIO Restricted-Egress Network Policy
+
+Restricted AIO keeps sandboxes internal; a per-sandbox, ICC-disabled sidecar
+handles egress and its token-authenticated API relay. Parse headers strictly;
+reject policy-denied names before DNS and try all validated answers. Claim the
+oldest unsurfaced denial; subagent/non-interactive runs drain and deny. Approvals
+never replay tools; policy labels fence reuse. CONNECT/SNI cannot inspect encrypted
+authority. Discovery and enumeration are read-only, including on a policy or
+network-mode mismatch; only the provider may replace it after the orphan grace,
+local teardown reservation, and cross-instance teardown lease. Destroy the sandbox,
+sidecar, and both networks together.
+
+### E2B Host-Mount Upload Pass
+
+E2B uploads host mounts during sandbox creation using binary file objects. Per-mount
+limits are 100 MiB/file, 512 MiB total, and 2,000 files, and the full creation pass
+shares a 512 MiB / 2,000-file budget across skill projections and mounts. A
+cooperative `mount_upload_deadline_seconds` (default 120) is checked before each
+mount, during directory preflight, and before each SDK write, but never interrupts
+an active filesystem or E2B SDK call. Mount limits are checked before upload and
+each opened descriptor is rechecked against its preflight size before SDK upload; an
+invalid mount does not block later mounts. Each successful upload logs source,
+destination, file count, byte count, and elapsed time; a stopped pass logs its limit
+reason and elapsed time and reports attempted and completed totals separately.
+
+For policy-scoped turns, clearing the four managed remote skill categories and
+uploading their prepared projection is one per-user/thread/skills-root critical
+section shared with acquire and release. The provider snapshots that canonical root
+at startup and carries it through warm-pool identity and E2B metadata, so a VM from
+another root is never adopted and a second policy sync cannot reset the remote tree
+until the first upload pass has completed.
+
+After creation, `E2BSandbox.mount_upload_result` holds a `MountUploadResult`.
+`result.truncated` is true only for resource-limit stops (deadline, file count,
+bytes), not logged mount failures (missing paths, SDK errors). A provider-level map
+preserves creation results within the Gateway process; `None` on a reclaimed sandbox
+means unavailable.
+
 **Interface**: `Sandbox`: `execute_command(command, env=None)`, additive `execute_command_in_scope(..., scope_id=...)` / `release_command_scope(scope_id)`, `read_file`, `write_file`, `list_dir`, `glob`, `grep`. Scoped hooks default to pass-through without server-side sessions, preserving third-party subclasses. `grep` accepts a text file or directory tree. Per-call `env` injects secrets: `LocalSandbox` merges into the subprocess environment; `AioSandbox` uses fresh `bash.exec(env=...)` sessions. `list_dir`: missing path → `FileNotFoundError`; command/client failure → `OSError`, never `[]` (`ls_tool`: `(empty)`). Remote `glob`/`grep` share it via `sandbox/remote_search.py`: missing root → `FileNotFoundError`, failed search → `OSError`; only a genuine no-match returns `[]`. Remotes use `sandbox/remote_list_dir.py`: capture `find`'s status, not `| head`'s (`sh -lc` lacks `pipefail`); missing binary → `OSError`; truncation SIGPIPE → success.
 **Provider Pattern**: `SandboxProvider` exposes `acquire`, `acquire_async`, `get`, `release`. Async agent/tool paths use async hooks to keep Docker creation, discovery, cross-process locking, readiness polling, and release off-loop. Set `supports_agent_skill_isolation=True` only when the whole tool surface enforces explicit lead Agent policy: bind mounts use prepared thread roots; upload providers implement `sync_agent_skills`. Host-backed providers report false if an enabled shell bypasses path mappings. Under explicit policy, middleware rejects unsupported providers before acquire.
 **Shared components** (RFC #4741): remote IDs use `derive_sandbox_scope_token` (`sandbox/identity.py`); preserve its keyword-only SHA-256/16-hex contract to avoid orphaning containers. `AcquireSerializer` (`sandbox/acquire_serialization.py`) serializes selected acquire/release transitions with a bounded, refcounted per-key `threading.Lock` table and dedicated bounded executor (no event-loop/default-executor blocking). Workers own cancellation cleanup without waiting for cancelled tasks to resume; provider `shutdown()`/`reset()` calls idempotent `close()`. Keys: AIO `(user_id, thread_id)`, E2B `(user_id, thread_id, skills_root)`, BoxLite/Tenki/OpenSandbox derived id. Random-UUID `thread_id=None` acquires bypass serialization.

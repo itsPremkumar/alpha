@@ -628,22 +628,26 @@ curl /api/memory/stats
 ## Migration
 
 ### Provider Migration
+
+There is no `scripts/memory_export.py` or `scripts/memory_import.py` in this
+repository — no automated provider-to-provider memory transfer ships. Switch the
+backend in `config.yaml` and let the subsystem read the configured store; see
+[MEMORY.md](MEMORY.md) backend sections and `MEMORY_FABRIC_PLAN.md` for which
+providers are wired.
+
 ```bash
-# 1. Export from old provider
-python scripts/memory_export.py --provider sqlite --output backup.json
-
-# 2. Configure new provider in config.yaml
-# 3. Import to new provider
-python scripts/memory_import.py --provider pgvector --input backup.json
-
-# 4. Verify
+# 1. Configure the new provider in config.yaml (memory.backend)
+# 2. Restart the Gateway
+# 3. Verify
 curl /api/memory/stats
 ```
 
 ### Schema Updates
 ```bash
-# Run migrations
-cd backend && make migrate-upgrade
+# There is no `make migrate-upgrade`. The Gateway runs `alembic upgrade head`
+# automatically at startup via `bootstrap_schema`, so upgrades need no operator
+# command. To AUTHOR a new revision after changing the ORM models:
+cd backend && make migrate-rev MSG="add foo column to runs"
 
 # Cognitive memory: manual (atomic snapshots)
 # Knowledge graph: Cypher migrations

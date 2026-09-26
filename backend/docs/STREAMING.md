@@ -298,3 +298,125 @@ Observations:
 | Channel streaming accumulation | `app/channels/manager.py::_merge_stream_text` |
 | Frontend supported stream modes | `frontend/src/core/api/stream-mode.ts` |
 | Streaming regression tests | `backend/tests/test_client.py::TestStream::test_messages_mode_emits_token_deltas` |
+
+## Embedded Client ↔ Gateway Method Parity
+
+`AgentWorkspaceClient` is the in-process replacement for the Gateway API. The
+client methods below are the exact Gateway equivalents of the REST surface
+consumed by the UI and IM channels.
+
+| Category | Methods | Return format |
+|----------|---------|---------------|
+| Models | `list_models()`, `get_model(name)` | `{"models": [...]}`, `{name, display_name, ...}` |
+| MCP | `get_mcp_config()`, `update_mcp_config(servers)` | `{"mcp_servers": {...}}` |
+| Skills | `list_skills()`, `get_skill(name)`, `update_skill(name, enabled)`, `install_skill(path)` | `{"skills": [...]}` |
+| Goals | `get_goal(thread_id)`, `set_goal(thread_id, objective, max_continuations=8)`, `clear_goal(thread_id)` | `{"goal": {...}}` or `{"goal": None}` |
+| Memory | `get_memory()`, `reload_memory()`, `get_memory_config()`, `get_memory_status()` | dict |
+| Uploads | `upload_files(thread_id, files)`, `list_uploads(thread_id)`, `delete_upload(thread_id, filename)` | `{"success": true, "files": [...]}`, `{"files": [...], "count": N}` |
+| Artifacts | `get_artifact(thread_id, path)` → `(bytes, mime_type)` | tuple |
+
+Gateway differences: upload takes a local `Path`, not `UploadFile`, rejects
+directories before copying, and reuses one conversion worker inside an active
+event loop. Artifacts return `(bytes, mime_type)`, not an HTTP Response. Gateway
+alone deletes `.agent-workspace/threads/{thread_id}` after LangGraph thread
+deletion; the client has no equivalent. `update_mcp_config()` and
+`update_skill()` invalidate the cached agent.
+
+## Embedded Client `stream()` Event Contract
+
+`AgentWorkspaceClient.stream()` subscribes to LangGraph
+`stream_mode=["values", "messages", "custom"]` and yields `StreamEvent`.
+
+- `"values"` — state snapshot (title, messages, artifacts, `summary_text`);
+  `summary_text` is the current summary or `None` when absent and is forwarded on
+  every snapshot, including unchanged summaries and resets. AI text already
+  delivered via `messages` mode is **not** re-synthesized here, so clients never
+  see a duplicate delivery; serialized `ToolMessage` entries preserve a
+  non-`None` native `artifact`.
+- `"messages-tuple"` — per-chunk update: for AI text this is a **delta** (concat
+  per `id` to rebuild the full message); tool calls and tool results are emitted
+  once each, and tool results preserve a non-`None` native `artifact`.
+- `"custom"` — forwarded from `StreamWriter`; Alpha-built-in custom events are
+  dual-emitted through `alpha.utils.custom_events`, so `astream_events(version="v2")`
+  consumers also receive one `on_custom_event` with `name=payload["type"]` and the
+  unchanged payload as `data`.
+- `"end"` — stream finished (carrying cumulative `usage` counted once per message
+  id).
+
+**Custom-event invariant** — production Alpha emitters must use `emit_custom_event` /
+`aemit_custom_event`, not call `StreamWriter` alone. Every built-in payload must
+carry a non-empty string `type`; typeless payloads remain writer-only and are
+intentionally absent from `astream_events`. The writer runs first and remains
+authoritative for Gateway, Web UI, and embedded-client compatibility; callback
+dispatch is best-effort and must not break that path. Async graph hooks must await
+the async helper rather than invoking synchronous dispatch on a running event loop.
+
+`stream()` binds one trace scope per `next()` step and around `inner.close()`,
+never across a `yield`: a sync generator shares the caller's context, so a scope
+held across yields would leak the id and break on cross-context GC finalization.
+See "Request Trace Context" below.
+
+## Request Trace Context (`packages/harness/alpha/trace_context.py`)
+
+Alpha's request-level correlation id — the `X-Trace-Id` header and the
+`agent_workspace_trace_id` key. Not Langfuse's trace id, not `run_id`, not the
+short subagent `trace_id` log label.
+
+**The ContextVar is the only source.** Every path that reaches a run binds one
+first; downstream treats the id as a plain `str`, with no `if trace_id:` guards.
+
+Entry points and binders: Gateway HTTP — `TraceMiddleware`; scheduled occurrence —
+`ScheduledTaskService._attempt_queued_run` → `launch_scheduled_thread_run`; MCP task
+notification — `launch_mcp_task_notification_run`; IM inbound —
+`ChannelManager._worker_loop`; embedded / TUI / CLI turn —
+`AgentWorkspaceClient.stream()`.
+
+Only the first is HTTP; the rest run outside ASGI, so the binding cannot live in
+middleware alone. Each scopes **one unit of work**, never a poller loop — a leaked
+binding on a reused worker task would tag later occurrences with the first id.
+`ensure_trace_context` inherits, keeping layered scheduled bindings and a manual
+trigger inside a Gateway request on one trace.
+
+**Every other carrier is a derived output, never read back as an input.**
+`worker._bind_trace_id` stamps the runtime context and `config["metadata"]`;
+`services.start_run` stamps the run record; a caller-sent
+`agent_workspace_trace_id` (`body.metadata`, `body.config.context`) is replaced —
+honouring it would let the persisted run disagree with the header and the logs.
+`_SERVER_OWNED_RUNTIME_CONTEXT_KEYS` covers the embedded path and also rejects
+caller-supplied sandbox lease/scope identities, `redact_config_secrets` scrubs the
+kwargs echo (`runs.kwargs_json`), and `build_run_config` merges metadata onto a copy
+so the stamp cannot reach `body.config`. Callers pin an id with `X-Trace-Id`.
+
+Accepted divergence: a crash-recovered scheduled launch reuses its run via the
+idempotency key without restamping — the record keeps the first attempt's id, the
+retry's logs a fresh one; restamping would rewrite an existing record. Not a bug.
+Thread metadata omits the key entirely — a thread spans many runs.
+
+**Do not open-code fallback chains.** Two helpers own the resolution order:
+
+- `resolve_trace_id(*carriers)` — first usable carrier, else ambient. For ids
+  travelling as data in `runtime.context`; ContextVars do not survive a bare thread
+  hop.
+- `ensure_trace_context(trace_id)` — reuse the surrounding scope, else start a
+  self-contained one. For boundary crossings (`SubagentExecutor._aexecute`, the
+  memory `trace_context_manager` hook) and non-HTTP entry points; no argument mints
+  a scoped id.
+
+`request_trace_context` (HTTP) deliberately does **not** inherit: a crafted header
+must not fall back to the previous request's id.
+
+`get_current_trace_id()` stays nullable only for the logging filter (pre-entry-point
+records render as `trace_id=-`); everything else uses
+`ensure_trace_id()`/`resolve_trace_id()`.
+
+`logging.enhance.enabled` gates **log output only** (`trace_id` field presence and
+format) — not the id, the header, or the run metadata — so `TraceMiddleware` reads
+no `AppConfig`; `logging` stays restart-required
+(`STARTUP_ONLY_FIELDS["logging"]`). `X-Trace-Id` is in `CORS_EXPOSED_HEADERS` (not
+safelisted). Unhandled-exception 500s keep the header — `TraceMiddleware` sends its
+own plain 500 (CORS-opaque, see its docstring) before re-raising; mid-stream
+failures propagate unchanged.
+
+Tests: the `tests/test_trace_*` and `tests/test_worker_trace_binding.py` suites,
+`test_gateway_services.py`, `test_run_metadata_secret_safety.py`, plus the
+Langfuse suites in `tracing/AGENTS.md`.

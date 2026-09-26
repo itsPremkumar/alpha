@@ -142,19 +142,17 @@ channels:
     client_secret: string
 
 # Tracing
-tracing:
-  langsmith:
-    enabled: boolean
-    api_key: string
-    project: string
-  langfuse:
-    enabled: boolean
-    public_key: string
-    secret_key: string
-    host: string
-  monocle:
-    enabled: boolean
-    api_key: string
+# NOT a config.yaml section. There is no `tracing:` key in AppConfig and none
+# in config.example.yaml - TracingConfig is built entirely from environment
+# variables by alpha/config/tracing_config.py. See "Optional: Tracing" below.
+#
+#   tracing.langsmith : LANGSMITH_TRACING, LANGSMITH_API_KEY, LANGSMITH_PROJECT,
+#                       LANGSMITH_ENDPOINT
+#   tracing.langfuse  : LANGFUSE_TRACING, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY,
+#                       LANGFUSE_BASE_URL
+#   tracing.monocle   : MONOCLE_TRACING, MONOCLE_EXPORTERS, OKAHU_API_KEY
+#                       (field is `exporters` / `okahu_api_key`; there is no
+#                       `api_key` and no MONOCLE_API_KEY)
 
 # Token Budgets
 token_budget:
@@ -265,25 +263,51 @@ REDIS_URL="redis://localhost:6379/0"
 # Model API Keys (at least one required)
 OPENAI_API_KEY="sk-..."
 ANTHROPIC_API_KEY="sk-ant-..."
-GOOGLE_API_KEY="..."
+GEMINI_API_KEY="..."
 DEEPSEEK_API_KEY="..."
 MOONSHOT_API_KEY="..."
 MINIMAX_API_KEY="..."
 OPENROUTER_API_KEY="sk-or-..."
 
-# Optional: Local models
-OLLAMA_BASE_URL="http://localhost:11434"
-VLLM_BASE_URL="http://localhost:8000/v1"
+# Optional: self-hosted OpenAI-compatible endpoints are NOT env vars.
+# Ollama / vLLM are configured per model in config.yaml with `use:` + `base_url:`
+#   - name: "qwen3-32b"
+#     use: "langchain_ollama:ChatOllama"
+#     base_url: "http://localhost:11434"   # no /v1 suffix - native /api/chat
+# (see config.example.yaml). The only Ollama env var the backend reads is
+# OLLAMA_BASE_URL, and it belongs to the mem0oss memory backend, not to a
+# chat-model provider.
 ```
 
 ### Optional: Tracing
+
+Every provider is off unless its own enable flag is set, so setting only the
+keys below does nothing: `enabled` comes from `LANGSMITH_TRACING` /
+`LANGFUSE_TRACING` / `MONOCLE_TRACING`, never from the presence of a key. A
+provider that is flagged on without complete credentials raises
+`ValueError` from `validate_enabled_tracing_providers()` — but note that is
+called from `alpha/tracing/factory.py:39` (`build_tracing_callbacks`), i.e. on
+the per-run callback path, **not** during Gateway lifespan startup.
+
 ```bash
+# LangSmith
+LANGSMITH_TRACING=true
 LANGSMITH_API_KEY="lsv2_..."
 LANGSMITH_PROJECT="alpha"
+LANGSMITH_ENDPOINT="https://api.smith.langchain.com"
+
+# Langfuse  (the host var is LANGFUSE_BASE_URL, not LANGFUSE_HOST)
+LANGFUSE_TRACING=true
 LANGFUSE_PUBLIC_KEY="pk-lf-..."
 LANGFUSE_SECRET_KEY="sk-lf-..."
-LANGFUSE_HOST="https://cloud.langfuse.com"
-MONOCLE_API_KEY="..."
+LANGFUSE_BASE_URL="https://cloud.langfuse.com"
+
+# Monocle (OTel). Exporters: file, console, okahu, s3, blob, gcs.
+MONOCLE_TRACING=true
+MONOCLE_EXPORTERS="file"
+# Only the `okahu` exporter needs a key, and it reads OKAHU_API_KEY -
+# there is no MONOCLE_API_KEY.
+# OKAHU_API_KEY="..."
 ```
 
 ### Optional: IM Channels

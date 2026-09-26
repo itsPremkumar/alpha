@@ -102,36 +102,35 @@ skill-name/
 ```
 
 ### SKILL.md Manifest
+`name` and `description` are the only required keys. The validator
+(`alpha/skills/validation.py:42` via
+`alpha.skills.frontmatter.ALLOWED_FRONTMATTER_PROPERTIES`) **rejects any key
+outside this closed set**, so a manifest carrying anything else fails to load:
+
+`name`, `description`, `license`, `allowed-tools`, `argument-hint`,
+`required-secrets`, `secrets-autonomous`, `metadata`, `compatibility`,
+`version`, `author`
+
 ```markdown
 ---
 name: skill-name
-version: 1.0.0
 description: Brief description of what this skill does
+version: 1.0.0
 author: Author Name
 license: MIT
-tags: [tag1, tag2, category]
-requires: []                    # Other skill IDs required
-conflicts: []                   # Skill IDs that conflict
-min_agent_version: "2.0.0"     # Minimum agent version
-max_agent_version: ""           # Maximum (empty = no limit)
-python_version: ">=3.12"        # Python version requirement
-entry_point: "main:SkillClass"  # Module:Class for loading
-config_schema:                  # Configuration schema (JSON Schema)
-  type: object
-  properties:
-    api_key:
-      type: string
-      description: "API key for external service"
-    timeout:
-      type: integer
-      default: 30
-      description: "Request timeout in seconds"
-permissions:                    # Required permissions
-  - network: https://api.example.com
-  - filesystem: read
-  - filesystem: write
-  - subprocess: python
+allowed-tools: [tool_name]        # Restrict the tool surface for this skill
+required-secrets: [API_KEY]       # Secrets the skill needs; see required-secrets below
+metadata:                        # Free-form operator metadata
+  category: research
 ---
+```
+
+There is no `tags`, `requires`, `conflicts`, `min_agent_version`,
+`max_agent_version`, `python_version`, `entry_point`, `config_schema` or
+`permissions` key. Dependencies, permissions and per-skill configuration are
+declared through the mechanisms documented below (`required-secrets`,
+`allowed-tools`, and `config.yaml` / `extensions_config.json` per-skill
+`config`), not through frontmatter.
 
 # Skill Name
 
@@ -174,7 +173,6 @@ Provide usage examples.
 
 ### 1.0.0 (2026-09-17)
 - Initial release
-```
 
 ### Main Entry Point (main.py)
 ```python
@@ -507,7 +505,7 @@ Agent: Skill saved to skills/custom/stock-price. You can now use @stock_price in
     "config": {
       "web-search": {
         "provider": "brave",
-        "api_key": "${BRAVE_API_KEY}"
+        "api_key": "${BRAVE_SEARCH_API_KEY}"
       },
       "my-custom-skill": {
         "api_key": "${MY_API_KEY}",
@@ -557,7 +555,7 @@ cd backend && python -m alpha.skills.benchmark my-skill
 | Tool not found | Not registered | Check @tool decorator, entry point |
 | Config error | Missing required config | Add to extensions_config.json |
 | Dependency conflict | Version mismatch | Pin versions in requirements.txt |
-| Permission denied | Missing permissions | Add to SKILL.md permissions |
+| Permission denied | Missing permissions | Grant via the `allowed-tools` list / `config.yaml` policy — there is no `permissions` frontmatter key |
 | Timeout | Slow external API | Increase timeout, add caching |
 
 ### Debug Commands
@@ -613,10 +611,34 @@ docker compose logs gateway | grep "my-skill"
 ### From v1 to v2
 - Entry point changed from `skill.py` to `main.py`
 - `@tool` decorator now requires type hints
-- Config schema moved to SKILL.md
-- Permissions field added
+- Per-skill config moved **out** of SKILL.md frontmatter into `config.yaml` /
+  `extensions_config.json` — there is no `config_schema` frontmatter key
+- Permissions are expressed by the `allowed-tools` frontmatter list and the
+  `config.yaml` skill policy, not by a `permissions` frontmatter key
 
 ### Breaking Changes
-- Check `max_agent_version` in manifest
-- Test with `make test-skills`
-- Review migration guide in CHANGELOG.md
+- Review the migration guide in CHANGELOG.md
+- Re-validate the edited `SKILL.md` — a key outside the allowed set above is
+  rejected, so a manifest copied from an older layout stops loading:
+  `cd backend && python -m pytest tests/test_skills_validation.py -q`
+
+---
+
+## Skill Quality Review and CI Waivers
+
+`skills/public/skill-reviewer/` is the built-in read-only skill quality reviewer.
+It uses the harness-layer `review_skill_package` tool and contracts in
+`contracts/skill_review/`. Model-visible review data is compact and
+tag-neutralized; full raw payloads stay in tool artifacts. See
+`backend/AGENTS.md` for the non-activation, SkillScan, and `skill-creator`
+ownership boundaries.
+
+CI waivers live in `.github/skill-review-waivers.v1.json` and are enforced by
+`scripts/review_changed_public_skills.py`. Pull requests may validate waiver edits
+from their head revision, but only the manifest from the trusted base revision
+can suppress that run. Entries match one error finding exactly, include the
+reviewed file's SHA-256 and an expiry date, remain visible in CI output, and can
+never waive blocker findings. An entry may also preapprove future full-file
+SHA-256 values, effective only once the manifest change lands in the trusted base
+— so relying on a waiver takes two merges: the manifest first, the skill change
+after, then promote the consumed hash to `file_sha256` in a follow-up cleanup.

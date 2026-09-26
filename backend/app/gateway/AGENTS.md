@@ -186,41 +186,24 @@ access state and blocked-permission/device errors remain visible and honest. The
 shell must explicitly grant microphone-only capture to the exact local Alpha origin and
 deny camera or mixed audio/video requests through both permission request/check handlers.
 
-Runtime speech models are process-cached and bounded. `faster-whisper` and Piper assets live
-under `Paths`/`runtime_home()`'s `voice/models` tree, are installed by `make voice-setup`,
-and are never downloaded implicitly by a request. Client TTS input is a safe voice ID, never
+`alpha.multimodal.chain` remains the single T1→T2→T3 capability seam. Runtime speech models
+are process-cached and bounded: `faster-whisper` and Piper assets live under
+`Paths`/`runtime_home()`'s `voice/models` tree, are installed by `make voice-setup`, and
+are never downloaded implicitly by a request. Client TTS input is a safe voice ID, never
 an arbitrary model path. `voice.enabled=false`, WebSocket authentication/origin checks,
 `runs:create`, session/frame/utterance limits, and stale-partial suppression apply to every
-speech operation including direct PTT transcription.
+speech operation including direct PTT transcription; PTT, wake-word, and real-time
+conversation may share the socket only through explicit state transitions.
 
 The public nginx configurations must forward Upgrade/Connection for
 `/api/multimodal/voice` before their generic `/api/` locations. Frontend tests must pin
 single-microphone ownership, interim/final protocol handling, automatic submission through
 `sendMessage`, sentence-level speech queueing, per-message/manual playback sharing that
-same queue, cancellation, and resume-after-playback.
-Backend tests pin local-only tier enforcement, model cache reuse, endpointing, authorization,
-and bounds. Setup and operations are documented in `docs/VOICE_CONVERSATION.md`.
-
-## Local real-time voice ownership
-
-`alpha.multimodal.chain` remains the single T1→T2→T3 capability seam, but
-`voice.routing.mode: local_only` is the safe default for TTS/STT: remote configured
-models and keyless/network speech providers are recorded as policy skips and cannot
-preempt local faster-whisper/Piper. Browser microphone/playback state stays in the
-frontend; the Gateway WebSocket owns bounded PCM/VAD/interim-transcript state; final
-transcripts still enter the existing thread-run/SSE lifecycle. The frontend document allows
-`microphone=(self)`, and an explicit user gesture primes the shared Web Audio speaker before
-automatic local TTS. Do not multiplex chat graph events and audio into one transport.
-
-Local speech model construction is process-cached and bounded. Runtime assets resolve under
-`runtime_home()/voice/models`, `local_files_only` is the default, and `make voice-setup`
-is the only implicit-model-download entry point. Client TTS values are safe voice IDs, not
-paths. Every WebSocket speech operation requires authentication, same-origin validation,
-`runs:create`, and the configured frame/session/utterance bounds. PTT, wake-word, and
-real-time conversation may share the socket only through explicit state transitions.
-Tests: `test_multimodal_chain.py`, `test_multimodal_router.py`,
-`test_multimodal_realtime.py`, local speech runtime tests, and
-`test_setup_voice_models.py`. Operations: `docs/VOICE_CONVERSATION.md`.
+same queue, cancellation, and resume-after-playback. Backend tests pin local-only tier
+enforcement, model cache reuse, endpointing, authorization, and bounds. Setup and
+operations are documented in `docs/VOICE_CONVERSATION.md`; tests are
+`test_multimodal_chain.py`, `test_multimodal_router.py`, `test_multimodal_realtime.py`,
+the local speech runtime tests, and `test_setup_voice_models.py`.
 
 ## Alpha peer-network routes
 
@@ -234,4 +217,4 @@ Discovery and GitHub cards are untrusted metadata; pairing and delivery are
 separate states. Tests: `tests/test_peer_network.py`,
 `tests/test_auth_middleware.py`, `tests/test_csrf_middleware.py`, and
 `tests/test_gateway_lifespan_shutdown.py`. Operations:
-`docs/ALPHA_PEER_NETWORK.md`. Operations: `docs/VOICE_CONVERSATION.md`.
+`docs/ALPHA_PEER_NETWORK.md`.

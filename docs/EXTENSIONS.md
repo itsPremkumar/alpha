@@ -317,114 +317,58 @@ plugins:
 
 ## Extension API Reference
 
-### ExtensionManifest Base Class
+### Extension entry schema
+There is no `ExtensionManifest` base class. An extension is declared as one entry
+of the `plugins:` list in `config.yaml`, validated against `ExtensionSpec`
+(`alpha/extensions/loader.py:27`), which is `extra="forbid"` — **an unknown key
+is a hard validation error, not a warning**. The complete field set is:
+
 ```python
-class ExtensionManifest:
-    name: str                    # Unique identifier
-    version: str                 # Semantic version
-    description: str             # Human-readable description
-    author: str                  # Author name
-    config_schema: dict          # JSON Schema for config
-    middleware: list[str]        # Import paths to Middleware classes
-    task_lifecycle: list[str]    # Import paths to TaskLifecycleHook classes
-    system_model_observers: list[str]  # Import paths to Observer classes
-    gateway_services: list[str]  # Import paths to GatewayService classes
-    routers: list[str]           # Import paths to RouterContribution classes
-    depends_on: list[str]        # Extension dependencies
-    min_agent_version: str       # Minimum agent version
-    max_agent_version: str       # Maximum agent version (optional)
+class ExtensionSpec(BaseModel):        # alpha/extensions/loader.py:27
+    enabled: bool = True               # false ⇒ skipped without resolving/importing
+    name: str | None = None            # stable operator-facing name
+    package: str | None = None         # installed distribution name
+    use: str                           # REQUIRED entry point, e.g. "my_extension:install"
+    config: dict[str, Any] = {}        # passed to install() verbatim ($VAR expanded)
+    required: bool = False             # true ⇒ a load failure aborts startup
+    table_prefix: str | None = None    # own MetaData/migration chain; "" is rejected
 ```
 
-### Middleware Interface
-```python
-class Middleware:
-    async def process_request(self, request: Request) -> Request:
-        """Process incoming request. Return modified request."""
-        return request
-    
-    async def process_response(self, request: Request, response: Response) -> Response:
-        """Process outgoing response. Return modified response."""
-        return response
-```
+There is no `config_schema`, `middleware`, `task_lifecycle`,
+`system_model_observers`, `gateway_services`, `routers`, `depends_on`,
+`min_agent_version` or `max_agent_version` key on an extension entry. What an
+extension contributes is decided by the code its `use:` entry point registers
+through `alpha/extensions/registry.py`, not by manifest keys.
 
-### TaskLifecycleHook Interface
-```python
-class TaskLifecycleHook:
-    async def on_task_start(self, state: AgentState) -> None:
-        pass
-    
-    async def on_tool_call(self, state: AgentState, tool_name: str, args: dict) -> None:
-        pass
-    
-    async def on_tool_result(self, state: AgentState, tool_name: str, result: any) -> None:
-        pass
-    
-    async def on_task_end(self, state: AgentState, result: any) -> None:
-        pass
-    
-    async def on_error(self, state: AgentState, error: Exception) -> None:
-        pass
-    
-    async def on_checkpoint(self, state: AgentState, checkpoint_id: str) -> None:
-        pass
-    
-    async def on_resume(self, state: AgentState, checkpoint_id: str) -> None:
-        pass
-```
+### Contribution interfaces
+An extension contributes by **calling methods on the registry it is handed** from
+its `use:` entry point. The contracts are Protocols owned by the third-party
+`agent_workspace_extension_api` package (imported at
+`alpha/extensions/registry.py:15`), not classes you subclass in this repository:
 
-### SystemModelObserver Interface
-```python
-class SystemModelObserver:
-    async def on_event(self, event: SystemEvent) -> None:
-        """Handle system event."""
-        pass
-```
+| `ExtensionRegistry` method | Contributor Protocol it accepts |
+| --- | --- |
+| `middlewares(...)` | `MiddlewareContributor` |
+| `task_lifecycle(...)` | `TaskLifecycleContributor` |
+| `system_model_observer(...)` | `SystemModelCallObserver` |
+| `agent_assembly_observer(...)` | `AgentAssemblyObserver` |
+| `context_compaction_observer(...)` | `ContextCompactionObserver` |
+| `service(...)` | `ExtensionService` |
+| `routers(...)` | any `APIRouter` instances |
 
-### SystemEvent Types
-```python
-class SystemEvent:
-    type: str  # Event type
-    timestamp: datetime
-    data: dict  # Event-specific data
-    thread_id: str | None
-    run_id: str | None
+There is no `class Middleware`, `class TaskLifecycleHook`,
+`class SystemModelObserver`, `class GatewayService` or
+`class RouterContribution` in this repository, and no
+`SystemEvent` dataclass with the `task_started` / `tool_called` /
+`checkpoint_created` event-type vocabulary listed previously in this section.
+An earlier revision of this document specified those as if they were the
+contract; they were not, and code written against them would not load. Run
+events are a real, separate subsystem - see the `run_events:` section of
+`config.yaml` and `docs/API.md` for the event names that actually exist.
 
-# Event types:
-# - task_started, task_completed, task_failed
-# - tool_called, tool_completed, tool_failed
-# - checkpoint_created, run_resumed
-# - token_budget_warning, token_budget_exceeded
-# - sandbox_error, model_error
-# - skill_loaded, skill_unloaded
-# - project_created, project_updated
-# - bot_dm_received, team_run_started
-```
-
-### GatewayService Interface
-```python
-class GatewayService:
-    name: str  # Unique service name
-    
-    async def start(self) -> None:
-        """Start the service."""
-        pass
-    
-    async def stop(self) -> None:
-        """Stop the service gracefully."""
-        pass
-    
-    async def health_check(self) -> dict:
-        """Return health status."""
-        return {"status": "healthy"}
-```
-
-### RouterContribution Interface
-```python
-class RouterContribution:
-    def get_router(self) -> APIRouter:
-        """Return FastAPI router."""
-        pass
-```
+`ExtensionRegistry` also exposes `mark()`, `rollback_to(mark)`,
+`discard(source)` and `attributed_to(source)` for transactional contributions
+(`alpha/extensions/registry.py:83-177`).
 
 ## Security Model
 

@@ -482,3 +482,32 @@ SKILL.md Format:
 - Summarization middleware reduces context when limits approached
 - Configurable triggers: tokens, messages, or fraction
 - Preserves recent messages while summarizing older ones
+
+---
+
+## Gateway Host System Monitor
+
+`app/gateway/system_monitor_service.py` samples CPU, RAM, disk, network and
+processes via `psutil` (optional — it degrades to stdlib when absent) and is
+served by `app/gateway/routers/system_monitor.py`.
+
+`app/gateway/system_monitor_extras.py` adds what psutil cannot see, which on
+Windows is most of it: GPU identity/counters for all vendors (CIM, plus AMD
+`rocm-smi`), thermals (psutil package temp, else the ACPI thermal zone via CIM —
+`wmic` is deprecated and commonly blocked), physical-disk health/media/capacity
+with derived IOPS and throughput, and multi-target internet probes (packet loss,
+DNS latency, quality grade, cached public IP, opt-in throughput).
+
+Rules for this layer:
+
+- **Every sampler is best-effort.** Independently guarded, timeout-bounded,
+  expensive results cached, and it must never raise into the sampling tick.
+  A locked-down host degrades to `None`, not to a 500.
+- **No bandwidth surprises.** Public IP is cached 10 minutes; the throughput
+  probe is opt-in (`include_speedtest`) because it deliberately consumes data.
+- **Be honest about attribution.** Windows GPU Engine counters are host-wide and
+  cannot be attributed to one adapter, so with several adapters no adapter
+  claims the number — it is exposed separately as
+  `gpu_system_utilization_percent`, and per-GPU `utilization_scope` says
+  `unavailable`. Only a single-adapter host may fold it into that adapter.
+- Kill switch: `AGENT_WORKSPACE_ADVANCED_MONITOR=0` disables all extras.

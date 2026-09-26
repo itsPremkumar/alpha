@@ -660,3 +660,71 @@ curl -X POST /api/groups/team-name/runs/run-id/cancel
 - Add bots to projects for collaboration
 - Use `/team` command for group chat
 - Migrate ad-hoc coordination to projects
+
+---
+
+## Scheduled Tasks and Background Automation Contract
+
+The scheduled-task MVP adds a workspace page at `/workspace/scheduled-tasks` plus
+a background scheduler service gated by `config.yaml -> scheduler.enabled`.
+
+- Scheduled background runs are intentionally non-interactive: the lead-agent
+  toolset excludes `ask_clarification` when `context.non_interactive=true`. That
+  key, `disable_clarification`, and `github_token` are honored only for
+  internally-authenticated callers; client-supplied copies are dropped from both
+  `body.context` and `body.config`.
+- Busy scheduled occurrences are persisted as `queued`; `launching` is a short
+  lease-fenced claim, `running` remains the normal Gateway run lifecycle, and
+  `scheduler.queue_timeout_seconds` bounds the durable wait. Do not reintroduce
+  skip-on-overlap or count waiting rows against `max_concurrent_runs`.
+- Scheduled-task executions reuse the existing Gateway run lifecycle. The
+  scheduler may decide *when* work runs, but it must dispatch through the
+  existing run path rather than introducing a parallel execution stack. Scheduled
+  launches pass `scheduler.recursion_limit` (default 1000, matching the web UI's
+  `recursion_limit: 1000`, clamped by `max_recursion_limit`) via
+  `launch_scheduled_thread_run`; the value is read from `get_app_config()` at
+  dispatch, so a YAML edit applies to the next scheduled run without a Gateway
+  restart.
+- The background scheduler is single-instance by default.
+  `scheduler.multi_instance=true` opts into lease-aware recovery across Gateway
+  instances and requires shared Postgres, `run_ownership.heartbeat_enabled=true`,
+  and `run_events.backend=db`; otherwise startup rejects the configuration. Live
+  scheduled runs are preserved when a peer starts; expired launch claims return to
+  the durable queue, expired run leases are atomically taken over, stale launch
+  writes are fenced by lease ownership, and the Postgres advisory-locked budget
+  makes `max_concurrent_runs` a shared global cap for `launching`/`running` rows.
+- Scheduled-task dispatch permits one active occurrence per task
+  (`uq_scheduled_task_run_active`). Durable `queued` rows survive restarts; only
+  lease-fenced `launching` may call Gateway launch; `running` references the
+  durable run, and a reused-thread `ConflictError` returns the occurrence to
+  `queued` (other launch errors become `failed`). Atomic queue claims enforce
+  `max_concurrent_runs`; repeated triggers coalesce. Any mutation (admission,
+  PATCH/resume, pause, delete) locks the parent row first, so active task
+  definitions cannot change under an in-flight occurrence; pause/delete cancel
+  only `queued` work and reject `launching`/`running`. Recovery locks task/run
+  pairs in id order and restores run state before releasing claims. The
+  exhaustive state-machine matrix is pinned by the queue, lease, recovery, and
+  conflict suites under `backend/tests/` — read those tests rather than trusting a
+  prose summary.
+- `POST /api/scheduled-tasks/preview-cron` requires authenticated `threads:read`.
+  Bounded cron previews call the shared scheduler calculator in
+  `asyncio.to_thread`, preserving its DST semantics; they capture the optional
+  aware reference once and return UTC plus offset-bearing local occurrences
+  without acquiring task/thread/run stores or dispatching work. This advisory API
+  does not reserve execution.
+
+## Workforce Layer Harness Map
+
+- Harness: `projects/` (membership, locks, constitution, decisions, handoffs,
+  goals, conflicts — file-backed under `runtime_home()/projects/`, see its
+  `AGENTS.md`), `bots/dm.py` + `bots/inbox.py`, `skills/{usage,curator,authoring}.py`,
+  `learning/review_queue.py`, `deliberation/moa.py`,
+  `scheduler/{wake_gate,blueprints,incidents,guards}.py`.
+- Per-turn injections (bot roster, repo context) ride `DynamicContextMiddleware`
+  reminders keyed off runtime context (`bot_name`, `repo_root`) — never the
+  static system prompt (prefix-cache rule).
+- Gateway: `/api/projects/{id}/*`, `/api/bots/{name}/dm|inbox|chat`,
+  `/api/skills/curator|usage|tiers`, `/api/{council,policy,missions,benchmarks,
+  evolution}/*`, `/api/threads/{id}/undo`, `/api/console/insights`,
+  `/api/ops/advice`, Signal channel (`app/channels/signal.py`).
+- Frontend: `src/lib/workforce.ts` + `WorkforceSection` behind the `workforce` NavTab.

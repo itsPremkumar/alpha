@@ -123,7 +123,10 @@ Keys:
 - **Never** in error messages
 - Environment variables only
 - Runtime injection via Docker secrets / K8s secrets
-- Rotation via `make rotate-secrets` (custom script)
+- Rotation is operator-run: the repository ships no `make rotate-secrets`
+  target and no rotation script. Rotate out of band (your secret manager, or
+  `openssl rand` for the local `.env`/K8s secret) and update
+  `.env`/`deploy/helm/agent-workspace/templates/*-secret.yaml` accordingly.
 
 ## Sandbox Security
 
@@ -394,9 +397,15 @@ make support-bundle  # Collect evidence
 | Cognitive memory | Per-owner config | Consent |
 
 ### Data Subject Requests
+There is no `scripts/export_user_data.py` in this repository, so no
+one-command export exists. Per-owner data lives under the owner's runtime home
+(`AGENT_WORKSPACE_HOME`, see [MEMORY.md](MEMORY.md)); produce an export from
+that directory with your own tooling and keep the retention windows below.
+
 ```bash
-# Export user data
-python scripts/export_user_data.py --user-id <id> --output /tmp/export
+# Illustrative only - substitute your own export tooling.
+tar -czf export.tar.gz "$AGENT_WORKSPACE_HOME/<owner-id>"
+```
 
 ## Enterprise Security Enclave & Governance Plane
 

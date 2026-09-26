@@ -134,19 +134,19 @@ models:
 ```
 
 ### Supported Model Providers
-| Provider | Models | Config Key |
+| Provider | Models | Credential |
 |----------|--------|------------|
 | OpenAI | GPT-4o, GPT-4, GPT-3.5 | `OPENAI_API_KEY` |
 | Anthropic | Claude 3.5 Sonnet, Opus, Haiku | `ANTHROPIC_API_KEY` |
-| Google | Gemini 1.5 Pro, Flash | `GOOGLE_API_KEY` |
+| Google | Gemini 1.5 Pro, Flash | `GEMINI_API_KEY` |
 | DeepSeek | DeepSeek-V3, R1 | `DEEPSEEK_API_KEY` |
 | Moonshot | Kimi K2 | `MOONSHOT_API_KEY` |
 | MiniMax | MiniMax-01 | `MINIMAX_API_KEY` |
-| Ollama | Local models | `OLLAMA_BASE_URL` |
-| vLLM | Self-hosted | `VLLM_BASE_URL` |
+| Ollama | Local models | none - set `use: langchain_ollama:ChatOllama` + `base_url:` per model in `config.yaml` |
+| vLLM | Self-hosted | none - set `base_url:` per model in `config.yaml` |
 | OpenRouter | 100+ models | `OPENROUTER_API_KEY` |
-| Codex CLI | Codex login | `CODEX_AUTH` |
-| Claude CLI | Claude login | `CLAUDE_AUTH` |
+| Codex CLI | Codex login | `CODEX_AUTH_PATH` |
+| Claude CLI | Claude login | `CLAUDE_CODE_OAUTH_TOKEN` (or `CLAUDE_CODE_CREDENTIALS_PATH`, `ANTHROPIC_AUTH_TOKEN`) |
 
 ### Optional: External Integrations
 Edit `extensions_config.json` for:
@@ -166,8 +166,10 @@ OPENAI_API_KEY="sk-..."
 ANTHROPIC_API_KEY="sk-ant-..."
 OPENROUTER_API_KEY="sk-or-..."
 
-# Optional: Tracing
+# Optional: Tracing (each provider also needs its own *_TRACING=true flag)
+LANGSMITH_TRACING="true"
 LANGSMITH_API_KEY="lsv2_..."
+LANGFUSE_TRACING="true"
 LANGFUSE_PUBLIC_KEY="pk-lf-..."
 LANGFUSE_SECRET_KEY="sk-lf-..."
 

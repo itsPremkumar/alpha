@@ -896,8 +896,25 @@ or verification evidence are never synthesized.
 
 ## OpenAPI Specification
 
-Full OpenAPI 3.0 spec available at:
+**Not available on a stock install.** `GATEWAY_ENABLE_DOCS` ships `false` in
+`.env.example`, and `scripts/prod_check.py` raises a **warning** when it is
+anything else (`:182`) — which becomes a non-zero exit only under
+`prod_check.py --strict`. While the flag is false,
+`app.gateway.app` builds the app with `docs_url` / `redoc_url` / `openapi_url`
+all `None` (`app.py:831-833`, `:858-860`), so `/docs`, `/redoc` and
+`/openapi.json` return 404 and the nginx path below 404s too. Do not plan a
+workflow around these paths without checking the flag first.
+
+Caveat worth knowing: the **code** default is the opposite —
+`enable_docs=os.getenv("GATEWAY_ENABLE_DOCS", "true")` at
+`app/gateway/config.py:24`. A checkout with no `.env` at all therefore serves
+Swagger/ReDoc/OpenAPI; the "off" posture comes from `.env.example` plus
+`prod_check.py`, not from the code default.
+
+Set `GATEWAY_ENABLE_DOCS=true` (local development only) to expose them
+explicitly:
+
 - `GET /openapi.json` (Gateway direct)
 - `GET /api/openapi.json` (via nginx)
 
-Import into Postman, Insomnia, or generate client SDKs.
+Then import into Postman, Insomnia, or generate client SDKs.

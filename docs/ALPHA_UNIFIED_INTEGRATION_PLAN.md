@@ -1,6 +1,12 @@
 # Alpha — Unified Integration Plan (local-only, no auth, no remote servers)
 
-Status: plan / not yet executed
+Status: **executed** (Phases 0-3 landed; Phase 4 partially, Phases 5-6 not).
+The plan text is kept for provenance. Every current-state number in §1, §4 and
+§5 has been re-measured against the code — see the "Re-measured" columns and the
+per-phase status notes. **Capability counts (tools/routers/middlewares/loops)
+are authoritative only in `contracts/feature_manifest.json`**, which
+`backend/scripts/generate_feature_manifest.py` regenerates; if the numbers here
+ever disagree with it, the manifest wins.
 Scope owner: lead agent integration
 Constraint set (from operator):
 - Everything runs on **one local machine**, in one stack, with no sign-in/sign-up,
@@ -19,20 +25,44 @@ Measured on this checkout with an AST-based reference scan (module imports +
 dotted-string loaders + config `use:` paths), router-mount diff, frontend
 import graph, and middleware-chain diff.
 
-| Axis | Total | Wired | Real gap |
-| --- | --- | --- | --- |
-| Python modules (`alpha.*`, `app.*`) | 1351 | ~all | 3 modules with no reference at all |
-| Gateway routers | 54 files | 54 mounted in `app/gateway/app.py` | 0 |
-| Builtin tools | 115 registered in `BUILTIN_TOOLS` (`alpha/tools/tools.py`) | all in registry | 0 |
-| Middlewares (`*_middleware.py`) | 40 | 25 in lead chain + 13 via `build_lead_runtime_middlewares` / `agents/factory.py` | 2 unwired |
-| Frontend modules | 82 | 81 | 1 (`src/lib/utils.ts`) |
-| Background services started at lifespan | scheduler, channel service, MCP-task service, subagent-batch service, system monitor | started | sentinel loop, perpetual daemon, swarm runner, enterprise heartbeat, learning review queue, skills curator have **no automatic trigger** |
+The first two columns below are the **original plan-time measurement**. The
+"Re-measured" column is today's value, produced by
+`backend/scripts/generate_feature_manifest.py` plus a raw
+`alpha/agents/middlewares/*_middleware.py` count.
 
-**Real, verified bugs to fix (integration debt):**
-1. `alpha/agents/middlewares/metacognitive_middleware.py` — implemented, never added to any chain.
-2. `alpha/agents/middlewares/continual_harness_middleware.py` — implemented, never added to any chain.
-3. `app/gateway/services/system_monitor_service.py` — 0-byte duplicate of `app/gateway/system_monitor_service.py` (rename leftover).
-4. `frontend/src/lib/utils.ts` — no importer (verify then either use or delete).
+| Axis | Plan-time total | Re-measured | Plan-time wired | Re-measured wired | Real gap (re-measured) |
+| --- | --- | --- | --- | --- | --- |
+| Python modules (`alpha.*`, `app.*`) | 1351 | UNVERIFIED | ~all | UNVERIFIED | not re-run |
+| Gateway routers | 54 files | **60 files** | 54 mounted | **60 mounted, 0 unmounted** | 0 |
+| Builtin tools | 115 registered in `BUILTIN_TOOLS` (`alpha/tools/tools.py`) | **130 registered** | all in registry | 130 in registry | 0 |
+| Middlewares (`*_middleware.py`) | 40 | **42** | 25 in lead chain + 13 via `build_lead_runtime_middlewares` / `agents/factory.py` | **0 unwired** | 0 |
+| Frontend modules | 82 | UNVERIFIED | 81 | UNVERIFIED | `src/lib/utils.ts` still has no importer |
+| Background services started at lifespan | scheduler, channel service, MCP-task service, subagent-batch service, system monitor | UNVERIFIED | started | UNVERIFIED | see Phase 3 note |
+
+The plan-time middleware wiring split (25 lead chain + 13 runtime/factory) no
+longer describes the tree: `alpha/agents/lead_agent/agent.py` alone now imports
+29 distinct `*_middleware` modules, `tool_error_handling_middleware.py` 26 and
+`agents/factory.py` 13. The authoritative statement is the generator's: 42
+middleware modules, all `wired`.
+
+**Plan-time bugs, re-verified individually:**
+
+1. `alpha/agents/middlewares/metacognitive_middleware.py` — was "implemented,
+   never added to any chain". **RESOLVED**: imported and appended in
+   `lead_agent/agent.py:640`.
+2. `alpha/agents/middlewares/continual_harness_middleware.py` — was
+   "implemented, never added to any chain". **RESOLVED**: imported in
+   `lead_agent/agent.py:557`, gated on
+   `autonomy.continual_harness.enabled`, whose schema default is `True`
+   (`alpha/config/autonomy_config.py:64`) — so it is on by default.
+3. `app/gateway/services/system_monitor_service.py` — was a "0-byte duplicate
+   (rename leftover)". **RESOLVED, and the plan was wrong about what it is**:
+   the file is a 737-byte **intentional re-export shim**, recorded as
+   `intentionally_unwired` in the manifest and guarded by
+   `test_gateway_services_resolution`. It is not dead weight and must not be
+   deleted.
+4. `frontend/src/lib/utils.ts` — **STILL TRUE**: no importer anywhere under
+   `frontend/src` as of this re-measurement.
 
 **Conclusion:** the repository is *not* mostly dead code. The actual problem is
 **trigger/orchestration debt**: subsystems exist and are individually sound, but
@@ -50,7 +80,7 @@ invokes automatically. The fix is a single integration layer, not a rewrite.
                                        │ /api/*
                        ┌───────────────▼────────────────────────────┐
                        │ Gateway (FastAPI, single worker, in-process)│
-                       │  • routers: 54 mounted (unchanged)         │
+                       │  • routers: 60 mounted (unchanged)         │
                        │  • FeatureRegistry  ← manifest-driven      │
                        │  • AutonomySupervisor (one lifecycle owner)│
                        │  • EventBus (in-process, single bus)       │
@@ -96,12 +126,12 @@ Add, permanently:
     "tests": ["backend/tests/test_feature_manifest_wiring.py"]
   }
   ```
-- `backend/tests/test_feature_manifest_wiring.py` (new, TDD) asserts, for every
+- `backend/tests/test_feature_manifest_wiring.py` (LANDED) asserts, for every
   manifest entry: module imports, symbol exists, the declared wiring point
   actually references it, and `enabled_by` resolves. Missing wiring ⇒ red test.
-- `backend/tests/test_no_unmanifested_modules.py` (new) re-runs the AST
-  reference scan and fails on any module that is neither referenced in code nor
-  listed in the manifest under `"intentionally_standalone": [...]`.
+- The orphan-module scan the plan named `test_no_unmanifested_modules.py`
+  **shipped under a different name**: `backend/tests/test_no_orphan_modules.py`.
+  There is no `test_no_unmanifested_modules.py` in the tree.
 - `GET /api/ops/integration-health` + a frontend **Integration Health** panel that
   renders manifest coverage live (wired / degraded / unwired counts per
   subsystem). This turns integration from a one-time cleanup into a visible,
@@ -121,8 +151,8 @@ hook point, so future changes cannot scatter.
 | Safety / sanitization | same list, **outermost** ring | must see raw input and final tool output | `input_sanitization`, `tool_result_sanitization`, `llm_error_handling`, `review_guard`, `read_before_write` |
 | Tool lifecycle (budget/progress/receipt) | same list, adjacent to the tool-call middleware | needs both request and result | `tool_output_budget`, `tool_progress`, `tool_receipt`, `sandbox_audit` |
 | Self-observation of the agent | same list, read-mostly, fail-open | must never change the user's answer | `metacognitive`, `continual_harness` (**currently unwired**) |
-| Model-facing tools | `alpha/tools/tools.py` → `BUILTIN_TOOLS` (+ `SUBAGENT_TOOLS`) | one registry de-duplicates and binds | 115 builtin tools (already correct) |
-| HTTP surface | `app/gateway/app.py` → `include_router` | one mount table, auth-free locally | 54 routers (already correct) |
+| Model-facing tools | `alpha/tools/tools.py` → `BUILTIN_TOOLS` (+ `SUBAGENT_TOOLS`) | one registry de-duplicates and binds | 130 builtin tools (plan-time figure was 115) |
+| HTTP surface | `app/gateway/app.py` → `include_router` | one mount table, auth-free locally | 60 routers (plan-time figure was 54) |
 | Background loops | `app/gateway/autonomy/supervisor.py` (new), started from the `app.py` lifespan | one owner, one stop path, capped concurrency | sentinel, perpetual daemon, curator, review queue |
 | Periodic/business schedules | `alpha/scheduler/{blueprints,cron_manager}.py` + `app/scheduler` service | durable, user-visible, already wired to the UI | daily-report, nightly-backup, weekly-audit, skill-curator |
 | Cross-subsystem signals | `alpha/events/bus.py` (new single bus) | avoids O(n^2) direct imports | incidents -> curator -> review queue |
@@ -142,41 +172,64 @@ depends on authentication or on any remote service.
   improve.
 - Acceptance: `cd backend && python -m pytest tests/test_module_reference_scan.py -q` passes.
 
+**Outcome: PARTIAL.** `tests/test_module_reference_scan.py` was **never
+created** — there is no such file. The orphan guard that exists is
+`backend/tests/test_no_orphan_modules.py`. The re-measured §1 table above is
+the baseline that landed instead.
+
 ### Phase 1 — Close the 4 verified gaps (1 day)
-1. Wire `MetacognitiveMiddleware` and `ContinualHarnessMiddleware` into the lead
-   chain at the slots declared in the manifest (after `TokenUsageMiddleware`,
-   before `TerminalResponseMiddleware`); both **fail-open** — an internal error
-   logs and passes the request through unchanged.
-2. Delete the 0-byte `app/gateway/services/system_monitor_service.py` leftover;
-   confirm `app/gateway/system_monitor_service.py` stays the only import path.
-3. Resolve `frontend/src/lib/utils.ts`: import it where styles are needed, or
-   delete it (`pnpm typecheck` must stay clean).
-- Tests: `test_metacognitive_middleware_wiring.py`,
-  `test_continual_harness_middleware_wiring.py`, plus one live turn asserting the
-  reply is identical with the middlewares enabled vs disabled while idle.
-- Acceptance: those tests green; `ruff check` and `pnpm typecheck` clean.
+
+**Outcome: 3 of 4 closed, and item 2 was the wrong fix.**
+
+1. DONE — `MetacognitiveMiddleware` and `ContinualHarnessMiddleware` are both in
+   the lead chain (`lead_agent/agent.py:640` and `:557`; the latter gated on
+   `autonomy.continual_harness.enabled`, default `True`).
+2. NOT DONE, AND DO NOT DO IT — `app/gateway/services/system_monitor_service.py`
+   was never a 0-byte leftover; it is a 737-byte intentional re-export shim that
+   the manifest records under `intentionally_unwired` and
+   `test_gateway_services_resolution` guards. **Deleting it as the plan proposed
+   would break a guarded, documented namespace-resolution behaviour.**
+3. OPEN — `frontend/src/lib/utils.ts` still has no importer. Import it where
+   styles are needed, or delete it (`pnpm typecheck` must stay clean).
+- The plan's named tests `test_metacognitive_middleware_wiring.py` and
+  `test_continual_harness_middleware_wiring.py` **do not exist**. The coverage
+  that does exist lives in `test_feature_manifest_wiring.py`,
+  `test_metacognitive_health_engine.py` and `test_continual_harness.py`.
 
 ### Phase 2 — Manifest + integration health (2 days)
-- Add `contracts/feature_manifest.json`; backfill **all** 115 tools, 54 routers,
-  40 middlewares and the background services.
+- Add `contracts/feature_manifest.json`; backfill **all** tools, routers and
+  middlewares and the background services. The plan-time figures were 115 tools,
+  54 routers and 40 middlewares; the regenerated manifest now holds **130 / 60 /
+  42**, plus 8 supervisor loops.
 - Add the two guard tests from §3.
 - Add `app/gateway/routers/ops_integration.py` exposing
   `GET /api/ops/integration-health` (wired/total per class + the unwired id list).
-- Frontend: an `IntegrationHealthSection` inside the existing `SystemSection` tab
-  (no new nav item, no auth).
+- Frontend: **LANDED, but not where this plan said.** The panel is
+  `frontend/src/components/sections/IntegrationSection.tsx`, a **top-level nav
+  section** (not an `IntegrationHealthSection` nested in `SystemSection`); it
+  consumes `/ops/integration-health` through `frontend/src/lib/integration.ts`,
+  and a coverage summary is also rendered in `SettingsSection.tsx`. There is no
+  `IntegrationHealthSection.tsx` in the tree.
 - Acceptance: guard tests green; endpoint reports non-zero coverage in every
   class; the UI renders it.
 
 ### Phase 3 — AutonomySupervisor + event bus (3 days)
+
+**Outcome: LANDED.** `alpha/events/bus.py` and
+`app/gateway/autonomy/supervisor.py` both exist; `register_default_loops()` runs
+from the module's lifespan hook. The plan listed **6** loops to migrate; the
+generator now finds **8** registered loop ids:
+`sentinel`, `perpetual`, `review_queue`, `skill_curator`, `enterprise_heartbeat`,
+`swarm_status`, `free_models_sync`, `self_update`. The swarm loop shipped as
+`swarm_status`, and two loops the plan did not anticipate
+(`free_models_sync`, `self_update`) were added later. Loop *enablement* still
+lives in `config.yaml` under `autonomy:`; consult that, not this list.
+
 - `alpha/events/bus.py`: async in-process pub/sub, bounded queues, drop-oldest,
   per-subscriber isolation so one slow consumer cannot stall a run.
-- `app/gateway/autonomy/supervisor.py`: registers loops from the manifest with
+- `app/gateway/autonomy/supervisor.py`: registers loops with
   `{enabled_by, interval_seconds, max_concurrent, jitter, backoff, stop_timeout}`;
   exposes `start()/stop()/status()`; a **single** stop path on lifespan shutdown.
-- Migrate loops onto it in this order, each behind its own flag and default
-  **off** until its tests pass: sentinel loop → perpetual daemon (discovery,
-  memory consolidation, stagnation) → learning review queue → skills curator →
-  swarm runner → enterprise heartbeat.
 - Hard rules: a loop is a no-op when its flag is off; a crashed loop restarts
   with exponential backoff under a restart budget; model-dependent loops are
   excluded from the "system healthy" criterion so a machine without an API key
@@ -187,6 +240,11 @@ depends on authentication or on any remote service.
 
 
 ### Phase 4 — Subsystem state unification (2 days)
+
+**Outcome: NOT EXECUTED as written.** `Paths` and `runtime_home()` do exist, but
+in `alpha/config/paths.py:102` and `alpha/config/runtime_paths.py:19` — **not**
+in a new `alpha/runtime/home_layout.py`, which was never created. The
+lifecycle-event list below is unimplemented. Treat this phase as open backlog.
 - Route every store through `Paths`/`runtime_home()`; add
   `alpha/runtime/home_layout.py` documenting the on-disk contract.
 - Emit lifecycle events (`evidence.recorded`, `ledger.entry`, `blackboard.post`,
@@ -207,8 +265,14 @@ depends on authentication or on any remote service.
   checklist.
 
 ### Phase 6 — Verification, docs, hardening (1.5 days)
+
+**Outcome: LANDED.** All four artifacts exist: `backend/Makefile` has `test` and
+`test-blocking-io`, `scripts/verify_unified_system.py` is present, and
+`AGENTS.md` / `backend/AGENTS.md` carry the manifest-derived wiring map (they
+now state 130 tools, 60 routers, 42 middlewares, 8 loops).
+
 - Full backend suite: `cd backend && make test` (default) — green.
-- Strict blocking-I/O suite: `make test-blocking-io`.
+- Strict blocking-I/O suite: `cd backend && make test-blocking-io`.
 - `scripts/verify_unified_system.py`: boots the stack headless, calls every
   router's health probe, asserts manifest coverage, runs one real agent turn,
   tears down. Exit code 0 = unified system proven.
@@ -232,8 +296,19 @@ silently return:
   local `config.yaml` model list;
 - GitHub webhook ingress.
 
-Auth-disabled local mode stays the default (`AGENT_WORKSPACE_AUTH_DISABLED=1`)
-and loopback-only binding is preserved.
+Auth-disabled local mode is **not** a global default. It requires
+`AGENT_WORKSPACE_AUTH_DISABLED=1` to be set explicitly
+(`app/gateway/auth_disabled.py:31`), and it is force-ignored whenever
+`AGENT_WORKSPACE_ENV`/`ENVIRONMENT` is `prod`/`production` (`:35`). The Electron
+desktop app sets it for you (`electron/main.js:399`); the Docker/nginx stack and
+the shell/PowerShell launchers do not. Loopback-only binding is the shipped
+default (`BIND_HOST` defaults to `127.0.0.1`).
+
+Note also that "remote tracing exporters (LangSmith)" is listed as excluded
+above, yet `alpha/config/tracing_config.py` still reads `LANGSMITH_*`,
+`LANGFUSE_*` and `MONOCLE_*` from the environment. The exclusion is a product
+decision, not an enforced one: no remote exporter is on by default, but the code
+path is present and reachable.
 
 ---
 
@@ -272,7 +347,7 @@ and loopback-only binding is preserved.
 | 0 Baseline | 0.5 | scan test + baseline docs |
 | 1 Gaps | 1.0 | 2 middlewares wired, leftovers removed |
 | 2 Manifest | 2.0 | manifest + 2 guard tests + health endpoint/UI |
-| 3 Supervisor | 3.0 | event bus + supervisor + 6 loops migrated |
+| 3 Supervisor | 3.0 | event bus + supervisor + 6 loops migrated (actually landed: 8 loops) |
 | 4 State | 2.0 | unified stores + bus events |
 | 5 UI/UX | 2.0 | complete visible surface |
 | 6 Verify | 1.5 | full suites + verify script + docs |
