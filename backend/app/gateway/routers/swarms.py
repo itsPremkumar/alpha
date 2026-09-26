@@ -391,16 +391,50 @@ async def get_swarm_incidents(swarm_id: str, request: Request = None):
 
 @router.get("/{swarm_id}/memory")
 async def get_swarm_memory(swarm_id: str, request: Request = None):
+    """Read the three memory stores independently.
+
+    These are three unrelated reads, so one unavailable store must not take the
+    other two down with it. A bare ``gather`` propagates the first exception,
+    which turned a single failing store into a 500 for the whole endpoint and
+    discarded results the other two had already produced. Each section now
+    degrades on its own and says so explicitly, so a caller can tell "this
+    store has nothing" apart from "this store is unreachable" - an empty list
+    and an error are different facts.
+    """
     _ensure_visible(swarm_id, request)
     from alpha.swarm.memory import get_swarm_memory_manager
 
     manager = get_swarm_memory_manager()
-    facts, artifacts, task_results = await asyncio.gather(
-        asyncio.to_thread(manager.get_facts, swarm_id),
-        asyncio.to_thread(manager.get_artifacts, swarm_id),
-        asyncio.to_thread(manager.get_task_results, swarm_id),
-    )
-    return {"swarm_id": swarm_id, "facts": facts, "artifacts": artifacts, "task_results": task_results}
+    probes = {
+        "facts": asyncio.to_thread(manager.get_facts, swarm_id),
+        "artifacts": asyncio.to_thread(manager.get_artifacts, swarm_id),
+        "task_results": asyncio.to_thread(manager.get_task_results, swarm_id),
+    }
+    results = await asyncio.gather(*probes.values(), return_exceptions=True)
+
+    payload: dict[str, Any] = {"swarm_id": swarm_id}
+    degraded: list[str] = []
+    for section, outcome in zip(probes, results, strict=True):
+        if isinstance(outcome, BaseException):
+            degraded.append(section)
+            # Report the exception TYPE only. The message can carry store
+            # internals or connection strings, and this response is rendered in
+            # a browser; the detail goes to the log, where it belongs.
+            logger.warning(
+                "swarm memory store %s failed for swarm %s: %s: %s",
+                section,
+                swarm_id,
+                type(outcome).__name__,
+                outcome,
+                exc_info=True,
+            )
+            payload[section] = {"error": type(outcome).__name__}
+        else:
+            payload[section] = outcome
+
+    if degraded:
+        payload["degraded"] = degraded
+    return payload
 
 
 @router.get("/{swarm_id}/messages")
