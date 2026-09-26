@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 /**
  * Alpha Desktop â€” Electron main process.

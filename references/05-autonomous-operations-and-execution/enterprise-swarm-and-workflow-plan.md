@@ -1,4 +1,4 @@
-﻿# Plan: OMO + Hermes Integration â€” Definitive Edition
+# Plan: OMO + Hermes Integration â€” Definitive Edition
 
 > Scope: ALL portable mechanisms from Oh My OpenAgent v5.0.0-beta.18
 > (`oh-my-openagent-ref`) and Hermes Agent v0.20.2 (`hermes-agent-repo`).

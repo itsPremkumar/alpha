@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState } from "react";
 import { ShieldAlert, Check, X, Terminal } from "lucide-react";

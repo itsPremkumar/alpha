@@ -1,4 +1,4 @@
-﻿/* Alpha's local lion companion. The artwork is inline SVG so the pet has no
+/* Alpha's local lion companion. The artwork is inline SVG so the pet has no
    remote asset, telemetry, or prompt-bearing dependency. */
 .lion-pet-shell {
   --lion-pet-travel-x: 0px;
