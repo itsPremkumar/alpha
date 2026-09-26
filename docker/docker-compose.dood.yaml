@@ -20,7 +20,21 @@
 # Compatible with both docker-compose.yaml (prod) and docker-compose-dev.yaml
 # (dev): both define a `gateway` service, and Compose merges this volume entry
 # onto it. AGENT_WORKSPACE_DOCKER_SOCKET defaults to /var/run/docker.sock.
+#
+# The `logging` key below is the same bounded `json-file` config the base
+# compose files use, repeated here because a Compose overlay is a separate
+# document and inherits no anchors. A gateway that spawns one sandbox container
+# per agent thread is also the worst case for log volume, so this overlay must
+# not be a way to opt out of the bound. ALPHA_LOG_MAX_FILE must be >= 2 or
+# Docker refuses to start.
+x-bounded-logs: &bounded_logs
+  driver: json-file
+  options:
+    max-size: "${ALPHA_LOG_MAX_SIZE:-10m}"
+    max-file: "${ALPHA_LOG_MAX_FILE:-3}"
+
 services:
   gateway:
+    logging: *bounded_logs
     volumes:
       - ${AGENT_WORKSPACE_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock

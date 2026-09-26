@@ -10,6 +10,7 @@ and lazily imports the Textual app only when actually launching the UI, so the
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
 import sys
@@ -101,6 +102,20 @@ def _truthy(value: object) -> bool:
     return isinstance(value, str) and value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _first_positional(positional: str | None) -> str | None:
+    """The bare-word task, for ``--print``/``--json`` invoked without a MESSAGE.
+
+    ``--print``/``--json`` take their message as an *optional* value, so a flag
+    that follows one of them (``alpha --json --recursion-limit 250 "do the
+    thing"``) makes argparse fall back to the const, leaving the task stranded in
+    the positional list where the headless branch would silently ignore it. The
+    bare form is the documented one for a long task, and silently dropping it is
+    the worst possible outcome: the process exits 0 having answered nothing.
+    An explicit MESSAGE still wins, so ``--json "m"`` is unchanged.
+    """
+    return positional or None
+
+
 def plan_launch(
     argv: Sequence[str],
     *,
@@ -119,7 +134,7 @@ def plan_launch(
         parser.error("--recursion-limit requires --print, --json, or --cli")
 
     if args.print is not _UNSET:
-        message = args.print if isinstance(args.print, str) else None
+        message = args.print if isinstance(args.print, str) else _first_positional(positional)
         if message is None and stdin_isatty:
             return LaunchPlan(mode="headless-help", reason="--print needs a MESSAGE argument or piped stdin.")
         return LaunchPlan(
@@ -132,7 +147,7 @@ def plan_launch(
         )
 
     if args.json is not _UNSET:
-        message = args.json if isinstance(args.json, str) else None
+        message = args.json if isinstance(args.json, str) else _first_positional(positional)
         if message is None and stdin_isatty:
             return LaunchPlan(mode="headless-help", reason="--json needs a MESSAGE argument or piped stdin.")
         return LaunchPlan(
@@ -216,13 +231,61 @@ def _resolve_message(plan: LaunchPlan) -> str:
     return plan.message or ""
 
 
+# Protocol streams carry JSON, so their encoding is part of the wire contract, not
+# a display preference. ``ensure_ascii=False`` deliberately keeps \U0001f43a and
+# CJK readable in the payload, which makes the payload *unrepresentable* on a
+# default Windows console: Python hands ``sys.stdout`` the active ANSI code page
+# (cp1252 in the field), and ``write()`` raises ``UnicodeEncodeError`` mid-stream
+# on the first non-ASCII frame — killing a run that was already 39% of the way
+# through its frames. Pinning UTF-8 makes every frame representable.
+PROTOCOL_STREAM_ENCODING = "utf-8"
+
+# ``backslashreplace`` rather than ``replace``: a console pipe that cannot carry a
+# code point gets an escaped ``\uXXXX`` instead of a silent ``?``, so a consumer
+# can still round-trip the value. ``errors="replace"`` would corrupt the payload
+# in place and produce unparseable NDJSON; ``strict`` would reintroduce the crash
+# for the lone-surrogate output some providers emit. Valid characters are
+# unaffected in all three modes, so this only governs the pathological case.
+PROTOCOL_STREAM_ERRORS = "backslashreplace"
+
+
+def _configure_protocol_streams() -> None:
+    """Pin stdout/stderr to UTF-8 so a non-ASCII frame can never kill the run.
+
+    Best-effort per stream: a stream without ``reconfigure`` (an in-process
+    ``StringIO`` under capture, or a wrapper object) is already Unicode-capable
+    and needs nothing, and a stream that refuses reconfiguration must not take
+    the process down before it has done any work. Idempotent, so it is safe to
+    call from ``main`` and again from the emit path.
+    """
+    for name in ("stdout", "stderr"):
+        stream = getattr(sys, name, None)
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(
+                encoding=PROTOCOL_STREAM_ENCODING,
+                errors=PROTOCOL_STREAM_ERRORS,
+            )
+        except (AttributeError, OSError, ValueError, io.UnsupportedOperation):
+            continue
+
+
 def _run_overrides(plan: LaunchPlan) -> dict[str, int]:
     if plan.recursion_limit is None:
         return {}
     return {"recursion_limit": plan.recursion_limit}
 
 
+#: Exit code for a run that failed. Deliberately distinct from ``2``, which means
+#: "the invocation itself was malformed" (no message, unknown flag): a caller
+#: must be able to tell "I could not run that" from "I ran it and it failed".
+RUN_FAILED_EXIT_CODE = 1
+
+
 def main(argv: Sequence[str] | None = None) -> int:
+    _configure_protocol_streams()
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] == "extensions":
         from alpha.extensions.cli import main as extensions_main
@@ -266,22 +329,153 @@ def _run_print(plan: LaunchPlan) -> int:
         return 2
     session = _make_session()
     thread_id = session.resolve_thread(plan)
-    answer = session.client.chat(message, thread_id=thread_id, **_run_overrides(plan))
+    try:
+        answer = session.client.chat(message, thread_id=thread_id, **_run_overrides(plan))
+    except Exception as exc:
+        # ``--print`` writes the answer, not frames, so there is no ``error`` frame
+        # to emit; the failure goes to stderr. The exit code is what makes it
+        # machine-detectable, which is the actual requirement.
+        print(f"run failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return RUN_FAILED_EXIT_CODE
     print(answer)
     return 0
 
 
+def _stream_is_fd1(stream) -> bool:
+    """Whether *stream* writes to file descriptor 1.
+
+    Decides whether the protocol frames have to be moved onto a private handle
+    before fd 1 can be neutralised. A caller that redirected the *stream object*
+    (an embedding host, or a test harness) already decoupled the frames from
+    fd 1, so neutralising fd 1 there loses nothing and the frames can simply stay
+    on the caller's stream.
+    """
+    try:
+        return stream.fileno() == 1
+    except (AttributeError, OSError, ValueError, io.UnsupportedOperation):
+        return False
+
+
+def _open_protocol_stdout() -> tuple[object, int | None]:
+    """Return a UTF-8 text stream for protocol frames, isolating inherited fd 1.
+
+    Why the fd dance
+    ----------------
+    A prior run produced 41 stdout lines of which 34 were unparseable, because a
+    *subprocess* (a tool the agent invoked) inherited stdout and wrote its own
+    output into the middle of the NDJSON stream. No encoding fix helps here: the
+    frame stream and the tool output share one file descriptor, so there is no
+    way to tell them apart after the fact.
+
+    So fd 1 is pointed at the null device for the duration of the run. Anything a
+    child process (or a stray ``print`` deep in library code) writes to it is
+    discarded instead of corrupting the protocol, and fd 1 is restored on exit so
+    the interpreter's shutdown flush cannot write to a stale descriptor.
+
+    When the caller's ``sys.stdout`` *is* fd 1 (the normal shell-pipe case), the
+    frames must move to a private duplicate first -- otherwise neutralising fd 1
+    would send the frames to the null device too. When the caller already
+    redirected the stream object, the frames stay exactly where the caller put
+    them, which is what keeps ``--json`` output capturable by an embedding host.
+
+    Best-effort by design: if the platform refuses the duplication, fall back to
+    the already-reconfigured ``sys.stdout`` and keep the run alive. Correctness
+    of the frames never depends on this succeeding.
+    """
+    try:
+        sys.stdout.flush()
+    except (OSError, ValueError):
+        pass
+
+    protocol: object = sys.stdout
+    protocol_fd: int | None = None
+    if _stream_is_fd1(sys.stdout):
+        try:
+            protocol_fd = os.dup(1)
+            protocol = os.fdopen(
+                protocol_fd,
+                "w",
+                encoding=PROTOCOL_STREAM_ENCODING,
+                errors=PROTOCOL_STREAM_ERRORS,
+                newline="\n",
+                buffering=1,
+            )
+        except OSError:
+            if protocol_fd is not None:
+                os.close(protocol_fd)
+                protocol_fd = None
+            protocol = sys.stdout
+
+    try:
+        null_fd = os.open(os.devnull, os.O_WRONLY)
+    except OSError:
+        return protocol, protocol_fd
+    try:
+        os.dup2(null_fd, 1)
+    finally:
+        os.close(null_fd)
+    # ``sys.stdout`` is a *Python-level* buffer over fd 1. Anything already
+    # buffered when the swap happened would be flushed to the null device on the
+    # next write, silently dropping output, so drain it first. After this,
+    # anything still reaching fd 1 lands on the null device, which is the intent:
+    # a stray ``print`` must not corrupt the frame stream.
+    try:
+        sys.stdout.flush()
+    except (OSError, ValueError):
+        pass
+    return protocol, protocol_fd
+
+
+def _restore_stdout(protocol_fd: int | None) -> None:
+    """Undo :func:`_open_protocol_stdout`'s fd swap."""
+    if protocol_fd is None:
+        return
+    try:
+        os.dup2(protocol_fd, 1)
+    except OSError:
+        pass
+    finally:
+        os.close(protocol_fd)
+
+
+def _emit_event(protocol, event) -> None:
+    """Write one NDJSON frame.
+
+    ``ensure_ascii=False`` is deliberate and safe: ``protocol`` is UTF-8 (see
+    ``PROTOCOL_STREAM_ENCODING``). ``default=str`` keeps a non-JSON-native value
+    in a payload -- a ``Path``, an exception object -- from aborting the stream
+    mid-run, which is the same mid-stream-death class of bug as the encoding one.
+    """
+    payload = {"type": event.type, "data": event.data}
+    protocol.write(json.dumps(payload, ensure_ascii=False, default=str) + "\n")
+    protocol.flush()
+
+
 def _run_json(plan: LaunchPlan) -> int:
+    # Re-asserted here, not just in main(), because the emit path is the thing
+    # that must be safe no matter how it was reached.
+    _configure_protocol_streams()
     message = _resolve_message(plan)
     if not message:
         print("No message provided.", file=sys.stderr)
         return 2
     session = _make_session()
     thread_id = session.resolve_thread(plan)
-    for event in session.client.stream(message, thread_id=thread_id, **_run_overrides(plan)):
-        payload = {"type": event.type, "data": event.data}
-        sys.stdout.write(json.dumps(payload, ensure_ascii=False, default=str) + "\n")
-        sys.stdout.flush()
+    protocol, protocol_fd = _open_protocol_stdout()
+    try:
+        for event in session.client.stream(message, thread_id=thread_id, **_run_overrides(plan)):
+            _emit_event(protocol, event)
+    except Exception as exc:
+        # The stream emits its own ``error`` frame *before* raising
+        # (``StreamRunError``), so a second frame here would be a second
+        # contradictory terminal frame. Only a failure that produced no frame at
+        # all (e.g. the session could not be opened) is reported now. Either way
+        # the exit code is non-zero, which is the contract that matters: a caller
+        # can tell success from failure by exit code alone.
+        print(f"run failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return RUN_FAILED_EXIT_CODE
+    finally:
+        _restore_stdout(protocol_fd)
     return 0
 
 

@@ -9,23 +9,35 @@
 #   - provisioner: (optional) Sandbox provisioner for Kubernetes mode
 #
 # Key environment variables (set via environment/.env or scripts/deploy.sh):
-#   AGENT_WORKSPACE_PROJECT_ROOT           — project root for relative runtime paths
-#   AGENT_WORKSPACE_HOME                   — runtime data dir, default .agent-workspace under $AGENT_WORKSPACE_PROJECT_ROOT (or cwd)
-#   AGENT_WORKSPACE_CONFIG_PATH            — path to config.yaml
-#   AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH — path to extensions_config.json
-#   AGENT_WORKSPACE_SKILLS_PATH            — skills dir, default $AGENT_WORKSPACE_PROJECT_ROOT/skills
-#   AGENT_WORKSPACE_DOCKER_SOCKET          — Docker socket path for aio/DooD mode, default /var/run/docker.sock (used only by the opt-in docker-compose.dood.yaml overlay)
-#   AGENT_WORKSPACE_REPO_ROOT              — repo root (used for skills host path in DooD)
-#   BETTER_AUTH_SECRET               — required for frontend auth/session security
-#   AGENT_WORKSPACE_INTERNAL_AUTH_TOKEN    — shared internal Gateway auth token for multi-worker IM channels
+#   AGENT_WORKSPACE_PROJECT_ROOT           â€” project root for relative runtime paths
+#   AGENT_WORKSPACE_HOME                   â€” runtime data dir, default .agent-workspace under $AGENT_WORKSPACE_PROJECT_ROOT (or cwd)
+#   AGENT_WORKSPACE_CONFIG_PATH            â€” path to config.yaml
+#   AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH â€” path to extensions_config.json
+#   AGENT_WORKSPACE_SKILLS_PATH            â€” skills dir, default $AGENT_WORKSPACE_PROJECT_ROOT/skills
+#   AGENT_WORKSPACE_DOCKER_SOCKET          â€” Docker socket path for aio/DooD mode, default /var/run/docker.sock (used only by the opt-in docker-compose.dood.yaml overlay)
+#   AGENT_WORKSPACE_REPO_ROOT              â€” repo root (used for skills host path in DooD)
+#   BETTER_AUTH_SECRET               â€” required for frontend auth/session security
+#   AGENT_WORKSPACE_INTERNAL_AUTH_TOKEN    â€” shared internal Gateway auth token for multi-worker IM channels
 #
 # LangSmith tracing is disabled by default (LANGSMITH_TRACING=false).
 # Set LANGSMITH_TRACING=true and LANGSMITH_API_KEY in .env to enable it.
 #
 # Access: http://localhost:${PORT:-2026}
 
+# Bounded container logs. Docker's default `json-file` driver has NO size cap:
+# a long-running gateway that logs warnings appends forever until the host disk
+# fills, and the failure then looks like an unrelated crash. This is the only
+# place a containerised deployment can be bounded, so every service below opts
+# in via `logging: *bounded_logs`. Tune with ALPHA_LOG_MAX_SIZE /
+# ALPHA_LOG_MAX_FILE; ALPHA_LOG_MAX_FILE must be >= 2 or Docker refuses to start.
+x-bounded-logs: &bounded_logs
+  driver: json-file
+  options:
+    max-size: "${ALPHA_LOG_MAX_SIZE:-10m}"
+    max-file: "${ALPHA_LOG_MAX_FILE:-3}"
+
 services:
-  # ── Redis Stream Bridge ────────────────────────────────────────────────────
+  # â”€â”€ Redis Stream Bridge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   redis:
     image: redis:8-alpine
     container_name: agent-workspace-redis
@@ -39,9 +51,10 @@ services:
       retries: 10
     networks:
       - agent-workspace
+    logging: *bounded_logs
     restart: unless-stopped
 
-  # ── Reverse Proxy ──────────────────────────────────────────────────────────
+  # â”€â”€ Reverse Proxy â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   nginx:
     image: nginx:alpine
     container_name: agent-workspace-nginx
@@ -64,9 +77,10 @@ services:
         condition: service_healthy
     networks:
       - agent-workspace
+    logging: *bounded_logs
     restart: unless-stopped
 
-  # ── Frontend: Next.js Production ───────────────────────────────────────────
+  # â”€â”€ Frontend: Next.js Production â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   frontend:
     build:
       context: ../
@@ -91,9 +105,10 @@ services:
         required: false
     networks:
       - agent-workspace
+    logging: *bounded_logs
     restart: unless-stopped
 
-  # ── Gateway API ────────────────────────────────────────────────────────────
+  # â”€â”€ Gateway API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   gateway:
     build:
       context: ../
@@ -191,9 +206,10 @@ services:
       start_period: 20s
     networks:
       - agent-workspace
+    logging: *bounded_logs
     restart: unless-stopped
 
-  # ── Sandbox Provisioner (optional, Kubernetes mode) ────────────────────────
+  # â”€â”€ Sandbox Provisioner (optional, Kubernetes mode) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   provisioner:
     build:
       context: ./provisioner
@@ -207,14 +223,14 @@ services:
     environment:
       - K8S_NAMESPACE=agent-workspace
       - SANDBOX_IMAGE=enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest
-      # Optional lark-cli init image (Pattern A). Empty ⇒ legacy runtime mount.
+      # Optional lark-cli init image (Pattern A). Empty â‡’ legacy runtime mount.
       # Set to a published tag (e.g. agent-workspace/lark-cli-init:v1.0.65) to provision
       # the sandbox lark-cli runtime via an init container + emptyDir.
       - LARK_CLI_INIT_IMAGE=${LARK_CLI_INIT_IMAGE:-}
       # Optional lark-cli broker image (Pattern B, issue #4338). When set, the
       # sandbox gets a shim + broker sidecar that holds the credentials, so the
       # plaintext config/data are never mounted into the sandbox. Supersedes
-      # LARK_CLI_INIT_IMAGE when both are set. Empty ⇒ broker off.
+      # LARK_CLI_INIT_IMAGE when both are set. Empty â‡’ broker off.
       - LARK_CLI_BROKER_IMAGE=${LARK_CLI_BROKER_IMAGE:-}
       - THREADS_HOST_PATH=${AGENT_WORKSPACE_HOME:-../.agent-workspace}/threads
       - AGENT_WORKSPACE_HOST_BASE_DIR=${AGENT_WORKSPACE_HOME:-../.agent-workspace}
@@ -228,6 +244,7 @@ services:
       - "host.docker.internal:host-gateway"
     networks:
       - agent-workspace
+    logging: *bounded_logs
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/health"]

@@ -10,7 +10,6 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from app.mcp_tasks.errors import PermanentNotificationError
 from alpha.constants import (
     MCP_TASK_POLL_AFTER_MAX_SECONDS,
     MCP_TASK_REMOTE_ID_MAX_LENGTH,
@@ -25,8 +24,16 @@ from alpha.mcp.tasks import (
     TaskSubmitRequest,
 )
 from alpha.persistence.mcp_tasks import DuplicateMcpRemoteTaskError
+from alpha.runtime.lane_scheduler import (
+    RUN_ADMISSION_REJECTED_CODE,
+    capacity_refusal_detail,
+    capacity_refusal_retry_after_seconds,
+    has_run_capacity,
+    is_run_capacity_refusal,
+)
 from alpha.runtime.runs.manager import ConflictError
 from alpha.runtime.runs.schemas import RunStatus
+from app.mcp_tasks.errors import PermanentNotificationError
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +41,59 @@ _MAX_PERSISTED_ERROR_CHARS = 4_000
 _MAX_INPUT_REQUIRED_BYTES = 65_536
 _MAX_NOTIFICATION_ATTEMPTS = 5
 _UNTRACKED_TASK_COMPENSATION_WAIT_SECONDS = 5.0
+
+#: Upper bound on how many (task, event version) pairs are tracked for capacity
+#: backoff at once, so a Gateway that never frees a slot cannot grow the maps
+#: without limit.
+_CAPACITY_TRACKING_LIMIT = 512
+
+
+def _record_capacity_metric(*, waiting: int, refusals: int, waited_seconds: float) -> None:
+    """Publish "MCP task notifications are waiting on run capacity".
+
+    Without it, starvation shows up only as a notification that never arrives --
+    and a notification that never arrives is indistinguishable, to whoever is
+    looking, from a notification that was never sent. The registry import is
+    deferred so a capacity wait can never be what pays the poller's import cost.
+    """
+    try:
+        from alpha.ops.metrics import get_metrics_registry
+
+        registry = get_metrics_registry()
+        registry.counter(
+            "alpha_mcp_task_capacity_refusals",
+            help="MCP task notification deliveries deferred because the Gateway had no free in-flight run slot.",
+        ).inc()
+        registry.gauge(
+            "alpha_mcp_task_capacity_waiting_tasks",
+            help="Distinct MCP tasks whose notification delivery is waiting on Gateway run capacity.",
+        ).set(float(waiting))
+        registry.gauge(
+            "alpha_mcp_task_capacity_max_refusals",
+            help="Longest consecutive Gateway capacity refusal count for a single MCP task notification.",
+        ).set(float(refusals))
+        registry.gauge(
+            "alpha_mcp_task_capacity_backoff_seconds",
+            help="Backoff applied before the next delivery attempt of the most recently deferred notification.",
+        ).set(float(waited_seconds))
+    except Exception:  # noqa: BLE001 - a metric must never fail a notification
+        logger.debug("Failed to record MCP task run-capacity metrics", exc_info=True)
+
+
+def _run_is_capacity_refused(run: Any) -> bool:
+    """Did a launched notification run exist only to be refused admission?
+
+    The Gateway creates a durable run row and then declines to attach a worker
+    to it, so a run that carries the capacity code ran exactly zero times. It
+    still has to be recognised: the same idempotency key resolves to that row on
+    every retry, so a retry that trusted the returned ``run_id`` would report
+    "dispatched" against a run that never executed and then count the resulting
+    ``error`` status as a delivery failure.
+    """
+    if run is None:
+        return False
+    error = getattr(run, "error", None)
+    return isinstance(error, str) and RUN_ADMISSION_REJECTED_CODE in error
 
 
 def _bound_error(error: str | None) -> str | None:
@@ -77,6 +137,17 @@ class McpTaskService:
         self._task: asyncio.Task[None] | None = None
         self._compensation_tasks: set[asyncio.Task[Any]] = set()
         self._stop = asyncio.Event()
+        # Consecutive Gateway run-capacity waits per (task, event version). Two
+        # distinct counts, because two different things are being counted:
+        # ``_capacity_waits`` is every deferral (it drives the backoff and the
+        # operator-visible gauge), while ``_capacity_spent_keys`` counts only the
+        # deferrals that actually got as far as asking -- i.e. the ones that cost
+        # a durable run row and therefore burned an idempotency key. Only those
+        # may advance the delivery attempt number, or a task that was merely
+        # waiting would launch under a key nobody has ever used.
+        self._capacity_waits: dict[tuple[str, int], int] = {}
+        self._capacity_spent_keys: dict[tuple[str, int], int] = {}
+        self._capacity_retry_at: dict[tuple[str, int], datetime] = {}
 
     @property
     def drivers(self) -> McpTaskDriverRegistry:
@@ -391,6 +462,16 @@ class McpTaskService:
     async def _notify_one(self, record: dict[str, Any], *, now: datetime) -> None:
         task_id = record["id"]
         dispatch_version = int(record.get("dispatch_version") or 0)
+        capacity_key = (task_id, dispatch_version)
+        # A refused admission is a statement about the Gateway's moment, not
+        # about this task. Letting it reach the retry-budget check below would
+        # make a busy Gateway consume the five attempts that exist to bound
+        # genuinely broken deliveries, and dead-letter the notification without
+        # ever having tried. So the budget question is skipped entirely while
+        # capacity is short, and the refusal is re-armed below as a bounded wait.
+        if self._capacity_blocked(capacity_key, now=now):
+            await self._defer_for_capacity(record, capacity_key, now=now)
+            return
         notification_attempts = max(0, int(record.get("notification_attempt_count") or 0))
         if notification_attempts >= _MAX_NOTIFICATION_ATTEMPTS:
             previous_error = record.get("notification_error") or "delivery failed"
@@ -456,7 +537,7 @@ class McpTaskService:
                 owner_user_id=record["user_id"],
                 task_id=task_id,
                 dispatch_version=dispatch_version,
-                dispatch_attempt=int(record.get("dispatch_attempt") or 0),
+                dispatch_attempt=self._dispatch_attempt_for(record, capacity_key),
                 event=dict(record.get("dispatch_event") or {}),
             )
         except PermanentNotificationError as exc:
@@ -479,6 +560,9 @@ class McpTaskService:
             )
             return
         except Exception as exc:  # noqa: BLE001 - retry the same idempotency key
+            if is_run_capacity_refusal(exc):
+                await self._defer_for_capacity(record, capacity_key, now=now, exc=exc)
+                return
             await self._repository.release_notification_claim(
                 task_id,
                 lease_owner=self._lease_owner,
@@ -488,6 +572,16 @@ class McpTaskService:
                 count_failure=True,
             )
             return
+        # The launch returned a run id, which is not the same as "a run is
+        # executing". An idempotency key the Gateway already spent on a refusal
+        # resolves straight back to the refused run, so verify before recording
+        # the notification as dispatched -- otherwise the durable row claims a
+        # delivery that never happened and the next poll books it as a failure.
+        launched = await self._get_run(result.get("run_id"), user_id=record["user_id"])
+        if _run_is_capacity_refused(launched):
+            await self._defer_for_capacity(record, capacity_key, now=now, run_id=result.get("run_id"))
+            return
+        self._clear_capacity(capacity_key)
         await self._repository.mark_notification_dispatched(
             task_id,
             lease_owner=self._lease_owner,
@@ -495,6 +589,125 @@ class McpTaskService:
             run_id=result["run_id"],
             now=now,
         )
+
+    # -- Gateway run-capacity handling ------------------------------------
+    #
+    # A notification delivery is a durable obligation, so being told "no free
+    # run slot right now" has to stay a *wait*. The three properties below are
+    # what make it one:
+    #
+    #   1. it never counts as a delivery attempt, so the five-attempt
+    #      dead-letter budget stays reserved for deliveries that really failed;
+    #   2. the next attempt gets a dispatch attempt number the refused one did
+    #      not consume, because the refused attempt already spent the durable
+    #      idempotency key it was launched under;
+    #   3. it backs off, so a saturated Gateway is not polled into a 429 storm.
+
+    def _capacity_blocked(self, capacity_key: tuple[str, int], *, now: datetime) -> bool:
+        """Is this task waiting out a capacity backoff, or a full run budget?"""
+        retry_at = self._capacity_retry_at.get(capacity_key)
+        if retry_at is not None and now < retry_at:
+            return True
+        return not has_run_capacity()
+
+    def _dispatch_attempt_for(self, record: dict[str, Any], capacity_key: tuple[str, int]) -> int:
+        """The attempt number to launch this delivery under.
+
+        Normally the persisted one. After a refusal that actually reached the
+        Gateway it is offset by the number of keys those refusals spent, because
+        the Gateway binds ``mcp-task:{task}:{version}:{attempt}`` to the run row
+        it creates *before* it discovers it has no slot -- and that row is then
+        failed with no worker ever attached. Reusing the key would resolve to the
+        dead row forever, so the retry would report success while delivering
+        nothing. Offsetting is what turns a retry into a real attempt.
+
+        A wait that never got as far as asking (the backoff window, or a budget
+        that was already full) spent no key and so moves nothing: otherwise a
+        task that sat out a long saturation would come back and launch under a
+        run id nothing has ever referenced.
+        """
+        persisted = int(record.get("dispatch_attempt") or 0)
+        return persisted + self._capacity_spent_keys.get(capacity_key, 0)
+
+    async def _defer_for_capacity(
+        self,
+        record: dict[str, Any],
+        capacity_key: tuple[str, int],
+        *,
+        now: datetime,
+        exc: Exception | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        """Record "waiting for a run slot" and come back later.
+
+        ``count_failure=False`` is the whole point: the delivery budget bounds
+        deliveries that failed, and this one did not fail, it did not start.
+
+        ``exc``/``run_id`` distinguish the two ways of arriving here. Reaching
+        the Gateway means the run row exists and its idempotency key is spent, so
+        the next attempt must use a fresh one; declining to ask means no durable
+        state was touched at all and only the clock moved.
+        """
+        task_id = record["id"]
+        waits = self._capacity_waits.get(capacity_key, 0) + 1
+        self._capacity_waits[capacity_key] = waits
+        if exc is not None or run_id is not None:
+            self._capacity_spent_keys[capacity_key] = self._capacity_spent_keys.get(capacity_key, 0) + 1
+        self._prune_capacity_tracking()
+        hint = (
+            capacity_refusal_retry_after_seconds(exc, default=float(self._poll_interval_seconds))
+            if exc is not None
+            else float(self._poll_interval_seconds)
+        )
+        backoff = min(
+            max(float(self._poll_interval_seconds) * (2 ** min(waits - 1, 16)), hint),
+            float(self._max_poll_backoff_seconds),
+        )
+        self._capacity_retry_at[capacity_key] = now + timedelta(seconds=backoff)
+        reason = capacity_refusal_detail(exc) if exc is not None else f"{RUN_ADMISSION_REJECTED_CODE}: waiting for a free Gateway run slot"
+        if run_id is not None:
+            reason = f"{reason} (idempotency key already spent on run {run_id})"
+        logger.warning(
+            "MCP task notification for task_id=%s is waiting on Gateway run capacity (%s); retrying in %.1fs without spending a delivery attempt",
+            task_id,
+            reason,
+            backoff,
+        )
+        _record_capacity_metric(waiting=len(self._capacity_waits), refusals=waits, waited_seconds=backoff)
+        await self._repository.release_notification_claim(
+            task_id,
+            lease_owner=self._lease_owner,
+            next_notification_at=now + timedelta(seconds=backoff),
+            error=_bound_error(reason),
+            # "pending" makes the next claim rebuild the snapshot from the
+            # current event, so a capacity wait can never pin delivery to a
+            # stale payload while it waits.
+            replace_with_latest=True,
+            count_failure=False,
+        )
+
+    def _clear_capacity(self, capacity_key: tuple[str, int]) -> None:
+        if self._capacity_waits.pop(capacity_key, None) is not None:
+            self._capacity_spent_keys.pop(capacity_key, None)
+            self._capacity_retry_at.pop(capacity_key, None)
+            _record_capacity_metric(waiting=len(self._capacity_waits), refusals=0, waited_seconds=0.0)
+
+    def _prune_capacity_tracking(self) -> None:
+        """Bound the capacity bookkeeping so a stuck Gateway cannot grow it.
+
+        Drops the entries whose backoff expires soonest: they are the ones about
+        to be looked at again, so the only thing lost by forgetting them is one
+        extra poll and, at worst, one attempt number that re-uses a key -- which
+        the post-launch refused-run check still catches.
+        """
+        overflow = len(self._capacity_waits) - _CAPACITY_TRACKING_LIMIT
+        if overflow <= 0:
+            return
+        soonest = sorted(self._capacity_retry_at.items(), key=lambda item: item[1])[:overflow]
+        for capacity_key, _retry_at in soonest:
+            self._capacity_waits.pop(capacity_key, None)
+            self._capacity_spent_keys.pop(capacity_key, None)
+            self._capacity_retry_at.pop(capacity_key, None)
 
     def _notification_retry_seconds(self, record: dict[str, Any]) -> int:
         failures = max(0, int(record.get("notification_attempt_count") or 0))

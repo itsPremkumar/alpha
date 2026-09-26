@@ -73,7 +73,7 @@ def load_table_map(files_hash: str) -> dict[str, str] | None:
     if not os.path.exists(path):
         return None
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return None
@@ -113,9 +113,7 @@ def load_files(con: duckdb.DuckDBPyConnection, files: list[str]) -> dict[str, st
     return table_map
 
 
-def _load_excel(
-    con: duckdb.DuckDBPyConnection, file_path: str, table_map: dict[str, str]
-) -> None:
+def _load_excel(con: duckdb.DuckDBPyConnection, file_path: str, table_map: dict[str, str]) -> None:
     """Load all sheets from an Excel file into DuckDB tables."""
     import openpyxl
 
@@ -145,19 +143,13 @@ def _load_excel(
             """
             )
             table_map[sheet_name] = table_name
-            row_count = con.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()[
-                0
-            ]
-            logger.info(
-                f"  Loaded sheet '{sheet_name}' -> table '{table_name}' ({row_count} rows)"
-            )
+            row_count = con.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()[0]
+            logger.info(f"  Loaded sheet '{sheet_name}' -> table '{table_name}' ({row_count} rows)")
         except Exception as e:
             logger.warning(f"  Failed to load sheet '{sheet_name}': {e}")
 
 
-def _load_csv(
-    con: duckdb.DuckDBPyConnection, file_path: str, table_map: dict[str, str]
-) -> None:
+def _load_csv(con: duckdb.DuckDBPyConnection, file_path: str, table_map: dict[str, str]) -> None:
     """Load a CSV file into a DuckDB table."""
     base_name = os.path.splitext(os.path.basename(file_path))[0]
     table_name = sanitize_table_name(base_name)
@@ -178,9 +170,7 @@ def _load_csv(
         )
         table_map[base_name] = table_name
         row_count = con.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()[0]
-        logger.info(
-            f"  Loaded CSV '{base_name}' -> table '{table_name}' ({row_count} rows)"
-        )
+        logger.info(f"  Loaded CSV '{base_name}' -> table '{table_name}' ({row_count} rows)")
     except Exception as e:
         logger.warning(f"  Failed to load CSV '{base_name}': {e}")
 
@@ -247,9 +237,7 @@ def action_query(
     """Execute a SQL query and return/export results."""
     # Replace original sheet/file names with sanitized table names in SQL
     modified_sql = sql
-    for original_name, table_name in sorted(
-        table_map.items(), key=lambda x: len(x[0]), reverse=True
-    ):
+    for original_name, table_name in sorted(table_map.items(), key=lambda x: len(x[0]), reverse=True):
         if original_name != table_name:
             # Replace occurrences not already quoted
             modified_sql = re.sub(
@@ -303,9 +291,7 @@ def _format_table(columns: list[str], rows: list[tuple]) -> str:
     parts.append(header)
     parts.append(separator)
     for row in rows:
-        row_str = " | ".join(
-            str(v)[:max_width].ljust(col_widths[i]) for i, v in enumerate(row)
-        )
+        row_str = " | ".join(str(v)[:max_width].ljust(col_widths[i]) for i, v in enumerate(row))
         parts.append(row_str)
 
     parts.append(f"\n({len(rows)} rows)")
@@ -350,9 +336,7 @@ def _export_results(columns: list[str], rows: list[tuple], output_file: str) -> 
             f.write("| " + " | ".join("---" for _ in columns) + " |\n")
             # Rows
             for row in rows:
-                f.write(
-                    "| " + " | ".join(str(v).replace("|", "\\|") for v in row) + " |\n"
-                )
+                f.write("| " + " | ".join(str(v).replace("|", "\\|") for v in row) + " |\n")
     else:
         msg = f"Unsupported output format: {ext}. Use .csv, .json, or .md"
         print(msg)
@@ -527,9 +511,7 @@ def main():
         logger.info(f"Cache hit! Using cached database: {db_path}")
         con = duckdb.connect(db_path, read_only=True)
         table_map = cached_table_map
-        logger.info(
-            f"Loaded {len(table_map)} table(s) from cache: {', '.join(table_map.keys())}"
-        )
+        logger.info(f"Loaded {len(table_map)} table(s) from cache: {', '.join(table_map.keys())}")
     else:
         # Cache miss: load files and persist to DB
         logger.info("Loading files (first time, will cache for future use)...")
@@ -546,9 +528,7 @@ def main():
 
         # Save table map for future cache lookups
         save_table_map(files_hash, table_map)
-        logger.info(
-            f"\nLoaded {len(table_map)} table(s): {', '.join(table_map.keys())}"
-        )
+        logger.info(f"\nLoaded {len(table_map)} table(s): {', '.join(table_map.keys())}")
         logger.info(f"Cached database saved to: {db_path}")
 
     # Perform action

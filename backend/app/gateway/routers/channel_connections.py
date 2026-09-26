@@ -11,16 +11,16 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
+from alpha.branding import DISPLAY_NAME
+from alpha.config.channel_connections_config import ChannelConnectionsConfig
+from alpha.persistence.channel_connections import ChannelConnectionRepository
+from alpha.persistence.engine import get_session_factory
 from app.channels.runtime_config_store import (
     ChannelRuntimeConfigStore,
     apply_runtime_connection_config,
     merge_runtime_channel_configs,
 )
 from app.gateway.deps import require_admin_user
-from alpha.branding import DISPLAY_NAME
-from alpha.config.channel_connections_config import ChannelConnectionsConfig
-from alpha.persistence.channel_connections import ChannelConnectionRepository
-from alpha.persistence.engine import get_session_factory
 
 router = APIRouter(prefix="/api/channels", tags=["channel-connections"])
 logger = logging.getLogger(__name__)
@@ -222,10 +222,28 @@ def _provider_config(config: ChannelConnectionsConfig, provider: str):
 
 
 def _runtime_channel_configured(provider: str, channels_config: dict[str, Any]) -> bool:
-    runtime_config = channels_config.get(provider)
-    if not isinstance(runtime_config, dict) or not runtime_config.get("enabled", False):
+    """True when *provider* is enabled and every required credential is present.
+
+    Total by construction: ``_PROVIDER_META``, ``_RUNTIME_REQUIREMENTS`` and
+    ``_CREDENTIAL_FIELDS`` are three independent tables, so a provider
+    registered in one and not the next used to raise ``KeyError`` from this
+    predicate. It is evaluated once per provider while the /providers response
+    is being assembled, so a raise here took out every other provider's row
+    too. An unevaluatable provider is reported as "not configured" -- its own
+    row, and only its own row.
+    """
+    try:
+        runtime_config = channels_config.get(provider)
+        if not isinstance(runtime_config, dict) or not runtime_config.get("enabled", False):
+            return False
+        return all(str(runtime_config.get(key) or "").strip() for key in _RUNTIME_REQUIREMENTS[provider])
+    except Exception:
+        logger.error(
+            "Could not evaluate runtime channel configuration for provider=%s; reporting it as unconfigured",
+            provider,
+            exc_info=True,
+        )
         return False
-    return all(str(runtime_config.get(key) or "").strip() for key in _RUNTIME_REQUIREMENTS[provider])
 
 
 def _runtime_unavailable_reason(provider: str) -> str:
@@ -247,10 +265,13 @@ def _runtime_channel_running(provider: str) -> bool | None:
         logger.debug("Unable to inspect channel service status", exc_info=True)
         return None
 
-    service = get_channel_service()
-    if service is None:
-        return None
+    # Resolving the singleton is inside the guard, not just reading its status:
+    # an accessor that raises is a fault of the process-wide channel service,
+    # and it must not escape into the per-provider report being assembled.
     try:
+        service = get_channel_service()
+        if service is None:
+            return None
         status = service.get_status()
     except Exception:
         logger.debug("Unable to read channel service status", exc_info=True)
@@ -268,29 +289,119 @@ async def _ensure_runtime_channel_ready_if_available(
     provider: str,
     channels_config: dict[str, Any],
 ) -> bool | None:
-    runtime_config = channels_config.get(provider)
-    if not isinstance(runtime_config, dict) or not runtime_config.get("enabled", False):
-        return None
+    """Reconcile one provider's runtime channel readiness.
 
+    The whole body is guarded, not just the ``ensure_channel_ready`` call: the
+    setup above it (reading the runtime config, importing and calling
+    ``get_channel_service``, resolving the method) touches a process-wide
+    singleton and a caller-supplied config mapping, so it is exactly as capable
+    of raising as the call itself. A fault here belongs to *this* provider and
+    is reported as ``False`` ("reconciled, not ready") so the caller can
+    attribute it, rather than escaping into a shared fan-out.
+    """
     try:
-        from app.channels.service import get_channel_service
-    except Exception:
-        logger.debug("Unable to import channel service for readiness reconciliation", exc_info=True)
-        return None
+        runtime_config = channels_config.get(provider)
+        if not isinstance(runtime_config, dict) or not runtime_config.get("enabled", False):
+            return None
 
-    service = get_channel_service()
-    if service is None:
-        return None
+        try:
+            from app.channels.service import get_channel_service
+        except Exception:
+            logger.debug("Unable to import channel service for readiness reconciliation", exc_info=True)
+            return None
 
-    ensure_channel_ready = getattr(service, "ensure_channel_ready", None)
-    if ensure_channel_ready is None:
-        return None
+        service = get_channel_service()
+        if service is None:
+            return None
 
-    try:
+        ensure_channel_ready = getattr(service, "ensure_channel_ready", None)
+        if ensure_channel_ready is None:
+            return None
+
         return await ensure_channel_ready(provider, runtime_config)
     except Exception:
-        logger.exception("Failed to reconcile runtime channel readiness")
+        logger.exception("Failed to reconcile runtime channel readiness for provider=%s", provider)
         return False
+
+
+def _runtime_reconcile_failed_reason(provider: str) -> str:
+    meta = _PROVIDER_META.get(provider)
+    display_name = meta["display_name"] if meta else provider
+    return f"{display_name} channel could not be reconciled. Check the credentials and service logs."
+
+
+def _runtime_needs_reconciliation(provider: str, channels_config: dict[str, Any]) -> bool:
+    """True when *provider* is configured and should be reconciled.
+
+    A thin, explicitly-named alias for the (now total) configuration
+    predicate, kept so the fan-out below reads as the intent it implements.
+    """
+    return _runtime_channel_configured(provider, channels_config)
+
+
+async def _reconcile_one_provider(provider: str, channels_config: dict[str, Any]) -> tuple[str, str | None]:
+    """Reconcile one provider, returning ``(provider, reason_or_None)``.
+
+    Never raises. Everything that can go wrong resolving, starting or
+    inspecting a single provider is converted into that provider's own
+    ``unavailable_reason``, so a wedged transport is visible on exactly the
+    row that owns it.
+    """
+    try:
+        reconciled = await _ensure_runtime_channel_ready_if_available(provider, channels_config)
+    except Exception:
+        logger.exception("Unexpected error reconciling provider=%s", provider)
+        return provider, _runtime_reconcile_failed_reason(provider)
+    if reconciled is False:
+        # Reconciliation ran and the channel is still not ready. ``get_status``
+        # may disagree (a stale snapshot says "running"), so report our own
+        # authoritative reason rather than claiming the provider is healthy.
+        return provider, _runtime_reconcile_failed_reason(provider)
+    return provider, None
+
+
+async def _reconcile_provider_readiness(
+    providers: list[str],
+    channels_config: dict[str, Any],
+) -> dict[str, str]:
+    """Reconcile every configured provider concurrently; degrade per provider.
+
+    Readiness reconciliation is independent per provider, so it runs
+    concurrently: one slow channel restart must not serialize the whole
+    /providers response. ``return_exceptions=True`` is what makes that
+    independence real -- a bare ``gather`` propagates the first failure and
+    abandons the outcome of every sibling, turning one broken provider into a
+    500 for all of them.
+
+    The only exception that still propagates is the enclosing request's own
+    cancellation: when the task running this coroutine has been cancelled, the
+    ``CancelledError`` came from the caller, not from a provider, and must
+    abort the response instead of being reported as one broken channel.
+    """
+    if not providers:
+        return {}
+    outcomes = await asyncio.gather(
+        *(_reconcile_one_provider(provider, channels_config) for provider in providers),
+        return_exceptions=True,
+    )
+    current = asyncio.current_task()
+    externally_cancelled = current is not None and current.cancelling() > 0
+    reasons: dict[str, str] = {}
+    for provider, outcome in zip(providers, outcomes, strict=True):
+        if isinstance(outcome, BaseException):
+            if externally_cancelled and isinstance(outcome, asyncio.CancelledError):
+                raise outcome
+            logger.error(
+                "Provider readiness reconciliation escaped for provider=%s",
+                provider,
+                exc_info=outcome,
+            )
+            reasons[provider] = _runtime_reconcile_failed_reason(provider)
+            continue
+        resolved_provider, reason = outcome
+        if reason is not None:
+            reasons[resolved_provider] = reason
+    return reasons
 
 
 def _provider_unavailable_reason(
@@ -417,10 +528,16 @@ def _provider_response(
     provider: str,
     meta: dict[str, str],
     connection: dict[str, Any] | None = None,
+    readiness_error: str | None = None,
 ) -> ChannelProviderResponse:
     from app.gateway.auth_disabled import is_auth_disabled
 
     status, unavailable_reason = _provider_status(config, channels_config, provider)
+    if unavailable_reason is None and readiness_error is not None:
+        # This provider's own reconciliation failed. A provider that cannot be
+        # reconciled must not be advertised as connectable on the strength of a
+        # ``get_status`` snapshot taken around the failure.
+        unavailable_reason = readiness_error
     if unavailable_reason is not None:
         # The runtime provider is unavailable, so a stale "connected" row must
         # not be reported as connected. Other statuses (e.g. "revoked") are
@@ -530,15 +647,24 @@ async def get_channel_providers(request: Request) -> ChannelProvidersResponse:
     enabled_providers = [provider for provider in _PROVIDER_META if config.provider_status(provider)["enabled"]]
     # Readiness reconciliation is independent per provider; run it
     # concurrently so one slow channel restart does not serialize the
-    # whole /providers response.
-    await asyncio.gather(
-        *(_ensure_runtime_channel_ready_if_available(provider, channels_config) for provider in enabled_providers if _runtime_channel_configured(provider, channels_config)),
-    )
+    # whole /providers response -- and degrade it per provider so one broken
+    # channel does not blank the response for the others.
+    to_reconcile = [provider for provider in enabled_providers if _runtime_needs_reconciliation(provider, channels_config)]
+    readiness_errors = await _reconcile_provider_readiness(to_reconcile, channels_config)
 
     providers: list[ChannelProviderResponse] = []
     for provider in enabled_providers:
         connection = by_provider.get(provider)
-        providers.append(_provider_response(config, channels_config, provider, _PROVIDER_META[provider], connection))
+        providers.append(
+            _provider_response(
+                config,
+                channels_config,
+                provider,
+                _PROVIDER_META[provider],
+                connection,
+                readiness_error=readiness_errors.get(provider),
+            )
+        )
     return ChannelProvidersResponse(enabled=config.enabled, providers=providers)
 
 

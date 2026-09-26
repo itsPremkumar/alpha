@@ -6,6 +6,9 @@ Manages first-class task-scoped subagents with:
 - Automatic stall and hang detection (expired lease / inactive loop)
 - Recursive parent-child tree tracking with strict depth & child count limits
 - Propagation of pause, resume, and cancellation signals down child subtrees
+- Durable progress checkpoints, a bounded attempt ceiling, and a durable
+  escalation to a human when that ceiling is spent (see
+  :mod:`alpha.runtime.escalation` for the shared ledger)
 """
 
 from __future__ import annotations
@@ -23,6 +26,11 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 _GLOBAL_LIFECYCLE_MANAGER: SubagentLifecycleManager | None = None
+
+#: Attempts a subagent gets before its failure is escalated to a human. A
+#: crashed attempt counts: a worker that died mid-flight cannot be resumed by
+#: the same process, so the next worker is a new attempt.
+DEFAULT_MAX_ATTEMPTS = 3
 
 
 class SubagentStatusEnum(StrEnum):
@@ -59,6 +67,10 @@ class SubagentContract:
     context_mode: str = "selective"  # none, minimal, selective, full
     injected_context: dict[str, Any] = field(default_factory=dict)
     survival_policy: str = "transfer_on_parent_failure"  # cancel_on_parent_failure, continue_on_parent_failure, transfer_on_parent_failure
+    #: Attempt ceiling for this subagent. When it is reached the subagent stops
+    #: being retried and the failure is escalated to a human with a durable
+    #: record instead of looping forever.
+    max_attempts: int = DEFAULT_MAX_ATTEMPTS
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -126,6 +138,26 @@ class SubagentRecord:
     stall_count: int = 0
     children_ids: list[str] = field(default_factory=list)
     is_orphaned: bool = False
+    #: How many times this unit has actually been dispatched. Charged by
+    #: :meth:`SubagentLifecycleManager.start_subagent`, so a resumed unit pays
+    #: the next attempt and a crashed one has already paid its own.
+    attempt: int = 0
+    #: Durable progress checkpoint: the last known good resume point, so a
+    #: replacement worker restarts from work that is already done instead of
+    #: from the beginning.
+    progress: dict[str, Any] = field(default_factory=dict)
+    #: Typed reason code of the most recent failure (``""`` when never failed).
+    failure_reason: str = ""
+    #: Id of the escalation record opened for this subagent, if any.
+    escalation_id: str | None = None
+
+    @property
+    def max_attempts(self) -> int:
+        return max(1, int(self.contract.max_attempts or DEFAULT_MAX_ATTEMPTS))
+
+    @property
+    def attempts_exhausted(self) -> bool:
+        return self.attempt >= self.max_attempts
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -144,6 +176,10 @@ class SubagentRecord:
             "stall_count": self.stall_count,
             "children_ids": list(self.children_ids),
             "is_orphaned": self.is_orphaned,
+            "attempt": self.attempt,
+            "progress": dict(self.progress),
+            "failure_reason": self.failure_reason,
+            "escalation_id": self.escalation_id,
         }
 
     @classmethod
@@ -177,6 +213,10 @@ class SubagentRecord:
             stall_count=data.get("stall_count", 0),
             children_ids=data.get("children_ids", []),
             is_orphaned=data.get("is_orphaned", False),
+            attempt=int(data.get("attempt", 0) or 0),
+            progress=dict(data.get("progress") or {}),
+            failure_reason=str(data.get("failure_reason", "") or ""),
+            escalation_id=data.get("escalation_id"),
         )
 
 
@@ -268,12 +308,59 @@ class SubagentLifecycleManager:
         return record
 
     def start_subagent(self, subagent_id: str) -> bool:
+        """Dispatch a READY subagent, charging one attempt against its ceiling.
+
+        A READY unit whose ceiling is already spent is NOT dispatched: it is
+        escalated to a human and the call returns False, so a restart sweep
+        that requeues work can never restart a unit that has given up.
+        """
         rec = self._records.get(subagent_id)
         if not rec or rec.status != SubagentStatusEnum.READY:
             return False
+        if rec.attempts_exhausted:
+            self._escalate(rec, detail=f"{subagent_id} reached its attempt ceiling ({rec.attempt}/{rec.max_attempts}) before dispatch")
+            return False
+        rec.attempt += 1
         rec.status = SubagentStatusEnum.RUNNING
         rec.started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         self.renew_lease(subagent_id)
+        self.checkpoint_to_disk(subagent_id)
+        return True
+
+    def record_progress(
+        self,
+        subagent_id: str,
+        *,
+        next_action: str = "",
+        step_index: int | None = None,
+        progress_percent: float | None = None,
+        artifacts: list[str] | None = None,
+        **extra: Any,
+    ) -> bool:
+        """Persist a resume point for this subagent.
+
+        The checkpoint is written to the same record file as the rest of the
+        lifecycle state, so a replacement worker (or a restarted process) can
+        pick the work up from the last step that actually completed instead of
+        repeating it.
+        """
+        rec = self._records.get(subagent_id)
+        if not rec or rec.status in (SubagentStatusEnum.COMPLETED, SubagentStatusEnum.FAILED, SubagentStatusEnum.CANCELLED):
+            return False
+        checkpoint: dict[str, Any] = {
+            "recorded_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "attempt": rec.attempt,
+        }
+        if next_action:
+            checkpoint["next_action"] = next_action
+        if step_index is not None:
+            checkpoint["step_index"] = int(step_index)
+        if progress_percent is not None:
+            checkpoint["progress_percent"] = min(100.0, max(0.0, float(progress_percent)))
+        if artifacts:
+            checkpoint["artifacts"] = [str(a) for a in artifacts]
+        checkpoint.update(extra)
+        rec.progress.update(checkpoint)
         self.checkpoint_to_disk(subagent_id)
         return True
 
@@ -314,7 +401,12 @@ class SubagentLifecycleManager:
         return True
 
     def check_liveness_and_stalls(self) -> dict[str, Any]:
-        """Scans active subagents for expired leases and marks stalled workers."""
+        """Scans active subagents for expired leases and marks stalled workers.
+
+        An expired lease is a typed ``worker_crash`` — the unit is still owed
+        work, and a replacement worker may resume it — so each stall is also
+        appended to the global handoff ledger instead of only being logged.
+        """
         stalled: list[str] = []
         running: list[str] = []
 
@@ -326,6 +418,20 @@ class SubagentLifecycleManager:
                     stalled.append(sid)
                     self.checkpoint_to_disk(sid)
                     logger.warning(f"Subagent '{sid}' lease expired; transitioned to STALLED (stall_count={rec.stall_count}).")
+                    try:
+                        from alpha.runtime.escalation import DOMAIN_SUBAGENT, record_failure
+
+                        record_failure(
+                            DOMAIN_SUBAGENT,
+                            sid,
+                            f"subagent:{sid}",
+                            attempt=rec.attempt,
+                            max_attempts=rec.max_attempts,
+                            reason="worker_crash",
+                            detail=f"lease expired for subagent {sid}",
+                        )
+                    except Exception:  # noqa: BLE001 - bookkeeping must not mask the stall
+                        logger.warning("Could not record lease-expiry failure for %s", sid, exc_info=True)
                 else:
                     running.append(sid)
 
@@ -348,7 +454,15 @@ class SubagentLifecycleManager:
         self.checkpoint_to_disk(subagent_id)
         return True
 
-    def fail_subagent(self, subagent_id: str, error_message: str) -> bool:
+    def fail_subagent(self, subagent_id: str, error_message: str, *, reason: str | None = None, escalate: bool = True) -> bool:
+        """Fail a subagent, classify the failure, and escalate at the ceiling.
+
+        The status transition is unchanged (FAILED) so existing callers and
+        recovery engines keep working; what is new is that the failure is
+        classified against the SHARED taxonomy, appended to the global handoff
+        ledger, and — once the attempt ceiling is spent — escalated to a human
+        as a durable, queryable record instead of being retried forever.
+        """
         rec = self._records.get(subagent_id)
         if not rec or rec.status in (SubagentStatusEnum.COMPLETED, SubagentStatusEnum.FAILED, SubagentStatusEnum.CANCELLED):
             return False
@@ -361,8 +475,111 @@ class SubagentLifecycleManager:
             errors=[error_message],
             confidence_score=0.0,
         )
+        if escalate:
+            disposition = self._record_failure(rec, error_message, reason=reason)
+            if disposition is not None and disposition.escalation is not None:
+                rec.escalation_id = disposition.escalation.escalation_id
         self.checkpoint_to_disk(subagent_id)
         return True
+
+    def _record_failure(self, rec: SubagentRecord, error_message: str, *, reason: str | None = None) -> Any:
+        """Route one failed attempt through the shared failure taxonomy."""
+        try:
+            from alpha.runtime.escalation import DOMAIN_SUBAGENT, record_failure
+
+            disposition = record_failure(
+                DOMAIN_SUBAGENT,
+                rec.subagent_id,
+                f"subagent:{rec.subagent_id}",
+                attempt=rec.attempt,
+                max_attempts=rec.max_attempts,
+                error=error_message,
+                reason=reason,
+                detail=f"{rec.parent_agent_id} -> {rec.subagent_id}: {error_message}"[:2000],
+                details={"objective": rec.contract.objective[:500], "parent_agent_id": rec.parent_agent_id},
+            )
+        except Exception:  # noqa: BLE001 - bookkeeping must not mask the failure
+            logger.warning("Could not record subagent failure for %s", rec.subagent_id, exc_info=True)
+            return None
+        rec.failure_reason = disposition.decision.reason
+        return disposition
+
+    def _escalate(self, rec: SubagentRecord, *, detail: str) -> str | None:
+        """Open a durable escalation for a subagent that is out of attempts."""
+        try:
+            from alpha.runtime.escalation import DOMAIN_SUBAGENT, escalate_to_human
+
+            record = escalate_to_human(
+                DOMAIN_SUBAGENT,
+                rec.subagent_id,
+                f"subagent:{rec.subagent_id}",
+                reason="attempts_exhausted",
+                attempt=rec.attempt,
+                max_attempts=rec.max_attempts,
+                detail=detail,
+                details={"objective": rec.contract.objective[:500], "parent_agent_id": rec.parent_agent_id},
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning("Could not escalate subagent %s", rec.subagent_id, exc_info=True)
+            return None
+        rec.escalation_id = record.escalation_id if record else None
+        rec.failure_reason = "attempts_exhausted"
+        return rec.escalation_id
+
+    def recover_after_restart(self, *, now: float | None = None) -> dict[str, Any]:
+        """Resume subagents abandoned by a dead process; escalate the spent ones.
+
+        This is a RESTART-time sweep, not a heartbeat: it assumes the records it
+        loads from disk belong to processes that are gone, so it must not run
+        beside live workers for the same storage directory. A subagent whose
+        lease is still valid is left alone (a live process owns it); one with a
+        dead lease goes back to READY so a fresh worker can continue from its
+        checkpoint, WITHOUT charging a new attempt — the crashed attempt was
+        already charged when it was dispatched. If it has no attempts left, it
+        is escalated to a human instead of being resumed forever.
+        """
+        stamp = float(now if now is not None else time.time())
+        summary: dict[str, Any] = {"resumed": [], "escalated": [], "skipped": [], "owner_pid": os.getpid()}
+
+        for sid, rec in list(self._records.items()):
+            if rec.status in (SubagentStatusEnum.COMPLETED, SubagentStatusEnum.FAILED, SubagentStatusEnum.CANCELLED, SubagentStatusEnum.EXPIRED):
+                continue
+            if rec.status not in (SubagentStatusEnum.RUNNING, SubagentStatusEnum.READY, SubagentStatusEnum.STALLED, SubagentStatusEnum.RECOVERING):
+                continue
+            if rec.lease.expires_at > stamp:
+                summary["skipped"].append(sid)
+                continue
+            if rec.attempts_exhausted:
+                escalation_id = self._escalate(rec, detail=f"subagent {sid} has no attempts left after a crash (attempt {rec.attempt}/{rec.max_attempts})")
+                rec.status = SubagentStatusEnum.FAILED
+                rec.completed_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(stamp))
+                self.checkpoint_to_disk(sid)
+                summary["escalated"].append({"subagent_id": sid, "escalation_id": escalation_id})
+                continue
+            previous_owner = f"subagent:{sid}:attempt-{rec.attempt}"
+            rec.status = SubagentStatusEnum.READY
+            rec.started_at = None
+            rec.is_orphaned = False
+            self.renew_lease(sid)
+            self.checkpoint_to_disk(sid)
+            try:
+                from alpha.runtime.escalation import DOMAIN_SUBAGENT, record_resume
+
+                record_resume(
+                    DOMAIN_SUBAGENT,
+                    sid,
+                    from_ref=previous_owner,
+                    to_ref=f"subagent:{sid}:attempt-{rec.attempt + 1}",
+                    reason="worker_crash",
+                    attempt=rec.attempt,
+                    max_attempts=rec.max_attempts,
+                    checkpoint=dict(rec.progress),
+                    details={"parent_agent_id": rec.parent_agent_id},
+                )
+            except Exception:  # noqa: BLE001
+                logger.warning("Could not record resume for subagent %s", sid, exc_info=True)
+            summary["resumed"].append(sid)
+        return summary
 
     def cancel_subagent(self, subagent_id: str, reason: str = "") -> bool:
         """Cancels a subagent and propagates cancellation downward to all descendants."""

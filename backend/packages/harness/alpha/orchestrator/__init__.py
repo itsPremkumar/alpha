@@ -12,6 +12,7 @@ existing Alpha harness modules. It never replaces existing owners:
 - sessions catalog -> sqlite-backed thread bindings + branch/rewind helpers
 - tracing -> re-exports alpha.trace_context with subagent/memory helpers
 - acp binding -> thread-scoped ACP agent registry
+- restart -> the startup seam that resumes durable work after a crash
 """
 
 from alpha.orchestrator.acp_binding import AcpBindingRegistry, get_acp_registry
@@ -41,6 +42,12 @@ from alpha.orchestrator.provider_routing import (
     ChannelModelOverride,
     UtilityModelRouter,
     build_fallback_chain,
+)
+from alpha.orchestrator.restart import (
+    install_restart_hooks,
+    register_restart_hook,
+    run_restart_hooks,
+    run_restart_recovery,
 )
 from alpha.orchestrator.secrets import is_secret_ref, resolve_secret_refs
 from alpha.orchestrator.sessions import SessionCatalog, SessionRecord
@@ -75,10 +82,14 @@ __all__ = [
     "get_approval_store",
     "get_context_engine_plugin",
     "get_dynamic_workflow_service",
+    "install_restart_hooks",
     "is_secret_ref",
     "propagate_trace_to_memory",
+    "register_restart_hook",
     "resolve_secret_refs",
     "run_dynamic_turn",
+    "run_restart_hooks",
+    "run_restart_recovery",
     "set_dynamic_workflow_service",
     "trigger_dream_cycle",
 ]

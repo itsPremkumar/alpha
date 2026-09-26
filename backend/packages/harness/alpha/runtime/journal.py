@@ -33,6 +33,7 @@ from langchain_core.messages import AIMessage, AnyMessage, BaseMessage, HumanMes
 from langgraph.types import Command
 
 from alpha.agents.human_input import read_human_input_response
+from alpha.errors import classify, report_exception
 from alpha.runtime.events.catalog import (
     LLM_AI_RESPONSE_EVENT,
     LLM_ERROR_EVENT,
@@ -53,6 +54,60 @@ logger = logging.getLogger(__name__)
 
 _LEGACY_SUMMARY_MESSAGE_NAME = "summary"
 _PERSISTED_HIDDEN_HUMAN_INPUT_RESPONSE_SOURCES = frozenset({"ask_clarification", "sandbox_network"})
+
+# ---------------------------------------------------------------------------
+# Behaviour trace (alpha.observability.trace) — default-off, additive
+# ---------------------------------------------------------------------------
+# Every call below goes through ``_trace_event``, which is a no-op unless a
+# writer is installed (nothing installs one in production today) and which
+# swallows its own failures. Two properties follow and both are load-bearing:
+#
+# 1. These callbacks run inside the run's own execution. An exception escaping
+#    here would fail a run that had nothing wrong with it, so containment is not
+#    politeness — it is the only acceptable behaviour.
+# 2. The trace substrate writes through the *durable* RunEventStore with
+#    ``event_type`` drawn from the closed registry in
+#    ``alpha.observability.trace.codes``, so these rows are the same rows
+#    ``GET /runs/{id}/events`` already serves. There is no second log to join.
+#
+# The journal is the one seam where every model call and every terminal error of
+# a run passes, which is why layers 2, 12 and 13 are wired here rather than in
+# the model factory: a layer wired in the factory would miss the middleware and
+# subagent calls that never go through it.
+def _trace_event(code: str, **fields: Any) -> None:
+    """Emit one behaviour-trace event if a writer is installed. Never raises."""
+    try:
+        from alpha.observability.trace.instrumentation import record_event
+
+        record_event(code, **fields)
+    except Exception:  # noqa: BLE001 - a trace must never break the run it traces
+        return
+
+
+def _sha256_text(text: str) -> str:
+    """Return the hex SHA-256 of *text*, for a stack or payload fingerprint."""
+    import hashlib
+
+    return hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()
+
+
+def _trace_swallow(definition: Any, error: BaseException, *, retried: bool, run_id: str, thread_id: str | None, trace_id: str | None) -> None:
+    """Emit a swallowed-failure trace event. Never raises."""
+    try:
+        from alpha.observability.trace.instrumentation import emit_error_swallowed
+
+        emit_error_swallowed(
+            error_code=definition.code,
+            escalated=True,
+            exc=error,
+            message=definition.message,
+            run_id=run_id,
+            thread_id=thread_id,
+            trace_id=trace_id,
+            extra_payload={"retried": bool(retried)},
+        )
+    except Exception:  # noqa: BLE001 - a trace must never break the run it traces
+        return
 
 
 @dataclass
@@ -381,13 +436,118 @@ class RunJournal(BaseCallbackHandler):
         self._flush_sync()
 
     def on_chain_error(self, error: BaseException, *, run_id: UUID, **kwargs: Any) -> None:
+        """Persist the run's terminal failure as a *coded* ``run.error``.
+
+        This is the one place a run's death is recorded, so it is the one place
+        a stable error code has to be attached. It classifies the exception
+        through the single taxonomy in :mod:`alpha.errors`, fans the report out to
+        log + SSE + metric + recovery, and then persists the same code on the
+        ``run.error`` event.
+
+        Both halves are deliberate. The fan-out makes the failure visible while
+        the run is still unwinding, and the persisted code makes it
+        machine-readable afterwards -- a run that failed four months ago can be
+        selected by ``error_code`` instead of by grepping prose in ``content``.
+
+        ``error_type`` stays in the metadata: it is the one field the public run
+        event contract requires, and dropping it would break every existing
+        consumer. The new fields are additive; the contract allows additional
+        metadata properties.
+
+        When classification lands on the generic ``INTERNAL_ERROR`` the journal
+        substitutes :data:`RUN_EXECUTION_FAILED`, because here it knows one
+        thing the classifier cannot: this *run* is what died. Recording the
+        generic code would throw away the only fact in hand.
+        """
+        reported = report_exception(
+            error,
+            code="RUN_EXECUTION_FAILED" if classify(error).code == "INTERNAL_ERROR" else None,
+            context={"run_id": str(run_id)},
+            trace_id=self._error_trace_id(),
+        )
         self._put(
             event_type=RUN_ERROR_EVENT.event_type,
             category=RUN_ERROR_EVENT.category,
             content=str(error),
-            metadata={"error_type": type(error).__name__},
+            metadata={
+                "error_type": type(error).__name__,
+                **reported.definition.to_metadata(),
+            },
         )
+        # Layer 13. The durable run.error above already carries the code; this
+        # records the same fact in the behaviour trace's own envelope so the
+        # sentinel can query it by layer, severity and stack fingerprint without
+        # parsing `content` prose. The code is the *reported* one, not a
+        # re-classification, so the two records can never disagree.
+        self._error_event(reported.definition, error, retried=False)
         self._flush_sync()
+
+    def _error_event(self, definition: Any, error: BaseException, *, retried: bool, swallowed: bool = False) -> None:
+        """Emit the behaviour-trace form of a failure. Never raises.
+
+        ``stack_sha256`` is a digest of the formatted traceback rather than the
+        traceback itself: a traceback in a durable log is unbounded text whose
+        frames carry file paths and, routinely, an interpolated argument that is
+        precisely what the writer's redaction exists to keep out. A hash still
+        groups "every occurrence of this failure" — which is the question a
+        sentinel asks — without storing the stack.
+        """
+        import traceback
+
+        try:
+            stack_text = "".join(traceback.format_exception(type(error), error, error.__traceback__))
+        except Exception:  # noqa: BLE001 - a missing stack must not lose the event
+            stack_text = type(error).__name__
+        identity = {
+            "run_id": self.run_id,
+            "thread_id": self.thread_id,
+            "trace_id": self._error_trace_id(),
+        }
+        if swallowed:
+            _trace_swallow(definition, error, retried=retried, **identity)
+            return
+        try:
+            from alpha.observability.trace.instrumentation import emit_error
+
+            emit_error(
+                error_code=definition.code,
+                message=definition.message,
+                exc=error,
+                retried=retried,
+                stack_sha256=_sha256_text(stack_text),
+                **identity,
+            )
+        except Exception:  # noqa: BLE001 - a trace must never break the run it traces
+            return
+
+    @staticmethod
+    def _finish_reason_of(message: AnyMessage) -> str | None:
+        """Return the provider's finish reason, or ``None`` when it reported none.
+
+        Providers disagree about where this lives and several omit it entirely, so
+        every one of those shapes is accepted and a miss is ``None`` rather than a
+        guess. The registry requires the key, not a particular value: an absent
+        finish reason is a fact a reader needs to see as absent.
+        """
+        for holder in (message, getattr(message, "response_metadata", None), getattr(message, "additional_kwargs", None)):
+            if not isinstance(holder, Mapping):
+                continue
+            for key in ("finish_reason", "finishReason", "stop_reason", "stopReason"):
+                value = holder.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+        return None
+
+    def _error_trace_id(self) -> str | None:
+        """The request-scoped trace id, when one is bound.
+
+        Read through the reporter so the log record, the SSE payload and the
+        persisted event all carry the same id; a run's failure is only
+        correlatable if those three agree.
+        """
+        from alpha.trace_context import get_current_trace_id
+
+        return get_current_trace_id()
 
     # -- LLM callbacks --
 
@@ -410,6 +570,24 @@ class RunJournal(BaseCallbackHandler):
         self._llm_start_times[rid] = time.monotonic()
         self._llm_call_index += 1
         self._seen_llm_starts.add(rid)
+
+        # Layer 2, request half. Emitted before the durable event below so the
+        # trace's ordering matches what the run actually did, and carrying the
+        # message *counts* rather than the message text: the prompt is the
+        # highest-risk payload in the system, and its shape (how many turns, which
+        # roles) is what a cost or truncation diagnosis needs. A caller that wants
+        # the text recorded passes it through the writer's redactor, and the
+        # writer bounds and discloses it like anything else.
+        self._model_event(
+            "model.call.requested",
+            payload={
+                "provider": "unknown",
+                "model": "unknown",
+                "message_batches": len(messages),
+                "message_counts": [len(batch) for batch in messages],
+                "temperature": None,
+            },
+        )
 
         logger.debug(
             "on_chat_model_start %s: tags=%s num_batches=%d message_counts=%s",
@@ -503,6 +681,12 @@ class RunJournal(BaseCallbackHandler):
                 call_index = self._llm_call_index
                 self._seen_llm_starts.add(rid)
 
+            response_metadata = getattr(message, "response_metadata", None) or {}
+            per_call_model: str | None = None
+            if isinstance(response_metadata, Mapping):
+                per_call_model = response_metadata.get("model_name") or response_metadata.get("model")
+            per_call_provider = response_metadata.get("model_provider") if isinstance(response_metadata, Mapping) else None
+
             response_events.append(
                 self._make_event(
                     event_type=LLM_AI_RESPONSE_EVENT.event_type,
@@ -515,6 +699,19 @@ class RunJournal(BaseCallbackHandler):
                         "llm_call_index": call_index,
                     },
                 )
+            )
+
+            # Layers 2 and 12, from the same values the durable event above
+            # already carries. One source, two destinations: the behaviour trace
+            # cannot disagree with the run feed about a model call because both
+            # read the same `usage_dict` and the same measured latency.
+            self._model_call_completed(
+                provider=str(per_call_provider or "unknown"),
+                model=str(per_call_model or "unknown"),
+                usage=usage_dict,
+                latency_ms=latency_ms,
+                finish_reason=self._finish_reason_of(message),
+                caller=caller,
             )
 
             # Token accumulation (dedup by langchain run_id to avoid double-counting
@@ -540,15 +737,12 @@ class RunJournal(BaseCallbackHandler):
                         self._lead_agent_tokens += total_tk
 
                     # Per-model bucket
-                    response_metadata = getattr(message, "response_metadata", None) or {}
-                    per_call_model: str | None = None
-                    if isinstance(response_metadata, Mapping):
-                        per_call_model = response_metadata.get("model_name") or response_metadata.get("model")
                     self._record_model_usage(per_call_model, input_tk, output_tk, total_tk, self._extract_cache_read(usage_dict))
 
                     should_schedule_progress = True
 
         if messages:
+            self._cost_snapshot()
             self._queue_llm_response_events(
                 str(run_id),
                 response_events,
@@ -560,12 +754,119 @@ class RunJournal(BaseCallbackHandler):
             self._schedule_progress_flush()
 
     def on_llm_error(self, error: BaseException, *, run_id: UUID, **kwargs: Any) -> None:
-        self._llm_start_times.pop(str(run_id), None)
+        start = self._llm_start_times.pop(str(run_id), None)
         self._put(
             event_type=LLM_ERROR_EVENT.event_type,
             category=LLM_ERROR_EVENT.category,
             content=str(error),
         )
+        # Layer 13, swallowed=True: on_llm_error persists the failure and moves
+        # on rather than re-raising, so the run continues. `escalated=True` is
+        # the honest value — report_exception fans this out to log, metric and
+        # recovery — and a reader that sees a swallowed failure with
+        # escalated=False knows the failure was genuinely lost.
+        self._error_event(classify(error), error, retried=start is not None, swallowed=True)
+
+    def _model_event(
+        self,
+        code: str,
+        *,
+        provider: str = "unknown",
+        model: str = "unknown",
+        payload: Mapping[str, Any] | None = None,
+        **identity: Any,
+    ) -> None:
+        """Emit a layer-2 model-call event. Never raises.
+
+        The journal is the right seam for layer 2 because it sees *every* model
+        call in the run, including the ones issued by middleware and by
+        subagents. A layer wired in the model factory would miss those, and a
+        trace that only covers the lead agent's own calls cannot answer the
+        question the sentinel asks ("which model call in this run was expensive
+        and why").
+        """
+        try:
+            from alpha.observability.trace.instrumentation import record_event
+
+            record_event(
+                code,
+                provider=provider,
+                model=model,
+                payload=dict(payload or {}),
+                run_id=self.run_id,
+                thread_id=self.thread_id,
+                trace_id=self._error_trace_id(),
+                **identity,
+            )
+        except Exception:  # noqa: BLE001 - a trace must never break the run it traces
+            return
+
+    def _model_call_completed(
+        self,
+        *,
+        provider: str,
+        model: str,
+        usage: Mapping[str, Any],
+        latency_ms: int | None,
+        finish_reason: str | None,
+        caller: str,
+    ) -> None:
+        """Emit ``model.call.completed`` with the full token breakdown.
+
+        ``reasoning`` is always present and is ``None`` for every model Alpha
+        configures today (``space-bunny`` and ``union-alpha`` both declare
+        ``supports_thinking: false``), so there is no reasoning content to carry.
+        It is recorded as an explicit null rather than omitted: a consumer must be
+        able to tell "the provider sent no reasoning" from "nobody looked", and
+        the moment a model *does* report thinking, this is the field that carries
+        it with no further contract change.
+        """
+        self._model_event(
+            "model.call.completed",
+            provider=provider,
+            model=model,
+            payload={
+                "provider": provider,
+                "model": model,
+                "caller": caller,
+                "finish_reason": finish_reason or "unknown",
+                "latency_ms": float(latency_ms) if latency_ms is not None else None,
+                "ttfb_ms": None,
+                "tokens": {
+                    key: value
+                    for key, value in (
+                        ("input_tokens", usage.get("input_tokens")),
+                        ("output_tokens", usage.get("output_tokens")),
+                        ("cached_tokens", self._extract_cache_read(usage) or None),
+                    )
+                    if value is not None
+                },
+                "cost_usd": None,
+                "retry_count": 0,
+                "breaker_state": "unknown",
+                "reasoning": None,
+                "messages_before": [],
+                "messages_after": [],
+            },
+        )
+
+    def _cost_snapshot(self) -> None:
+        """Emit ``cost.snapshot`` from the running totals the journal already keeps.
+
+        Layer 12 rides the accumulator rather than adding a second one: two
+        counters for the same tokens is exactly the kind of thing that makes a
+        dashboard disagree with the run it describes.
+        """
+        self._model_event("cost.snapshot", payload={"totals": {
+            "input_tokens": self._total_input_tokens,
+            "output_tokens": self._total_output_tokens,
+            "total_tokens": self._total_tokens,
+            "llm_calls": self._llm_call_count,
+            "lead_agent_tokens": self._lead_agent_tokens,
+            "subagent_tokens": self._subagent_tokens,
+            "middleware_tokens": self._middleware_tokens,
+            "by_model": {name: dict(values) for name, values in self._tokens_by_model.items()},
+        }})
 
     def on_tool_start(self, serialized, input_str, *, run_id, parent_run_id=None, tags=None, metadata=None, inputs=None, **kwargs):
         """Cache the executing tool name for artifact attribution."""

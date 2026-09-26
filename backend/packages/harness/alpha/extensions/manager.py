@@ -28,6 +28,13 @@ logger = logging.getLogger(__name__)
 
 _ENTRY_POINT_GROUP = "alpha.extensions"
 _LOCK_RETRY_INTERVAL_SECONDS = 0.2
+#: Wall-clock ceiling for the ``uv`` commands that resolve or download from an
+#: index. Generous enough for a cold multi-package sync, tight enough that a
+#: hung proxy/resolver fails loudly instead of parking the operator flow.
+_UV_NETWORK_TIMEOUT_SECONDS = 900.0
+#: Wall-clock ceiling for the local interpreter probes around those commands
+#: (metadata entry points, extras detection, ``uv --version``).
+_UV_PROBE_TIMEOUT_SECONDS = 60.0
 _SNAPSHOT_IGNORES = (".git", ".venv", "venv", "__pycache__", "*.pyc")
 _DISTRIBUTION_NAME = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$")
 _SENSITIVE_FILENAMES = {".npmrc", ".pypirc", "credentials.json"}
@@ -943,12 +950,14 @@ print(json.dumps([[entry_point.name, entry_point.value] for entry_point in entry
 if len(entry_points) == 1 and not callable(entry_points[0].load()):
     raise TypeError("extension entry point is not callable")
 """
-    completed = subprocess.run(
+    completed = _run_bounded(
         [str(python), "-c", script, distribution],
         cwd=backend_dir,
         check=False,
         capture_output=True,
         text=True,
+        timeout=_UV_PROBE_TIMEOUT_SECONDS,
+        description=f"extension entry point probe for {distribution!r}",
     )
     entry_points = _first_json_array(completed.stdout)
     if not isinstance(entry_points, list) or len(entry_points) != 1:
@@ -1064,23 +1073,51 @@ def _controlled_uv_environment() -> dict[str, str]:
     return environment
 
 
+def _run_bounded(
+    command: list[str],
+    *,
+    timeout: float,
+    description: str,
+    **kwargs: Any,
+) -> subprocess.CompletedProcess[str]:
+    """Run a subprocess under a hard deadline, reporting expiry as a typed error.
+
+    These calls reach the network -- a package index, a proxy, a build backend --
+    so an unbounded wait turned a hung resolver or an offline mirror into an
+    operator flow that never returned. ``subprocess.run`` kills the child once
+    the deadline expires, and the ``RuntimeError`` raised here is the error shape
+    the callers already handle alongside ``OSError``/``CalledProcessError``
+    (including the rollback paths that must treat a failed command exactly like
+    a non-zero exit).
+    """
+    try:
+        return subprocess.run(command, timeout=timeout, **kwargs)
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"{description} did not complete within {timeout:g}s and was killed") from exc
+
+
 def _run_uv(command: list[str], backend_dir: Path) -> None:
-    subprocess.run(
+    subcommand = command[1] if len(command) > 1 else "command"
+    _run_bounded(
         command,
         cwd=backend_dir,
         env=_controlled_uv_environment(),
         check=True,
+        timeout=_UV_NETWORK_TIMEOUT_SECONDS,
+        description=f"uv {subcommand}",
     )
 
 
 def _require_supported_uv(backend_dir: Path) -> None:
-    completed = subprocess.run(
+    completed = _run_bounded(
         ["uv", "--version"],
         cwd=backend_dir,
         env=_controlled_uv_environment(),
         check=True,
         capture_output=True,
         text=True,
+        timeout=_UV_PROBE_TIMEOUT_SECONDS,
+        description="uv --version probe",
     )
     match = re.search(r"\b(\d+)\.(\d+)\.(\d+)\b", completed.stdout)
     if match is None or tuple(int(part) for part in match.groups()) < (0, 8, 0):
@@ -1093,13 +1130,15 @@ def _detect_extra_flags(project_root: Path, config_path: Path) -> list[str]:
         return []
     environment = _controlled_uv_environment()
     environment["AGENT_WORKSPACE_CONFIG_PATH"] = str(config_path)
-    completed = subprocess.run(
+    completed = _run_bounded(
         [sys.executable, str(detector)],
         cwd=project_root,
         env=environment,
         check=True,
         stdout=subprocess.PIPE,
         text=True,
+        timeout=_UV_PROBE_TIMEOUT_SECONDS,
+        description="optional-dependency flag detection",
     )
     tokens = shlex.split(completed.stdout or "")
     if len(tokens) % 2 or any(tokens[index] != "--extra" or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]*", tokens[index + 1]) for index in range(0, len(tokens), 2)):

@@ -55,6 +55,78 @@ _EXPORTS = {
     "write_baseline": "baseline",
     "build_parser": "cli",
     "main": "cli",
+    # --- runtime policy controls, wired at the authority chokepoints -------
+    "BaselinePolicy": "scopes",
+    "DenialExplanation": "scopes",
+    "EffectivePolicy": "scopes",
+    "ScopeDecision": "scopes",
+    "ScopeEscalationRefused": "scopes",
+    "ScopeError": "scopes",
+    "ScopeMember": "scopes",
+    "ScopePolicy": "scopes",
+    "ScopeResolution": "scopes",
+    "ScopeRule": "scopes",
+    "SubjectKind": "scopes",
+    "assert_not_looser": "scopes",
+    "baseline_from_ceiling": "scopes",
+    "compose_scopes": "scopes",
+    "explain_denial": "scopes",
+    "member": "scopes",
+    "ActorKind": "receipts",
+    "ChainIntegrityError": "receipts",
+    "ChainVerification": "receipts",
+    "DecisionReceipt": "receipts",
+    "ExecutionIdentity": "receipts",
+    "IdentityError": "receipts",
+    "ReceiptChain": "receipts",
+    "ReceiptError": "receipts",
+    "ReceiptFlag": "receipts",
+    "RejectedAlternative": "receipts",
+    "agent": "receipts",
+    "automated_system": "receipts",
+    "child_agent": "receipts",
+    "get_receipt_chain": "receipts",
+    "human": "receipts",
+    "ISOLATION_CONTROLS": "taint",
+    "TRUSTED_CLEARING_CONTROLS": "taint",
+    "TaintAuthorityError": "taint",
+    "TaintClearRefused": "taint",
+    "TaintMark": "taint",
+    "TaintTurn": "taint",
+    "UnknownUntrustedSource": "taint",
+    "UntrustedSource": "taint",
+    "absorb_untrusted": "taint",
+    "bind_turn": "taint",
+    "current_turn": "taint",
+    "isolate_child": "taint",
+    "new_turn": "taint",
+    "ApprovalOutcome": "boundaries",
+    "ApprovalResult": "boundaries",
+    "ApproverTimeout": "boundaries",
+    "ApproverUnavailable": "boundaries",
+    "Authentication": "boundaries",
+    "BoundaryError": "boundaries",
+    "BoundaryKind": "boundaries",
+    "CredentialIsolationReport": "boundaries",
+    "CredentialOwner": "boundaries",
+    "CredentialSpec": "boundaries",
+    "CredentialStatus": "boundaries",
+    "INBOUND_ENTRY_POINTS": "boundaries",
+    "InboundEntryPoint": "boundaries",
+    "StartupCheck": "boundaries",
+    "StartupRefused": "boundaries",
+    "StartupReport": "boundaries",
+    "SurfaceKind": "boundaries",
+    "UnauthenticatedInboundPath": "boundaries",
+    "assert_credential_failures_isolated": "boundaries",
+    "assert_inbound_default_deny": "boundaries",
+    "assert_startable": "boundaries",
+    "boundary_inventory": "boundaries",
+    "convenience_boundaries": "boundaries",
+    "resolve_authority_approval": "boundaries",
+    "resolve_credential_owners": "boundaries",
+    "security_boundaries": "boundaries",
+    "unauthenticated_inbound_paths": "boundaries",
 }
 
 if TYPE_CHECKING:  # pragma: no cover - import-time-free type surface
@@ -65,6 +137,33 @@ if TYPE_CHECKING:  # pragma: no cover - import-time-free type surface
     from alpha.safety.authority.baseline import load_baseline as load_baseline
     from alpha.safety.authority.baseline import save_baseline as save_baseline
     from alpha.safety.authority.baseline import write_baseline as write_baseline
+    from alpha.safety.authority.boundaries import INBOUND_ENTRY_POINTS as INBOUND_ENTRY_POINTS
+    from alpha.safety.authority.boundaries import ApprovalOutcome as ApprovalOutcome
+    from alpha.safety.authority.boundaries import ApprovalResult as ApprovalResult
+    from alpha.safety.authority.boundaries import ApproverTimeout as ApproverTimeout
+    from alpha.safety.authority.boundaries import ApproverUnavailable as ApproverUnavailable
+    from alpha.safety.authority.boundaries import Authentication as Authentication
+    from alpha.safety.authority.boundaries import BoundaryError as BoundaryError
+    from alpha.safety.authority.boundaries import BoundaryKind as BoundaryKind
+    from alpha.safety.authority.boundaries import CredentialIsolationReport as CredentialIsolationReport
+    from alpha.safety.authority.boundaries import CredentialOwner as CredentialOwner
+    from alpha.safety.authority.boundaries import CredentialSpec as CredentialSpec
+    from alpha.safety.authority.boundaries import CredentialStatus as CredentialStatus
+    from alpha.safety.authority.boundaries import InboundEntryPoint as InboundEntryPoint
+    from alpha.safety.authority.boundaries import StartupCheck as StartupCheck
+    from alpha.safety.authority.boundaries import StartupRefused as StartupRefused
+    from alpha.safety.authority.boundaries import StartupReport as StartupReport
+    from alpha.safety.authority.boundaries import SurfaceKind as SurfaceKind
+    from alpha.safety.authority.boundaries import UnauthenticatedInboundPath as UnauthenticatedInboundPath
+    from alpha.safety.authority.boundaries import assert_credential_failures_isolated as assert_credential_failures_isolated
+    from alpha.safety.authority.boundaries import assert_inbound_default_deny as assert_inbound_default_deny
+    from alpha.safety.authority.boundaries import assert_startable as assert_startable
+    from alpha.safety.authority.boundaries import boundary_inventory as boundary_inventory
+    from alpha.safety.authority.boundaries import convenience_boundaries as convenience_boundaries
+    from alpha.safety.authority.boundaries import resolve_authority_approval as resolve_authority_approval
+    from alpha.safety.authority.boundaries import resolve_credential_owners as resolve_credential_owners
+    from alpha.safety.authority.boundaries import security_boundaries as security_boundaries
+    from alpha.safety.authority.boundaries import unauthenticated_inbound_paths as unauthenticated_inbound_paths
     from alpha.safety.authority.census import census as census
     from alpha.safety.authority.census import iter_source_files as iter_source_files
     from alpha.safety.authority.census import scan as scan
@@ -90,9 +189,54 @@ if TYPE_CHECKING:  # pragma: no cover - import-time-free type surface
     from alpha.safety.authority.models import Reversibility as Reversibility
     from alpha.safety.authority.models import UnknownFinding as UnknownFinding
     from alpha.safety.authority.models import Verdict as Verdict
+    from alpha.safety.authority.receipts import KNOWN_POLICY_RULES as KNOWN_POLICY_RULES
+    from alpha.safety.authority.receipts import ActorKind as ActorKind
+    from alpha.safety.authority.receipts import ChainIntegrityError as ChainIntegrityError
+    from alpha.safety.authority.receipts import ChainVerification as ChainVerification
+    from alpha.safety.authority.receipts import DecisionReceipt as DecisionReceipt
+    from alpha.safety.authority.receipts import ExecutionIdentity as ExecutionIdentity
+    from alpha.safety.authority.receipts import IdentityError as IdentityError
+    from alpha.safety.authority.receipts import ReceiptChain as ReceiptChain
+    from alpha.safety.authority.receipts import ReceiptError as ReceiptError
+    from alpha.safety.authority.receipts import ReceiptFlag as ReceiptFlag
+    from alpha.safety.authority.receipts import RejectedAlternative as RejectedAlternative
+    from alpha.safety.authority.receipts import agent as agent
+    from alpha.safety.authority.receipts import automated_system as automated_system
+    from alpha.safety.authority.receipts import child_agent as child_agent
+    from alpha.safety.authority.receipts import get_receipt_chain as get_receipt_chain
+    from alpha.safety.authority.receipts import human as human
     from alpha.safety.authority.report import render as render
     from alpha.safety.authority.report import render_json as render_json
     from alpha.safety.authority.report import render_markdown as render_markdown
     from alpha.safety.authority.report import write_report as write_report
+    from alpha.safety.authority.scopes import BaselinePolicy as BaselinePolicy
+    from alpha.safety.authority.scopes import DenialExplanation as DenialExplanation
+    from alpha.safety.authority.scopes import EffectivePolicy as EffectivePolicy
+    from alpha.safety.authority.scopes import ScopeDecision as ScopeDecision
+    from alpha.safety.authority.scopes import ScopeError as ScopeError
+    from alpha.safety.authority.scopes import ScopeEscalationRefused as ScopeEscalationRefused
+    from alpha.safety.authority.scopes import ScopeMember as ScopeMember
+    from alpha.safety.authority.scopes import ScopePolicy as ScopePolicy
+    from alpha.safety.authority.scopes import ScopeResolution as ScopeResolution
+    from alpha.safety.authority.scopes import ScopeRule as ScopeRule
+    from alpha.safety.authority.scopes import SubjectKind as SubjectKind
+    from alpha.safety.authority.scopes import assert_not_looser as assert_not_looser
+    from alpha.safety.authority.scopes import baseline_from_ceiling as baseline_from_ceiling
+    from alpha.safety.authority.scopes import compose_scopes as compose_scopes
+    from alpha.safety.authority.scopes import explain_denial as explain_denial
+    from alpha.safety.authority.scopes import member as member
+    from alpha.safety.authority.taint import ISOLATION_CONTROLS as ISOLATION_CONTROLS
+    from alpha.safety.authority.taint import TRUSTED_CLEARING_CONTROLS as TRUSTED_CLEARING_CONTROLS
+    from alpha.safety.authority.taint import TaintAuthorityError as TaintAuthorityError
+    from alpha.safety.authority.taint import TaintClearRefused as TaintClearRefused
+    from alpha.safety.authority.taint import TaintMark as TaintMark
+    from alpha.safety.authority.taint import TaintTurn as TaintTurn
+    from alpha.safety.authority.taint import UnknownUntrustedSource as UnknownUntrustedSource
+    from alpha.safety.authority.taint import UntrustedSource as UntrustedSource
+    from alpha.safety.authority.taint import absorb_untrusted as absorb_untrusted
+    from alpha.safety.authority.taint import bind_turn as bind_turn
+    from alpha.safety.authority.taint import current_turn as current_turn
+    from alpha.safety.authority.taint import isolate_child as isolate_child
+    from alpha.safety.authority.taint import new_turn as new_turn
 
 install_lazy_exports(__name__, _EXPORTS, public=tuple(_EXPORTS))

@@ -8,6 +8,7 @@ from .knowledge import DomainKnowledgeBase
 from .lineage import AVOLineage, VersionRecord
 from .scoring import EvaluationVector
 from .supervisor import AVOSupervisor, StrategicPivotDirective
+from .trajectory import TrajectoryView
 
 logger = logging.getLogger("alpha.avo.variation_agent")
 
@@ -43,10 +44,25 @@ class AgenticVariationLoop:
         Executes a complete AVO variation step.
         edit_fn takes (current_code, context_dict) -> (new_code, modification_summary)
         evaluate_fn takes (new_code) -> EvaluationVector
+
+        **What the agent decides.** ``edit_fn`` is the agent: it chooses what to
+        inspect, what to attempt, and how to revise after a failure. Nothing in
+        this loop prescribes the variation.
+
+        **What the loop decides.** Whether the result is correct, whether it held
+        the invariants, and whether it may enter the committed lineage. Those are
+        not the agent's to decide and are not passed to it as a choice.
         """
         effective_parent_id = parent_id or lineage.head_id
         parent_record = lineage.get_version(effective_parent_id) if effective_parent_id else None
         current_code = parent_record.metadata.get("code", "") if parent_record else ""
+
+        # P_t is handed to the agent whole: every committed version, every
+        # rejected attempt with its reason, and the best-committed reference
+        # explicitly separated from the head. Consulting this is what lets the
+        # agent compare profiling characteristics across prior implementations and
+        # revisit an earlier approach instead of starting blind.
+        trajectory = TrajectoryView.from_lineage(lineage)
 
         internal_trials: list[dict[str, Any]] = []
         committed_record: VersionRecord | None = None
@@ -54,7 +70,8 @@ class AgenticVariationLoop:
         current_hypothesis = base_hypothesis
 
         for trial_idx in range(1, self.max_internal_trials + 1):
-            # 1. Consult knowledge base K for relevant patterns or anti-patterns
+            # 1. Consult knowledge base K for relevant patterns or anti-patterns,
+            #    and the lineage for what has already been tried.
             relevant_knowledge = knowledge_base.query(current_hypothesis)
             context = {
                 "trial": trial_idx,
@@ -62,6 +79,7 @@ class AgenticVariationLoop:
                 "parent_vector": parent_record.vector.to_dict() if parent_record and parent_record.vector else None,
                 "relevant_patterns": [k.to_dict() for k in relevant_knowledge],
                 "supervisor_directive": directive.to_dict() if directive else None,
+                "lineage": trajectory.to_agent_context(),
             }
 
             # 2. Implement variation
@@ -91,12 +109,14 @@ class AgenticVariationLoop:
             # 5. Commit policy check
             is_committed = lineage.commit_candidate(candidate_record)
 
-            # Observe supervisor
+            # Observe supervisor. The lineage is passed so a redirect is steered
+            # from what was actually tried rather than from a fixed list.
             signature = f"{mod_summary[:40]}_{vector.correctness}"
             stagnated, new_directive, diag = supervisor.observe_step(
                 improved=is_committed,
                 signature=signature,
                 backtrack_candidate=effective_parent_id,
+                lineage=lineage,
             )
             if new_directive:
                 directive = new_directive
@@ -138,8 +158,10 @@ class AgenticVariationLoop:
             "success": committed_record is not None,
             "committed_version_id": committed_record.version_id if committed_record else None,
             "current_head": lineage.head_id,
+            "best_committed_id": trajectory.best_committed_id,
             "trials_conducted": len(internal_trials),
             "trials": internal_trials,
             "active_directive": directive.to_dict() if directive else None,
+            "lineage_context": trajectory.to_agent_context(),
             "pareto_frontier_size": len(lineage.get_pareto_frontier()),
         }

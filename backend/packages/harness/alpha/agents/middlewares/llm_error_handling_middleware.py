@@ -22,6 +22,13 @@ from langchain.agents.middleware.types import (
 from langchain_core.messages import AIMessage
 from langgraph.errors import GraphBubbleUp
 
+from alpha.agents.middlewares.llm_breaker_registry import (
+    BreakerKey,
+    CircuitBreaker,
+    breaker_key_for,
+    default_breaker_key,
+    get_breaker,
+)
 from alpha.config.app_config import AppConfig
 from alpha.utils.custom_events import aemit_custom_event, emit_custom_event
 
@@ -381,7 +388,16 @@ class LLMErrorHandlingMiddleware(AgentMiddleware[AgentState]):
     # burst-rate (limit_burst_rate) spikes. See _get_process_limiter.
     max_concurrent_llm_calls: int = 0
 
-    def __init__(self, *, app_config: AppConfig, **kwargs: Any) -> None:
+    def __init__(self, *, app_config: AppConfig, breaker_key: BreakerKey | None = None, **kwargs: Any) -> None:
+        """Build the middleware.
+
+        ``breaker_key`` optionally pins this instance to one registry key. The
+        agent stack does not pass it: production instances derive their key
+        per call from ``request.model`` (see
+        ``llm_breaker_registry.breaker_key_for``), which is what makes the
+        breaker provider-specific. Tests pass it to stand up two independent
+        "providers" without inventing two model objects.
+        """
         super().__init__(**kwargs)
 
         self.circuit_failure_threshold = app_config.circuit_breaker.failure_threshold
@@ -404,13 +420,20 @@ class LLMErrorHandlingMiddleware(AgentMiddleware[AgentState]):
         # config-freshness race to admit waiters above the live cap.
         _apply_configured_cap(self.max_concurrent_llm_calls)
 
-        # Circuit Breaker state
-        self._circuit_lock = threading.Lock()
-        self._circuit_failure_count = 0
-        self._circuit_open_until = 0.0
-        self._circuit_state = "closed"
-        self._circuit_probe_in_flight = False
-        self._circuit_probe_token: object | None = None
+        # Circuit breaker state is PROCESS-WIDE and provider-keyed: it lives in
+        # ``llm_breaker_registry`` (one shared object per key for the lifetime
+        # of the process), NOT on this instance. The agent stack - this
+        # middleware with it - is rebuilt for every run
+        # (runtime/runs/worker.py), so instance-local state would hand a
+        # repeatedly-failing provider a clean slate at the start of every run
+        # and could not tell one provider's outage from another's.
+        #
+        # What stays here is only the KEY this instance resolves against: the
+        # explicit pin when a caller supplies one, else the construction-time
+        # key derived from the configured default model (overridden per call
+        # by the request's model, see _bind_breaker).
+        self._pinned_breaker_key = breaker_key
+        self._breaker_key: BreakerKey = breaker_key or default_breaker_key(app_config)
 
     def _max_attempts_for(self, exc: BaseException, reason: str = "transient") -> int:
         """Return the effective max attempt count for this exception.
@@ -431,64 +454,66 @@ class LLMErrorHandlingMiddleware(AgentMiddleware[AgentState]):
             candidates.append(reason_override)
         return min(candidates)
 
-    def _check_circuit(self, *, probe_token: object | None = None) -> bool:
+    # --- circuit breaker -------------------------------------------------
+    #
+    # State machine: ``llm_breaker_registry.CircuitBreaker`` - one SHARED
+    # object per provider/model key for the lifetime of the process (the agent
+    # stack, and therefore this middleware, is rebuilt per run, so anything
+    # held on ``self`` would reset the breaker on every run). The methods below
+    # are the veneer: a call resolves its own breaker once and threads it
+    # through every check/record, so concurrent calls with different keys on
+    # one instance never write each other's state, while the ``_circuit_*``
+    # accessors keep pointing at whatever key this instance last served.
+
+    def _breaker_for(self, breaker: CircuitBreaker | None) -> CircuitBreaker:
+        """The breaker a call passed in, else the one behind this instance's key."""
+        return breaker if breaker is not None else get_breaker(self._breaker_key)
+
+    @property
+    def _breaker(self) -> CircuitBreaker:
+        """Breaker behind this instance's diagnostic ``_circuit_*`` accessors."""
+        return get_breaker(self._breaker_key)
+
+    def _resolve_breaker_key(self, request: Any) -> BreakerKey:
+        """Key for one model call: pinned, else derived from ``request.model``.
+
+        A request that carries no model keeps the instance's current key, so a
+        bare/dict request (unit tests, non-model callers) resolves to the
+        construction-time key derived from ``app_config`` instead of inventing
+        a key that no other instance would share.
+        """
+        if self._pinned_breaker_key is not None:
+            return self._pinned_breaker_key
+        return breaker_key_for(request, fallback=self._breaker_key)
+
+    def _bind_breaker(self, request: Any) -> CircuitBreaker:
+        """Resolve this call's shared breaker and adopt its key for accessors.
+
+        Called once at the top of ``wrap_model_call`` / ``awrap_model_call``.
+        The returned object is threaded through every check/record of that
+        call, so even two concurrent calls with different keys routed through
+        this one instance stay isolated; only the read-mostly ``_circuit_*``
+        accessors follow the adopted key.
+        """
+        key = self._resolve_breaker_key(request)
+        if key != self._breaker_key:
+            self._breaker_key = key
+        return get_breaker(key)
+
+    def _check_circuit(self, *, probe_token: object | None = None, breaker: CircuitBreaker | None = None) -> bool:
         """Returns True if circuit is OPEN (fast fail), False otherwise."""
-        with self._circuit_lock:
-            now = time.time()
+        return self._breaker_for(breaker).check(probe_token=probe_token)
 
-            if self._circuit_state == "open":
-                if now < self._circuit_open_until:
-                    return True
-                self._circuit_state = "half_open"
-                self._circuit_probe_in_flight = False
-                self._circuit_probe_token = None
+    def _record_success(self, *, breaker: CircuitBreaker | None = None) -> None:
+        self._breaker_for(breaker).record_success()
 
-            if self._circuit_state == "half_open":
-                if self._circuit_probe_in_flight:
-                    return True
-                self._circuit_probe_in_flight = True
-                self._circuit_probe_token = probe_token
-                return False
+    def _record_failure(self, *, breaker: CircuitBreaker | None = None) -> None:
+        self._breaker_for(breaker).record_failure(
+            threshold=self.circuit_failure_threshold,
+            recovery_timeout_sec=self.circuit_recovery_timeout_sec,
+        )
 
-            return False
-
-    def _record_success(self) -> None:
-        with self._circuit_lock:
-            if self._circuit_state != "closed" or self._circuit_failure_count > 0:
-                logger.info("Circuit breaker reset (Closed). LLM service recovered.")
-            self._circuit_failure_count = 0
-            self._circuit_open_until = 0.0
-            self._circuit_state = "closed"
-            self._circuit_probe_in_flight = False
-            self._circuit_probe_token = None
-
-    def _record_failure(self) -> None:
-        with self._circuit_lock:
-            if self._circuit_state == "half_open":
-                self._circuit_open_until = time.time() + self.circuit_recovery_timeout_sec
-                self._circuit_state = "open"
-                self._circuit_probe_in_flight = False
-                self._circuit_probe_token = None
-                logger.error(
-                    "Circuit breaker probe failed (Open). Will probe again after %ds.",
-                    self.circuit_recovery_timeout_sec,
-                )
-                return
-
-            self._circuit_failure_count += 1
-            if self._circuit_failure_count >= self.circuit_failure_threshold:
-                self._circuit_open_until = time.time() + self.circuit_recovery_timeout_sec
-                if self._circuit_state != "open":
-                    self._circuit_state = "open"
-                    self._circuit_probe_in_flight = False
-                    self._circuit_probe_token = None
-                    logger.error(
-                        "Circuit breaker tripped (Open). Threshold reached (%d). Will probe after %ds.",
-                        self.circuit_failure_threshold,
-                        self.circuit_recovery_timeout_sec,
-                    )
-
-    def _release_half_open_probe(self, *, probe_token: object | None = None) -> None:
+    def _release_half_open_probe(self, *, probe_token: object | None = None, breaker: CircuitBreaker | None = None) -> None:
         """Release the in-flight half-open probe without recording a failure.
 
         Used when something other than a classified success/failure consumes the probe (a
@@ -496,12 +521,53 @@ class LLMErrorHandlingMiddleware(AgentMiddleware[AgentState]):
         the next probe instead of fast-failing forever. Cancellation supplies an
         admission token so an older call cannot release a different call's probe.
         """
-        with self._circuit_lock:
-            if probe_token is not None and self._circuit_probe_token is not probe_token:
-                return
-            if self._circuit_state == "half_open":
-                self._circuit_probe_in_flight = False
-                self._circuit_probe_token = None
+        self._breaker_for(breaker).release_probe(probe_token=probe_token)
+
+    # Diagnostic / compatibility accessors. They read AND write the shared
+    # breaker behind this instance's current key - never a private copy - so
+    # every instance serving that key observes the same state. Real
+    # transitions go through the methods above; these exist for introspection
+    # and for tests that need to stage a state directly.
+
+    @property
+    def _circuit_failure_count(self) -> int:
+        return self._breaker.failure_count
+
+    @_circuit_failure_count.setter
+    def _circuit_failure_count(self, value: int) -> None:
+        self._breaker.failure_count = value
+
+    @property
+    def _circuit_open_until(self) -> float:
+        return self._breaker.open_until
+
+    @_circuit_open_until.setter
+    def _circuit_open_until(self, value: float) -> None:
+        self._breaker.open_until = value
+
+    @property
+    def _circuit_state(self) -> str:
+        return self._breaker.state
+
+    @_circuit_state.setter
+    def _circuit_state(self, value: str) -> None:
+        self._breaker.state = value
+
+    @property
+    def _circuit_probe_in_flight(self) -> bool:
+        return self._breaker.probe_in_flight
+
+    @_circuit_probe_in_flight.setter
+    def _circuit_probe_in_flight(self, value: bool) -> None:
+        self._breaker.probe_in_flight = value
+
+    @property
+    def _circuit_probe_token(self) -> object | None:
+        return self._breaker.probe_token
+
+    @_circuit_probe_token.setter
+    def _circuit_probe_token(self, value: object | None) -> None:
+        self._breaker.probe_token = value
 
     def _classify_error(self, exc: BaseException) -> tuple[bool, str]:
         detail = _extract_error_detail(exc)
@@ -788,7 +854,11 @@ class LLMErrorHandlingMiddleware(AgentMiddleware[AgentState]):
         request: ModelRequest,
         handler: Callable[[ModelRequest], ModelResponse],
     ) -> ModelCallResult:
-        if self._check_circuit():
+        # One shared, provider-keyed breaker for the whole call: resolved here
+        # so every check/record below lands on the same state object even when
+        # another instance serving the same provider is mid-call.
+        breaker = self._bind_breaker(request)
+        if self._check_circuit(breaker=breaker):
             return self._build_error_fallback_message(
                 self._build_circuit_breaker_message(),
                 error_type="CircuitBreakerOpen",
@@ -801,11 +871,11 @@ class LLMErrorHandlingMiddleware(AgentMiddleware[AgentState]):
         while True:
             try:
                 response = self._bounded_model_call_sync(request, handler)
-                self._record_success()
+                self._record_success(breaker=breaker)
                 return response
             except GraphBubbleUp:
                 # Preserve LangGraph control-flow signals (interrupt/pause/resume).
-                self._release_half_open_probe()
+                self._release_half_open_probe(breaker=breaker)
                 raise
             except Exception as exc:
                 retriable, reason = self._classify_error(exc)
@@ -831,14 +901,14 @@ class LLMErrorHandlingMiddleware(AgentMiddleware[AgentState]):
                     exc_info=exc,
                 )
                 if retriable and reason != "burst_rate":
-                    self._record_failure()
+                    self._record_failure(breaker=breaker)
                 else:
                     # Non-retriable, OR burst_rate (a transient provider
                     # slope-throttle, not "provider down"): release the half-open
                     # probe without recording a failure so the circuit doesn't
                     # trip and fast-fail ALL calls for the recovery window - the
                     # exact self-inflicted outage #4290 is trying to prevent.
-                    self._release_half_open_probe()
+                    self._release_half_open_probe(breaker=breaker)
                 return self._build_user_fallback_message(exc, reason)
 
     @override
@@ -847,8 +917,12 @@ class LLMErrorHandlingMiddleware(AgentMiddleware[AgentState]):
         request: ModelRequest,
         handler: Callable[[ModelRequest], Awaitable[ModelResponse]],
     ) -> ModelCallResult:
+        # Same binding as the sync path: one shared, provider-keyed breaker,
+        # resolved before the probe token so a cancellation during admission
+        # releases the probe of the key this call actually checked.
+        breaker = self._bind_breaker(request)
         probe_token = object()
-        if self._check_circuit(probe_token=probe_token):
+        if self._check_circuit(probe_token=probe_token, breaker=breaker):
             return self._build_error_fallback_message(
                 self._build_circuit_breaker_message(),
                 error_type="CircuitBreakerOpen",
@@ -862,11 +936,11 @@ class LLMErrorHandlingMiddleware(AgentMiddleware[AgentState]):
             while True:
                 try:
                     response = await self._bounded_model_call(request, handler)
-                    self._record_success()
+                    self._record_success(breaker=breaker)
                     return response
                 except GraphBubbleUp:
                     # Preserve LangGraph control-flow signals (interrupt/pause/resume).
-                    self._release_half_open_probe()
+                    self._release_half_open_probe(breaker=breaker)
                     raise
                 except Exception as exc:
                     retriable, reason = self._classify_error(exc)
@@ -892,19 +966,20 @@ class LLMErrorHandlingMiddleware(AgentMiddleware[AgentState]):
                         exc_info=exc,
                     )
                     if retriable and reason != "burst_rate":
-                        self._record_failure()
+                        self._record_failure(breaker=breaker)
                     else:
                         # Non-retriable, OR burst_rate (a transient provider
                         # slope-throttle, not "provider down"): release the half-open
                         # probe without recording a failure so the circuit doesn't
                         # trip and fast-fail ALL calls for the recovery window - the
                         # exact self-inflicted outage #4290 is trying to prevent.
-                        self._release_half_open_probe()
+                        self._release_half_open_probe(breaker=breaker)
                     return self._build_user_fallback_message(exc, reason)
         except asyncio.CancelledError:
             # Cancellation can arrive during admission, the provider call, retry
-            # event delivery, or backoff. It is not a provider failure.
-            self._release_half_open_probe(probe_token=probe_token)
+            # event delivery, or backoff. It is not a provider failure. The
+            # token only releases this call's own probe on this call's key.
+            self._release_half_open_probe(probe_token=probe_token, breaker=breaker)
             raise
 
 

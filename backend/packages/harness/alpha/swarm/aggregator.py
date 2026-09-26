@@ -120,6 +120,23 @@ class SwarmAggregator:
             for artifact in artifacts:
                 report_lines.append(f"- [{artifact}]({artifact})")
 
+        if not plan.tasks:
+            # ``SwarmScheduler.is_swarm_finished()`` treats an empty plan as
+            # finished, so aggregation IS reached with nothing to report.  The
+            # keyword gate below passes on the boilerplate deliverable text
+            # ("No successful worker summaries were recorded."), which let a
+            # swarm that executed ZERO nodes publish ``status="completed"`` and
+            # a SWARM_COMPLETED event.  A run that did no work has produced no
+            # deliverable, so it can never be a completed one.  Disclose it in
+            # the report body as well, not only in the status field.
+            report_lines.extend(
+                [
+                    "",
+                    "## No Work Executed",
+                    "- This swarm plan contained no task nodes, so nothing was executed and no deliverable was produced.",
+                ]
+            )
+
         deliverable_text = "\n".join(report_lines)
         criteria = [f"Complete all subtasks for: {plan.goal}", "Zero unhandled task failures"]
         quality_gate = evaluate_quality_gate(deliverable_text, criteria)
@@ -132,6 +149,11 @@ class SwarmAggregator:
         elif cancelled_tasks or failed_tasks or conflicts or acceptance_failed_tasks or acceptance_unverified_tasks:
             plan.status = "partial_success"
         elif (plan.requires_consensus and consensus_result is None) or (consensus_result is not None and not consensus_result.get("approved")):
+            plan.status = "partial_success"
+        elif not completed_tasks:
+            # Defensive twin of the ``not plan.tasks`` branch above: a plan
+            # whose nodes exist but none of them completed must not read as
+            # ``completed`` just because the text quality gate passed.
             plan.status = "partial_success"
         elif quality_gate.get("verdict") == "passed":
             plan.status = "completed"

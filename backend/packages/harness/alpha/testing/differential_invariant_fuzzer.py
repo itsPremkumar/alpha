@@ -19,11 +19,9 @@ import inspect
 import logging
 import math
 import random
-import string
-import sys
-import traceback
-from dataclasses import asdict, dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
 
 from langchain.tools import tool
 
@@ -36,8 +34,8 @@ class ExecutionTrialResult:
 
     success: bool
     return_value: Any = None
-    exception_type: Optional[str] = None
-    exception_message: Optional[str] = None
+    exception_type: str | None = None
+    exception_message: str | None = None
     execution_time_ms: float = 0.0
 
 
@@ -45,17 +43,17 @@ class ExecutionTrialResult:
 class DifferentialComparisonResult:
     """Comparison of baseline vs modified behavior for a single input."""
 
-    input_args: Tuple[Any, ...]
-    input_kwargs: Dict[str, Any]
+    input_args: tuple[Any, ...]
+    input_kwargs: dict[str, Any]
     baseline_result: ExecutionTrialResult
     modified_result: ExecutionTrialResult
     is_bug_inducing_input: bool = False
     is_consistent: bool = True
     regression_detected: bool = False
     fix_verified: bool = False
-    discrepancy_details: Optional[str] = None
+    discrepancy_details: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "input_repr": f"args={repr(self.input_args)}, kwargs={repr(self.input_kwargs)}",
             "is_bug_inducing_input": self.is_bug_inducing_input,
@@ -98,40 +96,65 @@ class BoundaryValueGenerator:
     BOOL_BOUNDARIES = [True, False]
     LIST_BOUNDARIES = [[], [0], [1, 2, 3], [-1], ["a"], [None], [0, 1, 0, -1], list(range(10))]
     DICT_BOUNDARIES = [{}, {"a": 1}, {"key": "value"}, {"": 0}, {"nested": {"x": 10}}]
+    #: The pool used when a parameter's type was not declared. Deliberately small:
+    #: a caller that does not tell us the type does not get the full boundary
+    #: sweep, and that is a coverage limit, not a detail.
+    GENERIC_BOUNDARIES = [0, 1, -1, "", "test", True, False, [], {}, None]
 
     def __init__(self, seed: int = 42) -> None:
         self.rng = random.Random(seed)
 
-    def generate_value_for_type(self, type_hint: str) -> Any:
-        """Generate a boundary or randomized value based on type description."""
+    def pool_for(self, type_hint: str) -> list:
+        """The boundary pool this type hint selects.
+
+        Split out from :meth:`generate_value_for_type` so the sweep in
+        :meth:`generate_random_inputs` can walk the same pool the random draws
+        come from, instead of guessing at it.
+        """
         t = type_hint.lower().strip()
         if "int" in t:
-            return self.rng.choice(self.INT_BOUNDARIES)
+            return list(self.INT_BOUNDARIES)
         if "float" in t:
-            return self.rng.choice(self.FLOAT_BOUNDARIES)
+            return list(self.FLOAT_BOUNDARIES)
         if "str" in t:
-            return self.rng.choice(self.STR_BOUNDARIES)
+            return list(self.STR_BOUNDARIES)
         if "bool" in t:
-            return self.rng.choice(self.BOOL_BOUNDARIES)
+            return list(self.BOOL_BOUNDARIES)
         if "list" in t:
-            return copy.deepcopy(self.rng.choice(self.LIST_BOUNDARIES))
+            return list(self.LIST_BOUNDARIES)
         if "dict" in t:
-            return copy.deepcopy(self.rng.choice(self.DICT_BOUNDARIES))
-        # Default mixed boundary
-        pool = [0, 1, -1, "", "test", True, False, [], {}, None]
-        return self.rng.choice(pool)
+            return list(self.DICT_BOUNDARIES)
+        return list(self.GENERIC_BOUNDARIES)
+
+    def generate_value_for_type(self, type_hint: str) -> Any:
+        """Generate a boundary or randomized value based on type description."""
+        return self.rng.choice(self.pool_for(type_hint))
 
     def generate_random_inputs(
         self,
-        param_names: List[str],
-        schema: Optional[Dict[str, Any]] = None,
+        param_names: list[str],
+        schema: dict[str, Any] | None = None,
         num_samples: int = 30,
-    ) -> List[Dict[str, Any]]:
-        """Generate a matrix of boundary and randomized input keyword dictionaries."""
-        inputs_list: List[Dict[str, Any]] = []
+    ) -> list[dict[str, Any]]:
+        """Generate a matrix of boundary and randomized input keyword dictionaries.
+
+        Ordering is deliberate and is a correctness property, not a performance
+        one. Pass 1 is the all-empty boundary. Pass 2 walks **every** boundary
+        value of the declared type, in pool order. Only the remaining slots are
+        filled by random choice.
+
+        The reason: sampling the pool with replacement means a specific boundary
+        value can be missed, so a divergence that only manifests on that value is
+        invisible and the caller gets a false pass. Sweeping first makes boundary
+        coverage deterministic for any ``num_samples`` at least as large as the
+        pool, which turns "we fuzzed and found nothing" into a checkable claim
+        rather than a probabilistic one. The random tail is retained -- it is what
+        explores beyond the curated pool.
+        """
+        inputs_list: list[dict[str, Any]] = []
 
         # 1. Deterministic all-zero/all-empty boundary
-        first_pass: Dict[str, Any] = {}
+        first_pass: dict[str, Any] = {}
         for p in param_names:
             hint = (schema or {}).get(p, "int")
             if "str" in str(hint).lower():
@@ -146,9 +169,20 @@ class BoundaryValueGenerator:
                 first_pass[p] = 0
         inputs_list.append(first_pass)
 
-        # 2. Randomized boundary permutations
-        for _ in range(num_samples - 1):
-            kwargs: Dict[str, Any] = {}
+        # 2. Exhaustive boundary sweep: every curated value of the declared type,
+        #    paired across parameters so a single input does not have to enumerate
+        #    the whole product space.
+        max_pool = max((len(self.pool_for(str((schema or {}).get(p, "int")))) for p in param_names), default=0)
+        for offset in range(min(max_pool, max(0, num_samples - 1))):
+            row: dict[str, Any] = {}
+            for index, p in enumerate(param_names):
+                pool = self.pool_for(str((schema or {}).get(p, "any")))
+                row[p] = copy.deepcopy(pool[(offset + index) % len(pool)]) if pool else None
+            inputs_list.append(row)
+
+        # 3. Randomized remainder: exploration beyond the curated pool.
+        while len(inputs_list) < num_samples:
+            kwargs: dict[str, Any] = {}
             for p in param_names:
                 hint = (schema or {}).get(p, "any")
                 kwargs[p] = self.generate_value_for_type(str(hint))
@@ -166,12 +200,12 @@ class DifferentialInvariantFuzzer:
 
     def _compile_entrypoint(
         self, code_str: str, entrypoint_name: str
-    ) -> Tuple[Optional[Callable], Optional[str]]:
+    ) -> tuple[Callable | None, str | None]:
         """Safely compile source code and retrieve the entrypoint callable."""
         try:
             tree = ast.parse(code_str)
             code_obj = compile(tree, filename="<shadow_sandbox>", mode="exec")
-            sandbox_env: Dict[str, Any] = {
+            sandbox_env: dict[str, Any] = {
                 "__builtins__": __builtins__,
                 "math": math,
                 "random": random,
@@ -188,7 +222,7 @@ class DifferentialInvariantFuzzer:
             return None, f"Compilation/Execution failed: {type(e).__name__}: {str(e)}"
 
     def _safe_execute(
-        self, func: Callable, args: Tuple[Any, ...], kwargs: Dict[str, Any]
+        self, func: Callable, args: tuple[Any, ...], kwargs: dict[str, Any]
     ) -> ExecutionTrialResult:
         """Execute callable safely with isolated argument deepcopies."""
         import time
@@ -217,7 +251,9 @@ class DifferentialInvariantFuzzer:
         """Check equivalence accounting for float precision and object shapes."""
         if val_a is val_b:
             return True
-        if type(val_a) != type(val_b):
+        # Exact type identity, not isinstance: 1 and 1.0 must not compare equal
+        # here, and a subclass must not silently stand in for its base.
+        if type(val_a) is not type(val_b):
             return False
         if isinstance(val_a, float) and isinstance(val_b, float):
             if math.isnan(val_a) and math.isnan(val_b):
@@ -233,10 +269,10 @@ class DifferentialInvariantFuzzer:
         baseline_code: str,
         modified_code: str,
         entrypoint_function: str,
-        input_schema: Optional[Dict[str, Any]] = None,
+        input_schema: dict[str, Any] | None = None,
         num_trials: int = 50,
-        bug_inducing_inputs: Optional[List[Dict[str, Any]]] = None,
-    ) -> Dict[str, Any]:
+        bug_inducing_inputs: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         """Execute property-based differential comparison across code revisions."""
         base_func, base_err = self._compile_entrypoint(baseline_code, entrypoint_function)
         if base_err:
@@ -255,7 +291,7 @@ class DifferentialInvariantFuzzer:
             }
 
         # Inspect parameter names
-        param_names: List[str] = []
+        param_names: list[str] = []
         if input_schema:
             param_names = list(input_schema.keys())
         else:
@@ -267,9 +303,9 @@ class DifferentialInvariantFuzzer:
         if not param_names:
             param_names = ["x"]
 
-        comparisons: List[DifferentialComparisonResult] = []
-        regressions: List[Dict[str, Any]] = []
-        verified_fixes: List[Dict[str, Any]] = []
+        comparisons: list[DifferentialComparisonResult] = []
+        regressions: list[dict[str, Any]] = []
+        verified_fixes: list[dict[str, Any]] = []
 
         # 1. Test known bug-inducing inputs
         if bug_inducing_inputs:
@@ -416,10 +452,10 @@ def run_differential_regression_oracle(
     baseline_code: str,
     modified_code: str,
     entrypoint_function: str,
-    input_schema: Optional[Dict[str, Any]] = None,
+    input_schema: dict[str, Any] | None = None,
     num_trials: int = 50,
-    bug_inducing_inputs: Optional[List[Dict[str, Any]]] = None,
-) -> Dict[str, Any]:
+    bug_inducing_inputs: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Execute differential invariant validation and regression testing between code revisions.
 
     Synthesizes property-based fuzz tests and executes dual shadow sandboxes with randomized

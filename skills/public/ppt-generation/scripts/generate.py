@@ -24,7 +24,7 @@ def generate_ppt(
         Status message
     """
     # Load presentation plan
-    with open(plan_file, "r", encoding="utf-8") as f:
+    with open(plan_file, encoding="utf-8") as f:
         plan = json.load(f)
 
     # Determine slide dimensions based on aspect ratio
@@ -92,9 +92,7 @@ def generate_ppt(
             img_bytes.seek(0)
 
             # Add image to slide
-            slide.shapes.add_picture(
-                img_bytes, left, top, Inches(new_width_emu / 914400), Inches(new_height_emu / 914400)
-            )
+            slide.shapes.add_picture(img_bytes, left, top, Inches(new_width_emu / 914400), Inches(new_height_emu / 914400))
 
         # Add speaker notes if available in plan
         if i < len(slides_info):
@@ -127,9 +125,7 @@ def generate_ppt(
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Generate PowerPoint presentation from slide images"
-    )
+    parser = argparse.ArgumentParser(description="Generate PowerPoint presentation from slide images")
     parser.add_argument(
         "--plan-file",
         required=True,

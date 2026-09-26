@@ -98,9 +98,19 @@ def test_phase_transition_verification():
 
 def test_autonomous_tools():
     # 1. execute_slash_command tool
+    #
+    # "/verify all" is NOT a registered command: the catalog publishes /verify
+    # (no argument) plus its own subcommands, and there is no handler behind
+    # /verify. This assertion previously required the tool to report "SUCCESS"
+    # for it, which told the model a verification had happened when nothing ran.
+    # It now pins the honest result: an explicit failure, with the reason and
+    # the real subcommand list.
     tool_out = execute_slash_command_tool.invoke({"command_line": "/verify all"})
     assert "Slash Command Result: /verify" in tool_out
-    assert "SUCCESS" in tool_out
+    assert "SUCCESS" not in tool_out
+    assert "VERDICT: FAILED" in tool_out
+    assert "Unknown subcommand 'all'" in tool_out
+    assert "/verify deep" in tool_out
 
     # 2. identify_autonomous_command tool
     rec = identify_autonomous_command_tool.invoke({

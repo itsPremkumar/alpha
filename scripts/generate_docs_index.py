@@ -201,6 +201,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
     "GETTING_STARTED.md": DocumentSpec(
         "contributing", "Installation and first-run guide for Alpha."
     ),
+    "INSTALLER.md": DocumentSpec(
+        "operations",
+        "Windows installer: unattended bootstrap, measured footprint, uninstall and troubleshooting.",
+    ),
     "IMPLEMENTATION_MATRIX.md": DocumentSpec(
         "plans", "Living implementation status matrix for production work."
     ),

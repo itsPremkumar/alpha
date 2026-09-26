@@ -93,9 +93,7 @@ def format_mib(value: int | None) -> str:
     return f"{value / 1024 / 1024:.1f} MiB"
 
 
-def run_kubectl(
-    args: list[str], *, kubectl: str, timeout: int = DEFAULT_KUBECTL_TIMEOUT
-) -> str:
+def run_kubectl(args: list[str], *, kubectl: str, timeout: int = DEFAULT_KUBECTL_TIMEOUT) -> str:
     completed = subprocess.run(
         [kubectl, *args],
         check=True,
@@ -154,9 +152,7 @@ def parse_processes(output: str, *, limit: int) -> list[ProcessSample]:
             ppid = int(ppid_raw)
         except ValueError:
             ppid = None
-        processes.append(
-            ProcessSample(pid=pid, ppid=ppid, rss_kib=rss_kib, command=command)
-        )
+        processes.append(ProcessSample(pid=pid, ppid=ppid, rss_kib=rss_kib, command=command))
     processes.sort(key=lambda process: process.rss_kib, reverse=True)
     return processes[:limit]
 
@@ -175,15 +171,9 @@ def _container_resources(pod: dict[str, Any]) -> dict[str, Any]:
     return resources
 
 
-def merge_pod_data(
-    top_pods: list[TopPod], pod_json: dict[str, Any]
-) -> list[dict[str, Any]]:
+def merge_pod_data(top_pods: list[TopPod], pod_json: dict[str, Any]) -> list[dict[str, Any]]:
     pod_items = pod_json.get("items", []) if isinstance(pod_json, dict) else []
-    metadata_by_name = {
-        pod.get("metadata", {}).get("name"): pod
-        for pod in pod_items
-        if pod.get("metadata", {}).get("name")
-    }
+    metadata_by_name = {pod.get("metadata", {}).get("name"): pod for pod in pod_items if pod.get("metadata", {}).get("name")}
 
     rows: list[dict[str, Any]] = []
     for top in top_pods:
@@ -200,9 +190,7 @@ def merge_pod_data(
                 "memory": {
                     "raw": top.memory_raw,
                     "bytes": top.memory_bytes,
-                    "mib": None
-                    if top.memory_bytes is None
-                    else round(top.memory_bytes / 1024 / 1024, 2),
+                    "mib": None if top.memory_bytes is None else round(top.memory_bytes / 1024 / 1024, 2),
                 },
                 "phase": status.get("phase", ""),
                 "start_time": status.get("startTime", ""),
@@ -246,12 +234,8 @@ def build_report(
     pods = merge_pod_data(top_pods, pod_json)
     if process_samples:
         pods = attach_process_samples(pods, process_samples)
-    memory_values = [
-        pod["memory"]["bytes"] for pod in pods if pod["memory"]["bytes"] is not None
-    ]
-    cpu_values = [
-        pod["cpu"]["millicores"] for pod in pods if pod["cpu"]["millicores"] is not None
-    ]
+    memory_values = [pod["memory"]["bytes"] for pod in pods if pod["memory"]["bytes"] is not None]
+    cpu_values = [pod["cpu"]["millicores"] for pod in pods if pod["cpu"]["millicores"] is not None]
     unparsed_memory_count = len(pods) - len(memory_values)
     unparsed_cpu_count = len(pods) - len(cpu_values)
 
@@ -267,14 +251,8 @@ def build_report(
             "unparsed_memory_count": unparsed_memory_count,
             "total_memory_bytes": sum(memory_values),
             "total_memory_mib": round(sum(memory_values) / 1024 / 1024, 2),
-            "average_memory_mib": round(
-                (sum(memory_values) / len(memory_values)) / 1024 / 1024, 2
-            )
-            if memory_values
-            else None,
-            "max_memory_mib": round(max(memory_values) / 1024 / 1024, 2)
-            if memory_values
-            else None,
+            "average_memory_mib": round((sum(memory_values) / len(memory_values)) / 1024 / 1024, 2) if memory_values else None,
+            "max_memory_mib": round(max(memory_values) / 1024 / 1024, 2) if memory_values else None,
             "parsed_cpu_count": len(cpu_values),
             "unparsed_cpu_count": unparsed_cpu_count,
             "total_cpu_millicores": sum(cpu_values),
@@ -305,12 +283,8 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"- Parsed memory samples: `{summary['parsed_memory_count']}`",
         f"- Unparsed memory samples: `{summary['unparsed_memory_count']}`",
         f"- Total memory: `{format_mib(summary['total_memory_bytes'])}`",
-        f"- Average memory: `{summary['average_memory_mib']} MiB`"
-        if summary["average_memory_mib"] is not None
-        else "- Average memory: `-`",
-        f"- Max memory: `{summary['max_memory_mib']} MiB`"
-        if summary["max_memory_mib"] is not None
-        else "- Max memory: `-`",
+        f"- Average memory: `{summary['average_memory_mib']} MiB`" if summary["average_memory_mib"] is not None else "- Average memory: `-`",
+        f"- Max memory: `{summary['max_memory_mib']} MiB`" if summary["max_memory_mib"] is not None else "- Max memory: `-`",
         f"- Total CPU: `{summary['total_cpu_millicores']}m`",
         f"- Pods with process samples: `{summary['pods_with_process_samples']}`",
         f"- Pods with process sample errors: `{summary['pods_with_process_sample_errors']}`",
@@ -349,9 +323,7 @@ def render_markdown(report: dict[str, Any]) -> str:
                         pid=process["pid"],
                         ppid=process["ppid"] if process["ppid"] is not None else "-",
                         rss=format_mib(process["rss_kib"] * 1024),
-                        command=str(process["command"])
-                        .replace("`", "'")
-                        .replace("|", "\\|"),
+                        command=str(process["command"]).replace("`", "'").replace("|", "\\|"),
                     )
                 )
 
@@ -376,9 +348,7 @@ def collect_process_samples(
 ) -> ProcessSampleResult:
     samples: dict[str, list[ProcessSample]] = {}
     errors: dict[str, str] = {}
-    command = (
-        "ps -eo pid,ppid,rss,args --sort=-rss 2>/dev/null || ps -eo pid,ppid,rss,args"
-    )
+    command = "ps -eo pid,ppid,rss,args --sort=-rss 2>/dev/null || ps -eo pid,ppid,rss,args"
     for pod in top_pods:
         try:
             output = run_kubectl(

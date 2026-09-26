@@ -23,12 +23,18 @@ One sites.
 
 Only the async hooks do any work; the sync graph path passes straight through, so
 it stays byte-identical too. Those sync passthroughs are **required**, not
-optional polish: ``AgentMiddleware.wrap_model_call`` and ``.wrap_tool_call`` raise
-``NotImplementedError`` ("Synchronous implementation ... is not available") when
-only the async variant is defined, so an async-only middleware would take down any
-synchronous ``invoke()``/``stream()``. Driving the provider from the sync path
-would mean blocking on coroutines from a possibly-running loop, so personalisation
-stays on the async path instead.
+optional polish. ``langchain.agents.create_agent`` adds a graph node for a hook
+when *either* its sync or async variant is overridden, and then passes
+``RunnableCallable`` a ``None`` for whichever one is missing. So an async-only
+hook takes down any synchronous ``invoke()``/``stream()`` — with
+``TypeError: No synchronous function provided to "abefore_agent"`` for the
+before/after hooks, and ``NotImplementedError`` ("Synchronous implementation ...
+is not available") for the wrap hooks. Every hook this middleware overrides here
+therefore has a sync counterpart: ``before_agent``/``after_agent``/
+``wrap_model_call``/``wrap_tool_call``. Driving the provider from the sync path
+would mean blocking on coroutines from a possibly-running loop, so
+personalisation stays on the async path instead; the sync counterparts exist to
+keep the graph runnable, not to enable the feature there.
 
 Every provider call is individually guarded: personalization must never be able to
 take down a run. A provider that raises is logged and dropped for the rest of the
@@ -136,6 +142,19 @@ class UserModelMiddleware(AgentMiddleware[AgentState]):
         return self._app_config
 
     @override
+    def before_agent(self, state: AgentState, runtime: Runtime) -> dict[str, Any] | None:
+        """Sync path: no-op (see the module docstring for why).
+
+        Required, not optional: langchain's ``create_agent`` decides whether to
+        build a ``before_agent`` graph node from *either* override, then hands
+        ``RunnableCallable`` a ``None`` sync callable when only the async variant
+        is defined. A synchronous ``stream()``/``invoke()`` then dies with
+        ``TypeError: No synchronous function provided to "abefore_agent"`` —
+        which is exactly what the shipped ``alpha --json`` run did.
+        """
+        return None
+
+    @override
     async def abefore_agent(self, state: AgentState, runtime: Runtime) -> dict[str, Any] | None:
         if not self._active:
             return None
@@ -221,6 +240,12 @@ class UserModelMiddleware(AgentMiddleware[AgentState]):
         except Exception:
             logger.exception("UserModelMiddleware: provider.handle_tool_call failed; ignoring")
         return result
+
+    @override
+    def after_agent(self, state: AgentState, runtime: Runtime) -> dict[str, Any] | None:
+        """Sync path: no-op (see the module docstring for why). Required: see
+        :meth:`before_agent` for why an async-only hook breaks ``stream()``."""
+        return None
 
     @override
     async def aafter_agent(self, state: AgentState, runtime: Runtime) -> dict[str, Any] | None:

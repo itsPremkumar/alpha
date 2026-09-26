@@ -180,6 +180,9 @@ from .variation_operator_tool import run_nvidia_avo_step, run_variation_operator
 from .view_image_tool import view_image_tool
 from .visual_verification_tool import visual_verify_artifact
 from .wake_gate_tool import await_task_event
+
+# War Room: staged, clock-bounded group deliberation and the bot lifecycle
+from .war_room_tool import war_room_tool
 from .workflow_dag_tool import workflow_dag_manage
 
 __all__ = [
@@ -329,4 +332,5 @@ __all__ = [
     "desktop_keyboard_action_tool",
     "desktop_window_manage_tool",
     "desktop_system_one_action_tool",
+    "war_room_tool",
 ]

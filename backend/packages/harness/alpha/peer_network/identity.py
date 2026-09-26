@@ -7,6 +7,7 @@ import os
 import secrets
 import socket
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
@@ -23,10 +24,22 @@ DEFAULT_SKILLS = (
 )
 
 
-def _default_host() -> str:
-    configured = os.getenv("ALPHA_PEER_NETWORK_ADVERTISED_HOST", "").strip()
-    if configured:
-        return configured
+@lru_cache(maxsize=1)
+def _resolve_local_address() -> str:
+    """Resolve this host's routable IPv4 address, or ``127.0.0.1``.
+
+    ``socket.gethostbyname`` is a blocking resolver call that can stall for
+    seconds on a slow or misconfigured resolver.  ``card()`` is reached from the
+    unauthenticated Agent Card routes, from UDP beacon construction, and from
+    the status route, so the result is memoised: the address of a running host
+    does not change between requests, and the only cost of that assumption is
+    that a changed address is picked up after
+    ``reset_advertised_host_cache()`` or a process restart.
+
+    Callers on the event loop must go through ``prime_advertised_host()`` (run
+    it with ``asyncio.to_thread``), never call this directly.
+    """
+
     try:
         address = socket.gethostbyname(socket.gethostname())
         if address and not address.startswith("127."):
@@ -34,6 +47,25 @@ def _default_host() -> str:
     except OSError:
         pass
     return "127.0.0.1"
+
+
+def prime_advertised_host() -> str:
+    """Resolve and memoise the advertised host. Blocking: use ``asyncio.to_thread``."""
+
+    return _default_host()
+
+
+def reset_advertised_host_cache() -> None:
+    """Drop the memoised address so the next card is rebuilt from a fresh lookup."""
+
+    _resolve_local_address.cache_clear()
+
+
+def _default_host() -> str:
+    configured = os.getenv("ALPHA_PEER_NETWORK_ADVERTISED_HOST", "").strip()
+    if configured:
+        return configured
+    return _resolve_local_address()
 
 
 def _default_http_port() -> int:
@@ -212,4 +244,10 @@ class LocalIdentity:
         return result
 
 
-__all__ = ["DEFAULT_CAPABILITIES", "DEFAULT_SKILLS", "LocalIdentity"]
+__all__ = [
+    "DEFAULT_CAPABILITIES",
+    "DEFAULT_SKILLS",
+    "LocalIdentity",
+    "prime_advertised_host",
+    "reset_advertised_host_cache",
+]

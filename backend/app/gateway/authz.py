@@ -47,8 +47,8 @@ from alpha.authz.runtime import resolve_authorization_provider
 from alpha.config.authorization_config import AuthorizationConfig
 
 if TYPE_CHECKING:
-    from app.gateway.auth.models import User
     from alpha.config.app_config import AppConfig
+    from app.gateway.auth.models import User
 
 P = ParamSpec("P")
 T = TypeVar("T")
@@ -122,6 +122,55 @@ class AuthContext:
 def get_auth_context(request: Request) -> AuthContext | None:
     """Get AuthContext from request state."""
     return getattr(request.state, "auth", None)
+
+
+async def require_thread_owner(request: Request, thread_id: str, *, require_existing: bool = False) -> None:
+    """Require that *thread_id* belongs to the authenticated caller.
+
+    ``require_permission(..., owner_check=True)`` can only read the owner from a
+    ``thread_id`` **path parameter**, because it inspects the wrapped handler's
+    keyword arguments. Routes whose thread identity arrives in the query string
+    or the JSON body therefore cannot use it, and silently ship with no owner
+    check at all. That is not a theoretical gap: the credential-shield routes
+    took a client-supplied ``thread_id`` and reached a process-global vault that
+    has no user dimension, so any authenticated user could read, inject into, and
+    purge another user's thread credentials.
+
+    This is the body/query-parameter counterpart. It shares the exact semantics
+    of ``require_permission``'s owner check so the two cannot drift:
+
+    * a missing ``threads_meta`` row is "untracked legacy thread, allow" unless
+      ``require_existing=True`` (use that on destructive routes);
+    * a row whose ``user_id`` is NULL is shared/pre-auth data and is allowed;
+    * an existing row owned by a different user is a 404, never a 403, so the
+      endpoint does not confirm that somebody else's thread exists;
+    * a trusted internal caller (channel worker) is re-scoped to the owner in
+      ``X-Agent-Workspace-Owner-User-Id`` instead of bypassing the check.
+
+    Raises:
+        HTTPException 401: the request is unauthenticated.
+        HTTPException 404: the caller does not own the thread.
+    """
+    from app.gateway.deps import get_optional_user_from_request, get_thread_store
+    from app.gateway.internal_auth import (
+        INTERNAL_OWNER_USER_ID_HEADER_NAME,
+        INTERNAL_SYSTEM_ROLE,
+    )
+
+    user = getattr(getattr(request, "state", None), "user", None)
+    if user is None:
+        user = await get_optional_user_from_request(request)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    thread_store = get_thread_store(request)
+    allowed = await thread_store.check_access(thread_id, str(user.id), require_existing=require_existing)
+    if not allowed and getattr(user, "system_role", None) == INTERNAL_SYSTEM_ROLE:
+        header_owner = (request.headers.get(INTERNAL_OWNER_USER_ID_HEADER_NAME) or "").strip()
+        if header_owner:
+            allowed = await thread_store.check_access(thread_id, header_owner, require_existing=require_existing)
+    if not allowed:
+        raise HTTPException(status_code=404, detail=f"Thread {thread_id} not found")
 
 
 def require_cancel_permission_if(request: Request, can_cancel: bool) -> None:
@@ -531,8 +580,8 @@ def _is_internal_caller(request: Request, user: Any) -> bool:
     from app.gateway.auth_disabled import AUTH_SOURCE_INTERNAL
     from app.gateway.internal_auth import (
         INTERNAL_AUTH_HEADER_NAME,
-        LEGACY_INTERNAL_AUTH_HEADER_NAME,
         INTERNAL_SYSTEM_ROLE,
+        LEGACY_INTERNAL_AUTH_HEADER_NAME,
         is_valid_internal_auth_token,
     )
 

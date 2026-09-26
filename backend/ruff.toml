@@ -1,13 +1,10 @@
-line-length = 240
-target-version = "py312"
-
-[lint]
-select = ["E", "F", "I", "UP"]
-ignore = []
+# The backend scope has no policy of its own: it inherits the repository-wide
+# policy in ruff.toml at the repository root and only adds the import-grouping
+# knowledge that is specific to this tree.  The rule set (E, F, I, UP) at
+# line-length 240 is therefore identical for backend/ and for every other
+# first-party Python file in the repository, which is what lets one gate and one
+# debt report cover the whole tree.
+extend = "../ruff.toml"
 
 [lint.isort]
 known-first-party = ["alpha", "app"]
-
-[format]
-quote-style = "double"
-indent-style = "space"

@@ -66,6 +66,7 @@ def _durable_event_sink(event: WorkflowEvent) -> None:
         "workflow_completed",
         "workflow_failed",
         "workflow_cancelled",
+        "workflow_budget_exhausted",
     }:
         run = get_workflow_engine().get_run(event.workflow_run_id)
         if run is not None:
@@ -1030,7 +1031,8 @@ def _durable_run_summaries(owner_id: str | None) -> tuple[dict[str, dict[str, An
             "workflow_completed": "completed",
             "workflow_failed": "failed",
             "workflow_cancelled": "cancelled",
-            "budget_exhausted": "budget_exhausted",
+            "workflow_budget_exhausted": "budget_exhausted",
+            "stagnation_recovery_exhausted": "failed",
             "approval_requested": "waiting_approval",
         }.get(latest.event_type, "unknown")
         entries[run_id] = {

@@ -31,6 +31,7 @@ class SwarmIncident:
     failed_worker: str = ""
     error_message: str = ""
     attempt: int = 1
+    worker_type: str = "ephemeral"
     assigned_successor: str | None = None
     resolved: bool = False
     reason: str = ""
@@ -63,6 +64,7 @@ class SwarmIncidentManager:
             failed_worker=failed_worker,
             error_message=error_message,
             attempt=task.attempts,
+            worker_type=str(task.worker_type or "ephemeral"),
         )
 
         # Trigger autonomous succession resolution
@@ -79,10 +81,17 @@ class SwarmIncidentManager:
             logger.info(f"Swarm incident {incident.incident_id} recovered: task {task.task_id} reassigned from @{failed_worker} to successor @{successor}.")
         else:
             incident.resolved = False
-            incident.reason = "no eligible succession fallback"
+            if not task.assigned_worker:
+                # An ephemeral subagent has no roster identity, so there is
+                # nothing to succeed it.  Say that, instead of reporting the
+                # generic "no eligible succession fallback" and letting a
+                # reader assume a bot roster was consulted and came up empty.
+                incident.reason = "ephemeral worker has no succession identity; the bounded per-task retry owns recovery"
+            else:
+                incident.reason = "no eligible succession fallback"
             if successor and not allow_retry:
                 incident.reason = "succession candidate found but task retry budget is exhausted"
-            logger.warning(f"Swarm incident {incident.incident_id} unresolved: no eligible succession fallback for @{failed_worker}.")
+            logger.warning(f"Swarm incident {incident.incident_id} unresolved: {incident.reason} for @{failed_worker}.")
 
         if swarm_id not in self._incidents:
             self._incidents[swarm_id] = []

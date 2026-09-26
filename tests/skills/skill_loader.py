@@ -3,6 +3,7 @@
 Skills live in skills/public/<name>/scripts/generate.py and are NOT a package,
 so tests load them via importlib. Tests then mock the module's `requests`.
 """
+
 import importlib.util
 import sys
 from pathlib import Path

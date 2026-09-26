@@ -201,12 +201,41 @@ class AsyncSwarmRunner:
                         result_payload=outcome.get("result_payload") if isinstance(outcome.get("result_payload"), dict) else None,
                     )
                     if updated is None or updated.state != TaskNodeState.COMPLETED:
+                        # The provider call already happened and the provider
+                        # already reported what it cost.  Losing the lease race
+                        # only decides which RESULT is authoritative; it does
+                        # not un-spend the tokens.  Dropping the measurement
+                        # here made ``used_tokens``/``used_tool_calls``
+                        # under-report real spend, so the hard budget stopped
+                        # bounding the run it was meant to bound.
+                        plan.budget.record_usage(
+                            input_tokens=input_tokens,
+                            output_tokens=output_tokens,
+                            tool_calls=tool_calls,
+                        )
+                        task_node.token_usage = {
+                            "input_tokens": input_tokens,
+                            "output_tokens": output_tokens,
+                            "total_tokens": input_tokens + output_tokens,
+                        }
+                        task_node.tool_calls += tool_calls
                         self.coordinator.append_event(
                             swarm_id,
                             "TASK_RESULT_FENCED",
                             task_id=task_node.task_id,
                             worker=task_node.assigned_worker or "ephemeral-worker",
-                            details={"backup": backup, "lease_id": lease_id, "reason": "lease is no longer current or task is terminal"},
+                            details={
+                                "backup": backup,
+                                "lease_id": lease_id,
+                                "reason": "lease is no longer current or task is terminal",
+                                # The discarded attempt is disclosed, not hidden.
+                                "discarded_usage": {
+                                    "input_tokens": input_tokens,
+                                    "output_tokens": output_tokens,
+                                    "total_tokens": input_tokens + output_tokens,
+                                    "tool_calls": tool_calls,
+                                },
+                            },
                         )
                         return
                     SwarmAggregator.apply_acceptance_verification(
@@ -261,6 +290,12 @@ class AsyncSwarmRunner:
                             task_id=task_node.task_id,
                             trust="internal",
                             idempotency_key=f"result-message:{swarm_id}:{task_node.task_id}:{lease_id or task_node.attempts}",
+                            # The runner already marks the plan dirty for this
+                            # transition; forcing a durable full-plan rewrite
+                            # here as well is what made a large plan's write
+                            # volume quadratic.  The round-boundary flush makes
+                            # it durable.
+                            durable=False,
                         )
                     except ValueError:
                         # A concurrent cancel/budget stop is authoritative; the
@@ -268,13 +303,43 @@ class AsyncSwarmRunner:
                         pass
                 self.coordinator.checkpoint(swarm_id)
             except asyncio.CancelledError:
-                self.coordinator.append_event(
-                    swarm_id,
-                    "TASK_CANCELLED",
-                    task_id=task_node.task_id,
-                    worker=task_node.assigned_worker or "ephemeral-worker",
-                    details={"backup": backup, "lease_id": lease_id},
-                )
+                # Two different things arrive here.  (a) An authoritative stop
+                # -- ``cancel_swarm`` / ``_finalize_budget`` already moved the
+                # node to a terminal state, so there is nothing to release.
+                # (b) A cancellation scoped to THIS node's execution (the worker
+                # itself raised ``CancelledError``, or the await was torn down).
+                # Re-raising without touching the node left it in RUNNING
+                # holding a live lease, so the node was unreapable until the
+                # lease expired, and the eventual terminal error was the
+                # misleading "orphaned: execution disappeared while the swarm
+                # was idle" instead of the real cause.  ``mark_failed``
+                # releases the lease and honours ``max_attempts``, so this
+                # cannot livelock either.
+                with self.coordinator.state_lock:
+                    authoritative_stop = plan.status in {"cancelled", "budget_exhausted", "stalled"} or is_terminal_swarm_status(plan.status)
+                    stranded = task_node.state not in {
+                        TaskNodeState.COMPLETED,
+                        TaskNodeState.FAILED,
+                        TaskNodeState.CANCELLED,
+                    }
+                    if stranded and not authoritative_stop and not backup:
+                        scheduler.mark_failed(
+                            task_node.task_id,
+                            "cancelled: task execution was cancelled before it produced a result",
+                            lease_id=lease_id,
+                        )
+                    self.coordinator.append_event(
+                        swarm_id,
+                        "TASK_CANCELLED",
+                        task_id=task_node.task_id,
+                        worker=task_node.assigned_worker or "ephemeral-worker",
+                        details={
+                            "backup": backup,
+                            "lease_id": lease_id,
+                            "authoritative_stop": authoritative_stop,
+                            "released_node": stranded and not authoritative_stop,
+                        },
+                    )
                 raise
             except Exception as exc:
                 logger.exception("Error executing task %s in swarm %s", task_node.task_id, swarm_id)
@@ -308,23 +373,47 @@ class AsyncSwarmRunner:
                         # terminal budget_exhausted that no resume can reverse.
                         if updated is not None and updated.state == TaskNodeState.FAILED:
                             plan.budget.record_task_failure()
-                        if updated is not None and updated.state == TaskNodeState.PENDING:
-                            event_type = "TASK_RETRY_SCHEDULED"
-                            if task_node.assigned_worker:
-                                from alpha.swarm.incidents import get_swarm_incident_manager
+                        if updated is not None and updated.state in {TaskNodeState.PENDING, TaskNodeState.FAILED}:
+                            # Record the incident for EVERY failed attempt, and
+                            # for EVERY worker.  Two gates used to hide real
+                            # failures from the audit trail: ``assigned_worker``
+                            # (ephemeral subagents are the majority of a
+                            # decomposed plan -- every map shard, every
+                            # debate/ensemble branch -- so a hard failure there
+                            # produced an empty incident ledger and
+                            # ``GET /api/swarms/{id}/incidents`` answered "no
+                            # failure incidents" about a swarm that had just
+                            # failed a node), and the retryable state only (so
+                            # the attempt that finally EXHAUSTED ``max_attempts``
+                            # -- the one that actually matters -- was never
+                            # recorded at all).  Succession recovery still
+                            # applies only where a retry and a successor both
+                            # exist; see
+                            # ``SwarmIncidentManager.record_failure_and_recover``.
+                            from alpha.swarm.incidents import get_swarm_incident_manager
 
-                                incident = get_swarm_incident_manager().record_failure_and_recover(
-                                    swarm_id,
-                                    task_node,
-                                    str(exc),
-                                    allow_retry=True,
-                                )
-                                self.coordinator.append_event(
-                                    swarm_id,
-                                    "SWARM_INCIDENT_RECOVERED" if incident.resolved else "SWARM_INCIDENT_UNRESOLVED",
-                                    task_id=task_node.task_id,
-                                    details={"incident_id": incident.incident_id, "successor": incident.assigned_successor, "reason": incident.reason},
-                                )
+                            retry_scheduled = updated.state == TaskNodeState.PENDING
+                            incident = get_swarm_incident_manager().record_failure_and_recover(
+                                swarm_id,
+                                task_node,
+                                str(exc),
+                                allow_retry=retry_scheduled,
+                            )
+                            self.coordinator.append_event(
+                                swarm_id,
+                                "SWARM_INCIDENT_RECOVERED" if incident.resolved else "SWARM_INCIDENT_UNRESOLVED",
+                                task_id=task_node.task_id,
+                                details={
+                                    "incident_id": incident.incident_id,
+                                    "successor": incident.assigned_successor,
+                                    "failed_worker": incident.failed_worker,
+                                    "worker_type": incident.worker_type,
+                                    "attempt": incident.attempt,
+                                    "retry_scheduled": retry_scheduled,
+                                    "reason": incident.reason,
+                                },
+                            )
+                            event_type = "TASK_RETRY_SCHEDULED" if retry_scheduled else "TASK_FAILED"
                         else:
                             event_type = "TASK_FAILED"
                         self.coordinator.append_event(
@@ -333,11 +422,11 @@ class AsyncSwarmRunner:
                             task_id=task_node.task_id,
                             details={"error": str(exc), "lease_id": lease_id, "retry_after_seconds": retry_delay},
                         )
-                self.coordinator.checkpoint(swarm_id)
+                self.coordinator.mark_checkpoint_dirty(swarm_id)
             finally:
                 # The scratchpad is intentionally not exposed as a second state
                 # source; workers may use it only for their invocation.
-                self.coordinator.checkpoint(swarm_id)
+                self.coordinator.mark_checkpoint_dirty(swarm_id)
 
         def launch(task_node: SwarmTaskNode, *, backup: bool = False) -> None:
             task = asyncio.create_task(
@@ -435,6 +524,21 @@ class AsyncSwarmRunner:
                                 task_node.state = TaskNodeState.FAILED
                                 task_node.error_message = "orphaned: execution disappeared while the swarm was idle"
                                 task_node.completed_at = time.time()
+                                # A terminal node must never keep a live
+                                # dispatch right.  This branch was the one
+                                # terminal transition in the runner that did
+                                # NOT release the lease, so the checkpoint and
+                                # every API projection reported a FAILED task
+                                # that still claimed to own an unexpired lease
+                                # (and the next reconcile pass would then treat
+                                # it as straggling work).  ``fail_unrunnable_tasks``,
+                                # ``cancel_swarm`` and ``_finalize_budget`` all
+                                # already clear these fields here.
+                                task_node.lease_id = None
+                                task_node.lease_owner = None
+                                task_node.lease_expires_at = None
+                                task_node.next_attempt_at = None
+                                task_node.backup_worker_launched = False
                                 self.coordinator.append_event(
                                     swarm_id,
                                     "TASK_FAILED",
@@ -477,11 +581,24 @@ class AsyncSwarmRunner:
                     self.coordinator.checkpoint(swarm_id)
                     break
 
+                # One durable plan snapshot per scheduler round.  Node
+                # transitions marked the plan dirty instead of writing the
+                # whole file each time (see
+                # ``SwarmCoordinator.mark_checkpoint_dirty``); the round
+                # boundary is where the snapshot is made durable, so a crash
+                # can lose at most one round of node states and the
+                # append-only event journal still holds every transition.
+                self.coordinator.flush_checkpoint(swarm_id)
                 await asyncio.wait(set(active), timeout=self.poll_interval, return_when=asyncio.FIRST_COMPLETED)
         finally:
             if active:
                 self._stop_active_tasks(active)
                 await asyncio.gather(*active, return_exceptions=True)
+            # The loop may have exited through a ``break`` (which leaves the
+            # post-loop terminal handling to flush) or through an exception.
+            # Flushing here is a no-op on a clean plan and guarantees a dirty
+            # plan is never abandoned unwritten.
+            self.coordinator.flush_checkpoint(swarm_id)
 
         if plan.status == "budget_exhausted":
             return await self._finalize_budget(plan, set())

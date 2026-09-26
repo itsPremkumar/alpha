@@ -3,14 +3,30 @@
 Tracks token consumption, dollar burn rates, and financial quotas in real-time
 across projects, bot personas, and model tiers. Enforces circuit breakers and
 automatically generates Human Approval requests when budget thresholds are reached.
+
+Wiring (this module used to be a dead accounting path): :func:`record_token_usage`
+is the single entry point every model call reports through. It resolves
+*attribution* (which project/bot the spend belongs to) from
+:func:`usage_attribution` / ``ALPHA_COST_PROJECT_ID``, charges the governor, and
+returns an :class:`UsageAccountingResult` instead of raising - cost accounting
+must never be the reason a model answer fails. The live caller is
+:class:`alpha.models.fallback.FallbackChatModel`, which reports the real
+``usage`` reported by the provider for the member that actually served the
+call. The mirrored process-local ledger is
+:mod:`alpha.runtime.token_meter`; this module owns the durable, budget-enforcing
+view of the same event.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar, Token
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -21,6 +37,13 @@ from alpha.config.token_budget_config import get_current_budget_scope
 from alpha.projects.approval_queue import get_approval_queue
 
 logger = logging.getLogger(__name__)
+
+#: Environment variable naming the project that unattributed model spend is
+#: charged to. A single deployment normally has one billable project; anything
+#: finer-grained binds :func:`usage_attribution` around its own calls.
+PROJECT_ID_ENV = "ALPHA_COST_PROJECT_ID"
+DEFAULT_PROJECT_ID = "default"
+DEFAULT_BOT_NAME = "agent"
 
 
 def _now() -> str:
@@ -382,3 +405,186 @@ def get_cost_governor() -> CostGovernor:
         if _global_governor is None:
             _global_governor = CostGovernor()
         return _global_governor
+
+
+def reset_cost_governor() -> None:
+    """Drop the process-global governor so the next read rebuilds it.
+
+    Needed when the runtime home changes under a long-lived process (tests,
+    multi-tenant workers that rebind ``AGENT_WORKSPACE_HOME``): the governor
+    binds its storage path at construction, so reusing the old instance would
+    keep writing (and reading) the previous workspace's ledger.
+    """
+    global _global_governor
+    with _governor_lock:
+        _global_governor = None
+
+
+@dataclass(frozen=True)
+class UsageAttribution:
+    """Which budget a model call's spend belongs to."""
+
+    project_id: str
+    bot_name: str
+
+
+_current_usage_attribution: ContextVar[UsageAttribution | None] = ContextVar("alpha_cost_usage_attribution", default=None)
+
+
+def get_usage_attribution() -> UsageAttribution:
+    """Resolve the active attribution: explicit binding, then env, then default."""
+    bound = _current_usage_attribution.get()
+    if bound is not None:
+        return bound
+    project_id = (os.getenv(PROJECT_ID_ENV) or "").strip() or DEFAULT_PROJECT_ID
+    return UsageAttribution(project_id=project_id, bot_name=DEFAULT_BOT_NAME)
+
+
+@contextmanager
+def usage_attribution(project_id: str, bot_name: str = DEFAULT_BOT_NAME) -> Iterator[UsageAttribution]:
+    """Bind the project/bot that :func:`record_token_usage` charges.
+
+    Per-task, per-thread, restorable, and correctly inherited by worker threads
+    spawned inside the block - the same ContextVar contract
+    :mod:`alpha.config.token_budget_config` uses for scoped budgets.
+    """
+    clean_project = (project_id or "").strip() or DEFAULT_PROJECT_ID
+    clean_bot = (bot_name or "").strip() or DEFAULT_BOT_NAME
+    resolved = UsageAttribution(project_id=clean_project, bot_name=clean_bot)
+    token: Token[UsageAttribution | None] = _current_usage_attribution.set(resolved)
+    try:
+        yield resolved
+    finally:
+        _current_usage_attribution.reset(token)
+
+
+@dataclass(frozen=True)
+class UsageAccountingResult:
+    """Outcome of one :func:`record_token_usage` call.
+
+    Returned rather than raised: a model answer that cost money must still be
+    delivered. ``breaker`` is set when the charge was recorded *and* a tripped
+    circuit breaker then stopped further work, so the caller can surface the
+    budget signal without turning it into a failed call.
+    """
+
+    recorded: bool
+    model_name: str
+    input_tokens: int
+    output_tokens: int
+    project_id: str
+    bot_name: str
+    cost_usd: float = 0.0
+    record: TokenUsageRecord | None = None
+    breaker: CircuitBreakerTrippedError | None = None
+    reason: str = ""
+
+
+def _coerce_token_count(value: object) -> int:
+    """Token counts are advisory here: malformed values become ``0``, never raise."""
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int) and value > 0:
+        return value
+    if isinstance(value, float) and value > 0:
+        return int(value)
+    return 0
+
+
+def record_token_usage(
+    model_name: str,
+    input_tokens: object = 0,
+    output_tokens: object = 0,
+    *,
+    project_id: str | None = None,
+    bot_name: str | None = None,
+    governor: CostGovernor | None = None,
+) -> UsageAccountingResult:
+    """Charge one model call's reported token usage to the cost governor.
+
+    This is the wired entry point for real request paths (see
+    :class:`alpha.models.fallback.FallbackChatModel`). It never raises: a
+    bookkeeping failure is reported in the result, and a tripped circuit
+    breaker is reported as :attr:`UsageAccountingResult.breaker` with the spend
+    still recorded, because the money was really spent.
+    """
+    clean_model = (str(model_name or "").strip()) or "unknown"
+    tokens_in = _coerce_token_count(input_tokens)
+    tokens_out = _coerce_token_count(output_tokens)
+    attribution = get_usage_attribution()
+    resolved_project = (project_id or "").strip() or attribution.project_id
+    resolved_bot = (bot_name or "").strip() or attribution.bot_name
+
+    if tokens_in == 0 and tokens_out == 0:
+        # Nothing to charge: providers that omit usage (or a free/local model
+        # that reports none) must not create zero-dollar records.
+        return UsageAccountingResult(
+            recorded=False,
+            model_name=clean_model,
+            input_tokens=0,
+            output_tokens=0,
+            project_id=resolved_project,
+            bot_name=resolved_bot,
+            reason="provider reported no token usage",
+        )
+
+    active = governor if governor is not None else get_cost_governor()
+    try:
+        record = active.record_usage(
+            project_id=resolved_project,
+            bot_name=resolved_bot,
+            model_name=clean_model,
+            input_tokens=tokens_in,
+            output_tokens=tokens_out,
+        )
+    except CircuitBreakerTrippedError as exc:
+        logger.warning(
+            "Cost governor circuit breaker tripped after charging project '%s' for model '%s' (%d in / %d out): %s",
+            exc.scope_id or resolved_project,
+            clean_model,
+            tokens_in,
+            tokens_out,
+            exc.blocked_by,
+        )
+        return UsageAccountingResult(
+            recorded=True,
+            model_name=clean_model,
+            input_tokens=tokens_in,
+            output_tokens=tokens_out,
+            project_id=resolved_project,
+            bot_name=resolved_bot,
+            cost_usd=_estimate_cost(clean_model, tokens_in, tokens_out),
+            breaker=exc,
+            reason=f"budget limit reached ({exc.blocked_by})",
+        )
+    except Exception as exc:  # accounting must never fail a model answer
+        logger.warning("Cost accounting failed for model '%s': %s", clean_model, exc, exc_info=True)
+        return UsageAccountingResult(
+            recorded=False,
+            model_name=clean_model,
+            input_tokens=tokens_in,
+            output_tokens=tokens_out,
+            project_id=resolved_project,
+            bot_name=resolved_bot,
+            reason=f"accounting unavailable ({type(exc).__name__})",
+        )
+
+    return UsageAccountingResult(
+        recorded=True,
+        model_name=clean_model,
+        input_tokens=tokens_in,
+        output_tokens=tokens_out,
+        project_id=resolved_project,
+        bot_name=resolved_bot,
+        cost_usd=record.cost_usd,
+        record=record,
+    )
+
+
+def _estimate_cost(model_name: str, input_tokens: int, output_tokens: int) -> float:
+    """Dollar estimate for the same rates :meth:`CostGovernor.record_usage` uses."""
+    clean_model = model_name.lower().strip()
+    in_rate, out_rate = MODEL_COST_PER_1K.get(clean_model, MODEL_COST_PER_1K["default"])
+    if clean_model.startswith("ollama/") or "local" in clean_model:
+        in_rate, out_rate = (0.0, 0.0)
+    return round((input_tokens / 1000.0 * in_rate) + (output_tokens / 1000.0 * out_rate), 6)

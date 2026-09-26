@@ -3,6 +3,12 @@
 Complements the watchdog worker recovery (`supervision.recovery`) at the run
 level: each failure class gets a retry budget, backoff, and a terminal
 strategy. Exhaustion escalates instead of looping forever.
+
+The run-level classes below stay the vocabulary for graph runs. Every OTHER
+work unit (swarm task, batch item, subagent, bot turn) is classified and
+bounded through the shared taxonomy in `alpha.bots.failure_reasons`; this
+module bridges the two vocabularies so a caller holding either one gets the
+same answer -- see `decide_from_reason` and `recovery_class_to_reason`.
 """
 
 from __future__ import annotations
@@ -65,6 +71,51 @@ def decide(error: str, *, attempt: int) -> RecoveryDecision:
         wait = policy.backoff_seconds[min(attempt - 1, len(policy.backoff_seconds) - 1)]
         return RecoveryDecision(action="retry", attempt=attempt, wait_seconds=wait, reason=f"{failure}: retry {attempt}/{policy.max_attempts}")
     return RecoveryDecision(action=policy.terminal_strategy, attempt=attempt, wait_seconds=0.0, reason=f"{failure}: budget exhausted -> {policy.terminal_strategy}")
+
+
+# --- Bridge to the shared work-unit taxonomy -------------------------------
+# One taxonomy for every bounded work unit. `classify_failure` above is the
+# run-level (graph run) classifier and stays exactly as it was; these helpers
+# translate between it and the codes in `alpha.bots.failure_reasons` so a
+# swarm task, a batch item, a subagent and a bot turn are classified and
+# bounded by ONE rule set instead of each substring-matching its own.
+
+RECOVERY_CLASS_REASONS: dict[str, str] = {
+    "model_timeout": "delivery_timeout",
+    "model_rate_limit": "provider_rate_limit",
+    "tool_failure": "provider_server_error",
+    "tool_timeout": "delivery_timeout",
+    "context_overflow": "context_overflow",
+    "container_crash": "worker_crash",
+    "unknown": "unknown",
+}
+
+
+def recovery_class_to_reason(failure_class: str) -> str:
+    """Map a run-level recovery class onto a shared reason code."""
+    from alpha.bots.failure_reasons import UNKNOWN
+
+    return RECOVERY_CLASS_REASONS.get(failure_class, UNKNOWN)
+
+
+def decide_from_reason(error: str, *, attempt: int, max_attempts: int, failure_reason: str | None = None) -> RecoveryDecision:
+    """Bound a retry decision using the SHARED taxonomy for any work unit.
+
+    Returns the same `RecoveryDecision` shape `decide` returns, so a caller can
+    swap one for the other, but the ceiling it honours is the caller's own
+    `max_attempts` and the reason is the typed code. A spent ceiling always
+    ends in ``escalate`` — never another silent retry.
+    """
+    from alpha.bots.failure_reasons import classify_work_failure, decide_failure
+
+    reason = failure_reason or classify_work_failure(error)
+    decision = decide_failure(reason, attempt=attempt, max_attempts=max_attempts)
+    if decision.action == "retry":
+        policy = POLICIES.get(classify_failure(error), POLICIES["unknown"])
+        wait = policy.backoff_seconds[min(max(0, attempt - 1), len(policy.backoff_seconds) - 1)]
+        return RecoveryDecision(action="retry", attempt=attempt, wait_seconds=wait, reason=f"{decision.reason_class}: retry {attempt}/{max_attempts}")
+    strategy = "escalate" if decision.action in ("escalate", "reassign") else "abort"
+    return RecoveryDecision(action=strategy, attempt=attempt, wait_seconds=0.0, reason=f"{decision.reason}: {decision.detail}")
 
 
 # --- Bot-turn retry policy -------------------------------------------------

@@ -3,8 +3,11 @@
 The store owns only utility metadata.  It never opens, mutates, or deletes a
 host memory record.  Writes are serialized per scope and atomically replaced;
 unreadable documents are moved to ``.corrupt-*`` siblings before the scope
-starts empty.  Bound eviction is deterministic: lowest score first, then oldest
-``last_seen``, then lexical record id, with an explicit notice for every id.
+starts empty.  A document that parses but declares a format this build does
+not implement is *not* unreadable: it is refused, left in place, disclosed
+through :meth:`corruption_events`, and never written over.  Bound eviction is
+deterministic: lowest score first, then oldest ``last_seen``, then lexical
+record id, with an explicit notice for every id.
 """
 
 from __future__ import annotations
@@ -16,6 +19,12 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
+from alpha.memory._store_format import (
+    StoreFormatVerdict,
+    classify_store_format,
+    format_disclosure,
+)
+
 from .config import UtilityConfig
 from .models import EvictionNotice, UtilityRecord
 from .paths import atomic_write_text, document_path, preserve_corrupt, utility_root
@@ -23,6 +32,11 @@ from .paths import atomic_write_text, document_path, preserve_corrupt, utility_r
 logger = logging.getLogger(__name__)
 
 _SCHEMA = 1
+_STORE_ID = "utility.records"
+
+
+class UtilityStoreUnavailable(RuntimeError):
+    """Raised when a write is refused because the scope is not safely writable."""
 
 
 class _ScopeState:
@@ -64,6 +78,7 @@ class UtilityStore:
         self._enabled = active_config.enabled if enabled is None and active_config is not None else bool(enabled if enabled is not None else True)
         self._states: dict[tuple[str, str], _ScopeState] = {}
         self._state_lock = threading.Lock()
+        self._format_refusals: dict[tuple[str, str], StoreFormatVerdict] = {}
 
     @staticmethod
     def _coerce_config(config: UtilityConfig | Mapping[str, Any] | None) -> UtilityConfig | None:
@@ -126,6 +141,32 @@ class UtilityStore:
         if path.exists():
             try:
                 raw = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+                backup = preserve_corrupt(path)
+                if backup is None:
+                    state.corruption_events.append(f"corrupt document could not be preserved: {path}")
+                else:
+                    state.corruption_events.append(f"corrupt document preserved: {backup}")
+                logger.error("Utility store: corrupt document %s preserved=%s (%s)", path, backup, exc)
+                state.disk_signature = self._disk_signature(path)
+                with self._state_lock:
+                    self._states[key] = state
+                return state
+
+            # The bytes parsed. A marker this build does not implement means
+            # another build owns the file; quarantining it would destroy that
+            # data, so refuse and disclose instead.
+            verdict = classify_store_format(store=_STORE_ID, path=path, raw=raw, supported_version=_SCHEMA)
+            if verdict.refusal:
+                self._format_refusals[key] = verdict
+                state.corruption_events.append(format_disclosure(verdict))
+                state.disk_signature = self._disk_signature(path)
+                with self._state_lock:
+                    self._states[key] = state
+                logger.error("Utility store: refusing %s; document left in place and writes blocked", verdict.path)
+                return state
+            self._format_refusals.pop(key, None)
+            try:
                 if not isinstance(raw, Mapping) or not isinstance(raw.get("records"), list):
                     raise ValueError("utility document must contain a records list")
                 state.records = {record.record_id: record for record in (UtilityRecord.model_validate(item) for item in raw["records"])}
@@ -182,6 +223,24 @@ class UtilityStore:
             removed.append(record)
         return removed
 
+    def _require_writable(self, user_id: str | None, agent_name: str | None) -> None:
+        """Refuse a write over a document this build cannot read.
+
+        The check runs before the in-memory state is touched, so a refused
+        write leaves no trace: the next read still reports the refusal and
+        still serves nothing from the newer build's document.
+        """
+
+        self._load(user_id, agent_name)
+        verdict = self._format_refusals.get(self._key(user_id, agent_name))
+        if verdict is not None:
+            raise UtilityStoreUnavailable(format_disclosure(verdict))
+
+    def format_refusal(self, user_id: str | None = None, agent_name: str | None = None) -> StoreFormatVerdict | None:
+        """Return the version refusal held for a scope, or ``None``."""
+
+        return self._format_refusals.get(self._key(user_id, agent_name))
+
     def put(
         self,
         record: UtilityRecord | Mapping[str, Any],
@@ -196,6 +255,7 @@ class UtilityStore:
         parsed = record if isinstance(record, UtilityRecord) else UtilityRecord.model_validate(dict(record))
         path = self._path(user_id, agent_name)
         with self._lock_for(path):
+            self._require_writable(user_id, agent_name)
             state = self._load(user_id, agent_name)
             state.records[parsed.record_id] = parsed.model_copy(deep=True)
             self._bound(state)
@@ -230,6 +290,7 @@ class UtilityStore:
             return 0
         path = self._path(user_id, agent_name)
         with self._lock_for(path):
+            self._require_writable(user_id, agent_name)
             state = self._load(user_id, agent_name)
             for record in parsed:
                 state.records[record.record_id] = record.model_copy(deep=True)

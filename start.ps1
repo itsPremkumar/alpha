@@ -30,10 +30,35 @@ $LauncherStartedUtc = (Get-Process -Id $PID -ErrorAction SilentlyContinue).Start
 #   starting | healthy | degraded | recovering | failed
 $script:LastHealthStatus = "starting"
 $script:LastHealthDetail = "launcher initialising"
+# Why the last readiness probe failed, verbatim. Empty means "no probe has
+# failed yet" and is never rendered as success.
+$script:LastGatewayProbeError = ""
+# The machine-readable fields of the most recent observation (phase, elapsed
+# seconds, which service is blocking, the probe's real error). Retained so a
+# heartbeat refresh during a restart backoff still carries the diagnosis:
+# without this, `Refresh-Heartbeat` - which is the only thing that writes while
+# the launcher is inside a 3-300 s backoff - emitted a record with no `phase`
+# and no `gateway_last_error`, so the one moment an operator most needs the
+# reason is the moment the file lost it.
+$script:LastHealthExtra = $null
 function Write-HealthFile {
-    param([string]$Status = "healthy", [string]$Detail = "")
+    param(
+        [string]$Status = "healthy",
+        [string]$Detail = "",
+        # Additive machine-readable fields merged into the record. Keys defined
+        # here always win, so a caller cannot accidentally overwrite `pid` or
+        # `status` with something a reader would trust.
+        [hashtable]$Extra = $null
+    )
     if (-not (Test-Path (Split-Path $HealthFile))) {
         New-Item -ItemType Directory -Path (Split-Path $HealthFile) -Force | Out-Null
+    }
+    if ($Extra) {
+        $script:LastHealthExtra = $Extra
+    } elseif ($Status -in @("failed", "stopped", "stale")) {
+        # Terminal states describe a different situation; carrying forward a
+        # boot-wait phase would be a fresh lie in the other direction.
+        $script:LastHealthExtra = $null
     }
     $script:LastHealthStatus = $Status
     $script:LastHealthDetail = $Detail
@@ -46,6 +71,13 @@ function Write-HealthFile {
         frontend_port        = $FrontendPort
         timestamp_utc        = [DateTime]::UtcNow.ToString("o")
         repo_root            = $RepoRoot
+    }
+    $fields = if ($Extra) { $Extra } else { $script:LastHealthExtra }
+    if ($fields) {
+        foreach ($key in $fields.Keys) {
+            if ($obj.ContainsKey($key)) { continue }
+            $obj[$key] = $fields[$key]
+        }
     }
     Write-StateFile -Path $HealthFile -Object $obj
 }
@@ -187,12 +219,19 @@ function Free-PortOrExit {
     }
     $still = Get-ListeningProcessIds -Port $Port
     if ($still.Count -gt 0) {
+        # Name the actual holder in the recorded reason, not just on screen: the
+        # console output is gone by the time anyone reads the status file, and
+        # "port in use" without the PID and command line forces the operator to
+        # go read the source or re-run netstat to find out which port is taken.
+        $descriptions = @()
         foreach ($id in $still) {
             $cmd = "(unknown)"
             try {
                 $cmd = (Get-CimInstance Win32_Process -Filter "ProcessId=$id" -ErrorAction SilentlyContinue).CommandLine
             } catch {}
+            if (-not $cmd) { $cmd = "(command line unavailable)" }
             Write-Host "  PID $id : $cmd" -ForegroundColor Red
+            $descriptions += "PID $id ($cmd)"
         }
         # NonFatal: restart paths must never kill the launcher over a busy
         # port - report failure and let the caller's backoff retry instead.
@@ -202,7 +241,7 @@ function Free-PortOrExit {
         }
         Write-Host "`n[ERROR] Port $Port is still in use and could not be freed." -ForegroundColor Red
         Write-Host "Stop that program (or run .\stop.ps1) and try again.`n" -ForegroundColor Yellow
-        exit 1
+        Fail-Startup "port $Port is already in use and could not be freed: $($descriptions -join '; ')"
     }
     return $true
 }
@@ -275,6 +314,51 @@ function Update-TrackedProcess {
     return $Process
 }
 
+# -- Terminal-state bookkeeping ----------------------------------------------
+# Set once the launcher has decided it is aborting, so the shutdown handler
+# below leaves the truthful "failed" record alone instead of deleting it.
+$script:StartupAborted = $false
+# Shutdown is idempotent: the startup-timeout path, the monitor loop's finally
+# and the outer finally can all reach it, and taskkill-ing a PID that is already
+# gone must not be an error.
+$script:ShutdownDone = $false
+
+# A health file that names a launcher which is not running is a monitoring lie:
+# the next reader (the watchdog, `make doctor`, support_bundle) has no way to
+# tell "Alpha is booting" from "Alpha died 40 minutes ago and left this behind".
+# Rewrite it as an explicit `stale` record so the claim is self-refuting. A file
+# whose PID is still alive is never touched - including our own, which is alive
+# for the whole duration of this finally block.
+function Mark-DeadLauncherStatus {
+    if (-not (Test-Path $HealthFile)) { return }
+    try {
+        $rec = Get-Content $HealthFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        return
+    }
+    try { $p = [int]$rec.pid } catch { $p = 0 }
+    if ($p -le 0) { return }
+    if (Get-Process -Id $p -ErrorAction SilentlyContinue) { return }
+    try {
+        Write-StateFile -Path $HealthFile -Object @{
+            pid                  = $p
+            status               = "stale"
+            detail               = "launcher PID $p is no longer running; this file was left behind by a crash, not by a live launcher"
+            superseded_status    = [string]$rec.status
+            superseded_detail    = [string]$rec.detail
+            gateway_port         = $GatewayPort
+            frontend_port        = $FrontendPort
+            timestamp_utc        = [DateTime]::UtcNow.ToString("o")
+            repo_root            = $RepoRoot
+        }
+        Write-Host "  [STALE] Marked a leftover health file as stale (launcher PID $p is gone)." -ForegroundColor Yellow
+    } catch {}
+}
+
+# The launcher body is wrapped in a try/finally that guarantees a terminal state
+# for the health/PID files on every exit path - see the finally at the bottom.
+try {
+
 # -- 1. Locate uv and Node.js ------------------------------------------------
 # Resolving a bare name relies on PATHEXT, which is not reliable: when PATHEXT
 # is missing ".EXE" (or the tool simply is not on PATH), `Get-Command uv`
@@ -317,6 +401,7 @@ $uvPath = Resolve-Executable -Name "uv" -ExtraCandidates $uvCandidates
 # a silent exit would leave a stale "healthy" heartbeat and confuse the chain.
 function Fail-Startup {
     param([string]$Reason)
+    $script:StartupAborted = $true
     Remove-StateFiles
     Write-HealthFile -Status "failed" -Detail $Reason
     Write-Host "[FAILED] $Reason" -ForegroundColor Red
@@ -362,18 +447,23 @@ try {
     $nodeMajor = 0
 }
 if ($nodeMajor -lt 22) {
-    Write-Host "[ERROR] Node.js v22+ is required, found '$(& $nodePath --version)'. Please upgrade from https://nodejs.org/`n" -ForegroundColor Red
-    exit 1
+    # Route through Fail-Startup, not a bare `exit`: a bare exit leaves whatever
+    # alpha_health.json was on disk untouched, so a status file from a previous
+    # (now dead) launcher survives claiming "starting"/"healthy" and every later
+    # diagnostic trusts it. Fail-Startup records the real reason and a terminal
+    # status instead.
+    Fail-Startup "dependency missing: Node.js v22+ is required, found '$(& $nodePath --version)' - install from https://nodejs.org/"
 }
 
 # The dev server cannot boot without installed frontend dependencies.
 # (Unlike `uv run`, `node` never installs them automatically.)
 if (-not (Test-Path "$RepoRoot\frontend\node_modules\next\dist\bin\next")) {
+    # Same reason as above: a bare `exit 1` here was a stale-status-file factory.
     Write-Host "[ERROR] Frontend dependencies are missing (frontend\node_modules not installed)." -ForegroundColor Red
     Write-Host "Install them first, then re-run this script:" -ForegroundColor Yellow
     Write-Host "  cd frontend" -ForegroundColor Cyan
     Write-Host "  pnpm install   # (or: npm install)`n" -ForegroundColor Cyan
-    exit 1
+    Fail-Startup "dependency missing: frontend\node_modules not installed - run 'pnpm install' in frontend\ (or: npm install)"
 }
 
 # -- 2. Ensure Configurations and Secrets ------------------------------------
@@ -566,6 +656,11 @@ if ($Prod) {
 
 # -- Helper for Graceful Shutdown --------------------------------------------
 function Cleanup-Stack {
+    # Idempotent: three call sites reach this (the startup-timeout path, the
+    # monitor loop's finally, and the outer finally). Running it twice would
+    # re-taskkill PIDs that are already gone and re-delete state files.
+    if ($script:ShutdownDone) { return }
+    $script:ShutdownDone = $true
     Write-Host "`nShutting down Alpha services gracefully..." -ForegroundColor Yellow
     if ($gatewayProcess -and -not $gatewayProcess.HasExited) {
         Write-Host "  -> Stopping Gateway API tree (PID: $($gatewayProcess.Id))..." -ForegroundColor Gray
@@ -719,24 +814,40 @@ for ($i = 1; $i -le $maxAttempts; $i++) {
     if (Test-MaintenanceMode) { Stop-OnMaintenance }
     Start-Sleep -Seconds 2
 
-    # Refresh the heartbeat while we wait. This loop can run for several
-    # minutes (uvicorn migrations + first Next.js compile) and start.ps1 writes
-    # no other health update during it; without this the health file goes stale,
-    # Test-LauncherAlive decides the launcher is frozen and taskkills the whole
-    # tree mid-boot -- which is exactly how "start.bat exits with code 1 and no
-    # error message" happened.
-    Write-HealthFile -Status "starting" `
-        -Detail ("waiting for services (gateway=$gatewayReady frontend=$frontendReady, attempt $i/$maxAttempts)")
-
-    # Check gateway health
+    # Probe FIRST, then record. Writing the heartbeat before the probes meant
+    # the file carried the *previous* iteration's `gateway_last_error` (empty on
+    # the first pass), so a status and its stated reason could disagree. Probing
+    # first makes every record self-consistent: the error in the file is always
+    # the error behind the status in the file.
+    #
+    # Check gateway health. Note the route: /health/ready, not /health. /health
+    # is liveness only - it answers 200 whenever the process is up - so waiting
+    # on it would let this launcher declare a Gateway whose database is
+    # unreachable healthy.
     if (-not $gatewayReady) {
+        $script:LastGatewayProbeError = ""
         try {
             $resp = Invoke-WebRequest -Uri "http://127.0.0.1:$GatewayPort/health/ready" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
             if ($resp.StatusCode -eq 200) {
                 $gatewayReady = $true
+                $script:LastGatewayProbeError = ""
                 Write-Host "  [OK] Gateway API is healthy on port $GatewayPort." -ForegroundColor Green
+            } else {
+                # 503 from /health/ready means the Gateway is up but cannot serve
+                # (unreachable database / checkpointer). Record the real reason
+                # rather than letting the loop look like a port that never opened.
+                $script:LastGatewayProbeError = "HTTP $($resp.StatusCode): $($resp.Content)"
             }
-        } catch {}
+        } catch {
+            # Name the actual cause - a refused connection (nothing is
+            # listening) and a reset/timeout (something crashed mid-boot) lead
+            # to completely different fixes.
+            $why = $_.Exception.Message
+            if ($why -match 'actively refused|Unable to connect|refused') {
+                $why = "nothing is listening on port $GatewayPort"
+            }
+            $script:LastGatewayProbeError = $why
+        }
     }
 
     if (-not $frontendReady) {
@@ -748,6 +859,34 @@ for ($i = 1; $i -le $maxAttempts; $i++) {
             }
         } catch {}
     }
+
+    # Refresh the heartbeat while we wait, AFTER the probes so the recorded
+    # reason always belongs to the recorded status. This loop can run for
+    # several minutes (uvicorn migrations + first Next.js compile) and start.ps1
+    # writes no other health update during it; without this the health file goes
+    # stale, Test-LauncherAlive decides the launcher is frozen and taskkills the
+    # whole tree mid-boot -- which is exactly how "start.bat exits with code 1
+    # and no error message" happened.
+    #
+    # The extra keys are what make "starting" actionable instead of a shrug.
+    # `detail` alone ("gateway=False, attempt 186/450") cannot distinguish a
+    # three-second boot from a gateway that has been dead for six minutes, which
+    # is precisely the state an operator is handed when the port never opens.
+    # `elapsed_seconds`, `gateway_ready`, `frontend_ready` and
+    # `gateway_last_error` (the actual failure of the readiness probe) are
+    # machine-readable so scripts/deploy_status.py and any dashboard can say
+    # "the gateway has not answered for 372s: <reason>" instead of "starting".
+    Write-HealthFile -Status "starting" `
+        -Detail ("waiting for services (gateway=$gatewayReady frontend=$frontendReady, attempt $i/$maxAttempts)") `
+        -Extra @{
+            phase              = "boot_wait"
+            attempt            = $i
+            max_attempts       = $maxAttempts
+            elapsed_seconds    = [int]($i * 2)
+            gateway_ready      = [bool]$gatewayReady
+            frontend_ready     = [bool]$frontendReady
+            gateway_last_error = $script:LastGatewayProbeError
+        }
 
     if ($gatewayReady -and $frontendReady) {
         break
@@ -876,3 +1015,34 @@ try {
     Cleanup-Stack
 }
 exit $exitCode
+} finally {
+    # ── Terminal-state guarantee ────────────────────────────────────────────
+    # PowerShell runs an enclosing `finally` on EVERY exit path, including
+    # `exit 1` from Fail-Startup, an unhandled terminating error, and Ctrl+C.
+    # That is the only way to guarantee the launcher never leaves a status file
+    # behind that claims to be live: without this block, a launcher that was
+    # taskkill /F'd, that died of an unhandled error, or that aborted on a
+    # missing dependency leaves logs/alpha_health.json saying
+    # status="starting"/"healthy" with a PID that no longer exists - and every
+    # later diagnostic (watchdog, `make doctor`, support_bundle) trusts it.
+    try {
+        $ownedByUs = $false
+        $terminalRecord = $false
+        if (Test-Path $HealthFile) {
+            try {
+                $rec = Get-Content $HealthFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+                $ownedByUs = ([int]$rec.pid -eq $PID)
+                $terminalRecord = ([string]$rec.status -in @("failed", "stopped"))
+            } catch { $ownedByUs = $false }
+        }
+        # Reap children and free ports, unless Fail-Startup already recorded the
+        # terminal state and there is nothing of ours running to clean up.
+        if (-not $script:StartupAborted) { Cleanup-Stack }
+        # A non-terminal claim of ours must never outlive us; a terminal record
+        # (Fail-Startup's "failed") is the truthful post-mortem and is kept.
+        if ($ownedByUs -and -not $terminalRecord) { Remove-StateFiles }
+        # Anything left claiming a launcher that is gone is marked stale.
+        Mark-DeadLauncherStatus
+    } catch {}
+}
+

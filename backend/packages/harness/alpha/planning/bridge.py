@@ -246,27 +246,79 @@ class AutonomousDispatchBridge:
 
     @classmethod
     def _dispatch_bot_profile(cls, plan: MetaPlan, dispatch_id: str) -> DispatchResult:
+        """Dispatch a plan to a BOT, selecting the owner by capability match.
+
+        Selection used to be ``assigned_specialists[0]`` — whatever the planner
+        listed first, handed over by name. That is why a mismatched agent got
+        work it could not do: there was no capability check anywhere on this
+        path, and the capability machinery that did exist
+        (``capability_tags`` / ``match_bot_for_task`` /
+        ``ContractNetAuctionEngine``) was unreachable from it.
+
+        Now the owner is chosen by ``capability_tags`` ->
+        :func:`alpha.bots.work_discovery.match_bot_for_task` ->
+        ``ContractNetAuctionEngine.conduct_auction``, and both the choice and its
+        reason are recorded. The proposed specialist is now a *requirement
+        source* (its declared capability surface), not a decision: a better-
+        matched peer that declares the same capability can win the auction.
+        """
+        from alpha.bots.alpha_leader import ALPHA_LEADER_NAME
+        from alpha.bots.capability_dispatch import get_leader_dispatcher
         from alpha.bots.handoff import execute_handoff
 
-        specialists = plan.decision.assigned_specialists or ["coder"]
-        lead_specialist = specialists[0]
-        sender = "architect" if lead_specialist != "architect" else "reviewer"
+        proposed = list(plan.decision.assigned_specialists) or ["coder"]
 
         # A real implementation contract: the compiled MetaPlan report.
         contract_path = _write_artifact("implementation_contract.md", plan.markdown_report)
 
+        dispatcher = get_leader_dispatcher(plan.plan_id, root=ALPHA_LEADER_NAME)
+        decision = dispatcher.dispatch(
+            plan.plan_id,
+            plan.prompt,
+            proposed_owners=proposed,
+            max_attempts=max(1, len(proposed)),
+        )
+
+        if not decision.ok or decision.target is None:
+            # No capable agent. Report it honestly rather than handing the work
+            # to somebody who cannot do it.
+            return DispatchResult(
+                dispatch_id=dispatch_id,
+                plan_id=plan.plan_id,
+                paradigm=ExecutionParadigm.BOT_PROFILE.value,
+                status="failed",
+                execution_id=None,
+                assigned_agents=proposed,
+                summary=(
+                    f"Capability dispatch refused ({decision.refusal_code or 'no_eligible_agent'}): "
+                    f"{decision.reason}"
+                ),
+                artifacts=[contract_path],
+                details={
+                    "lead_bot": None,
+                    "proposed_bots": proposed,
+                    "from_bot": ALPHA_LEADER_NAME,
+                    "workspace_isolation": plan.decision.workspace_isolation,
+                    "model_tier": plan.decision.model_tier,
+                    "dispatch": decision.to_dict(),
+                },
+            )
+
         package = execute_handoff(
             task_id=plan.plan_id,
-            from_bot=sender,
-            to_bot=lead_specialist,
+            from_bot=decision.issuer,
+            to_bot=decision.target,
             objective=plan.prompt,
-            context_summary=(
-                f"Autonomous dispatch {dispatch_id} of plan {plan.plan_id} "
-                f"(risk {plan.decision.risk_tier}, model tier {plan.decision.model_tier})."
-            ),
+            context_summary=decision.reason,
             artifacts=[contract_path],
             acceptance_criteria=list(plan.proof_obligations),
             handoff_notes=f"workspace isolation: {plan.decision.workspace_isolation}",
+            attempt=decision.attempt,
+            max_attempts=decision.max_attempts,
+            reason=decision.reason,
+            # The dispatch decision already wrote this hop to the global ledger
+            # WITH its selection reason; do not write a second, reasonless entry.
+            record_ledger=False,
         )
 
         # The handoff being accepted routes the work; the bot executes it
@@ -277,20 +329,23 @@ class AutonomousDispatchBridge:
             paradigm=ExecutionParadigm.BOT_PROFILE.value,
             status="dispatched",
             execution_id=f"handoff-{package.handoff_id}",
-            assigned_agents=specialists,
+            assigned_agents=[decision.target, *proposed[1:]],
             summary=(
-                f"Handoff {package.handoff_id} accepted: @{lead_specialist} now owns the objective "
-                f"(from @{sender}); implementation contract written to {contract_path}."
+                f"Handoff {package.handoff_id} accepted: @{decision.target} now owns the objective "
+                f"(from @{decision.issuer}) — {decision.reason}; "
+                f"implementation contract written to {contract_path}."
             ),
             artifacts=[contract_path],
             details={
-                "lead_bot": lead_specialist,
-                "supporting_bots": specialists[1:],
-                "from_bot": sender,
+                "lead_bot": decision.target,
+                "proposed_bots": proposed,
+                "supporting_bots": proposed[1:],
+                "from_bot": decision.issuer,
                 "handoff_id": package.handoff_id,
                 "handoff_status": package.status,
                 "workspace_isolation": plan.decision.workspace_isolation,
                 "model_tier": plan.decision.model_tier,
+                "dispatch": decision.to_dict(),
             },
         )
 

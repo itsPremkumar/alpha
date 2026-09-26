@@ -14,6 +14,12 @@ from pathlib import Path
 from typing import Any
 
 from alpha.agents.memory.l1.paths import atomic_write_text, safe_segment
+from alpha.memory._store_format import (
+    STORE_FORMAT_UNSUPPORTED,
+    StoreFormatVerdict,
+    classify_store_format,
+    format_disclosure,
+)
 
 from .config import ProspectiveConfig, load_prospective_config, prospective_root
 from .lifecycle import (
@@ -42,6 +48,11 @@ from .provenance import ProvenanceResult, append_event
 
 logger = logging.getLogger(__name__)
 _SCHEMA_VERSION = 1
+_STORE_ID = "prospective.items"
+
+
+class ProspectiveStoreUnavailable(RuntimeError):
+    """Raised when a write is refused because the scope is not safely writable."""
 
 
 def _now_value(now: float | None) -> float | None:
@@ -148,6 +159,7 @@ class ProspectiveStore:
         self._locks_guard = threading.Lock()
         self._locks: dict[str, threading.RLock] = {}
         self._blocked: set[str] = set()
+        self._format_refusals: dict[str, StoreFormatVerdict] = {}
 
     @property
     def root(self) -> Path:
@@ -184,37 +196,75 @@ class ProspectiveStore:
         key = self._key(user_id)
         if not path.exists():
             self._blocked.discard(key)
+            self._format_refusals.pop(key, None)
             return self._empty_document(), "empty", ""
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+            if isinstance(exc, OSError):
+                self._blocked.add(key)
+                logger.error("Prospective store: could not read document %s (%s)", path, exc)
+                return self._empty_document(), "failed", str(exc)
+            return self._preserve_corrupt(key, path, exc), "recovered", str(exc)
+
+        # The bytes parsed. A marker this build does not implement means another
+        # build owns the file; quarantining it would destroy that data.
+        verdict = classify_store_format(store=_STORE_ID, path=path, raw=payload, supported_version=_SCHEMA_VERSION)
+        if verdict.refusal:
+            self._format_refusals[key] = verdict
+            self._blocked.add(key)
+            logger.error(
+                "Prospective store: refusing %s (%s); document left in place and writes blocked",
+                verdict.path,
+                format_disclosure(verdict),
+            )
+            return self._empty_document(), STORE_FORMAT_UNSUPPORTED, format_disclosure(verdict)
+        self._format_refusals.pop(key, None)
+        try:
             if not isinstance(payload, Mapping):
                 raise ValueError("document root must be an object")
-            if int(payload.get("schema", 0)) < 1:
-                raise ValueError("unsupported document schema")
             raw_items = payload.get("items")
             if not isinstance(raw_items, list):
                 raise ValueError("items must be a list")
             items = [ProspectiveItem.model_validate(item) for item in raw_items]
-        except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
-            backup = path.with_name(f"{path.name}.corrupt-{time.time_ns()}-{uuid.uuid4().hex[:8]}")
-            try:
-                path.replace(backup)
-            except OSError as preserve_exc:
-                self._blocked.add(key)
-                logger.error(
-                    "Prospective store: corrupt document %s could not be preserved as %s: %s; original=%s",
-                    path,
-                    backup.name,
-                    preserve_exc,
-                    exc,
-                )
-                return self._empty_document(), "failed", str(preserve_exc)
-            self._blocked.discard(key)
-            logger.error("Prospective store: corrupt document %s preserved as %s; scope restarts empty (%s)", path, backup.name, exc)
-            return self._empty_document(), "recovered", str(exc)
+        except (UnicodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+            return self._preserve_corrupt(key, path, exc), "recovered", str(exc)
         return {"schema": _SCHEMA_VERSION, "items": items}, "succeeded", ""
 
+    def _preserve_corrupt(self, key: str, path: Path, exc: BaseException) -> dict[str, Any]:
+        """Preserve genuinely unreadable bytes; never used for a version mismatch."""
+
+        backup = path.with_name(f"{path.name}.corrupt-{time.time_ns()}-{uuid.uuid4().hex[:8]}")
+        try:
+            path.replace(backup)
+        except OSError as preserve_exc:
+            self._blocked.add(key)
+            logger.error(
+                "Prospective store: corrupt document %s could not be preserved as %s: %s; original=%s",
+                path,
+                backup.name,
+                preserve_exc,
+                exc,
+            )
+            return self._empty_document()
+        self._blocked.discard(key)
+        logger.error("Prospective store: corrupt document %s preserved as %s; scope restarts empty (%s)", path, backup.name, exc)
+        return self._empty_document()
+
+    def format_refusal(self, user_id: str | None = None) -> StoreFormatVerdict | None:
+        """Return the version refusal held for a user, or ``None``."""
+
+        return self._format_refusals.get(self._key(user_id))
+
     def _persist_unlocked(self, user_id: str | None, document: Mapping[str, Any]) -> None:
+        # The single choke point every mutation funnels through. Refusing here
+        # is what makes a version refusal non-destructive: nothing can reach
+        # the live path and republish this build's older format over a document
+        # a newer build still owns. (The sibling `_blocked` set in this module
+        # is maintained but never read, so it cannot do this job.)
+        verdict = self._format_refusals.get(self._key(user_id))
+        if verdict is not None:
+            raise ProspectiveStoreUnavailable(format_disclosure(verdict))
         payload = {
             "schema": _SCHEMA_VERSION,
             "items": [item.model_dump(mode="json") for item in document.get("items", [])],

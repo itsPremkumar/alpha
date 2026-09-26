@@ -171,10 +171,7 @@ class ArtifactComparison:
     def contract(self) -> str:
         if self.line_endings == LINE_ENDINGS_EXACT:
             return "raw bytes; only the generated_at value is ignored"
-        return (
-            "raw bytes after CRLF/CR -> LF normalisation; "
-            "only the generated_at value is ignored"
-        )
+        return "raw bytes after CRLF/CR -> LF normalisation; only the generated_at value is ignored"
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -219,10 +216,7 @@ def _parser() -> argparse.ArgumentParser:
         "--generator-timeout",
         type=float,
         default=GENERATOR_TIMEOUT_SECONDS,
-        help=(
-            "Seconds the official generator may run before it is killed and the "
-            f"gate fails (default: {GENERATOR_TIMEOUT_SECONDS})."
-        ),
+        help=(f"Seconds the official generator may run before it is killed and the gate fails (default: {GENERATOR_TIMEOUT_SECONDS})."),
     )
     return parser
 
@@ -329,10 +323,7 @@ def run_command(
             process.communicate(timeout=30)
         except subprocess.TimeoutExpired:  # pragma: no cover - pipes never closed
             pass
-        raise CommandTimeout(
-            f"command exceeded its {timeout:g}s budget and was killed: "
-            f"{_display_command(argv)}"
-        ) from None
+        raise CommandTimeout(f"command exceeded its {timeout:g}s budget and was killed: {_display_command(argv)}") from None
     return CommandResult(
         argv=tuple(argv),
         returncode=process.returncode,
@@ -368,9 +359,7 @@ def _parse_manifest(data: bytes) -> dict[str, object] | list[object] | None:
         return None
 
 
-def _mask_generated_at(
-    data: bytes, parsed: dict[str, object] | list[object] | None
-) -> tuple[bytes, bool]:
+def _mask_generated_at(data: bytes, parsed: dict[str, object] | list[object] | None) -> tuple[bytes, bool]:
     """Mask the value of the one top-level ``generated_at`` field.
 
     Returns the masked bytes and whether masking actually happened.  Refusing
@@ -384,14 +373,7 @@ def _mask_generated_at(
     if len(matches) != 1:
         return data, False
     match = matches[0]
-    masked = (
-        data[: match.start()]
-        + match.group("prefix")
-        + b'"'
-        + VOLATILE_SENTINEL
-        + b'"'
-        + data[match.end() :]
-    )
+    masked = data[: match.start()] + match.group("prefix") + b'"' + VOLATILE_SENTINEL + b'"' + data[match.end() :]
     return masked, True
 
 
@@ -446,57 +428,27 @@ def compare_artifact(
     committed_comparable, committed_masked = _prepare(committed, committed_parsed)
     generated_comparable, generated_masked = _prepare(generated, generated_parsed)
 
-    committed_label = (
-        relative_path.as_posix()
-        if committed is not None
-        else f"{relative_path.as_posix()} (missing committed file)"
-    )
-    generated_label = (
-        f"generated:{relative_path.as_posix()}"
-        if generated is not None
-        else f"generated:{relative_path.as_posix()} (missing generated file)"
-    )
+    committed_label = relative_path.as_posix() if committed is not None else f"{relative_path.as_posix()} (missing committed file)"
+    generated_label = f"generated:{relative_path.as_posix()}" if generated is not None else f"generated:{relative_path.as_posix()} (missing generated file)"
     diff = list(
         difflib.unified_diff(
-            committed_comparable.decode("utf-8", errors="replace").splitlines(
-                keepends=True
-            ),
-            generated_comparable.decode("utf-8", errors="replace").splitlines(
-                keepends=True
-            ),
+            committed_comparable.decode("utf-8", errors="replace").splitlines(keepends=True),
+            generated_comparable.decode("utf-8", errors="replace").splitlines(keepends=True),
             fromfile=committed_label,
             tofile=generated_label,
             n=3,
         )
     )
-    changed_lines = sum(
-        1
-        for line in diff
-        if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))
-    )
+    changed_lines = sum(1 for line in diff if line.startswith(("+", "-")) and not line.startswith(("+++", "---")))
     if len(diff) > max_diff_lines:
-        diff = diff[:max_diff_lines] + [
-            f"... diff truncated at {max_diff_lines} lines ...\n"
-        ]
+        diff = diff[:max_diff_lines] + [f"... diff truncated at {max_diff_lines} lines ...\n"]
 
     raw_equal = committed is not None and committed == generated
     # "The two sides do not use the same line endings", which is independent of
     # whether anything else differs, so the disclosure is always honest.
-    newline_difference = (
-        committed is not None
-        and generated is not None
-        and _newline_style(committed) != _newline_style(generated)
-    )
+    newline_difference = committed is not None and generated is not None and _newline_style(committed) != _newline_style(generated)
     # A timestamp difference is only claimable when nothing else differs.
-    ignored_timestamp = (
-        error is None
-        and changed_lines == 0
-        and not raw_equal
-        and committed is not None
-        and generated is not None
-        and committed_masked
-        and generated_masked
-    )
+    ignored_timestamp = error is None and changed_lines == 0 and not raw_equal and committed is not None and generated is not None and committed_masked and generated_masked
     return ArtifactComparison(
         relative_path=relative_path,
         line_endings=line_endings,
@@ -537,10 +489,7 @@ def _relative_for_generated_file(output_dir: Path, path: Path) -> Path | None:
 def _write_report(path: Path, lines: Sequence[str], repo_root: Path) -> None:
     resolved = path.resolve()
     if _inside(resolved, repo_root):
-        raise GateError(
-            "--diff-output must be outside --repo-root; "
-            "the gate never writes into the repository"
-        )
+        raise GateError("--diff-output must be outside --repo-root; the gate never writes into the repository")
     try:
         resolved.parent.mkdir(parents=True, exist_ok=True)
         resolved.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -555,18 +504,9 @@ def _format_comparison(comparison: ArtifactComparison) -> list[str]:
     if not comparison.drifted:
         lines = [f"OK {relative} ({comparison.contract})"]
         if comparison.ignored_timestamp:
-            lines.append(
-                "  disclosed: generated_at is the only content difference "
-                f"(committed newlines {comparison.committed_newlines}; "
-                f"generated newlines {comparison.generated_newlines})"
-            )
+            lines.append(f"  disclosed: generated_at is the only content difference (committed newlines {comparison.committed_newlines}; generated newlines {comparison.generated_newlines})")
         if comparison.newline_difference:
-            lines.append(
-                "  disclosed: line endings differ "
-                f"(committed {comparison.committed_newlines}; "
-                f"generated {comparison.generated_newlines}); "
-                "allowed by --line-endings normalized"
-            )
+            lines.append(f"  disclosed: line endings differ (committed {comparison.committed_newlines}; generated {comparison.generated_newlines}); allowed by --line-endings normalized")
         return lines
     lines = [f"DRIFT {relative}: {comparison.changed_lines} changed line(s)"]
     if comparison.committed_bytes is None:
@@ -574,11 +514,7 @@ def _format_comparison(comparison: ArtifactComparison) -> list[str]:
     if comparison.generated_bytes is None:
         lines.append("  generator output is missing")
     if comparison.newline_difference:
-        lines.append(
-            "  line endings also differ "
-            f"(committed {comparison.committed_newlines}; "
-            f"generated {comparison.generated_newlines})"
-        )
+        lines.append(f"  line endings also differ (committed {comparison.committed_newlines}; generated {comparison.generated_newlines})")
     if comparison.ignored_timestamp:
         lines.append("  generated_at is the only content difference that was masked")
     lines.extend(f"  {line}" for line in comparison.diff_lines)
@@ -597,17 +533,12 @@ def run_gate(
     repo_root = repo_root.resolve()
     if line_endings not in LINE_ENDINGS_CHOICES:
         raise ValueError(f"unknown line-ending mode: {line_endings!r}")
-    report: list[str] = [
-        f"contract: compared on {line_endings} bytes; "
-        "only the generated_at value is ignored; every other byte is drift"
-    ]
+    report: list[str] = [f"contract: compared on {line_endings} bytes; only the generated_at value is ignored; every other byte is drift"]
     exit_code = 0
     try:
         generator = repo_root / GENERATOR_REL
         if not generator.is_file():
-            raise GateError(
-                f"official generator is missing: {GENERATOR_REL.as_posix()}"
-            )
+            raise GateError(f"official generator is missing: {GENERATOR_REL.as_posix()}")
 
         with tempfile.TemporaryDirectory(prefix="alpha-generated-drift-") as temporary:
             output_dir = Path(temporary)
@@ -615,11 +546,7 @@ def run_gate(
             shim_path.parent.mkdir(parents=True, exist_ok=True)
             shim_path.write_text(SHIM_SOURCE, encoding="utf-8", newline="\n")
             command = generator_command(repo_root, output_dir)
-            report.append(
-                f"official generator: {GENERATOR_COMMAND_DOC} "
-                "(run through a generated shim that redirects its output "
-                "constant; see --print-shim)"
-            )
+            report.append(f"official generator: {GENERATOR_COMMAND_DOC} (run through a generated shim that redirects its output constant; see --print-shim)")
             report.append(f"shim command: {_display_command(command)}")
             result = run_command(
                 command,
@@ -627,13 +554,9 @@ def run_gate(
                 timeout=generator_timeout,
             )
             if result.stdout:
-                report.extend(
-                    f"generator stdout: {line}" for line in result.stdout.splitlines()
-                )
+                report.extend(f"generator stdout: {line}" for line in result.stdout.splitlines())
             if result.stderr:
-                report.extend(
-                    f"generator stderr: {line}" for line in result.stderr.splitlines()
-                )
+                report.extend(f"generator stderr: {line}" for line in result.stderr.splitlines())
             if result.returncode != 0:
                 raise GateError(f"generator exited with code {result.returncode}")
 
@@ -671,14 +594,9 @@ def run_gate(
         for comparison in comparisons:
             report.extend(_format_comparison(comparison))
         for name in untracked:
-            report.append(
-                f"DRIFT {name}: generator produced an output this gate does "
-                "not compare; declare it as a tracked artifact"
-            )
+            report.append(f"DRIFT {name}: generator produced an output this gate does not compare; declare it as a tracked artifact")
         drift = [item for item in comparisons if item.drifted]
-        report.append(
-            f"generated artifact drift: {len(drift) + len(untracked)} file(s)"
-        )
+        report.append(f"generated artifact drift: {len(drift) + len(untracked)} file(s)")
         exit_code = 1 if drift or untracked else 0
     except GateError as exc:
         report.append(f"ERROR {exc}")

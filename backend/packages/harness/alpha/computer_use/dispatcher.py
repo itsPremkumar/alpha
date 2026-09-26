@@ -6,15 +6,21 @@ returns ``{"ok": false, "status": "unavailable", "dispatched": false, "reason":
 "dependency not installed: ..."}`` and *never* a fabricated success.
 
 Safety: every action passes :mod:`alpha.computer_use.guard` first (halt gate ->
-action-specific checks: panic corner / window-boundary lock / hotkey blacklist
--> backend availability -> physical pointer panic probe -> dispatch), so the
-sentinel enforces its boundaries deterministically even if a caller bypasses
-the desktop_* tools. ``launch_application`` uses stdlib ``subprocess`` with
-``shell=False`` (no optional dependency) and still passes the halt gate.
+action-specific checks: panic corner / window-boundary lock / hotkey blacklist /
+launch scope -> backend availability -> physical pointer panic probe ->
+dispatch), so the sentinel enforces its boundaries deterministically even if a
+caller bypasses the desktop_* tools. The hotkey blacklist is lifted only by a
+single-use, combo-bound **operator** confirmation token, and ``launch_application``
+refuses a caller-supplied path unless an operator allowlisted that exact
+executable. ``launch_application`` uses stdlib ``subprocess`` with ``shell=False``
+(no optional dependency).
 
 Blocking OS calls made through this module must be invoked from worker threads
 (the desktop_* tools do this via ``asyncio.to_thread``) -- never directly on an
-asyncio event loop.
+asyncio event loop. Nothing in this module has an internal deadline: the
+deadline lives at the tool boundary (``_run_os`` in
+:mod:`alpha.tools.builtins.os_computer_tool`), because a thread cannot cancel a
+wedged OS call in flight.
 """
 
 from __future__ import annotations
@@ -392,10 +398,16 @@ def keyboard_type(text: str, interval_ms: int = 20) -> dict[str, Any]:
     return _ok("type", backend.name, length=len(text), interval_ms=int(interval_ms))
 
 
-def keyboard_hotkey(keys: str | Sequence[str], confirmed: bool = False) -> dict[str, Any]:
-    """Guard-checked hotkey; the destructive-combo blacklist runs before any backend is loaded."""
+def keyboard_hotkey(keys: str | Sequence[str], *, confirmation_token: str | None = None) -> dict[str, Any]:
+    """Guard-checked hotkey; the destructive-combo blacklist runs before any backend is loaded.
+
+    A blacklisted combo needs a single-use, combo-bound **operator** confirmation
+    token. There is deliberately no ``confirmed`` boolean here: this function is
+    called from model-facing tools, so a boolean a model can set is not a
+    confirmation.
+    """
     guard = get_sentinel_guard()
-    verdict = guard.check_hotkey(keys, confirmed=confirmed)
+    verdict = guard.check_hotkey(keys, confirmation_token=confirmation_token)
     if not verdict["allowed"]:
         return _blocked(str(verdict["reason"]), "hotkey", halted=bool(verdict.get("halted")), blocked_by=str(verdict.get("blocked_by") or "guard"), keys=list(verdict.get("keys") or ()))
     normalized = list(verdict.get("keys") or ())
@@ -459,15 +471,29 @@ def _spawn_process(command: list[str]) -> Any:
 
 
 def launch_application(app: str, args: Sequence[str] | None = None) -> dict[str, Any]:
-    """Launch a desktop application by executable name/path (halt-gated, ``shell=False``)."""
+    """Launch a desktop application (halt-gated, launch-scoped, ``shell=False``).
+
+    ``shell=False`` already blocks shell metacharacters, but it does **not** stop
+    arbitrary-program execution: any executable name or absolute path used to be
+    accepted. The sentinel's launch scope therefore runs first and refuses a
+    caller-supplied path unless an operator allowlisted that exact executable.
+    """
     guard = get_sentinel_guard()
-    verdict = guard.check_action("launch_application")
+    verdict = guard.check_launch(app)
     if not verdict["allowed"]:
-        return _blocked(str(verdict["reason"]), "launch_application", halted=True)
+        return _blocked(str(verdict["reason"]), "launch_application", halted=bool(verdict.get("halted")), blocked_by=str(verdict.get("blocked_by") or "guard"))
     cleaned = str(app or "").strip()
     if not cleaned:
         return _invalid("app executable name or path is required", "launch_application")
-    command = [cleaned, *[str(arg) for arg in (args or ())]]
+    if not args:
+        command = [cleaned]
+    else:
+        command = [cleaned, *[str(arg) for arg in args]]
+    if len(command) > 256:
+        return _invalid("launch accepts at most 256 argv entries", "launch_application")
+    for arg in command[1:]:
+        if len(str(arg)) > 4096:
+            return _invalid("a launch argument exceeds 4096 characters", "launch_application")
     try:
         process = _spawn_process(command)
     except FileNotFoundError as exc:

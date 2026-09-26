@@ -22,7 +22,6 @@ from langgraph.checkpoint.base import empty_checkpoint, uuid6
 
 import alpha.utils.llm_text as llm_text
 from alpha.agents.goal_state import GoalBlocker, GoalEvaluation, GoalState
-from alpha.models import create_chat_model
 from alpha.runtime.keyed_lock import AsyncKeyedLockTable
 from alpha.tracing import inject_langfuse_metadata
 from alpha.utils.messages import message_to_text
@@ -242,12 +241,48 @@ def create_goal_evaluator_model(
     callbacks, same as the other standalone, non-graph callers
     (``oneshot_llm.run_oneshot_llm``, ``MemoryUpdater``).
     """
+    # DEFERRED IMPORT - do not hoist this back to module scope.
+    #
+    # `alpha.models` eagerly imports `cost_governor`, which reaches
+    # `alpha.projects` -> `alpha.bots` -> `alpha.swarm` -> `alpha.runtime`,
+    # and this module closes that chain via `runtime/runs/worker.py`. A
+    # module-level `from alpha.models import create_chat_model` therefore
+    # completed a 13-hop cycle and made the whole package import-order
+    # dependent: `import alpha.tools.tools` succeeded (130 tools) while
+    # `from alpha.community.aio_sandbox import network_proxy` raised
+    # ImportError, which broke pytest collection for every test whose import
+    # reached `alpha.models` first. Importing here breaks the cycle with no
+    # behaviour change - the name is only needed when this factory is called.
+    from alpha.models import create_chat_model
+
     return create_chat_model(
         name=model_name,
         thinking_enabled=False,
         app_config=app_config,
         attach_tracing=True,
     )
+
+
+def create_chat_model(*args: Any, **kwargs: Any) -> Any:
+    """Deferred proxy for :func:`alpha.models.create_chat_model`.
+
+    This binding must NOT become an eager ``from alpha.models import ...`` at
+    module scope. ``alpha.models`` imports ``cost_governor``, which reaches
+    ``alpha.projects`` -> ``alpha.bots`` -> ``alpha.swarm`` -> ``alpha.runtime``
+    -> ``runtime.runs.worker`` -> this module, so an eager import here closes a
+    13-hop cycle and makes the whole package import-order dependent:
+    ``import alpha.tools.tools`` would succeed while
+    ``from alpha.community.aio_sandbox import network_proxy`` raised ImportError,
+    breaking pytest collection for every test whose import reached
+    ``alpha.models`` first.
+
+    The proxy keeps ``goal.create_chat_model`` a real module attribute - callers
+    and tests patch that name - while deferring the import to call time. There is
+    no import executed at module scope, so the cycle stays broken.
+    """
+    from alpha.models import create_chat_model as _impl
+
+    return _impl(*args, **kwargs)
 
 
 def _resolve_environment() -> str | None:

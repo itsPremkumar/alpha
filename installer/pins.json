@@ -12,7 +12,43 @@
   "repo": {
     "url": "https://github.com/itsPremkumar/alpha.git",
     "ref": "v2.1.0",
-    "depth": 1
+    "depth": 1,
+    "channels": {
+      "$comment": [
+        "NAMED CHANNELS, strictly additive to repo.ref. repo.ref is UNCHANGED and",
+        "stays the immutable release pin that",
+        "test_pinned_repository_ref_is_a_tag_not_a_moving_branch guards. A moving",
+        "ref must NEVER be written into repo.ref: that test rejects it by design,",
+        "and it is correct to do so.",
+        "",
+        "Why channels exist: the repository had ZERO tags, so repo.ref=v2.1.0",
+        "resolved to nothing and the installer failed at the clone step on every",
+        "run. The fix is NOT to weaken repo.ref to 'main'. It is an immutable",
+        "v2.1.0 tag PLUS a moving 'stable' tag, so a single installer always",
+        "yields the newest release without giving up the ability to pin one.",
+        "",
+        "default - what bootstrap.ps1 uses when -Channel is not supplied.",
+        "stable  - a MOVING tag, force-advanced at each release, so one installer",
+        "          always gives users the newest good build. This is the channel",
+        "          that answers the owner's request for an installer that needs no",
+        "          version bump to deliver updates.",
+        "pinned  - the exact release, for reproducing one user's specific bug.",
+        "main    - the moving branch, opt-in via -Channel main. NEVER the",
+        "          default: it is unreproducible and can be caught mid-edit, which",
+        "          would break the uv/node/pnpm pairings this file exists to hold.",
+        "",
+        "REPRODUCIBILITY OF A MOVING CHANNEL: because 'stable' does not identify",
+        "one commit over time, bootstrap.ps1 records the RESOLVED COMMIT SHA into",
+        "the install manifest at install time. Every individual install therefore",
+        "remains traceable to an exact commit, and that commit stays reachable",
+        "either by SHA or by its immutable vX.Y.Z tag. Moving the channel costs",
+        "the pin, not the ability to reproduce an install."
+      ],
+      "default": "stable",
+      "stable": "stable",
+      "pinned": "v2.1.0",
+      "main": "main"
+    }
   },
   "uv": {
     "version": "0.11.1",

@@ -16,14 +16,28 @@ Rails enforced in this module:
 
 from __future__ import annotations
 
+import contextlib
 import logging
+import os
 import re
+import signal
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+#: Wall-clock ceiling for the local git calls below. A commit runs arbitrary
+#: repository hooks and a push talks to a remote, so neither was previously
+#: bounded: a hung hook or an unreachable remote parked the Sentinel loop with
+#: no way to report a failure.
+_COMMIT_TIMEOUT_SECONDS = 120.0
+
+#: Grace period for reaping a git process that has just been killed. Bounds the
+#: kill path so a surviving hook process holding the pipes cannot turn a bounded
+#: command into a hang.
+_REAP_TIMEOUT_SECONDS = 5.0
 
 #: Never allow automated commits to touch these.
 FORBIDDEN_PATH_PATTERNS: tuple[re.Pattern[str], ...] = (
@@ -74,6 +88,59 @@ class CommitResult:
 
 class SafetyError(Exception):
     """Raised when a commit would violate a safety rail."""
+
+
+class GitCommandTimeout(TimeoutError):
+    """A git command exceeded its deadline; its process tree was killed."""
+
+
+def _kill_process_tree(process: subprocess.Popen[Any]) -> None:
+    """Terminate *process* and anything it started, best effort and bounded."""
+    if process.poll() is not None:
+        return
+    if os.name == "nt":
+        try:
+            subprocess.run(  # noqa: S603 - fixed argv, no shell
+                ["taskkill", "/F", "/T", "/PID", str(process.pid)],
+                capture_output=True,
+                check=False,
+                timeout=_REAP_TIMEOUT_SECONDS,
+            )
+        except (OSError, subprocess.SubprocessError):
+            # No ``taskkill`` (stripped image): fall back to the direct child.
+            with contextlib.suppress(OSError):
+                process.kill()
+        return
+    with contextlib.suppress(OSError):
+        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+    with contextlib.suppress(OSError):
+        process.kill()
+
+
+def _run_git_bounded(args: list[str], *, cwd: str, timeout: float) -> tuple[int, str]:
+    """Run ``git`` under a hard deadline, returning ``(returncode, output)``.
+
+    ``subprocess.run(timeout=...)`` kills only the direct child, and git itself
+    runs repository hooks, credential helpers and GPG agents: a survivor keeps
+    the inherited pipes open, so on Windows the unbounded post-kill
+    ``communicate()`` CPython performs would still block. Killing the whole group
+    and reaping under its own bounded grace period makes the deadline actually
+    terminate.
+    """
+    popen_kwargs: dict[str, Any] = {"stdout": subprocess.PIPE, "stderr": subprocess.PIPE, "text": True}
+    if os.name == "nt":
+        popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    else:
+        popen_kwargs["start_new_session"] = True
+    process = subprocess.Popen(["git", *args], cwd=cwd, **popen_kwargs)  # noqa: S603 - args validated by assert_safe_command
+    try:
+        stdout, stderr = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _kill_process_tree(process)
+        with contextlib.suppress(subprocess.TimeoutExpired, OSError):
+            process.communicate(timeout=_REAP_TIMEOUT_SECONDS)
+        raise GitCommandTimeout(f"git {' '.join(args)} did not complete within {timeout:g}s and was killed") from None
+    return process.returncode, (stdout or "") + (stderr or "")
 
 
 def is_forbidden_path(path: str) -> bool:
@@ -141,13 +208,7 @@ class Committer:
 
     def _run(self, args: list[str]) -> tuple[int, str]:
         assert_safe_command(args)
-        proc = subprocess.run(  # noqa: S603 - args validated above
-            ["git", *args],
-            cwd=str(self.repo_root),
-            capture_output=True,
-            text=True,
-        )
-        return proc.returncode, (proc.stdout or "") + (proc.stderr or "")
+        return _run_git_bounded(args, cwd=str(self.repo_root), timeout=_COMMIT_TIMEOUT_SECONDS)
 
     def commit(
         self,
@@ -160,7 +221,10 @@ class Committer:
         """Commit exactly ``paths``.
 
         Returns a CommitResult. It does not raise for ordinary failures — a
-        failed commit is data the loop must act on, not an exception.
+        failed commit is data the loop must act on, not an exception. A git
+        command that had to be killed at its deadline is one of those failures,
+        not a silent success: the paths are already staged, so the loop has to
+        learn about it.
         """
         if not paths:
             return CommitResult(ok=False, error="no paths provided")
@@ -174,6 +238,21 @@ class Committer:
         if self.dry_run:
             return CommitResult(ok=True, message=message, staged=allowed, refused=refused)
 
+        try:
+            return self._commit(allowed, refused, message, push=push, branch=branch)
+        except GitCommandTimeout as exc:
+            logger.error("Sentinel git command timed out: %s", exc)
+            return CommitResult(ok=False, staged=allowed, refused=refused, error=str(exc))
+
+    def _commit(
+        self,
+        allowed: list[str],
+        refused: list[str],
+        message: str,
+        *,
+        push: bool,
+        branch: str | None,
+    ) -> CommitResult:
         code, out = self._run(["add", "--", *allowed])
         if code != 0:
             return CommitResult(ok=False, staged=allowed, refused=refused, error=f"git add failed: {out.strip()}")

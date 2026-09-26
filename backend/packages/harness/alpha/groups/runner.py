@@ -20,6 +20,7 @@ assembly/execution pattern without requiring a SQL backend.
 from __future__ import annotations
 
 import asyncio
+import errno
 import json
 import logging
 import re
@@ -35,10 +36,94 @@ _MAX_PARALLEL_MEMBERS = 3
 _POLL_SECONDS = 2.0
 _MAX_RUNS_KEPT = 100
 _MAX_OBJECTIVE_CHARS = 20000
+#: Upper bound on the exponential backoff between member retries.
+_RETRY_BACKOFF_CAP = 10.0
+#: Grace added to a component's own execution-time cap before the runner
+#: declares it unrecoverable (so a subagent that is about to report
+#: ``TIMED_OUT`` on its own is still given a chance to be recorded as such).
+_DEADLINE_GRACE_SECONDS = 30.0
+#: Fallback wait budget for a component whose own cap is missing or unusable.
+_DEFAULT_COMPONENT_TIMEOUT_SECONDS = 1800.0
+#: Absolute ceiling on how long the runner waits for ONE component (a member
+#: execution, or the moderator pass) to reach a terminal status. ``None`` means
+#: "derive it from the component's own execution cap plus
+#: ``_DEADLINE_GRACE_SECONDS``".
+#:
+#: It exists because the poll loops below are the only thing standing between a
+#: wedged execution and a run that stays ``running`` forever. A member that
+#: never reports a terminal status holds the whole fan-in open: no sibling's
+#: result is surfaced, the moderator pass never runs, and every member's record
+#: is left with no output at all -- so one stuck component silently swallows
+#: the entire run's accounting. Bounding the wait turns that into a typed
+#: ``timeout`` on that member alone, which the ordinary failure path already
+#: knows how to report.
+_COMPONENT_WAIT_CAP_SECONDS: float | None = None
+
+#: Closed set of typed failure kinds recorded on a member result (``error_type``)
+#: and mirrored in the run-level ``error`` as ``[kind]``. Keeping it closed means
+#: callers can branch on a stable tag instead of parsing prose.
+MEMBER_ERROR_TYPES = frozenset({"dependency_error", "timeout", "cancelled", "resource_exhausted"})
+
+#: ``errno`` values that mean "the host ran out of something", not "the call failed".
+_RESOURCE_ERRNOS = frozenset({errno.EMFILE, errno.ENFILE, errno.ENOMEM, errno.ENOSPC})
+
+
+class RunComponentError(RuntimeError):
+    """A typed failure of one group-run component (a member or the synthesis pass).
+
+    Carries the component that failed and a stable ``error_type`` drawn from
+    :data:`MEMBER_ERROR_TYPES`, so a fault is reported as a typed error rather
+    than an opaque string.
+    """
+
+    def __init__(self, component: str, error_type: str, message: str) -> None:
+        super().__init__(message)
+        self.component = component
+        self.error_type = error_type if error_type in MEMBER_ERROR_TYPES else "dependency_error"
+
+
+def classify_component_failure(exc: BaseException) -> str:
+    """Map an escaping exception onto the stable ``MEMBER_ERROR_TYPES`` tag."""
+    if isinstance(exc, RunComponentError):
+        return exc.error_type
+    if isinstance(exc, asyncio.CancelledError):
+        return "cancelled"
+    if isinstance(exc, TimeoutError):
+        return "timeout"
+    if isinstance(exc, MemoryError):
+        return "resource_exhausted"
+    if isinstance(exc, OSError) and exc.errno in _RESOURCE_ERRNOS:
+        return "resource_exhausted"
+    return "dependency_error"
 
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _positive_number(value: object) -> float | None:
+    """Return ``value`` as a positive float, or ``None`` if it is not one.
+
+    ``bool`` is excluded on purpose: ``timeout_seconds=True`` is a config bug,
+    not a one-second budget.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    return number if number > 0 else None
+
+
+def _component_wait_budget(timeout_seconds: object) -> float:
+    """Seconds to wait for one component before declaring it unrecoverable."""
+    if _COMPONENT_WAIT_CAP_SECONDS is not None:
+        return float(_COMPONENT_WAIT_CAP_SECONDS)
+    return _positive_number(timeout_seconds) or _DEFAULT_COMPONENT_TIMEOUT_SECONDS
+
+
+def _component_wait_deadline(timeout_seconds: object) -> tuple[float, float]:
+    """``(deadline, budget)`` on the running loop's clock for one component."""
+    budget = _component_wait_budget(timeout_seconds) + _DEADLINE_GRACE_SECONDS
+    return asyncio.get_running_loop().time() + budget, budget
 
 
 def _sanitize_thread_suffix(name: str) -> str:
@@ -131,6 +216,85 @@ class GroupRunService:
             run.updated_at = _now()
             self._save()
             return run
+
+    # -- typed failure surfacing -----------------------------------------
+    #
+    # A member failure must land on *that member's own result*, never on its
+    # siblings and never in the void: the record keeps the human message, the
+    # stable ``error_type`` tag, and (when known) how many attempts were spent.
+
+    def _surface_member_failure(
+        self,
+        run_id: str,
+        member: str,
+        exc: BaseException,
+        *,
+        member_outputs: dict[str, str] | None = None,
+    ) -> dict:
+        """Record ``exc`` as a typed failure on ``member``'s own result.
+
+        Called from two places: the retry loop when a member exhausts its
+        attempts, and the ``gather(return_exceptions=True)`` boundary for
+        exceptions that escape ``run_member`` entirely. Both paths post a room
+        receipt so the failure is observable, never silently swallowed.
+        """
+        error_type = classify_component_failure(exc)
+        message = str(exc) or type(exc).__name__
+        run = self.get_run(run_id)
+        outputs = member_outputs or {}
+        text = outputs.get(member) or f"@{member} failed [{error_type}]: {message}"
+        entry = {
+            **((run.member_results.get(member) or {}) if run is not None else {}),
+            "status": "failed" if error_type != "cancelled" else "cancelled",
+            "output": text,
+            "error": message,
+            "error_type": error_type,
+        }
+        attempts = run.retry_counts.get(member) if run is not None else None
+        if attempts:
+            entry["attempts"] = attempts
+        logger.warning("Group run %s member @%s failed [%s]: %s", run_id, member, error_type, message)
+        if run is None:
+            return entry
+        self._update(run_id, member_results={**run.member_results, member: entry})
+        try:
+            from alpha.groups.service import get_group_chat_service
+
+            get_group_chat_service().post_message(
+                run.room_name,
+                sender=member,
+                content=text,
+                intent="action",
+                metadata={"group_run_id": run_id, "phase": "member_failed", "error_type": error_type},
+            )
+        except Exception as receipt_exc:  # a lost receipt must not mask the typed error itself
+            logger.warning("Group run %s could not post @%s failure receipt", run_id, member, exc_info=True)
+            entry["transcript_error"] = f"Failure was recorded but its room receipt could not be posted: {receipt_exc}"
+            self._update(run_id, member_results={**run.member_results, member: entry})
+        return entry
+
+    def _post_member_receipt(self, run_id: str, room_name: str, sender: str, content: str) -> str | None:
+        """Post one run receipt into the room log; return the failure, if any.
+
+        A lost receipt is a gap in the transcript, not a fault of whoever the
+        receipt is *about*, so it must never become that component's error. The
+        reason is returned so the caller can disclose it on the component's own
+        record rather than swallow it.
+        """
+        from alpha.groups.service import get_group_chat_service
+
+        try:
+            get_group_chat_service().post_message(
+                room_name,
+                sender=sender,
+                content=content,
+                intent="discussion",
+                metadata={"group_run_id": run_id, "phase": "member_result"},
+            )
+        except Exception as exc:
+            logger.warning("Group run %s could not post @%s result receipt", run_id, sender, exc_info=True)
+            return f"Result was delivered but its room receipt could not be posted: {exc}"
+        return None
 
     # -- public API ------------------------------------------------------
 
@@ -247,7 +411,7 @@ class GroupRunService:
             logger.warning("Group run %s task failed: %s", run_id, exc)
             current = self.get_run(run_id)
             if current is not None and current.status == "running":
-                self._update(run_id, status="failed", error=str(exc))
+                self._update(run_id, status="failed", error=f"[{classify_component_failure(exc)}] {exc}")
 
     def cancel_run(self, run_id: str) -> bool:
         """Signal cancellation; member executions are asked to stop as well."""
@@ -354,6 +518,7 @@ class GroupRunService:
             )
             max_retries = run.max_retries
             attempt = run.retry_counts.get(member, 0)
+            member_status = "done"
             while attempt <= max_retries:
                 event = self._cancel_events.get(run_id)
                 if event is not None and event.is_set():
@@ -375,6 +540,7 @@ class GroupRunService:
                         execution_id = executor.execute_async(prompt, task_id=f"{run_id}:{member}:attempt{attempt + 1}")
                         with self._lock:
                             self._member_executions.setdefault(run_id, []).append(execution_id)
+                        deadline, wait_budget = _component_wait_deadline(config.timeout_seconds)
                         while True:
                             await asyncio.sleep(_POLL_SECONDS)
                             result = get_background_task_result(execution_id)
@@ -385,52 +551,101 @@ class GroupRunService:
                                     member_outputs[member] = result.result
                                     break
                                 if result.status is SubagentStatus.CANCELLED:
-                                    member_outputs[member] = f"@{member} did not complete (cancelled): {result.error or 'no output'}"
-                                    break
+                                    event = self._cancel_events.get(run_id)
+                                    if event is not None and event.is_set():
+                                        # Run-level stop the member was asked to make:
+                                        # it reports the cancellation, it does not fail.
+                                        member_outputs[member] = f"@{member} did not complete (cancelled): {result.error or 'no output'}"
+                                        member_status = "cancelled"
+                                        break
+                                    # Cancelled from under this member (kill switch,
+                                    # global subagent cancel). Typed and terminal: it
+                                    # must never be retried into a false success.
+                                    raise RunComponentError(member, "cancelled", f"@{member} execution cancelled: {result.error or 'no output'}")
                                 # FAILED / TIMED_OUT / empty output must feed the
                                 # retry machinery below: max_retries previously
                                 # covered only infrastructure exceptions, so the
                                 # commonest failure mode (the model call itself
                                 # failing) was recorded on the first hit and
                                 # never retried despite run.max_retries.
-                                raise RuntimeError(f"@{member} execution {result.status.value}: {result.error or 'no output'}")
+                                raise RunComponentError(
+                                    member,
+                                    "timeout" if result.status is SubagentStatus.TIMED_OUT else "dependency_error",
+                                    f"@{member} execution {result.status.value}: {result.error or 'no output'}",
+                                )
                             event = self._cancel_events.get(run_id)
                             if event is not None and event.is_set():
                                 from alpha.subagents.executor import request_cancel_background_task
 
                                 request_cancel_background_task(execution_id)
                                 member_outputs[member] = f"@{member} was cancelled."
+                                member_status = "cancelled"
                                 break
+                            if asyncio.get_running_loop().time() >= deadline:
+                                # The execution is still non-terminal after its own
+                                # budget. Keep waiting for the cancellation signal
+                                # above, but never past the deadline: an unbounded
+                                # wait here holds the whole fan-in open and no
+                                # sibling's result is ever surfaced.
+                                from alpha.subagents.executor import request_cancel_background_task
+
+                                request_cancel_background_task(execution_id)
+                                raise RunComponentError(
+                                    member,
+                                    "timeout",
+                                    f"@{member} execution did not reach a terminal status within {wait_budget:g}s",
+                                )
                         break  # Success, exit retry loop
                 except Exception as exc:
+                    if classify_component_failure(exc) == "cancelled":
+                        # A cancellation is terminal for this member: retrying it
+                        # would re-run work the system already stopped.
+                        raise
                     logger.warning("Group run %s member @%s attempt %d failed: %s", run_id, member, attempt + 1, exc)
                     attempt += 1
                     run.retry_counts[member] = attempt
                     self._update(run_id, retry_counts=run.retry_counts)
                     if attempt > max_retries:
                         member_outputs[member] = f"@{member} failed after {max_retries + 1} attempts: {exc}"
-                        break
+                        # Typed, per-member surfacing: the failure lands on this
+                        # member's own result (and its own room receipt), not on a
+                        # sibling's gather — so no tail recording after this point.
+                        self._surface_member_failure(run_id, member, exc, member_outputs=member_outputs)
+                        return
                     else:
                         # Retry after a short backoff
-                        await asyncio.sleep(min(2**attempt, 10))
+                        await asyncio.sleep(min(2**attempt, _RETRY_BACKOFF_CAP))
                         continue
 
+            # The member's execution reached a terminal status, so its verdict
+            # is the ``member_status``/``member_outputs`` pair above. The room
+            # receipt is a transcript side effect of that verdict, not part of
+            # it: it used to be posted after the record and unguarded, so a
+            # failing transcript raised out of ``run_member`` and the post-join
+            # loop re-recorded a member that had genuinely delivered as a typed
+            # failure. Post it first (best-effort, disclosed) and then record
+            # the verdict, so a transcript fault can never rewrite it.
+            transcript_error = self._post_member_receipt(run_id, run.room_name, member, member_outputs.get(member, ""))
             self._update(
                 run_id,
                 member_results={
                     **(self.get_run(run_id).member_results if self.get_run(run_id) else {}),
-                    member: {"status": "done", "output": member_outputs.get(member, "")},
+                    member: {
+                        "status": member_status,
+                        "output": member_outputs.get(member, ""),
+                        **({"transcript_error": transcript_error} if transcript_error else {}),
+                    },
                 },
             )
-            rooms.post_message(
-                run.room_name,
-                sender=member,
-                content=member_outputs.get(member, ""),
-                intent="discussion",
-                metadata={"group_run_id": run_id, "phase": "member_result"},
-            )
 
-        await asyncio.gather(*(run_member(m) for m in run.members))
+        # Sibling isolation: ``return_exceptions=True`` stops one member's
+        # exception from cancelling/abandoning the others, and every escaping
+        # failure is then surfaced as a typed error on that member's own result
+        # instead of vanishing into the gather (or into a sibling's record).
+        outcomes = await asyncio.gather(*(run_member(m) for m in run.members), return_exceptions=True)
+        for member, outcome in zip(run.members, outcomes, strict=True):
+            if isinstance(outcome, BaseException):
+                self._surface_member_failure(run_id, member, outcome, member_outputs=member_outputs)
 
         event = self._cancel_events.get(run_id)
         if event is not None and event.is_set():
@@ -439,6 +654,7 @@ class GroupRunService:
 
         # Moderator synthesis pass over the collected member outputs.
         synthesis = ""
+        synthesis_error: BaseException | None = None
         try:
             moderator_profile = bots.get_or_create(run.moderator or run.members[0])
             combined = "\n\n".join(f"--- @{m} ---\n{member_outputs.get(m, '(no output)')}" for m in run.members)
@@ -482,15 +698,47 @@ class GroupRunService:
             )
             with self._lock:
                 self._member_executions.setdefault(run_id, []).append(synthesis_execution_id)
+            synthesis_deadline, synthesis_budget = _component_wait_deadline(synthesis_config.timeout_seconds)
             while True:
                 await asyncio.sleep(_POLL_SECONDS)
                 result = get_background_task_result(synthesis_execution_id)
                 if result is None:
                     raise RuntimeError("Synthesis execution disappeared.")
                 if result.status.is_terminal:
-                    synthesis = result.result or result.error or ""
+                    if result.status is not SubagentStatus.COMPLETED:
+                        # The moderator pass is a component too: a timeout or an
+                        # external cancellation here must not be recorded as a
+                        # successful run.
+                        raise RunComponentError(
+                            "synthesis",
+                            "timeout" if result.status is SubagentStatus.TIMED_OUT else ("cancelled" if result.status is SubagentStatus.CANCELLED else "dependency_error"),
+                            f"synthesis execution {result.status.value}: {result.error or 'no output'}",
+                        )
+                    synthesis = result.result or ""
+                    if not synthesis.strip():
+                        # Completed with nothing to deliver. A member execution
+                        # that completes with no output is already a failure
+                        # ("@member execution completed: no output"); the
+                        # moderator pass had no such check, so it published
+                        # synthesis="" and a run whose status was "succeeded" --
+                        # the whole objective claimed delivered with an empty
+                        # deliverable, plus an empty phase:"synthesis" receipt in
+                        # the room log that made the transcript look complete.
+                        # No component may report success without a deliverable.
+                        raise RunComponentError(
+                            "synthesis",
+                            "dependency_error",
+                            "synthesis execution completed: no deliverable",
+                        )
                     break
+                if asyncio.get_running_loop().time() >= synthesis_deadline:
+                    raise RunComponentError(
+                        "synthesis",
+                        "timeout",
+                        f"synthesis execution did not reach a terminal status within {synthesis_budget:g}s",
+                    )
         except Exception as exc:
+            synthesis_error = exc
             logger.warning("Group run %s synthesis failed: %s", run_id, exc)
             synthesis = f"Synthesis failed ({exc}). Member outputs are posted individually above."
 
@@ -501,7 +749,22 @@ class GroupRunService:
             intent="action",
             metadata={"group_run_id": run_id, "phase": "synthesis"},
         )
-        self._update(run_id, status="succeeded", synthesis=synthesis)
+        failures: list[str] = []
+        for member in run.members:
+            entry = run.member_results.get(member) or {}
+            if entry.get("status") in {"failed", "cancelled"}:
+                kind = entry.get("error_type") or "dependency_error"
+                failures.append(f"member @{member} [{kind}]: {entry.get('error') or entry.get('output') or 'no output'}")
+        if synthesis_error is not None:
+            failures.append(f"synthesis [{classify_component_failure(synthesis_error)}]: {synthesis_error}")
+
+        if failures:
+            # Contract: a run never claims success once one of its components
+            # has failed. Partial member outputs are still merged and posted so
+            # the work that did land stays visible in the room.
+            self._update(run_id, status="failed", synthesis=synthesis, error="; ".join(failures))
+        else:
+            self._update(run_id, status="succeeded", synthesis=synthesis)
 
 
 _global_runner: GroupRunService | None = None

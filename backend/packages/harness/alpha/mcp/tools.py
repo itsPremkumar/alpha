@@ -29,6 +29,12 @@ from alpha.mcp.tasks.runtime import (
     get_mcp_task_submitter,
     validate_mcp_task_config_snapshot,
 )
+from alpha.mcp.untrusted import (
+    UNTRUSTED_DESCRIPTION_PREFIX,
+    bound_mcp_result_text,
+    neutralize_mcp_tool_description,
+    new_mcp_result_budget,
+)
 from alpha.reflection import resolve_variable
 from alpha.runtime.user_context import resolve_runtime_user_id
 from alpha.tools.mcp_metadata import tag_mcp_routing, tag_mcp_tool
@@ -440,11 +446,37 @@ def _convert_call_tool_result(
             changed_files=changed_files,
         )
 
+    # Bound the text an MCP server can put in front of the model.
+    #
+    # Every byte below comes from outside the trust boundary, and before this
+    # bound each of them went verbatim into ``lc_content`` — hence into the
+    # model context, the checkpoint, and the trace. A server answering with a
+    # 200 MB page (or 10,000 blocks of 32 KB) therefore controlled the shape
+    # and the cost of the whole turn. Two bounds are needed because a per-block
+    # one alone is not a bound: the count is the server's to choose. Text is
+    # bounded but NOT escaped — it arrives in a ``ToolMessage``, a role the
+    # model does not read as its own turn, and escaping would corrupt the
+    # legitimate payloads MCP exists to carry (HTML pages, file listings, JSON).
+    # Binary blocks are left alone: a base64 image has no prompt-forging
+    # surface, and truncating one would corrupt a deliverable.
+    remaining_text_budget = new_mcp_result_budget()
+
+    def _bounded_text(text: str) -> str:
+        nonlocal remaining_text_budget
+        bounded, truncated = bound_mcp_result_text(text, remaining_total=remaining_text_budget)
+        remaining_text_budget = max(0, remaining_text_budget - len(bounded))
+        if truncated:
+            logger.warning(
+                "Truncated MCP tool result text to %d characters (per-result text budget exhausted)",
+                len(bounded),
+            )
+        return bounded
+
     # Convert MCP content blocks to LangChain content blocks.
     lc_content = []
     for item in call_tool_result.content:
         if isinstance(item, TextContent):
-            lc_content.append(create_text_block(text=_resolve_text(item.text)))
+            lc_content.append(create_text_block(text=_bounded_text(_resolve_text(item.text))))
         elif isinstance(item, ImageContent):
             lc_content.append(create_image_block(base64=item.data, mime_type=item.mimeType))
         elif isinstance(item, ResourceLink):
@@ -459,7 +491,7 @@ def _convert_call_tool_result(
 
             res = item.resource
             if isinstance(res, TextResourceContents):
-                lc_content.append(create_text_block(text=_resolve_text(res.text)))
+                lc_content.append(create_text_block(text=_bounded_text(_resolve_text(res.text))))
             elif isinstance(res, BlobResourceContents):
                 mime = res.mimeType or None
                 if mime and mime.startswith("image/"):
@@ -467,9 +499,9 @@ def _convert_call_tool_result(
                 else:
                     lc_content.append(create_file_block(base64=res.blob, mime_type=mime))
             else:
-                lc_content.append(create_text_block(text=str(res)))
+                lc_content.append(create_text_block(text=_bounded_text(str(res))))
         else:
-            lc_content.append(create_text_block(text=str(item)))
+            lc_content.append(create_text_block(text=_bounded_text(str(item))))
 
     if call_tool_result.isError:
         error_parts = [item["text"] for item in lc_content if isinstance(item, dict) and item.get("type") == "text"]
@@ -480,6 +512,60 @@ def _convert_call_tool_result(
         artifact = {"structured_content": call_tool_result.structuredContent}
 
     return lc_content, artifact
+
+
+def _apply_untrusted_tool_description(tool: BaseTool, *, server_name: str) -> None:
+    """Replace *tool*'s server-supplied description with a neutralized one.
+
+    A tool description is the only place an MCP server speaks to the model
+    before any of its code has run: it is bound into the tool schema and, for a
+    deferred tool, rendered into the system prompt. A compromised server that
+    puts framework markup or role-forging control characters in there would
+    otherwise be read as if Alpha had written it.
+
+    Idempotent: re-running on an already-neutralized tool is a no-op, so a
+    cached tool that passes through the load path twice is not double-labelled.
+    """
+    description = tool.description
+    if not description or description.startswith(UNTRUSTED_DESCRIPTION_PREFIX):
+        return
+    tool.description = neutralize_mcp_tool_description(
+        description,
+        server_name=server_name,
+        tool_name=tool.name,
+    )
+
+
+def _tools_for_one_server(server_name: str, outcome: list[BaseTool] | BaseException) -> list[BaseTool]:
+    """Normalize one server's gathered discovery outcome into a tool list.
+
+    This is the structural half of per-server isolation. Whatever a single
+    server's discovery produced — a list, or *any* exception object including a
+    ``BaseException`` — becomes that server's contribution, so the fan-out's
+    "one broken server must not stop healthy servers" contract is a property of
+    this function rather than an emergent property of whatever exception handling
+    happens to sit inside the per-server coroutine.
+
+    Only an outcome that reached this function as an *exception* is downgraded to
+    ``[]``. Cancellation of the awaiting caller never arrives here: an
+    ``asyncio.gather`` whose own future is cancelled re-raises ``CancelledError``
+    out of the ``await``, so ``get_mcp_tools`` still aborts. What lands here as a
+    ``CancelledError`` *result* is one server's discovery being cancelled
+    independently of the caller, which is exactly the per-server failure this
+    must absorb.
+    """
+    if isinstance(outcome, BaseException):
+        # Log the type explicitly: a CancelledError's str() is frequently empty,
+        # and a bare type name is the only thing that identifies the cause.
+        logger.warning(
+            "Skipping MCP server %r after tool discovery aborted with %s: %s",
+            server_name,
+            type(outcome).__name__,
+            outcome,
+            exc_info=outcome,
+        )
+        return []
+    return list(outcome)
 
 
 def _resolve_session_init_timeout(server_cfg: Any) -> float | None:
@@ -856,6 +942,14 @@ async def get_mcp_tools() -> list[BaseTool]:
         )
 
         async def load_server_tools(server_name: str) -> list[BaseTool]:
+            # NOTE: this function's own ``except Exception`` is a *diagnostic*
+            # convenience, not the isolation boundary. The boundary that makes
+            # "one broken server cannot stop healthy servers" true is
+            # :func:`_tools_for_one_server` applied to the gather result below,
+            # which converts ANY per-server outcome — including a
+            # ``BaseException`` such as ``CancelledError`` — into an empty tool
+            # list. Keep new code in this function outside the ``try`` if you
+            # like; correctness of the fan-out no longer depends on it.
             try:
                 server_cfg = extensions_config.mcp_servers.get(server_name)
                 tool_name_prefix = server_cfg.tool_name_prefix if server_cfg is not None else True
@@ -912,7 +1006,40 @@ async def get_mcp_tools() -> list[BaseTool]:
 
         # Get tools from each server independently so one broken MCP server does
         # not prevent healthy servers from contributing their tools.
-        tools_by_server = await asyncio.gather(*(load_server_tools(name) for name in servers_config))
+        #
+        # The isolation is STRUCTURAL, and that is the whole point of the two
+        # lines below. It used to rest entirely on ``load_server_tools``' inner
+        # ``except Exception``, which made it accidental in two ways:
+        #
+        #   1. Any new statement added outside that ``try`` (config lookup,
+        #      timeout resolution, a new branch) silently re-broke the contract.
+        #   2. ``except Exception`` does not catch ``BaseException``. A single
+        #      server whose discovery raised ``CancelledError`` — which an
+        #      ``asyncio.wait_for`` elsewhere in the stack, or anyio cancel
+        #      scope unwinding through the adapter, can raise — made
+        #      ``asyncio.gather`` propagate straight out of ``get_mcp_tools``,
+        #      discarding every *healthy* server's tools with it.
+        #
+        # ``return_exceptions=True`` fixes (2) at the fan-out: the gather no
+        # longer short-circuits on a child failure, it hands every server's
+        # outcome back positionally. It does NOT weaken cancellation of the
+        # *caller*: when the task awaiting this gather is cancelled, gather
+        # still propagates CancelledError to its children and re-raises out of
+        # this await, so an aborted ``get_mcp_tools`` is still aborted.
+        # ``KeyboardInterrupt`` / ``SystemExit`` also still escape a child task
+        # rather than being collected as a result, so process-level signals are
+        # not swallowed. :func:`_tools_for_one_server` then normalizes whatever
+        # came back, so a failure can never take down its siblings.
+        gathered: list[list[BaseTool] | BaseException] = list(
+            await asyncio.gather(
+                *(load_server_tools(name) for name in servers_config),
+                return_exceptions=True,
+            )
+        )
+        tools_by_server: list[list[BaseTool]] = [
+            _tools_for_one_server(server_name, result)
+            for server_name, result in zip(servers_config, gathered, strict=True)
+        ]
         tools = [tool for server_tools in tools_by_server for tool in server_tools]
         logger.info(f"Successfully loaded {len(tools)} tool(s) from MCP servers")
 
@@ -941,6 +1068,17 @@ async def get_mcp_tools() -> list[BaseTool]:
                         _VALID_MCP_TOOL_NAME.pattern,
                     )
                     continue
+                # Take custody of the server's self-description before it can
+                # reach a prompt. This is the single choke point for every tool
+                # shape the loop below can produce: the stdio wrapper copies
+                # ``tool.description`` into a new StructuredTool, the HTTP/SSE
+                # path hands the adapter's own tool through, and the
+                # background-submit wrapper appends its (framework-authored)
+                # contract text to whatever it finds here. Neutralizing once, at
+                # the load boundary, is what makes all three safe — the same
+                # boundary where ``_VALID_MCP_TOOL_NAME`` already constrains the
+                # other half of the tool definition the server controls.
+                _apply_untrusted_tool_description(tool, server_name=source_name)
                 tag_mcp_tool(tool, server_name=source_name, transport=transport)
                 prefix = f"{source_name}_"
                 original_name = tool.name[len(prefix) :] if tool_name_prefix and tool.name.startswith(prefix) else tool.name

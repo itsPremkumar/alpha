@@ -36,9 +36,7 @@ def _ensure_auth_secret(env_path: Path) -> bool:
     from wizard.writer import read_env_file, write_env_file
 
     current = read_env_file(env_path).get("BETTER_AUTH_SECRET", "")
-    if current and not any(
-        marker in current.lower() for marker in _PLACEHOLDER_MARKERS
-    ):
+    if current and not any(marker in current.lower() for marker in _PLACEHOLDER_MARKERS):
         return False
     write_env_file(env_path, {"BETTER_AUTH_SECRET": secrets.token_hex(32)})
     return True
@@ -59,9 +57,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def _persist_configuration(
-    project_root, config_path, env_path, llm, search, execution, channels
-) -> None:
+def _persist_configuration(project_root, config_path, env_path, llm, search, execution, channels) -> None:
     """Shared write phase: config.yaml, .env keys, auth secret, summary."""
     from wizard.ui import cyan, green, print_header, print_success
     from wizard.writer import write_config_yaml, write_env_file
@@ -136,11 +132,7 @@ def _persist_configuration(
         print(f"  {green('✓')} Web fetch:  {fetch_provider.display_name}")
     else:
         print(f"  {'—':>3} Web fetch:  not configured")
-    sandbox_label = (
-        "Local sandbox"
-        if execution.sandbox_use.endswith("LocalSandboxProvider")
-        else "Container sandbox"
-    )
+    sandbox_label = "Local sandbox" if execution.sandbox_use.endswith("LocalSandboxProvider") else "Container sandbox"
     print(f"  {green('✓')} Execution:  {sandbox_label}")
     if execution.include_bash_tool:
         bash_label = "enabled"
@@ -190,9 +182,7 @@ def _run_interactive() -> int:
         should_reconfigure = ask_yes_no("Do you want to reconfigure?", default=False)
         if not should_reconfigure:
             print()
-            print_info(
-                "Keeping existing config. Run 'make doctor' to verify your setup."
-            )
+            print_info("Keeping existing config. Run 'make doctor' to verify your setup.")
             return 0
         print()
 
@@ -215,9 +205,7 @@ def _run_interactive() -> int:
     channels = run_channels_step(f"Step 4/{total_steps}")
 
     print_header(f"Step {total_steps}/{total_steps} · Writing configuration")
-    _persist_configuration(
-        project_root, config_path, env_path, llm, search, execution, channels
-    )
+    _persist_configuration(project_root, config_path, env_path, llm, search, execution, channels)
     return 0
 
 
@@ -238,13 +226,8 @@ def _run_noninteractive(allow_reconfigure: bool) -> int:
     config_path = project_root / "config.yaml"
     env_path = project_root / ".env"
 
-    if config_path.exists() and not (
-        allow_reconfigure or os.environ.get("AGENT_WORKSPACE_SETUP_RECONFIGURE") == "1"
-    ):
-        print(
-            "config.yaml already exists. Set AGENT_WORKSPACE_SETUP_RECONFIGURE=1 "
-            "or pass --reconfigure to overwrite it."
-        )
+    if config_path.exists() and not (allow_reconfigure or os.environ.get("AGENT_WORKSPACE_SETUP_RECONFIGURE") == "1"):
+        print("config.yaml already exists. Set AGENT_WORKSPACE_SETUP_RECONFIGURE=1 or pass --reconfigure to overwrite it.")
         return 1
 
     try:
@@ -254,9 +237,7 @@ def _run_noninteractive(allow_reconfigure: bool) -> int:
         return 1
 
     print(f"Provider: {llm.provider.display_name} / {llm.model_name}")
-    _persist_configuration(
-        project_root, config_path, env_path, llm, search, execution, channels
-    )
+    _persist_configuration(project_root, config_path, env_path, llm, search, execution, channels)
     return 0
 
 
@@ -266,11 +247,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.non_interactive:
             return _run_noninteractive(allow_reconfigure=args.reconfigure)
         if not _is_interactive():
-            print(
-                "Non-interactive environment detected.\n"
-                "Re-run with --non-interactive plus AGENT_WORKSPACE_SETUP_* env vars, "
-                "or run 'make setup' in a terminal."
-            )
+            print("Non-interactive environment detected.\nRe-run with --non-interactive plus AGENT_WORKSPACE_SETUP_* env vars, or run 'make setup' in a terminal.")
             return 1
         return _run_interactive()
     except KeyboardInterrupt:

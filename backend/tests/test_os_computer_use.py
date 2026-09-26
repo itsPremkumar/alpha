@@ -30,6 +30,7 @@ from alpha.computer_use.guard import (
     normalize_hotkey,
 )
 from alpha.tools.builtins import os_computer_tool
+from alpha.tools.builtins.computer_system_one_tool import desktop_system_one_action_tool
 from alpha.tools.builtins.os_computer_tool import (
     desktop_inspect_ui_tree_tool,
     desktop_keyboard_action_tool,
@@ -314,17 +315,74 @@ def test_hotkey_blacklist_blocks_destructive_combos():
         verdict = guard.check_hotkey(combo)
         assert verdict["allowed"] is False, combo
         assert verdict["blocked_by"] == "hotkey_blacklist"
-        assert "confirmed=true" in verdict["reason"]
+        assert "operator confirmation" in verdict["reason"]
 
     assert guard.check_hotkey(["win", "l"])["allowed"] is False
     assert guard.check_hotkey("ctrl+s")["allowed"] is True
     assert guard.check_hotkey("alt+tab")["allowed"] is True
     assert guard.check_hotkey("")["allowed"] is True  # empty resolves to no keys; tool-level validation rejects it
 
-    confirmed = guard.check_hotkey("win+l", confirmed=True)
-    assert confirmed["allowed"] is True
-    assert confirmed["confirmed"] is True
-    assert "explicitly confirmed" in confirmed["reason"]
+
+def test_blacklist_cannot_be_lifted_by_a_bare_boolean_or_a_self_minted_token():
+    """A confirmation a caller can supply is not a confirmation.
+
+    ``check_hotkey`` takes no boolean override, and an invented token is
+    refused. This is the regression that keeps the destructive-combo blacklist
+    a real control rather than a prompt suggestion.
+    """
+
+    guard = SentinelGuard()
+    assert "confirmed" not in inspect.signature(guard.check_hotkey).parameters
+
+    with pytest.raises(TypeError):
+        guard.check_hotkey("win+l", confirmed=True)  # type: ignore[call-arg]
+
+    invented = guard.check_hotkey("win+l", confirmation_token="not-a-real-token")
+    assert invented["allowed"] is False
+    assert invented["blocked_by"] == "hotkey_blacklist"
+    assert "no operator confirmation" in invented["reason"]
+
+
+def test_operator_confirmation_is_single_use_combo_bound_and_expiring():
+    guard = SentinelGuard()
+
+    # Nothing to arm for a combo that is not blacklisted.
+    assert guard.arm_destructive_confirmation("ctrl+s")["armed"] is False
+
+    armed = guard.arm_destructive_confirmation("win+l", armed_by="test-operator")
+    assert armed["armed"] is True
+    assert armed["single_use"] is True
+    token = armed["confirmation_token"]
+    assert isinstance(token, str) and token
+
+    # A token for win+l does not unlock a different blacklisted combo.
+    other = guard.check_hotkey("shift+delete", confirmation_token=token)
+    assert other["allowed"] is False
+    assert "covers" in other["reason"]
+
+    allowed = guard.check_hotkey("Win+L", confirmation_token=token)
+    assert allowed["allowed"] is True
+    assert allowed["confirmed"] is True
+
+    # Single use: the same token is dead after one success.
+    replay = guard.check_hotkey("win+l", confirmation_token=token)
+    assert replay["allowed"] is False
+    assert "no operator confirmation" in replay["reason"]
+
+
+def test_panic_and_reset_revoke_armed_destructive_confirmations():
+    guard = SentinelGuard()
+    guard.arm_destructive_confirmation("ctrl+alt+delete")
+    assert guard.status()["armed_destructive_confirmations"] == 1
+    guard.trigger_panic("test panic")
+    assert guard.status()["armed_destructive_confirmations"] == 0
+
+    guard.reset()
+    guard.arm_destructive_confirmation("alt+f4")
+    assert guard.status()["armed_destructive_confirmations"] == 1
+    guard.reset()
+    assert guard.status()["armed_destructive_confirmations"] == 0
+    assert guard.check_hotkey("alt+f4")["allowed"] is False
 
 
 def test_normalize_hotkey_aliases():
@@ -408,22 +466,32 @@ def test_keyboard_hotkey_blacklist_enforced_before_backend(monkeypatch):
     assert fake.calls == [("hotkey", ("ctrl", "s"))]
 
 
-def test_confirmed_blacklisted_hotkey_dispatches_on_fake_backend(monkeypatch):
+def test_operator_confirmed_blacklisted_hotkey_dispatches_on_fake_backend(monkeypatch):
     fake = _FakeBackend()
     monkeypatch.setattr(dispatcher, "_load_backend", lambda: (fake, None))
-    payload = dispatcher.keyboard_hotkey("win+l", confirmed=True)
+    guard = get_sentinel_guard()
+    token = guard.arm_destructive_confirmation("win+l", armed_by="test-operator")["confirmation_token"]
+    payload = dispatcher.keyboard_hotkey("win+l", confirmation_token=token)
     assert payload["ok"] is True
     assert payload["confirmed"] is True
     assert fake.calls == [("hotkey", ("win", "l"))]
 
 
-def test_confirmed_blacklisted_hotkey_is_still_honest_without_backend():
+def test_operator_confirmed_blacklisted_hotkey_is_still_honest_without_backend():
     """Confirmation must never fabricate a successful dispatch."""
-    payload = dispatcher.keyboard_hotkey("win+l", confirmed=True)
+    guard = get_sentinel_guard()
+    token = guard.arm_destructive_confirmation("win+l", armed_by="test-operator")["confirmation_token"]
+    payload = dispatcher.keyboard_hotkey("win+l", confirmation_token=token)
     assert payload["ok"] is False
     assert payload["status"] == "unavailable"
     assert payload["dispatched"] is False
     assert "pyautogui" in payload["reason"]
+
+
+def test_dispatcher_hotkey_takes_no_self_supplied_confirmation_boolean():
+    assert "confirmed" not in inspect.signature(dispatcher.keyboard_hotkey).parameters
+    with pytest.raises(TypeError):
+        dispatcher.keyboard_hotkey("win+l", confirmed=True)  # type: ignore[call-arg]
 
 
 def test_keyboard_type_press_and_validation_through_fake_backend(monkeypatch):
@@ -879,7 +947,7 @@ async def test_desktop_mouse_action_success_holds_thread_lease(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_desktop_keyboard_action_blacklist_and_confirmed_paths(monkeypatch):
+async def test_desktop_keyboard_action_blacklist_is_unreachable_from_the_tool(monkeypatch):
     fake = _FakeBackend()
     monkeypatch.setattr(dispatcher, "_load_backend", lambda: (fake, None))
     guard = get_sentinel_guard()
@@ -894,11 +962,36 @@ async def test_desktop_keyboard_action_blacklist_and_confirmed_paths(monkeypatch
     assert blocked2["ok"] is False
     assert blocked2["status"] == "blocked"
 
-    confirmed = await desktop_keyboard_action_tool.coroutine(runtime=_runtime(), action="hotkey", hotkey="win+l", confirmed=True)
-    assert confirmed["ok"] is True
-    assert confirmed["confirmed"] is True
-    assert fake.calls == [("hotkey", ("win", "l"))]
+    # Even with an operator token armed, the tool exposes no way to present it,
+    # and there is no boolean to set instead.
+    guard.arm_destructive_confirmation("win+l", armed_by="test-operator")
+    still_blocked = await desktop_keyboard_action_tool.coroutine(runtime=_runtime(), action="hotkey", hotkey="win+l")
+    assert still_blocked["ok"] is False
+    assert still_blocked["blocked_by"] == "hotkey_blacklist"
+    assert fake.calls == []
+
+    with pytest.raises(TypeError):
+        await desktop_keyboard_action_tool.coroutine(runtime=_runtime(), action="hotkey", hotkey="win+l", confirmed=True)  # type: ignore[call-arg]
+    assert fake.calls == []
     assert guard.status()["halted"] is False
+
+
+def test_no_model_facing_desktop_tool_advertises_a_confirmation_argument():
+    """The schema is what the LLM sees; a confirmation must not be in it."""
+
+    for tool in (
+        desktop_screenshot_tool,
+        desktop_inspect_ui_tree_tool,
+        desktop_mouse_action_tool,
+        desktop_keyboard_action_tool,
+        desktop_window_manage_tool,
+        desktop_system_one_action_tool,
+    ):
+        properties = set(tool.tool_call_schema.model_json_schema().get("properties", {}))
+        assert "confirmed" not in properties, tool.name
+        assert "confirmation_token" not in properties, tool.name
+        assert "approval_token" not in properties, tool.name
+        assert "approval_id" not in properties, tool.name
 
 
 @pytest.mark.asyncio

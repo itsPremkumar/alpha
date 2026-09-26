@@ -18,6 +18,7 @@ Binds top slash commands to real backend subsystems:
 from __future__ import annotations
 
 import logging
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -34,6 +35,68 @@ from alpha.commands.registry import CommandExecutionResult, SlashCommandDef, com
 
 logger = logging.getLogger(__name__)
 
+#: Skill names are filesystem path segments, so they are validated at the command
+#: boundary instead of relying on a downstream storage invariant. Same rule the
+#: storage layer enforces, restated here so a bad name is rejected with a
+#: command-level message and never reaches a write.
+_SKILL_NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+_SKILL_NAME_MAX = 64
+
+#: A description is interpolated into YAML frontmatter, so anything that could
+#: close the frontmatter block, add a duplicate key, or smuggle body content into
+#: the skill instructions is rejected rather than escaped.
+_DESCRIPTION_MAX = 500
+_DESCRIPTION_FORBIDDEN_RE = re.compile(r"[\r\n\x00]|---")
+
+#: ``<skill-name> [description: <text>]`` is the whole accepted grammar. Anything
+#: else after the name is refused rather than silently dropped: the previous
+#: parser took the first whitespace-delimited token as the name and discarded
+#: the remainder, so ``/skill:create my new skill`` quietly created ``my``.
+_OPTION_RE = re.compile(r"(?:^|\s)([A-Za-z][A-Za-z0-9_-]*):")
+
+
+def _parse_skill_create_args(raw: str) -> tuple[str, str, str | None]:
+    """Split ``/skill:create`` arguments into ``(name, description, error)``.
+
+    Accepts exactly ``<name>`` and ``<name> description: <text>``. Any other
+    trailing text is an error naming the accepted form, so a partially understood
+    request can never half-apply.
+    """
+    parts = raw.split(maxsplit=1)
+    name = parts[0].lower().replace(" ", "-")
+    rest = parts[1] if len(parts) > 1 else ""
+    if not rest:
+        return name, f"Autonomous skill for {name.replace('-', ' ')}", None
+
+    marker = re.match(r"^description:", rest, re.IGNORECASE)
+    if not marker:
+        return name, "", f"unrecognised argument {rest!r}; the accepted form is '{name} [description: <text>]'"
+    description = rest[marker.end() :].strip()
+    stray = _OPTION_RE.findall(description)
+    if stray:
+        return name, "", f"unrecognised option {stray[0]!r}; the accepted form is '{name} description: <text>' (no other options are supported)"
+    if not description:
+        return name, "", "the description is empty; use '<name> description: <text>' or just '<name>'"
+    return name, description, None
+
+
+def _validate_skill_name(skill_name: str) -> str | None:
+    """Return a rejection reason for *skill_name*, or None when it is usable."""
+    if not _SKILL_NAME_RE.fullmatch(skill_name):
+        return "skill name must be hyphen-case: lowercase letters, digits and single hyphens only (it is also used as a directory name, so no dots, slashes or '..')"
+    if len(skill_name) > _SKILL_NAME_MAX:
+        return f"skill name must be {_SKILL_NAME_MAX} characters or fewer (got {len(skill_name)})"
+    return None
+
+
+def _validate_skill_description(description: str) -> str | None:
+    """Return a rejection reason for *description*, or None when it is usable."""
+    if _DESCRIPTION_FORBIDDEN_RE.search(description):
+        return "description must be a single line and must not contain '---' (it is written into the SKILL.md frontmatter block, where a newline or a document separator would inject extra frontmatter keys or body content)"
+    if len(description) > _DESCRIPTION_MAX:
+        return f"description must be {_DESCRIPTION_MAX} characters or fewer (got {len(description)})"
+    return None
+
 
 # ==============================================================================
 # 1. SKILL CREATOR & MANAGEMENT HANDLERS
@@ -41,27 +104,70 @@ logger = logging.getLogger(__name__)
 
 
 def handle_skill_create(args: str, context: dict[str, Any] | None = None) -> CommandExecutionResult:
-    """Creates a brand new skill with frontmatter, description, tools, and instructions."""
+    """Creates a brand new skill with frontmatter, description, tools, and instructions.
+
+    Arguments are validated before anything is written: the name must be a
+    hyphen-case path segment and the description must be a single line free of
+    ``---``, so a crafted argument cannot inject frontmatter keys or body content
+    into the persisted SKILL.md. An existing skill is never clobbered unless the
+    caller explicitly grants ``overwrite`` in the context — creating a skill
+    rewrites agent instructions the agent later reads, so it is treated as a
+    destructive write.
+    """
     raw = args.strip()
     if not raw:
         return CommandExecutionResult(
             status="error",
             command="/skill:create",
-            output="Usage: /skill:create <skill-name> [description: ...] [tools: ...]\nExample: /skill:create pdf-parser description: Extract tabular data from financial PDFs",
+            output="Usage: /skill:create <skill-name> [description: <text>]\nExample: /skill:create pdf-parser description: Extract tabular data from financial PDFs",
         )
 
-    parts = raw.split(maxsplit=1)
-    skill_name = parts[0].lower().replace(" ", "-")
-    rest = parts[1] if len(parts) > 1 else ""
+    skill_name, _, _ = _parse_skill_create_args(raw)
 
-    description = f"Autonomous skill for {skill_name.replace('-', ' ')}"
-    if "description:" in rest:
-        desc_part = rest.split("description:", 1)[1]
-        description = desc_part.split("tools:")[0].strip()
+    name_error = _validate_skill_name(skill_name)
+    if name_error is not None:
+        return CommandExecutionResult(
+            status="error",
+            command="/skill:create",
+            output=f"Skill not created: {name_error}. Rejected name: {skill_name!r}",
+            data={"skill_name": skill_name, "written": False, "error": name_error},
+        )
+
+    skill_name, description, parse_error = _parse_skill_create_args(raw)
+    if parse_error is not None:
+        return CommandExecutionResult(
+            status="error",
+            command="/skill:create",
+            output=f"Skill not created: {parse_error}.",
+            data={"skill_name": skill_name, "written": False, "error": parse_error},
+        )
+
+    description_error = _validate_skill_description(description)
+    if description_error is not None:
+        return CommandExecutionResult(
+            status="error",
+            command="/skill:create",
+            output=f"Skill '{skill_name}' not created: {description_error}.",
+            data={"skill_name": skill_name, "written": False, "error": description_error},
+        )
 
     from alpha.skills.storage import get_or_new_skill_storage, reset_skill_storage
 
     storage = get_or_new_skill_storage()
+
+    overwrite_granted = bool((context or {}).get("overwrite") is True)
+    if storage.custom_skill_exists(skill_name) and not overwrite_granted:
+        return CommandExecutionResult(
+            status="approval_required",
+            command="/skill:create",
+            output=(
+                f"Skill '{skill_name}' NOT overwritten: a skill with that name already exists and "
+                f"rewriting it would replace instructions the agent already follows.\n"
+                f"Re-invoke with a context carrying 'overwrite': True to replace it deliberately, "
+                f"or choose a different name."
+            ),
+            data={"skill_name": skill_name, "written": False, "requires_approval": True},
+        )
 
     # NOTE: every key written here must be in
     # alpha.skills.frontmatter.ALLOWED_FRONTMATTER_PROPERTIES — otherwise the
@@ -96,8 +202,8 @@ author: Autonomous Alpha Agent
         return CommandExecutionResult(
             status="success",
             command="/skill:create",
-            output=f"Skill '{skill_name}' created successfully in custom skill registry.\nPath: {custom_dir}\nDescription: {description}",
-            data={"skill_name": skill_name, "path": str(custom_dir), "description": description},
+            output=f"Skill '{skill_name}' {'overwritten' if overwrite_granted else 'created successfully'} in custom skill registry.\nPath: {custom_dir}\nDescription: {description}",
+            data={"skill_name": skill_name, "path": str(custom_dir), "description": description, "written": True},
             autonomous_directives=[f"Activate skill '{skill_name}' via /{skill_name} or describe_skill."],
         )
     except Exception as e:
@@ -105,7 +211,7 @@ author: Autonomous Alpha Agent
             status="error",
             command="/skill:create",
             output=f"Failed to create skill '{skill_name}': {e}",
-            data={"error": str(e)},
+            data={"skill_name": skill_name, "written": False, "error": str(e)},
         )
 
 

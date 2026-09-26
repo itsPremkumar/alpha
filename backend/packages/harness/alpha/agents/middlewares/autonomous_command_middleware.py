@@ -5,6 +5,12 @@ Automatically identifies and initiates slash command workflows at the exact corr
 2. Mid-turn: Detects tool failures/crashes and triggers /self-heal recovery workflows.
 3. Post-edit: Detects code modifications and triggers /verify and /evidence audit directives.
 4. Completion: Detects milestone completion and triggers /learn save reflection directives.
+
+Both the sync and the async model-call seams are implemented.  ``AgentMiddleware``
+raises ``NotImplementedError`` from the base ``wrap_model_call`` when only
+``awrap_model_call`` is overridden, which makes every synchronous ``invoke()`` /
+``stream()`` run of an agent carrying this middleware fail outright.  The
+detection logic lives in one pure method so the two seams cannot drift.
 """
 
 from __future__ import annotations
@@ -33,12 +39,13 @@ class AutonomousCommandMiddleware(AgentMiddleware):
     def __init__(self, confidence_threshold: float = 0.3) -> None:
         self.confidence_threshold = confidence_threshold
 
-    @override
-    async def awrap_model_call(
-        self,
-        request: ModelRequest,
-        handler: Callable[[ModelRequest], Any],
-    ) -> ModelResponse:
+    def _apply_lifecycle_directives(self, request: ModelRequest) -> ModelRequest:
+        """Return *request* with any autonomous directive messages inserted.
+
+        Pure with respect to the request: the message list is copied before any
+        insertion, so the caller's request is never mutated.  Shared verbatim by
+        the sync and async seams.
+        """
         messages = list(request.messages)
 
         # 1. Analyze latest user message for autonomous slash intent
@@ -94,9 +101,26 @@ class AutonomousCommandMiddleware(AgentMiddleware):
                     messages.append(verify_msg)
                     logger.info("Autonomous verification triggered after code edit.")
 
-        # Forward request with any autonomous directives applied
-        modified_request = request.override(messages=messages)
-        return await handler(modified_request)
+        if not directive_injected and len(messages) == len(request.messages):
+            return request
+        return request.override(messages=messages)
+
+    @override
+    def wrap_model_call(
+        self,
+        request: ModelRequest,
+        handler: Callable[[ModelRequest], Any],
+    ) -> ModelResponse:
+        """Synchronous model-call seam (agent ``invoke()`` / ``stream()``)."""
+        return handler(self._apply_lifecycle_directives(request))
+
+    @override
+    async def awrap_model_call(
+        self,
+        request: ModelRequest,
+        handler: Callable[[ModelRequest], Any],
+    ) -> ModelResponse:
+        return await handler(self._apply_lifecycle_directives(request))
 
     def _build_directive_message(self, detection: AutonomousDetectionResult) -> SystemMessage:
         directives_text = "\n".join(f"  * {d}" for d in detection.autonomous_directives)

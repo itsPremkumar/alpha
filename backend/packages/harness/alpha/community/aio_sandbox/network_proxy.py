@@ -25,6 +25,16 @@ MAX_HEADER_BYTES = 65_536
 POLICY_DB = Path(os.environ.get("AGENT_WORKSPACE_POLICY_DB", "/tmp/alpha-network-policy.sqlite3"))
 RELAY_AUTH_HEADER = "X-Agent-Workspace-Relay-Token"
 RELAY_TOKEN_ENV = "AGENT_WORKSPACE_RELAY_TOKEN"
+RELAY_CHUNK_BYTES = 65_536
+# Every socket await in this module carries a deadline. A whole proxy shares
+# one event loop, so a single unbounded read or drain freezes every concurrent
+# sandboxed run, not just the connection that stalled. Each deadline below is a
+# "this peer is gone" backstop; a relay is torn down by its two directions
+# cancelling each other, not by waiting for a timeout.
+DRAIN_TIMEOUT_SECONDS = 15.0
+DNS_TIMEOUT_SECONDS = 15.0
+SOCKET_CLOSE_TIMEOUT_SECONDS = 5.0
+RELAY_IDLE_TIMEOUT_SECONDS = 300.0
 
 
 class _InvalidHttpRequest(ValueError):
@@ -212,7 +222,11 @@ def decide(request_id: str, decision: str, ttl: int) -> bool:
 async def resolve_public(host: str, port: int) -> tuple[tuple[int, tuple], ...] | None:
     loop = asyncio.get_running_loop()
     try:
-        infos = await loop.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+        # The resolver runs in the loop's executor, so it does not block the
+        # loop, but an unbounded wait still pins this connection handler and
+        # its client socket until the system resolver gives up. The expiry
+        # surfaces as TimeoutError, which is an OSError.
+        infos = await asyncio.wait_for(loop.getaddrinfo(host, port, type=socket.SOCK_STREAM), timeout=DNS_TIMEOUT_SECONDS)
     except OSError:
         return None
     allow_synthetic_dns = os.environ.get("AGENT_WORKSPACE_ALLOW_SYNTHETIC_DNS") == "1"
@@ -222,17 +236,90 @@ async def resolve_public(host: str, port: int) -> tuple[tuple[int, tuple], ...] 
     return tuple(public)
 
 
-async def _relay(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+async def _drain(writer: asyncio.StreamWriter) -> None:
+    """Wait for write-buffer progress under a deadline.
+
+    ``StreamWriter.drain()`` has no deadline of its own: once a peer stops
+    reading, the socket buffer fills, the transport pauses, and the await never
+    returns, so the caller would keep its socket and its task for good.
+    """
+    await asyncio.wait_for(writer.drain(), timeout=DRAIN_TIMEOUT_SECONDS)
+
+
+async def _close_writer(writer: asyncio.StreamWriter) -> None:
+    """Release one connection exactly once, tolerating an already-dead one."""
+    with contextlib.suppress(Exception):
+        writer.close()
+    with contextlib.suppress(Exception):
+        # close() above already released the transport; the wait is only for
+        # asyncio's own bookkeeping, so a peer that never answers cannot hold
+        # this coroutine open. A cancellation here is deliberately not
+        # suppressed: it is how the owning relay is torn down.
+        await asyncio.wait_for(writer.wait_closed(), timeout=SOCKET_CLOSE_TIMEOUT_SECONDS)
+
+
+async def _relay(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> bool:
+    """Pump one relay direction and always release its socket.
+
+    Returns True when the peer cleanly ended the stream and False when the
+    direction can no longer carry bytes (reset, stalled write buffer, or a
+    read that made no progress before RELAY_IDLE_TIMEOUT_SECONDS). Only a
+    clean end of stream is a success: a client that half-closes must still
+    receive whatever the upstream is writing.
+    """
     try:
-        while chunk := await reader.read(65_536):
+        while True:
+            chunk = await asyncio.wait_for(reader.read(RELAY_CHUNK_BYTES), timeout=RELAY_IDLE_TIMEOUT_SECONDS)
+            if not chunk:
+                return True
             writer.write(chunk)
-            await writer.drain()
-    except (ConnectionError, asyncio.CancelledError):
-        pass
+            await _drain(writer)
+    except OSError:
+        return False
     finally:
-        with contextlib.suppress(Exception):
-            writer.close()
-            await writer.wait_closed()
+        await _close_writer(writer)
+
+
+def _direction_ended_cleanly(task: asyncio.Task[bool]) -> bool:
+    return not task.cancelled() and task.exception() is None and task.result() is True
+
+
+async def _relay_both_directions(
+    client_reader: asyncio.StreamReader,
+    client_writer: asyncio.StreamWriter,
+    upstream_reader: asyncio.StreamReader,
+    upstream_writer: asyncio.StreamWriter,
+) -> None:
+    """Relay both directions under one owner so neither can be orphaned.
+
+    ``asyncio.gather`` propagates the first failure but leaves its sibling
+    task running, so one broken direction stranded the other: it held a live
+    socket and a task that nothing owned until the peer happened to hang up. A
+    peer that stays silent - or one that never acknowledges our close - turns
+    that into a half-open relay that only an idle timeout elsewhere can
+    collect. Here the first direction that cannot carry bytes any more cancels
+    its survivor, and both directions release their sockets on the way out.
+    """
+    directions = (
+        asyncio.create_task(_relay(client_reader, upstream_writer), name="relay-to-upstream"),
+        asyncio.create_task(_relay(upstream_reader, client_writer), name="relay-to-client"),
+    )
+    try:
+        while True:
+            done, pending = await asyncio.wait(directions, return_when=asyncio.FIRST_COMPLETED)
+            if pending and all(_direction_ended_cleanly(task) for task in done):
+                # One side finished normally and the other still has bytes to
+                # carry, which is the ordinary half-close case.
+                continue
+            for task in done:
+                if not task.cancelled() and task.exception() is not None:
+                    raise task.exception()
+            return
+    finally:
+        for task in directions:
+            task.cancel()
+        # Await both so neither direction outlives this call as an orphan.
+        await asyncio.gather(*directions, return_exceptions=True)
 
 
 async def _open_public(resolved: tuple[tuple[int, tuple], ...], port: int) -> tuple[asyncio.StreamReader, asyncio.StreamWriter] | None:
@@ -260,9 +347,11 @@ async def _open_public(resolved: tuple[tuple[int, tuple], ...], port: int) -> tu
 async def _reject(writer: asyncio.StreamWriter, status: str, body: str) -> None:
     encoded = body.encode("utf-8")
     writer.write(f"HTTP/1.1 {status}\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {len(encoded)}\r\nConnection: close\r\n\r\n".encode() + encoded)
-    await writer.drain()
-    writer.close()
-    await writer.wait_closed()
+    with contextlib.suppress(OSError):
+        # An unreachable client must not turn an error response into a second,
+        # longer-lived failure.
+        await _drain(writer)
+    await _close_writer(writer)
 
 
 def _parse_http_header_fields(header_lines: list[str]) -> list[tuple[str, str, str]]:
@@ -327,7 +416,7 @@ async def _copy_exact_request_bytes(reader: asyncio.StreamReader, writer: asynci
     while remaining:
         chunk = await asyncio.wait_for(reader.readexactly(min(remaining, 65_536)), timeout=15)
         writer.write(chunk)
-        await writer.drain()
+        await _drain(writer)
         remaining -= len(chunk)
 
 
@@ -342,14 +431,14 @@ async def _copy_chunked_request_body(reader: asyncio.StreamReader, writer: async
             raise _InvalidHttpBody("Invalid chunk size")
         size = int(size_token, 16)
         writer.write(line)
-        await writer.drain()
+        await _drain(writer)
         if size:
             await _copy_exact_request_bytes(reader, writer, size)
             terminator = await asyncio.wait_for(reader.readexactly(2), timeout=15)
             if terminator != b"\r\n":
                 raise _InvalidHttpBody("Invalid chunk terminator")
             writer.write(terminator)
-            await writer.drain()
+            await _drain(writer)
             continue
 
         trailer_bytes = len(line)
@@ -361,7 +450,7 @@ async def _copy_chunked_request_body(reader: asyncio.StreamReader, writer: async
             if trailer != b"\r\n" and (trailer.startswith((b" ", b"\t")) or b":" not in trailer):
                 raise _InvalidHttpBody("Invalid chunk trailer")
             writer.write(trailer)
-            await writer.drain()
+            await _drain(writer)
             if trailer == b"\r\n":
                 return
 
@@ -521,9 +610,15 @@ async def handle_proxy(reader: asyncio.StreamReader, writer: asyncio.StreamWrite
     else:
         await _reject(writer, "403 Forbidden", "IP-literal destinations are not allowed by sandbox network policy")
         return
-    if not policy_allows(host, port):
+    # Both policy decisions are blocking SQLite work: _connect_db opens the
+    # database, switches it to WAL and creates tables, and SQLite serialises
+    # writers process-wide, so a decision waits behind the host-side CLI that
+    # records or resolves approvals. Run inline they would stall the event loop
+    # - and with it every concurrent sandboxed run - behind a call that reads
+    # like pure network work.
+    if not await asyncio.to_thread(policy_allows, host, port):
         if os.environ.get("AGENT_WORKSPACE_RECORD_DENIALS") == "1":
-            request_id = record_denial(host, port, method)
+            request_id = await asyncio.to_thread(record_denial, host, port, method)
             detail = f" (request {request_id})"
         else:
             detail = ""
@@ -538,45 +633,42 @@ async def handle_proxy(reader: asyncio.StreamReader, writer: asyncio.StreamWrite
         await _reject(writer, "403 Forbidden", "Destination did not resolve exclusively to public addresses")
         return
     upstream_reader, upstream_writer = upstream
-    if method == "CONNECT":
-        writer.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
-        await writer.drain()
-        client_hello = await _read_tls_client_hello(reader)
-        if client_hello is None or client_hello[0] != host:
-            upstream_writer.close()
-            await upstream_writer.wait_closed()
-            writer.close()
-            await writer.wait_closed()
+    # From here on the handler owns two sockets. Every failure path below -
+    # a stalled write buffer, a malformed body, a torn-down relay - must leave
+    # both of them closed rather than half-open.
+    try:
+        if method == "CONNECT":
+            writer.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+            await _drain(writer)
+            client_hello = await _read_tls_client_hello(reader)
+            if client_hello is None or client_hello[0] != host:
+                return
+            upstream_writer.write(client_hello[1])
+            await _drain(upstream_writer)
+            await _relay_both_directions(reader, writer, upstream_reader, upstream_writer)
             return
-        upstream_writer.write(client_hello[1])
-        await upstream_writer.drain()
-        await asyncio.gather(_relay(reader, upstream_writer), _relay(upstream_reader, writer))
-        return
 
-    upstream_writer.write(outbound_header or b"")
-    await upstream_writer.drain()
-    try:
-        if body_mode == "chunked":
-            await _copy_chunked_request_body(reader, upstream_writer)
-        else:
-            await _copy_exact_request_bytes(reader, upstream_writer, body_length)
-    except (asyncio.IncompleteReadError, asyncio.LimitOverrunError, TimeoutError, _InvalidHttpBody) as exc:
-        upstream_writer.close()
-        await upstream_writer.wait_closed()
-        await _reject(writer, "400 Bad Request", str(exc) or "Invalid HTTP request body")
-        return
-    if upstream_writer.can_write_eof():
-        upstream_writer.write_eof()
-        await upstream_writer.drain()
-    try:
+        upstream_writer.write(outbound_header or b"")
+        await _drain(upstream_writer)
+        try:
+            if body_mode == "chunked":
+                await _copy_chunked_request_body(reader, upstream_writer)
+            else:
+                await _copy_exact_request_bytes(reader, upstream_writer, body_length)
+        except (asyncio.IncompleteReadError, asyncio.LimitOverrunError, TimeoutError, _InvalidHttpBody) as exc:
+            await _close_writer(upstream_writer)
+            await _reject(writer, "400 Bad Request", str(exc) or "Invalid HTTP request body")
+            return
+        if upstream_writer.can_write_eof():
+            upstream_writer.write_eof()
+            await _drain(upstream_writer)
         # One request per client connection is intentional. Relaying arbitrary
         # remaining client bytes would let a pipelined request bypass the next
         # destination/Host policy check.
         await _relay(upstream_reader, writer)
     finally:
-        with contextlib.suppress(Exception):
-            upstream_writer.close()
-            await upstream_writer.wait_closed()
+        await _close_writer(upstream_writer)
+        await _close_writer(writer)
 
 
 async def handle_relay(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
@@ -611,17 +703,51 @@ async def handle_relay(reader: asyncio.StreamReader, writer: asyncio.StreamWrite
     except (OSError, TimeoutError):
         await _reject(writer, "502 Bad Gateway", "Sandbox is not ready")
         return
-    upstream_writer.write(header)
-    await upstream_writer.drain()
-    await asyncio.gather(_relay(reader, upstream_writer), _relay(upstream_reader, writer))
+    try:
+        upstream_writer.write(header)
+        await _drain(upstream_writer)
+        await _relay_both_directions(reader, writer, upstream_reader, upstream_writer)
+    finally:
+        await _close_writer(upstream_writer)
+        await _close_writer(writer)
+
+
+async def _serve_all(servers: tuple[asyncio.Server, ...]) -> None:
+    """Serve every listener until one of them stops, then stop them all.
+
+    ``asyncio.gather`` propagates the first listener's failure but leaves the
+    others running: their serve_forever tasks belong to nobody, and the process
+    then waits on ``Server.wait_closed()`` for in-flight connections while those
+    orphans keep accepting. The sidecar serves two listeners that must live and
+    die together - a proxy that can no longer reach the sandbox is worse than
+    one that exits - so the first listener to stop cancels and awaits the rest
+    and closes every listening socket, and its failure is re-raised so the
+    sidecar still exits non-zero.
+    """
+    serving = [asyncio.create_task(server.serve_forever(), name=f"serve-{index}") for index, server in enumerate(servers)]
+    try:
+        done, _pending = await asyncio.wait(serving, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        for task in serving:
+            task.cancel()
+        # Await the survivors so no listener task outlives this call.
+        await asyncio.gather(*serving, return_exceptions=True)
+        for server in servers:
+            server.close()
+    for task in done:
+        if not task.cancelled() and task.exception() is not None:
+            raise task.exception()
 
 
 async def serve() -> None:
     _connect_db().close()
-    proxy = await asyncio.start_server(handle_proxy, "0.0.0.0", 3128, limit=MAX_HEADER_BYTES)
-    relay = await asyncio.start_server(handle_relay, "0.0.0.0", 8080, limit=MAX_HEADER_BYTES)
-    async with proxy, relay:
-        await asyncio.gather(proxy.serve_forever(), relay.serve_forever())
+    # Both listeners are registered with the stack as they are created: if the
+    # second bind fails, the first listening socket must still be released
+    # instead of being left to the garbage collector.
+    async with contextlib.AsyncExitStack() as stack:
+        proxy = await stack.enter_async_context(await asyncio.start_server(handle_proxy, "0.0.0.0", 3128, limit=MAX_HEADER_BYTES))
+        relay = await stack.enter_async_context(await asyncio.start_server(handle_relay, "0.0.0.0", 8080, limit=MAX_HEADER_BYTES))
+        await _serve_all((proxy, relay))
 
 
 def main() -> int:

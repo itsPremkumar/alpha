@@ -57,6 +57,16 @@ browser = ["agent-workspace-harness[browser]"]
 memory-zh = ["agent-workspace-harness[memory-zh]"]
 voice = ["agent-workspace-harness[voice]"]
 peer-discovery = ["zeroconf>=0.145.0"]
+# Alpha's own behaviour-trace substrate (alpha.observability.trace).
+#
+# Declared with NO members on purpose, and that is the point rather than an
+# oversight: the substrate is stdlib-plus-pydantic, imports nothing outside this
+# project, and is default-OFF (TraceConfig.enabled defaults to False, and nothing
+# installs a writer). The extra exists so a deployment that wants to turn it on
+# has a single discoverable name to install -- and so "turning it on needs no new
+# runtime dependency" is a decision on the record rather than an accident nobody
+# checked. Add a member here only if a future sink genuinely needs one.
+self-trace = []
 
 [dependency-groups]
 # Managed extension packages are added here by `agent-workspace extensions install`.

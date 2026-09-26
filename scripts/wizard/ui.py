@@ -15,6 +15,7 @@ except ImportError:  # pragma: no cover - non-Unix fallback
 
 # ── ANSI colours ──────────────────────────────────────────────────────────────
 
+
 def _supports_color() -> bool:
     return hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
 
@@ -50,6 +51,7 @@ def inverse(text: str) -> str:
 
 
 # ── UI primitives ─────────────────────────────────────────────────────────────
+
 
 def print_header(title: str) -> None:
     width = max(len(title) + 4, 44)
@@ -102,15 +104,7 @@ def _ask_choice_with_numbers(prompt: str, options: list[str], default: int | Non
 
 
 def _supports_arrow_menu() -> bool:
-    return (
-        termios is not None
-        and tty is not None
-        and hasattr(sys.stdin, "isatty")
-        and hasattr(sys.stdout, "isatty")
-        and sys.stdin.isatty()
-        and sys.stdout.isatty()
-        and sys.stderr.isatty()
-    )
+    return termios is not None and tty is not None and hasattr(sys.stdin, "isatty") and hasattr(sys.stdout, "isatty") and sys.stdin.isatty() and sys.stdout.isatty() and sys.stderr.isatty()
 
 
 def _clear_rendered_lines(count: int) -> None:

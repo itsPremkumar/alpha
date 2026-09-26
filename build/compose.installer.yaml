@@ -1,0 +1,110 @@
+# Alpha - container path for users who already have Docker.
+#
+# ADDITIVE BY CONSTRUCTION: this is a new file with new, distinctly named
+# services. It does not extend, override or replace any service in
+# docker/docker-compose.yaml or docker/docker-compose-dev.yaml, and every
+# service here sits behind the `alpha-installer` profile so that
+# `docker compose up` with the repository's own files behaves exactly as before.
+#
+#   docker compose -f build/compose.installer.yaml --profile alpha-installer up -d
+#   docker compose -f build/compose.installer.yaml --profile alpha-installer logs -f
+#   docker compose -f build/compose.installer.yaml --profile alpha-installer down
+#
+# WHY THE APP IS PREBUILT HERE
+# The point of the container path is that `uv sync` and the Next.js production
+# build happen in the IMAGE, not on the user's machine on first run. The
+# backend image is built from backend/Dockerfile (which pins uv via UV_IMAGE)
+# and the frontend image from frontend/Dockerfile, so the first `up` starts a
+# container whose dependencies already exist.
+#
+# WHY SQLITE IS THE DEFAULT HERE TOO
+# database.backend: sqlite is the shipped default in config.example.yaml, so no
+# database server is started. The `alpha-installer-postgres` service is a
+# PROFILE of its own: Postgres is strictly opt-in and never starts implicitly.
+
+name: alpha-installer
+
+services:
+  alpha-installer-gateway:
+    profiles: ["alpha-installer"]
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      args:
+        # Must match backend/Dockerfile's UV_IMAGE default and installer/pins.json.
+        UV_IMAGE: ${UV_IMAGE:-ghcr.io/astral-sh/uv:0.11.1}
+    image: alpha/installer-gateway:2.1.0
+    container_name: alpha-installer-gateway
+    restart: unless-stopped
+    # No source bind mount: the image is the artefact. Mounting the host's
+    # checkout over /app would silently undo the prebuild and force a `uv sync`
+    # on first run, which is the exact cost this profile exists to avoid.
+    environment:
+      AGENT_WORKSPACE_AUTH_DISABLED: "1"
+      AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL: "http://alpha-installer-gateway:8001"
+    volumes:
+      # Named volume, not a host bind: user data survives `down -v` only if the
+      # operator asks for it, and never leaks host permissions into the container.
+      - alpha-installer-data:/app/.agent-workspace
+    ports:
+      - "8001:8001"
+    healthcheck:
+      # The gateway's own /health. A container that is merely running is not a
+      # container that works.
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=5).status==200 else 1)\""]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+
+  alpha-installer-frontend:
+    profiles: ["alpha-installer"]
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+    image: alpha/installer-frontend:2.1.0
+    container_name: alpha-installer-frontend
+    restart: unless-stopped
+    environment:
+      # next.config.mjs rewrites /api/* to the gateway, so the frontend REQUIRES
+      # a running gateway. There is no static export to fall back to.
+      AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL: "http://alpha-installer-gateway:8001"
+    depends_on:
+      alpha-installer-gateway:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+
+  # STRICTLY OPT-IN. Never started by the profile above; the operator must ask
+  # for it by name, and must supply their own credentials. The installer never
+  # creates a database and never ships a password.
+  alpha-installer-postgres:
+    profiles: ["alpha-installer-postgres"]
+    image: postgres:16-alpine
+    container_name: alpha-installer-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${ALPHA_PG_DB:-alpha}
+      # No default password on purpose. Compose refuses to start without it,
+      # which is the correct behaviour for a database.
+      POSTGRES_PASSWORD: ${ALPHA_PG_PASSWORD:?set ALPHA_PG_PASSWORD, or use the SQLite default which needs no database server}
+      POSTGRES_USER: ${ALPHA_PG_USER:-alpha}
+    volumes:
+      - alpha-installer-pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${ALPHA_PG_USER:-alpha} -d ${ALPHA_PG_DB:-alpha}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  alpha-installer-data:
+  alpha-installer-pgdata:

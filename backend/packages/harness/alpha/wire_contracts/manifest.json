@@ -1,0 +1,89 @@
+{
+  "contracts": {
+    "ScriptBridgeResult": {
+      "fields": [
+        "degradations",
+        "denied",
+        "dispatcher",
+        "duration_seconds",
+        "error",
+        "errors",
+        "kernel",
+        "limits",
+        "mode",
+        "refused",
+        "returncode",
+        "session_id",
+        "stats",
+        "status",
+        "stderr",
+        "stderr_full_text_path",
+        "stderr_truncated",
+        "stdout",
+        "stdout_full_text_path",
+        "stdout_truncated",
+        "tool_calls",
+        "transport"
+      ],
+      "module": "scriptBridge",
+      "required": [
+        "mode",
+        "status"
+      ]
+    },
+    "SecretHandle": {
+      "fields": [
+        "expires_at",
+        "fingerprint",
+        "handle",
+        "label",
+        "operation",
+        "owner",
+        "target"
+      ],
+      "module": "vault",
+      "required": [
+        "expires_at",
+        "fingerprint",
+        "handle",
+        "operation",
+        "owner",
+        "target"
+      ]
+    },
+    "StreamFrame": {
+      "fields": [
+        "run_id",
+        "seq",
+        "type",
+        "v"
+      ],
+      "module": "streamJson",
+      "required": [
+        "run_id",
+        "seq",
+        "type",
+        "v"
+      ]
+    },
+    "VaultUseResult": {
+      "fields": [
+        "handle_fingerprint",
+        "ledger_outcome",
+        "ok",
+        "operation",
+        "result",
+        "target"
+      ],
+      "module": "vault",
+      "required": [
+        "handle_fingerprint",
+        "ledger_outcome",
+        "ok",
+        "operation",
+        "target"
+      ]
+    }
+  },
+  "generator_version": 1
+}

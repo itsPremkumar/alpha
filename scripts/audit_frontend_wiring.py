@@ -22,6 +22,7 @@ optional suffixes such as ``/bots${suffix}`` resolve when the suffix is empty.
 Exit 0 = zero SHADOWED/MISSING, 1 = at least one broken feature, 2 = audit
 could not run.
 """
+
 from __future__ import annotations
 
 import re
@@ -135,17 +136,16 @@ def main() -> int:
     exact_routes = set(routes)
 
     verdicts: dict[str, list[tuple[str, str, str]]] = {
-        "OK": [], "SHADOWED": [], "MISSING": [],
+        "OK": [],
+        "SHADOWED": [],
+        "MISSING": [],
     }
     for path in sorted(calls):
         norm = normalize(path)
         callers = ", ".join(sorted(calls[path]))
         is_template = "$" in norm
         subjects = canonical_subjects(norm) if is_template else [norm]
-        matched = sorted({
-            r for r, rx in route_res
-            if any(rx.match(s) for s in subjects)
-        })
+        matched = sorted({r for r, rx in route_res if any(rx.match(s) for s in subjects)})
         if matched and (is_template or norm in exact_routes):
             verdicts["OK"].append((norm, ",".join(matched), callers))
         elif matched:
@@ -158,17 +158,13 @@ def main() -> int:
             unresolved: list[str] = []
             for value in values:
                 variant_subjects = canonical_subjects(norm.replace(placeholder, value))
-                variant_matches = sorted({
-                    r for r, rx in route_res
-                    if any(rx.match(s) for s in variant_subjects)
-                })
+                variant_matches = sorted({r for r, rx in route_res if any(rx.match(s) for s in variant_subjects)})
                 if variant_matches:
                     resolved.update(variant_matches)
                 else:
                     unresolved.append(value)
             if unresolved:
-                verdicts["MISSING"].append(
-                    (norm, "enum values with no route: " + ",".join(unresolved), callers))
+                verdicts["MISSING"].append((norm, "enum values with no route: " + ",".join(unresolved), callers))
             else:
                 verdicts["OK"].append((norm, "enum{" + ",".join(values) + "}", callers))
         else:

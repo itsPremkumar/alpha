@@ -22,10 +22,7 @@ from pathlib import Path
 try:
     import yaml
 except ModuleNotFoundError:  # pragma: no cover - guidance for local runs
-    sys.exit(
-        "PyYAML is required. Run via:\n"
-        "  uv run --with pyyaml python scripts/sync_labels.py"
-    )
+    sys.exit("PyYAML is required. Run via:\n  uv run --with pyyaml python scripts/sync_labels.py")
 
 LABELS_FILE = Path(__file__).resolve().parent.parent / ".github" / "labels.yml"
 
@@ -78,9 +75,7 @@ def main() -> int:
     target = args.repo or "(current repository)"
     print(f"Syncing {len(labels)} labels to {target}")
 
-    failures = sum(
-        0 if sync_label(label, args.repo, args.dry_run) else 1 for label in labels
-    )
+    failures = sum(0 if sync_label(label, args.repo, args.dry_run) else 1 for label in labels)
 
     if failures:
         print(f"\n{failures} label(s) failed to sync", file=sys.stderr)

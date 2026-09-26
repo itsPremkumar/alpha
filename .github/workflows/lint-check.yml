@@ -140,10 +140,20 @@ jobs:
           --git-timeout 120
           --ruff-timeout 300
 
-  backend-ruff-debt-report:
+  ruff-debt-report:
     # This job is a measurement, not a green-washing wrapper around lint.  Its
     # output is explicitly labelled non-gating and it captures the exit code;
-    # lint-backend above is the authoritative changed-file gate.
+    # the lint-backend job above is the authoritative changed-file gate.
+    #
+    # It measures the WHOLE repository, from the same file set the gate lints
+    # (scripts/ruff_scope.py), and it runs from the repository root so the
+    # repository-root ruff.toml is the policy it reports against.  It used to
+    # walk backend/ only, while the gate linted every other Python file under
+    # ruff's defaults - so 108 findings in first-party non-backend code were in
+    # neither view, and this job's `findings=` line was smaller than the truth.
+    # The report also prints the digest of the file list it measured, so two
+    # runs can be proven to have covered the same files, and it prints every
+    # deliberately excluded file with the reason it is excluded.
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -165,36 +175,30 @@ jobs:
         run: uv sync --group dev
 
       - name: Measure full-repository Ruff debt (non-gating report)
-        working-directory: backend
         run: |
           set +e
-          uv run --no-sync ruff check . --output-format=json > "${{ runner.temp }}/ruff-debt.json"
-          ruff_status=$?
+          python scripts/ruff_debt_report.py \
+            --repo-root . \
+            --out "${{ runner.temp }}/ruff-debt.json"
+          report_status=$?
           set -e
-          echo "FULL-REPOSITORY RUFF DEBT REPORT (non-gating): ruff_exit=$ruff_status"
+          echo "FULL-REPOSITORY RUFF DEBT REPORT (non-gating): report_exit=$report_status"
           echo "The incremental lint-backend job is the authoritative changed-file gate; this report does not claim the backlog is clean."
-          python - "${{ runner.temp }}/ruff-debt.json" "$ruff_status" <<'PY'
-          import json
-          import pathlib
-          import sys
-          report_path = pathlib.Path(sys.argv[1])
-          status = int(sys.argv[2])
-          if not report_path.is_file():
-              raise SystemExit(f"Ruff debt report was not produced (exit {status})")
-          try:
-              findings = json.loads(report_path.read_text(encoding="utf-8"))
-          except (OSError, json.JSONDecodeError) as exc:
-              raise SystemExit(f"Ruff debt report is unreadable: {exc}")
-          if not isinstance(findings, list):
-              raise SystemExit("Ruff debt report is not a JSON finding list")
-          print(f"findings={len(findings)}")
-          PY
+          echo "Scope: the same file set the gate lints, from scripts/ruff_scope.py, under the repository-root ruff.toml."
+          if [ "$report_status" -ne 0 ]; then
+            echo "ERROR the debt measurement did not run; a missing measurement is a failure"
+            exit 1
+          fi
+          if [ ! -s "${{ runner.temp }}/ruff-debt.json" ]; then
+            echo "ERROR the debt report is empty; the measurement did not run"
+            exit 1
+          fi
 
       - name: Upload Ruff debt report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: backend-ruff-debt-${{ github.run_id }}
+          name: ruff-debt-${{ github.run_id }}
           path: ${{ runner.temp }}/ruff-debt.json
           if-no-files-found: warn
 

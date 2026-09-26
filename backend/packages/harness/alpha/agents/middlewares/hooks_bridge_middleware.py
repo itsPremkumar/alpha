@@ -231,7 +231,7 @@ class HooksBridgeMiddleware(AgentMiddleware):
         try:
             decision = self._decide(event)
         except Exception:
-            logger.debug("Lifecycle hook event %r failed fail-open", event, exc_info=True)
+            logger.warning("Lifecycle hook event %r failed fail-open", event, exc_info=True)
             return
         if not decision.proceed:
             logger.info("Lifecycle hook event %r requested block; lifecycle blocks are advisory only", event)
@@ -268,7 +268,7 @@ class HooksBridgeMiddleware(AgentMiddleware):
             try:
                 self._decide("UserPromptSubmit", payload_extra={"prompt": _clip(prompt)})
             except Exception:
-                logger.debug("UserPromptSubmit hooks failed fail-open", exc_info=True)
+                logger.warning("UserPromptSubmit hooks failed fail-open", exc_info=True)
         return None
 
     # -- tool hooks --------------------------------------------------------
@@ -288,14 +288,14 @@ class HooksBridgeMiddleware(AgentMiddleware):
         try:
             return self._decide("PreToolUse", tool_name=tool_name, payload_extra={"tool_input": tool_args if isinstance(tool_args, dict) else {}})
         except Exception:
-            logger.debug("PreToolUse hooks failed fail-open", exc_info=True)
+            logger.warning("PreToolUse hooks failed fail-open", exc_info=True)
             return HookDecision()
 
     def _post_tool_use(self, tool_name: str, result_text: str | None) -> None:
         try:
             self._decide("PostToolUse", tool_name=tool_name, payload_extra={"tool_response": _clip(result_text or "")})
         except Exception:
-            logger.debug("PostToolUse hooks failed fail-open", exc_info=True)
+            logger.warning("PostToolUse hooks failed fail-open", exc_info=True)
 
     @staticmethod
     def _result_text(result: Any) -> str | None:

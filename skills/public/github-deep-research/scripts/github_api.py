@@ -4,10 +4,10 @@ GitHub API client for deep research.
 Uses requests for HTTP operations.
 """
 
-import os
 import json
+import os
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 try:
     import requests
@@ -53,7 +53,7 @@ class GitHubAPI:
 
     BASE_URL = "https://api.github.com"
 
-    def __init__(self, token: Optional[str] = None):
+    def __init__(self, token: str | None = None):
         """
         Initialize GitHub API client.
 
@@ -69,9 +69,7 @@ class GitHubAPI:
         if token:
             self.headers["Authorization"] = f"token {token}"
 
-    def _get(
-        self, endpoint: str, params: Optional[Dict] = None, accept: Optional[str] = None
-    ) -> Any:
+    def _get(self, endpoint: str, params: dict | None = None, accept: str | None = None) -> Any:
         """Make GET request to GitHub API."""
         url = f"{self.BASE_URL}{endpoint}"
         headers = self.headers.copy()
@@ -85,22 +83,18 @@ class GitHubAPI:
             return resp.text
         return resp.json()
 
-    def get_repo_info(self, owner: str, repo: str) -> Dict:
+    def get_repo_info(self, owner: str, repo: str) -> dict:
         """Get basic repository information."""
         return self._get(f"/repos/{owner}/{repo}")
 
     def get_readme(self, owner: str, repo: str) -> str:
         """Get repository README content as markdown."""
         try:
-            return self._get(
-                f"/repos/{owner}/{repo}/readme", accept="application/vnd.github.raw"
-            )
+            return self._get(f"/repos/{owner}/{repo}/readme", accept="application/vnd.github.raw")
         except Exception as e:
             return f"[README not found: {e}]"
 
-    def get_tree(
-        self, owner: str, repo: str, branch: str = "main", recursive: bool = True
-    ) -> Dict:
+    def get_tree(self, owner: str, repo: str, branch: str = "main", recursive: bool = True) -> dict:
         """Get repository directory tree."""
         params = {"recursive": "1"} if recursive else {}
         try:
@@ -121,19 +115,15 @@ class GitHubAPI:
         except Exception as e:
             return f"[File not found: {e}]"
 
-    def get_languages(self, owner: str, repo: str) -> Dict[str, int]:
+    def get_languages(self, owner: str, repo: str) -> dict[str, int]:
         """Get repository languages and their bytes."""
         return self._get(f"/repos/{owner}/{repo}/languages")
 
-    def get_contributors(self, owner: str, repo: str, limit: int = 30) -> List[Dict]:
+    def get_contributors(self, owner: str, repo: str, limit: int = 30) -> list[dict]:
         """Get repository contributors."""
-        return self._get(
-            f"/repos/{owner}/{repo}/contributors", params={"per_page": min(limit, 100)}
-        )
+        return self._get(f"/repos/{owner}/{repo}/contributors", params={"per_page": min(limit, 100)})
 
-    def get_recent_commits(
-        self, owner: str, repo: str, limit: int = 50, since: Optional[str] = None
-    ) -> List[Dict]:
+    def get_recent_commits(self, owner: str, repo: str, limit: int = 50, since: str | None = None) -> list[dict]:
         """
         Get recent commits.
 
@@ -154,8 +144,8 @@ class GitHubAPI:
         repo: str,
         state: str = "all",
         limit: int = 30,
-        labels: Optional[str] = None,
-    ) -> List[Dict]:
+        labels: str | None = None,
+    ) -> list[dict]:
         """
         Get repository issues.
 
@@ -168,41 +158,35 @@ class GitHubAPI:
             params["labels"] = labels
         return self._get(f"/repos/{owner}/{repo}/issues", params)
 
-    def get_pull_requests(
-        self, owner: str, repo: str, state: str = "all", limit: int = 30
-    ) -> List[Dict]:
+    def get_pull_requests(self, owner: str, repo: str, state: str = "all", limit: int = 30) -> list[dict]:
         """Get repository pull requests."""
         return self._get(
             f"/repos/{owner}/{repo}/pulls",
             params={"state": state, "per_page": min(limit, 100)},
         )
 
-    def get_releases(self, owner: str, repo: str, limit: int = 10) -> List[Dict]:
+    def get_releases(self, owner: str, repo: str, limit: int = 10) -> list[dict]:
         """Get repository releases."""
-        return self._get(
-            f"/repos/{owner}/{repo}/releases", params={"per_page": min(limit, 100)}
-        )
+        return self._get(f"/repos/{owner}/{repo}/releases", params={"per_page": min(limit, 100)})
 
-    def get_tags(self, owner: str, repo: str, limit: int = 20) -> List[Dict]:
+    def get_tags(self, owner: str, repo: str, limit: int = 20) -> list[dict]:
         """Get repository tags."""
-        return self._get(
-            f"/repos/{owner}/{repo}/tags", params={"per_page": min(limit, 100)}
-        )
+        return self._get(f"/repos/{owner}/{repo}/tags", params={"per_page": min(limit, 100)})
 
-    def search_issues(self, owner: str, repo: str, query: str, limit: int = 30) -> Dict:
+    def search_issues(self, owner: str, repo: str, query: str, limit: int = 30) -> dict:
         """Search issues and PRs in repository."""
         q = f"repo:{owner}/{repo} {query}"
         return self._get("/search/issues", params={"q": q, "per_page": min(limit, 100)})
 
-    def get_commit_activity(self, owner: str, repo: str) -> List[Dict]:
+    def get_commit_activity(self, owner: str, repo: str) -> list[dict]:
         """Get weekly commit activity for the last year."""
         return self._get(f"/repos/{owner}/{repo}/stats/commit_activity")
 
-    def get_code_frequency(self, owner: str, repo: str) -> List[List[int]]:
+    def get_code_frequency(self, owner: str, repo: str) -> list[list[int]]:
         """Get weekly additions/deletions."""
         return self._get(f"/repos/{owner}/{repo}/stats/code_frequency")
 
-    def format_tree(self, tree_data: Dict, max_depth: int = 3) -> str:
+    def format_tree(self, tree_data: dict, max_depth: int = 3) -> str:
         """
         Format tree data as text directory structure.
 
@@ -227,7 +211,7 @@ class GitHubAPI:
 
         return "\n".join(lines[:100])  # Limit output
 
-    def summarize_repo(self, owner: str, repo: str) -> Dict:
+    def summarize_repo(self, owner: str, repo: str) -> dict:
         """
         Get comprehensive repository summary.
 
@@ -244,9 +228,7 @@ class GitHubAPI:
             "forks": info.get("forks_count"),
             "open_issues": info.get("open_issues_count"),
             "language": info.get("language"),
-            "license": info.get("license", {}).get("spdx_id")
-            if info.get("license")
-            else None,
+            "license": info.get("license", {}).get("spdx_id") if info.get("license") else None,
             "created_at": info.get("created_at"),
             "updated_at": info.get("updated_at"),
             "pushed_at": info.get("pushed_at"),
@@ -264,9 +246,7 @@ class GitHubAPI:
         try:
             contributors = self.get_contributors(owner, repo, limit=1)
             # GitHub returns Link header with total, but we approximate
-            summary["contributor_count"] = len(
-                self.get_contributors(owner, repo, limit=100)
-            )
+            summary["contributor_count"] = len(self.get_contributors(owner, repo, limit=100))
         except Exception:
             summary["contributor_count"] = "N/A"
 

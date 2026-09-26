@@ -295,7 +295,7 @@ def get_default_catalog_entries():
         ("/computer screenshot", CommandCategory.BROWSER, "Captures current desktop", "/computer screenshot", False),
         ("/computer verify", CommandCategory.BROWSER, "Verifies desktop action result", "/computer verify", False),
         # 18. RSI / Learning Commands
-        ("/learn", CommandCategory.RSI, "Extracts reusable knowledge from current task", "/learn", True),
+        ("/learn", CommandCategory.RSI, "Extracts reusable knowledge from current task", "/learn <source>", True),
         ("/learn trajectory", CommandCategory.RSI, "Learns from complete execution trajectory", "/learn trajectory", False),
         ("/learn failure", CommandCategory.RSI, "Converts failure into reusable knowledge", "/learn failure", False),
         ("/experience", CommandCategory.RSI, "Searches previous task experiences", "/experience <query>", False),

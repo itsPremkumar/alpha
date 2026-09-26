@@ -228,19 +228,17 @@ def _normalize_extra_mount_container_path(
     normalized = posixpath.normpath(container_path)
     if not normalized.startswith("/"):
         raise HTTPException(status_code=400, detail=f"Extra mount path must be absolute: {container_path}")
-    allowed_paths = ALLOWED_EXTRA_MOUNT_PATHS | _managed_skill_category_mount_paths(
-        skills_container_path
-    )
+    allowed_paths = ALLOWED_EXTRA_MOUNT_PATHS | _managed_skill_category_mount_paths(skills_container_path)
     if normalized not in allowed_paths:
         raise HTTPException(status_code=400, detail=f"Unsupported extra mount path: {container_path}")
     return normalized
 
 
 def _validated_extra_mounts(
-    extra_mounts: list["ExtraMount"] | None,
+    extra_mounts: list[ExtraMount] | None,
     *,
     skills_container_path: str = DEFAULT_SKILLS_CONTAINER_PATH,
-) -> list["ExtraMount"]:
+) -> list[ExtraMount]:
     """Validate extra mounts before converting them into K8s hostPath/PVC mounts."""
     if not extra_mounts:
         return []
@@ -294,11 +292,11 @@ def _lark_cli_broker_enabled(provision_lark_cli_broker: bool) -> bool:
 
 
 def _runtime_provided_extra_mounts(
-    extra_mounts: list["ExtraMount"] | None,
+    extra_mounts: list[ExtraMount] | None,
     *,
     provision_lark_cli_runtime: bool,
     provision_lark_cli_broker: bool = False,
-) -> list["ExtraMount"]:
+) -> list[ExtraMount]:
     """Drop lark-cli extra mounts the init container / broker sidecar supersede.
 
     Pattern A (init container + emptyDir) provides
@@ -327,10 +325,10 @@ def _runtime_provided_extra_mounts(
 
 
 def _lark_broker_credential_mounts(
-    extra_mounts: list["ExtraMount"] | None,
+    extra_mounts: list[ExtraMount] | None,
     *,
     skills_container_path: str = DEFAULT_SKILLS_CONTAINER_PATH,
-) -> dict[str, "ExtraMount"]:
+) -> dict[str, ExtraMount]:
     """Extract the config/locks/data mounts the broker sidecar needs.
 
     Keyed by container path so the caller can wire each into the sidecar's fixed
@@ -606,12 +604,7 @@ def _build_volumes(
         extra_mounts,
         skills_container_path=skills_root,
     )
-    skill_overrides = {
-        posixpath.normpath(mount.container_path)
-        for mount in validated_extra_mounts
-        if posixpath.normpath(mount.container_path)
-        in managed_skill_paths
-    }
+    skill_overrides = {posixpath.normpath(mount.container_path) for mount in validated_extra_mounts if posixpath.normpath(mount.container_path) in managed_skill_paths}
     all_skill_categories_overridden = managed_skill_paths <= skill_overrides
 
     # ── Skills volumes ────────────────────────────────────────────────
@@ -619,8 +612,7 @@ def _build_volumes(
     if SKILLS_PVC_NAME and not all_skill_categories_overridden:
         # An unrestricted thread keeps the operator-provided skills PVC root.
         logger.warning(
-            "SKILLS_PVC_NAME is set — three-way skills layout is not supported in PVC mode yet; "
-            "falling back to single %s mount",
+            "SKILLS_PVC_NAME is set — three-way skills layout is not supported in PVC mode yet; falling back to single %s mount",
             skills_root,
         )
         volumes.append(
@@ -664,9 +656,7 @@ def _build_volumes(
                 )
             )
 
-        legacy_path = join_host_path(
-            AGENT_WORKSPACE_HOST_BASE_DIR, "users", user_id, "skills_view", "legacy"
-        )
+        legacy_path = join_host_path(AGENT_WORKSPACE_HOST_BASE_DIR, "users", user_id, "skills_view", "legacy")
         if posixpath.join(skills_root, "legacy") not in skill_overrides:
             volumes.append(
                 k8s_client.V1Volume(
@@ -777,12 +767,7 @@ def _build_volume_mounts(
         extra_mounts,
         skills_container_path=skills_root,
     )
-    skill_overrides = {
-        posixpath.normpath(mount.container_path)
-        for mount in validated_extra_mounts
-        if posixpath.normpath(mount.container_path)
-        in managed_skill_paths
-    }
+    skill_overrides = {posixpath.normpath(mount.container_path) for mount in validated_extra_mounts if posixpath.normpath(mount.container_path) in managed_skill_paths}
     all_skill_categories_overridden = managed_skill_paths <= skill_overrides
 
     if SKILLS_PVC_NAME and not all_skill_categories_overridden:
@@ -972,9 +957,7 @@ def _build_pod(
     provision_lark_cli_broker: bool = False,
 ) -> k8s_client.V1Pod:
     """Construct a Pod manifest for a single sandbox."""
-    init_containers = (
-        _build_lark_cli_init_containers(provision_lark_cli_runtime, provision_lark_cli_broker) or None
-    )
+    init_containers = _build_lark_cli_init_containers(provision_lark_cli_runtime, provision_lark_cli_broker) or None
     return k8s_client.V1Pod(
         metadata=k8s_client.V1ObjectMeta(
             name=_pod_name(sandbox_id),
@@ -992,11 +975,7 @@ def _build_pod(
                     name="sandbox",
                     image=SANDBOX_IMAGE,
                     image_pull_policy="IfNotPresent",
-                    env=(
-                        [k8s_client.V1EnvVar(name="AGENT_WORKSPACE_LARK_BROKER_URL", value=LARK_BROKER_URL)]
-                        if _lark_cli_broker_enabled(provision_lark_cli_broker)
-                        else None
-                    ),
+                    env=([k8s_client.V1EnvVar(name="AGENT_WORKSPACE_LARK_BROKER_URL", value=LARK_BROKER_URL)] if _lark_cli_broker_enabled(provision_lark_cli_broker) else None),
                     ports=[
                         k8s_client.V1ContainerPort(
                             name="http",
@@ -1176,9 +1155,7 @@ def create_sandbox(req: CreateSandboxRequest):
     thread_id = req.thread_id or sandbox_id
     user_id = req.user_id
     include_legacy_skills = req.include_legacy_skills
-    skills_container_path = _normalize_skills_container_path(
-        req.skills_container_path
-    )
+    skills_container_path = _normalize_skills_container_path(req.skills_container_path)
     provision_lark_cli_runtime = req.provision_lark_cli_runtime
     provision_lark_cli_broker = req.provision_lark_cli_broker
 

@@ -19,12 +19,13 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from alpha.runtime.sentinel.commit import Committer
-from alpha.runtime.sentinel.loop import LoopOutcome, SentinelLoop
+from alpha.runtime.sentinel.loop import LoopOutcome, SentinelLoop, record_sentinel_escalation
 from alpha.runtime.sentinel.signals import Signal, SignalTracker
 from alpha.runtime.sentinel.sources import logs as log_sources
 from alpha.runtime.sentinel.sources import scripts as script_sources
@@ -130,8 +131,10 @@ class SentinelRunner:
             if fix_fn is None:
                 # No registered repair strategy -> escalate, never guess.
                 report.outcomes.append(
-                    LoopOutcome(signal, "diagnose", "escalated",
-                                f"no repair strategy registered for kind {kind!r}")
+                    record_sentinel_escalation(
+                        LoopOutcome(signal, "diagnose", "escalated",
+                                    f"no repair strategy registered for kind {kind!r}")
+                    )
                 )
                 continue
 
@@ -150,8 +153,10 @@ class SentinelRunner:
             except Exception as exc:  # noqa: BLE001 - one bad fault must not abort the run
                 report.errors.append(f"{kind}/{signal.fingerprint}: {type(exc).__name__}: {exc}")
                 report.outcomes.append(
-                    LoopOutcome(signal, "loop", "escalated",
-                                f"loop raised {type(exc).__name__}: {exc}")
+                    record_sentinel_escalation(
+                        LoopOutcome(signal, "loop", "escalated",
+                                    f"loop raised {type(exc).__name__}: {exc}")
+                    )
                 )
 
             if len(report.fixed) >= self.max_fixes_per_run:

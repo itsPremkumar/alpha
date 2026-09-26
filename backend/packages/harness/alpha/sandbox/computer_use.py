@@ -6,18 +6,38 @@ Inspired by Chapters 10, 11, and 34 of the Master Architecture Blueprint:
     1. SAFE: read-only, workspace tests, git status -> auto-execute
     2. SENSITIVE: package installs, git push, env updates -> requires approval
     3. FORBIDDEN: destructive root commands, credential theft, disk wipes -> hard reject
+
+Honesty contract: this engine **classifies and gates** commands; it does not run
+them. Nothing here spawns a process, so a command that clears the gate is
+reported as ``validated`` with an explicit disclosure -- never as ``executed``
+with an ``exit_code``. (It previously claimed both, which is a fabricated
+success on a host-mutating surface.)
+
+Approval contract: a SENSITIVE command is refused with an opaque
+``approval_id``. The id is granted out of band by an **operator** through
+:meth:`ComputerWorker.grant_approval`; there is deliberately no boolean or
+string a model-facing tool can pass to approve its own action.
 """
 
 from __future__ import annotations
 
 import re
+import secrets
+import threading
 import time
 from dataclasses import asdict, dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
+#: Disclosed on every non-executing result so no caller can mistake this engine
+#: for something that actually touched the host.
+NO_EXECUTION_DISCLOSURE = (
+    "validation only: this engine classified the command against the blast-radius policy "
+    "and spawned no process, so the host is unchanged and there is no exit code"
+)
 
-class ActionSafetyTier(str, Enum):
+
+class ActionSafetyTier(StrEnum):
     SAFE = "safe"
     SENSITIVE = "sensitive"
     FORBIDDEN = "forbidden"
@@ -98,19 +118,66 @@ class BlastRadiusPolicy:
 
 
 class ComputerWorker:
-    """Sandboxed computer worker with blast-radius policy gate and execution audit trail."""
+    """Sandboxed computer worker with blast-radius policy gate and execution audit trail.
+
+    The gate is a *classification* gate, not an execution engine: see
+    :data:`NO_EXECUTION_DISCLOSURE`. Sensitive commands need an operator-issued,
+    single-use, command-bound :meth:`grant_approval`.
+    """
 
     def __init__(self, sandbox_name: str = "default_sandbox"):
         self.sandbox_name: str = sandbox_name
         self._audit_log: list[dict[str, Any]] = []
+        self._lock = threading.Lock()
+        # approval_id -> {command, approved_by, expires_at, consumed}
+        self._approvals: dict[str, dict[str, Any]] = {}
+
+    # -- operator approval surface (NOT a model-facing tool argument) ---------
+    def grant_approval(self, approval_id: str, *, approved_by: str = "operator") -> dict[str, Any]:
+        """Approve a paused SENSITIVE command. Single use, command-bound, expiring.
+
+        This is the only way a SENSITIVE command can pass the gate. No tool
+        argument can reach it, so a model cannot authorise its own action.
+        Granting arms the id; the first matching :meth:`execute` spends it.
+        """
+        with self._lock:
+            record = self._approvals.get(str(approval_id))
+            if record is None:
+                return {"approved": False, "approval_id": str(approval_id), "reason": "no such pending approval"}
+            if record["consumed"]:
+                return {"approved": False, "approval_id": str(approval_id), "reason": "that approval was already used"}
+            if record["expires_at"] <= time.monotonic():
+                self._approvals.pop(str(approval_id), None)
+                return {"approved": False, "approval_id": str(approval_id), "reason": "that approval expired"}
+            record["approved_by"] = str(approved_by or "operator")
+            return {
+                "approved": True,
+                "approval_id": str(approval_id),
+                "command": record["command"],
+                "approved_by": record["approved_by"],
+                "single_use": True,
+            }
+
+    def revoke_approvals(self) -> dict[str, Any]:
+        """Revoke every pending approval (operator reset)."""
+        with self._lock:
+            count = len(self._approvals)
+            self._approvals.clear()
+            return {"revoked_count": count}
 
     def execute(
         self,
         command: str,
-        approval_granted: bool = False,
+        approval_id: str = "",
         dry_run: bool = False,
     ) -> dict[str, Any]:
-        """Classify and evaluate command execution through safety gates."""
+        """Classify a command and run it through the blast-radius safety gates.
+
+        ``approval_id`` must be an id previously handed out by a paused
+        SENSITIVE request *and* granted by an operator. A bare boolean is not
+        accepted: the model-facing tool used to pass one, which meant the model
+        could lift the gate on its own.
+        """
         classification = BlastRadiusPolicy.classify(command)
         t_now = time.time()
 
@@ -128,42 +195,87 @@ class ComputerWorker:
                 "tier": classification.tier.value,
                 "error": f"Command rejected: {classification.reason}",
                 "classification": classification.to_dict(),
+                "disclosure": NO_EXECUTION_DISCLOSURE,
             }
 
-        if classification.tier == ActionSafetyTier.SENSITIVE and not approval_granted:
-            record = {
-                "timestamp": t_now,
-                "command": command,
-                "tier": "sensitive",
-                "status": "awaiting_approval",
-                "reason": classification.reason,
-            }
-            self._audit_log.append(record)
-            return {
-                "status": "approval_required",
-                "tier": classification.tier.value,
-                "error": f"Action paused: {classification.reason}",
-                "classification": classification.to_dict(),
-            }
+        approval_state: dict[str, Any] = {"used": False, "reason": "not required"}
+        if classification.tier == ActionSafetyTier.SENSITIVE:
+            consumed = self._consume_approval(approval_id, command)
+            approval_state = {"used": consumed["valid"], "reason": consumed["reason"]}
+            if not consumed["valid"]:
+                pending_id = self._register_pending(command)
+                record = {
+                    "timestamp": t_now,
+                    "command": command,
+                    "tier": "sensitive",
+                    "status": "awaiting_approval",
+                    "reason": classification.reason,
+                    "approval_id": pending_id,
+                }
+                self._audit_log.append(record)
+                return {
+                    "status": "approval_required",
+                    "tier": classification.tier.value,
+                    "error": f"Action paused: {classification.reason}",
+                    "classification": classification.to_dict(),
+                    "approval_id": pending_id,
+                    "approval_reason": consumed["reason"],
+                    "next_step": "a human operator must grant this approval_id out of band; no tool argument can approve it",
+                    "disclosure": NO_EXECUTION_DISCLOSURE,
+                }
 
-        # Safe or approved sensitive action
+        # Safe, or a SENSITIVE command with a real operator approval behind it.
         record = {
             "timestamp": t_now,
             "command": command,
             "tier": classification.tier.value,
-            "status": "executed" if not dry_run else "dry_run_simulated",
-            "approval_used": approval_granted,
+            "status": "validated" if not dry_run else "dry_run",
+            "approval_used": approval_state["used"],
         }
         self._audit_log.append(record)
 
         return {
-            "status": "executed" if not dry_run else "dry_run",
+            "status": "validated" if not dry_run else "dry_run",
             "command": command,
             "tier": classification.tier.value,
             "classification": classification.to_dict(),
-            "stdout": f"[Sandbox '{self.sandbox_name}'] Command validated and executed safely.",
-            "exit_code": 0,
+            "approval_used": approval_state["used"],
+            "detail": f"[Sandbox '{self.sandbox_name}'] Command cleared the {classification.tier.value} blast-radius gate.",
+            "executed": False,
+            "exit_code": None,
+            "disclosure": NO_EXECUTION_DISCLOSURE,
         }
+
+    # -- approval plumbing ---------------------------------------------------
+    def _register_pending(self, command: str) -> str:
+        approval_id = secrets.token_urlsafe(18)
+        with self._lock:
+            self._approvals[approval_id] = {
+                "command": command,
+                "approved_by": "",
+                "expires_at": time.monotonic() + 300.0,
+                "consumed": False,
+            }
+        return approval_id
+
+    def _consume_approval(self, approval_id: str, command: str) -> dict[str, Any]:
+        if not approval_id:
+            return {"valid": False, "reason": "a SENSITIVE command needs an operator-granted approval_id"}
+        with self._lock:
+            record = self._approvals.get(str(approval_id))
+            if record is None:
+                return {"valid": False, "reason": "no such approval is pending; a model cannot mint one"}
+            if not record["approved_by"]:
+                return {"valid": False, "reason": "that approval was never granted by an operator"}
+            if record["consumed"]:
+                return {"valid": False, "reason": "that approval was already used"}
+            if record["expires_at"] <= time.monotonic():
+                self._approvals.pop(str(approval_id), None)
+                return {"valid": False, "reason": "that approval expired"}
+            if record["command"] != command:
+                return {"valid": False, "reason": "that approval was granted for a different command"}
+            record["consumed"] = True
+        return {"valid": True, "reason": "operator approval consumed", "approved_by": record["approved_by"]}
 
     def get_audit_log(self) -> list[dict[str, Any]]:
         return list(self._audit_log)

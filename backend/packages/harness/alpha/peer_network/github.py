@@ -15,7 +15,6 @@ import json
 import os
 import re
 from dataclasses import dataclass
-from pathlib import PurePosixPath
 from typing import Any
 from urllib.parse import quote
 
@@ -70,9 +69,29 @@ class GitHubRendezvous:
     def _validate_config(self) -> None:
         if not self.configured:
             raise GitHubRendezvousError("GitHub rendezvous is not configured")
-        normalized_directory = self.directory.replace("\\", "/").strip()
-        if not normalized_directory or normalized_directory.startswith("/") or ".." in PurePosixPath(normalized_directory).parts:
-            raise GitHubRendezvousError("GitHub rendezvous directory must be a safe relative path")
+        self._safe_api_path(self.directory)
+
+    @staticmethod
+    def _safe_api_path(path: str) -> str:
+        """Return a validated relative API path, or refuse.
+
+        Every request path — the configured directory, the published card path,
+        and each ``path`` a directory listing hands back — goes through here.
+        A listing entry is attacker-influenced (anyone who can commit to the
+        rendezvous repository chooses it), and an unchecked ``../..`` in it
+        would be resolved against the API base by the HTTP client, turning a
+        read-only rendezvous into an arbitrary-repository request.
+        """
+
+        candidate = str(path).replace("\\", "/").strip()
+        if not candidate or candidate.startswith("/"):
+            raise GitHubRendezvousError("GitHub rendezvous path must be a safe relative path")
+        if ":" in candidate.split("/")[0]:
+            raise GitHubRendezvousError("GitHub rendezvous path must be a safe relative path")
+        parts = [part for part in candidate.split("/") if part not in ("", ".")]
+        if not parts or any(part == ".." for part in parts):
+            raise GitHubRendezvousError("GitHub rendezvous path must not traverse outside the configured directory")
+        return "/".join(parts)
 
     def _headers(self, *, write: bool = False) -> dict[str, str]:
         headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
@@ -84,8 +103,9 @@ class GitHubRendezvous:
 
     def _url(self, path: str) -> str:
         self._validate_config()
+        safe_path = self._safe_api_path(path)
         encoded_repo = "/".join(quote(part, safe="") for part in self.repo.split("/"))
-        encoded_path = "/".join(quote(part, safe="") for part in path.strip("/").split("/"))
+        encoded_path = "/".join(quote(part, safe="") for part in safe_path.split("/"))
         return f"https://api.github.com/repos/{encoded_repo}/contents/{encoded_path}?ref={quote(self.branch, safe='')}"
 
     async def _request(self, method: str, path: str, *, write: bool = False, payload: dict[str, Any] | None = None) -> Any:
@@ -126,7 +146,13 @@ class GitHubRendezvous:
             path = str(item.get("path") or "")
             if not path:
                 continue
-            record = await self._request("GET", path)
+            try:
+                record = await self._request("GET", path)
+            except GitHubRendezvousError as exc:
+                # A hostile or malformed listing entry must not abort the whole
+                # directory read, and must never be requested as-is.
+                self.last_error = str(exc)
+                continue
             if not isinstance(record, dict):
                 continue
             content = record.get("content")
@@ -149,7 +175,7 @@ class GitHubRendezvous:
         if not self.writable:
             raise GitHubRendezvousError("GitHub rendezvous writes require a configured repository token")
         safe_id = re.sub(r"[^A-Za-z0-9_.-]", "_", card.agent_id)
-        path = f"{self.directory.rstrip('/')}/{safe_id}.json"
+        path = self._safe_api_path(f"{self.directory.rstrip('/')}/{safe_id}.json")
         encoded = base64.b64encode(json.dumps(card.to_dict(), ensure_ascii=False, sort_keys=True).encode("utf-8")).decode("ascii")
         existing = await self._request("GET", path)
         payload: dict[str, Any] = {

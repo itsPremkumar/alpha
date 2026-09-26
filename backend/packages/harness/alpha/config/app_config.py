@@ -4,7 +4,7 @@ import threading
 from collections.abc import Mapping
 from contextvars import ContextVar
 from pathlib import Path
-from typing import Any, Literal, Self
+from typing import Any, Final, Literal, Self
 
 import yaml
 from dotenv import load_dotenv
@@ -191,8 +191,45 @@ def logging_level_from_config(name: str | None) -> int:
     return mapping.get((name or "info").strip().upper(), logging.INFO)
 
 
+#: The single environment switch that turns diagnostics up. ``config.yaml``
+#: ``log_level`` is a restart-required field served from
+#: :data:`alpha.config.reload_boundary.STARTUP_ONLY_FIELDS`, and before this
+#: variable existed there was no way to reach DEBUG on a running deployment at
+#: all -- the process had to be restarted with an edited config file. Read it in
+#: :func:`apply_logging_level` so every caller (the Gateway lifespan, the
+#: embedded client, ``debug.py``) honours the same override.
+LOG_LEVEL_ENV: Final[str] = "AGENT_WORKSPACE_LOG_LEVEL"
+
+
+def logging_level_name_from_env(environ: Mapping[str, str] | None = None) -> str | None:
+    """Return the ``AGENT_WORKSPACE_LOG_LEVEL`` override, or ``None`` when unset.
+
+    An unrecognised value is reported and discarded rather than coerced, so a
+    typo cannot silently change the effective level. Returning ``None`` leaves
+    the ``config.yaml`` value in charge.
+    """
+    source = os.environ if environ is None else environ
+    raw = source.get(LOG_LEVEL_ENV)
+    if raw is None or not raw.strip():
+        return None
+    candidate = raw.strip()
+    if candidate.upper() not in logging.getLevelNamesMapping():
+        logger.warning(
+            "%s=%r is not a logging level; ignoring it and using the configured log_level. Expected one of %s.",
+            LOG_LEVEL_ENV,
+            raw,
+            sorted(name for name in logging.getLevelNamesMapping() if name.isupper()),
+        )
+        return None
+    return candidate
+
+
 def apply_logging_level(name: str | None) -> None:
     """Resolve *name* to a logging level and apply it to the ``alpha``/``app`` logger hierarchies.
+
+    ``AGENT_WORKSPACE_LOG_LEVEL`` takes precedence over *name* when it holds a
+    valid level, so one environment variable is enough to move a deployment to
+    ``debug`` without editing a restart-required config field.
 
     Only the ``alpha`` and ``app`` logger levels are changed so that
     third-party library verbosity (e.g. uvicorn, sqlalchemy) is not
@@ -201,7 +238,8 @@ def apply_logging_level(name: str | None) -> None:
     being filtered, while preserving handler thresholds that may be
     intentionally restrictive for third-party log output.
     """
-    level = logging_level_from_config(name)
+    effective = logging_level_name_from_env() or name
+    level = logging_level_from_config(effective)
     for logger_name in ("alpha", "app"):
         logging.getLogger(logger_name).setLevel(level)
     for handler in logging.root.handlers:

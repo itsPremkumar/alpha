@@ -24,25 +24,6 @@ from langgraph.types import Overwrite
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.exc import IntegrityError
 
-from app.gateway.authz import require_permission
-from app.gateway.checkpoint_lineage import (
-    CheckpointLineageError,
-    CheckpointParentMissingError,
-    find_checkpoint_before_message,
-    find_checkpoint_before_message_chronologically,
-    is_duration_only_checkpoint,
-)
-from app.gateway.deps import get_checkpointer, get_run_event_store, get_run_manager
-from app.gateway.internal_auth import get_trusted_internal_owner_user_id
-from app.gateway.services import (
-    abuild_checkpoint_state_accessor,
-    build_checkpoint_state_mutation_accessor,
-    build_thread_checkpoint_state_accessor,
-    build_thread_checkpoint_state_mutation_accessor,
-    reserve_checkpoint_write,
-    strip_server_owned_state_metadata,
-)
-from app.gateway.utils import sanitize_log_param
 from alpha.agents.thread_state import THREAD_STATE_REDUCER_FIELDS
 from alpha.config.paths import Paths, get_paths
 from alpha.config.summarization_config import ContextSize
@@ -73,6 +54,25 @@ from alpha.runtime.user_context import get_effective_user_id
 from alpha.utils.file_io import run_file_io
 from alpha.utils.thread_id import ThreadId, resolve_thread_id, validate_thread_id
 from alpha.utils.time import coerce_iso, now_iso
+from app.gateway.authz import require_permission
+from app.gateway.checkpoint_lineage import (
+    CheckpointLineageError,
+    CheckpointParentMissingError,
+    find_checkpoint_before_message,
+    find_checkpoint_before_message_chronologically,
+    is_duration_only_checkpoint,
+)
+from app.gateway.deps import get_checkpointer, get_run_event_store, get_run_manager
+from app.gateway.internal_auth import get_trusted_internal_owner_user_id
+from app.gateway.services import (
+    abuild_checkpoint_state_accessor,
+    build_checkpoint_state_mutation_accessor,
+    build_thread_checkpoint_state_accessor,
+    build_thread_checkpoint_state_mutation_accessor,
+    reserve_checkpoint_write,
+    strip_server_owned_state_metadata,
+)
+from app.gateway.utils import sanitize_log_param
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/threads", tags=["threads"])
@@ -767,7 +767,13 @@ async def _delete_thread_data_with_reservation(thread_id: str, request: Request)
             if hasattr(checkpointer, "adelete_thread"):
                 await checkpointer.adelete_thread(thread_id)
         except Exception:
-            logger.debug("Could not delete checkpoints for thread %s (not critical)", sanitize_log_param(thread_id))
+            # WARNING, not DEBUG: this is cleanup for a delete the caller was
+            # already told succeeded. A failure leaves the conversation's
+            # checkpoints on disk after the thread is gone, which is both a
+            # privacy gap and a resurrection risk if the id is ever reused --
+            # an outcome the operator has to be able to see. exc_info is added
+            # because a bare outcome with no cause is unactionable.
+            logger.warning("Could not delete checkpoints for thread %s (delete reported success, checkpoints may remain)", sanitize_log_param(thread_id), exc_info=True)
 
     # Remove thread_meta row (best-effort) — required for sqlite backend
     # so the deleted thread no longer appears in /threads/search.
@@ -775,7 +781,7 @@ async def _delete_thread_data_with_reservation(thread_id: str, request: Request)
         thread_store = get_thread_store(request)
         await thread_store.delete(thread_id)
     except Exception:
-        logger.debug("Could not delete thread_meta for %s (not critical)", sanitize_log_param(thread_id))
+        logger.warning("Could not delete thread_meta for %s (delete reported success, the thread may still appear in search)", sanitize_log_param(thread_id), exc_info=True)
 
     # Tear down any live browser session (best-effort). Sessions are keyed only
     # by thread_id, so leaving one alive after the owner deletes the thread lets
@@ -787,7 +793,11 @@ async def _delete_thread_data_with_reservation(thread_id: str, request: Request)
     except ImportError:
         pass  # Playwright is an optional dependency.
     except Exception:
-        logger.debug("Could not close browser session for %s (not critical)", sanitize_log_param(thread_id))
+        # WARNING, not DEBUG, and not "not critical": the retained browser
+        # session (page + cookies) outlives the thread whose deletion it was
+        # scoped to. That is the one cleanup failure here with a security
+        # consequence, so it must not be invisible at the default level.
+        logger.warning("Could not close browser session for %s (a retained page/cookies may outlive the deleted thread)", sanitize_log_param(thread_id), exc_info=True)
 
     return response
 
@@ -1200,8 +1210,8 @@ async def search_threads(body: ThreadSearchRequest, request: Request) -> list[Th
     Delegates to the configured ThreadMetaStore implementation
     (SQL-backed for sqlite/postgres, Store-backed for memory mode).
     """
-    from app.gateway.deps import get_thread_store
     from alpha.persistence.thread_meta import InvalidMetadataFilterError
+    from app.gateway.deps import get_thread_store
 
     repo = get_thread_store(request)
     # Three-state project filter: key absent → no filter; explicit null →

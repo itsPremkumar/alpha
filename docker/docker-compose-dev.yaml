@@ -35,6 +35,17 @@
 #
 # Access: http://localhost:2026
 
+# Bounded container logs. Docker's default `json-file` driver has NO size cap, so
+# a dev stack left running overnight grows its logs until the host disk fills.
+# Every service below opts in via `logging: *bounded_logs`. Tune with
+# ALPHA_LOG_MAX_SIZE / ALPHA_LOG_MAX_FILE; ALPHA_LOG_MAX_FILE must be >= 2 or
+# Docker refuses to start.
+x-bounded-logs: &bounded_logs
+  driver: json-file
+  options:
+    max-size: "${ALPHA_LOG_MAX_SIZE:-10m}"
+    max-file: "${ALPHA_LOG_MAX_FILE:-3}"
+
 services:
   # ── Redis Stream Bridge ────────────────────────────────────────────────
   redis:
@@ -50,6 +61,7 @@ services:
       retries: 10
     networks:
       - agent-workspace-dev
+    logging: *bounded_logs
     restart: unless-stopped
 
   # ── Sandbox Provisioner ────────────────────────────────────────────────
@@ -108,6 +120,7 @@ services:
       - "host.docker.internal:host-gateway"
     networks:
       - agent-workspace-dev
+    logging: *bounded_logs
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
@@ -141,6 +154,7 @@ services:
       - gateway
     networks:
       - agent-workspace-dev
+    logging: *bounded_logs
     restart: unless-stopped
 
   # Frontend - Next.js Development Server
@@ -173,6 +187,7 @@ services:
         required: false
     networks:
       - agent-workspace-dev
+    logging: *bounded_logs
     restart: unless-stopped
 
   # Backend - Gateway API
@@ -265,6 +280,7 @@ services:
         condition: service_healthy
     networks:
       - agent-workspace-dev
+    logging: *bounded_logs
     restart: unless-stopped
 
 volumes:

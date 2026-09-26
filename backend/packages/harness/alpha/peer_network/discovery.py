@@ -14,6 +14,7 @@ import hashlib
 import json
 import logging
 import socket
+from functools import lru_cache
 from typing import Any, Protocol
 
 from .models import PeerCard, validate_agent_id
@@ -21,6 +22,51 @@ from .models import PeerCard, validate_agent_id
 logger = logging.getLogger(__name__)
 
 MDNS_SERVICE_TYPE = "_alpha._tcp.local."
+
+# ``broadcast_once`` is driven by the event loop (startup, the retry interval,
+# and the ``/discover`` route).  Everything it needs from the resolver is
+# blocking and time-boxed, so a slow or unreachable resolver degrades one
+# beacon instead of stalling the Gateway loop.
+DEFAULT_RESOLVE_TIMEOUT_SECONDS = 2.0
+MAX_RESOLVE_TIMEOUT_SECONDS = 10.0
+
+
+async def _timeboxed_to_thread(func: Any, timeout_seconds: float, *, label: str) -> Any:
+    """Run *func* on a worker thread under a NON-cancelling time-box.
+
+    This is the pattern used by ``dynamic_context_middleware._timeboxed_to_thread``:
+    ``asyncio.wait_for`` cancels what it wraps, and that cancellation propagates
+    into the ``concurrent.futures`` job, so a job still queued when the deadline
+    expires may never run at all and every observation of it becomes a race
+    against the deadline.  This helper bounds only the WAIT: at the deadline it
+    raises ``TimeoutError`` and leaves the worker to finish, and its late
+    outcome is logged and discarded instead of being mistaken for this call's
+    result.
+    """
+
+    task = asyncio.ensure_future(asyncio.to_thread(func))
+    try:
+        done, _ = await asyncio.wait({task}, timeout=timeout_seconds)
+    except asyncio.CancelledError:
+        # The caller was cancelled (client disconnect), not the worker.
+        task.add_done_callback(_discard_late_worker_outcome)
+        raise
+    if not done:
+        task.add_done_callback(_discard_late_worker_outcome)
+        raise TimeoutError(f"{label}: time-box of {timeout_seconds}s exceeded")
+    return task.result()
+
+
+def _discard_late_worker_outcome(task: asyncio.Future) -> None:
+    """Consume a worker outcome abandoned at its deadline — disclose, never drop."""
+
+    if task.cancelled():
+        return
+    error = task.exception()
+    if error is not None:
+        logger.warning("Alpha peer discovery worker failed after its deadline: %r", error)
+    else:
+        logger.warning("Alpha peer discovery worker finished after its deadline; late result discarded")
 
 
 class DiscoveryConsumer(Protocol):
@@ -70,11 +116,13 @@ class UdpDiscovery:
         port: int = 8743,
         interval_seconds: float = 8.0,
         bind_host: str = "0.0.0.0",
+        resolve_timeout_seconds: float = DEFAULT_RESOLVE_TIMEOUT_SECONDS,
     ):
         self.consumer = consumer
         self.port = max(1, min(int(port), 65535))
         self.interval_seconds = max(2.0, min(float(interval_seconds), 300.0))
         self.bind_host = bind_host
+        self.resolve_timeout_seconds = max(0.05, min(float(resolve_timeout_seconds), MAX_RESOLVE_TIMEOUT_SECONDS))
         self._transport: asyncio.DatagramTransport | None = None
         self._task: asyncio.Task[None] | None = None
         self._stop = asyncio.Event()
@@ -115,9 +163,14 @@ class UdpDiscovery:
             self._transport.close()
             self._transport = None
 
-    async def broadcast_once(self) -> None:
-        if self._transport is None:
-            return
+    def _beacon(self) -> tuple[bytes, set[str]]:
+        """Build the beacon and resolve its targets. Blocking: worker thread only.
+
+        ``card()`` is included in the off-loaded work on purpose: it resolves
+        the advertised host through the identity cache, and a cold cache would
+        otherwise put a blocking resolver call back on the event loop.
+        """
+
         data = json.dumps(self.consumer.card().discovery_dict(), separators=(",", ":")).encode("utf-8")
         targets = {"255.255.255.255"}
         try:
@@ -128,6 +181,26 @@ class UdpDiscovery:
                     targets.add(address)
         except OSError:
             pass
+        return data, targets
+
+    async def broadcast_once(self) -> None:
+        if self._transport is None:
+            return
+        try:
+            data, targets = await _timeboxed_to_thread(
+                self._beacon,
+                self.resolve_timeout_seconds,
+                label="alpha-peer-udp-beacon",
+            )
+        except TimeoutError:
+            # Fail closed: skip this beacon rather than keep the loop waiting.
+            self.last_error = "peer discovery resolution exceeded its time-box"
+            logger.debug("Skipping the Alpha UDP discovery beacon: %s", self.last_error)
+            return
+        except (OSError, ValueError) as exc:
+            self.last_error = str(exc)
+            logger.debug("Could not build the Alpha UDP discovery beacon: %s", exc)
+            return
         for target in targets:
             try:
                 self._transport.sendto(data, (target, self.port))
@@ -143,6 +216,22 @@ class UdpDiscovery:
                 await self.broadcast_once()
 
 
+@lru_cache(maxsize=1)
+def mdns_available() -> bool:
+    """Report whether the optional mDNS dependency is installed.
+
+    Memoised because ``available`` is read from ``_status_snapshot()`` on the
+    event loop, and a first-time ``import zeroconf`` is a multi-millisecond
+    blocking import that has no business running there.
+    """
+
+    try:
+        import zeroconf  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
 class MdnsDiscovery:
     """Optional standards-based mDNS provider backed by ``zeroconf``."""
 
@@ -156,11 +245,7 @@ class MdnsDiscovery:
 
     @property
     def available(self) -> bool:
-        try:
-            import zeroconf  # noqa: F401
-        except ImportError:
-            return False
-        return True
+        return mdns_available()
 
     @property
     def running(self) -> bool:
@@ -271,4 +356,11 @@ class MdnsDiscovery:
         self.consumer.observe_discovery(card.discovery_dict(), source="mdns")
 
 
-__all__ = ["MDNS_SERVICE_TYPE", "MdnsDiscovery", "UdpDiscovery"]
+__all__ = [
+    "DEFAULT_RESOLVE_TIMEOUT_SECONDS",
+    "MDNS_SERVICE_TYPE",
+    "MAX_RESOLVE_TIMEOUT_SECONDS",
+    "MdnsDiscovery",
+    "UdpDiscovery",
+    "mdns_available",
+]

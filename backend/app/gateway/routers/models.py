@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from alpha.authz.provider import AuthzDecision, AuthzRequest
+from alpha.community.url_safety import ModelEndpointBlockedError
 from alpha.config.app_config import AppConfig
 from app.gateway.authz import (
     _AuthorizationUnavailable,
@@ -642,17 +643,53 @@ async def list_providers() -> list[dict]:
 
 class ConfigureProviderRequest(BaseModel):
     provider: str = Field(..., description="Provider ID (e.g. groq, gemini, openrouter, custom)")
-    api_key: str | None = Field(None, description="API Key for the provider")
-    base_url: str | None = Field(None, description="Custom base URL")
+    api_key: str | None = Field(None, description="API Key for the provider (avoid on shared hosts: prefer api_key_env)")
+    api_key_env: str | None = Field(
+        default=None,
+        description=(
+            "Name of the environment variable that already holds the key (e.g. OPENROUTER_API_KEY). "
+            "The key is then never sent through this API nor written into the credentials file - only the "
+            "variable's name is stored, and the value is read from the environment at use time."
+        ),
+    )
+    base_url: str | None = Field(
+        default=None,
+        description=(
+            "Custom base URL. Screened by the shared egress policy before it is stored: non-http(s) schemes, "
+            "URL-embedded credentials, cloud metadata endpoints and (unless kind='local') loopback/private hosts "
+            "are rejected with 400."
+        ),
+    )
     model_id: str | None = Field(None, description="Custom model identifier")
     display_name: str | None = Field(None, description="Custom model display name")
+    kind: Literal["remote", "local"] | None = Field(
+        default=None,
+        description=(
+            "Endpoint tier. 'remote' (default for most providers) requires a public endpoint; 'local' is the "
+            "declared opt-in for a same-host OpenAI-compatible server (Ollama/LM Studio/vLLM on loopback). "
+            "Cloud metadata endpoints are refused in both tiers."
+        ),
+    )
+    headers: dict[str, str] | None = Field(
+        default=None,
+        description=(
+            "Extra request headers for this endpoint (e.g. OpenRouter's HTTP-Referer/X-Title). "
+            "Framing and connection headers (Host, Content-Length, Connection, ...) are rejected, and values "
+            "may not contain CR/LF."
+        ),
+    )
     remove: bool = Field(default=False, description="Whether to remove the key/model")
 
 
 @router.post(
     "/models/providers/configure",
     summary="Configure LLM Provider Credentials or Custom Model",
-    description="Save or remove API keys for a provider and dynamically register associated models.",
+    description=(
+        "Save or remove API keys for a provider and dynamically register associated models. "
+        "A caller-supplied base_url is screened against the SSRF egress policy (metadata, loopback, private "
+        "and non-http(s) targets are refused with 400 unless the provider is a declared local endpoint), and "
+        "the key is stored in an encrypted envelope rather than plaintext."
+    ),
 )
 async def configure_provider_endpoint(body: ConfigureProviderRequest) -> dict:
     import asyncio as _asyncio
@@ -667,15 +704,47 @@ async def configure_provider_endpoint(body: ConfigureProviderRequest) -> dict:
             model_id=body.model_id,
             display_name=body.display_name,
             remove=body.remove,
+            api_key_env=body.api_key_env,
+            kind=body.kind,
+            headers=body.headers,
         )
 
     try:
         return await _asyncio.to_thread(_sync)
+    except ModelEndpointBlockedError as exc:
+        # A refused endpoint is a client error and the reason is safe to echo:
+        # the message is built from the policy, and any URL userinfo is stripped.
+        logger.warning("Refused model endpoint for provider %s: %s", body.provider, exc.reason)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         logger.error("Failed to configure provider %s: %s", body.provider, exc, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to save provider configuration")
+
+
+@router.get(
+    "/models/providers/credentials-storage",
+    summary="Provider Credential Storage Status",
+    description=(
+        "Honest, per-host disclosure of how provider credentials are protected at rest: the active backend "
+        "(Windows DPAPI user scope, a 0600 key file, or plaintext when no cipher is available), whether the "
+        "on-disk file is still a legacy plaintext document awaiting migration, and the file path. Contains no "
+        "key material."
+    ),
+)
+async def provider_credentials_storage_status() -> dict:
+    import asyncio as _asyncio
+
+    from alpha.models.provider_manager import credentials_storage_status, migrate_plaintext_credentials_file
+
+    def _status() -> dict:
+        migrated = migrate_plaintext_credentials_file()
+        status = credentials_storage_status()
+        status["migrated_plaintext_on_request"] = migrated
+        return status
+
+    return await _asyncio.to_thread(_status)
 
 
 @router.post(

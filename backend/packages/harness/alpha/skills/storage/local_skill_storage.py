@@ -6,7 +6,6 @@ import asyncio
 import errno
 import json
 import logging
-import os
 import shutil
 import tempfile
 from collections.abc import Iterable
@@ -17,6 +16,7 @@ from pathlib import Path
 from alpha.config.runtime_paths import resolve_path
 from alpha.constants import DEFAULT_SKILLS_CONTAINER_PATH
 from alpha.skills.permissions import make_skill_written_path_sandbox_readable
+from alpha.skills.storage.scan import iter_skill_md_files
 from alpha.skills.storage.skill_storage import SKILL_MD_FILE, SkillStorage
 from alpha.skills.types import SkillCategory
 
@@ -77,20 +77,7 @@ class LocalSkillStorage(SkillStorage):
         if not self._host_root.exists():
             return
         for category in SkillCategory:
-            category_path = self._host_root / category.value
-            if not category_path.exists() or not category_path.is_dir():
-                continue
-            for current_root, dir_names, file_names in os.walk(category_path, followlinks=True):
-                dir_names[:] = sorted(name for name in dir_names if not name.startswith("."))
-                if SKILL_MD_FILE not in file_names:
-                    continue
-                # A directory containing SKILL.md is a package boundary. Any
-                # nested SKILL.md files belong to that package's supporting
-                # resources (for example eval fixtures), not to the runtime
-                # skill registry. Namespace directories without SKILL.md still
-                # recurse, preserving layouts such as public/team/helper.
-                dir_names.clear()
-                yield category, category_path, Path(current_root) / SKILL_MD_FILE
+            yield from iter_skill_md_files(category, self._host_root / category.value)
 
     def read_custom_skill(self, name: str) -> str:
         if not self.custom_skill_exists(name):

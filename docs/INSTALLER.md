@@ -38,7 +38,7 @@ create**.
 The single most important fact for understanding the size of an Alpha install:
 
 > The installer is small. The Python dependencies are what take up space.
-> The installer script is 57.7 KB; the whole installer folder is 83.2 KB. The
+> The installer script is 61.8 KB; the whole installer folder is 89.4 KB. The
 > Python virtual environment it provisions is 671.2 MB. Anyone quoting an
 > "installer size" without the installed footprint is quoting the wrong number.
 
@@ -50,7 +50,7 @@ The single most important fact for understanding the size of an Alpha install:
 |---|---|---|
 | **Operating system** | Windows 10 build 19041 (2004) or newer, or Windows 11 | The desktop shell uses the WebView2 runtime that ships with these builds |
 | **Architecture** | x64 (AMD64) or ARM64 | 32-bit Windows is **not** supported: the pinned CPython and Node builds do not exist for it |
-| **Free disk space** | 6 GB minimum, plus 1 GB headroom (7 GB total) | Measured: uv binary + CPython + Python dependencies + Node + prebuilt frontend + source (see [footprint table](#what-ends-up-on-my-machine-and-how-big-is-it)) |
+| **Free disk space** | 6 GB minimum, plus 1 GB headroom (7 GB total) | Measured: uv binary + CPython + Python dependencies + Node + prebuilt frontend + source ≈ **821 MB real disk / 1168 MB logical** (see [footprint table](#what-ends-up-on-my-machine-and-how-big-is-it)). The 6 GB floor is deliberately generous: it absorbs dependency growth and a second install without the disk ever being the failure mode |
 | **PowerShell** | 5.1 or later | Present by default on Windows 10/11. The installer is PowerShell. If yours is missing, install it from <https://aka.ms/powershell> and re-run |
 | **Git** | Any recent version, **only for the native path** | The installer shallow-clones a pinned release tag. Docker users do not need Git on the host |
 | **Administrator** | **Not** required | Alpha installs to `%LOCALAPPDATA%\Alpha`, which is a per-user folder |
@@ -261,22 +261,22 @@ is called out explicitly.
 
 | Component | Size | Files | What it is |
 |---|---:|---:|---|
-| `installer/bootstrap.ps1` | **59,111 bytes (57.7 KB)** | 1 | The installer itself |
+| `installer/bootstrap.ps1` | **63,324 bytes (61.8 KB)** | 1 | The installer itself |
 | `installer/uninstall-alpha.ps1` | **8,255 bytes (8.1 KB)** | 1 | |
 | `installer/lib/Alpha.Installer.psm1` | **10,704 bytes (10.5 KB)** | 1 | Shared helpers |
 | `installer/create-shortcuts.ps1` | **3,006 bytes (2.9 KB)** | 1 | |
-| `installer/pins.json` | **2,057 bytes (2.0 KB)** | 1 | Every version pin |
+| `installer/pins.json` | **4,170 bytes (4.1 KB)** | 1 | Every version pin |
 | `installer/size-budget.json` | **2,091 bytes (2.0 KB)** | 1 | The enforced budgets |
-| **Total installer (all 6 shipped files)** | **85,224 bytes (83.2 KB)** | 6 | **What you actually download** |
+| **Total installer (all 6 shipped files)** | **91,550 bytes (89.4 KB)** | 6 | **What you actually download** |
 | uv binary | **48.7 MB** | 1 | Measured for uv **0.12.5**, the copy already on this machine. The **pinned 0.11.1 release asset was not downloaded and its size is NOT VERIFIED**; expect the same order of magnitude |
 | CPython 3.12, provisioned by uv | **63.4 MB** | 3,546 | Measured (a single CPython 3.12 install, not the sum of all uv pythons on the machine) |
 | **Python dependencies, production install** | **671.2 MB** (logical) | **51,975** | Measured. This is the dominant term by far |
 | &nbsp;&nbsp;…real disk consumed | **324 MB** | | Measured from the free-space delta. uv hardlinks wheels out of its cache, so the venv costs roughly half its logical size |
 | Node.js runtime | **89.5 MB** | 17 | Measured for the Node install on this machine, which is **v24.21.0**. The **pinned 22.17.0 was not installed and its size is NOT VERIFIED**; expect the same order of magnitude |
 | Prebuilt Next.js frontend | **78.5 MB** | 2,470 | Measured (`.next/standalone`) |
-| Source checkout, shallow, tag `v2.1.0` | **≤ 256 MB** | | **NOT VERIFIED** for the published tag. Bounded by an enforced budget; the enforcement is real, the exact value is not measured |
-| **TOTAL, logical** | **~951 MB + source** | | Sum of the measured terms. Dominated by Python dependencies |
-| **TOTAL, real disk** | **~604 MB + source** | | The same sum with the venv counted at its 324 MB real cost. This is the number that matters for "will it fit" |
+| Source checkout (shallow, tag `v2.1.0`) | **217.0 MB** | | Measured with vendored trees excluded, and enforced by the CI budget. A clean CI checkout is the reference |
+| **TOTAL, logical** | **1168.3 MB** | | Sum of the measured terms. Dominated by Python dependencies |
+| **TOTAL, real disk** | **~821 MB** | | The same sum with the venv counted at its 324 MB real cost. This is the number that matters for "will it fit" |
 
 ### For comparison: the existing Electron desktop installer
 
@@ -630,7 +630,7 @@ No. Everything goes into `%LOCALAPPDATA%\Alpha`, which is per-user.
 
 **Why is the download bigger than the installer?**
 Because the Python dependencies dominate. See
-[the footprint table](#what-ends-up-on-my-machine-and-how-big-is-it): 83.2 KB of
+[the footprint table](#what-ends-up-on-my-machine-and-how-big-is-it): 89.4 KB of
 installer, 671.2 MB of Python environment.
 
 **Why does the installer need a Node runtime? The UI is just a web page.**

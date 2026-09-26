@@ -47,6 +47,54 @@ _CRON_FIELD_RE = re.compile(
     r"^(?:[0-9*/,\-?#]+|[A-Z]{3})$",
 )
 
+#: Inclusive value range of each of the five cron fields. A field whose literal
+#: values fall outside its range can never fire, so accepting it would arm a job
+#: that silently never runs while reporting "Scheduled".
+_CRON_FIELD_RANGES: tuple[tuple[int, int], ...] = ((0, 59), (0, 23), (1, 31), (1, 12), (0, 7))
+_CRON_FIELD_LABELS: tuple[str, ...] = ("minute", "hour", "day-of-month", "month", "day-of-week")
+_CRON_MONTH_NAMES = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
+_CRON_DAY_NAMES = ("SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT")
+
+#: A cron job's payload is persisted to disk and replayed later, so it is held to
+#: a single line and a bounded length.
+_MAX_SCHEDULE_PAYLOAD = 2000
+_PAYLOAD_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]|\r\n")
+
+
+def validate_cron_expression(schedule_spec: str) -> tuple[str | None, str | None]:
+    """Validate a 5-field cron expression's field count and value ranges.
+
+    Returns ``(expression, None)`` when the expression can actually fire, or
+    ``(None, reason)`` with a human-readable reason otherwise. Field *shapes* are
+    accepted broadly (``, ``-``, ``/``, ``?``, ``#``, names) — only out-of-range
+    literals are rejected, so no legitimate expression is turned away.
+    """
+    fields = schedule_spec.split()
+    if len(fields) != len(_CRON_FIELD_RANGES):
+        return None, f"a cron expression needs {len(_CRON_FIELD_RANGES)} fields, got {len(fields)}"
+    for field, (low, high), label in zip(fields, _CRON_FIELD_RANGES, _CRON_FIELD_LABELS, strict=True):
+        if not _CRON_FIELD_RE.match(field):
+            return None, f"{label} field {field!r} is not a valid cron field"
+        for part in field.split(","):
+            base, _, step = part.partition("/")
+            literal = base.split("-", 1)[0]
+            if step:
+                if not step.isdigit() or int(step) < 1:
+                    return None, f"{label} field {field!r} has an invalid step {step!r} (a step must be a positive integer)"
+            if literal in {"*", "?", "#", ""}:
+                continue
+            if literal.isalpha():
+                names = _CRON_MONTH_NAMES + _CRON_DAY_NAMES
+                if literal.upper() not in names:
+                    return None, f"{label} field {field!r} uses unknown name {literal!r}"
+                continue
+            if not literal.isdigit():
+                return None, f"{label} field {field!r} is not a valid cron field"
+            value = int(literal)
+            if not low <= value <= high:
+                return None, f"{label} field value {value} is outside the allowed range {low}-{high}"
+    return schedule_spec, None
+
 
 def _run_async(factory: Callable[[], Coroutine[Any, Any, Any]]) -> Any:
     """Run a coroutine from synchronous handler code.
@@ -142,8 +190,22 @@ def _interval_to_cron(spec: str) -> tuple[str | None, str | None]:
     return f"0 0 */{amount} * *", None
 
 
+def _validate_schedule_payload(payload: str) -> str | None:
+    """Return a rejection reason for a job payload, or None when it is usable."""
+    if _PAYLOAD_CONTROL_RE.search(payload):
+        return "the command/prompt must be a single line without control characters (it is persisted to the cron store and replayed by the scheduler)"
+    if len(payload) > _MAX_SCHEDULE_PAYLOAD:
+        return f"the command/prompt must be {_MAX_SCHEDULE_PAYLOAD} characters or fewer (got {len(payload)})"
+    return None
+
+
 def handle_schedule(args: str, context: dict[str, Any] | None = None) -> CommandExecutionResult:
-    """Create a real cron job for a command or prompt."""
+    """Create a real cron job for a command or prompt.
+
+    ``context={"dry_run": True}`` validates the request and reports exactly what
+    would be created without persisting anything, so the schedule can be checked
+    without arming a job.
+    """
     raw = args.strip()
     if not raw:
         return CommandExecutionResult(
@@ -197,17 +259,33 @@ def handle_schedule(args: str, context: dict[str, Any] | None = None) -> Command
         return CommandExecutionResult(
             status="error", command="/schedule", output="The command/prompt to run must not be empty."
         )
+    payload_problem = _validate_schedule_payload(payload)
+    if payload_problem is not None:
+        return CommandExecutionResult(status="error", command="/schedule", output=f"Schedule rejected: {payload_problem}")
     if schedule_spec.lower().startswith("every"):
         cron_expression, reason = _interval_to_cron(schedule_spec)
     else:
-        fields = schedule_spec.split()
-        cron_expression, reason = (schedule_spec, None) if len(fields) == 5 else (None, f"a cron expression needs 5 fields, got {len(fields)}")
+        cron_expression, reason = validate_cron_expression(schedule_spec)
     if cron_expression is None:
         return CommandExecutionResult(status="error", command="/schedule", output=f"Schedule rejected: {reason}")
 
     digest = hashlib.sha256(f"{cron_expression}|{payload}".encode()).hexdigest()[:6]
     slug = re.sub(r"[^a-z0-9]+", "-", payload.lower()).strip("-")[:32] or "task"
     name = f"sched-{slug}-{digest}"
+    thread_id = (context or {}).get("thread_id")
+    if (context or {}).get("dry_run") is True:
+        return CommandExecutionResult(
+            status="success",
+            command="/schedule",
+            output=(
+                f"DRY RUN — nothing was created.\n"
+                f"  would create: {name}\n"
+                f"  cron: {cron_expression}\n"
+                f"  runs: {payload}\n"
+                "  first run: immediately (the cron manager schedules a new job as due at once)"
+            ),
+            data={"action": "schedule_preview", "dry_run": True, "job": {"name": name}, "cron_expression": cron_expression, "thread_id": thread_id},
+        )
     try:
         from alpha.scheduler.cron_manager import get_cron_manager
 
@@ -219,7 +297,6 @@ def handle_schedule(args: str, context: dict[str, Any] | None = None) -> Command
             output=f"Cron job not created: {type(exc).__name__}: {exc}",
         )
     job_dict = job.to_dict() if hasattr(job, "to_dict") else {"name": getattr(job, "name", name)}
-    thread_id = (context or {}).get("thread_id")
     return CommandExecutionResult(
         status="success",
         command="/schedule",

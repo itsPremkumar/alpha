@@ -21,6 +21,12 @@ from pathlib import Path
 from typing import Any
 
 from alpha.agents.memory.l1.paths import atomic_write_text, safe_segment
+from alpha.memory._store_format import (
+    STORE_FORMAT_UNSUPPORTED,
+    StoreFormatVerdict,
+    classify_store_format,
+    format_disclosure,
+)
 
 from .config import FabricConfig, fabric_root, load_fabric_config
 from .lifecycle import TransitionResult
@@ -31,6 +37,11 @@ from .provenance import ProvenanceResult, append_event
 
 logger = logging.getLogger(__name__)
 _SCHEMA_VERSION = 2
+_STORE_ID = "fabric.envelopes"
+
+
+class MemoryFabricStoreUnavailable(RuntimeError):
+    """Raised when a write is refused because the scope is not safely writable."""
 
 
 @dataclass(slots=True)
@@ -163,6 +174,7 @@ class MemoryEnvelopeStore:
         self._duplicate_ids: set[str] = set()
         self._statuses: dict[str, str] = {}
         self._blocked: set[str] = set()
+        self._format_refusals: dict[str, StoreFormatVerdict] = {}
 
     @property
     def root(self) -> Path:
@@ -213,7 +225,12 @@ class MemoryEnvelopeStore:
         key = self._scope_key(scope)
         cached = self._cache.get(key)
         if cached is not None:
-            return cached, self._statuses.get(key, "succeeded"), ""
+            status = self._statuses.get(key, "succeeded")
+            # A refusal keeps its disclosure across every later read. Returning
+            # an empty error on the cached path would make the first caller see
+            # the reason and every caller after it see nothing.
+            refusal = self._format_refusals.get(key)
+            return cached, status, format_disclosure(refusal) if refusal is not None else ""
         path = self._path(scope)
         document = _ScopeDocument(scope=scope.model_copy(deep=True), records=[])
         status = "empty"
@@ -221,10 +238,41 @@ class MemoryEnvelopeStore:
         if path.exists():
             try:
                 raw = json.loads(path.read_text(encoding="utf-8"))
+            except OSError as exc:
+                self._statuses[key] = "read_error"
+                self._blocked.add(key)
+                logger.error("Memory fabric store: could not read %s (%s)", path, exc)
+                self._cache[key] = document
+                self._index_document(document)
+                return document, "read_error", str(exc)
+            except (json.JSONDecodeError, ValueError, TypeError, UnicodeError) as exc:
+                error = str(exc)
+                self._quarantine(key, path, error)
+                document = _ScopeDocument(scope=scope.model_copy(deep=True), records=[])
+                self._cache[key] = document
+                self._index_document(document)
+                return document, self._statuses.get(key, "recovered"), error
+
+            # The bytes parsed. A marker this build does not implement is a
+            # version incompatibility owned by another build, never corruption
+            # to be quarantined.
+            verdict = classify_store_format(store=_STORE_ID, path=path, raw=raw, supported_version=_SCHEMA_VERSION)
+            if verdict.refusal:
+                self._format_refusals[key] = verdict
+                self._statuses[key] = STORE_FORMAT_UNSUPPORTED
+                self._blocked.add(key)
+                logger.error(
+                    "Memory fabric store: refusing %s (%s); document left in place and writes blocked",
+                    verdict.path,
+                    format_disclosure(verdict),
+                )
+                self._cache[key] = document
+                self._index_document(document)
+                return document, STORE_FORMAT_UNSUPPORTED, format_disclosure(verdict)
+
+            try:
                 if not isinstance(raw, Mapping):
                     raise ValueError("scope document root must be an object")
-                if int(raw.get("schema", 0)) != _SCHEMA_VERSION:
-                    raise ValueError("unsupported memory fabric document schema")
                 document_scope = MemoryScope.model_validate(raw.get("scope"))
                 if document_scope != scope:
                     raise ValueError("document scope does not match its canonical path")
@@ -239,35 +287,53 @@ class MemoryEnvelopeStore:
                     raise ValueError("scope document contains duplicate record ids")
                 document.records = records
                 status = "succeeded"
-            except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+            except (UnicodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
                 error = str(exc)
-                backup = path.with_name(f"{path.name}.corrupt-{time.time_ns()}-{uuid.uuid4().hex[:8]}")
-                try:
-                    path.replace(backup)
-                except OSError as preserve_exc:
-                    status = "failed"
-                    self._blocked.add(key)
-                    error = f"{error}; preservation failed: {preserve_exc}"
-                    logger.error(
-                        "Memory fabric store: corrupt document %s could not be preserved as %s (%s)",
-                        path,
-                        backup.name,
-                        preserve_exc,
-                    )
-                else:
-                    status = "recovered"
-                    self._blocked.discard(key)
-                    logger.error(
-                        "Memory fabric store: corrupt document %s preserved as %s; scope starts empty",
-                        path,
-                        backup.name,
-                    )
+                document = _ScopeDocument(scope=scope.model_copy(deep=True), records=[])
+                self._quarantine(key, path, error)
         self._cache[key] = document
         self._statuses[key] = status
         self._index_document(document)
         return document, status, error
 
+    def _quarantine(self, key: str, path: Path, error: str) -> None:
+        """Preserve genuinely unreadable bytes; never used for a version mismatch."""
+
+        backup = path.with_name(f"{path.name}.corrupt-{time.time_ns()}-{uuid.uuid4().hex[:8]}")
+        try:
+            path.replace(backup)
+        except OSError as preserve_exc:
+            self._statuses[key] = "failed"
+            self._blocked.add(key)
+            logger.error(
+                "Memory fabric store: corrupt document %s could not be preserved as %s (%s)",
+                path,
+                backup.name,
+                preserve_exc,
+            )
+        else:
+            self._statuses[key] = "recovered"
+            self._blocked.discard(key)
+            logger.error(
+                "Memory fabric store: corrupt document %s preserved as %s; scope starts empty",
+                path,
+                backup.name,
+            )
+
+    def format_refusal(self, scope: MemoryScope) -> StoreFormatVerdict | None:
+        """Return the version refusal held for a scope, or ``None``."""
+
+        return self._format_refusals.get(self._scope_key(scope))
+
     def _persist_unlocked(self, scope: MemoryScope, document: _ScopeDocument) -> None:
+        # The single choke point every mutation funnels through. Refusing here
+        # is the backstop that makes a version refusal non-destructive: even a
+        # caller that skips the disclosed result above cannot reach the live
+        # path and republish this build's older format over a document a newer
+        # build still owns.
+        verdict = self._format_refusals.get(self._scope_key(scope))
+        if verdict is not None:
+            raise MemoryFabricStoreUnavailable(format_disclosure(verdict))
         payload = {
             "schema": _SCHEMA_VERSION,
             "scope": scope.model_dump(mode="json"),
@@ -323,6 +389,16 @@ class MemoryEnvelopeStore:
             return StoreReadResult(
                 status="failed",
                 reason="corrupt_document_preservation_failed",
+                error=error,
+                scope=scope,
+            )
+        if load_status == STORE_FORMAT_UNSUPPORTED:
+            # Never report an unreadable format as "empty": that is the silent
+            # reset this gate exists to prevent. The document is intact and
+            # another build owns it.
+            return StoreReadResult(
+                status=STORE_FORMAT_UNSUPPORTED,
+                reason="document_format_unsupported",
                 error=error,
                 scope=scope,
             )
@@ -621,6 +697,18 @@ class MemoryEnvelopeStore:
                     return StoreResult(
                         status="failed",
                         reason="corrupt_document_preservation_failed",
+                        error=load_error,
+                        records=[record.model_copy(deep=True)],
+                        record_ids=[record.id],
+                        storage_status=load_status,
+                    )
+                if load_status == STORE_FORMAT_UNSUPPORTED:
+                    # Disclose the refusal with the same vocabulary the storage
+                    # failure above already uses, and write nothing. The
+                    # document belongs to a build that understands it.
+                    return StoreResult(
+                        status="refused",
+                        reason="document_format_unsupported",
                         error=load_error,
                         records=[record.model_copy(deep=True)],
                         record_ids=[record.id],

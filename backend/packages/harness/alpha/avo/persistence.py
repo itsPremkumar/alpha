@@ -21,6 +21,16 @@ logger = logging.getLogger("alpha.avo.persistence")
 DEFAULT_AVO_DIR = Path(".avo")
 
 
+class LineageIntegrityError(RuntimeError):
+    """Raised when a persisted lineage fails chain verification on load.
+
+    Deliberately *not* swallowed. The previous behaviour -- log a warning and
+    return ``None`` -- would let a caller substitute an empty lineage for a
+    tampered one, which is precisely the "assert a state it never measured"
+    failure this package exists to prevent.
+    """
+
+
 class AVOPersistenceManager:
     """Manages disk persistence for AVO Lineage and Domain Knowledge."""
 
@@ -59,6 +69,7 @@ class AVOPersistenceManager:
             "total_evaluations": len(lineage.versions) + len(rejected_data),
             "versions": versions_data,
             "rejected_attempts": rejected_data,
+            "chain": list(getattr(lineage, "chain", []) or []),
         }
 
         self._write(target, payload)
@@ -132,7 +143,30 @@ class AVOPersistenceManager:
                 rejected.append(rec)
             lineage.rejected_attempts = rejected
 
+            # Restore the append-only chain and refuse a lineage whose committed
+            # history has been edited after the fact. A lineage is only
+            # trustworthy if its history verifies, and a caller that silently
+            # accepted a mutated one would be reporting an unmeasured state.
+            chain = data.get("chain") or []
+            lineage.chain = chain
+            verdict = lineage.verify_chain()
+            if not verdict.ok:
+                logger.error("Refusing AVO lineage from %s: chain verification failed (%s)", target, verdict.defect)
+                raise LineageIntegrityError(f"avo lineage chain is not intact: {verdict.defect}")
+            if chain and len(chain) != len(lineage.versions):
+                logger.error(
+                    "Refusing AVO lineage from %s: %d chain links but %d committed versions",
+                    target,
+                    len(chain),
+                    len(lineage.versions),
+                )
+                raise LineageIntegrityError(
+                    f"avo lineage chain length {len(chain)} does not match {len(lineage.versions)} committed versions"
+                )
+
             return lineage
+        except LineageIntegrityError:
+            raise
         except Exception as e:
             logger.warning("Failed to load AVO Lineage from %s: %s", target, e)
             return None

@@ -472,7 +472,16 @@ def _target_criteria(candidates: dict[str, ComputerElement]) -> dict[str, dict[s
 
 
 def _observation_has_multiple_windows(observation: dict[str, Any]) -> bool:
-    """Reject ambiguous scans before they can reach a decision request."""
+    """Reject ambiguous scans before they can reach a decision request.
+
+    The authoritative signal is ``matched_window_count`` when the scanner
+    supplied it: two real windows routinely share a title, so a de-duplicated
+    set of title *strings* can under-report ambiguity. The title set is only a
+    fallback for hand-built observations.
+    """
+    declared_count = observation.get("matched_window_count")
+    if isinstance(declared_count, int) and not isinstance(declared_count, bool) and declared_count > 1:
+        return True
     matched_windows = observation.get("matched_windows")
     if isinstance(matched_windows, list):
         names = [str(window).strip() for window in matched_windows if str(window).strip()]

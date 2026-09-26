@@ -1596,7 +1596,10 @@ def test_write_file_tool_bounds_large_oserror_and_masks_local_paths(monkeypatch)
     monkeypatch.setattr("alpha.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
     monkeypatch.setattr("alpha.sandbox.tools.is_local_sandbox", lambda runtime: True)
     monkeypatch.setattr("alpha.sandbox.tools.get_thread_data", lambda runtime: _THREAD_DATA)
-    monkeypatch.setattr("alpha.sandbox.tools.validate_local_tool_path", lambda path, thread_data: None)
+    monkeypatch.setattr(
+        "alpha.sandbox.tools.validate_local_tool_path",
+        lambda path, thread_data, read_only=False: None,
+    )
     monkeypatch.setattr(
         "alpha.sandbox.tools._resolve_and_validate_user_data_path",
         lambda path, thread_data: f"{_THREAD_DATA['workspace_path']}/output.txt",

@@ -13,9 +13,10 @@ debugger subagent). It does not invent fixes.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from alpha.runtime.sentinel.checkpoint import CheckpointManager
 from alpha.runtime.sentinel.commit import CommitResult, Committer
@@ -23,6 +24,39 @@ from alpha.runtime.sentinel.signals import Signal, SignalTracker, dedupe, sort_b
 from alpha.runtime.sentinel.verify import Verifier, VerifyReport
 
 logger = logging.getLogger(__name__)
+
+
+def record_sentinel_escalation(outcome: LoopOutcome) -> LoopOutcome:
+    """Publish one sentinel escalation into the global handoff ledger.
+
+    Sentinel escalations used to be reachable only by reading the sentinel
+    report journal, so an operator had to know which subsystem had given up
+    before they could find the record. Sentinel has no typed failure code of
+    its own — an unknown fault kind, a fix that raised, a verification that
+    stayed red — so it publishes ``unknown`` (class ``permanent``: a human owns
+    it) with the signal kind, fingerprint and stage in the details.
+    """
+    from alpha.bots.failure_reasons import UNKNOWN
+    from alpha.runtime.escalation import DOMAIN_SENTINEL, escalate_to_human
+
+    try:
+        escalate_to_human(
+            DOMAIN_SENTINEL,
+            outcome.signal.fingerprint,
+            f"sentinel:{outcome.signal.source or outcome.signal.kind}",
+            reason=UNKNOWN,
+            detail=f"sentinel stopped at {outcome.stage}: {outcome.detail}"[:2000],
+            details={
+                "kind": outcome.signal.kind,
+                "stage": outcome.stage,
+                "status": outcome.status,
+                "fingerprint": outcome.signal.fingerprint,
+                "message": outcome.signal.message[:500],
+            },
+        )
+    except Exception:  # noqa: BLE001 - the outcome is already the record of truth
+        logger.debug("Failed to record sentinel escalation", exc_info=True)
+    return outcome
 
 #: Signal kind -> repair strategy. Anything not listed escalates instead of
 #: being guess-fixed.
@@ -111,9 +145,11 @@ class SentinelLoop:
         if strategy == "escalate":
             self.tracker.mark_attempt(signal)
             self.tracker.mark_outcome(signal, "escalated")
-            return LoopOutcome(
-                signal, "diagnose", "escalated",
-                f"unclassified fault kind {signal.kind!r} — not guess-fixed",
+            return record_sentinel_escalation(
+                LoopOutcome(
+                    signal, "diagnose", "escalated",
+                    f"unclassified fault kind {signal.kind!r} — not guess-fixed",
+                )
             )
 
         self.tracker.mark_attempt(signal)
@@ -128,20 +164,22 @@ class SentinelLoop:
         try:
             touched = list(self.fix_fn(signal, snapshot) or [])
         except Exception as exc:  # noqa: BLE001 - a raising fix must not kill the loop
-            return LoopOutcome(signal, "fix", "escalated", f"fix raised {type(exc).__name__}: {exc}")
+            return record_sentinel_escalation(LoopOutcome(signal, "fix", "escalated", f"fix raised {type(exc).__name__}: {exc}"))
 
         if not touched:
             self.tracker.mark_outcome(signal, "escalated")
-            return LoopOutcome(signal, "fix", "escalated", "fix changed nothing")
+            return record_sentinel_escalation(LoopOutcome(signal, "fix", "escalated", "fix changed nothing"))
 
         checkpoint = captured.get("checkpoint")
         if checkpoint is None:
             # The fix edited files without snapshotting first. We cannot
             # guarantee a revert, so refuse to proceed rather than continue
             # with a repair we may be unable to undo.
-            return LoopOutcome(
-                signal, "fix", "escalated",
-                "fix did not snapshot before editing; refusing to continue without a way back",
+            return record_sentinel_escalation(
+                LoopOutcome(
+                    signal, "fix", "escalated",
+                    "fix did not snapshot before editing; refusing to continue without a way back",
+                )
             )
 
         # -- VERIFY ---------------------------------------------------------

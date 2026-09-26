@@ -102,6 +102,9 @@ class SwarmCoordinator:
         self._events: dict[str, list[SwarmEvent]] = {}
         self._message_buses: dict[str, SwarmMessageBus] = {}
         self._admission_keys: dict[tuple[str, str], str] = {}
+        # Swarm ids whose plan snapshot changed but has not been made durable
+        # yet.  See ``mark_checkpoint_dirty``.
+        self._dirty: set[str] = set()
         self._load_persisted_swarms()
 
     @property
@@ -589,6 +592,41 @@ class SwarmCoordinator:
                 self._atomic_write_json(target, plan.to_dict())
             except (OSError, TypeError, ValueError) as exc:
                 logger.warning("Failed to checkpoint swarm %s: %s", swarm_id, exc)
+            else:
+                self._dirty.discard(swarm_id)
+
+    def mark_checkpoint_dirty(self, swarm_id: str) -> None:
+        """Record that a plan changed, without paying for a durable write yet.
+
+        ``checkpoint`` serialises the WHOLE plan and ``fsync``s it, so it is
+        O(plan size) per call.  A hot execution loop calls it several times per
+        node transition, which made a run's total durable-write volume O(n^2)
+        in the number of nodes -- measured at 81% of a 60-node plan's wall
+        clock, with the whole write happening synchronously while the caller
+        holds :attr:`state_lock`.  The per-transition audit record already has
+        its own cheap append-only journal in ``append_event``; the plan file is
+        a recovery *snapshot*, so one write per scheduler round plus a
+        guaranteed flush at every terminal transition is enough.
+
+        Callers MUST follow every ``mark_checkpoint_dirty`` with a
+        :meth:`flush_checkpoint` on each path that ends the run, otherwise a
+        terminal plan could stay unwritten.  ``flush_checkpoint`` is a no-op
+        when nothing is dirty, so a flush on a clean plan costs nothing.
+        """
+
+        with self._lock:
+            if swarm_id in self._swarms:
+                self._dirty.add(swarm_id)
+
+    def flush_checkpoint(self, swarm_id: str) -> bool:
+        """Make a dirty plan durable.  Returns whether a write happened."""
+
+        with self._lock:
+            if swarm_id not in self._dirty:
+                return False
+            self._dirty.discard(swarm_id)
+        self.checkpoint(swarm_id)
+        return True
 
     def _message_bus(self, plan: SwarmPlan) -> SwarmMessageBus:
         bus = self._message_buses.get(plan.swarm_id)
@@ -609,8 +647,18 @@ class SwarmCoordinator:
         task_id: str | None = None,
         trust: str = "untrusted",
         idempotency_key: str | None = None,
+        durable: bool = True,
     ) -> SwarmMessage:
-        """Publish a bounded message to the swarm blackboard."""
+        """Publish a bounded message to the swarm blackboard.
+
+        ``durable`` stays ``True`` for every externally-originated publish: an
+        API/tool caller must see its message survive a restart immediately.  The
+        runner passes ``False`` for its own per-node result message so a hot
+        execution loop stops forcing a full-plan fsync-backed rewrite for every
+        completed node -- the plan is marked dirty instead and made durable on
+        the round boundary (see ``mark_checkpoint_dirty``).  The message itself
+        is still recorded in the event journal either way.
+        """
 
         with self._lock:
             plan = self._swarms.get(swarm_id)
@@ -642,7 +690,10 @@ class SwarmCoordinator:
                 },
                 idempotency_key=idempotency_key,
             )
-            self.checkpoint(swarm_id)
+            if durable:
+                self.checkpoint(swarm_id)
+            else:
+                self._dirty.add(swarm_id)
             return message
 
     def get_messages(

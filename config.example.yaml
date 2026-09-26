@@ -806,6 +806,31 @@ tool_groups:
 #     subagent_enabled: false
 #     disabled_tools: [bash]
 #     allow_update_agent: true
+#
+#   `alpha_leader` is the preset for the DEFAULT-ON leader profile. You do NOT
+#   need it for a working leader: the `alpha` bot is installed on a fresh roster
+#   with zero configuration (see alpha/bots/alpha_leader.py). Add this only if
+#   you want the LEAD SESSION itself pinned to the dispatch toolset.
+#
+#   The `disabled_tools` list is the load-bearing part, not optional polish. The
+#   leader's authority is propose/dispatch/recall, so the lead session is denied
+#   the irreversible verbs (writes, shell, push, deploy, drop). The leader can
+#   therefore ROUTE work but cannot PERFORM it, and the per-target permission
+#   rings, the approval gate, the System One policy layer and the safety enclave
+#   all still apply to whatever it dispatches.
+#
+#   alpha_leader:
+#     include_mcp: true
+#     subagent_enabled: true
+#     disabled_tools:
+#       - write_to_file
+#       - replace_file_content
+#       - run_command
+#       - delete_file
+#       - git_push
+#       - deploy_production
+#       - drop_database
+#     allow_update_agent: false
 
 # ============================================================================
 # Tools Configuration
@@ -934,6 +959,100 @@ tools:
   #   use: alpha.community.tavily.tools:web_search_tool
   #   max_results: 5
   #   # api_key: $TAVILY_API_KEY  # Set if needed
+
+  # ---------------------------------------------------------------------------
+  # Federated web search (RECOMMENDED) - keyless-first, budget-aware failover
+  # ---------------------------------------------------------------------------
+  # One tool, a ranked chain of free and free-tier providers, each picked up
+  # automatically and skipped cleanly when its key is unset:
+  #
+  #   1. tavily_keyless  NO ACCOUNT, NO KEY. Documented keyless access mode;
+  #                      LLM-shaped scored results. This is the default winner.
+  #   2. tavily          TAVILY_API_KEY  - 1,000 credits/month, refreshes, no card
+  #   3. exa             EXA_API_KEY     - neural/semantic + find-similar
+  #   4. serper          SERPER_API_KEY  - raw Google SERP JSON
+  #   5. duckduckgo      keyless floor, so search still answers when every
+  #                      HTTP provider is down or out of quota
+  #
+  # With nothing configured at all this still works - no env var required.
+  #
+  # CREDIT COST PER CALL (charged and reported in the tool response):
+  #   tavily search, search_depth basic/fast/ultra-fast ... 1 credit
+  #   tavily search, search_depth advanced ................. 2 credits
+  #   tavily auto_parameters=true ......................... 2 credits (regardless)
+  #   tavily extract, basic ............................... 1 credit per 5 URLs
+  #   exa search .......................................... $0.007 (<=10 results)
+  #                                                           + $0.001 per result
+  #                                                           above 10
+  #   serper search ....................................... 1 query ($1.00/1k after
+  #                                                           the free grant)
+  #   tavily_keyless / duckduckgo .......................... not billed
+  #
+  # search_depth is always sent EXPLICITLY, because a defaulted depth can be
+  # billed as `advanced` and silently halve a 1,000-credit month.
+  #
+  # FAILURE BEHAVIOUR: a provider that fails is recorded as a typed error and the
+  # search fails over. A provider with no key, no quota, or a fresh failure is
+  # SKIPPED (with the reason returned in the payload). If nothing can serve the
+  # query the tool returns error.kind = "search_exhausted" with every attempt and
+  # skip listed - it never reports "no results found" for an outage.
+  #   - name: web_search
+  #   group: web
+  #   use: alpha.community.search_federation.tools:web_search_tool
+  #   max_results: 5                 # 1-20; clamped here
+  #   search_depth: basic            # basic | fast | ultra-fast | advanced (advanced = 2x credits)
+  #   mode: auto                     # auto | web | semantic | news
+  #   merge: false                   # true = query every eligible provider and union the results
+  #                                  #         (better recall, one paid call per provider)
+  #   include_answer: false          # ask Tavily for a synthesised answer (no extra credit)
+  #   timeout: 30                    # per-request seconds, clamped to 1-120
+  #   # allow_unverified_providers: false   # see the Brave note below
+
+  # "Pages like this URL" (requires EXA_API_KEY). This is a genuinely different
+  # capability from keyword search, so with no Exa key it fails loudly with
+  # error.kind = "search_exhausted" rather than substituting a keyword search.
+  #   - name: web_find_similar
+  #   group: web
+  #   use: alpha.community.search_federation.tools:web_find_similar_tool
+  #   max_results: 5
+
+  # Diagnose search: per-provider health, remaining quota, credit costs, and
+  # every provider that was deliberately left out with the reason.
+  #   - name: web_search_providers
+  #   group: web
+  #   use: alpha.community.search_federation.tools:web_search_providers_tool
+
+  # ============================================================================
+  # Search providers deliberately NOT wired into the federated chain
+  # ============================================================================
+  # The federated layer refuses these by design, not by accident. Full status
+  # table with sources and dates: alpha.community.search_federation.truth
+  #
+  #   bing_search           RETIRED. Microsoft Bing Search APIs are gone; the
+  #                         endpoint answers HTTP 410 permanently. Shutdown date
+  #                         2025-08-11. Refused with a typed ProviderRetiredError.
+  #   google_custom_search  CLOSED to new customers at 100 queries/day; new
+  #                         customers must migrate before 2027-01-01.
+  #   brave_search_api      UNVERIFIED - CONTESTED. Sources disagree: some say
+  #                         2,000 queries/month at 1 query/sec, others say the
+  #                         perpetual free tier was retired for a $5/month
+  #                         credit. Not built on. If you want it anyway, add a
+  #                         provider spec plus allow_unverified_providers: true
+  #                         and accept that you may be paying for it.
+  #   searxng               LICENSING DECISION FOR THE OWNER. SearXNG is
+  #                         AGPL-3.0 and this repo accepts MIT/Apache-2.0/BSD
+  #                         only, treating AGPL as ideas-only. It is therefore
+  #                         neither vendored nor a dependency. You may still run
+  #                         it as your own separate HTTP service and point a
+  #                         tool at it via base_url, which keeps the AGPL code
+  #                         out of this repo and out of this process - but
+  #                         deciding that is yours, not this package's.
+  #   firecrawl             LICENSE GATE. Firecrawl's terms are not a permissive
+  #                         OSS licence, so it is neither vendored nor a
+  #                         dependency. (The pre-existing
+  #                         alpha.community.firecrawl package is out of scope of
+  #                         this decision.)
+  # ============================================================================
 
   # Web search tool (uses InfoQuest, requires InfoQuest API key)
   # - name: web_search
@@ -1886,6 +2005,10 @@ verification:
 # `min_confidence`.
 system_one:
   enabled: true
+  # NOTE: System One is a DECISION engine, not an authorisation layer. It picks a
+  # typed operation plus an observed index; it never denies, and the low-level
+  # desktop_* tools do not consult it at all. The real deterministic control is
+  # alpha.computer_use.guard.SentinelGuard, which every dispatch passes through.
   provider: "vercel-gateway"      # vercel-gateway | typesafe | laya
   api_key: "$AI_GATEWAY_API_KEY"
   model: "typesafe-ai/jev"        # Laya: english | multilingual | typed-decisions | "" (auto)
@@ -1893,6 +2016,9 @@ system_one:
   max_retries: 2
   min_confidence: 0.60
   fail_open: true
+  # true logs answer/confidence only at DEBUG. The request `state` -- which for
+  # the desktop site carries untrusted UI element names -- is never written to a
+  # log or to calibration_log_path, in either mode.
   log_decisions: false
   enable_skill_scan: true
   enable_guardrails: true
@@ -3646,6 +3772,10 @@ capabilities:
 # speech service. Model paths are operator-owned; browser voice values are safe IDs.
 voice:
   enabled: true                     # master switch for TTS, STT, PTT, and realtime conversation
+  # Privacy: the default speech route is local-only, so T1 (a configured model over
+  # HTTP) and T2 (keyless providers) never see your audio. `automatic` opts into
+  # sending audio and the TTS text to a third party; GET /api/multimodal/capabilities
+  # always discloses the effective route and which tiers are policy-disabled.
   routing:
     mode: local_only                # local_only (default) | automatic (allows T1 -> T2 speech)
   wake_word:                        # optional/manual compatibility control; not in the default voice extra
@@ -3667,7 +3797,13 @@ voice:
     device: auto
     compute_type: int8
     beam_size: 1
+    # True keeps request handling offline: transcribe_file verifies the local model
+    # assets exist BEFORE building a model, so it can never fall through to
+    # faster-whisper's Hugging Face download path. Leave true outside explicit setup.
     local_files_only: true          # requests never download model weights
+    # Per-clip duration cap (seconds, hard-coded in alpha.media.stt). The 25 MiB
+    # container cap alone allows ~13.6 min of 16 kHz mono PCM16, far past
+    # streaming.max_utterance_seconds; clips over the cap are refused, not queued.
   streaming:
     sample_rate: 16000
     frame_ms: 20                    # WebRTC VAD exact frame duration
@@ -3678,3 +3814,16 @@ voice:
     max_utterance_seconds: 30
     max_frame_bytes: 65536          # decoded PCM bytes per JSON audio message
     max_sessions: 4                 # process-local simultaneous voice WebSockets
+# Desktop computer control (alpha.computer_use + the desktop_* tools) is
+# configured by no YAML section: its policy is deterministic Python, not config.
+#   * Panic corner (pointer at 0,0) halts everything and revokes every lease.
+#   * The window-boundary lock is bound at runtime with desktop_window_manage.
+#   * The destructive-hotkey blacklist (Win+L, Alt+F4, Shift+Delete,
+#     Ctrl+Alt+Delete) is ALWAYS enforced. There is no YAML (or tool argument)
+#     that lifts it; only a single-use, combo-bound token an operator arms out of
+#     band via SentinelGuard.arm_destructive_confirmation().
+#   * launch_application accepts a bare executable name by default. A path you
+#     supply is refused as arbitrary-program execution unless an operator
+#     allowlists that exact executable with SentinelGuard.set_launch_allowlist().
+#   * Every OS interaction runs behind a deadline (alpha.tools.builtins.
+#     os_computer_tool.OS_CALL_TIMEOUT_S / SCAN_TIMEOUT_S / SCREENSHOT_TIMEOUT_S).

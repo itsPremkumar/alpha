@@ -81,9 +81,7 @@ def _find_llm_provider(name: str) -> LLMProvider:
     raise SetupError(f"Unknown provider '{name}'. Known providers: {known}")
 
 
-def _ollama_reachable(
-    host: str = "127.0.0.1", port: int = 11434, timeout: float = 2.0
-) -> bool:
+def _ollama_reachable(host: str = "127.0.0.1", port: int = 11434, timeout: float = 2.0) -> bool:
     try:
         with socket.create_connection((host, port), timeout=timeout):
             return True
@@ -108,25 +106,15 @@ def _resolve_llm(env: Mapping[str, str]) -> LLMStepResult:
             if _ollama_reachable():
                 provider = _find_llm_provider("ollama_qwen")
             else:
-                raise SetupError(
-                    "No LLM provider configured. Set AGENT_WORKSPACE_SETUP_PROVIDER "
-                    "(e.g. openai, deepseek, ollama_qwen) or export the provider's "
-                    "API-key env var (e.g. OPENAI_API_KEY), or start a local "
-                    "Ollama daemon."
-                )
+                raise SetupError("No LLM provider configured. Set AGENT_WORKSPACE_SETUP_PROVIDER (e.g. openai, deepseek, ollama_qwen) or export the provider's API-key env var (e.g. OPENAI_API_KEY), or start a local Ollama daemon.")
 
-    model_name = (
-        env.get("AGENT_WORKSPACE_SETUP_MODEL") or ""
-    ).strip() or provider.default_model
+    model_name = (env.get("AGENT_WORKSPACE_SETUP_MODEL") or "").strip() or provider.default_model
     if model_name not in provider.models:
         # Generic gateways accept arbitrary model ids via their model prompt.
         if provider.model_prompt or provider.name in {"openrouter", "vllm"}:
             pass
         else:
-            raise SetupError(
-                f"Model '{model_name}' is not offered by provider '{provider.name}'. "
-                f"Available: {', '.join(provider.models)}"
-            )
+            raise SetupError(f"Model '{model_name}' is not offered by provider '{provider.name}'. Available: {', '.join(provider.models)}")
 
     base_url: str | None = None
     if provider.name in {"openrouter", "vllm"}:
@@ -135,15 +123,10 @@ def _resolve_llm(env: Mapping[str, str]) -> LLMStepResult:
     if override_base_url:
         base_url = override_base_url
     elif provider.base_url_prompt:
-        raise SetupError(
-            f"Provider '{provider.name}' needs AGENT_WORKSPACE_SETUP_BASE_URL "
-            f"({provider.base_url_prompt})."
-        )
+        raise SetupError(f"Provider '{provider.name}' needs AGENT_WORKSPACE_SETUP_BASE_URL ({provider.base_url_prompt}).")
 
     if provider.ask_thinking_support:
-        provider = with_thinking_support(
-            provider, _flag(env, "AGENT_WORKSPACE_SETUP_THINKING", False)
-        )
+        provider = with_thinking_support(provider, _flag(env, "AGENT_WORKSPACE_SETUP_THINKING", False))
 
     api_key: str | None = None
     if provider.auth_hint:
@@ -153,14 +136,9 @@ def _resolve_llm(env: Mapping[str, str]) -> LLMStepResult:
         if api_key is None and provider.env_var:
             api_key = (env.get(provider.env_var) or "").strip() or None
         if not api_key:
-            raise SetupError(
-                f"Provider '{provider.name}' needs an API key: set "
-                f"AGENT_WORKSPACE_SETUP_API_KEY or {provider.env_var}."
-            )
+            raise SetupError(f"Provider '{provider.name}' needs an API key: set AGENT_WORKSPACE_SETUP_API_KEY or {provider.env_var}.")
 
-    return LLMStepResult(
-        provider=provider, model_name=model_name, api_key=api_key, base_url=base_url
-    )
+    return LLMStepResult(provider=provider, model_name=model_name, api_key=api_key, base_url=base_url)
 
 
 def _resolve_search(env: Mapping[str, str]) -> SearchStepResult:
@@ -174,33 +152,22 @@ def _resolve_search(env: Mapping[str, str]) -> SearchStepResult:
         known = ", ".join(i.name for i in names)
         raise SetupError(f"Unknown {kind} provider '{wanted}'. Known: {known}, skip")
 
-    search_provider = pick(
-        SEARCH_PROVIDERS, env.get("AGENT_WORKSPACE_SETUP_SEARCH"), "ddg", "search"
-    )
-    fetch_provider = pick(
-        WEB_FETCH_PROVIDERS, env.get("AGENT_WORKSPACE_SETUP_FETCH"), "jina_ai", "fetch"
-    )
+    search_provider = pick(SEARCH_PROVIDERS, env.get("AGENT_WORKSPACE_SETUP_SEARCH"), "ddg", "search")
+    fetch_provider = pick(WEB_FETCH_PROVIDERS, env.get("AGENT_WORKSPACE_SETUP_FETCH"), "jina_ai", "fetch")
 
     search_api_key: str | None = None
     if search_provider is not None and search_provider.env_var:
         search_api_key = (env.get(search_provider.env_var) or "").strip() or None
         if not search_api_key:
-            raise SetupError(
-                f"Search provider '{search_provider.name}' needs {search_provider.env_var} set."
-            )
+            raise SetupError(f"Search provider '{search_provider.name}' needs {search_provider.env_var} set.")
     fetch_api_key: str | None = None
     if fetch_provider is not None and fetch_provider.env_var:
-        if (
-            search_provider is not None
-            and fetch_provider.env_var == search_provider.env_var
-        ):
+        if search_provider is not None and fetch_provider.env_var == search_provider.env_var:
             fetch_api_key = search_api_key
         else:
             fetch_api_key = (env.get(fetch_provider.env_var) or "").strip() or None
             if not fetch_api_key:
-                raise SetupError(
-                    f"Fetch provider '{fetch_provider.name}' needs {fetch_provider.env_var} set."
-                )
+                raise SetupError(f"Fetch provider '{fetch_provider.name}' needs {fetch_provider.env_var} set.")
 
     return SearchStepResult(
         search_provider=search_provider,
@@ -239,9 +206,7 @@ def _resolve_channels(env: Mapping[str, str]) -> ChannelConnectionsStepResult:
         if not key:
             continue
         if key not in known:
-            raise SetupError(
-                f"Unknown channel '{key}'. Known: {', '.join(sorted(known))}"
-            )
+            raise SetupError(f"Unknown channel '{key}'. Known: {', '.join(sorted(known))}")
         if key not in enabled:
             enabled.append(key)
     return ChannelConnectionsStepResult(enabled_providers=enabled)
@@ -249,9 +214,7 @@ def _resolve_channels(env: Mapping[str, str]) -> ChannelConnectionsStepResult:
 
 def resolve_noninteractive_setup(
     env: Mapping[str, str] | None = None,
-) -> tuple[
-    LLMStepResult, SearchStepResult, ExecutionStepResult, ChannelConnectionsStepResult
-]:
+) -> tuple[LLMStepResult, SearchStepResult, ExecutionStepResult, ChannelConnectionsStepResult]:
     """Resolve all wizard steps from the environment (no prompting)."""
     source = env if env is not None else os.environ
     llm = _resolve_llm(source)

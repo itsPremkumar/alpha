@@ -12,8 +12,7 @@ vid = load("video-generation")
 
 @pytest.fixture(autouse=True)
 def clean_env(monkeypatch):
-    for k in ["GEMINI_API_KEY", "MINIMAX_API_KEY", "VIDEO_GENERATION_PROVIDER",
-              "MINIMAX_API_HOST", "MINIMAX_VIDEO_MODEL"]:
+    for k in ["GEMINI_API_KEY", "MINIMAX_API_KEY", "VIDEO_GENERATION_PROVIDER", "MINIMAX_API_HOST", "MINIMAX_VIDEO_MODEL"]:
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setattr(vid.time, "sleep", lambda *_: None)
 
@@ -53,12 +52,10 @@ def test_minimax_full_flow(monkeypatch, tmp_path):
     def fake_get(url, headers=None, params=None, **kw):
         if url.endswith("/v1/query/video_generation"):
             assert params["task_id"] == "T1"
-            return FakeResp({"status": "Success", "file_id": "F1",
-                             "base_resp": {"status_code": 0}})
+            return FakeResp({"status": "Success", "file_id": "F1", "base_resp": {"status_code": 0}})
         if url.endswith("/v1/files/retrieve"):
             assert params["file_id"] == "F1"
-            return FakeResp({"file": {"download_url": "https://dl/v.mp4"},
-                             "base_resp": {"status_code": 0}})
+            return FakeResp({"file": {"download_url": "https://dl/v.mp4"}, "base_resp": {"status_code": 0}})
         return FakeResp(content=b"MP4DATA")  # the actual download
 
     monkeypatch.setattr(vid.requests, "post", fake_post)

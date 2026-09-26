@@ -9,12 +9,20 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from alpha.memory._store_format import (
+    STORE_FORMAT_UNSUPPORTED,
+    StoreFormatVerdict,
+    classify_store_format,
+    format_disclosure,
+)
+
 from .models import AffectEvent
 from .paths import affective_root, atomic_write_text, events_path
 
 logger = logging.getLogger(__name__)
 
 _SCHEMA = 1
+_STORE_ID = "affective.events"
 
 
 class StoreUnavailableError(RuntimeError):
@@ -49,6 +57,7 @@ class AffectiveEventStore:
         self._locks: dict[str, threading.RLock] = {}
         self._cache: dict[str, _UserDocument] = {}
         self._statuses: dict[str, str] = {}
+        self._format_refusals: dict[str, StoreFormatVerdict] = {}
 
     def _user_value(self, user_id: str | None) -> str:
         return user_id or ""
@@ -74,6 +83,57 @@ class AffectiveEventStore:
     def _mark_bad(self, user_id: str | None, status: str) -> None:
         self._statuses[self._key(user_id)] = status
 
+    def _refuse_format(self, user_id: str | None, verdict: StoreFormatVerdict) -> _UserDocument:
+        """Hold a version-incompatible document untouched and refuse to write.
+
+        The file stays exactly where it is and is never quarantined: a
+        document that parsed cleanly and merely declared a different format is
+        owned by whichever build wrote it, and this build has no business
+        renaming it or republishing its own format over it.  Writes are
+        refused so the live path cannot diverge further, and the refusal is
+        published through the same status channel that already carries
+        ``corrupt_document_preserved``.
+        """
+
+        key = self._key(user_id)
+        self._format_refusals[key] = verdict
+        self._statuses[key] = STORE_FORMAT_UNSUPPORTED
+        logger.error(
+            "Affective store: refusing %s (%s); document left in place and writes blocked",
+            verdict.path,
+            format_disclosure(verdict),
+        )
+        return _UserDocument(events=[])
+
+    def format_refusal(self, user_id: str | None = None) -> StoreFormatVerdict | None:
+        """Return the version refusal held for a scope, or ``None``."""
+
+        return self._format_refusals.get(self._key(user_id))
+
+    def _quarantine(self, user_id: str | None, path: Path, exc: BaseException) -> None:
+        """Preserve genuinely unreadable bytes and mark the scope, never for a version mismatch."""
+
+        backup = path.with_name(f"{path.name}.corrupt-{time.time_ns()}")
+        try:
+            path.replace(backup)
+        except OSError as backup_exc:
+            self._mark_bad(user_id, "corrupt_document_unpreserved")
+            logger.error(
+                "Affective store: corrupt document %s could not be preserved as %s (%s; original error: %s)",
+                path,
+                backup.name,
+                backup_exc,
+                exc,
+            )
+        else:
+            self._mark_bad(user_id, "corrupt_document_preserved")
+            logger.error(
+                "Affective store: corrupt document %s preserved as %s; current scope starts empty (%s)",
+                path,
+                backup.name,
+                exc,
+            )
+
     def _load(self, user_id: str | None) -> _UserDocument:
         key = self._key(user_id)
         cached = self._cache.get(key)
@@ -82,37 +142,37 @@ class AffectiveEventStore:
 
         document = _UserDocument(events=[])
         path = self._path(user_id)
-        if path.exists():
-            try:
-                raw = json.loads(path.read_text(encoding="utf-8"))
-                if not isinstance(raw, dict) or not isinstance(raw.get("events"), list):
-                    raise ValueError("event document must contain an events array")
-                document.events = [AffectEvent.model_validate(item) for item in raw["events"]]
-                self._statuses[key] = "ok"
-            except (json.JSONDecodeError, ValueError, TypeError) as exc:
-                backup = path.with_name(f"{path.name}.corrupt-{time.time_ns()}")
-                try:
-                    path.replace(backup)
-                except OSError as backup_exc:
-                    self._mark_bad(user_id, "corrupt_document_unpreserved")
-                    logger.error(
-                        "Affective store: corrupt document %s could not be preserved as %s (%s; original error: %s)",
-                        path,
-                        backup.name,
-                        backup_exc,
-                        exc,
-                    )
-                else:
-                    self._mark_bad(user_id, "corrupt_document_preserved")
-                    logger.error(
-                        "Affective store: corrupt document %s preserved as %s; current scope starts empty (%s)",
-                        path,
-                        backup.name,
-                        exc,
-                    )
-            except OSError as exc:
-                self._mark_bad(user_id, "read_error")
-                logger.error("Affective store: could not read %s (%s)", path, exc)
+        if not path.exists():
+            self._statuses[key] = "ok"
+            self._cache[key] = document
+            return document
+
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except OSError as exc:
+            self._mark_bad(user_id, "read_error")
+            logger.error("Affective store: could not read %s (%s)", path, exc)
+            self._cache[key] = document
+            return document
+        except (json.JSONDecodeError, ValueError, TypeError, UnicodeError) as exc:
+            self._quarantine(user_id, path, exc)
+            self._cache[key] = document
+            return document
+
+        # The bytes parsed. From here on a failure is either a shape problem in
+        # a document we own (quarantine) or a version this build does not
+        # implement (refuse, and never touch the file).
+        verdict = classify_store_format(store=_STORE_ID, path=path, raw=raw, supported_version=_SCHEMA)
+        if verdict.refusal:
+            self._cache[key] = self._refuse_format(user_id, verdict)
+            return self._cache[key]
+        try:
+            if not isinstance(raw, dict) or not isinstance(raw.get("events"), list):
+                raise ValueError("event document must contain an events array")
+            document.events = [AffectEvent.model_validate(item) for item in raw["events"]]
+            self._statuses[key] = "ok"
+        except (ValueError, TypeError) as exc:
+            self._quarantine(user_id, path, exc)
 
         self._cache[key] = document
         return document
@@ -168,7 +228,7 @@ class AffectiveEventStore:
         with self._lock_for(user_id):
             document = self._load(user_id)
             status = self.read_status(user_id)
-            if status in ("read_error", "corrupt_document_unpreserved"):
+            if status in ("read_error", "corrupt_document_unpreserved", STORE_FORMAT_UNSUPPORTED):
                 raise StoreUnavailableError(status)
 
             before = [event.model_copy(deep=True) for event in document.events]
@@ -219,7 +279,7 @@ class AffectiveEventStore:
             return 0
         with self._lock_for(user_id):
             document = self._load(user_id)
-            if self.read_status(user_id) in ("read_error", "corrupt_document_unpreserved"):
+            if self.read_status(user_id) in ("read_error", "corrupt_document_unpreserved", STORE_FORMAT_UNSUPPORTED):
                 raise StoreUnavailableError(self.read_status(user_id))
             wanted = set(event_ids)
             expected_user = self._user_value(user_id)
@@ -244,6 +304,7 @@ class AffectiveEventStore:
             self._cache.clear()
             self._locks.clear()
             self._statuses.clear()
+            self._format_refusals.clear()
 
     @property
     def root(self) -> Path:

@@ -5,6 +5,12 @@ synthesized story use separate JSON documents so a failed story write cannot
 damage the source timeline.  Locks are per scope and process-local; atomic
 replacement prevents torn documents, while independent processes remain outside
 this subsystem's transaction boundary.
+
+The events document carries a ``schema`` marker and is gated: a document that
+parses but declares a format this build does not implement is refused, kept
+byte-for-byte, and never written over.  The synthesized story document carries
+no marker of its own -- it is a derived view of the events, regenerated on
+demand -- so it keeps its existing shape-only validation.
 """
 
 from __future__ import annotations
@@ -19,6 +25,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from alpha.memory._store_format import (
+    STORE_FORMAT_UNSUPPORTED,
+    StoreFormatVerdict,
+    classify_store_format,
+    format_disclosure,
+)
+
 from .config import NarrativeConfig
 from .models import NarrativeEvent, StoryDocument
 from .paths import (
@@ -32,6 +45,7 @@ from .paths import (
 logger = logging.getLogger(__name__)
 
 _SCHEMA = 1
+_STORE_ID = "narrative.events"
 
 
 class StoreUnavailableError(RuntimeError):
@@ -80,6 +94,7 @@ class NarrativeStore:
         self._locks: dict[str, threading.RLock] = {}
         self._states: dict[str, _ScopeState] = {}
         self._blocked: set[str] = set()
+        self._format_refusals: dict[str, StoreFormatVerdict] = {}
 
     @property
     def root(self) -> Path:
@@ -155,20 +170,45 @@ class NarrativeStore:
             return state
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+            state.events = []
+            if isinstance(exc, OSError):
+                state.event_status = "read_error"
+                self._blocked.add(key)
+                logger.error("Narrative store: could not read event document %s (%s)", path, exc)
+            elif not self._preserve_corrupt(path, state, "events", exc):
+                self._blocked.add(key)
+            return state
+
+        # The bytes parsed. A marker this build does not implement means another
+        # build owns the file; quarantining it would destroy that data.
+        verdict = classify_store_format(store=_STORE_ID, path=path, raw=raw, supported_version=_SCHEMA)
+        if verdict.refusal:
+            self._format_refusals[key] = verdict
+            state.events = []
+            state.event_status = STORE_FORMAT_UNSUPPORTED
+            self._blocked.add(key)
+            logger.error(
+                "Narrative store: refusing %s (%s); document left in place and writes blocked",
+                verdict.path,
+                format_disclosure(verdict),
+            )
+            return state
+        try:
             if not isinstance(raw, Mapping) or not isinstance(raw.get("events"), list):
                 raise ValueError("event document must contain an events array")
             state.events = [NarrativeEvent.model_validate(item) for item in raw["events"]]
             state.event_status = "ok"
-        except (json.JSONDecodeError, ValueError, TypeError) as exc:
+        except (ValueError, TypeError) as exc:
             state.events = []
             if not self._preserve_corrupt(path, state, "events", exc):
                 self._blocked.add(key)
-        except OSError as exc:
-            state.events = []
-            state.event_status = "read_error"
-            self._blocked.add(key)
-            logger.error("Narrative store: could not read event document %s (%s)", path, exc)
         return state
+
+    def format_refusal(self, scope: Any = "user", scope_id: str | None = None) -> StoreFormatVerdict | None:
+        """Return the version refusal held for a scope, or ``None``."""
+
+        return self._format_refusals.get(scope_key(scope, scope_id))
 
     def _load_story(self, scope: Any, scope_id: str | None = None) -> _ScopeState:
         key, state = self._state(scope, scope_id)

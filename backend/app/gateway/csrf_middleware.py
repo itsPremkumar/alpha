@@ -14,11 +14,11 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp
 
+from alpha.trace_context import TRACE_ID_HEADER
 from app.gateway.auth.config import get_auth_config
 from app.gateway.auth.session_cookie_state import SESSION_COOKIE_ISSUED_STATE_ATTR, SESSION_COOKIE_MAX_AGE_STATE_ATTR, SESSION_COOKIE_SECURE_STATE_ATTR, SKIP_AUTH_CSRF_COOKIE_STATE_ATTR
 from app.gateway.auth_disabled import is_auth_disabled
 from app.gateway.request_path import get_request_route_path
-from alpha.trace_context import TRACE_ID_HEADER
 
 CSRF_COOKIE_NAME = "csrf_token"
 CSRF_HEADER_NAME = "X-CSRF-Token"
@@ -26,11 +26,22 @@ CSRF_TOKEN_LENGTH = 64  # bytes
 _CSRF_STATE_CHANGING_METHODS: frozenset[str] = frozenset({"POST", "PUT", "DELETE", "PATCH"})
 _CSRF_EXEMPT_EXACT_PATHS: frozenset[str] = frozenset(
     {
-        "/api/v1/auth/me",
+        # Read-only public peer/agent-card reads. They are GET-only, so this
+        # entry is inert today; it exists so the two middleware exemption lists
+        # stay visibly aligned for the paths that own their own posture.
+        # ``/api/v1/auth/me`` used to be listed here and was removed: it is a
+        # session-authenticated GET route, so the exemption could never fire,
+        # and leaving a dead entry on a path a future POST could reuse is a
+        # latent CSRF hole rather than a documented exemption.
         "/.well-known/agent-card.json",
         "/api/peer-network/card",
         "/api/peer-network/remote/pair",
         "/api/peer-network/inbound/messages",
+        # The only mounted webhook path. Exact, never a ``/api/webhooks/``
+        # prefix: CSRF exemption and auth exemption must agree path-for-path,
+        # so a future route under that namespace stays CSRF-checked *and*
+        # authenticated until it is deliberately listed in both middlewares.
+        "/api/webhooks/github",
     }
 )
 
@@ -60,11 +71,9 @@ def should_check_csrf(request: Request) -> bool:
     route_path = get_request_route_path(request)
     path = route_path.rstrip("/")
     # Exempt host-owned endpoints that implement their own request posture.
+    # ``path`` is the trailing-slash-normalised route path, so the exempt set is
+    # exact and can never be widened by a prefix.
     if path in _CSRF_EXEMPT_EXACT_PATHS:
-        return False
-    # Inbound webhooks authenticate themselves via provider-specific signatures
-    # (e.g. GitHub's X-Hub-Signature-256), not the CSRF double-submit cookie.
-    if route_path.startswith("/api/webhooks/"):
         return False
     return True
 

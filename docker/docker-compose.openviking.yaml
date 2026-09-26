@@ -9,11 +9,21 @@
 #   docker compose -f docker/docker-compose.yaml \
 #     -f docker/docker-compose.openviking.yaml up -d --build
 
+# Bounded container logs (same anchor as docker-compose.yaml). Docker's default
+# `json-file` driver has no size cap, so the memory server's logs would grow
+# without bound. ALPHA_LOG_MAX_FILE must be >= 2 or Docker refuses to start.
+x-bounded-logs: &bounded_logs
+  driver: json-file
+  options:
+    max-size: "${ALPHA_LOG_MAX_SIZE:-10m}"
+    max-file: "${ALPHA_LOG_MAX_FILE:-3}"
+
 services:
   openviking:
     image: ${OPENVIKING_IMAGE:-ghcr.io/volcengine/openviking:latest}
     container_name: agent-workspace-openviking
     command: ["--without-bot"]
+    logging: *bounded_logs
     ports:
       - "${OPENVIKING_PORT:-1933}:1933"
     volumes:
@@ -34,6 +44,9 @@ services:
       retries: 12
 
   gateway:
+    # Repeated (not inherited) so every service named in this file is bounded on
+    # its own terms; Compose merges it onto the base gateway either way.
+    logging: *bounded_logs
     depends_on:
       openviking:
         condition: service_healthy

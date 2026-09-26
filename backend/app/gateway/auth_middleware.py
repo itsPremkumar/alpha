@@ -16,6 +16,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp
 
+from alpha.runtime.user_context import reset_current_user, set_current_user
 from app.gateway.auth.errors import AuthErrorCode, AuthErrorResponse
 from app.gateway.auth_disabled import (
     AUTH_SOURCE_AUTH_DISABLED,
@@ -33,7 +34,6 @@ from app.gateway.internal_auth import (
     is_valid_internal_auth_token,
 )
 from app.gateway.request_path import get_request_route_path
-from alpha.runtime.user_context import reset_current_user, set_current_user
 
 # Paths that never require authentication.
 _PUBLIC_PATH_PREFIXES: tuple[str, ...] = (
@@ -43,9 +43,6 @@ _PUBLIC_PATH_PREFIXES: tuple[str, ...] = (
     "/openapi.json",
     "/api/v1/auth/oauth/",
     "/api/v1/auth/callback/",
-    # Inbound webhooks authenticate themselves via provider-specific signatures
-    # (e.g. GitHub's X-Hub-Signature-256), not session cookies.
-    "/api/webhooks/",
 )
 
 # Exact auth paths that are public (login/register/status check).
@@ -58,6 +55,17 @@ _PUBLIC_EXACT_PATHS: frozenset[str] = frozenset(
         "/api/v1/auth/setup-status",
         "/api/v1/auth/initialize",
         "/api/v1/auth/providers",
+        # Inbound webhooks authenticate themselves via provider-specific
+        # signatures (e.g. GitHub's X-Hub-Signature-256), not session cookies.
+        # This is the ONE mounted webhook path, and it is listed exactly rather
+        # than as a ``/api/webhooks/`` prefix: a prefix exemption makes every
+        # future route under that namespace unauthenticated by virtue of
+        # existing, and the webhook plane is the one place a signature is the
+        # only thing between the internet and an agent run. Adding a provider
+        # means adding its exact path here and in csrf_middleware -- the
+        # fail-closed direction. github_webhooks.is_route_enabled() already
+        # leaves the route unmounted (404) unless a secret is configured.
+        "/api/webhooks/github",
         # Alpha peer discovery cards and paired-peer ingress authenticate with
         # the network pairing token in the route/service, not a browser
         # session. These are exact paths so a future local route cannot become

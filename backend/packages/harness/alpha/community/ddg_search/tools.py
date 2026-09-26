@@ -1,5 +1,24 @@
 """
 Web Search Tool - Search the web using DuckDuckGo (no API key required).
+
+Failure honesty
+---------------
+The one rule this module enforces: **a failed search is never reported as an
+empty result set.** ``{"results": []}`` means "DuckDuckGo answered and had
+nothing for this query"; anything that went wrong - unreachable engine, rate
+limit, missing package - is reported as a typed ``error`` object carrying the
+``kind`` vocabulary already used by :mod:`alpha.community.search_federation`
+(``unavailable`` / ``rate_limited`` / ``not_configured``), so the model reads
+the same failure words whichever search provider is configured. A model that
+cannot tell "the web has nothing" from "the search blew up" will confidently
+answer from an outage.
+
+Result bound
+------------
+``max_results`` is model-controlled, so it is clamped to
+:data:`MAX_RESULTS_HARD_CAP` before it reaches the engine. A tool call must not
+be able to inject an arbitrary wall of third-party text into the context
+window; the same bound the federated provider applies.
 """
 
 import json
@@ -7,6 +26,11 @@ import logging
 
 from langchain.tools import tool
 
+from alpha.community.search_federation.errors import (
+    ProviderNotConfiguredError,
+    ProviderRateLimitedError,
+    ProviderUnavailableError,
+)
 from alpha.community.search_time_range import DDGS_TIMELIMIT_BY_TIME_RANGE, SearchTimeRange
 from alpha.config import get_app_config
 
@@ -16,6 +40,27 @@ DEFAULT_BACKEND = "auto"
 DEFAULT_REGION = "wt-wt"
 DEFAULT_SAFESEARCH = "moderate"
 DEFAULT_WIKIPEDIA_REGION = "us-en"
+
+#: Provider identity used in every typed error this module reports.
+PROVIDER = "duckduckgo"
+
+#: Hard ceiling on model-supplied ``max_results``. Mirrors
+#: ``alpha.community.search_federation.tools.MAX_RESULTS_HARD_CAP``; kept as a
+#: local constant so the bundled keyless provider does not have to import the
+#: whole federation to read one number.
+MAX_RESULTS_HARD_CAP = 20
+MIN_RESULTS = 1
+
+#: Returned (not raised) when the engine answered and genuinely had nothing.
+EMPTY_RESULT_NOTE = (
+    "The DuckDuckGo engine answered this query and returned zero results. This is an empty "
+    "result set, not a search failure: nothing on the web matched, so rephrase or try a "
+    "different provider rather than retrying the same query."
+)
+
+#: Provider names the engine reports for the HTTP statuses that have a better
+#: ``kind`` than the generic transport failure.
+_RATE_LIMIT_MARKERS = ("rate limit", "too many requests", "429", "captcha", "blocked", "unusual traffic")
 
 WIKIPEDIA_BACKENDS = {"auto", "all", "wikipedia"}
 # ddgs 9.14.1: enabled text engines whose implementations honor ``timelimit``.
@@ -103,6 +148,128 @@ def _resolve_ddgs_region(query: str, region: str | None, backend: str | list[str
     return f"{country}-{WIKIPEDIA_LANGUAGE_ALIASES.get(language, language)}"
 
 
+class DuckDuckGoSearchError(ProviderUnavailableError):
+    """A DuckDuckGo search could not be performed.
+
+    Subclasses the shared :class:`~alpha.community.search_federation.errors.ProviderUnavailableError`
+    so it inherits that package's ``kind`` / ``to_dict()`` contract: every
+    search provider in the repo reports failures in the same vocabulary, and
+    the model reads the same failure words whichever provider is configured.
+
+    The default ``kind`` is ``unavailable`` (transport failure). Two sibling
+    classes below narrow it to the two other cases worth telling apart.
+    Raised - never swallowed - by :func:`search_web` and :func:`_search_text`,
+    so a caller can distinguish "the engine is unreachable / rate-limited /
+    misconfigured" from "the engine answered and had nothing for this query".
+    """
+
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(PROVIDER, message, status_code=status_code)
+
+
+class DuckDuckGoRateLimitedError(ProviderRateLimitedError, DuckDuckGoSearchError):
+    """The engine answered, but refused the query as too frequent."""
+
+
+class DuckDuckGoNotInstalledError(ProviderNotConfiguredError, DuckDuckGoSearchError):
+    """The optional ``ddgs`` package is not installed.
+
+    A *configuration* failure, not an empty answer and not an outage. It gets
+    its own ``kind`` so the tool can tell the operator to install a package
+    instead of telling the model the web had nothing.
+    """
+
+
+def _clamp_max_results(value: object, default: int = 5) -> int:
+    """Clamp a model- or config-supplied ``max_results`` into ``[1, 20]``.
+
+    ``max_results`` is chosen by the model, so without a ceiling a single tool
+    call can ask the engine for an unbounded result set and inject a wall of
+    third-party text into the context window. Junk falls back to *default*
+    rather than to the cap, so a malformed value cannot silently become
+    "give me everything".
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        return default
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(MIN_RESULTS, min(MAX_RESULTS_HARD_CAP, number))
+
+
+def _classify_engine_error(exc: Exception) -> DuckDuckGoSearchError:
+    """Map a raw engine exception onto the typed-error vocabulary.
+
+    Only the shape of the message is inspected, and only to pick between
+    ``rate_limited`` and ``unavailable`` - the two cases where the model should
+    retry later rather than assume the web is empty. The message is truncated
+    here so an upstream body can never ride into agent context whole.
+    """
+    detail = f"{type(exc).__name__}: {str(exc)[:200]}"
+    lowered = detail.lower()
+    if any(marker in lowered for marker in _RATE_LIMIT_MARKERS):
+        return DuckDuckGoRateLimitedError(detail)
+    return DuckDuckGoSearchError(detail)
+
+
+def search_web(
+    query: str,
+    max_results: int = 5,
+    region: str | None = DEFAULT_REGION,
+    safesearch: str | None = DEFAULT_SAFESEARCH,
+    backend: str | list[str] | tuple[str, ...] | None = DEFAULT_BACKEND,
+    time_range: SearchTimeRange | None = None,
+    timeout: float = 30.0,
+) -> list[dict]:
+    """Execute a keyless DuckDuckGo text search, raising on failure.
+
+    Returns an empty list **only** when the engine genuinely had no results.
+
+    Args:
+        query: Search keywords
+        max_results: Maximum number of results
+        region: Search region
+        safesearch: Safe search level
+        backend: DDGS backend(s), e.g. "auto", "duckduckgo", or "duckduckgo,brave"
+        time_range: Optional relative publication/update window
+        timeout: Per-request timeout in seconds (rounded up to whole seconds)
+
+    Raises:
+        DuckDuckGoNotInstalledError: The ``ddgs`` package is missing.
+        DuckDuckGoSearchError: The engine could not be reached, or refused the
+            query. Never raised for a genuinely empty result set.
+    """
+    try:
+        from ddgs import DDGS
+    except ImportError as exc:
+        raise DuckDuckGoNotInstalledError("ddgs library not installed. Run: pip install ddgs") from exc
+
+    seconds = max(1, int(timeout)) if isinstance(timeout, (int, float)) else 30
+    try:
+        ddgs = DDGS(timeout=seconds)
+    except Exception as exc:
+        raise _classify_engine_error(exc) from exc
+
+    try:
+        resolved_backend = _resolve_time_range_backend(backend) if time_range is not None else _normalize_backend(backend)
+        search_kwargs: dict[str, object] = {
+            "region": _resolve_ddgs_region(query, region, resolved_backend),
+            "safesearch": _normalize_setting(safesearch, DEFAULT_SAFESEARCH),
+            "max_results": _clamp_max_results(max_results),
+            "backend": resolved_backend,
+        }
+        if time_range is not None:
+            search_kwargs["timelimit"] = DDGS_TIMELIMIT_BY_TIME_RANGE[time_range]
+        results = ddgs.text(query, **search_kwargs)
+        return list(results) if results else []
+
+    except DuckDuckGoSearchError:
+        raise
+    except Exception as exc:
+        raise _classify_engine_error(exc) from exc
+
+
 def _search_text(
     query: str,
     max_results: int = 5,
@@ -114,6 +281,13 @@ def _search_text(
     """
     Execute text search using DuckDuckGo.
 
+    Historical name kept because the bundled ``web_search`` tool calls it (and
+    callers patch it in tests). It used to swallow
+    :class:`DuckDuckGoSearchError` and return ``[]``, which is precisely the
+    bug this module now forbids: a transport failure reached the model as
+    "no results found", i.e. as a claim that the web had nothing. It now
+    propagates the typed error like :func:`search_web`.
+
     Args:
         query: Search keywords
         max_results: Maximum number of results
@@ -123,34 +297,19 @@ def _search_text(
         time_range: Optional relative publication/update window
 
     Returns:
-        List of search results
+        List of search results; empty **only** when the engine answered with none.
+
+    Raises:
+        DuckDuckGoSearchError: See :func:`search_web`.
     """
-    try:
-        from ddgs import DDGS
-    except ImportError:
-        logger.error("ddgs library not installed. Run: pip install ddgs")
-        return []
-
-    ddgs = DDGS(timeout=30)
-
-    try:
-        backend = _resolve_time_range_backend(backend) if time_range is not None else _normalize_backend(backend)
-        safesearch = _normalize_setting(safesearch, DEFAULT_SAFESEARCH)
-        effective_region = _resolve_ddgs_region(query, region, backend)
-        search_kwargs: dict[str, object] = {
-            "region": effective_region,
-            "safesearch": safesearch,
-            "max_results": max_results,
-            "backend": backend,
-        }
-        if time_range is not None:
-            search_kwargs["timelimit"] = DDGS_TIMELIMIT_BY_TIME_RANGE[time_range]
-        results = ddgs.text(query, **search_kwargs)
-        return list(results) if results else []
-
-    except Exception as e:
-        logger.error(f"Failed to search web: {e}")
-        return []
+    return search_web(
+        query,
+        max_results=max_results,
+        region=region,
+        safesearch=safesearch,
+        backend=backend,
+        time_range=time_range,
+    )
 
 
 @tool("web_search", parse_docstring=True)
@@ -161,9 +320,16 @@ def web_search_tool(
 ) -> str:
     """Search the web for information. Use this tool to find current information, news, articles, and facts from the internet.
 
+    An empty `results` list means the search engine answered and had nothing for
+    this query. When the search did not run at all the response instead carries
+    an `error` object whose `kind` is one of `unavailable` (the engine could not
+    be reached - retry later or use another provider), `rate_limited` (retry
+    later) or `not_configured` (the optional `ddgs` package is not installed).
+    Never report an `error` as "nothing exists on the web".
+
     Args:
         query: Search keywords describing what you want to find. Be specific for better results.
-        max_results: Maximum number of results to return. Default is 5.
+        max_results: Maximum number of results to return (1-20). Default is 5.
         time_range: Optional relative publication/update window. Use only when the request requires recent results.
     """
     config = get_app_config().get_tool_config("web_search")
@@ -178,17 +344,50 @@ def web_search_tool(
         safesearch = config.model_extra.get("safesearch", safesearch)
         backend = config.model_extra.get("backend", backend)
 
-    results = _search_text(
-        query=query,
-        max_results=max_results,
-        region=region,
-        safesearch=safesearch,
-        backend=backend,
-        time_range=time_range,
-    )
+    max_results = _clamp_max_results(max_results)
+
+    try:
+        results = _search_text(
+            query=query,
+            max_results=max_results,
+            region=region,
+            safesearch=safesearch,
+            backend=backend,
+            time_range=time_range,
+        )
+    except DuckDuckGoSearchError as exc:
+        # The search did not run. Report the typed failure; never a result list.
+        logger.error("DuckDuckGo search failed: %s", exc)
+        payload: dict[str, object] = {"error": exc.to_dict(), "query": query}
+        hint = _hint_for(exc)
+        if hint:
+            payload["hint"] = hint
+        return json.dumps(payload, indent=2, ensure_ascii=False)
+    except Exception as exc:  # noqa: BLE001 - a tool must return, not explode
+        logger.exception("DuckDuckGo search failed unexpectedly")
+        return json.dumps(
+            {
+                "error": {
+                    "kind": "unavailable",
+                    "provider": PROVIDER,
+                    "message": f"{type(exc).__name__}: {str(exc)[:200]}",
+                    "status_code": None,
+                    "retry_after_seconds": None,
+                },
+                "query": query,
+                "hint": "the search did not run; this is not evidence that the web has nothing on the topic",
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
 
     if not results:
-        return json.dumps({"error": "No results found", "query": query}, ensure_ascii=False)
+        # The engine answered and had nothing. Distinct from every failure above.
+        return json.dumps(
+            {"query": query, "total_results": 0, "results": [], "note": EMPTY_RESULT_NOTE},
+            indent=2,
+            ensure_ascii=False,
+        )
 
     normalized_results = [
         {
@@ -206,3 +405,12 @@ def web_search_tool(
     }
 
     return json.dumps(output, indent=2, ensure_ascii=False)
+
+
+def _hint_for(exc: DuckDuckGoSearchError) -> str:
+    """One actionable sentence per failure kind, so the model knows its next move."""
+    if isinstance(exc, DuckDuckGoNotInstalledError):
+        return "install the optional package with `pip install ddgs`, or configure a different web_search provider"
+    if isinstance(exc, DuckDuckGoRateLimitedError):
+        return "the engine is rate-limiting this client; wait before retrying, or configure a different web_search provider"
+    return "the search engine could not be reached; this is not evidence that the web has nothing on the topic"

@@ -82,11 +82,7 @@ def _parse_summary(stdout: str) -> dict[str, int] | None:
         values: dict[str, int] = {}
         for field in line.removeprefix("summary: ").split():
             key, separator, value = field.partition("=")
-            if (
-                separator
-                and key in {"documents", "skipped", "files_walked"}
-                and value.isdigit()
-            ):
+            if separator and key in {"documents", "skipped", "files_walked"} and value.isdigit():
                 values[key] = int(value)
         if values:
             return values
@@ -94,19 +90,13 @@ def _parse_summary(stdout: str) -> dict[str, int] | None:
 
 
 def _unified_diff(committed: bytes | None, generated: bytes) -> str:
-    old_lines = (
-        []
-        if committed is None
-        else committed.decode("utf-8", errors="replace").splitlines(keepends=True)
-    )
+    old_lines = [] if committed is None else committed.decode("utf-8", errors="replace").splitlines(keepends=True)
     new_lines = generated.decode("utf-8").splitlines(keepends=True)
     text = "".join(
         difflib.unified_diff(
             old_lines,
             new_lines,
-            fromfile=INDEX_REL.as_posix()
-            if committed is not None
-            else f"{INDEX_REL.as_posix()} (missing)",
+            fromfile=INDEX_REL.as_posix() if committed is not None else f"{INDEX_REL.as_posix()} (missing)",
             tofile="generated docs/INDEX.md",
             n=3,
         )
@@ -116,9 +106,7 @@ def _unified_diff(committed: bytes | None, generated: bytes) -> str:
     return text
 
 
-def _generator_command(
-    generator: Path, root: Path, output: Path, commit: str | None, max_files: int
-) -> list[str]:
+def _generator_command(generator: Path, root: Path, output: Path, commit: str | None, max_files: int) -> list[str]:
     command = [
         sys.executable,
         str(generator),
@@ -134,16 +122,12 @@ def _generator_command(
     return command
 
 
-def run_gate(
-    root: Path, *, commit: str | None = None, max_files: int = MAX_FILES
-) -> GateResult:
+def run_gate(root: Path, *, commit: str | None = None, max_files: int = MAX_FILES) -> GateResult:
     """Run the official generator in a temporary location and compare bytes."""
 
     root = _resolve_root(root)
     if not root.is_dir():
-        return GateResult(
-            "error", 2, error=f"repository root does not exist: {root.name}"
-        )
+        return GateResult("error", 2, error=f"repository root does not exist: {root.name}")
     if max_files < 1:
         return GateResult("error", 2, error="--max-files must be positive")
     generator = root / GENERATOR_REL
@@ -175,14 +159,8 @@ def run_gate(
                 check=False,
             )
             if result.returncode != 0:
-                detail = (
-                    result.stderr.strip()
-                    or result.stdout.strip()
-                    or "generator failed without a message"
-                )
-                return GateResult(
-                    "error", 2, error=f"generator exited {result.returncode}: {detail}"
-                )
+                detail = result.stderr.strip() or result.stdout.strip() or "generator failed without a message"
+                return GateResult("error", 2, error=f"generator exited {result.returncode}: {detail}")
             if not output.is_file():
                 return GateResult(
                     "error",
@@ -191,20 +169,14 @@ def run_gate(
                 )
             generated = output.read_bytes()
             committed_path = root / INDEX_REL
-            committed = (
-                committed_path.read_bytes() if committed_path.is_file() else None
-            )
+            committed = committed_path.read_bytes() if committed_path.is_file() else None
     except OSError as exc:
-        return GateResult(
-            "error", 2, error=f"could not run documentation generator: {exc}"
-        )
+        return GateResult("error", 2, error=f"could not run documentation generator: {exc}")
 
     summary = _parse_summary(result.stdout)
     if committed == generated:
         return GateResult("clean", 0, summary=summary)
-    return GateResult(
-        "drift", 1, diff=_unified_diff(committed, generated), summary=summary
-    )
+    return GateResult("drift", 1, diff=_unified_diff(committed, generated), summary=summary)
 
 
 def _print_human(result: GateResult) -> None:
@@ -212,12 +184,7 @@ def _print_human(result: GateResult) -> None:
         print(f"ERROR: {result.error}", file=sys.stderr)
         return
     if result.summary is not None:
-        print(
-            "summary: "
-            f"documents={result.summary.get('documents', 0)} "
-            f"skipped={result.summary.get('skipped', 0)} "
-            f"files_walked={result.summary.get('files_walked', 0)}"
-        )
+        print(f"summary: documents={result.summary.get('documents', 0)} skipped={result.summary.get('skipped', 0)} files_walked={result.summary.get('files_walked', 0)}")
     if result.diff:
         print(result.diff, end="" if result.diff.endswith("\n") else "\n")
     if result.status == "drift":

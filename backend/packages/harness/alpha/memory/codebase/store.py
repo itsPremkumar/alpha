@@ -10,12 +10,20 @@ import time
 from collections.abc import Iterable
 from pathlib import Path
 
+from alpha.memory._store_format import (
+    STORE_FORMAT_UNSUPPORTED,
+    StoreFormatVerdict,
+    classify_store_format,
+    format_disclosure,
+)
+
 from .config import CodebaseConfig
 from .models import CodebaseSnapshot
 from .paths import atomic_write_text, codebase_root, repo_dir, snapshot_path
 
 logger = logging.getLogger(__name__)
 _SCHEMA = 1
+_STORE_ID = "codebase.snapshots"
 _locks_guard = threading.Lock()
 _path_locks: dict[str, threading.RLock] = {}
 
@@ -30,6 +38,10 @@ def _lock_for(path: Path) -> threading.RLock:
         return lock
 
 
+class CodebaseStoreUnavailable(RuntimeError):
+    """Raised when a write is refused because the document is not safely writable."""
+
+
 class CodebaseStore:
     """Store snapshots per repository with atomic, bounded history.
 
@@ -38,7 +50,9 @@ class CodebaseStore:
     replace, so readers see either the old complete document or the new one.
     If the document cannot be parsed/validated it is moved to a sibling
     ``.corrupt-*`` file before an empty history is used; the unreadable bytes
-    are never silently overwritten.
+    are never silently overwritten.  A document that parses but declares a
+    format this build does not implement is *not* quarantined: it is left in
+    place, refused, and disclosed through :meth:`read_status`.
     """
 
     def __init__(
@@ -62,6 +76,7 @@ class CodebaseStore:
         self.max_history = int(selected_history)
         self._path = snapshot_path(self.root, self.repo_id)
         self._lock = _lock_for(self._path)
+        self._format_refusals: dict[str, StoreFormatVerdict] = {}
 
     @property
     def path(self) -> Path:
@@ -98,10 +113,29 @@ class CodebaseStore:
     def _read_document(self, repo_id: str) -> dict[str, object]:
         path = snapshot_path(self.root, repo_id)
         if not path.exists():
+            self._format_refusals.pop(repo_id, None)
             return {"schema": _SCHEMA, "repo_id": repo_id, "current_version": 0, "snapshots": []}
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
-            if not isinstance(raw, dict) or raw.get("schema") != _SCHEMA or not isinstance(raw.get("snapshots"), list):
+        except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+            logger.error("Codebase store: invalid document %s (%s)", path, exc)
+            self._preserve_corrupt(path)
+            self._format_refusals.pop(repo_id, None)
+            return {"schema": _SCHEMA, "repo_id": repo_id, "current_version": 0, "snapshots": []}
+        # The bytes parsed. A marker this build does not implement means another
+        # build owns the file; renaming it here would destroy that build's data.
+        verdict = classify_store_format(store=_STORE_ID, path=path, raw=raw, supported_version=_SCHEMA)
+        if verdict.refusal:
+            self._format_refusals[repo_id] = verdict
+            logger.error(
+                "Codebase store: refusing %s (%s); document left in place and writes blocked",
+                verdict.path,
+                format_disclosure(verdict),
+            )
+            return {"schema": _SCHEMA, "repo_id": repo_id, "current_version": 0, "snapshots": []}
+        self._format_refusals.pop(repo_id, None)
+        try:
+            if not isinstance(raw, dict) or not isinstance(raw.get("snapshots"), list):
                 raise ValueError("invalid codebase snapshot document")
             snapshots = [CodebaseSnapshot.model_validate(item) for item in raw["snapshots"]]
             snapshots.sort(key=lambda item: (item.version, item.generated_at, item.repo_id))
@@ -115,6 +149,19 @@ class CodebaseStore:
             logger.error("Codebase store: invalid document %s (%s)", path, exc)
             self._preserve_corrupt(path)
             return {"schema": _SCHEMA, "repo_id": repo_id, "current_version": 0, "snapshots": []}
+
+    def read_status(self, repo_id: str | None = None) -> str:
+        """Return ``"ok"`` or the disclosure blocking writes to this repository."""
+
+        target = str(repo_id or self.repo_id or "default")
+        with self._lock_for_repo(target):
+            self._read_document(target)
+        return STORE_FORMAT_UNSUPPORTED if target in self._format_refusals else "ok"
+
+    def format_refusal(self, repo_id: str | None = None) -> StoreFormatVerdict | None:
+        """Return the version refusal held for a repository, or ``None``."""
+
+        return self._format_refusals.get(str(repo_id or self.repo_id or "default"))
 
     def _write_document(self, repo_id: str, snapshots: Iterable[CodebaseSnapshot], current_version: int) -> None:
         path = snapshot_path(self.root, repo_id)
@@ -147,6 +194,11 @@ class CodebaseStore:
         target_repo = str(repo_id or self.repo_id or "default")
         with self._lock_for_repo(target_repo):
             document = self._read_document(target_repo)
+            refusal = self._format_refusals.get(target_repo)
+            if refusal is not None:
+                # Never publish our own format over a document another build
+                # still owns: start the history over the moment it migrates.
+                raise CodebaseStoreUnavailable(format_disclosure(refusal))
             existing = list(document["snapshots"])  # type: ignore[arg-type]
             next_version = max((item.version for item in existing), default=0) + 1
             incoming = snapshot.model_copy(deep=True, update={"repo_id": target_repo, "version": next_version})

@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -5,6 +6,40 @@ from pathlib import Path
 from alpha.constants import DEFAULT_SKILLS_CONTAINER_PATH
 
 SKILL_MD_FILE = "SKILL.md"
+
+#: A skill name is an identifier, and the same identifier in every place that
+#: matters: the registry key, the operator's ``extensions_config.skills``
+#: enable/disable key, the per-user ``_skill_states.json`` toggle key, the
+#: ``/slash`` activation name, and the text rendered into the system prompt. It
+#: is defined here — in the leaf module both the parser and the storages already
+#: import — so the loader that admits a name and the path helpers that act on
+#: one cannot drift apart. ``skills/slash.py::parse_slash_skill_reference``
+#: independently requires this same grammar for the name a user can type, which
+#: is why a name outside it could never have been slash-activated but was still
+#: loaded, listed, and rendered.
+SKILL_NAME_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+
+#: Longest accepted skill name. Matches ``_skill_name_pattern``'s counterpart in
+#: the storage path validators.
+SKILL_NAME_MAX_LENGTH = 64
+
+
+def validate_skill_name(name: str) -> str:
+    """Validate and normalise a skill *name*; return the normalised form.
+
+    Raises ``ValueError`` when the name is not a hyphen-case identifier. Every
+    caller that is handed a skill name from an untrusted manifest must run this
+    before storing it as a key — a name outside the grammar is not merely
+    inelegant, it is a key the operator cannot reach: they cannot type it after
+    ``/``, and they cannot spell it in ``extensions_config.skills`` if they are
+    going by the directory they installed it into.
+    """
+    normalized = name.strip()
+    if not SKILL_NAME_PATTERN.fullmatch(normalized):
+        raise ValueError("Skill name must be hyphen-case using lowercase letters, digits, and hyphens only.")
+    if len(normalized) > SKILL_NAME_MAX_LENGTH:
+        raise ValueError(f"Skill name must be {SKILL_NAME_MAX_LENGTH} characters or fewer.")
+    return normalized
 
 
 class SkillCategory(StrEnum):

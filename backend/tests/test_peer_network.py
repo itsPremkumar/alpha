@@ -14,8 +14,12 @@ from alpha.peer_network.transport import PeerTransportError, TransportResult
 
 @pytest.fixture
 def services(tmp_path: Path):
-    first = PeerNetworkService(tmp_path / "alpha-a", enabled=False)
-    second = PeerNetworkService(tmp_path / "alpha-b", enabled=False)
+    # The peer plane is opt-in (ALPHA_PEER_NETWORK_ENABLED), and these tests
+    # exercise the live pairing/delivery path, so they enable it explicitly.
+    # The disabled behaviour — including a closed ingress plane — is pinned in
+    # test_peer_network_security.py.
+    first = PeerNetworkService(tmp_path / "alpha-a", enabled=True)
+    second = PeerNetworkService(tmp_path / "alpha-b", enabled=True)
     yield first, second
     first.store.close()
     second.store.close()
@@ -148,9 +152,11 @@ def test_many_to_one_incoming_messages_share_a_conversation(services):
 
 
 def test_shared_pairing_code_is_disambiguated_by_sender_id(tmp_path):
-    receiver = PeerNetworkService(tmp_path / "receiver", enabled=False)
-    first_sender = PeerNetworkService(tmp_path / "sender-a", enabled=False)
-    second_sender = PeerNetworkService(tmp_path / "sender-b", enabled=False)
+    # The ingress plane is opt-in; these senders deliver to the receiver, so the
+    # receiver and both senders are created with it enabled.
+    receiver = PeerNetworkService(tmp_path / "receiver", enabled=True)
+    first_sender = PeerNetworkService(tmp_path / "sender-a", enabled=True)
+    second_sender = PeerNetworkService(tmp_path / "sender-b", enabled=True)
     # Deliberately share the receiver's pairing code across two peers.
     for sender in (first_sender, second_sender):
         receiver.store.upsert_peer(

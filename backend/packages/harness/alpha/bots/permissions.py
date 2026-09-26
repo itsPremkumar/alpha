@@ -11,7 +11,58 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from alpha.bots.authority_ceiling import AuthorityCeiling, get_ceiling
+
 logger = logging.getLogger(__name__)
+
+#: The MINIMUM authority capability each tool requires, independent of role.
+#: A tool with no entry is withheld from every bot-filtered assembly: an
+#: unclassified tool is an unbounded one, and the safe assumption about an
+#: unbounded tool is that it is above the ceiling.
+#:
+#: This is a floor, not a grant. The role ring still decides whether the role may
+#: use it; this map only decides whether the tool is inside the authority
+#: envelope at all.
+TOOL_CAPABILITY_FLOOR: dict[str, frozenset[str]] = {
+    # observe / read
+    "view_file": frozenset({"observe"}),
+    "grep_search": frozenset({"observe"}),
+    "find_by_name": frozenset({"observe"}),
+    "list_dir": frozenset({"observe"}),
+    "read_url_content": frozenset({"observe"}),
+    "web_search": frozenset({"observe"}),
+    "deep_web_search": frozenset({"observe"}),
+    "web_fetch": frozenset({"observe"}),
+    "read_file": frozenset({"observe"}),
+    "ls": frozenset({"observe"}),
+    "grep": frozenset({"observe"}),
+    # reason
+    "ask_question": frozenset({"reason"}),
+    "execute_slash_command": frozenset({"reason"}),
+    "identify_autonomous_command": frozenset({"reason"}),
+    "describe_skill": frozenset({"reason"}),
+    # dispatch
+    "message_agent": frozenset({"dispatch"}),
+    "task": frozenset({"dispatch"}),
+    # write inside the workspace
+    "write_to_file": frozenset({"workspace_write"}),
+    "replace_file_content": frozenset({"workspace_write"}),
+    "hashline_edit": frozenset({"workspace_write"}),
+    # process execution
+    "run_command": frozenset({"process_exec"}),
+    "bash": frozenset({"process_exec"}),
+    "python_repl": frozenset({"process_exec"}),
+    # irreversible: still routed through the approval gate, and above the
+    # default ceiling, so a bot-filtered assembly never hands these out.
+    "delete_file": frozenset({"process_exec", "repository_mutate"}),
+    "git_push": frozenset({"repository_mutate"}),
+    "deploy_production": frozenset({"repository_mutate"}),
+    "drop_database": frozenset({"repository_mutate"}),
+    # self-extension: minting authority is above every default ceiling
+    "hire_bot": frozenset({"grant_authority"}),
+    "rescope_bot": frozenset({"grant_authority"}),
+    "propose_self_modification": frozenset({"grant_authority"}),
+}
 
 
 class NamedTool(Protocol):
@@ -137,6 +188,41 @@ DEFAULT_ROLE_RINGS: dict[str, RolePermissionRing] = {
             "replace_file_content",
         },
     ),
+    # The Alpha leader is the most dangerous profile to get wrong, so its ring
+    # is an EXPLICIT narrow allowlist rather than `allow_all` and rather than an
+    # accidental fallthrough to the general-worker default. It may read, search,
+    # message teammates and inspect the roster — the verbs of selection — and it
+    # is denied every write/shell/push verb, because dispatching work is not the
+    # same authority as performing irreversible work. Nothing here sits in
+    # `approval_required_tools`, so a leader dispatch can never quietly satisfy a
+    # tool a human must sign off.
+    "Autonomous Leader & Capability Dispatch Director": RolePermissionRing(
+        role_name="Autonomous Leader & Capability Dispatch Director",
+        allowed_tools={
+            "view_file",
+            "grep_search",
+            "find_by_name",
+            "list_dir",
+            "message_agent",
+            "ask_question",
+            "ask_clarification",
+            "bot_roster",
+            "batch_status",
+            "cancel_batch",
+            "execute_slash_command",
+            "identify_autonomous_command",
+        },
+        denied_tools={
+            "write_to_file",
+            "replace_file_content",
+            "run_command",
+            "delete_file",
+            "git_push",
+            "deploy_production",
+            "drop_database",
+            "rotate_credentials",
+        },
+    ),
     "lead": RolePermissionRing(role_name="lead", allow_all=True),
     "supervisor": RolePermissionRing(role_name="supervisor", allow_all=True),
     "admin": RolePermissionRing(role_name="admin", allow_all=True),
@@ -151,6 +237,7 @@ def filter_tools_by_role[ToolT: NamedTool](
     gate: ToolPermissionGate | None = None,
     *,
     enabled: bool = True,
+    ceiling: AuthorityCeiling | None = None,
 ) -> list[ToolT]:
     """Pure, testable helper: drop tools a bot role may not execute.
 
@@ -172,15 +259,35 @@ def filter_tools_by_role[ToolT: NamedTool](
     if not enabled or not bot_role:
         return tools
     resolved = gate or ToolPermissionGate()
+    bound = ceiling or get_ceiling()
     kept: list[ToolT] = []
     for tool in tools:
         allowed, _reason, requires_approval = resolved.check_permission(bot_role, tool.name)
-        if allowed or requires_approval:
-            kept.append(tool)
-        else:
+        if not (allowed or requires_approval):
             logger.debug(
                 "Tool %s withheld from role %s by permission ring", tool.name, bot_role
             )
+            continue
+        # The authority ceiling is a SECOND, independent filter on the same
+        # path. The role ring answers "may this role use this tool"; the ceiling
+        # answers "is this tool inside the authority envelope at all". Because
+        # this is the real tool-assembly chokepoint, a profile that somehow
+        # acquired an over-broad role still cannot be handed a tool above the
+        # ceiling -- the two checks cannot be satisfied by editing one of them.
+        if not TOOL_CAPABILITY_FLOOR.get(tool.name):
+            logger.debug(
+                "Tool %s withheld: no authority-ceiling capability covers it", tool.name
+            )
+            continue
+        ok, _violations = bound.within_ceiling(TOOL_CAPABILITY_FLOOR[tool.name])
+        if not ok:
+            logger.warning(
+                "Tool %s withheld from %s: requires a capability above the authority ceiling",
+                tool.name,
+                bot_role,
+            )
+            continue
+        kept.append(tool)
     return kept
 
 
@@ -206,8 +313,17 @@ class ToolPermissionGate:
 
         # Unprivileged rings may keep fuzzy matching: matching the wrong one is
         # fail-safe here, because it can only grant a narrower set.
+        #
+        # The key is lower-cased before the containment test. It used to be
+        # compared as-written against an already-lower-cased role, so a ring
+        # declared with any capital letter (e.g. the Alpha leader's
+        # "Autonomous Leader & Capability Dispatch Director") could never match
+        # and silently fell through to the general-worker default — a ring that
+        # looks enforced and is not. Only the FUZZY loop lower-cases; the
+        # allow_all loop above stays exact so no privileged ring can be widened
+        # by casing.
         for k, ring in self.rings.items():
-            if not ring.allow_all and k in r:
+            if not ring.allow_all and k.lower() in r:
                 return ring
         # Fallback default: general worker (can read, message, ask)
         return RolePermissionRing(

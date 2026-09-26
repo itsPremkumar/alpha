@@ -4,17 +4,20 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-import re
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from pathlib import Path
 
 from alpha.constants import DEFAULT_SKILLS_CONTAINER_PATH
-from alpha.skills.types import SKILL_MD_FILE, Skill, SkillCategory  # noqa: F401
+from alpha.skills.types import (  # noqa: F401
+    SKILL_MD_FILE,
+    SKILL_NAME_PATTERN,
+    Skill,
+    SkillCategory,
+    validate_skill_name,
+)
 
 logger = logging.getLogger(__name__)
-
-_SKILL_NAME_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 
 class SkillStorage(ABC):
@@ -35,13 +38,13 @@ class SkillStorage(ABC):
 
     @staticmethod
     def validate_skill_name(name: str) -> str:
-        """Validate and normalise a skill name; return the normalised form."""
-        normalized = name.strip()
-        if not _SKILL_NAME_PATTERN.fullmatch(normalized):
-            raise ValueError("Skill name must be hyphen-case using lowercase letters, digits, and hyphens only.")
-        if len(normalized) > 64:
-            raise ValueError("Skill name must be 64 characters or fewer.")
-        return normalized
+        """Validate and normalise a skill name; return the normalised form.
+
+        Delegates to :func:`alpha.skills.types.validate_skill_name` — the single
+        definition of the identifier grammar, shared with the manifest parser
+        that admits the name in the first place.
+        """
+        return validate_skill_name(name)
 
     @staticmethod
     def validate_relative_path(relative_path: str, base_dir: Path) -> Path:

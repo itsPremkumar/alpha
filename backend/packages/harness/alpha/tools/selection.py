@@ -83,6 +83,46 @@ def _slug(candidate: Candidate, index: int) -> str:
     return ident or f"cand_{index}"
 
 
+def _emit_selection(site: str, task: str, pool: list[Candidate], ranking: Ranking, chosen: str | None) -> None:
+    """Record the selection decision for the behaviour trace. Never raises.
+
+    This is layers 3 (tools) and 4 (skills) from one place, because
+    :func:`rank_candidates` is the one shared ranking helper both go through
+    (``site="tool_select"`` / ``site="skill_select"``). Recording the candidate
+    set and not merely the winner is the whole point: which tool *ran* is already
+    in the tool-call event, and "which tools were on the table, and why this one
+    won" is the only thing a self-improving system can learn from a selection.
+
+    ``site`` decides the layer, so a new caller gets a correctly-typed event by
+    naming itself rather than by being patched later.
+    """
+    try:
+        from alpha.observability.trace.instrumentation import emit_skill_selection, emit_tool_selection
+
+        candidates = [candidate.id or candidate.title for candidate in pool]
+        scores = dict(ranking.scores)
+        reason = f"system_one_ranking refined={ranking.refined} jev={ranking.jev_used} top_n={len(ranking.ids)}"
+        if site.startswith("skill"):
+            emit_skill_selection(
+                candidates=candidates,
+                chosen=chosen or "",
+                reason=reason,
+                registry_version=f"selection:{SITE}",
+                scores=scores,
+                extra_payload={"query": task, "site": site},
+            )
+        else:
+            emit_tool_selection(
+                candidates=candidates,
+                chosen=chosen or "",
+                reason=reason,
+                scores=scores,
+                extra_payload={"query": task, "site": site},
+            )
+    except Exception:  # noqa: BLE001 - a trace must never break the selection it describes
+        return
+
+
 def build_coarse_question(candidates: list[Candidate]) -> ChoiceQuestion:
     """One choice over every candidate, judged on its short summary."""
     criteria = {_slug(c, i): f"{c.title}: {c.coarse_text}" for i, c in enumerate(candidates)}
@@ -182,6 +222,7 @@ async def rank_candidates(
 
     if refine <= 0 or len(pool) < 2:
         ranking.ids = ranking.ids[:top_n]
+        _emit_selection(label, task, pool, ranking, ranking.ids[0] if ranking.ids else None)
         return ranking
 
     shortlist_ids = ranking.ids[: min(refine, len(pool))]
@@ -220,6 +261,7 @@ async def rank_candidates(
             ranking.scores.update(refined_answer.scores)
 
     ranking.ids = ranking.ids[:top_n]
+    _emit_selection(label, task, pool, ranking, ranking.ids[0] if ranking.ids else None)
     return ranking
 
 

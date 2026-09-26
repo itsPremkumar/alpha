@@ -1,0 +1,85 @@
+name: Cold Start
+
+# Cold-start budget: two enforcement points for one property.
+#
+# BLOCKING (this workflow, on every change to the startup path)
+#   * `check_cold_start_imports.py` -- the *deterministic* half. It parses the
+#     startup-path packages and gates the imports that run when a module is
+#     imported. No wall clock, no subprocess, no dependency install, the same
+#     answer on every runner. A newly added eager/heavy import on the startup
+#     path is caught here, in seconds, in the diff.
+#   * `check_cold_start_budget.py --validate` -- the wall-clock gate's
+#     *configuration*. The measurement itself is a wall-clock median, which a
+#     contended shared runner cannot decide reproducibly, so it runs nightly
+#     (see nightly.yaml, job `cold-start-budget`). What is checked here is that
+#     the baseline exists, parses, budgets every probed target, carries module
+#     budgets and records the host it was measured on: a baseline that cannot
+#     produce a verdict would otherwise rot silently until the nightly ran.
+#
+# NIGHTLY (nightly.yaml, job `cold-start-budget`)
+#   The medians, against the unchanged committed baseline. Deliberately not
+#   blocking: see the variance numbers in the job comment.
+#
+# Neither job may swallow a failure: no `continue-on-error`, no `|| true`, no
+# timeout padding. Both jobs carry an explicit `timeout-minutes` because a gate
+# that hangs is not a gate.
+
+on:
+  push:
+    branches: ['main', '2.0.x-dev']
+    paths:
+      - 'backend/packages/harness/alpha/**'
+      - 'backend/app/gateway/**'
+      - 'scripts/check_cold_start_imports.py'
+      - 'scripts/check_cold_start_budget.py'
+      - 'scripts/cold_start_probe.py'
+      - 'backend/benchmarks/cold_start/**'
+      - 'backend/tests/test_cold_start.py'
+      - 'backend/tests/test_cold_start_import_gate.py'
+      - '.github/workflows/cold-start-budget.yml'
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'backend/packages/harness/alpha/**'
+      - 'backend/app/gateway/**'
+      - 'scripts/check_cold_start_imports.py'
+      - 'scripts/check_cold_start_budget.py'
+      - 'scripts/cold_start_probe.py'
+      - 'backend/benchmarks/cold_start/**'
+      - 'backend/tests/test_cold_start.py'
+      - 'backend/tests/test_cold_start_import_gate.py'
+      - '.github/workflows/cold-start-budget.yml'
+
+concurrency:
+  group: cold-start-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  cold-start-imports:
+    runs-on: ubuntu-latest
+    # The gate opens and parses every Python file under the two startup-path
+    # roots (1700+ files, ~1.7k file opens). On an AV-scanned Windows host
+    # those opens dominate; on a Linux runner it is seconds. The bound is the
+    # belt to the script's own bounds, not padding for a slow measurement.
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      # Standard library only -- the gate is an AST scan, so it needs no
+      # dependency install and cannot be broken by a resolver failure. That is
+      # deliberate: this is the one cold-start check that must keep working
+      # when the environment does not.
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Gate eager (module-scope) imports on the startup path
+        run: python scripts/check_cold_start_imports.py
+
+      - name: The wall-clock gate's baseline is complete and measurable
+        run: python scripts/check_cold_start_budget.py --validate

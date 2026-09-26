@@ -1,6 +1,59 @@
 """Bot Mode and Autonomous Persona Engine for Alpha."""
 
+from alpha.bots.alpha_leader import (
+    ALPHA_LEADER_NAME,
+    ALPHA_LEADER_ROLE,
+    ALPHA_LEADER_SOUL,
+    ALPHA_LEADER_SYSTEM_PROMPT,
+    DIRECTABLE_CAPABILITIES,
+    LEADER_CAPABILITIES,
+    NEVER_DIRECTED_CAPABILITIES,
+    LeaderAuthorityError,
+    alpha_leader_template,
+    assert_leader_may_direct,
+    authority_boundary,
+    ensure_alpha_leader,
+    leader_may_direct,
+)
+from alpha.bots.authority_ceiling import (
+    ALLOWED_CAPABILITIES,
+    CAPABILITY_RANKS,
+    PROTECTED_COMPONENTS,
+    AuthorityCeiling,
+    AuthorityViolation,
+    enforce_grant,
+    get_ceiling,
+    is_protected_component,
+    narrow_to_ceiling,
+)
+from alpha.bots.autonomy_guard import (
+    AutonomyBounds,
+    AutonomyCeilingExceeded,
+    AutonomyGuard,
+    Budget,
+    CycleDetected,
+    DescendantRecord,
+    aggregate_descendants,
+)
+from alpha.bots.capability_dispatch import (
+    CapabilityDispatcher,
+    DispatchDecision,
+    DispatchOutcome,
+    dispatch_task,
+    get_leader_dispatcher,
+)
 from alpha.bots.cloning import BotCloneEngine, CloneMode, get_bot_clone_engine
+from alpha.bots.delegation import (
+    ChildReport,
+    ChildStatus,
+    DelegationContext,
+    DelegationLimits,
+    DelegationTree,
+    TreeStatus,
+    child_report,
+    root_context,
+    run_bounded,
+)
 from alpha.bots.dm import (
     MESSAGE_AGENT_TOOL_NAME,
     PROTOCOL_MARKER,
@@ -17,6 +70,14 @@ from alpha.bots.dm import (
     resolve_runtime_bot_name,
     send_dm,
 )
+from alpha.bots.dynamic_profiles import (
+    DynamicProfileStore,
+    ProfileProposal,
+    ProfileStoreUnreadable,
+    ProfileValidationError,
+    RuntimeProfile,
+    get_dynamic_profile_store,
+)
 from alpha.bots.ephemeral import EphemeralBotManager, EphemeralLease, get_ephemeral_manager
 from alpha.bots.epoch import CapabilityEpochManager
 from alpha.bots.events import get_org_event_store, log_org_event, query_org_events
@@ -26,6 +87,11 @@ from alpha.bots.failure_reasons import (
     classify_agent_error,
     is_auto_retryable,
     is_valid_agent_name,
+)
+from alpha.bots.governance_ledger import (
+    query_governance_actions,
+    record_authority_refusal,
+    record_governance_action,
 )
 from alpha.bots.handoff import TaskHandoffPackage, escalate_task, execute_handoff, resolve_succession
 from alpha.bots.health import BotHealthMonitor, get_health_monitor
@@ -38,15 +104,64 @@ from alpha.bots.kill_switch import (
     resume_bot,
     set_global_kill_switch,
 )
+from alpha.bots.lifecycle_governor import (
+    InFlightClaim,
+    LifecycleGovernor,
+    RetirementError,
+    RetirementResult,
+)
 from alpha.bots.organization import generate_organization_for_goal, get_organization_chart
 from alpha.bots.permissions import ROLE_PERMISSION_RINGS, ToolPermissionGate, get_permission_gate
 from alpha.bots.profile import BotProfile, generate_default_soul
 from alpha.bots.quality_gate import evaluate_quality_gate
+from alpha.bots.reassignment import (
+    ReassignmentAction,
+    ReassignmentOutcome,
+    reassign_after_failure,
+)
 from alpha.bots.registry import BotRegistry, get_bot_registry
+from alpha.bots.self_modification import (
+    PERMANENTLY_OFF_LIMITS,
+    SELF_MODIFIABLE_GLOBS,
+    SelfModificationGuard,
+    SelfModificationOutcome,
+    SelfModificationProposal,
+)
 from alpha.bots.templates import BOT_STATUSES, BOT_TEMPLATES, DEPARTMENTS, get_template, list_templates
 from alpha.bots.work_discovery import claim_task, match_bot_for_task
 
 __all__ = [
+    # ── Default leader + capability dispatch + bounded delegation ──
+    "ALPHA_LEADER_NAME",
+    "ALPHA_LEADER_ROLE",
+    "ALPHA_LEADER_SOUL",
+    "ALPHA_LEADER_SYSTEM_PROMPT",
+    "DIRECTABLE_CAPABILITIES",
+    "LEADER_CAPABILITIES",
+    "NEVER_DIRECTED_CAPABILITIES",
+    "LeaderAuthorityError",
+    "alpha_leader_template",
+    "assert_leader_may_direct",
+    "authority_boundary",
+    "ensure_alpha_leader",
+    "leader_may_direct",
+    "CapabilityDispatcher",
+    "DispatchDecision",
+    "DispatchOutcome",
+    "dispatch_task",
+    "get_leader_dispatcher",
+    "ChildReport",
+    "ChildStatus",
+    "DelegationContext",
+    "DelegationLimits",
+    "DelegationTree",
+    "TreeStatus",
+    "child_report",
+    "root_context",
+    "run_bounded",
+    "ReassignmentAction",
+    "ReassignmentOutcome",
+    "reassign_after_failure",
     "EphemeralBotManager",
     "EphemeralLease",
     "get_ephemeral_manager",
@@ -110,4 +225,39 @@ __all__ = [
     "BotCloneEngine",
     "CloneMode",
     "get_bot_clone_engine",
+    # Self-extension: hire / re-scope / retire under a hard authority ceiling.
+    "ALLOWED_CAPABILITIES",
+    "CAPABILITY_RANKS",
+    "PROTECTED_COMPONENTS",
+    "AuthorityCeiling",
+    "AuthorityViolation",
+    "enforce_grant",
+    "get_ceiling",
+    "is_protected_component",
+    "narrow_to_ceiling",
+    "DynamicProfileStore",
+    "ProfileProposal",
+    "ProfileStoreUnreadable",
+    "ProfileValidationError",
+    "RuntimeProfile",
+    "get_dynamic_profile_store",
+    "query_governance_actions",
+    "record_authority_refusal",
+    "record_governance_action",
+    "InFlightClaim",
+    "LifecycleGovernor",
+    "RetirementError",
+    "RetirementResult",
+    "PERMANENTLY_OFF_LIMITS",
+    "SELF_MODIFIABLE_GLOBS",
+    "SelfModificationGuard",
+    "SelfModificationOutcome",
+    "SelfModificationProposal",
+    "AutonomyBounds",
+    "AutonomyCeilingExceeded",
+    "AutonomyGuard",
+    "Budget",
+    "CycleDetected",
+    "DescendantRecord",
+    "aggregate_descendants",
 ]

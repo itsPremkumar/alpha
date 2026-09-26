@@ -5,6 +5,8 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
+from .evidence import RejectionCategory, RejectionReason, record_score
+from .lineage_chain import ChainVerdict, chain_head, seal_entry, verify_entries
 from .scoring import EvaluationVector
 
 
@@ -27,6 +29,14 @@ class VersionRecord:
     diff_summary: str = ""
     trajectory_depth: int = 0
     rejection_reason: str | None = None
+    #: The benchmark namespace this version's score belongs to.
+    #:
+    #: Scores are only commensurable within one benchmark. Comparing a score on
+    #: task B against the best committed score on task A is a category error, and
+    #: a lineage that does it will permanently refuse every candidate on B once A
+    #: has a high number. AVO's "best committed version so far" means so far
+    #: *within the same benchmark suite*; this field is what makes that true here.
+    task_id: str = "default"
     created_at: float = field(default_factory=time.time)
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -85,6 +95,7 @@ class VersionRecord:
             "diff_summary": self.diff_summary,
             "trajectory_depth": self.trajectory_depth,
             "rejection_reason": self.rejection_reason,
+            "task_id": self.task_id,
             "created_at": self.created_at,
             "metadata": self.metadata,
         }
@@ -101,57 +112,165 @@ class AVOLineage:
         self.versions: dict[str, VersionRecord] = {}
         self.rejected_attempts: list[VersionRecord] = []
         self.head_id: str | None = None
+        #: Append-only, tamper-evident chain over the committed lineage. Each link
+        #: covers its own payload and the previous link, so editing or removing a
+        #: committed version is detectable. See :mod:`alpha.avo.lineage_chain`.
+        self.chain: list[dict[str, Any]] = []
+
+    def best_committed(self, task_id: str | None = None) -> VersionRecord | None:
+        """The highest-scoring committed version, or ``None`` if nothing is committed.
+
+        This is the comparison target AVO's commit rule names: *"matches or
+        improves the benchmark score relative to the best committed version so
+        far"*. It is deliberately **not** the parent. A candidate may beat its
+        immediate parent and still be worse than the best committed version, and
+        in that case it is a regression and is rejected.
+
+        ``task_id`` scopes the search to one benchmark. Scores from different
+        benchmarks are not commensurable, so comparing across them would reject
+        correct work forever.
+        """
+        best: VersionRecord | None = None
+        best_score = float("-inf")
+        for record in self.versions.values():
+            if task_id is not None and record.task_id != task_id:
+                continue
+            score = record_score(record)
+            if score > best_score:
+                best, best_score = record, score
+        return best
 
     def commit_candidate(self, candidate: VersionRecord) -> bool:
         """
         Autonomous AVO Matches-or-improves commit policy:
           - FAIL correctness -> discard & archive in internal trajectory
-          - Worse score than parent -> reject & archive in internal trajectory
-          - Matches or improves parent -> accept & commit to P_t
+          - Worse score than the BEST COMMITTED version on the same benchmark -> reject & archive
+          - Matches or improves it -> accept & commit to P_t
           - Strictly improves current head -> promote to new head
+
+        Note on the comparison target: this used to compare against
+        ``candidate.parent_id``. That is not the rule -- a version that improves
+        on its immediate parent but is worse than an earlier commit is a
+        regression, and admitting it lets the committed lineage ratchet
+        downwards one local step at a time. The reference is
+        :meth:`best_committed`, scoped to the candidate's ``task_id``.
         """
         # Hard correctness gate: candidates that fail correctness receive zero score
         if not candidate.correctness:
-            candidate.rejection_reason = "CORRECTNESS_FAILURE"
-            self.rejected_attempts.append(candidate)
+            self._reject(candidate, RejectionReason.CORRECTNESS_FAILURE)
             return False
 
         candidate.compute_composite()
 
+        best = self.best_committed(candidate.task_id)
         if candidate.parent_id and candidate.parent_id in self.versions:
-            parent = self.versions[candidate.parent_id]
-            candidate.trajectory_depth = parent.trajectory_depth + 1
-
-            # Check Pareto / scalar improvement
-            if candidate.vector and parent.vector:
-                if not candidate.vector.matches_or_improves(parent.vector):
-                    candidate.rejection_reason = "REGRESSED_BELOW_PARENT_VECTOR"
-                    self.rejected_attempts.append(candidate)
-                    return False
-            elif candidate.composite_score < parent.composite_score:
-                candidate.rejection_reason = "REGRESSED_BELOW_PARENT_SCALAR"
-                self.rejected_attempts.append(candidate)
-                return False
+            candidate.trajectory_depth = self.versions[candidate.parent_id].trajectory_depth + 1
         else:
             candidate.trajectory_depth = 0
+
+        if best is not None:
+            reference_id = best.version_id
+            if candidate.vector and best.vector and len(candidate.vector.metrics) > 1 and len(best.vector.metrics) > 1:
+                if not candidate.vector.matches_or_improves(best.vector):
+                    self._reject(candidate, RejectionReason.SCORE_REGRESSION, reference=reference_id)
+                    return False
+            elif record_score(candidate) < record_score(best) - 1e-12:
+                self._reject(candidate, RejectionReason.SCORE_REGRESSION, reference=reference_id)
+                return False
 
         # Accepted into committed lineage P_t
         self.versions[candidate.version_id] = candidate
 
-        # Update head if this is first version or strictly exceeds current head
-        if self.head_id is None:
+        # Update head if this is the first version for this benchmark, or if it
+        # strictly exceeds the current head *on the same benchmark*.
+        current_head = self.versions.get(self.head_id) if self.head_id else None
+        if current_head is None or current_head.task_id != candidate.task_id:
             self.head_id = candidate.version_id
-        else:
-            current_head = self.versions[self.head_id]
-            if candidate.vector and current_head.vector:
-                if candidate.vector.dominates(current_head.vector) or (
-                    candidate.vector.geometric_mean() > current_head.vector.geometric_mean()
-                ):
-                    self.head_id = candidate.version_id
-            elif candidate.composite_score > current_head.composite_score:
+        elif candidate.vector and current_head.vector:
+            if candidate.vector.dominates(current_head.vector) or (
+                candidate.vector.geometric_mean() > current_head.vector.geometric_mean()
+            ):
                 self.head_id = candidate.version_id
+        elif candidate.composite_score > current_head.composite_score:
+            self.head_id = candidate.version_id
 
+        self.seal(candidate)
         return True
+
+    def _reject(self, candidate: VersionRecord, reason: RejectionReason, *, reference: str | None = None) -> None:
+        """Record a failed attempt in the trajectory with a machine-readable reason.
+
+        The attempt is kept. A loop that only remembers successes cannot learn
+        from its failures, so the rejection is a first-class record rather than a
+        dropped candidate.
+        """
+        candidate.rejection_reason = reason.value
+        candidate.metadata["rejection_category"] = reason.category.value
+        if reference is not None:
+            candidate.metadata["compared_against"] = reference
+        self.rejected_attempts.append(candidate)
+
+    # ------------------------------------------------------------------
+    # gate-aware paths
+    # ------------------------------------------------------------------
+    def seal(self, record: VersionRecord) -> dict[str, Any]:
+        """Append one committed version to the tamper-evident chain."""
+        entry = seal_entry(
+            record.to_dict(),
+            seq=len(self.chain) + 1,
+            prev_hash=chain_head(self.chain),
+        )
+        self.chain.append(entry)
+        return entry
+
+    def commit_record(self, record: VersionRecord, decision: Any) -> bool:
+        """Commit a candidate that :class:`~alpha.avo.commit_gate.CommitGate` accepted.
+
+        Unlike :meth:`commit_candidate` this path does not re-derive the verdict:
+        the gate already applied correctness, invariants and the best-committed
+        comparison. Re-deriving them here would be a second, weaker, unaudited
+        rule, so the gate's decision is the one that is recorded.
+        """
+        record.metadata["gate_fingerprint"] = getattr(decision, "gate_fingerprint", "")
+        record.metadata["gate_version"] = getattr(decision, "gate_version", 0)
+        record.metadata["invariant_scope"] = getattr(decision, "invariant_scope", "not_run")
+        record.metadata["change_kind"] = getattr(getattr(decision, "change_kind", None), "value", None)
+        record.metadata["author"] = getattr(decision, "author", "unknown")
+        record.rejection_reason = None
+        record.compute_composite()
+        self.versions[record.version_id] = record
+
+        previous_best = self.best_committed(record.task_id)
+        if previous_best is None or record_score(record) >= record_score(previous_best) - 1e-12:
+            current = self.versions.get(self.head_id)
+            if current is None or current.task_id != record.task_id or record_score(record) >= record_score(current) - 1e-12:
+                self.head_id = record.version_id
+        self.seal(record)
+        return True
+
+    def record_trajectory(self, record: VersionRecord, decision: Any) -> None:
+        """Record a candidate the gate refused, with the reason and its category."""
+        record.metadata["gate_fingerprint"] = getattr(decision, "gate_fingerprint", "")
+        record.metadata["invariant_scope"] = getattr(decision, "invariant_scope", "not_run")
+        record.metadata["author"] = getattr(decision, "author", "unknown")
+        record.metadata["compared_against"] = getattr(decision, "best_committed_id", None)
+        category = getattr(decision, "category", None) or RejectionCategory.ABANDONED
+        record.metadata["rejection_category"] = getattr(category, "value", str(category))
+        record.metadata["rejection_detail"] = getattr(decision, "reason", "")
+        record.rejection_reason = getattr(decision, "reason_code", None) or getattr(decision, "reason", "rejected")
+        self.rejected_attempts.append(record)
+
+    def verify_chain(self) -> ChainVerdict:
+        """Verify the committed lineage has not been edited after the fact."""
+        return verify_entries(self.chain)
+
+    def rejection_breakdown(self) -> dict[str, int]:
+        """Rejections counted by category, so the trajectory can be read at a glance."""
+        counts: dict[str, int] = {}
+        for record in self.rejected_attempts:
+            key = str(record.metadata.get("rejection_category") or "uncategorised")
+            counts[key] = counts.get(key, 0) + 1
+        return counts
 
     def get_version(self, version_id: str) -> VersionRecord | None:
         return self.versions.get(version_id)
@@ -190,11 +309,19 @@ class AVOLineage:
 
     def stats(self) -> dict[str, Any]:
         head = self.get_head()
+        best = self.best_committed()
+        chain = self.verify_chain()
         return {
             "total_committed": len(self.versions),
             "total_rejected": len(self.rejected_attempts),
             "total_explored": len(self.versions) + len(self.rejected_attempts),
             "head_id": self.head_id,
             "head_score": head.composite_score if head else 0.0,
+            "best_committed_id": best.version_id if best else None,
+            "best_committed_score": record_score(best) if best else 0.0,
             "pareto_frontier_size": len(self.get_pareto_frontier()),
+            "rejections_by_category": self.rejection_breakdown(),
+            "chain_length": len(self.chain),
+            "chain_intact": chain.ok,
+            "chain_defects": list(chain.defects),
         }

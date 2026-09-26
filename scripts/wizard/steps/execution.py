@@ -31,17 +31,13 @@ def run_execution_step(step_label: str = "Step 3/4") -> ExecutionStepResult:
 
     print()
     if sandbox_use == LOCAL_SANDBOX:
-        print_warning(
-            "Local sandbox is convenient but not a secure shell isolation boundary."
-        )
+        print_warning("Local sandbox is convenient but not a secure shell isolation boundary.")
         print_info("Keep host bash disabled unless this is a fully trusted local workflow.")
     else:
         print_info("Container sandbox isolates shell execution better than host-local mode.")
 
     include_bash_tool = ask_yes_no("Enable bash command execution?", default=False)
-    include_write_tools = ask_yes_no(
-        "Enable file write tools (write_file, str_replace)?", default=True
-    )
+    include_write_tools = ask_yes_no("Enable file write tools (write_file, str_replace)?", default=True)
 
     return ExecutionStepResult(
         sandbox_use=sandbox_use,

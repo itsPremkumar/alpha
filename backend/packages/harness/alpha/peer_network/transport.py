@@ -40,6 +40,16 @@ class PeerTransportError(RuntimeError):
     """A remote peer could not be reached or rejected a request."""
 
 
+class PeerNetworkDisabledError(PeerTransportError):
+    """The local operator has not enabled the peer plane.
+
+    Subclassed from ``PeerTransportError`` on purpose: that is the exception
+    the Gateway's public ingress route already renders as a refusal (401 on
+    ``/api/peer-network/inbound/messages``), so a closed plane needs no
+    router-side special case and can never be mistaken for a delivered message.
+    """
+
+
 @dataclass(slots=True)
 class TransportResult:
     transport: str
@@ -246,6 +256,9 @@ class PeerTransport:
 
 
 __all__ = [
+    "MAX_ENDPOINT_LENGTH",
+    "MAX_RESPONSE_BYTES",
+    "PeerNetworkDisabledError",
     "PeerTransport",
     "PeerTransportError",
     "TransportResult",

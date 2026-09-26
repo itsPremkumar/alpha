@@ -42,6 +42,7 @@ from pathlib import Path
 from alpha.constants import DEFAULT_SKILLS_CONTAINER_PATH
 from alpha.skills.permissions import make_skill_written_path_sandbox_readable
 from alpha.skills.storage.local_skill_storage import LocalSkillStorage
+from alpha.skills.storage.scan import iter_skill_md_files
 from alpha.skills.storage.skill_storage import SKILL_MD_FILE
 from alpha.skills.types import SkillCategory
 
@@ -272,52 +273,34 @@ class UserScopedSkillStorage(LocalSkillStorage):
         raise FileNotFoundError(f"Custom skill '{name}' not found.")
 
     def _iter_skill_files(self) -> Iterable[tuple[SkillCategory, Path, Path]]:
-        # 1. Public skills: always from global root
-        public_path = self._host_root / SkillCategory.PUBLIC.value
-        if public_path.exists() and public_path.is_dir():
-            for current_root, dir_names, file_names in os.walk(public_path, followlinks=True):
-                dir_names[:] = sorted(name for name in dir_names if not name.startswith("."))
-                if SKILL_MD_FILE not in file_names:
-                    continue
-                dir_names.clear()
-                yield SkillCategory.PUBLIC, public_path, Path(current_root) / SKILL_MD_FILE
+        # Public skills: always from global root.
+        yield from iter_skill_md_files(SkillCategory.PUBLIC, self._host_root / SkillCategory.PUBLIC.value)
 
-        # 2. Managed integration skills: globally installed, read-only. Their
+        # Managed integration skills: globally installed, read-only. Their
         # enabled state is still merged from this user's _skill_states.json.
-        integration_path = self._integrations_root
-        if integration_path.exists() and integration_path.is_dir():
-            for current_root, dir_names, file_names in os.walk(integration_path, followlinks=True):
-                dir_names[:] = sorted(name for name in dir_names if not name.startswith("."))
-                if SKILL_MD_FILE not in file_names:
-                    continue
-                yield SkillCategory.INTEGRATION, integration_path, Path(current_root) / SKILL_MD_FILE
+        yield from iter_skill_md_files(SkillCategory.INTEGRATION, self._integrations_root)
 
-        # 3. Custom skills: prefer user-level directory
+        # Custom skills: prefer user-level directory.
         user_custom_exists = False
-        user_custom_path = self._user_custom_root
-        if user_custom_path.exists() and user_custom_path.is_dir():
-            for current_root, dir_names, file_names in os.walk(user_custom_path, followlinks=True):
-                dir_names[:] = sorted(name for name in dir_names if not name.startswith(".") and name != ".history")
-                if SKILL_MD_FILE not in file_names:
-                    continue
-                dir_names.clear()
-                user_custom_exists = True
-                yield SkillCategory.CUSTOM, user_custom_path, Path(current_root) / SKILL_MD_FILE
+        for entry in iter_skill_md_files(
+            SkillCategory.CUSTOM,
+            self._user_custom_root,
+            exclude_dir_names=frozenset({".history"}),
+        ):
+            user_custom_exists = True
+            yield entry
 
-        # 4. Fallback: if user has no custom skills, load from global custom
-        #    as LEGACY (read-only) so legacy skills are visible but not
-        #    editable/deletable by the user. LEGACY skills are mounted at
-        #    /mnt/skills/legacy/<name>/ in the sandbox so their supporting
-        #    files (references, templates, scripts, assets) are accessible.
+        # Fallback: if user has no custom skills, load from global custom
+        # as LEGACY (read-only) so legacy skills are visible but not
+        # editable/deletable by the user. LEGACY skills are mounted at
+        # /mnt/skills/legacy/<name>/ in the sandbox so legacy skills' supporting
+        # files (references, templates, scripts, assets) are accessible.
         if not user_custom_exists:
-            global_custom_path = self._global_custom_root
-            if global_custom_path.exists() and global_custom_path.is_dir():
-                for current_root, dir_names, file_names in os.walk(global_custom_path, followlinks=True):
-                    dir_names[:] = sorted(name for name in dir_names if not name.startswith(".") and name != ".history")
-                    if SKILL_MD_FILE not in file_names:
-                        continue
-                    dir_names.clear()
-                    yield SkillCategory.LEGACY, global_custom_path, Path(current_root) / SKILL_MD_FILE
+            yield from iter_skill_md_files(
+                SkillCategory.LEGACY,
+                self._global_custom_root,
+                exclude_dir_names=frozenset({".history"}),
+            )
 
     # ------------------------------------------------------------------
     # Install — redirect custom_dir to user directory

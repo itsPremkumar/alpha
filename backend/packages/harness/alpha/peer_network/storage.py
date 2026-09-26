@@ -22,6 +22,23 @@ from .models import utc_now
 
 NETWORK_OWNER = "installation"
 
+# Hard ceiling on the peers table.  Every untrusted discovery beacon and every
+# accepted pairing adds a row, so without a ceiling a hostile LAN host (or a
+# hostile public rendezvous directory) grows this table — and its token
+# digests — without bound.  Paired and blocked rows are never evicted; only
+# stale ``discovered`` rows are.
+DEFAULT_MAX_PEERS = 500
+MAX_PEERS_CEILING = 100_000
+
+
+class PeerRegistryFullError(RuntimeError):
+    """The bounded peer registry cannot admit another untrusted peer.
+
+    Raised instead of silently growing ``peers``.  Callers treat it as a
+    refusal: an unauthenticated beacon is dropped, and a pairing attempt is
+    answered with a rejected response rather than a mutation.
+    """
+
 
 def token_digest(token: str) -> str:
     """Return a one-way digest suitable for a local bearer-token check."""
@@ -145,6 +162,16 @@ class PeerNetworkStore:
                     ON messages(conversation_id, created_at);
                 CREATE INDEX IF NOT EXISTS idx_deliveries_status
                     ON deliveries(status, recipient_id);
+                -- The inbound token lookup runs on every unauthenticated
+                -- /api/peer-network/inbound/messages request and on every
+                -- WebSocket handshake.  Without this index each of those is a
+                -- full scan of peers, so a caller who cannot authenticate
+                -- could still make the process read the whole table.
+                CREATE INDEX IF NOT EXISTS idx_peers_token_hash
+                    ON peers(token_hash);
+                -- Backs least-recently-seen eviction when the registry is full.
+                CREATE INDEX IF NOT EXISTS idx_peers_trust_last_seen
+                    ON peers(trust, last_seen);
                 """
             )
 
@@ -161,11 +188,15 @@ class PeerNetworkStore:
         outbound_token: str | None = None,
         paired: bool = False,
         owner_id: str = NETWORK_OWNER,
+        max_peers: int = DEFAULT_MAX_PEERS,
     ) -> dict[str, Any]:
         now = utc_now()
         agent_id = str(card["agent_id"])
+        cap = max(1, min(int(max_peers), MAX_PEERS_CEILING))
         with self._lock, self._conn:
             existing = self._conn.execute("SELECT * FROM peers WHERE agent_id = ?", (agent_id,)).fetchone()
+            if existing is None:
+                self._make_room(agent_id, cap, trust=trust, paired=paired)
             first_seen = existing["first_seen"] if existing else now
             prior_trust = existing["trust"] if existing else trust
             # A discovered refresh must not downgrade a paired peer.
@@ -220,6 +251,41 @@ class PeerNetworkStore:
             )
         return self.get_peer(agent_id)  # type: ignore[return-value]
 
+    def _make_room(self, agent_id: str, cap: int, *, trust: str, paired: bool) -> None:
+        """Keep ``peers`` bounded without ever dropping a credentialed row.
+
+        The registry is a security surface, not a cache: every row can carry a
+        token digest and every paired row is an inbound capability.  So the
+        ceiling is enforced here rather than left to disk.
+
+        * An untrusted (``discovered``) beacon that would exceed the ceiling is
+          refused outright.  Churning rows for anonymous traffic is exactly
+          what an unauthenticated sender wants.
+        * An operator/peer-authorised registration (a pairing) evicts the
+          least-recently-seen ``discovered`` row instead of failing, so the
+          ceiling can never lock a real peer out of pairing.  ``paired`` and
+          ``blocked`` rows are never eviction candidates.
+        """
+
+        count = self._conn.execute("SELECT COUNT(*) AS count FROM peers").fetchone()["count"]
+        if count < cap:
+            return
+        if not paired and trust != "paired":
+            raise PeerRegistryFullError("The bounded peer registry is full; this peer was not retained")
+        stale = self._conn.execute(
+            "SELECT agent_id FROM peers WHERE trust = 'discovered' ORDER BY last_seen ASC LIMIT ?",
+            (max(0, int(count) - cap + 1),),
+        ).fetchall()
+        for row in stale:
+            self._conn.execute("DELETE FROM peers WHERE agent_id = ?", (row["agent_id"],))
+        remaining = self._conn.execute("SELECT COUNT(*) AS count FROM peers").fetchone()["count"]
+        if remaining >= cap:
+            # Nothing left to evict: every row is a paired or blocked peer. The
+            # ceiling is the boundary here, not availability.
+            raise PeerRegistryFullError(
+                "The bounded peer registry is full of paired peers; remove a peer before pairing another"
+            )
+
     def get_peer(self, agent_id: str, *, include_secret: bool = False) -> dict[str, Any] | None:
         with self._lock:
             row = self._conn.execute("SELECT * FROM peers WHERE agent_id = ?", (agent_id,)).fetchone()
@@ -261,6 +327,13 @@ class PeerNetworkStore:
         return result
 
     def set_peer_trust(self, agent_id: str, trust: str) -> dict[str, Any] | None:
+        # Defence in depth: the service already refuses to grant credentials
+        # through a trust update, and so does the repository, because a
+        # ``paired`` row is an inbound capability.
+        if trust == "paired":
+            raise ValueError("Use the explicit pairing flow; trust updates cannot grant credentials")
+        if trust not in {"discovered", "blocked"}:
+            raise ValueError("trust must be discovered or blocked")
         with self._lock, self._conn:
             self._conn.execute("UPDATE peers SET trust = ? WHERE agent_id = ?", (trust, agent_id))
         return self.get_peer(agent_id)
@@ -280,6 +353,10 @@ class PeerNetworkStore:
         peers.  Token-only lookup is therefore not sufficient for authenticated
         inbound messages; HTTP/WebSocket receive paths pass the claimed sender
         id as a second selector.
+
+        A ``blocked`` peer is excluded here rather than at each call site: a
+        blocklist that does not close the inbound plane is not a blocklist, and
+        the WebSocket handshake is token-only.
         """
 
         if not token:
@@ -288,12 +365,12 @@ class PeerNetworkStore:
         with self._lock:
             if agent_id:
                 row = self._conn.execute(
-                    "SELECT agent_id FROM peers WHERE token_hash = ? AND agent_id = ?",
+                    "SELECT agent_id FROM peers WHERE token_hash = ? AND agent_id = ? AND trust != 'blocked'",
                     (digest, agent_id),
                 ).fetchone()
             else:
                 row = self._conn.execute(
-                    "SELECT agent_id FROM peers WHERE token_hash = ? ORDER BY agent_id LIMIT 1",
+                    "SELECT agent_id FROM peers WHERE token_hash = ? AND trust != 'blocked' ORDER BY agent_id LIMIT 1",
                     (digest,),
                 ).fetchone()
         return self.get_peer(row["agent_id"], include_secret=False) if row else None
@@ -541,4 +618,12 @@ class PeerNetworkStore:
         return {"peers": int(peers), "conversations": int(conversations), "messages": int(messages)}
 
 
-__all__ = ["NETWORK_OWNER", "PeerNetworkStore", "token_digest", "tokens_equal"]
+__all__ = [
+    "DEFAULT_MAX_PEERS",
+    "MAX_PEERS_CEILING",
+    "NETWORK_OWNER",
+    "PeerNetworkStore",
+    "PeerRegistryFullError",
+    "token_digest",
+    "tokens_equal",
+]

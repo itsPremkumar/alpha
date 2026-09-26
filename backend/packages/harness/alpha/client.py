@@ -18,6 +18,7 @@ Usage:
 import asyncio
 import concurrent.futures
 import copy
+import json
 import logging
 import mimetypes
 import os
@@ -121,7 +122,162 @@ def _run_async_from_sync(coro):
     return asyncio.run(coro)
 
 
-StreamEventType = Literal["values", "messages-tuple", "custom", "end"]
+class _ToolCallAssembler:
+    """Re-join streamed tool-call fragments into one event per logical call.
+
+    The bug this exists to fix
+    --------------------------
+    LangGraph's ``messages`` stream mode forwards raw provider deltas. For a
+    tool call the provider emits a *sequence* of ``tool_call_chunks``:
+
+        index=0 name="write_file" id="<uuid>" args=""      # the call opens
+        index=0 name=""             id=None   args='{"pa' # then the arguments
+        index=0 name=""             id=None   args='th":'
+
+    Serializing each delta as if it were a whole call produced two frames per
+    call -- ``{"name": "write_file", "args": {}, "id": "<uuid>"}`` followed by
+    ``{"name": "", "args": {...}, "id": null}`` -- and the second frame carried
+    neither the name nor the id, so **no consumer could associate a tool result
+    with the call that produced it**.
+
+    The contract now
+    ----------------
+    * One event per logical tool call, carrying a single identity: the first
+      non-empty ``id`` and the first non-empty ``name`` observed for that
+      ``index``, plus the concatenated argument string parsed into an object.
+    * A call is emitted as soon as its accumulated arguments form complete JSON
+      (the common case: the final argument delta closes the object), so the
+      tool-call announcement still streams ahead of execution.
+    * Anything still buffered is emitted by :meth:`close`, so a call is never
+      silently dropped -- a provider that truncates mid-argument still yields one
+      (identifiable) frame rather than nothing.
+
+    Fragments are keyed by ``(message id, index)``: the same ``index`` is reused
+    by every tool call of a turn, so the message id is what keeps two calls in
+    one assistant message from merging into one.
+    """
+
+    __slots__ = ("_buffer",)
+
+    def __init__(self) -> None:
+        # (msg_id, index) -> {"id": str|None, "name": str|None, "args": str}
+        self._buffer: dict[tuple[str, int], dict[str, Any]] = {}
+
+    def feed(self, msg_id: str | None, msg_chunk: Any) -> list[dict[str, Any]]:
+        """Absorb one streamed AI chunk; return the calls it completed."""
+        chunks = getattr(msg_chunk, "tool_call_chunks", None) or []
+        calls = getattr(msg_chunk, "tool_calls", None) or []
+        key_id = msg_id or ""
+
+        if chunks:
+            for position, chunk in enumerate(chunks):
+                index = chunk.get("index")
+                if index is None:
+                    index = position
+                slot = self._buffer.setdefault((key_id, int(index)), {"id": None, "name": None, "args": ""})
+                if chunk.get("id"):
+                    slot["id"] = chunk["id"]
+                if chunk.get("name"):
+                    slot["name"] = chunk["name"]
+                if chunk.get("args"):
+                    slot["args"] += chunk["args"]
+            return self._drain(key_id, only_complete=True)
+
+        if calls:
+            # A complete, non-chunk message carries the authoritative call list
+            # (``AIMessage.tool_calls``). Replace whatever we buffered so the
+            # provider's own parse wins over our reassembly.
+            self._discard(key_id)
+            return [{"name": call.get("name"), "args": call.get("args") or {}, "id": call.get("id")} for call in calls]
+
+        # No tool-call deltas in this chunk. If deltas were pending, the provider
+        # has moved on (or the stream ended): close them out. Otherwise this was a
+        # plain text delta and there is nothing to do.
+        return self._drain(key_id, only_complete=False)
+
+    def close(self, msg_id: str | None) -> list[dict[str, Any]]:
+        """Flush every call buffered for *msg_id*, complete or not."""
+        return self._drain(msg_id or "", only_complete=False)
+
+    def _drain(self, key_id: str, *, only_complete: bool) -> list[dict[str, Any]]:
+        emitted: list[dict[str, Any]] = []
+        for key in [key for key in self._buffer if key[0] == key_id]:
+            call = self._assemble(key, only_complete=only_complete)
+            if call is not None:
+                emitted.append(call)
+                del self._buffer[key]
+        return emitted
+
+    def _discard(self, key_id: str) -> None:
+        for key in [key for key in self._buffer if key[0] == key_id]:
+            del self._buffer[key]
+
+    def _assemble(self, key: tuple[str, int], *, only_complete: bool) -> dict[str, Any] | None:
+        """Return the reassembled call, or None while it is still arriving."""
+        slot = self._buffer[key]
+        raw = slot["args"]
+        if not raw:
+            # Arguments have not started. A call with a name and an id but no
+            # arguments yet is indistinguishable from "still arriving".
+            return None
+        try:
+            args = json.loads(raw)
+        except (ValueError, TypeError):
+            if only_complete:
+                return None
+            # Truncated / non-JSON argument stream. Surface the raw text under a
+            # documented key rather than dropping the call: an identifiable frame
+            # with unusable arguments beats an unjoinable one.
+            args = {"__unparsed_args__": raw}
+        return {"name": slot["name"] or "", "args": args, "id": slot["id"]}
+
+
+#: Every event type the stream can emit.
+#:
+#: ``error`` was added because the protocol used to be unable to say "this run
+#: failed": a crashed run still terminated with a normal ``end`` frame, so a
+#: consumer had no way to distinguish success from failure other than by
+#: inspecting message text. ``error`` and ``end`` are now **mutually exclusive
+#: terminal frames** -- a run that ends with ``error`` never also emits ``end``.
+StreamEventType = Literal["values", "messages-tuple", "custom", "error", "end"]
+
+#: Stable, machine-readable failure codes carried by ``error`` frames.
+#:
+#: These are part of the wire contract: callers may switch on them, so the
+#: strings are frozen. New failure modes get a new code rather than being
+#: folded into an existing one.
+#:
+#: * ``model_unavailable`` -- no usable chat model (bad/absent config, unbuildable
+#:   provider client). Detected before the graph is entered.
+#: * ``llm_error`` -- the provider call failed and the graph produced the
+#:   LLMErrorHandlingMiddleware's error-fallback message instead of an answer.
+#: * ``recursion_limit`` -- the graph hit its super-step ceiling.
+#: * ``agent_error`` -- any other exception escaped the graph.
+StreamErrorCode = Literal["model_unavailable", "llm_error", "recursion_limit", "agent_error"]
+
+#: ``additional_kwargs`` marker the LLM error-handling middleware stamps on the
+#: placeholder ``AIMessage`` it substitutes for a failed provider call. Reading
+#: the marker (rather than pattern-matching the human-readable text) is what lets
+#: the client tell "the model answered with this sentence" from "the model never
+#: answered". See ``agents/middlewares/llm_error_handling_middleware.py``
+#: ``_build_error_fallback_message``.
+_LLM_ERROR_FALLBACK_MARKER = "agent_workspace_error_fallback"
+
+
+class StreamRunError(RuntimeError):
+    """A run failed. The stream already emitted an ``error`` frame before raising.
+
+    ``code`` is one of :data:`StreamErrorCode`; ``correlation_id`` is the
+    ``run_id`` that every ``error`` frame carries, so a caller can join the
+    failure to the run's log records.
+    """
+
+    def __init__(self, code: str, message: str, *, correlation_id: str, data: dict[str, Any] | None = None) -> None:
+        super().__init__(f"[{code}] {message}")
+        self.code = code
+        self.message = message
+        self.correlation_id = correlation_id
+        self.data: dict[str, Any] = dict(data or {})
 
 
 @dataclass
@@ -131,7 +287,10 @@ class StreamEvent:
     Event types align with the LangGraph SSE protocol:
         - ``"values"``: State snapshot (title, messages, artifacts, summary_text).
         - ``"messages-tuple"``: Per-message update (AI text, tool calls, tool results).
-        - ``"end"``: Stream finished.
+        - ``"error"``: Terminal failure frame (code, message, correlation_id).
+        - ``"end"``: Stream finished successfully.
+
+    Exactly one of ``error`` / ``end`` terminates a stream.
 
     Attributes:
         type: Event type.
@@ -182,7 +341,7 @@ class AgentWorkspaceClient:
         checkpointer=None,
         *,
         model_name: str | None = None,
-        thinking_enabled: bool = True,
+        thinking_enabled: bool = False,
         subagent_enabled: bool = False,
         plan_mode: bool | None = None,
         agent_name: str | None = None,
@@ -200,7 +359,17 @@ class AgentWorkspaceClient:
                 Required for multi-turn conversations on the same thread_id.
                 Without a checkpointer, each call is stateless.
             model_name: Override the default model name from config.
-            thinking_enabled: Enable model's extended thinking.
+            thinking_enabled: Request the model's extended thinking. Defaults to
+                ``False``, matching ``alpha.models.factory.create_chat_model`` and
+                ``ModelConfig.supports_thinking`` (whose own default is ``False``).
+                A ``True`` default made a zero-configuration client unrunnable
+                against every model that does not declare
+                ``supports_thinking: true`` — including both models in the
+                shipped ``config.yaml`` — because ``create_chat_model`` fails
+                closed on a thinking request for a non-thinking model. Opt in
+                explicitly (``thinking_enabled=True`` or the per-run
+                ``thinking_enabled`` override) and that fail-closed guard still
+                applies to genuinely misconfigured requests.
             subagent_enabled: Enable subagent delegation.
             plan_mode: Enable TodoList middleware for plan mode. ``None``
                 (default) derives the value from the global execution mode
@@ -350,7 +519,11 @@ class AgentWorkspaceClient:
         if self._agent is not None and self._agent_config_key == key:
             return
 
-        thinking_enabled = cfg.get("thinking_enabled", True)
+        # Same default as __init__ and as create_chat_model: opt-in, not opt-out.
+        # A True fallback here re-introduced the same crash for any caller that
+        # hands us a RunnableConfig without the key (create_chat_model then fails
+        # closed on a model declaring supports_thinking: false).
+        thinking_enabled = cfg.get("thinking_enabled", False)
         model_name = cfg.get("model_name")
         # Phase 3: enforce model:use authorization on the embedded/library path
         # too, mirroring the Gateway runtime path in ``_make_lead_agent`` so the
@@ -480,7 +653,14 @@ class AgentWorkspaceClient:
 
     @staticmethod
     def _serialize_tool_calls(tool_calls) -> list[dict]:
-        """Reshape LangChain tool_calls into the wire format used in events."""
+        """Reshape LangChain tool_calls into the wire format used in events.
+
+        ``id`` is the call's identity: it is what a consumer joins a tool result
+        on (``_tool_message_event``'s ``tool_call_id``). It is therefore never
+        dropped or replaced with ``None`` by a caller -- streamed fragments are
+        reassembled by :class:`_ToolCallAssembler` first so that every emitted
+        call carries the id the provider assigned.
+        """
         return [{"name": tc["name"], "args": tc["args"], "id": tc.get("id")} for tc in tool_calls]
 
     @staticmethod
@@ -894,6 +1074,12 @@ class AgentWorkspaceClient:
             - type="messages-tuple"  data={"type": "ai", "content": "", "id": str, "additional_kwargs": {...}}
             - type="messages-tuple"  data={"type": "tool", "content": str, "name": str, "tool_call_id": str, "id": str}
               Tool results also include ``"artifact"`` when the source ToolMessage has a non-None artifact.
+            - type="error"           data={"code": StreamErrorCode, "message": str, "correlation_id": str, ...}
+              Terminal failure frame. Carries a stable ``code`` and the run's
+              ``correlation_id``. Exactly one of ``error`` / ``end`` terminates a
+              stream, and a run that emitted ``error`` also raises
+              :class:`StreamRunError` from the generator, so a caller can detect
+              failure by exception, by frame, or (at the CLI) by exit code.
             - type="end"             data={"usage": {"input_tokens": int, "output_tokens": int, "total_tokens": int}}
         """
         thread_id = resolve_thread_id(thread_id)
@@ -953,7 +1139,26 @@ class AgentWorkspaceClient:
             agent_workspace_trace_id=agent_workspace_trace_id,
         )
 
-        self._ensure_agent(config, context=context)
+        # Agent assembly happens before the generator's first yield, so a model
+        # that cannot be built at all (bad config, unbuildable provider client)
+        # would otherwise raise a bare exception with no frame and no code. It is
+        # the ``model_unavailable`` case, and it is reported in protocol form
+        # like every other failure.
+        try:
+            self._ensure_agent(config, context=context)
+        except BaseException as exc:
+            message = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
+            logger.error("Run %s could not start: %s", run_id, message, exc_info=exc)
+            yield StreamEvent(
+                type="error",
+                data={
+                    "code": "model_unavailable",
+                    "message": message,
+                    "correlation_id": run_id,
+                    "error_type": type(exc).__name__,
+                },
+            )
+            raise StreamRunError("model_unavailable", message, correlation_id=run_id) from exc
 
         state: dict[str, Any] = {"messages": [HumanMessage(content=message, additional_kwargs={"run_id": run_id})]}
         context[AGENT_WORKSPACE_TRACE_METADATA_KEY] = agent_workspace_trace_id
@@ -1012,133 +1217,237 @@ class AgentWorkspaceClient:
             sent.update(delta)
             return delta
 
+        tool_calls = _ToolCallAssembler()
+        # One failure per run. A run that failed keeps the FIRST error frame: a
+        # retry-then-succeed sequence must not be reported as a failed run, and a
+        # retry-then-fail sequence must not emit two contradictory terminal frames.
+        failure: dict[str, Any] | None = None
+        # Message ids already reported through an ``error`` frame, so the same
+        # fallback AI message is not reported once per stream mode.
+        reported_error_ids: set[str] = set()
+
+        def _error_frame(code: str, message: str, **extra: Any) -> StreamEvent:
+            """Build the terminal failure frame.
+
+            ``correlation_id`` is the run id, which is the same id the run's log
+            records, checkpoints and traces carry -- so a caller that only has
+            the frame can still find the run.
+            """
+            data: dict[str, Any] = {"code": code, "message": message, "correlation_id": run_id}
+            data.update(extra)
+            return StreamEvent(type="error", data=data)
+
+        def _llm_failure(msg, msg_id: str | None) -> dict[str, Any] | None:
+            """Classify the error-handling middleware's placeholder AI message.
+
+            The middleware substitutes an ``AIMessage`` for a provider call that
+            failed, stamped with ``agent_workspace_error_fallback``. That message
+            is indistinguishable from an answer by content alone, so the marker is
+            the only reliable signal -- and without it a failed run is
+            indistinguishable from a successful one. Owned by
+            ``llm_error_handling_middleware._build_error_fallback_message``.
+            """
+            additional_kwargs = getattr(msg, "additional_kwargs", None)
+            if not isinstance(additional_kwargs, dict) or not additional_kwargs.get(_LLM_ERROR_FALLBACK_MARKER):
+                return None
+            if msg_id and msg_id in reported_error_ids:
+                return None
+            if msg_id:
+                reported_error_ids.add(msg_id)
+            return {
+                "code": "llm_error",
+                "message": self._extract_text(msg.content) or "The model provider request failed.",
+                "error_type": additional_kwargs.get("error_type"),
+                "error_reason": additional_kwargs.get("error_reason"),
+                "error_detail": additional_kwargs.get("error_detail"),
+                "message_id": msg_id,
+            }
+
+        def _classify_stream_exception(exc: BaseException) -> str:
+            """Map an exception escaping the graph onto a stable error code."""
+            try:
+                from langgraph.errors import GraphRecursionError
+            except Exception:  # pragma: no cover - langgraph is a hard dependency
+                GraphRecursionError = ()  # type: ignore[assignment]
+            if GraphRecursionError and isinstance(exc, GraphRecursionError):
+                return "recursion_limit"
+            if isinstance(exc, StreamRunError):
+                return exc.code
+            return "agent_error"
+
         agent_items = self._agent.stream(
             state,
             config=config,
             context=context,
             stream_mode=["values", "messages", "custom"],
         )
-        for item in _stream_with_sandbox_lease_cleanup(agent_items, context):
-            if isinstance(item, tuple) and len(item) == 2:
-                mode, chunk = item
-                mode = str(mode)
-            else:
-                mode, chunk = "values", item
-
-            if mode == "custom":
-                yield StreamEvent(type="custom", data=chunk)
-                continue
-
-            if mode == "messages":
-                # LangGraph ``messages`` mode emits ``(message_chunk, metadata)``.
-                if isinstance(chunk, tuple) and len(chunk) == 2:
-                    msg_chunk, _metadata = chunk
+        try:
+            for item in _stream_with_sandbox_lease_cleanup(agent_items, context):
+                if isinstance(item, tuple) and len(item) == 2:
+                    mode, chunk = item
+                    mode = str(mode)
                 else:
-                    msg_chunk = chunk
+                    mode, chunk = "values", item
 
-                msg_id = getattr(msg_chunk, "id", None)
+                if mode == "custom":
+                    yield StreamEvent(type="custom", data=chunk)
+                    continue
 
-                if isinstance(msg_chunk, AIMessage):
-                    text = self._extract_text(msg_chunk.content)
-                    additional_kwargs = self._serialize_additional_kwargs(msg_chunk)
-                    counted_usage = _account_usage(msg_id, msg_chunk.usage_metadata)
-                    sent_additional_kwargs = False
+                if mode == "messages":
+                    # LangGraph ``messages`` mode emits ``(message_chunk, metadata)``.
+                    if isinstance(chunk, tuple) and len(chunk) == 2:
+                        msg_chunk, _metadata = chunk
+                    else:
+                        msg_chunk = chunk
 
-                    if text:
+                    msg_id = getattr(msg_chunk, "id", None)
+
+                    if isinstance(msg_chunk, AIMessage):
+                        text = self._extract_text(msg_chunk.content)
+                        additional_kwargs = self._serialize_additional_kwargs(msg_chunk)
+                        counted_usage = _account_usage(msg_id, msg_chunk.usage_metadata)
+                        sent_additional_kwargs = False
+
+                        if failure is None:
+                            failure = _llm_failure(msg_chunk, msg_id)
+
+                        if text:
+                            if msg_id:
+                                streamed_ids.add(msg_id)
+                            additional_kwargs_delta = _unsent_additional_kwargs(msg_id, additional_kwargs)
+                            yield self._ai_text_event(
+                                msg_id,
+                                text,
+                                counted_usage,
+                                additional_kwargs_delta,
+                            )
+                            sent_additional_kwargs = bool(additional_kwargs_delta)
+
+                        # Streamed tool calls arrive as argument deltas, so they go
+                        # through the assembler rather than straight out: one
+                        # event per logical call, with one identity.
+                        assembled = tool_calls.feed(msg_id, msg_chunk)
+                        if assembled:
+                            if msg_id:
+                                streamed_ids.add(msg_id)
+                            additional_kwargs_delta = None if sent_additional_kwargs else _unsent_additional_kwargs(msg_id, additional_kwargs)
+                            yield self._ai_tool_calls_event(
+                                msg_id,
+                                assembled,
+                                additional_kwargs_delta,
+                            )
+
+                    elif isinstance(msg_chunk, ToolMessage):
                         if msg_id:
                             streamed_ids.add(msg_id)
-                        additional_kwargs_delta = _unsent_additional_kwargs(msg_id, additional_kwargs)
-                        yield self._ai_text_event(
-                            msg_id,
-                            text,
-                            counted_usage,
-                            additional_kwargs_delta,
-                        )
-                        sent_additional_kwargs = bool(additional_kwargs_delta)
+                        yield self._tool_message_event(msg_chunk)
+                    continue
 
-                    if msg_chunk.tool_calls:
-                        if msg_id:
-                            streamed_ids.add(msg_id)
-                        additional_kwargs_delta = None if sent_additional_kwargs else _unsent_additional_kwargs(msg_id, additional_kwargs)
-                        yield self._ai_tool_calls_event(
-                            msg_id,
-                            msg_chunk.tool_calls,
-                            additional_kwargs_delta,
-                        )
+                # mode == "values"
+                messages = chunk.get("messages", [])
 
-                elif isinstance(msg_chunk, ToolMessage):
+                for msg in messages:
+                    msg_id = getattr(msg, "id", None)
+                    if msg_id and msg_id in seen_ids:
+                        continue
                     if msg_id:
-                        streamed_ids.add(msg_id)
-                    yield self._tool_message_event(msg_chunk)
-                continue
+                        seen_ids.add(msg_id)
 
-            # mode == "values"
-            messages = chunk.get("messages", [])
+                    # Already streamed via ``messages`` mode; only (defensively)
+                    # capture usage here and skip re-synthesizing the event.
+                    if msg_id and msg_id in streamed_ids:
+                        if isinstance(msg, AIMessage):
+                            _account_usage(msg_id, getattr(msg, "usage_metadata", None))
+                            additional_kwargs = self._serialize_additional_kwargs(msg)
+                            additional_kwargs_delta = _unsent_additional_kwargs(msg_id, additional_kwargs)
+                            if additional_kwargs_delta:
+                                # Metadata-only follow-up: ``messages-tuple`` has no
+                                # dedicated attribution event, so clients should
+                                # merge this empty-content AI event by message id
+                                # and ignore it for text rendering.
+                                yield self._ai_text_event(msg_id, "", None, additional_kwargs_delta)
+                        continue
 
-            for msg in messages:
-                msg_id = getattr(msg, "id", None)
-                if msg_id and msg_id in seen_ids:
-                    continue
-                if msg_id:
-                    seen_ids.add(msg_id)
-
-                # Already streamed via ``messages`` mode; only (defensively)
-                # capture usage here and skip re-synthesizing the event.
-                if msg_id and msg_id in streamed_ids:
                     if isinstance(msg, AIMessage):
-                        _account_usage(msg_id, getattr(msg, "usage_metadata", None))
+                        if failure is None:
+                            failure = _llm_failure(msg, msg_id)
+                        counted_usage = _account_usage(msg_id, msg.usage_metadata)
                         additional_kwargs = self._serialize_additional_kwargs(msg)
-                        additional_kwargs_delta = _unsent_additional_kwargs(msg_id, additional_kwargs)
-                        if additional_kwargs_delta:
-                            # Metadata-only follow-up: ``messages-tuple`` has no
-                            # dedicated attribution event, so clients should
-                            # merge this empty-content AI event by message id
-                            # and ignore it for text rendering.
+                        sent_additional_kwargs = False
+
+                        if msg.tool_calls:
+                            # The authoritative, fully-parsed call list. It
+                            # supersedes anything the assembler buffered for this
+                            # message, so a call is never announced twice.
+                            tool_calls.close(msg_id)
+                            additional_kwargs_delta = _unsent_additional_kwargs(msg_id, additional_kwargs)
+                            yield self._ai_tool_calls_event(
+                                msg_id,
+                                msg.tool_calls,
+                                additional_kwargs_delta,
+                            )
+                            sent_additional_kwargs = bool(additional_kwargs_delta)
+
+                        text = self._extract_text(msg.content)
+                        if text:
+                            additional_kwargs_delta = None if sent_additional_kwargs else _unsent_additional_kwargs(msg_id, additional_kwargs)
+                            yield self._ai_text_event(
+                                msg_id,
+                                text,
+                                counted_usage,
+                                additional_kwargs_delta,
+                            )
+                        elif msg_id:
+                            additional_kwargs_delta = None if sent_additional_kwargs else _unsent_additional_kwargs(msg_id, additional_kwargs)
+                            if not additional_kwargs_delta:
+                                continue
+                            # See the metadata-only follow-up convention above.
                             yield self._ai_text_event(msg_id, "", None, additional_kwargs_delta)
-                    continue
 
-                if isinstance(msg, AIMessage):
-                    counted_usage = _account_usage(msg_id, msg.usage_metadata)
-                    additional_kwargs = self._serialize_additional_kwargs(msg)
-                    sent_additional_kwargs = False
+                    elif isinstance(msg, ToolMessage):
+                        yield self._tool_message_event(msg)
 
-                    if msg.tool_calls:
-                        additional_kwargs_delta = _unsent_additional_kwargs(msg_id, additional_kwargs)
-                        yield self._ai_tool_calls_event(
-                            msg_id,
-                            msg.tool_calls,
-                            additional_kwargs_delta,
-                        )
-                        sent_additional_kwargs = bool(additional_kwargs_delta)
+                # Emit a values event for each state snapshot
+                yield StreamEvent(
+                    type="values",
+                    data={
+                        "title": chunk.get("title"),
+                        "summary_text": chunk.get("summary_text"),
+                        "messages": [self._serialize_message(m) for m in messages],
+                        "artifacts": chunk.get("artifacts", []),
+                    },
+                )
+        except StreamRunError:
+            # Already reported through an ``error`` frame by a nested stream.
+            raise
+        except GeneratorExit:
+            # The consumer abandoned the stream. Not a failure: there is nobody
+            # left to emit a terminal frame to, and re-raising here is what keeps
+            # the generator's ``close()`` contract.
+            raise
+        except BaseException as exc:
+            code = _classify_stream_exception(exc)
+            failure = {
+                "code": code,
+                "message": f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__,
+                "error_type": type(exc).__name__,
+            }
+            yield _error_frame(code, failure["message"], error_type=type(exc).__name__)
+            raise StreamRunError(code, failure["message"], correlation_id=run_id) from exc
 
-                    text = self._extract_text(msg.content)
-                    if text:
-                        additional_kwargs_delta = None if sent_additional_kwargs else _unsent_additional_kwargs(msg_id, additional_kwargs)
-                        yield self._ai_text_event(
-                            msg_id,
-                            text,
-                            counted_usage,
-                            additional_kwargs_delta,
-                        )
-                    elif msg_id:
-                        additional_kwargs_delta = None if sent_additional_kwargs else _unsent_additional_kwargs(msg_id, additional_kwargs)
-                        if not additional_kwargs_delta:
-                            continue
-                        # See the metadata-only follow-up convention above.
-                        yield self._ai_text_event(msg_id, "", None, additional_kwargs_delta)
-
-                elif isinstance(msg, ToolMessage):
-                    yield self._tool_message_event(msg)
-
-            # Emit a values event for each state snapshot
-            yield StreamEvent(
-                type="values",
-                data={
-                    "title": chunk.get("title"),
-                    "summary_text": chunk.get("summary_text"),
-                    "messages": [self._serialize_message(m) for m in messages],
-                    "artifacts": chunk.get("artifacts", []),
-                },
+        # ``error`` and ``end`` are mutually exclusive terminal frames: a run that
+        # failed must never also report success.
+        if failure is not None:
+            yield _error_frame(
+                str(failure.get("code") or "agent_error"),
+                str(failure.get("message") or "The run failed."),
+                **{key: value for key, value in failure.items() if key not in {"code", "message"}},
+            )
+            raise StreamRunError(
+                str(failure.get("code") or "agent_error"),
+                str(failure.get("message") or "The run failed."),
+                correlation_id=run_id,
+                data={key: value for key, value in failure.items() if key not in {"code", "message"}},
             )
 
         yield StreamEvent(type="end", data={"usage": cumulative_usage})

@@ -101,6 +101,10 @@ LARK_CLI_SOURCE_ARCHIVE_ENV = "AGENT_WORKSPACE_LARK_CLI_SKILLS_ARCHIVE"
 LARK_CLI_SANDBOX_RUNTIME_SOURCE_ENV = "AGENT_WORKSPACE_LARK_CLI_SANDBOX_RUNTIME_DIR"
 LARK_CLI_DOWNLOAD_TIMEOUT_SECONDS = 60
 LARK_CLI_NPM_INSTALL_TIMEOUT_SECONDS = 180
+#: Bounds the local ``whoami`` SID probe that the Windows credential hardening
+#: depends on. A local account lookup is instant, so this only fires when the
+#: call itself is wedged.
+_WHOAMI_TIMEOUT_SECONDS = 20
 LARK_HTTP_TIMEOUT_SECONDS = 20
 LARK_CONFIG_POLL_TIMEOUT_SECONDS = 45
 LARK_AUTH_COMPLETE_DEFAULT_WAIT_SECONDS = 45
@@ -460,13 +464,22 @@ def _resolve_current_user_sid() -> str:
     is the *second* CSV field — so we parse it with ``csv.reader`` rather than
     guessing a field position. SIDs are locale/display-name independent and
     are the single principal granted in the Windows allowlist below.
+
+    Bounded: this runs while the credential tree is being created, and an
+    unbounded probe would park the caller before it reached the security work at
+    all. ``whoami`` is a single local binary that starts no children, so the
+    deadline kills the only process involved.
     """
-    result = subprocess.run(
-        ["whoami", "/user", "/fo", "csv", "/nh"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            ["whoami", "/user", "/fo", "csv", "/nh"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=_WHOAMI_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"failed to resolve current Windows user SID: whoami did not answer within {_WHOAMI_TIMEOUT_SECONDS:g}s") from exc
     if result.returncode != 0:
         raise RuntimeError(f"failed to resolve current Windows user SID: {result.stderr.strip() or result.stdout.strip()}")
     try:
@@ -2812,7 +2825,8 @@ In Alpha, if `lark-cli auth status` or a business command indicates unconfigured
 1. Do not ask the user to run `lark-cli config init`, `lark-cli auth login`, or `lark-cli auth login --device-code` in the terminal.
 2. Reply to the user with this clickable link: [Open Lark / Feishu Authorization Settings](?settings=integrations).
 3. Inform the user to click "Connect Lark / Feishu" under **Settings → Integrations → Lark / Feishu CLI**, complete authorization in the browser, and then return to proceed with the task.
-4. If the error mentions a missing `scope`, `permission_violations`, or a suggested `--domain`, instruct the user to select the appropriate permission domain on that settings page (e.g. Calendar for calendar operations), or enter the specific scope into "Exact OAuth scope" before re-authorizing.
+4. If the error mentions a missing `scope`, `permission_violations`, or a suggested `--domain`, instruct the user to select the appropriate permission domain on that settings page (e.g. Calendar for calendar operations), \
+or enter the specific scope into "Exact OAuth scope" before re-authorizing.
 
 Only proceed with specific `lark-cli` commands after the user explicitly confirms authorization is complete.
 """

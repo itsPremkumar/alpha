@@ -91,9 +91,7 @@ DEFAULT_TARGETS: tuple[str, ...] = (
     "app.gateway.app",
 )
 
-IMPORTTIME_RE = re.compile(
-    r"^import time:\s+(?P<self>\d+)\s*\|\s*(?P<cumulative>\d+)\s*\|(?P<rest>.*)$"
-)
+IMPORTTIME_RE = re.compile(r"^import time:\s+(?P<self>\d+)\s*\|\s*(?P<cumulative>\d+)\s*\|(?P<rest>.*)$")
 _MODULE_SUFFIX_RE = re.compile(r"\s+\((?:built-in|frozen|builtin)\)\s*$")
 _EDGES_SENTINEL = "@@ALPHA_COLD_START_EDGES@@"
 
@@ -178,9 +176,7 @@ def parse_importtime(text: str) -> dict[str, tuple[int, int]]:
         name = _MODULE_SUFFIX_RE.sub("", match.group("rest").strip())
         if not name:
             continue
-        found.setdefault(
-            name, (int(match.group("self")), int(match.group("cumulative")))
-        )
+        found.setdefault(name, (int(match.group("self")), int(match.group("cumulative"))))
     return found
 
 
@@ -249,9 +245,7 @@ def _child_env(home: Path, pycache_prefix: Path, trace: bool) -> dict[str, str]:
     return env
 
 
-def _run(
-    module: str, env: dict[str, str], timeout: float, importtime: bool
-) -> tuple[str, str]:
+def _run(module: str, env: dict[str, str], timeout: float, importtime: bool) -> tuple[str, str]:
     """Import ``module`` in a fresh interpreter. Returns (stdout, stderr)."""
     argv = [sys.executable]
     if importtime:
@@ -338,9 +332,7 @@ def _ancestors(module: str, edges: list[tuple[str | None, str]]) -> list[str]:
     return chain
 
 
-def attribute(
-    module: str, env: dict[str, str], timeout: float, top: int
-) -> dict[str, Any]:
+def attribute(module: str, env: dict[str, str], timeout: float, top: int) -> dict[str, Any]:
     """Run one traced importtime pass and turn it into attributable cost."""
     stdout, stderr = _run(module, env, timeout, importtime=True)
     timings = parse_importtime(stderr)
@@ -348,9 +340,7 @@ def attribute(
         raise TargetError(f"{module}: importtime produced no record for the target")
     edges = parse_edges(stdout)
     if not edges:
-        raise TargetError(
-            f"{module}: the edge tracer produced no edges (ALPHA_COLD_START_TRACE lost?)"
-        )
+        raise TargetError(f"{module}: the edge tracer produced no edges (ALPHA_COLD_START_TRACE lost?)")
 
     # A child edge into an already-cached module is a real edge with no cost of
     # its own in this run, so restrict every cost view to modules importtime
@@ -386,14 +376,10 @@ def attribute(
 
     total = cumulative_us or 1
     chains: list[dict[str, Any]] = []
-    for child in sorted(
-        set(children.get(chain_root, ())), key=lambda n: (-timings.get(n, (0, 0))[1], n)
-    ):
+    for child in sorted(set(children.get(chain_root, ())), key=lambda n: (-timings.get(n, (0, 0))[1], n)):
         child_cumulative, child_self = timings.get(child, (0, 0))
         subtree = _reachable(child, edges) & closure
-        worst_name = (
-            max(subtree, key=lambda n: (timings[n][0], n)) if subtree else child
-        )
+        worst_name = max(subtree, key=lambda n: (timings[n][0], n)) if subtree else child
         chains.append(
             {
                 "child": child,
@@ -465,10 +451,7 @@ def measure_target(
         "module": module,
         "cold": _stats(cold_samples),
         "warm": _stats(warm_samples),
-        "cold_minus_warm_ms": round_ms(
-            statistics.median(cold_samples) * 1000.0
-            - statistics.median(warm_samples) * 1000.0
-        ),
+        "cold_minus_warm_ms": round_ms(statistics.median(cold_samples) * 1000.0 - statistics.median(warm_samples) * 1000.0),
     }
     if attribution == "none":
         entry["attribution"] = None
@@ -519,16 +502,11 @@ def host_conditions() -> dict[str, Any]:
 # --------------------------------------------------------------------------
 
 
-def build_measurement(
-    targets: list[str], repeats: int, timeout: float, top: int, attribution: str
-) -> dict[str, Any]:
+def build_measurement(targets: list[str], repeats: int, timeout: float, top: int, attribution: str) -> dict[str, Any]:
     cache_dir = Path(tempfile.mkdtemp(prefix="alpha-coldstart-cache-"))
     home = Path(tempfile.mkdtemp(prefix="alpha-coldstart-home-"))
     try:
-        entries = [
-            measure_target(module, repeats, timeout, top, attribution, cache_dir, home)
-            for module in targets
-        ]
+        entries = [measure_target(module, repeats, timeout, top, attribution, cache_dir, home) for module in targets]
     finally:
         shutil.rmtree(cache_dir, ignore_errors=True)
         shutil.rmtree(home, ignore_errors=True)
@@ -556,9 +534,7 @@ def print_report(measurement: dict[str, Any]) -> None:
         print(f"  host label {host['operator_label']}")
     if host.get("is_windows"):
         print("  NOTE       Defender-scanned Windows host: absolute cold numbers are")
-        print(
-            "             environment-specific. Module graph and chain attribution are not."
-        )
+        print("             environment-specific. Module graph and chain attribution are not.")
     print()
     header = f"{'target':<38} {'cold ms':>10} {'warm ms':>10} {'c-w ms':>9} {'spread':>9} {'mods':>6}"
     print(header)
@@ -566,10 +542,7 @@ def print_report(measurement: dict[str, Any]) -> None:
     for entry in measurement["targets"]:
         attribution = entry.get("attribution")
         modules = attribution["module_count"] if attribution else 0
-        print(
-            f"{entry['module']:<38} {entry['cold']['median_ms']:>10.1f} {entry['warm']['median_ms']:>10.1f} "
-            f"{entry['cold_minus_warm_ms']:>9.1f} {entry['cold']['spread_ms']:>9.1f} {modules:>6}"
-        )
+        print(f"{entry['module']:<38} {entry['cold']['median_ms']:>10.1f} {entry['warm']['median_ms']:>10.1f} {entry['cold_minus_warm_ms']:>9.1f} {entry['cold']['spread_ms']:>9.1f} {modules:>6}")
     print()
     for entry in measurement["targets"]:
         attribution = entry.get("attribution")
@@ -578,27 +551,14 @@ def print_report(measurement: dict[str, Any]) -> None:
             print()
             continue
         print(f"{entry['module']}  ({entry['attribution_mode']} attribution)")
-        print(
-            f"  chain root {attribution['chain_root']}   ancestors: "
-            + " < ".join(row["module"] for row in attribution["ancestors"])
-            or " <none>"
-        )
+        print(f"  chain root {attribution['chain_root']}   ancestors: " + " < ".join(row["module"] for row in attribution["ancestors"]) or " <none>")
         split = attribution["cost_split"]
         own = split["own_subtree"]
         enclosing = split["enclosing_packages"]
-        print(
-            f"  own subtree      {own['modules']:>5} modules  {own['self_ms']:>9.1f} ms self"
-            f"   ({', '.join(f'{k}={v:.0f}' for k, v in own['self_ms_by_kind'].items() if v > 0)})"
-        )
-        print(
-            f"  enclosing pkgs   {enclosing['modules']:>5} modules  {enclosing['self_ms']:>9.1f} ms self"
-            f"   ({', '.join(f'{k}={v:.0f}' for k, v in enclosing['self_ms_by_kind'].items() if v > 0)})"
-        )
+        print(f"  own subtree      {own['modules']:>5} modules  {own['self_ms']:>9.1f} ms self   ({', '.join(f'{k}={v:.0f}' for k, v in own['self_ms_by_kind'].items() if v > 0)})")
+        print(f"  enclosing pkgs   {enclosing['modules']:>5} modules  {enclosing['self_ms']:>9.1f} ms self   ({', '.join(f'{k}={v:.0f}' for k, v in enclosing['self_ms_by_kind'].items() if v > 0)})")
         for chain in attribution["chains"][:5]:
-            print(
-                f"  chain {chain['child']:<44} {chain['cumulative_ms']:>9.1f} ms "
-                f"({chain['share'] * 100:4.1f}%)  -> {chain['deepest_cost_module']} {chain['deepest_cost_ms']:.0f} ms"
-            )
+            print(f"  chain {chain['child']:<44} {chain['cumulative_ms']:>9.1f} ms ({chain['share'] * 100:4.1f}%)  -> {chain['deepest_cost_module']} {chain['deepest_cost_ms']:.0f} ms")
         print("  top self-time modules:")
         for row in attribution["hotspots"][:5]:
             print(f"    {row['module']:<50} {row['self_ms']:>8.1f} ms  [{row['kind']}]")
@@ -606,36 +566,24 @@ def print_report(measurement: dict[str, Any]) -> None:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Measure and attribute cold-start import cost."
-    )
+    parser = argparse.ArgumentParser(description="Measure and attribute cold-start import cost.")
     parser.add_argument(
         "--targets",
         nargs="+",
         default=list(DEFAULT_TARGETS),
         help="dotted module paths",
     )
-    parser.add_argument(
-        "--repeats", type=int, default=3, help="wall-time runs per target per mode"
-    )
-    parser.add_argument(
-        "--timeout", type=float, default=900.0, help="per-subprocess timeout in seconds"
-    )
-    parser.add_argument(
-        "--top", type=int, default=25, help="entries per attribution list"
-    )
+    parser.add_argument("--repeats", type=int, default=3, help="wall-time runs per target per mode")
+    parser.add_argument("--timeout", type=float, default=900.0, help="per-subprocess timeout in seconds")
+    parser.add_argument("--top", type=int, default=25, help="entries per attribution list")
     parser.add_argument(
         "--attribution",
         choices=("cold", "warm", "none"),
         default=DEFAULT_ATTRIBUTION_MODE,
         help="which mode to run the traced -X importtime pass on (module set is identical in both)",
     )
-    parser.add_argument(
-        "--json", type=Path, default=None, help="write the measurement JSON here"
-    )
-    parser.add_argument(
-        "--quiet", action="store_true", help="suppress the human-readable report"
-    )
+    parser.add_argument("--json", type=Path, default=None, help="write the measurement JSON here")
+    parser.add_argument("--quiet", action="store_true", help="suppress the human-readable report")
     return parser.parse_args(argv)
 
 
@@ -644,9 +592,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.repeats < 1:
         print("--repeats must be >= 1", file=sys.stderr)
         return 2
-    measurement = build_measurement(
-        list(args.targets), args.repeats, args.timeout, args.top, args.attribution
-    )
+    measurement = build_measurement(list(args.targets), args.repeats, args.timeout, args.top, args.attribution)
     if args.json is not None:
         args.json.parent.mkdir(parents=True, exist_ok=True)
         args.json.write_text(json.dumps(measurement, indent=2) + "\n", encoding="utf-8")

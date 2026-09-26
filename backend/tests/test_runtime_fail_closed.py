@@ -191,12 +191,21 @@ def test_budget_exhaustion_is_terminal_and_never_reentered():
 
 
 def test_deadlock_recovery_patches_a_real_graph_node():
-    """Allowed branch: the remediation patch targets a REAL node and registers v2."""
+    """Allowed branch: the remediation patch targets a REAL node and registers v2.
+
+    The graph is structurally VALID and simply cannot progress: ``stuck``
+    depends on ``held``, which the test suspends at runtime.  (It used to be
+    built with ``depends_on=["ghost"]``, a malformed definition that the engine
+    now refuses at ``start_run`` — see
+    ``tests/test_workflow_termination_and_honesty.py``.)
+    """
     engine = _engine_with(
         "wf_rt_deadlock",
-        WorkflowNode(id="stuck", prompt="Blocked forever", depends_on=["ghost"]),
+        WorkflowNode(id="held", prompt="Suspended by an operator"),
+        WorkflowNode(id="stuck", prompt="Blocked forever", depends_on=["held"]),
     )
     run = engine.start_run("wf_rt_deadlock")
+    run.node_states["held"] = NodeStatus.SUSPENDED
 
     engine.execute_step(run.run_id)  # nothing ready -> stagnation recovery
 
@@ -243,14 +252,21 @@ def test_deadlock_without_any_candidate_node_fails_with_the_disclosed_reason():
 
 
 def test_deadlock_remediation_patch_rejection_surfaces_the_real_reason():
-    """Rejected branch: FAILED carrying the patch layer's REAL validation reason."""
+    """Rejected branch: FAILED carrying the patch layer's REAL validation reason.
+
+    Same valid-but-unschedulable shape as the test above: ``n1`` waits on a node
+    the test suspends, and an impostor node already occupies the id the
+    replanner would generate.
+    """
     engine = _engine_with(
         "wf_rt_rejected",
-        WorkflowNode(id="n1", prompt="Blocked", depends_on=["ghost"]),
+        WorkflowNode(id="held", prompt="Suspended by an operator"),
+        WorkflowNode(id="n1", prompt="Blocked", depends_on=["held"]),
         # Pre-existing impostor colliding with the replanner's generated id.
         WorkflowNode(id="gather_evidence_n1_1", prompt="Impostor", depends_on=["n1"]),
     )
     run = engine.start_run("wf_rt_rejected")
+    run.node_states["held"] = NodeStatus.SUSPENDED
 
     engine.execute_step(run.run_id)
 

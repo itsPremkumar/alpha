@@ -157,6 +157,7 @@ from alpha.tools.builtins import (
     verify_web_ui_visual_regression,
     view_image_tool,
     visual_verify_artifact,
+    war_room_tool,
     workflow_dag_manage,
 )
 from alpha.tools.mcp_metadata import tag_mcp_tool
@@ -343,6 +344,11 @@ BUILTIN_TOOLS = [
     desktop_keyboard_action_tool,
     desktop_window_manage_tool,
     desktop_system_one_action_tool,
+    # War room: staged, clock-bounded group deliberation, plus the bot
+    # lifecycle (hire/clone/rescope/archive) and the fenced capability
+    # acquisition pipeline. Present in BUILTIN_TOOLS so every agent can open a
+    # room; the governance and authority checks live inside the tool, not here.
+    war_room_tool,
 ]
 
 

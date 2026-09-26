@@ -1,0 +1,33 @@
+# THE repository-wide Ruff policy.  One rule set governs every Python file the
+# project owns, at the repository root and inside backend/ alike.
+#
+# WHY THIS FILE EXISTS
+# --------------------
+# backend/ruff.toml used to be the only Ruff configuration in the tree, so the
+# incremental gate in scripts/check_changed_python_lint.py had to lint every
+# non-backend file with `--isolated` (ruff's defaults: E4/E7/E9/F only) to keep
+# its verdict independent of the directory it was launched from.  Under those
+# defaults E501, I001 and the whole UP family are not selected, so 108 findings
+# in first-party non-backend code were measured by nobody: the gate could not
+# see them and the debt report only walked backend/.
+#
+# A root configuration is what closes that hole.  Ruff discovers a file's
+# settings by walking up from the file, so a configuration here covers
+# scripts/, skills/, tests/, docker/ and everything else that is not claimed by
+# a closer configuration, and the resolved settings for a given file no longer
+# depend on the working directory ruff happened to be started from.  That is the
+# property the gate actually needs, so it no longer needs `--isolated`.
+#
+# backend/ruff.toml now extends this file instead of restating it, and
+# examples/agent-workspace-extension-example/pyproject.toml carries the same
+# policy for its own tree.  Keep them in step: this file is the source of truth.
+line-length = 240
+target-version = "py312"
+
+[lint]
+select = ["E", "F", "I", "UP"]
+ignore = []
+
+[format]
+quote-style = "double"
+indent-style = "space"

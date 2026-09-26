@@ -47,6 +47,28 @@ _NODE_RUNNER: Callable[[WorkflowNode, WorkflowRun], dict[str, Any]] | None = Non
 # executor results (used to refuse reductions over non-executor values).
 EXECUTOR_STATE_KEYS = "executor_state_keys"
 
+# Key under which a run counts the stagnation-recovery patches the deadlock path
+# has committed for it.
+STAGNATION_RECOVERY_KEY = "stagnation_recovery_attempts"
+
+# Hard ceiling on stagnation-recovery patches per run.  Each committed patch
+# adds a ``gather_evidence_<node>_<version>`` node and reopens the same
+# unschedulable target, so without a ceiling a run whose graph cannot progress
+# re-enters its own step forever: an unbounded livelock that grows both the
+# in-memory graph and the durable event log on every single call.  A run that
+# exhausts this budget ends FAILED with the real attempt count instead.
+STAGNATION_RECOVERY_LIMIT = 3
+
+# Metric key under which a run records its recorded (completed) idempotency
+# attempt keys, so a retried step is not executed twice.
+COMPLETED_IDEMPOTENCY_KEYS = "completed_idempotency_keys"
+
+# Metric key holding the verified output of each already-completed idempotent
+# attempt, so a suppressed re-attempt reports the ORIGINAL result.  Deliberately
+# in ``metrics``: the attempt key is a hash of ``run.state``.
+IDEMPOTENT_OUTPUTS_KEY = "idempotent_outputs"
+
+
 
 def get_node_runner() -> Callable[[WorkflowNode, WorkflowRun], dict[str, Any]] | None:
     """Return the bound module-level node-runner seam, or None when unbound."""
@@ -120,6 +142,123 @@ class UnverifiedNodeCompletionError(DynamicWorkflowError):
     """Raised when an attempt is made to mark a node complete without concrete evidence."""
 
     pass
+
+
+class WorkflowDefinitionError(DynamicWorkflowError):
+    """Raised when a workflow definition is structurally unrunnable.
+
+    Validation happens BEFORE a run exists and therefore before any node can
+    perform a side effect.  Previously a malformed definition (an edge or a
+    ``depends_on`` naming a node that does not exist, a dependency cycle, an
+    unbounded self-loop) was accepted, and the defect only surfaced once
+    execution was already underway: the dangling edge was silently dropped and
+    the run reported ``completed``, or the unschedulable node drove the
+    deadlock-recovery path forever.  A definition that cannot run is now
+    refused at its first executable boundary, with the real reason.
+    """
+
+
+def validate_workflow_graph(graph: WorkflowGraph, *, workflow_id: str | None = None) -> None:
+    """Raise :class:`WorkflowDefinitionError` if ``graph`` cannot be executed.
+
+    Checked, in order, because the earlier failures are the more specific ones:
+
+    1. the graph has at least one node (an empty graph can never complete);
+    2. every ``nodes`` key matches its node's own ``id``;
+    3. every edge endpoint names a node that exists (a dangling edge used to be
+       dropped silently, so a run reported ``completed`` while the declared
+       downstream work never happened);
+    4. every ``depends_on`` entry names a node that exists;
+    5. no dependency cycle over ``depends_on`` + edges (a cycle is what drove
+       the unbounded deadlock-recovery livelock);
+    6. no self-edge (in this engine a self-edge does not re-enter a node, it
+       makes the node permanently unschedulable; bounded re-entry is a
+       ``loop_policy``).
+    """
+    label = f"workflow definition '{workflow_id}'" if workflow_id else "workflow definition"
+    if not graph.nodes:
+        raise WorkflowDefinitionError(f"{label} graph must contain at least one node")
+
+    for key, node in graph.nodes.items():
+        if node.id != key:
+            raise WorkflowDefinitionError(f"{label} graph node key '{key}' does not match node id '{node.id}'")
+
+    for edge in graph.edges:
+        if edge.source not in graph.nodes:
+            raise WorkflowDefinitionError(
+                f"{label} graph edge {edge.source!r}->{edge.target!r} names an unknown source node '{edge.source}'"
+            )
+        if edge.target not in graph.nodes:
+            raise WorkflowDefinitionError(
+                f"{label} graph edge {edge.source!r}->{edge.target!r} names an unknown target node '{edge.target}'"
+            )
+
+    for key, node in graph.nodes.items():
+        for dependency in node.depends_on:
+            if dependency not in graph.nodes:
+                raise WorkflowDefinitionError(
+                    f"{label} graph node '{key}' depends on unknown node '{dependency}'"
+                )
+
+    for edge in graph.edges:
+        if edge.source == edge.target:
+            # A self-edge is not "a loop" in this engine: the scheduler admits a
+            # node only while its incoming source is still unexecuted, so a
+            # self-edge makes the node permanently unschedulable rather than
+            # re-entering it.  Bounded re-entry is expressed by
+            # ``loop_policy`` (the node returns to READY via ``node_iteration``
+            # and is re-admitted because it has no incoming edge).  Refusing the
+            # self-edge names the real fix instead of livelocking.
+            raise WorkflowDefinitionError(
+                f"{label} graph node '{edge.source}' is its own successor; a self-edge makes the node "
+                f"permanently unschedulable (express bounded re-entry with loop_policy)"
+            )
+
+    # Kahn's algorithm over depends_on + edges.  A cycle is reported with the
+    # real unresolved node ids rather than a generic message.  Self-edges are
+    # excluded: the scheduler admits a node only while its source is still
+    # unexecuted, so a self-edge is a no-op edge, and bounded re-entry is
+    # expressed by ``loop_policy`` + ``node_iteration`` (rule 6 above), not by
+    # the edge.
+    successors: dict[str, set[str]] = {nid: set() for nid in graph.nodes}
+    indegree: dict[str, int] = {nid: 0 for nid in graph.nodes}
+    for key, node in graph.nodes.items():
+        incoming = {e.source for e in graph.incoming_edges(key) if e.source != key}
+        for dependency in {*node.depends_on, *incoming}:
+            if dependency not in graph.nodes or dependency == key:
+                continue
+            if key not in successors[dependency]:
+                successors[dependency].add(key)
+                indegree[key] += 1
+    queue = [nid for nid, degree in indegree.items() if degree == 0]
+    processed = 0
+    while queue:
+        current = queue.pop()
+        processed += 1
+        for dependent in successors[current]:
+            indegree[dependent] -= 1
+            if indegree[dependent] == 0:
+                queue.append(dependent)
+    if processed != len(graph.nodes):
+        unresolved = sorted(nid for nid, degree in indegree.items() if degree > 0)
+        raise WorkflowDefinitionError(
+            f"{label} graph has a dependency cycle through nodes {unresolved}; a cyclic graph cannot be "
+            f"scheduled to completion"
+        )
+
+
+def _is_bounded_loop(node: WorkflowNode) -> bool:
+    """Whether a node's own loop policy is a real, positive iteration bound."""
+    return node.loop_policy is not None and node.loop_policy.max_iterations > 0
+
+
+def _recovery_attempts(run: WorkflowRun) -> int:
+    """Stagnation-recovery patches already committed for ``run``."""
+    raw = run.metrics.get(STAGNATION_RECOVERY_KEY, 0)
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return 0
 
 
 def _system1_loop_termination(run: WorkflowRun, node: WorkflowNode, iteration: int) -> dict[str, Any]:
@@ -257,6 +396,12 @@ class DynamicWorkflowEngine:
         if not definition:
             raise KeyError(f"Workflow definition '{workflow_id}' not found.")
 
+        # Validate BEFORE a run exists.  A definition that cannot be scheduled
+        # is refused here, so no node can have performed a side effect and no
+        # ``workflow_started`` event is journaled for a run that was never
+        # going to be runnable.
+        validate_workflow_graph(definition.graph, workflow_id=workflow_id)
+
         rid = run_id or f"run_{uuid.uuid4().hex[:12]}"
         if rid in self.runs:
             raise ValueError(f"Run '{rid}' already exists.")
@@ -362,8 +507,7 @@ class DynamicWorkflowEngine:
 
         if run.budget_limit is not None and run.tokens_consumed >= run.budget_limit:
             reason = f"Workflow budget exhausted: {run.tokens_consumed}/{run.budget_limit} tokens consumed."
-            _set_run_status(run, WorkflowRunStatus.BUDGET_EXHAUSTED, reason=reason)
-            self.events.emit("workflow_failed", run.run_id, reason=reason)
+            self._exhaust_budget(run, reason)
             return run
 
         ready = self.scheduler.compute_ready_nodes(graph, run)
@@ -422,6 +566,33 @@ class DynamicWorkflowEngine:
                 _sync_waiting_nodes(run)
                 return run
 
+            # Bounded recovery.  Each committed remediation patch inserts a new
+            # ``gather_evidence_<node>_<version>`` node and reopens the SAME
+            # unschedulable target, so an unbounded number of attempts is a
+            # livelock: the run never reaches a terminal status and both the
+            # in-memory graph and the durable event log grow on every call.
+            # Past the ceiling the run ends FAILED carrying the real attempt
+            # count and the node it kept trying to unblock.
+            recovery_attempts = _recovery_attempts(run)
+            if recovery_attempts >= STAGNATION_RECOVERY_LIMIT:
+                reason = (
+                    f"Deadlock: no nodes ready to execute; stagnation recovery exhausted after "
+                    f"{recovery_attempts} remediation patch(es) targeting node '{target_id}' "
+                    f"(limit {STAGNATION_RECOVERY_LIMIT}); no further progress is achievable."
+                )
+                _set_run_status(run, WorkflowRunStatus.FAILED, reason=reason)
+                self.events.emit(
+                    "stagnation_recovery_exhausted",
+                    run.run_id,
+                    node_id=target_id,
+                    attempts=recovery_attempts,
+                    limit=STAGNATION_RECOVERY_LIMIT,
+                    reason=reason,
+                )
+                self.events.emit("workflow_failed", run.run_id, reason=reason)
+                _sync_waiting_nodes(run)
+                return run
+
             # Attempt replan against the real target if deadlocked
             patch = self.replanner.propose_evidence_remediation_patch(
                 target_id,
@@ -441,6 +612,15 @@ class DynamicWorkflowEngine:
                 for nid, node in new_graph.nodes.items():
                     if nid not in run.node_states:
                         run.node_states[nid] = node.status
+                run.metrics[STAGNATION_RECOVERY_KEY] = recovery_attempts + 1
+                self.events.emit(
+                    "stagnation_recovery_attempted",
+                    run.run_id,
+                    node_id=target_id,
+                    attempt=recovery_attempts + 1,
+                    limit=STAGNATION_RECOVERY_LIMIT,
+                    graph_version=new_graph.version,
+                )
                 return run
 
             # The recovery proposal itself was rejected: FAILED carrying the
@@ -517,6 +697,30 @@ class DynamicWorkflowEngine:
             **failure_payload,
         )
 
+    def _exhaust_budget(self, run: WorkflowRun, reason: str) -> None:
+        """Terminal budget stop, journaled as its own replayable event.
+
+        Every other terminal run status has a terminal event the log fold
+        recognises.  Budget exhaustion used to journal only a ``node_failed``
+        (or, on the pre-wave check, a ``workflow_failed``), so a replay of the
+        same log produced a DIFFERENT outcome than the live run: the node-level
+        case replayed as still ``running`` — a run that was actually
+        terminated read as in-flight and could be dispatched again — and the
+        pre-wave case replayed as ``failed`` instead of ``budget_exhausted``.
+        ``workflow_budget_exhausted`` is the missing terminal seam.
+        """
+        if run.status == WorkflowRunStatus.BUDGET_EXHAUSTED:
+            return
+        _set_run_status(run, WorkflowRunStatus.BUDGET_EXHAUSTED, reason=reason)
+        self.events.emit(
+            "workflow_budget_exhausted",
+            run.run_id,
+            reason=reason,
+            tokens_consumed=run.tokens_consumed,
+            budget_limit=run.budget_limit,
+            failed_nodes=sorted(set(run.failed_nodes)),
+        )
+
     def _succeed_node(self, run: WorkflowRun, node: WorkflowNode, output: Any, **event_payload: Any) -> None:
         """Mark a node succeeded; the caller must have attached real evidence first."""
         node.status = NodeStatus.SUCCEEDED
@@ -533,9 +737,15 @@ class DynamicWorkflowEngine:
         attempt_key = self._node_attempt_key(node, run)
         event_key = f"{attempt_key}:complete" if attempt_key else None
         if attempt_key:
-            completed_keys = run.metrics.setdefault("completed_idempotency_keys", [])
-            if attempt_key not in completed_keys:
-                completed_keys.append(attempt_key)
+            self._record_idempotency_key(run, attempt_key)
+            # Remember the produced output so a deduplicated re-attempt reports
+            # the ORIGINAL result.  It goes in ``metrics``, not ``state``:
+            # ``_node_attempt_key`` hashes ``run.state``, so writing the result
+            # there would change the key on the next attempt and the dedupe
+            # would never match.
+            outputs = run.metrics.setdefault(IDEMPOTENT_OUTPUTS_KEY, {})
+            if isinstance(outputs, dict):
+                outputs[node.id] = deepcopy(output)
         self.events.emit(
             "node_completed",
             run.run_id,
@@ -558,7 +768,7 @@ class DynamicWorkflowEngine:
             run.node_states[node.id] = NodeStatus.FAILED
             if node.id not in run.failed_nodes:
                 run.failed_nodes.append(node.id)
-            _set_run_status(run, WorkflowRunStatus.BUDGET_EXHAUSTED, reason="Workflow token budget exhausted.")
+            self._exhaust_budget(run, "Workflow token budget exhausted.")
             self.events.emit(
                 "node_failed",
                 run.run_id,
@@ -578,7 +788,7 @@ class DynamicWorkflowEngine:
             if node.id not in run.failed_nodes:
                 run.failed_nodes.append(node.id)
             # Gap 9: budget exhaustion is a real run-status transition.
-            _set_run_status(run, WorkflowRunStatus.BUDGET_EXHAUSTED, reason="Node budget exhausted.")
+            self._exhaust_budget(run, "Node budget exhausted.")
             self.events.emit(
                 "node_failed",
                 run.run_id,
@@ -604,6 +814,33 @@ class DynamicWorkflowEngine:
         digest = hashlib.sha256(material).hexdigest()
         return f"{run.run_id}:{node.id}:{node.idempotency_key}:{digest}"
 
+    def _completed_idempotency_keys(self, run: WorkflowRun) -> list[str]:
+        recorded = run.metrics.get(COMPLETED_IDEMPOTENCY_KEYS)
+        return list(recorded) if isinstance(recorded, list) else []
+
+    def _record_idempotency_key(self, run: WorkflowRun, attempt_key: str) -> None:
+        """Remember that this exact attempt already produced a verified success."""
+        completed = self._completed_idempotency_keys(run)
+        if attempt_key not in completed:
+            completed.append(attempt_key)
+        run.metrics[COMPLETED_IDEMPOTENCY_KEYS] = completed
+
+    def _deduplicated_attempt(self, node: WorkflowNode, run: WorkflowRun) -> str | None:
+        """The recorded attempt key for this node's effect, if it already ran.
+
+        A node that declares an ``idempotency_key`` names ONE logical side
+        effect.  The key already travelled into the append-only log, but nothing
+        ever CONSUMED it, so every retry re-ran the effect: a node whose runner
+        sends mail, charges a card, or POSTs a record performed the write once
+        per attempt.  Returning the key here lets the caller skip the runner and
+        report the recorded evidence instead, which is what makes a declared
+        idempotent step actually idempotent.
+        """
+        attempt_key = self._node_attempt_key(node, run)
+        if attempt_key is None:
+            return None
+        return attempt_key if attempt_key in self._completed_idempotency_keys(run) else None
+
     def _invoke_runner(
         self,
         node: WorkflowNode,
@@ -623,11 +860,43 @@ class DynamicWorkflowEngine:
         if runner is None:
             return {"status": "failed", "output": _no_runner_reason(node), "evidence": "", "tokens_used": 0}
 
+        # A declared idempotent step whose effect this run already performed is
+        # NOT executed a second time.  The recorded attempt key is the whole
+        # point of the field: without this short circuit every retry of a
+        # "charge the card" / "send the mail" node duplicated its side effect.
+        duplicate = self._deduplicated_attempt(node, run)
+        if duplicate is not None:
+            self.events.emit(
+                "node_deduplicated",
+                run.run_id,
+                node_id=node.id,
+                idempotency_key=duplicate,
+                declared_key=node.idempotency_key,
+                reason="idempotency key already completed in this run; the side effect was not repeated",
+            )
+            outputs = run.metrics.get(IDEMPOTENT_OUTPUTS_KEY)
+            recorded_output = outputs.get(node.id) if isinstance(outputs, dict) else None
+            return {
+                "status": "completed",
+                "output": recorded_output,
+                "evidence": f"idempotency key '{duplicate}' already completed in this run; effect not repeated",
+                "tokens_used": 0,
+                "deduplicated": True,
+            }
+
         policy = node.retry_policy
         attempts = max(1, min(int(policy.max_attempts), 20))
         result: dict[str, Any] = {}
         for attempt in range(1, attempts + 1):
             raised_exception: Exception | None = None
+            self.events.emit(
+                "node_attempt_started",
+                run.run_id,
+                node_id=node.id,
+                attempt=attempt,
+                of_attempts=attempts,
+                idempotency_key=self._node_attempt_key(node, run),
+            )
             try:
                 raw = runner(node, run)
             except Exception as exc:  # noqa: BLE001 - preserve the real failure boundary
@@ -744,7 +1013,7 @@ class DynamicWorkflowEngine:
         if node.budget is not None and node.tokens_consumed >= node.budget:
             reason = f"Node budget exhausted before execution: {node.tokens_consumed}/{node.budget} tokens."
             self._fail_node(run, node, reason, budget=node.budget, consumed=node.tokens_consumed)
-            _set_run_status(run, WorkflowRunStatus.BUDGET_EXHAUSTED, reason=reason)
+            self._exhaust_budget(run, reason)
             return
 
         # 2. Loop Policy & Stagnation Check
@@ -1187,18 +1456,13 @@ class DynamicWorkflowEngine:
                                 iteration_counts=dict(run.iteration_counts),
                             )
                     else:
-                        node.status = NodeStatus.SUCCEEDED
-                        run.node_states[nid] = NodeStatus.SUCCEEDED
-                        if nid not in run.completed_nodes:
-                            run.completed_nodes.append(nid)
-                        self.events.emit(
-                            "node_completed",
-                            run.run_id,
-                            node_id=nid,
-                            output=deepcopy(output),
-                            evidence=list(node.evidence),
-                            iteration_counts=dict(run.iteration_counts),
-                        )
+                        # Route the plain (non-loop) success through the shared
+                        # helper so a declared ``idempotency_key`` is actually
+                        # RECORDED here too.  This branch used to inline the
+                        # state change, which is why the key was journalled but
+                        # never consumed: a retried "send the mail" node
+                        # repeated its effect on every attempt.
+                        self._succeed_node(run, node, output)
                 else:
                     raise RuntimeError(f"Runner reported failure for node '{nid}': {output}")
             else:

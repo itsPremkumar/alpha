@@ -42,7 +42,14 @@ from .documents import (
     quarantine_document,
     validate_document,
 )
-from .locking import FileLock, LockMode, file_lock_path
+from .locking import (
+    FileLock,
+    LockMode,
+    LockResult,
+    LockStatus,
+    file_lock_path,
+    lock_backend,
+)
 from .migrations import MigrationRegistry, MigrationResult, migrate_document
 from .retention import RetentionBudget, RetentionCandidate, RetentionPolicy, RetentionReport, plan_retention
 
@@ -76,10 +83,17 @@ class StoreReadResult:
     lock_reason: str = ""
     preserved_path: Path | None = None
     format_version: int | None = None
+    #: Non-None when individual records were coerced so the listing survived.
+    degradation: dict[str, Any] | None = None
 
     @property
     def ok(self) -> bool:
         return self.status in {"succeeded", "recovered", "empty", "migration_required"}
+
+    @property
+    def degraded(self) -> bool:
+        """True when the listing survived a damaged record."""
+        return self.degradation is not None
 
     @property
     def protected(self) -> bool:
@@ -107,6 +121,7 @@ class StoreReadResult:
             "lock_reason": self.lock_reason,
             "preserved_path": str(self.preserved_path) if self.preserved_path is not None else None,
             "format_version": self.format_version,
+            "degradation": self.degradation,
         }
 
 
@@ -192,10 +207,29 @@ class _LoadState:
     error: str = ""
     preserved_path: Path | None = None
     lock_status: str = ""
+    #: Set when individual records were coerced so the listing survived.  The
+    #: document is still usable; this is disclosure, not damage.
+    degraded: Any = None
 
     @property
     def usable(self) -> bool:
         return self.load_status in {"empty", "ok", "migrated"}
+
+
+def _reject_record(row: Any) -> Any:
+    """Validation hook: a non-mapping record is malformed, not container damage."""
+    raise ValueError(f"stored record must be an object, found {type(row).__name__}")
+
+
+def _is_container_failure(exc: BaseException) -> bool:
+    """True when the failure is a malformed *record*, not a broken container.
+
+    The distinction decides quarantine versus per-record coercion, so it is
+    stated as an explicit allowlist of record-level messages rather than a
+    guess about the exception type.
+    """
+    text = str(exc)
+    return "each stored record must be an object" in text
 
 
 def _scope_text(scope: Any) -> str:
@@ -412,6 +446,59 @@ class ScopedStore:
             records.append(copy.deepcopy(dict(raw)))
         return records
 
+    def _readable_records(self, state: _LoadState) -> list[Any]:
+        """Records for a read, coerced per record when the document is sound.
+
+        A reader that raises on the first bad row is the defect: the other rows
+        are perfectly good data and the operator needs to see them.
+        """
+        assert state.document is not None
+        from alpha.persistence.storekit.degradation import UNREADABLE_PLACEHOLDER, coerce_records
+
+        if self.record_key is None:
+            return []
+        payload = state.document.payload
+        if not isinstance(payload, Mapping):
+            return []
+        raw_records = payload.get(self.record_key, [])
+        if not isinstance(raw_records, list):
+            return []
+        result = coerce_records(
+            raw_records,
+            identifier=lambda row: str(row.get("id")) if isinstance(row, Mapping) else None,
+            validate=lambda row: dict(row) if isinstance(row, Mapping) else _reject_record(row),
+            placeholder=UNREADABLE_PLACEHOLDER,
+            component=f"storekit:{self.store_id}",
+        )
+        if result.damaged and state.degraded is None:
+            state.degraded = result
+        return result.records
+
+    def _coerced_records(self, document: DocumentEnvelope) -> Any:
+        """Coerce a malformed record per row instead of failing the whole load.
+
+        Returns a :class:`CoercionResult` when the *container* is sound and at
+        least one record was bad, or ``None`` when the container itself is
+        unusable and the caller must quarantine.
+        """
+        if self.record_key is None:
+            return None
+        payload = document.payload
+        if not isinstance(payload, Mapping):
+            return None
+        raw_records = payload.get(self.record_key, [])
+        if not isinstance(raw_records, list):
+            return None
+        from alpha.persistence.storekit.degradation import coerce_records
+
+        result = coerce_records(
+            raw_records,
+            identifier=lambda row: str(row.get("id")) if isinstance(row, Mapping) else None,
+            validate=lambda row: dict(row) if isinstance(row, Mapping) else _reject_record(row),
+            component=f"storekit:{self.store_id}",
+        )
+        return result if result.damaged else None
+
     # -- locking ----------------------------------------------------------
     def _thread_lock(self, path: Path) -> threading.RLock:
         key = str(path)
@@ -427,6 +514,20 @@ class ScopedStore:
         path = self.scope_path(scope)
         thread_lock = self._thread_lock(path)
         with thread_lock:
+            if not exclusive and not path.exists():
+                # A read of a scope that does not exist has nothing to
+                # serialise against, and taking the lock anyway would CREATE a
+                # lock file on a read path.  Creating a file is a write; a
+                # read-only open must not perform one.
+                yield LockResult(
+                    status=LockStatus.ACQUIRED.value,
+                    path=self.lock_path(scope),
+                    requested_mode=LockMode.READ.value,
+                    effective_mode=LockMode.READ.value,
+                    backend=lock_backend().name,
+                    reason="read_only_no_document_nothing_to_lock",
+                )
+                return
             mode = LockMode.EXCLUSIVE if exclusive or not self.config.allow_shared_reads else LockMode.READ
             lock = FileLock(
                 self.lock_path(scope),
@@ -535,14 +636,30 @@ class ScopedStore:
         try:
             self._records_from_document(document)
         except (TypeError, ValueError) as exc:
-            preserved, error = quarantine_document(path, clock=self._clock)
-            return _LoadState(
-                None,
-                "corrupt_preservation_failed" if error else "corrupt_preserved",
-                reason="malformed_payload",
-                error=error or str(exc),
-                preserved_path=preserved,
-            )
+            # A malformed *container* is document-level damage and is the only
+            # thing that justifies quarantining.  A malformed *record* inside a
+            # sound container is not: it is handled per record by
+            # ``_coerced_records`` below, so one bad row cannot cost the
+            # operator every other row.
+            if not _is_container_failure(exc):
+                preserved, error = quarantine_document(path, clock=self._clock)
+                return _LoadState(
+                    None,
+                    "corrupt_preservation_failed" if error else "corrupt_preserved",
+                    reason="malformed_payload",
+                    error=error or str(exc),
+                    preserved_path=preserved,
+                )
+            coerced = self._coerced_records(document)
+            if coerced is None:
+                preserved, error = quarantine_document(path, clock=self._clock)
+                return _LoadState(
+                    None,
+                    "corrupt_preservation_failed" if error else "corrupt_preserved",
+                    reason="malformed_payload",
+                    error=error or str(exc),
+                    preserved_path=preserved,
+                )
         if document.format_version < self.target_version:
             if not allow_migration or self.migration_registry is None:
                 return _LoadState(document, "migration_required", reason="format_version_behind_target")
@@ -620,10 +737,20 @@ class ScopedStore:
                         format_version=state.document.format_version if state.document is not None else None,
                     )
                 assert state.document is not None
-                records = [self._deserialize_record(record) for record in self._records_from_document(state.document)]
+                raw_records = self._readable_records(state)
+                records = [
+                    self._deserialize_record(record)
+                    for record in raw_records
+                    if isinstance(record, Mapping)
+                ]
                 has_content = bool(records) if self.record_key is not None else bool(state.document.payload)
                 status = "succeeded" if has_content else "empty"
                 reason = state.reason if state.load_status == "migration_required" else ("scope_empty" if not has_content else "")
+                degraded = state.degraded
+                if degraded is not None:
+                    # Disclosure, not damage: the listing survived.  The bad
+                    # rows are named so the operator can repair them.
+                    reason = (reason + "; " if reason else "") + degraded.report.summary()
                 return StoreReadResult(
                     status=status,
                     records=records,
@@ -634,6 +761,7 @@ class ScopedStore:
                     lock_reason=lock_result.reason,
                     preserved_path=state.preserved_path,
                     format_version=state.document.format_version,
+                    degradation=degraded.to_dict() if degraded is not None else None,
                 )
         except (OSError, TypeError, ValueError) as exc:
             return StoreReadResult(status="failed", reason="read_failed", error=str(exc), scope=scope)

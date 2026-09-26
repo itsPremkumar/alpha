@@ -504,6 +504,13 @@ class LocalContainerBackend(SandboxBackend):
     # daemon itself is wedged rather than truncating a slow-but-progressing stop.
     _STOP_TIMEOUT_SECONDS = 120.0
 
+    # Wall clock for a single `run`. First use may download the sandbox image, so
+    # this matches the tolerance the network-proxy create path already grants an
+    # image pull (see `_start_network_proxy`); it only fires when the runtime or
+    # the daemon is wedged, and it turns an unbounded wait into a typed failure
+    # instead of parking the caller forever.
+    _START_TIMEOUT_SECONDS = 300.0
+
     def __init__(
         self,
         *,
@@ -1797,10 +1804,18 @@ class LocalContainerBackend(SandboxBackend):
         logger.info(f"Starting container using {self._runtime}: {log_cmd}")
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            # Bounded: `run` blocks until the container is created (and, on first
+            # use, until the image is pulled). Without a deadline a wedged daemon
+            # parked the caller - and the port it had already reserved - forever.
+            # `timeout` kills the client, and the deterministic container name
+            # means a container the daemon did start is still discoverable.
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=self._START_TIMEOUT_SECONDS)
             container_id = result.stdout.strip()
             logger.info(f"Started container {container_name} (ID: {container_id}) using {self._runtime}")
             return container_id
+        except subprocess.TimeoutExpired:
+            logger.error(f"Timed out after {self._START_TIMEOUT_SECONDS}s starting container {container_name} using {self._runtime}")
+            raise RuntimeError(f"Failed to start sandbox container: {self._runtime} did not complete the start within {self._START_TIMEOUT_SECONDS}s")
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to start container using {self._runtime}: {e.stderr}")
             raise RuntimeError(f"Failed to start sandbox container: {e.stderr}")

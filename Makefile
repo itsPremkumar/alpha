@@ -1,6 +1,6 @@
 # Alpha - Unified Development Environment
 
-.PHONY: help config config-upgrade check check-agent-guidance install voice-setup voice-verify system-one-laya-setup system-one-laya-serve system-one-laya-status extension-install extension-upgrade extension-list extension-enable extension-disable extension-remove setup doctor prod-check support-bundle update-status update-check update-apply update-recover update-skip detect-thread-boundaries detect-blocking-io dev dev-daemon start start-daemon nginx stop up down clean docker-init docker-start docker-stop docker-logs docker-logs-frontend docker-logs-gateway docker-logs-redis setup-sandbox verify checkpoint rollback guardrails context safe-exec
+.PHONY: help config config-upgrade check check-agent-guidance install voice-setup voice-verify system-one-laya-setup system-one-laya-serve system-one-laya-status extension-install extension-upgrade extension-list extension-enable extension-disable extension-remove setup doctor prod-check support-bundle diagnostic-bundle logs-rotate update-status update-check update-apply update-recover update-skip detect-thread-boundaries detect-blocking-io dev dev-daemon start start-daemon nginx stop up down clean docker-init docker-start docker-stop docker-logs docker-logs-frontend docker-logs-gateway docker-logs-redis setup-sandbox verify checkpoint rollback guardrails context safe-exec
 
 BASH ?= bash
 BACKEND_UV_RUN = cd backend && uv run
@@ -29,7 +29,9 @@ help:
 	@echo "                           Unattended: make setup SETUP_ARGS=--non-interactive"
 	@echo "  make doctor          - Check configuration and system requirements"
 	@echo "  make prod-check      - Production readiness pre-flight (versions, config, secrets)"
-	@echo "  make support-bundle  - Create a redacted issue summary, AI draft, and evidence bundle"
+	@echo "  make support-bundle  - One-command diagnostic bundle: redacted logs, run trace, config, versions, doctor"
+	@echo "  make diagnostic-bundle RUN_ID=<id> - Same bundle, scoped to one run's trace records"
+	@echo "  make logs-rotate      - Rotate oversized launcher logs (same 5 MiB x 3 budget as start.ps1)"
 	@echo "  make update-status   - Read the guarded GitHub source-update state"
 	@echo "  make update-check    - Check the configured GitHub release/branch"
 	@echo "  make update-apply    - Apply the verified update after explicit confirmation"
@@ -85,8 +87,26 @@ doctor:
 prod-check:
 	@$(PYTHON) ./scripts/prod_check.py
 
+# The one diagnostic command: redacted launcher log tails, the rendered run
+# trace, config/extensions summaries, git state, toolchain versions, and doctor
+# output. Logs and the trace are on by default because a maintainer who has to
+# ask for them separately has already lost the reporter; pass --no-logs/--no-trace
+# to leave operational data out of the zip entirely.
 support-bundle:
 	@$(BACKEND_UV_RUN) python ../scripts/support_bundle.py --include-doctor
+
+# Same bundle, scoped to one run's trace records. RUN_ID is the run id from
+# `GET /api/threads/{id}/runs/{rid}` or the run metadata in the trace file.
+diagnostic-bundle:
+	$(if $(and $(filter command line,$(origin RUN_ID)),$(strip $(value RUN_ID))),,$(error usage: make diagnostic-bundle RUN_ID=<run-id>))
+	@$(BACKEND_UV_RUN) python ../scripts/support_bundle.py --include-doctor --run-id "$(RUN_ID)"
+
+# Bounded launcher logs, portably. `start.ps1` grew its own rotation; this is the
+# same budget for `make dev` / `make start` and for any launcher that goes
+# through the Makefile. Not run by start.sh/start.bat/watchdog.bat when they are
+# invoked directly - see scripts/rotate_logs.py.
+logs-rotate:
+	@$(PYTHON) ./scripts/rotate_logs.py
 
 # Guarded source updater. `update-check` is read-only; `update-apply` is an
 # explicit operator command and refuses to run without the confirmation flag.
@@ -197,8 +217,12 @@ setup-sandbox:
 	@$(RUN_SHELL_SCRIPT) ./scripts/setup-sandbox.sh
 
 # Start all services in development mode (with hot-reloading)
+# Logs are rotated first: a long-lived `make dev` session would otherwise grow
+# logs/*.log without bound, and this is the moment it is safe to rename them
+# (no process holds the descriptor yet). See scripts/rotate_logs.py.
 dev:
 	@$(PYTHON) ./scripts/check.py
+	@$(PYTHON) ./scripts/rotate_logs.py
 	@$(RUN_SHELL_SCRIPT) ./scripts/serve.sh --dev
 
 # Start all services in production mode (with optimizations).
@@ -206,16 +230,19 @@ dev:
 # `next build`; see scripts/serve.sh --skip-frontend-build.
 start:
 	@$(PYTHON) ./scripts/check.py
+	@$(PYTHON) ./scripts/rotate_logs.py
 	@$(RUN_SHELL_SCRIPT) ./scripts/serve.sh --prod $(if $(filter 1,$(SKIP_FRONTEND_BUILD)),--skip-frontend-build)
 
 # Start all services in daemon mode (background)
 dev-daemon:
 	@$(PYTHON) ./scripts/check.py
+	@$(PYTHON) ./scripts/rotate_logs.py
 	@$(RUN_SHELL_SCRIPT) ./scripts/serve.sh --dev --daemon
 
 # Start prod services in daemon mode (background)
 start-daemon:
 	@$(PYTHON) ./scripts/check.py
+	@$(PYTHON) ./scripts/rotate_logs.py
 	@$(RUN_SHELL_SCRIPT) ./scripts/serve.sh --prod --daemon $(if $(filter 1,$(SKIP_FRONTEND_BUILD)),--skip-frontend-build)
 
 # Start nginx alone in the foreground with the local dev config

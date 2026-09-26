@@ -18,36 +18,37 @@ _GLOBAL_WORKER = ComputerWorker()
 def execute_sandboxed_computer_action(
     action: str,
     command: str = "",
-    approval_token: str = "",
     dry_run: bool = False,
 ) -> str:
-    """Execute desktop and terminal commands through a 3-tier blast-radius safety gate.
+    """Evaluate a desktop/terminal command against the 3-tier blast-radius safety gate.
+
+    The gate classifies and validates; it never runs anything. ``SAFE`` commands
+    clear the gate immediately, ``SENSITIVE`` ones come back as
+    ``approval_required`` with an opaque ``approval_id``, and ``FORBIDDEN`` ones
+    are rejected outright and cannot be approved by anyone.
+
+    There is deliberately no argument you can pass to approve a SENSITIVE
+    command: an ``approval_id`` is only honoured once a human operator has
+    granted it out of band, so a model cannot authorise its own host action.
 
     Args:
         action: 'classify_command', 'execute_command', 'get_audit_log'.
-        command: Terminal or shell command string to evaluate or execute.
-        approval_token: Token or confirmation to authorize sensitive commands.
-        dry_run: If True, simulates execution without making system state modifications.
+        command: Terminal or shell command string to evaluate.
+        dry_run: If True, report the simulated outcome without claiming a change was applied.
     """
     try:
         if action == "classify_command":
             cls = BlastRadiusPolicy.classify(command)
             return json.dumps(cls.to_dict(), indent=2)
 
-        elif action == "execute_command":
-            approval = bool(approval_token and approval_token.strip().lower() in ("true", "approved", "admin", "yes"))
-            res = _GLOBAL_WORKER.execute(
-                command=command,
-                approval_granted=approval,
-                dry_run=dry_run,
-            )
+        if action == "execute_command":
+            res = _GLOBAL_WORKER.execute(command=command, dry_run=dry_run)
             return json.dumps(res, indent=2)
 
-        elif action == "get_audit_log":
+        if action == "get_audit_log":
             return json.dumps(_GLOBAL_WORKER.get_audit_log(), indent=2)
 
-        else:
-            return f"Error: Unknown action '{action}'."
+        return f"Error: Unknown action '{action}'."
 
     except Exception as exc:
         return f"Error in sandboxed computer execution: {exc}"

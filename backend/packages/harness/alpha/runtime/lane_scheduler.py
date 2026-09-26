@@ -13,6 +13,17 @@ its background queue but a caller that already holds a ``release_task`` handle.
 A gate that cannot say "no" cannot bound concurrency, so
 :class:`RunAdmissionController` owns the rejection decision and keeps the lane
 split for observability.
+
+A refusal is a *transport-level* answer, not a verdict on the work: the request
+was well formed and is worth repeating once a slot frees. Every producer of
+durable background work that flows through the Gateway's run admission path --
+the scheduled-task poller and the MCP task notifier -- therefore has to be able
+to tell a refusal apart from a genuine failure, or it records "capacity is
+full right now" in a durable column that is only ever read as "this job
+failed". :func:`is_run_capacity_refusal` is that discriminator, and
+:func:`capacity_refusal_retry_after_seconds` is the server's own retry hint. Both
+are defined here, next to the stable code they match on, so no producer has to
+re-derive the contract (and none of them has to import the Gateway).
 """
 
 from __future__ import annotations
@@ -22,6 +33,7 @@ import os
 import threading
 import time
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Final
 
@@ -224,6 +236,13 @@ class LaneScheduler:
 #: alerts match on this string, so it never changes wording.
 RUN_ADMISSION_REJECTED_CODE: Final[str] = "gateway_run_capacity_exhausted"
 
+#: HTTP status the Gateway answers a refusal with. Mirrors
+#: ``app.gateway.services.RUN_ADMISSION_REJECTED_STATUS``; the value lives here
+#: so a producer can recognise a refusal without importing the Gateway (which
+#: would pull the whole request graph in behind a 429). Equality against the
+#: Gateway constant is pinned by a test, so the two cannot drift.
+RUN_CAPACITY_REFUSAL_STATUS: Final[int] = 429
+
 #: Environment override for the process-wide in-flight run budget. Intended for
 #: operators who need to move the ceiling without a code change; when unset the
 #: budget is derived from the ORM connection pool (see
@@ -274,6 +293,84 @@ class RunAdmissionRejected(RuntimeError):
         self.retry_after_seconds = retry_after_seconds
 
 
+def _refusal_code(obj: Any) -> str | None:
+    """Best-effort stable code carried by a refusal-shaped object.
+
+    Recognises both shapes a refusal arrives in: the bare
+    :class:`RunAdmissionRejected`, and the ``HTTPException`` the Gateway raises
+    in its place, whose ``detail`` is a mapping carrying the code.
+    """
+    code = getattr(obj, "code", None)
+    if isinstance(code, str) and code:
+        return code
+    detail = getattr(obj, "detail", None)
+    if isinstance(detail, Mapping):
+        detail_code = detail.get("code")
+        if isinstance(detail_code, str) and detail_code:
+            return detail_code
+    return None
+
+
+def is_run_capacity_refusal(exc: BaseException) -> bool:
+    """Is *exc* the Gateway declining to admit a run for lack of capacity?
+
+    The honest answer matters because a capacity refusal is *retryable* while a
+    run failure is *terminal*. A producer that cannot tell them apart writes
+    "the server is busy" into the same durable column that means "this job
+    failed", and the job is then destroyed by whatever drains that column --
+    a dead-letter budget, a ``last_error``, a ``launch_failed`` journal entry.
+
+    Matching is on the stable code, not on prose: a 429 whose body is some
+    other kind of rate limit is *not* a capacity refusal and must not be
+    mistaken for one. The bare :class:`RunAdmissionRejected` is accepted too so
+    a caller that catches the pre-translation error behaves identically.
+    """
+    if isinstance(exc, RunAdmissionRejected):
+        return True
+    if getattr(exc, "status_code", None) != RUN_CAPACITY_REFUSAL_STATUS:
+        return False
+    return _refusal_code(exc) == RUN_ADMISSION_REJECTED_CODE
+
+
+def capacity_refusal_retry_after_seconds(exc: BaseException, *, default: float = 1.0) -> float:
+    """The server's own retry hint for a refusal, in seconds.
+
+    Prefers what the refusal actually carried over *default*, because the hint
+    is computed from the saturation the caller is looking at. A missing or
+    nonsensical hint falls back rather than raising: backoff is a courtesy to
+    the busy system, never a reason to fail the worker's control flow.
+    """
+    candidates: list[Any] = [getattr(exc, "retry_after_seconds", None)]
+    detail = getattr(exc, "detail", None)
+    if isinstance(detail, Mapping):
+        candidates.append(detail.get("retry_after_seconds"))
+    for candidate in candidates:
+        if isinstance(candidate, bool) or not isinstance(candidate, (int, float)):
+            continue
+        if candidate > 0:
+            return float(candidate)
+    return float(default)
+
+
+def capacity_refusal_detail(exc: BaseException) -> str:
+    """Operator-readable one-liner for a refusal, safe to persist as an error.
+
+    Carries the stable code first so a durable row that records it can be
+    matched on the same string a client would have seen.
+    """
+    decision = getattr(exc, "decision", None)
+    active = getattr(decision, "active", None)
+    limit = getattr(decision, "limit", None)
+    if active is None or limit is None:
+        detail = getattr(exc, "detail", None)
+        if isinstance(detail, Mapping):
+            active = detail.get("active_runs")
+            limit = detail.get("max_concurrent_runs")
+    if isinstance(active, int) and isinstance(limit, int):
+        return f"{RUN_ADMISSION_REJECTED_CODE}: {active}/{limit} runs in flight; the occurrence is queued, not failed"
+    return f"{RUN_ADMISSION_REJECTED_CODE}: the occurrence is queued, not failed"
+
+
 class RunAdmissionController:
     """Hard-bounded, await-free admission control for in-flight run tasks.
 
@@ -320,11 +417,26 @@ class RunAdmissionController:
         self._admitted = 0
         self._rejected = 0
         self._lane_active: dict[ExecutionLane, int] = {lane: 0 for lane in ExecutionLane}
+        self._lane_rejected: dict[ExecutionLane, int] = {lane: 0 for lane in ExecutionLane}
 
     @property
     def active(self) -> int:
         with self._lock:
             return self._active
+
+    @property
+    def available(self) -> int:
+        """Slots a caller could take right now, without taking one.
+
+        A read, so it is advisory: a caller that uses this to decide whether it
+        is worth attempting an admission is racing every other caller, and a
+        refusal remains the authoritative answer. What it buys is that a
+        *background* producer which reuses a deterministic idempotency key can
+        decline to walk into the race at all -- refusing is free, asking is not,
+        because a refused admission has already consumed durable state.
+        """
+        with self._lock:
+            return max(0, self.max_concurrent_runs - self._active)
 
     def try_admit(self, *, lane: ExecutionLane = ExecutionLane.USER_INTERACTION) -> AdmissionDecision:
         """Take one in-flight slot, or refuse without taking one.
@@ -335,6 +447,7 @@ class RunAdmissionController:
         with self._lock:
             if self._active >= self.max_concurrent_runs:
                 self._rejected += 1
+                self._lane_rejected[lane] = self._lane_rejected.get(lane, 0) + 1
                 return AdmissionDecision(
                     admitted=False,
                     code=RUN_ADMISSION_REJECTED_CODE,
@@ -378,15 +491,24 @@ class RunAdmissionController:
             return self._active
 
     def snapshot(self) -> dict[str, Any]:
-        """Saturation metrics for logs and diagnostics."""
+        """Saturation metrics for logs and diagnostics.
+
+        ``rejected_by_lane`` is the number that answers "is scheduled work being
+        starved?". A flat ``rejected`` count cannot: it cannot separate a
+        background run the operator should care about from an interactive burst
+        that is simply the cap doing its job, and it keeps no history of which
+        producer is losing the race for slots.
+        """
         with self._lock:
             return {
                 "active": self._active,
+                "available": max(0, self.max_concurrent_runs - self._active),
                 "peak": self._peak,
                 "limit": self.max_concurrent_runs,
                 "admitted": self._admitted,
                 "rejected": self._rejected,
                 "active_by_lane": {lane.value: count for lane, count in self._lane_active.items()},
+                "rejected_by_lane": {lane.value: count for lane, count in self._lane_rejected.items()},
             }
 
 
@@ -473,3 +595,28 @@ def resolve_execution_lane(*, autonomous: bool, background: bool = False) -> Exe
     if autonomous:
         return ExecutionLane.SYSTEM_MAINTENANCE
     return ExecutionLane.USER_INTERACTION
+
+
+def has_run_capacity(*, controller: RunAdmissionController | None = None) -> bool:
+    """Is the in-flight run budget believed to have a free slot right now?
+
+    For producers whose admission is *not* idempotent-safe to repeat -- a
+    background job that hands the Gateway a deterministic idempotency key, so a
+    refused admission has already consumed durable state -- walking into a
+    saturated gateway converts "I am early" into "my key is burnt". Asking
+    first is strictly cheaper than being refused.
+
+    Advisory by construction, and deliberately total: any surprise resolving the
+    controller reads as capacity available, so this can never be the reason a
+    scheduled occurrence fails to start. A refusal at
+    :meth:`RunAdmissionController.try_admit` remains the authority.
+    """
+    try:
+        resolved = controller if controller is not None else get_run_admission_controller()
+    except Exception:
+        return True
+    try:
+        return resolved.available > 0
+    except Exception:
+        return True
+

@@ -21,12 +21,30 @@ def _scope_overlap(left: str, right: str) -> bool:
     return a == b or a.startswith(b + "/") or b.startswith(a + "/")
 
 
+def satisfied_nodes(run: WorkflowRun) -> set[str]:
+    """Nodes whose dependency obligation is discharged.
+
+    ``run.completed_nodes`` is the primary source.  A node the engine marked
+    ``SKIPPED`` is ALSO discharged: SKIPPED is only ever set by the proven
+    losing-branch rule (``unselected_branch_nodes``), i.e. the run has
+    positively established that the node must not execute.  Leaving skipped
+    nodes out of the satisfied set made every node that JOINS the two arms of a
+    conditional fork permanently unschedulable, so the engine could never reach
+    a terminal state and its deadlock-recovery path patched the graph forever.
+    ``completed_nodes`` itself is deliberately NOT widened, so handoff and
+    compensation still see only genuinely executed work.
+    """
+    discharged = set(run.completed_nodes)
+    discharged.update(nid for nid, status in run.node_states.items() if status == NodeStatus.SKIPPED)
+    return discharged
+
+
 class WorkflowScheduler:
     """Computes ready nodes, resolves conditional edges, and packs parallel execution waves."""
 
     def compute_ready_nodes(self, graph: WorkflowGraph, run: WorkflowRun) -> list[str]:
         ready: list[str] = []
-        completed = set(run.completed_nodes)
+        completed = satisfied_nodes(run)
 
         for nid, node in graph.nodes.items():
             current_status = run.node_states.get(nid, node.status)
@@ -98,9 +116,11 @@ class WorkflowScheduler:
         A router commonly emits mutually exclusive edges from one source.  Once
         that source is complete, an all-false alternative group is a proven
         branch skip rather than a deadlock.  Nodes with an unfinished source
-        are never skipped here.
+        are never skipped here, and a source that is itself a proven skip
+        counts as finished (``satisfied_nodes``) so a join across both arms of
+        a fork can be resolved.
         """
-        completed = set(run.completed_nodes)
+        completed = satisfied_nodes(run)
         context = {"state": run.state, "metrics": run.metrics}
         skipped: list[str] = []
         for nid, node in graph.nodes.items():

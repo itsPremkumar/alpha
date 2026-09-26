@@ -12,6 +12,25 @@ import threading
 from pathlib import Path
 from typing import Any
 
+from alpha.bots.alpha_leader import (
+    ALPHA_LEADER_NAME,
+    ALPHA_LEADER_ROLE,
+    ALPHA_LEADER_SOUL,
+    ensure_alpha_leader,
+    install_leader_template,
+)
+from alpha.bots.authority_ceiling import (
+    ALLOWED_CAPABILITIES,
+    CAPABILITY_RANKS,
+    DEFAULT_MAX_CAPABILITY_RANK,
+    AuthorityCeiling,
+    AuthorityViolation,
+    enforce_grant,
+    get_ceiling,
+    narrow_to_ceiling,
+    normalise_capabilities,
+)
+from alpha.bots.governance_ledger import record_authority_refusal
 from alpha.bots.profile import (
     BotProfile,
     _now,
@@ -21,6 +40,29 @@ from alpha.bots.profile import (
 from alpha.bots.templates import BOT_STATUSES, get_template
 
 logger = logging.getLogger(__name__)
+
+#: The authority ``alpha`` itself holds, and therefore the most it can ever grant
+#: to something it hires: every capability at or below the default ceiling rank.
+#:
+#: This is deliberately derived from the ceiling rather than hand-listed, so
+#: "a created profile may never exceed its creator" and "a created profile may
+#: never exceed the ceiling" cannot drift apart as the lattice grows.
+#:
+#: ``repository_mutate`` and ``grant_authority`` are excluded by the default
+#: rank: rewriting the repository and minting authority belong to the operator
+#: and the Sentinel, never to a teammate alpha created. See
+#: :mod:`alpha.bots.authority_ceiling` for the full rationale.
+FLEET_CAPABILITY_GRANT: tuple[str, ...] = tuple(
+    sorted(
+        name
+        for name in ALLOWED_CAPABILITIES
+        if CAPABILITY_RANKS[name] <= DEFAULT_MAX_CAPABILITY_RANK
+    )
+)
+
+#: Who may exercise self-extension. Only the leader may hire, re-scope or retire;
+#: a teammate asking to widen its own grant is the exact escalation this refuses.
+SELF_EXTENSION_ACTORS: frozenset[str] = frozenset({"alpha", "lead", "system", "server"})
 
 _DEFAULT_BOT_DIR = "bots"
 
@@ -77,10 +119,18 @@ def _infer_role_from_name(name: str) -> str:
 class BotRegistry:
     """Thread-safe registry for autonomous Bot profiles with auto-provisioning."""
 
-    def __init__(self, storage_path: str | Path | None = None):
+    def __init__(
+        self,
+        storage_path: str | Path | None = None,
+        *,
+        ceiling: AuthorityCeiling | None = None,
+    ):
         self.storage_path = Path(storage_path).resolve() if storage_path else _default_storage_path()
         self._bots: dict[str, BotProfile] = {}
         self._lock = threading.Lock()
+        #: Server-owned authority bound. None means "use the process ceiling".
+        #: Bindable only as a frozen AuthorityCeiling, never from model input.
+        self._ceiling: AuthorityCeiling | None = ceiling
         self._load()
 
         # Ensure default foundational team exists
@@ -99,6 +149,9 @@ class BotRegistry:
             "data-analyst",
             "technical-writer",
         ]
+        # Register the leader template before any seed lookup so `alpha`
+        # resolves through the same catalog as every other role.
+        install_leader_template()
         with self._lock:
             for slug in seeds:
                 if slug in self._bots:
@@ -129,6 +182,11 @@ class BotRegistry:
                 self._apply_sentinel_defaults(bot)
                 self._bots[slug] = bot
             self._save()
+        # The leader is installed on EVERY construction, not only on a fresh
+        # roster, so an install whose persisted roster predates this profile
+        # still ends up with a leader after one restart. Idempotent: an
+        # operator-customised `alpha` profile is left untouched.
+        ensure_alpha_leader(self)
 
     def repair_placeholder_profiles(self) -> list[str]:
         """Repair bots that were auto-provisioned with placeholder values.
@@ -168,6 +226,12 @@ class BotRegistry:
                 current.capabilities = list(spec.get("capabilities", current.capabilities))
                 if bot.name == "sentinel" and "Never commit on red" not in (current.soul or ""):
                     current.soul = generate_sentinel_soul(bot.name)
+                if bot.name == ALPHA_LEADER_NAME and "Never bypass a gate" not in (current.soul or ""):
+                    # An `alpha` bot provisioned before the leader profile
+                    # existed carries the generic SOUL. A generic SOUL makes the
+                    # leader a do-the-work generalist, which is precisely the
+                    # wrong instruction for a dispatcher.
+                    current.soul = ALPHA_LEADER_SOUL
                 repaired.append(bot.name)
             spec_by_name[bot.name] = spec
 
@@ -271,7 +335,7 @@ class BotRegistry:
                 return self._bots[key]
 
             # Auto-provision new bot on demand
-            assigned_role = role or (spec["role"] if spec else None) or _infer_role_from_name(key)
+            assigned_role = role or (spec["role"] if spec else None) or (ALPHA_LEADER_ROLE if key == ALPHA_LEADER_NAME else None) or _infer_role_from_name(key)
             assigned_display = display_name or (spec["display"] if spec else None) or key.capitalize()
             # The Sentinel is the one bot allowed to change code and commit
             # unattended, so it must never receive the generic SOUL. Same rule
@@ -281,6 +345,13 @@ class BotRegistry:
                 assigned_soul = soul
             elif resolved_template == "sentinel":
                 assigned_soul = generate_sentinel_soul(key)
+            elif key == ALPHA_LEADER_NAME:
+                # The leader must never receive the generic SOUL: a generic
+                # SOUL tells it to claim and do work itself, which is the
+                # opposite of its job. Same rule as _ensure_default_roster,
+                # applied here because get_or_create is the path the
+                # /api/bots/{name}/ensure endpoint uses.
+                assigned_soul = ALPHA_LEADER_SOUL
             else:
                 assigned_soul = generate_default_soul(key, assigned_role)
             assigned_avatar = avatar if avatar is not None else (spec["avatar"] if spec else "")
@@ -514,6 +585,238 @@ class BotRegistry:
 
     def get_by_department(self, department: str) -> list[BotProfile]:
         return self.list_bots(department=department)
+
+    # ── Self-extension: hire / re-scope / retire under a hard ceiling ──────
+    #
+    # alpha may HIRE, RE-SCOPE and RETIRE. It may NOT promote itself, widen its
+    # own authority envelope, or mint a profile whose capabilities exceed the
+    # server-owned ceiling. Each rule below is a hard refusal, not a convention:
+    #
+    #   1. a caller may never grant itself more than the ceiling;
+    #   2. a caller may never modify the ceiling or a protected component;
+    #   3. only a leader actor may hire / re-scope / retire;
+    #   4. a pre-existing grant that no longer fits is DEMOTED on next use, so
+    #      lowering the ceiling does something to agents that already exist.
+
+    def _assert_leader(self, actor: str, action: str) -> str:
+        who = (actor or "").strip().lower()
+        if who not in SELF_EXTENSION_ACTORS:
+            raise AuthorityViolation(
+                f"{who!r} may not {action}: self-extension is a leader capability "
+                f"(allowed actors: {sorted(SELF_EXTENSION_ACTORS)})",
+                violations=[f"not_leader:{who}"],
+            )
+        return who
+
+    def _assert_may_touch(self, target: str, *, actor: str, action: str) -> None:
+        """Refuse any attempt to modify a ceiling-enforcement component."""
+        self._assert_leader(actor, action)
+        self.ceiling().assert_may_modify(target, actor=actor, reason=action)
+
+    def set_ceiling(self, ceiling: AuthorityCeiling) -> None:
+        """Bind the server-owned ceiling this registry enforces.
+
+        Server-side only. The argument is a frozen ``AuthorityCeiling``,
+        constructible only from server configuration; there is no path here that
+        accepts a ceiling derived from a profile, a proposal, or model output.
+        """
+        self._ceiling = ceiling
+
+    def ceiling(self) -> AuthorityCeiling:
+        return self._ceiling or get_ceiling()
+
+    def _live_count(self) -> int:
+        """Live SELF-EXTENDED profiles, which is what the population ceiling bounds.
+
+        The seed roster in :meth:`_ensure_default_roster` is a fixed,
+        server-owned list of eight slugs. It is not attacker-influenced and it
+        cannot grow, so charging it against ``max_live_profiles`` would make the
+        bound depend on the template catalog rather than on how much authority
+        alpha has been granted the power to mint. The resource bomb this ceiling
+        exists to stop is the *runtime-created* population, so that is what is
+        counted.
+        """
+        with self._lock:
+            return sum(
+                1
+                for b in self._bots.values()
+                if not b.is_retired and (b.metadata or {}).get("created_by")
+            )
+
+    def hire_bot(
+        self,
+        name: str,
+        *,
+        actor: str,
+        reason: str,
+        role: str | None = None,
+        soul: str | None = None,
+        requested_capabilities: list[str] | None = None,
+        skills: list[str] | None = None,
+        template: str | None = None,
+    ) -> BotProfile:
+        """Create a specialised profile at runtime, within the ceiling.
+
+        The request is checked against the ceiling BEFORE anything is written,
+        and the stored grant is the checked intersection — not whatever the
+        request asked for. An over-ceiling request is REFUSED, not trimmed, so
+        the caller learns it asked for too much.
+        """
+        who = self._assert_leader(actor, "hire a profile")
+        # Refuse a hire aimed at the enforcement machinery by name.
+        self._assert_may_touch(name, actor=who, action="hire")
+        key = (name or "").strip().lower()
+        spec = get_template(template or key)
+        # A template's ``capabilities`` are free-form DOMAIN TAGS ("python",
+        # "react", "web_search") used for matching in
+        # :func:`alpha.bots.work_discovery.match_bot_for_task`. They are NOT
+        # authority capabilities and are never treated as a grant: feeding them
+        # to the ceiling would mean every unknown tag reads as a violation and
+        # every recognised one reads as a grant. Authority comes from the
+        # explicit request, defaulted to the leader's own grant.
+        domain_tags = list(spec.get("capabilities", [])) if spec else []
+        wanted = (
+            list(requested_capabilities)
+            if requested_capabilities is not None
+            else list(FLEET_CAPABILITY_GRANT)
+        )
+        # A self-declared capability list is UNTRUSTED input: it is intersected
+        # with the leader's own grant and the ceiling, never honoured verbatim.
+        grant = enforce_grant(
+            wanted,
+            creator_grant=FLEET_CAPABILITY_GRANT,
+            subject=f"hire of {key!r}",
+            ceiling=self.ceiling(),
+        )
+        self.ceiling().assert_population_within_ceiling(
+            live=self._live_count(), total=len(self._bots), subject=f"hire of {key!r}"
+        )
+        with self._lock:
+            bot = BotProfile(
+                name=key,
+                display_name=(spec or {}).get("display") or key.capitalize(),
+                role=role or (spec or {}).get("role") or "Specialist",
+                soul=soul or generate_default_soul(key, role or "Specialist"),
+                skills=list(skills or []),
+                toolsets=["all"],
+                capabilities=sorted(grant),
+                metadata={
+                    "created_by": who,
+                    "creation_reason": reason,
+                    "creator_grant": sorted(FLEET_CAPABILITY_GRANT),
+                    "requested_capabilities": sorted(normalise_capabilities(wanted)),
+                    "domain_tags": domain_tags,
+                },
+            )
+            self._bots[key] = bot
+            self._save()
+        return bot
+
+    def rescope_bot(
+        self,
+        name: str,
+        *,
+        actor: str,
+        reason: str,
+        new_capabilities: list[str],
+    ) -> BotProfile | None:
+        """Change a profile's grant, within the ceiling and the creator's grant.
+
+        Re-scoping is not a hole around creation: a profile cannot acquire, by
+        re-scoping, a capability it could not have been created with.
+        """
+        who = self._assert_leader(actor, "re-scope a profile")
+        self._assert_may_touch(name, actor=who, action="re-scope")
+        with self._lock:
+            bot = self._bots.get((name or "").strip().lower())
+            if bot is None:
+                return None
+            creator_grant = normalise_capabilities(
+                (bot.metadata or {}).get("creator_grant") or FLEET_CAPABILITY_GRANT
+            )
+            grant = enforce_grant(
+                new_capabilities,
+                creator_grant=creator_grant or FLEET_CAPABILITY_GRANT,
+                subject=f"re-scope of {bot.name!r}",
+                ceiling=self.ceiling(),
+            )
+            previous = sorted(bot.capabilities)
+            bot.capabilities = sorted(grant)
+            metadata = dict(bot.metadata or {})
+            metadata["last_rescope"] = {"by": who, "reason": reason, "previous": previous}
+            bot.metadata = metadata
+            bot.version += 1
+            bot.updated_at = _now()
+            self._save()
+            return bot
+
+    #: Statuses that mean a bot must not be handed work, for a SELF-EXTENDED
+    #: bot. A runtime-created profile is installed ``disabled`` and only becomes
+    #: dispatchable once it has been through the lifecycle governor, so
+    #: ``disabled`` is a meaningful refusal state for it.
+    _SELF_EXTENDED_REFUSAL_STATUSES: frozenset[str] = frozenset(
+        {"disabled", "suspended", "archived", "draining", "retired", "quarantined"}
+    )
+
+    #: Statuses that mean a bot must not be handed work, for a SEED/TEMPLATE bot.
+    #: ``disabled`` is deliberately absent: on the pre-existing roster it is a
+    #: long-standing status with its own meaning, and treating it as a refusal
+    #: here would change behaviour the rest of bot mode already depends on.
+    _SEED_REFUSAL_STATUSES: frozenset[str] = frozenset(
+        {"suspended", "archived", "draining", "retired"}
+    )
+
+    def authorized_bot(self, name: str) -> BotProfile | None:
+        """The only read path a dispatcher should use for a created profile.
+
+        Two jobs, in order:
+
+        1. **Re-validate against the CURRENT ceiling.** This is the security
+           half, and it applies to every bot: a tightened ceiling narrows an
+           over-privileged grant at its next dispatch instead of leaving it
+           quietly working.
+        2. **Refuse a bot that must not receive work.** The refusal set depends
+           on whether the bot was self-extended: a profile alpha created starts
+           ``disabled`` and must be enabled through the lifecycle governor, while
+           a seed/template bot keeps its pre-existing status semantics.
+        """
+        key = (name or "").strip().lower()
+        with self._lock:
+            bot = self._bots.get(key)
+            if bot is None:
+                return None
+            kept, removed = narrow_to_ceiling(
+                bot.capabilities, subject=key, ceiling=self.ceiling()
+            )
+            if removed:
+                bot.capabilities = sorted(kept)
+                metadata = dict(bot.metadata or {})
+                metadata["demoted_capabilities"] = sorted(
+                    set(metadata.get("demoted_capabilities", [])) | set(removed)
+                )
+                bot.metadata = metadata
+                bot.version += 1
+                bot.updated_at = _now()
+                if not kept and bot.status == "active":
+                    # An agent that can no longer do its job is not left enabled.
+                    bot.status = "disabled"
+                self._save()
+                record_authority_refusal(
+                    actor="server",
+                    target=key,
+                    reason="authority ceiling tightened; grant demoted on next use",
+                    violations=[f"demoted:{r}" for r in removed],
+                )
+            self_extended = bool((bot.metadata or {}).get("created_by"))
+            refusals = (
+                self._SELF_EXTENDED_REFUSAL_STATUSES
+                if self_extended
+                else self._SEED_REFUSAL_STATUSES
+            )
+            if bot.is_retired or bot.status in refusals:
+                return None
+            return bot
+
 
     def get_subordinates(self, manager_name: str) -> list[BotProfile]:
         m = manager_name.lower().strip()

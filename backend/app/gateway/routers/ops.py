@@ -15,7 +15,11 @@ deploy verification, dashboards, and monitoring gates beyond ``/health`` and
   production via ``GATEWAY_ENABLE_DOCS=false``).
 * ``GET /api/ops/resources`` - stdlib-only host resource snapshot (CPU, memory,
   disk, load) for resource-aware autonomy and dashboards. Best-effort: fields
-  the OS does not expose come back ``null`` instead of failing the probe.
+  the OS does not expose come back ``null`` instead of failing the probe. A
+  probe that *fails* is a degraded read of the only surface autonomy and the
+  operator dashboard reason about, so it is reported at ``warning`` (once per
+  probe, with a running count at ``debug`` afterwards) rather than being
+  invisible at the default level.
 """
 
 from __future__ import annotations
@@ -24,6 +28,7 @@ import logging
 import os
 import shutil
 import sys
+import threading
 import time
 from datetime import UTC, datetime
 from importlib import metadata
@@ -125,6 +130,36 @@ class ResourcesResponse(BaseModel):
     load_average: list[float] | None = Field(default=None, description="1/5/15-minute load (Unix only, else null)")
 
 
+#: Per-probe announcement latches. A host probe that keeps failing is a *state*,
+#: not an event, so it is reported once at WARNING and then counted at DEBUG
+#: instead of repeating an identical WARNING on every /api/ops/resources poll.
+#: See ``_announce_probe_degradation``.
+_PROBE_WARNED: set[str] = set()
+_PROBE_SEEN: dict[str, int] = {}
+_PROBE_LOCK = threading.Lock()
+
+
+def _announce_probe_degradation(message: str, probe: str, *, exc_info: bool = True) -> None:
+    """Report a degraded host probe at WARNING once, then at DEBUG with a count.
+
+    Raising these off DEBUG is the point: ``/api/ops/resources`` is the only
+    surface resource-aware autonomy and the operator dashboard read, so a
+    silently-null memory or disk block is a monitoring failure that used to be
+    invisible at the default level. The first occurrence carries the traceback;
+    later ones carry the running count so a permanently broken host still shows
+    exactly how long it has been broken.
+    """
+    with _PROBE_LOCK:
+        _PROBE_SEEN[probe] = _PROBE_SEEN.get(probe, 0) + 1
+        first = probe not in _PROBE_WARNED
+        _PROBE_WARNED.add(probe)
+        seen = _PROBE_SEEN[probe]
+    if first:
+        logger.warning("%s (occurrence 1; further occurrences counted at debug)", message, exc_info=exc_info)
+    else:
+        logger.debug("%s (occurrence %d)", message, seen)
+
+
 def _memory_mb() -> MemorySnapshot:
     snapshot = MemorySnapshot()
     try:
@@ -156,7 +191,12 @@ def _memory_mb() -> MemorySnapshot:
             snapshot.total_mb = int(page_size * pages // (1024 * 1024))
             snapshot.available_mb = int(page_size * avail_pages // (1024 * 1024))
     except Exception:
-        logger.debug("Host memory probe failed; reporting nulls", exc_info=True)
+        # WARNING, not DEBUG: this is a host-probe read, and a null memory block
+        # in /api/ops/resources is what resource-aware autonomy and the operator
+        # dashboard reason about. Announced once per process with a running
+        # count, because the probe is re-run on every request and a locked-down
+        # host would otherwise emit one identical WARNING per poll.
+        _announce_probe_degradation("Host memory probe failed; reporting nulls", "memory")
     return snapshot
 
 
@@ -172,7 +212,7 @@ def _disk_snapshot() -> DiskSnapshot | None:
             free_mb=int(usage.free // (1024 * 1024)),
         )
     except Exception:
-        logger.debug("Disk probe failed; reporting null", exc_info=True)
+        _announce_probe_degradation("Disk probe failed; reporting null", "disk", exc_info=True)
         return None
 
 

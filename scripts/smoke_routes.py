@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -63,9 +62,7 @@ def parameterless_get_routes(schema: dict[str, Any]) -> list[str]:
 
 def hit(base_url: str, path: str, opener: urllib.request.OpenerDirector, timeout: float) -> tuple[str, int]:
     try:
-        req = urllib.request.Request(
-            base_url.rstrip("/") + path, headers={"Accept": "application/json"}
-        )
+        req = urllib.request.Request(base_url.rstrip("/") + path, headers={"Accept": "application/json"})
         with opener.open(req, timeout=timeout) as resp:
             return path, resp.status
     except urllib.error.HTTPError as exc:
@@ -79,10 +76,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--base-url", default="http://127.0.0.1:8001")
     ap.add_argument("--timeout", type=float, default=20.0)
     ap.add_argument("--workers", type=int, default=8)
-    ap.add_argument("--no-proxy", action="store_true",
-                    help="Bypass any environment HTTP proxy (needed in some sandboxes).")
-    ap.add_argument("--strict-4xx", action="store_true",
-                    help="Treat 4xx as a failure too (default: only 5xx fails).")
+    ap.add_argument("--no-proxy", action="store_true", help="Bypass any environment HTTP proxy (needed in some sandboxes).")
+    ap.add_argument("--strict-4xx", action="store_true", help="Treat 4xx as a failure too (default: only 5xx fails).")
     args = ap.parse_args(argv)
 
     opener = build_opener(args.no_proxy)

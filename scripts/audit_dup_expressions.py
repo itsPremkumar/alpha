@@ -18,15 +18,14 @@ Flags (file:line, in non-test source and tests alike):
 Exit 1 on any hit. Test fixtures that intentionally build duplicate-key dicts
 are reported too — silence must be earned with a comment, not assumed.
 """
+
 from __future__ import annotations
 
 import ast
-import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SKIP_DIRS = {".git", "node_modules", ".venv", ".next", "__pycache__", "logs",
-             "dist", "build", "coverage", ".pytest_cache", ".mypy_cache", "sandbox"}
+SKIP_DIRS = {".git", "node_modules", ".venv", ".next", "__pycache__", "logs", "dist", "build", "coverage", ".pytest_cache", ".mypy_cache", "sandbox"}
 
 
 def iter_py():
@@ -70,15 +69,10 @@ class DupFinder(ast.NodeVisitor):
             if n > 1:
                 op = "or" if isinstance(node.op, ast.Or) else "and" if isinstance(node.op, ast.And) else "?"
                 label = k.split(" ", 1)[0]
-                self._hit(node.lineno, "DUP-BOOL",
-                          f"operand x{n} in `{op}` chain: {label} ...")
+                self._hit(node.lineno, "DUP-BOOL", f"operand x{n} in `{op}` chain: {label} ...")
         # identical comparisons (same operands AND same operator): (a == b) or (a == b)
         # fingerprint includes the operator so complementary pairs fall to DUP-TAUT
-        cmp_keys = [
-            f"{key(c.left)}|{','.join(key(x) for x in c.comparators)}|"
-            f"{','.join(type(o).__name__ for o in c.ops)}"
-            for v in node.values if isinstance(v, ast.Compare) for c in [v]
-        ]
+        cmp_keys = [f"{key(c.left)}|{','.join(key(x) for x in c.comparators)}|{','.join(type(o).__name__ for o in c.ops)}" for v in node.values if isinstance(v, ast.Compare) for c in [v]]
         seen_c: dict[str, int] = {}
         for ck in cmp_keys:
             seen_c[ck] = seen_c.get(ck, 0) + 1
@@ -86,9 +80,7 @@ class DupFinder(ast.NodeVisitor):
             if n > 1:
                 self._hit(node.lineno, "DUP-CMP", f"identical compare x{n}: {ck.split('|', 1)[0]}")
         # complementary pairs on identical operands: tautology / contradiction
-        pairs = {frozenset({"Eq", "NotEq"}), frozenset({"Lt", "GtE"}),
-                 frozenset({"LtE", "Gt"}), frozenset({"Is", "IsNot"}),
-                 frozenset({"In", "NotIn"})}
+        pairs = {frozenset({"Eq", "NotEq"}), frozenset({"Lt", "GtE"}), frozenset({"LtE", "Gt"}), frozenset({"Is", "IsNot"}), frozenset({"In", "NotIn"})}
         grouped: dict[str, list[ast.Compare]] = {}
         for v in node.values:
             if isinstance(v, ast.Compare) and len(v.ops) == 1:
@@ -100,9 +92,7 @@ class DupFinder(ast.NodeVisitor):
                 if pair <= ops:
                     chain = "or" if isinstance(node.op, ast.Or) else "and"
                     verdict = "always True" if isinstance(node.op, ast.Or) else "always False"
-                    self._hit(node.lineno, "DUP-TAUT",
-                              f"`{chain}` chain of {sorted(pair)} on same operands "
-                              f"-> {verdict}: {fp.split('|', 1)[0]}")
+                    self._hit(node.lineno, "DUP-TAUT", f"`{chain}` chain of {sorted(pair)} on same operands -> {verdict}: {fp.split('|', 1)[0]}")
         self.generic_visit(node)
 
     def visit_Dict(self, node: ast.Dict) -> None:

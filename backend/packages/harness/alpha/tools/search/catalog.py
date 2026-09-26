@@ -183,4 +183,20 @@ _global_catalog = UniversalToolCatalog()
 
 
 def get_universal_catalog() -> UniversalToolCatalog:
+    """Return the process-wide catalog.
+
+    The catalog is populated lazily: a registry that nothing registers into is
+    a dispatch surface that always raises, so the script bridge seeds itself
+    here on first access and the already-registered ``catalog_tool_call`` tool
+    becomes a live path into it.
+    """
+    if not getattr(_global_catalog, "_seeded", False):
+        try:
+            from alpha.tools.script_bridge.service import register_in_catalog
+
+            register_in_catalog(_global_catalog)
+        except Exception:  # noqa: BLE001 - never let optional wiring break lookup
+            logger.warning("script bridge registration failed; catalog left unseeded", exc_info=True)
+        else:
+            _global_catalog._seeded = True  # type: ignore[attr-defined]
     return _global_catalog

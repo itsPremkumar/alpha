@@ -7,6 +7,7 @@ import contextlib
 import hashlib
 import json
 import logging
+import math
 import os
 import secrets
 from collections.abc import Iterable
@@ -15,7 +16,7 @@ from typing import Any
 
 from .discovery import MdnsDiscovery, UdpDiscovery
 from .github import GitHubRendezvous, GitHubRendezvousError
-from .identity import LocalIdentity
+from .identity import LocalIdentity, prime_advertised_host
 from .models import (
     MESSAGE_KIND_VALUES,
     ConversationCreateRequest,
@@ -28,8 +29,37 @@ from .models import (
     utc_now,
     validate_agent_id,
 )
-from .storage import NETWORK_OWNER, PeerNetworkStore, token_digest
-from .transport import PeerTransport, PeerTransportError, validate_endpoint
+from .ratelimit import (
+    ATTEMPTS_CEILING,
+    DEFAULT_BASE_LOCKOUT_SECONDS,
+    DEFAULT_BREAKER_COOLDOWN_SECONDS,
+    DEFAULT_BREAKER_FAILURES,
+    DEFAULT_GLOBAL_MAX_ATTEMPTS,
+    DEFAULT_GLOBAL_WINDOW_SECONDS,
+    DEFAULT_MAX_ATTEMPTS,
+    DEFAULT_MAX_FAILURES,
+    DEFAULT_MAX_LOCKOUT_SECONDS,
+    DEFAULT_MAX_TRACKED_KEYS,
+    DEFAULT_WINDOW_SECONDS,
+    FAILURES_CEILING,
+    GLOBAL_ATTEMPTS_CEILING,
+    LOCKOUT_CEILING_SECONDS,
+    LOCKOUT_FLOOR_SECONDS,
+    TRACKED_KEYS_CEILING,
+    WINDOW_CEILING_SECONDS,
+    WINDOW_FLOOR_SECONDS,
+    PairingThrottle,
+    ThrottleDecision,
+)
+from .storage import (
+    DEFAULT_MAX_PEERS,
+    MAX_PEERS_CEILING,
+    NETWORK_OWNER,
+    PeerNetworkStore,
+    PeerRegistryFullError,
+    token_digest,
+)
+from .transport import PeerNetworkDisabledError, PeerTransport, PeerTransportError, validate_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +67,14 @@ _DEFAULT_HOME = "peer_network"
 _MAX_PARTICIPANTS = 50
 _MAX_PAYLOAD_BYTES = 256 * 1024
 _MAX_RECIPIENTS = 50
+
+# The peer network is an *inbound* plane: `remote/pair`, `inbound/messages`, and
+# `api/peer-network/ws` are mounted without a browser session, and UDP/mDNS
+# discovery puts this installation on the LAN whether or not anyone asks. That
+# makes "on" a production exposure decision, so the safe default is OFF and an
+# operator opts in with ALPHA_PEER_NETWORK_ENABLED=1. See the module docstring
+# of `ratelimit.py` for the ingress throttle that bounds the open plane.
+_DEFAULT_ENABLED = False
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -49,6 +87,13 @@ def _env_bool(name: str, default: bool) -> bool:
 def _env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
     try:
         return max(minimum, min(int(os.getenv(name, str(default))), maximum))
+    except ValueError:
+        return default
+
+
+def _env_float(name: str, default: float, *, minimum: float, maximum: float) -> float:
+    try:
+        return max(minimum, min(float(os.getenv(name, str(default))), maximum))
     except ValueError:
         return default
 
@@ -108,12 +153,22 @@ class PeerNetworkService:
         discovery_interval_seconds: float | None = None,
         transport_timeout_seconds: float | None = None,
         version: str | None = None,
+        max_peers: int | None = None,
+        pairing_throttle: PairingThrottle | None = None,
     ):
         self.home = Path(home) if home is not None else _runtime_home()
         self.home.mkdir(parents=True, exist_ok=True)
-        self.enabled = _env_bool("ALPHA_PEER_NETWORK_ENABLED", True) if enabled is None else enabled
+        # Safe by default: an inbound plane is opt-in, not opt-out.
+        self.enabled = _env_bool("ALPHA_PEER_NETWORK_ENABLED", _DEFAULT_ENABLED) if enabled is None else enabled
         self.identity = LocalIdentity.load_or_create(self.home, version=version)
+        self.max_peers = _env_int(
+            "ALPHA_PEER_NETWORK_MAX_PEERS",
+            DEFAULT_MAX_PEERS,
+            minimum=1,
+            maximum=MAX_PEERS_CEILING,
+        ) if max_peers is None else max(1, min(int(max_peers), MAX_PEERS_CEILING))
         self.store = PeerNetworkStore(self.home / "network.sqlite3")
+        self.pairing_throttle = pairing_throttle if pairing_throttle is not None else self._build_pairing_throttle()
         self.transport = PeerTransport(timeout_seconds=transport_timeout_seconds if transport_timeout_seconds is not None else float(os.getenv("ALPHA_PEER_NETWORK_TIMEOUT_SECONDS", "8")))
         self.udp = UdpDiscovery(
             self,
@@ -130,6 +185,78 @@ class PeerNetworkService:
         self._last_error: str | None = None
         self._store_closed = False
 
+    @staticmethod
+    def _build_pairing_throttle() -> PairingThrottle:
+        """Build the ingress throttle from operator config, hard-ceilinged.
+
+        Every knob can tighten the throttle and none of them can raise it past
+        the ceilings in ``ratelimit``: a setting that can switch off the control
+        that protects an unauthenticated mutation is a bypass, not a setting.
+        """
+
+        return PairingThrottle(
+            max_attempts=_env_int(
+                "ALPHA_PEER_NETWORK_PAIR_MAX_ATTEMPTS",
+                DEFAULT_MAX_ATTEMPTS,
+                minimum=1,
+                maximum=ATTEMPTS_CEILING,
+            ),
+            window_seconds=_env_float(
+                "ALPHA_PEER_NETWORK_PAIR_WINDOW_SECONDS",
+                DEFAULT_WINDOW_SECONDS,
+                minimum=WINDOW_FLOOR_SECONDS,
+                maximum=WINDOW_CEILING_SECONDS,
+            ),
+            max_failures=_env_int(
+                "ALPHA_PEER_NETWORK_PAIR_MAX_FAILURES",
+                DEFAULT_MAX_FAILURES,
+                minimum=1,
+                maximum=FAILURES_CEILING,
+            ),
+            base_lockout_seconds=_env_float(
+                "ALPHA_PEER_NETWORK_PAIR_LOCKOUT_SECONDS",
+                DEFAULT_BASE_LOCKOUT_SECONDS,
+                minimum=LOCKOUT_FLOOR_SECONDS,
+                maximum=LOCKOUT_CEILING_SECONDS,
+            ),
+            max_lockout_seconds=_env_float(
+                "ALPHA_PEER_NETWORK_PAIR_MAX_LOCKOUT_SECONDS",
+                DEFAULT_MAX_LOCKOUT_SECONDS,
+                minimum=LOCKOUT_FLOOR_SECONDS,
+                maximum=LOCKOUT_CEILING_SECONDS,
+            ),
+            global_max_attempts=_env_int(
+                "ALPHA_PEER_NETWORK_PAIR_GLOBAL_MAX_ATTEMPTS",
+                DEFAULT_GLOBAL_MAX_ATTEMPTS,
+                minimum=1,
+                maximum=GLOBAL_ATTEMPTS_CEILING,
+            ),
+            global_window_seconds=_env_float(
+                "ALPHA_PEER_NETWORK_PAIR_GLOBAL_WINDOW_SECONDS",
+                DEFAULT_GLOBAL_WINDOW_SECONDS,
+                minimum=WINDOW_FLOOR_SECONDS,
+                maximum=WINDOW_CEILING_SECONDS,
+            ),
+            breaker_failures=_env_int(
+                "ALPHA_PEER_NETWORK_PAIR_BREAKER_FAILURES",
+                DEFAULT_BREAKER_FAILURES,
+                minimum=1,
+                maximum=FAILURES_CEILING,
+            ),
+            breaker_cooldown_seconds=_env_float(
+                "ALPHA_PEER_NETWORK_PAIR_BREAKER_COOLDOWN_SECONDS",
+                DEFAULT_BREAKER_COOLDOWN_SECONDS,
+                minimum=LOCKOUT_FLOOR_SECONDS,
+                maximum=LOCKOUT_CEILING_SECONDS,
+            ),
+            max_tracked_keys=_env_int(
+                "ALPHA_PEER_NETWORK_PAIR_MAX_TRACKED_KEYS",
+                DEFAULT_MAX_TRACKED_KEYS,
+                minimum=1,
+                maximum=TRACKED_KEYS_CEILING,
+            ),
+        )
+
     def card(self) -> PeerCard:
         return self.identity.card()
 
@@ -141,6 +268,12 @@ class PeerNetworkService:
             return
         self._started = True
         self._stop.clear()
+        # Resolve the advertised host before anything can ask for a card: the
+        # public Agent Card routes and the UDP beacon both build one, and the
+        # lookup is a blocking resolver call. Priming here keeps the very first
+        # unauthenticated request off the resolver.
+        with contextlib.suppress(Exception):
+            await asyncio.to_thread(prime_advertised_host)
         if self.enabled:
             await self.udp.start()
             # mDNS is optional; its provider owns its own socket lifecycle.
@@ -210,8 +343,20 @@ class PeerNetworkService:
             logger.debug("Ignoring malformed peer discovery from %s: %s", source, exc)
             return None
 
-        def _save() -> dict[str, Any]:
-            return self.store.upsert_peer(card=card.to_dict(), source=source, trust="discovered")
+        def _save() -> dict[str, Any] | None:
+            try:
+                return self.store.upsert_peer(
+                    card=card.to_dict(),
+                    source=source,
+                    trust="discovered",
+                    max_peers=self.max_peers,
+                )
+            except PeerRegistryFullError as exc:
+                # The registry is bounded on purpose: an unauthenticated beacon
+                # that arrives when the ceiling is reached is dropped, never
+                # traded for the loss of a paired peer.
+                logger.debug("Not retaining discovery beacon from %s: %s", source, exc)
+                return None
 
         try:
             loop = asyncio.get_running_loop()
@@ -245,6 +390,15 @@ class PeerNetworkService:
         return await self._run_store(self.store.get_peer, agent_id, include_secret=include_secret)
 
     async def get_peer_by_token(self, token: str, agent_id: str | None = None) -> dict[str, Any] | None:
+        """Resolve a peer token for the inbound plane, or ``None``.
+
+        ``None`` is the refusal the WebSocket handshake turns into a 1008
+        close, so a closed plane, an unknown token, and a blocked peer are all
+        indistinguishable to an unauthenticated caller.
+        """
+
+        if not self.enabled:
+            return None
         return await self._run_store(self.store.find_peer_by_token, token, agent_id=agent_id)
 
     async def set_trust(self, agent_id: str, trust: str) -> dict[str, Any] | None:
@@ -304,20 +458,104 @@ class PeerNetworkService:
             raise ValueError("GitHub rendezvous writes require repository configuration and a token")
         return await self.github.publish_card(self.card())
 
-    async def accept_pair(self, request: PeerPairRequest) -> PeerPairResponse:
-        """Validate a remote pairing request and register its peer card."""
+    def _pairing_card_problem(self, card: PeerCard) -> str | None:
+        """Return why a remote pairing card is unacceptable, or ``None``.
 
-        if not secrets.compare_digest(token_digest(request.pairing_code), token_digest(self.identity.pairing_code)):
-            return PeerPairResponse(accepted=False, peer=None, message="Pairing code rejected")
-        card = request.card
-        await self._run_store(
-            self.store.upsert_peer,
-            card=card.to_dict(),
-            source="remote-pair",
-            trust="paired",
-            outbound_token=request.pairing_code,
-            paired=True,
+        A pairing card arrives unauthenticated.  It is validated exactly like a
+        discovery beacon — and, unlike a beacon, it becomes a *paired* row with
+        a stored credential — plus one rule a beacon does not need: a peer may
+        not claim this installation's own agent id.  Without that check a caller
+        holding the code could register a second "us" pointing at an endpoint it
+        controls and win the local agent id in the peer table.
+        """
+
+        if card.agent_id == self.identity.agent_id:
+            return "a peer cannot claim this installation's agent id"
+        try:
+            validate_endpoint(card.url, allowed_schemes=("http", "https"))
+            if card.websocket_url:
+                validate_endpoint(card.websocket_url, allowed_schemes=("ws", "wss"))
+        except (PeerTransportError, ValueError) as exc:
+            return str(exc)
+        return None
+
+    def _throttled_response(self, decision: ThrottleDecision) -> PeerPairResponse:
+        logger.info(
+            "Refused an Alpha peer pairing attempt (%s); retry in %.1fs",
+            decision.reason,
+            decision.retry_after_seconds,
         )
+        self._publish(
+            "pairing.throttled",
+            {"reason": decision.reason, "retry_after_seconds": round(decision.retry_after_seconds, 3)},
+        )
+        return PeerPairResponse(
+            accepted=False,
+            peer=None,
+            message=decision.as_message(),
+            retry_after_seconds=max(1, int(math.ceil(decision.retry_after_seconds))),
+        )
+
+    def _rejected_response(self, message: str) -> PeerPairResponse:
+        return PeerPairResponse(accepted=False, peer=None, message=message)
+
+    async def accept_pair(self, request: PeerPairRequest) -> PeerPairResponse:
+        """Validate, throttle, and register a remote pairing request.
+
+        This is the unauthenticated mutating ingress.  The order below is the
+        security order, and every step is a refusal rather than a partial
+        mutation:
+
+        1. the plane must be enabled (off by default),
+        2. the bounded throttle must admit the attempt — a throttle that cannot
+           answer refuses, it never fails open,
+        3. the card must be a well-formed, non-self-claiming, reachable-looking
+           Agent Card,
+        4. the pairing code must match in constant time,
+        5. the bounded peer registry must have room.
+
+        Steps 3-5 each count as a failed attempt, so a flood of well-formed
+        cards with wrong codes is bounded by the same budget as a flood of
+        malformed ones.
+        """
+
+        if not self.enabled:
+            self._publish("pairing.refused", {"reason": "peer network disabled"})
+            return self._rejected_response("Alpha peer network is disabled; the operator opted out of the inbound plane")
+        key = request.card.agent_id
+        try:
+            decision = self.pairing_throttle.check(key)
+        except Exception:
+            # Fail closed: a throttle that cannot decide must not become an
+            # unlimited unauthenticated write path.
+            logger.exception("Alpha peer pairing throttle failed; refusing the attempt")
+            return self._rejected_response("Pairing is temporarily unavailable")
+        if decision is not None:
+            return self._throttled_response(decision)
+
+        def _refuse(message: str) -> PeerPairResponse:
+            self.pairing_throttle.record_failure(key)
+            return self._rejected_response(message)
+
+        card = request.card
+        problem = self._pairing_card_problem(card)
+        if problem is not None:
+            return _refuse(f"Pairing rejected: {problem}")
+        if not secrets.compare_digest(token_digest(request.pairing_code), token_digest(self.identity.pairing_code)):
+            return _refuse("Pairing code rejected")
+        try:
+            await self._run_store(
+                self.store.upsert_peer,
+                card=card.to_dict(),
+                source="remote-pair",
+                trust="paired",
+                outbound_token=request.pairing_code,
+                paired=True,
+                max_peers=self.max_peers,
+            )
+        except PeerRegistryFullError as exc:
+            return _refuse(f"Pairing rejected: {exc}")
+        self.pairing_throttle.record_success(key)
         self._publish("peer.paired", {"agent_id": card.agent_id, "transport": "remote"})
         return PeerPairResponse(accepted=True, peer=self.card(), message="Peer paired", paired_at=utc_now())
 
@@ -488,6 +726,15 @@ class PeerNetworkService:
         return final_message  # type: ignore[return-value]
 
     async def receive_remote(self, envelope: PeerEnvelope, token: str) -> dict[str, Any]:
+        """Accept one envelope from a paired peer on the inbound plane.
+
+        ``PeerNetworkDisabledError`` is a ``PeerTransportError``, which is the
+        refusal the public ingress route already renders as 401, so a closed
+        plane can never look like a delivery.
+        """
+
+        if not self.enabled:
+            raise PeerNetworkDisabledError("Alpha peer network is disabled; the operator opted out of the inbound plane")
         peer = await self._run_store(self.store.find_peer_by_token, token, agent_id=envelope.sender_id)
         if peer is None or peer.get("agent_id") != envelope.sender_id:
             raise PeerTransportError("Peer token does not match the sender")
@@ -521,6 +768,14 @@ class PeerNetworkService:
                     metadata={"remote": True},
                 )
             elif envelope.sender_id not in conversation["participants"]:
+                # The inbox is a single installation-wide conversation, so every
+                # distinct remote sender would otherwise grow it without bound
+                # and past the documented participant limit. Cap it here, where
+                # the limit lives, instead of trusting the repository.
+                if len(conversation["participants"]) >= _MAX_PARTICIPANTS:
+                    raise PeerTransportError(
+                        f"The peer inbox already holds the maximum of {_MAX_PARTICIPANTS} participants"
+                    )
                 await self._run_store(self.store.add_participant, conversation_id, envelope.sender_id)
                 conversation = await self.get_conversation(conversation_id)
                 if conversation is None:
@@ -623,6 +878,19 @@ class PeerNetworkService:
                 "max_recipients": _MAX_RECIPIENTS,
                 "max_text_bytes": 20000,
                 "max_payload_bytes": _MAX_PAYLOAD_BYTES,
+                "max_peers": self.max_peers,
+                "pair_max_attempts": self.pairing_throttle.max_attempts,
+                "pair_window_seconds": int(self.pairing_throttle.window_seconds),
+                "pair_global_max_attempts": self.pairing_throttle.global_max_attempts,
+                "pair_global_window_seconds": int(self.pairing_throttle.global_window_seconds),
+            },
+            # Throttle policy and counters for the unauthenticated pairing
+            # route. Credential-free by construction: attempt/failure counts
+            # only, never a code, a token, or a throttle key.
+            "pairing": {
+                "enabled": self.enabled,
+                "ingress": "open" if self.enabled else "closed",
+                "throttle": self.pairing_throttle.snapshot(),
             },
         }
 
@@ -661,6 +929,7 @@ async def shutdown_peer_network_service() -> None:
 
 __all__ = [
     "NETWORK_OWNER",
+    "PairingThrottle",
     "PeerNetworkService",
     "get_peer_network_service",
     "shutdown_peer_network_service",

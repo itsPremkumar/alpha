@@ -20,8 +20,8 @@ def _post_ok(captured):
         captured["url"] = url
         captured["headers"] = headers
         captured["json"] = json
-        return FakeResp({"data": {"audio": b"songbytes".hex(), "status": 2},
-                         "base_resp": {"status_code": 0}})
+        return FakeResp({"data": {"audio": b"songbytes".hex(), "status": 2}, "base_resp": {"status_code": 0}})
+
     return fake_post
 
 
@@ -30,8 +30,7 @@ def test_with_lyrics_payload_and_writes(monkeypatch, tmp_path):
     captured = {}
     monkeypatch.setattr(mus.requests, "post", _post_ok(captured))
     spec = tmp_path / "s.json"
-    spec.write_text('{"title":"X","prompt":"pop, happy","lyrics":"[verse]\\nla la"}',
-                    encoding="utf-8")
+    spec.write_text('{"title":"X","prompt":"pop, happy","lyrics":"[verse]\\nla la"}', encoding="utf-8")
     out = tmp_path / "o.mp3"
     msg = mus.generate_music(str(spec), str(out))
     assert out.read_bytes() == b"songbytes"

@@ -207,6 +207,11 @@ class PeerPairResponse(BaseModel):
     peer: PeerCard | None = None
     message: str
     paired_at: str | None = None
+    # Set when the attempt was refused by the bounded ingress throttle. The
+    # credential is high-entropy and is never the reason for a refusal, so the
+    # response can tell an honest caller exactly how long to wait instead of
+    # leaving it to guess from a bare rejection.
+    retry_after_seconds: int | None = None
 
 
 class PeerStatus(BaseModel):
@@ -219,6 +224,9 @@ class PeerStatus(BaseModel):
     persistence: dict[str, Any]
     pairing_code: str | None = None
     limits: dict[str, int]
+    # Credential-free pairing-ingress policy/state (throttle budget, breaker,
+    # refused attempts). Never contains a pairing code, a token, or a key.
+    pairing: dict[str, Any] = Field(default_factory=dict)
 
 
 class ConversationCreateRequest(BaseModel):

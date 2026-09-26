@@ -10,7 +10,7 @@
 # "runtime: Field required". Keeping annotations as real objects fixes that.
 from langchain.tools import tool
 
-from alpha.sandbox.repl.session import get_repl_session
+from alpha.sandbox.repl.session import ReplTimeoutError, get_repl_session
 from alpha.tools.types import Runtime
 
 
@@ -30,6 +30,11 @@ async def python_repl_tool(
     Standard utilities (Path, os, sys, asyncio, bash) are preloaded.
     The result of trailing expressions is bound to `_` and returned.
 
+    The cell runs on a worker thread, so blocking code (sleeps, an endless
+    loop, a hung ``bash``) does not stall the rest of the agent. Exceeding
+    ``timeout`` interrupts the cell: the shell subprocesses it started are
+    killed and the cell reports a timeout instead of hanging.
+
     Args:
         code: Python code block to execute in the persistent session.
         timeout: Maximum execution timeout in seconds. Defaults to 30.0.
@@ -46,6 +51,8 @@ async def python_repl_tool(
     try:
         cell_result = await session.execute(code, timeout=timeout)
         return cell_result.format_output()
+    except ReplTimeoutError as exc:
+        return f"Error: Python execution timed out after {timeout} seconds ({exc})."
     except TimeoutError:
         return f"Error: Python execution timed out after {timeout} seconds."
     except Exception as e:

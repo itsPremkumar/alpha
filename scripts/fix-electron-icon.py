@@ -7,7 +7,7 @@ to 512x512 and writes it to electron/build/icon-512.png, replacing the wrong ico
 Also updates make-icon.mjs to read from the alpha logo source so future regenerations
 use the correct logo.
 """
-import os
+
 import sys
 from pathlib import Path
 
@@ -16,6 +16,7 @@ ALPHA_LOGO = ROOT / "frontend" / "src" / "assets" / "images" / "alpha.png"
 ICON_512 = ROOT / "electron" / "build" / "icon-512.png"
 ICON_ICO_SRC = ROOT / "electron" / "dist" / ".icon-ico" / "icon.ico"
 MAKE_ICON = ROOT / "electron" / "scripts" / "make-icon.mjs"
+
 
 def main() -> None:
     if not ALPHA_LOGO.exists():
@@ -43,7 +44,7 @@ def main() -> None:
 
     # 2. Update make-icon.mjs to read from the alpha logo source
     make_src = ICON_512
-    new_make = f'''#!/usr/bin/env node
+    new_make = """#!/usr/bin/env node
 
 /**
  * Generate the Alpha desktop icon (512x512 PNG) from the correct alpha logo.
@@ -57,7 +58,7 @@ def main() -> None:
 
 import fs from "node:fs";
 import path from "node:path";
-import {{ fileURLToPath }} from "node:url";
+import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 
 const electronDir = fileURLToPath(new URL("..", import.meta.url));
@@ -69,21 +70,21 @@ const svg = null; // no longer used — we read the real alpha logo below
 
 // Ensure alpha logo exists; fall back to geometric mark only if missing.
 let sourceBuffer = null;
-if (fs.existsSync(alphaLogo)) {{
+if (fs.existsSync(alphaLogo)) {
     sourceBuffer = fs.readFileSync(alphaLogo);
     console.log("Using correct Alpha logo:", alphaLogo);
-}} else {{
+} else {
     console.log("WARNING: alpha logo not found at", alphaLogo, "- using placeholder");
-}}
+}
 
 const target = 512;
 let resized;
-if (sourceBuffer) {{
+if (sourceBuffer) {
     resized = await sharp(sourceBuffer)
-        .resize(target, target, {{ fit: "contain", background: "#0b0f14" }})
+        .resize(target, target, { fit: "contain", background: "#0b0f14" })
         .png()
         .toBuffer();
-}} else {{
+} else {
     resized = Buffer.from(
 `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
   <rect x="8" y="8" width="496" height="496" rx="112" fill="#0b0f14"/>
@@ -92,13 +93,13 @@ if (sourceBuffer) {{
   <circle cx="348" cy="164" r="52" fill="#58a6ff"/>
   <circle cx="348" cy="164" r="22" fill="#0b0f14"/>
 </svg>`);
-}}
+}
 
-fs.mkdirSync(path.dirname(outFile), {{ recursive: true }});
+fs.mkdirSync(path.dirname(outFile), { recursive: true });
 await sharp(resized).png().toFile(outFile);
 const meta = await sharp(outFile).metadata();
-console.log(`icon written: ${{outFile}} (${{meta.width}}x${{meta.height}})`);
-'''
+console.log(`icon written: ${outFile} (${meta.width}x${meta.height})`);
+"""
     MAKE_ICON.write_text(new_make, encoding="utf-8")
     print(f"OK: updated {MAKE_ICON} to read from the alpha logo source")
 

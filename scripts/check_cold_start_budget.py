@@ -37,7 +37,15 @@ Usage::
 
     python scripts/check_cold_start_budget.py --json --tolerance-ms 2500
     python scripts/check_cold_start_budget.py --targets alpha --repeats 5
+    python scripts/check_cold_start_budget.py --validate   # config only, no probe
     python scripts/check_cold_start_budget.py --write-baseline   # human, then commit
+
+``--validate`` splits the gate in two. The measurement is a wall-clock median
+and belongs on a scheduled run, because a contended runner's median is not a
+verdict anybody should block a pull request on. The *configuration* -- a
+baseline that exists, parses, budgets every probed target and records the host
+it was measured on -- is deterministic, and is checked on every change to the
+startup path.
 """
 
 from __future__ import annotations
@@ -104,14 +112,18 @@ def load_baseline(path: Path) -> dict[str, Any]:
         raise GateError(f"baseline is not a JSON object: {path}")
     version = data.get("schema_version")
     if version != BASELINE_SCHEMA:
-        raise GateError(
-            f"baseline schema_version {version!r} != {BASELINE_SCHEMA!r}: {path}\n"
-            "  Re-create it with --write-baseline on a representative host."
-        )
+        raise GateError(f"baseline schema_version {version!r} != {BASELINE_SCHEMA!r}: {path}\n  Re-create it with --write-baseline on a representative host.")
     if not isinstance(data.get("targets"), dict):
         raise GateError(f"baseline has no 'targets' object: {path}")
     if not isinstance(data.get("module_budgets"), dict):
         raise GateError(f"baseline has no 'module_budgets' object: {path}")
+    # A zero or negative tolerance widens every budget it is compared against,
+    # and `0.0` is falsy, so every `or DEFAULT_TOLERANCE_MS` read of this key
+    # in this file would quietly promote it to the default instead. Refuse it
+    # here, where the baseline is still the input rather than a live verdict.
+    tolerance = data.get("tolerance_ms")
+    if tolerance is not None and (not isinstance(tolerance, (int, float)) or isinstance(tolerance, bool) or tolerance <= 0):
+        raise GateError(f"baseline tolerance_ms must be a positive number: {tolerance!r}: {path}\n  A zero or negative tolerance makes every target unfailable.")
     return data
 
 
@@ -168,9 +180,7 @@ def probe_default_targets() -> list[str]:
     return list(module.DEFAULT_TARGETS)
 
 
-def run_probe(
-    targets: list[str], repeats: int, timeout: float, top: int, attribution: str
-) -> dict[str, Any]:
+def run_probe(targets: list[str], repeats: int, timeout: float, top: int, attribution: str) -> dict[str, Any]:
     """Invoke the probe as a subprocess. A non-zero exit is a gate error.
 
     The probe writes its measurement to a file rather than stdout so a crash
@@ -205,22 +215,14 @@ def run_probe(
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:
-            raise GateError(
-                f"cold_start_probe.py timed out after {exc.timeout:.0f}s"
-            ) from exc
+            raise GateError(f"cold_start_probe.py timed out after {exc.timeout:.0f}s") from exc
         except OSError as exc:
             raise GateError(f"could not launch cold_start_probe.py: {exc}") from exc
         if proc.returncode != 0:
             detail = (proc.stderr or proc.stdout or "").strip()[-2000:]
-            raise GateError(
-                f"cold_start_probe.py exited {proc.returncode}. The gate fails closed: an "
-                f"unmeasurable cold start is not a passing cold start.\n{detail}"
-            )
+            raise GateError(f"cold_start_probe.py exited {proc.returncode}. The gate fails closed: an unmeasurable cold start is not a passing cold start.\n{detail}")
         if not out.exists():
-            raise GateError(
-                "cold_start_probe.py exited 0 but wrote no measurement file.\n"
-                f"--- stdout ---\n{proc.stdout[-2000:]}\n--- stderr ---\n{proc.stderr[-2000:]}"
-            )
+            raise GateError(f"cold_start_probe.py exited 0 but wrote no measurement file.\n--- stdout ---\n{proc.stdout[-2000:]}\n--- stderr ---\n{proc.stderr[-2000:]}")
         return read_measurement(out.read_text(encoding="utf-8"), proc.stderr, out)
 
 
@@ -229,24 +231,18 @@ def read_measurement(text: str, stderr: str, script: Path) -> dict[str, Any]:
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
-        raise GateError(
-            f"{script} is not valid measurement JSON: {exc}\n--- probe stderr ---\n{stderr[-2000:]}"
-        ) from exc
+        raise GateError(f"{script} is not valid measurement JSON: {exc}\n--- probe stderr ---\n{stderr[-2000:]}") from exc
     if not isinstance(data, dict) or data.get("tool") != "cold_start_probe":
         raise GateError(f"{script} is not a cold_start_probe measurement")
     if data.get("schema_version") != 1:
-        raise GateError(
-            f"{script}: unexpected schema_version {data.get('schema_version')!r}"
-        )
+        raise GateError(f"{script}: unexpected schema_version {data.get('schema_version')!r}")
     if not isinstance(data.get("targets"), list) or not data["targets"]:
         raise GateError(f"{script} returned no targets")
     for entry in data["targets"]:
         for mode in ("cold", "warm"):
             stats = entry.get(mode)
             if not isinstance(stats, dict) or "median_ms" not in stats:
-                raise GateError(
-                    f"{script}: target {entry.get('module')!r} has no {mode} measurement"
-                )
+                raise GateError(f"{script}: target {entry.get('module')!r} has no {mode} measurement")
     return data
 
 
@@ -255,9 +251,7 @@ def read_measurement(text: str, stderr: str, script: Path) -> dict[str, Any]:
 # --------------------------------------------------------------------------
 
 
-def _judge(
-    name: str, budget_ms: float, stats: dict[str, Any], tolerance_ms: float
-) -> dict[str, Any]:
+def _judge(name: str, budget_ms: float, stats: dict[str, Any], tolerance_ms: float) -> dict[str, Any]:
     """Compare one measured series against a budget.
 
     Returns a verdict dict. A regression must clear BOTH the tolerance and this
@@ -289,9 +283,7 @@ def _judge(
     }
 
 
-def compare(
-    measurement: dict[str, Any], baseline: dict[str, Any], tolerance_ms: float | None
-) -> dict[str, Any]:
+def compare(measurement: dict[str, Any], baseline: dict[str, Any], tolerance_ms: float | None) -> dict[str, Any]:
     """Full verdict for a measurement against a baseline.
 
     A target present in the measurement but missing from the baseline is
@@ -328,11 +320,7 @@ def compare(
             # ride through on module budgets alone.
             if budget.get(f"{mode}_ms") is None:
                 continue
-            verdicts.append(
-                _judge(
-                    f"{module}[{mode}]", float(budget[f"{mode}_ms"]), entry[mode], tol
-                )
-            )
+            verdicts.append(_judge(f"{module}[{mode}]", float(budget[f"{mode}_ms"]), entry[mode], tol))
 
     for module, entry in sorted(measured.items()):
         if module in baseline["targets"]:
@@ -353,11 +341,7 @@ def compare(
                 }
             )
 
-    attribution = {
-        entry["module"]: entry.get("attribution")
-        for entry in measurement["targets"]
-        if entry.get("attribution")
-    }
+    attribution = {entry["module"]: entry.get("attribution") for entry in measurement["targets"] if entry.get("attribution")}
     for name, budget in sorted(baseline["module_budgets"].items()):
         observed = _find_module_self_ms(attribution, name)
         tol = tolerance_ms if tolerance_ms is not None else budget_tolerance
@@ -395,9 +379,7 @@ def compare(
         )
 
     return {
-        "status": "fail"
-        if any(v["status"] in ("regressed", "not_measured") for v in verdicts)
-        else "pass",
+        "status": "fail" if any(v["status"] in ("regressed", "not_measured") for v in verdicts) else "pass",
         "verdicts": verdicts,
         "regressions": [v for v in verdicts if v["status"] == "regressed"],
         "improvements": [v for v in verdicts if v["status"] == "improved"],
@@ -428,18 +410,11 @@ def _find_module_self_ms(attribution: dict[str, Any], module: str) -> float | No
 # --------------------------------------------------------------------------
 
 
-def print_report(
-    result: dict[str, Any], tolerance_ms: float | None, baseline_tolerance: float
-) -> int:
+def print_report(result: dict[str, Any], tolerance_ms: float | None, baseline_tolerance: float) -> int:
     print("cold-start budget")
-    print(
-        f"  tolerance: {'CLI' if tolerance_ms is not None else 'baseline'} = "
-        f"{tolerance_ms if tolerance_ms is not None else baseline_tolerance:.0f} ms"
-    )
+    print(f"  tolerance: {'CLI' if tolerance_ms is not None else 'baseline'} = {tolerance_ms if tolerance_ms is not None else baseline_tolerance:.0f} ms")
     print()
-    header = (
-        f"{'budget':<46} {'median':>10} {'spread':>9} {'tol':>7} {'excess':>10}  status"
-    )
+    header = f"{'budget':<46} {'median':>10} {'spread':>9} {'tol':>7} {'excess':>10}  status"
     print(header)
     print("-" * (len(header) + 8))
     for verdict in sorted(
@@ -450,15 +425,11 @@ def print_report(
             continue
         print(
             f"{verdict['name']:<46} {verdict['median_ms']:>10.1f} {verdict['spread_ms']:>9.1f} "
-            f"{verdict['tolerance_ms']:>7.0f} {verdict['excess_ms']:>+10.1f}  {verdict['status']}"
-            + (f"  samples={verdict['samples_ms']}" if verdict["runs"] > 1 else "")
+            f"{verdict['tolerance_ms']:>7.0f} {verdict['excess_ms']:>+10.1f}  {verdict['status']}" + (f"  samples={verdict['samples_ms']}" if verdict["runs"] > 1 else "")
         )
     print()
     if result["not_observed"]:
-        print(
-            f"NOT OBSERVED ({len(result['not_observed'])}) -- module budgets that fell out of "
-            "this run's attribution top-N (informational; usually means the module got cheaper):"
-        )
+        print(f"NOT OBSERVED ({len(result['not_observed'])}) -- module budgets that fell out of this run's attribution top-N (informational; usually means the module got cheaper):")
         print("  " + ", ".join(v["name"] for v in result["not_observed"]))
         print()
     if result["unmeasured"]:
@@ -477,17 +448,10 @@ def print_report(
             )
         print()
     if result["improvements"]:
-        print(
-            f"IMPROVED ({len(result['improvements'])}) -- consider re-baselining to lock the win in:"
-        )
+        print(f"IMPROVED ({len(result['improvements'])}) -- consider re-baselining to lock the win in:")
         for verdict in result["improvements"]:
-            print(
-                f"  {verdict['name']}: median {verdict['median_ms']:.1f} ms < budget "
-                f"{verdict['budget_ms']:.1f} ms ({verdict['excess_ms']:+.1f} ms)"
-            )
-        print(
-            "  The gate never lowers a baseline on its own; commit --write-baseline output to keep it."
-        )
+            print(f"  {verdict['name']}: median {verdict['median_ms']:.1f} ms < budget {verdict['budget_ms']:.1f} ms ({verdict['excess_ms']:+.1f} ms)")
+        print("  The gate never lowers a baseline on its own; commit --write-baseline output to keep it.")
         print()
     unbudgeted = [v for v in result["verdicts"] if v["status"] == "unbudgeted"]
     if unbudgeted:
@@ -499,19 +463,11 @@ def print_report(
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Gate cold-start import cost against a committed baseline."
-    )
+    parser = argparse.ArgumentParser(description="Gate cold-start import cost against a committed baseline.")
     parser.add_argument("--baseline", type=Path, default=BASELINE)
-    parser.add_argument(
-        "--targets", nargs="+", default=None, help="override the probed targets"
-    )
-    parser.add_argument(
-        "--repeats", type=int, default=None, help="override the baseline's repeat count"
-    )
-    parser.add_argument(
-        "--timeout", type=float, default=None, help="per-subprocess timeout in seconds"
-    )
+    parser.add_argument("--targets", nargs="+", default=None, help="override the probed targets")
+    parser.add_argument("--repeats", type=int, default=None, help="override the baseline's repeat count")
+    parser.add_argument("--timeout", type=float, default=None, help="per-subprocess timeout in seconds")
     parser.add_argument("--top", type=int, default=None, help="attribution list depth")
     parser.add_argument("--attribution", choices=("cold", "warm", "none"), default=None)
     parser.add_argument(
@@ -520,9 +476,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="override the baseline's tolerance",
     )
-    parser.add_argument(
-        "--json", action="store_true", help="also print the result as JSON"
-    )
+    parser.add_argument("--json", action="store_true", help="also print the result as JSON")
     parser.add_argument(
         "--write-baseline",
         action="store_true",
@@ -534,18 +488,95 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="use a saved measurement instead of probing",
     )
+    parser.add_argument(
+        "--validate",
+        action="store_true",
+        help="check the baseline is complete and measurable, without probing",
+    )
     return parser.parse_args(argv)
+
+
+def validate(baseline: dict[str, Any], targets: list[str]) -> list[str]:
+    """Everything a verdict depends on, except the verdict.
+
+    The wall-clock half of the cold-start property is a measurement, and a
+    measurement on a shared runner is not deterministic enough to block a pull
+    request. Its *configuration* is, though: a baseline that is missing,
+    mis-versioned, or no longer budgets a probed target is a dead gate, and it
+    must be caught by something that cannot flake. This is that something.
+
+    Returns the list of problems found; empty means the gate would be able to
+    run. Deliberately never touches a budget number: ``--validate`` cannot
+    re-baseline and cannot loosen anything.
+    """
+    problems: list[str] = []
+    # Read the raw value, not `value or DEFAULT`: a 0.0 tolerance is falsy, so
+    # the `or` idiom every other read of this key uses would silently promote a
+    # zero-tolerance baseline to the 2500 ms default, which is a wider budget
+    # than anyone committed to.
+    raw_tolerance = baseline.get("tolerance_ms")
+    if raw_tolerance is None:
+        raw_tolerance = DEFAULT_TOLERANCE_MS
+    if not isinstance(raw_tolerance, (int, float)) or isinstance(raw_tolerance, bool):
+        problems.append(f"tolerance_ms is not a number: {baseline.get('tolerance_ms')!r}")
+    elif raw_tolerance <= 0:
+        problems.append(f"tolerance_ms must be positive: {raw_tolerance!r}")
+    probed = set(targets)
+    budgeted = set(baseline["targets"])
+    for module in sorted(probed - budgeted):
+        problems.append(f"baseline does not budget probed target {module!r}")
+    for module in sorted(budgeted - probed):
+        problems.append(f"baseline budgets {module!r}, which the probe no longer measures")
+    for module, budget in sorted(baseline["targets"].items()):
+        for key in ("cold_ms", "warm_ms"):
+            value = budget.get(key)
+            if not isinstance(value, (int, float)) or value <= 0:
+                problems.append(f"{module}.{key} is not a positive number: {value!r}")
+    if not baseline["module_budgets"]:
+        problems.append("baseline has no module budgets: a regression that only redistributes cost inside the graph would ride through on the totals alone")
+    for name, budget in sorted(baseline["module_budgets"].items()):
+        value = budget.get("self_ms")
+        if not isinstance(value, (int, float)) or value <= 0:
+            problems.append(f"module budget {name}.self_ms is not a positive number: {value!r}")
+    if not baseline.get("host"):
+        problems.append("baseline does not record the host conditions it was measured on")
+    return problems
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
 
+    if args.validate:
+        # Config-only check: no probe, no subprocess, no wall clock. This is
+        # the part of the cold-start contract that belongs on a blocking path.
+        baseline = load_baseline(args.baseline)
+        try:
+            targets = args.targets or probe_default_targets()
+        except GateError as exc:
+            print(f"cold-start budget gate FAILED CLOSED: {exc}", file=sys.stderr)
+            return EXIT_ERROR
+        problems = validate(baseline, targets)
+        if problems:
+            print("cold-start budget baseline FAILED VALIDATION:", file=sys.stderr)
+            for problem in problems:
+                print(f"  {problem}", file=sys.stderr)
+            print(
+                "\n  A baseline that cannot produce a verdict is a dead gate. Re-create it\n  deliberately with --write-baseline; do not delete the entry to make the\n  check pass.",
+                file=sys.stderr,
+            )
+            return EXIT_ERROR
+        print(
+            f"cold-start budget baseline OK: {len(baseline['targets'])} targets, "
+            f"{len(baseline['module_budgets'])} module budgets, tolerance "
+            f"{float(baseline.get('tolerance_ms') or DEFAULT_TOLERANCE_MS):.0f} ms, "
+            f"host {baseline['host'].get('platform', '?')}"
+        )
+        return EXIT_OK
+
     if args.write_baseline:
         targets = args.targets or probe_default_targets()
         measurement = (
-            read_measurement(
-                args.measurement.read_text(encoding="utf-8"), "", args.measurement
-            )
+            read_measurement(args.measurement.read_text(encoding="utf-8"), "", args.measurement)
             if args.measurement
             else run_probe(
                 targets,
@@ -555,46 +586,23 @@ def main(argv: list[str] | None = None) -> int:
                 args.attribution or "cold",
             )
         )
-        tolerance = (
-            args.tolerance_ms
-            if args.tolerance_ms is not None
-            else float(
-                load_baseline(args.baseline).get("tolerance_ms") or DEFAULT_TOLERANCE_MS
-            )
-            if args.baseline.exists()
-            else DEFAULT_TOLERANCE_MS
-        )
+        tolerance = args.tolerance_ms if args.tolerance_ms is not None else float(load_baseline(args.baseline).get("tolerance_ms") or DEFAULT_TOLERANCE_MS) if args.baseline.exists() else DEFAULT_TOLERANCE_MS
         baseline = build_baseline(measurement, tolerance)
         args.baseline.parent.mkdir(parents=True, exist_ok=True)
-        args.baseline.write_text(
-            json.dumps(baseline, indent=2) + "\n", encoding="utf-8"
-        )
-        print(
-            f"wrote baseline {args.baseline} ({len(baseline['targets'])} targets, "
-            f"{len(baseline['module_budgets'])} module budgets) -- review and commit it"
-        )
+        args.baseline.write_text(json.dumps(baseline, indent=2) + "\n", encoding="utf-8")
+        print(f"wrote baseline {args.baseline} ({len(baseline['targets'])} targets, {len(baseline['module_budgets'])} module budgets) -- review and commit it")
         return EXIT_OK
 
     baseline = load_baseline(args.baseline)
     baseline_tolerance = float(baseline.get("tolerance_ms") or DEFAULT_TOLERANCE_MS)
     targets = args.targets or sorted(baseline["targets"])
     repeats = args.repeats or int(baseline.get("measurement", {}).get("repeats", 3))
-    timeout = args.timeout or float(
-        baseline.get("measurement", {}).get("timeout_seconds", 900.0)
-    )
+    timeout = args.timeout or float(baseline.get("measurement", {}).get("timeout_seconds", 900.0))
     top = args.top or 25
-    attribution = args.attribution or str(
-        baseline.get("measurement", {}).get("attribution_mode", "cold")
-    )
+    attribution = args.attribution or str(baseline.get("measurement", {}).get("attribution_mode", "cold"))
 
     try:
-        measurement = (
-            read_measurement(
-                args.measurement.read_text(encoding="utf-8"), "", args.measurement
-            )
-            if args.measurement
-            else run_probe(targets, repeats, timeout, top, attribution)
-        )
+        measurement = read_measurement(args.measurement.read_text(encoding="utf-8"), "", args.measurement) if args.measurement else run_probe(targets, repeats, timeout, top, attribution)
     except GateError as exc:
         print(f"cold-start budget gate FAILED CLOSED: {exc}", file=sys.stderr)
         return EXIT_ERROR

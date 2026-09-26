@@ -6,7 +6,6 @@ from dataclasses import dataclass
 
 from wizard.ui import ask_multi_choice, print_header, print_info, print_success
 
-
 CHANNEL_CONNECTION_OPTIONS: tuple[tuple[str, str, str], ...] = (
     ("telegram", "Telegram", "direct messages through your Alpha bot"),
     ("slack", "Slack", "workspace messages and mentions"),

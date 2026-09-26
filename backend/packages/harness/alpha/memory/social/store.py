@@ -1,10 +1,13 @@
 """Thread-safe, bounded, per-scope persistence for social memory.
 
 One JSON document owns all social records for one exact scope. Writes are
-atomic and serialized by a per-scope re-entrant lock. Corrupt documents are
-renamed for forensics and never overwritten in place. As with L1, the locks
-coordinate threads in one store instance; independent processes need an
-external transactional store before this can be described as exactly-once.
+atomic and serialized by a per-scope re-entrant lock. Genuinely corrupt
+documents are renamed for forensics and never overwritten in place. A
+document that parses but declares a format this build does not implement is
+*not* corruption: it is refused, left byte-for-byte in place, and written
+only by a build that understands it. As with L1, the locks coordinate threads
+in one store instance; independent processes need an external transactional
+store before this can be described as exactly-once.
 """
 
 from __future__ import annotations
@@ -20,6 +23,12 @@ from pathlib import Path
 from typing import TypeVar
 
 from alpha.agents.memory.l1.paths import atomic_write_text
+from alpha.memory._store_format import (
+    STORE_FORMAT_UNSUPPORTED,
+    StoreFormatVerdict,
+    classify_store_format,
+    format_disclosure,
+)
 
 from .config import SocialConfig
 from .models import (
@@ -35,6 +44,7 @@ from .paths import iter_state_paths, scope_bucket, state_path
 logger = logging.getLogger(__name__)
 
 _SCHEMA_VERSION = 1
+_STORE_ID = "social.state"
 _T = TypeVar("_T")
 
 
@@ -44,6 +54,10 @@ class SocialStoreCapacityError(RuntimeError):
 
 class SocialStoreCorruptError(RuntimeError):
     """Raised when corrupt state cannot be preserved and isolation is uncertain."""
+
+
+class SocialStoreUnavailable(RuntimeError):
+    """Raised when a write is refused because the scope is not safely writable."""
 
 
 @dataclass(slots=True)
@@ -81,6 +95,7 @@ class SocialStore:
         self._locks_guard = threading.Lock()
         self._locks: dict[str, threading.RLock] = {}
         self._cache: dict[str, ScopeState] = {}
+        self._format_refusals: dict[str, StoreFormatVerdict] = {}
 
     @property
     def root(self) -> Path:
@@ -118,8 +133,6 @@ class SocialStore:
         )
 
     def _parse_document(self, scope: str, raw: dict[str, object]) -> ScopeState:
-        if raw.get("schema") != _SCHEMA_VERSION:
-            raise ValueError("unsupported social state schema")
         if normalize_scope(str(raw.get("owner_scope") or "")) != scope:
             raise ValueError("owner scope does not match state path")
         doc = self._empty(scope)
@@ -145,30 +158,76 @@ class SocialStore:
             doc.summaries.append(InteractionSummary.model_validate(item))
         return doc
 
+    def _refuse_format(self, scope: str, verdict: StoreFormatVerdict) -> ScopeState:
+        """Hold a version-incompatible document untouched and refuse to write.
+
+        The previous code raised ``ValueError("unsupported social state
+        schema")`` from inside the same ``try`` that handles torn bytes, so a
+        document written by a newer build was renamed to ``.corrupt-*`` and
+        the scope silently restarted empty.  A version mismatch is not
+        corruption; the file belongs to whichever build wrote it.
+        """
+
+        self._format_refusals[scope] = verdict
+        logger.error("Social store refusing %s (%s); document left in place and writes blocked", verdict.path, format_disclosure(verdict))
+        return self._empty(scope)
+
+    def format_refusal(self, owner_scope: str) -> StoreFormatVerdict | None:
+        """Return the version refusal held for a scope, or ``None``."""
+
+        return self._format_refusals.get(normalize_scope(owner_scope))
+
+    def read_status(self, owner_scope: str) -> str:
+        """Report the load disclosure for a scope, loading it if needed."""
+
+        scope = normalize_scope(owner_scope)
+        with self._scope_lock(scope):
+            self._load(scope)
+        return STORE_FORMAT_UNSUPPORTED if scope in self._format_refusals else "ok"
+
     def _load(self, owner_scope: str) -> ScopeState:
         scope = normalize_scope(owner_scope)
         cached = self._cache.get(scope)
         if cached is not None:
             return cached
         path = self.scope_path(scope)
-        if path.exists():
-            try:
-                raw = json.loads(path.read_text(encoding="utf-8"))
-                if not isinstance(raw, dict):
-                    raise ValueError("social state root must be an object")
-                doc = self._parse_document(scope, raw)
-            except (json.JSONDecodeError, ValueError, TypeError, OSError) as exc:
-                backup = path.with_name(f"{path.name}.corrupt-{time.time_ns()}")
-                try:
-                    path.replace(backup)
-                except OSError as preserve_exc:
-                    raise SocialStoreCorruptError(f"could not preserve corrupt social state at {path}: {preserve_exc}") from exc
-                logger.error("Social store preserved corrupt document %s as %s", path, backup.name)
-                doc = self._empty(scope)
-        else:
-            doc = self._empty(scope)
+        if not path.exists():
+            self._cache[scope] = self._empty(scope)
+            return self._cache[scope]
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except OSError as exc:
+            raise SocialStoreCorruptError(f"could not read social state at {path}: {exc}") from exc
+        except (json.JSONDecodeError, ValueError, TypeError, UnicodeError) as exc:
+            self._quarantine(scope, path, exc)
+            self._cache[scope] = self._empty(scope)
+            return self._cache[scope]
+        if not isinstance(raw, dict):
+            self._quarantine(scope, path, ValueError("social state root must be an object"))
+            self._cache[scope] = self._empty(scope)
+            return self._cache[scope]
+        verdict = classify_store_format(store=_STORE_ID, path=path, raw=raw, supported_version=_SCHEMA_VERSION)
+        if verdict.refusal:
+            self._cache[scope] = self._refuse_format(scope, verdict)
+            return self._cache[scope]
+        try:
+            doc = self._parse_document(scope, raw)
+        except (ValueError, TypeError) as exc:
+            self._quarantine(scope, path, exc)
+            self._cache[scope] = self._empty(scope)
+            return self._cache[scope]
         self._cache[scope] = doc
         return doc
+
+    def _quarantine(self, scope: str, path: Path, exc: BaseException) -> None:
+        """Preserve genuinely unreadable bytes; never used for a version mismatch."""
+
+        backup = path.with_name(f"{path.name}.corrupt-{time.time_ns()}")
+        try:
+            path.replace(backup)
+        except OSError as preserve_exc:
+            raise SocialStoreCorruptError(f"could not preserve corrupt social state at {path}: {preserve_exc}") from exc
+        logger.error("Social store preserved corrupt document %s as %s", path, backup.name)
 
     def _payload(self, doc: ScopeState) -> dict[str, object]:
         return {
@@ -230,6 +289,11 @@ class SocialStore:
         at = time.time() if now is None else float(now)
         with self._scope_lock(scope):
             doc = self._load(scope)
+            if scope in self._format_refusals:
+                # Refuse rather than republish our own format over a document a
+                # newer build still owns.  The refusal survives the cache reset,
+                # so it is re-read from the gate on every attempt.
+                raise SocialStoreUnavailable(format_disclosure(self._format_refusals[scope]))
             before = copy.deepcopy(doc)
             try:
                 result = update(doc)
@@ -356,4 +420,5 @@ __all__ = [
     "SocialStore",
     "SocialStoreCapacityError",
     "SocialStoreCorruptError",
+    "SocialStoreUnavailable",
 ]

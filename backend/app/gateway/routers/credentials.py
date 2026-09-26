@@ -2,6 +2,15 @@
 
 Handles secure modal submissions and status checks for credentials requested
 by agents during execution runs.
+
+**Authorization**: the vault behind these routes is a process-global singleton
+keyed only by ``thread_id`` (``alpha.security.credential_vault`` has no user
+dimension), so the ``thread_id`` in the request is the only thing standing
+between two users. Every route therefore resolves the caller and enforces
+thread ownership before touching the vault. Without that check any
+authenticated user could enumerate another user's pending credential requests,
+inject a value the foreign agent would then consume, and destroy the real
+user's pending prompts.
 """
 
 from __future__ import annotations
@@ -9,11 +18,12 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
 from alpha.security.credential_vault import get_credential_vault
 from alpha.utils.thread_id import ThreadId
+from app.gateway.authz import require_thread_owner
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +40,11 @@ class CredentialSubmitRequest(BaseModel):
 
 
 @router.post("/submit", summary="Submit Credential Out-of-Band")
-def submit_credential(req: CredentialSubmitRequest) -> dict[str, Any]:
+async def submit_credential(req: CredentialSubmitRequest, request: Request) -> dict[str, Any]:
     """Deposit a secret into the in-memory vault for a specific thread."""
+    # Write-side capability: a value deposited here is injected into the target
+    # thread's sandbox environment, so this must be the owner's own thread.
+    await require_thread_owner(request, req.thread_id)
     vault = get_credential_vault()
     vault.deposit_credential(
         thread_id=req.thread_id,
@@ -49,15 +62,19 @@ def submit_credential(req: CredentialSubmitRequest) -> dict[str, Any]:
 
 
 @router.get("/pending", summary="List Pending Credential Requests")
-def list_pending_credentials(thread_id: ThreadId) -> list[dict[str, Any]]:
+async def list_pending_credentials(request: Request, thread_id: ThreadId) -> list[dict[str, Any]]:
     """Query unfulfilled credential prompts for a thread."""
+    await require_thread_owner(request, thread_id)
     vault = get_credential_vault()
     return vault.list_pending(thread_id=thread_id)
 
 
 @router.delete("/clear", summary="Purge Thread Credentials")
-def clear_credentials(thread_id: ThreadId) -> dict[str, Any]:
+async def clear_credentials(request: Request, thread_id: ThreadId) -> dict[str, Any]:
     """Purge all secrets for a finished thread."""
+    # Destructive: require the thread row to exist and be owned, so a deleted
+    # thread cannot be re-targeted by another user through the missing-row path.
+    await require_thread_owner(request, thread_id, require_existing=True)
     vault = get_credential_vault()
     vault.clear_thread(thread_id=thread_id)
     return {"status": "cleared", "thread_id": thread_id}

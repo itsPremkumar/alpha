@@ -1,0 +1,23 @@
+{
+  "name": "alpha-installer-dev",
+  "image": "ghcr.io/astral-sh/uv:0.11.1",
+  "features": {},
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-python.python", "charliermarsh.ruff", "bradlc.vscode-tailwindcss"],
+      "settings": {
+        "python.defaultInterpreterPath": "/app/backend/.venv/bin/python",
+        "python.terminal.activateEnvironment": false
+      }
+    }
+  },
+  "remoteUser": "root",
+  "updateRemoteUserUID": false,
+  "postCreateCommand": "/app/.devcontainer/post-create.sh",
+  "forwardPorts": [8001, 3000],
+  "portsAttributes": {
+    "8001": { "label": "gateway" },
+    "3000": { "label": "web ui" }
+  },
+  "postAttachCommand": "echo 'Alpha dev container ready. Start the stack with: docker compose -f build/compose.installer.yaml --profile alpha-installer up -d'"
+}

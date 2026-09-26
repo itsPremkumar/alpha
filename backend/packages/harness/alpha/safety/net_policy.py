@@ -1,4 +1,17 @@
-"""Network Policy & SSRF Egress Filtering Guard inspired by OpenClaw."""
+"""Network Policy & SSRF Egress Filtering Guard inspired by OpenClaw.
+
+Covers two egress surfaces:
+
+* server-side fetches and tools, via :meth:`NetworkPolicyGuard.validate_url`;
+* bring-your-own-model endpoints (``base_url`` supplied by an operator through
+  ``POST /api/models/providers/configure`` or a config file), via
+  :meth:`NetworkPolicyGuard.validate_model_endpoint`. That method delegates to
+  the single shared implementation in
+  :mod:`alpha.community.url_safety` so the model path and the web-tool path
+  can never drift apart, and adds the endpoint-specific rules: a declared
+  local tier (loopback OpenAI-compatible servers) and cloud metadata, which is
+  refused in every tier.
+"""
 
 from __future__ import annotations
 
@@ -124,6 +137,46 @@ class NetworkPolicyGuard:
 
     def is_url_allowed(self, url: str, resolve_dns: bool = False) -> bool:
         return self.validate_url(url, resolve_dns=resolve_dns).allowed
+
+    def validate_model_endpoint(
+        self,
+        url: str,
+        *,
+        allow_loopback: bool = False,
+        allowed_private_hosts: Sequence[str] | None = None,
+        resolve_dns: bool = True,
+    ) -> PolicyCheckResult:
+        """Apply the shared model-endpoint egress policy to a model ``base_url``.
+
+        A BYO endpoint is a long-lived, operator-writable egress target, so it
+        is screened before it is ever persisted: non-http(s) schemes, embedded
+        URL credentials, loopback/private hosts (unless the caller declares a
+        local tier or an operator allowlist) and every cloud metadata endpoint
+        are refused.
+
+        The decision itself lives in :mod:`alpha.community.url_safety` - this
+        is the ``NetworkPolicyGuard`` entry point for callers that already hold
+        a guard instance, kept as a thin delegate so there is exactly one
+        model-endpoint policy in the codebase. Imported lazily because the
+        guard is also used from import-light contexts.
+        """
+        from alpha.community.url_safety import validate_model_endpoint_url
+
+        reason = validate_model_endpoint_url(
+            url,
+            allow_loopback=allow_loopback,
+            allowed_private_hosts=tuple(allowed_private_hosts or ()),
+            resolve_dns=resolve_dns,
+            action="route model traffic to",
+        )
+        hostname = ""
+        try:
+            hostname = (urlparse(url).hostname or "").lower()
+        except Exception:  # malformed URL: the policy already refused it
+            hostname = ""
+        if reason is None:
+            return PolicyCheckResult(allowed=True, reason="Model endpoint egress permitted", hostname=hostname)
+        return PolicyCheckResult(allowed=False, reason=reason, hostname=hostname)
 
 
 _global_net_guard = NetworkPolicyGuard()

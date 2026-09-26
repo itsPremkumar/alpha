@@ -1,0 +1,12 @@
+# Installer scratch state. Nothing here is a deliverable.
+#
+# The installer writes its log to %LOCALAPPDATA%\Alpha\logs, which is outside
+# the repository. These entries exist so a developer's throwaway measurement
+# runs (and any local dry-run roots) cannot be committed by accident.
+logs/
+*.log
+measure/prod-venv/
+measure/*.txt
+__pycache__/
+*.pyc
+*.out

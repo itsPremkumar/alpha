@@ -579,13 +579,26 @@ class FileLock:
                     self._descriptor = descriptor
                     self._acquired = True
                     owner = self._owner()
-                    try:
-                        _write_owner(descriptor, owner)
-                    except OSError as exc:
-                        # The OS lock is held, but metadata is not a
-                        # correctness prerequisite.  Disclose the degradation
-                        # while keeping the acquired lock safe.
-                        disclosure = f"{disclosure}; owner_metadata_write_failed: {exc}".strip("; ")
+                    if self.mode is LockMode.READ:
+                        # A *read-only* acquisition must not write, whatever the
+                        # platform made us take.  On Windows a READ lock is
+                        # upgraded to EXCLUSIVE because the CRT has no shared
+                        # byte-range lock, but it is still a read: it has no
+                        # owner to record, and truncating the owner record would
+                        # destroy a live writer's metadata - the very thing that
+                        # makes a stale-lock reclaim safe.  The lock itself is
+                        # unchanged: it is still taken, and contention is still
+                        # observed.  The upgrade stays visible in ``reason``.
+                        if stale_detected:
+                            disclosure = f"{disclosure}; stale_owner_reclaimed".strip("; ")
+                    else:
+                        try:
+                            _write_owner(descriptor, owner)
+                        except OSError as exc:
+                            # The OS lock is held, but metadata is not a
+                            # correctness prerequisite.  Disclose the degradation
+                            # while keeping the acquired lock safe.
+                            disclosure = f"{disclosure}; owner_metadata_write_failed: {exc}".strip("; ")
                     if stale_detected:
                         disclosure = f"{disclosure}; stale_owner_reclaimed".strip("; ")
                     result = LockResult(

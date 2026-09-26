@@ -16,16 +16,16 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
-from app.gateway.authz import SandboxRequestLease, require_permission, try_acquire_sandbox_for_request
-from app.gateway.deps import get_run_manager
-from app.gateway.internal_auth import get_trusted_internal_owner_user_id
-from app.gateway.path_utils import normalize_outputs_virtual_path, resolve_outputs_confined_path, resolve_thread_virtual_path
 from alpha.authz.sandbox_authz import safe_app_config
 from alpha.config.paths import make_safe_user_id
 from alpha.runtime import ConflictError, ThreadOperationKind
 from alpha.runtime.user_context import get_effective_user_id
 from alpha.sandbox.sandbox_provider import get_sandbox_provider
 from alpha.utils.thread_id import ThreadId
+from app.gateway.authz import SandboxRequestLease, require_permission, try_acquire_sandbox_for_request
+from app.gateway.deps import get_run_manager
+from app.gateway.internal_auth import get_trusted_internal_owner_user_id
+from app.gateway.path_utils import normalize_outputs_virtual_path, resolve_outputs_confined_path, resolve_thread_virtual_path
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +131,13 @@ def _replace_artifact_atomically(actual_path: Path, content: bytes, file_stat: o
             try:
                 os.fchown(temp_fd, file_stat.st_uid, file_stat.st_gid)
             except OSError:
-                logger.debug("Could not preserve artifact ownership: %s", actual_path, exc_info=True)
+                # WARNING, not DEBUG: the atomic-replace path falls back to the
+                # temp file's ownership, so a silent miss here means an artifact
+                # is published under different ownership than the file it
+                # replaced. That is a real, persistent outcome -- not a probe
+                # that will look fine on the next call -- so it is reported at
+                # the default level with the path and the cause.
+                logger.warning("Could not preserve artifact ownership: %s", actual_path, exc_info=True)
         # Windows has no fchmod and uses ACLs rather than POSIX mode bits.
         # Keep the mkstemp permissions there; retain the existing POSIX
         # behavior on platforms that expose descriptor-based chmod.

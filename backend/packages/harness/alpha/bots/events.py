@@ -32,13 +32,49 @@ def _resolve_events_path() -> Path:
 
 
 class OrgEventStore:
-    """Thread-safe, append-only organizational event store."""
+    """Thread-safe, append-only organizational event store.
+
+    Each appended event gets a monotonic ``seq`` so the log is ordered and
+    gap-free, including across restarts. Legacy events written before ``seq``
+    existed report ``seq=None`` and are never renumbered; the counter always
+    starts above the highest ``seq`` found on disk.
+    """
 
     def __init__(self, log_path: Path | str | None = None) -> None:
         self.log_path = Path(log_path).resolve() if log_path else _resolve_events_path()
         self._lock = threading.Lock()
         self._recent_events: deque[dict[str, Any]] = deque(maxlen=_MAX_IN_MEMORY_EVENTS)
+        self._next_seq = self._scan_max_seq() + 1
         self._load_recent()
+
+    def _scan_max_seq(self) -> int:
+        """Highest ``seq`` anywhere on disk, so a restart cannot reissue a number.
+
+        Scans the whole file (not just the in-memory tail) because reusing a
+        sequence number after a restart would silently break the ordering
+        guarantee that makes this log auditable.
+        """
+        if not self.log_path.exists():
+            return 0
+        highest = 0
+        try:
+            with open(self.log_path, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    # Cheap pre-filter: only parse lines that could carry a seq.
+                    if '"seq"' not in line:
+                        continue
+                    try:
+                        seq = json.loads(line).get("seq")
+                    except Exception:
+                        continue
+                    if isinstance(seq, int) and seq > highest:
+                        highest = seq
+        except OSError:
+            logger.warning("Could not scan org event log for sequence state", exc_info=True)
+        return highest
 
     def _load_recent(self) -> None:
         if not self.log_path.exists():
@@ -65,16 +101,20 @@ class OrgEventStore:
         details: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Append a new immutable event to the audit log."""
-        event = {
-            "id": uuid.uuid4().hex[:12],
-            "event_type": event_type,
-            "actor": actor.lower().strip(),
-            "target": target.lower().strip() if target else None,
-            "timestamp": _now(),
-            "details": details or {},
-        }
-
         with self._lock:
+            # seq is allocated under the same lock as the append, so it is
+            # strictly increasing with no gaps: a missing number means a lost
+            # write, which is exactly the signal an auditor needs.
+            event = {
+                "id": uuid.uuid4().hex[:12],
+                "seq": self._next_seq,
+                "event_type": event_type,
+                "actor": actor.lower().strip(),
+                "target": target.lower().strip() if target else None,
+                "timestamp": _now(),
+                "details": details or {},
+            }
+            self._next_seq += 1
             self._recent_events.append(event)
             try:
                 self.log_path.parent.mkdir(parents=True, exist_ok=True)

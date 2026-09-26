@@ -12,6 +12,7 @@ import pytest
 from langchain_core.messages import AIMessage
 from langgraph.errors import GraphBubbleUp
 
+from alpha.agents.middlewares.llm_breaker_registry import BreakerKey
 from alpha.agents.middlewares.llm_error_handling_middleware import (
     LLMErrorHandlingMiddleware,
 )
@@ -37,6 +38,25 @@ def _reset_process_limiter() -> Iterator[None]:
     yield
     mod._PROCESS_LIMITER = None
     mod._CAP_RESOLVED = False
+
+
+@pytest.fixture(autouse=True)
+def _reset_breaker_registry() -> Iterator[None]:
+    """Clear the process-wide, provider-keyed breaker registry between tests.
+
+    Circuit-breaker state is deliberately SHARED across middleware instances
+    for the whole process lifetime (``llm_breaker_registry``) - that is the
+    fix for breakers resetting on every run. Without this reset, a breaker a
+    test leaves open or half-open would fast-fail the next test that resolves
+    the same key, and tests that stage ``_circuit_state`` directly would leak
+    that staged state. Reset before *and* after each test so isolation holds
+    in both directions.
+    """
+    from alpha.agents.middlewares import llm_breaker_registry as registry
+
+    registry.reset_breakers()
+    yield
+    registry.reset_breakers()
 
 
 @pytest.fixture(autouse=True)
@@ -94,13 +114,21 @@ _LLM_CALL_ATTR_MAP: dict[str, str] = {
 }
 
 
-def _build_middleware(**attrs: int) -> LLMErrorHandlingMiddleware:
+def _build_middleware(breaker_key: BreakerKey | None = None, **attrs: int) -> LLMErrorHandlingMiddleware:
+    """Build a middleware under test.
+
+    ``breaker_key`` pins the instance to one registry key, which lets a test
+    model "another provider" (or park an unrelated helper middleware on its
+    own breaker) without inventing a model object; when omitted the instance
+    derives its key per call from ``request.model`` and falls back to the
+    config-derived default key.
+    """
     llm_call_fields = {_LLM_CALL_ATTR_MAP[key]: value for key, value in attrs.items() if key in _LLM_CALL_ATTR_MAP}
     app_config = AppConfig(
         sandbox=SandboxConfig(use="test"),
         llm_call=LlmCallConfig(**llm_call_fields),
     )
-    middleware = LLMErrorHandlingMiddleware(app_config=app_config)
+    middleware = LLMErrorHandlingMiddleware(app_config=app_config, breaker_key=breaker_key)
     for key, value in attrs.items():
         if key not in _LLM_CALL_ATTR_MAP:
             setattr(middleware, key, value)
@@ -332,7 +360,19 @@ async def test_cancelled_recovery_probe_allows_next_model_call(cancel_during: st
     probe = None
     try:
         if cancel_during == "queue":
-            other_middleware = _build_middleware(max_concurrent_llm_calls=1)
+            # The blocker occupies the single limiter permit, and nothing more.
+            # It is pinned to its OWN breaker key: breaker state is now shared
+            # per provider for the process lifetime (the fix for state dying
+            # with the per-run stack), so a same-key blocker would check first
+            # and swallow the single half-open probe slot, fast-failing the
+            # probe this test is about. The test used to get that isolation
+            # implicitly from per-instance breaker state - which is exactly the
+            # behaviour the registry replaces - so it now asks for it
+            # explicitly instead of encoding the bug.
+            other_middleware = _build_middleware(
+                max_concurrent_llm_calls=1,
+                breaker_key=("test-blocker-provider", "", ("test-blocker-model",)),
+            )
             blocker = asyncio.create_task(other_middleware.awrap_model_call(SimpleNamespace(), occupying_handler))
             await asyncio.wait_for(occupied.wait(), timeout=1)
         probe = asyncio.create_task(run_probe())

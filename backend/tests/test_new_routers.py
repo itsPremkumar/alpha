@@ -9,12 +9,6 @@ import pytest
 from fastapi import HTTPException
 
 from alpha.security.credential_vault import get_credential_vault
-from app.gateway.routers.credentials import (
-    CredentialSubmitRequest,
-    clear_credentials,
-    list_pending_credentials,
-    submit_credential,
-)
 from app.gateway.routers.skills_workshop import (
     DistillRequest,
     PublishRequest,
@@ -24,33 +18,55 @@ from app.gateway.routers.skills_workshop import (
 
 
 def test_credentials_router_flow():
+    """The vault flow, driven through HTTP with an authenticated owner.
+
+    The credential routes now resolve the caller and enforce thread ownership
+    before touching the process-global vault, so they can no longer be invoked
+    as bare functions. This exercises the same sequence end to end (request ->
+    list pending -> submit -> pending empty -> clear) through the real router.
+    Cross-user refusal lives in test_authz_surface_audit.py.
+    """
+    from _router_auth_helpers import make_authed_test_app
+    from fastapi.testclient import TestClient
+
+    from app.gateway.routers import credentials as credentials_router
+
     thread_id = "router-thread-1"
     vault = get_credential_vault()
+    vault.clear_thread(thread_id=thread_id)
+
+    app = make_authed_test_app()
+    app.include_router(credentials_router.router)
+    client = TestClient(app)
 
     # Request a credential
     vault.request_credential(thread_id, "STRIPE_SECRET_KEY", "Stripe API Key")
-    pending = list_pending_credentials(thread_id)
-    assert len(pending) == 1
-    assert pending[0]["key"] == "STRIPE_SECRET_KEY"
+    pending = client.get("/api/credentials/pending", params={"thread_id": thread_id})
+    assert pending.status_code == 200, pending.text
+    assert len(pending.json()) == 1
+    assert pending.json()[0]["key"] == "STRIPE_SECRET_KEY"
 
     # Submit via router
-    res = submit_credential(
-        CredentialSubmitRequest(
-            thread_id=thread_id,
-            key="STRIPE_SECRET_KEY",
-            value="sk_test_mock_stripe_key_12345",
-        )
+    res = client.post(
+        "/api/credentials/submit",
+        json={
+            "thread_id": thread_id,
+            "key": "STRIPE_SECRET_KEY",
+            "value": "sk_test_mock_stripe_key_12345",
+        },
     )
-    assert res["status"] == "deposited"
-    assert res["key"] == "STRIPE_SECRET_KEY"
+    assert res.status_code == 200, res.text
+    assert res.json()["status"] == "deposited"
+    assert res.json()["key"] == "STRIPE_SECRET_KEY"
 
     # Pending should now be empty
-    assert len(list_pending_credentials(thread_id)) == 0
+    assert client.get("/api/credentials/pending", params={"thread_id": thread_id}).json() == []
     assert vault.get_credential(thread_id, "STRIPE_SECRET_KEY") == "sk_test_mock_stripe_key_12345"
 
     # Clear
-    clear_res = clear_credentials(thread_id)
-    assert clear_res["status"] == "cleared"
+    clear_res = client.delete("/api/credentials/clear", params={"thread_id": thread_id})
+    assert clear_res.status_code == 200, clear_res.text
+    assert clear_res.json()["status"] == "cleared"
     assert vault.get_credential(thread_id, "STRIPE_SECRET_KEY") is None
 
 

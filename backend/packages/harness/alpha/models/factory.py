@@ -173,32 +173,67 @@ def _apply_stream_chunk_timeout_default(model_class: type, model_settings_from_c
     model_settings_from_config["stream_chunk_timeout"] = _DEFAULT_STREAM_CHUNK_TIMEOUT_SECONDS
 
 
+# Declared ``ModelConfig`` fields that ARE genuine provider-constructor kwargs.
+#
+# This is the *only* way a declared field may reach a provider client, and it is
+# deliberately an allowlist. The strip set below is derived as
+# ``ModelConfig.model_fields - this``, so it is complete by construction: a field
+# added to ``ModelConfig`` later is stripped by default and cannot repeat the
+# ``capabilities`` leak. That leak was real and shipped: ``capabilities`` has
+# ``default_factory=list``, so it is always present in ``model_dump()``, it was
+# absent from the hand-maintained strip set, and langchain-openai diverted it
+# into ``model_kwargs`` — which is spread into every ``Completions.create()``
+# call and rejected by the OpenAI SDK at request time with
+# ``TypeError: Completions.create() got an unexpected keyword argument
+# 'capabilities'``. A hand-maintained deny-list can only ever be as complete as
+# the last person to remember to update it; a deny-by-default allowlist cannot.
+#
+# Every entry must be a real field of the target model class (see
+# ``_warn_unknown_model_settings`` for the divert-and-crash mechanism, and
+# ``test_no_declared_model_config_field_reaches_the_provider_constructor`` /
+# ``test_no_declared_model_config_field_reaches_the_request_payload`` for the
+# invariant this list exists to hold).
+_MODEL_CONFIG_PROVIDER_PASSTHROUGH = frozenset(
+    {
+        # The provider's model id. Declared and required on ModelConfig.
+        "model",
+        # ``ChatOpenAI``/``BaseChatOpenAI`` routing flag. ``False`` is
+        # meaningfully different from the field's ``None`` default (None
+        # auto-selects the Responses API), so the shipped config's explicit
+        # ``use_responses_api: false`` must survive.
+        "use_responses_api",
+        # ``ChatOpenAI`` structured-output schema version.
+        "output_version",
+        # ``BaseChatOpenAI`` streaming chunk-gap budget; also the field
+        # ``_apply_stream_chunk_timeout_default`` injects a default for.
+        "stream_chunk_timeout",
+    }
+)
+
+# Alpha metadata that is *not* a declared ``ModelConfig`` field.
+# ``ModelConfig`` is ``extra="allow"``, so presentation metadata an operator
+# writes inline (``pricing``) arrives as an extra key. Extras are free-form by
+# design — they carry the operator's genuine provider kwargs (``api_key``,
+# ``base_url``, ``max_tokens``, ``temperature``, ...) — so they cannot be
+# deny-by-default. They must be listed here explicitly, and the same
+# divert-and-crash applies: an unrecognised extra is forwarded as-is and fails
+# at request time, not construction time.
+_EXTRA_NON_CONSTRUCTOR_MODEL_KEYS = frozenset(
+    {
+        # Presentation-only metadata consumed by the console's cost display.
+        "pricing",
+    }
+)
+
 # Constructor settings that are Alpha metadata, never provider arguments.
 # ``provider``/``fallbacks`` join the long-standing presentation-only set:
 # they steer factory resolution and must not reach the model client (which
 # would divert unknown kwargs into the request payload — see
-# _warn_unknown_model_settings).
-_NON_CONSTRUCTOR_MODEL_KEYS = {
-    "use",
-    "name",
-    "display_name",
-    "description",
-    "provider",
-    "fallbacks",
-    "supports_thinking",
-    "supports_reasoning_effort",
-    "when_thinking_enabled",
-    "when_thinking_disabled",
-    "thinking",
-    "supports_vision",
-    # Runtime/UI metadata used to size the context indicator. Provider
-    # clients do not accept this as a model-constructor argument.
-    "context_window",
-    # Presentation-only metadata (consumed by the console's cost
-    # display) — must never reach the provider client, which would
-    # forward unknown kwargs into the completion request payload.
-    "pricing",
-}
+# _warn_unknown_model_settings). Derived from the field metadata so it cannot
+# fall behind ``ModelConfig``; see ``_MODEL_CONFIG_PROVIDER_PASSTHROUGH`` above.
+_NON_CONSTRUCTOR_MODEL_KEYS = (
+    frozenset(ModelConfig.model_fields) - _MODEL_CONFIG_PROVIDER_PASSTHROUGH
+) | _EXTRA_NON_CONSTRUCTOR_MODEL_KEYS
 
 
 def _resolve_chain_configs(name: str, config: AppConfig) -> list[ModelConfig]:

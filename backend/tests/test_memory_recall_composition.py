@@ -92,23 +92,38 @@ def test_a_broken_surface_is_isolated_and_disclosed(monkeypatch) -> None:
 
 
 def test_composed_block_is_bounded_and_truncation_is_disclosed(monkeypatch) -> None:
+    """The cap bounds EVERY emitted byte, and the disclosure is not optional.
+
+    Since the data-safety notice was added, ``max_total_chars`` is reserved
+    against the notice and the join separator BEFORE any surface renders, so the
+    cap covers the whole block rather than only the surface text. The original
+    exact-accounting property still holds -- just against the reserved budget.
+    """
     monkeypatch.setitem(rc._RENDERERS, "affective", lambda *a, **k: "A" * 500)
     monkeypatch.setitem(rc._RENDERERS, "narrative", lambda *a, **k: "B" * 500)
     config = _config(affective={"enabled": True}, narrative={"enabled": True})
 
+    cap = 900
     result = rc.compose_typed_memory_blocks(
-        config, user_id="u1", surfaces=("affective", "narrative"), max_total_chars=600
+        config, user_id="u1", surfaces=("affective", "narrative"), max_total_chars=cap
     )
     assert result.truncated is True
     assert "truncated at the configured cap" in result.text
-    # Exact accounting: the first block fits whole, the second is cut to the
-    # remaining 100 characters, and nothing else is emitted.
-    assert result.text.count("A") == 500
-    assert result.text.count("B") == 100
-    # The cap bounds CONTENT; the disclosed notice and the join separators sit
-    # outside it on purpose, so a truncation is never silent.
-    content = result.text.removesuffix(rc._TRUNCATION_NOTICE).strip()
-    assert len(content) <= 600 + len("\n\n")
+    # The block opens with the data notice and closes with its reminder, both
+    # before any recall payload.
+    assert result.text.startswith(rc.RECALL_DATA_NOTICE + "\n\n")
+    assert rc._RECALL_DATA_REMINDER in result.text
+    # The cap bounds CONTENT: the first block fits whole, the second is cut to
+    # whatever is left after the payload AND the join.
+    body = result.text.removeprefix(rc.RECALL_DATA_NOTICE + "\n\n").removesuffix(rc._TRUNCATION_NOTICE)
+    body = body.removesuffix("\n\n" + rc._RECALL_DATA_REMINDER)
+    budget = cap - len(rc.RECALL_DATA_NOTICE) - len(rc._RECALL_DATA_REMINDER) - 4
+    assert body.count("A") == 500
+    assert body.count("B") == budget - 500 - len("\n\n")
+    # And the disclosure sits OUTSIDE the cap on purpose, so a truncation is
+    # never silent -- while the capped content plus the notices never exceeds it.
+    assert len(result.text) == len(body) + len(rc.RECALL_DATA_NOTICE) + 2 + len(rc._RECALL_DATA_REMINDER) + 2 + len(rc._TRUNCATION_NOTICE)
+    assert len(rc.RECALL_DATA_NOTICE) + 2 + len(body) + 2 + len(rc._RECALL_DATA_REMINDER) <= cap
 
 
 def test_surface_order_is_deterministic_across_calls(monkeypatch) -> None:

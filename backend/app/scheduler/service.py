@@ -11,6 +11,13 @@ from fastapi import HTTPException
 
 from alpha.persistence.scheduled_task_runs import ActiveScheduledRunConflict, ScheduledTaskAdmissionRejected
 from alpha.runtime import ConflictError, RunRecord
+from alpha.runtime.lane_scheduler import (
+    RUN_ADMISSION_REJECTED_CODE,
+    capacity_refusal_detail,
+    capacity_refusal_retry_after_seconds,
+    has_run_capacity,
+    is_run_capacity_refusal,
+)
 from alpha.scheduler.schedules import next_run_at
 from alpha.trace_context import ensure_trace_context
 from alpha.utils.thread_id import validate_thread_id
@@ -25,6 +32,59 @@ _ACTIVE_RUN_CONFLICT_ERROR = "task already has an active run"
 _RESTART_RECOVERY_ERROR = "interrupted: gateway restarted before the run reached a terminal state"
 _LEASE_RECOVERY_ERROR = "interrupted: the owning gateway stopped renewing its run lease"
 _QUEUE_TIMEOUT_ERROR = "scheduled task queue wait timeout exceeded"
+
+#: Journal/outcome verb for a launch that never ran because the Gateway had no
+#: in-flight run slot to give it. ``requeued`` (not ``launch_failed``) because
+#: the occurrence is still owed exactly the attempt it was supposed to get.
+_CAPACITY_REQUEUED_STATUS = "requeued"
+
+#: Error text returned to a manual trigger that was refused a run slot. The
+#: occurrence is queued and will be retried, so the caller is told that rather
+#: than shown a 502 that reads as "your trigger failed".
+_CAPACITY_WAIT_ERROR = "gateway run capacity exhausted; the occurrence is queued and will be retried"
+
+#: Ceiling on the per-occurrence capacity backoff. Bounded so a long-lived
+#: occurrence cannot back off past the point where a human would want to see it
+#: move; the durable ceiling on waiting is ``queue_timeout_seconds``.
+_MAX_CAPACITY_BACKOFF_SECONDS = 300.0
+
+#: Upper bound on how many occurrences are tracked for capacity backoff at once.
+#: Generous next to a poller's per-cycle claim limit; exists so a process that
+#: never launches anything cannot grow the map without limit.
+_CAPACITY_TRACKING_LIMIT = 512
+
+
+def _record_capacity_metric(*, waiting: int, refusals: int, waited_seconds: float) -> None:
+    """Publish the capacity-stall signal to the shared metrics registry.
+
+    Without this, "scheduled work is being starved" is only visible as an
+    absence -- a task list that stops updating -- and absence is exactly the
+    signal nobody pages on. The registry import is deferred for the same reason
+    ``collect_queue_health`` defers it: admission control must not be what pays
+    the process's import cost.
+    """
+    try:
+        from alpha.ops.metrics import get_metrics_registry
+
+        registry = get_metrics_registry()
+        registry.counter(
+            "alpha_scheduler_capacity_refusals",
+            help="Scheduled occurrences refused a Gateway in-flight run slot (retryable; the occurrence stays queued).",
+        ).inc()
+        registry.gauge(
+            "alpha_scheduler_capacity_waiting_occurrences",
+            help="Distinct scheduled occurrences currently held back by Gateway run capacity.",
+        ).set(float(waiting))
+        registry.gauge(
+            "alpha_scheduler_capacity_max_refusals",
+            help="Longest consecutive Gateway capacity refusal count for a single scheduled occurrence.",
+        ).set(float(refusals))
+        registry.gauge(
+            "alpha_scheduler_capacity_backoff_seconds",
+            help="Backoff applied before the next launch attempt of the most recently refused occurrence.",
+        ).set(float(waited_seconds))
+    except Exception:  # noqa: BLE001 - a metric must never fail a scheduled occurrence
+        logger.debug("Failed to record scheduler run-capacity metrics", exc_info=True)
 
 
 class ScheduledTaskService:
@@ -55,6 +115,14 @@ class ScheduledTaskService:
         self._task: asyncio.Task | None = None
         self._stop = asyncio.Event()
         self._skip_next_lease_reconciliation = False
+        # Consecutive Gateway capacity refusals per occurrence. Backs off the
+        # retry so a saturated gateway is not polled into a refusal storm, and
+        # is the signal that a specific occurrence is being starved.
+        self._capacity_refusals: dict[str, int] = {}
+        # When each occurrence may next attempt a launch. Separate from the count
+        # because the count answers "how bad is it" and this answers "when may
+        # we look again".
+        self._capacity_retry_at: dict[str, datetime] = {}
         # Durable per-job memory (Hermes-style). None disables journaling and
         # leaves every prompt byte-identical to the pre-journal behavior.
         self._job_memory = job_memory
@@ -98,6 +166,161 @@ class ScheduledTaskService:
         if isinstance(exc, ConflictError):
             return True
         return isinstance(exc, HTTPException) and exc.status_code == 409
+
+    def _capacity_allows_launch(self, task_run_id: str, *, now: datetime) -> bool:
+        """May this occurrence attempt a Gateway run admission right now?
+
+        A free slot answers it immediately, so a recovered system is not made to
+        wait out a backoff set while it was broken. Otherwise the occurrence is
+        held until its own backoff window expires, and only then is the wait
+        re-recorded and reported.
+
+        The backoff is what stops a refusal storm. Without it every poll would
+        re-attempt every queued occurrence against a gateway that has already
+        said no, turning "I am early" into a burst of 429s that competes with the
+        interactive traffic actually using the slots.
+        """
+        # Capacity is consulted first, so a freed slot launches immediately
+        # rather than waiting out a backoff set while the system was busy.
+        if has_run_capacity():
+            return True
+        if now < self._capacity_retry_at.get(task_run_id, now):
+            # Already inside a known wait window. Nothing to add: the refusal
+            # that set it is what an operator needs to see, once, not once per
+            # poll for the whole window.
+            return False
+        return self._note_capacity_refusal(
+            task_run_id,
+            now=now,
+            hint_seconds=float(self._poll_interval_seconds),
+            advance=False,
+        )
+
+    def _note_capacity_refusal(
+        self,
+        task_run_id: str,
+        *,
+        now: datetime,
+        hint_seconds: float,
+        advance: bool = True,
+    ) -> bool:
+        """Record a capacity wait and schedule the next attempt behind a backoff.
+
+        Always returns ``False``: the caller asked whether it may launch, and a
+        recorded wait always means it may not. ``advance`` distinguishes the two
+        callers. A refusal the Gateway actually returned moves the exponential
+        counter, because the work really did try and really was turned away. The
+        pre-flight gate does not, because nothing was attempted and counting it
+        would inflate the backoff for a wait that cost nothing.
+        """
+        refusals = self._capacity_refusals.get(task_run_id, 0)
+        if advance:
+            refusals += 1
+            self._capacity_refusals[task_run_id] = refusals
+        else:
+            # The gate still has to establish an entry so the occurrence is
+            # visible as waiting; count it as one without deepening the backoff.
+            self._capacity_refusals.setdefault(task_run_id, 1)
+            refusals = self._capacity_refusals[task_run_id]
+        # Exponential from the poll interval, capped, and never shorter than the
+        # hint the Gateway itself sent: the server knows better than we do how
+        # long its own slots are likely to be busy.
+        backoff = min(
+            max(self._poll_interval_seconds * (2 ** min(refusals - 1, 16)), hint_seconds),
+            _MAX_CAPACITY_BACKOFF_SECONDS,
+        )
+        self._capacity_retry_at[task_run_id] = now + timedelta(seconds=backoff)
+        self._prune_capacity_tracking()
+        logger.warning(
+            "Scheduled occurrence %s is waiting on Gateway run capacity (%s); it stays queued and retries in %.1fs",
+            task_run_id,
+            RUN_ADMISSION_REJECTED_CODE,
+            backoff,
+        )
+        _record_capacity_metric(
+            waiting=len(self._capacity_refusals),
+            refusals=refusals,
+            waited_seconds=backoff,
+        )
+        return False
+
+    def _forget_capacity(self, task_run_id: str) -> None:
+        """An occurrence launched: it is no longer waiting on capacity."""
+        if self._capacity_refusals.pop(task_run_id, None) is not None:
+            self._capacity_retry_at.pop(task_run_id, None)
+            _record_capacity_metric(
+                waiting=len(self._capacity_refusals),
+                refusals=0,
+                waited_seconds=0.0,
+            )
+
+    def _prune_capacity_tracking(self) -> None:
+        """Keep the refusal bookkeeping bounded.
+
+        Entries normally disappear when the occurrence launches or when the
+        queue-timeout sweep terminalizes it, but a long-lived process can outlive
+        both bookkeeping paths. Dropping the entries whose backoff expires soonest
+        costs nothing but one extra poll each: they are the ones about to be
+        retried anyway.
+        """
+        overflow = len(self._capacity_refusals) - _CAPACITY_TRACKING_LIMIT
+        if overflow <= 0:
+            return
+        soonest = sorted(self._capacity_retry_at.items(), key=lambda item: item[1])[:overflow]
+        for task_run_id, _retry_at in soonest:
+            self._capacity_refusals.pop(task_run_id, None)
+            self._capacity_retry_at.pop(task_run_id, None)
+
+    async def _requeue_for_capacity(
+        self,
+        task: dict[str, Any],
+        task_run_id: str,
+        *,
+        exc: Exception,
+        trigger: str,
+        now: datetime,
+    ) -> dict[str, Any]:
+        """Return a capacity-refused occurrence to the durable queue.
+
+        Deliberately shares the overlap-conflict requeue (and the journal verb)
+        with the other "this attempt never ran" case, because that is exactly
+        what it is. The one thing that differs is that we keep a refusal count:
+        the occurrence is not merely unlucky, it is losing a race for slots, and
+        an operator needs to be able to see that.
+        """
+        detail = capacity_refusal_detail(exc)
+        requeued = await self._task_run_repo.requeue_claimed_run(
+            task_run_id,
+            lease_owner=self._lease_owner,
+            error=detail,
+        )
+        if not requeued:
+            logger.warning(
+                "Scheduled task-run %s lost its launch claim to a Gateway capacity refusal; leaving recovery-owned state unchanged",
+                task_run_id,
+            )
+            return self._queued_result(task_run_id, str(task.get("thread_id") or ""), error=detail)
+        await self._journal_job_attempt_outcome(
+            task,
+            task_run_id=task_run_id,
+            status=_CAPACITY_REQUEUED_STATUS,
+            error=detail,
+        )
+        # Start the retry countdown only now that the occurrence is durably back
+        # in the queue, so the poll that observes the requeue cannot be the poll
+        # that retries it.
+        self._note_capacity_refusal(
+            task_run_id,
+            now=now,
+            hint_seconds=capacity_refusal_retry_after_seconds(exc, default=float(self._poll_interval_seconds)),
+        )
+        logger.warning(
+            "Scheduled occurrence %s (trigger %s) was refused a Gateway run slot: %s; it stays queued and is retried, not failed",
+            task_run_id,
+            trigger,
+            detail,
+        )
+        return self._queued_result(task_run_id, str(task.get("thread_id") or ""), error=detail)
 
     @staticmethod
     def _task_status_for_failure(task: dict[str, Any], *, trigger: str) -> str:
@@ -217,6 +440,7 @@ class ScheduledTaskService:
         # Scheduled admission inserted the queue row and released its parent
         # lease in one transaction. Manual admission verified that this task
         # snapshot was still current under the same parent lock.
+        #
         queued = {
             "id": task_run_id,
             "task_id": task["id"],
@@ -261,6 +485,21 @@ class ScheduledTaskService:
         task_run_id = queued["id"]
         execution_thread_id = queued["thread_id"]
         trigger = queued["trigger"]
+        # Gateway run admission, part one: do not claim the occurrence at all
+        # while the process-wide in-flight run budget is full. Claiming costs a
+        # durable state transition and a launch attempt whose only possible
+        # outcome is a refusal, and a refusal has already consumed the durable
+        # run row that this occurrence's deterministic idempotency key resolves
+        # to. Waiting in ``queued`` -- the state this row is already in, and the
+        # one the queue-timeout sweep already governs -- costs nothing and keeps
+        # the occurrence intact.
+        #
+        # A slot can still be taken between this gate and the launch below. That
+        # race is what ``_requeue_for_capacity`` exists for, and it cannot be
+        # closed here: by the time the Gateway answers, the run row is already
+        # written.
+        if not self._capacity_allows_launch(task_run_id, now=now):
+            return self._queued_result(task_run_id, execution_thread_id, error=_CAPACITY_WAIT_ERROR)
         claimed = await self._task_run_repo.claim_queued_run(
             task_run_id,
             lease_owner=self._lease_owner,
@@ -299,6 +538,9 @@ class ScheduledTaskService:
             launch_succeeded = True
             launched_run_id = result["run_id"]
             launched_thread_id = result["thread_id"]
+            # Real capacity, real run: the occurrence is no longer waiting, and
+            # its backoff must not follow it into the next occurrence.
+            self._forget_capacity(task_run_id)
             next_at = next_run_at(
                 task["schedule_type"],
                 task["schedule_spec"],
@@ -346,10 +588,20 @@ class ScheduledTaskService:
                 await self._journal_job_attempt_outcome(
                     task,
                     task_run_id=task_run_id,
-                    status="requeued",
+                    status=_CAPACITY_REQUEUED_STATUS,
                     error=str(exc),
                 )
                 return self._queued_result(task_run_id, execution_thread_id, error=str(exc))
+
+            if not launch_succeeded and is_run_capacity_refusal(exc):
+                # The Gateway declined to admit a run because it is at its
+                # in-flight budget. Nothing about the occurrence went wrong, so
+                # it must not be recorded as though it did: no `failed` status,
+                # no parent `last_error`, no `launch_failed` journal entry, no
+                # consumed `run_count`. The occurrence is still owed its
+                # attempt, so it goes back to `queued` -- the durable waiting
+                # state the queue-timeout sweep already governs.
+                return await self._requeue_for_capacity(task, task_run_id, exc=exc, trigger=trigger, now=now)
 
             next_at = next_run_at(
                 task["schedule_type"],

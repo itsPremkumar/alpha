@@ -57,11 +57,7 @@ def _ancestor_agents(
     candidates: Iterable[PurePosixPath],
 ) -> list[PurePosixPath]:
     target_dir = target.parent
-    ancestors = [
-        candidate
-        for candidate in candidates
-        if _is_descendant_or_same(target_dir, candidate.parent)
-    ]
+    ancestors = [candidate for candidate in candidates if _is_descendant_or_same(target_dir, candidate.parent)]
     return sorted(ancestors, key=lambda item: (len(item.parts), item.as_posix()))
 
 
@@ -144,11 +140,7 @@ def analyze(
         chain = _ancestor_agents(path, agents)
         chain_actual = sum(normalized_utf8_size(head_files[item]) for item in chain)
         base_chain = _ancestor_agents(path, base_agents)
-        base_chain_actual = (
-            sum(normalized_utf8_size(base_files[item]) for item in base_chain)
-            if base_files
-            else None
-        )
+        base_chain_actual = sum(normalized_utf8_size(base_files[item]) for item in base_chain) if base_files else None
         chain_finding = _budget_finding(
             code="AG002",
             path=path,
@@ -179,17 +171,11 @@ def _run_git(repo_root: Path, args: Sequence[str]) -> bytes:
 
 
 def _parse_paths(output: bytes) -> set[PurePosixPath]:
-    return {
-        PurePosixPath(item.decode("utf-8", errors="surrogateescape"))
-        for item in output.split(b"\0")
-        if item
-    }
+    return {PurePosixPath(item.decode("utf-8", errors="surrogateescape")) for item in output.split(b"\0") if item}
 
 
 def _worktree_paths(repo_root: Path) -> set[PurePosixPath]:
-    return _parse_paths(
-        _run_git(repo_root, ["ls-files", "--cached", "--others", "--exclude-standard", "-z"])
-    )
+    return _parse_paths(_run_git(repo_root, ["ls-files", "--cached", "--others", "--exclude-standard", "-z"]))
 
 
 def _load_worktree_agents(repo_root: Path) -> dict[PurePosixPath, str]:
@@ -204,13 +190,8 @@ def _load_worktree_agents(repo_root: Path) -> dict[PurePosixPath, str]:
 def _load_ref_agents(repo_root: Path, ref: str | None) -> dict[PurePosixPath, str]:
     if not ref or set(ref) == {"0"}:
         return {}
-    paths = guidance_paths(
-        _parse_paths(_run_git(repo_root, ["ls-tree", "-r", "--name-only", "-z", ref]))
-    )
-    return {
-        path: _run_git(repo_root, ["show", f"{ref}:{path.as_posix()}"]).decode("utf-8")
-        for path in paths
-    }
+    paths = guidance_paths(_parse_paths(_run_git(repo_root, ["ls-tree", "-r", "--name-only", "-z", ref])))
+    return {path: _run_git(repo_root, ["show", f"{ref}:{path.as_posix()}"]).decode("utf-8") for path in paths}
 
 
 def _changed_paths(
@@ -223,18 +204,10 @@ def _changed_paths(
     if base_ref and head_ref:
         if set(base_ref) == {"0"}:
             return set(_load_ref_agents(repo_root, head_ref))
-        revision_range = (
-            f"{base_ref}...{head_ref}" if use_merge_base else f"{base_ref}..{head_ref}"
-        )
-        return guidance_paths(
-            _parse_paths(
-                _run_git(repo_root, ["diff", "--name-only", "-z", revision_range, "--"])
-            )
-        )
+        revision_range = f"{base_ref}...{head_ref}" if use_merge_base else f"{base_ref}..{head_ref}"
+        return guidance_paths(_parse_paths(_run_git(repo_root, ["diff", "--name-only", "-z", revision_range, "--"])))
     tracked = _parse_paths(_run_git(repo_root, ["diff", "--name-only", "-z", "HEAD", "--"]))
-    untracked = _parse_paths(
-        _run_git(repo_root, ["ls-files", "--others", "--exclude-standard", "-z"])
-    )
+    untracked = _parse_paths(_run_git(repo_root, ["ls-files", "--others", "--exclude-standard", "-z"]))
     return guidance_paths(tracked | untracked)
 
 
@@ -242,9 +215,7 @@ def _print_finding(finding: Finding, github_annotations: bool) -> None:
     if github_annotations:
         level = "error" if finding.severity == "error" else "warning"
         print(f"::{level} file={finding.path.as_posix()},line=1,title={finding.code}::{finding.message}")
-    print(
-        f"{finding.severity.upper()} {finding.code} {finding.path.as_posix()}:1 — {finding.message}"
-    )
+    print(f"{finding.severity.upper()} {finding.code} {finding.path.as_posix()}:1 — {finding.message}")
 
 
 def _build_parser() -> argparse.ArgumentParser:

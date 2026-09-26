@@ -37,6 +37,63 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
+  # Cold-start budget: the wall-clock half of the property.
+  #
+  # This is the ONLY place the wall-clock medians are enforced, and it is
+  # deliberately not on the blocking path. Measured on the baseline host
+  # (16 logical CPUs, Windows under Defender) the gate's six targets each need
+  # 3 cold + 3 warm + 1 attribution subprocess, i.e. 42 interpreter launches,
+  # and a full run took 45.5 minutes at a mean 97% CPU. A median-of-3 wall
+  # clock over ~180 s imports, taken on a shared 2-4 vCPU runner, is not a
+  # verdict worth failing a pull request on.
+  #
+  # What IS blocking lives in cold-start-budget.yml: the deterministic
+  # eager-import gate, plus `--validate` on this same script, which checks the
+  # baseline without measuring anything.
+  #
+  # A failure here is a real regression signal and must be read, not re-run
+  # until green: the report prints every target's median, its within-run sample
+  # spread, the tolerance and the excess, and the gate fails only when the
+  # excess clears BOTH the tolerance and that run's own spread. No
+  # `continue-on-error`, no `|| true`.
+  cold-start-budget:
+    if: github.repository == 'bytedance/agent-workspace'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    # 42 interpreter launches of targets costing up to ~180 s each. The script
+    # bounds itself at timeout * len(targets) * 2 + 300 s; this is a whole-run
+    # bound, and a run that reaches it is a run to look at rather than wait on.
+    timeout-minutes: 120
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 #v6.0.3
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          # Must match backend/Dockerfile's UV_IMAGE tag; pinned by backend/tests/test_ci_uv_version_pin.py
+          version: "0.11.1"
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --group dev
+
+      - name: The baseline this run will be judged against is complete
+        run: python scripts/check_cold_start_budget.py --validate
+
+      # The committed baseline, unmodified. If this job ever needs a bigger
+      # number to pass, the answer is a re-baseline on a quiet host with the
+      # reasoning in the diff -- never a budget bump in the same commit as the
+      # regression.
+      - name: Measure cold start and compare it against the committed baseline
+        run: python scripts/check_cold_start_budget.py --json
+
   prepare:
     if: github.repository == 'bytedance/agent-workspace'
     runs-on: ubuntu-latest

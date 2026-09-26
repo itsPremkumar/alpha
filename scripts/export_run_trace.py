@@ -32,6 +32,13 @@ Usage
     python scripts/export_run_trace.py TRACE.jsonl --run-id <32-hex> --trace-id <id>
     python scripts/export_run_trace.py TRACE.jsonl --status error
 
+It is also imported, not just run: ``scripts/support_bundle.py`` reuses
+:func:`read_records`, :func:`filter_records`, :func:`select` and
+:func:`render_text` so a support bundle renders the trace through *this* module's
+total order and truncation disclosure instead of growing a second, subtly
+different timeline renderer. The bundle supplies the evidence around the trace
+(logs, config, versions); this module owns the trace rendering.
+
 Exit codes
 ----------
 0  rendered (possibly with a disclosed truncation)
@@ -319,6 +326,76 @@ def render_json(
     )
 
 
+def _render_selection(
+    path: str | Path,
+    *,
+    max_events: int,
+    keep: str,
+    run_id: str | None,
+    trace_id: str | None,
+    name: str | None,
+    status: str | None,
+) -> tuple[list[dict[str, Any]], int, int, int, dict[str, Any]]:
+    """Read, filter and bound the trace at *path*; return the render inputs.
+
+    The one place the pipeline runs, shared by :func:`render_trace` and
+    :func:`main`, so a bundled trace and a CLI-rendered trace are byte-identical
+    for the same input and cannot drift. Returns
+    ``(selected, dropped, total_before_filter, unparsable, filters)``.
+    """
+    records, unparsable = read_records(path)
+    total_before_filter = len(records)
+    filtered = filter_records(
+        records,
+        run_id=run_id,
+        trace_id=trace_id,
+        name=name,
+        status=status,
+    )
+    selected, dropped = select(filtered, max_events, keep=keep)
+    filters = {
+        "run_id": run_id,
+        "trace_id": trace_id,
+        "name": name,
+        "status": status,
+    }
+    return selected, dropped, total_before_filter, unparsable, filters
+
+
+def render_trace(
+    path: str | Path,
+    *,
+    max_events: int = DEFAULT_MAX_EVENTS,
+    keep: str = "ends",
+    run_id: str | None = None,
+    trace_id: str | None = None,
+    name: str | None = None,
+    status: str | None = None,
+) -> str:
+    """Render the trace at *path* as a text timeline in one call.
+
+    The entry point :mod:`scripts.support_bundle` uses. ``TraceReadError``
+    propagates: a caller decides whether a missing trace is fatal (the CLI:
+    exit 1) or a disclosed absence (the bundle: record it and carry on).
+    """
+    selected, dropped, total, unparsable, filters = _render_selection(
+        path,
+        max_events=max_events,
+        keep=keep,
+        run_id=run_id,
+        trace_id=trace_id,
+        name=name,
+        status=status,
+    )
+    return render_text(
+        selected,
+        dropped=dropped,
+        total=total,
+        unparsable=unparsable,
+        filters=filters,
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="export_run_trace",
@@ -365,25 +442,18 @@ def main(argv: list[str] | None = None) -> int:
         print("error: --max-events must be >= 0", file=sys.stderr)
         return 2
     try:
-        records, unparsable = read_records(args.trace)
+        selected, dropped, total_before_filter, unparsable, filters = _render_selection(
+            args.trace,
+            max_events=args.max_events,
+            keep=args.keep,
+            run_id=args.run_id,
+            trace_id=args.trace_id,
+            name=args.name,
+            status=args.status,
+        )
     except TraceReadError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
-    total_before_filter = len(records)
-    filtered = filter_records(
-        records,
-        run_id=args.run_id,
-        trace_id=args.trace_id,
-        name=args.name,
-        status=args.status,
-    )
-    selected, dropped = select(filtered, args.max_events, keep=args.keep)
-    filters = {
-        "run_id": args.run_id,
-        "trace_id": args.trace_id,
-        "name": args.name,
-        "status": args.status,
-    }
     if args.format == "json":
         print(
             render_json(
@@ -405,7 +475,7 @@ def main(argv: list[str] | None = None) -> int:
             ),
             end="",
         )
-    if not filtered:
+    if not selected and dropped == 0 and total_before_filter:
         print("note: no records matched the supplied filters", file=sys.stderr)
     return 0
 

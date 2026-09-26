@@ -207,7 +207,13 @@ async def _publish_recovered_run_stream_end(
                     logger.debug("Skipping recovered stream end for %s: stream already expired", record.run_id)
                     continue
             except Exception:
-                logger.debug("Failed to check recovered stream existence for %s", record.run_id, exc_info=True)
+                # WARNING, not DEBUG: this is the degraded read half of orphan
+                # recovery. When the existence check itself fails we can no
+                # longer tell a live stream from an expired one, and the
+                # recovery path is exactly where a silent miss strands a
+                # subscriber. The sibling publish_end failure below is already
+                # a warning; both halves of one recovery decision must be.
+                logger.warning("Failed to check recovered stream existence for %s", record.run_id, exc_info=True)
         try:
             await bridge.publish_end(record.run_id)
         except Exception:

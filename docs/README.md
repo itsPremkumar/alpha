@@ -50,6 +50,9 @@ For machine-readable context, see [`/llms.txt`](llms.txt) (this directory),
   do.
 - **[Run recovery](RUN_RECOVERY.md)** — durable Boulder checkpoints, worker-lease
   fencing, and safe replay after a crash, restart, or recoverable model failure.
+- **[Self-documentation](SELF_DOCUMENTATION.md)** — free, local, authority-aware
+  retrieval over the project's own guidance and docs, returning line-addressable
+  snippets with SHA-256 evidence and digest-checked reads.
 
 ## Multi-agent workforce
 
@@ -98,6 +101,11 @@ For machine-readable context, see [`/llms.txt`](llms.txt) (this directory),
   and its kill switch.
 - **[Troubleshooting](TROUBLESHOOTING.md)** — diagnostic flows, stuck-process
   resolution, and lock contention.
+- **[Autonomy truth and recovery](AUTONOMY_TRUTH.md)** — fail-closed readiness
+  derived only from server-owned evidence, explicit capability boundaries,
+  redacted failure classification, and bounded activity digests.
+- **[Reversible file quarantine](REVERSIBLE_DELETE.md)** — approval-gated local
+  deletion planning, quarantine, receipts, and restore.
 
 ## Presentation and interaction
 

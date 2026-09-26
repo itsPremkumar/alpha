@@ -72,6 +72,33 @@ _EXTENSION_TASK_NOTIFY_TIMEOUT_SECONDS = 3.0
 _SANDBOX_LEASE_OWNER_CONTEXT_KEY = "sandbox_lease_owner_id"
 _SANDBOX_COMMAND_SCOPE_CONTEXT_KEY = "sandbox_command_scope_id"
 
+#: Graph super-steps one model turn costs in the composed subagent graph.
+#:
+#: ``SubagentConfig.max_turns`` is documented, configured, and defaulted as a
+#: TURN budget (``config.py``: general-purpose=150, bash=60, dataclass default
+#: 50), but it is applied verbatim as LangGraph's ``recursion_limit``, which
+#: counts graph *super-steps*. The composed middleware stack (pre/mid/post
+#: model hooks, tool node) spends ~7 super-steps per model turn, so applying
+#: the number directly bought roughly one seventh of the configured turns and
+#: made any budget below ~7 buy ZERO turns -- a subagent that could not reach
+#: the model at all, reported as ``Reached max_turns=N``. Measured on the real
+#: graph: 12 -> 1 model call, 50 -> 7, 150 -> 21, 300 -> 42.
+#:
+#: Multiply so the configured value means turns. This keeps the ceiling
+#: ENFORCED (LangGraph still raises ``GraphRecursionError``) while making it the
+#: ceiling operators actually configured.
+_GRAPH_STEPS_PER_TURN = 8
+
+
+def resolve_graph_recursion_limit(max_turns: int) -> int:
+    """Translate a turn budget into a LangGraph ``recursion_limit``.
+
+    Every value ``>= 1`` must buy at least one full model turn: a turn budget
+    that silently degrades to "cannot call the model" is not a smaller budget,
+    it is a broken subagent.
+    """
+    return max(1, int(max_turns)) * _GRAPH_STEPS_PER_TURN
+
 
 def _utcnow() -> datetime:
     # SubagentResult timestamp writers must stamp UTC-aware datetimes so
@@ -300,6 +327,36 @@ def _extract_final_result(final_state: Any, *, trace_id: str, name: str) -> str:
 
     logger.warning(f"[trace={trace_id}] Subagent {name} no messages in final state")
     return "No response generated"
+
+
+def _recover_capped_partial(messages: Any) -> tuple[str | None, bool]:
+    """Recover a turn-capped run's deliverable, if it really produced one.
+
+    Returns ``(deliverable, cut_off)``.
+
+    ``deliverable`` is the text of the terminal assistant message, but ONLY
+    when that message is a finished answer. An assistant message that still
+    carries ``tool_calls`` is a turn that was interrupted before its tools ran
+    and before the model could report anything; its prose is in-flight
+    narration, not an answer, and surfacing it would hand the parent a
+    fabricated success. Those runs return ``(None, True)`` so the caller can
+    say the subagent ran out of budget mid-turn instead of claiming it
+    succeeded.
+
+    A guard hard-stop (token budget / loop detection) deliberately strips
+    ``tool_calls`` to force a final answer, so a capped-but-answered run still
+    resolves to a deliverable on the normal path.
+    """
+    if not isinstance(messages, list):
+        return None, False
+    for message in reversed(messages):
+        if not isinstance(message, AIMessage):
+            continue
+        if getattr(message, "tool_calls", None):
+            return None, True
+        text = message_content_to_text(message.content).strip()
+        return (text or None), False
+    return None, False
 
 
 def _extract_llm_error_fallback(final_state: Any) -> str | None:
@@ -1456,8 +1513,12 @@ class SubagentExecutor:
             # the ambient parent run so this execution keeps its subgraph
             # namespace. Business consumers receive thread_id via ``context``
             # below instead.
+            #
+            # ``recursion_limit`` counts graph super-steps, not model turns, so
+            # the configured turn budget is translated (see
+            # ``resolve_graph_recursion_limit``) rather than passed through.
             run_config: RunnableConfig = {
-                "recursion_limit": self.config.max_turns,
+                "recursion_limit": resolve_graph_recursion_limit(self.config.max_turns),
                 "callbacks": [collector],
                 "tags": [collector_caller],
             }
@@ -1647,13 +1708,7 @@ class SubagentExecutor:
                 )
             else:
                 messages = (final_state or {}).get("messages", [])
-                usable_partial: str | None = None
-                for m in reversed(messages):
-                    if isinstance(m, AIMessage):
-                        text = message_content_to_text(m.content).strip()
-                        if text:
-                            usable_partial = text
-                        break
+                usable_partial, cut_off = _recover_capped_partial(messages)
                 if usable_partial is not None:
                     result.try_set_terminal(
                         SubagentStatus.COMPLETED,
@@ -1661,6 +1716,22 @@ class SubagentExecutor:
                         stop_reason=stop_reason,
                         token_usage_records=records,
                         tool_receipts=terminal_receipts(prefer_citing_turn=True),
+                    )
+                elif cut_off:
+                    # The run was cut OFF in the middle of a turn: the terminal
+                    # assistant message was still asking for tool calls when the
+                    # ceiling fired, so it never produced an answer. Its prose is
+                    # in-flight narration ("working..."), not a deliverable, and
+                    # promoting it would tell the parent this subagent SUCCEEDED.
+                    result.try_set_terminal(
+                        SubagentStatus.FAILED,
+                        error=(
+                            f"Reached max_turns={max_turns} while still executing a turn: "
+                            "the subagent never produced a final answer before the turn budget was spent"
+                        ),
+                        stop_reason=stop_reason,
+                        token_usage_records=records,
+                        tool_receipts=terminal_receipts(),
                     )
                 else:
                     result.try_set_terminal(

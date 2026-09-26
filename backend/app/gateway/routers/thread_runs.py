@@ -16,6 +16,7 @@ import hashlib
 import logging
 import re
 import uuid
+from collections.abc import Mapping
 from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
@@ -26,6 +27,16 @@ from langchain_core.messages import BaseMessage
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
+from alpha.agents.middlewares.dynamic_context_middleware import strip_injected_user_message_id_suffix
+from alpha.authz.sandbox_authz import safe_app_config_async
+from alpha.config.paths import get_paths, make_safe_user_id
+from alpha.runtime import CancelOutcome, ConflictError, RunRecord, RunStatus, ThreadOperationKind, serialize_channel_values_for_api
+from alpha.runtime.runs.store.base import format_run_cursor_created_at, normalize_run_created_at_iso
+from alpha.runtime.secret_context import redact_config_secrets, redact_metadata_secrets
+from alpha.runtime.user_context import get_effective_user_id
+from alpha.utils.messages import ORIGINAL_USER_CONTENT_KEY, get_original_user_content_text, message_to_text
+from alpha.utils.thread_id import ThreadId
+from alpha.workspace_changes import get_workspace_changes_response
 from app.gateway.artifact_archive import ArtifactArchiveError, ArtifactArchiveResult, build_artifact_archive
 from app.gateway.authz import require_cancel_permission_if, require_permission
 from app.gateway.checkpoint_lineage import (
@@ -41,19 +52,20 @@ from app.gateway.context_usage import build_context_usage
 from app.gateway.deps import get_current_user, get_feedback_repo, get_run_event_store, get_run_manager, get_run_store, get_stream_bridge
 from app.gateway.internal_auth import get_trusted_internal_owner_user_id
 from app.gateway.pagination import trim_run_message_page
+
+# Cost estimation has exactly one implementation: the operations console's
+# cache-aware pricing helpers. Imported rather than reimplemented so a per-run
+# price can never disagree with `/api/console/usage` for the same tokens.
+from app.gateway.routers.console import (
+    _build_pricing_map,
+    _lookup_pricing,
+    _pricing_currency,
+    _run_cost,
+    _token_cost,
+)
 from app.gateway.run_models import RunCreateRequest
 from app.gateway.services import abuild_checkpoint_state_accessor, build_thread_checkpoint_state_accessor, sse_consumer, start_run, wait_for_run_completion
 from app.gateway.utils import sanitize_log_param
-from alpha.agents.middlewares.dynamic_context_middleware import strip_injected_user_message_id_suffix
-from alpha.authz.sandbox_authz import safe_app_config_async
-from alpha.config.paths import get_paths, make_safe_user_id
-from alpha.runtime import CancelOutcome, ConflictError, RunRecord, RunStatus, ThreadOperationKind, serialize_channel_values_for_api
-from alpha.runtime.runs.store.base import format_run_cursor_created_at, normalize_run_created_at_iso
-from alpha.runtime.secret_context import redact_config_secrets, redact_metadata_secrets
-from alpha.runtime.user_context import get_effective_user_id
-from alpha.utils.messages import ORIGINAL_USER_CONTENT_KEY, get_original_user_content_text, message_to_text
-from alpha.utils.thread_id import ThreadId
-from alpha.workspace_changes import get_workspace_changes_response
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/threads", tags=["runs"])
@@ -221,6 +233,11 @@ class RunResponse(BaseModel):
     multitask_strategy: str = "reject"
     created_at: str = ""
     updated_at: str = ""
+    # Additive read fields: the model this run used, its failure reason, and the
+    # per-model token split. The totals above already existed; without the
+    # breakdown a multi-model run's spend could not be attributed.
+    model: str | None = None
+    error: str | None = None
     total_input_tokens: int = 0
     total_output_tokens: int = 0
     total_tokens: int = 0
@@ -230,6 +247,74 @@ class RunResponse(BaseModel):
     middleware_tokens: int = 0
     message_count: int = 0
     stop_reason: str | None = None
+    # ``None`` means "this run carries no per-model split" (never reported, or a
+    # legacy row) — a client must render unknown, not zero.
+    token_usage_by_model: dict[str, dict[str, int]] | None = None
+
+
+class RunUsageModelItem(BaseModel):
+    """One model bucket of a run's token spend."""
+
+    model: str | None = None
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    cache_read_tokens: int | None = None
+    cost: float | None = None
+
+
+class RunUsageCallItem(BaseModel):
+    """Token usage for one model call, or for one subagent execution.
+
+    ``source`` distinguishes the two evidence kinds: ``llm_response`` is a
+    single ``RunJournal`` model callback (the event's ``metadata.usage``), while
+    ``subagent`` is a delegated execution's cumulative usage snapshot as carried
+    by its terminal ``subagent.end`` event. Subagents run outside the parent
+    journal's callback boundary, so their rows are per execution, not per call.
+    """
+
+    seq: int | None = None
+    call_index: int | None = None
+    source: Literal["llm_response", "subagent"]
+    caller: str | None = None
+    task_id: str | None = None
+    model: str | None = None
+    status: str | None = None
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    cache_read_tokens: int | None = None
+    latency_ms: int | None = None
+    cost: float | None = None
+    created_at: str | None = None
+
+
+class RunUsageResponse(BaseModel):
+    """Per-run, per-model and per-call token usage with estimated cost."""
+
+    run_id: str
+    thread_id: str
+    model: str | None = None
+    status: str = ""
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
+    total_tokens: int = 0
+    llm_call_count: int = 0
+    lead_agent_tokens: int = 0
+    subagent_tokens: int = 0
+    middleware_tokens: int = 0
+    by_model: list[RunUsageModelItem] = Field(default_factory=list)
+    # ``per_model``: the journal's per-model split. ``run_totals``: no split was
+    # reported, so the single row is the run total priced at the run's model.
+    # ``unavailable``: the run reported no token usage at all.
+    by_model_source: Literal["per_model", "run_totals", "unavailable"] = "unavailable"
+    calls: list[RunUsageCallItem] = Field(default_factory=list)
+    # ``False`` when the bounded event read stopped before the end of the run's
+    # usage events, so the call list is explicitly partial.
+    calls_complete: bool = True
+    total_cost: float | None = None
+    currency: str | None = None
+    pricing_configured: bool = False
 
 
 class ThreadRunsPageResponse(BaseModel):
@@ -362,6 +447,8 @@ def _record_to_response(record: RunRecord) -> RunResponse:
         multitask_strategy=record.multitask_strategy,
         created_at=record.created_at,
         updated_at=record.updated_at,
+        model=record.model_name,
+        error=record.error,
         total_input_tokens=record.total_input_tokens,
         total_output_tokens=record.total_output_tokens,
         total_tokens=record.total_tokens,
@@ -371,6 +458,7 @@ def _record_to_response(record: RunRecord) -> RunResponse:
         middleware_tokens=record.middleware_tokens,
         message_count=record.message_count,
         stop_reason=record.stop_reason,
+        token_usage_by_model=dict(record.token_usage_by_model) if record.token_usage_by_model else None,
     )
 
 
@@ -1895,11 +1983,43 @@ async def list_run_events(
     task_id: str | None = Query(default=None),
     limit: int = Query(default=500, ge=1, le=2000),
     after_seq: int | None = Query(default=None, ge=1),
+    # -- behaviour-trace narrowing (alpha.observability.trace.query) ----------
+    # All optional and all post-filters over the rows the store already returned.
+    # They are applied here rather than pushed into the store because the store
+    # rows are also the display feed: adding columns to it would couple the
+    # message feed's write path to the trace schema. The trace envelope's
+    # metadata is a self-contained record, so narrowing is a pure read concern.
+    #
+    # Plain ``None``/``False`` defaults rather than ``Query(...)``: this route is
+    # also called directly (as a coroutine) by the run-events tests, and a
+    # ``Query`` sentinel reaching the body would be an object where a filter value
+    # is expected. FastAPI still reads every one of these as a query parameter.
+    agent: str | None = None,
+    severity: str | None = None,
+    min_severity: str | None = None,
+    layer: str | None = None,
+    node: str | None = None,
+    tool: str | None = None,
+    provider: str | None = None,
+    model: str | None = None,
+    error_code: str | None = None,
+    agent_name: str | None = None,
+    trace_id: str | None = None,
+    since_ts: float | None = None,
+    until_ts: float | None = None,
+    only_truncated: bool = False,
 ) -> list[dict]:
     """Return the full event stream for a run (debug/audit).
 
     ``task_id`` + ``after_seq`` let the subtask card page through one subagent
     task's persisted steps without the run-wide ``limit`` truncating the tail (#3779).
+
+    The optional trace filters narrow the behaviour-trace rows (the ones carrying
+    ``schema_version`` in their metadata) by the same envelope fields the writer
+    sealed. They never remove a display row: a ``message``/``subagent`` row is
+    always returned, because a filter that could hide a chat message would be a
+    filter that changes what a chat client sees. A request that carries no trace
+    filter behaves exactly as it did before this route grew them.
     """
     event_store = get_run_event_store(request)
     types = event_types.split(",") if event_types else None
@@ -1911,7 +2031,7 @@ async def list_run_events(
         limit=limit,
         after_seq=after_seq,
     )
-    return [
+    redacted = [
         {
             **event,
             "metadata": redact_metadata_secrets(event.get("metadata")),
@@ -1920,6 +2040,451 @@ async def list_run_events(
         else event
         for event in events
     ]
+    criteria = _build_trace_filter(
+        agent=agent_name or agent,
+        severity=severity,
+        min_severity=min_severity,
+        layer=layer,
+        node=node,
+        tool=tool,
+        provider=provider,
+        model=model,
+        error_code=error_code,
+        trace_id=trace_id,
+        since_ts=since_ts,
+        until_ts=until_ts,
+        only_truncated=only_truncated,
+    )
+    if criteria.is_empty():
+        return redacted
+    return [row for row in redacted if _row_matches_trace(row, criteria)]
+
+
+def _build_trace_filter(
+    *,
+    agent: str | None,
+    severity: str | None,
+    min_severity: str | None,
+    layer: str | None,
+    node: str | None,
+    tool: str | None,
+    provider: str | None,
+    model: str | None,
+    error_code: str | None,
+    trace_id: str | None,
+    since_ts: float | None,
+    until_ts: float | None,
+    only_truncated: bool,
+) -> Any:
+    """Build a :class:`TraceFilter` from query parameters.
+
+    Imported lazily and behind a narrow guard: the trace package is default-off
+    and nothing in the gateway imports it at startup, so this keeps the route's
+    import cost unchanged for a request that never filters. A non-integer
+    ``layer`` is a 422 rather than a silently-ignored filter, because a filter
+    that quietly matched nothing looks exactly like "the run had no such events".
+    """
+    from alpha.observability.trace.query import TraceFilter, coerce_ints, coerce_set
+
+    for name, value in (("severity", severity), ("min_severity", min_severity)):
+        if value is not None and value not in _TRACE_SEVERITIES:
+            raise HTTPException(status_code=422, detail=f"{name} must be one of {sorted(_TRACE_SEVERITIES)}")
+    try:
+        layers = coerce_ints(layer)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return TraceFilter(
+        trace_ids=coerce_set(trace_id),
+        agent_names=coerce_set(agent),
+        event_types=None,
+        layers=layers,
+        severities=coerce_set(severity),
+        min_severity=min_severity,
+        nodes=coerce_set(node),
+        tools=coerce_set(tool),
+        providers=coerce_set(provider),
+        models=coerce_set(model),
+        error_codes=coerce_set(error_code),
+        since_ts=since_ts,
+        until_ts=until_ts,
+        only_truncated=only_truncated,
+    )
+
+
+#: The four severities on the envelope's scale. Duplicated as a literal so this
+#: module does not import the trace package at startup; the request validator
+#: below proves the two agree.
+_TRACE_SEVERITIES: frozenset[str] = frozenset({"info", "warning", "error", "critical"})
+
+
+def _row_matches_trace(row: Any, criteria: Any) -> bool:
+    """Return whether a durable run-event row satisfies a trace filter.
+
+    A non-envelope row (a chat message, a legacy event with no trace metadata)
+    is **kept**. Two reasons, and the second is the important one: a display
+    client and a debug client share this route, and a filter that could hide a
+    chat message would be a filter that changes what a chat client sees; and an
+    old row from before the trace existed has nothing to filter *on*, which is
+    not the same as failing the filter.
+    """
+    if not isinstance(row, dict):
+        return True
+    metadata = row.get("metadata")
+    if not isinstance(metadata, Mapping) or metadata.get("schema_version") is None:
+        return True
+    from alpha.observability.trace.contract import TraceEnvelope, UnknownEnvelopeFieldError
+
+    try:
+        envelope = TraceEnvelope.from_run_event(row)
+    except (UnknownEnvelopeFieldError, KeyError, TypeError, ValueError):
+        # An envelope this build cannot read is kept and left intact. Refusing to
+        # serve it would make a future schema version hide history; dropping it
+        # would make a reader believe the run never produced it.
+        return True
+    from alpha.observability.trace.query import matches
+
+    return matches(envelope, criteria)
+
+
+@router.get("/{thread_id}/runs/{run_id}/events/summary")
+@require_permission("runs", "read", owner_check=True)
+async def summarize_run_trace(
+    thread_id: ThreadId,
+    run_id: str,
+    request: Request,
+    after_seq: int | None = Query(default=None, ge=1),
+    limit: int = Query(default=2000, ge=1, le=2000),
+    severity: str | None = None,
+    min_severity: str | None = None,
+    layer: str | None = None,
+    tool: str | None = None,
+    provider: str | None = None,
+    model: str | None = None,
+) -> dict:
+    """Aggregate one run's behaviour trace: counts, tokens, cost, errors, latency.
+
+    A sub-resource of the existing run-events route rather than a parallel one, so
+    a reader that already pages ``/events`` finds the summary in the same place and
+    the two are guaranteed to describe the same rows: the summary is computed from
+    exactly what ``list_run_events`` would return for the same parameters.
+
+    ``limit`` is a *scan* bound, not a silent truncation: the response reports
+    ``scanned`` and ``truncated_scan`` so a caller can tell a small run from a
+    capped read. ``calls_complete`` is the same honesty for the model-call
+    breakdown.
+    """
+    event_store = get_run_event_store(request)
+    rows = await event_store.list_events(thread_id, run_id, limit=limit, after_seq=after_seq)
+    from alpha.observability.trace.query import aggregate, count_unreadable_trace_rows, envelopes_from_run_events, matches
+
+    envelopes = envelopes_from_run_events(rows)
+    criteria = _build_trace_filter(
+        agent=None,
+        severity=severity,
+        min_severity=min_severity,
+        layer=layer,
+        node=None,
+        tool=tool,
+        provider=provider,
+        model=model,
+        error_code=None,
+        trace_id=None,
+        since_ts=None,
+        until_ts=None,
+        only_truncated=False,
+    )
+    selected = [envelope for envelope in envelopes if matches(envelope, criteria)]
+    summary = aggregate(selected, skipped_unreadable=count_unreadable_trace_rows(rows))
+    return {
+        "thread_id": thread_id,
+        "run_id": run_id,
+        "filters": criteria.describe(),
+        "scanned": len(rows),
+        "truncated_scan": len(rows) >= limit,
+        "trace_events": len(selected),
+        **summary.to_response(),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Per-run token usage / cost
+# ---------------------------------------------------------------------------
+
+#: Event types that carry model-call token usage. ``llm.ai.response`` is written
+#: by ``RunJournal`` for every model call in the lead graph and its middleware
+#: (usage in ``metadata.usage``); a terminal ``subagent.end`` carries one
+#: delegated execution's cumulative usage snapshot. Subagents run outside the
+#: parent journal's callback boundary, so their usage is only ever reported per
+#: execution through that event - the two sources never overlap, so summing the
+#: rows cannot double count.
+USAGE_EVENT_TYPES: tuple[str, ...] = ("llm.ai.response", "subagent.end")
+
+#: Page size and page cap for the usage event read. The stream endpoint caps
+#: ``limit`` at 2000; a run with more usage events than this reports
+#: ``calls_complete=False`` instead of pretending the list is the whole run.
+USAGE_EVENT_PAGE_SIZE = 200
+USAGE_EVENT_MAX_PAGES = 25
+
+
+def _usage_count(value: Any) -> int:
+    """A non-negative token count from a persisted usage mapping.
+
+    Malformed or absent fields count as ``0`` rather than raising out of a read
+    path, matching ``RunJournal``'s total-is-recording contract.
+    """
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int) and value > 0:
+        return value
+    return 0
+
+
+def _usage_int(value: Any) -> int | None:
+    """An int that is present and usable, else ``None`` (an honest unknown)."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
+
+
+def _usage_total(input_tokens: int, output_tokens: int, total_tokens: Any) -> int:
+    """Resolve a call's total, mirroring the journal's ``input + output`` fallback."""
+    if isinstance(total_tokens, int) and not isinstance(total_tokens, bool) and total_tokens > 0:
+        return total_tokens
+    return input_tokens + output_tokens
+
+
+def _usage_cache_read(usage: Any) -> int | None:
+    """Prompt-cache-hit input tokens, or ``None`` when the provider reported none.
+
+    Mirrors ``RunJournal._extract_cache_read`` (LangChain's normalized
+    ``input_token_details.cache_read``) but keeps absent as unknown.
+    """
+    if not isinstance(usage, Mapping):
+        return None
+    details = usage.get("input_token_details")
+    if not isinstance(details, Mapping):
+        return None
+    return _positive_int(details.get("cache_read"))
+
+
+def _usage_bucket_cache_read(usage: Any) -> int | None:
+    """Prompt-cache hits from a journal per-model bucket.
+
+    ``RunJournal`` accumulates the sparse ``cache_read_tokens`` key into
+    ``token_usage_by_model`` (the console prices that same key), so the durable
+    bucket shape is read here rather than the callback's nested usage shape.
+    """
+    if not isinstance(usage, Mapping):
+        return None
+    return _positive_int(usage.get("cache_read_tokens"))
+
+
+def _positive_int(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        return None
+    return value
+
+
+def _usage_text(value: Any) -> str | None:
+    """A non-empty trimmed string, or ``None`` for anything else."""
+    if not isinstance(value, str):
+        return None
+    return value.strip() or None
+
+
+def _usage_model_from_message(content: Any) -> str | None:
+    """Model name for an ``llm.ai.response`` payload (the dumped AI message)."""
+    if not isinstance(content, Mapping):
+        return None
+    response_metadata = content.get("response_metadata")
+    if not isinstance(response_metadata, Mapping):
+        return None
+    return _usage_text(response_metadata.get("model_name")) or _usage_text(response_metadata.get("model"))
+
+
+def _usage_cost(pricing: dict, model: str | None, input_tokens: int, output_tokens: int, cache_read_tokens: int | None) -> float | None:
+    """Estimated spend for one row, or ``None`` when the model has no price."""
+    price = _lookup_pricing(pricing, model)
+    if price is None:
+        return None
+    return _token_cost(input_tokens, output_tokens, price, int(cache_read_tokens or 0))
+
+
+def _usage_call_from_event(event: Mapping, pricing: dict) -> RunUsageCallItem | None:
+    """Project one usage-bearing run event into a per-call usage row."""
+    event_type = event.get("event_type")
+    metadata = event.get("metadata") if isinstance(event.get("metadata"), Mapping) else {}
+    content = event.get("content") if isinstance(event.get("content"), Mapping) else {}
+    seq = _usage_int(event.get("seq"))
+    created_at = _usage_text(event.get("created_at"))
+
+    if event_type == "llm.ai.response":
+        usage = metadata.get("usage")
+        input_tokens = _usage_count(usage.get("input_tokens")) if isinstance(usage, Mapping) else 0
+        output_tokens = _usage_count(usage.get("output_tokens")) if isinstance(usage, Mapping) else 0
+        total_tokens = _usage_total(input_tokens, output_tokens, usage.get("total_tokens") if isinstance(usage, Mapping) else None)
+        cache_read_tokens = _usage_cache_read(usage)
+        model = _usage_model_from_message(content)
+        return RunUsageCallItem(
+            seq=seq,
+            call_index=_usage_int(metadata.get("llm_call_index")),
+            source="llm_response",
+            caller=_usage_text(metadata.get("caller")),
+            model=model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=total_tokens,
+            cache_read_tokens=cache_read_tokens,
+            latency_ms=_usage_int(metadata.get("latency_ms")),
+            cost=_usage_cost(pricing, model, input_tokens, output_tokens, cache_read_tokens),
+            created_at=created_at,
+        )
+
+    if event_type == "subagent.end":
+        usage = content.get("usage")
+        if not isinstance(usage, Mapping):
+            # No usage was reported for this execution. Staying absent keeps the
+            # row list honest instead of implying a zero-token call happened.
+            return None
+        input_tokens = _usage_count(usage.get("input_tokens"))
+        output_tokens = _usage_count(usage.get("output_tokens"))
+        cache_read_tokens = _usage_cache_read(usage)
+        model = _usage_text(content.get("model_name"))
+        return RunUsageCallItem(
+            seq=seq,
+            source="subagent",
+            caller=_usage_text(metadata.get("caller")) or "subagent",
+            task_id=_usage_text(metadata.get("task_id")) or _usage_text(content.get("task_id")),
+            model=model,
+            status=_usage_text(content.get("status")),
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=_usage_total(input_tokens, output_tokens, usage.get("total_tokens")),
+            cache_read_tokens=cache_read_tokens,
+            cost=_usage_cost(pricing, model, input_tokens, output_tokens, cache_read_tokens),
+            created_at=created_at,
+        )
+
+    return None
+
+
+def _usage_by_model(record: RunRecord, pricing: dict) -> tuple[list[RunUsageModelItem], str]:
+    """Per-model buckets, the run-total fallback, or ``unavailable``."""
+    buckets = record.token_usage_by_model
+    if isinstance(buckets, Mapping) and buckets:
+        items: list[RunUsageModelItem] = []
+        for model, usage in sorted(buckets.items()):
+            if not isinstance(usage, Mapping):
+                continue
+            name = _usage_text(model)
+            input_tokens = _usage_count(usage.get("input_tokens"))
+            output_tokens = _usage_count(usage.get("output_tokens"))
+            cache_read_tokens = _usage_bucket_cache_read(usage)
+            items.append(
+                RunUsageModelItem(
+                    model=name,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    total_tokens=_usage_total(input_tokens, output_tokens, usage.get("total_tokens")),
+                    cache_read_tokens=cache_read_tokens,
+                    cost=_usage_cost(pricing, name, input_tokens, output_tokens, cache_read_tokens),
+                )
+            )
+        return items, "per_model"
+
+    if record.total_tokens > 0 or record.total_input_tokens > 0 or record.total_output_tokens > 0:
+        return [
+            RunUsageModelItem(
+                model=record.model_name,
+                input_tokens=record.total_input_tokens,
+                output_tokens=record.total_output_tokens,
+                total_tokens=record.total_tokens,
+                cost=_usage_cost(pricing, record.model_name, record.total_input_tokens, record.total_output_tokens, None),
+            )
+        ], "run_totals"
+
+    return [], "unavailable"
+
+
+async def _collect_usage_events(event_store: Any, thread_id: str, run_id: str) -> tuple[list[dict], bool]:
+    """Page a run's usage-bearing events with the forward ``after_seq`` cursor.
+
+    Returns the rows plus whether the stream was exhausted. A short page ends the
+    walk (the endpoint has no total count); a full page without a usable
+    ``seq`` stops it as explicitly partial rather than re-reading page one.
+    """
+    events: list[dict] = []
+    after_seq: int | None = None
+    for _ in range(USAGE_EVENT_MAX_PAGES):
+        page = await event_store.list_events(
+            thread_id,
+            run_id,
+            event_types=list(USAGE_EVENT_TYPES),
+            limit=USAGE_EVENT_PAGE_SIZE,
+            after_seq=after_seq,
+        )
+        if not page:
+            return events, True
+        events.extend(page)
+        if len(page) < USAGE_EVENT_PAGE_SIZE:
+            return events, True
+        last_seq = _usage_int(page[-1].get("seq")) if isinstance(page[-1], Mapping) else None
+        if last_seq is None or (after_seq is not None and last_seq <= after_seq):
+            return events, False
+        after_seq = last_seq
+    return events, False
+
+
+@router.get("/{thread_id}/runs/{run_id}/usage", response_model=RunUsageResponse)
+@require_permission("runs", "read", owner_check=True)
+async def get_run_usage(thread_id: ThreadId, run_id: str, request: Request) -> RunUsageResponse:
+    """Per-run, per-model and per-model-call token usage with estimated cost.
+
+    Run-level totals and the per-model split come from the run record; the
+    per-call rows are projected from the run's own persisted usage events (see
+    ``USAGE_EVENT_TYPES``). Cost is estimated from the operator's configured
+    ``models[*].pricing`` using the console's cache-aware pricing helpers, and
+    stays ``null`` - never zero - when no pricing is configured.
+    """
+    run_mgr = get_run_manager(request)
+    user_id = await get_current_user(request)
+    record = await run_mgr.get(run_id, user_id=user_id)
+    if record is None or record.thread_id != thread_id:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+
+    pricing = _build_pricing_map()
+    by_model, by_model_source = _usage_by_model(record, pricing)
+    raw_events, calls_complete = await _collect_usage_events(get_run_event_store(request), thread_id, run_id)
+    calls = [item for item in (_usage_call_from_event(event, pricing) for event in raw_events if isinstance(event, Mapping)) if item is not None]
+
+    total_cost = _run_cost(
+        pricing,
+        model_name=record.model_name,
+        total_input_tokens=record.total_input_tokens,
+        total_output_tokens=record.total_output_tokens,
+        token_usage_by_model=record.token_usage_by_model if isinstance(record.token_usage_by_model, Mapping) else None,
+    )
+
+    return RunUsageResponse(
+        run_id=record.run_id,
+        thread_id=record.thread_id,
+        model=record.model_name,
+        status=record.status.value,
+        total_input_tokens=record.total_input_tokens,
+        total_output_tokens=record.total_output_tokens,
+        total_tokens=record.total_tokens,
+        llm_call_count=record.llm_call_count,
+        lead_agent_tokens=record.lead_agent_tokens,
+        subagent_tokens=record.subagent_tokens,
+        middleware_tokens=record.middleware_tokens,
+        by_model=by_model,
+        by_model_source=by_model_source,
+        calls=calls,
+        calls_complete=calls_complete,
+        total_cost=round(total_cost, 6) if total_cost is not None else None,
+        currency=_pricing_currency(pricing),
+        pricing_configured=bool(pricing),
+    )
 
 
 @router.get("/{thread_id}/runs/{run_id}/workspace-changes")

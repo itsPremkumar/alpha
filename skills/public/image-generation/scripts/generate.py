@@ -39,10 +39,7 @@ def _resolve_provider(override_env: str, existing_provider: str, has_existing_cr
         return existing_provider
     if os.getenv("MINIMAX_API_KEY"):
         return "minimax"
-    raise ValueError(
-        f"No credentials found. Set GEMINI_API_KEY for {existing_provider}, "
-        f"or MINIMAX_API_KEY for minimax (optionally force with {override_env})."
-    )
+    raise ValueError(f"No credentials found. Set GEMINI_API_KEY for {existing_provider}, or MINIMAX_API_KEY for minimax (optionally force with {override_env}).")
 
 
 def _minimax_host() -> str:
@@ -52,9 +49,7 @@ def _minimax_host() -> str:
 def _check_base_resp(payload: dict) -> None:
     base = payload.get("base_resp") or {}
     if base.get("status_code", 0) != 0:
-        raise Exception(
-            f"MiniMax error {base.get('status_code')}: {base.get('status_msg')}"
-        )
+        raise Exception(f"MiniMax error {base.get('status_code')}: {base.get('status_msg')}")
 
 
 def _guess_mime(image_path: str) -> str:
@@ -103,19 +98,13 @@ def _minimax_prompt(raw: str) -> str:
     return text
 
 
-def _generate_image_minimax(
-    prompt: str, reference_images: list[str], output_file: str, aspect_ratio: str
-) -> str:
+def _generate_image_minimax(prompt: str, reference_images: list[str], output_file: str, aspect_ratio: str) -> str:
     api_key = os.getenv("MINIMAX_API_KEY")
     if not api_key:
         return "MINIMAX_API_KEY is not set"
     prompt = _minimax_prompt(prompt)
     if len(prompt) > MINIMAX_PROMPT_MAX_CHARS:
-        return (
-            f"Prompt is {len(prompt)} characters but MiniMax image-01 accepts at most "
-            f"{MINIMAX_PROMPT_MAX_CHARS}. Shorten the prompt to stay within the limit; "
-            f"reference images plus a tighter description usually recover the detail."
-        )
+        return f"Prompt is {len(prompt)} characters but MiniMax image-01 accepts at most {MINIMAX_PROMPT_MAX_CHARS}. Shorten the prompt to stay within the limit; reference images plus a tighter description usually recover the detail."
     body = {
         "model": os.getenv("MINIMAX_IMAGE_MODEL", "image-01"),
         "prompt": prompt,
@@ -127,9 +116,7 @@ def _generate_image_minimax(
     if reference_images:
         # Reference images are passed as character subjects as-is; unlike the Gemini
         # path we do not pre-validate them — invalid files surface as a MiniMax API error.
-        body["subject_reference"] = [
-            {"type": "character", "image_file": _to_data_url(p)} for p in reference_images
-        ]
+        body["subject_reference"] = [{"type": "character", "image_file": _to_data_url(p)} for p in reference_images]
     response = requests.post(
         f"{_minimax_host()}/v1/image_generation",
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
@@ -148,9 +135,7 @@ def _generate_image_minimax(
     return f"Successfully generated image to {output_file}"
 
 
-def _generate_image_gemini(
-    prompt: str, reference_images: list[str], output_file: str, aspect_ratio: str
-) -> str:
+def _generate_image_gemini(prompt: str, reference_images: list[str], output_file: str, aspect_ratio: str) -> str:
     parts = []
     valid_reference_images = []
     for ref_img in reference_images:
@@ -197,11 +182,9 @@ def generate_image(
     output_file: str,
     aspect_ratio: str = "16:9",
 ) -> str:
-    with open(prompt_file, "r", encoding="utf-8") as f:
+    with open(prompt_file, encoding="utf-8") as f:
         prompt = f.read()
-    provider = _resolve_provider(
-        "IMAGE_GENERATION_PROVIDER", "gemini", bool(os.getenv("GEMINI_API_KEY"))
-    )
+    provider = _resolve_provider("IMAGE_GENERATION_PROVIDER", "gemini", bool(os.getenv("GEMINI_API_KEY")))
     if provider == "minimax":
         return _generate_image_minimax(prompt, reference_images, output_file, aspect_ratio)
     if provider in ("gemini", "google"):
@@ -214,15 +197,12 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Generate images using Gemini or MiniMax API")
     parser.add_argument("--prompt-file", required=True, help="Absolute path to JSON prompt file")
-    parser.add_argument("--reference-images", nargs="*", default=[],
-                        help="Absolute paths to reference images (space-separated)")
+    parser.add_argument("--reference-images", nargs="*", default=[], help="Absolute paths to reference images (space-separated)")
     parser.add_argument("--output-file", required=True, help="Output path for generated image")
-    parser.add_argument("--aspect-ratio", required=False, default="16:9",
-                        help="Aspect ratio of the generated image")
+    parser.add_argument("--aspect-ratio", required=False, default="16:9", help="Aspect ratio of the generated image")
     args = parser.parse_args()
 
     try:
-        print(generate_image(args.prompt_file, args.reference_images,
-                             args.output_file, args.aspect_ratio))
+        print(generate_image(args.prompt_file, args.reference_images, args.output_file, args.aspect_ratio))
     except Exception as e:
         print(f"Error while generating image: {e}")

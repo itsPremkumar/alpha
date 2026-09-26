@@ -4,7 +4,9 @@ One JSON document per trusted user contains entities, mentions, links, and
 retention tombstones.  Locks and caches are process-local, matching the L1
 store's single-process ownership contract.  Atomic replacement prevents torn
 documents but does not make independent store instances or multiple processes a
-transactional database.
+transactional database.  Genuinely corrupt documents are preserved as
+``.corrupt-*`` siblings; a document that parses but declares a format this
+build does not implement is instead refused and left byte-for-byte in place.
 """
 
 from __future__ import annotations
@@ -18,6 +20,13 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from alpha.memory._store_format import (
+    STORE_FORMAT_UNSUPPORTED,
+    StoreFormatVerdict,
+    classify_store_format,
+    format_disclosure,
+)
 
 from .config import EntityConfig
 from .linking import AliasIndex, alias_root, flatten_alias_chains, rank_merge_candidates
@@ -35,6 +44,7 @@ from .paths import atomic_write_text, entity_root, store_path
 logger = logging.getLogger(__name__)
 
 _SCHEMA = 1
+_STORE_ID = "entities.store"
 
 
 class StoreUnavailableError(RuntimeError):
@@ -108,6 +118,7 @@ class EntityStore:
         self._cache: dict[str, _UserDocument] = {}
         self._statuses: dict[str, str] = {}
         self._write_blocked: set[str] = set()
+        self._format_refusals: dict[str, StoreFormatVerdict] = {}
 
     @property
     def root(self) -> Path:
@@ -158,44 +169,76 @@ class EntityStore:
         if cached is not None:
             return cached
         path = self._path(key)
-        if path.exists():
-            try:
-                raw = json.loads(path.read_text(encoding="utf-8"))
-                document = self._validate_document(raw)
-                self._statuses[key] = "ok"
-            except (json.JSONDecodeError, ValueError, TypeError) as exc:
-                backup = path.with_name(f"{path.name}.corrupt-{time.time_ns()}")
-                try:
-                    path.replace(backup)
-                except OSError as backup_exc:
-                    self._statuses[key] = "corrupt_document_unpreserved"
-                    self._write_blocked.add(key)
-                    logger.error(
-                        "Entity store: corrupt document %s could not be preserved as %s (%s; original error: %s)",
-                        path,
-                        backup.name,
-                        backup_exc,
-                        exc,
-                    )
-                else:
-                    self._statuses[key] = "corrupt_document_preserved"
-                    logger.error(
-                        "Entity store: corrupt document %s preserved as %s; current user starts empty (%s)",
-                        path,
-                        backup.name,
-                        exc,
-                    )
-                document = _UserDocument(entities={}, mentions=[], links=[], evictions=[])
-            except OSError as exc:
-                self._statuses[key] = "read_error"
-                self._write_blocked.add(key)
-                logger.error("Entity store: could not read %s (%s)", path, exc)
-                document = _UserDocument(entities={}, mentions=[], links=[], evictions=[])
-        else:
+        empty = _UserDocument(entities={}, mentions=[], links=[], evictions=[])
+        if not path.exists():
             self._statuses[key] = "ok"
-            document = _UserDocument(entities={}, mentions=[], links=[], evictions=[])
+            self._cache[key] = empty
+            return empty
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except OSError as exc:
+            self._statuses[key] = "read_error"
+            self._write_blocked.add(key)
+            logger.error("Entity store: could not read %s (%s)", path, exc)
+            self._cache[key] = empty
+            return empty
+        except (json.JSONDecodeError, ValueError, TypeError, UnicodeError) as exc:
+            document = self._preserve_corrupt(key, path, exc)
+            self._cache[key] = document
+            return document
+
+        # The bytes parsed. A marker this build does not implement means another
+        # build owns the file; quarantining it here would destroy that data.
+        verdict = classify_store_format(store=_STORE_ID, path=path, raw=raw, supported_version=_SCHEMA)
+        if verdict.refusal:
+            self._format_refusals[key] = verdict
+            self._statuses[key] = STORE_FORMAT_UNSUPPORTED
+            self._write_blocked.add(key)
+            logger.error(
+                "Entity store: refusing %s (%s); document left in place and writes blocked",
+                verdict.path,
+                format_disclosure(verdict),
+            )
+            self._cache[key] = empty
+            return empty
+        try:
+            document = self._validate_document(raw)
+            self._statuses[key] = "ok"
+        except (ValueError, TypeError) as exc:
+            document = self._preserve_corrupt(key, path, exc)
         self._cache[key] = document
         return document
+
+    def _preserve_corrupt(self, key: str, path: Path, exc: BaseException) -> _UserDocument:
+        """Preserve genuinely unreadable bytes; never used for a version mismatch."""
+
+        backup = path.with_name(f"{path.name}.corrupt-{time.time_ns()}")
+        try:
+            path.replace(backup)
+        except OSError as backup_exc:
+            self._statuses[key] = "corrupt_document_unpreserved"
+            self._write_blocked.add(key)
+            logger.error(
+                "Entity store: corrupt document %s could not be preserved as %s (%s; original error: %s)",
+                path,
+                backup.name,
+                backup_exc,
+                exc,
+            )
+        else:
+            self._statuses[key] = "corrupt_document_preserved"
+            logger.error(
+                "Entity store: corrupt document %s preserved as %s; current user starts empty (%s)",
+                path,
+                backup.name,
+                exc,
+            )
+        return _UserDocument(entities={}, mentions=[], links=[], evictions=[])
+
+    def format_refusal(self, user_id: str) -> StoreFormatVerdict | None:
+        """Return the version refusal held for a user, or ``None``."""
+
+        return self._format_refusals.get(user_id.strip())
 
     def _persist(self, user_id: str, document: _UserDocument) -> None:
         payload = {

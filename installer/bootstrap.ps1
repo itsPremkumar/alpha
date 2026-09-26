@@ -251,6 +251,19 @@ function Invoke-Bounded {
         if ($WorkingDirectory) { $startArgs['WorkingDirectory'] = $WorkingDirectory }
 
         $process = Start-Process @startArgs -ArgumentList $ArgumentList
+
+        # MEASURED, and this was the installer's most load-bearing bug.
+        # `Start-Process -PassThru` leaves .ExitCode NULL even after a successful
+        # WaitForExit(). So $exitCode below was $null for EVERY subprocess, and
+        # `$null -ne 0` is True in PowerShell, which made all 14 call sites that
+        # branch on .ExitCode treat successful commands as failures. `uv sync`,
+        # `git clone`, the Node install, the frontend build and the health check
+        # were all being judged by a value that had never been measured.
+        # Touching .Handle forces the process handle to be cached, which is what
+        # makes .ExitCode reliable. Verified on this machine: without this line
+        # ExitCode is null; with it, ExitCode is the real code.
+        $null = $process.Handle
+
         if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
             try { $process.Kill() } catch { }
             $elapsed = [int]((Get-Date) - $started).TotalSeconds
@@ -657,12 +670,42 @@ function Confirm-PinnedTagExists {
 
     $result = Invoke-Bounded -FilePath $git.Source -ArgumentList @('ls-remote', '--tags', '--refs', $RepoUrl, ("refs/tags/{0}" -f $Ref)) `
         -TimeoutSeconds $script:RemoteProbeTimeoutSeconds -StageName 'pinned-tag-probe'
-    if ($result.ExitCode -ne 0) {
+
+    # `git ls-remote` exits 0 whether or not the pattern matched anything. MEASURED
+    # against this repository: 'refs/tags/v2.1.0' returned exit 0 with one line,
+    # and 'refs/tags/v9.9.9-definitely-not-a-tag' ALSO returned exit 0 with zero
+    # lines. So ExitCode proves only that GitHub was reachable. The ref exists if
+    # and only if a line came back for it, and that is what has to be tested. The
+    # previous version tested ExitCode alone, which made this failure branch
+    # unreachable for the one failure it was written for, and the line below then
+    # reported "pinned tag exists" for a tag that had never been pushed.
+    $wanted = "refs/tags/{0}" -f $Ref
+    $tagObjectSha = $null
+    foreach ($line in (([string]$result.StdOut) -split "`r?`n")) {
+        if ($line -match ("^(?<sha>[0-9a-fA-F]{40})\s+" + [regex]::Escape($wanted) + "\s*$")) {
+            $tagObjectSha = $Matches['sha']
+            break
+        }
+    }
+
+    # The ref exists if and only if a line came back for it, and that is the whole
+    # test. Deliberately NOT conditioned on ExitCode: MEASURED on this machine,
+    # Start-Process -PassThru yields ExitCode=null even when the command succeeds,
+    # so branching on it rejected tags that genuinely exist. The exit code is
+    # still reported below as a diagnostic, but it does not decide the outcome.
+    if (-not $tagObjectSha) {
+        $detail = if ($null -eq $result.ExitCode) {
+            "git ls-remote returned no line for $wanted and reported no exit code at all"
+        } elseif ($result.ExitCode -ne 0) {
+            "git ls-remote exited $($result.ExitCode): $($result.Error)"
+        } else {
+            "git ls-remote succeeded but returned no line for $wanted"
+        }
         Write-StepFailure -Stage 'pinned-tag' `
-            -Reason "the pinned tag '$Ref' could not be read from $RepoUrl : $($result.Error). Either that release was never published, or this machine cannot reach GitHub." `
+            -Reason "the pinned tag '$Ref' is not published in $RepoUrl. $detail. Either that release was never published, or this machine cannot reach GitHub." `
             -Remedy "Publish the release tag '$Ref', or re-run with -Tag pointing at a tag that exists. Alpha deliberately refuses to install from a moving branch."
     }
-    Write-StepLog -Message ("  pinned tag {0} exists in {1}" -f $Ref, $RepoUrl) -Level 'INFO'
+    Write-StepLog -Message ("  pinned tag {0} exists in {1} (tag object {2})" -f $Ref, $RepoUrl, $tagObjectSha) -Level 'INFO'
 }
 
 function Install-Repository {

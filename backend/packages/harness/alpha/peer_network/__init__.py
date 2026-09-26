@@ -18,7 +18,10 @@ from .models import (
     PeerPairResponse,
     PeerStatus,
 )
+from .ratelimit import PairingThrottle, ThrottleDecision
 from .service import PeerNetworkService, get_peer_network_service, shutdown_peer_network_service
+from .storage import PeerRegistryFullError
+from .transport import PeerNetworkDisabledError, PeerTransportError
 
 __all__ = [
     "ConversationCreateRequest",
@@ -28,12 +31,17 @@ __all__ = [
     "PROTOCOL",
     "PROTOCOL_VERSION",
     "PairRequest",
+    "PairingThrottle",
     "PeerCard",
     "PeerEnvelope",
+    "PeerNetworkDisabledError",
     "PeerNetworkService",
     "PeerPairRequest",
     "PeerPairResponse",
+    "PeerRegistryFullError",
     "PeerStatus",
+    "PeerTransportError",
+    "ThrottleDecision",
     "get_peer_network_service",
     "shutdown_peer_network_service",
 ]

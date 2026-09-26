@@ -19,8 +19,21 @@
 #
 # Manual use (works with both prod and dev compose):
 #   docker compose -f docker-compose.yaml -f docker-compose.cli-auth.yaml up -d
+#
+# The `logging` key below is the same bounded `json-file` config the base
+# compose files use, repeated here because a Compose overlay is a separate
+# document: it gets no anchor from docker-compose.yaml. Without it a service
+# defined only in an overlay falls back to Docker's uncapped default driver.
+# ALPHA_LOG_MAX_FILE must be >= 2 or Docker refuses to start.
+x-bounded-logs: &bounded_logs
+  driver: json-file
+  options:
+    max-size: "${ALPHA_LOG_MAX_SIZE:-10m}"
+    max-file: "${ALPHA_LOG_MAX_FILE:-3}"
+
 services:
   gateway:
+    logging: *bounded_logs
     volumes:
       - type: bind
         source: ${HOME:?HOME must be set}/.claude

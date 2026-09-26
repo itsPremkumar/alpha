@@ -39,10 +39,7 @@ class Script:
     def from_dict(cls, data: dict) -> "Script":
         script = cls(locale=data.get("locale", "en"))
         for line in data.get("lines", []):
-            script.lines.append(
-                ScriptLine(speaker=line.get("speaker", "male"),
-                           paragraph=line.get("paragraph", ""))
-            )
+            script.lines.append(ScriptLine(speaker=line.get("speaker", "male"), paragraph=line.get("paragraph", "")))
         return script
 
 
@@ -54,22 +51,14 @@ def _resolve_provider(override_env: str, existing_provider: str, has_existing_cr
         return existing_provider
     if os.getenv("MINIMAX_API_KEY"):
         return "minimax"
-    raise ValueError(
-        f"No credentials found. Set VOLCENGINE_TTS_APPID + VOLCENGINE_TTS_ACCESS_TOKEN "
-        f"for {existing_provider}, or MINIMAX_API_KEY for minimax "
-        f"(optionally force with {override_env})."
-    )
+    raise ValueError(f"No credentials found. Set VOLCENGINE_TTS_APPID + VOLCENGINE_TTS_ACCESS_TOKEN for {existing_provider}, or MINIMAX_API_KEY for minimax (optionally force with {override_env}).")
 
 
 def _resolve_tts_provider() -> str:
-    has_volc = bool(
-        os.getenv("VOLCENGINE_TTS_APPID") and os.getenv("VOLCENGINE_TTS_ACCESS_TOKEN")
-    )
+    has_volc = bool(os.getenv("VOLCENGINE_TTS_APPID") and os.getenv("VOLCENGINE_TTS_ACCESS_TOKEN"))
     provider = _resolve_provider("PODCAST_GENERATION_PROVIDER", "volcengine", has_volc)
     if provider not in ("volcengine", "minimax"):
-        raise ValueError(
-            f"Unknown podcast provider: {provider!r} (use 'volcengine' or 'minimax')"
-        )
+        raise ValueError(f"Unknown podcast provider: {provider!r} (use 'volcengine' or 'minimax')")
     return provider
 
 
@@ -105,13 +94,11 @@ def _backoff_sleep(attempt: int, retry_after: float | None) -> None:
     Jitter de-synchronizes concurrent workers that all got rate-limited at once,
     avoiding a thundering-herd retry storm.
     """
-    base = retry_after if retry_after else min(2 ** attempt, 30)
+    base = retry_after if retry_after else min(2**attempt, 30)
     time.sleep(base + random.uniform(0, 1))
 
 
-def text_to_speech_volcengine(
-    text: str, voice_type: str, max_retries: int | None = None
-) -> bytes | None:
+def text_to_speech_volcengine(text: str, voice_type: str, max_retries: int | None = None) -> bytes | None:
     """Convert text to speech using Volcengine TTS (returns base64-decoded mp3 bytes).
 
     Retries with exponential backoff on transient HTTP errors (429 / 5xx).
@@ -127,8 +114,7 @@ def text_to_speech_volcengine(
         "app": {"appid": app_id, "token": "access_token", "cluster": cluster},
         "user": {"uid": "podcast-generator"},
         "audio": {"voice_type": voice_type, "encoding": "mp3", "speed_ratio": 1.2},
-        "request": {"reqid": str(uuid.uuid4()), "text": text,
-                    "text_type": "plain", "operation": "query"},
+        "request": {"reqid": str(uuid.uuid4()), "text": text, "text_type": "plain", "operation": "query"},
     }
     for attempt in range(max_retries + 1):
         try:
@@ -140,10 +126,7 @@ def text_to_speech_volcengine(
                 continue
             return None
         if response.status_code == 429 or response.status_code >= 500:
-            logger.warning(
-                f"Volcengine TTS transient HTTP {response.status_code} "
-                f"(attempt {attempt + 1}/{max_retries + 1})"
-            )
+            logger.warning(f"Volcengine TTS transient HTTP {response.status_code} (attempt {attempt + 1}/{max_retries + 1})")
             if attempt < max_retries:
                 _backoff_sleep(attempt, _parse_retry_after(response))
                 continue
@@ -162,9 +145,7 @@ def text_to_speech_volcengine(
     return None
 
 
-def text_to_speech_minimax(
-    text: str, voice_id: str, max_retries: int | None = None
-) -> bytes | None:
+def text_to_speech_minimax(text: str, voice_id: str, max_retries: int | None = None) -> bytes | None:
     """Convert text to speech using MiniMax t2a_v2 (returns hex-decoded mp3 bytes).
 
     Retries with exponential backoff on HTTP 429/5xx and on retryable base_resp
@@ -200,10 +181,7 @@ def text_to_speech_minimax(
                 continue
             return None
         if response.status_code == 429 or response.status_code >= 500:
-            logger.warning(
-                f"MiniMax TTS rate-limited HTTP {response.status_code} "
-                f"(attempt {attempt + 1}/{max_retries + 1})"
-            )
+            logger.warning(f"MiniMax TTS rate-limited HTTP {response.status_code} (attempt {attempt + 1}/{max_retries + 1})")
             if attempt < max_retries:
                 _backoff_sleep(attempt, _parse_retry_after(response))
                 continue
@@ -215,10 +193,7 @@ def text_to_speech_minimax(
         base = result.get("base_resp") or {}
         code = base.get("status_code", 0)
         if code in MINIMAX_RETRYABLE_CODES:
-            logger.warning(
-                f"MiniMax TTS retryable error {code}: {base.get('status_msg')} "
-                f"(attempt {attempt + 1}/{max_retries + 1})"
-            )
+            logger.warning(f"MiniMax TTS retryable error {code}: {base.get('status_msg')} (attempt {attempt + 1}/{max_retries + 1})")
             if attempt < max_retries:
                 _backoff_sleep(attempt, None)
                 continue
@@ -245,15 +220,9 @@ def _process_line(args: tuple[int, ScriptLine, int, str]) -> tuple[int, bytes | 
         audio = text_to_speech_minimax(line.paragraph, voice)
     else:
         if line.speaker == "male":
-            voice = (
-                os.getenv("VOLCENGINE_TTS_VOICE_TYPE_MALE", "").strip()
-                or DEFAULT_VOLCENGINE_TTS_VOICE_TYPE_MALE
-            )
+            voice = os.getenv("VOLCENGINE_TTS_VOICE_TYPE_MALE", "").strip() or DEFAULT_VOLCENGINE_TTS_VOICE_TYPE_MALE
         else:
-            voice = (
-                os.getenv("VOLCENGINE_TTS_VOICE_TYPE_FEMALE", "").strip()
-                or DEFAULT_VOLCENGINE_TTS_VOICE_TYPE_FEMALE
-            )
+            voice = os.getenv("VOLCENGINE_TTS_VOICE_TYPE_FEMALE", "").strip() or DEFAULT_VOLCENGINE_TTS_VOICE_TYPE_FEMALE
         audio = text_to_speech_volcengine(line.paragraph, voice)
     if not audio:
         logger.warning(f"Failed to generate audio for line {i + 1}")
@@ -274,13 +243,8 @@ def tts_node(script: Script) -> list[bytes]:
 
     provider = _resolve_tts_provider()
     max_workers = _default_max_workers(provider)
-    if provider == "volcengine" and not (
-        os.getenv("VOLCENGINE_TTS_APPID") and os.getenv("VOLCENGINE_TTS_ACCESS_TOKEN")
-    ):
-        raise ValueError(
-            "Volcengine TTS selected but VOLCENGINE_TTS_APPID / "
-            "VOLCENGINE_TTS_ACCESS_TOKEN are not set"
-        )
+    if provider == "volcengine" and not (os.getenv("VOLCENGINE_TTS_APPID") and os.getenv("VOLCENGINE_TTS_ACCESS_TOKEN")):
+        raise ValueError("Volcengine TTS selected but VOLCENGINE_TTS_APPID / VOLCENGINE_TTS_ACCESS_TOKEN are not set")
     if provider == "minimax" and not os.getenv("MINIMAX_API_KEY"):
         raise ValueError("MiniMax TTS selected but MINIMAX_API_KEY is not set")
     logger.info(f"Converting script to audio using {max_workers} workers (provider={provider})...")
@@ -297,11 +261,7 @@ def tts_node(script: Script) -> list[bytes]:
                 failed_indices.append(idx)
 
     if failed_indices:
-        raise ValueError(
-            f"TTS failed for {len(failed_indices)}/{total} lines after retries: "
-            f"line numbers {sorted(i + 1 for i in failed_indices)}. "
-            f"This is usually transient API rate limiting — wait a moment and retry."
-        )
+        raise ValueError(f"TTS failed for {len(failed_indices)}/{total} lines after retries: line numbers {sorted(i + 1 for i in failed_indices)}. This is usually transient API rate limiting — wait a moment and retry.")
 
     audio_chunks = [results[i] for i in range(total)]
     logger.info(f"Generated {len(audio_chunks)}/{total} audio chunks successfully")
@@ -328,14 +288,11 @@ def generate_markdown(script: Script, title: str = "Podcast Script") -> str:
     return "\n".join(lines)
 
 
-def generate_podcast(script_file: str, output_file: str,
-                     transcript_file: str | None = None) -> str:
+def generate_podcast(script_file: str, output_file: str, transcript_file: str | None = None) -> str:
     with open(script_file, encoding="utf-8") as f:
         script_json = json.load(f)
     if "lines" not in script_json:
-        raise ValueError(
-            f"Invalid script format: missing 'lines' key. Got keys: {list(script_json.keys())}"
-        )
+        raise ValueError(f"Invalid script format: missing 'lines' key. Got keys: {list(script_json.keys())}")
     script = Script.from_dict(script_json)
     logger.info(f"Loaded script with {len(script.lines)} lines")
 
@@ -370,15 +327,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate podcast from script JSON file")
     parser.add_argument("--script-file", required=True, help="Absolute path to script JSON file")
     parser.add_argument("--output-file", required=True, help="Output path for generated podcast MP3")
-    parser.add_argument("--transcript-file", required=False,
-                        help="Output path for transcript markdown file (optional)")
+    parser.add_argument("--transcript-file", required=False, help="Output path for transcript markdown file (optional)")
     args = parser.parse_args()
 
     try:
-        result = generate_podcast(args.script_file, args.output_file,
-                                  args.transcript_file)
+        result = generate_podcast(args.script_file, args.output_file, args.transcript_file)
         print(result)
     except Exception as e:
         import traceback
+
         print(f"Error generating podcast: {e}")
         traceback.print_exc()

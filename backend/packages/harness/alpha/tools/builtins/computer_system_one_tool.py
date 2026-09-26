@@ -25,13 +25,24 @@ from alpha.computer_use.system_one_policy import (
     choose_next_computer_action,
     revalidate_target,
 )
-from alpha.tools.builtins.os_computer_tool import _begin_side_effect, _enrich, _halt_gated, _thread_id
+from alpha.tools.builtins.os_computer_tool import (
+    SCAN_TIMEOUT_S,
+    _begin_side_effect,
+    _enrich,
+    _halt_gated,
+    _run_os,
+    _thread_id,
+)
 from alpha.tools.types import Runtime
 
 MAX_TYPE_CHARS = 10000
 MAX_KEY_CHARS = 64
 MAX_HOTKEY_CHARS = 128
 MAX_ELEMENT_LIMIT = accessibility.MAX_ELEMENTS_LIMIT
+#: Deadline for the System One decision round trip itself. The client has its own
+#: per-request timeout, but a wedged partition tournament must not hold the tool
+#: open indefinitely either.
+DECISION_TIMEOUT_S = 30.0
 _GEOMETRY_REASON_RE = re.compile(
     r"coordinate|bbox|bounds|center|coords?|\b[xy]\s*=|\(\s*-?\d+\s*,\s*-?\d+\s*\)|\[\s*-?\d+\s*,\s*-?\d+(?:\s*,\s*-?\d+){0,2}\s*\]|\b-?\d+\s*,\s*-?\d+\b",
     re.IGNORECASE,
@@ -79,6 +90,21 @@ def _window_names(observation: dict[str, Any]) -> set[str]:
     return {str(item.get("window") or item.get("window_title") or "").strip() for item in elements if isinstance(item, dict) and str(item.get("window") or item.get("window_title") or "").strip()}
 
 
+def _observation_window_count(observation: dict[str, Any]) -> int | None:
+    """Scanner-declared window count, or None when the observation predates it.
+
+    Authoritative when present: two real windows routinely share a title, so the
+    de-duplicated label set in :func:`_window_names` can under-report ambiguity
+    in both directions.
+    """
+
+    count = observation.get("matched_window_count")
+    if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+        return count
+    names = _window_names(observation)
+    return len(names) if names else None
+
+
 def _context_error(observation: dict[str, Any], *, fresh: bool = False) -> dict[str, Any] | None:
     """Validate a semantic scan before any side effect is considered."""
     if not isinstance(observation, dict):
@@ -114,8 +140,11 @@ def _context_error(observation: dict[str, Any], *, fresh: bool = False) -> dict[
             },
         }
     matched_windows = observation.get("matched_windows")
-    if isinstance(matched_windows, list) and len([window for window in matched_windows if str(window).strip()]) > 1:
-        multiple_windows = True
+    declared_count = _observation_window_count(observation)
+    if declared_count is not None:
+        multiple_windows = declared_count > 1
+    elif isinstance(matched_windows, list):
+        multiple_windows = len([window for window in matched_windows if str(window).strip()]) > 1
     else:
         multiple_windows = len(_window_names(observation)) > 1
     if multiple_windows:
@@ -136,8 +165,16 @@ def _focused_elements(observation: dict[str, Any]) -> list[dict[str, Any]]:
     return [element for element in elements if isinstance(element, dict) and element.get("focused") is True]
 
 
-async def _semantic_observation(title: str, limit: int) -> dict[str, Any]:
-    return await asyncio.to_thread(accessibility.inspect_ui_tree, title, limit, semantic_only=True)
+async def _semantic_observation(title: str, limit: int, thread_id: str = "default_thread") -> dict[str, Any]:
+    """One bounded UI-Automation walk, behind the shared OS deadline."""
+    return await _run_os(
+        accessibility.inspect_ui_tree,
+        title,
+        limit,
+        action="inspect_ui_tree",
+        timeout_s=SCAN_TIMEOUT_S,
+        thread_id=thread_id,
+    )
 
 
 @tool("desktop_system_one_action", parse_docstring=True)
@@ -201,7 +238,9 @@ async def desktop_system_one_action_tool(
             _thread_id(runtime),
         )
 
-    observation = await _semantic_observation(str(window_title or "").strip(), element_limit)
+    observation = await _semantic_observation(str(window_title or "").strip(), element_limit, _thread_id(runtime))
+    if observation.get("status") == "timeout":
+        return _enrich({**observation, "fallback": True}, _thread_id(runtime))
     context_error = _context_error(observation)
     if context_error is not None:
         return _enrich(context_error, _thread_id(runtime))
@@ -210,13 +249,29 @@ async def desktop_system_one_action_tool(
     # exactly the same cap as the executor without receiving any geometry.
     policy_observation = dict(observation)
     policy_observation["max_elements"] = element_limit
-    decision = await choose_next_computer_action(
-        policy_observation,
-        normalized_goal,
-        text=text_value,
-        key=key_value,
-        hotkey=hotkey_value,
-    )
+    try:
+        decision = await asyncio.wait_for(
+            choose_next_computer_action(
+                policy_observation,
+                normalized_goal,
+                text=text_value,
+                key=key_value,
+                hotkey=hotkey_value,
+            ),
+            timeout=DECISION_TIMEOUT_S,
+        )
+    except TimeoutError:
+        return _enrich(
+            {
+                "ok": False,
+                "status": "timeout",
+                "reason": f"System One desktop decision exceeded its {DECISION_TIMEOUT_S:g}s deadline; no input was dispatched",
+                "dispatched": False,
+                "fallback": True,
+                "timeout_seconds": DECISION_TIMEOUT_S,
+            },
+            _thread_id(runtime),
+        )
     if decision is None:
         return _enrich(
             {
@@ -244,7 +299,9 @@ async def desktop_system_one_action_tool(
         )
 
     if decision.operation in {CLICK, TYPE_TEXT, PRESS, HOTKEY}:
-        fresh_observation = await _semantic_observation(str(window_title or "").strip(), element_limit)
+        fresh_observation = await _semantic_observation(str(window_title or "").strip(), element_limit, _thread_id(runtime))
+        if fresh_observation.get("status") == "timeout":
+            return _enrich({**fresh_observation, "fallback": True, "decision": decision_payload}, _thread_id(runtime))
         context_error = _context_error(fresh_observation, fresh=True)
         if context_error is not None:
             return _enrich(context_error, _thread_id(runtime))
@@ -286,24 +343,29 @@ async def desktop_system_one_action_tool(
     if side_effect_blocked is not None:
         return _enrich({**side_effect_blocked, "decision": decision_payload}, thread_id)
 
+    # A blacklisted combo is unreachable from this tool: there is no argument
+    # here that can supply an operator confirmation token, so the blacklist
+    # stands. The System One route is strictly narrower than the low-level one.
+    lease = f"os-computer:{thread_id}"
+
     result: dict[str, Any]
     partial_dispatched = False
     if operation == PRESS:
         if not key_value:
             result = {"ok": False, "status": "invalid", "dispatched": False, "reason": "PRESS requires a non-empty key"}
         else:
-            result = await asyncio.to_thread(dispatcher.keyboard_press, key_value)
+            result = await _run_os(dispatcher.keyboard_press, key_value, action="keyboard_press", thread_id=thread_id, lease=lease)
     elif operation == HOTKEY:
         if not hotkey_value:
             result = {"ok": False, "status": "invalid", "dispatched": False, "reason": "HOTKEY requires a non-empty shortcut"}
         else:
-            result = await asyncio.to_thread(dispatcher.keyboard_hotkey, hotkey_value, False)
+            result = await _run_os(dispatcher.keyboard_hotkey, hotkey_value, action="keyboard_hotkey", thread_id=thread_id, lease=lease)
     elif operation == CLICK:
         if decision.element is None:
             result = {"ok": False, "status": "stale_target", "dispatched": False, "reason": "selected desktop element was unavailable at execution"}
         else:
             x, y = decision.element.center
-            result = await asyncio.to_thread(dispatcher.mouse_click, x, y)
+            result = await _run_os(dispatcher.mouse_click, x, y, action="mouse_click", thread_id=thread_id, lease=lease)
     elif operation == TYPE_TEXT:
         if decision.element is None:
             result = {"ok": False, "status": "stale_target", "dispatched": False, "reason": "selected desktop field was unavailable at execution"}
@@ -311,13 +373,23 @@ async def desktop_system_one_action_tool(
             result = {"ok": False, "status": "invalid", "dispatched": False, "reason": "TYPE_TEXT requires non-empty text"}
         else:
             x, y = decision.element.center
-            click_result = await asyncio.to_thread(dispatcher.mouse_click, x, y)
+            click_result = await _run_os(dispatcher.mouse_click, x, y, action="mouse_click", thread_id=thread_id, lease=lease)
             if not click_result.get("ok"):
                 result = click_result
             else:
                 partial_dispatched = True
-                post_click_observation = await _semantic_observation(str(window_title or "").strip(), element_limit)
-                post_click_error = _context_error(post_click_observation, fresh=True)
+                post_click_observation = await _semantic_observation(str(window_title or "").strip(), element_limit, thread_id)
+                if post_click_observation.get("status") == "timeout":
+                    result = {
+                        "ok": False,
+                        "status": "timeout",
+                        "dispatched": True,
+                        "reason": "the focus re-check exceeded its deadline; text was not typed",
+                    }
+                    post_click_error: dict[str, Any] | None = {"ok": False}
+                    post_click_target = None
+                else:
+                    post_click_error = _context_error(post_click_observation, fresh=True)
                 post_click_target = None
                 if post_click_error is None:
                     post_click_target = revalidate_target(
@@ -325,7 +397,9 @@ async def desktop_system_one_action_tool(
                         decision,
                         max_elements=element_limit,
                     )
-                if post_click_error is not None or post_click_target is None or post_click_target.focused is not True:
+                if post_click_observation.get("status") == "timeout":
+                    pass  # ``result`` already carries the honest timeout payload
+                elif post_click_error is not None or post_click_target is None or post_click_target.focused is not True:
                     result = {
                         "ok": False,
                         "status": "focus_unverified",
@@ -335,7 +409,7 @@ async def desktop_system_one_action_tool(
                 else:
                     decision.element = post_click_target
                     decision_payload = decision.to_dict()
-                    result = await asyncio.to_thread(dispatcher.keyboard_type, text_value)
+                    result = await _run_os(dispatcher.keyboard_type, text_value, action="keyboard_type", thread_id=thread_id, lease=lease)
     elif operation == WAIT:
         # Keep the wait bounded; a desktop agent can observe and decide again.
         await asyncio.sleep(0.2)

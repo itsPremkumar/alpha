@@ -4,11 +4,26 @@ The public :func:`transcribe_file` signature remains compatible with existing
 voice-memo callers while accepting bounded local model/runtime settings. Normal
 requests use ``local_files_only=True`` and deployment-local assets; weights are
 never downloaded implicitly.
+
+Two bounds this module owns:
+
+* **Fail closed before construction.** ``transcribe_file`` checks
+  :func:`whisper_model_assets_present` *before* building a model. faster-whisper
+  treats a non-directory first argument as a Hugging Face model id and calls
+  ``download_model`` on it, so constructing a model for a missing local model
+  directory reaches the network. Checking first keeps request handling offline
+  and reports an honest reason instead of a raw ``ValueError``.
+* **Duration, not just bytes.** ``MAX_AUDIO_MB`` bounds the container; a 25 MiB
+  16 kHz mono PCM16 file is ~13.6 minutes of audio, far past the streaming
+  contract's ``max_utterance_seconds``. A WAV header is read when present and the
+  clip is refused before it occupies an inference thread.
 """
 
 from __future__ import annotations
 
+import contextlib
 import logging
+import wave
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -24,6 +39,14 @@ logger = logging.getLogger(__name__)
 
 SUPPORTED_SUFFIXES = frozenset({".wav", ".mp3", ".m4a", ".ogg", ".flac", ".opus", ".webm"})
 MAX_AUDIO_MB = 25.0
+#: Hard per-clip duration bound. Matches the top of the ``voice.streaming``
+#: contract (``max_utterance_seconds`` maxes out at 120s) with headroom for a
+#: real long-form memo, and keeps one request from monopolising a CPU for
+#: minutes on a worker thread that has no deadline of its own.
+MAX_AUDIO_SECONDS = 120.0
+#: Assumed PCM16 mono sample rate for a container we cannot cheaply probe. Used
+#: only to derive a conservative upper bound on duration from file size.
+ASSUMED_SAMPLE_RATE = 16_000
 
 
 @dataclass
@@ -88,6 +111,36 @@ def stt_model_available(
         return False
 
 
+def wav_duration_seconds(file_path: Path) -> float | None:
+    """Exact duration from a WAV header, or None when it cannot be read cheaply."""
+
+    if file_path.suffix.lower() != ".wav":
+        return None
+    try:
+        with contextlib.closing(wave.open(str(file_path), "rb")) as handle:
+            rate = handle.getframerate()
+            frames = handle.getnframes()
+            if rate <= 0:
+                return None
+            return frames / float(rate)
+    except (OSError, wave.Error, EOFError):
+        return None
+
+
+def audio_duration_seconds(file_path: Path, size_bytes: int) -> float:
+    """Best-effort clip duration: exact for WAV, otherwise bounded by size.
+
+    Compressed containers are not decoded here (that is the engine's job); the
+    size-derived figure is an upper bound assuming PCM16 mono, so a 25 MiB
+    upload is refused long before it can pin a CPU.
+    """
+
+    exact = wav_duration_seconds(file_path)
+    if exact is not None:
+        return exact
+    return size_bytes / float(ASSUMED_SAMPLE_RATE * 2)
+
+
 def transcribe_file(
     path: str | Path,
     *,
@@ -108,11 +161,18 @@ def transcribe_file(
     if file_path.suffix.lower() not in SUPPORTED_SUFFIXES:
         return Transcription(ok=False, reason=f"unsupported audio type '{file_path.suffix}'; supported: {sorted(SUPPORTED_SUFFIXES)}")
     try:
-        size_mb = file_path.stat().st_size / (1024.0 * 1024.0)
+        size_bytes = file_path.stat().st_size
     except OSError as exc:
         return Transcription(ok=False, reason=f"cannot stat audio file: {exc}")
+    size_mb = size_bytes / (1024.0 * 1024.0)
     if size_mb > MAX_AUDIO_MB:
         return Transcription(ok=False, reason=f"audio file {size_mb:.1f} MiB exceeds {MAX_AUDIO_MB:.0f} MiB cap.")
+    seconds = audio_duration_seconds(file_path, size_bytes)
+    if seconds > MAX_AUDIO_SECONDS:
+        return Transcription(
+            ok=False,
+            reason=f"audio clip is {seconds:.0f}s, over the {MAX_AUDIO_SECONDS:.0f}s per-clip cap; split the recording before transcribing.",
+        )
     if not stt_available():
         return Transcription(ok=False, reason="faster-whisper is not installed; install the voice extra to enable transcription.")
     try:
@@ -123,6 +183,17 @@ def transcribe_file(
             compute_type=compute_type,
             local_files_only=local_files_only,
         )
+    except (OSError, ValueError) as exc:
+        return Transcription(ok=False, engine=engine, reason=f"invalid local model configuration: {exc}")
+    if not whisper_model_assets_present(spec):
+        # Fail closed here rather than letting WhisperModel fall through to its
+        # Hugging Face download path for a directory that does not exist.
+        return Transcription(
+            ok=False,
+            engine=engine,
+            reason="local faster-whisper model assets are not present for this configuration; run voice setup or configure voice.stt.model_path (path withheld)",
+        )
+    try:
         segments, info = transcribe_with_cached_whisper(
             file_path,
             spec,

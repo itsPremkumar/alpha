@@ -24,6 +24,7 @@ names the pre-conversion module exported.
 
 from __future__ import annotations
 
+import ast
 import importlib
 import json
 import os
@@ -645,6 +646,105 @@ class TestCommittedBaseline:
 
 
 # --------------------------------------------------------------------------
+# --validate: the deterministic half of a measurement gate
+# --------------------------------------------------------------------------
+
+
+class TestBaselineValidation:
+    """``--validate`` is what runs on the blocking path, so it is the part that
+    has to be airtight: it must catch a baseline that cannot produce a verdict,
+    and it must never be a way to move a budget."""
+
+    def test_the_committed_baseline_validates(self, probe: Any, gate: Any) -> None:
+        assert gate.validate(gate.load_baseline(BASELINE_PATH), list(probe.DEFAULT_TARGETS)) == []
+
+    def test_validation_catches_a_target_the_baseline_forgot(self, gate: Any) -> None:
+        problems = gate.validate(_baseline(), ["alpha", "alpha.brand.new"])
+        assert any("alpha.brand.new" in problem for problem in problems)
+
+    def test_validation_catches_a_target_the_probe_stopped_measuring(self, gate: Any) -> None:
+        problems = gate.validate(_baseline({"retired": (10.0, 10.0)}), ["alpha"])
+        assert any("retired" in problem for problem in problems)
+
+    @pytest.mark.parametrize("key", ["cold_ms", "warm_ms"])
+    def test_validation_catches_a_non_positive_budget(self, key: str, gate: Any) -> None:
+        broken = _baseline()
+        broken["targets"]["alpha"][key] = 0
+        problems = gate.validate(broken, ["alpha"])
+        assert any(key in problem and "positive" in problem for problem in problems)
+
+    def test_validation_catches_an_empty_module_budget_set(self, gate: Any) -> None:
+        problems = gate.validate(_baseline(module_budgets={}), ["alpha"])
+        assert any("module budgets" in problem for problem in problems)
+
+    def test_validation_catches_a_non_positive_module_budget(self, gate: Any) -> None:
+        problems = gate.validate(_baseline(module_budgets={"sqlalchemy.orm": 0.0}), ["alpha"])
+        assert any("sqlalchemy.orm" in problem for problem in problems)
+
+    def test_validation_catches_a_missing_host_record(self, gate: Any) -> None:
+        broken = _baseline()
+        broken["host"] = {}
+        assert any("host" in problem for problem in gate.validate(broken, ["alpha"]))
+
+    def test_validation_catches_a_non_positive_tolerance(self, gate: Any) -> None:
+        problems = gate.validate(_baseline(tolerance_ms=0.0), ["alpha"])
+        assert any("tolerance" in problem for problem in problems)
+
+    def test_a_zero_tolerance_baseline_is_refused_at_load(self, gate: Any, tmp_path: Path) -> None:
+        """0.0 is falsy, so every `or DEFAULT_TOLERANCE_MS` read would widen it."""
+        path = tmp_path / "baseline.json"
+        path.write_text(json.dumps(_baseline(tolerance_ms=0.0)), encoding="utf-8")
+        with pytest.raises(gate.GateError, match="tolerance_ms"):
+            gate.load_baseline(path)
+
+    def test_validate_never_mutates_the_baseline(self, gate: Any) -> None:
+        """A validation pass must not be able to loosen anything."""
+        before = _baseline()
+        snapshot = json.dumps(before, sort_keys=True)
+        gate.validate(before, ["alpha"])
+        assert json.dumps(before, sort_keys=True) == snapshot
+
+    def test_cli_validate_exits_zero_on_the_committed_baseline(self) -> None:
+        proc = subprocess.run(
+            [sys.executable, str(GATE_PATH), "--validate"],
+            capture_output=True,
+            text=True,
+            cwd=str(REPO_ROOT),
+            check=False,
+        )
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert "baseline OK" in proc.stdout
+        assert "cold median" not in proc.stdout, "--validate must not measure anything"
+
+    def test_cli_validate_exits_two_on_a_broken_baseline(self, tmp_path: Path) -> None:
+        broken = tmp_path / "baseline.json"
+        payload = _baseline()
+        payload["targets"]["alpha"]["cold_ms"] = 0
+        broken.write_text(json.dumps(payload), encoding="utf-8")
+        proc = subprocess.run(
+            [sys.executable, str(GATE_PATH), "--baseline", str(broken), "--validate"],
+            capture_output=True,
+            text=True,
+            cwd=str(REPO_ROOT),
+            check=False,
+        )
+        assert proc.returncode == 2
+        assert "FAILED VALIDATION" in proc.stderr
+        assert "cold_ms" in proc.stderr
+
+    def test_cli_validate_exits_two_on_a_missing_baseline(self, tmp_path: Path) -> None:
+        proc = subprocess.run(
+            [sys.executable, str(GATE_PATH), "--baseline", str(tmp_path / "absent.json"), "--validate"],
+            capture_output=True,
+            text=True,
+            cwd=str(REPO_ROOT),
+            check=False,
+        )
+        assert proc.returncode == 2
+        assert "FAILED CLOSED" in proc.stderr
+
+
+# --------------------------------------------------------------------------
 # lazy conversions: the public import surface is unchanged
 # --------------------------------------------------------------------------
 
@@ -869,3 +969,297 @@ def test_live_cold_start_measurement(tmp_path: Path) -> None:
     data = json.loads(out.read_text(encoding="utf-8"))
     entry = data["targets"][0]
     print(f"\nLIVE cold start: {entry['module']} cold median {entry['cold']['median_ms']:.0f} ms, warm median {entry['warm']['median_ms']:.0f} ms ({data['host']['platform']})")
+
+
+# --------------------------------------------------------------------------
+# the opt-in contract: a skip that cannot quietly become permanent
+# --------------------------------------------------------------------------
+
+
+LIVE_ENV_VAR = "AGENT_WORKSPACE_RUN_LIVE_TESTS"
+THIS_FILE = Path(__file__)
+BACKEND_MAKEFILE = REPO_ROOT / "backend" / "Makefile"
+
+#: The one test in this module that is allowed to be skipped, and the one
+#: reason it may be skipped. Both are pinned below: a second skip, a bare
+#: ``@pytest.mark.skip``, or an xfail would all be silent losses of coverage
+#: that a green suite would not surface.
+LIVE_TEST_NAME = "test_live_cold_start_measurement"
+_DECORATORS = [
+    node
+    for node in THIS_FILE.read_text(encoding="utf-8").splitlines()
+    if node.lstrip().startswith("@pytest.mark.")
+]
+_SKIP_DECORATORS = [
+    line for line in _DECORATORS if any(mark in line for mark in ("skip", "xfail"))
+]
+
+
+def _live_test_function() -> Any:
+    """The live test, fetched from the imported module rather than re-parsed."""
+    module = sys.modules[__name__]
+    return getattr(module, LIVE_TEST_NAME)
+
+
+def _skip_marks(function: Any) -> list[Any]:
+    return [mark for mark in function.pytestmark if mark.name in ("skip", "skipif", "xfail")]
+
+
+def _live_test_node() -> Any:
+    """The live test's AST node, so the skip condition can be read as written.
+
+    pytest evaluates a ``skipif`` condition at import time, so the applied mark
+    holds a bool, not the lambda. Reading the decorator from the source is the
+    only way to assert *how* the condition is written -- which is the thing
+    that would rot.
+    """
+    import ast
+
+    tree = ast.parse(THIS_FILE.read_text(encoding="utf-8"), filename=str(THIS_FILE))
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name == LIVE_TEST_NAME:
+            return node
+    raise AssertionError(f"{LIVE_TEST_NAME} is gone; this file's skip contract moved with it")
+
+
+def _skipif_decorator(node: Any) -> Any:
+    for decorator in node.decorator_list:
+        if isinstance(decorator, ast.Call) and ast.unparse(decorator.func) == "pytest.mark.skipif":
+            return decorator
+    raise AssertionError(f"{LIVE_TEST_NAME} no longer carries a pytest.mark.skipif")
+
+
+def _evaluate_condition(monkeypatch: pytest.MonkeyPatch, value: str | None) -> bool:
+    """Run the decorator's condition with ``$AGENT_WORKSPACE_RUN_LIVE_TESTS`` set."""
+    import ast
+
+    condition = _skipif_decorator(_live_test_node()).args[0]
+    if value is None:
+        monkeypatch.delenv(LIVE_ENV_VAR, raising=False)
+    else:
+        monkeypatch.setenv(LIVE_ENV_VAR, value)
+    return bool(eval(compile(ast.Expression(body=condition), "<skipif>", "eval"), {"os": os}))  # noqa: S307 - the expression is this file's own source
+
+
+class TestTheLiveSkipIsOptInAndCannotGoPermanent:
+    """The single reported skip is environmental, and it stays reversible.
+
+    A skip is invisible in a green suite: nobody reads "1 skipped" as a
+    regression. So the conditions under which this module skips anything at all
+    are asserted rather than trusted.
+    """
+
+    def test_the_live_test_is_marked_live(self) -> None:
+        """`make test` deselects it, so CI never spends a runner on it."""
+        marks = {ast.unparse(decorator) for decorator in _live_test_node().decorator_list}
+        assert any(mark == "pytest.mark.live" for mark in marks), f"the live marker is gone: {sorted(marks)}"
+
+    def test_the_live_test_is_skipped_only_by_the_named_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The condition is the env var and nothing else, in both directions."""
+        assert _evaluate_condition(monkeypatch, None) is True, "unset must skip"
+        assert _evaluate_condition(monkeypatch, "1") is False, "'1' must un-skip"
+        # Any other value is still a skip: the opt-in is exactly one string, so
+        # a typo or an inherited 'true' cannot quietly start running the probe.
+        for value in ("0", "true", "True", "", "yes", " 1"):
+            assert _evaluate_condition(monkeypatch, value) is True, f"{value!r} must not enable the live test"
+
+    def test_the_skip_condition_names_the_env_var_it_reads(self) -> None:
+        condition = ast.unparse(_skipif_decorator(_live_test_node()).args[0])
+        assert LIVE_ENV_VAR in condition, f"the skip condition no longer reads {LIVE_ENV_VAR}: {condition!r}"
+        assert condition.count("environ") == 1, f"the skip reads more than the opt-in: {condition!r}"
+
+    def test_the_skip_reason_discloses_the_opt_in(self) -> None:
+        decorator = _skipif_decorator(_live_test_node())
+        keywords = {keyword.arg: keyword.value for keyword in decorator.keywords}
+        assert "reason" in keywords, "a skip with no reason is a skip nobody can act on"
+        reason = ast.literal_eval(keywords["reason"])
+        assert "opt in" in reason.lower(), f"the skip reason does not say how to opt in: {reason!r}"
+        assert LIVE_ENV_VAR in reason
+
+    def test_this_module_declares_exactly_one_skip_and_no_xfails(self) -> None:
+        """The skip count cannot grow quietly: one declaration, one reason."""
+        assert len(_SKIP_DECORATORS) == 1, f"unexpected skip/xfail decorators: {_SKIP_DECORATORS}"
+        assert "skipif" in _SKIP_DECORATORS[0], "the one skip must stay conditional, never a bare skip"
+        assert "xfail" not in "\n".join(_SKIP_DECORATORS)
+        # And pytest agrees: one applied skip condition on the one live test.
+        assert len(_skip_marks(_live_test_function())) == 1
+
+    def test_the_live_test_really_passes_when_it_is_opted_into(self) -> None:
+        """The decisive check: the skip is conditional, not a permanent pass.
+
+        Runs the live test in a child pytest with the opt-in set, and asserts
+        it *ran and passed* rather than being skipped. Without this,
+        "1 skipped" and "the opt-in silently stopped working" are the same
+        green -- which is exactly how a permanent skip hides.
+        """
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                f"{THIS_FILE}::{LIVE_TEST_NAME}",
+                "-q",
+                "--no-header",
+                "-p",
+                "no:cacheprovider",
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env={**os.environ, LIVE_ENV_VAR: "1"},
+            cwd=str(REPO_ROOT),
+            check=False,
+        )
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert "1 passed" in proc.stdout, proc.stdout
+        assert "skipped" not in proc.stdout, f"the opt-in did not un-skip the live test:\n{proc.stdout}"
+
+    @pytest.mark.parametrize("recipe", ["test:", "test-shard:"])
+    def test_the_suite_never_runs_live_tests_by_default(self, recipe: str) -> None:
+        """`make test` / `make test-shard` deselect them, so CI is never charged."""
+        body = _make_recipe_body(recipe)
+        assert '-m "not live"' in body, f"`make {recipe % ':'}` does not exclude live tests"
+
+
+def _make_recipe_body(recipe: str) -> str:
+    """The lines of a backend/Makefile recipe, up to the next target."""
+    lines = BACKEND_MAKEFILE.read_text(encoding="utf-8").splitlines()
+    start = next(index for index, line in enumerate(lines) if line.startswith(recipe))
+    body: list[str] = []
+    for line in lines[start + 1 :]:
+        if line and not line[0].isspace() and not line.startswith("\t"):
+            break
+        body.append(line)
+    return "\n".join(body)
+
+
+# --------------------------------------------------------------------------
+# CI wiring: a script nobody runs, or a failure nobody sees, is not a gate
+# --------------------------------------------------------------------------
+
+
+WORKFLOWS = REPO_ROOT / ".github" / "workflows"
+COLD_START_WORKFLOW = "cold-start-budget.yml"
+IMPORT_GATE_PATH = REPO_ROOT / "scripts" / "check_cold_start_imports.py"
+IMPORT_BUDGET_PATH = REPO_ROOT / "backend" / "benchmarks" / "cold_start" / "import_budget.json"
+
+
+def _workflow(name: str) -> dict[str, Any]:
+    import yaml
+
+    return yaml.safe_load((WORKFLOWS / name).read_text(encoding="utf-8"))
+
+
+def _job(name: str, job: str) -> dict[str, Any]:
+    return _workflow(name)["jobs"][job]
+
+
+def _runs(name: str, job: str) -> str:
+    return "\n".join(str(step.get("run", "")) for step in _job(name, job)["steps"])
+
+
+def test_the_cold_start_gate_is_referenced_by_a_workflow_at_all() -> None:
+    """The reported gap, pinned: the wall-clock gate must be wired, somewhere.
+
+    Whether it blocks is a measurement question answered in the job comments;
+    being unreferenced is not a defensible state for either half.
+    """
+    references = {
+        path.name: path.read_text(encoding="utf-8")
+        for path in sorted(WORKFLOWS.glob("*.y*ml"))
+    }
+    wall_clock = [name for name, text in references.items() if "check_cold_start_budget.py" in text]
+    assert wall_clock, "no workflow runs scripts/check_cold_start_budget.py"
+    assert COLD_START_WORKFLOW in wall_clock
+    eager = [name for name, text in references.items() if "check_cold_start_imports.py" in text]
+    assert eager, "no workflow runs scripts/check_cold_start_imports.py"
+    assert COLD_START_WORKFLOW in eager
+
+
+class TestColdStartWorkflowWiring:
+    def test_the_deterministic_gate_blocks_on_pull_request_and_push(self) -> None:
+        workflow = _workflow(COLD_START_WORKFLOW)
+        triggers = workflow[True] if True in workflow else workflow["on"]
+        for event in ("push", "pull_request"):
+            assert event in triggers, f"{COLD_START_WORKFLOW} does not run on {event}"
+        for required in (
+            "backend/packages/harness/alpha/**",
+            "backend/app/gateway/**",
+            "scripts/check_cold_start_imports.py",
+            "backend/benchmarks/cold_start/**",
+            f".github/workflows/{COLD_START_WORKFLOW}",
+        ):
+            for event in ("push", "pull_request"):
+                assert required in triggers[event]["paths"], f"{event} paths omit {required}"
+
+    def test_the_blocking_job_runs_both_checks_and_can_fail(self) -> None:
+        job = _job(COLD_START_WORKFLOW, "cold-start-imports")
+        runs = _runs(COLD_START_WORKFLOW, "cold-start-imports")
+        assert "python scripts/check_cold_start_imports.py" in runs
+        assert "python scripts/check_cold_start_budget.py --validate" in runs
+        assert "continue-on-error" not in job
+        assert "|| true" not in runs
+        assert "if: always()" not in job, "the gate must gate, not report"
+        assert job.get("timeout-minutes"), "a gate that hangs is not a gate"
+        workflow = _workflow(COLD_START_WORKFLOW)
+        assert workflow["permissions"] == {"contents": "read"}, "the gate must not need write access"
+
+    def test_the_blocking_gate_needs_no_dependency_install(self) -> None:
+        """The one cold-start check that must survive a broken environment.
+
+        A job that cannot install its dependencies cannot report, and a report
+        that cannot run reads as nothing happened. The eager-import gate is an
+        AST scan over the standard library, so it deliberately has no
+        `uv sync`: if that ever changes, the reason must be in the diff.
+        """
+        runs = _runs(COLD_START_WORKFLOW, "cold-start-imports")
+        assert "uv sync" not in runs and "pip install" not in runs
+        steps = _job(COLD_START_WORKFLOW, "cold-start-imports")["steps"]
+        assert any("checkout" in str(step.get("uses", "")) for step in steps)
+
+    def test_the_wall_clock_measurement_is_scheduled_not_blocking(self) -> None:
+        """A contended runner's median is a report, so it lives in the nightly.
+
+        Pinned in both directions: the measurement must be present, and it must
+        not have crept onto the pull-request path.
+        """
+        blocking = _runs(COLD_START_WORKFLOW, "cold-start-imports")
+        assert "check_cold_start_budget.py --json" not in blocking, (
+            "the 42-launch wall-clock measurement must not block a pull request"
+        )
+        assert "--validate" in blocking, (
+            "the baseline's *configuration* is deterministic and must block"
+        )
+        nightly = _runs("nightly.yaml", "cold-start-budget")
+        assert "python scripts/check_cold_start_budget.py --json" in nightly
+        assert "python scripts/check_cold_start_budget.py --validate" in nightly
+        job = _job("nightly.yaml", "cold-start-budget")
+        assert "continue-on-error" not in job
+        assert "|| true" not in nightly
+        assert job.get("timeout-minutes")
+
+    def test_the_nightly_cold_start_job_is_independent_of_the_image_publish(self) -> None:
+        """A flaky measurement must not withhold a nightly image."""
+        job = _job("nightly.yaml", "cold-start-budget")
+        assert "needs" not in job
+        for name, other in _workflow("nightly.yaml")["jobs"].items():
+            if name == "cold-start-budget":
+                continue
+            needs = other.get("needs")
+            names = [needs] if isinstance(needs, str) else list(needs or [])
+            assert "cold-start-budget" not in names, f"{name} waits on the cold-start measurement"
+
+    def test_no_workflow_mentions_cold_start_with_a_swallowed_failure(self) -> None:
+        for name in (COLD_START_WORKFLOW, "nightly.yaml"):
+            text = (WORKFLOWS / name).read_text(encoding="utf-8")
+            for line in text.splitlines():
+                if "check_cold_start" in line:
+                    assert "continue-on-error" not in line
+                    assert "|| true" not in line
+
+    def test_the_budget_and_the_import_budget_are_both_committed(self) -> None:
+        """Two budgets, two files, both on disk. Neither is generated at run time."""
+        assert BASELINE_PATH.exists(), f"missing {BASELINE_PATH}"
+        assert IMPORT_BUDGET_PATH.exists(), f"missing {IMPORT_BUDGET_PATH}"
+

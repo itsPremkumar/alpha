@@ -124,6 +124,23 @@ def claim_task(
     bot = reg.get_bot(key)
     if not bot:
         raise ValueError(f"Bot '{key}' not found.")
+    # Lifecycle gate, FIRST. Retirement is a TWO-PHASE transition: a draining or
+    # retired profile must not be handed NEW work, or retirement would be
+    # cosmetic. Going through the registry's authorized read means the claim also
+    # re-validates the profile against the current authority ceiling, so a
+    # tightened ceiling stops dispatch to an over-privileged profile at its next
+    # claim rather than leaving it quietly working.
+    #
+    # This runs before the legacy status check below so the ceiling-aware gate is
+    # the single authority on whether work may be handed out; the legacy check
+    # stays as a defence for statuses the gate does not know about.
+    authorized = reg.authorized_bot(key)
+    if authorized is None:
+        raise ValueError(
+            f"Bot '{key}' is {bot.status!r} and may not receive new work "
+            f"(retired, draining, disabled, or demoted below the authority ceiling)."
+        )
+    bot = authorized
     if bot.status in ("suspended", "archived"):
         raise ValueError(f"Bot '{key}' is {bot.status} and cannot claim tasks.")
 

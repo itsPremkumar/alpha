@@ -12,8 +12,7 @@ img = load("image-generation")
 
 @pytest.fixture(autouse=True)
 def clean_env(monkeypatch):
-    for k in ["GEMINI_API_KEY", "MINIMAX_API_KEY", "IMAGE_GENERATION_PROVIDER",
-              "MINIMAX_API_HOST", "MINIMAX_IMAGE_MODEL"]:
+    for k in ["GEMINI_API_KEY", "MINIMAX_API_KEY", "IMAGE_GENERATION_PROVIDER", "MINIMAX_API_HOST", "MINIMAX_IMAGE_MODEL"]:
         monkeypatch.delenv(k, raising=False)
 
 
@@ -48,8 +47,7 @@ def test_minimax_builds_payload_and_writes(monkeypatch, tmp_path):
         captured["url"] = url
         captured["headers"] = headers
         captured["json"] = json
-        return FakeResp({"data": {"image_base64": [base64.b64encode(raw).decode()]},
-                         "base_resp": {"status_code": 0, "status_msg": "success"}})
+        return FakeResp({"data": {"image_base64": [base64.b64encode(raw).decode()]}, "base_resp": {"status_code": 0, "status_msg": "success"}})
 
     monkeypatch.setattr(img.requests, "post", fake_post)
     out = tmp_path / "o.jpg"
@@ -74,8 +72,7 @@ def test_minimax_reference_image_as_data_url(monkeypatch, tmp_path):
 
     def fake_post(url, headers=None, json=None, **kw):
         captured["json"] = json
-        return FakeResp({"data": {"image_base64": [base64.b64encode(b"x").decode()]},
-                         "base_resp": {"status_code": 0}})
+        return FakeResp({"data": {"image_base64": [base64.b64encode(b"x").decode()]}, "base_resp": {"status_code": 0}})
 
     monkeypatch.setattr(img.requests, "post", fake_post)
     ref = tmp_path / "ref.jpg"
@@ -88,6 +85,7 @@ def test_minimax_reference_image_as_data_url(monkeypatch, tmp_path):
     assert subj[0]["type"] == "character"
     assert subj[0]["image_file"].startswith("data:image/jpeg;base64,")
     import base64 as _b64
+
     encoded = subj[0]["image_file"].split(",", 1)[1]
     assert _b64.b64decode(encoded) == b"\xff\xd8refbytes"
 
@@ -112,14 +110,12 @@ def test_minimax_extracts_json_prompt_field(monkeypatch, tmp_path):
 
     def fake_post(url, headers=None, json=None, **kw):
         captured["json"] = json
-        return FakeResp({"data": {"image_base64": [base64.b64encode(b"x").decode()]},
-                         "base_resp": {"status_code": 0}})
+        return FakeResp({"data": {"image_base64": [base64.b64encode(b"x").decode()]}, "base_resp": {"status_code": 0}})
 
     monkeypatch.setattr(img.requests, "post", fake_post)
     prompt_file = tmp_path / "p.json"
     prompt_file.write_text(
-        '{"prompt": "a red barn at dawn", "style": "watercolor", '
-        '"composition": "rule of thirds", "negative_prompt": "blurry"}',
+        '{"prompt": "a red barn at dawn", "style": "watercolor", "composition": "rule of thirds", "negative_prompt": "blurry"}',
         encoding="utf-8",
     )
     img.generate_image(str(prompt_file), [], str(tmp_path / "o.jpg"), "16:9")
@@ -135,8 +131,7 @@ def test_minimax_plaintext_prompt_passes_through(monkeypatch, tmp_path):
 
     def fake_post(url, headers=None, json=None, **kw):
         captured["json"] = json
-        return FakeResp({"data": {"image_base64": [base64.b64encode(b"x").decode()]},
-                         "base_resp": {"status_code": 0}})
+        return FakeResp({"data": {"image_base64": [base64.b64encode(b"x").decode()]}, "base_resp": {"status_code": 0}})
 
     monkeypatch.setattr(img.requests, "post", fake_post)
     prompt_file = tmp_path / "p.txt"
@@ -167,8 +162,7 @@ def test_minimax_creates_nested_output_dir(monkeypatch, tmp_path):
     monkeypatch.setenv("MINIMAX_API_KEY", "m")
 
     def fake_post(url, headers=None, json=None, **kw):
-        return FakeResp({"data": {"image_base64": [base64.b64encode(b"img").decode()]},
-                         "base_resp": {"status_code": 0}})
+        return FakeResp({"data": {"image_base64": [base64.b64encode(b"img").decode()]}, "base_resp": {"status_code": 0}})
 
     monkeypatch.setattr(img.requests, "post", fake_post)
     prompt_file = tmp_path / "p.txt"

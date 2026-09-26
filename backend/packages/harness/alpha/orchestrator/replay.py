@@ -74,7 +74,7 @@ from alpha.workflow.models import (
     WorkflowRunStatus,
 )
 from alpha.workflow.patch import WorkflowPatchEngine
-from alpha.workflow.runtime import EXECUTOR_STATE_KEYS, DynamicWorkflowEngine
+from alpha.workflow.runtime import EXECUTOR_STATE_KEYS, STAGNATION_RECOVERY_KEY, DynamicWorkflowEngine
 
 # Engine state-key shapes mirrored by the fold (see module docstring).
 _STATE_KEY_SUFFIXES: dict[str, str] = {
@@ -298,6 +298,13 @@ def replay_run(
             run.status = WorkflowRunStatus.CANCELLED
             run.active_nodes.clear()
 
+        elif kind == "workflow_budget_exhausted":
+            # The terminal budget seam.  Without this fold a budget-killed run
+            # replayed as RUNNING (node-level) or as plain FAILED (pre-wave
+            # check), so the replay compare reported a mismatch and a restarted
+            # process could re-dispatch a run that had actually stopped.
+            run.status = WorkflowRunStatus.BUDGET_EXHAUSTED
+
         elif kind == "node_skipped":
             nid = payload.get("node_id")
             if isinstance(nid, str):
@@ -358,6 +365,14 @@ def replay_run(
             nid = payload.get("node_id")
             if isinstance(nid, str):
                 run.node_states[nid] = NodeStatus.COMPENSATING
+
+        elif kind == "stagnation_recovery_attempted":
+            # The engine's bounded-recovery counter.  Replayed so a replayed
+            # run reaches the same ceiling the live run reached instead of
+            # silently re-entering the deadlock-recovery path.
+            attempt = payload.get("attempt")
+            if isinstance(attempt, int) and attempt > run.metrics.get(STAGNATION_RECOVERY_KEY, 0):
+                run.metrics[STAGNATION_RECOVERY_KEY] = attempt
 
         run.updated_at = event.timestamp
 

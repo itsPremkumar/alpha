@@ -92,6 +92,19 @@ _ELIDED_PAYLOAD_TEMPLATE = "[payload elided: {chars} chars; this {tool_name} cal
 # treated as "cannot inspect" — the gate fails open and no mark is stamped.
 _UNINSPECTABLE_CONTENT_PREFIX = "Error:"
 
+# The error-string read channel is a *provider capability*, not an event: on an
+# AIO/E2B sandbox every read of a missing or unreadable file returns one, so
+# this branch fires on essentially every write and a per-call WARNING would
+# bury the log in a single repeated line. The state is announced once at WARNING
+# -- so an operator who cannot tell that their gate is degraded sees it -- and
+# every later occurrence stays at DEBUG with a running count. A latch, not a
+# set of paths: the answer is a property of the sandbox provider, so one
+# announcement per process is the right number and an unbounded path set would
+# be a slow leak.
+_UNINSPECTABLE_WARNED = False
+_UNINSPECTABLE_SEEN = 0
+_UNINSPECTABLE_WARN_LOCK = threading.Lock()
+
 _BLOCK_MESSAGE = (
     "Error: {tool_name} blocked — {path} already exists and you have not read its current version. "
     "Any write invalidates earlier reads, so re-read before every modification. "
@@ -287,7 +300,25 @@ class ReadBeforeWriteMiddleware(AgentMiddleware):
             # Error-string sandbox read channel (AIO/E2B): "missing" and
             # "unreadable" are indistinguishable here, so fail open — creation
             # proceeds and genuine failures surface from the tool itself.
-            logger.debug("read-before-write gate got an error-string read for %r; allowing the write (fail-open)", path)
+            # Announced once at WARNING rather than per call: this is a standing
+            # provider limitation, and the fail-open is a degraded gate an
+            # operator has to be able to see. See _UNINSPECTABLE_WARNED.
+            global _UNINSPECTABLE_WARNED, _UNINSPECTABLE_SEEN
+            with _UNINSPECTABLE_WARN_LOCK:
+                _UNINSPECTABLE_SEEN += 1
+                first = not _UNINSPECTABLE_WARNED
+                _UNINSPECTABLE_WARNED = True
+                seen = _UNINSPECTABLE_SEEN
+            if first:
+                logger.warning(
+                    "read-before-write gate is degraded: this sandbox returns %r strings instead of raising, so the gate"
+                    " cannot tell a missing file from an unreadable one and fails open. Announced once per process; every"
+                    " write is affected, not just this one (%r).",
+                    _UNINSPECTABLE_CONTENT_PREFIX,
+                    path,
+                )
+            else:
+                logger.debug("read-before-write gate got an error-string read for %r (occurrence %d); allowing the write (fail-open)", path, seen)
             return None
         norm_path = _normalize_mark_path(path)
         anchor = self._requested_anchor(request)

@@ -14,12 +14,6 @@ import pytest
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMessage, ToolMessage  # noqa: F401
 from langchain_core.tools import StructuredTool
 
-from app.gateway.routers.mcp import McpConfigResponse
-from app.gateway.routers.memory import MemoryConfigResponse, MemoryStatusResponse
-from app.gateway.routers.models import ModelResponse, ModelsListResponse
-from app.gateway.routers.skills import SkillInstallResponse, SkillResponse, SkillsListResponse
-from app.gateway.routers.threads import ThreadGoalResponse
-from app.gateway.routers.uploads import UploadResponse
 from alpha.agents.middlewares.view_image_middleware import ViewImageMiddleware
 from alpha.agents.thread_state import DeltaThreadState, ThreadState
 from alpha.client import AgentWorkspaceClient
@@ -32,6 +26,12 @@ from alpha.sandbox.sandbox_provider import reset_sandbox_provider, set_sandbox_p
 from alpha.skills.types import SkillCategory
 from alpha.tools.mcp_metadata import tag_mcp_tool
 from alpha.uploads.manager import PathTraversalError
+from app.gateway.routers.mcp import McpConfigResponse
+from app.gateway.routers.memory import MemoryConfigResponse, MemoryStatusResponse
+from app.gateway.routers.models import ModelResponse, ModelsListResponse
+from app.gateway.routers.skills import SkillInstallResponse, SkillResponse, SkillsListResponse
+from app.gateway.routers.threads import ThreadGoalResponse
+from app.gateway.routers.uploads import UploadResponse
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -90,7 +90,14 @@ def allow_skill_security_scan():
 class TestClientInit:
     def test_default_params(self, client):
         assert client._model_name is None
-        assert client._thinking_enabled is True
+        # Thinking is opt-in, matching create_chat_model's own default and
+        # ModelConfig.supports_thinking (default False). A True default made a
+        # zero-configuration client unrunnable against any model that does not
+        # declare supports_thinking: true -- including both models in the
+        # shipped config.yaml -- because the factory fails closed on a thinking
+        # request for a non-thinking model. See
+        # tests/test_client_thinking_default.py.
+        assert client._thinking_enabled is False
         assert client._subagent_enabled is False
         assert client._plan_mode is False
         assert client._agent_name is None
@@ -557,13 +564,13 @@ class TestStream:
     def test_messages_mode_emits_token_deltas(self, client):
         """stream() forwards LangGraph ``messages`` mode chunks as delta events.
 
-        Regression for bytedance/agent-workspace#1969 — before the fix the client
+        Regression for bytedance/agent-workspace#1969 â€” before the fix the client
         only subscribed to ``values`` mode, so LLM output was delivered as
         a single cumulative dump after each graph node finished instead of
         token-by-token deltas as the model generated them.
         """
         # Three AI chunks sharing the same id, followed by a terminal
-        # values snapshot with the fully assembled message — this matches
+        # values snapshot with the fully assembled message â€” this matches
         # the shape LangGraph emits when ``stream_mode`` includes both
         # ``messages`` and ``values``.
         assembled = AIMessage(content="Hel lo world!", id="ai-1", usage_metadata={"input_tokens": 3, "output_tokens": 4, "total_tokens": 7})
@@ -617,7 +624,7 @@ class TestStream:
         # The values snapshot itself is still emitted.
         assert any(e.type == "values" for e in events)
 
-        # stream_mode includes ``messages`` — the whole point of this fix.
+        # stream_mode includes ``messages`` â€” the whole point of this fix.
         call_kwargs = agent.stream.call_args.kwargs
         assert "messages" in call_kwargs["stream_mode"]
 
@@ -816,7 +823,7 @@ class TestStream:
     # ------------------------------------------------------------------
     # Refactor regression guards (PR #1974 follow-up safety)
     #
-    # The three tests below are not bug-fix tests — they exist to lock
+    # The three tests below are not bug-fix tests â€” they exist to lock
     # the *exact* contract of stream() so a future refactor (e.g. moving
     # to ``agent.astream()``, sharing a core with Gateway's run_agent,
     # changing the dedup strategy) cannot silently change behavior.
@@ -829,7 +836,7 @@ class TestStream:
         If a ``values`` snapshot arrives BEFORE its corresponding
         ``messages`` chunks for the same id, the values path falls
         through and synthesizes its own AI text event, then the
-        messages chunk emits another delta — consumers see the same
+        messages chunk emits another delta â€” consumers see the same
         id twice.
 
         Under normal LangGraph operation this never happens (messages
@@ -840,12 +847,12 @@ class TestStream:
         Gateway: if the ordering ever changes, this test fails and
         forces the refactor to either (a) preserve the ordering or
         (b) deliberately re-baseline to a stronger order-independent
-        dedup contract — and document the new contract here.
+        dedup contract â€” and document the new contract here.
         """
         agent = MagicMock()
         agent.stream.return_value = iter(
             [
-                # values arrives FIRST — streamed_ids still empty.
+                # values arrives FIRST â€” streamed_ids still empty.
                 ("values", {"messages": [HumanMessage(content="hi", id="h-1"), AIMessage(content="Hello", id="ai-1")]}),
                 # messages chunk for the same id arrives SECOND.
                 ("messages", (AIMessageChunk(content="Hello", id="ai-1"), {})),
@@ -860,7 +867,7 @@ class TestStream:
 
         ai_text_events = [e for e in events if e.type == "messages-tuple" and e.data.get("type") == "ai" and e.data.get("content")]
         # Current behavior: 2 events (values synthesis + messages delta).
-        # If a refactor makes dedup order-independent, this becomes 1 —
+        # If a refactor makes dedup order-independent, this becomes 1 â€”
         # update the assertion AND the docstring above to record the
         # new contract, do not silently fix this number.
         assert len(ai_text_events) == 2
@@ -876,17 +883,17 @@ class TestStream:
         preserved sequence or a deliberate re-baseline.
 
         Input shape:
-            messages chunk 1 — text "Hel", no usage
-            messages chunk 2 — text "lo",  with cumulative usage
-            values snapshot  — assembled AIMessage with same usage
+            messages chunk 1 â€” text "Hel", no usage
+            messages chunk 2 â€” text "lo",  with cumulative usage
+            values snapshot  â€” assembled AIMessage with same usage
 
         Locked behavior:
             * Two messages-tuple AI text events (one per chunk), each
-              carrying ONLY its own delta — not cumulative.
+              carrying ONLY its own delta â€” not cumulative.
             * ``usage_metadata`` attached only to the chunk that
               delivered it (not the first chunk).
             * The values event is still emitted, but its embedded
-              ``messages`` list is the *serialized* form — no
+              ``messages`` list is the *serialized* form â€” no
               synthesized messages-tuple events for the already-
               streamed id.
             * ``end`` event carries cumulative usage counted exactly
@@ -945,19 +952,19 @@ class TestStream:
         """``chat()`` must use a non-quadratic accumulation strategy.
 
         PR #1974 commit 2 replaced ``buffer = buffer + delta`` with
-        ``list[str].append`` + ``"".join`` to fix an O(n²) regression
+        ``list[str].append`` + ``"".join`` to fix an O(nÂ²) regression
         introduced in commit 1.  This test guards against a future
         refactor accidentally restoring the quadratic path.
 
         Threshold rationale (10,000 single-char chunks, 1 second):
             * Current O(n) implementation: ~50-200 ms total, including
               all mock + event yield overhead.
-            * O(n²) regression at n=10,000: chat accumulation alone
+            * O(nÂ²) regression at n=10,000: chat accumulation alone
               becomes ~500 ms-2 s (50 M character copies), reliably
               over the bound on any reasonable CI.
 
         If this test ever flakes on slow CI, do NOT raise the threshold
-        blindly — first confirm the implementation still uses
+        blindly â€” first confirm the implementation still uses
         ``"".join``, then consider whether the test should move to a
         benchmark suite that excludes mock overhead.
         """
@@ -988,7 +995,7 @@ class TestStream:
             elapsed = time.monotonic() - start
 
         assert result == "x" * n
-        assert elapsed < 1.0, f"chat() took {elapsed:.3f}s for {n} chunks — possible O(n^2) regression (see PR #1974 commit 2 for the original fix)"
+        assert elapsed < 1.0, f"chat() took {elapsed:.3f}s for {n} chunks â€” possible O(n^2) regression (see PR #1974 commit 2 for the original fix)"
 
     def test_none_id_chunks_produce_duplicates_known_limitation(self, client):
         """Documents a known dedup limitation: ``messages`` chunks with ``id=None``.
@@ -1000,7 +1007,7 @@ class TestStream:
         before adding), and a subsequent ``values`` snapshot whose
         reassembled ``AIMessage`` carries a real id will fall through
         the dedup check and synthesize a second AI text event for the
-        same logical message — consumers see duplicated text.
+        same logical message â€” consumers see duplicated text.
 
         Why this is documented rather than fixed
         ----------------------------------------
@@ -1011,7 +1018,7 @@ class TestStream:
         like ``f"_synth_{id(msg_chunk)}"`` only helps if the values
         snapshot uses the same fallback, which it does not.  A real
         fix requires either provider cooperation (always emit chunk
-        ids — out of scope for this PR) or content-based dedup (risks
+        ids â€” out of scope for this PR) or content-based dedup (risks
         false positives for two distinct short messages with identical
         text).
 
@@ -1054,7 +1061,7 @@ class TestStream:
         #      because of ``if msg_id:`` guard at client.py line ~522)
         #   2) from values-snapshot synthesis (ai-1 not in streamed_ids,
         #      so the skip-branch at line ~549 doesn't trigger)
-        # If this becomes 1, someone fixed the limitation — update this
+        # If this becomes 1, someone fixed the limitation â€” update this
         # test to a positive assertion and document the fix.
         assert len(ai_text_events) == 2
         assert ai_text_events[0].data["id"] is None
@@ -1406,12 +1413,16 @@ class TestEnsureAgent:
         """_ensure_agent does not recreate if config key unchanged."""
         mock_agent = MagicMock()
         client._agent = mock_agent
-        client._agent_config_key = (None, True, False, False, None, None, None, None, "full", 10, "test-user-autouse", None)
+        # Element 1 is ``thinking_enabled``. It is ``False`` because that is the
+        # client's default: a ``True`` here no longer matches the key
+        # ``_get_runnable_config`` produces, so the agent would be rebuilt and this
+        # test would fail for a reason unrelated to what it asserts.
+        client._agent_config_key = (None, False, False, False, None, None, None, None, "full", 10, "test-user-autouse", None)
 
         config = client._get_runnable_config("t1")
         client._ensure_agent(config)
 
-        # Should still be the same mock — no recreation
+        # Should still be the same mock â€” no recreation
         assert client._agent is mock_agent
 
     def test_recreates_agent_when_subagent_limits_change(self, client):
@@ -1449,7 +1460,7 @@ class TestEnsureAgent:
 
     def test_deferred_skill_discovery_wired_when_enabled(self, client, mock_app_config):
         """When skills.deferred_discovery=True, skill_names reaches apply_prompt_template
-        (parity with agent.py — config flag must not be a silent no-op on the embedded path)."""
+        (parity with agent.py â€” config flag must not be a silent no-op on the embedded path)."""
         from pathlib import Path
 
         from alpha.skills.types import Skill, SkillCategory
@@ -1526,7 +1537,7 @@ class TestEnsureAgent:
     def test_mcp_routing_middleware_wired_when_tool_search_enabled(self, client, mock_app_config):
         """Embedded client builds McpRoutingMiddleware from routed deferred MCP tools.
 
-        RFC §10.3/§12.5 requires verifying the actual embedded-client builder path
+        RFC Â§10.3/Â§12.5 requires verifying the actual embedded-client builder path
         rather than assuming it inherits lead-agent behavior. Exercises the real
         assemble_deferred_tools + build_mcp_routing_middleware wiring and asserts a
         genuine McpRoutingMiddleware reaches build_middlewares.
@@ -2607,7 +2618,7 @@ class TestScenarioToolChain:
     """Scenario: Agent chains multiple tool calls in sequence."""
 
     def test_multi_tool_chain(self, client):
-        """Agent calls bash → reads output → calls write_file → responds."""
+        """Agent calls bash â†’ reads output â†’ calls write_file â†’ responds."""
         ai_bash = AIMessage(
             content="",
             id="ai-1",
@@ -2654,10 +2665,10 @@ class TestScenarioToolChain:
 
 
 class TestScenarioFileLifecycle:
-    """Scenario: Upload files → list them → use in chat → download artifact."""
+    """Scenario: Upload files â†’ list them â†’ use in chat â†’ download artifact."""
 
     def test_upload_list_delete_lifecycle(self, client):
-        """Upload → list → verify → delete → list again."""
+        """Upload â†’ list â†’ verify â†’ delete â†’ list again."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             uploads_dir = tmp_path / "uploads"
@@ -2731,7 +2742,7 @@ class TestScenarioConfigManagement:
     """Scenario: Query and update configuration through a management session."""
 
     def test_model_and_skill_discovery(self, client):
-        """List models → get specific model → list skills → get specific skill."""
+        """List models â†’ get specific model â†’ list skills â†’ get specific skill."""
         # List models
         result = client.list_models()
         assert len(result["models"]) >= 1
@@ -2768,7 +2779,7 @@ class TestScenarioConfigManagement:
         assert detail["enabled"] is True
 
     def test_mcp_update_then_skill_toggle(self, client):
-        """Update MCP config → toggle skill → verify both invalidate agent."""
+        """Update MCP config â†’ toggle skill â†’ verify both invalidate agent."""
         with tempfile.TemporaryDirectory() as tmp:
             config_file = Path(tmp) / "extensions_config.json"
             config_file.write_text("{}")
@@ -3033,10 +3044,10 @@ class TestScenarioThreadIsolation:
 
 
 class TestScenarioMemoryWorkflow:
-    """Scenario: Memory query → reload → status check."""
+    """Scenario: Memory query â†’ reload â†’ status check."""
 
     def test_memory_full_lifecycle(self, client):
-        """get_memory → reload → get_status covers the full memory API."""
+        """get_memory â†’ reload â†’ get_status covers the full memory API."""
         initial_data = {"version": "1.0", "facts": [{"id": "f1", "content": "User likes Python"}]}
         updated_data = {
             "version": "1.0",
@@ -3075,10 +3086,10 @@ class TestScenarioMemoryWorkflow:
 
 
 class TestScenarioSkillInstallAndUse:
-    """Scenario: Install a skill → verify it appears → toggle it."""
+    """Scenario: Install a skill â†’ verify it appears â†’ toggle it."""
 
     def test_install_then_toggle(self, client, allow_skill_security_scan):
-        """Install .skill archive → list to verify → disable → verify disabled."""
+        """Install .skill archive â†’ list to verify â†’ disable â†’ verify disabled."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
 
@@ -3146,7 +3157,7 @@ class TestScenarioEdgeCases:
     """Scenario: Edge cases and error boundaries in realistic workflows."""
 
     def test_empty_stream_response(self, client):
-        """Agent produces no messages — only values + end events."""
+        """Agent produces no messages â€” only values + end events."""
         agent = _make_agent_mock([{"messages": []}])
 
         with (
@@ -3196,7 +3207,7 @@ class TestScenarioEdgeCases:
         assert values_events[2].data["title"] == "Second Title"
 
     def test_concurrent_tool_calls_in_single_message(self, client):
-        """Agent produces multiple tool_calls in one AIMessage — emitted as single messages-tuple."""
+        """Agent produces multiple tool_calls in one AIMessage â€” emitted as single messages-tuple."""
         ai = AIMessage(
             content="",
             id="ai-1",
@@ -3222,7 +3233,7 @@ class TestScenarioEdgeCases:
         assert {tc["id"] for tc in tool_calls} == {"tc-1", "tc-2", "tc-3"}
 
     def test_upload_convertible_file_conversion_failure(self, client):
-        """Upload a .pdf file where conversion fails — file still uploaded, no markdown."""
+        """Upload a .pdf file where conversion fails â€” file still uploaded, no markdown."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             uploads_dir = tmp_path / "uploads"
@@ -3247,7 +3258,7 @@ class TestScenarioEdgeCases:
 
 
 # ---------------------------------------------------------------------------
-# Gateway conformance — validate client output against Gateway Pydantic models
+# Gateway conformance â€” validate client output against Gateway Pydantic models
 # ---------------------------------------------------------------------------
 
 
@@ -3479,7 +3490,7 @@ class TestGatewayConformance:
 
 
 # ===========================================================================
-# Hardening — install_skill security gates
+# Hardening â€” install_skill security gates
 # ===========================================================================
 
 
@@ -3688,7 +3699,7 @@ class TestInstallSkillSecurity:
 
 
 # ===========================================================================
-# Hardening — _atomic_write_json error paths
+# Hardening â€” _atomic_write_json error paths
 # ===========================================================================
 
 
@@ -3741,7 +3752,7 @@ class TestAtomicWriteJson:
 
 
 # ===========================================================================
-# Hardening — config update error paths
+# Hardening â€” config update error paths
 # ===========================================================================
 
 
@@ -3789,7 +3800,7 @@ class TestConfigUpdateErrors:
 
 
 # ===========================================================================
-# Hardening — stream / chat edge cases
+# Hardening â€” stream / chat edge cases
 # ===========================================================================
 
 
@@ -3951,7 +3962,7 @@ class TestStreamHardening:
 
 
 # ===========================================================================
-# Hardening — _serialize_message coverage
+# Hardening â€” _serialize_message coverage
 # ===========================================================================
 
 
@@ -4022,7 +4033,7 @@ class TestSerializeMessage:
 
 
 # ===========================================================================
-# Hardening — upload / delete symlink attack
+# Hardening â€” upload / delete symlink attack
 # ===========================================================================
 
 
@@ -4062,7 +4073,7 @@ class TestUploadDeleteSymlink:
             uploads_dir = tmp_path / "uploads"
             uploads_dir.mkdir()
 
-            weird_name = "report 2024 数据.txt"
+            weird_name = "report 2024 æ•°æ®.txt"
             src_file = tmp_path / weird_name
             src_file.write_text("data")
 
@@ -4075,7 +4086,7 @@ class TestUploadDeleteSymlink:
 
 
 # ===========================================================================
-# Hardening — artifact edge cases
+# Hardening â€” artifact edge cases
 # ===========================================================================
 
 
@@ -4112,7 +4123,7 @@ class TestArtifactHardening:
 
 
 # ===========================================================================
-# BUG DETECTION — tests that expose real bugs in client.py
+# BUG DETECTION â€” tests that expose real bugs in client.py
 # ===========================================================================
 
 
@@ -4121,12 +4132,12 @@ class TestUploadDuplicateFilenames:
 
     Previously it silently overwrote the first file with the second,
     then reported both in the response while only one existed on disk.
-    Now duplicates are renamed (data.txt → data_1.txt) and the response
+    Now duplicates are renamed (data.txt â†’ data_1.txt) and the response
     includes original_filename so the agent / caller can see what happened.
     """
 
     def test_duplicate_filenames_auto_renamed(self, client):
-        """Two files with same basename → second gets _1 suffix."""
+        """Two files with same basename â†’ second gets _1 suffix."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             uploads_dir = tmp_path / "uploads"
@@ -4161,7 +4172,7 @@ class TestUploadDuplicateFilenames:
             assert (uploads_dir / "data_1.txt").read_text() == "version B"
 
     def test_triple_duplicate_increments_counter(self, client):
-        """Three files with same basename → _1, _2 suffixes."""
+        """Three files with same basename â†’ _1, _2 suffixes."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             uploads_dir = tmp_path / "uploads"
@@ -4230,7 +4241,7 @@ class TestBugArtifactPrefixMatchTooLoose:
 
 class TestBugListUploadsDeadCode:
     """Regression: list_uploads works even when called on a fresh thread
-    (directory does not exist yet — returns empty without creating it).
+    (directory does not exist yet â€” returns empty without creating it).
     """
 
     def test_list_uploads_on_fresh_thread(self, client):
@@ -4258,7 +4269,7 @@ class TestBugAgentInvalidationInconsistency:
     def test_update_mcp_resets_config_key(self, client):
         """After update_mcp_config, both _agent and _agent_config_key are None."""
         client._agent = MagicMock()
-        client._agent_config_key = ("model", True, False, False)
+        client._agent_config_key = ("model", False, False, False)
 
         current_config = ExtensionsConfig()
         reloaded = ExtensionsConfig()
@@ -4280,7 +4291,7 @@ class TestBugAgentInvalidationInconsistency:
     def test_update_skill_resets_config_key(self, client):
         """After update_skill, both _agent and _agent_config_key are None."""
         client._agent = MagicMock()
-        client._agent_config_key = ("model", True, False, False)
+        client._agent_config_key = ("model", False, False, False)
 
         skill = MagicMock()
         skill.name = "s1"

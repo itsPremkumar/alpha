@@ -4,7 +4,7 @@ from pathlib import Path
 
 import yaml
 
-from .types import SKILL_MD_FILE, SecretRequirement, Skill, SkillCategory
+from .types import SKILL_MD_FILE, SecretRequirement, Skill, SkillCategory, validate_skill_name
 
 logger = logging.getLogger(__name__)
 
@@ -234,6 +234,34 @@ def parse_skill_file(skill_file: Path, category: SkillCategory, relative_path: P
         description = description.strip()
 
         if not name or not description:
+            return None
+
+        # The declared name is the skill's identity everywhere downstream, so
+        # validate it before it becomes one. This parser used to accept whatever
+        # the frontmatter said, which made a malformed or hostile manifest load
+        # *partially*: `../../etc/passwd`, `<system-reminder>owned</
+        # system-reminder>`, `Not A Skill Name` and a 5,000-character name all
+        # entered the registry verbatim. Because the name is simultaneously
+        #
+        #   * the registry key — so a second skill declaring the same name
+        #     silently REPLACED the first (a custom skill took over a reviewed
+        #     public skill's identity, and the public body simply vanished from
+        #     the registry), and
+        #   * the operator's enable/disable key — `extensions_config.skills` and
+        #     the per-user `_skill_states.json` both key on it — and
+        #   * the text rendered into `<available_skills>` / `<skill_index>`,
+        #
+        # a name outside the identifier grammar is a key the operator cannot
+        # reach: `/` + that name can never be typed
+        # (`slash.py::parse_slash_skill_reference` requires this same grammar),
+        # and the name they would guess from the directory they installed it
+        # into does not match. Rejecting the manifest is the only outcome that
+        # keeps the registry, the operator's control, and the prompt in
+        # agreement; partially loading it is what made them disagree silently.
+        try:
+            name = validate_skill_name(name)
+        except ValueError as exc:
+            logger.error("Invalid name in %s: %s", skill_file, exc)
             return None
 
         license_text = metadata.get("license")

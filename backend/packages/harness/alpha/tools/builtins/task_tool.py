@@ -411,6 +411,89 @@ def _log_cleanup_failure(cleanup_task: asyncio.Task[None] | concurrent.futures.F
         logger.error(f"[trace={trace_id}] Deferred cleanup failed for execution {execution_id}: {exc}")
 
 
+# ---------------------------------------------------------------------------
+# Behaviour trace, layer 6 (subagent) — default-off, additive
+# ---------------------------------------------------------------------------
+# Every helper below is a no-op unless a writer is installed, and swallows its own
+# failures. The task tool runs inside a live run with a cooperative-cancel guard
+# around it, so raising from a trace here would put a telemetry concern on the
+# same path as subagent cleanup — the one place where a mistake is most expensive.
+def _trace_subagent_spawned(
+    *,
+    subagent_id: str,
+    execution_id: str,
+    subagent_type: str,
+    reason: str,
+    depth: int,
+    assigned_model: str,
+    prompt: str,
+    run_id: str | None,
+    thread_id: str | None,
+    trace_id: str | None,
+    agent_name: str | None = None,
+) -> None:
+    """Record a subagent spawn (layer 6). Never raises."""
+    try:
+        from alpha.observability.trace.instrumentation import emit_subagent_spawned
+
+        emit_subagent_spawned(
+            reason=reason,
+            depth=depth,
+            subagent_id=subagent_id,
+            assigned_model=assigned_model,
+            prompt_sha256=_sha256(prompt or ""),
+            run_id=run_id,
+            thread_id=thread_id,
+            trace_id=trace_id,
+            agent_name=agent_name,
+            extra_payload={"execution_id": execution_id, "subagent_type": subagent_type},
+        )
+    except Exception:  # noqa: BLE001 - a trace must never break the run it traces
+        return
+
+
+def _trace_subagent_completed(
+    *,
+    subagent_id: str,
+    outcome: str,
+    depth: int,
+    usage: dict | None,
+    run_id: str | None,
+    thread_id: str | None,
+    trace_id: str | None,
+    error: str | None = None,
+) -> None:
+    """Record a subagent finishing (layer 6). Never raises.
+
+    ``error`` is recorded as a *hash* for the same reason the prompt is: a
+    subagent failure message routinely quotes the command that failed, and a
+    command line is exactly what redaction exists to keep out of a durable log.
+    """
+    try:
+        from alpha.observability.trace.instrumentation import emit_subagent_completed
+
+        usage = usage if isinstance(usage, dict) else {}
+        emit_subagent_completed(
+            depth=depth,
+            outcome=outcome,
+            subagent_id=subagent_id,
+            input_tokens=usage.get("input_tokens") or usage.get("total_input_tokens"),
+            output_tokens=usage.get("output_tokens") or usage.get("total_output_tokens"),
+            run_id=run_id,
+            thread_id=thread_id,
+            trace_id=trace_id,
+            extra_payload={"error_sha256": _sha256(error) if error else None},
+        )
+    except Exception:  # noqa: BLE001 - a trace must never break the run it traces
+        return
+
+
+def _sha256(text: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()
+
+
 # Strong references to scheduled deferred cleanups. The event loop only keeps
 # weak references to tasks, so an unreferenced cleanup could be garbage
 # collected mid-poll; entries hold either an asyncio task (caller-loop
@@ -997,6 +1080,27 @@ async def task_tool(
 
     logger.info(f"[trace={trace_id}] Started background task {tool_call_id} (execution_id={execution_id}, subagent={subagent_type}, timeout={config.timeout_seconds}s, polling_limit={max_poll_count} polls)")
 
+    # Layer 6, spawn half. Emitted here because this is the one place a subagent
+    # is actually created — `executor.execute_async` above is the boundary, and
+    # anywhere earlier has not committed to spawning and anywhere later has
+    # already started. The prompt goes in as a *hash*: the delegation prompt is a
+    # highest-risk payload, and what a comparison needs is its identity, not its
+    # text. A caller that must record the text passes it through the writer,
+    # which redacts and bounds it.
+    _trace_subagent_spawned(
+        subagent_id=tool_call_id,
+        execution_id=execution_id,
+        subagent_type=subagent_type,
+        reason=description or "task tool delegation",
+        depth=1,
+        assigned_model=effective_model,
+        prompt=prompt,
+        run_id=run_id,
+        thread_id=thread_id,
+        trace_id=trace_id,
+        agent_name="lead-agent",
+    )
+
     writer = get_stream_writer()
     try:
         # Send Task Started message. This is a real await point (registered
@@ -1065,6 +1169,15 @@ async def task_tool(
             # Check if task completed, failed, or timed out
             if result.status == SubagentStatus.COMPLETED:
                 _report_subagent_usage(runtime, result)
+                _trace_subagent_completed(
+                    subagent_id=tool_call_id,
+                    outcome="completed",
+                    depth=1,
+                    usage=usage,
+                    run_id=run_id,
+                    thread_id=thread_id,
+                    trace_id=trace_id,
+                )
                 await aemit_custom_event(
                     {
                         "type": "task_completed",
@@ -1147,6 +1260,16 @@ async def task_tool(
                 )
             elif result.status == SubagentStatus.FAILED:
                 _report_subagent_usage(runtime, result)
+                _trace_subagent_completed(
+                    subagent_id=tool_call_id,
+                    outcome="failed",
+                    depth=1,
+                    usage=usage,
+                    run_id=run_id,
+                    thread_id=thread_id,
+                    trace_id=trace_id,
+                    error=result.error,
+                )
                 await aemit_custom_event(
                     {
                         "type": "task_failed",

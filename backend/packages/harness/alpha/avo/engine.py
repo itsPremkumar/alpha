@@ -84,6 +84,7 @@ class AVOEngine:
             improved=committed,
             signature=signature,
             backtrack_candidate=effective_parent,
+            lineage=self.lineage,
         )
 
         if committed:
