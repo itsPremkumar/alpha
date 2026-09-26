@@ -146,7 +146,12 @@ services:
       - AGENT_WORKSPACE_HOME=/app/backend/.agent-workspace
       - AGENT_WORKSPACE_CONFIG_PATH=/app/backend/config.yaml
       - AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH=/app/backend/extensions_config.json
-      - ALPHA_PEER_NETWORK_ENABLED=${ALPHA_PEER_NETWORK_ENABLED:-1}
+      # The peer plane opens an inbound listener, so it stays OFF unless the
+      # operator opts in. This previously defaulted to 1 here, which silently
+      # overrode the code-level secure default and left every containerised
+      # deployment with the inbound plane open. Set
+      # ALPHA_PEER_NETWORK_ENABLED=1 to re-enable it deliberately.
+      - ALPHA_PEER_NETWORK_ENABLED=${ALPHA_PEER_NETWORK_ENABLED:-0}
       - ALPHA_PEER_NETWORK_BIND_HOST=${ALPHA_PEER_NETWORK_BIND_HOST:-0.0.0.0}
       - ALPHA_PEER_NETWORK_DISCOVERY_PORT=${ALPHA_PEER_NETWORK_DISCOVERY_PORT:-8743}
       - ALPHA_PEER_NETWORK_ADVERTISED_BASE_URL=${ALPHA_PEER_NETWORK_ADVERTISED_BASE_URL:-}

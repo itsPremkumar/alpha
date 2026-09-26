@@ -28,6 +28,12 @@ from app.gateway.deps import require_admin_user
 
 logger = logging.getLogger(__name__)
 _MAX_PUBLIC_BODY_BYTES = 512 * 1024
+# Every route whose response body carries the installation's INBOUND BEARER (the
+# pairing code that authorises a peer to deliver messages into this instance)
+# gates on this. `threads:read`/`threads:write` are deliberately low-privilege
+# permissions, so on their own they are not enough to read or rotate a credential
+# that opens the unauthenticated inbound plane.
+_ADMIN_REQUIRED_DETAIL = "Administrator role is required to read or rotate the peer pairing credential."
 router = APIRouter(prefix="/api/peer-network", tags=["peer-network"])
 public_router = APIRouter(tags=["peer-network-public"])
 
@@ -77,7 +83,17 @@ async def _call(operation: Any):
 
 @router.get("/status", response_model=PeerStatus, summary="Read peer network status")
 @require_permission("threads", "read")
-async def get_status() -> PeerStatus:
+async def get_status(request: Request = None) -> PeerStatus:
+    # `include_pairing_code=True` returns this installation's INBOUND BEARER -
+    # the pairing code that authorises anyone to deliver messages into this
+    # instance. `threads:read` is a deliberately low-privilege permission, so
+    # without an admin gate any authenticated low-privilege caller could read
+    # the credential that opens the inbound plane. This mirrors the gate
+    # `github/publish` below already uses: permission AND admin.
+    await require_admin_user(
+        request,
+        detail=_ADMIN_REQUIRED_DETAIL,
+    )
     return await _call(_service().status(include_pairing_code=True))
 
 
@@ -98,7 +114,15 @@ async def discover_peers() -> dict[str, Any]:
 @router.post("/github/publish", summary="Publish this Agent Card to the configured GitHub rendezvous")
 @require_permission("threads", "write")
 async def publish_github_card(request: Request) -> dict[str, Any]:
-    await require_admin_user(request)
+    # `detail` is a REQUIRED keyword-only argument of require_admin_user
+    # (app/gateway/deps.py). Omitting it raised TypeError, so this route 500ed on
+    # every call rather than authorising anyone. No test exercised it, which is
+    # why it survived; test_peer_network_admin_gate.py now covers both admin
+    # call sites on this router.
+    await require_admin_user(
+        request,
+        detail="Admin role required to publish this installation's agent card.",
+    )
     result = await _call(_service().publish_github_card())
     return {"published": True, "result": result}
 
@@ -112,7 +136,17 @@ async def pair_peer(body: PairRequest) -> dict[str, Any]:
 
 @router.post("/pair/rotate", summary="Rotate this installation's pairing code")
 @require_permission("threads", "write")
-async def rotate_pairing_code() -> dict[str, Any]:
+async def rotate_pairing_code(request: Request) -> dict[str, Any]:
+    # This response body IS the inbound bearer: `rotate_pairing_code()` returns
+    # `identity.pairing_code`, and `service.accept_pair` compares a presented
+    # code against that same value in constant time while `find_peer_by_token`
+    # resolves `token_digest(pairing_code)`. So anyone who can read this body
+    # can authenticate to the PUBLIC `remote/pair` and `inbound/messages` routes
+    # as a paired peer. `GET /status` and `POST /github/publish` above are
+    # admin-gated for exactly that reason; leaving the rotate route at bare
+    # `threads:write` published the same credential one route over at a lower
+    # auth level. Permission AND admin, like its two siblings.
+    await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     code = await _call(_service().rotate_pairing_code())
     return {"status": "rotated", "pairing_code": code}
 
