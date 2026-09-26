@@ -70,6 +70,7 @@ async def deep_research(
     include_adversarial: bool = True,
     output_path: str = "deep_research_report.md",
     output_filename: str | None = None,
+    deadline_seconds: float = 300.0,
 ) -> str:
     """Conduct bounded multi-lane deep research with explicit evidence status.
 
@@ -78,6 +79,14 @@ async def deep_research(
     and generates a Markdown evidence report. A report with no retrieved sources is returned
     as ``no_evidence`` rather than fabricated or labeled successful.
 
+    A claim is given a page citation only when the page body was actually retrieved.
+    A source whose body could not be read (fetch failure, or a body quarantined by the
+    prompt-injection screen) is reported as ``snippet_only`` and its statements are
+    labelled as search snippets, never as page evidence. Every failed lane, failed
+    retrieval, quarantine and budget overrun is listed in ``failures`` and rendered into
+    the report, and ``coverage`` is ``complete``, ``partial`` or ``none`` — a partial
+    investigation is never presented as a finished one.
+
     Args:
         topic: The research question, technical subject, or investigation target.
         depth: Investigation depth from 1 (broad landscape) to 5 (broader targeted gap follow-up). Default 3.
@@ -85,6 +94,10 @@ async def deep_research(
         include_adversarial: Actively execute falsification queries to uncover bottlenecks, risks, and failure modes. Default True.
         output_path: Markdown filename to save inside the current thread outputs directory. Default 'deep_research_report.md'.
         output_filename: Optional legacy alias for output_path. Both accept a filename only, never a host path.
+        deadline_seconds: Wall-clock budget for the whole run (1-1800). On expiry the report covers only what was retrieved. Default 300.
+
+    ``depth`` (1-5), ``max_sources`` (1-30) and ``deadline_seconds`` (1-1800) are clamped to those
+    ceilings; any clamp is reported in ``bounds`` and in the report's coverage section.
     """
     engine = DeepResearchEngine()
 
@@ -93,6 +106,7 @@ async def deep_research(
         depth=depth,
         max_sources=max_sources,
         include_adversarial=include_adversarial,
+        deadline_seconds=deadline_seconds,
     )
 
     dest = output_filename or output_path or "deep_research_report.md"
@@ -106,17 +120,26 @@ async def deep_research(
 
     summary_payload: dict[str, Any] = {
         "status": report.status,
+        "coverage": report.coverage,
         "topic": report.topic,
         "executive_summary": report.executive_summary,
         "sources_analyzed": len(report.sources),
+        "sources_read": report.page_backed_source_count,
+        "sources_snippet_only": report.snippet_only_source_count,
         "citations_registered": len(report.citations),
         "citations_verified": report.verified_citation_count,
         "contradictions_detected": len(report.contradictions),
+        "conflicts_detected": len(report.conflicts),
         "adversarial_comparisons_detected": len(report.contradictions),
         "saved_report_path": saved_path,
         "output_error": output_error,
         "markdown_report": report.markdown_content,
         "core_findings_preview": report.core_findings[:3],
+        # A partial investigation must be readable as partial from the payload
+        # alone, without opening the Markdown: every lane, retrieval, quarantine
+        # and budget failure is named here with its stage, target and error type.
+        "failures": [failure.to_dict() for failure in report.failures],
+        "bounds": report.bounds,
         "top_sources": [
             {
                 "title": source.title,
@@ -124,6 +147,12 @@ async def deep_research(
                 "domain": source.domain,
                 "facet": source.pass_type,
                 "citation_status": source.citation_status,
+                "retrieval": source.retrieval,
+                "retrieval_note": source.retrieval_note,
+                "injection_risk": source.injection_risk,
+                "injection_signals": source.injection_signals,
+                "unsupported_findings": source.unsupported_findings,
+                "content_truncated": source.content_truncated,
             }
             for source in report.sources[:5]
         ],

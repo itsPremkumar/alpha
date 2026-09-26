@@ -92,7 +92,14 @@ def test_contradiction_detection():
     contradictions = engine.detect_contradictions([s1, s2])
     assert len(contradictions) >= 1
     assert any("failure rate" in c.adversarial_evidence.lower() or "dendrite" in c.adversarial_evidence.lower() for c in contradictions)
-    assert "does not establish a logical contradiction" in contradictions[0].nuance_explanation
+    # The two sources really do disagree about the same subject (one claims
+    # production is scaling with 99% yield, the other reports a high failure
+    # rate in production), so this is reported as a conflict rather than as a
+    # blanket juxtaposition -- and it still refuses to pick a winner.
+    assert contradictions[0].is_conflict
+    assert contradictions[0].subject
+    assert contradictions[0].evidence_a and contradictions[0].evidence_b
+    assert "does not establish which source is correct" in contradictions[0].nuance_explanation
 
 
 def test_gap_detection_and_resolution():
