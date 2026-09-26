@@ -1,0 +1,301 @@
+{
+  "schema_version": 1,
+  "tool": "check_cold_start_budget",
+  "probe_version": "1.0.0",
+  "host": {
+    "platform": "win32",
+    "python_version": "3.12.14",
+    "python_executable": "C:\\Users\\PREM KUMAR\\Videos\\alpha\\backend\\.venv\\Scripts\\python.exe",
+    "prefix": "C:\\Users\\PREM KUMAR\\Videos\\alpha\\backend\\.venv",
+    "base_prefix": "C:\\Users\\PREM KUMAR\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none",
+    "venv": true,
+    "is_windows": true,
+    "cpu_count": 16,
+    "operator_label": "dev-laptop-win11-defender",
+    "defender_note": "Windows on-access AV scanning is expected to inflate per-file open cost (and therefore cold cost) versus an unsanned host. Treat absolute cold numbers as host-specific; the module graph, the chain attribution and the harness/third-party split are not."
+  },
+  "measurement": {
+    "repeats": 3,
+    "timeout_seconds": 900.0,
+    "attribution_mode": "cold"
+  },
+  "tolerance_ms": 2500.0,
+  "targets": {
+    "alpha": {
+      "cold_ms": 3572.4,
+      "warm_ms": 3344.9,
+      "module_count": 1
+    },
+    "alpha.config.memory_config": {
+      "cold_ms": 35620.7,
+      "warm_ms": 37653.0,
+      "module_count": 432
+    },
+    "alpha.memory": {
+      "cold_ms": 3603.3,
+      "warm_ms": 3601.9,
+      "module_count": 2
+    },
+    "alpha.agents.lead_agent.prompt": {
+      "cold_ms": 147217.2,
+      "warm_ms": 141283.1,
+      "module_count": 1757
+    },
+    "alpha.tools.builtins": {
+      "cold_ms": 126218.4,
+      "warm_ms": 135809.1,
+      "module_count": 1917
+    },
+    "app.gateway.app": {
+      "cold_ms": 181435.3,
+      "warm_ms": 140108.8,
+      "module_count": 2572
+    }
+  },
+  "module_budgets": {
+    "alpha": {
+      "self_ms": 8.4,
+      "observed_in": "alpha"
+    },
+    "alpha.memory.affective.config": {
+      "self_ms": 737.8,
+      "observed_in": "alpha.config.memory_config"
+    },
+    "langchain_core.language_models.chat_models": {
+      "self_ms": 503.4,
+      "observed_in": "alpha.config.memory_config"
+    },
+    "alpha.memory.narrative.models": {
+      "self_ms": 438.7,
+      "observed_in": "alpha.config.memory_config"
+    },
+    "langchain_core.language_models.base": {
+      "self_ms": 431.4,
+      "observed_in": "alpha.config.memory_config"
+    },
+    "alpha.config.memory_config": {
+      "self_ms": 402.1,
+      "observed_in": "alpha.config.memory_config"
+    },
+    "pydantic_core.core_schema": {
+      "self_ms": 374.2,
+      "observed_in": "alpha.config.memory_config"
+    },
+    "langchain_protocol.protocol": {
+      "self_ms": 283.0,
+      "observed_in": "alpha.config.memory_config"
+    },
+    "alpha.memory.health.models": {
+      "self_ms": 277.0,
+      "observed_in": "alpha.config.memory_config"
+    },
+    "alpha.memory.scenarios.models": {
+      "self_ms": 255.4,
+      "observed_in": "alpha.config.memory_config"
+    },
+    "urllib3.util.url": {
+      "self_ms": 245.6,
+      "observed_in": "alpha.config.memory_config"
+    },
+    "yaml.reader": {
+      "self_ms": 239.2,
+      "observed_in": "alpha.config.memory_config"
+    },
+    "langgraph.types": {
+      "self_ms": 237.6,
+      "observed_in": "alpha.config.memory_config"
+    },
+    "alpha.memory.policy.models": {
+      "self_ms": 194.9,
+      "observed_in": "alpha.config.memory_config"
+    },
+    "langchain.agents.factory": {
+      "self_ms": 190.6,
+      "observed_in": "alpha.config.memory_config"
+    },
+    "langchain_core.prompt_values": {
+      "self_ms": 146.6,
+      "observed_in": "alpha.config.memory_config"
+    },
+    "langgraph_sdk.schema": {
+      "self_ms": 141.5,
+      "observed_in": "alpha.config.memory_config"
+    },
+    "langchain.agents.middleware.todo": {
+      "self_ms": 132.7,
+      "observed_in": "alpha.config.memory_config"
+    },
+    "packaging.version": {
+      "self_ms": 125.9,
+      "observed_in": "alpha.config.memory_config"
+    },
+    "http.cookiejar": {
+      "self_ms": 117.4,
+      "observed_in": "alpha.config.memory_config"
+    },
+    "alpha.memory.codebase.config": {
+      "self_ms": 106.9,
+      "observed_in": "alpha.config.memory_config"
+    },
+    "alpha.memory": {
+      "self_ms": 14.7,
+      "observed_in": "alpha.memory"
+    },
+    "alpha.memory._lazy_exports": {
+      "self_ms": 11.1,
+      "observed_in": "alpha.memory"
+    },
+    "alpha.tools.builtins.os_computer_tool": {
+      "self_ms": 3776.1,
+      "observed_in": "alpha.agents.lead_agent.prompt"
+    },
+    "mcp.types": {
+      "self_ms": 3484.2,
+      "observed_in": "alpha.agents.lead_agent.prompt"
+    },
+    "alpha.tools.builtins.batch_task_tool": {
+      "self_ms": 2083.1,
+      "observed_in": "alpha.agents.lead_agent.prompt"
+    },
+    "alpha.agents.task_continuity.tools": {
+      "self_ms": 1824.8,
+      "observed_in": "alpha.agents.lead_agent.prompt"
+    },
+    "alpha.tools.builtins.agent_message_tool": {
+      "self_ms": 1494.2,
+      "observed_in": "alpha.agents.lead_agent.prompt"
+    },
+    "alpha.tools.builtins.background_tasks_tool": {
+      "self_ms": 1471.8,
+      "observed_in": "alpha.agents.lead_agent.prompt"
+    },
+    "langchain_openai.chat_models.base": {
+      "self_ms": 1259.5,
+      "observed_in": "alpha.agents.lead_agent.prompt"
+    },
+    "alpha.tools.builtins.enclave_security_tool": {
+      "self_ms": 974.8,
+      "observed_in": "alpha.agents.lead_agent.prompt"
+    },
+    "alpha.tools.builtins.task_tool": {
+      "self_ms": 877.0,
+      "observed_in": "alpha.agents.lead_agent.prompt"
+    },
+    "alpha.reasoning.tom.models": {
+      "self_ms": 833.9,
+      "observed_in": "alpha.agents.lead_agent.prompt"
+    },
+    "alpha.tools.builtins.list_uploaded_files_tool": {
+      "self_ms": 826.6,
+      "observed_in": "alpha.agents.lead_agent.prompt"
+    },
+    "alpha.tools.builtins.update_agent_tool": {
+      "self_ms": 781.0,
+      "observed_in": "alpha.agents.lead_agent.prompt"
+    },
+    "alpha.tools.builtins.review_skill_package_tool": {
+      "self_ms": 762.0,
+      "observed_in": "alpha.agents.lead_agent.prompt"
+    },
+    "alpha.tools.builtins.session_search_tool": {
+      "self_ms": 758.3,
+      "observed_in": "alpha.agents.lead_agent.prompt"
+    },
+    "alpha.tools.builtins.self_improvement_tool": {
+      "self_ms": 757.0,
+      "observed_in": "alpha.agents.lead_agent.prompt"
+    },
+    "alpha.tools.builtins.harness_refine_tool": {
+      "self_ms": 750.6,
+      "observed_in": "alpha.agents.lead_agent.prompt"
+    },
+    "alpha.tools.builtins.code_mode_tool": {
+      "self_ms": 725.2,
+      "observed_in": "alpha.agents.lead_agent.prompt"
+    },
+    "alpha.tools.builtins.setup_agent_tool": {
+      "self_ms": 719.3,
+      "observed_in": "alpha.agents.lead_agent.prompt"
+    },
+    "alpha.tools.builtins.python_repl_tool": {
+      "self_ms": 717.3,
+      "observed_in": "alpha.agents.lead_agent.prompt"
+    },
+    "alpha.tools.builtins.cognitive_memory_tool": {
+      "self_ms": 700.9,
+      "observed_in": "alpha.agents.lead_agent.prompt"
+    },
+    "alpha.swarm.communication": {
+      "self_ms": 807.2,
+      "observed_in": "alpha.tools.builtins"
+    },
+    "openai.types.responses.response_code_interpreter_call_code_delta_event": {
+      "self_ms": 657.5,
+      "observed_in": "alpha.tools.builtins"
+    },
+    "langchain.tools": {
+      "self_ms": 643.3,
+      "observed_in": "alpha.tools.builtins"
+    },
+    "sqlalchemy.util.compat": {
+      "self_ms": 636.4,
+      "observed_in": "alpha.tools.builtins"
+    },
+    "alpha.tools.builtins.code_agentic_core": {
+      "self_ms": 579.6,
+      "observed_in": "alpha.tools.builtins"
+    },
+    "app.gateway.app": {
+      "self_ms": 12263.3,
+      "observed_in": "app.gateway.app"
+    },
+    "alpha.community.browser_automation.tools": {
+      "self_ms": 3223.3,
+      "observed_in": "app.gateway.app"
+    },
+    "app.gateway.system_monitor_service": {
+      "self_ms": 3014.7,
+      "observed_in": "app.gateway.app"
+    },
+    "app.gateway.routers.projects": {
+      "self_ms": 2325.2,
+      "observed_in": "app.gateway.app"
+    },
+    "fastapi.openapi.models": {
+      "self_ms": 2162.4,
+      "observed_in": "app.gateway.app"
+    },
+    "app.gateway.routers.agents": {
+      "self_ms": 1391.7,
+      "observed_in": "app.gateway.app"
+    },
+    "app.gateway.routers.enterprise": {
+      "self_ms": 1214.2,
+      "observed_in": "app.gateway.app"
+    },
+    "app.gateway.routers.bots": {
+      "self_ms": 1178.4,
+      "observed_in": "app.gateway.app"
+    },
+    "app.gateway.routers.thread_runs": {
+      "self_ms": 945.3,
+      "observed_in": "app.gateway.app"
+    },
+    "app.gateway.routers.agent_messages": {
+      "self_ms": 917.8,
+      "observed_in": "app.gateway.app"
+    },
+    "app.gateway.routers.skills": {
+      "self_ms": 840.4,
+      "observed_in": "app.gateway.app"
+    },
+    "app.gateway.routers.memory": {
+      "self_ms": 792.2,
+      "observed_in": "app.gateway.app"
+    },
+    "app.gateway.routers.system_monitor": {
+      "self_ms": 754.0,
+      "observed_in": "app.gateway.app"
+    }
+  }
+}

@@ -17,7 +17,6 @@ from agent_workspace_extension_api import API_VERSION
 from pydantic import BaseModel, ConfigDict, Field
 
 from alpha.extensions.registry import ExtensionRegistry, LoadedExtensions
-from alpha.persistence.migrations._env_filters import register_extension_table_prefix
 from alpha.reflection import resolve_variable
 
 logger = logging.getLogger(__name__)
@@ -157,6 +156,16 @@ def load_extensions(specs: Sequence[ExtensionSpec]) -> tuple[LoadedExtensions, l
     registry = ExtensionRegistry()
     diagnostics: list[Diagnostic] = []
     loaded_sources: list[str] = []
+
+    # Deferred, not module-scope: ``_env_filters`` is deliberately import-light
+    # (it defers the ORM itself), but importing it still initializes
+    # ``alpha.persistence`` and therefore ``sqlalchemy.ext.asyncio``. Nothing at
+    # module scope calls this, and no caller imports the name from *this* module
+    # -- ``migrations/env.py`` and its tests import it from ``_env_filters``
+    # directly -- so resolving it here keeps the call (and the prefix-set write
+    # into that same shared module object) at exactly the same logical moment
+    # while keeping the ORM out of the extension-free import path.
+    from alpha.persistence.migrations._env_filters import register_extension_table_prefix
 
     for spec in specs:
         if spec.table_prefix:
