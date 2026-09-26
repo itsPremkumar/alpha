@@ -104,9 +104,51 @@ export async function swarmMetrics(id: string): Promise<Record<string, unknown>>
   return get<Record<string, unknown>>(`/swarms/${encodeURIComponent(id)}/metrics`);
 }
 
-export async function swarmMessages(id: string, topic?: string): Promise<SwarmMessage[]> {
-  const query = topic ? `?topic=${encodeURIComponent(topic)}` : "";
-  const d = await get<unknown>(`/swarms/${encodeURIComponent(id)}/messages${query}`);
+/** Optional blackboard filter. Field names mirror the router's query parameters. */
+export interface SwarmMessageQuery {
+  topic?: string;
+  taskId?: string;
+  sinceSequence?: number;
+  limit?: number;
+}
+
+/**
+ * How many messages one read returns when the caller asks for no explicit
+ * window. Mirrors `get_swarm_messages`' `limit: int = 50` default, which the
+ * router clamps to 1..256; the bus serves the NEWEST `limit` entries.
+ */
+export const SWARM_MESSAGE_WINDOW = 50;
+
+/** Serialise the blackboard filter. Empty filter → no query string at all. */
+function swarmMessageQuery(filter?: SwarmMessageQuery): string {
+  const params = new URLSearchParams();
+  if (filter?.topic) params.set("topic", filter.topic);
+  if (filter?.taskId) params.set("task_id", filter.taskId);
+  if (typeof filter?.sinceSequence === "number" && Number.isFinite(filter.sinceSequence)) {
+    params.set("since_sequence", String(Math.max(0, Math.trunc(filter.sinceSequence))));
+  }
+  if (typeof filter?.limit === "number" && Number.isFinite(filter.limit)) {
+    params.set("limit", String(Math.max(1, Math.min(256, Math.trunc(filter.limit)))));
+  }
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+/**
+ * Read one swarm's blackboard (GET /api/swarms/{swarm_id}/messages).
+ *
+ * The route path is a COMPLETE path literal and the filter rides in a separate
+ * query string: a query suffix glued onto the template made the path
+ * unresolvable for the zero-unwired-features audit, which read the call as
+ * `/api/swarms/<id>/messages${query}` and found no route for it. The emitted URL
+ * is unchanged; only the two concerns are now separate.
+ *
+ * Failure propagates — a dead or failing route must reject, never resolve to
+ * `[]`, or the UI would render a broken blackboard as an empty one.
+ */
+export async function swarmMessages(id: string, filter?: string | SwarmMessageQuery): Promise<SwarmMessage[]> {
+  const query = swarmMessageQuery(typeof filter === "string" ? { topic: filter } : filter);
+  const d = await get<unknown>(`/swarms/${encodeURIComponent(id)}/messages` + query);
   return asList(d, ["messages", "data"]) as unknown as SwarmMessage[];
 }
 

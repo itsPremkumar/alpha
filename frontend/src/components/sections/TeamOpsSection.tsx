@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { listGroups, createGroup, postGroupMessage, groupMessages, startGroupRun, listSwarms, createSwarm, swarmAction, type Swarm, listMcpTasks, listJobs, cancelJob, companyStatus, executiveDigest, companyKpis } from "@/lib/teamops";
+import { listGroups, createGroup, postGroupMessage, groupMessages, startGroupRun, listSwarms, createSwarm, swarmAction, swarmMessages, publishSwarmMessage, SWARM_MESSAGE_WINDOW, type Swarm, type SwarmMessage, listMcpTasks, listJobs, cancelJob, companyStatus, executiveDigest, companyKpis } from "@/lib/teamops";
 import { listKanbanTasks, moveKanbanTask, kanbanEvents, KANBAN_COLUMNS, KanbanTask, KanbanStatus } from "@/lib/kanban";
 import { fetchRoster, registerRosterAgent, sendAgentMessage, fetchInbox, setRosterStatus, RosterAgent, InboxMessage } from "@/lib/inbox";
 import { Section, EmptyState, ErrorBox, Notice, Btn, Badge, Field, SkeletonList, inputCls } from "@/components/ui";
@@ -33,6 +33,7 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
 
   const [swarms, setSwarms] = useState<Swarm[]>([]);
   const [swarmObjective, setSwarmObjective] = useState("");
+  const [openSwarmBoard, setOpenSwarmBoard] = useState<string | null>(null);
   const [jobs, setJobs] = useState<Array<{ id: string; kind: string; status: string }>>([]);
   const [mcpTasks, setMcpTasks] = useState<Array<Record<string, unknown>>>([]);
   const [digest, setDigest] = useState("");
@@ -214,12 +215,20 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
                   </div>
                 )}
                 <div className="flex gap-2 mt-2 flex-wrap">
+                  <Btn
+                    variant="ghost"
+                    onClick={() => setOpenSwarmBoard((cur) => (cur === s.id ? null : s.id))}
+                    aria-expanded={openSwarmBoard === s.id}
+                  >
+                    Blackboard
+                  </Btn>
                   {swarmActions(s.status).map((a) => (
                     <Btn key={a} variant="ghost" onClick={() => act(() => swarmAction(s.id, a))}>
                       {a === "run_async" ? "Run" : a[0].toUpperCase() + a.slice(1)}
                     </Btn>
                   ))}
                 </div>
+                {openSwarmBoard === s.id && <SwarmMessagesPanel swarmId={s.id} />}
               </div>
             ))
           )}
@@ -282,6 +291,101 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
         </div>
       )}
     </Section>
+  );
+}
+
+/**
+ * The swarm blackboard (GET /api/swarms/{swarm_id}/messages) plus a composer
+ * (POST …/messages).
+ *
+ * A FAILED read is its own state. The empty state may only be shown for a read
+ * that actually succeeded and returned no messages — otherwise an unreachable
+ * or renamed route would render as "this swarm has posted nothing", which is a
+ * lie about a feature the operator cannot use.
+ */
+function SwarmMessagesPanel(props: { swarmId: string }) {
+  const [messages, setMessages] = useState<SwarmMessage[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [draft, setDraft] = useState("");
+  const [postError, setPostError] = useState<string | null>(null);
+  const [posting, setPosting] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      setMessages(await swarmMessages(props.swarmId));
+      setLoadError(null);
+    } catch (e) {
+      setMessages([]);
+      setLoadError(errMsg(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.swarmId]);
+
+  const post = async () => {
+    const text = draft.trim();
+    if (!text) return;
+    setPosting(true);
+    try {
+      await publishSwarmMessage(props.swarmId, { content: text, topic: "general" });
+      setDraft("");
+      setPostError(null);
+      await load();
+    } catch (e) {
+      setPostError(errMsg(e));
+    } finally {
+      setPosting(false);
+    }
+  };
+
+  return (
+    <div className="mt-2 pt-2 border-t border-border/50 space-y-2">
+      {loadError ? (
+        <ErrorBox message={"Blackboard unavailable: " + loadError} onRetry={load} />
+      ) : loading ? (
+        <SkeletonList rows={2} />
+      ) : messages.length === 0 ? (
+        <p className="text-[11px] text-muted-foreground">No messages on this swarm blackboard yet.</p>
+      ) : (
+        <>
+          <div className="space-y-1.5 max-h-56 overflow-y-auto">
+            {messages.map((m) => (
+              <div key={m.message_id} className="text-[11px] rounded-lg bg-muted/40 px-2.5 py-1.5">
+                <p className="font-semibold">
+                  {m.sender}
+                  <span className="font-normal text-muted-foreground"> · {m.topic} · #{m.sequence}</span>
+                </p>
+                <p className="whitespace-pre-wrap break-words">{m.content}</p>
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            The gateway serves the newest {SWARM_MESSAGE_WINDOW} messages; older entries are not shown.
+          </p>
+        </>
+      )}
+      {postError && <ErrorBox message={"Could not post: " + postError} onRetry={post} />}
+      <div className="flex gap-2">
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && post()}
+          placeholder="Post to the blackboard…"
+          className={inputCls}
+          aria-label={"Post to the blackboard of swarm " + props.swarmId}
+        />
+        <Btn onClick={post} disabled={posting || !draft.trim()}>
+          <Send className="size-3.5" /> Post
+        </Btn>
+      </div>
+    </div>
   );
 }
 

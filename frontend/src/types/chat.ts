@@ -1,9 +1,41 @@
+/**
+ * Outcome actually reported by the run for one tool call.
+ * `undefined` on a ToolCall means "nothing was reported yet" — callers MUST
+ * NOT render that as success (see `toolStatusView` in ToolPill.tsx).
+ *
+ * This is the UI vocabulary. The wire vocabulary the Gateway/backend stamps on
+ * a tool result is `ToolCallVerdict`; `sse-reducer.ts` translates one into the
+ * other and is the single place that mapping lives.
+ */
+export type ToolCallStatus = "running" | "completed" | "failed" | "partial" | "error" | "unknown";
+
+/**
+ * Verdict vocabulary the backend writes onto a tool result, in precedence
+ * order: `ToolMessage.status === "error"`, then the
+ * `agent_workspace_tool_meta` stamp, then the `agent_workspace_tool_receipt`
+ * stamp, then a structured `subagent_status` failure, then the bare
+ * `ToolMessage.status` field.
+ *
+ * Note the trap this encodes: LangChain defaults `ToolMessage.status` to
+ * `"success"`, so a bare `"success"` is the weakest possible evidence. It maps
+ * to `completed` only after nothing stronger said otherwise, and a result whose
+ * status is absent/unrecognized resolves to `"unknown"` — never to `completed`.
+ */
+export type ToolCallVerdict = "success" | "partial_success" | "error" | "failed" | "unknown";
+
 export interface ToolCall {
   id: string;
   name: string;
   args: Record<string, unknown>;
+  /** Verbatim tool output (result text, or the error text) when the run reported one. */
   output?: string;
-  status?: "running" | "completed" | "failed";
+  /**
+   * Observed status, derived only from what the run actually reported.
+   * Absent = no result for this call has arrived yet; never assume
+   * "completed". `unknown` = a result arrived but carried no verdict anyone
+   * could resolve, which is also never success.
+   */
+  status?: ToolCallStatus;
 }
 
 export interface TodoItem {
