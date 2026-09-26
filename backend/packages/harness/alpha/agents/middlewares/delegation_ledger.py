@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import os
 from datetime import UTC, datetime
 from html import escape
 from typing import Any
@@ -276,6 +275,3 @@ def render_delegation_ledger(entries: list[DelegationEntry], *, max_chars: int =
     if len(rendered) <= max_chars:
         return rendered
     return rendered[: max(0, max_chars - 4)] + "\n..."
-
-# Commit changes
-os.system('git commit -m "Updated delegation ledger functionality"')
