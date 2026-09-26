@@ -42,6 +42,7 @@ class IntegrationHealthResponse(BaseModel):
     autonomy: dict[str, Any] = Field(default_factory=dict, description="Live AutonomySupervisor status")
     event_bus: dict[str, Any] = Field(default_factory=dict, description="Live event-bus status")
     capabilities: dict[str, Any] = Field(default_factory=dict, description="Per-capability opt-in status from alpha.capabilities.catalog")
+    peer_network: dict[str, Any] = Field(default_factory=dict, description="Live Alpha-to-Alpha peer network status")
     unwired: list[str] = Field(default_factory=list, description="Manifest ids not referenced at their wiring point")
     generated_at: str = ""
 
@@ -104,6 +105,14 @@ async def integration_health(request: Any = None) -> IntegrationHealthResponse:
     except Exception:
         logger.debug("Capability status unavailable", exc_info=True)
 
+    peer_network: dict[str, Any] = {}
+    try:
+        from alpha.peer_network import get_peer_network_service
+
+        peer_network = (await get_peer_network_service().status()).model_dump(mode="json")
+    except Exception:
+        logger.debug("Peer network status unavailable", exc_info=True)
+
     return IntegrationHealthResponse(
         manifest_found=bool(manifest),
         manifest_version=str(manifest.get("version", "")),
@@ -111,6 +120,7 @@ async def integration_health(request: Any = None) -> IntegrationHealthResponse:
         autonomy=autonomy,
         event_bus=event_bus,
         capabilities=capabilities,
+        peer_network=peer_network,
         unwired=unwired,
         generated_at=str(manifest.get("generated_at", "")),
     )

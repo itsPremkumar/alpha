@@ -3,7 +3,7 @@
 // A FAILED fetch must never be rendered as an empty/zero success:
 //  * api.ts exposes FetchResult-based entry points where ok:false is
 //    distinguishable from a genuinely empty list; the legacy [] wrappers are
-//    pinned as the explicit, documented ChatView-compat path ONLY.
+//    pinned as the explicit legacy-compatibility path only.
 //  * the Messages list helpers (comm/inbox/teamops) reject on gateway failure
 //    instead of swallowing into [].
 //  * the five audited components carry per-surface failure flags/states.
@@ -25,11 +25,31 @@ const read = (url) => readFileSync(new URL(url, import.meta.url), "utf8");
 /* ── Stub 1: api-client for api.ts ─────────────────────────────────────── */
 
 const apiClientStub = `
+export class ApiClientError extends Error {
+  constructor(kind, status, detail) {
+    super(detail || "Request failed");
+    this.name = "ApiClientError";
+    this.kind = kind;
+    this.status = status;
+  }
+}
 let next = { ok: true, json: async () => [] };
-export function setResponse(r) { next = r; }
-export async function apiFetch() {
-  const r = next;
+let queue = [];
+export function setResponse(r) { next = r; queue = []; }
+export function setResponses(responses) { queue = [...responses]; }
+export async function apiFetch(_path, init) {
+  const r = queue.length > 0 ? queue.shift() : next;
   if (r.error) throw r.error;
+  // A response that never arrives stands in for a hung server connection:
+  // only the caller's own abort deadline can end this request.
+  if (r.pending) {
+    return new Promise((_resolve, reject) => {
+      const signal = init && init.signal;
+      if (!signal) return;
+      if (signal.aborted) { reject(new Error("aborted")); return; }
+      signal.addEventListener("abort", () => reject(new Error("aborted")));
+    });
+  }
   return r;
 }
 `;
@@ -50,7 +70,7 @@ let apiCode = transpile(read("./api.ts"));
 apiCode = apiCode.replace(/from\s+"\.\/api-client"/, `from "${apiClientStubUrl}"`);
 apiCode = apiCode.replace(/from\s+"@\/types\/chat"/, `from "${typesStubUrl}"`);
 const { fetchThreads, fetchThreadsResult, fetchThreadHistory, fetchThreadHistoryResult } = await import(toDataUrl(apiCode));
-const { setResponse } = await import(apiClientStubUrl);
+const { setResponse, setResponses } = await import(apiClientStubUrl);
 
 /* ── Stub 2: http for comm.ts / inbox.ts / teamops.ts ──────────────────── */
 
@@ -107,9 +127,26 @@ test("a genuinely empty thread list is ok:true with [] — empty ≠ failed", as
   assert.deepEqual(result.value, []);
 });
 
-test("fetchThreads keeps [] ONLY as the documented ChatView-compat wrapper", async () => {
+test("thread list follows every offset page instead of stopping at the old ceiling", async () => {
+  const firstPage = Array.from({ length: 200 }, (_, index) => ({
+    thread_id: `thread-${index + 1}`,
+    metadata: { title: `Conversation ${index + 1}` },
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+  }));
+  setResponses([
+    { ok: true, status: 200, json: async () => firstPage },
+    { ok: true, status: 200, json: async () => [] },
+  ]);
+  const result = await fetchThreadsResult();
+  assert.equal(result.ok, true);
+  assert.equal(result.value.length, 200);
+  assert.equal(result.value.at(-1).thread_id, "thread-200");
+});
+
+test("fetchThreads keeps [] ONLY as the documented legacy compatibility wrapper", async () => {
   setResponse({ error: new Error("gateway down") });
-  // Legacy contract (ChatView.tsx:185/257 relies on non-rejection):
+  // Legacy contract retained for older external callers:
   assert.deepEqual(await fetchThreads(), []);
   // …while the honest entry point still distinguishes the same failure:
   assert.equal((await fetchThreadsResult()).ok, false);
@@ -119,7 +156,7 @@ test("thread history failure is ok:false — never an empty conversation", async
   setResponse({ error: new Error("gateway down") });
   const result = await fetchThreadHistoryResult("thread-1");
   assert.equal(result.ok, false);
-  // Compat wrapper (ChatView.tsx:277 relies on non-rejection) stays [] only there.
+  // Compatibility wrapper stays [] only for older external callers.
   assert.deepEqual(await fetchThreadHistory("thread-1"), []);
 });
 
@@ -136,6 +173,157 @@ test("thread history success maps run-event rows to messages", async () => {
   assert.equal(result.value.length, 1);
   assert.equal(result.value[0].role, "user");
   assert.equal(result.value[0].content, "hello");
+});
+
+test("thread history follows every backward page and restores chronological order", async () => {
+  setResponses([
+    {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: [
+          { seq: 20, run_id: "r2", event_type: "human_message", content: { type: "human", content: "newest" }, created_at: "2026-01-02T00:00:00Z" },
+        ],
+        has_more: true,
+        next_before_seq: 20,
+      }),
+    },
+    {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: [
+          { seq: 10, run_id: "r1", event_type: "llm.ai.response", content: { type: "ai", content: "oldest answer" }, created_at: "2026-01-01T00:00:00Z" },
+        ],
+        has_more: false,
+        next_before_seq: null,
+      }),
+    },
+  ]);
+  const result = await fetchThreadHistoryResult("thread-1");
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.value.map((message) => message.content), ["oldest answer", "newest"]);
+});
+
+test("a truncated thread page is partial history, flagged as such, not a complete answer", async () => {
+  setResponses([
+    {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: [
+          { seq: 20, run_id: "r2", event_type: "human_message", content: { type: "human", content: "newest" }, created_at: "2026-01-02T00:00:00Z" },
+        ],
+        has_more: true,
+        next_before_seq: 20,
+      }),
+    },
+    { ok: false, status: 503, json: async () => ({}) },
+  ]);
+  const result = await fetchThreadHistoryResult("thread-1");
+  assert.equal(result.ok, true);
+  // The rows that did arrive are real history and must not be discarded.
+  assert.equal(result.value.length, 1);
+  assert.equal(result.value[0].content, "newest");
+  // …but the truncation is disclosed, with the cursor to resume from.
+  assert.match(result.incomplete, /503/);
+  assert.equal(result.resumeCursor, 20);
+});
+
+test("a truncated history resumes from the oldest accepted page, not the newest", async () => {
+  const page = (seq, next, hasMore) => ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      data: [{ seq, run_id: `r${seq}`, event_type: "human_message", content: { type: "human", content: `m${seq}` } }],
+      has_more: hasMore,
+      next_before_seq: next,
+    }),
+  });
+  // Newest page 90 -> 80 -> 70 accepted, then the walk fails.
+  setResponses([page(90, 80, true), page(80, 70, true), page(70, 60, true), { ok: false, status: 503, json: async () => ({}) }]);
+  const result = await fetchThreadHistoryResult("thread-1");
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.value.map((m) => m.content), ["m70", "m80", "m90"]);
+  // 60 is the cursor the server handed back WITH page 70, i.e. exactly where
+  // the next (older) page starts. The newest page's cursor (80) would re-fetch
+  // page 70's range, and the rejected page's own cursor (70) would skip it.
+  assert.equal(result.resumeCursor, 60);
+  assert.match(result.incomplete, /503/);
+});
+
+test("a non-decreasing history cursor is reported instead of looping forever", async () => {
+  const page = {
+    ok: true,
+    status: 200,
+    json: async () => ({
+      data: [{ seq: 20, run_id: "r1", event_type: "human_message", content: { type: "human", content: "x" } }],
+      has_more: true,
+      next_before_seq: 999,
+    }),
+  };
+  setResponses([page, page, page]);
+  const result = await fetchThreadHistoryResult("thread-1");
+  // The already-received rows are kept, and the bad cursor stops the walk.
+  assert.equal(result.ok, true);
+  assert.equal(result.value.length, 1);
+  assert.match(result.incomplete, /non-decreasing or invalid cursor/);
+});
+
+test("a malformed 200 message envelope is a failure, not an empty conversation", async () => {
+  setResponse({ ok: true, status: 200, json: async () => ({ unexpected: "shape" }) });
+  const result = await fetchThreadHistoryResult("thread-1");
+  assert.equal(result.ok, false);
+  assert.match(result.error, /unreadable message page/);
+});
+
+test("a malformed 200 thread-list envelope is a failure, not an empty history", async () => {
+  setResponse({ ok: true, status: 200, json: async () => ({ unexpected: "shape" }) });
+  const result = await fetchThreadsResult();
+  assert.equal(result.ok, false);
+  assert.match(result.error, /unreadable thread list/);
+});
+
+test("a thread record without an id is rejected rather than listed as a broken row", async () => {
+  setResponse({ ok: true, status: 200, json: async () => [{ metadata: { title: "no id" } }] });
+  const result = await fetchThreadsResult();
+  assert.equal(result.ok, false);
+  assert.match(result.error, /invalid thread record/);
+});
+
+test("a truncated thread list returns the rows that loaded and discloses the gap", async () => {
+  const firstPage = Array.from({ length: 200 }, (_, index) => ({
+    thread_id: `thread-${index + 1}`,
+    metadata: { title: `Conversation ${index + 1}` },
+    updated_at: "2026-01-01T00:00:00Z",
+  }));
+  setResponses([
+    { ok: true, status: 200, json: async () => firstPage },
+    { ok: false, status: 503, json: async () => ({}) },
+  ]);
+  const result = await fetchThreadsResult();
+  assert.equal(result.ok, true);
+  assert.equal(result.value.length, 200);
+  assert.match(result.incomplete, /503/);
+  assert.equal(result.resumeCursor, 200);
+});
+
+test("a page request that never answers fails on a deadline instead of hanging the UI", async () => {
+  // A promise that never settles stands in for a hung server connection.
+  setResponse({ pending: true });
+  const started = Date.now();
+  const result = await fetchThreadsResult();
+  assert.equal(result.ok, false);
+  assert.match(result.error, /timed out after 30 seconds/);
+  assert.ok(Date.now() - started < 35_000);
+});
+
+test("every fetch result surface is bounded, not silently truncated", () => {
+  const src = read("./api.ts");
+  assert.match(src, /PAGE_REQUEST_TIMEOUT_MS = 30_000/);
+  // A bounded page walk is fine; a bounded total is the old data-loss bug.
+  assert.doesNotMatch(src, /\.slice\(0,\s*100\)/);
+  assert.doesNotMatch(src, /\.slice\(-100\)/);
 });
 
 /* ── comm/inbox/teamops: failures propagate instead of swallowing ──────── */
@@ -203,17 +391,18 @@ test("WorkspaceVitals uses three-state probe handling, not catch-to-empty", () =
   assert.match(src, /Subsystem status unavailable/);
 });
 
-test("api.ts documents the [] wrappers as ChatView-compat ONLY", () => {
+test("api.ts documents the [] wrappers as legacy-only compatibility", () => {
   const src = read("./api.ts");
   // Each compat wrapper's immediately-preceding doc block must name the
-  // LEGACY-COMPAT contract, the fenced caller, and the ONLY exemption.
+  // LEGACY-COMPAT contract and direct new code to the honest result entry point.
   for (const fn of ["fetchThreads(", "fetchThreadHistory("]) {
     const idx = src.indexOf(`export async function ${fn}`);
     assert.ok(idx > 0, `missing ${fn}`);
     const doc = src.slice(Math.max(0, idx - 1000), idx);
     assert.match(doc, /LEGACY-COMPAT/);
-    assert.match(doc, /ONLY/);
-    assert.match(doc, /ChatView\.tsx/);
+    assert.match(doc, fn.startsWith("fetchThreads")
+      ? /fetchThreadsResult\(\)/
+      : /fetchThreadHistoryResult\(\)/);
   }
   assert.match(src, /export async function fetchThreadsResult/);
   assert.match(src, /export async function fetchThreadHistoryResult/);

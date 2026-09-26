@@ -221,3 +221,17 @@ real-time conversation may share the socket only through explicit state transiti
 Tests: `test_multimodal_chain.py`, `test_multimodal_router.py`,
 `test_multimodal_realtime.py`, local speech runtime tests, and
 `test_setup_voice_models.py`. Operations: `docs/VOICE_CONVERSATION.md`.
+
+## Alpha peer-network routes
+
+`routers/peer_network.py` owns the separate Alpha-to-Alpha session. Management
+routes use `threads:read/write`; only exact Agent Card, pairing, inbound, and
+WebSocket paths are public. Public pairing/inbound requests must validate the
+peer token inside `alpha.peer_network.service`; never replace that with browser
+session auth or trust a sender/owner field. The service starts before the
+autonomy supervisor and stops after it, with the bounded shutdown hook.
+Discovery and GitHub cards are untrusted metadata; pairing and delivery are
+separate states. Tests: `tests/test_peer_network.py`,
+`tests/test_auth_middleware.py`, `tests/test_csrf_middleware.py`, and
+`tests/test_gateway_lifespan_shutdown.py`. Operations:
+`docs/ALPHA_PEER_NETWORK.md`. Operations: `docs/VOICE_CONVERSATION.md`.

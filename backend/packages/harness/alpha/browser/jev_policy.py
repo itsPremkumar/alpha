@@ -340,7 +340,7 @@ async def choose_next_action(
 
     full_state: dict[str, Any] = {
         "page": {k: page_state.get(k) for k in ("url", "title", "text") if page_state.get(k)},
-        "elements": [element.to_dict() for element in space.elements],
+        "elements": [_public_element_state(element) for element in space.elements],
         "recent_actions": recent,
     }
     # Failures called out separately so the decision can change strategy rather

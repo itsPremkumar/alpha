@@ -34,8 +34,8 @@ MESSAGE_MAX_CHARS = 16000
 
 DMTargetKind = Literal["local", "peer", "connection"]
 
-_PEER_TARGET_RE = re.compile(r"^([a-z0-9][a-z0-9_-]{0,63})/([a-zA-Z0-9][a-zA-Z0-9_-]{0,63})$")
-_CONNECTION_TARGET_RE = re.compile(r"^([a-zA-Z0-9][a-zA-Z0-9_-]{0,63})@([a-zA-Z0-9][a-zA-Z0-9_-]{0,63})$")
+_PEER_TARGET_RE = re.compile(r"^([A-Za-z0-9_.:-]{1,128})/([A-Za-z0-9_.:-]{1,128})$")
+_CONNECTION_TARGET_RE = re.compile(r"^([A-Za-z0-9_.:-]{1,128})@([A-Za-z0-9_.:-]{1,128})$")
 _ATTRIBUTION_RE = re.compile(r"^\[DM from [^\]]+\]\s*")
 
 
@@ -203,6 +203,51 @@ class DMAck:
         return asdict(self)
 
 
+def _send_peer_dm(peer_id: str, remote_agent: str, body: str, sender: str) -> DMAck:
+    """Bridge the historical ``peer/agent`` target grammar to Alpha Network.
+
+    The peer network is installation-scoped, so ``remote_agent`` is carried as
+    structured metadata while the paired installation is the actual transport
+    recipient. A missing pair or an offline peer is queued by the network and
+    reported as such; it never falls back to a local teammate silently.
+    """
+
+    import asyncio
+
+    from alpha.peer_network.models import MessageCreateRequest
+    from alpha.peer_network.service import get_peer_network_service
+
+    service = get_peer_network_service()
+    request = MessageCreateRequest(
+        # The authenticated wire sender is the Alpha installation identity;
+        # the local bot name remains structured attribution/payload data.
+        recipients=[peer_id],
+        text=body,
+        kind="chat",
+        payload={"local_agent": sender, "remote_agent": remote_agent, "source": "bots.dm"},
+    )
+
+    async def _send():
+        peer = await service.get_peer(peer_id)
+        if not peer or peer.get("trust") != "paired":
+            return {"status": "rejected", "error": f"Peer '{peer_id}' is not paired on this Alpha installation."}
+        return await service.send_message(request)
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        result = asyncio.run(_send())
+    else:
+        loop.create_task(_send())
+        return DMAck(None, f"{peer_id}/{remote_agent}", "peer", "queued", DELIVERY_TIMEOUT, "Peer delivery scheduled on the active Gateway loop.", time.time())
+
+    if result.get("status") == "rejected":
+        return DMAck(None, f"{peer_id}/{remote_agent}", "peer", "rejected", AGENT_BLOCKED, str(result.get("error") or "Peer is not paired."), time.time())
+    if result.get("status") in {"delivered", "read"}:
+        return DMAck(result.get("message_id"), f"{peer_id}/{remote_agent}", "peer", "delivered", UNKNOWN, "Delivered to the paired Alpha peer.", time.time())
+    return DMAck(result.get("message_id"), f"{peer_id}/{remote_agent}", "peer", "queued", DELIVERY_TIMEOUT, result.get("delivery_error") or "Queued until the paired Alpha peer is reachable.", time.time())
+
+
 def send_dm(
     sender: str,
     target: str,
@@ -231,13 +276,14 @@ def send_dm(
         kind, name, _peer = parse_dm_target(target)
     except ValueError as exc:
         return DMAck(None, target, "local", "rejected", UNKNOWN, str(exc), now)
-    if kind != "local":
-        return DMAck(None, target, kind, "rejected", DELIVERY_TIMEOUT, "Peer/connection delivery is not configured on this install; message a local teammate.", now)
-
     reg = registry or get_bot_registry()
     sender_profile = reg.get_bot(sender_key)
     if sender_profile is None:
         return DMAck(None, target, kind, "rejected", AGENT_BLOCKED, f"Sender bot '{sender_key}' is not on the roster.", now)
+    if kind != "local":
+        peer_id = _peer or name
+        return _send_peer_dm(peer_id, name, apply_attribution(sender_key, body), sender_key)
+
     recipient = reg.get_bot(name.lower())
     if recipient is None:
         return DMAck(None, target, kind, "rejected", AGENT_BLOCKED, f"Target '{name}' is not on the live roster.", now)

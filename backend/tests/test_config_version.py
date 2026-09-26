@@ -47,6 +47,13 @@ def _make_config_files(tmpdir: Path, user_config: dict, example_config: dict) ->
     return config_path
 
 
+def test_computer_action_schema_is_in_the_current_example():
+    example_path = Path(__file__).resolve().parents[2] / "config.example.yaml"
+    example = yaml.safe_load(example_path.read_text(encoding="utf-8")) or {}
+    assert example["config_version"] >= 49
+    assert example["system_one"]["enable_computer_action"] is False
+
+
 def test_missing_version_treated_as_zero(caplog):
     """Config without config_version should be treated as version 0."""
     with tempfile.TemporaryDirectory() as tmpdir:

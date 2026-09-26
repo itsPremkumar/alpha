@@ -25,18 +25,25 @@ visit(ast);
 assert.ok(sendSource);
 assert.match(sendSource, /on_disconnect:\s*["']continue["']/);
 
-async function send(fetchResponse, { draft = "  retry me  ", newerDraft = "", abort = false, failPostStream = false } = {}) {
+async function send(fetchResponse, { draft = "  retry me  ", newerDraft = "", abort = false, failPostStream = false, navigateMidStream = false } = {}) {
   const state = { messages: [], saved: [], input: draft, error: null, loading: false, suggestions: [], followUps: 0, runs: 0, autoplay: 0 };
   const setter = (key) => (value) => { state[key] = typeof value === "function" ? value(state[key]) : value; };
   const abortRef = { current: null };
+  // Bumped by user navigation. The test can raise it mid-stream to simulate the
+  // user opening a different conversation while a run is still streaming.
+  const runGenerationRef = { current: 0 };
   let controllerAborted = false;
   const dependencies = {
     activeThreadId: "thread-1", isLoading: false, activeBot: null, selectedModel: "model", planMode: false,
-    suggestionsOn: true, messages: [], abortRef,
+    suggestionsOn: true, messages: [], abortRef, runGenerationRef,
     setInput: setter("input"), setIsLoading: setter("loading"), setRequestError: setter("error"),
     setMessages: setter("messages"), setSuggestions: setter("suggestions"), setUsage: () => {},
     autoTriggerCommand: async () => null,
     appendLocalMessages: (_tid, messages) => state.saved.push(...messages),
+    persistLocalHistory: async (operation) => {
+      await operation();
+      return true;
+    },
     chatRequestErrorMessage,
     listThreadRuns: async () => {
       state.runs++;
@@ -60,6 +67,7 @@ async function send(fetchResponse, { draft = "  retry me  ", newerDraft = "", ab
     fetch: async () => {
       if (newerDraft) state.input = newerDraft;
       if (abort) abortRef.current.abort();
+      if (navigateMidStream) runGenerationRef.current += 1;
       return fetchResponse(abortRef.current);
     },
   };
@@ -80,9 +88,9 @@ async function send(fetchResponse, { draft = "  retry me  ", newerDraft = "", ab
   return state;
 }
 
-function assertFailed(state) {
+function assertFailed(state, { partial = "" } = {}) {
   assert.equal(state.messages.filter((message) => message.role === "assistant").length, 0);
-  assert.equal(state.saved.filter((message) => message.role === "assistant").length, 0);
+  assert.equal(state.saved.filter((message) => message.role === "assistant").length, partial ? 1 : 0);
   assert.equal(state.followUps, 0);
   assert.equal(state.runs, 0);
   assert.equal(state.error.threadId, "thread-1");
@@ -112,6 +120,12 @@ test("invalid statuses and untrusted details cannot enter the message", () => {
   }
 });
 
+test("an incomplete response never claims a local archive write succeeded when it failed", () => {
+  const message = chatRequestErrorMessage({ kind: "stream", partialArchived: false });
+  assert.match(message, /could not be added to the local history archive/);
+  assert.doesNotMatch(message, /is kept in the local history archive/);
+});
+
 test("fetch exceptions are visible, sanitized, and preserve a newer draft", async () => {
   const state = await send(() => { throw new Error("Bearer secret <html>private</html>"); }, { newerDraft: "new draft" });
   assertFailed(state);
@@ -121,7 +135,7 @@ test("fetch exceptions are visible, sanitized, and preserve a newer draft", asyn
 });
 
 for (const partial of ["", "actual partial answer"]) {
-  test(`stream failure with ${partial ? "partial content" : "no content"} is not saved as success`, async () => {
+  test(`stream failure with ${partial ? "partial content" : "no content"} is not treated as completed success`, async () => {
     let reads = 0;
     let released = false;
     const state = await send(() => ({ ok: true, body: { getReader: () => ({
@@ -131,9 +145,9 @@ for (const partial of ["", "actual partial answer"]) {
       },
       releaseLock: () => { released = true; },
     }) } }));
-    assertFailed(state);
+    assertFailed(state, { partial });
     assert.equal(state.error.partial, partial);
-    assert.match(state.error.message, /interrupted.*incomplete.*not been saved/);
+    assert.match(state.error.message, /interrupted.*incomplete.*local history archive/);
     assert.doesNotMatch(state.error.message, /secret/);
     assert.equal(released, true);
   });
@@ -171,9 +185,9 @@ test("mid-stream Stop with partial content shows stopped error with partial pres
     },
     releaseLock: () => {},
   }) } }));
-  assertFailed(state);
+  assertFailed(state, { partial: "partial before stop" });
   assert.equal(state.error.partial, "partial before stop");
-  assert.match(state.error.message, /stopped locally.*not been saved/);
+  assert.match(state.error.message, /stopped locally.*local history archive/);
   assert.equal(state.input, "  retry me  ");
 });
 
@@ -185,6 +199,39 @@ test("successful streamed content is preserved and saved once", async () => {
   assert.equal(state.saved.filter((message) => message.role === "assistant").length, 1);
   assert.equal(state.saved.at(-1).content, "real answer");
   assert.equal(state.followUps, 1);
+});
+
+test("a run that outlives its conversation is archived but never repaints the next thread", async () => {
+  // The user opens another conversation while this run is still streaming.
+  const state = await send(() => new Response("answer for the old thread"), { navigateMidStream: true });
+  // The transcript is real history, so it is saved on this computer...
+  assert.equal(state.saved.filter((message) => message.role === "assistant").length, 1);
+  assert.equal(state.saved.at(-1).content, "answer for the old thread");
+  // ...but no per-thread UI state is written into the newly opened thread.
+  assert.equal(state.messages.filter((message) => message.role === "assistant").length, 0);
+  assert.equal(state.suggestions.length, 0);
+  assert.equal(state.error, null);
+  // The workspace-wide in-flight flag must still clear, or the composer wedges.
+  assert.equal(state.loading, false);
+});
+
+test("a failure in a navigated-away run archives the partial answer without showing its retry panel", async () => {
+  let reads = 0;
+  const state = await send(() => ({ ok: true, body: { getReader: () => ({
+    read: async () => {
+      if (reads++ === 0) return { done: false, value: new TextEncoder().encode("partial before leaving") };
+      throw new Error("secret transport diagnostics");
+    },
+    releaseLock: () => {},
+  }) } }), { navigateMidStream: true });
+  // Partial history is preserved locally...
+  assert.equal(state.saved.filter((message) => message.role === "assistant").length, 1);
+  // ...but the retry/draft panel belongs to the thread that is no longer open.
+  assert.equal(state.error, null);
+  // The composer was cleared optimistically when the run started; restoring the
+  // draft now would paste it into the newly opened thread.
+  assert.equal(state.input, "");
+  assert.equal(state.loading, false);
 });
 
 test("error UI is thread-scoped, accessible, and uses plain text for incomplete content", () => {

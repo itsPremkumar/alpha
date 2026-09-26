@@ -13,6 +13,7 @@ from alpha.tools.builtins import (
     a2a_tool,
     agent_message_tool,
     agent_observe_tool,
+    alpha_peer_network_tool,
     analyze_semantic_git_delta,
     ask_clarification_tool,
     ask_oracle,
@@ -63,6 +64,7 @@ from alpha.tools.builtins import (
     desktop_mouse_action_tool,
     # Free local-first OS computer use (Module C):
     desktop_screenshot_tool,
+    desktop_system_one_action_tool,
     desktop_window_manage_tool,
     diagnose_and_heal_environment,
     dispatch_discipline_worker,
@@ -176,6 +178,7 @@ BUILTIN_TOOLS = [
     # Ultra-Advanced Bot Mode & Collaborative Kanban extensions:
     bot_roster_tool,
     group_chat_tool,
+    alpha_peer_network_tool,
     kanban_board_tool,
     # Autonomous Continuous Goal, Canvas & Trajectory extensions:
     goal_engine_tool,
@@ -333,6 +336,7 @@ BUILTIN_TOOLS = [
     desktop_mouse_action_tool,
     desktop_keyboard_action_tool,
     desktop_window_manage_tool,
+    desktop_system_one_action_tool,
 ]
 
 

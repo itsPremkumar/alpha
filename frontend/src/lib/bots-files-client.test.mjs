@@ -96,6 +96,15 @@ for (const kind of ["http", "network"]) {
   });
 }
 
+test("upload listings preserve real envelopes and reject unreadable responses", async () => {
+  const listed = fixture(() => Response.json({ files: [{ filename: "notes.txt", size_bytes: 5, content_type: "text/plain" }] }));
+  assert.deepEqual(await listed.files.listUploads("thread/1"), [{ name: "notes.txt", size: 5, type: "text/plain" }]);
+  assertRequest(listed.calls[0], "GET", "/api/threads/thread%2F1/uploads/list");
+
+  const unreadable = fixture(() => Response.json({ detail: "broken" }));
+  await assert.rejects(unreadable.files.listUploads("thread/1"), /unreadable upload list/);
+});
+
 test("file uploads preserve multipart body, CSRF and normalized envelopes", async () => {
   for (const key of ["files", "uploads", "data"]) {
     const f = fixture(() => Response.json({ [key]: [{ filename: "notes.txt", size_bytes: "5", content_type: "text/plain" }] }));

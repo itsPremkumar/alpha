@@ -184,6 +184,8 @@ async def test_browser_large_target_head_is_partitioned_without_css_or_coordinat
     assert decision.target_latency_ms >= 0
     assert all(len(next(iter(body["questions"].values()))["criteria"]) <= 20 for body in calls)
     assert "#" not in json.dumps(decision.to_dict())
+    assert "selector" not in json.dumps(calls)
+    assert "coords" not in json.dumps(calls)
     assert not decision.element.selector
     assert decision.element.coords is None
 

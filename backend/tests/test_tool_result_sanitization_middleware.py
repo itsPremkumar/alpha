@@ -2,7 +2,7 @@
 
 Alpha neutralizes framework/injection tags in the genuine user message. These
 tests pin the same neutralization onto remote tool results (web_fetch /
-web_search / image_search / web_capture), and confirm local tool output is left
+web_search / agent_eye_search / image_search / web_capture), and confirm local tool output is left
 untouched.
 """
 
@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
+import pytest
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
@@ -52,6 +53,25 @@ class TestRemoteToolResultsNeutralized:
     def test_web_search_result_is_sanitized(self):
         mw = ToolResultSanitizationMiddleware()
         result = mw.wrap_tool_call(_request("web_search"), lambda _: _msg(_MALICIOUS_PAGE, name="web_search"))
+        assert "&lt;system-reminder&gt;" in result.content
+        assert "<system-reminder>" not in result.content
+
+    def test_agent_eye_search_snippets_are_sanitized(self):
+        mw = ToolResultSanitizationMiddleware()
+        result = mw.wrap_tool_call(
+            _request("agent_eye_search"),
+            lambda _: _msg(_MALICIOUS_PAGE, name="agent_eye_search"),
+        )
+        assert "&lt;system-reminder&gt;" in result.content
+        assert "<system-reminder>" not in result.content
+
+    @pytest.mark.parametrize("tool_name", ["keyless_web_search", "deep_web_search", "deep_research"])
+    def test_other_first_party_web_results_are_sanitized(self, tool_name: str):
+        mw = ToolResultSanitizationMiddleware()
+        result = mw.wrap_tool_call(
+            _request(tool_name),
+            lambda _: _msg(_MALICIOUS_PAGE, name=tool_name),
+        )
         assert "&lt;system-reminder&gt;" in result.content
         assert "<system-reminder>" not in result.content
 

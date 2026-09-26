@@ -30,6 +30,129 @@ UI_BACKEND = "pywinauto"
 SUPPORTED_PLATFORMS = ("win32",)
 MAX_ELEMENTS_LIMIT = 500
 
+# The System One desktop route consumes a semantic, executable table rather
+# than every named UIA descendant.  Keep this list deliberately conservative:
+# an unfamiliar control is left to the legacy low-level tools rather than being
+# guessed into an executable action.
+_SEMANTIC_CONTROL_TYPES = frozenset(
+    {
+        "button",
+        "checkbox",
+        "check box",
+        "combobox",
+        "combo box",
+        "document",
+        "edit",
+        "hyperlink",
+        "link",
+        "listitem",
+        "list item",
+        "menuitem",
+        "menu item",
+        "radiobutton",
+        "radio button",
+        "richedit",
+        "rich edit",
+        "searchbox",
+        "search box",
+        "splitbutton",
+        "split button",
+        "tabitem",
+        "tab item",
+        "textarea",
+        "textbox",
+        "togglebutton",
+        "toggle button",
+        "toolbarbutton",
+        "tool bar button",
+        "treeitem",
+        "tree item",
+    }
+)
+_EDITABLE_CONTROL_TYPES = frozenset(
+    {
+        "combobox",
+        "combo box",
+        "document",
+        "edit",
+        "richedit",
+        "rich edit",
+        "searchbox",
+        "search box",
+        "textarea",
+        "textbox",
+    }
+)
+
+
+def _normalise_control_type(value: Any) -> str:
+    return str(value or "unknown").strip().lower()
+
+
+def _is_semantic_control(control_type: str) -> bool:
+    return _normalise_control_type(control_type) in _SEMANTIC_CONTROL_TYPES
+
+
+def _read_child_attr(child: Any, name: str) -> Any:
+    try:
+        value = getattr(child, name, None)
+        return value() if callable(value) else value
+    except Exception:  # noqa: BLE001 - UIA properties are best-effort
+        return None
+
+
+def _is_focused(child: Any) -> bool | None:
+    info = _read_child_attr(child, "element_info")
+    for owner in (child, info):
+        if owner is None:
+            continue
+        for name in ("has_keyboard_focus", "is_keyboard_focus", "is_focused"):
+            value = _read_child_attr(owner, name)
+            if isinstance(value, bool):
+                return value
+    return None
+
+
+def _safe_control_name(child: Any, control_type: str) -> tuple[str, bool]:
+    """Return a UIA label and secret marker without reading edit values.
+
+    ``window_text()`` and UIA ``Name`` can both reflect the current value for an
+    edit/document control.  Those controls therefore use only an automation id
+    (or a generic type label); value-bearing metadata never crosses the System
+    One boundary.
+    """
+    normalized = _normalise_control_type(control_type)
+    info = _read_child_attr(child, "element_info")
+    automation_id = _read_child_attr(info, "automation_id") if info is not None else None
+    value_bearing = normalized in _EDITABLE_CONTROL_TYPES or normalized == "document"
+    metadata_name = None if value_bearing else (_read_child_attr(info, "name") if info is not None else None)
+    label = str(metadata_name or "").strip()
+    if not label and not value_bearing:
+        try:
+            label = str(child.window_text() or "").strip()
+        except Exception:  # noqa: BLE001 - a bad UIA property must not abort the scan
+            label = ""
+    if not label and value_bearing:
+        label = str(automation_id or "").strip() or f"{normalized} field"
+    if not label and normalized == "document":
+        label = "document"
+    secret = bool(_read_child_attr(child, "is_password"))
+    if info is not None:
+        secret = secret or bool(_read_child_attr(info, "is_password"))
+    hint = f"{label} {automation_id or ''}".casefold()
+    secret = secret or any(token in hint for token in ("password", "passcode", "pin"))
+    if secret:
+        label = "password field"
+    return label, secret
+
+
+def _legacy_control_name(child: Any) -> str:
+    """Preserve the historical raw-tree label for the low-level tool."""
+    try:
+        return str(child.window_text() or "").strip()
+    except Exception:  # noqa: BLE001 - a bad UIA property must not abort the scan
+        return ""
+
 
 def _optional_import(name: str) -> tuple[Any | None, str | None]:
     """Lazily import ``name``; return ``(module, None)`` or ``(None, honest reason)``.
@@ -172,16 +295,29 @@ def list_active_windows(window_title: str = "") -> dict[str, Any]:
     }
 
 
-def inspect_ui_tree(window_title: str = "", max_elements: int = MAX_ELEMENTS_LIMIT) -> dict[str, Any]:
+def inspect_ui_tree(
+    window_title: str = "",
+    max_elements: int = MAX_ELEMENTS_LIMIT,
+    *,
+    semantic_only: bool = False,
+) -> dict[str, Any]:
     """Walk the accessibility tree of matching windows.
 
-    Returns every named interactive element (buttons, input fields, checkboxes,
-    labels, ...) as ``{"name", "type", "bbox": [left, top, right, bottom],
-    "center": (x, y), "window"}``. Target latency is sub-30ms on small trees;
+    Returns recognized semantic controls when ``semantic_only`` is true. The
+    legacy default keeps the historical raw named-descendant projection for
+    trusted low-level callers. Semantic entries contain ``{"name", "type",
+    "bbox": [left, top, right, bottom], "center": (x, y), "window",
+    "secret", "focused"}``. Static text and unknown control classes are
+    omitted from the semantic projection. For editable controls, the scanner
+    uses UIA metadata rather than ``window_text()`` so current field values do
+    not become the label. Target latency is sub-30ms on small trees;
     ``max_elements`` (capped at 500) bounds the walk on busy desktops.
     """
     started = time.perf_counter()
-    limit = max(1, min(int(max_elements), MAX_ELEMENTS_LIMIT))
+    try:
+        limit = max(1, min(int(max_elements), MAX_ELEMENTS_LIMIT))
+    except (TypeError, ValueError):
+        limit = MAX_ELEMENTS_LIMIT
     module, blocked = _backend_gate()
     if blocked is not None:
         blocked["window_title"] = window_title
@@ -189,32 +325,50 @@ def inspect_ui_tree(window_title: str = "", max_elements: int = MAX_ELEMENTS_LIM
     elements: list[dict[str, Any]] = []
     scanned = False
     matched_window: str | None = None
+    matched_windows: list[str] = []
     truncated = False
     try:
         for win, title in _iter_windows(module, window_title):
             scanned = True
+            matched_windows.append(title or "<untitled>")
             matched_window = matched_window or title or "<untitled>"
             try:
                 descendants = win.descendants()
             except Exception:  # noqa: BLE001 - keep walking other windows
                 continue
             for child in descendants:
-                if len(elements) >= limit:
-                    truncated = True
-                    break
                 try:
-                    name = str(child.window_text() or "").strip()
+                    try:
+                        control_type = str(child.friendly_class_name() or "unknown")
+                    except Exception:  # noqa: BLE001 - friendly class is best-effort
+                        control_type = "unknown"
+                    normalized_type = _normalise_control_type(control_type)
+                    if semantic_only and not _is_semantic_control(normalized_type):
+                        continue
+                    if len(elements) >= limit:
+                        truncated = True
+                        break
+                    if semantic_only:
+                        name, secret = _safe_control_name(child, normalized_type)
+                    else:
+                        name, secret = _legacy_control_name(child), False
                     if not name:
                         continue
                     rect = child.rectangle()
                     if rect.width() <= 0 or rect.height() <= 0:
                         continue
                     bbox = [int(rect.left), int(rect.top), int(rect.right), int(rect.bottom)]
-                    try:
-                        control_type = str(child.friendly_class_name() or "unknown")
-                    except Exception:  # noqa: BLE001 - friendly class is best-effort
-                        control_type = "unknown"
-                    elements.append({"name": name, "type": control_type, "bbox": bbox, "center": center_of(bbox), "window": title})
+                    elements.append(
+                        {
+                            "name": name,
+                            "type": control_type,
+                            "bbox": bbox,
+                            "center": center_of(bbox),
+                            "window": title,
+                            "secret": secret,
+                            "focused": _is_focused(child),
+                        }
+                    )
                 except Exception:  # noqa: BLE001 - one bad element must not abort the scan
                     continue
     except Exception as exc:  # noqa: BLE001 - never present a failed walk as an empty-but-clean scan
@@ -236,6 +390,7 @@ def inspect_ui_tree(window_title: str = "", max_elements: int = MAX_ELEMENTS_LIM
         "scanned": scanned,
         "window_title": window_title,
         "matched_window": matched_window,
+        "matched_windows": matched_windows,
         "elements": elements,
         "count": len(elements),
         "truncated": truncated,

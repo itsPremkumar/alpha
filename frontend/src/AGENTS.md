@@ -91,3 +91,13 @@ received stream is not a successful one.
   mean "the server said there is nothing", not "the call failed".
 - When a request is retried or triggered repeatedly, disable the control while
   in flight so a double-click cannot create two records.
+
+## Alpha Network client boundary
+
+The `peers` workspace view is a separate session from local bot/group messages.
+`PeerNetworkSection` must render the Gateway's real provider status, pairing
+state, topology, and per-recipient receipts; it must not turn a failed read into
+an empty network or mark a discovered peer as paired. The client contract is
+`src/lib/peer-network.ts`, with exact-route/honesty tests in
+`src/lib/peer-network.test.mjs`. Pairing is an explicit state-changing action,
+so the UI keeps the code reveal/copy and rotation controls deliberate.

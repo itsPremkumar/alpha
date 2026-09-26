@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class SearchPassType(str, Enum):
+class SearchPassType(StrEnum):
     DISCOVERY = "discovery"
     SPECIFIC_EVIDENCE = "specific_evidence"
     ADVERSARIAL_CONTRADICTION = "adversarial_contradiction"
@@ -17,6 +17,7 @@ class SearchPassType(str, Enum):
 @dataclass
 class CompiledSearchLane:
     """A specialized search lane within the 5-Pass Search Superintelligence."""
+
     pass_type: SearchPassType
     query: str
     purpose: str
@@ -34,6 +35,7 @@ class CompiledSearchLane:
 @dataclass
 class FivePassSearchPlan:
     """Compiled 5-pass search plan ready for parallel execution."""
+
     original_question: str
     lanes: list[CompiledSearchLane] = field(default_factory=list)
     created_at: float = field(default_factory=time.time)
@@ -42,7 +44,7 @@ class FivePassSearchPlan:
         return {
             "original_question": self.original_question,
             "lanes_count": len(self.lanes),
-            "lanes": [l.to_dict() for l in self.lanes],
+            "lanes": [lane.to_dict() for lane in self.lanes],
             "created_at": self.created_at,
         }
 
@@ -57,14 +59,15 @@ class FivePassSearchCompiler:
     def compile(
         question: str,
         domain_context: str = "software engineering",
-        year_hint: int = 2026,
+        year_hint: int | None = None,
     ) -> FivePassSearchPlan:
         q_clean = question.strip()
+        effective_year = year_hint or time.localtime().tm_year
 
         # 1. Discovery Lane
         lane_disc = CompiledSearchLane(
             pass_type=SearchPassType.DISCOVERY,
-            query=f"{q_clean} overview architecture {year_hint}",
+            query=f"{q_clean} overview architecture {effective_year}",
             purpose="Broad landscape survey and structural concepts",
         )
 

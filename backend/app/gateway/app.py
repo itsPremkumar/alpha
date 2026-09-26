@@ -62,6 +62,7 @@ from app.gateway.routers import (
     openai_compat,
     ops,
     ops_integration,
+    peer_network,
     plan_mode,
     policy,
     projects,
@@ -136,6 +137,7 @@ _LIFESPAN_DEFERRED_IMPORT_MODULES = (
     "alpha.evolution.update_state",
     "alpha.extensions.notify",
     "alpha.mcp.task_tool_caller",
+    "alpha.peer_network.service",
     "alpha.mcp.tasks",
     "alpha.mcp.tasks.runtime",
     "alpha.persistence.engine",
@@ -422,6 +424,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception:
             logger.exception("System monitor failed to start (non-fatal)")
 
+        # Alpha-to-Alpha peer network is local-first and does not require a
+        # central broker. Start its UDP discovery/retry loop after runtime
+        # initialization; socket failures are reported by /api/peer-network/status
+        # without taking down the Gateway.
+        try:
+            from alpha.peer_network import get_peer_network_service
+
+            peer_network_service = get_peer_network_service()
+            app.state.peer_network_service = peer_network_service
+            await peer_network_service.start()
+        except Exception:
+            logger.exception("Alpha peer network failed to start (non-fatal)")
+
         # Check admin bootstrap state and migrate orphan threads after admin exists.
         # Must run AFTER langgraph_runtime so app.state.store is available for thread migration
         await _ensure_admin_user(app)
@@ -627,6 +642,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 logger.warning("Autonomy supervisor shutdown exceeded %.1fs; proceeding.", _SHUTDOWN_HOOK_TIMEOUT_SECONDS)
             except Exception:
                 logger.exception("Failed to stop autonomy supervisor")
+
+        # Peer discovery is stopped after the supervisor, matching the reverse
+        # startup order and preventing late network events from racing teardown.
+        peer_network_service = getattr(app.state, "peer_network_service", None)
+        if peer_network_service is not None:
+            try:
+                await asyncio.wait_for(peer_network_service.stop(), timeout=_SHUTDOWN_HOOK_TIMEOUT_SECONDS)
+            except TimeoutError:
+                logger.warning("Peer network shutdown exceeded %.1fs; proceeding.", _SHUTDOWN_HOOK_TIMEOUT_SECONDS)
+            except Exception:
+                logger.exception("Failed to stop peer network")
 
         try:
             await auth.close_oidc_service()
@@ -1078,6 +1104,10 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     app.include_router(bots.router)
     app.include_router(groups.router)
     app.include_router(agent_messages.router)
+    # Cross-instance Alpha network: local management routes plus the explicitly
+    # public Agent Card / pairing-token ingress surface.
+    app.include_router(peer_network.router)
+    app.include_router(peer_network.public_router)
     app.include_router(swarms.router)
     app.include_router(plan_mode.router)
     app.include_router(subagent_control.router)

@@ -1,4 +1,20 @@
-### Guarded source auto-update (`evolution/update_engine.py`)
+### System One indexed computer control (`computer_use/system_one_policy.py`)
+
+The Windows desktop route is optional and disabled by default. When
+`system_one.enable_computer_action` is enabled, the policy projects UI
+Automation elements to bounded semantic fields and operation-specific indexes;
+it never sends coordinates, bounding boxes, selectors, UIA handles, typed text,
+keys, or hotkey values to System One. The model returns an index only for
+element-targeted operations. The model-facing tool re-observes the
+accessibility tree and compares the target's semantic identity before resolving
+fresh geometry locally, then reuses the sentinel-guarded dispatcher. Keyboard
+operations additionally require exactly one freshly observed focused control,
+and `TYPE_TEXT` rechecks focus after the guarded click before typing. A bounded
+Laya projection that omits executable elements is rejected before the
+operation question; partitioning is reserved for a complete table's target
+head. `None`, malformed, low-confidence, truncated, shadow-mode, and stale
+decisions dispatch nothing. Tests: `tests/test_system_one_computer.py`.
+
 
 The update engine is the Phase-2 continuation of the Phase-1 release checker.
 It only mutates a local Git source checkout: published GitHub releases (or an
@@ -61,6 +77,40 @@ storage and transfer cost bounded relative to lossless PNG. The explicit
 artifact. New automatic capture entry points must reuse the shared progress
 encoding definition in `tools.py` so the byte encoding and `.jpg` suffix cannot
 drift.
+
+### AgentEye live-source adapter (`community/agent_eye/`)
+
+The root `backend` project pins AgentEye to immutable upstream commit
+`455404ab9fd2ebba3c4c2e1e07932ed738a0c510` because the advertised `6.5.1`
+release is not published on PyPI. Do not replace this with a branch, the
+legacy project name, or an unpinned package. Alpha deliberately does **not**
+construct or call upstream `AgentSearchLite`: that orchestrator writes a
+process-global config file, duplicates/inflates its backend registry, contains
+known dead endpoints, and can amplify one research call into thousands of
+requests. Its unauthenticated HTTP API and MCP entry points are also excluded.
+
+`provider.py` imports only curated fixed-endpoint functions from AgentEye and
+pure `ranking.py` / `extractors.py` helpers. `agent_eye_search` and
+`agent_eye_sources` are config-defined `web`-group tools. Every call passes
+through the operator allowlist, per-backend failure isolation, a bounded worker
+queue, total timeout, result/snippet caps, canonical URL deduplication, and
+provenance (`source`, `sources`, `source_count`). Process-wide AgentEye caches,
+cache-clear/index tools, arbitrary URL fetch/crawl, and query-independent
+feeds are not exposed. Scraped/volunteer-instance providers are fragile and
+require `allow_fragile_backends: true`; the default uses stable API/search
+families only. "No API key" never means unlimited, reliable, or unrestricted.
+
+When `agent_eye_search.use_for_deep_research` is enabled,
+`alpha.research.backends.default_search_fn` tries this adapter and retains
+DDGS as a real fallback. `default_fetch_fn` uses `safe_fetch.py`, which
+re-validates every redirect with Alpha's public-URL policy, caps redirects and
+response bytes, and only then runs AgentEye's pure HTML/JSON-LD extractor.
+Deep research returns `no_evidence` when discovery is empty and never invents a
+citation or `example.org` fallback; `citations_verified` counts sources with
+semantic support verdicts, not merely registered URLs. Report output accepts a
+filename only and writes beneath the resolved thread outputs directory.
+Tests: `backend/tests/test_agent_eye_integration.py`,
+`test_deep_research_engine.py`, and `test_deep_research_tool.py`.
 
 ### Embedded Client (`packages/harness/alpha/client.py`)
 
@@ -392,3 +442,16 @@ or a promise of multi-worker exactly-once execution. Tests:
 `test_dynamic_workflow_engine.py`, `test_workflow_dag_edges.py`,
 `test_workflow_durability_router.py`, and `test_bot_dynamic_workflow.py`.
 Operations: [`docs/DYNAMIC_WORKFLOWS.md`](../../docs/DYNAMIC_WORKFLOWS.md).
+
+## Peer network boundary
+
+`alpha.peer_network` is the single harness owner for cross-installation Alpha
+identity, discovery, pairing, transport, SQLite conversations, delivery
+receipts, and topology semantics. `PeerNetworkService` is installation-scoped;
+do not accept a model/client owner assertion. Discovery cards are untrusted and
+never grant credentials. HTTP/WebSocket endpoints are validated before use,
+messages are bounded/idempotent, and public ingress is authenticated by the
+pairing token in the Gateway adapter. The optional GitHub adapter publishes
+public Agent Cards only; it is not a mailbox. libp2p is an external future seam
+and must not be reported as active without a real implementation. See
+`docs/ALPHA_PEER_NETWORK.md` and `backend/tests/test_peer_network.py`.

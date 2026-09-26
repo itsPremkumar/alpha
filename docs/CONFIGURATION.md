@@ -397,6 +397,8 @@ system_one:
   model: "english"              # multilingual / typed-decisions / "" for auto-router
   shadow_mode: true             # measure before allowing decisions to act
   record_decisions: true
+  # Optional Windows accessibility-first desktop route; opt in after calibration.
+  enable_computer_action: false
   laya_max_choice_options: 20   # partition larger catalogs instead of truncating
   laya_max_request_chars: 24000  # bound the complete serialized request
   laya_max_partition_requests: 16 # abstain if a local tournament exceeds budget
@@ -408,6 +410,19 @@ are stored under the ignored `.agent-workspace/laya` directory, so normal Alpha
 installs do not download them. A keyless Laya URL must resolve to loopback. If the
 server is exposed beyond loopback, set `LAYA_API_KEY` in both the server environment
 and `system_one.api_key`; hosted credentials are never forwarded to Laya.
+
+`enable_computer_action` is an independent, opt-in Windows desktop route. It uses
+UI Automation semantics to let System One choose an indexed `CLICK` or a
+caller-supplied `TYPE_TEXT`/`PRESS`/`HOTKEY`; the model never sees coordinates,
+selectors, UIA handles, typed text, keys, or hotkey values. The semantic scan
+filters static and unknown controls before applying its cap. If that bounded
+Laya projection would omit an executable element, the operation request is
+withheld; partitioning is reserved for a complete table's target head. Keyboard
+actions require a freshly observed unique focus, and typing rechecks focus after the
+guarded click. Keep `shadow_mode: true` while calibrating this surface.
+The route is Windows-only and requires the optional `pywinauto` accessibility
+backend plus an optional input backend (`pyautogui` or `pynput`). It does not
+replace the existing low-level desktop tools.
 
 ### Codex CLI
 ```yaml
@@ -651,6 +666,33 @@ diff config.example.yaml config.yaml
 cd backend && make migrate-rev MESSAGE="description"
 cd backend && make migrate-upgrade
 ```
+
+## Alpha-to-Alpha peer network
+
+The peer network uses environment variables rather than a new `config.yaml`
+section so discovery/transport settings remain an operator-controlled runtime
+boundary. The defaults are local-first and free:
+
+```text
+ALPHA_PEER_NETWORK_ENABLED=1
+ALPHA_PEER_NETWORK_ADVERTISED_BASE_URL=http://192.168.1.20:8001
+ALPHA_PEER_NETWORK_DISCOVERY_PORT=8743
+ALPHA_PEER_NETWORK_DISCOVERY_INTERVAL_SECONDS=8
+```
+
+Install the optional free mDNS provider with:
+
+```bash
+cd backend && uv sync --extra peer-discovery
+```
+
+An optional public GitHub Agent Card rendezvous is configured with
+`ALPHA_PEER_NETWORK_GITHUB_REPO`, `ALPHA_PEER_NETWORK_GITHUB_BRANCH`,
+`ALPHA_PEER_NETWORK_GITHUB_DIRECTORY`, and (only for writes)
+`ALPHA_PEER_NETWORK_GITHUB_TOKEN`. It publishes cards only; never put pairing
+codes or message bodies in that repository. See
+[ALPHA_PEER_NETWORK.md](ALPHA_PEER_NETWORK.md) for topology, NAT, and lifecycle
+details.
 
 ## Security Best Practices
 

@@ -16,6 +16,11 @@ def _attach(client: SystemOneClient, handler) -> httpx.AsyncClient:
     return fake
 
 
+def test_computer_action_is_opt_in_until_calibration():
+    assert SystemOneConfig().enable_computer_action is False
+    assert SystemOneConfig(enable_computer_action=True).enable_computer_action is True
+
+
 def test_laya_provider_defaults_to_the_loopback_server():
     config = SystemOneConfig(provider=PROVIDER_LAYA)
 

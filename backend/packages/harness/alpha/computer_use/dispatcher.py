@@ -25,7 +25,7 @@ import time
 from collections.abc import Sequence
 from typing import Any
 
-from alpha.computer_use.guard import SentinelGuard, get_sentinel_guard
+from alpha.computer_use.guard import SentinelGuard, get_sentinel_guard, normalize_hotkey
 
 INPUT_BACKENDS = ("pyautogui", "pynput")
 MOUSE_BUTTONS = ("left", "right", "middle")
@@ -427,6 +427,12 @@ def keyboard_press(key: str) -> dict[str, Any]:
     cleaned = str(key or "").strip()
     if not cleaned:
         return _invalid("action 'press' requires a non-empty key", "press")
+    # ``press`` is a single-key API. Treat combo-looking input as a hotkey so
+    # the destructive-combo blacklist cannot be bypassed by changing the
+    # call-site verb from ``hotkey`` to ``press``.
+    normalized = normalize_hotkey(cleaned)
+    if len(normalized) != 1:
+        return _invalid("action 'press' accepts one key; use the hotkey action for combinations", "press")
     backend, reason = _load_backend()
     if backend is None:
         return _unavailable(str(reason))
@@ -434,6 +440,8 @@ def keyboard_press(key: str) -> dict[str, Any]:
     if probe is not None and probe.get("panic"):
         return _blocked(str(probe.get("reason")), "press", halted=True)
     try:
+        # Keep the caller's original single-key spelling for backend
+        # compatibility; normalization above is only the combo safety check.
         backend.press(cleaned)
     except Exception as exc:  # noqa: BLE001 - honest dispatch failure
         return _failed(f"key press dispatch failed: {type(exc).__name__}: {exc}", "press")

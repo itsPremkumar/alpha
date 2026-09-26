@@ -1,6 +1,7 @@
 export type ChatRequestFailure = {
   kind: "http" | "network" | "stream" | "empty" | "stopped";
   status?: number;
+  partialArchived?: boolean;
 };
 
 export function chatRequestErrorMessage(failure: ChatRequestFailure): string {
@@ -15,10 +16,14 @@ export function chatRequestErrorMessage(failure: ChatRequestFailure): string {
     case "network":
       return "The request could not be completed. No assistant response was received. Check your connection before retrying; the server may still be processing the request and its durable run can continue after reconnect.";
     case "stream":
-      return "The response stream was interrupted. Any partial response below is incomplete and has not been saved. The server may still be running; reconnect or reload Runs before retrying.";
+      return failure.partialArchived === false
+        ? "The response stream was interrupted. The partial response below is incomplete and could not be added to the local history archive. The server may still be running; reconnect or reload Runs before retrying."
+        : "The response stream was interrupted. Any partial response below is incomplete; it is kept in the local history archive but is not treated as a completed answer. The server may still be running; reconnect or reload Runs before retrying.";
     case "empty":
       return "The server returned no response content. No assistant answer was saved. Check Runs before retrying.";
     case "stopped":
-      return "The response stream was stopped locally. Any partial response below is incomplete and has not been saved. Server cancellation is not confirmed here; check Runs before retrying.";
+      return failure.partialArchived === false
+        ? "The response stream was stopped locally. The partial response below is incomplete and could not be added to the local history archive. Server cancellation is not confirmed here; check Runs before retrying."
+        : "The response stream was stopped locally. Any partial response below is incomplete; it is kept in the local history archive but is not treated as a completed answer. Server cancellation is not confirmed here; check Runs before retrying.";
   }
 }

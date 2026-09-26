@@ -2,7 +2,7 @@
 
 import React from "react";
 import { BotProfile, botDisplayName, botInitials } from "@/types/bots";
-import { MessageSquare, Star, CheckCircle2, PauseCircle, XCircle } from "lucide-react";
+import { MessageSquare, Star, CheckCircle2, PauseCircle, XCircle, Building2 } from "lucide-react";
 
 interface BotProfileCardProps {
   bot: BotProfile;
@@ -89,23 +89,36 @@ export function BotProfileCard({ bot, isActive, onSelect, onChat }: BotProfileCa
         </div>
       )}
 
-      <div className="flex items-center justify-between text-[11px] text-muted-foreground border-t border-border/50 pt-2.5 mt-auto">
+      <div className="flex items-center justify-between gap-2 flex-wrap text-[11px] text-muted-foreground border-t border-border/50 pt-2.5 mt-auto">
         <span className="inline-flex items-center gap-1">
           <Star className="size-3.5 text-amber-500" />
           {bot.reputation_score != null ? bot.reputation_score.toFixed(2) : "unverified"}
           {successRate !== null && <span className="ml-1">• {successRate}% ok</span>}
         </span>
         <span>{total} tasks</span>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onChat(bot);
-          }}
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onSelect(bot);
+            }}
+            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-border text-[11px] font-semibold hover:bg-muted"
+            title={`Create a project led by ${botDisplayName(bot)}`}
+          >
+            <Building2 className="size-3" /> Project
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onChat(bot);
+            }}
           className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary text-primary-foreground text-[11px] font-semibold hover:opacity-90"
         >
           <MessageSquare className="size-3" /> Chat
         </button>
+        </div>
       </div>
     </div>
   );

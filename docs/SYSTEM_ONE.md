@@ -74,6 +74,7 @@ are bounded, and the whole retry sequence shares the per-call deadline.
 | Goal completion | `alpha/runtime/goal.py` | satisfied? + blocker | LLM evaluator |
 | Prompt-injection scan | `alpha/security/injection.py` | 4 decomposed signals, weighted | No check (content kept) |
 | Browser action | `alpha/browser/jev_policy.py` | operation + element index | Existing step selection |
+| Windows desktop action | `alpha/computer_use/system_one_policy.py` + `alpha/tools/builtins/computer_system_one_tool.py` | `CLICK`/`TYPE_TEXT`/`PRESS`/`HOTKEY` + accessibility index where needed | Existing desktop/LLM fallback |
 | Trace verification | `alpha/tools/trace_verify.py` | does the trace support the answer? | Existing receipts |
 | Model escalation | `alpha/models/escalation.py` | does this need the flagship model? | Keyword/category routing |
 | Skill & tool selection | `alpha/tools/selection.py` | ranked candidates | Regex scoring |
@@ -105,6 +106,9 @@ system_one:
   min_confidence: 0.60           # below this -> fall back
   fail_open: true
   log_decisions: false
+  # Optional, accessibility-first Windows desktop route. Keep it off until
+  # shadow-mode calibration is reviewed locally.
+  enable_computer_action: false
 ```
 
 For local Laya, use the project-local setup helper. It creates an isolated environment
@@ -150,6 +154,7 @@ system_one:
   min_confidence: 0.75
   shadow_mode: true             # measure before allowing decisions to act
   record_decisions: true
+  enable_computer_action: false    # opt in only after desktop calibration
 ```
 
 If the server binds beyond loopback, set the same random `LAYA_API_KEY` in the server

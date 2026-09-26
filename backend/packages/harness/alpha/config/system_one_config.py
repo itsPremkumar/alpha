@@ -184,6 +184,10 @@ class SystemOneConfig(BaseModel):
         default=True,
         description="Use System One to choose browser operations and element targets (indexed action space).",
     )
+    enable_computer_action: bool = Field(
+        default=False,
+        description="Use System One to choose Windows desktop operations and accessibility-element targets (indexed action space).",
+    )
     browser_require_fresh: bool = Field(
         default=True,
         description=("Re-verify the page has not changed before executing a browser decision, and re-decide if it has. Protects against the silent failure where a click lands on whatever now occupies that index."),

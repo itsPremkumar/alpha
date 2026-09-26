@@ -3,6 +3,7 @@ export const WORKSPACE_VIEW_IDS = [
   "warroom",
   "bots",
   "messages",
+  "peers",
   "kanban",
   "runs",
   "files",

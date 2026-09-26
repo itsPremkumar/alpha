@@ -46,6 +46,7 @@ from .company_tool import company_tool
 
 # Strategic Autonomous Control Plane Tools
 from .compile_mission_tool import compile_mission
+from .computer_system_one_tool import desktop_system_one_action_tool
 from .computer_worker_tool import execute_sandboxed_computer_action
 from .consequence_tool import simulate_consequences
 from .context_as_data_tool import manage_context_data
@@ -120,6 +121,7 @@ from .os_computer_tool import (
     desktop_screenshot_tool,
     desktop_window_manage_tool,
 )
+from .peer_network_tool import alpha_peer_network_tool
 
 # Enterprise Harness Expansion
 from .performance_registry_tool import manage_model_performance_registry
@@ -197,6 +199,7 @@ __all__ = [
     "harness_refine_tool",
     "agent_message_tool",
     "agent_observe_tool",
+    "alpha_peer_network_tool",
     "process_handle_tool",
     "invoke_python_skill_tool",
     "bot_roster_tool",
@@ -319,4 +322,5 @@ __all__ = [
     "desktop_mouse_action_tool",
     "desktop_keyboard_action_tool",
     "desktop_window_manage_tool",
+    "desktop_system_one_action_tool",
 ]

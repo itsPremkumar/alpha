@@ -38,6 +38,7 @@
 
 ## Operations
 
+- [ALPHA_PEER_NETWORK.md](ALPHA_PEER_NETWORK.md) — Free Alpha-to-Alpha peer network: pairing, transport, and deployment.
 - [AUTO_UPDATE.md](AUTO_UPDATE.md) — Local source auto-update behavior and operational controls.
 - [CONFIGURATION.md](CONFIGURATION.md) — Configuration reference for files, settings, and environment.
 - [DEPLOYMENT.md](DEPLOYMENT.md) — Deployment models and deployment procedures.

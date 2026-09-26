@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-09-25T00:55:36Z",
+ "generated_at": "2026-09-26T00:45:20Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -87,6 +87,14 @@
    "id": "group_chat_tool",
    "module": "alpha.tools.builtins.group_chat_tool",
    "symbol": "group_chat_tool",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "alpha_peer_network_tool",
+   "module": "alpha.tools.builtins.peer_network_tool",
+   "symbol": "alpha_peer_network_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
    "state": "wired"
@@ -1026,6 +1034,14 @@
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
    "state": "wired"
+  },
+  {
+   "id": "desktop_system_one_action_tool",
+   "module": "alpha.tools.builtins.computer_system_one_tool",
+   "symbol": "desktop_system_one_action_tool",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
   }
  ],
  "routers": [
@@ -1358,6 +1374,14 @@
    "state": "wired"
   },
   {
+   "id": "app.gateway.routers.peer_network",
+   "module": "app.gateway.routers.peer_network",
+   "symbol": "router",
+   "wiring_point": "app.gateway.app:include_router",
+   "wired": true,
+   "state": "wired"
+  },
+  {
    "id": "app.gateway.routers.plan_mode",
    "module": "app.gateway.routers.plan_mode",
    "symbol": "router",
@@ -1569,6 +1593,13 @@
   {
    "id": "alpha.agents.middlewares.input_sanitization_middleware",
    "module": "alpha.agents.middlewares.input_sanitization_middleware",
+   "wiring_point": "alpha.agents.lead_agent.agent:middlewares | alpha.agents.middlewares.tool_error_handling_middleware:build_lead_runtime_middlewares | alpha.agents.factory",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "alpha.agents.middlewares.l1_memory_middleware",
+   "module": "alpha.agents.middlewares.l1_memory_middleware",
    "wiring_point": "alpha.agents.lead_agent.agent:middlewares | alpha.agents.middlewares.tool_error_handling_middleware:build_lead_runtime_middlewares | alpha.agents.factory",
    "wired": true,
    "state": "wired"

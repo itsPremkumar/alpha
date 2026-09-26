@@ -34,6 +34,7 @@ export type WorkspaceView =
   | "warroom"
   | "bots"
   | "messages"
+  | "peers"
   | "kanban"
   | "runs"
   | "files"
@@ -73,6 +74,7 @@ export const WORKSPACE_TABS: WorkspaceTabItem[] = [
   { id: "bots", label: "Bots", icon: <Bot className="size-3.5" />, blurb: "Specialist profiles & team ops", category: "core", isPrimary: true },
   { id: "kanban", label: "Board", icon: <SquareKanban className="size-3.5" />, blurb: "Full project kanban board", category: "core", isPrimary: true },
   { id: "messages", label: "Messages", icon: <MessagesSquare className="size-3.5" />, blurb: "Agent chats & group rooms", category: "collaboration", isPrimary: true },
+  { id: "peers", label: "Alpha Network", icon: <Network className="size-3.5" />, blurb: "Discover, pair & message other Alpha installations", category: "collaboration" },
   { id: "dashboard", label: "Usage", icon: <LayoutDashboard className="size-3.5" />, blurb: "Activity, tokens & cost", category: "operations", isPrimary: true },
 
   // Collaboration & Team

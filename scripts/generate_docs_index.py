@@ -141,6 +141,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "plans",
         "Research survey and feature roadmap for the open-source agent landscape.",
     ),
+    "ALPHA_PEER_NETWORK.md": DocumentSpec(
+        "operations",
+        "Free Alpha-to-Alpha peer network: pairing, transport, and deployment.",
+    ),
     "ALPHA_UNIFIED_INTEGRATION_PLAN.md": DocumentSpec(
         "plans", "Unified local-only integration plan and sequencing for Alpha."
     ),

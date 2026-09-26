@@ -257,20 +257,59 @@ sees the last 10 entries; more valuable if the browser agent is ever embedded in
 larger multi-domain loop where the previous action may not have been a browser
 action at all.
 
-### 4.5 Out of scope for Alpha
+### 4.5 Indexed System One desktop control — **implemented, opt-in**
 
-The guide's §4–27 control surface (UI Automation, registry, services, scheduled
-tasks, packages, printers, USB, Bluetooth, DPI, audio) and §35 self-healing worker
-watchdogs describe a **Windows desktop control plane**. Alpha has a browser tool
-and a sandbox, not a desktop agent. Adopting those means building a new subsystem,
-not extending this one — and §53 is honest that "full laptop control" spans three
-distinct levels (user-level, administrative, complete physical), of which only the
-first is reachable without privilege escalation the guide itself forbids in §71.
+The existing low-level `desktop_*` tools remain available for trusted callers, but
+System One/Laya is now wired through a narrower semantic path:
+
+```text
+UI Automation tree → indexed semantic table → System One operation/target
+                   → local index resolution → sentinel-guarded dispatch
+```
+
+`desktop_system_one_action` currently offers `CLICK`, caller-supplied
+`TYPE_TEXT`, caller-supplied `PRESS`/`HOTKEY`, `WAIT`, `DONE`, and `BLOCKED`.
+The model receives only bounded names, roles, window labels, and indexes. It
+never receives or returns pixel coordinates, bounding boxes, selectors, UIA
+handles, typed text, keys, or hotkey values. The semantic scan omits static and
+unknown controls before applying its element cap, so ordinary label-heavy
+windows do not look truncated. Geometry and all value-bearing arguments stay in
+the local executor. Keyboard operations require exactly one freshly observed
+focused control; `TYPE_TEXT` rechecks focus after its guarded click. The
+`TYPE_TEXT`, `PRESS`, and `HOTKEY` operations are only offered when the caller
+supplied the corresponding argument.
+
+Enable it only after measuring the local provider:
+
+```yaml
+system_one:
+  enable_computer_action: true
+  shadow_mode: true
+  record_decisions: true
+```
+
+The first rollout is intentionally **shadow-only**. A `None`, malformed,
+low-confidence, truncated, or stale decision produces no input. If the bounded
+Laya projection would omit an executable element, the operation question is
+withheld; partitioning is used only for a complete table's target head. The
+existing sentinel guard, panic corner, window-boundary lock, per-thread lease, and
+optional backend probes remain authoritative. The tool is a one-step policy;
+callers observe again before the next step rather than reusing old coordinates.
+
+
+The guide's broader control surface (registry, services, scheduled tasks, packages,
+printers, USB, Bluetooth, DPI, audio) and §35 self-healing worker watchdogs still
+require separate privileged adapters. The indexed UI-control slice above is the
+supported first step; it does not claim full laptop control or bypass the sentinel
+boundary.
 
 ---
 
 ## 5. Verification
 
+- `tests/test_system_one_computer.py` — indexed semantic desktop policy, opt-in/shadow
+  behavior, geometry redaction, bounded partitioning, fresh-target revalidation, and
+  no-coordinate receipts
 - `tests/test_system_one_freshness.py` — 62 passed (3 for the wall-clock budget,
   5 for the recovery ladder, 16 for the evidence chain, 5 for `href` as part of a
   link's identity)
