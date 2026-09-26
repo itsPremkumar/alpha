@@ -1,0 +1,50 @@
+{
+  "$comment": [
+    "THE single greppable source of truth for every version the Alpha Windows",
+    "installer downloads. Nothing else may pin a version: installer/bootstrap.ps1,",
+    "installer/lib/Alpha.Installer.psm1, .devcontainer/devcontainer.json and",
+    "build/compose.installer.yaml all read this file (or are asserted against it by",
+    "installer/tests/test_installer_contract.py).",
+    "",
+    "repo.ref MUST be an immutable tag. A branch name here makes every released",
+    "install unreproducible, which is the exact failure the owner forbade."
+  ],
+  "repo": {
+    "url": "https://github.com/itsPremkumar/alpha.git",
+    "ref": "v2.1.0",
+    "depth": 1
+  },
+  "uv": {
+    "version": "0.11.1",
+    "$comment": "MUST equal backend/Dockerfile's UV_IMAGE tag. backend/tests/test_ci_uv_version_pin.py enforces that pairing for CI; installer/tests/test_installer_contract.py enforces it for the installer.",
+    "image": "ghcr.io/astral-sh/uv:0.11.1"
+  },
+  "python": {
+    "version": "3.12",
+    "$comment": "Minor series only. uv resolves the exact patch, so the installer never hardcodes a patch that can rot."
+  },
+  "node": {
+    "version": "22.17.0",
+    "$comment": "MUST equal electron/desktop-config.json nodeVersion. The frontend is a Next.js SERVER (next start), so a Node runtime is required at runtime; there is no static bundle."
+  },
+  "packageManager": {
+    "pnpm": "10.26.2",
+    "$comment": "MUST equal the root package.json packageManager field."
+  },
+  "timeoutsSeconds": {
+    "clone": 900,
+    "sync": 1800,
+    "node": 900,
+    "health": 600
+  },
+  "requirements": {
+    "minimumWindowsBuild": 19041,
+    "$comment": "19041 = Windows 10 2004. WebView2 Evergreen is guaranteed present from Windows 11 and Windows 10 1803+; 19041 is the floor where the whole stack is supported.",
+    "supportedArchitectures": ["AMD64", "ARM64"],
+    "minimumFreeDiskMB": 6144
+  },
+  "defaults": {
+    "databaseBackend": "sqlite",
+    "$comment": "SQLite so no database server is required. Postgres is opt-in via -WithPostgres."
+  }
+}

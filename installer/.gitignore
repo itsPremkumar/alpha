@@ -1,0 +1,3 @@
+# Installer-local state. The deliverable is the script set itself.
+logs/
+*.log

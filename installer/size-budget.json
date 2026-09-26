@@ -1,0 +1,37 @@
+{
+  "$comment": [
+    "THE single greppable place the Windows installer's size budget lives.",
+    "CI (build/measure_footprint.py --budget) fails the build when a measured",
+    "value exceeds its budget. A budget nobody enforces is a wish, so the",
+    "enforcement is a test (installer/tests/test_installer_contract.py) plus a",
+    "workflow step that is not allowed to continue-on-error.",
+    "",
+    "Units: mebibytes (1 MiB = 1048576 bytes), matching the `currency_units` key.",
+    "Provenance for every number is in docs/INSTALLER.md; each `measured_on` field",
+    "records the machine the number came from."
+  ],
+  "currency_units": "mebibytes",
+  "budgets": {
+    "installer_script": 512,
+    "$comment_installer_script": "The bootstrapping script itself. It is plain text downloaded by the user, so it must stay small enough to fetch and read.",
+    "installed_footprint": 3072,
+    "$comment_installed_footprint": "Everything the native (no-Docker) path puts on the machine: uv, CPython, the production venv, Node, the prebuilt frontend and the source checkout.",
+    "source_checkout": 256,
+    "$comment_source_checkout": "A shallow clone of the pinned tag, excluding .venv/node_modules/.next which are accounted for separately."
+  },
+  "measured": {
+    "$comment": "Recorded on 2026-09-26, Windows 11 build 22631, AMD64, PowerShell 5.1.22621.2506. Values are MEASURED unless the key says estimate.",
+    "uv_managed_cpython_312_mb": 63.4,
+    "production_venv_logical_mb": 671.2,
+    "production_venv_real_disk_mb": 324,
+    "production_venv_file_count": 51975,
+    "dev_venv_all_extras_logical_mb": 1346.5,
+    "dev_venv_all_extras_file_count": 73457,
+    "electron_installer_exe_mb": 195.4,
+    "electron_win_unpacked_logical_mb": 585.8,
+    "electron_portable_runtime_mb": 121.9,
+    "frontend_standalone_mb": 78.5,
+    "uv_shared_cache_logical_mb": 13422.5,
+    "uv_shared_cache_note": "This machine's shared cache across every uv project. NOT representative of a single fresh install; a fresh install's cache is bounded by the wheels that venv actually needs."
+  }
+}

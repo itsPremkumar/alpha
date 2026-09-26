@@ -73,3 +73,149 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: electron/dist/*.exe
+
+  # ---------------------------------------------------------------------------
+  # The native, fully-automatic bootstrapper (installer/bootstrap.ps1).
+  #
+  # A SEPARATE job from the Electron packaging above, and additive: nothing
+  # above was removed or reordered. The Electron NSIS build stays exactly as it
+  # was, because swapping out a working desktop shell needs more than a size
+  # argument (see docs/INSTALLER.md for the measured verdict).
+  # ---------------------------------------------------------------------------
+  native-installer:
+    name: Native bootstrapper, size budget, clean-machine smoke test
+    if: github.event.pull_request.draft == false
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Python (measurement only, not shipped)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Pinned to the same uv backend/Dockerfile ships. backend/tests/
+      # test_ci_uv_version_pin.py fails the build if this drifts from UV_IMAGE,
+      # and installer/tests/test_installer_contract.py fails it if the
+      # installer/pins.json copy drifts. All three must agree.
+      - name: Use pinned uv version
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: '0.11.1'
+          enable-cache: true
+
+      - name: Enforce the installed-footprint size budget
+        # A budget nobody enforces is a wish. This step is deliberately NOT
+        # continue-on-error: exceeding the budget must fail the build. The
+        # budgets live in exactly one greppable place, installer/size-budget.json.
+        run: python build/measure_footprint.py --budget
+
+      - name: Archive the footprint measurements
+        if: always()
+        run: python build/measure_footprint.py --json | Out-File -Encoding utf8 build-footprint.json
+
+      - name: Upload footprint measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: installed-footprint-measurements
+          path: build-footprint.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Installer contract tests
+        run: python -m pytest installer/tests/test_installer_contract.py -q
+
+      - name: Lint the installer measurement tool
+        run: python -m ruff check build/measure_footprint.py installer/tests/test_installer_contract.py
+
+      - name: Upload the native bootstrapper
+        uses: actions/upload-artifact@v4
+        with:
+          name: alpha-native-bootstrapper
+          path: |
+            installer/bootstrap.ps1
+            installer/uninstall-alpha.ps1
+            installer/create-shortcuts.ps1
+            installer/pins.json
+            installer/size-budget.json
+            installer/lib/Alpha.Installer.psm1
+          if-no-files-found: error
+          retention-days: 30
+
+      # ---------------------------------------------------------------------
+      # Smoke test: install the produced artefact on a CLEAN Windows machine and
+      # prove the app starts and its health endpoint answers. A build that has
+      # never been installed is not a build that works.
+      #
+      # The install runs against a real shallow clone of the pinned tag, so the
+      # tag must be published. On a tag push it is. On a branch build this step
+      # says so and fails loudly rather than pretending to have verified.
+      # ---------------------------------------------------------------------
+      - name: Dry-run the bootstrapper (must change nothing)
+        shell: pwsh
+        run: |
+          $installRoot = Join-Path $env:RUNNER_TEMP 'alpha-dryrun'
+          & powershell -NoProfile -ExecutionPolicy Bypass -File installer/bootstrap.ps1 -DryRun -InstallRoot $installRoot
+          if ($LASTEXITCODE -ne 0) { throw "dry run failed with exit code $LASTEXITCODE" }
+          if (Test-Path $installRoot) { throw "dry run created $installRoot; a dry run must not touch the machine" }
+          Write-Host 'dry run left the machine untouched'
+
+      - name: Install Alpha from the pinned tag and assert the health endpoint
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installRoot = Join-Path $env:RUNNER_TEMP 'alpha-smoke'
+          $pins = Get-Content installer/pins.json -Raw | ConvertFrom-Json
+          $ref = $pins.repo.ref
+
+          # Fail loudly and honestly if the pinned tag is not published yet,
+          # instead of silently testing something else.
+          git ls-remote --exit-code --tags $pins.repo.url "refs/tags/$ref" 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            throw "Pinned tag '$ref' is not published in $($pins.repo.url). The smoke test installs the real artefact, so it cannot run against a moving branch. Publish the tag, or run this workflow on a tag push."
+          }
+
+          & powershell -NoProfile -ExecutionPolicy Bypass -File installer/bootstrap.ps1 -InstallRoot $installRoot -Tag $ref -Yes
+          if ($LASTEXITCODE -ne 0) { throw "bootstrapper failed with exit code $LASTEXITCODE" }
+
+          # The bootstrapper already starts Alpha and polls /health itself and
+          # exits non-zero if it does not answer. This re-proves it from the
+          # outside, so a bug in the installer's own probe cannot make the smoke
+          # test pass vacuously.
+          $health = $null
+          $deadline = (Get-Date).AddSeconds(300)
+          while ((Get-Date) -lt $deadline) {
+            try {
+              $health = Invoke-WebRequest 'http://127.0.0.1:8001/health' -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
+              break
+            } catch { Start-Sleep -Seconds 5 }
+          }
+          if (-not $health -or $health.StatusCode -ne 200) { throw 'gateway /health never answered 200 on a clean install' }
+          Write-Host "gateway /health -> $($health.StatusCode) $($health.Content)"
+
+          $ui = $null
+          $deadline = (Get-Date).AddSeconds(180)
+          while ((Get-Date) -lt $deadline) {
+            try {
+              $ui = Invoke-WebRequest 'http://127.0.0.1:3000/' -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
+              break
+            } catch { Start-Sleep -Seconds 5 }
+          }
+          if (-not $ui -or $ui.StatusCode -ne 200) { throw 'frontend never answered 200 on a clean install' }
+          Write-Host "frontend / -> $($ui.StatusCode)"
+
+          & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $installRoot 'alpha\stop.ps1') 2>&1 | Out-Null
+          Write-Host 'SMOKE TEST PASSED: a clean Windows runner installed Alpha and the app answered its health endpoint.'
+
+      - name: Upload the smoke-test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-installer-smoke-log
+          path: '**/logs/alpha-installer.log'
+          if-no-files-found: warn
+          retention-days: 14
