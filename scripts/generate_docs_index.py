@@ -220,6 +220,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
     "README.md": DocumentSpec(
         "contributing", "Documentation library entry point and navigation overview."
     ),
+    "REASONING_PLAN.md": DocumentSpec(
+        "reasoning",
+        "Default-off reasoning plane: contracts, budgeting, and wiring plan.",
+    ),
     "RUN_RECOVERY.md": DocumentSpec(
         "operations", "Safe recovery for durable runs and interrupted work."
     ),

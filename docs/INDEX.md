@@ -31,6 +31,7 @@
 
 - [COGNITIVE_ENGINES.md](COGNITIVE_ENGINES.md) — Cognitive plane, reasoning engines, and optimization architecture.
 - [DEEP_RESEARCH.md](DEEP_RESEARCH.md) — Autonomous multi-hop research pipeline and evidence workflow.
+- [REASONING_PLAN.md](REASONING_PLAN.md) — Default-off reasoning plane: contracts, budgeting, and wiring plan.
 - [SYSTEM_ONE.md](SYSTEM_ONE.md) — System One fast structured decision layer.
 - [SYSTEM_ONE_AGENT_USE_CASES.md](SYSTEM_ONE_AGENT_USE_CASES.md) — Agentic use-case research for System One models.
 - [SYSTEM_ONE_CALIBRATION.md](SYSTEM_ONE_CALIBRATION.md) — Calibration methodology and trust measurement for System One.
