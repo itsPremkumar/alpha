@@ -2,9 +2,31 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from alpha.runtime import goal
+
+
+@pytest.fixture(autouse=True)
+def _isolate_system_one_fast_path(monkeypatch):
+    """Unit tests here exercise the LLM evaluator, not the System One fast path.
+
+    ``_system_one_goal_completion`` is reached *before* the model is built, and
+    it dials whatever ``config.yaml -> system_one`` points at. The shipped file
+    enables it against ``http://127.0.0.1:8000`` with loopback keyless access
+    allowed, so a test that merely wanted to assert the evaluator's model
+    kwargs opened a real socket, burned ``timeout_ms`` x ``max_retries``
+    per test (~20s x 3 tests), and depended on whether a local Laya happened
+    to be running. Isolating the fast path here is what makes these tests
+    offline and deterministic; the System One branch itself is covered by its
+    own suite.
+    """
+
+    async def _system_one_unavailable(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(goal, "_system_one_goal_completion", _system_one_unavailable)
 
 
 def test_build_goal_state_defaults_to_claude_stop_hook_cap():

@@ -251,10 +251,16 @@ def create_goal_evaluator_model(
     # dependent: `import alpha.tools.tools` succeeded (130 tools) while
     # `from alpha.community.aio_sandbox import network_proxy` raised
     # ImportError, which broke pytest collection for every test whose import
-    # reached `alpha.models` first. Importing here breaks the cycle with no
-    # behaviour change - the name is only needed when this factory is called.
-    from alpha.models import create_chat_model
-
+    # reached `alpha.models` first.
+    #
+    # The deferral lives in the module-level `create_chat_model` proxy below,
+    # which is why this function calls THAT rather than re-importing here: a
+    # private local import shadows the module attribute, so patching
+    # `goal.create_chat_model` - the seam this module documents for callers and
+    # tests - silently did nothing and the real factory ran instead (it then
+    # blew up on a test-supplied `app_config`, and in production meant the
+    # evaluator's `thinking_enabled=False` / `attach_tracing=True` contract
+    # could not be intercepted at all). Same cycle safety, one seam.
     return create_chat_model(
         name=model_name,
         thinking_enabled=False,
