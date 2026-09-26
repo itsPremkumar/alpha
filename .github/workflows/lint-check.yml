@@ -260,3 +260,26 @@ jobs:
 
       - name: Check the generated documentation index is current
         run: python scripts/check_docs_index_drift.py --json
+
+  duplicate-expressions:
+    # Pure-AST gate for the mangled-rename bug family: a refactor that
+    # collapses `X or Y` into `X or X`, repeats one comparison inside a
+    # BoolOp, writes a complementary tautology that can never fail
+    # (`A != B or A == B`), or leaves a duplicate dict key behind. It
+    # imports nothing, so it is safe to run while the test suite occupies
+    # the venv, and it exits 1 on any hit. This job did not previously
+    # exist: the check was only ever run by hand before a landing, which
+    # made it a report rather than a gate, so a duplicate expression could
+    # reach main without anything objecting.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Reject duplicated expressions
+        run: python scripts/audit_dup_expressions.py
