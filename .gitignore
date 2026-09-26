@@ -100,3 +100,10 @@ backend/.agent_workspace_projects/
 .ruff_cache/
 
 
+
+# Throwaway measurement venv and import-time dumps produced by agents.
+# build/measure/prod-venv alone is ~324 MB across ~52,000 files; backend/.tmp holds
+# profiling output. Neither is source. Without these, a bare 'git add -A' commits
+# hundreds of megabytes of build debris.
+build/measure/
+backend/.tmp/
