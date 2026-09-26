@@ -691,6 +691,8 @@ You: "Deploying to staging..." [proceed]
 {acp_section}
 </working_directory>
 
+{leader_dispatch_section}
+
 <rlm_harness_system>
 **RLM Programmatic Execution & Continual Harness (Prime Agent Integration):**
 - **Persistent Python REPL (`python_repl`)**: When handling data transformations, large outputs, AST operations, or multi-step logic, use `python_repl`.
@@ -1176,6 +1178,63 @@ Rules (mandatory):
 </project_identity>"""
 
 
+def _build_leader_dispatch_section() -> str:
+    """Prompt block teaching the lead agent the capability-dispatch contract.
+
+    Kept in its own builder (rather than pasted into the static template) so the
+    leader's authority boundary has exactly one source of truth: the
+    ``DIRECTABLE_CAPABILITIES`` / ``NEVER_DIRECTED_CAPABILITIES`` sets in
+    :mod:`alpha.bots.alpha_leader`. The prompt states the BOUNDARY; the code
+    enforces it, and a stale prompt can never widen an authority.
+    """
+    try:
+        from alpha.bots.alpha_leader import (
+            ALPHA_LEADER_NAME,
+            ALPHA_LEADER_ROLE,
+            DIRECTABLE_CAPABILITIES,
+            LEADER_CAPABILITIES,
+            MAX_DIRECTABLE_TAGS_PER_DISPATCH,
+            NEVER_DIRECTED_CAPABILITIES,
+        )
+    except Exception:
+        logger.warning("Leader dispatch section unavailable; omitting it from the system prompt", exc_info=True)
+        return ""
+    directable = ", ".join(f"`{tag}`" for tag in sorted(DIRECTABLE_CAPABILITIES))
+    never = ", ".join(f"`{tag}`" for tag in sorted(NEVER_DIRECTED_CAPABILITIES))
+    return f"""<leader_dispatch>
+You are running as **{ALPHA_LEADER_NAME}** ({ALPHA_LEADER_ROLE}), the default leader of this installation.
+
+**SELECTION IS BY CAPABILITY, NOT BY TITLE.** A capability is a declared tag (`sql`, `react`, `security_review`, ...).
+Before assigning work, name the capability it needs, then choose the target from the agents that DECLARE it.
+Never pick by department, seniority, roster order, or name similarity. An agent that does not declare the
+required capability is not a candidate.
+
+**RECORD THE REASON.** Every delegation is written to the handoff ledger as `from / to / reason / attempt`.
+State the reason in one sentence — the capability the target declares that the others do not. If you cannot, you have not decided yet.
+
+**BOUNDED DELEGATION, INHERITED DOWNWARD.** Depth, fan-out, per-task hop count and the token/cost budget are
+all ceilings. A child receives a strictly smaller share than you hold. When a ceiling is reached: stop and
+escalate to a human. Never spawn a sibling to work around a ceiling, and never hand a task back to an agent
+that already holds it.
+
+**FAILURE IS VISIBLE AS FAILURE.** A child that failed is reported to you as FAILED. Never restate a failure
+as success. A task is NOT complete while any descendant is still running or unresolved. Report partial work as
+partial. When a child fails, the failure class decides the route: a transient timeout retries IN PLACE, a
+capability gap REASSIGNS to a different capable agent, and an exhausted attempt budget escalates to a human.
+
+**DISPATCH GRANTS NO AUTHORITY.** The tools your targets use remain subject to each agent's own permission
+ring, the approval gate, the System One policy layer, the safety enclave and the sandbox. You may propose,
+dispatch and recall. You may never satisfy a gate on someone's behalf.
+
+**YOUR DIRECTION ALLOWLIST** (a dispatch requiring a tag outside it is REFUSED, not rerouted; at most {MAX_DIRECTABLE_TAGS_PER_DISPATCH} tags per dispatch):
+{directable}
+
+**NEVER DIRECTABLE, regardless of the allowlist:** {never}
+
+**YOUR OWN DECLARED CAPABILITIES:** {", ".join(f"`{tag}`" for tag in sorted(LEADER_CAPABILITIES))}
+</leader_dispatch>"""
+
+
 def _build_acp_section(*, app_config: AppConfig | None = None) -> str:
     """Build the ACP agent prompt section, only if ACP agents are configured."""
     if app_config is None:
@@ -1371,4 +1430,5 @@ def apply_prompt_template(
         skill_first_reminder=skill_first_reminder,
         subagent_thinking=subagent_thinking,
         acp_section=acp_and_mounts_section,
+        leader_dispatch_section=_build_leader_dispatch_section(),
     )
