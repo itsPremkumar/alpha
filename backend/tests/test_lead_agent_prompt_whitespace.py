@@ -85,8 +85,36 @@ def prompt_word_stream(source: str) -> str:
     return " ".join("".join(parts).split())
 
 
+def _effective_ruff_config(path: Path, _seen: frozenset[Path] = frozenset()) -> dict:
+    """Resolve Ruff's ``extend`` chain so a key is read from where it now lives.
+
+    ``backend/ruff.toml`` no longer states ``line-length``: it extends
+    ``../ruff.toml``, which is the repository-wide source of truth. Reading only
+    the closest file therefore raised ``KeyError: 'line-length'`` — the drift
+    this guard exists to catch, reported as a crash instead of a verdict.
+
+    Inheritance is resolved the way Ruff resolves it (the extended file supplies
+    defaults, the extending file overrides them), so the limit returned is the
+    one Ruff actually enforces on ``PROMPT_SOURCE``. Moving the policy again
+    keeps working, and a config with no resolvable ``line-length`` still fails
+    loudly rather than silently falling back to Ruff's 88-column default.
+    """
+    resolved = path.resolve()
+    if resolved in _seen:
+        raise RuntimeError(f"ruff config extend cycle at {resolved}")
+    raw = tomllib.loads(resolved.read_text(encoding="utf-8"))
+    merged: dict = {}
+    extended = raw.get("extend")
+    if extended:
+        refs = extended if isinstance(extended, list) else [extended]
+        for ref in refs:
+            merged.update(_effective_ruff_config(resolved.parent / ref, _seen | {resolved}))
+    merged.update(raw)
+    return merged
+
+
 def configured_line_length() -> int:
-    return int(tomllib.loads(RUFF_CONFIG.read_text(encoding="utf-8"))["line-length"])
+    return int(_effective_ruff_config(RUFF_CONFIG)["line-length"])
 
 
 def pre_rewrap_lines() -> list[str]:
