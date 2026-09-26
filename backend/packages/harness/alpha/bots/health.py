@@ -137,11 +137,15 @@ class BotHealthMonitor:
                 "lease_expired": False,
             }
 
+        # Unknown elapsed time is disclosed as None with a parse-error flag —
+        # never a fabricated sentinel like 999999.0.
+        heartbeat_parse_error = False
         try:
             hb_dt = datetime.fromisoformat(last_hb_str)
-            elapsed_sec = (now_dt - hb_dt).total_seconds()
+            elapsed_sec: float | None = (now_dt - hb_dt).total_seconds()
         except Exception:
-            elapsed_sec = 999999.0
+            elapsed_sec = None
+            heartbeat_parse_error = True
 
         lease_expired = False
         if lease_exp_str and active_task:
@@ -154,6 +158,11 @@ class BotHealthMonitor:
 
         if lease_expired:
             liveness = "stalled"
+            is_responsive = False
+        elif elapsed_sec is None:
+            # Unparseable heartbeat timestamp: fail closed as "dead", exactly
+            # like the old 999999.0 sentinel path — without inventing seconds.
+            liveness = "dead"
             is_responsive = False
         elif elapsed_sec <= HEALTHY_THRESHOLD_SECONDS:
             liveness = "healthy"
@@ -172,7 +181,9 @@ class BotHealthMonitor:
             "is_responsive": is_responsive,
             "active_task_id": active_task,
             "last_heartbeat": last_hb_str,
-            "seconds_since_heartbeat": round(elapsed_sec, 1),
+            # None => the timestamp could not be parsed; see heartbeat_parse_error.
+            "seconds_since_heartbeat": round(elapsed_sec, 1) if elapsed_sec is not None else None,
+            "heartbeat_parse_error": heartbeat_parse_error,
             "lease_expired": lease_expired,
         }
 

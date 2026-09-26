@@ -22,7 +22,9 @@ function normalizeBot(raw: Record<string, unknown>): BotProfile {
     capabilities: Array.isArray(raw.capabilities) ? (raw.capabilities as string[]) : [],
     heartbeat: typeof raw.heartbeat === "string" ? raw.heartbeat : null,
     succession_fallback: typeof raw.succession_fallback === "string" ? raw.succession_fallback : null,
-    reputation_score: typeof raw.reputation_score === "number" ? raw.reputation_score : 1,
+    // Backend returns null for bots with no recorded runs (unverified).
+    // Never coerce null → 1 — that would fabricate a perfect score.
+    reputation_score: typeof raw.reputation_score === "number" ? raw.reputation_score : null,
     task_stats: taskStats,
     routines: Array.isArray(raw.routines) ? (raw.routines as Array<Record<string, unknown>>) : [],
     created_at: typeof raw.created_at === "string" ? raw.created_at : null,
@@ -89,8 +91,14 @@ export function computeFleetHealth(bots: BotProfile[]): FleetHealth {
   const active = bots.filter((b) => b.status === "active").length;
   const paused = bots.filter((b) => b.status === "paused").length;
   const disabled = bots.filter((b) => b.status === "disabled").length;
+  // Average ONLY measured (non-null) scores. Unverified bots must not drag
+  // the average to 0, and with nothing measured the honest answer is null —
+  // never a fabricated fleet reputation number.
+  const measured = bots
+    .map((b) => b.reputation_score)
+    .filter((s): s is number => typeof s === "number");
   const avg_reputation =
-    total === 0 ? 0 : bots.reduce((sum, b) => sum + (b.reputation_score || 0), 0) / total;
+    measured.length === 0 ? null : measured.reduce((sum, s) => sum + s, 0) / measured.length;
   const total_tasks = bots.reduce((sum, b) => sum + (Number(b.task_stats?.total) || 0), 0);
   return { total, active, paused, disabled, avg_reputation, total_tasks };
 }

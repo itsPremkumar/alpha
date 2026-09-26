@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { listGroups, createGroup, postGroupMessage, groupMessages, startGroupRun, listSwarms, createSwarm, swarmAction, listMcpTasks, listJobs, cancelJob, companyStatus, executiveDigest, companyKpis } from "@/lib/teamops";
+import { listGroups, createGroup, postGroupMessage, groupMessages, startGroupRun, listSwarms, createSwarm, swarmAction, type Swarm, listMcpTasks, listJobs, cancelJob, companyStatus, executiveDigest, companyKpis } from "@/lib/teamops";
 import { listKanbanTasks, moveKanbanTask, kanbanEvents, KANBAN_COLUMNS, KanbanTask, KanbanStatus } from "@/lib/kanban";
 import { fetchRoster, registerRosterAgent, sendAgentMessage, fetchInbox, setRosterStatus, RosterAgent, InboxMessage } from "@/lib/inbox";
 import { Section, EmptyState, ErrorBox, Notice, Btn, Badge, Field, SkeletonList, inputCls } from "@/components/ui";
@@ -9,6 +9,13 @@ import { errMsg } from "@/lib/http";
 import { Plus, Send, Play, RefreshCw, Ban } from "lucide-react";
 
 type SubTab = "groups" | "inbox" | "swarms" | "jobs" | "company";
+type SwarmAction = "run_async" | "step" | "pause" | "resume" | "cancel";
+
+function swarmActions(status: string): SwarmAction[] {
+  if (["completed", "failed", "cancelled", "budget_exhausted", "stalled"].includes(status)) return [];
+  if (status === "paused") return ["resume", "cancel"];
+  return ["run_async", "step", "pause", "cancel"];
+}
 
 export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailable: boolean }) {
   const [tab, setTab] = useState<SubTab>("groups");
@@ -24,7 +31,7 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
   const [groupDraft, setGroupDraft] = useState("");
   const [groupObjective, setGroupObjective] = useState("");
 
-  const [swarms, setSwarms] = useState<Array<{ id: string; objective: string; status: string }>>([]);
+  const [swarms, setSwarms] = useState<Swarm[]>([]);
   const [swarmObjective, setSwarmObjective] = useState("");
   const [jobs, setJobs] = useState<Array<{ id: string; kind: string; status: string }>>([]);
   const [mcpTasks, setMcpTasks] = useState<Array<Record<string, unknown>>>([]);
@@ -179,29 +186,37 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
       ) : tab === "swarms" ? (
         <div className="space-y-2">
           <div className="rounded-2xl border border-border/60 bg-card p-4">
-            <Field label="Launch a swarm" hint="Many workers in parallel on one objective.">
+            <Field label="Create a swarm plan" hint="Create a bounded DAG, then run it explicitly when you are ready.">
               <div className="flex gap-2">
-                <input value={swarmObjective} onChange={(e) => setSwarmObjective(e.target.value)} onKeyDown={(e) => e.key === "Enter" && swarmObjective.trim() && act(() => createSwarm(swarmObjective.trim()).then(() => setSwarmObjective("")), "Swarm launched.")} placeholder="Objective…" className={inputCls} />
-                <Btn onClick={() => swarmObjective.trim() && act(() => createSwarm(swarmObjective.trim()).then(() => setSwarmObjective("")), "Swarm launched.")} disabled={!swarmObjective.trim()}>
-                  <Play className="size-3.5" /> Launch
+                <input value={swarmObjective} onChange={(e) => setSwarmObjective(e.target.value)} onKeyDown={(e) => e.key === "Enter" && swarmObjective.trim() && act(() => createSwarm(swarmObjective.trim()).then(() => setSwarmObjective("")), "Swarm plan created. Use Run to start execution.")} placeholder="Objective…" className={inputCls} />
+                <Btn onClick={() => swarmObjective.trim() && act(() => createSwarm(swarmObjective.trim()).then(() => setSwarmObjective("")), "Swarm plan created. Use Run to start execution.")} disabled={!swarmObjective.trim()}>
+                  <Play className="size-3.5" /> Create plan
                 </Btn>
               </div>
             </Field>
           </div>
           {swarms.length === 0 ? (
-            <EmptyState title="No swarms" hint="Launch one above for parallel teamwork." />
+            <EmptyState title="No swarms" hint="Create a bounded plan above, then run it when ready." />
           ) : (
             swarms.map((s) => (
               <div key={s.id} className="rounded-xl border border-border/60 bg-card px-4 py-2.5">
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="text-xs font-mono flex-1 min-w-32 break-all">{s.id.slice(0, 24)}</p>
-                  <Badge tone={s.status === "running" ? "blue" : "gray"}>{s.status}</Badge>
+                  <Badge tone={s.status === "running" ? "blue" : "gray"}>{s.status}</Badge>{s.mode && <Badge tone="gray">{s.mode}</Badge>}
                 </div>
                 <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{s.objective}</p>
+                {s.progress && (
+                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted" aria-label={`${s.progress.completed ?? 0} of ${s.progress.total ?? 0} tasks complete`}>
+                    <div
+                      className="h-full rounded-full bg-primary transition-all"
+                      style={{ width: `${Math.min(100, ((s.progress.completed ?? 0) / Math.max(1, s.progress.total ?? 1)) * 100)}%` }}
+                    />
+                  </div>
+                )}
                 <div className="flex gap-2 mt-2 flex-wrap">
-                  {(["step", "pause", "resume", "cancel"] as const).map((a) => (
+                  {swarmActions(s.status).map((a) => (
                     <Btn key={a} variant="ghost" onClick={() => act(() => swarmAction(s.id, a))}>
-                      {a[0].toUpperCase() + a.slice(1)}
+                      {a === "run_async" ? "Run" : a[0].toUpperCase() + a.slice(1)}
                     </Btn>
                   ))}
                 </div>

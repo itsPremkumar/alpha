@@ -1,16 +1,17 @@
 """Tests for the review guard middleware."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from alpha.agents.middlewares.review_guard_middleware import (
+    _WRITE_TOOL_NAMES,
     ReviewGuardMiddleware,
     ReviewGuardMiddlewareState,
     _calculate_comment_ratio,
     _get_extension,
     _is_write_allowed,
     _resolve_role,
-    _WRITE_TOOL_NAMES,
     build_review_guard_middleware,
 )
 from alpha.config.review_guard_config import ReviewGuardConfig
@@ -114,33 +115,49 @@ class TestReviewGuardConfig:
             ReviewGuardConfig(min_comment_ratio=-0.1)
 
 
+@pytest.fixture
+def config():
+    """Guard config shared by every test class in this module.
+
+    These fixtures used to live inside ``TestReviewGuardMiddleware`` only, which
+    made them invisible to the sibling classes (``TestSnapshotStability``,
+    ``TestIntegration``, ``TestFactory``): those tests requested a ``config``
+    fixture that pytest could not resolve, so every one of them ERRORed at setup
+    and none of the snapshot/integration coverage ever ran.
+    """
+    return ReviewGuardConfig(
+        enabled=True,
+        min_comment_ratio=0.2,
+        enforce_on_extensions=[".py", ".ts"],
+        role_write_policy={
+            "planner": [".md"],
+            "coder": [".py", ".ts"],
+            "reviewer": [],
+        },
+        default_role="coder",
+    )
+
+
+@pytest.fixture
+def runtime():
+    from unittest.mock import MagicMock
+
+    rt = MagicMock()
+    rt.context = {"thread_id": "test-thread"}
+    return rt
+
+
+@pytest.fixture
+def state():
+    return ReviewGuardMiddlewareState()
+
+
 class TestReviewGuardMiddleware:
     """Tests for ReviewGuardMiddleware."""
 
     @pytest.fixture
-    def config(self):
-        return ReviewGuardConfig(
-            enabled=True,
-            min_comment_ratio=0.2,
-            enforce_on_extensions=[".py", ".ts"],
-            role_write_policy={
-                "planner": [".md"],
-                "coder": [".py", ".ts"],
-                "reviewer": [],
-            },
-            default_role="coder",
-        )
-
-    @pytest.fixture
     def middleware(self, config):
         return ReviewGuardMiddleware(review_guard_config=config)
-
-    @pytest.fixture
-    def runtime(self):
-        from unittest.mock import MagicMock
-        rt = MagicMock()
-        rt.context = {"thread_id": "test-thread"}
-        return rt
 
     @pytest.fixture
     def state(self):
@@ -152,12 +169,16 @@ class TestReviewGuardMiddleware:
 
         # Mock a write tool call
         request = MagicMock()
+        # The middleware reads the runtime from the request (ToolCallRequest.runtime),
+        # so a role set only on the runtime fixture would be ignored and every role
+        # assertion would silently evaluate as the configured default role.
+        request.runtime = runtime
         request.tool_call = {"name": "write_file", "id": "call_1", "args": {"path": "test.py", "content": "x = 1"}}
 
         handler = AsyncMock()
         handler.return_value = MagicMock(status="success")
 
-        result = await middleware.wrap_tool_call(request, handler)
+        await middleware.wrap_tool_call(request, handler)
 
         handler.assert_called_once()
         # Should pass through without intervention
@@ -167,12 +188,16 @@ class TestReviewGuardMiddleware:
         middleware = ReviewGuardMiddleware(review_guard_config=config)
 
         request = MagicMock()
+        # The middleware reads the runtime from the request (ToolCallRequest.runtime),
+        # so a role set only on the runtime fixture would be ignored and every role
+        # assertion would silently evaluate as the configured default role.
+        request.runtime = runtime
         request.tool_call = {"name": "read_file", "id": "call_1", "args": {"path": "test.py"}}
 
         handler = AsyncMock()
         handler.return_value = MagicMock(status="success")
 
-        result = await middleware.wrap_tool_call(request, handler)
+        await middleware.wrap_tool_call(request, handler)
 
         handler.assert_called_once()
 
@@ -181,6 +206,10 @@ class TestReviewGuardMiddleware:
         middleware = ReviewGuardMiddleware(review_guard_config=config)
 
         request = MagicMock()
+        # The middleware reads the runtime from the request (ToolCallRequest.runtime),
+        # so a role set only on the runtime fixture would be ignored and every role
+        # assertion would silently evaluate as the configured default role.
+        request.runtime = runtime
         request.tool_call = {"name": "write_file", "id": "call_1", "args": {"path": "test.py", "content": "x = 1"}}
 
         # Set role to planner who can only write .md
@@ -199,6 +228,10 @@ class TestReviewGuardMiddleware:
         middleware = ReviewGuardMiddleware(review_guard_config=config)
 
         request = MagicMock()
+        # The middleware reads the runtime from the request (ToolCallRequest.runtime),
+        # so a role set only on the runtime fixture would be ignored and every role
+        # assertion would silently evaluate as the configured default role.
+        request.runtime = runtime
         request.tool_call = {"name": "write_file", "id": "call_1", "args": {"path": "test.py", "content": "x = 1\n# comment\n"}}
 
         # Set role to coder who can write .py
@@ -218,6 +251,10 @@ class TestReviewGuardMiddleware:
 
         # Content with low comment ratio (0 comments / 3 non-empty = 0.0 < 0.2)
         request = MagicMock()
+        # The middleware reads the runtime from the request (ToolCallRequest.runtime),
+        # so a role set only on the runtime fixture would be ignored and every role
+        # assertion would silently evaluate as the configured default role.
+        request.runtime = runtime
         request.tool_call = {"name": "write_file", "id": "call_1", "args": {"path": "test.py", "content": "x = 1\ny = 2\nz = 3\n"}}
 
         runtime.context = {"thread_id": "test-thread", "review_role": "coder"}
@@ -237,6 +274,10 @@ class TestReviewGuardMiddleware:
 
         # Content with sufficient comment ratio (2 comments / 3 non-empty = 0.67 >= 0.2)
         request = MagicMock()
+        # The middleware reads the runtime from the request (ToolCallRequest.runtime),
+        # so a role set only on the runtime fixture would be ignored and every role
+        # assertion would silently evaluate as the configured default role.
+        request.runtime = runtime
         request.tool_call = {"name": "write_file", "id": "call_1", "args": {"path": "test.py", "content": "# comment\nx = 1\n# another\n"}}
 
         runtime.context = {"thread_id": "test-thread", "review_role": "coder"}
@@ -253,6 +294,10 @@ class TestReviewGuardMiddleware:
         middleware = ReviewGuardMiddleware(review_guard_config=config)
 
         request = MagicMock()
+        # The middleware reads the runtime from the request (ToolCallRequest.runtime),
+        # so a role set only on the runtime fixture would be ignored and every role
+        # assertion would silently evaluate as the configured default role.
+        request.runtime = runtime
         request.tool_call = {"name": "str_replace", "id": "call_1", "args": {"path": "test.py", "old_str": "x = 1", "new_str": "y = 2\n# comment\n"}}
 
         runtime.context = {"thread_id": "test-thread", "review_role": "coder"}
@@ -269,6 +314,10 @@ class TestReviewGuardMiddleware:
         middleware = ReviewGuardMiddleware(review_guard_config=config)
 
         request = MagicMock()
+        # The middleware reads the runtime from the request (ToolCallRequest.runtime),
+        # so a role set only on the runtime fixture would be ignored and every role
+        # assertion would silently evaluate as the configured default role.
+        request.runtime = runtime
         request.tool_call = {"name": "str_replace", "id": "call_1", "args": {"path": "test.py", "old_str": "x = 1", "new_str": "y = 2\nz = 3\n"}}
 
         runtime.context = {"thread_id": "test-thread", "review_role": "coder"}
@@ -288,9 +337,16 @@ class TestReviewGuardMiddleware:
 
         # .md is not in enforce_on_extensions (only .py, .ts)
         request = MagicMock()
+        # The middleware reads the runtime from the request (ToolCallRequest.runtime),
+        # so a role set only on the runtime fixture would be ignored and every role
+        # assertion would silently evaluate as the configured default role.
+        request.runtime = runtime
         request.tool_call = {"name": "write_file", "id": "call_1", "args": {"path": "test.md", "content": "no comments here"}}
 
-        runtime.context = {"thread_id": "test-thread", "review_role": "coder"}
+        # planner is the role the fixture policy allows to write .md; using coder
+        # here would have exercised the ROLE check (which denies coder -> .md)
+        # instead of the extension exclusion this test is about.
+        runtime.context = {"thread_id": "test-thread", "review_role": "planner"}
 
         handler = AsyncMock()
         handler.return_value = MagicMock(status="success")
@@ -305,6 +361,10 @@ class TestReviewGuardMiddleware:
         middleware = ReviewGuardMiddleware(review_guard_config=config)
 
         request = MagicMock()
+        # The middleware reads the runtime from the request (ToolCallRequest.runtime),
+        # so a role set only on the runtime fixture would be ignored and every role
+        # assertion would silently evaluate as the configured default role.
+        request.runtime = runtime
         request.tool_call = {"name": "write_file", "id": "call_1", "args": {"path": "test.py", "content": "x = 1\n# comment\n"}}
 
         runtime.context = {"thread_id": "test-thread", "review_role": "reviewer"}
@@ -329,9 +389,22 @@ class TestFactory:
     """Test the factory function."""
 
     def test_build_review_guard_middleware(self):
-        mw = build_review_guard_middleware()
-        assert isinstance(mw, ReviewGuardMiddleware)
-        assert mw._config.enabled is False
+        # The no-argument factory resolves the guard config from the app-config
+        # singleton, which used to make this test depend on a config.yaml being
+        # present in the project root (it ERRORed with FileNotFoundError on a
+        # clean checkout). Inject an app config carrying the DEFAULT guard so the
+        # intended assertion - "an unconfigured guard is disabled" - is pinned
+        # hermetically, and restore the singleton afterwards so no other test
+        # inherits it.
+        from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
+
+        set_app_config(AppConfig.model_validate({"sandbox": {"use": "test"}}))
+        try:
+            mw = build_review_guard_middleware()
+            assert isinstance(mw, ReviewGuardMiddleware)
+            assert mw._config.enabled is False
+        finally:
+            reset_app_config()
 
     def test_build_with_custom_config(self):
         cfg = ReviewGuardConfig(enabled=True, min_comment_ratio=0.3)
@@ -350,6 +423,10 @@ class TestSnapshotStability:
 
         # A small Python function with only 1 comment in 6 lines = 0.17
         request = MagicMock()
+        # The middleware reads the runtime from the request (ToolCallRequest.runtime),
+        # so a role set only on the runtime fixture would be ignored and every role
+        # assertion would silently evaluate as the configured default role.
+        request.runtime = runtime
         request.tool_call = {"name": "write_file", "id": "call_1", "args": {
             "path": "test.py",
             "content": "def foo():\n    x = 1\n    y = 2\n    z = 3\n"
@@ -372,6 +449,10 @@ class TestSnapshotStability:
 
         # A Python function with 3 comments in 7 lines = 0.43
         request = MagicMock()
+        # The middleware reads the runtime from the request (ToolCallRequest.runtime),
+        # so a role set only on the runtime fixture would be ignored and every role
+        # assertion would silently evaluate as the configured default role.
+        request.runtime = runtime
         request.tool_call = {"name": "write_file", "id": "call_1", "args": {
             "path": "test.py",
             "content": "# Initialize variables\nx = 1\ny = 2\n# Compute result\nz = x + y\n# Return result\nreturn z",
@@ -390,11 +471,15 @@ class TestSnapshotStability:
     async def test_comment_density_boundary(self, config, state, runtime):
         """Test the boundary at min_comment_ratio."""
         middleware = ReviewGuardMiddleware(
-            ReviewGuardConfig(min_comment_ratio=0.3, enforce_on_extensions=[".py"])
+            review_guard_config=ReviewGuardConfig(min_comment_ratio=0.3, enforce_on_extensions=[".py"])
         )
 
         # Exactly 3 comments in 10 lines = 0.3 - should pass
         request = MagicMock()
+        # The middleware reads the runtime from the request (ToolCallRequest.runtime),
+        # so a role set only on the runtime fixture would be ignored and every role
+        # assertion would silently evaluate as the configured default role.
+        request.runtime = runtime
         request.tool_call = {"name": "write_file", "id": "call_1", "args": {
             "path": "test.py",
             "content": "# comment 1\nx = 1\n# comment 2\ny = 2\n# comment 3\nz = 3\n"
@@ -421,6 +506,10 @@ class TestIntegration:
 
         # Read tool should pass through
         request = MagicMock()
+        # The middleware reads the runtime from the request (ToolCallRequest.runtime),
+        # so a role set only on the runtime fixture would be ignored and every role
+        # assertion would silently evaluate as the configured default role.
+        request.runtime = runtime
         request.tool_call = {"name": "read_file", "id": "call_1", "args": {"path": "test.py"}}
 
         handler = AsyncMock()

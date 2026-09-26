@@ -2,8 +2,9 @@
 
 Alpha already treats the genuine user message as untrusted and neutralizes
 framework/injection tags in it (see ``InputSanitizationMiddleware``). Remote
-content that the agent *fetches* — web page bodies and search snippets returned
-by ``web_fetch`` / ``web_search`` / ``image_search``, plus the target site's
+content that the agent *fetches* — web page bodies, search snippets, and
+research reports returned by the first-party web tools (including
+``web_fetch``, ``web_search``, ``deep_research``, and ``agent_eye_search``), plus the target site's
 response-status text surfaced by ``web_capture`` — is equally untrusted, yet
 it entered the model context verbatim. A page the attacker controls could embed
 a forged ``<system-reminder>`` block (or a ``--- END USER INPUT ---`` marker) and
@@ -58,6 +59,10 @@ _REMOTE_CONTENT_TOOL_NAMES: frozenset[str] = frozenset(
     {
         "web_fetch",
         "web_search",
+        "keyless_web_search",
+        "deep_web_search",
+        "deep_research",
+        "agent_eye_search",
         "image_search",
         "web_capture",
     }
@@ -122,8 +127,8 @@ def _sanitize_result(result: ToolMessage | Command) -> ToolMessage | Command:
 class ToolResultSanitizationMiddleware(AgentMiddleware[AgentState]):
     """Escape injection/framework tags in remote tool results before the model sees them.
 
-    Results of the first-party network tools (``web_fetch`` / ``web_search`` /
-    ``image_search`` / ``web_capture``) are rewritten; every other tool's output
+    Results of the first-party network tools (web fetch/search, deep search/research,
+    ``agent_eye_search``, image search, and web capture) are rewritten; every other tool's output
     is returned unchanged. Mirrors the user-input guardrail so untrusted remote
     content and untrusted user input receive the same structural neutralization.
 

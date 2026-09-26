@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from alpha.runtime.runs.verification import verify_acceptance_criteria
+from app.gateway.routers.evolution import GateRequest
 from app.gateway.run_models import RunCreateRequest
 
 
@@ -28,6 +29,9 @@ def test_acceptance_criteria_is_validated_and_serializable() -> None:
 def test_autonomous_mode_is_opt_in() -> None:
     assert RunCreateRequest().autonomous is False
     assert RunCreateRequest(autonomous=True).autonomous is True
+    # Router-level gate request: omission must never grant autonomy.
+    assert GateRequest().autonomous_mode is False
+    assert GateRequest(autonomous_mode=True).autonomous_mode is True
 
 
 def test_acceptance_criteria_rejects_duplicate_evidence_kinds() -> None:

@@ -17,8 +17,12 @@ def test_process_manager_lifecycle():
     assert handle.handle_id.startswith("proc_")
     assert handle.pid > 0
 
-    # Wait for process to complete
-    time.sleep(0.6)
+    # Wait for process to complete. A fixed sleep is a machine-speed assumption
+    # (a cold interpreter start can outlast it on a loaded host), so wait for the
+    # real terminal state with a bounded deadline instead.
+    deadline = time.monotonic() + 30.0
+    while handle.is_running() and time.monotonic() < deadline:
+        time.sleep(0.1)
 
     exit_code = handle.poll()
     assert exit_code == 0
@@ -52,6 +56,28 @@ def test_process_termination():
     assert not handle.is_running()
 
 
+def _wait_for_terminal_poll(handle_id: str, *, timeout: float = 30.0) -> str:
+    """Poll the tool until the process reports a terminal state.
+
+    The original test slept a fixed 0.4s and polled once, which is a machine-speed
+    assumption: a cold interpreter start on a loaded Windows host takes longer
+    than that, so the poll correctly reported "still RUNNING" and the test failed
+    for reasons unrelated to the code under test. Bounded polling keeps the real
+    assertion (the process MUST terminate with exit code 0) and only removes the
+    timing guesswork.
+    """
+    deadline = time.monotonic() + timeout
+    poll_out = ""
+    while True:
+        poll_out = process_handle_tool.invoke({
+            "action": "poll",
+            "handle_id": handle_id,
+        })
+        if "still RUNNING" not in poll_out or time.monotonic() >= deadline:
+            return poll_out
+        time.sleep(0.1)
+
+
 def test_process_handle_tool():
     cmd = f'"{sys.executable}" -c "print(\'tool_test_ok\')"'
     start_out = process_handle_tool.invoke({
@@ -67,11 +93,7 @@ def test_process_handle_tool():
             hid = line.split("Handle ID:")[1].strip()
             break
 
-    time.sleep(0.4)
-    poll_out = process_handle_tool.invoke({
-        "action": "poll",
-        "handle_id": hid,
-    })
+    poll_out = _wait_for_terminal_poll(hid)
     assert "TERMINATED with exit code 0" in poll_out
 
     tail_out = process_handle_tool.invoke({

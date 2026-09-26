@@ -14,13 +14,12 @@ Tests:
 import tempfile
 from pathlib import Path
 
-import pytest
 from alpha.benchmarks.arena import get_benchmark_arena
 from alpha.evolution.retrospective_engine import get_retrospective_engine
 from alpha.integrations.github_bridge import get_github_workforce_bridge
 from alpha.models.local_llm_failover import get_local_failover_router
 from alpha.projects.canary_watchdog import get_canary_watchdog
-from alpha.projects.checkpoint_engine import CheckpointEngine, get_checkpoint_engine
+from alpha.projects.checkpoint_engine import CheckpointEngine
 from alpha.projects.visual_verifier import get_visual_qa_engine
 from alpha.sandbox.container_runner import get_container_sandbox_runner
 
@@ -187,7 +186,8 @@ def test_benchmark_arena_and_leaderboard():
     challenges = arena.list_challenges()
     assert len(challenges) >= 3
 
-    # Execute Challenge
+    # Execute Challenge from fully caller-supplied inputs (no defaults are
+    # accepted: a run receipt can never be fabricated by the arena itself).
     res = arena.run_challenge(
         challenge_id="swe-01-null-guard",
         bot_name="coder",
@@ -198,9 +198,26 @@ def test_benchmark_arena_and_leaderboard():
     assert res.passed is True
     assert res.score >= 80.0
     assert res.cost_usd > 0.0
+    # Honesty pin: with no challenge executor wired, the recorded run is
+    # disclosed as simulated evidence, never as a measurement.
+    assert res.evidence_kind == "simulated"
 
     # Verify Leaderboard Rankings
     board = arena.get_leaderboard()
     assert len(board) >= 3
     assert board[0].rank == 1
-    assert board[0].reputation_score >= board[1].reputation_score
+    # HONESTY INVERSION:
+    #   OLD: assert board[0].reputation_score >= board[1].reputation_score
+    # That compared canned default scores (85.0) invented for bots with zero
+    # attempts. Simulated runs are excluded from leaderboard aggregates, so no
+    # bot has measured statistics yet — every stat must be None, never a
+    # fabricated number.
+    assert all(e.challenges_attempted == 0 for e in board)
+    assert all(
+        e.pass_rate is None and e.avg_duration_seconds is None and e.reputation_score is None
+        for e in board
+    )
+    # The simulated run itself stays on record with its disclosure intact.
+    recorded_runs = [r for r in arena._runs if r.challenge_id == "swe-01-null-guard"]
+    assert len(recorded_runs) >= 1
+    assert all(r.evidence_kind == "simulated" for r in recorded_runs)

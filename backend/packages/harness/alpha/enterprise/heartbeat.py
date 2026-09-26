@@ -79,7 +79,8 @@ class EnterpriseHeartbeatCoordinator:
         # 2. Latency profiling
         latencies = self.discovery.profile_latencies()
         p95_values = [p.p95_ms for p in latencies]
-        avg_p95 = round(sum(p95_values) / max(1, len(p95_values)), 1)
+        # No latency profiles => no measurement. Report None, never a fabricated 0.0ms.
+        avg_p95 = round(sum(p95_values) / len(p95_values), 1) if p95_values else None
 
         # 3. AST boundary security scan
         sec_report = self.discovery.scan_ast_boundaries()
@@ -87,39 +88,36 @@ class EnterpriseHeartbeatCoordinator:
         # 4. Advance dynamic DAG sprints
         sprints = self.pipeline.list_sprints()
         advanced_tasks = []
+        sprint_results: list[tuple[str, dict[str, Any]]] = []
         for s in sprints:
             if s.status == "active":
                 res = self.pipeline.step_sprint_dag(s.sprint_id)
+                sprint_results.append((s.sprint_id, res))
                 advanced_tasks.extend(res.get("advanced_tasks", []))
                 self._completed_tasks_total += len(res.get("advanced_tasks", []))
 
-        # 5. Record Token Treasury Burn for active departments
-        tokens_burned_this_cycle = 4500 if advanced_tasks else 1200
-        # Engineering burned tokens
-        eng_alloc, eng_tripped = self.treasury.record_token_burn(
-            dept_id="dept-engineering",
-            tokens_burned=tokens_burned_this_cycle,
-            tasks_completed=len(advanced_tasks),
-        )
-        # Architecture & Security minimal baseline burn
-        self.treasury.record_token_burn(dept_id="dept-architecture", tokens_burned=800)
-        self.treasury.record_token_burn(dept_id="dept-security", tokens_burned=600)
-        self.treasury.record_token_burn(dept_id="dept-performance", tokens_burned=700)
-        self.treasury.record_token_burn(dept_id="dept-documentation", tokens_burned=500)
-
-        # Track any dynamically synthesized custom departments
-        all_depts = self.hierarchy.get_departments()
-        default_dept_ids = {"dept-engineering", "dept-architecture", "dept-security", "dept-performance", "dept-documentation"}
-        for d_id in all_depts.keys():
-            if d_id not in default_dept_ids:
-                self.treasury.record_token_burn(dept_id=d_id, tokens_burned=400)
-
-        # 6. Check active RFCs
-        rfcs = self.rfc_protocol.list_rfcs()
-        approved_rfcs = [r for r in rfcs if r.status.value == "approved" or r.gating_passed]
-
-        # 7. Quality Council Quorum status
-        active_release = self.council.get_active_release()
+        # 5. Token treasury burn — MEASURED burns only, never invented.
+        #
+        # This used to invent a per-cycle burn (4500 with progress, 1200
+        # without) plus fixed "minimal baseline" burns for four more
+        # departments and 400 for every custom department. Those invented
+        # numbers fed ``record_token_burn``, whose burn rate and CIRCUIT
+        # BREAKERS were then computed from fiction — an invented burn can
+        # trip a real breaker and block real spending. A sprint step reports
+        # advanced tasks, not token usage, so unless a real count is present
+        # there is nothing to record this cycle: record nothing, and disclose
+        # it in the telemetry below.
+        measured_burns: dict[str, int] = {}
+        for _sprint_id, res in sprint_results:
+            used = res.get("tokens_used")
+            if isinstance(used, int) and used > 0:
+                measured_burns["dept-engineering"] = measured_burns.get("dept-engineering", 0) + used
+        for dept_id, tokens in measured_burns.items():
+            self.treasury.record_token_burn(
+                dept_id=dept_id,
+                tokens_burned=tokens,
+                tasks_completed=len(advanced_tasks),
+            )
 
         # 8. Stagnation Watchdog & Keel-style Auto-Recovery
         if not advanced_tasks and all(s.status == "completed" for s in sprints):
@@ -172,9 +170,14 @@ class EnterpriseHeartbeatCoordinator:
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
             "advanced_tasks": advanced_tasks,
             "gaps_count": len(gaps),
+            # float | None — None when no latency profile has been recorded.
             "system_latency_p95_ms": avg_p95,
             "security_score": sec_report.security_score,
             "circuit_breakers_tripped": telemetry.treasury_circuit_breakers_tripped,
+            # "measured" only when a real token count was recorded this cycle;
+            # "unavailable" means no measurement existed and NOTHING was fed
+            # to the treasury (the pre-fix code invented burns here).
+            "token_burn_measurement": "measured" if measured_burns else "unavailable",
             "stagnation_status": self._stagnation_status,
             "telemetry": telemetry.model_dump(),
         }
@@ -196,14 +199,15 @@ class EnterpriseHeartbeatCoordinator:
         treasury_data = self.treasury.get_overall_telemetry()
         latencies = self.discovery.get_latency_profiles()
         p95_values = [p.p95_ms for p in latencies]
-        avg_p95 = round(sum(p95_values) / max(1, len(p95_values)), 1)
+        # No latency profiles => no measurement. Report None, never a fabricated 0.0ms.
+        avg_p95 = round(sum(p95_values) / len(p95_values), 1) if p95_values else None
 
         sec = self.discovery.get_latest_scan()
-        sec_score = sec.security_score if sec else 99.0
+        sec_score = sec.security_score if sec else None
 
         active_rel = self.council.get_active_release()
-        latest_ver = active_rel.version if active_rel else "v2.1.0"
-        holdout_score = active_rel.holdout_benchmark_score if active_rel else 98.5
+        latest_ver = active_rel.version if active_rel else None
+        holdout_score = active_rel.holdout_benchmark_score if active_rel else None
 
         return EnterpriseTelemetry(
             heartbeat_cycle=self._cycle_counter,

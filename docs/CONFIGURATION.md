@@ -9,6 +9,7 @@
 | `.env` | Secrets and API keys | Repo root | No (gitignored) |
 | `config.example.yaml` | Template for config.yaml | Repo root | Yes |
 | `extensions_config.example.json` | Template for extensions_config.json | Repo root | Yes |
+| `config/update-policy.json` | Guarded local source auto-update policy (no secrets) | Repo root | Yes |
 | `.env.production.example` | Template for .env | Repo root | Yes |
 
 ## config.yaml Schema
@@ -55,6 +56,17 @@ database:
     password: string       # Use env var reference
     pool_size: integer
     max_overflow: integer
+
+# Run ownership and safe recovery (restart-required)
+run_ownership:
+  lease_seconds: integer
+  grace_seconds: integer
+  heartbeat_enabled: boolean
+  auto_resume: boolean
+  resume_poll_interval_seconds: number
+  max_resume_attempts: integer
+  resume_backoff_seconds: number
+  max_concurrent_resumes: integer
 
 # Redis Configuration
 redis:
@@ -180,6 +192,32 @@ security:
     hsts: boolean          # HTTPS only
     csp: string            # Content Security Policy
 ```
+
+## Safe Run Recovery
+
+`run_ownership.auto_resume` enables bounded continuation from durable
+checkpoints after Gateway shutdown, expired worker ownership, and recoverable
+model failure. Browser/network SSE disconnects continue by default; use the
+explicit cancel endpoint to stop work.
+
+```yaml
+run_ownership:
+  lease_seconds: 30
+  grace_seconds: 10
+  heartbeat_enabled: false       # required for GATEWAY_WORKERS > 1
+  auto_resume: true
+  resume_poll_interval_seconds: 5.0
+  max_resume_attempts: 3
+  resume_backoff_seconds: 5.0
+  max_concurrent_resumes: 2
+```
+
+The entire section is restart-required. Alpha automatically resumes only
+model/agent nodes. A pending tool, MCP, browser, shell, write/delete, payment,
+custom, or unknown node stops with `recovery_confirmation_required` because the
+external action may already have taken effect. See
+[`RUN_RECOVERY.md`](RUN_RECOVERY.md) for the complete state and side-effect
+contract.
 
 ## extensions_config.json Schema
 
@@ -336,6 +374,55 @@ DINGTALK_CLIENT_SECRET="..."
   max_tokens: 8192
   temperature: 0.7
 ```
+
+### Laya System One (local decision model)
+
+Laya is not an entry in `models[]`: it is a non-generative decision model exposed
+through the separate `system_one` section. Install and start its isolated runtime
+with:
+
+```bash
+python backend/scripts/system_one_laya_setup.py setup
+python backend/scripts/system_one_laya_setup.py serve
+```
+
+Then select it in `config.yaml`:
+
+```yaml
+system_one:
+  enabled: true
+  provider: "laya"
+  base_url: "http://127.0.0.1:8000"
+  api_key: null                 # optional for loopback
+  model: "english"              # multilingual / typed-decisions / "" for auto-router
+  shadow_mode: true             # measure before allowing decisions to act
+  record_decisions: true
+  # Optional Windows accessibility-first desktop route; opt in after calibration.
+  enable_computer_action: false
+  laya_max_choice_options: 20   # partition larger catalogs instead of truncating
+  laya_max_request_chars: 24000  # bound the complete serialized request
+  laya_max_partition_requests: 16 # abstain if a local tournament exceeds budget
+  laya_max_partition_latency_ms: 60000 # total local tournament wall-clock budget
+```
+
+Laya uses the same `/v1/systemone` contract as Jev. Its weights and PyTorch runtime
+are stored under the ignored `.agent-workspace/laya` directory, so normal Alpha
+installs do not download them. A keyless Laya URL must resolve to loopback. If the
+server is exposed beyond loopback, set `LAYA_API_KEY` in both the server environment
+and `system_one.api_key`; hosted credentials are never forwarded to Laya.
+
+`enable_computer_action` is an independent, opt-in Windows desktop route. It uses
+UI Automation semantics to let System One choose an indexed `CLICK` or a
+caller-supplied `TYPE_TEXT`/`PRESS`/`HOTKEY`; the model never sees coordinates,
+selectors, UIA handles, typed text, keys, or hotkey values. The semantic scan
+filters static and unknown controls before applying its cap. If that bounded
+Laya projection would omit an executable element, the operation request is
+withheld; partitioning is reserved for a complete table's target head. Keyboard
+actions require a freshly observed unique focus, and typing rechecks focus after the
+guarded click. Keep `shadow_mode: true` while calibrating this surface.
+The route is Windows-only and requires the optional `pywinauto` accessibility
+backend plus an optional input backend (`pyautogui` or `pynput`). It does not
+replace the existing low-level desktop tools.
 
 ### Codex CLI
 ```yaml
@@ -543,6 +630,25 @@ make prod-check
 | `Redis connection failed` | Wrong REDIS_URL | Check Redis running |
 | `Port already in use` | Port conflict | Change port or stop conflicting service |
 
+## Guarded source auto-update
+
+The source updater uses the committed, credential-free
+`config/update-policy.json` rather than putting executable update commands in
+`config.yaml`. `enabled` is the hard kill switch; `auto_apply` is a separate
+unattended opt-in. The default is disabled/check-only. A manual check is safe
+to run at any time:
+
+```bash
+make update-status
+make update-check
+```
+
+An apply additionally requires a clean worktree, a fast-forward target from
+the configured GitHub remote, a backup ref, and successful post-restart health
+checks. See [AUTO_UPDATE.md](AUTO_UPDATE.md) before enabling unattended mode.
+Docker/Helm/Electron deployments should keep the policy disabled and update
+through their release orchestrator instead.
+
 ## Migration Between Versions
 
 ### Config Upgrade
@@ -560,6 +666,33 @@ diff config.example.yaml config.yaml
 cd backend && make migrate-rev MESSAGE="description"
 cd backend && make migrate-upgrade
 ```
+
+## Alpha-to-Alpha peer network
+
+The peer network uses environment variables rather than a new `config.yaml`
+section so discovery/transport settings remain an operator-controlled runtime
+boundary. The defaults are local-first and free:
+
+```text
+ALPHA_PEER_NETWORK_ENABLED=1
+ALPHA_PEER_NETWORK_ADVERTISED_BASE_URL=http://192.168.1.20:8001
+ALPHA_PEER_NETWORK_DISCOVERY_PORT=8743
+ALPHA_PEER_NETWORK_DISCOVERY_INTERVAL_SECONDS=8
+```
+
+Install the optional free mDNS provider with:
+
+```bash
+cd backend && uv sync --extra peer-discovery
+```
+
+An optional public GitHub Agent Card rendezvous is configured with
+`ALPHA_PEER_NETWORK_GITHUB_REPO`, `ALPHA_PEER_NETWORK_GITHUB_BRANCH`,
+`ALPHA_PEER_NETWORK_GITHUB_DIRECTORY`, and (only for writes)
+`ALPHA_PEER_NETWORK_GITHUB_TOKEN`. It publishes cards only; never put pairing
+codes or message bodies in that repository. See
+[ALPHA_PEER_NETWORK.md](ALPHA_PEER_NETWORK.md) for topology, NAT, and lifecycle
+details.
 
 ## Security Best Practices
 

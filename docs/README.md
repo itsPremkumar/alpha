@@ -22,6 +22,8 @@ Welcome to the comprehensive technical documentation for **Alpha**, the Autonomo
 
 ### Developer & Integration References
 - **[API Reference](API_REFERENCE.md)**: Complete endpoint reference for all 56 FastAPI Gateway routers, request/response schemas, and SSE event streaming.
+- **[FAQ](FAQ.md)**: Short citable answers for search and answer engines; agent summary in [`llms.txt`](../llms.txt).
+- **[API Reference](API_REFERENCE.md)**: Complete endpoint reference for all 57 FastAPI Gateway routers, request/response schemas, and SSE event streaming.
 - **[API Architecture](API.md)**: High-level API design principles, authentication protocols, and versioning contracts.
 - **[Configuration Reference](CONFIGURATION.md)**: Detailed specification for `config.yaml`, `extensions_config.json`, intent category presets, model chains, and environment variables.
 - **[Offline Self-Documentation](SELF_DOCUMENTATION.md)**: Free, local, authority-aware retrieval over current project docs with line and digest evidence.
@@ -32,6 +34,7 @@ Welcome to the comprehensive technical documentation for **Alpha**, the Autonomo
 - **[Deployment Guide](DEPLOYMENT.md)**: Infrastructure orchestration across Docker Compose, Kubernetes Helm charts, Nginx load balancing, and cloud providers.
 - **[Extensions & MCP Protocol](EXTENSIONS.md)**: Integrating Model Context Protocol (MCP) servers across stdio, HTTP, and Server-Sent Events (SSE).
 - **[Memory & Persistence](MEMORY.md)**: Cognitive memory architecture, vector embeddings, episodic replay, and SQLite/PostgreSQL durable checkpoints.
+- **[Safe Run Recovery](RUN_RECOVERY.md)**: Durable checkpoint continuation, crash/network/model recovery, idempotent replay, and external-side-effect safety gates.
 
 ---
 

@@ -1,0 +1,23 @@
+{
+  "id": "alpha-multi-session-001",
+  "ability": "multi_session",
+  "scope": {"user_id": "eval-multi-001", "agent_name": "alpha-memory-evaluation"},
+  "sessions": [
+    {
+      "session_id": "s1",
+      "events": [
+        {"id": "event-city", "text": "Mina is based in Lisbon.", "fact_id": "fact-city", "answer": "Lisbon", "expected_stored": true}
+      ]
+    },
+    {
+      "session_id": "s2",
+      "events": [
+        {"id": "event-project", "text": "Mina is working on the Harbor project.", "fact_id": "fact-project", "answer": "Harbor", "expected_stored": true}
+      ]
+    }
+  ],
+  "questions": [
+    {"id": "q1", "question": "Which project is Mina working on, and where is she based?", "expected": "Lisbon and Harbor", "acceptable_alternatives": ["Harbor and Lisbon"], "type": "multi_session_reasoning", "evidence_ids": ["event-city", "event-project"]}
+  ],
+  "metadata": {"expected_stored": ["event-city", "event-project"], "description": "Original cross-session join fixture."}
+}

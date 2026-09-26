@@ -204,22 +204,18 @@ result. Keys may be at most 255 characters. Stateless `/api/langgraph/runs/*`
 endpoints do not support this header because requests without an explicit thread
 create a new temporary conversation.
 
-Retrying a still-running run that this worker cannot stream returns 409 from
-`/runs/stream` (`Run ... is not active on this worker and cannot be streamed`)
-with no `Retry-After`. The same shape on `/runs/wait` returns 200
-`{"status": "<durable status>", "error": ...}` without blocking for a final
-state. Retrying a finished run through `/runs/wait` also returns that durable
-status payload rather than the latest thread checkpoint: a later run on the
-same thread may have advanced the head, and `/wait` does not claim that head
-as this run's result. That status is the durable row after completion, not
-the hydrated record from admission time. The original creating `/wait` still
-returns this run's checkpoint even if a retry overlaps while it is waiting. Retrying a finished run whose SSE log is gone emits a `gap` frame
-(`stream_replay_gap`, `recovery: reload_durable_state`) on the creating
-`/runs/stream` endpoint and closes without an `end` frame; reload durable
-thread/run state instead of treating the stream as empty. Observer joins of
-that same run still end with `end`. Stateless `/api/langgraph/runs/stream`
-does not accept this header and keeps the existing missing-stream close of
-`end`; the `gap` signal is only on a thread-scoped creating retry.
+Safe run recovery is enabled by `run_ownership.auto_resume`. After a Gateway
+restart, expired worker lease, or recoverable model failure, Alpha may create a
+new idempotent continuation from the latest safe checkpoint. Model/agent nodes
+(and an active durable goal) continue automatically; a pending tool, MCP, shell,
+browser, write/delete, payment, custom, or unknown node stops with
+`recovery_confirmation_required` because its external effect may be ambiguous.
+The failed run remains in history for audit, and manual `POST
+/api/threads/{thread_id}/runs/{run_id}/resume` remains available for reviewed
+continuations. SSE disconnects default to `on_disconnect: "continue"`; use the
+explicit cancel endpoint for a user-requested stop. Full guarantees and
+configuration are in [`docs/RUN_RECOVERY.md`](../../docs/RUN_RECOVERY.md).
+
 
 **Request Body:**
 ```json
@@ -811,6 +807,45 @@ not guarantee that every instance is reached. External MinIO/NFS/CSI writes
 bypass the validation, SkillScan, and history used by the install/edit APIs, so
 the mounted directory must be writable only by trusted operators.
 
+### Voice and multimodal speech
+
+The speech API uses the same local-only multimodal seam:
+
+- `GET /api/multimodal/capabilities` — dependency/model-asset observations and routing policy; no heavy model load.
+- `POST /api/multimodal/tts` — bounded text input, optional safe Piper voice ID, binary WAV response with `X-Alpha-Engine` / `X-Alpha-Tier`.
+- `POST /api/multimodal/stt` — bounded multipart audio upload to a transcript.
+- `WS /api/multimodal/voice` — bounded JSON/base64 PCM16 microphone protocol.
+
+TTS/STT require `runs:create`; the WebSocket also applies cookie authentication,
+same-origin validation, `runs:create`, and `voice.streaming.max_sessions`. With the
+default `voice.routing.mode: local_only`, T1 and T2 speech providers are never called.
+
+WebSocket client messages:
+
+```json
+{"type":"conversation_start"}
+{"type":"audio","data":"<base64 mono PCM16>"}
+{"type":"conversation_stop"}
+{"type":"transcribe","data":"<base64 complete PCM16 utterance>"}
+{"type":"arm"}
+{"type":"audio","data":"<base64 PCM16 wake-word frame>"}
+{"type":"disarm"}
+{"type":"ping"}
+```
+
+`conversation_start` arms Gateway-owned VAD endpointing. `audio` frames are bounded
+before base64 decoding; a continuous utterance emits `status`, interim `transcript`
+events with `final:false`, then one `transcript` with `final:true`. The endpoint
+auto-resets for the next utterance on the same socket. Partial work is fenced by the
+active conversation state and monotonic `utterance_id` so stale results cannot overtake a
+final turn. `conversation_stop` cancels/discards the current capture session.
+
+A final WebSocket transcript is data only. The browser submits it to the existing thread
+run/SSE endpoint; this socket never constructs a parallel agent run. TTS remains a
+separate binary HTTP response so speech audio is not multiplexed with chat graph events.
+See [Real-Time Voice Conversation](../../docs/VOICE_CONVERSATION.md) for the browser
+loop and model setup.
+
 ### File Uploads
 
 #### Upload Files
@@ -1273,3 +1308,25 @@ a JSON boolean. Writes containing only boolean pin/archive flags preserve
 `updated_at` and all other metadata. The owner-checked endpoint returns the normal
 thread metadata response; original thread and artifact URLs remain available.
 Archiving does not cancel runs, pause schedules, or change retention.
+
+## Dynamic workflow plane
+
+The Gateway DWE exposes preview, compilation, execution, control, and durability
+surfaces under `/api/workflows`:
+
+- `POST /api/workflows/dynamic/perceive` — read-only intent/decomposition/resource preview.
+- `POST /api/workflows/dynamic/execute` — compile and optionally execute a dynamic graph.
+- `POST /api/workflows/turns` with `dynamic: true` — opt into the full loop while retaining the paradigm compatibility seam.
+- `POST /api/bots/{name}/workflow` — run the same service in bot mode after server-side bot validation.
+- `GET /api/workflows/system/registries` — bounded registry health/discovery projection.
+- `POST /api/workflows/runs/{run_id}/{step,cancel,replan,compensate}` and the approval/patch routes — claimed, versioned run control.
+- `GET /api/workflows/runs/{run_id}/events`, `/events/durable`, and `POST /replay`, `/project`, `/hydrate` — event truth, projections, and honest recovery.
+- `GET/POST /api/workflows/{workflow_id}/plans` — append-only graph revision history.
+
+Definitions and runs are owner-scoped for real HTTP requests. The built-in
+`alpha.local.digest` executor is explicitly a local graph projection; its result
+keeps `acceptance_passed=false` until a real domain executor supplies evidence.
+Missing executors, compensation callbacks, registry connections, and verification
+are disclosed or fail closed. Recurring automation remains scheduler-owned.
+See [`docs/DYNAMIC_WORKFLOWS.md`](../../docs/DYNAMIC_WORKFLOWS.md) for the full
+contract and limitations.

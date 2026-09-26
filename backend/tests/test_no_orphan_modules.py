@@ -30,6 +30,35 @@ ALLOWED_ORPHANS: dict[str, str] = {
     # (enclave_security_tool), which IS in BUILTIN_TOOLS. Keeps the historical
     # import path alive; see the module docstring.
     "alpha.tools.builtins.astra_security_tool": "intentional re-export shim over alpha.tools.builtins.enclave_security_tool",
+    # WP-B2 candidate factory (committed 950716a): deliberately standalone per
+    # plan §3 — its consumer (RSI cycle factory/engine wiring) lands with RSI
+    # Wave 3, so nothing references it yet by design, not by neglect.
+    "alpha.rsi.generator": "RSI WP-B2 factory; wired into the cycle by RSI Wave 3 (plan §3 WP-B2)",
+    # dynamic-workflow perceive→assemble bridge: part of the dynamic_* layer
+    # HELD uncommitted pending P0 remediation (DY-R1/R2/R3) and the P1
+    # orchestrator wiring; unwired by audit verdict, not abandoned.
+    "alpha.workflow.dynamic_bridge": "held dynamic_* layer; wiring lands with Dynamic Workflow P1 after P0 remediation",
+    # Honest import-ready seams: their consumers are deferred by design (unit
+    # rules forbid wiring in the same unit as authoring), not abandoned.
+    "alpha.skills.creation_nudge": "Hermes S1 skill-review cadence seam; wired into the turn finalizer by a follow-up wiring unit",
+    "alpha.memory.persistence_nudge": "Hermes M2 persistence cadence seam; wired into the turn finalizer by a follow-up wiring unit",
+    "alpha.evidence.skill_usage_evidence": "Hermes E1 usage-evidence builder; consumed by the skill promotion flow in a follow-up wiring unit",
+    # RSI Wave-3 C2b human review gate: consumed by C2c's promotion.py, the
+    # wave's serialization point (C2c is queued after C1/C2a/C2b).
+    "alpha.rsi.review": "RSI Wave-3 C2b review gate; wired by C2c promotion.py at the wave serialization point",
+    # RSI Wave-3 C2a evidence bundle: provenance store read/written by C2c's
+    # promotion.decide() composition at the same serialization point.
+    "alpha.rsi.evidence_bundle": "RSI Wave-3 C2a evidence bundle; wired by C2c promotion.py at the wave serialization point",
+    # Honesty-audit wave-2 deletions (F8/F9): the ONLY production consumers of
+    # these engines were two unreachable fake tools — run_mutation_testing_audit
+    # (identity-lambda "test runner") and run_speculative_synthesis_tournament
+    # (string-length-as-test-results bake-off) — deleted from
+    # code_agentic_core.py because they were unregistered and fabricated
+    # results. The engines themselves are honest, test-covered libraries
+    # (tests/test_mutation_fuzzer.py, tests/test_speculative_tournament.py);
+    # production wiring lands only with a genuine test-runner seam.
+    "alpha.testing.mutation_fuzzer": "audit F8: honest mutation engine; its only consumer was the deleted fake run_mutation_testing_audit tool — dormant until a real test-runner seam wires it",
+    "alpha.synthesis.speculative_tournament": "audit F9: honest speculative-synthesis engine; its only consumer was the deleted fabricated run_speculative_synthesis_tournament tool — dormant until wired honestly",
 }
 
 # Standalone ``python -m <module>`` entry points. Nothing imports these by

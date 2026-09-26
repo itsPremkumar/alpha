@@ -273,18 +273,33 @@ def test_hotswap_prevents_regression():
 
 def test_never_ending_daemon_continuous_discovery():
     daemon = get_perpetual_daemon("test_proj_perpetual_never_stop")
+    initial_discovered = daemon.get_telemetry().total_tasks_discovered
 
-    # Run 12 successive heartbeats (far exceeding the 5 initial static tasks)
+    # Run 12 successive heartbeats
     for _ in range(12):
         step = daemon.step_heartbeat()
         assert step["heartbeat"] >= 1
         assert "state" in step
+        # Honesty pin: every cycle must disclose that nothing was executed —
+        # no task executor is wired, so no task may be advanced or completed.
+        assert step["execution_note"] == "no task executor is wired; no tasks were executed this cycle"
+        assert step["advanced_task"] is None
 
-    # Daemon must not stall: it must have discovered more tasks than initial 5
     telemetry = daemon.get_telemetry()
-    assert telemetry.total_tasks_discovered > 5
-    assert telemetry.tasks_completed_count >= 10
-    # Pending tasks must be discoverable continuously
+    # HONESTY INVERSION of the two fabrication pins that previously lived here:
+    #   OLD: assert telemetry.total_tasks_discovered > 5
+    #        assert telemetry.tasks_completed_count >= 10
+    # Those only passed because the daemon marked tasks "completed" without
+    # executing them, which drained the pending queue and triggered phantom
+    # discovery cycles. With no executor wired, zero tasks were executed and
+    # the discovered queue never drains, so no phantom cycle tasks appear.
+    assert telemetry.tasks_completed_count == 0
+    assert telemetry.total_tasks_discovered == initial_discovered
+    # Tasks stay in their real pre-execution status; none was fabricated done.
+    assert all(t.status in ("discovered", "scheduled") for t in daemon._tasks.values())
+    # Goal progress reflects only genuine completions (zero is honest).
+    assert daemon.active_goal.progress_percent == 0.0
+    # Daemon must not stall into STOPPED
     assert daemon.state != DaemonState.STOPPED
 
 

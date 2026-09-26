@@ -5,11 +5,11 @@ python alias stubs pass Bash's own PATH lookup but cannot be exec'd through
 from __future__ import annotations
 
 import shlex
-import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
+from _posix_shell import posix_shell, posix_shell_env
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SERVE_SH = REPO_ROOT / "scripts" / "serve.sh"
@@ -69,9 +69,9 @@ def _to_bash_path(path: Path) -> str:
 
 
 def _run_pick_python(tmp_path: Path, *, env_mock: str = "") -> subprocess.CompletedProcess:
-    bash = shutil.which("bash")
+    bash = posix_shell()
     if bash is None:
-        pytest.skip("bash is required to exercise serve.sh helpers")
+        pytest.skip("no POSIX shell available (bash/sh) to exercise serve.sh helpers")
 
     script = _SCRIPT_TEMPLATE.replace("__BIN__", shlex.quote(_to_bash_path(tmp_path / "bin"))).replace("__STUBS__", "python3 python py").replace("__ENV_MOCK__", env_mock).replace("__FUNCTION__", _extract_shell_function("_pick_python"))
     # errors="replace": bash's diagnostics may arrive in the console's code
@@ -82,6 +82,9 @@ def _run_pick_python(tmp_path: Path, *, env_mock: str = "") -> subprocess.Comple
         encoding="utf-8",
         errors="replace",
         check=False,
+        # The generated helper uses POSIX utilities (chmod, ...); expose the
+        # resolved shell's own bin directories to the child.
+        env=posix_shell_env(),
     )
 
 

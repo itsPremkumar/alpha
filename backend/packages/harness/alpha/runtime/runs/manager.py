@@ -37,6 +37,15 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 ORPHAN_RECOVERY_STOP_REASON = "orphan_recovered"
+GATEWAY_SHUTDOWN_RECOVERY_REASON = "gateway_shutdown"
+MODEL_FAILURE_RECOVERY_REASON = "model_failure"
+RECOVERABLE_RUN_STOP_REASONS = frozenset(
+    {
+        ORPHAN_RECOVERY_STOP_REASON,
+        GATEWAY_SHUTDOWN_RECOVERY_REASON,
+        MODEL_FAILURE_RECOVERY_REASON,
+    }
+)
 STARTUP_ORPHAN_RECOVERY_ERROR = "Gateway restarted before this run reached a durable final state."
 LEASE_ORPHAN_RECOVERY_ERROR = "Run lease expired — owning worker is unreachable."
 
@@ -214,6 +223,10 @@ class RunRecord:
     # True only on the caller that recovered an existing idempotent admission;
     # that caller must not attach a second worker to the durable run.
     idempotency_reused: bool = False
+    # Process-local provenance used only while terminalizing a graceful Gateway
+    # shutdown. Neither flag is persisted; the resulting stop_reason is.
+    shutdown_requested: bool = False
+    cancel_requested: bool = False
 
 
 class RunStartOutcome(StrEnum):
@@ -1074,6 +1087,7 @@ class RunManager:
                 record = self._runs.get(run_id)
                 if record is not None:
                     record.abort_action = result.cancel_action
+                    record.cancel_requested = True
                     record.abort_event.set()
             return result.cancel_action
 
@@ -1279,6 +1293,7 @@ class RunManager:
                 return
 
             record.abort_action = action
+            record.cancel_requested = True
             record.abort_event.set()
             task_active = record.task is not None and not record.task.done()
             record.finalizing = task_active
@@ -1352,6 +1367,7 @@ class RunManager:
                 if record.status not in (RunStatus.pending, RunStatus.running):
                     return CancelOutcome.cancelled if durable_cancel_won else CancelOutcome.not_cancellable
                 record.abort_action = action
+                record.cancel_requested = True
                 record.abort_event.set()
                 task_active = record.task is not None and not record.task.done()
                 record.finalizing = task_active
@@ -1920,10 +1936,105 @@ class RunManager:
             logger.warning("Recovered %d orphaned inflight run(s) as error", len(recovered))
         return recovered
 
+    async def list_recovery_candidates(
+        self,
+        *,
+        statuses: set[str],
+        stop_reasons: set[str],
+        limit: int = 100,
+    ) -> list[RunRecord]:
+        """Hydrate bounded terminal rows eligible for safe continuation."""
+        if self._store is None or not statuses or not stop_reasons or limit <= 0:
+            return []
+        try:
+            rows = await self._call_store_with_retry(
+                "list recovery candidates",
+                "*",
+                lambda: self._store.list_recovery_candidates(
+                    statuses=statuses,
+                    stop_reasons=stop_reasons,
+                    limit=min(limit, 1000),
+                ),
+            )
+        except Exception:
+            logger.warning("Failed to list safe run recovery candidates", exc_info=True)
+            return []
+
+        records: list[RunRecord] = []
+        for row in rows:
+            # Keep the explicit-cancel fence in the manager boundary as well
+            # as in the built-in SQL/memory queries. Third-party stores may
+            # implement the scan without that predicate; never turn a durable
+            # cancellation request into an auto-resume candidate.
+            if row.get("cancel_action") is not None or row.get("cancel_requested_at") is not None:
+                continue
+            try:
+                record = self._record_from_store(row)
+            except Exception:
+                logger.warning("Failed to map safe run recovery candidate", exc_info=True)
+                continue
+            if record.operation_kind != ThreadOperationKind.run:
+                continue
+            records.append(record)
+        return records
+
+    async def transition_recovery_stop_reason(
+        self,
+        run_id: str,
+        *,
+        expected_status: str,
+        expected_stop_reason: str,
+        stop_reason: str,
+        error: str | None = None,
+    ) -> bool:
+        """CAS a terminal recovery disposition so stale workers cannot overwrite it."""
+        if self._store is None:
+            return False
+        try:
+            updated = await self._call_store_with_retry(
+                "transition recovery stop reason",
+                run_id,
+                lambda: self._store.transition_recovery_stop_reason(
+                    run_id,
+                    expected_status=expected_status,
+                    expected_stop_reason=expected_stop_reason,
+                    stop_reason=stop_reason,
+                    error=error,
+                ),
+            )
+        except NotImplementedError:
+            logger.warning("Run store does not support terminal recovery transitions")
+            return False
+        except Exception:
+            logger.warning("Failed to transition recovery state for run %s", run_id, exc_info=True)
+            return False
+        if not updated:
+            return False
+        async with self._lock:
+            record = self._runs.get(run_id)
+            if record is not None and record.status.value == expected_status and (record.stop_reason or "") == expected_stop_reason:
+                record.stop_reason = stop_reason
+                if error is not None:
+                    record.error = error
+                record.updated_at = _now_iso()
+        return True
+
     async def has_inflight(self, thread_id: str) -> bool:
         """Return ``True`` if *thread_id* has a pending or running run."""
         async with self._lock:
             return any(r.operation_kind == ThreadOperationKind.run and (r.status in (RunStatus.pending, RunStatus.running) or r.finalizing) for r in self._thread_records_locked(thread_id))
+
+    def has_active_runs_snapshot(self) -> bool:
+        """Return a lock-free best-effort snapshot of active user runs.
+
+        The update supervisor runs in a worker thread and must not await the
+        Gateway's event loop merely to decide whether a source switch is safe.
+        Dict iteration under CPython's GIL gives a coherent-enough read for a
+        conservative guard; a concurrent admission can only make this return
+        ``True`` on the next tick, never authorize a destructive apply while a
+        known active record is present.
+        """
+        return any(record.operation_kind == ThreadOperationKind.run and (record.status in (RunStatus.pending, RunStatus.running) or record.finalizing) for record in self._runs.values())
 
     async def cleanup(self, run_id: str, *, delay: float = 300) -> None:
         """Remove a run record after an optional delay."""
@@ -2308,6 +2419,7 @@ class RunManager:
             inflight = [record for record in self._runs.values() if record.status in (RunStatus.pending, RunStatus.running) and record.task is not None and not record.task.done()]
             for record in inflight:
                 record.abort_action = "interrupt"
+                record.shutdown_requested = not record.cancel_requested
                 record.abort_event.set()
                 record.task.cancel()  # type: ignore[union-attr]  # filtered above
                 # Status is decided AFTER the drain (below), not here: a run that
@@ -2336,6 +2448,8 @@ class RunManager:
                     continue
                 if record.status in (RunStatus.pending, RunStatus.running):
                     record.status = RunStatus.interrupted
+                    if record.shutdown_requested and not record.cancel_requested:
+                        record.stop_reason = GATEWAY_SHUTDOWN_RECOVERY_REASON
                     record.updated_at = _now_iso()
                 to_persist.append(record)
 
@@ -2349,7 +2463,17 @@ class RunManager:
             else:
                 try:
                     results = await asyncio.wait_for(
-                        asyncio.gather(*(self._persist_status(record, RunStatus.interrupted) for record in to_persist), return_exceptions=True),
+                        asyncio.gather(
+                            *(
+                                self._persist_status(
+                                    record,
+                                    RunStatus.interrupted,
+                                    stop_reason=record.stop_reason,
+                                )
+                                for record in to_persist
+                            ),
+                            return_exceptions=True,
+                        ),
                         timeout=remaining,
                     )
                 except TimeoutError:

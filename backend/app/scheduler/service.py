@@ -15,6 +15,8 @@ from alpha.scheduler.schedules import next_run_at
 from alpha.trace_context import ensure_trace_context
 from alpha.utils.thread_id import validate_thread_id
 
+from .job_memory import JobMemoryReadError, JobMemoryStore, JobMemoryWriteError
+
 logger = logging.getLogger(__name__)
 
 # Shared so the active-row fast path and the atomic-admission conflict path
@@ -38,6 +40,7 @@ class ScheduledTaskService:
         queue_timeout_seconds: int = 3600,
         multi_instance: bool = False,
         run_lease_grace_seconds: int = 10,
+        job_memory: JobMemoryStore | None = None,
     ) -> None:
         self._task_repo = task_repo
         self._task_run_repo = task_run_repo
@@ -52,6 +55,18 @@ class ScheduledTaskService:
         self._task: asyncio.Task | None = None
         self._stop = asyncio.Event()
         self._skip_next_lease_reconciliation = False
+        # Durable per-job memory (Hermes-style). None disables journaling and
+        # leaves every prompt byte-identical to the pre-journal behavior.
+        self._job_memory = job_memory
+        # Process-local launch timestamps used to measure real durations; the
+        # journal itself stores only what this process actually observed.
+        self._job_run_started_at: dict[str, datetime] = {}
+        # Disclosures for journal writes that failed after a run was already
+        # live/terminal (cannot fail closed there): surfaced verbatim in the
+        # next run's prompt, capped at 4 notes plus one cap marker.
+        self._job_memory_notes: list[str] = []
+        self._job_memory_notes_presented = False
+        self._job_memory_notes_capped = False
 
     async def run_once(self, *, now: datetime) -> None:
         if self._multi_instance:
@@ -263,10 +278,17 @@ class ScheduledTaskService:
         launched_thread_id: str | None = None
         launch_succeeded = False
         try:
+            # Hermes-style durable memory: read prior context first (any read
+            # error fails closed), then journal the dispatch before a run
+            # exists (any write error fails closed too). Both route to
+            # fail_launching_run below with no run ever launched; once a run
+            # is live, later journal failures degrade to disclosures instead.
+            run_prompt = await self._prepare_job_memory_prompt(task)
+            await self._journal_job_dispatch(task, task_run_id=task_run_id, trigger=trigger)
             result = await self._launch_run(
                 thread_id=execution_thread_id,
                 assistant_id=task.get("assistant_id"),
-                prompt=task["prompt"],
+                prompt=run_prompt,
                 owner_user_id=task.get("user_id"),
                 metadata={
                     "scheduled_task_id": task["id"],
@@ -316,6 +338,15 @@ class ScheduledTaskService:
                 await self._task_run_repo.requeue_claimed_run(
                     task_run_id,
                     lease_owner=self._lease_owner,
+                    error=str(exc),
+                )
+                # This attempt never ran and will be retried from the queue:
+                # journal that honestly instead of leaving a dangling
+                # dispatch with no outcome.
+                await self._journal_job_attempt_outcome(
+                    task,
+                    task_run_id=task_run_id,
+                    status="requeued",
                     error=str(exc),
                 )
                 return self._queued_result(task_run_id, execution_thread_id, error=str(exc))
@@ -387,7 +418,21 @@ class ScheduledTaskService:
                 }
 
             # _launch_run itself failed (or a step before it did): no live run
-            # was created, so it is safe to release the active slot.
+            # was created, so it is safe to release the active slot. Journal
+            # the failed attempt first so the next run sees a real outcome
+            # instead of a dangling dispatch with no outcome -- unless the
+            # failure WAS the journal read (corrupt/unreadable store): then
+            # no dispatch entry exists and appending would interleave with
+            # bytes no reader can parse, leaving the corrupt store exactly
+            # as found for manual inspection. The run-row error below already
+            # discloses the failure either way.
+            if not isinstance(exc, JobMemoryReadError):
+                await self._journal_job_attempt_outcome(
+                    task,
+                    task_run_id=task_run_id,
+                    status="launch_failed",
+                    error=str(exc),
+                )
             finalized = await self._task_run_repo.fail_launching_run(
                 task_run_id,
                 task_id=task["id"],
@@ -417,6 +462,11 @@ class ScheduledTaskService:
         run_id: str,
         started_at: datetime,
     ) -> None:
+        # Remember the observed launch time so handle_run_completion can
+        # journal a measured duration; only tracked when the durable journal
+        # exists (otherwise the map would grow without ever being read).
+        if self._job_memory is not None:
+            self._job_run_started_at[task_run_id] = started_at
         updated = await self._task_run_repo.update_status(
             task_run_id,
             status="running",
@@ -540,6 +590,7 @@ class ScheduledTaskService:
         if terminal_status is None:
             return
 
+        finished_at = datetime.now(UTC)
         await self._task_repo.complete_run(
             task_id,
             user_id=user_id,
@@ -547,8 +598,169 @@ class ScheduledTaskService:
             run_id=record.run_id,
             status=terminal_status,
             error=error,
-            finished_at=datetime.now(UTC),
+            finished_at=finished_at,
         )
+        await self._journal_job_terminal_outcome(
+            record,
+            task_id=task_id,
+            task_run_id=task_run_id,
+            terminal_status=terminal_status,
+            error=error,
+            finished_at=finished_at,
+        )
+
+    async def _prepare_job_memory_prompt(self, task: dict[str, Any]) -> str:
+        """Build the launch prompt with prior job context injected.
+
+        Fail closed: any journal read error propagates to the launch
+        try/except, so the occurrence fails before a run exists instead of
+        launching with silently missing prior context. Process-local write
+        disclosures are appended verbatim so a failed journal write is never
+        invisible to the run that follows it.
+        """
+        base_prompt = task["prompt"]
+        if self._job_memory is None:
+            return base_prompt
+        block = await asyncio.to_thread(self._job_memory.prior_context_block, task["id"])
+        sections = [block]
+        if self._job_memory_notes:
+            sections.append("Disclosures from scheduled job memory journal writes in this process:")
+            sections.extend(f"- {note}" for note in self._job_memory_notes)
+            self._job_memory_notes_presented = True
+        return f"{base_prompt}\n\n<memory>\n" + "\n".join(sections) + "\n</memory>"
+
+    async def _journal_job_dispatch(
+        self,
+        task: dict[str, Any],
+        *,
+        task_run_id: str,
+        trigger: str,
+    ) -> None:
+        """Journal the dispatch *before* the run exists; failures fail closed."""
+        if self._job_memory is None:
+            return
+        entry = {
+            "recorded_at": datetime.now(UTC).isoformat(),
+            "event": "dispatched",
+            "task_id": task["id"],
+            "task_run_id": task_run_id,
+            "trigger": trigger,
+        }
+        # JobMemoryWriteError propagates on purpose: the occurrence must not
+        # launch when its dispatch cannot be durably recorded.
+        await asyncio.to_thread(self._job_memory.append, task["id"], entry)
+
+    async def _journal_job_attempt_outcome(
+        self,
+        task: dict[str, Any],
+        *,
+        task_run_id: str,
+        status: str,
+        error: str | None,
+    ) -> None:
+        """Journal a terminal observation for an attempt that never launched."""
+        now = datetime.now(UTC)
+        entry = {
+            "recorded_at": now.isoformat(),
+            "event": "outcome",
+            "task_id": task["id"],
+            "task_run_id": task_run_id,
+            "run_id": None,
+            "status": status,
+            "error": error,
+            "started_at": None,
+            "finished_at": now.isoformat(),
+            "duration_seconds": None,
+            "duration_note": "run never launched; no duration exists",
+        }
+        await self._journal_job_outcome_entry(task["id"], entry, task_run_id=task_run_id)
+
+    async def _journal_job_terminal_outcome(
+        self,
+        record: RunRecord,
+        *,
+        task_id: str,
+        task_run_id: str,
+        terminal_status: str,
+        error: str | None,
+        finished_at: datetime,
+    ) -> None:
+        """Journal a real terminal outcome after complete_run succeeded."""
+        if self._job_memory is None:
+            return
+        started_at = self._job_run_started_at.pop(task_run_id, None)
+        started_iso: str | None = None
+        duration_seconds: float | None = None
+        duration_note: str | None = None
+        if started_at is not None:
+            started_iso = started_at.isoformat()
+            duration_seconds = round((finished_at - started_at).total_seconds(), 3)
+        else:
+            duration_note = "run start time not observed by this process (e.g., launched before a restart)"
+        entry = {
+            "recorded_at": finished_at.isoformat(),
+            "event": "outcome",
+            "task_id": task_id,
+            "task_run_id": task_run_id,
+            "run_id": record.run_id,
+            "status": terminal_status,
+            "error": error,
+            "started_at": started_iso,
+            "finished_at": finished_at.isoformat(),
+            "duration_seconds": duration_seconds,
+            "duration_note": duration_note,
+        }
+        await self._journal_job_outcome_entry(task_id, entry, task_run_id=task_run_id)
+
+    async def _journal_job_outcome_entry(
+        self,
+        task_id: str,
+        entry: dict[str, Any],
+        *,
+        task_run_id: str,
+    ) -> None:
+        """Append an outcome entry; a write failure is disclosed, never faked.
+
+        By the time an outcome exists the run is already live or terminal, so
+        failing closed here is impossible; the failure is logged at ERROR and
+        carried as a process-local note into the next run's prompt. No
+        substitute entry is written.
+        """
+        if self._job_memory is None:
+            return
+        try:
+            await asyncio.to_thread(self._job_memory.append, task_id, entry)
+        except JobMemoryWriteError as exc:
+            self._note_job_memory_write_failure(task_run_id=task_run_id, error=exc)
+            return
+        self._clear_job_memory_notes_when_presented()
+
+    def _note_job_memory_write_failure(self, *, task_run_id: str, error: Exception) -> None:
+        logger.error(
+            "Scheduled task-run %s: scheduled job memory journal write failed (entry not persisted): %s",
+            task_run_id,
+            error,
+        )
+        note = f"journal write failed for occurrence {task_run_id}: {error}"
+        if len(self._job_memory_notes) < 4:
+            self._job_memory_notes.append(note)
+        elif not self._job_memory_notes_capped:
+            self._job_memory_notes.append(
+                "further journal write failure notes are suppressed in prompts (each failure is still logged at ERROR)"
+            )
+            self._job_memory_notes_capped = True
+        # A note added after the last prompt has not been presented yet.
+        self._job_memory_notes_presented = False
+
+    def _clear_job_memory_notes_when_presented(self) -> None:
+        # Notes are cleared only after they have actually appeared in a run
+        # prompt AND a subsequent append succeeded, so a failure note can
+        # never vanish without being surfaced at least once.
+        if not self._job_memory_notes_presented:
+            return
+        self._job_memory_notes.clear()
+        self._job_memory_notes_capped = False
+        self._job_memory_notes_presented = False
 
     async def start(self) -> None:
         if self._task is not None:

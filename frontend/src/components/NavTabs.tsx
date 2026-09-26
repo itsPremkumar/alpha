@@ -24,6 +24,9 @@ import {
   Settings,
   ChevronDown,
   LayoutGrid,
+  Workflow,
+  Hammer,
+  Radar,
 } from "lucide-react";
 
 export type WorkspaceView =
@@ -31,6 +34,7 @@ export type WorkspaceView =
   | "warroom"
   | "bots"
   | "messages"
+  | "peers"
   | "kanban"
   | "runs"
   | "files"
@@ -46,7 +50,11 @@ export type WorkspaceView =
   | "workforce"
   | "system"
   | "integration"
-  | "settings";
+  | "settings"
+  | "workflows"
+  | "forge"
+  | "supervisor"
+  | "protocols";
 
 export type TabCategory = "core" | "collaboration" | "operations" | "system";
 
@@ -66,6 +74,7 @@ export const WORKSPACE_TABS: WorkspaceTabItem[] = [
   { id: "bots", label: "Bots", icon: <Bot className="size-3.5" />, blurb: "Specialist profiles & team ops", category: "core", isPrimary: true },
   { id: "kanban", label: "Board", icon: <SquareKanban className="size-3.5" />, blurb: "Full project kanban board", category: "core", isPrimary: true },
   { id: "messages", label: "Messages", icon: <MessagesSquare className="size-3.5" />, blurb: "Agent chats & group rooms", category: "collaboration", isPrimary: true },
+  { id: "peers", label: "Alpha Network", icon: <Network className="size-3.5" />, blurb: "Discover, pair & message other Alpha installations", category: "collaboration" },
   { id: "dashboard", label: "Usage", icon: <LayoutDashboard className="size-3.5" />, blurb: "Activity, tokens & cost", category: "operations", isPrimary: true },
 
   // Collaboration & Team
@@ -82,10 +91,14 @@ export const WORKSPACE_TABS: WorkspaceTabItem[] = [
   { id: "skills", label: "Skills", icon: <Blocks className="size-3.5" />, blurb: "Abilities you can toggle", category: "operations" },
   { id: "memory", label: "Memory", icon: <Brain className="size-3.5" />, blurb: "What the agent remembers", category: "operations" },
   { id: "agents", label: "Agents", icon: <Sparkles className="size-3.5" />, blurb: "Custom personas", category: "operations" },
+  { id: "workflows", label: "Workflows", icon: <Workflow className="size-3.5" />, blurb: "Dynamic flows, goals, checkpoints & jobs", category: "operations" },
+  { id: "forge", label: "Forge", icon: <Hammer className="size-3.5" />, blurb: "Skill workshop, evolution, policy & benchmarks", category: "operations" },
 
   // System & Platform
   { id: "system", label: "System", icon: <ServerCog className="size-3.5" />, blurb: "Live status, shortcuts, apps", category: "system" },
   { id: "integration", label: "Integration", icon: <PlugZap className="size-3.5" />, blurb: "Wiring status & opt-in capabilities", category: "system" },
+  { id: "supervisor", label: "Supervisor", icon: <Radar className="size-3.5" />, blurb: "Autonomy loops, Sentinel repairs & signals", category: "system" },
+  { id: "protocols", label: "Protocols", icon: <Network className="size-3.5" />, blurb: "A2A, agent messages, deliveries & MoA", category: "system" },
   { id: "settings", label: "Settings", icon: <Settings className="size-3.5" />, blurb: "Model selection, theme, API diagnostics", category: "system", isPrimary: true },
 ];
 

@@ -190,6 +190,11 @@ GET /api/threads/{thread_id}/runs/{run_id}
 ```
 
 #### Resume Run from Checkpoint
+
+Automatic safe recovery handles model-only pending checkpoints. This endpoint
+remains the manual path for `recovery_confirmation_required`,
+`recovery_exhausted`, `recovery_no_work`, ownership failures, or any other run
+that requires review.
 ```http
 POST /api/threads/{thread_id}/runs/{run_id}/resume
 Content-Type: application/json
@@ -405,6 +410,8 @@ GET /api/ops/advice
 ```
 
 ### Workforce (Projects, Bots, Teams)
+
+The advanced `alpha.swarm` v2 surface is documented in detail in [`API_REFERENCE.md`](API_REFERENCE.md#swarms--group-chat-api) and [`WORKFORCE.md`](WORKFORCE.md#autonomous-swarms--dynamic-topologies). It adds owner-scoped plan admission, lease-fenced task claims/completion, bounded messages/events, budgets, metrics, SSE audit streaming, and explicit pause/resume/cancel/replan operations under `/api/swarms`.
 
 #### Projects
 
@@ -833,7 +840,42 @@ GET /api/models/local/health
 | File upload | 10/min |
 | API calls | 300/min |
 
-## WebSocket Endpoints
+## Dynamic Workflows
+
+The DWE is an opt-in correlated orchestration plane; it does not replace the
+Gateway `RunManager` parent lifecycle. Full semantics and honesty boundaries are
+documented in [`DYNAMIC_WORKFLOWS.md`](DYNAMIC_WORKFLOWS.md).
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `POST` | `/api/workflows/dynamic/perceive` | Preview intent, decomposition, waves, and resources without starting a run |
+| `POST` | `/api/workflows/dynamic/execute` | Compile and optionally execute a dynamic graph |
+| `POST` | `/api/workflows/turns` | Run a paradigm turn; send `dynamic: true` for the full loop |
+| `POST` | `/api/bots/{name}/workflow` | Run the shared service in bot mode for a validated bot |
+| `GET` | `/api/workflows/system/registries` | Inspect bounded capability/resource registry health |
+| `POST` | `/api/workflows/runs/{run_id}/step` | Advance one scheduling wave |
+| `POST` | `/api/workflows/runs/{run_id}/cancel` | Cancel a live workflow run |
+| `POST` | `/api/workflows/runs/{run_id}/approvals/{node_id}` | Resolve the exact active approval request |
+| `POST` | `/api/workflows/runs/{run_id}/patch` | Apply a typed, version-checked graph patch |
+| `POST` | `/api/workflows/runs/{run_id}/replan` | Propose/apply a repair patch and optionally resume |
+| `POST` | `/api/workflows/runs/{run_id}/compensate` | Run only real compensation callbacks |
+| `GET` | `/api/workflows/runs/{run_id}/events` | Read the live event projection |
+| `GET` | `/api/workflows/runs/{run_id}/events/durable` | Read validated JSONL records and corrupt-tail disclosures |
+| `POST` | `/api/workflows/runs/{run_id}/replay` | Fold the log and compare covered fields |
+| `GET` | `/api/workflows/system/durability` | Inspect sink attachment, write failures, and persisted runs |
+| `POST` | `/api/workflows/hydrate` | Install valid persisted projections into this process |
+| `GET/POST` | `/api/workflows/{workflow_id}/plans` | Read/record append-only graph revisions |
+
+Dynamic responses include the real run status and acceptance disclosure. The
+built-in `alpha.local.digest` executor is a local graph projection and returns
+`acceptance_passed: false`; it is not evidence that a domain task was completed.
+Workflow definitions/runs are owner-scoped for authenticated HTTP requests.
+Recurring prompts disclose that scheduler handoff is host-owned rather than
+silently creating a second cron loop. Local JSONL/plan persistence is
+restart-recoverable for one Gateway process, not a multi-worker exactly-once
+lease repository.
+
+
 
 ### Real-time Updates
 ```http

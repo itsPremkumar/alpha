@@ -2,14 +2,64 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
-import os
 from pathlib import Path
 from typing import Any
 
 from langchain.tools import tool
+from langgraph.config import get_config
 
+from alpha.config.paths import get_paths
 from alpha.research.engine import DeepResearchEngine
+from alpha.runtime.user_context import resolve_config_user_id
+
+
+def _resolve_outputs_dir() -> Path:
+    """Resolve the current thread outputs directory without trusting tool paths."""
+
+    try:
+        config = get_config()
+    except RuntimeError:
+        config = {}
+    configurable = config.get("configurable", {}) if isinstance(config, dict) else {}
+    thread_id = configurable.get("thread_id")
+    if thread_id:
+        return get_paths().sandbox_outputs_dir(
+            str(thread_id),
+            user_id=resolve_config_user_id(config),
+        )
+    return get_paths().base_dir / "deep-research"
+
+
+def _safe_output_filename(value: str) -> str:
+    filename = str(value or "deep_research_report.md").strip()
+    path = Path(filename)
+    if not filename or filename in {".", ".."} or path.is_absolute() or len(path.parts) != 1 or "/" in filename or "\\" in filename:
+        raise ValueError("output_path must be a filename only, without directories")
+    if path.suffix.lower() not in {".md", ".markdown"}:
+        raise ValueError("output_path must use a .md or .markdown filename")
+    return path.name
+
+
+async def _write_report(outputs_dir: Path, filename: str, content: str) -> str:
+    def write() -> str:
+        outputs_dir.mkdir(parents=True, exist_ok=True)
+        outputs_root = outputs_dir.resolve()
+        raw_target = outputs_dir / filename
+        if raw_target.is_symlink():
+            raise ValueError("output_path must not be a symbolic link")
+        target = raw_target.resolve(strict=False)
+        try:
+            target.relative_to(outputs_root)
+        except ValueError as exc:
+            raise ValueError("output_path resolves outside the thread outputs directory") from exc
+        if target.is_symlink() or (target.exists() and not target.is_file()):
+            raise ValueError("output_path must resolve to a regular file")
+        target.write_text(content, encoding="utf-8")
+        return str(target)
+
+    return await asyncio.to_thread(write)
 
 
 @tool("deep_research", parse_docstring=True)
@@ -21,19 +71,20 @@ async def deep_research(
     output_path: str = "deep_research_report.md",
     output_filename: str | None = None,
 ) -> str:
-    """Conduct autonomous deep research across multi-lane search, recursive gap analysis, and citation synthesis.
+    """Conduct bounded multi-lane deep research with explicit evidence status.
 
     Compiles a 5-pass search plan (Discovery, Specific Evidence, Adversarial Contradiction,
-    Fact Verification, and Strategic Synthesis), executes multi-source extraction, detects
-    contradictions, and generates a publication-ready Markdown report with strict citations.
+    Fact Verification, and Strategic Synthesis), executes bounded multi-source extraction,
+    and generates a Markdown evidence report. A report with no retrieved sources is returned
+    as ``no_evidence`` rather than fabricated or labeled successful.
 
     Args:
         topic: The research question, technical subject, or investigation target.
-        depth: Investigation depth from 1 (broad landscape) to 5 (exhaustive recursive multi-pass). Default 3.
+        depth: Investigation depth from 1 (broad landscape) to 5 (broader targeted gap follow-up). Default 3.
         max_sources: Maximum distinct primary and secondary sources to extract and cite. Default 15.
         include_adversarial: Actively execute falsification queries to uncover bottlenecks, risks, and failure modes. Default True.
-        output_path: Destination file path to save the synthesized report. Default 'deep_research_report.md'.
-        output_filename: Optional legacy alias for output_path.
+        output_path: Markdown filename to save inside the current thread outputs directory. Default 'deep_research_report.md'.
+        output_filename: Optional legacy alias for output_path. Both accept a filename only, never a host path.
     """
     engine = DeepResearchEngine()
 
@@ -46,43 +97,35 @@ async def deep_research(
 
     dest = output_filename or output_path or "deep_research_report.md"
     saved_path: str | None = None
-    if dest:
-        dest_p = Path(dest)
-        try:
-            if dest_p.is_absolute() or len(dest_p.parts) > 1:
-                dest_p.parent.mkdir(parents=True, exist_ok=True)
-                dest_p.write_text(report.markdown_content, encoding="utf-8")
-                saved_path = str(dest_p)
-            else:
-                candidates = [
-                    Path("/mnt/user-data/outputs"),
-                    Path("outputs"),
-                    Path("."),
-                ]
-                target_dir = next((p for p in candidates if p.exists() and p.is_dir()), Path("."))
-                target_file = target_dir / dest_p.name
-                target_file.write_text(report.markdown_content, encoding="utf-8")
-                saved_path = str(target_file)
-        except Exception:
-            try:
-                dest_p.write_text(report.markdown_content, encoding="utf-8")
-                saved_path = str(dest_p)
-            except Exception:
-                saved_path = None
+    output_error: str | None = None
+    try:
+        filename = _safe_output_filename(dest)
+        saved_path = await _write_report(_resolve_outputs_dir(), filename, report.markdown_content)
+    except Exception as exc:
+        output_error = str(exc)
 
     summary_payload: dict[str, Any] = {
-        "status": "success",
+        "status": report.status,
         "topic": report.topic,
         "executive_summary": report.executive_summary,
         "sources_analyzed": len(report.sources),
-        "citations_verified": len(report.citations),
+        "citations_registered": len(report.citations),
+        "citations_verified": report.verified_citation_count,
         "contradictions_detected": len(report.contradictions),
+        "adversarial_comparisons_detected": len(report.contradictions),
         "saved_report_path": saved_path,
+        "output_error": output_error,
         "markdown_report": report.markdown_content,
         "core_findings_preview": report.core_findings[:3],
         "top_sources": [
-            {"title": s.title, "url": s.url, "domain": s.domain, "facet": s.pass_type}
-            for s in report.sources[:5]
+            {
+                "title": source.title,
+                "url": source.url,
+                "domain": source.domain,
+                "facet": source.pass_type,
+                "citation_status": source.citation_status,
+            }
+            for source in report.sources[:5]
         ],
     }
 

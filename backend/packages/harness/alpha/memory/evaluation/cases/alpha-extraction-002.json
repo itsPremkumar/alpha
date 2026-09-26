@@ -1,0 +1,19 @@
+{
+  "id": "alpha-extraction-002",
+  "ability": "extraction",
+  "scope": {"user_id": "eval-extraction-002", "agent_name": "alpha-memory-evaluation"},
+  "sessions": [
+    {
+      "session_id": "s1",
+      "events": [
+        {"id": "fact-owner", "text": "The owner of the Cedar service is Lin.", "fact_id": "fact-owner", "answer": "Lin", "expected_stored": true},
+        {"id": "fact-window", "text": "The Cedar service accepts requests during the morning window.", "fact_id": "fact-window", "answer": "morning window", "expected_stored": true}
+      ]
+    }
+  ],
+  "questions": [
+    {"id": "q1", "question": "Who owns the Cedar service?", "expected": "Lin", "type": "information_extraction", "evidence_ids": ["fact-owner"]},
+    {"id": "q2", "question": "When does the Cedar service accept requests?", "expected": "morning window", "type": "information_extraction", "evidence_ids": ["fact-window"]}
+  ],
+  "metadata": {"expected_stored": ["fact-owner", "fact-window"], "extraction_fact_ids": ["fact-owner", "fact-window"], "description": "Original extraction fixture with two independent facts."}
+}

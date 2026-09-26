@@ -45,6 +45,7 @@ class SemanticBeliefGraph:
         last_accessed_at: float | None = None,
         created_at: float | None = None,
         superseded_by: str | None = None,
+        source: str | None = None,
     ) -> SemanticFactNode:
         """Add or update an epistemic belief fact in the graph."""
         if isinstance(status, str):
@@ -91,6 +92,7 @@ class SemanticBeliefGraph:
             created_at=c_at,
             superseded_by=superseded_by,
             tags=tags or [],
+            source=source,
         )
         if node_id:
             node.node_id = node_id

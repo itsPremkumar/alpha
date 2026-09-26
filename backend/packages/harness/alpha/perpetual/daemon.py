@@ -84,18 +84,21 @@ class PerpetualDaemon:
         pending = [t for t in self._tasks.values() if t.status in ["discovered", "scheduled"]]
         if not pending:
             self.state = DaemonState.DISCOVERING_TASKS
-            discovered = self._run_discovery()
+            self._run_discovery()
             pending = [t for t in self._tasks.values() if t.status in ["discovered", "scheduled"]]
 
-        # 2. Advance the top priority task
-        advanced_task = None
+        # 2. Select the top priority pending task. No task executor is wired
+        #    into this daemon, so NOTHING is executed: the task keeps its real
+        #    pre-execution status, is never marked "completed", and is never
+        #    counted in _tasks_completed_count. The watchdog records the
+        #    scheduling intent ("scheduled_...") instead of a completion that
+        #    never happened, and the payload discloses the no-executor reality.
+        advanced_task: dict[str, Any] | None = None
         if pending:
             self.state = DaemonState.RUNNING
             task = sorted(pending, key=lambda x: x.priority)[0]
-            task.status = "completed"
-            self._tasks_completed_count += 1
-            advanced_task = task.to_dict()
-            self.watchdog.record_action(f"complete_{task.task_id}_{task.source}")
+            self.watchdog.record_action(f"scheduled_{task.task_id}_{task.source}")
+        execution_note = "no task executor is wired; no tasks were executed this cycle"
 
         # 3. Check for stagnation & trigger Keel intervention if stalled
         incident = self.watchdog.check_stagnation()
@@ -103,12 +106,14 @@ class PerpetualDaemon:
             self.state = DaemonState.STAGNATION_RECOVERY
             self._apply_stagnation_intervention(incident)
 
-        # 4. Periodic memory consolidation
+        # 4. Periodic memory consolidation, but only over real traces. With no
+        #    executor wired there are zero completed-task execution traces;
+        #    feeding a synthetic trace count would fabricate a report.
         consolidation_report = None
-        if self._heartbeat_count % 5 == 0:
+        if self._heartbeat_count % 5 == 0 and self._tasks_completed_count > 0:
             if not incident:
                 self.state = DaemonState.CONSOLIDATING_MEMORY
-            consolidation_report = self.consolidator.consolidate(trace_count=self._tasks_completed_count + 1).to_dict()
+            consolidation_report = self.consolidator.consolidate(trace_count=self._tasks_completed_count).to_dict()
             if not incident:
                 self.state = DaemonState.RUNNING
 
@@ -128,7 +133,10 @@ class PerpetualDaemon:
         return {
             "heartbeat": self._heartbeat_count,
             "state": self.state.value,
+            # Always None: nothing is executed by this daemon, so no task was
+            # advanced or completed this cycle.
             "advanced_task": advanced_task,
+            "execution_note": execution_note,
             "stagnation_incident": incident.to_dict() if incident else None,
             "consolidation_report": consolidation_report,
             "goal_progress_percent": self.active_goal.progress_percent,
@@ -165,8 +173,16 @@ class PerpetualDaemon:
         return [t.to_dict() for t in tasks]
 
     def trigger_consolidation(self) -> dict[str, Any]:
-        """Explicitly trigger memory consolidation."""
-        report = self.consolidator.consolidate(trace_count=max(2, self._tasks_completed_count))
+        """Explicitly trigger memory consolidation over real execution traces."""
+        if self._tasks_completed_count <= 0:
+            # No task executor is wired, so no execution traces exist. Report
+            # the skip honestly instead of synthesizing a trace count.
+            return {
+                "consolidation_skipped": True,
+                "traces_available": 0,
+                "reason": "no completed tasks (execution traces) exist — no task executor is wired",
+            }
+        report = self.consolidator.consolidate(trace_count=self._tasks_completed_count)
         return report.to_dict()
 
     def create_goal(self, title: str, description: str, priority: int = 1) -> PerpetualGoal:

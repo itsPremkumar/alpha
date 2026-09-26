@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
+from _posix_shell import posix_shell_env, sh_argv
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ENTRYPOINT = REPO_ROOT / "docker" / "dev-entrypoint.sh"
@@ -25,7 +27,11 @@ def _run(
     stream_bridge_redis_url: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Invoke the entrypoint's public extras-resolution dry run."""
-    env = os.environ.copy()
+    env = posix_shell_env()
+    # The entrypoint resolves optional dependencies through `python3`; Git Bash
+    # ships no python, so expose the interpreter running this test (the repo
+    # venv) to the child shell instead of leaving the script without one.
+    env["PATH"] = os.pathsep.join([str(Path(sys.executable).parent), env.get("PATH", "")])
     env.pop("UV_EXTRAS", None)
     env.pop("AGENT_WORKSPACE_CONFIG_PATH", None)
     env.pop("AGENT_WORKSPACE_STREAM_BRIDGE_REDIS_URL", None)
@@ -36,7 +42,7 @@ def _run(
     if stream_bridge_redis_url is not None:
         env["AGENT_WORKSPACE_STREAM_BRIDGE_REDIS_URL"] = stream_bridge_redis_url
     return subprocess.run(
-        ["sh", str(ENTRYPOINT), "--print-extras"],
+        sh_argv(str(ENTRYPOINT), "--print-extras"),
         cwd=ENTRYPOINT.parent,
         env=env,
         capture_output=True,
@@ -48,7 +54,7 @@ def _run(
 def test_entrypoint_script_exists_and_is_posix_sh():
     assert ENTRYPOINT.is_file()
     # Catch syntax errors before runtime — `sh -n` is a parse-only check.
-    proc = subprocess.run(["sh", "-n", str(ENTRYPOINT)], capture_output=True, text=True, check=False)
+    proc = subprocess.run(sh_argv("-n", str(ENTRYPOINT)), capture_output=True, text=True, check=False)
     assert proc.returncode == 0, proc.stderr
 
 
@@ -231,7 +237,7 @@ def _run_sync_block(tmp_path: Path, stub_uv: str) -> subprocess.CompletedProcess
     env = os.environ.copy()
     env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
     env["STUB_UV_STATE"] = str(state_dir)
-    return subprocess.run(["sh", "-c", script], capture_output=True, text=True, check=False, env=env, cwd=tmp_path)
+    return subprocess.run(sh_argv("-c", script), capture_output=True, text=True, check=False, env=env, cwd=tmp_path)
 
 
 def test_successful_sync_reaches_the_uvicorn_handoff(tmp_path: Path):

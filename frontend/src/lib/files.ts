@@ -8,16 +8,19 @@ export interface UploadedFile {
 }
 
 export async function listUploads(threadId: string): Promise<UploadedFile[]> {
-  try {
-    const d = await get<unknown>(`/threads/${encodeURIComponent(threadId)}/uploads/list`);
-    return asList(d, ["files", "uploads", "data"]).map((f) => ({
-      name: String(pick(f, ["filename", "name", "path"], "")),
-      size: Number(pick(f, ["size", "size_bytes"], 0)),
-      type: String(pick(f, ["content_type", "type"], "")),
-    }));
-  } catch {
-    return [];
+  const data = await get<unknown>(`/threads/${encodeURIComponent(threadId)}/uploads/list`);
+  const hasEnvelopeList =
+    data &&
+    typeof data === "object" &&
+    ["files", "uploads", "data"].some((key) => Array.isArray((data as Record<string, unknown>)[key]));
+  if (!Array.isArray(data) && !hasEnvelopeList) {
+    throw new Error("The server returned an unreadable upload list.");
   }
+  return asList(data, ["files", "uploads", "data"]).map((file) => ({
+    name: String(pick(file, ["filename", "name", "path"], "")),
+    size: Number(pick(file, ["size", "size_bytes"], 0)),
+    type: String(pick(file, ["content_type", "type"], "")),
+  }));
 }
 
 export async function uploadFiles(threadId: string, files: FileList | File[]): Promise<UploadedFile[]> {

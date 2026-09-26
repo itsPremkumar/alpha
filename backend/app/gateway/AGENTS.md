@@ -4,6 +4,8 @@ FastAPI listens on port 8001; health: `GET /health` (liveness) and `GET /health/
 
 Durable MCP notifications use internal Agent runs. Keep their trusted delivery instruction outside the user-input boundary, and frame serialized remote events as untrusted before model invocation. Strict thread existence/ownership admission dead-letters events whose task outlives its deleted chat instead of recreating the thread.
 
+**Safe run continuation** is owned by `app/gateway/run_recovery.py`, not by `RunManager` or an individual router. `RunManager` remains the sole lifecycle owner and the only producer of orphan/shutdown terminal states; the Gateway service consumes those durable states, checks the current checkpoint through a graph-required `CheckpointStateAccessor` (raw full-mode blobs cannot prove `next`/`tasks` and are rejected for recovery), and launches continuation through the same trusted `start_run` boundary used by scheduled/internal work. Only pending model/agent nodes auto-resume. Tool, MCP, custom, shell, browser, write/delete, payment, unknown, ownerless, stale-thread, exhausted, or malformed-checkpoint cases become explicit CAS-fenced stop reasons and never replay automatically. Scheduled-task and durable MCP-notification rows are also excluded because their own queue/dispatcher owns occurrence identity and completion accounting; durable cancellation requests are excluded as an explicit stop fence even if shutdown writes a recoverable-looking reason. Each continuation has a deterministic idempotency key and a persisted attempt number, so a crash between checkpoint inspection and admission cannot create duplicate workers. Network-disconnected SSE clients do not cancel creator runs by default; `POST .../cancel` remains the explicit stop path. See `packages/harness/alpha/runtime/AGENTS.md` for the full state/reason contract.
+
 CORS is same-origin by default when requests enter through nginx on port 2026. Split-origin or port-forwarded browser clients must opt in with `GATEWAY_CORS_ORIGINS` (exact origins); Gateway `CORSMiddleware` and `CSRFMiddleware` both read that variable so browser CORS and auth-origin checks stay aligned. Those clients also need `CORS_EXPOSED_HEADERS` (`csrf_middleware.py`): run-creating routes return the run's id in `Content-Location`, which is not CORS-safelisted, so JS cannot read it unless it is exposed — and the LangGraph SDK resolves run metadata from that header alone, so withholding it breaks `useStream`'s `onCreated` and thread-gated actions.
 
 Browser auth sessions are owned by `app.gateway.auth.session_cookie`. Login accepts a `remember_me` form flag, but the Gateway never stores passwords. `SessionCookiePolicy` persists the `HttpOnly access_token` cookie only for HTTPS/trusted-forwarded HTTPS, direct-host localhost HTTP, or explicit operator opt-in for insecure persistence; public HTTP sandbox URLs degrade to session cookies.
@@ -50,6 +52,20 @@ expected registered assistant row emits a drift warning so changes to
 LangGraph's internal persistence contract are observable. With current
 create/update writes and all legacy versions sanitized, ordinary
 owner-scoped assistant version selection remains enabled.
+
+**Dynamic workflow routes**: `workflows.py` owns the opt-in dynamic plane:
+`POST /dynamic/perceive` (read-only preview), `POST /dynamic/execute` (compile and
+execute), `POST /turns` with `dynamic=true` (compatibility turn seam), and the
+bot-mode `POST /api/bots/{name}/workflow` adapter. Definitions and runs are
+owner-scoped for real requests; request bodies cannot self-assert an owner.
+The registry endpoint is a bounded projection, not a live connection claim.
+The digest executor is labeled `local_digest_projection` and never satisfies
+domain acceptance. `workflows.py` also owns step/cancel/approval/patch/replan/
+compensation, append-only plan history, event/replay/projection/hydration, and
+fail-closed durable-sink status. The local event store is restart-recoverable
+for one process, not cross-process exactly-once coordination. See
+`docs/DYNAMIC_WORKFLOWS.md` and the dynamic workflow tests before changing these
+boundaries.
 
 **Routers**:
 
@@ -152,3 +168,70 @@ Proxied through nginx: `/api/langgraph/*` → Gateway LangGraph-compatible runti
 archive/search behavior, read [Thread lifecycle invariants](../../docs/THREAD_LIFECYCLE.md).
 It owns lineage and settled-checkpoint rules, legacy fallback boundaries, archive
 filtering before pagination, owner isolation, and activity-time preservation.
+
+## Free local real-time voice contract
+
+Voice is an end-to-end conversation path, not a second agent runtime. The browser owns
+microphone/playback state; the Gateway owns VAD endpointing and local speech inference; the
+final transcript enters the existing thread-run/SSE pipeline. Chat graph events and binary
+audio remain separate transports.
+
+`voice.routing.mode: local_only` is the default for TTS/STT. It must skip configured remote
+T1 speech models and keyless/network T2 speech providers before T3; a missing local asset
+fails honestly rather than silently sending audio to a cloud speech service. Only the LLM
+may use a paid API. Browser `SpeechRecognition`/`speechSynthesis` are not fallbacks. The frontend document
+must send `Permissions-Policy: microphone=(self)`, and the first explicit mic/speaker
+control must prime one shared Web Audio output before automatic playback. Mic/speaker
+access state and blocked-permission/device errors remain visible and honest. The Electron
+shell must explicitly grant microphone-only capture to the exact local Alpha origin and
+deny camera or mixed audio/video requests through both permission request/check handlers.
+
+Runtime speech models are process-cached and bounded. `faster-whisper` and Piper assets live
+under `Paths`/`runtime_home()`'s `voice/models` tree, are installed by `make voice-setup`,
+and are never downloaded implicitly by a request. Client TTS input is a safe voice ID, never
+an arbitrary model path. `voice.enabled=false`, WebSocket authentication/origin checks,
+`runs:create`, session/frame/utterance limits, and stale-partial suppression apply to every
+speech operation including direct PTT transcription.
+
+The public nginx configurations must forward Upgrade/Connection for
+`/api/multimodal/voice` before their generic `/api/` locations. Frontend tests must pin
+single-microphone ownership, interim/final protocol handling, automatic submission through
+`sendMessage`, sentence-level speech queueing, per-message/manual playback sharing that
+same queue, cancellation, and resume-after-playback.
+Backend tests pin local-only tier enforcement, model cache reuse, endpointing, authorization,
+and bounds. Setup and operations are documented in `docs/VOICE_CONVERSATION.md`.
+
+## Local real-time voice ownership
+
+`alpha.multimodal.chain` remains the single T1→T2→T3 capability seam, but
+`voice.routing.mode: local_only` is the safe default for TTS/STT: remote configured
+models and keyless/network speech providers are recorded as policy skips and cannot
+preempt local faster-whisper/Piper. Browser microphone/playback state stays in the
+frontend; the Gateway WebSocket owns bounded PCM/VAD/interim-transcript state; final
+transcripts still enter the existing thread-run/SSE lifecycle. The frontend document allows
+`microphone=(self)`, and an explicit user gesture primes the shared Web Audio speaker before
+automatic local TTS. Do not multiplex chat graph events and audio into one transport.
+
+Local speech model construction is process-cached and bounded. Runtime assets resolve under
+`runtime_home()/voice/models`, `local_files_only` is the default, and `make voice-setup`
+is the only implicit-model-download entry point. Client TTS values are safe voice IDs, not
+paths. Every WebSocket speech operation requires authentication, same-origin validation,
+`runs:create`, and the configured frame/session/utterance bounds. PTT, wake-word, and
+real-time conversation may share the socket only through explicit state transitions.
+Tests: `test_multimodal_chain.py`, `test_multimodal_router.py`,
+`test_multimodal_realtime.py`, local speech runtime tests, and
+`test_setup_voice_models.py`. Operations: `docs/VOICE_CONVERSATION.md`.
+
+## Alpha peer-network routes
+
+`routers/peer_network.py` owns the separate Alpha-to-Alpha session. Management
+routes use `threads:read/write`; only exact Agent Card, pairing, inbound, and
+WebSocket paths are public. Public pairing/inbound requests must validate the
+peer token inside `alpha.peer_network.service`; never replace that with browser
+session auth or trust a sender/owner field. The service starts before the
+autonomy supervisor and stops after it, with the bounded shutdown hook.
+Discovery and GitHub cards are untrusted metadata; pairing and delivery are
+separate states. Tests: `tests/test_peer_network.py`,
+`tests/test_auth_middleware.py`, `tests/test_csrf_middleware.py`, and
+`tests/test_gateway_lifespan_shutdown.py`. Operations:
+`docs/ALPHA_PEER_NETWORK.md`. Operations: `docs/VOICE_CONVERSATION.md`.

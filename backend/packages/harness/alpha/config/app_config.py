@@ -41,6 +41,7 @@ from alpha.config.runtime_paths import existing_project_file
 from alpha.config.safety_finish_reason_config import SafetyFinishReasonConfig
 from alpha.config.sandbox_config import SandboxConfig
 from alpha.config.scheduler_config import SchedulerConfig
+from alpha.config.self_tuning.config import SelfTuningConfig
 from alpha.config.skill_evolution_config import SkillEvolutionConfig
 from alpha.config.skill_scan_config import SkillScanConfig
 from alpha.config.skills_config import SkillsConfig
@@ -61,6 +62,7 @@ from alpha.config.tool_progress_config import ToolProgressConfig
 from alpha.config.tool_search_config import ToolSearchConfig, load_tool_search_config_from_dict
 from alpha.config.verification_config import VerificationConfig
 from alpha.config.voice_config import VoiceConfig
+from alpha.evolution.evidence.config import EvolutionEvidenceConfig
 from alpha.extensions.loader import ExtensionSpec
 
 load_dotenv()
@@ -261,6 +263,24 @@ class AppConfig(BaseModel):
     skills: SkillsConfig = Field(default_factory=SkillsConfig, description="Skills configuration")
     skill_scan: SkillScanConfig = Field(default_factory=SkillScanConfig, description="Native deterministic skill safety scanning configuration")
     skill_evolution: SkillEvolutionConfig = Field(default_factory=SkillEvolutionConfig, description="Agent-managed skill evolution configuration")
+    evolution_evidence: EvolutionEvidenceConfig = Field(
+        default_factory=EvolutionEvidenceConfig,
+        description=(
+            "Self-evolution evidence gate: the bar a proposed self-change must clear before it "
+            "becomes the new default. Requires a clean evaluator-integrity report, all required "
+            "gates green, a primary-metric win beyond a declared noise floor, no regression, a "
+            "rollback path, and an in-policy blast radius. Off by default."
+        ),
+    )
+    self_tuning: SelfTuningConfig = Field(
+        default_factory=SelfTuningConfig,
+        description=(
+            "Self-configuration change protocol: a proposal must pass validation, a scoped canary, "
+            "an atomic apply, a health check, and automatic rollback. Protected paths (auth, "
+            "authorization, sandbox, approvals, audit-enabling flags, enforcement ceilings) are "
+            "refused even with an operator token. Off by default."
+        ),
+    )
     extensions: ExtensionsConfig = Field(default_factory=ExtensionsConfig, description="Extensions configuration (MCP servers and skills state)")
     tool_output: ToolOutputConfig = Field(default_factory=ToolOutputConfig, description="Tool output budget protection configuration")
     tool_search: ToolSearchConfig = Field(default_factory=ToolSearchConfig, description="Tool search / deferred loading configuration")
@@ -290,7 +310,7 @@ class AppConfig(BaseModel):
     loop_detection: LoopDetectionConfig = Field(default_factory=LoopDetectionConfig, description="Loop detection middleware configuration")
     tool_progress: ToolProgressConfig = Field(default_factory=ToolProgressConfig, description="Tool progress state machine middleware configuration")
     verification: VerificationConfig = Field(default_factory=VerificationConfig, description="Subagent result verification (receipts, checklist, judge)")
-    system_one: SystemOneConfig = Field(default_factory=SystemOneConfig, description="System One (Jev) fast structured-decision engine used as the default classifier/router/scorer with LLM fallback")
+    system_one: SystemOneConfig = Field(default_factory=SystemOneConfig, description="System One (hosted Jev or local Laya) fast structured-decision engine used as the default classifier/router/scorer with LLM fallback")
     read_before_write: ReadBeforeWriteConfig = Field(default_factory=ReadBeforeWriteConfig, description="Read-before-write file gate middleware configuration")
     review_guard: ReviewGuardConfig = Field(default_factory=ReviewGuardConfig, description="Review guard middleware configuration (comment density, role-scoped writes)")
     safety_finish_reason: SafetyFinishReasonConfig = Field(default_factory=SafetyFinishReasonConfig, description="Provider safety-filter finish_reason interception middleware configuration")
@@ -365,7 +385,7 @@ class AppConfig(BaseModel):
         default_factory=RunOwnershipConfig,
         description=format_field_description(
             "run_ownership",
-            field_doc="Run ownership and lease configuration for multi-worker deployments.",
+            field_doc="Run ownership, lease, and safe checkpoint auto-resume configuration for single- and multi-worker deployments.",
         ),
     )
     dedupe_storage: DedupeStorageConfig = Field(
@@ -664,7 +684,74 @@ class AppConfig(BaseModel):
         Returns:
             The model config if found, otherwise None.
         """
-        return self._models_by_name.get(name)
+        cfg = self._models_by_name.get(name)
+        if cfg is not None:
+            return cfg
+        if name and (name == "alpha-free" or name.startswith("free:") or name.startswith("alpha-free:")):
+            if name == "alpha-free":
+                target_prov = None
+                target_m = "auto"
+            else:
+                parts = name.split(":", 2)
+                target_prov = parts[1] if len(parts) >= 2 else None
+                target_m = parts[2] if len(parts) >= 3 else "auto"
+            synth = ModelConfig(
+                name=name,
+                display_name="Alpha Free (Auto-Router)" if name == "alpha-free" else name,
+                use="alpha.models.free_router:ChatFreeLLM",
+                model=target_m,
+                target_provider=target_prov,
+            )
+            self._models_by_name[name] = synth
+            return synth
+
+        # Dynamic synthesis for known provider models and user-configured custom models
+        try:
+            from alpha.models.provider_manager import PROVIDER_SPECS, load_credentials_file
+
+            for spec in PROVIDER_SPECS:
+                for dm in spec.default_models:
+                    if dm.id == name:
+                        creds = load_credentials_file()
+                        persisted = creds.get("providers", {}).get(spec.id, {})
+                        api_key = (spec.key_env and os.getenv(spec.key_env)) or persisted.get("api_key") or ""
+                        base_url = persisted.get("base_url") or spec.default_base_url
+                        kwargs: dict[str, Any] = {}
+                        if api_key:
+                            kwargs["api_key"] = api_key
+                        if base_url:
+                            kwargs["base_url"] = base_url
+                        synth = ModelConfig(
+                            name=name,
+                            model=dm.model_id,
+                            display_name=dm.name,
+                            description=dm.description,
+                            use=spec.default_use,
+                            supports_thinking=dm.supports_thinking,
+                            **kwargs,
+                        )
+                        self._models_by_name[name] = synth
+                        return synth
+
+            creds = load_credentials_file()
+            for cm in creds.get("custom_models", []):
+                if cm.get("id") == name or cm.get("name") == name:
+                    synth = ModelConfig(
+                        name=name,
+                        model=cm.get("model", name),
+                        display_name=cm.get("name", name),
+                        description=f"Custom model ({cm.get('provider', 'custom')})",
+                        use="langchain_openai:ChatOpenAI",
+                        api_key=cm.get("api_key") or os.getenv("CUSTOM_LLM_API_KEY", ""),
+                        base_url=cm.get("base_url", "http://127.0.0.1:11434/v1"),
+                        supports_thinking=cm.get("supports_thinking", False),
+                    )
+                    self._models_by_name[name] = synth
+                    return synth
+        except Exception as exc:
+            logger.debug("Failed dynamic provider lookup for model '%s': %s", name, exc)
+
+        return None
 
     def get_provider_config(self, name: str) -> ProviderConfig | None:
         """Get a named provider profile by name.

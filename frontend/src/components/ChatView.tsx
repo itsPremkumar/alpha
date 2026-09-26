@@ -7,13 +7,14 @@ import { Composer } from "@/components/Composer";
 import { NavTabs, WorkspaceView } from "@/components/NavTabs";
 import { ChatMessage, Thread, AIModel } from "@/types/chat";
 import { BotProfile } from "@/types/bots";
-import { fetchThreads, createThread, fetchThreadHistory, fetchAvailableModels, autoTriggerCommand } from "@/lib/api";
+import { fetchThreadsResult, createThread, fetchThreadHistoryResult, fetchAvailableModels, autoTriggerCommand } from "@/lib/api";
 import { apiFetch, ApiClientError } from "@/lib/api-client";
 import { consumeChatStream } from "@/lib/chat-stream";
 import type { StreamMessage } from "@/lib/sse-reducer";
 import { chatRequestErrorMessage, ChatRequestFailure } from "@/lib/chat-request-error";
 import { branding } from "@/lib/branding";
 import { BrandLogo } from "@/components/BrandLogo";
+import { LionPet, useLionPetActivity } from "@/components/lion-pet";
 import { WorkspaceVitals } from "@/components/WorkspaceVitals";
 import { fetchBots, touchBot } from "@/lib/bots";
 import { fetchFeatures, fetchOpsStatus, FeatureFlags } from "@/lib/workspace";
@@ -21,6 +22,8 @@ import { listThreadRuns, cancelRun } from "@/lib/runs";
 import { rateMessage } from "@/lib/feedback";
 import { suggestionsEnabled, suggestFollowUps, polishDraft } from "@/lib/assist";
 import { listCommands, executeCommand, SlashCommand } from "@/lib/commands";
+import { readAutoplayEnabled, autoplaySpeak, speak } from "@/lib/voice";
+import { SpeechSegmenter, cancelSpeech, enqueueSpeech, isSpeechCancellation, waitForSpeechIdle } from "@/lib/speech";
 import {
   loadStore,
   upsertLocalThread,
@@ -34,19 +37,24 @@ import {
   storageInfo,
   exportStoreJson,
   importStoreJson,
+  type ThreadMeta,
 } from "@/lib/history-store";
-import { uploadFiles } from "@/lib/files";
-import { fetchGoal, setGoal, clearGoal, compactThread, fetchTokenUsage, TokenUsage } from "@/lib/threads-ext";
+import { uploadFiles, listUploads } from "@/lib/files";
+import { fetchGoal, setGoal, clearGoal, compactThread, fetchTokenUsage, TokenUsage, moveThread, deleteThread } from "@/lib/threads-ext";
+import { listProjects, Project } from "@/lib/projects";
+import { fetchFreeCatalog } from "@/lib/freeModels";
 import { BotGallery } from "@/components/bots/BotGallery";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { BotDetailPanel } from "@/components/bots/BotDetailPanel";
 import { ActiveBotPicker } from "@/components/bots/ActiveBotPicker";
 import { ErrorBox, SkeletonList } from "@/components/ui";
+import { errMsg } from "@/lib/http";
 import { Activity, Shrink, Target, ClipboardList, Settings } from "lucide-react";
 
 // Sections load on demand so the first paint stays light.
 const BotOpsSection = lazy(() => import("@/components/sections/BotOpsSection").then((m) => ({ default: m.BotOpsSection })));
 const MessagesSection = lazy(() => import("@/components/sections/MessagesSection").then((m) => ({ default: m.MessagesSection })));
+const PeerNetworkSection = lazy(() => import("@/components/sections/PeerNetworkSection").then((m) => ({ default: m.PeerNetworkSection })));
 const KanbanSection = lazy(() => import("@/components/sections/KanbanSection").then((m) => ({ default: m.KanbanSection })));
 const RunsSection = lazy(() => import("@/components/sections/RunsSection").then((m) => ({ default: m.RunsSection })));
 const FilesSection = lazy(() => import("@/components/sections/FilesSection").then((m) => ({ default: m.FilesSection })));
@@ -64,6 +72,10 @@ const IntegrationSection = lazy(() => import("@/components/sections/IntegrationS
 const WorkforceSection = lazy(() => import("@/components/sections/WorkforceSection").then((m) => ({ default: m.WorkforceSection })));
 const WarRoomSection = lazy(() => import("@/components/sections/WarRoomSection").then((m) => ({ default: m.WarRoomSection })));
 const SettingsSection = lazy(() => import("@/components/sections/SettingsSection").then((m) => ({ default: m.SettingsSection })));
+const WorkflowsSection = lazy(() => import("@/components/sections/WorkflowsSection").then((m) => ({ default: m.WorkflowsSection })));
+const ForgeSection = lazy(() => import("@/components/sections/ForgeSection").then((m) => ({ default: m.ForgeSection })));
+const SupervisorSection = lazy(() => import("@/components/sections/SupervisorSection").then((m) => ({ default: m.SupervisorSection })));
+const ProtocolsSection = lazy(() => import("@/components/sections/ProtocolsSection").then((m) => ({ default: m.ProtocolsSection })));
 
 function SectionFallback() {
   return (
@@ -75,8 +87,157 @@ function SectionFallback() {
   );
 }
 
+function looksLikeUnsentDraft(thread: Thread): boolean {
+  const title = thread.title.trim().toLowerCase();
+  return title === "new conversation" || title.startsWith("chat with ");
+}
+
+/** Bounded background fan-out: never open one request per thread at once. */
+const ARCHIVE_BATCH_SIZE = 3;
+
+function threadLabel(thread: Thread): string {
+  return thread.title.trim() || thread.thread_id;
+}
+
+/**
+ * Hide only server-confirmed empty drafts from the visible list.
+ *
+ * A thread is hidden ONLY when all three checks succeed: the server returned a
+ * complete (non-partial) empty message list AND the server confirmed an empty
+ * upload list. A failed read, a partial page, or an unreadable upload list are
+ * all treated as "not proven empty", so local history can never be hidden
+ * behind a load failure.
+ *
+ * `knownLocalMessages` lets a caller that already loaded the archive reuse it
+ * instead of reading every stored message a second time; when it cannot be
+ * supplied the archive is read here.
+ */
+async function hideConfirmedEmptyDrafts(
+  threads: Thread[],
+  knownLocalMessages?: Record<string, ChatMessage[]>,
+): Promise<{ visible: Thread[]; notes: string[] }> {
+  const notes: string[] = [];
+  let localMessages: Record<string, ChatMessage[]>;
+  if (knownLocalMessages) {
+    localMessages = knownLocalMessages;
+  } else {
+    try {
+      localMessages = (await loadStore()).messages;
+    } catch {
+      // Inability to inspect the archive is not proof that a thread is empty.
+      // Keep every server row visible rather than risking hidden local history.
+      return { visible: threads, notes: [] };
+    }
+  }
+  const candidates = threads.filter(
+    (thread) => looksLikeUnsentDraft(thread) && (localMessages[thread.thread_id]?.length ?? 0) === 0,
+  );
+  const empty = new Set<string>();
+  for (let offset = 0; offset < candidates.length; offset += ARCHIVE_BATCH_SIZE) {
+    const checks = await Promise.all(
+      candidates.slice(offset, offset + ARCHIVE_BATCH_SIZE).map(async (thread) => ({
+        thread,
+        history: await fetchThreadHistoryResult(thread.thread_id),
+      })),
+    );
+    for (const { thread, history } of checks) {
+      if (!history.ok) continue;
+      if (history.incomplete) {
+        // A partial page cannot prove the thread is empty.
+        notes.push(`${threadLabel(thread)}: partial history — ${history.incomplete}`);
+        continue;
+      }
+      if (history.value.length === 0) {
+        try {
+          const uploads = await listUploads(thread.thread_id);
+          if (uploads.length === 0) empty.add(thread.thread_id);
+        } catch (error) {
+          // Failed upload inspection is not proof that the thread is empty.
+          notes.push(`${threadLabel(thread)}: uploads unavailable — ${errMsg(error)}`);
+        }
+      } else {
+        try {
+          await setLocalMessages(thread.thread_id, history.value);
+        } catch (error) {
+          notes.push(`${threadLabel(thread)}: local write failed — ${errMsg(error)}`);
+        }
+      }
+    }
+  }
+  return { visible: threads.filter((thread) => !empty.has(thread.thread_id)), notes };
+}
+
+/**
+ * Copy every server conversation into the uncapped local archive.
+ *
+ * This runs in the background, in small batches, so the whole history is kept
+ * on this computer without blocking the first paint or opening an unbounded
+ * number of requests. Partial pages are archived too — they are real history —
+ * and the truncation is reported instead of being presented as a complete
+ * copy. Per-thread failures are collected and returned as one notice, which is
+ * shown only when something needs attention: a clean archive is already
+ * visible in the sidebar's storage counter.
+ */
+async function archiveServerHistory(threads: Thread[]): Promise<string[]> {
+  const notes: string[] = [];
+  let archived = 0;
+  for (let offset = 0; offset < threads.length; offset += ARCHIVE_BATCH_SIZE) {
+    const batch = threads.slice(offset, offset + ARCHIVE_BATCH_SIZE);
+    const results = await Promise.all(
+      batch.map(async (thread) => ({ thread, history: await fetchThreadHistoryResult(thread.thread_id) })),
+    );
+    for (const { thread, history } of results) {
+      if (!history.ok) {
+        // Keep the thread visible with whatever local copy exists.
+        notes.push(`${threadLabel(thread)}: ${history.error}`);
+        continue;
+      }
+      if (history.incomplete) {
+        notes.push(`${threadLabel(thread)}: archived partially — ${history.incomplete}`);
+      }
+      if (history.value.length === 0) continue;
+      try {
+        await setLocalMessages(thread.thread_id, history.value);
+        archived += 1;
+      } catch (error) {
+        notes.push(`${threadLabel(thread)}: local write failed — ${errMsg(error)}`);
+      }
+    }
+  }
+  if (notes.length === 0) return [];
+  const shown = notes.slice(0, 2);
+  const extra = notes.length - shown.length;
+  return [
+    `Saved ${archived} conversation${archived === 1 ? "" : "s"} on this computer. ${notes.length} could not be fully saved${
+      extra > 0 ? ` (${extra} more)` : ""
+    }: ${shown.join("; ")}`,
+  ];
+}
+
+/**
+ * Kick off the background archive unless one is already walking the same
+ * history, and surface its notice only when something needed attention.
+ */
+function startHistoryArchive(
+  threads: Thread[],
+  archiveInFlightRef: { current: boolean },
+  flash: (message: string) => void,
+): void {
+  if (archiveInFlightRef.current) return;
+  archiveInFlightRef.current = true;
+  void archiveServerHistory(threads)
+    .then((notices) => {
+      for (const notice of notices) flash(notice);
+    })
+    .catch((error) => console.error("Local history archive failed:", error))
+    .finally(() => {
+      archiveInFlightRef.current = false;
+    });
+}
+
 export default function ChatView() {
   const [threads, setThreads] = useState<Thread[]>([]);
+  const [threadsLoading, setThreadsLoading] = useState(true);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [models, setModels] = useState<AIModel[]>([]);
@@ -84,16 +245,27 @@ export default function ChatView() {
   const [input, setInput] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [requestError, setRequestError] = useState<{ threadId: string; message: string; draft: string; partial: string } | null>(null);
+  const [requestError, setRequestError] = useState<{ threadId: string; message: string; draft: string; partial: string; partialArchived: boolean } | null>(null);
   const [offlineDismissed, setOfflineDismissed] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const activeRunRef = useRef(false);
+  const [voiceConversationEnabled, setVoiceConversationEnabled] = useState(false);
+  const voiceConversationEnabledRef = useRef(false);
+  const [voiceTurnActive, setVoiceTurnActive] = useState(false);
+  const [voiceResumeToken, setVoiceResumeToken] = useState(0);
+  const voiceTurnRef = useRef(false);
+  const voiceTurnGenerationRef = useRef(0);
+  const voiceResumePendingRef = useRef(false);
+  const voiceScopeRef = useRef<string | null>(null);
 
   // Multi-bot-profile state
   const [bots, setBots] = useState<BotProfile[]>([]);
   const [botsLoading, setBotsLoading] = useState<boolean>(true);
   const [activeBot, setActiveBot] = useState<BotProfile | null>(null);
   const [view, setView] = useState<WorkspaceView>("chat");
+  const voiceViewRef = useRef(view);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<"general" | "models" | "connectivity" | "appearance" | "diagnostics">("general");
   const [botsTab, setBotsTab] = useState<"profiles" | "ops">("profiles");
   const [inspectedBot, setInspectedBot] = useState<BotProfile | null>(null);
 
@@ -112,34 +284,198 @@ export default function ChatView() {
   const [planMode, setPlanMode] = useState(false);
   const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
   const [gatewayOk, setGatewayOk] = useState<boolean | null>(null);
+  // Project scope for the active chat (creation + permission/selection in-chat).
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [pendingProjectId, setPendingProjectId] = useState<string | null>(null);
+  const localThreadMetaRef = useRef<Record<string, ThreadMeta>>({});
+  const historyLoadGenerationRef = useRef(0);
+  // Bumped by every user-initiated navigation. An in-flight run compares its
+  // own generation against this before touching React state, so a run that
+  // finishes after the user switched conversations can never paint into the
+  // newly opened thread. The local archive write is still performed.
+  const runGenerationRef = useRef(0);
+  // Set while the background archiver is walking the server history, so a
+  // manual Refresh does not start a second concurrent copy of the same work.
+  const archiveInFlightRef = useRef(false);
+  // Synchronous attachment lock: two rapid drops must not create two drafts.
+  const attachmentLockRef = useRef(false);
+  // Server conversation-list failure reason. Null means "the list loaded".
+  const [serverHistoryError, setServerHistoryError] = useState<string | null>(null);
+  // Free-model catalog status (dynamic, auto-refreshed server-side TTL 300s).
+  const [freeNote, setFreeNote] = useState<string | null>(null);
+  const [freeRefreshing, setFreeRefreshing] = useState(false);
+  const { state: lionState, message: lionMessage, update: updateLion } = useLionPetActivity({
+    isLoading,
+    hasApproval: messages.some((message) => Boolean(message.approvalRequest)),
+  });
 
   const flash = (msg: string) => {
     setNotice(msg);
     window.setTimeout(() => setNotice(null), 4500);
   };
 
-  // Initial load: local history first (instant), then merge the server.
+  const persistLocalHistory = async (
+    operation: () => Promise<void>,
+    failureMessage: string,
+  ): Promise<boolean> => {
+    try {
+      await operation();
+      return true;
+    } catch (error) {
+      flash(`${failureMessage} ${errMsg(error)}`);
+      return false;
+    }
+  };
+
+  useEffect(() => {
+    voiceConversationEnabledRef.current = voiceConversationEnabled;
+  }, [voiceConversationEnabled]);
+
+  // Voice is scoped to this ChatView/thread. A local thread id can be remapped
+  // to its server id during the first voice turn, so that transition is kept;
+  // explicit navigation paths also stop the mode below.
+  useEffect(() => {
+    voiceViewRef.current = view;
+    const nextScope = `${view}:${activeThreadId || "new"}`;
+    const previousScope = voiceScopeRef.current;
+    if (previousScope !== null && previousScope !== nextScope) {
+      const previousView = previousScope.split(":", 1)[0];
+      const nextView = nextScope.split(":", 1)[0];
+      const localThreadRemap = voiceTurnRef.current && previousView === "chat" && nextView === "chat";
+      if (!localThreadRemap) {
+        if (voiceTurnRef.current) abortRef.current?.abort();
+        voiceTurnGenerationRef.current += 1;
+        voiceTurnRef.current = false;
+        voiceResumePendingRef.current = false;
+        voiceConversationEnabledRef.current = false;
+        setVoiceConversationEnabled(false);
+        cancelSpeech();
+      }
+    }
+    voiceScopeRef.current = nextScope;
+  }, [view, activeThreadId]);
+
+  useEffect(() => {
+    if (isLoading || !voiceResumePendingRef.current) return;
+    voiceResumePendingRef.current = false;
+    setVoiceResumeToken((token) => token + 1);
+  }, [isLoading]);
+
+  useEffect(() => () => {
+    if (voiceTurnRef.current) abortRef.current?.abort();
+    voiceTurnGenerationRef.current += 1;
+    voiceTurnRef.current = false;
+    voiceResumePendingRef.current = false;
+    cancelSpeech();
+  }, []);
+
+  const stopVoiceForNavigation = () => {
+    // Every user-initiated navigation goes through here, so this is the one
+    // place that invalidates an in-flight run's React state writes.
+    runGenerationRef.current += 1;
+    if (voiceTurnRef.current) abortRef.current?.abort();
+    voiceTurnGenerationRef.current += 1;
+    voiceTurnRef.current = false;
+    voiceResumePendingRef.current = false;
+    voiceConversationEnabledRef.current = false;
+    setVoiceTurnActive(false);
+    setVoiceConversationEnabled(false);
+    cancelSpeech();
+  };
+
+  /** Force a live re-discovery of free providers (probe = real health check). */
+  const refreshFreeCatalog = async () => {
+    setFreeRefreshing(true);
+    try {
+      const [{ providers, updatedAt }, mList] = await Promise.all([
+        fetchFreeCatalog({ refresh: true, probe: true }),
+        fetchAvailableModels(),
+      ]);
+      setModels(mList);
+      const healthy = providers.filter((p) => p.healthy === true).length;
+      const eligible = providers.filter((p) => p.eligible).length;
+      setFreeNote(
+        providers.length === 0
+          ? "Free catalog empty — the keyless router has no providers right now."
+          : `Free models: ${healthy}/${providers.length} healthy, ${eligible} eligible${updatedAt ? ` (updated ${updatedAt})` : ""}.`
+      );
+      flash(providers.length === 0 ? "Free catalog refreshed: no providers." : `Free catalog refreshed: ${healthy}/${providers.length} healthy.`);
+    } catch {
+      setFreeNote("Free catalog refresh failed — keyless router may be down.");
+      flash("Free catalog refresh failed.");
+    } finally {
+      setFreeRefreshing(false);
+    }
+  };
+
+  /** Project owning the active thread (server field first, pending pick fallback). */
+  const activeProjectId: string | null =
+    threads.find((t) => t.thread_id === activeThreadId)?.projectId || pendingProjectId;
+
+  /** Scope an unsent draft now, or move the current persisted thread. */
+  const handlePickProject = async (projectId: string | null) => {
+    if (!activeThreadId || activeThreadId.startsWith("local-")) {
+      setPendingProjectId(projectId);
+      flash(projectId ? "This new conversation will open in the selected project." : "Project scope cleared.");
+      return;
+    }
+    try {
+      await moveThread(activeThreadId, projectId);
+      setThreads((previous) =>
+        previous.map((thread) => (thread.thread_id === activeThreadId ? { ...thread, projectId } : thread)),
+      );
+      flash(projectId ? "Chat moved into project." : "Chat removed from project.");
+    } catch (error) {
+      flash(`Couldn't move this chat. ${errMsg(error)}`);
+    }
+  };
+
+  // Initial load: complete local archive first (instant), then merge every
+  // server page. Read failures keep the local archive visible and are surfaced
+  // instead of being converted into a convincing empty history.
   useEffect(() => {
     async function init() {
+      let localMessages: Record<string, ChatMessage[]> | undefined;
       try {
-        const local = loadStore();
+        const local = await loadStore();
+        localThreadMetaRef.current = local.meta;
+        localMessages = local.messages;
+        if (local.warning) flash(local.warning);
         if (local.threads.length > 0) {
           const sorted = [...local.threads].sort((a, b) => (b.updated_at || "").localeCompare(a.updated_at || ""));
           setThreads(sorted);
           setActiveThreadId(sorted[0].thread_id);
         }
-      } catch {
-        /* fresh start */
+      } catch (error) {
+        // Undefined here makes the empty-draft check read the archive itself,
+        // and it degrades to "hide nothing" if that read fails too.
+        localMessages = undefined;
+        flash(`Local history could not be opened. ${errMsg(error)}`);
       }
-      const [tList, mList, bList, feats, suggOn] = await Promise.all([
-        fetchThreads(),
+
+      const [threadResult, mList, bList, feats, suggOn] = await Promise.all([
+        fetchThreadsResult(),
         fetchAvailableModels(),
         fetchBots(),
         fetchFeatures(),
         suggestionsEnabled(),
       ]);
-      const merged = mergeThreads(tList);
+      const serverThreads = threadResult.ok
+        ? (await hideConfirmedEmptyDrafts(threadResult.value, localMessages)).visible
+        : [];
+      if (!threadResult.ok) {
+        setServerHistoryError(threadResult.error);
+        flash(`Server history is unavailable. ${threadResult.error}`);
+      } else {
+        setServerHistoryError(null);
+        if (threadResult.incomplete) {
+          flash(`Chat list is incomplete — ${threadResult.incomplete}. Showing what loaded.`);
+        }
+      }
+      const merged = await mergeThreads(serverThreads);
       setThreads(merged);
+      // Keep the whole history on this computer without blocking first paint.
+      if (threadResult.ok) startHistoryArchive(serverThreads, archiveInFlightRef, flash);
       setModels(mList);
       let initialModel = "default";
       try {
@@ -158,12 +494,30 @@ export default function ChatView() {
       setBotsLoading(false);
       setFeatures(feats);
       setSuggestionsOn(suggOn);
+      // Projects for the in-chat scope picker; an unavailable list is not an
+      // authoritative empty project set.
+      listProjects().then(setProjects).catch((error) => {
+        setProjects([]);
+        flash(`Projects are unavailable. ${errMsg(error)}`);
+      });
+      // Free-model catalog: dynamic server view, never fabricated client-side.
+      const renderFree = (providers: { name: string; healthy: boolean | null; eligible: boolean }[], updatedAt?: string | null) => {
+        const healthy = providers.filter((p) => p.healthy === true).length;
+        const eligible = providers.filter((p) => p.eligible).length;
+        setFreeNote(
+          providers.length === 0
+            ? "Free catalog empty — the keyless router has no providers right now."
+            : `Free models: ${healthy}/${providers.length} healthy, ${eligible} eligible${updatedAt ? ` (updated ${updatedAt})` : ""}.`
+        );
+      };
+      fetchFreeCatalog().then(({ providers, updatedAt }) => renderFree(providers, updatedAt)).catch(() => setFreeNote("Free catalog unreachable — keyless router may be down."));
       // Lightweight liveness probe for the header status pill.
       fetchOpsStatus().then(() => setGatewayOk(true)).catch(() => setGatewayOk(false));
       // Shortcut commands for the "/" palette (quiet if unavailable).
       listCommands().then(setSlashCommands).catch(() => setSlashCommands([]));
+      setThreadsLoading(false);
     }
-    init();
+    void init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -178,31 +532,74 @@ export default function ChatView() {
     }
   };
 
-  /** Union of server + locally stored threads (server wins metadata, local-only kept). */
-  const mergeThreads = (serverList: Thread[]): Thread[] => {
-    const store = loadStore();
-    const byId = new Map<string, Thread>(store.threads.map((t) => [t.thread_id, t]));
-    for (const st of serverList) {
-      const local = byId.get(st.thread_id);
-      byId.set(st.thread_id, local ? { ...local, ...st } : st);
-      upsertLocalThread(byId.get(st.thread_id)!);
+  /**
+   * Union of server + locally stored threads.
+   *
+   * The merge is field-wise with the same two exceptions as
+   * `history-store.mergeThreadFields`: an absent/empty field means the server
+   * did not mention it (an older Gateway omits `bot_name` / `project_id`), so
+   * the locally known value must survive. An explicit `null` is the server
+   * saying "unassigned" and does clear it — otherwise a chat just moved out of
+   * a project would keep that scope forever.
+   */
+  const mergeThreads = async (serverList: Thread[]): Promise<Thread[]> => {
+    let localThreads: Thread[] = [];
+    try {
+      localThreads = (await loadStore()).threads;
+    } catch (error) {
+      console.error("Local chat metadata is unavailable:", error);
+    }
+    const byId = new Map<string, Thread>(localThreads.map((thread) => [thread.thread_id, thread]));
+    for (const serverThread of serverList) {
+      const local = byId.get(serverThread.thread_id);
+      const merged: Thread = { ...(local ?? ({} as Thread)) };
+      for (const [key, value] of Object.entries(serverThread)) {
+        if (value === undefined || value === "") continue;
+        (merged as unknown as Record<string, unknown>)[key] = value;
+      }
+      merged.thread_id = serverThread.thread_id;
+      byId.set(serverThread.thread_id, merged);
+      try {
+        await upsertLocalThread(merged);
+      } catch (error) {
+        console.error(`Local metadata write failed for thread ${serverThread.thread_id}:`, error);
+      }
     }
     return Array.from(byId.values()).sort((a, b) => (b.updated_at || "").localeCompare(a.updated_at || ""));
   };
 
   const reloadThreads = async (selectId?: string) => {
-    const tList = await fetchThreads();
-    const merged = mergeThreads(tList);
-    setThreads(merged);
-    if (selectId) setActiveThreadId(selectId);
-    else if (activeThreadId && !merged.some((t) => t.thread_id === activeThreadId)) {
-      setActiveThreadId(merged.length > 0 ? merged[0].thread_id : null);
+    setThreadsLoading(true);
+    try {
+      const result = await fetchThreadsResult();
+      if (!result.ok) {
+        // A failed refresh keeps the currently listed conversations visible.
+        setServerHistoryError(result.error);
+        throw new Error(result.error);
+      }
+      setServerHistoryError(null);
+      const { visible, notes } = await hideConfirmedEmptyDrafts(result.value);
+      if (result.incomplete) {
+        flash(`Chat list is incomplete — ${result.incomplete}. Showing what loaded.`);
+      } else if (notes.length > 0) {
+        flash(notes[0]);
+      }
+      const merged = await mergeThreads(visible);
+      setThreads(merged);
+      if (selectId) setActiveThreadId(selectId);
+      else if (activeThreadId && !merged.some((thread) => thread.thread_id === activeThreadId)) {
+        setActiveThreadId(merged.length > 0 ? merged[0].thread_id : null);
+      }
+      if (!archiveInFlightRef.current) startHistoryArchive(visible, archiveInFlightRef, flash);
+    } finally {
+      setThreadsLoading(false);
     }
   };
 
-  // Fetch messages + goal + usage when thread changes (server first, local cache fallback).
+  // Fetch the complete message feed + goal + usage when the thread changes.
   useEffect(() => {
     if (!activeThreadId) {
+      historyLoadGenerationRef.current += 1;
       setMessages([]);
       setGoalText(null);
       setUsage(null);
@@ -210,60 +607,85 @@ export default function ChatView() {
       return;
     }
     async function loadMessages() {
-      const tid = activeThreadId!;
-      const history = await fetchThreadHistory(tid);
-      if (history.length > 0) {
-        setMessages(history);
+      const generation = historyLoadGenerationRef.current + 1;
+      historyLoadGenerationRef.current = generation;
+      const threadId = activeThreadId!;
+      const history = await fetchThreadHistoryResult(threadId);
+      if (historyLoadGenerationRef.current !== generation) return;
+
+      if (history.ok) {
+        let cached: ChatMessage[] = [];
         try {
-          setLocalMessages(tid, history);
-        } catch {
-          /* cache best-effort */
+          cached = (await loadStore()).messages[threadId] || [];
+        } catch (error) {
+          flash(`Server history loaded, but the local archive could not be read. ${errMsg(error)}`);
+        }
+        if (historyLoadGenerationRef.current !== generation) return;
+        // A partial page is real history: show what arrived, but say so, and
+        // still archive it so the local copy keeps the messages we do have.
+        if (history.incomplete) {
+          flash(`This chat's history is only partially loaded — ${history.incomplete}.`);
+        }
+        setMessages(history.value.length > 0 ? history.value : cached);
+        if (history.value.length > 0) {
+          await persistLocalHistory(
+            () => setLocalMessages(threadId, history.value),
+            "The server history loaded, but the complete local archive could not be updated.",
+          );
         }
       } else {
+        let cached: ChatMessage[] = [];
         try {
-          setMessages(loadStore().messages[tid] || []);
-        } catch {
-          setMessages([]);
-        }
-      }
-      try {
-        const g = await fetchGoal(tid);
-        if (g.goal) {
-          setGoalText(g.goal);
-          try {
-            setThreadMeta(tid, { goal: g.goal });
-          } catch {
-            /* ignore */
+          cached = (await loadStore()).messages[threadId] || [];
+        } catch (error) {
+          if (historyLoadGenerationRef.current === generation) {
+            setMessages([]);
+            flash(`Neither server nor local history could be loaded. ${history.error}; ${errMsg(error)}`);
           }
+          return;
+        }
+        if (historyLoadGenerationRef.current !== generation) return;
+        setMessages(cached);
+        flash(`Showing the saved local copy because server history failed. ${history.error}`);
+      }
+
+      try {
+        const threadGoal = await fetchGoal(threadId);
+        if (historyLoadGenerationRef.current !== generation) return;
+        if (threadGoal.goal) {
+          setGoalText(threadGoal.goal);
+          localThreadMetaRef.current[threadId] = {
+            ...(localThreadMetaRef.current[threadId] || { botName: null, goal: null }),
+            goal: threadGoal.goal,
+          };
+          void persistLocalHistory(
+            () => setThreadMeta(threadId, { goal: threadGoal.goal! }),
+            "The goal loaded, but its local copy could not be updated.",
+          );
         } else {
-          setGoalText(loadStore().meta[tid]?.goal || null);
+          setGoalText(localThreadMetaRef.current[threadId]?.goal || null);
         }
       } catch {
-        try {
-          setGoalText(loadStore().meta[tid]?.goal || null);
-        } catch {
-          setGoalText(null);
+        if (historyLoadGenerationRef.current === generation) {
+          setGoalText(localThreadMetaRef.current[threadId]?.goal || null);
         }
       }
       try {
-        setUsage(await fetchTokenUsage(tid));
+        const tokenUsage = await fetchTokenUsage(threadId);
+        if (historyLoadGenerationRef.current === generation) setUsage(tokenUsage);
       } catch {
-        setUsage(null);
+        if (historyLoadGenerationRef.current === generation) setUsage(null);
       }
-      setSuggestions([]);
+      if (historyLoadGenerationRef.current === generation) setSuggestions([]);
     }
-    loadMessages();
+    void loadMessages();
   }, [activeThreadId]);
 
   // Restore this conversation's specialist bot once bots are known.
   useEffect(() => {
     if (!activeThreadId || bots.length === 0) return;
-    try {
-      const name = loadStore().meta[activeThreadId]?.botName || null;
-      setActiveBot(name ? bots.find((b) => b.name === name) || null : null);
-    } catch {
-      /* ignore */
-    }
+    const name = localThreadMetaRef.current[activeThreadId]?.botName || null;
+    setActiveBot(name ? bots.find((bot) => bot.name === name) || null : null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeThreadId, bots]);
 
@@ -271,52 +693,28 @@ export default function ChatView() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading, view]);
 
-  const handleNewChat = async () => {
-    // Local-first: the chat exists instantly, the server copy follows.
-    const localId = `local-${Date.now()}`;
-    const draft: Thread = {
-      thread_id: localId,
-      title: "New Conversation",
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      botName: activeBot?.name ?? null,
-    };
-    try {
-      upsertLocalThread(draft);
-    } catch {
-      /* ignore */
-    }
-    setThreads((prev) => [draft, ...prev]);
-    setActiveThreadId(localId);
+  const handleNewChat = () => {
+    stopVoiceForNavigation();
+    // A blank composer is an unsent draft, not history. Do not create a local
+    // or server thread until the first real message/file/command exists.
+    setActiveThreadId(null);
     setMessages([]);
+    setGoalText(null);
+    setUsage(null);
+    setSuggestions([]);
+    setRequestError(null);
     setView("chat");
-    try {
-      const serverId = await createThread("New Conversation", { botName: activeBot?.name ?? null });
-      const serverThread: Thread = { ...draft, thread_id: serverId };
-      try {
-        remapThreadId(localId, serverThread);
-      } catch {
-        /* ignore */
-      }
-      setThreads((prev) => prev.map((t) => (t.thread_id === localId ? serverThread : t)));
-      setActiveThreadId(serverId);
-    } catch (err) {
-      console.error("Server thread unavailable, keeping local chat:", err);
-    }
   };
 
   /** Owner of a thread: server metadata first, local meta fallback. */
-  const threadOwner = (t: Thread): string | null => {
-    if (t.botName) return t.botName;
-    try {
-      return loadStore().meta[t.thread_id]?.botName || null;
-    } catch {
-      return null;
-    }
+  const threadOwner = (thread: Thread): string | null => {
+    if (thread.botName) return thread.botName;
+    return localThreadMetaRef.current[thread.thread_id]?.botName || null;
   };
 
   /** Pick a specialist and scope history + projects to its space. */
   const rememberBot = (bot: BotProfile | null) => {
+    stopVoiceForNavigation();
     setActiveBot(bot);
     if (!bot) return;
     const mine = threads
@@ -326,49 +724,56 @@ export default function ChatView() {
     setActiveThreadId(pick ? pick.thread_id : null);
     if (!pick) setMessages([]);
     if (pick) {
-      try {
-        setThreadMeta(pick.thread_id, { botName: bot.name });
-      } catch {
-        /* ignore */
-      }
+      localThreadMetaRef.current[pick.thread_id] = {
+        ...(localThreadMetaRef.current[pick.thread_id] || { botName: null, goal: null }),
+        botName: bot.name,
+      };
+      void persistLocalHistory(
+        () => setThreadMeta(pick.thread_id, { botName: bot.name }),
+        "The bot link loaded, but its local copy could not be updated.",
+      );
     }
   };
 
-  const handleChatWithBot = async (bot: BotProfile) => {
+  const handleChatWithBot = (bot: BotProfile) => {
+    stopVoiceForNavigation();
     setActiveBot(bot);
     setInspectedBot(null);
+    setPendingProjectId(null);
+    setActiveThreadId(null);
+    setMessages([]);
+    setGoalText(null);
+    setUsage(null);
+    setSuggestions([]);
+    setRequestError(null);
     setView("chat");
-    try {
-      const newId = await createThread(`Chat with ${bot.display_name || bot.name}`, { botName: bot.name });
-      const newThread: Thread = {
-        thread_id: newId,
-        title: `Chat with ${bot.display_name || bot.name}`,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        botName: bot.name,
-      };
-      try {
-        upsertLocalThread(newThread);
-        setThreadMeta(newId, { botName: bot.name });
-      } catch {
-        /* ignore */
-      }
-      setThreads((prev) => [newThread, ...prev]);
-      setActiveThreadId(newId);
-      setMessages([]);
-    } catch (err) {
-      console.error("Failed to create bot thread, reusing current thread:", err);
-    }
   };
 
   /** Core send: streams one answer, attaches its run id, stores everything locally. */
-  const sendMessage = async (text: string) => {
+  const sendMessage = async (text: string, options: { voiceTurn?: boolean } = {}): Promise<boolean> => {
     const content = text.trim();
-    if (!content || isLoading) return;
+    // Ref is deliberately synchronous: two voice callbacks can arrive before
+    // React has committed isLoading=true, and a second run must still be blocked.
+    const runLock = typeof activeRunRef !== "undefined" ? activeRunRef : { current: false };
+    const stopQueuedSpeech = typeof cancelSpeech === "function" ? cancelSpeech : () => undefined;
+    if (!content || isLoading || runLock.current) return false;
+    runLock.current = true;
+    // Claim a run generation. Any user navigation bumps it, after which this
+    // run still archives its own transcript but no longer writes React state.
+    const runGeneration = runGenerationRef.current + 1;
+    runGenerationRef.current = runGeneration;
+    const runIsCurrent = () => runGenerationRef.current === runGeneration;
+    const voiceTurn = options.voiceTurn === true;
+    stopQueuedSpeech();
+    setInput("");
+    setIsLoading(true);
+    setRequestError(null);
+    updateLion("thinking", "Paw-sing the request...");
 
     let threadId = activeThreadId;
     if (!threadId) {
-      // Create the chat locally first so nothing is ever lost.
+      // The first real prompt commits the draft to both the complete local
+      // archive and the Gateway. Merely opening New Chat never creates a row.
       const localId = `local-${Date.now()}`;
       const draft: Thread = {
         thread_id: localId,
@@ -376,35 +781,41 @@ export default function ChatView() {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         botName: activeBot?.name ?? null,
+        projectId: pendingProjectId,
       };
-      try {
-        upsertLocalThread(draft);
-      } catch {
-        /* ignore */
-      }
-      setThreads((prev) => [draft, ...prev]);
+      await persistLocalHistory(
+        () => upsertLocalThread(draft),
+        "The new chat could not be saved on this computer.",
+      );
+      setThreads((previous) => [draft, ...previous]);
       setActiveThreadId(localId);
       threadId = localId;
+      let serverId: string | null = null;
       try {
-        const serverId = await createThread(content.slice(0, 30), { botName: activeBot?.name ?? null });
+        serverId = await createThread(content.slice(0, 30), {
+          botName: activeBot?.name ?? null,
+          projectId: pendingProjectId,
+        });
+      } catch {
+        /* Keep the first prompt locally; the next reconnect can reconcile it. */
+      }
+      if (serverId) {
         const serverThread: Thread = { ...draft, thread_id: serverId };
         try {
-          remapThreadId(localId, serverThread);
-        } catch {
-          /* ignore */
+          const savedMeta = await remapThreadId(localId, serverThread);
+          if (savedMeta) localThreadMetaRef.current[serverId] = savedMeta;
+        } catch (error) {
+          flash(`The server chat was created, but its local id could not be remapped. ${errMsg(error)}`);
         }
-        setThreads((prev) => prev.map((t) => (t.thread_id === localId ? serverThread : t)));
+        setThreads((previous) =>
+          previous.map((thread) => (thread.thread_id === localId ? serverThread : thread)),
+        );
         setActiveThreadId(serverId);
+        setPendingProjectId(null);
         threadId = serverId;
-      } catch {
-        /* offline: continue with the local chat */
       }
     }
     const tid = threadId;
-
-    setInput("");
-    setIsLoading(true);
-    setRequestError(null);
 
     // Automatically detect and trigger slash command lifecycle at the right time
     let detection = undefined;
@@ -425,11 +836,10 @@ export default function ChatView() {
       createdAt: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, userMsg]);
-    try {
-      appendLocalMessages(tid, [userMsg]);
-    } catch {
-      /* ignore */
-    }
+    await persistLocalHistory(
+      () => appendLocalMessages(tid, [userMsg]),
+      "Your message is visible, but its local archive write failed.",
+    );
     // Record bot activity on the server (last_active / version bump).
     if (activeBot) void touchBot(activeBot.name);
     setSuggestions([]);
@@ -440,11 +850,49 @@ export default function ChatView() {
     let assistantText = "";
     let responseStarted = false;
     let deliveredMessages: ChatMessage[] = [];
+    let completed = false;
     const streamedIds = new Set<string>();
-    const showRequestFailure = (failure: ChatRequestFailure) => {
-      setMessages((prev) => prev.filter((m) => !streamedIds.has(m.id)));
-      setRequestError({ threadId: tid, message: chatRequestErrorMessage(failure), draft: text, partial: assistantText });
+    const speechSegmenter = voiceTurn ? new SpeechSegmenter() : null;
+    let speechFailureShown = false;
+    const enqueueVoiceSegment = (segment: string) => {
+      const value = segment.trim();
+      if (!value) return;
+      void enqueueSpeech(value, {
+        player: (valueToSpeak, signal) => speak(valueToSpeak, { signal }),
+      }).catch((error: unknown) => {
+        if (!isSpeechCancellation(error) && !speechFailureShown) {
+          speechFailureShown = true;
+          flash(`Voice speech failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      });
+    };
+    const showRequestFailure = async (failure: ChatRequestFailure) => {
+      let partialArchived = false;
+      if (responseStarted && assistantText.trim()) {
+        // The partial transcript is archived even when the user has already
+        // navigated away — the local copy must not depend on the UI state.
+        partialArchived = await persistLocalHistory(
+          () => appendLocalMessages(tid, deliveredMessages),
+          "The incomplete response could not be added to the local archive.",
+        );
+      }
+      // After a navigation the visible thread is a different conversation, so
+      // the retry panel/draft would be painted into the wrong place.
+      if (!runIsCurrent()) return;
+      setMessages((prev) => prev.filter((message) => !streamedIds.has(message.id)));
+      setRequestError({
+        threadId: tid,
+        message: chatRequestErrorMessage({ ...failure, partialArchived }),
+        draft: text,
+        partial: assistantText,
+        partialArchived,
+      });
       setInput((current) => current || text);
+      if (failure.kind === "stopped") {
+        updateLion("idle", "Stopping safely. The workspace is ready whenever you are.");
+      } else {
+        updateLion("error", "That path needs another look. I kept the draft safe.");
+      }
     };
 
     try {
@@ -454,6 +902,9 @@ export default function ChatView() {
         signal: controller.signal,
         body: JSON.stringify({
           assistant_id: activeBot?.name || "lead_agent",
+          // A transient browser/network drop must not cancel durable work;
+          // the explicit Stop action remains the cancellation boundary.
+          on_disconnect: "continue",
           stream_mode: ["messages-tuple", "values"],
           input: {
             messages: [{ role: "user", content }],
@@ -468,6 +919,7 @@ export default function ChatView() {
       });
 
       responseStarted = true;
+      updateLion("working", "I'm on it. Roaring quietly.");
       const updateStream = (partial: StreamMessage[]) => {
         deliveredMessages = partial.map((message) => ({
           id: message.runId ? JSON.stringify([message.runId, message.id]) : assistantMsgId,
@@ -479,7 +931,13 @@ export default function ChatView() {
           runId: message.runId || undefined,
         }));
         assistantText = deliveredMessages.map((message) => message.content).join("\n\n");
+        if (speechSegmenter) {
+          for (const segment of speechSegmenter.pushSnapshot(assistantText)) enqueueVoiceSegment(segment);
+        }
         for (const message of deliveredMessages) streamedIds.add(message.id);
+        // A run that outlived its conversation must not repaint the thread the
+        // user opened next; the transcript is still archived below.
+        if (!runIsCurrent()) return;
         setMessages((prev) => [...prev.filter((message) => !streamedIds.has(message.id)), ...deliveredMessages]);
       };
       const result = await consumeChatStream(res, {
@@ -492,20 +950,41 @@ export default function ChatView() {
       });
       updateStream(result.messages);
       if (controller.signal.aborted) {
-        showRequestFailure({ kind: "stopped" });
-        return;
+        await showRequestFailure({ kind: "stopped" });
+        return false;
       }
       if (!assistantText.trim()) {
-        showRequestFailure({ kind: "empty" });
-        return;
+        await showRequestFailure({ kind: "empty" });
+        return false;
       }
+      if (speechSegmenter) {
+        for (const segment of speechSegmenter.flush()) enqueueVoiceSegment(segment);
+      }
+      // The answer is committed before optional speech playback. Stopping
+      // playback must not erase a response that already streamed successfully.
+      completed = true;
+      if (runIsCurrent()) updateLion("success", "Task complete. Nice work, team.", 4200);
       try {
-        setUsage(await fetchTokenUsage(threadId));
+        const usage = await fetchTokenUsage(threadId);
+        if (runIsCurrent()) setUsage(usage);
       } catch {}
 
-      try {
-        appendLocalMessages(tid, deliveredMessages);
-      } catch {}
+      await persistLocalHistory(
+        () => appendLocalMessages(tid, deliveredMessages),
+        "The response completed, but its local archive write failed.",
+      );
+
+      if (speechSegmenter) {
+        // Keep capture paused until every already-queued local TTS segment has
+        // finished (or was cancelled by Stop). This prevents self-hearing.
+        await waitForSpeechIdle();
+      }
+      // Full-response autoplay remains the manual-text behavior. Voice turns
+      // already streamed their sentence segments above and must not overlap a
+      // second full-response request.
+      if (!voiceTurn && readAutoplayEnabled()) {
+        void autoplaySpeak(assistantText, { onFailure: (message) => flash(`Autoplay failed: ${message}`) });
+      }
 
       // Follow-up suggestions.
       if (suggestionsOn) {
@@ -514,20 +993,55 @@ export default function ChatView() {
             .slice(-6)
             .map((m) => ({ role: m.role, content: m.content.slice(0, 2000) }));
           const s = await suggestFollowUps(threadId, convo);
-          setSuggestions(s);
+          if (runIsCurrent()) setSuggestions(s);
         } catch {
           /* suggestions are optional */
         }
       }
     } catch (error) {
-      showRequestFailure(controller.signal.aborted
+      await showRequestFailure(controller.signal.aborted
         ? { kind: "stopped" }
         : !responseStarted && error instanceof ApiClientError && error.kind === "http"
           ? { kind: "http", status: error.status }
           : { kind: responseStarted ? "stream" : "network" });
     } finally {
+      // isLoading is a workspace-wide "a run is in flight" indicator, not a
+      // per-thread view. It must always clear or the composer stays wedged
+      // after a run that outlived its conversation.
       setIsLoading(false);
       abortRef.current = null;
+      runLock.current = false;
+    }
+    return completed;
+  };
+
+  const handleVoiceTranscript = async (text: string) => {
+    const content = text.trim();
+    if (!content || !voiceConversationEnabledRef.current || voiceViewRef.current !== "chat") return;
+    if (activeRunRef.current) {
+      // A final endpoint can race a manual run. Keep the session alive without
+      // creating a second run; the normal run guard remains authoritative.
+      voiceResumePendingRef.current = true;
+      return;
+    }
+    if (voiceTurnRef.current) return;
+    const generation = voiceTurnGenerationRef.current;
+    voiceTurnRef.current = true;
+    setVoiceTurnActive(true);
+    try {
+      await sendMessage(content, { voiceTurn: true });
+    } catch (error) {
+      flash(`Voice turn failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      voiceTurnRef.current = false;
+      if (generation === voiceTurnGenerationRef.current) {
+        setVoiceTurnActive(false);
+        // A navigation/stop during the run owns the outcome; do not resume into
+        // a different thread or resurrect a user-disabled conversation.
+        if (voiceConversationEnabledRef.current && voiceViewRef.current === "chat") {
+          setVoiceResumeToken((token) => token + 1);
+        }
+      }
     }
   };
 
@@ -543,6 +1057,9 @@ export default function ChatView() {
 
   /** Execute a "/command" and show its result right in the chat. */
   const runSlash = async (command: string) => {
+    if (activeRunRef.current || isLoading) return;
+    activeRunRef.current = true;
+    cancelSpeech();
     let currentThreadId = activeThreadId;
     if (!currentThreadId) {
       const localId = `local-${Date.now()}`;
@@ -552,28 +1069,36 @@ export default function ChatView() {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         botName: activeBot?.name ?? null,
+        projectId: pendingProjectId,
       };
-      try {
-        upsertLocalThread(draft);
-      } catch {
-        /* ignore */
-      }
+      await persistLocalHistory(
+        () => upsertLocalThread(draft),
+        "The shortcut chat could not be saved on this computer.",
+      );
       setThreads((prev) => [draft, ...prev]);
       setActiveThreadId(localId);
       currentThreadId = localId;
+      let serverId: string | null = null;
       try {
-        const serverId = await createThread(command.slice(0, 30), { botName: activeBot?.name ?? null });
+        serverId = await createThread(command.slice(0, 30), {
+          botName: activeBot?.name ?? null,
+          projectId: pendingProjectId,
+        });
+      } catch {
+        /* Keep the command in the local archive while offline. */
+      }
+      if (serverId) {
         const serverThread: Thread = { ...draft, thread_id: serverId };
         try {
-          remapThreadId(localId, serverThread);
-        } catch {
-          /* ignore */
+          const savedMeta = await remapThreadId(localId, serverThread);
+          if (savedMeta) localThreadMetaRef.current[serverId] = savedMeta;
+        } catch (error) {
+          flash(`The shortcut chat exists on the server, but its local id could not be remapped. ${errMsg(error)}`);
         }
         setThreads((prev) => prev.map((t) => (t.thread_id === localId ? serverThread : t)));
         setActiveThreadId(serverId);
+        setPendingProjectId(null);
         currentThreadId = serverId;
-      } catch {
-        /* offline: keep it local */
       }
     }
     const tid = currentThreadId;
@@ -584,13 +1109,13 @@ export default function ChatView() {
       createdAt: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, userMsg]);
-    try {
-      appendLocalMessages(tid, [userMsg]);
-    } catch {
-      /* ignore */
-    }
+    await persistLocalHistory(
+      () => appendLocalMessages(tid, [userMsg]),
+      "Your message is visible, but its local archive write failed.",
+    );
     setInput("");
     setIsLoading(true);
+    updateLion("working", "Running that shortcut...");
     const reply = async (content: string) => {
       const assistantMsg: ChatMessage = {
         id: `asst-${Date.now()}`,
@@ -599,25 +1124,37 @@ export default function ChatView() {
         createdAt: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, assistantMsg]);
-      try {
-        appendLocalMessages(tid, [assistantMsg]);
-      } catch {
-        /* ignore */
-      }
+      await persistLocalHistory(
+        () => appendLocalMessages(tid, [assistantMsg]),
+        "The shortcut result is visible, but its local archive write failed.",
+      );
     };
     try {
       const out = await executeCommand(command, { thread_id: tid });
       await reply(out);
+      updateLion("success", "Shortcut complete. The desk is clear.", 3600);
     } catch (e) {
       await reply(`Couldn't run that shortcut: ${e instanceof Error ? e.message : "unknown error"}`);
+      updateLion("error", "That shortcut hit a snag. Nothing was lost.");
     } finally {
       setIsLoading(false);
+      activeRunRef.current = false;
     }
   };
 
   /** Stop button: halt the stream, then cancel the run server-side (best effort). */
   const handleStop = async () => {
+    updateLion("waiting", "Stopping safely. Checking the last safe checkpoint...");
     abortRef.current?.abort();
+    cancelSpeech();
+    if (voiceTurnRef.current) {
+      voiceTurnGenerationRef.current += 1;
+      voiceTurnRef.current = false;
+      voiceResumePendingRef.current = false;
+      voiceConversationEnabledRef.current = false;
+      setVoiceTurnActive(false);
+      setVoiceConversationEnabled(false);
+    }
     if (activeThreadId) {
       try {
         const runs = await listThreadRuns(activeThreadId);
@@ -646,11 +1183,10 @@ export default function ChatView() {
     try {
       if (next) await rateMessage(activeThreadId, msg.runId, next);
       setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, rating: next } : m)));
-      try {
-        updateLocalMessage(activeThreadId, messageId, { rating: next });
-      } catch {
-        /* ignore */
-      }
+      await persistLocalHistory(
+        () => updateLocalMessage(activeThreadId, messageId, { rating: next }),
+        "The rating is saved on the server, but its local copy could not be updated.",
+      );
       if (next) flash(next === 1 ? "Thanks — rated helpful." : "Noted — rated not helpful.");
     } catch {
       flash("Couldn't save your rating right now.");
@@ -671,38 +1207,67 @@ export default function ChatView() {
     }
   };
 
-  const handleAttach = async (files: FileList) => {
+  const handleAttach = async (files: FileList | File[]) => {
+    if (files.length === 0) return;
+    // Synchronous lock: two rapid drops (or a drop while a run is starting)
+    // must not each create their own draft thread and server row.
+    if (attachmentLockRef.current) {
+      flash("An upload is already in progress — wait for it to finish.");
+      return;
+    }
+    attachmentLockRef.current = true;
+    try {
+      await runAttachment(files);
+    } finally {
+      attachmentLockRef.current = false;
+    }
+  };
+
+  const runAttachment = async (files: FileList | File[]) => {
     let threadId = activeThreadId;
+    const draftProjectId = pendingProjectId;
+    let draftLocalId: string | null = null;
+    let draftServerId: string | null = null;
     if (!threadId) {
       const localId = `local-${Date.now()}`;
+      draftLocalId = localId;
       const draft: Thread = {
         thread_id: localId,
         title: `Files: ${files[0]?.name || "uploads"}`,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         botName: activeBot?.name ?? null,
+        projectId: draftProjectId,
       };
-      try {
-        upsertLocalThread(draft);
-      } catch {
-        /* ignore */
-      }
+      await persistLocalHistory(
+        () => upsertLocalThread(draft),
+        "The upload chat could not be saved on this computer.",
+      );
       setThreads((prev) => [draft, ...prev]);
       setActiveThreadId(localId);
       threadId = localId;
+      let serverId: string | null = null;
       try {
-        const serverId = await createThread(draft.title, { botName: activeBot?.name ?? null });
+        serverId = await createThread(draft.title, {
+          botName: activeBot?.name ?? null,
+          projectId: draftProjectId,
+        });
+      } catch {
+        /* Keep the upload draft locally; upload it after reconnecting. */
+      }
+      if (serverId) {
+        draftServerId = serverId;
         const serverThread: Thread = { ...draft, thread_id: serverId };
         try {
-          remapThreadId(localId, serverThread);
-        } catch {
-          /* ignore */
+          const savedMeta = await remapThreadId(localId, serverThread);
+          if (savedMeta) localThreadMetaRef.current[serverId] = savedMeta;
+        } catch (error) {
+          flash(`The upload chat exists on the server, but its local id could not be remapped. ${errMsg(error)}`);
         }
         setThreads((prev) => prev.map((t) => (t.thread_id === localId ? serverThread : t)));
         setActiveThreadId(serverId);
+        setPendingProjectId(null);
         threadId = serverId;
-      } catch {
-        /* offline: keep it local */
       }
     }
     setUploading(true);
@@ -710,7 +1275,42 @@ export default function ChatView() {
       const added = await uploadFiles(threadId, files);
       flash(`${added.length} file(s) attached — mention them in your message.`);
     } catch (e) {
-      flash(e instanceof Error ? e.message : "Upload failed.");
+      const uploadError = errMsg(e);
+      if (draftLocalId || draftServerId) {
+        let cleanupError: string | null = null;
+        if (draftServerId) {
+          try {
+            await deleteThread(draftServerId);
+          } catch (cleanupFailure) {
+            cleanupError = errMsg(cleanupFailure);
+          }
+        }
+        if (!cleanupError) {
+          try {
+            if (draftLocalId) await removeLocalThread(draftLocalId);
+            if (draftServerId) await removeLocalThread(draftServerId);
+            setThreads((previous) =>
+              previous.filter(
+                (thread) => thread.thread_id !== draftLocalId && thread.thread_id !== draftServerId,
+              ),
+            );
+            setActiveThreadId((current) =>
+              current === draftLocalId || current === draftServerId ? null : current,
+            );
+            setMessages([]);
+            setPendingProjectId(draftProjectId);
+            flash(`Upload failed: ${uploadError}. The empty draft was removed.`);
+          } catch (localCleanupFailure) {
+            cleanupError = errMsg(localCleanupFailure);
+          }
+        }
+        if (cleanupError) {
+          setPendingProjectId(draftProjectId);
+          flash(`Upload failed: ${uploadError}. The empty draft could not be removed: ${cleanupError}`);
+        }
+      } else {
+        flash(`Upload failed: ${uploadError}`);
+      }
     } finally {
       setUploading(false);
     }
@@ -722,11 +1322,14 @@ export default function ChatView() {
       await setGoal(activeThreadId, goalDraft.trim());
       setGoalText(goalDraft.trim());
       setGoalEditing(false);
-      try {
-        setThreadMeta(activeThreadId, { goal: goalDraft.trim() });
-      } catch {
-        /* ignore */
-      }
+      localThreadMetaRef.current[activeThreadId] = {
+        ...(localThreadMetaRef.current[activeThreadId] || { botName: null, goal: null }),
+        goal: goalDraft.trim(),
+      };
+      await persistLocalHistory(
+        () => setThreadMeta(activeThreadId, { goal: goalDraft.trim() }),
+        "The goal is saved on the server, but its local copy could not be updated.",
+      );
       flash("Goal set — the agent works toward it until done.");
     } catch {
       flash("Couldn't save the goal.");
@@ -739,11 +1342,14 @@ export default function ChatView() {
       await clearGoal(activeThreadId);
       setGoalText(null);
       setGoalEditing(false);
-      try {
-        setThreadMeta(activeThreadId, { goal: null });
-      } catch {
-        /* ignore */
-      }
+      localThreadMetaRef.current[activeThreadId] = {
+        ...(localThreadMetaRef.current[activeThreadId] || { botName: null, goal: null }),
+        goal: null,
+      };
+      await persistLocalHistory(
+        () => setThreadMeta(activeThreadId, { goal: null }),
+        "The goal was cleared on the server, but its local copy could not be updated.",
+      );
     } catch {
       flash("Couldn't clear the goal.");
     }
@@ -755,8 +1361,10 @@ export default function ChatView() {
     try {
       const summary = await compactThread(activeThreadId);
       flash(summary.slice(0, 200));
-      const history = await fetchThreadHistory(activeThreadId);
-      setMessages(history);
+      const history = await fetchThreadHistoryResult(activeThreadId);
+      if (!history.ok) throw new Error(history.error);
+      setMessages(history.value);
+      await setLocalMessages(activeThreadId, history.value);
       setUsage(await fetchTokenUsage(activeThreadId));
     } catch {
       flash("Compaction isn't available right now.");
@@ -764,6 +1372,7 @@ export default function ChatView() {
   };
 
   const openThread = (id: string) => {
+    stopVoiceForNavigation();
     // Keep the bot space in sync: opening another bot's chat switches scope to it.
     const t = threads.find((x) => x.thread_id === id);
     const owner = t ? threadOwner(t) : null;
@@ -776,24 +1385,38 @@ export default function ChatView() {
     setView("chat");
   };
 
-  const handleExportHistory = () => {
+  const handleViewChange = (nextView: WorkspaceView) => {
+    if (nextView !== "chat") stopVoiceForNavigation();
+    setView(nextView);
+  };
+
+  const handleExportHistory = async () => {
     try {
-      const blob = new Blob([exportStoreJson()], { type: "application/json" });
+      const blob = new Blob([await exportStoreJson()], { type: "application/json" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
       a.download = `alpha-history-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       window.setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-      flash("History downloaded — keep it safe or move it to another browser.");
-    } catch {
-      flash("Couldn't export history.");
+      flash("Complete local history downloaded — keep it safe or move it to another browser.");
+    } catch (error) {
+      flash(`Couldn't export history. ${errMsg(error)}`);
     }
   };
 
   const handleImportHistory = async (f: File): Promise<string> => {
     const text = await f.text();
-    const { threads: tCount, messages: mCount } = importStoreJson(text);
-    const merged = mergeThreads(await fetchThreads().catch(() => []));
+    const { threads: tCount, messages: mCount } = await importStoreJson(text);
+    const threadResult = await fetchThreadsResult();
+    if (!threadResult.ok) {
+      flash(`Imported ${tCount} chats and ${mCount} messages, but server history could not be re-read. ${threadResult.error}`);
+      return `Imported ${tCount} chats and ${mCount} messages. Server refresh is unavailable.`;
+    }
+    setServerHistoryError(null);
+    const { visible, notes } = await hideConfirmedEmptyDrafts(threadResult.value);
+    if (threadResult.incomplete) flash(`Chat list is incomplete — ${threadResult.incomplete}. Showing what loaded.`);
+    else if (notes.length > 0) flash(notes[0]);
+    const merged = await mergeThreads(visible);
     setThreads(merged);
     return `Imported ${tCount} chats and ${mCount} messages.`;
   };
@@ -805,6 +1428,7 @@ export default function ChatView() {
       {view === "chat" && (
         <ThreadSidebar
           threads={activeBot ? threads.filter((t) => threadOwner(t) === activeBot.name) : threads}
+          threadsLoading={threadsLoading}
           activeThreadId={activeThreadId}
           scopeLabel={activeBot ? activeBot.display_name || activeBot.name : null}
           scopeAvatar={activeBot?.avatar || ""}
@@ -814,15 +1438,19 @@ export default function ChatView() {
             return bots.find((b) => b.name === o)?.display_name || o;
           }}
           onSelectThread={(id) => {
-            setActiveThreadId(id);
-            setView("chat");
+            openThread(id);
           }}
           onNewChat={handleNewChat}
-          onThreadsChanged={() => reloadThreads()}
-          onBranchOpened={(id) => reloadThreads(id)}
+          onThreadsChanged={() => {
+            void reloadThreads().catch((error) => flash(`Could not refresh chat history. ${errMsg(error)}`));
+          }}
+          onBranchOpened={(id) => {
+            stopVoiceForNavigation();
+            void reloadThreads(id).catch((error) => flash(`Could not open the branched chat. ${errMsg(error)}`));
+          }}
           onExportHistory={handleExportHistory}
           onImportHistory={handleImportHistory}
-          serverOnline={gatewayOk === true}
+          serverOnline={gatewayOk === true && serverHistoryError === null}
           onOpenSettings={() => setView("settings")}
         />
       )}
@@ -831,7 +1459,7 @@ export default function ChatView() {
         {/* Workspace navigation */}
         <header className="border-b border-border/60 px-3 pt-2 pb-1.5 bg-card/20 shrink-0 space-y-1.5">
           <div className="overflow-x-auto">
-            <NavTabs view={view} onChange={setView} badge={{ bots: bots.length }} />
+            <NavTabs view={view} onChange={handleViewChange} badge={{ bots: bots.length }} />
           </div>
 
           {/* Live backend vitals: connectivity, usage and subsystem readiness,
@@ -841,8 +1469,32 @@ export default function ChatView() {
           {view === "chat" && (
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-semibold text-foreground truncate max-w-52">
-                {threads.find((t) => t.thread_id === activeThreadId)?.title || "Active Workspace"}
+                {threads.find((thread) => thread.thread_id === activeThreadId)?.title ||
+                  (activeBot ? `New chat with ${activeBot.display_name || activeBot.name}` : "New Conversation")}
               </span>
+              {/* Project scope: create/select a project without leaving the chat. */}
+              <select
+                value={activeProjectId || ""}
+                onChange={(e) => handlePickProject(e.target.value || null)}
+                className="text-[11px] bg-muted/60 border border-border/80 rounded-lg px-2 py-0.5 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 font-medium cursor-pointer max-w-44 truncate"
+                title={projects.length === 0 ? "No projects yet — pick one after creating it in Projects" : "Project for this chat"}
+                aria-label="Project for this chat"
+              >
+                <option value="">No project</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name || "Untitled project"}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setView("projects")}
+                className="text-[11px] text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded-lg hover:bg-muted transition-colors"
+                title="Manage projects"
+              >
+                Manage
+              </button>
               <button
                 type="button"
                 onClick={() => setView("system")}
@@ -860,6 +1512,17 @@ export default function ChatView() {
               </button>
               <div className="flex-1" />
               <ActiveBotPicker bots={bots} activeBot={activeBot} onPick={rememberBot} />
+              <button
+                type="button"
+                onClick={refreshFreeCatalog}
+                disabled={freeRefreshing}
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-muted/70 transition-colors disabled:opacity-40"
+                title={freeNote || "Free keyless models — click to refresh live catalog"}
+              >
+                <span className="size-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+                <span className="hidden lg:inline">{freeRefreshing ? "Refreshing free…" : freeNote ? freeNote.split(".")[0] : "Free models"}</span>
+                <span className="lg:hidden">Free</span>
+              </button>
               <button
                 type="button"
                 onClick={() => setView("settings")}
@@ -885,6 +1548,35 @@ export default function ChatView() {
                 Diagnose
               </button>
               <button type="button" onClick={() => setOfflineDismissed(true)} className="px-2 py-1 rounded-lg text-[11px] text-muted-foreground hover:text-foreground shrink-0" aria-label="Dismiss offline warning">
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
+
+        {serverHistoryError && view === "chat" && (
+          <div className="shrink-0 px-4 pt-2">
+            <div className="max-w-4xl mx-auto flex items-start gap-2.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
+              <span className="size-2 rounded-full bg-amber-500 shrink-0 mt-1" aria-hidden="true" />
+              <span className="flex-1 min-w-0">
+                <strong>Server conversation list unavailable.</strong>{" "}
+                <span className="text-muted-foreground">
+                  {serverHistoryError} — you are seeing the complete copy saved on this computer, not a confirmed empty history.
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={() => void reloadThreads().catch((error) => flash(`Could not refresh chat history. ${errMsg(error)}`))}
+                className="px-2.5 py-1 rounded-lg border border-amber-500/40 text-[11px] font-semibold shrink-0"
+              >
+                Retry
+              </button>
+              <button
+                type="button"
+                onClick={() => setServerHistoryError(null)}
+                className="px-2 py-1 rounded-lg text-[11px] text-muted-foreground hover:text-foreground shrink-0"
+                aria-label="Dismiss server history warning"
+              >
                 Dismiss
               </button>
             </div>
@@ -936,6 +1628,10 @@ export default function ChatView() {
           <Suspense fallback={<SectionFallback />}>
             <MessagesSection threadId={activeThreadId} botNames={bots.map((b) => b.display_name || b.name)} />
           </Suspense>
+        ) : view === "peers" ? (
+          <Suspense fallback={<SectionFallback />}>
+            <PeerNetworkSection />
+          </Suspense>
         ) : view === "kanban" ? (
           <Suspense fallback={<SectionFallback />}>
             <KanbanSection bots={bots.map((b) => ({ name: b.name, display_name: b.display_name || b.name, avatar: b.avatar }))} />
@@ -960,6 +1656,22 @@ export default function ChatView() {
           <Suspense fallback={<SectionFallback />}>
             <SkillsSection />
           </Suspense>
+        ) : view === "workflows" ? (
+          <Suspense fallback={<SectionFallback />}>
+            <WorkflowsSection />
+          </Suspense>
+        ) : view === "forge" ? (
+          <Suspense fallback={<SectionFallback />}>
+            <ForgeSection />
+          </Suspense>
+        ) : view === "supervisor" ? (
+          <Suspense fallback={<SectionFallback />}>
+            <SupervisorSection />
+          </Suspense>
+        ) : view === "protocols" ? (
+          <Suspense fallback={<SectionFallback />}>
+            <ProtocolsSection />
+          </Suspense>
         ) : view === "memory" ? (
           <Suspense fallback={<SectionFallback />}>
             <MemorySection />
@@ -970,6 +1682,9 @@ export default function ChatView() {
               onOpenThread={openThread}
               threads={threads}
               bots={bots.map((b) => ({ name: b.name, display_name: b.display_name || b.name }))}
+              onThreadsChanged={() => {
+                void reloadThreads().catch((error) => flash(`Could not refresh chat history. ${errMsg(error)}`));
+              }}
             />
           </Suspense>
         ) : view === "dashboard" ? (
@@ -1003,12 +1718,17 @@ export default function ChatView() {
         ) : view === "settings" ? (
           <Suspense fallback={<SectionFallback />}>
             <SettingsSection
+              initialTab={settingsInitialTab}
               currentModel={selectedModel}
               onModelChange={(m) => {
                 setSelectedModel(m);
                 try {
                   localStorage.setItem("alpha_selected_model", m);
                 } catch {}
+              }}
+              onModelsUpdated={async () => {
+                const mList = await fetchAvailableModels();
+                setModels(mList);
               }}
               onOpenView={(v) => setView(v)}
             />
@@ -1141,7 +1861,9 @@ export default function ChatView() {
                   </div>
                   {requestError.partial && (
                     <div className="rounded-xl border border-destructive/40 p-3 text-xs">
-                      <p className="font-semibold mb-2">Incomplete response — not saved</p>
+                      <p className="font-semibold mb-2">
+                        Incomplete response — {requestError.partialArchived ? "kept in local history" : "local archive write failed"}
+                      </p>
                       <pre className="whitespace-pre-wrap break-words font-sans">{requestError.partial}</pre>
                     </div>
                   )}
@@ -1222,6 +1944,30 @@ export default function ChatView() {
                 polishing={polishing}
                 onAttach={handleAttach}
                 uploading={uploading}
+                onPasteFiles={(files) => handleAttach(files)}
+                onDictate={(text) => flash("Dictation inserted — review and send.")}
+                onVoiceTranscript={handleVoiceTranscript}
+                voiceConversationEnabled={voiceConversationEnabled}
+                voiceConversationScopeKey={`${view}:${activeThreadId || "new"}`}
+                voiceConversationTurnActive={voiceTurnActive}
+                voiceResumeToken={voiceResumeToken}
+                onVoiceConversationStateChange={(active) => {
+                  voiceConversationEnabledRef.current = active;
+                  setVoiceConversationEnabled(active);
+                  if (!active) cancelSpeech();
+                }}
+                freeNote={freeNote}
+                onRefreshFree={refreshFreeCatalog}
+                refreshingFree={freeRefreshing}
+                onOpenModelSettings={() => {
+                  setSettingsInitialTab("models");
+                  setView("settings");
+                }}
+                onModelsUpdated={async () => {
+                  const mList = await fetchAvailableModels();
+                  setModels(mList);
+                  flash("Models updated with new API key configuration.");
+                }}
                 slashCommands={slashCommands}
               />
             </footer>
@@ -1230,7 +1976,27 @@ export default function ChatView() {
         </ErrorBoundary>
       </main>
 
-      <BotDetailPanel bot={inspectedBot} onClose={() => setInspectedBot(null)} onChat={handleChatWithBot} />
+      <LionPet
+        state={lionState}
+        message={lionMessage || undefined}
+        onOpenChat={() => setView("chat")}
+      />
+
+      <BotDetailPanel
+        bot={inspectedBot}
+        onClose={() => setInspectedBot(null)}
+        onChat={handleChatWithBot}
+        onProjectCreated={async (projectId) => {
+          setView("projects");
+          try {
+            setProjects(await listProjects());
+          } catch (error) {
+            flash(`Project ${projectId} was created, but the project list could not refresh. ${errMsg(error)}`);
+            return;
+          }
+          flash(`Project created with ${inspectedBot?.display_name || inspectedBot?.name || "the bot"} as lead (${projectId}).`);
+        }}
+      />
     </div>
   );
 }

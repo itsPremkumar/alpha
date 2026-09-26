@@ -32,6 +32,36 @@ from .session import (
 
 logger = logging.getLogger(__name__)
 
+#: Marker key used by the degraded read/search rows (P4 honesty contract).
+DEGRADED_MEMORY_KEY = "degraded_memory_unavailable"
+
+
+def _degraded_memory_block(detail: str) -> str:
+    """Injection block returned when retrieval degraded (never a bare "").
+
+    An empty string tells the model "you have no memories"; this block says
+    "memory is unavailable and here is why", so a backend outage can never be
+    mistaken for an empty memory.
+    """
+    return (
+        "<memory>\n"
+        f"[{DEGRADED_MEMORY_KEY}] OpenViking memory retrieval is unavailable; "
+        f"no memory was loaded for this turn. Reason: {detail}\n"
+        "</memory>"
+    )
+
+
+def _degraded_search_row(detail: str) -> dict[str, Any]:
+    """One explicit failure row so a degraded search is never an empty result."""
+    return {
+        DEGRADED_MEMORY_KEY: True,
+        "fact": (
+            "OpenViking memory search is unavailable; these are NOT search "
+            f"results. Reason: {detail}"
+        ),
+        "degraded": True,
+    }
+
 
 class OpenVikingMemoryManager(MemoryManager):
     """Single-user OpenViking backend using the official integration package.
@@ -186,11 +216,19 @@ class OpenVikingMemoryManager(MemoryManager):
             except Exception as exc:
                 if self._config.read_failure_policy == "raise":
                     raise MemoryReadError("OpenViking context retrieval failed") from exc
+                # P4 honesty fix: a degraded read must never masquerade as "the
+                # user has no memories". The turn continues (the configured
+                # fail_open policy is respected) but the injected block carries
+                # the real reason, so the model and the UI can see that memory
+                # was UNAVAILABLE rather than empty.
+                detail = f"{type(exc).__name__}: {exc}"
                 logger.warning(
-                    "OpenViking context retrieval failed; continuing without injected memory",
+                    "OpenViking context retrieval failed; continuing without injected memory (%s)",
+                    detail,
                     exc_info=True,
                 )
-                return ""
+                self._last_degraded_read = detail
+                return _degraded_memory_block(detail)
             return _format_documents(
                 documents,
                 max_chars=self._config.max_injection_chars,
@@ -242,11 +280,17 @@ class OpenVikingMemoryManager(MemoryManager):
             except Exception as exc:
                 if self._config.read_failure_policy == "raise":
                     raise MemoryReadError("OpenViking memory search failed") from exc
+                # P4 honesty fix (see get_context): a degraded search returns a
+                # single explicit failure row so callers can never read the
+                # outage as "no matching memories".
+                detail = f"{type(exc).__name__}: {exc}"
                 logger.warning(
-                    "OpenViking memory search failed; returning no results",
+                    "OpenViking memory search failed; returning an explicit degraded row (%s)",
+                    detail,
                     exc_info=True,
                 )
-                return []
+                self._last_degraded_read = detail
+                return [_degraded_search_row(detail)]
             return [_document_to_fact(document) for document in documents]
         finally:
             self._end_operation()

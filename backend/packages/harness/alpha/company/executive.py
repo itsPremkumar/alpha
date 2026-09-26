@@ -16,7 +16,9 @@ logger = logging.getLogger(__name__)
 class ExecutiveDigest(BaseModel):
     org_id: str
     company_name: str
-    overall_health_percent: float = 95.0
+    #: None = no health computation has been run for this digest. A value is
+    #: only present when generate_digest() computed it from real inputs.
+    overall_health_percent: float | None = None
     active_bots_count: int = 0
     sleeping_bots_count: int = 0
     recovering_bots_count: int = 0
@@ -61,6 +63,7 @@ class ExecutiveIntelligenceLayer:
                 "target": f"{k.target_value}{k.unit}",
                 "trend": k.trend,
                 "healthy": k.current_value >= k.threshold_critical,
+                "basis": k.basis,
             }
             for k in state.kpis
         ]
@@ -94,8 +97,14 @@ class ExecutiveIntelligenceLayer:
             "### Strategic KPIs",
         ]
         for k in kpi_summaries:
-            status_icon = "🟢" if k["healthy"] else "🔴"
-            md_lines.append(f"- {status_icon} **{k['name']}**: {k['current']} (Target: {k['target']}) — `{k['trend']}`")
+            if k["basis"] == "seed_demo_data":
+                # Seed reading: no healthy/unhealthy claim, disclose provenance.
+                md_lines.append(
+                    f"- ⚪ **{k['name']}**: {k['current']} (Target: {k['target']}) — `{k['trend']}` (seed example — not a live measurement)"
+                )
+            else:
+                status_icon = "🟢" if k["healthy"] else "🔴"
+                md_lines.append(f"- {status_icon} **{k['name']}**: {k['current']} (Target: {k['target']}) — `{k['trend']}`")
 
         digest = ExecutiveDigest(
             org_id=state.org_id,

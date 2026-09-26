@@ -45,10 +45,19 @@ class RubricEvaluator(BaseCritic):
         **kwargs: Any,
     ) -> CriticResult:
         if not self.criteria:
+            # Nothing was evaluated: abstain instead of approving. WARNING is
+            # the honest non-approval verdict — it does not claim the work
+            # failed (REJECTED) and never claims approval when no criterion
+            # ran. CriticPipeline propagates it as a non-approved verdict.
             return CriticResult(
-                verdict=CriticVerdict.APPROVED,
-                reason="No rubrics defined; evaluation passes.",
+                verdict=CriticVerdict.WARNING,
+                reason="No rubric criteria defined; abstaining — nothing was evaluated, so this is not an approval.",
+                diagnostic_prompt=(
+                    "Rubric evaluation abstained: the rubric has no criteria. "
+                    "Define acceptance criteria before relying on this critic's verdict."
+                ),
                 critic_name=self.name,
+                metadata={"abstained": True, "reason_code": "no_rubric_criteria"},
             )
 
         target_dir = workspace_dir or os.getcwd()
@@ -75,8 +84,7 @@ class RubricEvaluator(BaseCritic):
                         criterion.test_command,
                         cwd=target_dir,
                         shell=True,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
+                        capture_output=True,
                         text=True,
                         timeout=30,
                     )

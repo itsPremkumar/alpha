@@ -6,17 +6,22 @@ Enforces formal document quality gates at each transition with 100% autonomous e
 
 from __future__ import annotations
 
+import ast
 import json
 import logging
+import py_compile
 import uuid
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, Optional
+from enum import StrEnum
+from pathlib import Path
+from typing import Any
+
+from alpha.config.runtime_paths import runtime_home
 
 logger = logging.getLogger(__name__)
 
 
-class SDLCStage(str, Enum):
+class SDLCStage(StrEnum):
     PRD = "prd"
     ARCHITECTURE = "architecture"
     PROJECT_PLAN = "project_plan"
@@ -102,7 +107,7 @@ class ProductManagerAgent:
         if "Acceptance Criteria" not in c:
             errors.append("PRD missing Acceptance Criteria.")
         artifact.validation_errors = errors
-        artifact.is_valid = (len(errors) == 0)
+        artifact.is_valid = len(errors) == 0
         return artifact
 
 
@@ -138,7 +143,6 @@ classDiagram
 
 ## 4. Non-Functional Requirements & Security
 - Zero-trust RBAC validation
-- Sub-50ms query latency
 """
         artifact = DocumentArtifact(
             artifact_id=f"arch-{uuid.uuid4().hex[:8]}",
@@ -157,7 +161,7 @@ classDiagram
         if "API Contracts" not in c and "Data Schemas" not in c:
             errors.append("Architecture artifact missing API Contracts or Data Schemas.")
         artifact.validation_errors = errors
-        artifact.is_valid = (len(errors) == 0)
+        artifact.is_valid = len(errors) == 0
         return artifact
 
 
@@ -201,35 +205,66 @@ class ProjectManagerAgent:
         if not tasks or len(tasks) < 2:
             errors.append("Task plan must specify at least two decomposed implementation tasks.")
         artifact.validation_errors = errors
-        artifact.is_valid = (len(errors) == 0)
+        artifact.is_valid = len(errors) == 0
         return artifact
 
 
 class CoderAgent:
-    """Synthesizes modular code implementing the task specifications."""
+    """Materialize a small, real implementation artifact.
+
+    The default implementation is deliberately a bounded local scaffold, not
+    a claim that an arbitrary product was implemented.  It writes the generated
+    file beneath the runtime home, compiles it, and records the actual path and
+    compiler result.  A host can replace this agent with a sandboxed executor.
+    """
+
+    def __init__(self, root: Path | None = None) -> None:
+        self.root = Path(root) if root is not None else None
 
     def implement_code(
         self,
         plan_artifact: DocumentArtifact,
         arch_artifact: DocumentArtifact,
     ) -> DocumentArtifact:
-        code_files = {
-            "core/module.py": "def process_data(data: dict) -> dict:\n    return {'status': 'processed', 'input': data}\n",
-        }
+        artifact_id = f"code-{uuid.uuid4().hex[:8]}"
+        root = (self.root or (runtime_home() / "sdlc" / artifact_id)).resolve()
+        relative = Path("core/module.py")
+        path = root / relative
+        source = "def process_data(data: dict) -> dict:\n    return {'status': 'processed', 'input': data}\n"
+        evidence: list[str] = []
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(source, encoding="utf-8")
+            py_compile.compile(str(path), doraise=True)
+            evidence.append(f"wrote {path}")
+            evidence.append(f"compiled {path} with py_compile")
+        except Exception as exc:
+            evidence.append(f"write/compile failed: {type(exc).__name__}: {exc}")
+
+        code_files = {str(relative): source} if path.is_file() else {}
         content = f"""# Code Implementation Deliverable
 
-## Files Created / Modified:
+## Files Materialized:
 {json.dumps(list(code_files.keys()), indent=2)}
 
-## Implementation Summary:
-Synthesized production code matching UML contracts and task breakdown.
+## Implementation Scope:
+Bounded local scaffold matching the generated contracts. This artifact does
+not claim to implement requirements outside the materialized file.
+
+## Verification Evidence:
+{json.dumps(evidence, indent=2)}
 """
         artifact = DocumentArtifact(
-            artifact_id=f"code-{uuid.uuid4().hex[:8]}",
+            artifact_id=artifact_id,
             stage=SDLCStage.IMPLEMENTATION,
             title="Source Code Implementation",
             content=content,
-            metadata={"files": code_files},
+            metadata={
+                "files": code_files,
+                "root_path": str(root),
+                "evidence": evidence,
+                "execution_mode": "local_bounded_scaffold",
+            },
         )
         return self.validate_gate(artifact)
 
@@ -237,43 +272,82 @@ Synthesized production code matching UML contracts and task breakdown.
         errors = []
         files = artifact.metadata.get("files", {})
         if not files:
-            errors.append("Coder artifact contains no synthesized source files.")
+            errors.append("Coder artifact contains no materialized source files.")
+        root = Path(str(artifact.metadata.get("root_path", "")))
+        for relative in files:
+            if not (root / relative).is_file():
+                errors.append(f"claimed source file is missing: {relative}")
+        if not artifact.metadata.get("evidence"):
+            errors.append("Coder artifact has no independent write/compile evidence.")
         artifact.validation_errors = errors
-        artifact.is_valid = (len(errors) == 0)
+        artifact.is_valid = not errors
         return artifact
 
 
 class QAAgent:
-    """Generates test suites and executes verification against requirements."""
+    """Run a real, bounded syntax/materialization gate for the scaffold."""
+
+    def __init__(self, verifier: Any | None = None) -> None:
+        self.verifier = verifier
 
     def verify_and_test(
         self,
         code_artifact: DocumentArtifact,
         prd_artifact: DocumentArtifact,
     ) -> DocumentArtifact:
-        test_results = {
-            "total_tests": 5,
-            "passed": 5,
+        test_results: dict[str, Any] = {
+            "total_tests": 0,
+            "passed": 0,
             "failed": 0,
-            "coverage_percent": 100.0,
+            "coverage_percent": None,
+            "test_command": None,
         }
+        evidence: list[str] = []
+        files = code_artifact.metadata.get("files", {})
+        root = Path(str(code_artifact.metadata.get("root_path", "")))
+        for relative, source in files.items():
+            test_results["total_tests"] += 1
+            path = root / relative
+            try:
+                ast.parse(source, filename=str(path))
+                py_compile.compile(str(path), doraise=True)
+                test_results["passed"] += 1
+                evidence.append(f"AST/compile passed: {path}")
+            except Exception as exc:
+                test_results["failed"] += 1
+                evidence.append(f"AST/compile failed: {path}: {type(exc).__name__}: {exc}")
+
+        # A host may inject a sandboxed test runner.  It must return measured
+        # counts; arbitrary shell commands are never run by this library.
+        if self.verifier is not None:
+            measured = self.verifier(code_artifact=code_artifact, prd_artifact=prd_artifact)
+            if isinstance(measured, dict):
+                test_results.update(measured)
+                evidence.append("host verifier returned measured results")
+            else:
+                test_results["failed"] += 1
+                evidence.append(f"host verifier returned invalid result: {measured!r}")
+
         content = f"""# QA Verification & Test Report
 
-## 1. Test Execution Metrics
-- Total Tests: {test_results['total_tests']}
-- Passed: {test_results['passed']}
-- Failed: {test_results['failed']}
-- Coverage: {test_results['coverage_percent']}%
+## 1. Measured Verification
+- Checks: {test_results["total_tests"]}
+- Passed: {test_results["passed"]}
+- Failed: {test_results["failed"]}
+- Coverage: {test_results["coverage_percent"] if test_results["coverage_percent"] is not None else "not measured"}
 
-## 2. Gate Decision
-VERIFICATION PASSED: All requirements satisfied with zero regressions.
+## Evidence
+{json.dumps(evidence, indent=2)}
+
+## Gate Decision
+{"VERIFICATION PASSED for the measured checks." if test_results["failed"] == 0 and test_results["passed"] > 0 else "VERIFICATION FAILED or INCOMPLETE."}
 """
         artifact = DocumentArtifact(
             artifact_id=f"qa-{uuid.uuid4().hex[:8]}",
             stage=SDLCStage.QA_VERIFICATION,
             title="QA Verification Report",
             content=content,
-            metadata={"test_results": test_results},
+            metadata={"test_results": test_results, "evidence": evidence},
         )
         return self.validate_gate(artifact)
 
@@ -281,11 +355,13 @@ VERIFICATION PASSED: All requirements satisfied with zero regressions.
         errors = []
         res = artifact.metadata.get("test_results", {})
         if res.get("failed", 1) > 0:
-            errors.append("QA Verification failed: failing tests present.")
+            errors.append("QA Verification failed: failing checks present.")
         if res.get("passed", 0) <= 0:
-            errors.append("QA Verification failed: zero passing tests.")
+            errors.append("QA Verification incomplete: zero passing checks.")
+        if not artifact.metadata.get("evidence"):
+            errors.append("QA Verification has no independent evidence.")
         artifact.validation_errors = errors
-        artifact.is_valid = (len(errors) == 0)
+        artifact.is_valid = not errors
         return artifact
 
 

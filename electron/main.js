@@ -1,13 +1,14 @@
-'use strict';
+﻿'use strict';
 
 /**
- * Alpha Desktop — Electron main process.
+ * Alpha Desktop â€” Electron main process.
  *
  * Windows-stable orchestration for the Alpha stack:
  *   Gateway API (FastAPI/uvicorn, default `127.0.0.1:8201`) + Next.js frontend
  *   (default `127.0.0.1:3000`) inside a single native window. No nginx is used
  *   here: the Next.js server rewrites /api/* directly to the Gateway
  *   (see frontend/next.config.js), so only the two processes below are required.
+ *   An optional transparent lion companion window can be detached from the UI.
  *
  * Modes:
  *   electron . --dev                 Hot-reload dev servers (Next.js dev + uvicorn,
@@ -25,6 +26,7 @@
  *   --skip-backend         Do not spawn the Gateway (attach to an existing one).
  *   --skip-frontend        Do not spawn the frontend (attach to an existing one).
  *   --require-login        Keep the Gateway/frontend login + admin-setup screens.
+ *   --show-lion-pet        Open the optional native lion companion at startup.
  *                          By default the desktop app sets AGENT_WORKSPACE_AUTH_DISABLED=1
  *                          (upstream's local single-user mode) so it opens straight
  *                          into the workspace with a synthetic admin user.
@@ -41,14 +43,19 @@ const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
 
-const { resolveStartUrl, rewriteGatewayDestinations } = require('./lib/desktop-utils');
+const {
+  resolveStartUrl,
+  rewriteGatewayDestinations,
+  shouldGrantDesktopMediaPermission,
+} = require('./lib/desktop-utils');
+const { LionPetWindow } = require('./lib/lion-pet-window');
 
 const APP_NAME = require('./desktop-config.json').displayName;
 // Single source of truth for desktop ports: electron/desktop-config.json
 // (also read by scripts/build-frontend.mjs so the baked /api rewrites match).
 const DESKTOP_DEFAULTS = require('./desktop-config.json');
 const DEFAULT_FRONTEND_PORT = DESKTOP_DEFAULTS.frontendPort || 3000;
-// NOTE: deliberately NOT 8001 — that is `make dev`'s Gateway port. The desktop
+// NOTE: deliberately NOT 8001 â€” that is `make dev`'s Gateway port. The desktop
 // app owns its own Gateway so it never fights a separately running stack.
 const DEFAULT_GATEWAY_PORT = DESKTOP_DEFAULTS.gatewayPort || 8201;
 const BACKEND_STARTUP_TIMEOUT_MS = 600000;
@@ -71,6 +78,7 @@ function parseArgs(argv) {
     frontendUrl: null,
     frontendPort: DEFAULT_FRONTEND_PORT,
     gatewayPort: DEFAULT_GATEWAY_PORT,
+    showLionPet: false,
     verbose: false,
   };
   for (const raw of argv.slice(1)) {
@@ -82,6 +90,7 @@ function parseArgs(argv) {
     else if (raw.startsWith('--frontend-url=')) args.frontendUrl = raw.slice('--frontend-url='.length);
     else if (raw.startsWith('--frontend-port=')) args.frontendPort = Number(raw.slice('--frontend-port='.length)) || DEFAULT_FRONTEND_PORT;
     else if (raw.startsWith('--gateway-port=')) args.gatewayPort = Number(raw.slice('--gateway-port='.length)) || DEFAULT_GATEWAY_PORT;
+    else if (raw === '--show-lion-pet') args.showLionPet = true;
   }
   if (args.frontendUrl) args.skipFrontend = true;
   return args;
@@ -122,7 +131,7 @@ const backendVenvDir = path.join(userDataRoot, 'backend-venv');
 const pythonInstallDir = path.join(userDataRoot, 'python');
 // Own preference file for "Start with Windows" (source of truth). The OS
 // login-item state is read back for display, but this file decides what boot
-// enforces — so an externally removed entry is re-registered, never silently
+// enforces â€” so an externally removed entry is re-registered, never silently
 // dropped.
 const autoStartPrefFile = path.join(userDataRoot, 'auto-start.json');
 
@@ -182,7 +191,7 @@ function getAutoStartState() {
 }
 
 // ---------------------------------------------------------------------------
-// Logging (never logs environment values — they may contain API keys)
+// Logging (never logs environment values â€” they may contain API keys)
 // ---------------------------------------------------------------------------
 
 let fileLoggingReady = false;
@@ -204,12 +213,12 @@ function rotateLogFile(file, maxBytes) {
       fs.renameSync(file, `${file}.1`);
     }
   } catch {
-    // Missing file — nothing to rotate.
+    // Missing file â€” nothing to rotate.
   }
 }
 
 function log(message, detail) {
-  const line = `[${new Date().toISOString()}] ${message}${detail ? ` — ${detail}` : ''}`;
+  const line = `[${new Date().toISOString()}] ${message}${detail ? ` â€” ${detail}` : ''}`;
   // eslint-disable-next-line no-console
   console.log(line);
   if (fileLoggingReady) {
@@ -480,7 +489,7 @@ function attachChildLogging(child, label) {
     log(`${label} process exited`, `code=${code} signal=${signal}`);
     if (!appQuitting && mainWindow) {
       // If a service dies while the app is running, tell the user.
-      broadcastStatus(`${label === 'backend' ? 'Gateway' : 'Frontend'} process stopped unexpectedly`, `code=${code} — see ${file}`);
+      broadcastStatus(`${label === 'backend' ? 'Gateway' : 'Frontend'} process stopped unexpectedly`, `code=${code} â€” see ${file}`);
     }
   });
   child.on('error', (error) => {
@@ -534,7 +543,7 @@ async function warnIfProdEnvDisablesDirectOpen() {
     buttons: ['Continue anyway', 'Quit'],
     defaultId: 0,
     cancelId: 1,
-    title: `${APP_NAME} — production environment detected`,
+    title: `${APP_NAME} â€” production environment detected`,
     message: 'This machine declares a production environment.',
     detail:
       'AGENT_WORKSPACE_ENV (or ENVIRONMENT) is set to a production value, so the ' +
@@ -551,7 +560,7 @@ async function warnIfProdEnvDisablesDirectOpen() {
 /**
  * First-run guidance: when the Gateway reports zero configured models,
  * chatting will fail with provider errors. Point at the config folder once
- * instead of leaving the user to discover it. Advisory only — never blocks.
+ * instead of leaving the user to discover it. Advisory only â€” never blocks.
  */
 async function warnIfNoModels(gatewayBaseUrl) {
   try {
@@ -572,7 +581,7 @@ async function warnIfNoModels(gatewayBaseUrl) {
       buttons: ['Open config folder', 'Later'],
       defaultId: 0,
       cancelId: 1,
-      title: `${APP_NAME} — add an AI model to get started`,
+      title: `${APP_NAME} â€” add an AI model to get started`,
       message: 'No AI models are configured yet.',
       detail:
         `Add at least one model (API key) to this file, then restart ${APP_NAME}:\n` +
@@ -595,7 +604,7 @@ function resolveUv() {
   if (isPackaged) {
     throw new Error(
       'Bundled `uv` runtime missing from the installed app (resources/runtime/uv). ' +
-        `Reinstall ${APP_NAME} — the packaged app must not depend on a system PATH copy.`,
+        `Reinstall ${APP_NAME} â€” the packaged app must not depend on a system PATH copy.`,
     );
   }
   const home = os.homedir();
@@ -612,7 +621,7 @@ function resolveNode() {
   if (isPackaged) {
     throw new Error(
       'Bundled Node.js runtime missing from the installed app (resources/runtime/node). ' +
-        `Reinstall ${APP_NAME} — the packaged app must not depend on a system PATH copy.`,
+        `Reinstall ${APP_NAME} â€” the packaged app must not depend on a system PATH copy.`,
     );
   }
   return resolveTool(process.platform === 'win32' ? 'node.exe' : 'node', []);
@@ -622,7 +631,7 @@ function spawnBackend(gatewayPort) {
   const uv = resolveUv();
   if (!uv) {
     dialog.showErrorBox(
-      `${APP_NAME} — uv not found`,
+      `${APP_NAME} â€” uv not found`,
       'Could not find the `uv` Python package manager on PATH.\n\n' +
         'Install it from https://docs.astral.sh/uv/ (e.g. `winget install astral-sh.uv`),\n' +
         'restart the app, and the Gateway backend will start automatically.',
@@ -666,7 +675,7 @@ function spawnFrontendDev(nodeExe, frontendPort, gatewayBaseUrl) {
   const nextBin = path.join(frontendDir, 'node_modules', 'next', 'dist', 'bin', 'next');
   if (!fs.existsSync(nextBin)) {
     dialog.showErrorBox(
-      `${APP_NAME} — frontend dependencies missing`,
+      `${APP_NAME} â€” frontend dependencies missing`,
       `Next.js was not found in ${frontendDir}\\node_modules.\n\n` +
         'Run `corepack pnpm install --frozen-lockfile` inside the frontend/\n' +
         'directory (from frontend/: corepack pnpm install), then restart the app.',
@@ -768,7 +777,7 @@ function spawnFrontendProd(nodeExe, frontendPort, gatewayBaseUrl) {
     const hint = isPackaged
       ? `The installed bundle is missing the frontend server. Reinstall ${APP_NAME}.`
       : 'No production frontend build found. Run `npm run build:frontend` from the electron/ directory, then restart.';
-    dialog.showErrorBox(`${APP_NAME} — frontend build missing`, hint);
+    dialog.showErrorBox(`${APP_NAME} â€” frontend build missing`, hint);
     throw new Error('Frontend production build missing');
   }
   const fArgs = [nextBin, 'start', '-p', String(frontendPort)];
@@ -785,10 +794,67 @@ function spawnFrontendProd(nodeExe, frontendPort, gatewayBaseUrl) {
 // Windows
 // ---------------------------------------------------------------------------
 
+/**
+ * Keep Electron's native permission boundary explicit for the local Alpha
+ * renderer. Voice capture is microphone-only; camera and mixed audio/video
+ * requests are denied even if a future page accidentally asks for them.
+ * Non-media permissions retain Electron's normal behavior for the desktop
+ * shell (clipboard, notifications, and fullscreen).
+ */
+function configureDesktopMediaPermissions(webContents, frontendUrl) {
+  const permissionSession = webContents.session;
+  permissionSession.setPermissionRequestHandler((requestingWebContents, permission, callback, details) => {
+    const requestingOrigin = requestingWebContents?.getURL() || frontendUrl;
+    if (permission === 'media' || permission === 'audioCapture' || permission === 'microphone') {
+      const granted = shouldGrantDesktopMediaPermission({
+        permission,
+        requestingOrigin,
+        trustedFrontendUrl: frontendUrl,
+        details,
+      });
+      log(`Desktop ${permission} permission ${granted ? 'granted' : 'denied'}`, requestingOrigin);
+      callback(granted);
+      return;
+    }
+    if (permission === 'camera' || permission === 'videoCapture') {
+      log(`Desktop ${permission} permission denied`, requestingOrigin);
+      callback(false);
+      return;
+    }
+    callback(true);
+  });
+  permissionSession.setPermissionCheckHandler((checkingWebContents, permission, requestingOrigin, details) => {
+    const origin = requestingOrigin || checkingWebContents?.getURL() || frontendUrl;
+    if (permission === 'media' || permission === 'audioCapture' || permission === 'microphone') {
+      return shouldGrantDesktopMediaPermission({
+        permission,
+        requestingOrigin: origin,
+        trustedFrontendUrl: frontendUrl,
+        details,
+      });
+    }
+    if (permission === 'camera' || permission === 'videoCapture') return false;
+    return true;
+  });
+}
+
 let splashWindow = null;
 let mainWindow = null;
 let appQuitting = false;
 let runtimeStatus = { dev: args.dev, packaged: isPackaged, frontendUrl: null, gatewayUrl: null };
+const lionPetController = new LionPetWindow({
+  log,
+  onVisibilityChange: (visible) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      try {
+        mainWindow.webContents.send('alpha:lion-pet-visibility', { visible });
+      } catch {
+        // The main window may be closing while the native companion is toggled.
+      }
+      buildMenu();
+    }
+  },
+});
 
 function createSplash() {
   splashWindow = new BrowserWindow({
@@ -829,6 +895,8 @@ function createMainWindow(targetUrl) {
       sandbox: true,
     },
   });
+  lionPetController.setMainWindow(mainWindow);
+  configureDesktopMediaPermissions(mainWindow.webContents, targetUrl);
   mainWindow.loadURL(targetUrl);
   mainWindow.once('ready-to-show', () => {
     if (splashWindow) splashWindow.close();
@@ -840,6 +908,7 @@ function createMainWindow(targetUrl) {
   });
   mainWindow.on('closed', () => {
     mainWindow = null;
+    lionPetController.dispose();
   });
   return mainWindow;
 }
@@ -859,6 +928,10 @@ function buildMenu() {
     {
       label: '&Tools',
       submenu: [
+        {
+          label: lionPetController.isVisible() ? 'Hide &desktop lion' : 'Show &desktop lion',
+          click: () => lionPetController.setVisible(!lionPetController.isVisible()),
+        },
         {
           label: '&Open user-data folder',
           click: () => shell.openPath(userDataRoot),
@@ -950,7 +1023,7 @@ async function boot() {
     path.join(configTemplatesDir, 'extensions_config.example.json'),
     path.join(projectDir, 'extensions_config.json'),
   );
-  broadcastStatus('Preparing local data directory…', projectDir);
+  broadcastStatus('Preparing local data directoryâ€¦', projectDir);
 
   // --- Gateway ---------------------------------------------------------
   let gatewayPort = args.gatewayPort;
@@ -968,14 +1041,14 @@ async function boot() {
     gatewayPort = await findFreePort(args.gatewayPort);
     gatewayBaseUrl = `http://127.0.0.1:${gatewayPort}`;
     if (!args.skipBackend) {
-      broadcastStatus('Starting Gateway API…', `port ${gatewayPort}`);
+      broadcastStatus('Starting Gateway APIâ€¦', `port ${gatewayPort}`);
       spawnBackend(gatewayPort);
       await waitForHealthy(
         'Gateway API',
         () => isAgentWorkspaceGateway(gatewayBaseUrl),
         BACKEND_STARTUP_TIMEOUT_MS,
         () =>
-          broadcastStatus('Starting Gateway API…', 'installing Python deps on first launch can take a few minutes'),
+          broadcastStatus('Starting Gateway APIâ€¦', 'installing Python deps on first launch can take a few minutes'),
         () => childAbortedDuringStartup('backend', 'Gateway API'),
       );
       log(`Gateway healthy at ${gatewayBaseUrl}`);
@@ -1000,7 +1073,7 @@ async function boot() {
         const nodeExe = resolveNode();
         if (!nodeExe) {
           dialog.showErrorBox(
-            `${APP_NAME} — Node.js not found`,
+            `${APP_NAME} â€” Node.js not found`,
             'Could not find Node.js 22+ on PATH.\n\n' +
               'Install the LTS release from https://nodejs.org/ (or `winget install OpenJS.NodeJS.LTS`),\n' +
               'then restart the app.',
@@ -1008,10 +1081,10 @@ async function boot() {
           throw new Error('node executable not found on PATH');
         }
         if (args.dev && !isPackaged) {
-          broadcastStatus('Starting frontend (dev)…', `port ${frontendPort}`);
+          broadcastStatus('Starting frontend (dev)â€¦', `port ${frontendPort}`);
           spawnFrontendDev(nodeExe, frontendPort, gatewayBaseUrl);
         } else {
-          broadcastStatus('Starting frontend…', `port ${frontendPort}`);
+          broadcastStatus('Starting frontendâ€¦', `port ${frontendPort}`);
           spawnFrontendProd(nodeExe, frontendPort, gatewayBaseUrl);
         }
         await waitForHealthy(
@@ -1019,7 +1092,7 @@ async function boot() {
           () => isAgentWorkspaceFrontend(frontendUrl),
           FRONTEND_STARTUP_TIMEOUT_MS,
           () =>
-            broadcastStatus('Starting frontend…', 'first launch can take a while — check logs/frontend.log'),
+            broadcastStatus('Starting frontendâ€¦', 'first launch can take a while â€” check logs/frontend.log'),
           () => childAbortedDuringStartup('frontend', 'Frontend'),
         );
         log(`Frontend healthy at ${frontendUrl}`);
@@ -1047,8 +1120,9 @@ async function boot() {
   };
 
   buildMenu();
-  broadcastStatus(`Opening ${APP_NAME}…`, frontendUrl);
+  broadcastStatus(`Opening ${APP_NAME}â€¦`, frontendUrl);
   createMainWindow(resolveStartUrl(frontendUrl));
+  if (args.showLionPet) lionPetController.setVisible(true);
   // Advisory first-run check; never blocks the UI.
   warnIfNoModels(gatewayBaseUrl).catch((error) => log(`Model pre-flight check failed: ${error.message}`));
 }
@@ -1076,6 +1150,15 @@ if (!gotLock) {
   ipcMain.handle('alpha:get-auto-start', () => getAutoStartState());
   ipcMain.handle('agent-workspace:set-auto-start', (_event, enabled) => applyAutoStartSetting(enabled));
   ipcMain.handle('alpha:set-auto-start', (_event, enabled) => applyAutoStartSetting(enabled));
+  ipcMain.on('alpha:lion-pet-state', (event, payload) => {
+    lionPetController.handleState(event.sender, payload);
+  });
+  ipcMain.handle('alpha:lion-pet-perform', (event, action) => {
+    return lionPetController.handleAction(event.sender, action);
+  });
+  ipcMain.handle('alpha:lion-pet-visible', (event, visible) => {
+    return lionPetController.handleVisibility(event.sender, visible);
+  });
 
   app.whenReady().then(() => {
     createSplash();
@@ -1088,7 +1171,7 @@ if (!gotLock) {
       }
       if (!appQuitting) {
         dialog.showErrorBox(
-          `${APP_NAME} — startup failed`,
+          `${APP_NAME} â€” startup failed`,
           `${error && error.message ? error.message : error}\n\nSee ${mainLogFile} for details.`,
         );
       }
@@ -1104,6 +1187,7 @@ if (!gotLock) {
 
   app.on('before-quit', () => {
     appQuitting = true;
+    lionPetController.dispose();
     killTree('frontend');
     killTree('backend');
   });

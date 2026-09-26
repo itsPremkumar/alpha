@@ -106,6 +106,10 @@ services:
         NPM_REGISTRY: ${NPM_REGISTRY:-}
         LARK_CLI_NPM_VERSION: ${LARK_CLI_NPM_VERSION:-1.0.65}
     container_name: agent-workspace-gateway
+    ports:
+      # Optional LAN discovery beacon. Set BIND_HOST=0.0.0.0 only when this
+      # installation is intentionally reachable by other Alpha peers.
+      - "${BIND_HOST:-127.0.0.1}:${ALPHA_PEER_NETWORK_DISCOVERY_PORT:-8743}:${ALPHA_PEER_NETWORK_DISCOVERY_PORT:-8743}/udp"
     # Gateway hosts the agent runtime with in-process RunManager + StreamBridge
     # singletons -- run state lives in this worker's memory. Default to a single
     # worker: the Redis stream bridge solves cross-worker SSE delivery and
@@ -142,6 +146,14 @@ services:
       - AGENT_WORKSPACE_HOME=/app/backend/.agent-workspace
       - AGENT_WORKSPACE_CONFIG_PATH=/app/backend/config.yaml
       - AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH=/app/backend/extensions_config.json
+      - ALPHA_PEER_NETWORK_ENABLED=${ALPHA_PEER_NETWORK_ENABLED:-1}
+      - ALPHA_PEER_NETWORK_BIND_HOST=${ALPHA_PEER_NETWORK_BIND_HOST:-0.0.0.0}
+      - ALPHA_PEER_NETWORK_DISCOVERY_PORT=${ALPHA_PEER_NETWORK_DISCOVERY_PORT:-8743}
+      - ALPHA_PEER_NETWORK_ADVERTISED_BASE_URL=${ALPHA_PEER_NETWORK_ADVERTISED_BASE_URL:-}
+      - ALPHA_PEER_NETWORK_GITHUB_REPO=${ALPHA_PEER_NETWORK_GITHUB_REPO:-}
+      - ALPHA_PEER_NETWORK_GITHUB_BRANCH=${ALPHA_PEER_NETWORK_GITHUB_BRANCH:-main}
+      - ALPHA_PEER_NETWORK_GITHUB_DIRECTORY=${ALPHA_PEER_NETWORK_GITHUB_DIRECTORY:-.alpha-network/peers}
+      - ALPHA_PEER_NETWORK_GITHUB_TOKEN=${ALPHA_PEER_NETWORK_GITHUB_TOKEN:-}
       - AGENT_WORKSPACE_STREAM_BRIDGE_REDIS_URL=${AGENT_WORKSPACE_STREAM_BRIDGE_REDIS_URL:-redis://redis:6379/0}
       - AGENT_WORKSPACE_CHANNELS_LANGGRAPH_URL=${AGENT_WORKSPACE_CHANNELS_LANGGRAPH_URL:-http://gateway:8001/api}
       - AGENT_WORKSPACE_CHANNELS_GATEWAY_URL=${AGENT_WORKSPACE_CHANNELS_GATEWAY_URL:-http://gateway:8001}

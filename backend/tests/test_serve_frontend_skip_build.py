@@ -79,6 +79,15 @@ def test_windows_launcher_has_netstat_fallback_for_port_ownership() -> None:
 
 def test_windows_launcher_checks_build_failure_before_start() -> None:
     launcher = (REPO_ROOT / "start.ps1").read_text(encoding="utf-8")
-    build = launcher.index("& node node_modules/next/dist/bin/next build")
+    # Anchor on the `next build` argument, not on a hard-coded `& node ...`
+    # prefix: the launcher runs the node binary it resolved and validated at
+    # startup (`& $nodePath ...`), which is strictly better than whatever `node`
+    # happens to be on PATH. Matching the old prefix made this test die with
+    # ValueError: substring not found, so the build-failure guard it exists to
+    # pin was not being checked at all.
+    build = launcher.index("node_modules/next/dist/bin/next build")
     start = launcher.index('-ArgumentList "node_modules/next/dist/bin/next start')
+    # The build must still be an actual invocation, not a commented-out line.
+    build_line = launcher[launcher.rfind("\n", 0, build) + 1 : launcher.find("\n", build)]
+    assert build_line.lstrip().startswith("&"), build_line
     assert "if ($LASTEXITCODE -ne 0)" in launcher[build:start]

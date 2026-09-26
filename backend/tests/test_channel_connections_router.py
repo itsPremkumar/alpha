@@ -11,11 +11,12 @@ import pytest
 from _router_auth_helpers import make_authed_test_app
 from fastapi.testclient import TestClient
 
+from alpha.branding import DISPLAY_NAME
+from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
+from alpha.config.channel_connections_config import ChannelConnectionsConfig
 from app.channels.runtime_config_store import ChannelRuntimeConfigStore
 from app.gateway.auth.models import User
 from app.gateway.routers import channel_connections
-from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
-from alpha.config.channel_connections_config import ChannelConnectionsConfig
 
 
 @pytest.fixture(autouse=True)
@@ -494,7 +495,7 @@ def test_connect_slack_returns_binding_command_and_persists_state(tmp_path):
     assert body["mode"] == "binding_code"
     assert body["url"] is None
     assert len(body["code"]) >= 22
-    assert body["instruction"] == f"Send /connect {body['code']} to the AI Workspace Slack bot."
+    assert body["instruction"] == f"Send /connect {body['code']} to the {DISPLAY_NAME} Slack bot."
 
     async def count_states():
         return await repo.count_oauth_states(owner_user_id=str(_user().id), provider="slack")
@@ -540,7 +541,7 @@ def test_connect_discord_returns_binding_command_and_persists_state(tmp_path):
     assert body["mode"] == "binding_code"
     assert body["url"] is None
     assert body["code"]
-    assert body["instruction"] == f"Send /connect {body['code']} to the AI Workspace Discord bot."
+    assert body["instruction"] == f"Send /connect {body['code']} to the {DISPLAY_NAME} Discord bot."
 
     async def count_states():
         return await repo.count_oauth_states(owner_user_id=str(_user().id), provider="discord")
@@ -573,7 +574,7 @@ def test_connect_existing_binding_code_channels_return_command_and_persist_state
         assert body["mode"] == "binding_code"
         assert body["url"] is None
         assert len(body["code"]) >= 22
-        assert body["instruction"] == f"Send /connect {body['code']} to the AI Workspace {expected_display_name} bot."
+        assert body["instruction"] == f"Send /connect {body['code']} to the {DISPLAY_NAME} {expected_display_name} bot."
 
         async def count_states(provider=provider):
             return await repo.count_oauth_states(owner_user_id=str(_user().id), provider=provider)

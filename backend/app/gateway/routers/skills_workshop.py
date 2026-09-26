@@ -23,6 +23,7 @@ from alpha.skills.evolution_engine import (
     SkillEvolutionEngine,
     UnknownProposalError,
 )
+from alpha.skills.skillscan.orchestrator import StaticScanBlockedError
 from alpha.skills.workshop import SkillDraft, SkillWorkshopEngine
 from app.gateway.deps import get_config, require_admin_user
 
@@ -97,6 +98,14 @@ def publish_skill(req: PublishRequest) -> dict[str, Any]:
         }
     except FileExistsError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except StaticScanBlockedError as exc:
+        # Audit-before-activation: publish_skill's static scan rejected the
+        # content before any file was written. Client-content outcome, honest
+        # scanner reason, nothing activated.
+        raise HTTPException(
+            status_code=422,
+            detail={"message": "Skill draft blocked by static security scan before activation", "reason": str(exc)},
+        ) from exc
     except Exception as exc:
         logger.exception("Failed to publish skill")
         raise HTTPException(status_code=500, detail=str(exc)) from exc

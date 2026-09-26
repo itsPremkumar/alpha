@@ -4,20 +4,33 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any
 
 from alpha.enterprise.models import (
     CONFIDENCE_BASIS_CALLER_SUPPLIED,
     CONFIDENCE_BASIS_NEUTRAL,
     CONFIDENCE_BASIS_SEED_DEMO,
+    NEUTRAL_CONFIDENCE_BASELINE,
     DebateArgument,
     EnterpriseRFC,
-    NEUTRAL_CONFIDENCE_BASELINE,
     RFCReview,
     RFCStatus,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_confidence_basis(explicit: str | None, value: float) -> str:
+    """Disclose how a confidence/weight was produced. Never fabricates evidence.
+
+    ``None`` means the caller omitted it: a value left at the neutral baseline
+    is labeled ``neutral_baseline_0.5`` (honest unknown); any other value was
+    explicitly supplied by the caller and is labeled ``caller_supplied``.
+    """
+    if explicit is not None:
+        return explicit
+    if value == NEUTRAL_CONFIDENCE_BASELINE:
+        return CONFIDENCE_BASIS_NEUTRAL
+    return CONFIDENCE_BASIS_CALLER_SUPPLIED
 
 
 class EnterpriseRFCProtocol:
@@ -52,6 +65,7 @@ class EnterpriseRFCProtocol:
                     department="security",
                     verdict="approve",
                     epistemic_confidence=0.95,
+                    confidence_basis=CONFIDENCE_BASIS_SEED_DEMO,
                     argument="Cryptographic multi-sig prevents rogue promotions and enforces zero-trust release pipelines.",
                 ),
                 RFCReview(
@@ -59,6 +73,7 @@ class EnterpriseRFCProtocol:
                     department="performance",
                     verdict="approve",
                     epistemic_confidence=0.90,
+                    confidence_basis=CONFIDENCE_BASIS_SEED_DEMO,
                     argument="Holdout test gating ensures no latency regressions in release candidate.",
                 ),
                 RFCReview(
@@ -66,6 +81,7 @@ class EnterpriseRFCProtocol:
                     department="engineering",
                     verdict="approve",
                     epistemic_confidence=0.92,
+                    confidence_basis=CONFIDENCE_BASIS_SEED_DEMO,
                     argument="Zero-downtime hot-swap allows background daemons to continue execution without restart.",
                 ),
             ],
@@ -77,6 +93,7 @@ class EnterpriseRFCProtocol:
                     claim="3-signature attestation is cryptographically tamper-proof",
                     evidence="ECDSA / HMAC token digest with timestamp prevents replay attacks.",
                     epistemic_weight=0.95,
+                    confidence_basis=CONFIDENCE_BASIS_SEED_DEMO,
                 ),
                 DebateArgument(
                     speaker_bot="bot-perf-lead",
@@ -85,6 +102,7 @@ class EnterpriseRFCProtocol:
                     claim="Signing must execute after holdout benchmark passes with >=90%",
                     evidence="Holdout suites test boundary cases outside normal training/context window.",
                     epistemic_weight=0.92,
+                    confidence_basis=CONFIDENCE_BASIS_SEED_DEMO,
                 ),
             ],
         )
@@ -107,6 +125,7 @@ class EnterpriseRFCProtocol:
                     department="architecture",
                     verdict="approve",
                     epistemic_confidence=0.94,
+                    confidence_basis=CONFIDENCE_BASIS_SEED_DEMO,
                     argument="Essential boundary guarantee for production deployment.",
                 ),
                 RFCReview(
@@ -114,6 +133,7 @@ class EnterpriseRFCProtocol:
                     department="engineering",
                     verdict="amend",
                     epistemic_confidence=0.75,
+                    confidence_basis=CONFIDENCE_BASIS_SEED_DEMO,
                     argument="Ensure latency overhead of AST scan is < 5ms per heartbeat cycle.",
                 ),
             ],
@@ -125,6 +145,7 @@ class EnterpriseRFCProtocol:
                     claim="AST scanning may introduce overhead on large scripts",
                     evidence="Profiling shows 5-10ms per 1k lines of python AST traversal.",
                     epistemic_weight=0.80,
+                    confidence_basis=CONFIDENCE_BASIS_SEED_DEMO,
                 ),
                 DebateArgument(
                     speaker_bot="bot-ciso",
@@ -134,6 +155,7 @@ class EnterpriseRFCProtocol:
                     evidence="LRU cache over sha256 digests reduces average check time to 0.1ms.",
                     counter_to_id="arg-eng-lead",
                     epistemic_weight=0.90,
+                    confidence_basis=CONFIDENCE_BASIS_SEED_DEMO,
                 ),
             ],
         )
@@ -178,9 +200,14 @@ class EnterpriseRFCProtocol:
         department: str,
         verdict: str,
         argument: str,
-        epistemic_confidence: float = 0.85,
+        epistemic_confidence: float = NEUTRAL_CONFIDENCE_BASELINE,
+        confidence_basis: str | None = None,
     ) -> RFCReview:
-        """Submits an agent review on an active RFC."""
+        """Submits an agent review on an active RFC.
+
+        ``epistemic_confidence`` defaults to the disclosed neutral baseline
+        (0.5, basis ``neutral_baseline_0.5``) — never a fabricated 0.85.
+        """
         rfc = self._rfcs.get(rfc_id)
         if not rfc:
             raise KeyError(f"RFC '{rfc_id}' not found.")
@@ -195,6 +222,7 @@ class EnterpriseRFCProtocol:
             department=department,
             verdict=verdict.lower(),
             epistemic_confidence=max(0.1, min(1.0, epistemic_confidence)),
+            confidence_basis=_resolve_confidence_basis(confidence_basis, epistemic_confidence),
             argument=argument,
         )
         rfc.reviews.append(review)
@@ -213,9 +241,14 @@ class EnterpriseRFCProtocol:
         claim: str,
         evidence: str,
         counter_to_id: str | None = None,
-        epistemic_weight: float = 0.8,
+        epistemic_weight: float = NEUTRAL_CONFIDENCE_BASELINE,
+        confidence_basis: str | None = None,
     ) -> DebateArgument:
-        """Submits a formal argument into the RFC epistemic debate thread."""
+        """Submits a formal argument into the RFC epistemic debate thread.
+
+        ``epistemic_weight`` defaults to the disclosed neutral baseline
+        (0.5, basis ``neutral_baseline_0.5``) — never a fabricated 0.8.
+        """
         rfc = self._rfcs.get(rfc_id)
         if not rfc:
             raise KeyError(f"RFC '{rfc_id}' not found.")
@@ -228,6 +261,7 @@ class EnterpriseRFCProtocol:
             evidence=evidence,
             counter_to_id=counter_to_id,
             epistemic_weight=max(0.1, min(1.0, epistemic_weight)),
+            confidence_basis=_resolve_confidence_basis(confidence_basis, epistemic_weight),
         )
         rfc.debate_thread.append(arg)
         if rfc.status == RFCStatus.UNDER_REVIEW:

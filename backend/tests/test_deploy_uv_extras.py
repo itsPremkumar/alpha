@@ -10,6 +10,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from _posix_shell import posix_shell_env, sh_argv
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -35,13 +37,13 @@ def test_backend_dockerfile_expands_multiple_uv_extras(tmp_path):
     )
     uv.chmod(0o755)
 
-    env = os.environ.copy()
+    env = posix_shell_env()
     env["CAPTURE_UV_ARGS"] = str(capture)
     env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
     env["UV_EXTRAS"] = "discord,postgres"
 
     subprocess.run(
-        ["sh", "-c", _backend_dockerfile_uv_sync_script()],
+        sh_argv("-c", _backend_dockerfile_uv_sync_script()),
         cwd=workdir,
         env=env,
         check=True,
@@ -75,13 +77,13 @@ def test_backend_dockerfile_rejects_glob_uv_extra(tmp_path):
     )
     uv.chmod(0o755)
 
-    env = os.environ.copy()
+    env = posix_shell_env()
     env["CAPTURE_UV_ARGS"] = str(capture)
     env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
     env["UV_EXTRAS"] = "postgres,*"
 
     result = subprocess.run(
-        ["sh", "-c", _backend_dockerfile_uv_sync_script()],
+        sh_argv("-c", _backend_dockerfile_uv_sync_script()),
         cwd=workdir,
         env=env,
         check=False,
@@ -115,13 +117,13 @@ def test_deploy_build_auto_detects_postgres_extra_when_other_extras_are_enabled(
     )
     docker.chmod(0o755)
 
-    env = os.environ.copy()
+    env = posix_shell_env()
     env.pop("UV_EXTRAS", None)
     env["CAPTURE_UV_EXTRAS"] = str(capture)
     env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
 
     subprocess.run(
-        ["bash", str(worktree / "scripts" / "deploy.sh"), "build"],
+        sh_argv(str(worktree / "scripts" / "deploy.sh"), "build"),
         cwd=worktree,
         env=env,
         check=True,
@@ -160,14 +162,14 @@ def test_deploy_uses_dotenv_without_sourcing_shell_syntax(tmp_path):
     )
     docker.chmod(0o755)
 
-    env = os.environ.copy()
+    env = posix_shell_env()
     env.pop("UV_EXTRAS", None)
     env["CAPTURE_UV_EXTRAS"] = str(capture_extras)
     env["CAPTURE_DOCKER_ARGS"] = str(capture_args)
     env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
 
     subprocess.run(
-        ["bash", str(worktree / "scripts" / "deploy.sh"), "build"],
+        sh_argv(str(worktree / "scripts" / "deploy.sh"), "build"),
         cwd=worktree,
         env=env,
         check=True,
@@ -179,7 +181,16 @@ def test_deploy_uses_dotenv_without_sourcing_shell_syntax(tmp_path):
     assert capture_extras.read_text(encoding="utf-8") == "discord"
     args = capture_args.read_text(encoding="utf-8").splitlines()
     assert "--env-file" in args
-    assert str(worktree / ".env") in args
+    # The script may hand docker either the native path or its MSYS/posix
+    # translation of it (Git Bash rewrites C:\... to /c/... or /tmp/...); the
+    # invariant under test is "the env-file argument points at THIS worktree's
+    # .env", so compare the path components instead of one platform's spelling.
+    env_file_args = [a for a in args if a.endswith("/.env") or a.endswith("\\.env")]
+    assert env_file_args, f"no .env argument in {args}"
+    expected_tail = f"{worktree.name}/.env"
+    assert any(
+        a.replace("\\", "/").endswith(expected_tail) for a in env_file_args
+    ), f"env-file does not point at {worktree}: {env_file_args}"
 
 
 def test_deploy_build_auto_detects_postgres_extra_with_python_fallback(tmp_path):
@@ -213,13 +224,13 @@ def test_deploy_build_auto_detects_postgres_extra_with_python_fallback(tmp_path)
     )
     python.chmod(0o755)
 
-    env = os.environ.copy()
+    env = posix_shell_env()
     env.pop("UV_EXTRAS", None)
     env["CAPTURE_UV_EXTRAS"] = str(capture)
     env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
 
     subprocess.run(
-        ["bash", str(worktree / "scripts" / "deploy.sh"), "build"],
+        sh_argv(str(worktree / "scripts" / "deploy.sh"), "build"),
         cwd=worktree,
         env=env,
         check=True,

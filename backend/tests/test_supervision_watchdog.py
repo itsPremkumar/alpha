@@ -111,6 +111,11 @@ def test_recovery_ladder_and_orphan_adoption():
     # Attempt 3: HOT_REPLACE
     r3 = recovery.execute_recovery(worker_id, anomaly)
     assert r3["action_executed"] == RecoveryAction.HOT_REPLACE.value
+    # Honesty pin: HOT_REPLACE performs no replacement or rehydration, so the
+    # message must say exactly that instead of claiming a successful swap.
+    assert "hot-replace not implemented" in r3["status_message"]
+    assert "restart required" in r3["status_message"]
+    assert r3["restarted"] is False
 
     # Parent Failure & Orphan Adoption test
     manager_id = "manager-1"

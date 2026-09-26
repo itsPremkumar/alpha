@@ -25,15 +25,15 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import StateGraph
 from langgraph.store.memory import InMemoryStore
 
-from app.gateway import context_usage
-from app.gateway import services as gateway_services
-from app.gateway.routers import threads
 from alpha.agents.thread_state import get_thread_state_schema
 from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
 from alpha.persistence.thread_meta.memory import MemoryThreadMetaStore
 from alpha.runtime import RunManager
 from alpha.runtime.checkpoint_mode import checkpoint_metadata_uses_delta, inject_checkpoint_mode
 from alpha.runtime.runs.store.memory import MemoryRunStore
+from app.gateway import context_usage
+from app.gateway import services as gateway_services
+from app.gateway.routers import threads
 
 _THREAD_ID = "thread-gateway-parity"
 
@@ -301,6 +301,29 @@ def test_full_mode_state_reads_degrade_to_raw_checkpointer_when_factory_fails(_s
         delta_response = client.get("/api/threads/thread-degraded-delta/state")
         assert delta_response.status_code == 409, delta_response.text
         assert "requires delta mode" in delta_response.json()["detail"]
+
+
+def test_require_graph_accessor_never_degrades_scheduling_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    context = SimpleNamespace(
+        app_config=None,
+        checkpointer=InMemorySaver(),
+        checkpoint_channel_mode="full",
+        checkpoint_snapshot_frequency=None,
+        store=None,
+    )
+
+    def broken_factory(*, config):
+        raise RuntimeError("model config broken")
+
+    monkeypatch.setattr(gateway_services, "get_run_context", lambda _request: context)
+    monkeypatch.setattr(gateway_services, "resolve_agent_factory", lambda assistant_id=None: broken_factory)
+
+    with pytest.raises(RuntimeError, match="model config broken"):
+        gateway_services.build_checkpoint_state_accessor(
+            SimpleNamespace(app=SimpleNamespace()),
+            thread_id="thread-recovery",
+            require_graph=True,
+        )
 
 
 def test_mutation_accessor_fails_closed_when_thread_metadata_lookup_fails(monkeypatch: pytest.MonkeyPatch) -> None:

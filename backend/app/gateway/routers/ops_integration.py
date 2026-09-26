@@ -14,8 +14,11 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, Field
+
+from alpha.ops.event_loop import get_event_loop_sampler
+from alpha.ops.metrics import CONTENT_TYPE, get_metrics_registry, publish_process_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +42,7 @@ class IntegrationHealthResponse(BaseModel):
     autonomy: dict[str, Any] = Field(default_factory=dict, description="Live AutonomySupervisor status")
     event_bus: dict[str, Any] = Field(default_factory=dict, description="Live event-bus status")
     capabilities: dict[str, Any] = Field(default_factory=dict, description="Per-capability opt-in status from alpha.capabilities.catalog")
+    peer_network: dict[str, Any] = Field(default_factory=dict, description="Live Alpha-to-Alpha peer network status")
     unwired: list[str] = Field(default_factory=list, description="Manifest ids not referenced at their wiring point")
     generated_at: str = ""
 
@@ -101,6 +105,14 @@ async def integration_health(request: Any = None) -> IntegrationHealthResponse:
     except Exception:
         logger.debug("Capability status unavailable", exc_info=True)
 
+    peer_network: dict[str, Any] = {}
+    try:
+        from alpha.peer_network import get_peer_network_service
+
+        peer_network = (await get_peer_network_service().status()).model_dump(mode="json")
+    except Exception:
+        logger.debug("Peer network status unavailable", exc_info=True)
+
     return IntegrationHealthResponse(
         manifest_found=bool(manifest),
         manifest_version=str(manifest.get("version", "")),
@@ -108,6 +120,57 @@ async def integration_health(request: Any = None) -> IntegrationHealthResponse:
         autonomy=autonomy,
         event_bus=event_bus,
         capabilities=capabilities,
+        peer_network=peer_network,
         unwired=unwired,
         generated_at=str(manifest.get("generated_at", "")),
     )
+
+
+_EVENT_LOOP_GAUGE_FIELDS = (
+    ("delay_last_max_ms", "alpha_event_loop_delay_last_max_ms", "Maximum event-loop scheduling delay in the latest completed sampling window (ms). Absent until the first window completes."),
+    ("delay_max_ms", "alpha_event_loop_delay_max_ms", "Maximum event-loop scheduling delay across retained sampling windows (ms). Absent until the first window completes."),
+    ("delay_p99_ms", "alpha_event_loop_delay_p99_ms", "p99 of per-window maximum event-loop scheduling delay across retained windows (ms). Window maxima, not raw samples. Absent until the first window completes."),
+    ("cpu_core_ratio", "alpha_event_loop_cpu_core_ratio", "Whole-process CPU of the latest completed window in core equivalents (1.0 = one core fully busy; threaded work can exceed 1.0). Absent until the first window completes."),
+)
+
+
+def _publish_event_loop_metrics(registry: Any, snapshot: dict[str, Any]) -> None:
+    """Mirror the sampler snapshot into gauges; no signal means absent series."""
+    windows = registry.gauge(
+        "alpha_event_loop_windows_completed",
+        help="Event-loop sampling windows completed since the sampler last (re)bound to a loop.",
+    )
+    windows.set(float(snapshot.get("windows_completed", 0)))
+    for field, name, help_text in _EVENT_LOOP_GAUGE_FIELDS:
+        handle = registry.gauge(name, help=help_text)
+        if field in snapshot:
+            handle.set(float(snapshot[field]))
+        else:
+            handle.remove_all()
+
+
+@router.get("/event-loop", summary="Event-loop liveness snapshot")
+async def ops_event_loop() -> dict[str, Any]:
+    """Return the event-loop delay/CPU snapshot; delay fields are omitted until the first sampling window completes (absence means no signal, never zero)."""
+    sampler = get_event_loop_sampler()
+    sampler.ensure_running()
+    return sampler.snapshot()
+
+
+@router.get("/readiness", summary="Aggregated readiness detail")
+async def ops_readiness(request: Request) -> dict[str, Any]:
+    """Persistence + event-loop + scheduler checks with explicit ``failing`` reasons. Always 200; orchestration probes keep using public ``/health/ready``."""
+    from app.gateway.ops_readiness import build_readiness_report
+
+    return await build_readiness_report(request)
+
+
+@router.get("/metrics", summary="Prometheus metrics")
+async def ops_metrics() -> Response:
+    """Render the bounded in-process metrics registry as Prometheus text exposition (``text/plain; version=0.0.4``)."""
+    registry = get_metrics_registry()
+    sampler = get_event_loop_sampler()
+    sampler.ensure_running()
+    _publish_event_loop_metrics(registry, sampler.snapshot())
+    publish_process_metrics(registry)
+    return Response(content=registry.render_prometheus(), media_type=CONTENT_TYPE)

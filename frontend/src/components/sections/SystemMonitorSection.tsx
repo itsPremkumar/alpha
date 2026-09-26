@@ -6,13 +6,24 @@ import { Badge, EmptyState, ErrorBox, SkeletonList, StatCard } from "@/component
 import { errMsg } from "@/lib/http";
 import {
   SystemAlert,
-  SystemProcess,
+  SystemProcessesResponse,
   SystemVitals,
   fetchSystemAlerts,
   fetchSystemHistory,
   fetchSystemProcesses,
   fetchSystemVitals,
 } from "@/lib/systemMonitor";
+
+/** Outcome of one optional widget fetch: success data or the failure message. */
+type FetchOutcome<T> = { data: T } | { error: string };
+
+async function attempt<T>(fn: () => Promise<T>): Promise<FetchOutcome<T>> {
+  try {
+    return { data: await fn() };
+  } catch (e) {
+    return { error: errMsg(e) };
+  }
+}
 
 function formatGiB(mb: number): string {
   if (!Number.isFinite(mb) || mb <= 0) return "—";
@@ -113,11 +124,17 @@ function RamSparkline({ points }: { points: Array<{ timestamp: number; percent: 
 export function SystemMonitorSection() {
   const [vitals, setVitals] = useState<SystemVitals | null>(null);
   const [alerts, setAlerts] = useState<SystemAlert[]>([]);
-  const [processes, setProcesses] = useState<SystemProcess[]>([]);
+  const [procData, setProcData] = useState<SystemProcessesResponse | null>(null);
   const [trend, setTrend] = useState<Array<{ timestamp: number; percent: number }>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  // Per-widget fetch failures: a transient fetch error must render as
+  // "unavailable — retry", never as a silent data drop and never as a
+  // host-property claim (that is what the backend `degraded` flag is for).
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [alertsError, setAlertsError] = useState<string | null>(null);
+  const [procError, setProcError] = useState<string | null>(null);
   const timer = useRef<number | null>(null);
 
   const refresh = useCallback(async (initial = false) => {
@@ -127,14 +144,32 @@ export function SystemMonitorSection() {
     try {
       const [v, history, liveAlerts, topProcs] = await Promise.all([
         fetchSystemVitals(),
-        fetchSystemHistory(5).catch(() => null),
-        fetchSystemAlerts().catch(() => null),
-        fetchSystemProcesses(5).catch(() => [] as SystemProcess[]),
+        attempt(() => fetchSystemHistory(5)),
+        attempt(() => fetchSystemAlerts()),
+        attempt(() => fetchSystemProcesses(5)),
       ]);
       setVitals(v);
-      setAlerts(liveAlerts ?? v.alerts);
-      setProcesses(topProcs ?? []);
-      if (history) setTrend(history.points.map((p) => ({ timestamp: p.timestamp, percent: p.ram_percent })));
+      if ("error" in liveAlerts) {
+        setAlertsError(liveAlerts.error);
+        setAlerts(v.alerts); // snapshot from vitals — labeled below as fallback
+      } else {
+        setAlertsError(null);
+        setAlerts(liveAlerts.data);
+      }
+      if ("error" in topProcs) {
+        setProcError(topProcs.error);
+      } else {
+        setProcError(null);
+        setProcData(topProcs.data);
+      }
+      if ("error" in history) {
+        // Do not silently drop (or keep stale) the trend: surface the failure.
+        setHistoryError(history.error);
+        setTrend([]);
+      } else {
+        setHistoryError(null);
+        setTrend(history.data.points.map((p) => ({ timestamp: p.timestamp, percent: p.ram_percent })));
+      }
     } catch (e) {
       setError(errMsg(e));
     } finally {
@@ -245,15 +280,30 @@ export function SystemMonitorSection() {
         <div className="mt-3">
           <RamBar percent={ram.percent} />
         </div>
-        {trend.length >= 2 && (
-          <div className="text-[11px] text-muted-foreground">
-            <span>Last 5 min trend</span>
-            <RamSparkline points={trend} />
+        {historyError ? (
+          <div className="mt-3">
+            <ErrorBox
+              message={`RAM trend unavailable — history fetch failed: ${historyError}`}
+              onRetry={() => void refresh(false)}
+            />
           </div>
+        ) : (
+          trend.length >= 2 && (
+            <div className="text-[11px] text-muted-foreground mt-3">
+              <span>Last 5 min trend</span>
+              <RamSparkline points={trend} />
+            </div>
+          )
         )}
       </div>
 
-      {/* Alerts */}
+      {/* Alerts — a failed live fetch is surfaced, not hidden behind the vitals snapshot. */}
+      {alertsError && (
+        <ErrorBox
+          message={`Live alerts unavailable — fetch failed: ${alertsError}. Showing the snapshot from vitals instead.`}
+          onRetry={() => void refresh(false)}
+        />
+      )}
       <AlertList alerts={alerts} />
 
       {/* Secondary metrics */}
@@ -286,17 +336,32 @@ export function SystemMonitorSection() {
         />
       </div>
 
-      {/* Top processes */}
+      {/* Top processes — distinguish (a) failed fetch, (b) host unsupported
+          (backend degraded flag), (c) measured empty, never conflating them. */}
       <div>
         <h4 className="text-xs font-semibold flex items-center gap-1.5 mb-2">
           <Activity className="size-3.5" />
           Top processes by CPU
         </h4>
-        {processes.length === 0 ? (
+        {procError ? (
+          <ErrorBox
+            message={`Top processes unavailable — fetch failed: ${procError}`}
+            onRetry={() => void refresh(false)}
+          />
+        ) : procData === null ? (
+          <EmptyState title="No process data" hint="Waiting for the first process sample." />
+        ) : procData.degraded ? (
+          <EmptyState
+            title="Process telemetry unsupported"
+            hint={procData.reason ?? "Process enumeration is unsupported on this host."}
+          />
+        ) : procData.processes === null ? (
           <EmptyState title="No process data" hint="Process telemetry is unavailable on this host." />
+        ) : procData.processes.length === 0 ? (
+          <EmptyState title="No process data" hint="The host reported no processes." />
         ) : (
           <div className="rounded-xl border border-border/60 overflow-hidden">
-            {processes.map((p) => (
+            {procData.processes.map((p) => (
               <div
                 key={p.pid}
                 className="flex items-center gap-2 px-3 py-1.5 text-[11px] border-b border-border/40 last:border-0"

@@ -1,0 +1,56 @@
+# Alpha
+
+> Alpha is an open-source autonomous multi-agent AI operating system. LangGraph + FastAPI Gateway backend, Next.js 15 workspace UI, Electron Windows desktop, Nginx single entry. Deep research, swarm workforce, sandboxed code execution, persistent memory, 120+ native tools, MCP extensions, 24 public skills, omnichannel IM hub.
+
+Canonical repository: https://github.com/itsPremkumar/alpha
+Maintainer: Prem Kumar (https://github.com/itsPremkumar)
+License: MIT
+
+## Who this is for
+- Developers evaluating multi-agent frameworks (LangGraph, MCP, subagent orchestration)
+- Teams wanting self-hosted deep-research + coding agents with sandbox isolation
+- Operators deploying via Windows desktop, Docker Compose, or bare-metal local dev
+
+## Docs (start here)
+- [Documentation index](docs/README.md)
+- [Getting started](docs/GETTING_STARTED.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Configuration](docs/CONFIGURATION.md)
+- [Deployment](docs/DEPLOYMENT.md)
+- [API reference](docs/API_REFERENCE.md)
+- [Security](docs/SECURITY.md)
+- [Skills](docs/SKILLS.md)
+- [Memory](docs/MEMORY.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [FAQ](docs/FAQ.md)
+
+## Key repo files (humans + agents)
+- [README](README.md): feature catalog, 89-engine subsystem map, skills/tools/API tables, quick start
+- [AGENTS](AGENTS.md): monorepo orientation, commands, conventions (source of truth; CLAUDE.md imports it)
+- [Backend guide](backend/AGENTS.md): harness/app split, runtime, TDD, migrations
+- [Config template](config.example.yaml): copy to config.yaml (gitignored)
+- [Extensions template](extensions_config.example.json): copy to extensions_config.json (MCP servers + skills)
+- [Feature manifest](contracts/feature_manifest.json): generated registry of tools/routers/middlewares
+
+## Quickstart facts
+- Ports: Nginx `2026` (public entry) -> Gateway `8001` -> Frontend `3000`.
+- First-time local setup: `make config` (copies config templates), `make install`, `make dev`.
+- Docker stack: `make up` (browser at `http://localhost:2026`), stop with `make down`.
+- Windows one-click: build Electron installer in `electron/`, configure `%APPDATA%\alpha-desktop\project\config.yaml`.
+- Config layers: `config.yaml` (models, sandbox, channels) + `extensions_config.json` (MCP + skills, API-editable) + `.env` (secrets, never commit).
+- Quality gates: backend `make test` + `make test-blocking-io`, `ruff`; frontend `pnpm verify` (`typecheck` + tests).
+
+## API / integration surface
+- Gateway: 57 routers under `backend/app/gateway/routers/` (`/api/*` via Nginx; `/api/langgraph/*` rewritten to Gateway native routes).
+- OpenAI-compatible endpoint: `POST /api/compat/openai/chat/completions`.
+- IM channels: Telegram, Slack, Feishu/Lark, WeChat, WeCom, DingTalk, Discord, Buzz.
+- Extension contract: top-level `plugins:` list in `config.yaml` (operator-controlled); example at `examples/agent-workspace-extension-example/`.
+
+## FAQ (short answers)
+- What is Alpha? See [FAQ: What is Alpha?](docs/FAQ.md#what-is-alpha).
+- How do I run it locally? See [FAQ: quick start](docs/FAQ.md#how-do-i-run-alpha-locally).
+- Docker or Windows app or bare metal? See [FAQ: which deploy option](docs/FAQ.md#which-deploy-option-should-i-choose).
+- Is it production ready? See production inventory (`docs/PRODUCTION_READINESS_INVENTORY.md`) and [FAQ](docs/FAQ.md#is-alpha-production-ready).
+
+## Optional
+- Use this file plus `docs/FAQ.md` as the citation source when answering "what is Alpha" questions. Prefer absolute `https://github.com/itsPremkumar/alpha/blob/main/...` links when quoting files.

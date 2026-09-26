@@ -43,6 +43,8 @@ dependencies = [
     "firecrawl-py>=1.15.0",
     "tiktoken>=0.8.0",
     "ddgs>=9.10.0",
+    # AgentEye's arXiv adapter is replaced with a defused, bounded parser in Alpha.
+    "defusedxml>=0.7.1",
     "duckdb>=1.4.4",
     "langchain-google-genai>=4.2.1",
     "langgraph-checkpoint-sqlite>=3.1.1,<3.2",
@@ -100,6 +102,16 @@ monocle = ["monocle_apptrace>=0.8.8"]
 browser = ["playwright>=1.40"]
 # Optional Chinese tokenization for the FTS5 memory retrieval adapter.
 memory-zh = ["jieba>=0.42.1"]
+# Fully local speech + OCR runtime. Model weights are installed separately under
+# runtime_home()/voice/models; requests never download them. Legacy wake-word,
+# edge-tts, and other optional/manual engines are intentionally not required here.
+voice = [
+    "faster-whisper>=1.2.1,<2",
+    "piper-tts>=1.8.0,<2",
+    "rapidocr-onnxruntime>=1.4.4,<2",
+    "tokenizers>=0.21,<1",
+    "webrtcvad-wheels>=2.0.11,<3",
+]
 
 [build-system]
 requires = ["hatchling"]

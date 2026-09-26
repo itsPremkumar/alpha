@@ -44,17 +44,16 @@ export interface Room {
   messages: ChatMsg[];
 }
 
+// List helpers below propagate fetch failures (no catch → no fake `[]`):
+// callers must render an "unavailable" state, never an empty success.
+
 export async function listRooms(): Promise<Array<{ name: string; members: string[]; status: string }>> {
-  try {
-    const d = await get<unknown>("/groups");
-    return asList(d, ["rooms", "groups", "data"]).map((g) => ({
-      name: String(pick(g, ["name"], "")),
-      members: Array.isArray(g.members) ? (g.members as string[]) : [],
-      status: String(pick(g, ["status", "state"], "")),
-    }));
-  } catch {
-    return [];
-  }
+  const d = await get<unknown>("/groups");
+  return asList(d, ["rooms", "groups", "data"]).map((g) => ({
+    name: String(pick(g, ["name"], "")),
+    members: Array.isArray(g.members) ? (g.members as string[]) : [],
+    status: String(pick(g, ["status", "state"], "")),
+  }));
 }
 
 export async function getRoom(name: string): Promise<Room> {
@@ -85,12 +84,8 @@ export async function startRoomRun(name: string, objective: string): Promise<voi
 }
 
 export async function listRoomRuns(name: string): Promise<Array<Record<string, unknown>>> {
-  try {
-    const d = await get<unknown>(`/groups/${encodeURIComponent(name)}/runs`);
-    return asList(d, ["runs", "data"]);
-  } catch {
-    return [];
-  }
+  const d = await get<unknown>(`/groups/${encodeURIComponent(name)}/runs`);
+  return asList(d, ["runs", "data"]);
 }
 
 export async function cancelRoomRun(name: string, runId: string): Promise<void> {
@@ -106,7 +101,9 @@ export interface DmThread {
 }
 
 export async function listDmThreads(threadId: string, me = OPERATOR): Promise<DmThread[]> {
-  const roster = await fetchRoster(threadId).catch(() => []);
+  // Roster failure propagates: without it we cannot tell "no direct threads"
+  // apart from "the gateway never answered".
+  const roster = await fetchRoster(threadId);
   const names = [...new Set([me, ...roster.map((r) => r.name)])].filter(Boolean).slice(0, 11);
   const all: Array<ChatMsg & { to: string }> = [];
   await Promise.all(
@@ -117,7 +114,7 @@ export async function listDmThreads(threadId: string, me = OPERATOR): Promise<Dm
           all.push({ id: m.id, sender: m.from, content: m.content, at: "", kind: "message", read: m.read, to: m.to });
         }
       } catch {
-        /* agent without inbox access */
+        /* per-agent tolerance: a single inbox may be inaccessible by design */
       }
     })
   );
@@ -157,16 +154,13 @@ export interface PresenceEntry {
 }
 
 export async function rollCall(): Promise<PresenceEntry[]> {
-  try {
-    const d = await get<unknown>("/company/attendance/roll-call");
-    return asList(d, ["agents", "attendance", "data"]).map((a) => ({
-      name: String(pick(a, ["name", "bot_name", "agent"], "")),
-      status: String(pick(a, ["status", "state", "presence"], "unknown")),
-      detail: String(pick(a, ["current_task", "detail", "last_activity"], "")),
-    }));
-  } catch {
-    return [];
-  }
+  // Failure propagates: an empty attendance would read as "nobody is here".
+  const d = await get<unknown>("/company/attendance/roll-call");
+  return asList(d, ["agents", "attendance", "data"]).map((a) => ({
+    name: String(pick(a, ["name", "bot_name", "agent"], "")),
+    status: String(pick(a, ["status", "state", "presence"], "unknown")),
+    detail: String(pick(a, ["current_task", "detail", "last_activity"], "")),
+  }));
 }
 
 /* ---------------- Read tracking (local; backend marks read on fetch) ---------------- */

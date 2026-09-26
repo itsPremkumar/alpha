@@ -10,7 +10,7 @@ export function Section(props: {
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 w-full">
+    <div className="workspace-section flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-5 w-full">
       <div className="max-w-6xl mx-auto space-y-4">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>

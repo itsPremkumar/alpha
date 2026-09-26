@@ -160,6 +160,21 @@ function optNum(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function toNetworkInterface(x: unknown): SystemNetworkInterface {
+  const r = rec(x);
+  return {
+    name: String(r.name ?? "?"),
+    is_up: Boolean(r.is_up),
+    speed_mbps: optNum(r.speed_mbps),
+    ipv4: Array.isArray(r.ipv4) ? (r.ipv4 as unknown[]).map(String) : [],
+    ipv6: Array.isArray(r.ipv6) ? (r.ipv6 as unknown[]).map(String) : [],
+    bytes_sent: num(r.bytes_sent),
+    bytes_recv: num(r.bytes_recv),
+    packets_sent: num(r.packets_sent),
+    packets_recv: num(r.packets_recv),
+  };
+}
+
 function toAlert(a: unknown): SystemAlert {
   const r = rec(a);
   return {
@@ -245,7 +260,13 @@ export async function fetchSystemVitals(): Promise<SystemVitals> {
       bytes_recv: num(network.bytes_recv),
       upload_mbps: num(network.upload_mbps ?? network.up_mbps),
       download_mbps: num(network.download_mbps ?? network.down_mbps),
-      interfaces: [],
+      // Map the interfaces the vitals snapshot actually carries — a
+      // hardcoded [] would claim "measured: no interfaces" from real data.
+      // (Degraded disclosure for interface enumeration lives on the dedicated
+      // /system/network/interfaces endpoint — see fetchNetworkInterfaces.)
+      interfaces: Array.isArray(network.interfaces)
+        ? (network.interfaces as unknown[]).map(toNetworkInterface)
+        : [],
     },
     internet: {
       reachable: Boolean(internet.reachable),
@@ -294,41 +315,69 @@ export async function fetchSystemAlerts(): Promise<SystemAlert[]> {
   return (list as unknown[]).map(toAlert);
 }
 
+/** Top host processes plus disclosure of collection status. */
+export interface SystemProcessesResponse {
+  /**
+   * Process list, or null when the host does not support process
+   * enumeration (backend `degraded` flag). Null is NOT a measured zero.
+   */
+  processes: SystemProcess[] | null;
+  /** True when the backend could not collect process telemetry on this host. */
+  degraded: boolean;
+  /** Why telemetry is degraded (e.g. "process enumeration unsupported on this host"). */
+  reason: string | null;
+}
+
 /** Top host processes (safe telemetry only — no command lines or env). */
-export async function fetchSystemProcesses(limit = 10, sort: "cpu" | "memory" = "cpu"): Promise<SystemProcess[]> {
+export async function fetchSystemProcesses(limit = 10, sort: "cpu" | "memory" = "cpu"): Promise<SystemProcessesResponse> {
   const d = await get<Rec>(`/system/processes?limit=${limit}&sort=${sort}`);
+  const degraded = Boolean(d.degraded);
+  const reason = typeof d.reason === "string" && d.reason ? d.reason : null;
+  if (d.processes === null || d.processes === undefined) {
+    return { processes: null, degraded, reason };
+  }
   const procs = rec(d.processes);
   const key = sort === "memory" ? "top_memory" : "top_cpu";
   const list = Array.isArray(procs[key]) ? (procs[key] as unknown[]) : [];
-  return list.map((p) => {
-    const r = rec(p);
-    return {
-      pid: num(r.pid),
-      name: String(r.name ?? "unknown"),
-      status: String(r.status ?? ""),
-      cpu_percent: num(r.cpu_percent),
-      memory_percent: num(r.memory_percent),
-      memory_mb: num(r.memory_mb),
-    };
-  });
+  return {
+    processes: list.map((p) => {
+      const r = rec(p);
+      return {
+        pid: num(r.pid),
+        name: String(r.name ?? "unknown"),
+        status: String(r.status ?? ""),
+        cpu_percent: num(r.cpu_percent),
+        memory_percent: num(r.memory_percent),
+        memory_mb: num(r.memory_mb),
+      };
+    }),
+    degraded,
+    reason,
+  };
+}
+
+/** Per-interface network state plus disclosure of collection status. */
+export interface SystemNetworkInterfacesResponse {
+  /**
+   * Interface list, or null when the host does not support interface
+   * enumeration (backend `degraded` flag). Null is NOT a measured empty list.
+   */
+  interfaces: SystemNetworkInterface[] | null;
+  /** True when the backend could not collect interface telemetry on this host. */
+  degraded: boolean;
+  /** Why telemetry is degraded (e.g. "network interface enumeration unsupported on this host"). */
+  reason: string | null;
 }
 
 /** Per-interface network state and counters. */
-export async function fetchNetworkInterfaces(): Promise<SystemNetworkInterface[]> {
+export async function fetchNetworkInterfaces(): Promise<SystemNetworkInterfacesResponse> {
   const d = await get<Rec>("/system/network/interfaces");
-  const list = Array.isArray(d.interfaces) ? d.interfaces : [];
-  return (list as unknown[]).map((x) => {
-    const r = rec(x);
-    return {
-      name: String(r.name ?? "?"),
-      is_up: Boolean(r.is_up),
-      speed_mbps: optNum(r.speed_mbps),
-      ipv4: Array.isArray(r.ipv4) ? (r.ipv4 as unknown[]).map(String) : [],
-      ipv6: Array.isArray(r.ipv6) ? (r.ipv6 as unknown[]).map(String) : [],
-      bytes_sent: num(r.bytes_sent),
-      bytes_recv: num(r.bytes_recv),
-      packets_sent: num(r.packets_sent),
-      packets_recv: num(r.packets_recv),
-    };
-  });
+  const degraded = Boolean(d.degraded);
+  const reason = typeof d.reason === "string" && d.reason ? d.reason : null;
+  if (d.interfaces === null || d.interfaces === undefined) {
+    // Backend disclosed a host limitation: null, never a fabricated [].
+    return { interfaces: null, degraded, reason };
+  }
+  const list = Array.isArray(d.interfaces) ? (d.interfaces as unknown[]) : [];
+  return { interfaces: list.map(toNetworkInterface), degraded, reason };
 }

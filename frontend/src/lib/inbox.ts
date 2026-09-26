@@ -9,16 +9,13 @@ export interface RosterAgent {
 }
 
 export async function fetchRoster(threadId: string): Promise<RosterAgent[]> {
-  try {
-    const d = await get<unknown>(`${base(threadId)}/roster`);
-    return asList(d, ["agents", "roster", "data"]).map((a) => ({
-      name: String(pick(a, ["name"], "")),
-      role: String(pick(a, ["role"], "worker")),
-      status: String(pick(a, ["status"], "idle")),
-    }));
-  } catch {
-    return [];
-  }
+  // Failure propagates: an empty roster must not masquerade as "no agents".
+  const d = await get<unknown>(`${base(threadId)}/roster`);
+  return asList(d, ["agents", "roster", "data"]).map((a) => ({
+    name: String(pick(a, ["name"], "")),
+    role: String(pick(a, ["role"], "worker")),
+    status: String(pick(a, ["status"], "idle")),
+  }));
 }
 
 export async function registerRosterAgent(threadId: string, name: string, role = "worker"): Promise<void> {

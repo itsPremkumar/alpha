@@ -1,14 +1,17 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Bot, User, Brain, Copy, Check, ThumbsUp, ThumbsDown, RotateCcw, Pencil, Users, ShieldCheck } from "lucide-react";
+import { Bot, User, Brain, Copy, Check, ThumbsUp, ThumbsDown, RotateCcw, Pencil, Users, ShieldCheck, FileDown } from "lucide-react";
 import { ChatMessage } from "@/types/chat";
 import { branding } from "@/lib/branding";
 import { ToolPill } from "./ToolPill";
 import { TodoBlock } from "./TodoBlock";
 import { HumanApprovalCard } from "./HumanApprovalCard";
+import { Volume2, Loader2, AlertCircle } from "lucide-react";
+import { enqueueSpeech, isSpeechCancellation } from "@/lib/speech";
+import { primeSpeakerPlayback, speak, speakErrorMessage } from "@/lib/voice";
 
 interface MessageItemProps {
   message: ChatMessage;
@@ -41,10 +44,70 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
 
   const displayContent = dmMatch ? dmMatch[2] : groupMatch ? groupMatch[4] : message.content;
 
+  // All message/voice playback shares one serial SpeechQueue.
+  const [speaking, setSpeaking] = useState(false);
+  const [speechLoading, setSpeechLoading] = useState(false);
+  const [speakError, setSpeakError] = useState<string | null>(null);
+  const speechAbortRef = useRef<AbortController | null>(null);
+
+  const stopSpeech = () => {
+    speechAbortRef.current?.abort();
+    setSpeaking(false);
+    setSpeechLoading(false);
+  };
+
+  const playSpeech = async () => {
+    if (speaking || speechLoading) {
+      stopSpeech();
+      return;
+    }
+    const text = displayContent.slice(0, 4000);
+    if (!text.trim()) {
+      setSpeakError("Nothing to speak in this message.");
+      return;
+    }
+    setSpeakError(null);
+    setSpeechLoading(true);
+    const controller = new AbortController();
+    speechAbortRef.current = controller;
+    try {
+      setSpeaking(true);
+      await primeSpeakerPlayback();
+      await enqueueSpeech(text, {
+        player: (value, signal) => speak(value, { signal }),
+        signal: controller.signal,
+      });
+      if (speechAbortRef.current === controller) setSpeaking(false);
+    } catch (err) {
+      if (!isSpeechCancellation(err)) setSpeakError(speakErrorMessage(err));
+      if (speechAbortRef.current === controller) setSpeaking(false);
+    } finally {
+      if (speechAbortRef.current === controller) {
+        speechAbortRef.current = null;
+        setSpeechLoading(false);
+      }
+    }
+  };
+
+  // Cancel only this message's queued/current task when its card unmounts.
+  useEffect(() => () => stopSpeech(), []);
+
   const copyToClipboard = () => {
     navigator.clipboard.writeText(displayContent);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const downloadResponse = () => {
+    const blob = new Blob([displayContent], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${isUser ? "prompt" : "response"}-${message.id}.md`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
   };
 
   return (
@@ -158,10 +221,47 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
               type="button"
               onClick={copyToClipboard}
               className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
-              title="Copy message"
+              title={isUser ? "Copy prompt" : "Copy answer"}
+              aria-label={isUser ? "Copy prompt" : "Copy answer"}
             >
               {copied ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
             </button>
+            <button
+              type="button"
+              onClick={downloadResponse}
+              className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+              title={isUser ? "Download prompt (.md)" : "Download answer (.md)"}
+              aria-label={isUser ? "Download prompt" : "Download answer"}
+            >
+              <FileDown className="size-3.5" />
+            </button>
+            {!isUser && (
+              <button
+                type="button"
+                onClick={() => void playSpeech()}
+                className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                title={
+                  speakError
+                    ? `Speech failed: ${speakError}`
+                    : speaking
+                      ? "Stop speech"
+                      : speechLoading
+                        ? "Generating speech…"
+                        : displayContent.length > 4000
+                          ? "Listen to this answer (first 4,000 characters)"
+                          : "Listen to this answer"
+                }
+                aria-label={speaking ? "Stop speech" : "Listen to this answer"}
+              >
+                {speakError ? (
+                  <AlertCircle className="size-3.5 text-destructive" />
+                ) : speechLoading ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Volume2 className={`size-3.5 ${speaking ? "text-primary" : ""}`} />
+                )}
+              </button>
+            )}
           </div>
         </div>
 
@@ -176,7 +276,9 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
                 {message.autonomousDetection.phase}
               </span>
               <span className="text-[10px] text-muted-foreground ml-auto">
-                {Math.round(message.autonomousDetection.confidence * 100)}% confidence
+                {Number.isFinite(message.autonomousDetection.confidence)
+                  ? `${Math.round(message.autonomousDetection.confidence * 100)}% confidence`
+                  : "—"}
               </span>
             </div>
             <p className="text-[11px] text-muted-foreground">

@@ -19,6 +19,7 @@ from alpha.models.free_router.catalog import (
     FreeLLMRouter,
     FreeLLMUnavailableError,
     ProviderState,
+    available_free_models,
     get_free_router,
     reset_free_router,
 )
@@ -63,6 +64,7 @@ __all__ = [
     "chat_completion",
     "discover",
     "get_free_router",
+    "available_free_models",
     "health_probe",
     "request",
     "reset_free_router",

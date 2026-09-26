@@ -28,7 +28,9 @@ files:
   - main.js
   - lib/**/*.js
   - preload.js
+  - pet-preload.js
   - splash.html
+  - pet.html
   - package.json
   - desktop-config.json
 

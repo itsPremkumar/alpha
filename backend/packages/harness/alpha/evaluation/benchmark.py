@@ -10,11 +10,11 @@ from __future__ import annotations
 
 import time
 from dataclasses import asdict, dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class BenchmarkTaskCategory(str, Enum):
+class BenchmarkTaskCategory(StrEnum):
     RESEARCH = "research"
     CODING = "coding"
     BROWSER = "browser"
@@ -44,11 +44,15 @@ class BenchmarkTaskSpec:
 
 @dataclass
 class TaskEvaluationResult:
-    """Comprehensive multi-dimensional scorecard for a benchmark task run."""
+    """Comprehensive multi-dimensional scorecard for a benchmark task run.
+
+    ``tool_precision`` / ``verification_score`` default to None ("not
+    measured") — an unset field must never read back as a perfect 1.0.
+    """
     task_id: str
     success: bool
-    tool_precision: float = 1.0
-    verification_score: float = 1.0
+    tool_precision: float | None = None
+    verification_score: float | None = None
     hallucination_score: float = 0.0  # 0.0 is perfect, 1.0 is severe hallucination
     elapsed_time_sec: float = 0.0
     cost_usd: float = 0.0
@@ -59,8 +63,8 @@ class TaskEvaluationResult:
         return {
             "task_id": self.task_id,
             "success": self.success,
-            "tool_precision": round(self.tool_precision, 3),
-            "verification_score": round(self.verification_score, 3),
+            "tool_precision": round(self.tool_precision, 3) if self.tool_precision is not None else None,
+            "verification_score": round(self.verification_score, 3) if self.verification_score is not None else None,
             "hallucination_score": round(self.hallucination_score, 3),
             "elapsed_time_sec": round(self.elapsed_time_sec, 2),
             "cost_usd": round(self.cost_usd, 5),
@@ -203,8 +207,12 @@ class EvaluationRunner:
 
         total = len(results)
         passed = sum(1 for r in results if r.success)
-        avg_precision = sum(r.tool_precision for r in results) / total
-        avg_verification = sum(r.verification_score for r in results) / total
+        # Average only over results where the metric was actually measured;
+        # None ("not measured") must never be coerced into a perfect 1.0.
+        precisions = [r.tool_precision for r in results if r.tool_precision is not None]
+        verifications = [r.verification_score for r in results if r.verification_score is not None]
+        avg_precision = round(sum(precisions) / len(precisions), 3) if precisions else None
+        avg_verification = round(sum(verifications) / len(verifications), 3) if verifications else None
         avg_hallucination = sum(r.hallucination_score for r in results) / total
         avg_latency = sum(r.elapsed_time_sec for r in results) / total
         total_cost = sum(r.cost_usd for r in results)
@@ -213,8 +221,8 @@ class EvaluationRunner:
             "total_benchmarks": total,
             "passed_count": passed,
             "pass_rate": round(passed / total, 3),
-            "avg_tool_precision": round(avg_precision, 3),
-            "avg_verification_score": round(avg_verification, 3),
+            "avg_tool_precision": avg_precision,
+            "avg_verification_score": avg_verification,
             "avg_hallucination_score": round(avg_hallucination, 3),
             "avg_latency_sec": round(avg_latency, 2),
             "total_cost_usd": round(total_cost, 5),

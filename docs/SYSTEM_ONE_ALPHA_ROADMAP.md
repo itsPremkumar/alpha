@@ -226,7 +226,7 @@ latency — before returning.
   being measured**. Nothing can regress.
 * `alpha/evaluation/system_one_calibration.py` → recording, plus reliability
   buckets, Brier score and expected calibration error.
-* `backend/scripts/system_one_calibration.py --report` → read it.
+* `backend/scripts/system_one_calibration.py` → read it.
 
 See [`SYSTEM_ONE_CALIBRATION.md`](SYSTEM_ONE_CALIBRATION.md) for the rollout
 order and how to read the numbers. The headline: a **positive gap**

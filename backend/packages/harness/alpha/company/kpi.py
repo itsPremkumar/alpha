@@ -19,6 +19,7 @@ DEFAULT_ORGANIZATION_KPIS = [
         unit="%",
         trend="stable",
         threshold_critical=99.0,
+        basis="seed_demo_data",
     ),
     KPISpec(
         kpi_id="kpi-security-score",
@@ -28,6 +29,7 @@ DEFAULT_ORGANIZATION_KPIS = [
         unit="pts",
         trend="improving",
         threshold_critical=85.0,
+        basis="seed_demo_data",
     ),
     KPISpec(
         kpi_id="kpi-deployment-freq",
@@ -37,6 +39,7 @@ DEFAULT_ORGANIZATION_KPIS = [
         unit="deploys/wk",
         trend="stable",
         threshold_critical=2.0,
+        basis="seed_demo_data",
     ),
     KPISpec(
         kpi_id="kpi-customer-retention",
@@ -46,6 +49,7 @@ DEFAULT_ORGANIZATION_KPIS = [
         unit="%",
         trend="improving",
         threshold_critical=80.0,
+        basis="seed_demo_data",
     ),
 ]
 
@@ -54,8 +58,11 @@ class KPIEngine:
     """Monitors organizational health KPIs and synthesizes autonomous corrective tasks upon degradation."""
 
     def __init__(self, initial_kpis: list[KPISpec] | None = None):
-        # kpi_id -> KPISpec
-        self._kpis: dict[str, KPISpec] = {k.kpi_id: k for k in (initial_kpis or DEFAULT_ORGANIZATION_KPIS)}
+        # kpi_id -> KPISpec. Deep-copy: DEFAULT_ORGANIZATION_KPIS (and caller
+        # lists) are shared module/caller-level objects, and update_metric()
+        # mutates specs in place — without a copy one engine's real reading
+        # would leak into every other engine's seed data.
+        self._kpis: dict[str, KPISpec] = {k.kpi_id: k.model_copy(deep=True) for k in (initial_kpis or DEFAULT_ORGANIZATION_KPIS)}
         # History of generated corrective tasks
         self._triggered_corrective_tasks: list[dict[str, Any]] = []
 
@@ -74,6 +81,8 @@ class KPIEngine:
         old_value = kpi.current_value
         kpi.current_value = new_value
         kpi.last_evaluated = time.time()
+        # A real update replaces the seed reading with an actual measurement.
+        kpi.basis = "measured"
 
         # Update trend
         if new_value > old_value:

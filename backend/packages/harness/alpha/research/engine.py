@@ -1,7 +1,7 @@
 """Advanced Deep Research Engine for Alpha.
 
 Implements multi-lane search planning (5-Pass Strategy), autonomous content fetching,
-recursive gap and contradiction analysis, strict citation verification, and publication-ready
+bounded gap analysis, adversarial source juxtaposition, and evidence-status-aware
 Markdown report synthesis.
 """
 
@@ -53,6 +53,7 @@ class EvidenceSource:
     injection_risk: float | None = None
     injection_signals: list[str] = field(default_factory=list)
     unsupported_findings: list[str] = field(default_factory=list)
+    citation_status: str = "not_checked"
 
     def __post_init__(self):
         if hasattr(self.pass_type, "value"):
@@ -88,6 +89,7 @@ class EvidenceSource:
             "key_findings": self.key_findings,
             "extracted_metrics": self.extracted_metrics,
             "confidence": self.confidence,
+            "citation_status": self.citation_status,
             "fetched_at": self.fetched_at,
         }
 
@@ -130,10 +132,9 @@ class DeepResearchReport:
     sources: list[EvidenceSource]
     citations: list[dict[str, str]]
     markdown_content: str
+    status: str = "completed"
     depth: int = 3
-    generated_at: str = field(
-        default_factory=lambda: datetime.now(UTC).isoformat()
-    )
+    generated_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     @property
     def key_findings(self) -> list[str]:
@@ -154,8 +155,15 @@ class DeepResearchReport:
             return 0.0
         return round(sum(s.confidence for s in self.sources) / len(self.sources), 4)
 
+    @property
+    def verified_citation_count(self) -> int:
+        """Count sources with at least one semantically supported finding."""
+
+        return sum(1 for source in self.sources if source.citation_status == "verified")
+
     def to_dict(self) -> dict[str, Any]:
         return {
+            "status": self.status,
             "topic": self.topic,
             "executive_summary": self.executive_summary,
             "core_findings": self.core_findings,
@@ -170,8 +178,18 @@ class DeepResearchReport:
                 }
                 for c in self.contradictions
             ],
+            "adversarial_comparisons": [
+                {
+                    "claim": c.claim,
+                    "source_a": f"{c.source_a_title} ({c.source_a_url})",
+                    "source_b": f"{c.source_b_title} ({c.source_b_url})",
+                    "nuance": c.nuance_explanation,
+                }
+                for c in self.contradictions
+            ],
             "sources_count": len(self.sources),
             "citations_count": len(self.citations),
+            "citations_verified": self.verified_citation_count,
             "generated_at": self.generated_at,
             "markdown_content": self.markdown_content,
         }
@@ -185,8 +203,8 @@ class DeepResearchEngine:
     """Autonomous multi-hop Deep Research engine.
 
     Executes a 5-pass search strategy, fetches full source content,
-    performs recursive gap analysis, detects contradictions, and synthesizes
-    publication-grade cited Markdown reports.
+    performs targeted gap analysis, juxtaposes adversarial evidence, and
+    synthesizes cited Markdown reports with explicit support status.
     """
 
     def __init__(
@@ -209,9 +227,7 @@ class DeepResearchEngine:
         self.domain_context = domain_context
 
     @staticmethod
-    async def mock_search(
-        query: str, max_results: int = 5
-    ) -> list[dict[str, Any]]:
+    async def mock_search(query: str, max_results: int = 5) -> list[dict[str, Any]]:
         """Deterministic offline search provider (tests/fixtures only).
 
         Must be passed explicitly as ``search_fn``; never used as a default,
@@ -265,18 +281,11 @@ class DeepResearchEngine:
 
         selected_lanes = search_plan.lanes
         if not include_adversarial:
-            selected_lanes = [
-                lane
-                for lane in selected_lanes
-                if lane.pass_type != SearchPassType.ADVERSARIAL_CONTRADICTION
-            ]
+            selected_lanes = [lane for lane in selected_lanes if lane.pass_type != SearchPassType.ADVERSARIAL_CONTRADICTION]
 
         # 2. Execute First-Wave Search across lanes in parallel
         discovered_sources: dict[str, EvidenceSource] = {}
-        search_tasks = [
-            self._search_lane(lane.query, lane.pass_type.value, max_per_lane=4)
-            for lane in selected_lanes
-        ]
+        search_tasks = [self._search_lane(lane.query, lane.pass_type.value, max_per_lane=4) for lane in selected_lanes]
         lane_results = await asyncio.gather(*search_tasks, return_exceptions=True)
 
         for res in lane_results:
@@ -286,26 +295,24 @@ class DeepResearchEngine:
                         discovered_sources[src.url] = src
 
         # 3. Content Extraction: Fetch top candidate pages
-        candidate_urls = list(discovered_sources.keys())[
-            : min(max_sources, len(discovered_sources))
-        ]
+        candidate_urls = list(discovered_sources.keys())[: min(max_sources, len(discovered_sources))]
+        for index, url in enumerate(discovered_sources, 1):
+            discovered_sources[url].source_id = f"S{index}"
         fetch_tasks = [self._fetch_and_enrich(discovered_sources[u]) for u in candidate_urls]
         await asyncio.gather(*fetch_tasks, return_exceptions=True)
 
-        # 4. Recursive Gap Analysis (depth >= 2)
+        # 4. Targeted Gap Analysis (depth >= 2)
         if depth >= 2 and len(discovered_sources) > 0:
             gaps = self._identify_research_gaps(topic_clean, discovered_sources)
             if gaps:
-                gap_tasks = [
-                    self._search_lane(gap.suggested_query, "gap_resolution", max_per_lane=3)
-                    for gap in gaps[: min(depth, 3)]
-                ]
+                gap_tasks = [self._search_lane(gap.suggested_query, "gap_resolution", max_per_lane=3) for gap in gaps[: min(depth, 3)]]
                 gap_results = await asyncio.gather(*gap_tasks, return_exceptions=True)
                 for g_res in gap_results:
                     if isinstance(g_res, list):
                         for src in g_res:
                             if src.url not in discovered_sources and len(discovered_sources) < max_sources:
                                 discovered_sources[src.url] = src
+                                src.source_id = f"S{len(discovered_sources)}"
                                 # Enrich this gap source
                                 await self._fetch_and_enrich(src)
 
@@ -344,15 +351,11 @@ class DeepResearchEngine:
             domain_context=self.domain_context,
         )
 
-    def detect_contradictions(
-        self, sources: list[EvidenceSource]
-    ) -> list[ContradictionFinding]:
-        """Public method to inspect sources and return identified contradictions."""
+    def detect_contradictions(self, sources: list[EvidenceSource]) -> list[ContradictionFinding]:
+        """Return source juxtapositions for review, not proven contradictions."""
         return self._detect_contradictions(sources)
 
-    def identify_gaps(
-        self, topic: str, sources: list[EvidenceSource]
-    ) -> list[ResearchGap]:
+    def identify_gaps(self, topic: str, sources: list[EvidenceSource]) -> list[ResearchGap]:
         """Public method to detect gaps in evidence collection."""
         src_map = {s.url: s for s in sources}
         return self._identify_research_gaps(topic, src_map)
@@ -360,14 +363,10 @@ class DeepResearchEngine:
     def resolve_gap(self, gap: ResearchGap) -> ResearchGap:
         """Mark an identified gap as resolved with resolution notes."""
         gap.resolved = True
-        gap.resolution_notes = (
-            f"Resolved gap for subtopic '{gap.subtopic}' through targeted verification."
-        )
+        gap.resolution_notes = f"Resolved gap for subtopic '{gap.subtopic}' through targeted verification."
         return gap
 
-    async def _search_lane(
-        self, query: str, pass_type: str, max_per_lane: int = 4
-    ) -> list[EvidenceSource]:
+    async def _search_lane(self, query: str, pass_type: str, max_per_lane: int = 4) -> list[EvidenceSource]:
         """Query search function and wrap results in EvidenceSource models."""
         try:
             results = await self.search_fn(query, max_per_lane)
@@ -406,12 +405,12 @@ class DeepResearchEngine:
             # Match percentages
             pcts = re.findall(r"(\b\d+(?:\.\d+)?%\b[^\.\n;]{0,40})", source.content)
             for i, p in enumerate(pcts[:3]):
-                metrics[f"metric_{i+1}"] = p.strip()
+                metrics[f"metric_{i + 1}"] = p.strip()
 
             # Match speedups / multipliers
             multipliers = re.findall(r"(\b\d+(?:\.\d+)?x\b[^\.\n;]{0,40})", source.content)
             for i, m in enumerate(multipliers[:2]):
-                metrics[f"multiplier_{i+1}"] = m.strip()
+                metrics[f"multiplier_{i + 1}"] = m.strip()
 
             source.extracted_metrics = metrics
 
@@ -481,18 +480,27 @@ class DeepResearchEngine:
         if not findings or not (source.content or "").strip():
             return
         try:
-            from alpha.agents.middlewares.citation_support import CONTRADICTED, UNSUPPORTED, judge_batch
+            from alpha.agents.middlewares.citation_support import (
+                CONTRADICTED,
+                SUPPORTED,
+                UNSUPPORTED,
+                judge_batch,
+            )
 
-            pairs = [(source.source_id, f, source.content) for f in findings[:MAX_VERIFIED_FINDINGS]]
+            checked_findings = findings[:MAX_VERIFIED_FINDINGS]
+            pairs = [(source.source_id, finding, source.content) for finding in checked_findings]
             verdicts = await judge_batch(pairs)
         except Exception:
             logger.debug("Citation support unavailable for %s; findings unchanged.", source.url)
+            source.citation_status = "unverified"
             return
         if not verdicts:
+            source.citation_status = "unverified"
             return
 
         contradicted = {v.claim for v in verdicts if v.verdict == CONTRADICTED}
-        unsupported = [v.claim for v in verdicts if v.verdict == UNSUPPORTED]
+        unsupported = {v.claim for v in verdicts if v.verdict == UNSUPPORTED}
+        supported = {v.claim for v in verdicts if v.verdict == SUPPORTED}
         if contradicted:
             logger.info(
                 "Dropped %d contradicted finding(s) from %s",
@@ -506,17 +514,17 @@ class DeepResearchEngine:
         if contradicted or unsupported:
             penalty = 0.15 * (len(contradicted) + len(unsupported))
             source.confidence = round(max(0.10, source.confidence - penalty), 3)
+            source.citation_status = "unsupported"
+        elif supported and not (unsupported or contradicted) and set(checked_findings).issubset(supported):
+            source.citation_status = "verified"
+        else:
+            source.citation_status = "unverified"
 
-    def _identify_research_gaps(
-        self, topic: str, sources: dict[str, EvidenceSource]
-    ) -> list[ResearchGap]:
+    def _identify_research_gaps(self, topic: str, sources: dict[str, EvidenceSource]) -> list[ResearchGap]:
         """Detect gaps in the current evidence collection."""
         gaps: list[ResearchGap] = []
         has_metrics = any(bool(s.extracted_metrics) for s in sources.values())
-        has_adversarial = any(
-            s.pass_type == SearchPassType.ADVERSARIAL_CONTRADICTION.value
-            for s in sources.values()
-        )
+        has_adversarial = any(s.pass_type == SearchPassType.ADVERSARIAL_CONTRADICTION.value for s in sources.values())
 
         if not has_metrics:
             gaps.append(
@@ -549,32 +557,27 @@ class DeepResearchEngine:
         )
         return gaps
 
-    def _detect_contradictions(
-        self, sources: list[EvidenceSource]
-    ) -> list[ContradictionFinding]:
-        """Check for divergent claims or contradictory data points across sources."""
+    def _detect_contradictions(self, sources: list[EvidenceSource]) -> list[ContradictionFinding]:
+        """Juxtapose supporting and adversarial sources without inventing a verdict."""
         contradictions: list[ContradictionFinding] = []
         if len(sources) >= 2:
-            adv_sources = [
-                s for s in sources if s.pass_type == SearchPassType.ADVERSARIAL_CONTRADICTION.value
-            ]
-            std_sources = [
-                s for s in sources if s.pass_type != SearchPassType.ADVERSARIAL_CONTRADICTION.value
-            ]
+            adv_sources = [s for s in sources if s.pass_type == SearchPassType.ADVERSARIAL_CONTRADICTION.value]
+            std_sources = [s for s in sources if s.pass_type != SearchPassType.ADVERSARIAL_CONTRADICTION.value]
 
             if adv_sources and std_sources:
                 s_pro = std_sources[0]
                 s_con = adv_sources[0]
+                support_excerpt = (s_pro.snippet or s_pro.content or "No extractable excerpt")[:240]
+                adversarial_excerpt = (s_con.snippet or s_con.content or "No extractable excerpt")[:240]
                 contradictions.append(
                     ContradictionFinding(
-                        claim="Optimistic adoption claims vs real-world operational bottlenecks",
+                        claim="Adversarial and supporting evidence diverge in emphasis",
                         source_a_title=s_pro.title,
                         source_a_url=s_pro.url,
                         source_b_title=s_con.title,
                         source_b_url=s_con.url,
                         nuance_explanation=(
-                            f"Primary sources emphasize throughput gains ({', '.join(s_pro.extracted_metrics.values()) or 'high efficiency'}), "
-                            f"while operational reviews highlight boundary limitations and security/memory trade-offs."
+                            f"Supporting evidence excerpt: {support_excerpt} Adversarial evidence excerpt: {adversarial_excerpt} These sources are juxtaposed for review; this pass does not establish a logical contradiction."
                         ),
                         adversarial_evidence=s_con.snippet or s_con.content,
                     )
@@ -588,10 +591,43 @@ class DeepResearchEngine:
         contradictions: list[ContradictionFinding],
         depth: int = 3,
     ) -> DeepResearchReport:
-        """Synthesize gathered intelligence into a publication-grade cited Markdown document."""
-        citations: list[dict[str, str]] = [
-            {"title": s.title, "url": s.url, "domain": s.domain} for s in sources
-        ]
+        """Synthesize only claims backed by sources actually retrieved."""
+
+        if not sources:
+            executive_summary = f"No verifiable sources were retrieved for **{topic}**. No research claims were generated."
+            markdown_content = "\n".join(
+                [
+                    f"# Deep Research Report: {topic}",
+                    "",
+                    "> **Status:** No evidence retrieved",
+                    "",
+                    "## Executive Summary",
+                    "",
+                    executive_summary,
+                    "",
+                    "## Next Steps",
+                    "",
+                    "- Retry with a narrower query or a different approved source family.",
+                    "- Verify provider availability with `agent_eye_sources` and inspect backend errors.",
+                    "- Do not treat this report as factual evidence.",
+                    "",
+                ]
+            )
+            return DeepResearchReport(
+                topic=topic,
+                executive_summary=executive_summary,
+                core_findings=[],
+                comparative_analysis="No evidence matrix is available because no sources were retrieved.",
+                adversarial_findings="No evidence-backed adversarial analysis is available.",
+                contradictions=[],
+                sources=[],
+                citations=[],
+                markdown_content=markdown_content,
+                status="no_evidence",
+                depth=depth,
+            )
+
+        citations: list[dict[str, str]] = [{"title": s.title, "url": s.url, "domain": s.domain} for s in sources]
 
         for i, s in enumerate(sources, 1):
             s.source_id = f"S{i}"
@@ -611,20 +647,15 @@ class DeepResearchEngine:
                     core_findings.append(f"{f} [[{s.source_id}]]({s.url})")
 
         if not core_findings:
-            core_findings = [
-                f"Core structural models for {topic} demonstrate accelerating maturity and production viability. [[S1]]({sources[0].url if sources else 'https://example.org'})"
-            ]
+            core_findings = ["No extractable evidence-backed findings were returned by the selected sources."]
 
         # 3. Comparative Table
         comp_rows: list[str] = []
         for i, s in enumerate(sources[:6]):
             sample_metric = next(iter(s.extracted_metrics.values()), "Documented standard")
-            comp_rows.append(f"| {s.domain} | [{s.source_id}: {s.title}]({s.url}) | `{s.pass_type}` | {sample_metric} |")
+            comp_rows.append(f"| {s.domain} | [{s.source_id}: {s.title}]({s.url}) | `{s.pass_type}` | `{s.citation_status}` | {sample_metric} |")
 
-        comp_table = (
-            "| Source Domain | Document / Artifact | Research Facet | Key Metric / Highlight |\n"
-            "| :--- | :--- | :--- | :--- |\n" + "\n".join(comp_rows)
-        )
+        comp_table = "| Source Domain | Document / Artifact | Research Facet | Citation Status | Key Metric / Highlight |\n| :--- | :--- | :--- | :--- | :--- |\n" + "\n".join(comp_rows)
 
         # 4. Adversarial Findings
         adv_texts: list[str] = []
@@ -634,9 +665,7 @@ class DeepResearchEngine:
                     adv_texts.append(f"- **Risk / Constraint**: {f} [[{s.source_id}]]({s.url})")
 
         if not adv_texts:
-            adv_texts.append(
-                f"- **Risk / Constraint**: Edge-case resource bounds and unexpected latency spikes must be managed through strict timeouts and defensive fallbacks. [[S1]]({sources[-1].url if sources else 'https://example.org'})"
-            )
+            adv_texts.append("- No evidence-backed adversarial findings were returned by the selected sources.")
 
         adversarial_section = "\n".join(adv_texts)
 
@@ -645,7 +674,7 @@ class DeepResearchEngine:
             f"# Deep Research Report: {topic}",
             "",
             "> **Autonomous Research Brief** | Synthesized by Alpha Deep Research Superintelligence",
-            f"> *Date:* {datetime.now(UTC).strftime('%B %d, %Y')} | *Verified Sources:* {len(sources)} | *Methodology:* 5-Pass Multi-Lane Search",
+            f"> *Date:* {datetime.now(UTC).strftime('%B %d, %Y')} | *Gathered Sources:* {len(sources)} | *Methodology:* 5-Pass Multi-Lane Search",
             "",
             "---",
             "",
@@ -663,7 +692,7 @@ class DeepResearchEngine:
         md_lines.extend(
             [
                 "",
-                "## Verified Sources & Evidence Matrix",
+                "## Gathered Sources & Evidence Matrix",
                 "",
                 comp_table,
                 "",
@@ -679,32 +708,34 @@ class DeepResearchEngine:
         if contradictions:
             md_lines.extend(
                 [
-                    "## Detected Contradictions & Nuance Analysis",
+                    "## Adversarial Source Comparison",
+                    "",
+                    "This section juxtaposes evidence for human/model review; it does not assert a proven logical contradiction.",
                     "",
                 ]
             )
             for c in contradictions:
                 md_lines.append(f"### {c.claim}")
-                md_lines.append(f"- **Viewpoint A**: [{c.source_a_title}]({c.source_a_url})")
-                md_lines.append(f"- **Viewpoint B**: [{c.source_b_title}]({c.source_b_url})")
-                md_lines.append(f"- **Synthesis & Resolution**: {c.nuance_explanation}")
+                md_lines.append(f"- **Supporting source**: [{c.source_a_title}]({c.source_a_url})")
+                md_lines.append(f"- **Adversarial source**: [{c.source_b_title}]({c.source_b_url})")
+                md_lines.append(f"- **Evidence comparison**: {c.nuance_explanation}")
                 md_lines.append("")
 
         md_lines.extend(
             [
-                "## Sources & Verified Bibliography",
+                "## Sources & Evidence Bibliography",
                 "",
             ]
         )
 
         for i, s in enumerate(sources, 1):
-            md_lines.append(f"{i}. **[{s.source_id}] [{s.title}]({s.url})**  \n   *Domain:* `{s.domain}` | *Facet:* `{s.pass_type}`  \n   *{s.snippet[:140]}...*")
+            md_lines.append(f"{i}. **[{s.source_id}] [{s.title}]({s.url})**  \n   *Domain:* `{s.domain}` | *Facet:* `{s.pass_type}` | *Citation status:* `{s.citation_status}`  \n   *{s.snippet[:140]}...*")
 
         md_lines.extend(
             [
                 "",
                 "---",
-                "*Report generated automatically adhering to the strict Alpha citation and empirical evidence contract.*",
+                "*Source support status is reported explicitly; a source is labeled verified only after semantic support checks.*",
             ]
         )
 
@@ -720,5 +751,6 @@ class DeepResearchEngine:
             sources=sources,
             citations=citations,
             markdown_content=full_markdown,
+            status="completed",
             depth=depth,
         )

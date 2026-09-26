@@ -6,22 +6,23 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from alpha.enterprise import (
+    EnterpriseDepartment,
+    EnterpriseHeartbeatCoordinator,
+    EnterpriseHierarchyEngine,
+    EnterpriseRFCProtocol,
+    EnterpriseTelemetry,
+    MissionToSprintPipeline,
+    QualityCouncilQuorumEngine,
+    get_discovery_and_optimization_engine,
+)
+from alpha.enterprise.governance import DepartmentTokenTreasury
 from app.gateway.routers.enterprise import (
     gateway_router as enterprise_gateway_router,
 )
 from app.gateway.routers.enterprise import (
     router as enterprise_router,
 )
-from alpha.enterprise import (
-    EnterpriseDepartment,
-    EnterpriseHeartbeatCoordinator,
-    EnterpriseHierarchyEngine,
-    EnterpriseRFCProtocol,
-    MissionToSprintPipeline,
-    QualityCouncilQuorumEngine,
-    get_discovery_and_optimization_engine,
-)
-from alpha.enterprise.governance import DepartmentTokenTreasury
 
 # ============================================================================
 # 1. Dynamic Enterprise Hierarchy & C-Suite Swarm Tests
@@ -146,7 +147,7 @@ def test_rfc_consensus_gating_and_epistemic_debate():
     assert rfc.status.value == "debating"
 
     # 3. Multi-Agent Review & Consensus Calculation
-    review_arch = rfc_engine.submit_review(
+    rfc_engine.submit_review(
         rfc_id=rfc.rfc_id,
         reviewer_bot="bot-cto",
         department="architecture",
@@ -154,7 +155,7 @@ def test_rfc_consensus_gating_and_epistemic_debate():
         argument="Architecturally sound and backwards-compatible with lease API.",
         epistemic_confidence=0.95,
     )
-    review_sec = rfc_engine.submit_review(
+    rfc_engine.submit_review(
         rfc_id=rfc.rfc_id,
         reviewer_bot="bot-ciso",
         department="security",
@@ -309,6 +310,19 @@ def test_enterprise_heartbeat_coordinator_and_telemetry():
     assert telemetry.departments_count == 5
     assert telemetry.active_workers_count >= 10
     assert telemetry.security_posture_score >= 90.0
+
+
+def test_enterprise_telemetry_defaults_do_not_fabricate_measurements():
+    """Honesty pins: a fresh EnterpriseTelemetry invents no org size or latency.
+
+    The old defaults (5 departments / 15 workers / 42.0ms p95) were fabricated
+    on any fresh construction; counts are 0 and latency is None until
+    get_telemetry() overwrites them with real values.
+    """
+    telemetry = EnterpriseTelemetry()
+    assert telemetry.system_latency_p95_ms is None
+    assert telemetry.departments_count == 0
+    assert telemetry.active_workers_count == 0
 
 
 # ============================================================================

@@ -29,16 +29,47 @@ export interface LiveSubagent {
   parent: string;
 }
 
+function toLiveSubagent(s: Record<string, unknown>, i: number): LiveSubagent {
+  return {
+    id: String(pick(s, ["id", "subagent_id"], `subagent-${i}`)),
+    role: String(pick(s, ["role"], "")),
+    objective: String(pick(s, ["objective", "task"], "")),
+    status: String(pick(s, ["status", "state"], "unknown")),
+    parent: String(pick(s, ["parent_agent_id", "parent"], "")),
+  };
+}
+
+/**
+ * Parse `GET /api/subagents/control` strictly: accepts a bare array or the
+ * `{subagents|data: [...]}` envelope, and throws on anything else so callers
+ * can distinguish "request failed" from "there are genuinely no subagents".
+ */
+export function parseLiveSubagents(body: unknown): LiveSubagent[] {
+  let list: unknown = body;
+  if (!Array.isArray(list)) {
+    if (!list || typeof list !== "object") {
+      throw new Error("The server returned an unreadable subagent list.");
+    }
+    const rec = list as Record<string, unknown>;
+    const nested = [rec.subagents, rec.data].find((v) => Array.isArray(v));
+    if (!nested) {
+      throw new Error("The server returned an unreadable subagent list.");
+    }
+    list = nested;
+  }
+  return (list as unknown[]).map((s, i) =>
+    s && typeof s === "object" ? toLiveSubagent(s as Record<string, unknown>, i) : toLiveSubagent({}, i),
+  );
+}
+
+/** Strict variant for status surfaces: throws on failure instead of reporting an empty fleet. */
+export async function fetchLiveSubagentsStrict(): Promise<LiveSubagent[]> {
+  return parseLiveSubagents(await get<unknown>("/subagents/control"));
+}
+
 export async function listLiveSubagents(): Promise<LiveSubagent[]> {
   try {
-    const d = await get<unknown>("/subagents/control");
-    return asList(d, ["subagents", "data"]).map((s, i) => ({
-      id: String(pick(s, ["id", "subagent_id"], `subagent-${i}`)),
-      role: String(pick(s, ["role"], "")),
-      objective: String(pick(s, ["objective", "task"], "")),
-      status: String(pick(s, ["status", "state"], "unknown")),
-      parent: String(pick(s, ["parent_agent_id", "parent"], "")),
-    }));
+    return await fetchLiveSubagentsStrict();
   } catch {
     // Exact route: GET /api/subagents/control (subagent_control.py @router.get("")). A former
     // /subagents/live fallback was unwired on this gateway — the only match would be

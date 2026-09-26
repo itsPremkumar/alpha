@@ -30,6 +30,51 @@ def is_valid_range(x):
     assert report.kill_score > 0.0
 
 
+def test_zero_mutants_yields_null_kill_score_with_disclosure():
+    """No mutation sites -> no tests run -> kill_score must be None, never 1.0."""
+    engine = MutationTestingEngine()
+    report = engine.run_mutation_audit("value = 1\n", lambda code: True)
+    assert report.total_mutants == 0
+    assert report.kill_score is None
+    assert report.disclosure is not None
+    assert "no mutants" in report.disclosure
+
+
+def test_all_runner_errors_yield_null_kill_score_with_disclosure():
+    """If not a single test run executed, kill_score must be None, never 1.0."""
+    engine = MutationTestingEngine()
+    sample_code = "def f(x):\n    if x < 10:\n        return True\n    return False\n"
+
+    def crashing_runner(code: str) -> bool:
+        raise RuntimeError("test harness crashed")
+
+    report = engine.run_mutation_audit(sample_code, crashing_runner)
+    assert report.total_mutants >= 1
+    assert report.killed_mutants == 0
+    assert report.survived_mutants == 0
+    assert report.kill_score is None
+    assert report.disclosure is not None
+    assert "tests not executed" in report.disclosure
+
+
+def test_partial_runner_errors_are_disclosed_and_excluded():
+    """Errored runs are excluded from the score and the exclusion is disclosed."""
+    engine = MutationTestingEngine()
+    sample_code = "def f(x):\n    if x < 10:\n        return True\n    return False\n"
+
+    def flaky_runner(code: str) -> bool:
+        if "<=" in code:
+            raise RuntimeError("flaky infra")
+        return True  # other mutants pass -> survive
+
+    report = engine.run_mutation_audit(sample_code, flaky_runner)
+    executed = report.killed_mutants + report.survived_mutants
+    assert executed >= 1
+    assert report.kill_score == round(report.killed_mutants / executed, 3)
+    assert report.disclosure is not None
+    assert "excluded from kill_score" in report.disclosure
+
+
 def test_property_invariant_fuzzing():
     # Mathematical invariant: abs(x) >= 0 for all integers
     def target_abs(x: int) -> int:

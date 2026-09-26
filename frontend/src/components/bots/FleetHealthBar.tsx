@@ -39,8 +39,12 @@ export function FleetHealthBar({ health }: { health: FleetHealth }) {
           <Star className="size-4" />
         </div>
         <div>
-          <div className="text-sm font-bold leading-none">{health.avg_reputation.toFixed(2)}</div>
-          <div className="text-[10px] text-muted-foreground mt-1">Avg reputation</div>
+          <div className="text-sm font-bold leading-none">
+            {health.avg_reputation != null ? health.avg_reputation.toFixed(2) : "unverified"}
+          </div>
+          <div className="text-[10px] text-muted-foreground mt-1">
+            {health.avg_reputation != null ? "Avg reputation" : "Avg reputation — none measured"}
+          </div>
         </div>
       </div>
       <div className="rounded-xl border border-border/60 bg-card px-3 py-2.5 flex items-center gap-2.5 col-span-2 sm:col-span-1">

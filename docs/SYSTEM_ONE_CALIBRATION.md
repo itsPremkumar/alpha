@@ -22,7 +22,7 @@ harness** (turn the log into a verdict).
 With `system_one.shadow_mode: true`, every call site behaves *exactly* as it did
 before System One existed:
 
-1. The request is still sent to Jev.
+1. The request is still sent to the configured provider (Jev or Laya).
 2. The answer is parsed and recorded to the JSONL log.
 3. `evaluate()` returns `None`.
 
@@ -54,7 +54,8 @@ One JSON line per question answered:
 ```json
 {"ts": 1769000000.1, "site": "guardrail", "tier": "write", "question_id": "is_injection",
  "type": "boolean", "value": 0.93, "confidence": null, "threshold": 0.75,
- "latency_ms": 142.0, "model": "jev-1.13.0", "shadow": true, "outcome": null, "meta": {}}
+ "latency_ms": 142.0, "model": "jev-1.13.0", "provider": "vercel-gateway", "shadow": true,
+ "outcome": null, "meta": {}}
 ```
 
 | field | meaning |
@@ -65,6 +66,7 @@ One JSON line per question answered:
 | `confidence` | present for `choice`/`score`; `null` for `boolean` |
 | `threshold` | what it had to clear to be used |
 | `outcome` | filled in later, when the truth becomes known |
+| `provider` | `vercel-gateway`, `typesafe`, or `laya`; old records without it remain readable |
 | `shadow` | was this measured-only? |
 
 Recording is **best-effort in both directions**. A missing directory is created;
@@ -125,6 +127,10 @@ System One calibration
   guardrail                 96      81      40
   rerank                    74      55      18
 ```
+
+The report also prints a provider table. Hosted Jev and local Laya are kept
+separate: they share a wire contract, not a calibration distribution. Records
+written before provider tagging remain readable and appear as `unknown`.
 
 **How to read it**
 

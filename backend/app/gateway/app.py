@@ -1,4 +1,5 @@
 import asyncio
+import importlib
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -26,6 +27,7 @@ from app.gateway.routers import (
     artifacts,
     assistants_compat,
     auth,
+    autonomy,
     benchmarks,
     bots,
     browser,
@@ -40,6 +42,7 @@ from app.gateway.routers import (
     deliberation,
     deliveries,
     enterprise,
+    evidence,
     evolution,
     features,
     feedback,
@@ -59,6 +62,7 @@ from app.gateway.routers import (
     openai_compat,
     ops,
     ops_integration,
+    peer_network,
     plan_mode,
     policy,
     projects,
@@ -76,6 +80,7 @@ from app.gateway.routers import (
     thread_runs,
     threads,
     uploads,
+    workflows,
 )
 from app.gateway.security_headers_middleware import SecurityHeadersMiddleware
 from app.gateway.trace_middleware import TraceMiddleware
@@ -100,6 +105,54 @@ _SHUTDOWN_HOOK_TIMEOUT_SECONDS = 5.0
 # The retrieval index is derived state, so shutdown only waits briefly for its
 # startup rebuild. The canonical memory flush keeps its full configured budget.
 _RETRIEVAL_WARM_SHUTDOWN_TIMEOUT_SECONDS = 1.0
+
+# The host system monitor is a derived-state sampler on a *daemon* thread whose
+# loop already watches `_stop`, so the lifespan only grants a short grace period
+# for an idle loop exit. Waiting longer would make every worker pay for an
+# in-flight collection (probes: internet 2s, WMI 8s, mounts 6s -- measured 5.3s
+# mid-collect) even though the sampler's data is never read after stop. On
+# timeout the daemon thread finishes its current tick and exits by itself.
+_SYSTEM_MONITOR_STOP_TIMEOUT_SECONDS = 0.5
+
+# Modules the lifespan imports lazily at startup/shutdown. Importing the graph
+# HERE -- at `import app.gateway.app`, i.e. at process start, before lifespan
+# runs -- keeps Python's lazy-import cost off the readiness path: a cold
+# `__aenter__` used to spend seconds inside these deferred imports, blowing the
+# pre-serve latency budget (measured; matrix row 87), and a cold `__aexit__`
+# could not guarantee a bounded worker exit. The lifespan keeps its own
+# function-local imports so every call site stays late-bound (tests patch the
+# source modules). An optional module whose import fails here stays failed and
+# is retried/caught at the lifespan call site, exactly as before.
+_LIFESPAN_DEFERRED_IMPORT_MODULES = (
+    "alpha.agents.memory",
+    "alpha.capabilities",
+    "alpha.community.browser_automation",
+    "alpha.config.autonomy_config",
+    "alpha.config.extensions_config",
+    "alpha.config.mcp_tasks_config",
+    "alpha.config.subagent_batches_config",
+    "alpha.events.bus",
+    "alpha.evolution.update_engine",
+    "alpha.evolution.update_policy",
+    "alpha.evolution.update_state",
+    "alpha.extensions.notify",
+    "alpha.mcp.task_tool_caller",
+    "alpha.peer_network.service",
+    "alpha.mcp.tasks",
+    "alpha.mcp.tasks.runtime",
+    "alpha.persistence.engine",
+    "alpha.persistence.user.model",
+    "alpha.skills.projection",
+    "alpha.subagents.batch_runtime",
+    "app.channels.service",
+    "app.gateway.autonomy.supervisor",
+    "app.gateway.routers.workflows",
+    "app.gateway.services",
+    "app.gateway.system_monitor_service",
+    "app.mcp_tasks",
+    "app.scheduler",
+    "app.subagent_batches",
+)
 
 
 async def _ensure_admin_user(app: FastAPI) -> None:
@@ -332,6 +385,33 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Initialize LangGraph runtime components (StreamBridge, RunManager, checkpointer, store)
     async with langgraph_runtime(app, startup_config):
         logger.info("LangGraph runtime initialised")
+        try:
+            from app.gateway.routers.workflows import hydrate_workflow_engine_from_store
+
+            workflow_hydration = await asyncio.to_thread(hydrate_workflow_engine_from_store)
+            if workflow_hydration.get("hydrated_runs"):
+                logger.info("Hydrated %d durable workflow run(s)", len(workflow_hydration["hydrated_runs"]))
+        except Exception:
+            logger.exception("Workflow state hydration failed; continuing with an explicit empty/degraded workflow view")
+
+        # Give the detached source updater a conservative active-work guard.
+        # The updater itself is still disabled by policy; this only prevents an
+        # explicitly enabled auto-apply from switching files under a live run.
+        try:
+            from alpha.evolution.update_engine import get_update_engine
+
+            run_manager = getattr(app.state, "run_manager", None)
+
+            def update_idle_callback() -> bool:
+                from alpha.evolution.update_state import write_runtime_status
+
+                active = bool(run_manager is not None and run_manager.has_active_runs_snapshot())
+                write_runtime_status(active=active, source="gateway")
+                return not active
+
+            get_update_engine().set_idle_callback(update_idle_callback)
+        except Exception:
+            logger.warning("Could not configure the source-update active-run guard.", exc_info=True)
 
         # Continuous host system monitor (RAM/disk/CPU/GPU/network/internet).
         # Best-effort and self-contained: a sampler failure must never fail the
@@ -344,13 +424,26 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception:
             logger.exception("System monitor failed to start (non-fatal)")
 
+        # Alpha-to-Alpha peer network is local-first and does not require a
+        # central broker. Start its UDP discovery/retry loop after runtime
+        # initialization; socket failures are reported by /api/peer-network/status
+        # without taking down the Gateway.
+        try:
+            from alpha.peer_network import get_peer_network_service
+
+            peer_network_service = get_peer_network_service()
+            app.state.peer_network_service = peer_network_service
+            await peer_network_service.start()
+        except Exception:
+            logger.exception("Alpha peer network failed to start (non-fatal)")
+
         # Check admin bootstrap state and migrate orphan threads after admin exists.
         # Must run AFTER langgraph_runtime so app.state.store is available for thread migration
         await _ensure_admin_user(app)
 
         try:
             from app.gateway.services import launch_scheduled_thread_run
-            from app.scheduler import ScheduledTaskService
+            from app.scheduler import ScheduledTaskService, default_job_memory_store
 
             if getattr(app.state, "scheduled_task_repo", None) is not None and getattr(app.state, "scheduled_task_run_repo", None) is not None:
                 scheduled_task_service = ScheduledTaskService(
@@ -363,6 +456,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                     queue_timeout_seconds=startup_config.scheduler.queue_timeout_seconds,
                     multi_instance=startup_config.scheduler.multi_instance,
                     run_lease_grace_seconds=startup_config.run_ownership.grace_seconds,
+                    job_memory=default_job_memory_store(),
                 )
                 app.state.scheduled_task_service = scheduled_task_service
                 if startup_config.scheduler.enabled:
@@ -487,6 +581,25 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             from app.gateway.autonomy.supervisor import get_autonomy_supervisor
 
             autonomy_cfg = startup_config.autonomy
+            # The update policy is the operator-facing kill switch.  When it is
+            # enabled, register the supervisor loop automatically unless the
+            # operator supplied an explicit self_update override; this keeps
+            # unattended use to one policy file while preserving the normal
+            # absent-loop-disabled contract for every other loop.
+            try:
+                from alpha.evolution.update_policy import load_update_policy
+
+                update_policy = load_update_policy()
+                if update_policy.enabled and "self_update" not in autonomy_cfg.loops:
+                    from alpha.config.autonomy_config import AutonomyLoopConfig
+
+                    autonomy_cfg.loops["self_update"] = AutonomyLoopConfig(
+                        enabled=True,
+                        interval_seconds=update_policy.check_interval_seconds,
+                        jitter_seconds=update_policy.jitter_seconds,
+                    )
+            except Exception:
+                logger.warning("Could not load auto-update policy; self_update loop remains disabled.", exc_info=True)
             configure_event_bus(
                 enabled=autonomy_cfg.bus.enabled,
                 queue_maxsize=autonomy_cfg.bus.queue_maxsize,
@@ -530,6 +643,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             except Exception:
                 logger.exception("Failed to stop autonomy supervisor")
 
+        # Peer discovery is stopped after the supervisor, matching the reverse
+        # startup order and preventing late network events from racing teardown.
+        peer_network_service = getattr(app.state, "peer_network_service", None)
+        if peer_network_service is not None:
+            try:
+                await asyncio.wait_for(peer_network_service.stop(), timeout=_SHUTDOWN_HOOK_TIMEOUT_SECONDS)
+            except TimeoutError:
+                logger.warning("Peer network shutdown exceeded %.1fs; proceeding.", _SHUTDOWN_HOOK_TIMEOUT_SECONDS)
+            except Exception:
+                logger.exception("Failed to stop peer network")
+
         try:
             await auth.close_oidc_service()
         except Exception:
@@ -557,11 +681,25 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             except Exception:
                 logger.exception("Failed to stop scheduled task service")
 
-        # Stop the host system monitor (bounded join inside the service).
+        # Stop the host system monitor. The service's own join is bounded at
+        # min(5.0, interval+1), which is still too generous for the worker exit
+        # path: a mid-collection join was measured at 5.3s, which alone blows
+        # the bounded-shutdown budget. The sampler is derived state on a daemon
+        # thread whose loop already observes `_stop`, so the lifespan grants a
+        # short grace instead; on timeout the daemon finishes its current tick
+        # and exits by itself, and the worker never waits it out.
         try:
             from app.gateway.system_monitor_service import stop_system_monitor
 
-            await asyncio.to_thread(stop_system_monitor)
+            await asyncio.wait_for(
+                asyncio.to_thread(stop_system_monitor),
+                timeout=_SYSTEM_MONITOR_STOP_TIMEOUT_SECONDS,
+            )
+        except TimeoutError:
+            logger.warning(
+                "System monitor stop exceeded %.1fs grace; the daemon sampler will drain on its own",
+                _SYSTEM_MONITOR_STOP_TIMEOUT_SECONDS,
+            )
         except Exception:
             logger.exception("Failed to stop system monitor")
 
@@ -966,12 +1104,17 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     app.include_router(bots.router)
     app.include_router(groups.router)
     app.include_router(agent_messages.router)
+    # Cross-instance Alpha network: local management routes plus the explicitly
+    # public Agent Card / pairing-token ingress surface.
+    app.include_router(peer_network.router)
+    app.include_router(peer_network.public_router)
     app.include_router(swarms.router)
     app.include_router(plan_mode.router)
     app.include_router(subagent_control.router)
     app.include_router(deliberation.router)
     app.include_router(jobs.router)
     app.include_router(supervision.router)
+    app.include_router(autonomy.router)
     app.include_router(goal_contracts.router)
     app.include_router(goal_integrity.router)
     app.include_router(a2a.router)
@@ -981,11 +1124,13 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     app.include_router(commands.router)
     app.include_router(commands.router, prefix="/api/gateway")
     app.include_router(missions.router)
+    app.include_router(workflows.router)
     app.include_router(openai_compat.router)
     app.include_router(policy.router)
     app.include_router(council.router)
     app.include_router(benchmarks.router)
     app.include_router(evolution.router)
+    app.include_router(evidence.router)
     app.include_router(deliveries.router)
     app.include_router(checkpoints.router)
     app.include_router(skills_workshop.router)
@@ -1079,3 +1224,43 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
 
 # Create app instance for uvicorn
 app = create_app()
+
+# Prewarm the lifespan's deferred import graph (documented at
+# _LIFESPAN_DEFERRED_IMPORT_MODULES above). Placed at the very end of module
+# initialization - after `app` exists - so any graph module that (transitively)
+# imports this module resolves a fully-initialized module rather than a partial
+# one. The cost lands here, at `import app.gateway.app`, never inside the
+# readiness-critical __aenter__/__aexit__ window.
+for _module_name in _LIFESPAN_DEFERRED_IMPORT_MODULES:
+    try:
+        importlib.import_module(_module_name)
+    except Exception:
+        # Preserve today's semantics exactly: the lifespan imports the same
+        # module inside its own try/except, so an unavailable module stays a
+        # logged non-fatal at the same call site as before - only the timing
+        # moves off the readiness path.
+        logger.debug(
+            "import prewarm deferred to lifespan call site: %s",
+            _module_name,
+            exc_info=True,
+        )
+
+# Prewarm the lazy capability catalog too. `alpha.capabilities` stays lazy for
+# library consumers, but the Gateway's readiness path pays its import graph on
+# first load (measured 3.19s for the 34-entry catalog mid-lifespan). Each
+# module is imported fail-open, exactly like the runtime loader, so a broken
+# optional subsystem still never takes the Gateway down.
+try:
+    from alpha.capabilities.catalog import CAPABILITY_CATALOG as _CAPABILITY_CATALOG
+except Exception:
+    _CAPABILITY_CATALOG = {}
+    logger.debug("capability catalog unavailable for prewarm", exc_info=True)
+for _capability_id, _capability_spec in _CAPABILITY_CATALOG.items():
+    try:
+        importlib.import_module(_capability_spec.module)
+    except Exception:
+        logger.debug(
+            "capability prewarm deferred to loader call site: %s",
+            _capability_id,
+            exc_info=True,
+        )

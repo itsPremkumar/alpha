@@ -27,6 +27,11 @@ from .code_agentic_core import (
     auto_test_and_repair,
     generate_repo_map,
     manage_code_checkpoint,
+    # P4: canonical past-session memory search (FTS5 + BM25 with cron demotion).
+    # It was defined here but never re-exported, which left the tool
+    # unreachable; the historical bash-based memory tool stays an alias.
+    search_session_memory,
+    verify_web_ui_visual_regression,
 )
 from .code_mode_tool import code_mode_tool
 from .cognitive_compiler_tool import compile_cognitive_plan
@@ -42,6 +47,7 @@ from .company_tool import company_tool
 
 # Strategic Autonomous Control Plane Tools
 from .compile_mission_tool import compile_mission
+from .computer_system_one_tool import desktop_system_one_action_tool
 from .computer_worker_tool import execute_sandboxed_computer_action
 from .consequence_tool import simulate_consequences
 from .context_as_data_tool import manage_context_data
@@ -54,6 +60,10 @@ from .cronjob_manage_tool import cronjob_manage
 from .curriculum_tool import generate_curriculum_plan
 from .deep_agent_tool import delegate_to_deep_agent, inspect_deep_agent_telemetry, list_available_deep_agents
 from .deep_research_tool import deep_research
+
+# Keyless web search ported from AgentEye: httpx-first fallback chain with an
+# optional ddgs fallback whose absence is reported honestly (never faked).
+from .deep_web_search_tool import deep_web_search
 from .deliberation_tool import deliberation_tool
 from .delta_checkpoint_tool import create_workflow_checkpoint
 from .differential_invariant_fuzzer_tool import run_differential_regression_oracle
@@ -91,6 +101,7 @@ from .hyperplan_tool import hyperplan_review_manage
 from .introspective_tree_search_tool import run_introspective_tree_search
 from .job_tool import job_tool
 from .kanban_board_tool import kanban_board_tool
+from .keyless_web_search_tool import keyless_web_search
 from .kibitzer_tool import kibitzer_nudge_manage
 from .knowledge_graph_tool import query_knowledge_graph
 from .learning_graph_tool import learning_graph_manage
@@ -101,6 +112,17 @@ from .metacognitive_tool import check_metacognitive_health
 # Mission Hierarchy, Work Queue DAG & Universal Artifact Lineage
 from .mission_hierarchy_tool import manage_mission_hierarchy, schedule_work_queue
 from .moa_reasoning_tool import moa_multi_model_reasoning
+
+# Free local-first OS computer use & laptop automation (Module C): guarded
+# desktop screenshot / UI-tree / mouse / keyboard / window tools.
+from .os_computer_tool import (
+    desktop_inspect_ui_tree_tool,
+    desktop_keyboard_action_tool,
+    desktop_mouse_action_tool,
+    desktop_screenshot_tool,
+    desktop_window_manage_tool,
+)
+from .peer_network_tool import alpha_peer_network_tool
 
 # Enterprise Harness Expansion
 from .performance_registry_tool import manage_model_performance_registry
@@ -180,6 +202,7 @@ __all__ = [
     "harness_refine_tool",
     "agent_message_tool",
     "agent_observe_tool",
+    "alpha_peer_network_tool",
     "process_handle_tool",
     "invoke_python_skill_tool",
     "bot_roster_tool",
@@ -277,6 +300,8 @@ __all__ = [
     "auto_test_and_repair",
     "manage_code_checkpoint",
     "visual_verify_artifact",
+    "verify_web_ui_visual_regression",
+    "search_session_memory",
     "manage_reflexion_memory",
     "compile_problem_model",
     "execute_slash_command_tool",
@@ -296,4 +321,12 @@ __all__ = [
     "delegate_to_deep_agent",
     "list_available_deep_agents",
     "inspect_deep_agent_telemetry",
+    "keyless_web_search",
+    "deep_web_search",
+    "desktop_screenshot_tool",
+    "desktop_inspect_ui_tree_tool",
+    "desktop_mouse_action_tool",
+    "desktop_keyboard_action_tool",
+    "desktop_window_manage_tool",
+    "desktop_system_one_action_tool",
 ]

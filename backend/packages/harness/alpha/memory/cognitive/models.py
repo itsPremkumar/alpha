@@ -122,6 +122,10 @@ class SemanticFactNode:
     created_at: float = field(default_factory=time.time)
     superseded_by: str | None = None
     tags: list[str] = field(default_factory=list)
+    # Additive provenance disclosure: where this belief came from, e.g.
+    # "bootstrap-assumption" for unverified startup seeds, "user" for
+    # user-asserted facts, or an evidence id. None = unstated provenance.
+    source: str | None = None
     node_id: str = field(default_factory=lambda: f"fact_{uuid.uuid4().hex[:8]}")
 
     @property

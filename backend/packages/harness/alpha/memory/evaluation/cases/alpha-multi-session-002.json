@@ -1,0 +1,24 @@
+{
+  "id": "alpha-multi-session-002",
+  "ability": "multi_session",
+  "scope": {"user_id": "eval-multi-002", "agent_name": "alpha-memory-evaluation"},
+  "sessions": [
+    {
+      "session_id": "s1",
+      "events": [
+        {"id": "event-goal", "text": "The team goal is to shorten the release checklist.", "fact_id": "fact-goal", "answer": "shorten the release checklist", "expected_stored": true}
+      ]
+    },
+    {
+      "session_id": "s2",
+      "events": [
+        {"id": "event-measure", "text": "The checklist currently has nine steps.", "fact_id": "fact-measure", "answer": "nine", "expected_stored": true}
+      ]
+    }
+  ],
+  "questions": [
+    {"id": "q1", "question": "What is the team's goal for the release checklist?", "expected": "shorten the release checklist", "type": "multi_session_reasoning", "evidence_ids": ["event-goal"]},
+    {"id": "q2", "question": "How many steps does the checklist have?", "expected": "nine", "type": "multi_session_reasoning", "evidence_ids": ["event-measure"]}
+  ],
+  "metadata": {"expected_stored": ["event-goal", "event-measure"], "description": "Original multi-session continuity fixture."}
+}

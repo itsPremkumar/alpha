@@ -23,18 +23,6 @@ from langchain_core.messages import BaseMessage
 from langchain_core.messages.utils import convert_to_messages
 from langgraph.types import Command
 
-from app.gateway.auth_disabled import AUTH_SOURCE_INTERNAL
-from app.gateway.authz import require_cancel_permission_if
-from app.gateway.deps import get_checkpointer, get_local_provider, get_run_context, get_run_manager, get_stream_bridge
-from app.gateway.internal_auth import (
-    INTERNAL_OWNER_USER_ID_HEADER_NAME,
-    INTERNAL_SYSTEM_ROLE,
-    get_internal_user,
-    get_trusted_internal_owner_user_id,
-)
-from app.gateway.run_models import RunCreateRequest
-from app.gateway.utils import sanitize_log_param
-from app.mcp_tasks.errors import PermanentNotificationError
 from alpha.agents.middlewares.dynamic_context_middleware import _DYNAMIC_CONTEXT_REMINDER_KEY, _REMINDER_DATE_KEY
 from alpha.agents.middlewares.input_sanitization_middleware import frame_untrusted_text
 from alpha.agents.middlewares.tool_receipt import TOOL_RECEIPT_KEY, TOOL_RECEIPT_LEDGER_KEY
@@ -85,6 +73,18 @@ from alpha.trace_context import AGENT_WORKSPACE_TRACE_METADATA_KEY, ensure_trace
 from alpha.utils.assembly_io import run_assembly
 from alpha.utils.messages import ORIGINAL_USER_CONTENT_KEY
 from alpha.utils.thread_id import validate_thread_id
+from app.gateway.auth_disabled import AUTH_SOURCE_INTERNAL
+from app.gateway.authz import require_cancel_permission_if
+from app.gateway.deps import get_checkpointer, get_local_provider, get_run_context, get_run_manager, get_stream_bridge
+from app.gateway.internal_auth import (
+    INTERNAL_OWNER_USER_ID_HEADER_NAME,
+    INTERNAL_SYSTEM_ROLE,
+    get_internal_user,
+    get_trusted_internal_owner_user_id,
+)
+from app.gateway.run_models import RunCreateRequest
+from app.gateway.utils import sanitize_log_param
+from app.mcp_tasks.errors import PermanentNotificationError
 
 logger = logging.getLogger(__name__)
 
@@ -1057,8 +1057,13 @@ def build_checkpoint_state_accessor(
     thread_id: str,
     assistant_id: str | None = None,
     checkpoint_id: str | None = None,
+    require_graph: bool = False,
 ) -> tuple[CheckpointStateAccessor, dict[str, Any]]:
-    """Build the mode-selected lead graph used for materialized checkpoint state."""
+    """Build the mode-selected lead graph used for materialized checkpoint state.
+
+    ``require_graph`` disables the full-mode raw-read fallback for callers that
+    must prove pending scheduling work (currently safe run recovery).
+    """
     ctx = get_run_context(request)
     config = build_run_config(thread_id, None, None, assistant_id=assistant_id)
     configurable = config.setdefault("configurable", {})
@@ -1080,9 +1085,10 @@ def build_checkpoint_state_accessor(
             config,
         )
     except Exception:
-        if ctx.checkpoint_channel_mode != "full":
-            # Delta materialization needs the graph's channel table; there is
-            # no degraded path. Surface the factory failure as-is.
+        if ctx.checkpoint_channel_mode != "full" or require_graph:
+            # Delta materialization needs the graph's channel table, and safe
+            # run recovery must see real next/tasks scheduling metadata. Neither
+            # may degrade to a raw blob that makes pending work unknowable.
             raise
         # Full-mode checkpoints carry complete channel_values: degrade to raw
         # checkpointer reads so state endpoints survive a broken agent factory
@@ -1108,6 +1114,7 @@ async def abuild_checkpoint_state_accessor(
     thread_id: str,
     assistant_id: str | None = None,
     checkpoint_id: str | None = None,
+    require_graph: bool = False,
 ) -> tuple[CheckpointStateAccessor, dict[str, Any]]:
     """Async variant of :func:`build_checkpoint_state_accessor`.
 
@@ -1119,14 +1126,20 @@ async def abuild_checkpoint_state_accessor(
     cold readers with the same cache key are serialized per key so the
     factory runs exactly once, and a reader whose factory or app-config
     identity changed while it waited rebuilds instead of reusing the
-    winner's graph.
+    winner's graph. ``require_graph=True`` disables the full-mode raw-read
+    fallback for safe recovery, which must see authoritative scheduling state.
     """
+    build_kwargs = {
+        "thread_id": thread_id,
+        "assistant_id": assistant_id,
+        "checkpoint_id": checkpoint_id,
+    }
+    if require_graph:
+        build_kwargs["require_graph"] = True
     return await run_assembly(
         build_checkpoint_state_accessor,
         request,
-        thread_id=thread_id,
-        assistant_id=assistant_id,
-        checkpoint_id=checkpoint_id,
+        **build_kwargs,
     )
 
 
@@ -1327,6 +1340,14 @@ async def ensure_checkpoint_history_seeded(
 # ---------------------------------------------------------------------------
 
 
+async def _assert_update_admission_open() -> None:
+    """Close new run admission while a detached source switch is in progress."""
+    from alpha.evolution.update_state import maintenance_active
+
+    if await asyncio.to_thread(maintenance_active):
+        raise HTTPException(status_code=503, detail="Alpha is applying a source update; new runs are temporarily paused")
+
+
 async def start_run(
     body: RunCreateRequest,
     thread_id: str,
@@ -1349,6 +1370,11 @@ async def start_run(
         Reject a missing thread instead of auto-creating metadata. Internal
         notification runs use this so a deleted chat cannot be resurrected.
     """
+    # The updater's detached process publishes this barrier before the first
+    # checkout write.  Check it at the single run-admission choke point so
+    # HTTP, channels, and scheduled work cannot race a source switch.
+    await _assert_update_admission_open()
+
     # Cancel-capability gate. interrupt/rollback strategies terminate an already
     # active run — runs:cancel capability, not runs:create — so a create-only
     # PAT must not reach them. Enforced here, the single choke point every
@@ -1364,6 +1390,8 @@ async def start_run(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     body_config = getattr(body, "config", None)
+    body_autonomous = bool(getattr(body, "autonomous", False))
+    body_acceptance_criteria = getattr(body, "acceptance_criteria", None)
     config_metadata = body_config.get("metadata") if isinstance(body_config, dict) else None
     try:
         validate_run_metadata_secrets(getattr(body, "metadata", None))
@@ -1379,7 +1407,7 @@ async def start_run(
     disconnect = DisconnectMode.cancel if body.on_disconnect == "cancel" else DisconnectMode.continue_
 
     body_context = dict(getattr(body, "context", None) or {})
-    if body.autonomous:
+    if body_autonomous:
         # This is a typed, server-applied request mode, not an untrusted
         # ``context.non_interactive`` override. Existing authorization,
         # tool allowlists, resource limits, and sandbox policy still apply.
@@ -1458,12 +1486,12 @@ async def start_run(
         # checkpoint. The caller's own metadata keys are preserved.
         run_metadata = dict(body.metadata) if isinstance(body.metadata, dict) else {}
         run_metadata[AGENT_WORKSPACE_TRACE_METADATA_KEY] = ensure_trace_id()
-        if body.autonomous:
+        if body_autonomous:
             run_metadata["autonomous"] = True
-        if body.acceptance_criteria is not None:
+        if body_acceptance_criteria is not None:
             # Persist the validated, canonical contract with the existing run
             # record.  Verification is an overlay, not a second run lifecycle.
-            run_metadata["acceptance_criteria"] = [criterion.model_dump(mode="json") for criterion in body.acceptance_criteria]
+            run_metadata["acceptance_criteria"] = [criterion.model_dump(mode="json") for criterion in body_acceptance_criteria]
 
         config = build_run_config(thread_id, body.config, run_metadata, assistant_id=body.assistant_id)
         await apply_checkpoint_to_run_config(config, body=body, thread_id=thread_id, request=request)
@@ -1473,7 +1501,7 @@ async def start_run(
         # that carries agent configuration (model_name, thinking_enabled, etc.).
         # Only agent-relevant keys are forwarded; unknown keys (e.g. thread_id) are ignored.
         merge_run_context_overrides(config, getattr(body, "context", None), internal=is_internal_caller)
-        if body.autonomous:
+        if body_autonomous:
             # The public context path intentionally cannot set this reserved
             # key. Apply it only after context sanitisation so autonomous runs
             # cannot pause to request clarification, while preserving every

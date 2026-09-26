@@ -1,9 +1,4 @@
-"""Built-in tool for orchestrating and monitoring autonomous agent swarms.
-
-Allows AI agents and supervisors to evaluate parallelization feasibility,
-decompose goals into dependency DAGs, spawn hybrid swarms, expand mid-flight,
-monitor incidents, and coordinate autonomous deliverables.
-"""
+"""Model-visible control surface for the Alpha swarm v2 runtime."""
 
 from __future__ import annotations
 
@@ -12,10 +7,11 @@ from typing import Literal
 
 from langchain.tools import tool
 
+from alpha.runtime.user_context import get_effective_user_id
 from alpha.swarm.coordinator import get_swarm_coordinator
 from alpha.swarm.governor import get_swarm_resource_governor
 from alpha.swarm.incidents import get_swarm_incident_manager
-from alpha.swarm.models import SwarmMode, TaskNodeState
+from alpha.swarm.models import SwarmBudget, SwarmMode, TaskNodeState
 
 
 @tool("swarm", parse_docstring=True)
@@ -25,7 +21,14 @@ def swarm_tool(
         "spawn",
         "status",
         "step",
+        "run_async",
         "expand",
+        "replan",
+        "claim",
+        "message",
+        "observe",
+        "metrics",
+        "leader",
         "incidents",
         "governor",
         "pause",
@@ -38,51 +41,68 @@ def swarm_tool(
     items_json: str = "[]",
     tasks_json: str = "[]",
     parent_task_id: str = "",
+    task_id: str = "",
+    lease_id: str = "",
+    topic: str = "general",
+    message: str = "",
+    limit: int = 50,
     max_concurrency: int = 8,
+    max_tokens: int | None = None,
+    max_tool_calls: int | None = None,
+    max_wall_seconds: float | None = None,
+    auto_replan: bool = False,
+    requires_consensus: bool = False,
+    idempotency_key: str = "",
     reason: str = "",
 ) -> str:
-    """Evaluate, spawn, monitor, and coordinate autonomous agent swarms.
+    """Evaluate, spawn, run, communicate with, and monitor bounded agent swarms.
 
     Args:
-        action: Operation to perform:
-            - 'evaluate': Check whether a goal warrants a swarm, returning mathematical speedup and critical path.
-            - 'spawn': Decompose a goal and initialize an autonomous swarm plan.
-            - 'status': Check the progress, active workers, and critical path of an active swarm.
-            - 'step': Advance execution: dispatch ready tasks, check stragglers, and trigger aggregation if finished.
-            - 'expand': Dynamically inject new tasks into an active swarm DAG mid-flight.
-            - 'incidents': Inspect failure incidents and automated succession recovery logs.
-            - 'governor': Check model routing tiers and rate-limit adaptive throttling status.
-            - 'pause': Pause execution of a running swarm.
-            - 'resume': Resume a paused swarm.
-            - 'cancel': Abort an ongoing swarm run.
-        goal: The high-level mission or goal for the swarm.
-        swarm_id: The ID of an existing swarm (required for status, step, expand, incidents, pause, resume, cancel).
-        mode: Swarm strategy: 'auto', 'parallel', 'map_reduce', 'scatter_gather', 'debate', 'ensemble', 'coding_worktree'.
-        items_json: JSON array of string items to process in parallel (for batch map-reduce workloads).
-        tasks_json: JSON array of task objects to dynamically inject with 'expand' action.
-        parent_task_id: Optional parent task ID for dynamically injected tasks.
-        max_concurrency: Maximum number of concurrent workers (default 8, max 12).
-        reason: Optional rationale for pause, cancellation, or override.
+        action: Operation to perform. Supported values are evaluate, spawn,
+            status, step, run_async, expand, replan, claim, message, observe,
+            metrics, incidents, governor, pause, resume, and cancel.
+        goal: High-level mission for evaluation or swarm creation.
+        swarm_id: Existing swarm id for operations other than evaluate/spawn.
+        mode: Swarm strategy: auto, parallel, map_reduce, scatter_gather,
+            hierarchical, debate, ensemble, or coding_worktree.
+        items_json: JSON array of independent work items.
+        tasks_json: JSON array of task objects for expand/replan.
+        parent_task_id: Optional parent task for an injected task.
+        task_id: Task id for claim or a message association.
+        lease_id: Lease returned by claim; accepted by external completion flows.
+        topic: Topic used for message/observe operations.
+        message: Bounded message content; message payloads are untrusted data.
+        limit: Maximum rows/messages/events to return.
+        max_concurrency: Maximum concurrent workers, hard-capped at 64.
+        max_tokens: Optional measured token ceiling for a new swarm.
+        max_tool_calls: Optional measured tool-call ceiling for a new swarm.
+        max_wall_seconds: Optional wall-clock ceiling for a new swarm.
+        auto_replan: Permit bounded automatic repair-task expansion.
+        requires_consensus: Require explicit evidence-backed votes before
+            reporting completion.
+        idempotency_key: Optional owner-scoped key that makes spawn retries
+            return the existing plan instead of creating a second swarm.
+        reason: Optional rationale for pause/cancellation.
     """
-    coordinator = get_swarm_coordinator()
 
-    # Parse items
+    coordinator = get_swarm_coordinator()
+    owner_id = get_effective_user_id()
+
     items: list[str] = []
     if items_json:
         try:
             parsed = json.loads(items_json)
             if isinstance(parsed, list):
-                items = [str(x) for x in parsed]
-        except Exception:
-            items = []
+                items = [str(item).strip() for item in parsed if str(item).strip()]
+        except (TypeError, ValueError):
+            return "Error: 'items_json' must be a valid JSON array."
 
-    # 1. EVALUATE
     if action == "evaluate":
         if not goal.strip():
             return "Error: 'goal' parameter is required for evaluation."
         decision = coordinator.evaluate_intent(goal.strip(), items=items)
         return (
-            f"### Swarm Parallelization Feasibility Analysis\n"
+            "### Swarm Parallelization Feasibility Analysis\n"
             f"- **Should Swarm**: `{'YES' if decision.should_swarm else 'NO'}`\n"
             f"- **Recommended Mode**: `{decision.mode.value}`\n"
             f"- **Speedup Factor**: `{decision.estimated_speedup}x`\n"
@@ -92,7 +112,6 @@ def swarm_tool(
             f"- **Rationale**: {decision.reason}\n"
         )
 
-    # 2. SPAWN
     if action == "spawn":
         if not goal.strip():
             return "Error: 'goal' parameter is required to spawn a swarm."
@@ -100,118 +119,130 @@ def swarm_tool(
             swarm_mode = SwarmMode(mode.lower().strip())
         except ValueError:
             swarm_mode = SwarmMode.AUTO
-
-        plan = coordinator.create_swarm(
-            goal=goal.strip(),
-            mode=swarm_mode,
-            items=items,
-            max_concurrency=min(max(1, max_concurrency), 12),
-        )
-
-        tasks_summary = "\n".join(f"  - `[{t.task_id}]` {t.objective} (deps: {t.dependencies or 'none'})" for t in plan.tasks.values())
-
+        budget = SwarmBudget(max_tokens=max_tokens, max_tool_calls=max_tool_calls, max_wall_seconds=max_wall_seconds)
+        try:
+            plan = coordinator.create_swarm(
+                goal=goal.strip(),
+                mode=swarm_mode,
+                items=items,
+                max_concurrency=min(max(1, max_concurrency), 64),
+                owner_id=owner_id,
+                budget=budget,
+                auto_replan=auto_replan,
+                requires_consensus=requires_consensus,
+                idempotency_key=idempotency_key.strip() or None,
+            )
+        except ValueError as exc:
+            return f"Error: swarm could not be created: {exc}"
+        tasks_summary = "\n".join(f"  - `[{task.task_id}]` {task.objective} (deps: {task.dependencies or 'none'})" for task in plan.tasks.values())
         return (
-            f"### Autonomous Swarm Successfully Spawned!\n"
+            "### Autonomous Swarm Successfully Spawned (plan created; execution is explicit)\n"
             f"- **Swarm ID**: `{plan.swarm_id}`\n"
             f"- **Goal**: {plan.goal}\n"
             f"- **Mode**: `{plan.mode.value}`\n"
-            f"- **Speedup Factor**: `{plan.estimated_speedup}x`\n"
-            f"- **Critical Path Duration**: `{plan.critical_path_seconds:.1f}s`\n"
-            f"- **Total Tasks**: {len(plan.tasks)}\n"
+            f"- **Tasks**: {len(plan.tasks)}\n"
             f"- **Task DAG**:\n{tasks_summary}\n\n"
-            f"Use `swarm(action='step', swarm_id='{plan.swarm_id}')` to drive task execution."
+            f"Run it with `swarm(action='run_async', swarm_id='{plan.swarm_id}')`; `step` only dispatches work."
         )
 
-    # 3. STATUS
-    if action == "status":
+    if action in {"status", "step", "run_async", "expand", "replan", "claim", "message", "observe", "metrics", "incidents", "pause", "resume", "cancel"}:
         if not swarm_id.strip():
             return "Error: 'swarm_id' parameter is required."
-        plan = coordinator.get_swarm(swarm_id.strip())
+        swarm_id = swarm_id.strip()
+        plan = coordinator.get_swarm(swarm_id, owner_id=owner_id)
         if not plan:
-            return f"Error: Swarm '{swarm_id}' not found."
+            return f"Error: Swarm '{swarm_id}' not found or is not visible to this owner."
 
-        completed = sum(1 for t in plan.tasks.values() if t.state == TaskNodeState.COMPLETED)
-        running = sum(1 for t in plan.tasks.values() if t.state in (TaskNodeState.RUNNING, TaskNodeState.STRAGGLING))
-        failed = sum(1 for t in plan.tasks.values() if t.state == TaskNodeState.FAILED)
-        pending = sum(1 for t in plan.tasks.values() if t.state == TaskNodeState.PENDING)
-
-        tasks_table = "\n".join(f"| `{t.task_id}` | `{t.state.value}` | `{t.assigned_worker or 'unassigned'}` | {t.objective[:50]}... |" for t in plan.tasks.values())
-
+    if action == "status":
+        completed = sum(1 for task in plan.tasks.values() if task.state == TaskNodeState.COMPLETED)
+        running = sum(1 for task in plan.tasks.values() if task.state in (TaskNodeState.RUNNING, TaskNodeState.STRAGGLING))
+        failed = sum(1 for task in plan.tasks.values() if task.state == TaskNodeState.FAILED)
+        cancelled = sum(1 for task in plan.tasks.values() if task.state == TaskNodeState.CANCELLED)
+        pending = sum(1 for task in plan.tasks.values() if task.state in (TaskNodeState.PENDING, TaskNodeState.QUEUED))
+        task_rows = "\n".join(f"| `{task.task_id}` | `{task.state.value}` | `{task.assigned_worker or 'unassigned'}` | `{task.lease_id or '-'}` | {task.objective[:80]} |" for task in plan.tasks.values())
         return (
             f"### Swarm Status: `{plan.swarm_id}`\n"
             f"- **Status**: `{plan.status}`\n"
             f"- **Goal**: {plan.goal}\n"
-            f"- **Progress**: {completed}/{len(plan.tasks)} completed ({running} running, {pending} pending, {failed} failed)\n"
-            f"- **Speedup**: `{plan.estimated_speedup}x` (Critical Path: `{plan.critical_path_seconds:.1f}s`)\n\n"
-            f"| Task ID | State | Worker | Objective |\n"
-            f"|---|---|---|---|\n"
-            f"{tasks_table}\n"
+            f"- **Progress**: {completed}/{len(plan.tasks)} completed ({running} running, {pending} pending, {failed} failed, {cancelled} cancelled)\n"
+            f"- **Revision**: `{plan.revision}`\n"
+            f"- **Budget**: `{json.dumps(plan.budget.to_dict(), sort_keys=True)}`\n"
+            f"- **Consensus**: `{json.dumps(plan.consensus, sort_keys=True) if plan.consensus else 'not evaluated'}`\n\n"
+            f"| Task ID | State | Worker | Lease | Objective |\n|---|---|---|---|---|\n{task_rows}\n"
         )
 
-    # 4. STEP
     if action == "step":
-        if not swarm_id.strip():
-            return "Error: 'swarm_id' parameter is required."
-        res = coordinator.step(swarm_id.strip())
-        return f"Swarm step executed. Result: {json.dumps(res, indent=2)}"
+        return f"Swarm scheduler tick executed (dispatch only; model work remains asynchronous): {json.dumps(coordinator.step(swarm_id), indent=2)}"
 
-    # 5. EXPAND (Mid-flight replanning)
-    if action == "expand":
-        if not swarm_id.strip():
-            return "Error: 'swarm_id' parameter is required."
+    if action == "run_async":
+        if plan.status in {"completed", "failed", "cancelled", "budget_exhausted", "stalled"}:
+            return f"Error: swarm is already terminal with status '{plan.status}'."
+        coordinator.start_async(swarm_id)
+        return f"Background runner started for swarm `{swarm_id}`."
+
+    if action in {"expand", "replan"}:
         try:
             parsed_tasks = json.loads(tasks_json) if tasks_json else []
-            if not isinstance(parsed_tasks, list):
-                parsed_tasks = [parsed_tasks]
-        except Exception:
-            return "Error: 'tasks_json' must be a valid JSON array of task objects."
+        except (TypeError, ValueError):
+            return "Error: 'tasks_json' must be valid JSON."
+        if not isinstance(parsed_tasks, list):
+            return "Error: 'tasks_json' must be a JSON array of task objects."
+        try:
+            added = coordinator.dynamic_expand(swarm_id, parsed_tasks, parent_task_id.strip() or None)
+        except ValueError as exc:
+            return f"Error: invalid swarm replan: {exc}"
+        return f"Swarm '{swarm_id}' dynamically expanded with {len(added)} validated tasks: {added}"
 
-        added = coordinator.dynamic_expand(
-            swarm_id=swarm_id.strip(),
-            new_tasks=parsed_tasks,
-            parent_task_id=parent_task_id.strip() or None,
-        )
-        return f"Swarm '{swarm_id}' dynamically expanded with {len(added)} new tasks: {added}"
+    if action == "claim":
+        if not task_id.strip():
+            return "Error: 'task_id' is required for claim."
+        lease = coordinator.claim_task(swarm_id, task_id.strip(), owner="swarm-tool-worker")
+        if lease is None:
+            return f"Task '{task_id}' was not ready or could not be claimed."
+        return json.dumps(lease.to_dict(), indent=2)
 
-    # 6. INCIDENTS
+    if action == "message":
+        try:
+            published = coordinator.publish_message(
+                swarm_id,
+                topic=topic,
+                sender="swarm-tool",
+                kind="agent_message",
+                content=message,
+                data={"task_id": task_id} if task_id else None,
+                task_id=task_id or None,
+                trust="untrusted",
+            )
+        except ValueError as exc:
+            return f"Error: message rejected: {exc}"
+        return f"Message published: `{published.message_id}` at sequence `{published.sequence}`."
+
+    if action == "observe":
+        messages = coordinator.get_messages(swarm_id, topic=topic or None, task_id=task_id or None, limit=max(1, min(limit, 256)))
+        return json.dumps([item.to_dict() for item in messages], indent=2, ensure_ascii=False)
+
+    if action == "metrics":
+        return json.dumps(coordinator.metrics(swarm_id), indent=2, ensure_ascii=False)
+
+    if action == "leader":
+        return json.dumps(plan.metrics.get("leader_election", {"leader": None, "reason": "not evaluated"}), indent=2, ensure_ascii=False)
+
     if action == "incidents":
-        if not swarm_id.strip():
-            return "Error: 'swarm_id' parameter is required."
-        inc_mgr = get_swarm_incident_manager()
-        incidents = inc_mgr.get_incidents(swarm_id.strip())
+        incidents = get_swarm_incident_manager().get_incidents(swarm_id)
         if not incidents:
             return f"No failure incidents recorded for swarm '{swarm_id}'."
-        lines = [f"### Swarm Incidents ({len(incidents)})"]
-        for inc in incidents:
-            status = "RESOLVED via @" + str(inc.assigned_successor) if inc.resolved else "UNRESOLVED"
-            lines.append(f"- `[{inc.incident_id}]` Task `{inc.task_id}` failed by @{inc.failed_worker}: {inc.error_message} ({status})")
-        return "\n".join(lines)
+        return json.dumps([incident.to_dict() for incident in incidents], indent=2, ensure_ascii=False)
 
-    # 7. GOVERNOR
     if action == "governor":
-        gov = get_swarm_resource_governor()
-        status = gov.get_status()
-        return f"### Swarm Resource Governor Status\n```json\n{json.dumps(status, indent=2)}\n```"
+        return f"### Swarm Resource Governor Status\n```json\n{json.dumps(get_swarm_resource_governor().get_status(), indent=2)}\n```"
 
-    # 8. PAUSE
     if action == "pause":
-        if not swarm_id.strip():
-            return "Error: 'swarm_id' parameter is required."
-        ok = coordinator.pause_swarm(swarm_id.strip())
-        return f"Swarm '{swarm_id}' paused: {ok}"
+        return f"Swarm '{swarm_id}' paused: {coordinator.pause_swarm(swarm_id)}"
 
-    # 9. RESUME
     if action == "resume":
-        if not swarm_id.strip():
-            return "Error: 'swarm_id' parameter is required."
-        ok = coordinator.resume_swarm(swarm_id.strip())
-        return f"Swarm '{swarm_id}' resumed: {ok}"
+        return f"Swarm '{swarm_id}' resumed: {coordinator.resume_swarm(swarm_id)}"
 
-    # 10. CANCEL
     if action == "cancel":
-        if not swarm_id.strip():
-            return "Error: 'swarm_id' parameter is required."
-        ok = coordinator.cancel_swarm(swarm_id.strip(), reason=reason)
-        return f"Swarm '{swarm_id}' cancelled: {ok}"
+        return f"Swarm '{swarm_id}' cancelled: {coordinator.cancel_swarm(swarm_id, reason=reason)}"
 
     return f"Unknown action '{action}'."

@@ -6,11 +6,11 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
-from app.gateway.internal_auth import get_trusted_internal_owner_user_id
 from alpha.agents.memory import MemoryConflictError, MemoryCorruptionError, MemoryManager, get_memory_manager
 from alpha.config.memory_config import get_memory_config
 from alpha.config.paths import make_safe_user_id
 from alpha.runtime.user_context import get_effective_user_id
+from app.gateway.internal_auth import get_trusted_internal_owner_user_id
 
 router = APIRouter(prefix="/api", tags=["memory"])
 
@@ -559,7 +559,12 @@ class SemanticBeliefCreateRequest(BaseModel):
     subject: str = Field(..., min_length=1)
     predicate: str = Field(..., min_length=1)
     object_val: str = Field(..., min_length=1)
-    confidence: float = Field(default=0.8, ge=0.0, le=1.0)
+    confidence: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Belief confidence. Defaults to the disclosed neutral baseline 0.5 (basis 'neutral_baseline_0.5') when omitted — never a fabricated 0.8.",
+    )
     salience: float = Field(default=0.7, ge=0.0, le=1.0)
     tags: list[str] = Field(default_factory=list)
 

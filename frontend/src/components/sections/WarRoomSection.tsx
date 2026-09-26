@@ -218,17 +218,17 @@ export function WarRoomSection() {
           />
           <StatCard
             label="System Latency (p95)"
-            value={`${telemetry.system_latency_p95_ms}ms`}
-            sub="Synthetic preview; not measured latency"
+            value={telemetry.system_latency_p95_ms == null ? "—" : `${telemetry.system_latency_p95_ms}ms`}
+            sub={telemetry.system_latency_p95_ms == null ? "No latency profile recorded yet" : "Synthetic preview; not measured latency"}
           />
           <StatCard
             label="Security Posture"
-            value={`${telemetry.security_posture_score}%`}
+            value={telemetry.security_posture_score == null ? "No scan" : `${telemetry.security_posture_score}%`}
             sub="Synthetic preview; not a security audit"
           />
           <StatCard
             label="Holdout Benchmark"
-            value={`${telemetry.holdout_pass_rate_percent}%`}
+            value={telemetry.holdout_pass_rate_percent == null ? "No active release" : `${telemetry.holdout_pass_rate_percent}%`}
             sub="Synthetic preview; no release verified"
           />
           <StatCard

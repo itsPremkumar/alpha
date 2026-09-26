@@ -1,3 +1,14 @@
+## Guarded source updater
+
+`scripts/auto_update.py` is the portable entry point; `auto_update.sh` and
+`auto_update.ps1` are thin platform launchers. The updater is argv-only and
+must be invoked through the project environment (`uv run --no-sync`) or the
+root Make targets. `register_autostart.ps1` may create the `Alpha_Update`
+scheduled task only when the selected operator policy (`ALPHA_UPDATE_POLICY_PATH`
+or the disabled repository template) enables it; the policy remains the kill
+switch. It must never be used to mutate Docker images, Helm releases, or
+Electron installer artifacts. See `docs/AUTO_UPDATE.md`.
+
 ## Service Startup Contracts
 
 The root `PORT` value configures Docker's published nginx ingress only; local

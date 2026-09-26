@@ -456,5 +456,11 @@ def get_default_catalog_entries():
         ("/state diff", CommandCategory.WORLD_MODEL, "Shows state changes", "/state diff", False),
         ("/state checkpoint", CommandCategory.WORLD_MODEL, "Saves current state", "/state checkpoint", False),
         ("/state restore", CommandCategory.WORLD_MODEL, "Restores state checkpoint", "/state restore", False),
+        # Module A spec commands (real handlers in module_a_handlers.py)
+        ("/boost", CommandCategory.MODEL, "Previews the thinking tier and token-budget hint the router derives for a task", "/boost <task text>", True),
+        ("/schedule", CommandCategory.EXECUTION, "Schedules a real cron job that runs a command or prompt", "/schedule <cron|every 30m> <command or prompt>", True),
+        ("/grill-me", CommandCategory.PLANNING, "Runs a real model turn that interrogates your goal with hard questions", "/grill-me <goal or plan>", True),
+        ("/teamwork-preview", CommandCategory.SWARM, "Read-only preview of the available team: roster, groups and swarm state", "/teamwork-preview", True),
+        ("/self-heal", CommandCategory.AUTONOMOUS_OPS, "Diagnoses self-healing state (estop, Sentinel journal) without applying fixes", "/self-heal", True),
     ]
     return entries

@@ -33,6 +33,7 @@ from langchain_core.utils.function_calling import convert_to_openai_function
 from langgraph.types import Command
 
 from alpha.tools.mcp_metadata import get_mcp_routing, is_mcp_tool
+from alpha.tools.tool_discovery_metrics import current_telemetry, record_search
 
 if TYPE_CHECKING:
     from langchain.agents.middleware import AgentMiddleware
@@ -213,6 +214,12 @@ def build_tool_search_tool(catalog: DeferredToolCatalog) -> BaseTool:
         else:
             content = json.dumps([convert_to_openai_function(t) for t in matched], indent=2, ensure_ascii=False)
             names = [t.name for t in matched]
+        # Telemetry only: `names` below is what this tool PROPOSES. The outer
+        # SkillToolPolicyMiddleware may still strip denied names from the
+        # Command, so the promotion verdict is computed from the policy
+        # decision that middleware published, never from this list. An absent,
+        # foreign, or malformed decision records `unverified`, not a promotion.
+        record_search(current_telemetry(), proposed=names, deferred=catalog.names)
         return Command(
             update={
                 "promoted": {"catalog_hash": catalog_hash, "names": names},

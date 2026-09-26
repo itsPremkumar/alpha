@@ -26,10 +26,11 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from alpha.config.system_one_config import RiskTier
+from alpha.config.system_one_config import PROVIDER_LAYA, RiskTier
 from alpha.models.system_one import (
     ChoiceQuestion,
     SystemOneClient,
+    evaluate_choice_partitioned,
     get_system_one_client,
 )
 
@@ -142,25 +143,42 @@ async def rank_candidates(
 
     threshold = cli.threshold_for(tier)
     state = build_state(task, pool)
+    candidate_by_id = {_slug(candidate, index): candidate for index, candidate in enumerate(pool)}
     label = site or SITE
+
+    def project_state(option_ids: list[str]) -> dict[str, Any]:
+        return {
+            "request": task[:3000],
+            "candidates": [{"id": option_id, "title": candidate_by_id[option_id].title} for option_id in option_ids if option_id in candidate_by_id],
+        }
 
     coarse = build_coarse_question(pool)
     allowed = set(coarse.criteria)
     try:
-        result = await cli.evaluate(state, {"pick": coarse}, min_confidence=threshold, site=label)
+        partitioned = await evaluate_choice_partitioned(
+            state,
+            coarse.instructions,
+            coarse.criteria,
+            min_confidence=threshold,
+            site=label,
+            client=cli,
+            shortlist_per_partition=min(refine, cli.choice_option_limit()) if refine > 0 else 1,
+            question_id="pick",
+            deadline=(cfg.laya_max_partition_latency_ms / 1000) if cfg.provider == PROVIDER_LAYA else None,
+            state_projector=project_state,
+        )
     except Exception as exc:
         logger.debug("System One coarse ranking failed (%s); falling back.", exc)
         return None
-    if result is None:
+    if partitioned is None:
         return None
-    answer = result.get("pick")
-    if answer is None or answer.type != "choice" or not answer.validate(allowed):
+    if not partitioned.ranking or not set(partitioned.ranking).issuperset(allowed):
         logger.debug("System One coarse ranking answer malformed; falling back.")
         return None
 
     ranking = Ranking(jev_used=True)
-    ranking.scores = dict(answer.probabilities)
-    ranking.ids = sorted(allowed, key=lambda k: -ranking.scores.get(k, 0.0))
+    ranking.scores = dict(partitioned.scores)
+    ranking.ids = list(partitioned.ranking)
 
     if refine <= 0 or len(pool) < 2:
         ranking.ids = ranking.ids[:top_n]
@@ -175,19 +193,31 @@ async def rank_candidates(
 
     refined_q = build_refine_question(shortlist)
     refined_allowed = set(refined_q.criteria)
+    refined_state = build_state(task, shortlist)
     try:
-        refined_result = await cli.evaluate(state, {"pick": refined_q}, min_confidence=threshold, site=f"{label}:refine")
+        refined_result = await evaluate_choice_partitioned(
+            refined_state,
+            refined_q.instructions,
+            refined_q.criteria,
+            min_confidence=threshold,
+            site=f"{label}:refine",
+            client=cli,
+            shortlist_per_partition=min(refine, cli.choice_option_limit()) if refine > 0 else 1,
+            question_id="pick",
+            deadline=(cfg.laya_max_partition_latency_ms / 1000) if cfg.provider == PROVIDER_LAYA else None,
+            state_projector=project_state,
+        )
     except Exception as exc:
         logger.debug("System One refine ranking failed (%s); keeping coarse order.", exc)
         refined_result = None
     if refined_result is not None:
-        refined_answer = refined_result.get("pick")
-        if refined_answer is not None and refined_answer.type == "choice" and refined_answer.validate(refined_allowed):
+        refined_answer = refined_result
+        if set(refined_answer.ranking).issuperset(refined_allowed):
             ranking.refined = True
-            refined_order = sorted(refined_allowed, key=lambda k: -refined_answer.probabilities.get(k, 0.0))
+            refined_order = [candidate for candidate in refined_answer.ranking if candidate in refined_allowed]
             # Shortlist first (better evidence), then the untouched remainder.
             ranking.ids = [*refined_order, *(i for i in ranking.ids if i not in refined_order)]
-            ranking.scores.update(refined_answer.probabilities)
+            ranking.scores.update(refined_answer.scores)
 
     ranking.ids = ranking.ids[:top_n]
     return ranking

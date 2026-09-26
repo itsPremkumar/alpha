@@ -12,6 +12,7 @@ import { BrandLogo, BrandMark } from "@/components/BrandLogo";
 
 interface ThreadSidebarProps {
   threads: Thread[];
+  threadsLoading?: boolean;
   activeThreadId: string | null;
   /** Current bot space (display name) — null = all conversations. */
   scopeLabel: string | null;
@@ -22,7 +23,7 @@ interface ThreadSidebarProps {
   onNewChat: () => void;
   onThreadsChanged: () => void;
   onBranchOpened?: (newThreadId: string) => void;
-  onExportHistory: () => void;
+  onExportHistory: () => void | Promise<void>;
   onImportHistory: (f: File) => Promise<string>;
   /** True when the Gateway is reachable — controls honest sync copy. Defaults to true. */
   serverOnline?: boolean;
@@ -31,6 +32,7 @@ interface ThreadSidebarProps {
 
 export function ThreadSidebar({
   threads,
+  threadsLoading = false,
   activeThreadId,
   onSelectThread,
   onNewChat,
@@ -63,48 +65,60 @@ export function ThreadSidebar({
   const [error, setError] = useState<string | null>(null);
   const [importMsg, setImportMsg] = useState<string | null>(null);
   const fileRef = React.useRef<HTMLInputElement>(null);
-  const [storage, setStorage] = useState({ threads: 0, messages: 0, kb: 0 });
+  const [storage, setStorage] = useState<{ threads: number; messages: number; kb: number } | null>(null);
+  const [storageError, setStorageError] = useState<string | null>(null);
+  const [messageHits, setMessageHits] = useState<SearchHit[]>([]);
+  // Search responses are matched against this generation before they are
+  // applied, so a slow earlier query cannot paint over a newer one.
+  const searchGenerationRef = React.useRef(0);
+
+  const refreshStorage = async () => {
+    try {
+      setStorage(await storageInfo());
+      setStorageError(null);
+    } catch (err) {
+      setStorage(null);
+      setStorageError(errMsg(err));
+    }
+  };
 
   useEffect(() => {
-    listProjects().then(setProjects).catch(() => setProjects([]));
-    try {
-      setStorage(storageInfo());
-    } catch {
-      /* ignore */
-    }
+    listProjects().then(setProjects).catch((err) => setError(errMsg(err)));
+    void refreshStorage();
   }, []);
 
   useEffect(() => {
-    try {
-      setStorage(storageInfo());
-    } catch {
-      /* ignore */
-    }
+    void refreshStorage();
   }, [threads]);
 
   useEffect(() => {
     if (search.trim().length < 2) {
       setServerHits(null);
+      setMessageHits([]);
       return;
     }
+    // Each keystroke starts a new generation. A slower earlier request must
+    // never overwrite the results of the query the user is actually looking at.
+    const generation = searchGenerationRef.current + 1;
+    searchGenerationRef.current = generation;
     const t = window.setTimeout(async () => {
-      try {
-        setServerHits(await searchThreads(search.trim()));
-      } catch {
+      const [serverResult, localResult] = await Promise.allSettled([
+        searchThreads(search.trim()),
+        searchLocalMessages(search),
+      ]);
+      if (searchGenerationRef.current !== generation) return;
+      if (localResult.status === "fulfilled") setMessageHits(localResult.value);
+      else setError(`Local message search failed. ${errMsg(localResult.reason)}`);
+      if (serverResult.status === "fulfilled") setServerHits(serverResult.value);
+      else {
         setServerHits(null);
+        setError(`Server conversation search failed. ${errMsg(serverResult.reason)}`);
       }
     }, 350);
     return () => window.clearTimeout(t);
   }, [search]);
 
   const local = threads.filter((t) => t.title.toLowerCase().includes(search.toLowerCase()));
-  const messageHits: SearchHit[] = (() => {
-    try {
-      return searchLocalMessages(search);
-    } catch {
-      return [];
-    }
-  })();
 
   const doRename = async () => {
     if (!renaming || !renaming.title.trim()) return;
@@ -112,12 +126,16 @@ export function ThreadSidebar({
     try {
       await renameThread(renaming.id, renaming.title.trim());
     } catch (e) {
-      setError(errMsg(e));
+      setError(`The chat was not renamed. ${errMsg(e)}`);
+      return;
     }
     try {
-      if (target) upsertLocalThread({ ...target, title: renaming.title.trim(), updated_at: new Date().toISOString() });
-    } catch {
-      /* ignore */
+      if (target) {
+        await upsertLocalThread({ ...target, title: renaming.title.trim(), updated_at: new Date().toISOString() });
+        await refreshStorage();
+      }
+    } catch (err) {
+      setError(errMsg(err));
     }
     setRenaming(null);
     setMenuFor(null);
@@ -128,13 +146,12 @@ export function ThreadSidebar({
     if (!window.confirm(`Delete "${title}"? This removes its history.`)) return;
     try {
       await deleteThread(id);
+      await removeLocalThread(id);
+      await refreshStorage();
     } catch (e) {
-      setError(errMsg(e));
-    }
-    try {
-      removeLocalThread(id);
-    } catch {
-      /* ignore */
+      // A failed server delete must not erase the only surviving local copy.
+      setError(`The chat was not deleted. ${errMsg(e)}`);
+      return;
     }
     setMenuFor(null);
     onThreadsChanged();
@@ -237,7 +254,9 @@ export function ThreadSidebar({
           ) : (
             <span className="text-[11px] font-semibold text-muted-foreground">All conversations</span>
           )}
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-bold">{threads.length}</span>
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-bold">
+            {threadsLoading ? "…" : threads.length}
+          </span>
         </div>
       </div>
 
@@ -264,9 +283,11 @@ export function ThreadSidebar({
             Server results ({serverHits.length})
           </p>
         )}
-        {(serverHits !== null ? [] : local).length === 0 && serverHits === null ? (
+        {threadsLoading && serverHits === null ? (
+          <div className="text-center py-8 text-xs text-muted-foreground">Loading conversations…</div>
+        ) : (serverHits !== null ? [] : local).length === 0 && serverHits === null ? (
           <div className="text-center py-8 text-xs text-muted-foreground">
-            {search.trim() ? "No conversations found" : "No conversations yet — start one with New Chat."}
+            {search.trim() ? "No conversations found" : "No conversations yet — send a message to start one."}
           </div>
         ) : (
           <>
@@ -396,16 +417,29 @@ export function ThreadSidebar({
 
       {/* History storage footer */}
       <div className="p-3 border-t border-border/60 space-y-2">
-        <p className="text-[10px] text-muted-foreground" title={serverOnline ? "Every chat is stored on the server; this browser keeps a copy for offline use" : "No server connection — chats live only in this browser until the Gateway is reachable"}>
-          💾 {storage.threads} chats • {storage.messages} msgs • {serverOnline ? "auto-saved to server" : "saved in this browser only"}
+        <p
+          className={`text-[10px] ${storageError ? "text-destructive" : "text-muted-foreground"}`}
+          title={
+            storageError
+              ? `Local history storage error: ${storageError}`
+              : serverOnline
+                ? "This browser keeps a complete local copy and the Gateway keeps the live server history"
+                : "No server connection — this browser keeps chats until the Gateway is reachable"
+          }
+        >
+          💾 {storage
+            ? `${storage.threads} chats • ${storage.messages} msgs`
+            : storageError
+              ? "local history unavailable"
+              : "loading local history…"} • {storageError ? "storage error" : serverOnline ? "complete local + server copy" : "complete local copy"}
         </p>
         {importMsg && <p className="text-[11px] text-emerald-600">{importMsg}</p>}
         <div className="flex items-center gap-1.5">
           <button
             type="button"
-            onClick={onExportHistory}
+            onClick={() => void onExportHistory()}
             className="flex-1 inline-flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg border border-border text-[11px] font-medium hover:bg-muted"
-            title="Download all history as a file"
+            title="Download the complete local history as a file"
           >
             <Download className="size-3.5" /> Backup
           </button>
@@ -454,20 +488,25 @@ export function ThreadSidebar({
             <button
               type="button"
               onClick={() => {
-                if (!window.confirm(serverOnline ? "Erase ALL chats saved in this browser? (Server copies are kept.)" : "Erase ALL chats saved in this browser? (No server connection — this cannot be undone.)")) return;
-                try {
-                  clearLocalStore();
-                } catch {
-                  /* ignore */
-                }
-                onThreadsChanged();
+                void (async () => {
+                  if (!window.confirm(serverOnline ? "Erase the COMPLETE local copy of ALL chats? Server copies are kept." : "Erase ALL local chats? (No server connection — this cannot be undone.)")) return;
+                  try {
+                    await clearLocalStore();
+                    setStorage(null);
+                    setStorageError(null);
+                    onThreadsChanged();
+                  } catch (err) {
+                    setStorageError(errMsg(err));
+                    setError(`Local history could not be erased. ${errMsg(err)}`);
+                  }
+                })();
               }}
               className="hover:text-destructive"
               title="Erase browser-saved history"
             >
               Erase saved
             </button>
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted/80">v2.0</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted/80">v3.0</span>
           </span>
         </div>
       </div>

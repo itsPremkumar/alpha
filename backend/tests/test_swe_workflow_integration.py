@@ -38,7 +38,12 @@ def test_openhands_full_engineering_workflow(tmp_path):
     # 3. Isolated Oracle Inquiry
     oracle = OracleService()
     advisory = oracle.consult("best practices for asymmetric JWT token verification")
-    assert advisory.confidence >= 0.9
+    # No curated domain keyword matches this query (async/loop/coroutine,
+    # patch/diff/git, docker/container), so the generic fallback must abstain
+    # at 0.0 confidence and disclose the fallback — not report the old
+    # fabricated 0.98.
+    assert advisory.confidence == 0.0
+    assert "no domain match" in advisory.guidance.lower()
 
     # 4. Defense-in-Depth Shell AST Security Check
     security_policy = ConfirmationPolicy()

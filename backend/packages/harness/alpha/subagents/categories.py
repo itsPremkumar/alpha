@@ -153,12 +153,20 @@ BUILTIN_CATEGORIES: dict[str, SubagentCategoryConfig] = {
     "deep-research": SubagentCategoryConfig(
         description="Autonomous multi-hop deep research with 5-pass search, recursive gap filling, contradiction detection, and publication-ready citations.",
         prompt_append=(
-            "Execute an exhaustive multi-hop deep research investigation. "
+            "Execute a bounded multi-hop deep research investigation. "
             "Formulate a 5-pass search strategy (Discovery, Specific Evidence, Adversarial Contradiction, Fact Verification, Strategic Synthesis). "
             "Use the `deep_research` or `compile_five_pass_search` tools when synthesizing complex topics. "
-            "Strictly extract and verify source citations [S1, S2, ...], resolve knowledge gaps, and report verified contradictions explicitly."
+            "Use `agent_eye_search` with `agent_eye_sources` for broad academic, code, government, scientific, or package-registry coverage. "
+            "Bind extracted findings to source citations, preserve unverified status, resolve knowledge gaps, and never invent evidence when discovery is empty."
         ),
-        tools=["deep_research", "web_search", "web_fetch", "compile_five_pass_search"],
+        tools=[
+            "deep_research",
+            "web_search",
+            "web_fetch",
+            "agent_eye_search",
+            "agent_eye_sources",
+            "compile_five_pass_search",
+        ],
         max_turns=150,
     ),
 }

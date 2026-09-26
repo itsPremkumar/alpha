@@ -7,7 +7,7 @@ Extends the existing read_before_write middleware with review-time checks.
 import logging
 import re
 from collections.abc import Callable
-from typing import override
+from typing import Any, override
 
 from langchain.agents import AgentState
 from langchain.agents.middleware import AgentMiddleware
@@ -149,8 +149,16 @@ class ReviewGuardMiddleware(AgentMiddleware[ReviewGuardMiddlewareState]):
         # Execute the tool first to get the new content
         result = await handler(request)
 
-        # Check comment density on successful writes
-        if isinstance(result, ToolMessage) and result.status != "error":
+        # Check comment density on successful writes. Two corrections here:
+        # 1. ``enforce_on_extensions`` was never consulted, so the density policy
+        #    was applied to every extension the comment-pattern table happened to
+        #    know (including .md/.go/.rs the operator had excluded).
+        # 2. The old ``isinstance(result, ToolMessage)`` gate meant enforcement
+        #    silently disappeared whenever the handler returned anything else
+        #    (a Command, or a wrapper object): a guard must not depend on the
+        #    concrete return class to do its job, so the error check is
+        #    duck-typed instead.
+        if extension in self._config.enforce_on_extensions and getattr(result, "status", None) != "error":
             new_content = self._extract_new_content(tool_name, tool_args, result)
             if new_content:
                 ratio = _calculate_comment_ratio(new_content, extension)
@@ -173,6 +181,49 @@ class ReviewGuardMiddleware(AgentMiddleware[ReviewGuardMiddlewareState]):
                     )
 
         return result
+
+    def _extract_new_content(
+        self,
+        tool_name: str,
+        tool_args: dict[str, Any],
+        result: object,
+    ) -> str | None:
+        """Return the content a permitted write actually applied, or ``None``.
+
+        This method is called by :meth:`wrap_tool_call` but was never defined: the
+        call site survived the ``agent_workspace`` -> ``alpha`` rebrand while the
+        method did not. The consequence was silent and severe — every write that
+        passed the role check reached ``self._extract_new_content(...)`` and
+        raised ``AttributeError`` AFTER the edit had already been applied, so the
+        agent saw a failure for a change that had landed and the comment-density
+        guard never ran at all.
+
+        The content comes from the tool's own arguments, which is the only place
+        it is authoritative:
+
+        * ``write_file`` carries the complete new file in ``content``;
+        * ``str_replace`` carries the inserted text in ``new_str``.
+
+        The tool RESULT body is deliberately NOT used as a fallback: write tools
+        report a confirmation such as ``"Wrote 12 lines to x.py"``, and density
+        checking that string would reject good writes for the wrong reason. When
+        neither argument is present the shape is unexpected, so the guard says so
+        loudly and leaves the write alone rather than failing it on a guess.
+        """
+        if tool_name == "write_file":
+            content = tool_args.get("content")
+            if isinstance(content, str):
+                return content
+        elif tool_name == "str_replace":
+            new_str = tool_args.get("new_str")
+            if isinstance(new_str, str):
+                return new_str
+        logger.warning(
+            "ReviewGuard: could not determine the content written by %s; "
+            "comment density was NOT checked for this call",
+            tool_name,
+        )
+        return None
 
     def release_policy_parameters(self) -> dict[str, object]:
         """Expose config for assembly identity."""

@@ -1,0 +1,18 @@
+{
+  "id": "alpha-write-precision-001",
+  "ability": "write_precision",
+  "scope": {"user_id": "eval-write-001", "agent_name": "alpha-memory-evaluation"},
+  "sessions": [
+    {
+      "session_id": "s1",
+      "events": [
+        {"id": "event-important", "text": "The incident commander is Jo.", "fact_id": "fact-important", "answer": "Jo", "expected_stored": true},
+        {"id": "event-noise", "text": "A transient debug counter was 42.", "fact_id": "fact-noise", "answer": "42", "expected_stored": false}
+      ]
+    }
+  ],
+  "questions": [
+    {"id": "q1", "question": "Who is the incident commander?", "expected": "Jo", "type": "write_precision", "evidence_ids": ["event-important"]}
+  ],
+  "metadata": {"expected_stored": ["event-important"], "description": "Original admission-precision fixture: one important fact and one explicit non-memory."}
+}

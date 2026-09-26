@@ -29,10 +29,13 @@ import { SystemVitals, fetchSystemVitals } from "@/lib/systemMonitor";
  */
 
 interface Vitals {
-  online: boolean;
+  /** true = online, false = offline, null = probe failed so status is unknown. */
+  online: boolean | null;
   version: string;
   stats: ConsoleStats | null;
   probes: Probe[];
+  /** True when the probe request itself failed — counts below are unknown, not zero. */
+  probesFailed: boolean;
   host: SystemVitals | null;
 }
 
@@ -50,18 +53,24 @@ function formatCost(cost: number | null, currency: string | null): string {
 }
 
 async function load(): Promise<Vitals> {
-  const [probes, statsRes, version, host] = await Promise.all([
-    probeAll().catch(() => [] as Probe[]),
+  // Three-state probes (same pattern as SettingsSection): a failed probe
+  // request is "status unavailable" — never collapsed into an empty/zero view.
+  const [probesRes, statsRes, version, host] = await Promise.all([
+    probeAll()
+      .then((list) => ({ ok: true as const, list }))
+      .catch(() => ({ ok: false as const, list: [] as Probe[] })),
     fetchConsoleStats().catch(() => null),
     fetchOpsVersion().catch(() => "unknown"),
     fetchSystemVitals().catch(() => null),
   ]);
+  const probes = probesRes.list;
   const gateway = probes.find((p) => p.key === "gateway");
   return {
-    online: Boolean(gateway?.ok),
+    online: probesRes.ok ? Boolean(gateway?.ok) : null,
     version,
     stats: statsRes,
     probes,
+    probesFailed: !probesRes.ok,
     host,
   };
 }
@@ -135,9 +144,9 @@ export function WorkspaceVitals({ className = "" }: { className?: string }) {
 
   return (
     <div className={`flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] ${className}`}>
-      <Badge tone={vitals.online ? "green" : "red"}>
+      <Badge tone={vitals.probesFailed ? "gray" : vitals.online ? "green" : "red"}>
         <Server className="size-3" />
-        {vitals.online ? "Gateway online" : "Gateway offline"}
+        {vitals.probesFailed ? "Gateway status unavailable" : vitals.online ? "Gateway online" : "Gateway offline"}
       </Badge>
 
       <span title={`Alpha version ${vitals.version}`} className="inline-flex items-center gap-1 text-muted-foreground whitespace-nowrap">
@@ -172,7 +181,15 @@ export function WorkspaceVitals({ className = "" }: { className?: string }) {
         </>
       )}
 
-      {subsystems.length > 0 && (
+      {vitals.probesFailed ? (
+        <span
+          title="The subsystem probe request failed — status is unknown, not zero."
+          className="inline-flex items-center gap-1 text-muted-foreground whitespace-nowrap"
+        >
+          <Radio className="size-3" />
+          <span className="font-semibold text-foreground">Subsystem status unavailable</span>
+        </span>
+      ) : subsystems.length > 0 && (
         <span className="inline-flex items-center gap-1 text-muted-foreground whitespace-nowrap">
           <Radio className="size-3" />
           <span className="font-semibold text-foreground tabular-nums">

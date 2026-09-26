@@ -66,6 +66,49 @@ _PAT_ROUTE_RULES: tuple[tuple[frozenset[str], re.Pattern[str]], ...] = (
     (frozenset({"GET", "PATCH", "DELETE"}), re.compile(r"^/api/projects/[^/]+$")),
     (frozenset({"POST"}), re.compile(r"^/api/projects/[^/]+/(archive|restore)$")),
     (frozenset({"GET"}), re.compile(r"^/api/projects/[^/]+/threads$")),
+    # The rest of the projects router, enumerated per implemented path shape
+    # with the exact methods the router exposes (the contract in
+    # tests/test_pat_auth.py derives the admitted set from the MOUNTED router,
+    # so every one of these is a real, reachable route — not a wildcard). The
+    # projects router outgrew the original four rules, leaving 68 implemented
+    # routes PAT-default-denied even though all of them carry
+    # ``@require_permission``: admission here only decides whether a PAT may
+    # reach the route at all, and the projects:read|write|delete scope check
+    # still runs on every call. The alternation is kept method-exact so the
+    # deliberately-unimplemented neighbours stay denied: ``archive``/``restore``
+    # remain POST-only, ``threads`` remains GET-only, and no method is admitted
+    # for a shape the router does not implement.
+    (
+        frozenset({"GET"}),
+        re.compile(
+            r"^/api/projects/[^/]+/(?:approvals|avo/lineage|benchmarks/leaderboard|context|crew|events"
+            r"|goals/[^/]+|memory|meta-compiler/lineage|perpetual/status|presence|rsi/status"
+            r"|self-config/status|state|trajectories|trajectories/[^/]+|war-room)$"
+        ),
+    ),
+    (
+        frozenset({"GET", "POST"}),
+        re.compile(r"^/api/projects/[^/]+/(?:checkpoints|decisions|epistemics/claims|handoffs|locks)$"),
+    ),
+    (frozenset({"GET", "PUT"}), re.compile(r"^/api/projects/[^/]+/constitution$")),
+    (frozenset({"PATCH"}), re.compile(r"^/api/projects/[^/]+/collaboration$")),
+    (
+        frozenset({"DELETE"}),
+        re.compile(r"^/api/projects/[^/]+/(?:agents/[^/]+|locks/[^/]+)$"),
+    ),
+    (
+        frozenset({"POST"}),
+        re.compile(
+            r"^/api/projects/[^/]+/(?:agents|approvals/[^/]+/resolve|avo/iterate|canary/probe"
+            r"|checkpoints/[^/]+/restore|completion-check|conflicts|conflicts/detect|conflicts/resolve"
+            r"|epistemics/claims/[^/]+/evidence|goals|goals/[^/]+/nodes/[^/]+/status"
+            r"|goals/[^/]+/subgoals|handoffs/[^/]+/accept|heartbeat|join|leave|lock-requests"
+            r"|lock-requests/[^/]+/resolve|memory/compact|meta-compiler/benchmark|meta-compiler/compile"
+            r"|meta-compiler/hotswap|meta-compiler/rollback|perpetual/consolidate|perpetual/discover"
+            r"|perpetual/goals|perpetual/heartbeat|perpetual/start|perpetual/stop|phase|rsi/cycle"
+            r"|self-config/infer|self-config/tune|trajectories/[^/]+/replay|trajectories/[^/]+/step)$"
+        ),
+    ),
     # Runs subtree: enumerated per implemented subroute instead of a
     # ``runs(/.*)?`` wildcard, so a route added under /runs is default-denied
     # until explicitly listed — the same no-dead-methods precision the
@@ -83,6 +126,9 @@ _PAT_ROUTE_RULES: tuple[tuple[frozenset[str], re.Pattern[str]], ...] = (
         re.compile(r"^/api/threads/[^/]+/runs/(?!stream$|wait$|regenerate$|edit-regenerate$)[^/]+$"),
     ),
     (frozenset({"POST"}), re.compile(r"^/api/threads/[^/]+/runs/[^/]+/cancel$")),
+    # ``resume`` is implemented by the run router (POST) and carries the same
+    # runs:write permission guard, so it is admitted alongside ``cancel``.
+    (frozenset({"POST"}), re.compile(r"^/api/threads/[^/]+/runs/[^/]+/resume$")),
     (
         frozenset({"GET"}),
         re.compile(r"^/api/threads/[^/]+/runs/[^/]+/(join|messages|events|workspace-changes)$"),

@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 import uuid
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -136,6 +137,10 @@ class KPISpec(BaseModel):
     trend: str = "stable"  # improving, stable, deteriorating
     threshold_critical: float
     last_evaluated: float = Field(default_factory=time.time)
+    #: How ``current_value`` was produced (mirrors rfc.py's seed_demo_data
+    #: disclosure): "measured" = a real reading; "seed_demo_data" = illustrative
+    #: seed shipped with the archetype, NOT a live measurement.
+    basis: Literal["measured", "seed_demo_data"] = "measured"
 
 
 class EvolutionRecord(BaseModel):
@@ -161,7 +166,13 @@ class CompanyState(BaseModel):
     kpis: list[KPISpec] = Field(default_factory=list)
     active_bots_count: int = 0
     sleeping_bots_count: int = 0
+    #: False = the attendance ledger has no pulses yet, so the two counts above
+    #: are "nobody has reported", NOT an observation that everyone is idle.
+    #: Readers must not present them as measured attendance in that case.
+    attendance_measured: bool = False
     running_tasks_count: int = 0
-    overall_health_percent: float = 100.0
+    #: None = organizational health has not been measured yet. Never a
+    #: fabricated "perfect" default; readers must handle None explicitly.
+    overall_health_percent: float | None = None
     evolution_journal: list[EvolutionRecord] = Field(default_factory=list)
     updated_at: float = Field(default_factory=time.time)

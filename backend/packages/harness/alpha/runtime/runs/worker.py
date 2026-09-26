@@ -86,7 +86,7 @@ from alpha.utils.messages import message_to_text
 from alpha.workspace_changes import capture_workspace_snapshot, get_changed_output_paths, record_workspace_changes
 from alpha.workspace_changes.types import WorkspaceSnapshot
 
-from .manager import RunManager, RunRecord, RunStartOutcome
+from .manager import GATEWAY_SHUTDOWN_RECOVERY_REASON, MODEL_FAILURE_RECOVERY_REASON, RunManager, RunRecord, RunStartOutcome
 from .naming import resolve_root_run_name
 from .schemas import RunStatus
 
@@ -876,9 +876,11 @@ async def run_agent(
                     exc_info=True,
                 )
         else:
+            shutdown_reason = GATEWAY_SHUTDOWN_RECOVERY_REASON if record.shutdown_requested and not record.cancel_requested else None
             await run_manager.set_status(
                 run_id,
                 RunStatus.interrupted,
+                stop_reason=shutdown_reason,
                 **terminal_status_kwargs,
             )
             logger.info("Run %s was cancelled", run_id)
@@ -1330,6 +1332,7 @@ async def run_agent(
                 run_id,
                 RunStatus.error,
                 error=error_msg,
+                stop_reason=MODEL_FAILURE_RECOVERY_REASON,
                 **terminal_status_kwargs,
             )
             if cancel_action is not None:

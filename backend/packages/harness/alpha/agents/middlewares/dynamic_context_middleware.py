@@ -47,6 +47,7 @@ import os
 import posixpath
 import re
 import uuid
+from collections.abc import Callable
 from datetime import datetime, tzinfo
 from typing import TYPE_CHECKING, override
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -259,6 +260,49 @@ def _is_user_injection_target(message: object) -> bool:
     if message.id and str(message.id).endswith(INJECTED_USER_MESSAGE_ID_SUFFIX):
         return False
     return True
+
+
+async def _timeboxed_to_thread(func: Callable[[], dict | None], timeout_seconds: float) -> dict | None:
+    """Run *func* on a worker thread under a NON-cancelling time-box.
+
+    ``asyncio.wait_for`` cancels what it wraps when the deadline expires, and
+    that cancellation propagates into the ``concurrent.futures`` job: a job
+    still PENDING in the queue is discarded before any worker ever runs it, so
+    whether the worker starts becomes a race against the deadline and every
+    lifecycle observation (started/finished, call counts) turns
+    nondeterministic. This helper bounds only the WAIT — at the deadline it
+    raises ``TimeoutError`` while a queued or running worker is left to
+    finish. Its late outcome is consumed by ``_discard_late_worker_outcome``
+    so a late failure is disclosed in the logs instead of surfacing as an
+    unretrieved-task warning, and a late result can never be mistaken for
+    this call's result.
+    """
+    task = asyncio.ensure_future(asyncio.to_thread(func))
+    try:
+        done, _ = await asyncio.wait({task}, timeout=timeout_seconds)
+    except asyncio.CancelledError:
+        # The waiter was cancelled (e.g. client disconnect), not the worker:
+        # let it finish and consume its outcome so it cannot surface as an
+        # unretrieved-exception warning.
+        task.add_done_callback(_discard_late_worker_outcome)
+        raise
+    if not done:
+        task.add_done_callback(_discard_late_worker_outcome)
+        raise TimeoutError(f"time-box of {timeout_seconds}s exceeded")
+    # Completed within the budget: surface the result or the worker's own
+    # exception exactly as the unwrapped call would have.
+    return task.result()
+
+
+def _discard_late_worker_outcome(task: asyncio.Future) -> None:
+    """Consume a worker outcome abandoned at its deadline — disclose, never drop silently."""
+    if task.cancelled():
+        return
+    error = task.exception()
+    if error is not None:
+        logger.warning("DynamicContextMiddleware: time-boxed worker failed after its deadline: %r", error)
+    else:
+        logger.warning("DynamicContextMiddleware: time-boxed worker finished after its deadline; late result discarded")
 
 
 class SubagentDateContextMiddleware(AgentMiddleware):
@@ -573,11 +617,12 @@ class DynamicContextMiddleware(AgentMiddleware):
         # block for tens of minutes (OS TCP timeout).  Time-box injection so
         # the request degrades gracefully (no new dynamic-context update)
         # rather than hanging. Frozen context already in state remains active.
+        #
+        # The box bounds only the wait: a queued worker is NOT cancelled
+        # (see _timeboxed_to_thread), so its lifecycle stays observable and a
+        # late outcome is discarded by callback, never applied silently.
         try:
-            result = await asyncio.wait_for(
-                asyncio.to_thread(inject_with_policy),
-                timeout=_INJECT_TIMEOUT_SECONDS,
-            )
+            result = await _timeboxed_to_thread(inject_with_policy, _INJECT_TIMEOUT_SECONDS)
         except TimeoutError as exc:
             from alpha.agents.memory import MemoryReadError
 

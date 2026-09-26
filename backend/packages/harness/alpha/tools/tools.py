@@ -13,6 +13,7 @@ from alpha.tools.builtins import (
     a2a_tool,
     agent_message_tool,
     agent_observe_tool,
+    alpha_peer_network_tool,
     analyze_semantic_git_delta,
     ask_clarification_tool,
     ask_oracle,
@@ -55,9 +56,17 @@ from alpha.tools.builtins import (
     create_workflow_checkpoint,
     cronjob_manage,
     deep_research,
+    deep_web_search,
     delegate_to_deep_agent,
     deliberate_artifact_quality,
     deliberation_tool,
+    desktop_inspect_ui_tree_tool,
+    desktop_keyboard_action_tool,
+    desktop_mouse_action_tool,
+    # Free local-first OS computer use (Module C):
+    desktop_screenshot_tool,
+    desktop_system_one_action_tool,
+    desktop_window_manage_tool,
     diagnose_and_heal_environment,
     dispatch_discipline_worker,
     emergency_stop_manage,
@@ -85,6 +94,7 @@ from alpha.tools.builtins import (
     invoke_python_skill_tool,
     job_tool,
     kanban_board_tool,
+    keyless_web_search,
     kibitzer_nudge_manage,
     learning_graph_manage,
     list_available_deep_agents,
@@ -125,6 +135,9 @@ from alpha.tools.builtins import (
     run_variation_operator_step,
     schedule_work_queue,
     search_project_docs,
+    # P4: register the canonical past-session memory search (was defined in
+    # code_agentic_core but never exported/registered, so unreachable).
+    search_session_memory,
     self_heal_diagnose,
     self_improvement_loop_tool,
     session_search_tool,
@@ -141,6 +154,7 @@ from alpha.tools.builtins import (
     trajectory_audit_tool,
     update_progress_card,
     verify_command_approval,
+    verify_web_ui_visual_regression,
     view_image_tool,
     visual_verify_artifact,
     workflow_dag_manage,
@@ -167,6 +181,7 @@ BUILTIN_TOOLS = [
     # Ultra-Advanced Bot Mode & Collaborative Kanban extensions:
     bot_roster_tool,
     group_chat_tool,
+    alpha_peer_network_tool,
     kanban_board_tool,
     # Autonomous Continuous Goal, Canvas & Trajectory extensions:
     goal_engine_tool,
@@ -247,6 +262,12 @@ BUILTIN_TOOLS = [
     generate_repo_map,
     auto_test_and_repair,
     manage_code_checkpoint,
+    # P4: canonical past-session memory search. The historical duplicate was a
+    # bash-based memory tool; this Python implementation (SQLite FTS5 + BM25
+    # with cron demotion, in code_agentic_core) is the canonical one and was
+    # previously defined but never registered, leaving it unreachable. Nothing
+    # is deleted — the bash name stays an alias wherever it still exists.
+    search_session_memory,
     # Enterprise Security Enclave & Multi-Modal Boundary Enforcement:
     enterprise_security_manage,
     astra_security_manage,
@@ -282,6 +303,12 @@ BUILTIN_TOOLS = [
     generate_curriculum_plan,
     create_workflow_checkpoint,
     visual_verify_artifact,
+    # Structural visual-regression diff over parsed accessibility trees
+    # (real element-parity math in alpha.verification.visual_e2e_engine,
+    # covered by tests/test_visual_e2e_engine.py). Defined in
+    # code_agentic_core but never exported or registered until now, which
+    # made it unreachable.
+    verify_web_ui_visual_regression,
     manage_reflexion_memory,
     compile_problem_model,
     # SOTA Frontier Agentic Software Engineering Tools:
@@ -302,6 +329,20 @@ BUILTIN_TOOLS = [
     # so the registry dropped them and no agent could reach either one.
     execute_slash_command_tool,
     identify_autonomous_command_tool,
+    # Keyless web search ported from AgentEye: keyless_web_search runs the
+    # httpx-first fallback chain; deep_web_search runs multi-query research on
+    # top of it. Honest ok/no_results/failed statuses; optional ddgs absence
+    # names the real package instead of fabricating results.
+    keyless_web_search,
+    deep_web_search,
+    # Free local-first OS computer use & laptop automation (Module C):
+    # zero-token accessibility grounding + sentinel-guarded desktop input.
+    desktop_screenshot_tool,
+    desktop_inspect_ui_tree_tool,
+    desktop_mouse_action_tool,
+    desktop_keyboard_action_tool,
+    desktop_window_manage_tool,
+    desktop_system_one_action_tool,
 ]
 
 

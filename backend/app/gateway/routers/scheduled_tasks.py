@@ -9,15 +9,6 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import AwareDatetime, BaseModel, Field
 
-from app.gateway.authz import require_permission
-from app.gateway.deps import (
-    get_config,
-    get_optional_user_from_request,
-    get_scheduled_task_repo,
-    get_scheduled_task_run_repo,
-    get_scheduled_task_service,
-    get_thread_store,
-)
 from alpha.config.agents_config import AGENT_NAME_PATTERN, load_agent_config
 from alpha.persistence.scheduled_tasks import ActiveScheduledTaskMutationConflict
 from alpha.scheduler.schedules import (
@@ -30,6 +21,16 @@ from alpha.scheduler.schedules import (
     next_run_at as compute_next_run_at,
 )
 from alpha.utils.thread_id import ThreadId
+from app.gateway.authz import require_permission
+from app.gateway.deps import (
+    get_config,
+    get_optional_user_from_request,
+    get_scheduled_task_repo,
+    get_scheduled_task_run_repo,
+    get_scheduled_task_service,
+    get_thread_store,
+)
+from app.scheduler.queue_health import collect_queue_health
 
 router = APIRouter(prefix="/api", tags=["scheduled-tasks"])
 
@@ -180,6 +181,29 @@ async def list_scheduled_tasks(request: Request):
     if user is None:
         return []
     return await repo.list_by_user(str(user.id))
+
+
+# Registered before GET /scheduled-tasks/{task_id} so the literal segment
+# "queue-health" is not swallowed by the {task_id} wildcard.
+@router.get("/scheduled-tasks/queue-health")
+@require_permission("threads", "read")
+async def scheduled_task_queue_health(request: Request):
+    """Queue health for scheduled tasks: counts, ages, and poller liveness.
+
+    Payload-free by design — no task ids, titles, prompts, or thread ids.
+    ``active_runs`` is an exact global count; queued figures come from the
+    scheduler's bounded drain view and say so (``queued_sample_*``,
+    ``oldest_queued_age_seconds_in_sample``). The service handle is read via
+    ``app.state`` (not the raising dep) so a disabled scheduler reports
+    ``poller: not_configured`` instead of 503.
+    """
+    user = await get_optional_user_from_request(request)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    task_repo = get_scheduled_task_repo(request)
+    run_repo = get_scheduled_task_run_repo(request)
+    service = getattr(request.app.state, "scheduled_task_service", None)
+    return await collect_queue_health(task_repo=task_repo, run_repo=run_repo, service=service, user_id=str(user.id))
 
 
 @router.post("/scheduled-tasks")

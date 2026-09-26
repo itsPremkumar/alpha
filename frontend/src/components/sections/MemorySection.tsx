@@ -106,29 +106,86 @@ export function MemorySection() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
+  // Per-surface load failures: a failed fetch is rendered as "unavailable",
+  // never substituted with empty facts/items/graph that read as "you have
+  // nothing".
+  const [factsError, setFactsError] = useState<string | null>(null);
+  const [overviewError, setOverviewError] = useState<string | null>(null);
+  const [workingError, setWorkingError] = useState<string | null>(null);
+  const [beliefsError, setBeliefsError] = useState<string | null>(null);
+  const [skillsError, setSkillsError] = useState<string | null>(null);
+
   const flash = (msg: string) => {
     setNotice(msg);
     window.setTimeout(() => setNotice(null), 4500);
   };
 
+  // Tab loaders: on failure they flag the tab instead of leaving (or
+  // substituting) an empty list that would render as a truthful empty state.
+  const loadWorking = async () => {
+    try {
+      const items = await fetchWorkingMemory();
+      setWorkingItems(items);
+      setWorkingError(null);
+    } catch (e) {
+      setWorkingError(errMsg(e));
+    }
+  };
+
+  const loadBeliefs = async () => {
+    try {
+      const res = await fetchSemanticGraph();
+      setSemanticNodes(res.nodes);
+      setBeliefsError(null);
+    } catch (e) {
+      setBeliefsError(errMsg(e));
+    }
+  };
+
+  const loadSkills = async () => {
+    try {
+      const skills = await fetchProceduralSkills();
+      setProceduralSkills(skills);
+      setSkillsError(null);
+    } catch (e) {
+      setSkillsError(errMsg(e));
+    }
+  };
+
   const loadAll = async () => {
     setLoading(true);
     setError(null);
+    setFactsError(null);
+    setOverviewError(null);
     try {
       const [mem, st, cog] = await Promise.all([
-        fetchMemory().catch(() => ({ facts: [], summary: "", raw: {} })),
+        // Failures become explicit per-surface errors — never {}fakes like
+        // { facts: [], summary: "" } that would render as a real empty store.
+        fetchMemory()
+          .then((value) => ({ ok: true as const, value }))
+          .catch((e) => ({ ok: false as const, error: errMsg(e) })),
         memoryStatus().catch(() => null),
-        fetchCognitiveOverview().catch(() => null),
+        fetchCognitiveOverview()
+          .then((value) => ({ ok: true as const, value }))
+          .catch((e) => ({ ok: false as const, error: errMsg(e) })),
       ]);
-      setFacts(mem.facts);
-      setSummary(mem.summary);
+      if (mem.ok) {
+        setFacts(mem.value.facts);
+        setSummary(mem.value.summary);
+      } else {
+        setFactsError(mem.error);
+      }
       setStatus(st);
-      setCognitive(cog);
+      if (cog.ok) {
+        setCognitive(cog.value);
+      } else {
+        setOverviewError(cog.error);
+      }
 
-      // Load specific tab data in background
-      fetchWorkingMemory().then(setWorkingItems).catch(() => {});
-      fetchSemanticGraph().then((res) => setSemanticNodes(res.nodes)).catch(() => {});
-      fetchProceduralSkills().then(setProceduralSkills).catch(() => {});
+      // Load specific tab data in background — each failure flags its tab.
+      void loadWorking();
+      void loadBeliefs();
+      void loadSkills();
     } catch (e) {
       setError(errMsg(e));
     } finally {
@@ -355,6 +412,7 @@ export function MemorySection() {
       {/* Cognitive Status Badges */}
       <div className="flex gap-2 flex-wrap text-[11px] items-center">
         <Badge tone="blue">Cognitive V2.0</Badge>
+        {overviewError && <Badge tone="red">overview unavailable</Badge>}
         {cognitive && (
           <>
             <Badge tone="purple">{cognitive.tiers.semantic_graph.total_nodes} beliefs</Badge>
@@ -393,35 +451,35 @@ export function MemorySection() {
         <button
           onClick={() => {
             setTab("beliefs");
-            fetchSemanticGraph().then((res) => setSemanticNodes(res.nodes)).catch(() => {});
+            void loadBeliefs();
           }}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-colors ${
             tab === "beliefs" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"
           }`}
         >
-          <GitBranch className="size-3.5" /> Belief Graph ({semanticNodes.length})
+          <GitBranch className="size-3.5" /> Belief Graph ({beliefsError ? "?" : semanticNodes.length})
         </button>
         <button
           onClick={() => {
             setTab("skills");
-            fetchProceduralSkills().then(setProceduralSkills).catch(() => {});
+            void loadSkills();
           }}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-colors ${
             tab === "skills" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"
           }`}
         >
-          <Zap className="size-3.5" /> Procedural Skills ({proceduralSkills.length})
+          <Zap className="size-3.5" /> Procedural Skills ({skillsError ? "?" : proceduralSkills.length})
         </button>
         <button
           onClick={() => {
             setTab("working");
-            fetchWorkingMemory().then(setWorkingItems).catch(() => {});
+            void loadWorking();
           }}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-colors ${
             tab === "working" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"
           }`}
         >
-          <Layers className="size-3.5" /> Working Scratchpad ({workingItems.length})
+          <Layers className="size-3.5" /> Working Scratchpad ({workingError ? "?" : workingItems.length})
         </button>
         <button
           onClick={() => setTab("facts")}
@@ -429,7 +487,7 @@ export function MemorySection() {
             tab === "facts" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"
           }`}
         >
-          Facts & Preferences ({facts.length})
+          Facts & Preferences ({factsError ? "?" : facts.length})
         </button>
       </div>
 
@@ -438,7 +496,13 @@ export function MemorySection() {
       ) : (
         <>
           {/* TAB 1: COGNITIVE OVERVIEW */}
-          {tab === "overview" && cognitive && (
+          {tab === "overview" && overviewError && (
+            <ErrorBox
+              message={`Cognitive overview unavailable — tier counts could not be loaded, so none are shown. (${overviewError})`}
+              onRetry={loadAll}
+            />
+          )}
+          {tab === "overview" && !overviewError && cognitive && (
             <div className="space-y-4">
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                 <StatCard
@@ -678,7 +742,12 @@ export function MemorySection() {
               </div>
 
               <div className="space-y-2">
-                {semanticNodes.length === 0 ? (
+                {beliefsError ? (
+                  <ErrorBox
+                    message={`Belief graph unavailable — failed to load, not empty. (${beliefsError})`}
+                    onRetry={loadBeliefs}
+                  />
+                ) : semanticNodes.length === 0 ? (
                   <EmptyState title="Belief graph empty" hint="Crystallize beliefs above or run sleep consolidation." />
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
@@ -764,7 +833,12 @@ export function MemorySection() {
               </div>
 
               <div className="space-y-2">
-                {proceduralSkills.length === 0 ? (
+                {skillsError ? (
+                  <ErrorBox
+                    message={`Procedural skills unavailable — failed to load, not empty. (${skillsError})`}
+                    onRetry={loadSkills}
+                  />
+                ) : proceduralSkills.length === 0 ? (
                   <EmptyState title="No skills indexed" hint="Register skills above or let sleep reflection discover them." />
                 ) : (
                   proceduralSkills.map((sk) => (
@@ -837,7 +911,12 @@ export function MemorySection() {
               </div>
 
               <div className="space-y-2">
-                {workingItems.length === 0 ? (
+                {workingError ? (
+                  <ErrorBox
+                    message={`Working scratchpad unavailable — failed to load, not empty. (${workingError})`}
+                    onRetry={loadWorking}
+                  />
+                ) : workingItems.length === 0 ? (
                   <EmptyState title="Scratchpad empty" hint="Add in-flight working items above." />
                 ) : (
                   workingItems.map((item) => (
@@ -885,14 +964,19 @@ export function MemorySection() {
                 </Field>
               </div>
 
-              {summary && (
+              {!factsError && summary && (
                 <div className="rounded-2xl border border-border/60 bg-card p-4">
                   <p className="text-[11px] font-semibold mb-1">Summary</p>
                   <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">{summary}</p>
                 </div>
               )}
 
-              {facts.length === 0 ? (
+              {factsError ? (
+                <ErrorBox
+                  message={`Memory facts unavailable — failed to load, not empty. (${factsError})`}
+                  onRetry={loadAll}
+                />
+              ) : facts.length === 0 ? (
                 <EmptyState title="No facts stored" hint="The agent learns as you chat, or teach it using the box above." />
               ) : (
                 <div className="space-y-2">

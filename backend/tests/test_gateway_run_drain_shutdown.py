@@ -31,6 +31,7 @@ import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 
 from alpha.runtime import RunManager, RunStatus
+from alpha.runtime.runs.manager import GATEWAY_SHUTDOWN_RECOVERY_REASON
 
 
 # Module-level so langgraph's get_type_hints (which resolves annotations against
@@ -90,6 +91,35 @@ async def test_shutdown_cancels_and_awaits_inflight_run():
         assert record.task.done()
         assert cancelled.is_set()
         assert record.status == RunStatus.interrupted
+        assert record.stop_reason == GATEWAY_SHUTDOWN_RECOVERY_REASON
+    finally:
+        if not record.task.done():
+            record.task.cancel()
+            with suppress(asyncio.CancelledError):
+                await record.task
+
+
+@pytest.mark.asyncio
+async def test_shutdown_persists_recoverable_reason_for_interrupted_run():
+    from alpha.runtime.runs.store.memory import MemoryRunStore
+
+    store = MemoryRunStore()
+    rm = RunManager(store=store)
+    record = await rm.create("t-durable-drain")
+    await rm.set_status(record.run_id, RunStatus.running)
+
+    async def worker() -> None:
+        await asyncio.Event().wait()
+
+    record.task = asyncio.create_task(worker())
+    try:
+        await asyncio.sleep(0)
+        await rm.shutdown(timeout=5.0)
+
+        persisted = await store.get(record.run_id)
+        assert persisted is not None
+        assert persisted["status"] == "interrupted"
+        assert persisted["stop_reason"] == GATEWAY_SHUTDOWN_RECOVERY_REASON
     finally:
         if not record.task.done():
             record.task.cancel()
@@ -157,8 +187,8 @@ async def test_langgraph_runtime_drains_runs_before_closing_checkpointer(monkeyp
     """
     from fastapi import FastAPI
 
-    from app.gateway.deps import langgraph_runtime
     from alpha.extensions.registry import ExtensionRegistry
+    from app.gateway.deps import langgraph_runtime
 
     events: list[str] = []
 

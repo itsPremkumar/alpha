@@ -332,6 +332,17 @@ def _assemble_from_features(
 
                 chain.append(MemoryMiddleware(agent_name=name, memory_config=memory_cfg))
 
+            # --- [9b] L1 typed working memory --- additive capture seam,
+            # gated by the same two-level check the lead agent uses.
+            from alpha.agents.memory.l1.gates import l1_enabled as l1_memory_enabled
+
+            if l1_memory_enabled(memory_cfg):
+                from alpha.agents.middlewares.l1_memory_middleware import L1MemoryMiddleware
+
+                chain.append(
+                    L1MemoryMiddleware(agent_name=name, memory_config=memory_cfg)
+                )
+
     # --- [10] Vision ---
     if feat.vision is not False:
         if isinstance(feat.vision, AgentMiddleware):

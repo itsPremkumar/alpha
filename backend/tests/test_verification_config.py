@@ -28,9 +28,14 @@ def test_versioned_example_publishes_verification_section():
     example = yaml.safe_load(example_path.read_text(encoding="utf-8"))
 
     assert example["config_version"] >= 34
+    # The completion-critic pipeline (Finish-First verifier) is part of the
+    # published verification section; the expectation mirrors the example file
+    # exactly so a removed/renamed key still fails here.
     assert example["verification"] == {
         "receipts_enabled": True,
         "receipts_render_mode": "delegation_only",
         "judge_enabled": False,
         "judge_model_name": None,
+        "completion_critics_enabled": True,
+        "completion_critics_require_patch": False,
     }

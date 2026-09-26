@@ -51,7 +51,7 @@ AI_HORDE_ANONYMOUS_KEY = "0000000000"
 # Obvious non-text model keywords for catalogs that mix media/embedding
 # models into the same list. Vision-capable *language* models stay allowed.
 NON_TEXT_HINTS = re.compile(
-    r"(?:^|[-_:./])(?:image|video|audio|tts|stt|speech|embedding|embed|"
+    r"(?:^|[-_:./])(?:image|video|audio|tts|stt|speech|whisper|embedding|embed|"
     r"vision-only|upscale|flux|stable-diffusion)(?:$|[-_:./])",
     re.I,
 )
@@ -97,6 +97,18 @@ class ProviderSpec:
 
 
 PROVIDERS: dict[str, ProviderSpec] = {
+    "ovhcloud": ProviderSpec(
+        name="ovhcloud",
+        base_url="https://oai.endpoints.kepler.ai.cloud.ovh.net/v1",
+        chat_path="/chat/completions",
+        models_path="/models",
+        documented_models=(
+            "Meta-Llama-3_3-70B-Instruct",
+            "Qwen3-Coder-30B-A3B-Instruct",
+            "Mistral-7B-Instruct-v0.3",
+            "gpt-oss-20b",
+        ),
+    ),
     "vireonix": ProviderSpec(
         name="vireonix",
         base_url="https://vireonix.ai",
@@ -117,11 +129,11 @@ PROVIDERS: dict[str, ProviderSpec] = {
         models_path="/models",
         auth_header=(("Authorization", "Bearer unused"),),
         documented_models=(
-            "gpt-oss",
-            "gemma4:31b",
-            "minimax-m2.7",
             "codestral-latest",
             "mistral-Nemo-Instruct-2407",
+            "gemma4:31b",
+            "minimax-m2.7",
+            "gpt-oss",
         ),
     ),
     "persorai": ProviderSpec(
@@ -136,6 +148,7 @@ PROVIDERS: dict[str, ProviderSpec] = {
         base_url="https://text.pollinations.ai",
         chat_path="/openai",
         models_path="/models",
+        documented_models=("openai-fast", "openai"),
     ),
     "cehpoint": ProviderSpec(
         name="cehpoint",
@@ -156,9 +169,10 @@ PROVIDERS: dict[str, ProviderSpec] = {
 PROVIDER_ORDER: tuple[str, ...] = (
     "vireonix",
     "blockrun",
+    "ovhcloud",
+    "pollinations",
     "llm7",
     "persorai",
-    "pollinations",
     "cehpoint",
     "aihorde",
 )
@@ -336,6 +350,9 @@ def _free_candidate(spec: ProviderSpec, model_id: str, entry: dict[str, Any]) ->
     if out_price is not None and out_price != 0:
         return False
 
+    if spec.name == "ovhcloud":
+        # OVHcloud Kepler AI public endpoints are keyless for text chat models.
+        return True
     if spec.name == "pollinations":
         # Legacy public text endpoint: anonymous access model is the evidence.
         return True

@@ -1,0 +1,17 @@
+{
+  "id": "alpha-abstention-002",
+  "ability": "abstention",
+  "scope": {"user_id": "eval-abstention-002", "agent_name": "alpha-memory-evaluation"},
+  "sessions": [
+    {
+      "session_id": "s1",
+      "events": [
+        {"id": "event-known-time", "text": "The planning meeting starts at 10:00 UTC.", "fact_id": "fact-known-time", "answer": "10:00 UTC", "expected_stored": true}
+      ]
+    }
+  ],
+  "questions": [
+    {"id": "q-missing", "question": "Which city hosts the planning meeting?", "expects_abstention": true, "type": "abstention"}
+  ],
+  "metadata": {"description": "Original abstention fixture for an unstated location."}
+}

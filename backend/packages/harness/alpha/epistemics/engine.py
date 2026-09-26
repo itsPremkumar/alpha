@@ -151,34 +151,41 @@ def get_epistemic_engine(project_id: str = "default") -> EpistemicBeliefEngine:
     """Project-scoped singleton accessor for EpistemicBeliefEngine."""
     if project_id not in _EPISTEMIC_ENGINES:
         engine = EpistemicBeliefEngine()
-        # Seed initial operational baseline claims
-        c1 = engine.register_claim(
+        # Seed initial operational baseline claims.
+        #
+        # These are UNVERIFIED seeds: prose registered at startup has no
+        # evidence behind it, so every seed is a HYPOTHESIS at the repo's
+        # disclosed neutral prior (0.5 — the same convention as
+        # register_claim()'s defaults, the evaluate_epistemic_claim tool, and
+        # the neutral_baseline_0.5 honesty pins). FACT status and any
+        # confidence above the neutral prior may only follow REAL evidence
+        # added through update_with_evidence(); synthetic receipts are never
+        # registered here.
+        engine.register_claim(
             text="Core test suite passes cleanly with zero syntax regressions.",
-            status=EpistemicStatus.FACT,
-            prior_confidence=0.98,
+            status=EpistemicStatus.HYPOTHESIS,
+            prior_confidence=0.5,
             verification_method="pytest backend/tests -v",
         )
-        engine.update_with_evidence(c1.claim_id, "All 29 unit and integration tests passed in 27.21s", is_supporting=True)
-        engine.update_with_evidence(c1.claim_id, "CI green receipt verified in workspace", is_supporting=True)
 
         engine.register_claim(
             text="Container daemon fallback maintains operational continuity if Docker is inactive.",
-            status=EpistemicStatus.FACT,
-            prior_confidence=0.92,
+            status=EpistemicStatus.HYPOTHESIS,
+            prior_confidence=0.5,
             verification_method="ContainerRunner daemon verification test",
         )
 
         engine.register_claim(
             text="High concurrency tasks (>10 agents) risk sqlite db lock contention under peak load.",
             status=EpistemicStatus.HYPOTHESIS,
-            prior_confidence=0.65,
+            prior_confidence=0.5,
             falsification_test="Stress test 20 concurrent threads writing to audit.db simultaneously",
         )
 
         engine.register_claim(
             text="External web search APIs remain within rate limits during long-running research.",
-            status=EpistemicStatus.ASSUMPTION,
-            prior_confidence=0.45,
+            status=EpistemicStatus.HYPOTHESIS,
+            prior_confidence=0.5,
             falsification_test="Continuous 100 queries/min burst simulation",
         )
         _EPISTEMIC_ENGINES[project_id] = engine

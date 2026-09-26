@@ -198,6 +198,48 @@ CAPABILITY_CATALOG: dict[str, CapabilitySpec] = {
         description="Adaptive autonomy 4-tier governance policy engine.",
         kind="guard",
     ),
+    "dynamic_workflow_engine": CapabilitySpec(
+        module="alpha.workflow.runtime",
+        target="DynamicWorkflowEngine",
+        description="Adaptive, durable dynamic workflow execution engine.",
+        kind="engine",
+    ),
+    "bot_clone_engine": CapabilitySpec(
+        module="alpha.bots.cloning",
+        target="BotCloneEngine",
+        description="Autonomous Bot cloning, specialist forking, and generational breeding engine.",
+        kind="engine",
+    ),
+    "intent_goal_engine": CapabilitySpec(
+        module="alpha.orchestration.intent",
+        target="IntentGoalEngine",
+        description="Universal prompt perception, slash-command auto-resolution & goal decomposition engine.",
+        kind="engine",
+    ),
+    "system1_reflex": CapabilitySpec(
+        module="alpha.system1.engine",
+        target="System1Engine",
+        description="Dual-process System 1 fast reflex decision harness (Jev cloud + local free CPU classifier).",
+        kind="engine",
+    ),
+    "os_computer_use": CapabilitySpec(
+        module="alpha.computer_use",
+        target="LaptopController",
+        description="Free local-first OS computer use: accessibility-tree grounding, guarded input dispatch, screenshots, sentinel safety.",
+        kind="engine",
+    ),
+    "durable_workflow_state": CapabilitySpec(
+        module="alpha.workflow.event_log",
+        target="DurableEventLog",
+        description="Append-only durable event log, run projections and graph-revision history for the DWE (kill-and-resume hydration).",
+        kind="engine",
+    ),
+    "workflow_registry": CapabilitySpec(
+        module="alpha.workflow.registry",
+        target="WorkflowRegistry",
+        description="Read-only discovery registries (capabilities, tools, skills, MCP servers, memory) behind one list/describe/health plane for dynamic-workflow planning.",
+        kind="utility",
+    ),
 }
 
 

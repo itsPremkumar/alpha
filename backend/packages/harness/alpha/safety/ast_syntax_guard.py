@@ -95,9 +95,11 @@ def _validate_python_syntax(file_path: str, content: str) -> Tuple[bool, str | N
 
 
 def _validate_json_syntax(file_path: str, content: str) -> Tuple[bool, str | None]:
-    """Parse JSON content using Python's native json module."""
-    if not content.strip():
-        return True, None
+    """Parse JSON content using Python's native json module.
+
+    Empty content is NOT skipped: empty input is invalid JSON and must fail
+    closed here rather than being waved through unparsed.
+    """
     try:
         json.loads(content)
         return True, None
@@ -111,14 +113,24 @@ def _validate_json_syntax(file_path: str, content: str) -> Tuple[bool, str | Non
 
 
 def _validate_yaml_syntax(file_path: str, content: str) -> Tuple[bool, str | None]:
-    """Parse YAML content using PyYAML if available."""
-    if not content.strip():
-        return True, None
+    """Parse YAML content using PyYAML, failing closed when it is unavailable.
+
+    Empty content is parsed like any other document (an empty YAML document
+    parses to None — that is a real parse result, not a skip). When PyYAML is
+    missing, validation is refused instead of silently passing content that
+    was never checked.
+    """
     try:
         import yaml
-        yaml.safe_load(content)
-        return True, None
     except ImportError:
+        msg = (
+            f"Pre-commit check failed: YAML validation unavailable — PyYAML not installed for '{file_path}'.\n"
+            "The file was NOT modified (fail-closed). Install PyYAML to validate YAML writes."
+        )
+        logger.warning(msg)
+        return False, msg
+    try:
+        yaml.safe_load(content)
         return True, None
     except Exception as e:
         msg = (

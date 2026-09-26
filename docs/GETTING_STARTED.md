@@ -278,7 +278,7 @@ make docker-logs
 
 ### Learn Key Workflows
 - **Single Agent**: Send prompt → agent runs tools to completion
-- **Resume**: Interrupted runs → Overview page → Resume
+- **Resume**: Model-only interruptions continue automatically from the durable checkpoint. Runs paused for an ambiguous external action appear on Overview with a Resume action for review.
 - **Team**: Team page → Objective → Run team → Bots work in parallel
 - **Scheduled**: Scheduled Tasks → Create → Background execution
 

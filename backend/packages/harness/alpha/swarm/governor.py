@@ -1,9 +1,10 @@
-"""Swarm Resource Governor: Heterogeneous Model Routing and Rate-Limit Adaptive Throttling."""
+"""Rate-limit-aware model routing and concurrency governance for swarms."""
 
 from __future__ import annotations
 
 import logging
 import random
+import threading
 import time
 from typing import Any
 
@@ -19,9 +20,19 @@ def get_swarm_resource_governor() -> SwarmResourceGovernor:
     return _GLOBAL_GOVERNOR
 
 
-class SwarmResourceGovernor:
-    """Manages heterogeneous model tier routing and adaptive concurrency throttling."""
+def reset_swarm_resource_governor() -> None:
+    """Reset the process-local governor for isolated tests or an explicit reload."""
 
+    global _GLOBAL_GOVERNOR
+    _GLOBAL_GOVERNOR = None
+
+
+class SwarmResourceGovernor:
+    """Manage heterogeneous model tiers and adapt concurrency after 429s."""
+
+    # Stable fallback labels are retained for callers that use the governor
+    # without a model catalog.  The runner records the model actually used in
+    # task evidence; these values are routing hints, not billing claims.
     MODEL_TIERS = {
         "frontier": "claude-3-7-sonnet",
         "fast": "gemini-2.5-flash",
@@ -29,67 +40,88 @@ class SwarmResourceGovernor:
         "verifier": "gpt-4o",
     }
 
-    def __init__(self):
-        # provider -> list of timestamp floats
+    def __init__(self, *, throttle_window_seconds: float = 60.0):
         self._rate_limit_hits: dict[str, list[float]] = {}
-        self._throttle_window_seconds: float = 60.0
+        self._last_success: dict[str, float] = {}
+        self._throttle_window_seconds = max(1.0, float(throttle_window_seconds))
+        self._lock = threading.RLock()
 
     def resolve_model_for_role(self, role: str, is_batch: bool = False) -> str:
-        """Determines appropriate model tier based on node responsibility."""
-        role_lower = role.lower()
-        if any(w in role_lower for w in ("judge", "synthesizer", "architect", "ceo", "commander")):
+        """Return a deterministic model tier for a worker role."""
+
+        role_lower = str(role or "").lower()
+        if any(word in role_lower for word in ("judge", "synthesizer", "architect", "ceo", "commander")):
             return self.MODEL_TIERS["frontier"]
-        if any(w in role_lower for w in ("verifier", "qa", "gate", "red_team")):
+        if any(word in role_lower for word in ("verifier", "qa", "gate", "red_team")):
             return self.MODEL_TIERS["verifier"]
-        if is_batch or any(w in role_lower for w in ("extract", "scrape", "lint", "filter", "format")):
+        if is_batch or any(word in role_lower for word in ("extract", "scrape", "lint", "filter", "format")):
             return self.MODEL_TIERS["local"]
         return self.MODEL_TIERS["fast"]
 
     def record_rate_limit(self, provider: str = "default") -> None:
-        """Records a 429 rate limit hit."""
+        """Record a provider 429 and enter adaptive throttling."""
+
         now = time.time()
-        if provider not in self._rate_limit_hits:
-            self._rate_limit_hits[provider] = []
-        self._rate_limit_hits[provider].append(now)
-        logger.warning(f"Rate limit hit recorded for provider '{provider}'. Adaptive throttling engaged.")
+        provider = str(provider or "default")
+        with self._lock:
+            hits = self._rate_limit_hits.setdefault(provider, [])
+            hits.append(now)
+            # Keep the ledger bounded even under a provider outage.
+            cutoff = now - self._throttle_window_seconds
+            self._rate_limit_hits[provider] = [hit for hit in hits if hit >= cutoff][-32:]
+        logger.warning("Rate limit hit recorded for provider '%s'; adaptive throttling engaged", provider)
+
+    def record_success(self, provider: str = "default") -> None:
+        with self._lock:
+            self._last_success[str(provider or "default")] = time.time()
 
     def get_effective_concurrency(self, base_concurrency: int, provider: str = "default") -> int:
-        """Dynamically adjusts concurrency based on recent rate limit pressure."""
-        now = time.time()
-        hits = [t for t in self._rate_limit_hits.get(provider, []) if (now - t) < self._throttle_window_seconds]
-        self._rate_limit_hits[provider] = hits
+        """Lower concurrency deterministically under recent rate-limit pressure."""
 
+        base = max(1, int(base_concurrency))
+        now = time.time()
+        provider = str(provider or "default")
+        with self._lock:
+            hits = [hit for hit in self._rate_limit_hits.get(provider, []) if now - hit < self._throttle_window_seconds]
+            self._rate_limit_hits[provider] = hits
         if not hits:
-            return base_concurrency
+            return base
         if len(hits) == 1:
-            return max(2, base_concurrency // 2)
+            return max(1, base // 2)
         if len(hits) == 2:
-            return max(1, base_concurrency // 4)
-        return 1  # Full serialization under severe provider pressure
+            return max(1, base // 4)
+        return 1
 
     def get_backoff_delay(self, provider: str = "default") -> float:
-        """Calculates jittered exponential backoff delay."""
+        """Return a bounded jittered exponential retry delay."""
+
         now = time.time()
-        hits = [t for t in self._rate_limit_hits.get(provider, []) if (now - t) < self._throttle_window_seconds]
+        provider = str(provider or "default")
+        with self._lock:
+            hits = [hit for hit in self._rate_limit_hits.get(provider, []) if now - hit < self._throttle_window_seconds]
         if not hits:
             return 0.0
         exponent = min(len(hits), 5)
-        base_delay = 2.0**exponent
-        jitter = random.uniform(0.5, 1.5)
-        return round(base_delay * jitter, 2)
+        return round((2.0**exponent) * random.uniform(0.5, 1.5), 2)
 
     def get_status(self) -> dict[str, Any]:
         now = time.time()
-        active_throttles = {}
-        for prov, hits in self._rate_limit_hits.items():
-            recent = [t for t in hits if (now - t) < self._throttle_window_seconds]
-            if recent:
-                active_throttles[prov] = {
-                    "recent_hits": len(recent),
-                    "backoff_seconds": self.get_backoff_delay(prov),
-                }
+        with self._lock:
+            active: dict[str, dict[str, Any]] = {}
+            for provider, hits in self._rate_limit_hits.items():
+                recent = [hit for hit in hits if now - hit < self._throttle_window_seconds]
+                if recent:
+                    active[provider] = {
+                        "recent_hits": len(recent),
+                        "backoff_seconds": self.get_backoff_delay(provider),
+                        "last_hit": recent[-1],
+                        "cooldown_until": recent[-1] + self._throttle_window_seconds,
+                    }
+            last_success = dict(self._last_success)
         return {
             "model_tiers": dict(self.MODEL_TIERS),
-            "throttled_providers": active_throttles,
-            "is_throttling_active": len(active_throttles) > 0,
+            "routing_method": "role-tier-hints-v1",
+            "throttled_providers": active,
+            "is_throttling_active": bool(active),
+            "last_success": last_success,
         }

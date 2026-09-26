@@ -374,6 +374,16 @@ class AutonomousCompanyEngine:
         responsibilities = resp_engine.list_responsibilities()
         running_tasks = sum(p.kanban_tasks_count for p in projects)
 
+        # Attendance is MEASURED, never inferred. This used to claim exactly 3
+        # sleeping bots and derive "active = total - 3" from arithmetic, which
+        # presented invented counts as observations of a freshly bootstrapped
+        # org. The attendance ledger is the only authority: with no pulses
+        # recorded yet the counts are 0 and ``attendance_measured=False``
+        # says why (nobody has reported — not "everyone is idle").
+        heartbeats = attendance_engine.list_heartbeats()
+        measured_active = sum(1 for hb in heartbeats if hb.status in (AttendanceStatus.PRESENT, AttendanceStatus.BUSY))
+        measured_sleeping = sum(1 for hb in heartbeats if hb.status is AttendanceStatus.IDLE)
+
         state = CompanyState(
             org_id=org_id,
             name=charter.name,
@@ -385,14 +395,24 @@ class AutonomousCompanyEngine:
             objectives=objectives,
             projects=projects,
             kpis=kpi_engine.list_kpis(),
-            active_bots_count=max(1, total_bots - 3),
-            sleeping_bots_count=3,
+            active_bots_count=measured_active,
+            sleeping_bots_count=measured_sleeping,
+            attendance_measured=bool(heartbeats),
             running_tasks_count=running_tasks,
-            overall_health_percent=98.5,
+            # No health measurement exists for a freshly bootstrapped org —
+            # never seed a fabricated percentage (see CompanyState default).
+            overall_health_percent=None,
         )
 
         self._organizations[org_id] = state
-        logger.info(f"Successfully bootstrapped autonomous [{target_archetype.value}] organization {org_id}: '{state.name}'")
+        logger.info(
+            "Successfully bootstrapped autonomous [%s] organization %s: '%s' (%d bots on the roster; attendance %s)",
+            target_archetype.value,
+            org_id,
+            state.name,
+            total_bots,
+            "measured" if state.attendance_measured else "not yet measured",
+        )
         return state
 
     def get_company(self, org_id: str) -> CompanyState | None:

@@ -408,9 +408,10 @@ export interface WarRoomLeaderboardEntry {
   bot_name: string;
   challenges_attempted: number;
   challenges_passed: number;
-  pass_rate: number;
-  avg_duration_seconds: number;
-  reputation_score: number;
+  // Null while the bot has no measured attempts — never an invented default.
+  pass_rate: number | null;
+  avg_duration_seconds: number | null;
+  reputation_score: number | null;
   rank: number;
 }
 
@@ -504,7 +505,17 @@ export interface WarRoomTrajectoryTrace {
 
 export async function triggerAVOIteration(
   projectId: string,
-  payload: { hypothesis: string; modification: string; performance_score?: number; quality_score?: number; correctness?: boolean }
+  // Honesty: every field is required — the server no longer defaults
+  // correctness/performance_score/quality_score, so callers must supply
+  // real measured values; a POST without them fails with 422 instead of
+  // committing a VersionRecord built from invented scores.
+  payload: {
+    hypothesis: string;
+    modification: string;
+    correctness: boolean;
+    performance_score: number;
+    quality_score: number;
+  }
 ): Promise<Record<string, unknown>> {
   return send(`/projects/${enc(projectId)}/avo/iterate`, "POST", payload);
 }
@@ -682,10 +693,14 @@ export async function compileNextGenBlueprint(
   return send(`/projects/${enc(projectId)}/meta-compiler/compile`, "POST", payload);
 }
 
+// Regression-gate baseline must be explicitly stated by the caller: the
+// server no longer defaults baseline_score (no hidden 0.80). Pass the
+// active head's recorded composite score to enforce "match or improve
+// current"; never invent a threshold at the call site.
 export async function benchmarkBlueprint(
   projectId: string,
   blueprintId: string,
-  baselineScore = 0.80
+  baselineScore: number
 ): Promise<BenchmarkScorecard> {
   return send(`/projects/${enc(projectId)}/meta-compiler/benchmark`, "POST", { blueprint_id: blueprintId, baseline_score: baselineScore });
 }

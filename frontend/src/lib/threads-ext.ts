@@ -14,14 +14,30 @@ function threadTitle(t: Record<string, unknown>): string {
 }
 
 export async function searchThreads(query: string, limit = 20): Promise<Array<Record<string, unknown>>> {
-  // POST /threads/search returns a bare array of ThreadResponse (no query
-  // filter server-side), so filter by title client-side to honor the query.
-  const d = await send<unknown>("/threads/search", "POST", { limit: 100 });
-  const list = asList(d, ["threads", "results", "data"]);
+  // POST /threads/search has no title-query filter. Walk every offset page so
+  // older local conversations remain searchable instead of stopping at 100.
+  const pageSize = 500;
+  const all: Array<Record<string, unknown>> = [];
+  let offset = 0;
+  let previousBoundary = "";
+  while (true) {
+    const data = await send<unknown>("/threads/search", "POST", { limit: pageSize, offset });
+    const page = asList(data, ["threads", "results", "data"]);
+    // A server that ignores `offset` would return the same page forever.
+    const boundary =
+      page.length > 0 ? `${String(pick(page[0], ["thread_id", "id"], ""))}:${String(pick(page[page.length - 1], ["thread_id", "id"], ""))}` : "";
+    if (page.length === pageSize && boundary && boundary === previousBoundary) {
+      throw new Error("Conversation search pagination did not advance; stopped to avoid an endless loop.");
+    }
+    previousBoundary = boundary;
+    all.push(...page);
+    if (page.length < pageSize) break;
+    offset += page.length;
+  }
   const q = query.trim().toLowerCase();
-  return list
-    .map((t) => ({ thread_id: String(pick(t, ["thread_id", "id"], "")), title: threadTitle(t) }))
-    .filter((t) => !q || t.thread_id.toLowerCase().includes(q) || t.title.toLowerCase().includes(q))
+  return all
+    .map((thread) => ({ thread_id: String(pick(thread, ["thread_id", "id"], "")), title: threadTitle(thread) }))
+    .filter((thread) => !q || thread.thread_id.toLowerCase().includes(q) || thread.title.toLowerCase().includes(q))
     .slice(0, limit);
 }
 
@@ -42,9 +58,14 @@ export async function branchThread(
   // the latest server-side assistant message when the caller has none.
   let messageId = opts?.messageId;
   if (!messageId) {
-    const { fetchThreadHistory } = await import("./api");
-    const history = await fetchThreadHistory(threadId);
-    messageId = [...history].reverse().find((m) => m.role === "assistant")?.id;
+    const { fetchThreadHistoryResult } = await import("./api");
+    // A failed history load must surface as that failure — never fall through
+    // to the misleading "no assistant message yet" empty-state below.
+    const history = await fetchThreadHistoryResult(threadId);
+    if (!history.ok) {
+      throw new Error(`Couldn't load this chat's history to branch from — ${history.error}`);
+    }
+    messageId = [...history.value].reverse().find((m) => m.role === "assistant")?.id;
   }
   if (!messageId) throw new Error("No assistant message to branch from yet — send a message first.");
   const d = await send<Record<string, unknown>>(

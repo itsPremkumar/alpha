@@ -25,7 +25,11 @@ export interface BotProfile {
   capabilities: string[];
   heartbeat?: string | null;
   succession_fallback?: string | null;
-  reputation_score: number;
+  /**
+   * Measured reputation (0–1), or null when the bot has no recorded runs.
+   * Null means "unverified" — never coerce it to 0 or 1 at render time.
+   */
+  reputation_score: number | null;
   task_stats: BotTaskStats;
   routines: Array<Record<string, unknown>>;
   created_at?: string | null;
@@ -48,7 +52,11 @@ export interface FleetHealth {
   active: number;
   paused: number;
   disabled: number;
-  avg_reputation: number;
+  /**
+   * Average of MEASURED reputation scores only (nulls excluded), or null
+   * when no bot has a measured score — never a fabricated fleet number.
+   */
+  avg_reputation: number | null;
   total_tasks: number;
 }
 

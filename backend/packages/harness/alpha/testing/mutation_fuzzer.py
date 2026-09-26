@@ -11,7 +11,7 @@ import copy
 import random
 from dataclasses import asdict, dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Tuple
 
 
 class MutantType(str, Enum):
@@ -36,8 +36,11 @@ class MutationAuditReport:
     total_mutants: int
     killed_mutants: int
     survived_mutants: int
-    kill_score: float
+    # None when no mutants were generated or no test run executed — never a
+    # fabricated 1.0. See `disclosure` for the reason in that case.
+    kill_score: float | None
     details: list[dict[str, Any]]
+    disclosure: str | None = None
 
 
 class ASTMutantInjector(ast.NodeTransformer):
@@ -118,25 +121,50 @@ class MutationTestingEngine:
         source_code: str,
         test_runner: Callable[[str], bool],
     ) -> MutationAuditReport:
-        """Run mutation test audit. Returns score based on killed mutants."""
+        """Run a mutation test audit against a real test runner.
+
+        ``kill_score`` is killed / (killed + survived) over test runs that
+        actually executed. When no mutants are generated, or when no test run
+        executes (the runner raised for every mutant), ``kill_score`` is None —
+        never 1.0 — and ``disclosure`` states why the score is undefined.
+        """
         mutants = self.generate_mutants(source_code)
         if not mutants:
             return MutationAuditReport(
                 total_mutants=0,
                 killed_mutants=0,
                 survived_mutants=0,
-                kill_score=1.0,
+                kill_score=None,
                 details=[],
+                disclosure=(
+                    "kill_score is null: no mutants generated (source contains no "
+                    "mutation sites), so no tests were executed."
+                ),
             )
 
         killed = 0
         survived = 0
+        errored = 0
         details = []
 
         for m in mutants:
             # If test passes on mutant, the mutant SURVIVED (test failed to catch it)
             # If test fails on mutant, the mutant was KILLED (test caught the bug)
-            passed = test_runner(m.mutated_code)
+            try:
+                passed = test_runner(m.mutated_code)
+            except Exception as e:
+                errored += 1
+                details.append({
+                    "mutant_id": m.mutant_id,
+                    "type": m.mutant_type.value,
+                    "line": m.line_number,
+                    "status": "test_error",
+                    "description": (
+                        f"{m.description}; test run raised {type(e).__name__}: {e} "
+                        "(excluded from kill_score — not an executed test)"
+                    ),
+                })
+                continue
             if passed:
                 survived += 1
                 status = "survived"
@@ -153,13 +181,27 @@ class MutationTestingEngine:
             })
 
         total = killed + survived
-        score = (killed / total) if total > 0 else 1.0
+        if total == 0:
+            kill_score = None
+            disclosure = (
+                f"kill_score is null: tests not executed — all {errored} mutant test "
+                "runs errored, so no kill/survive outcome was observed."
+            )
+        else:
+            kill_score = round(killed / total, 3)
+            disclosure = (
+                f"{errored} of {len(mutants)} mutant test runs errored and are "
+                "excluded from kill_score."
+                if errored
+                else None
+            )
         return MutationAuditReport(
-            total_mutants=total,
+            total_mutants=len(mutants),
             killed_mutants=killed,
             survived_mutants=survived,
-            kill_score=round(score, 3),
+            kill_score=kill_score,
             details=details,
+            disclosure=disclosure,
         )
 
 

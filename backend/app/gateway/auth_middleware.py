@@ -58,6 +58,15 @@ _PUBLIC_EXACT_PATHS: frozenset[str] = frozenset(
         "/api/v1/auth/setup-status",
         "/api/v1/auth/initialize",
         "/api/v1/auth/providers",
+        # Alpha peer discovery cards and paired-peer ingress authenticate with
+        # the network pairing token in the route/service, not a browser
+        # session. These are exact paths so a future local route cannot become
+        # public merely by sharing a prefix.
+        "/.well-known/agent-card.json",
+        "/.well-known/agent.json",
+        "/api/peer-network/card",
+        "/api/peer-network/remote/pair",
+        "/api/peer-network/inbound/messages",
     }
 )
 

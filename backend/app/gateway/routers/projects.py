@@ -7,15 +7,36 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
 
-from app.gateway.authz import require_permission
-from app.gateway.deps import get_project_repo, get_thread_store
 from alpha.runtime.secret_context import redact_metadata_secrets
 from alpha.utils.time import coerce_iso
+from app.gateway.authz import require_permission
+from app.gateway.deps import get_project_repo, get_thread_store
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 ProjectStatus = Literal["active", "archived"]
+
+
+def _avo_supervisor_status(supervisor: Any) -> str:
+    """Human-readable AVO supervisor status built from REAL counters.
+
+    ``AVOSupervisor`` only exposes ``stats()``; the previous
+    ``supervisor.diagnose_state()`` call never existed on the class, so the
+    war-room snapshot's broad ``except`` silently replaced the status with a
+    permanent fake "standby" and ``GET /{project_id}/avo/lineage`` raised
+    AttributeError (500) on every request.
+    """
+    stats = supervisor.stats()
+    parts = [
+        f"improvements={stats['total_improvements']}",
+        f"stagnation={stats['consecutive_stagnation']}/{stats['max_no_improve']}",
+        f"stagnation_events={stats['total_stagnation_events']}",
+        f"cycle_events={stats['total_cycle_events']}",
+    ]
+    if stats["last_directive"] is not None:
+        parts.append(f"last_directive={stats['last_directive']['directive_type']}")
+    return ", ".join(parts)
 
 
 class ProjectResponse(BaseModel):
@@ -944,7 +965,7 @@ async def get_war_room(project_id: str, request: Request) -> dict:
 
         # 3. Active Locks & Pending Requests
         lock_mgr = locks_mod.get_lock_manager()
-        active_locks = [l.to_dict() for l in lock_mgr.list_locks(project_id)]
+        active_locks = [lock.to_dict() for lock in lock_mgr.list_locks(project_id)]
         pending_requests = [r.to_dict() for r in lock_mgr.list_requests(project_id, pending_only=True)]
 
         # 4. Handoffs
@@ -985,7 +1006,7 @@ async def get_war_room(project_id: str, request: Request) -> dict:
 
         # 14. Arena Bot Leaderboard
         from alpha.benchmarks.arena import get_benchmark_arena
-        leaderboard = [l.to_dict() for l in get_benchmark_arena(project_id).get_leaderboard()[:5]]
+        leaderboard = [entry.to_dict() for entry in get_benchmark_arena(project_id).get_leaderboard()[:5]]
 
         # 15. Canary Watchdog Status
         from alpha.projects.canary_watchdog import get_canary_watchdog
@@ -1003,7 +1024,7 @@ async def get_war_room(project_id: str, request: Request) -> dict:
                 "head_id": avo_runner.lineage.head_id,
                 "versions": [v.to_dict() for v in avo_runner.lineage.get_history()[-6:]],
                 "pareto_frontier": [v.to_dict() for v in avo_runner.lineage.get_pareto_frontier()[:5]],
-                "supervisor_status": avo_runner.supervisor.diagnose_state(),
+                "supervisor_status": _avo_supervisor_status(avo_runner.supervisor),
             }
         except Exception:
             avo_lineage = {"head_id": None, "versions": [], "pareto_frontier": [], "supervisor_status": "standby"}
@@ -1192,11 +1213,18 @@ async def get_project_bot_leaderboard(project_id: str, request: Request) -> dict
 
 
 class AVOIterateBody(BaseModel):
-    hypothesis: str = Field(default="Vectorize tensor operations to reduce memory latency", max_length=500)
-    modification: str = Field(default="torch.matmul -> fused_kernel", max_length=500)
-    correctness: bool = Field(default=True)
-    performance_score: float = Field(default=0.88, ge=0.0, le=1.0)
-    quality_score: float = Field(default=0.92, ge=0.0, le=1.0)
+    # Honesty: every field below describes a REAL evaluation of the candidate
+    # (what was hypothesized/changed plus the measured correctness verdict,
+    # performance and quality scores). None of them may have a default: the
+    # server must never invent a measurement. A POST that omits any of them
+    # fails validation with 422 instead of committing a VersionRecord built
+    # from made-up numbers (previously correctness=True, performance=0.88,
+    # quality=0.92 were silently substituted).
+    hypothesis: str = Field(..., max_length=500)
+    modification: str = Field(..., max_length=500)
+    correctness: bool = Field(...)
+    performance_score: float = Field(..., ge=0.0, le=1.0)
+    quality_score: float = Field(..., ge=0.0, le=1.0)
     parent_id: str | None = None
 
 
@@ -1214,7 +1242,7 @@ async def get_project_avo_lineage(project_id: str, request: Request) -> dict:
             "head_id": runner.lineage.head_id,
             "versions": [v.to_dict() for v in runner.lineage.get_history()],
             "pareto_frontier": [v.to_dict() for v in runner.lineage.get_pareto_frontier()],
-            "supervisor_status": runner.supervisor.diagnose_state(),
+            "supervisor_status": _avo_supervisor_status(runner.supervisor),
         }
 
     return await asyncio.to_thread(_do)
@@ -1574,7 +1602,11 @@ class MetaCompileBody(BaseModel):
 
 class MetaBenchmarkBody(BaseModel):
     blueprint_id: str = Field(..., min_length=1, max_length=128)
-    baseline_score: float = Field(default=0.80, ge=0.0, le=1.0)
+    # Honesty: the regression-gate baseline must be stated by the caller.
+    # No default — the server never invents the bar a candidate is judged
+    # against (previously 0.80 was silently substituted). Missing
+    # baseline_score fails validation with 422.
+    baseline_score: float = Field(..., ge=0.0, le=1.0)
 
 
 class MetaHotSwapBody(BaseModel):

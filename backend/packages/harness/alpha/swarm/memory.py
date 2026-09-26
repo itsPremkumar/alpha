@@ -61,11 +61,19 @@ class SwarmMemoryManager:
             }
         return self._blackboards[swarm_id]
 
-    def record_fact(self, swarm_id: str, fact_key: str, fact_value: Any, confidence: float = 1.0) -> None:
+    def record_fact(self, swarm_id: str, fact_key: str, fact_value: Any, confidence: float = 0.5) -> None:
+        """Record a caller-supplied fact; omitted confidence is neutral, not verified."""
+
+        if not fact_key or not str(fact_key).strip():
+            raise ValueError("fact_key must be non-empty")
+        numeric_confidence = float(confidence)
+        if not 0.0 <= numeric_confidence <= 1.0:
+            raise ValueError("confidence must be between 0 and 1")
         bb = self._ensure_blackboard(swarm_id)
         bb["facts"][fact_key] = {
             "value": fact_value,
-            "confidence": confidence,
+            "confidence": numeric_confidence,
+            "confidence_method": "caller_supplied" if confidence != 0.5 else "neutral_default",
             "timestamp": time.time(),
         }
 
@@ -87,6 +95,38 @@ class SwarmMemoryManager:
     def get_artifacts(self, swarm_id: str) -> list[dict[str, Any]]:
         bb = self._ensure_blackboard(swarm_id)
         return list(bb["artifacts"])
+
+    def record_task_result(
+        self,
+        swarm_id: str,
+        task_id: str,
+        *,
+        summary: str,
+        evidence: list[dict[str, Any]] | None = None,
+        artifacts: list[str] | None = None,
+    ) -> None:
+        """Store a bounded task result in the shared swarm blackboard tier."""
+
+        if not task_id or not str(task_id).strip():
+            raise ValueError("task_id must be non-empty")
+        bb = self._ensure_blackboard(swarm_id)
+        results = bb.setdefault("task_results", [])
+        if any(item.get("task_id") == task_id for item in results):
+            return
+        results.append(
+            {
+                "task_id": task_id,
+                "summary": str(summary or "")[:12_000],
+                "evidence": list(evidence or [])[-20:],
+                "artifacts": list(dict.fromkeys(str(item) for item in (artifacts or []) if item))[:100],
+                "timestamp": time.time(),
+            }
+        )
+        if len(results) > 256:
+            del results[:-256]
+
+    def get_task_results(self, swarm_id: str) -> list[dict[str, Any]]:
+        return list(self._ensure_blackboard(swarm_id).get("task_results", []))
 
     # -- Tier 3: Organization Memory Promotion ---------------------------
 

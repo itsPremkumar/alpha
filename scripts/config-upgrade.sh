@@ -45,7 +45,21 @@ else
     EXAMPLE_WIN="$EXAMPLE"
 fi
 
-cd "$REPO_ROOT/backend" && CONFIG_WIN_PATH="$CONFIG_WIN" EXAMPLE_WIN_PATH="$EXAMPLE_WIN" uv run python -c "
+# Interpreter selection. `uv run python` (repo standard) guarantees a synced
+# project environment, so on a cold checkout it creates backend/.venv and
+# installs the entire dependency tree first -- minutes of machine-speed,
+# network-dependent work just to run this PyYAML-only merge. Callers that
+# already have a PyYAML-capable interpreter (the config-version test passes
+# its own venv python; air-gapped hosts any python with PyYAML) can set
+# CONFIG_UPGRADE_PYTHON to skip that bootstrap entirely.
+if [ -n "${CONFIG_UPGRADE_PYTHON:-}" ]; then
+    PYTHON_CMD=("$CONFIG_UPGRADE_PYTHON")
+else
+    cd "$REPO_ROOT/backend" || exit 1
+    PYTHON_CMD=(uv run python)
+fi
+
+CONFIG_WIN_PATH="$CONFIG_WIN" EXAMPLE_WIN_PATH="$EXAMPLE_WIN" "${PYTHON_CMD[@]}" -c "
 import os
 import sys, shutil, copy, re
 from pathlib import Path

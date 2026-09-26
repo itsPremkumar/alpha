@@ -1,0 +1,24 @@
+{
+  "id": "alpha-temporal-001",
+  "ability": "temporal",
+  "scope": {"user_id": "eval-temporal-001", "agent_name": "alpha-memory-evaluation"},
+  "sessions": [
+    {
+      "session_id": "s1",
+      "events": [
+        {"id": "event-old-color", "timestamp": "2026-01-01T09:00:00Z", "text": "The release badge was red in the first session.", "fact_id": "fact-old-color", "answer": "red", "expected_stored": true}
+      ]
+    },
+    {
+      "session_id": "s2",
+      "events": [
+        {"id": "event-new-color", "timestamp": "2026-01-10T09:00:00Z", "text": "The release badge is blue now.", "fact_id": "fact-new-color", "answer": "blue", "expected_stored": true}
+      ]
+    }
+  ],
+  "questions": [
+    {"id": "q-current", "question": "What is the release badge now?", "expected": "blue", "superseded_values": ["red"], "type": "temporal_reasoning", "evidence_ids": ["event-new-color"]},
+    {"id": "q-old", "question": "What was the release badge in the first session?", "expected": "red", "superseded_values": ["blue"], "type": "temporal_reasoning", "evidence_ids": ["event-old-color"]}
+  ],
+  "metadata": {"expected_stored": ["event-old-color", "event-new-color"], "description": "Original current-versus-as-of temporal fixture."}
+}

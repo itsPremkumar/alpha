@@ -24,7 +24,15 @@ CSRF_COOKIE_NAME = "csrf_token"
 CSRF_HEADER_NAME = "X-CSRF-Token"
 CSRF_TOKEN_LENGTH = 64  # bytes
 _CSRF_STATE_CHANGING_METHODS: frozenset[str] = frozenset({"POST", "PUT", "DELETE", "PATCH"})
-_CSRF_EXEMPT_EXACT_PATHS: frozenset[str] = frozenset({"/api/v1/auth/me"})
+_CSRF_EXEMPT_EXACT_PATHS: frozenset[str] = frozenset(
+    {
+        "/api/v1/auth/me",
+        "/.well-known/agent-card.json",
+        "/api/peer-network/card",
+        "/api/peer-network/remote/pair",
+        "/api/peer-network/inbound/messages",
+    }
+)
 
 
 def is_secure_request(request: Request) -> bool:

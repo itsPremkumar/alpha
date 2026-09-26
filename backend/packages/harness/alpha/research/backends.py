@@ -5,39 +5,60 @@ Historically the engine silently fell back to mock providers that fabricated
 in a deep research report was fiction unless the caller passed explicit
 functions. Resolution happens here instead:
 
-- :func:`default_search_fn` returns a real DuckDuckGo-backed search
-  provider (``ddgs`` is a core harness dependency; no API key required).
-- :func:`default_fetch_fn` returns a real HTTP fetcher (``httpx`` is a core
-  dependency); non-2xx responses raise instead of returning invented text.
-- If no backend can be loaded at all, the resolver raises ``RuntimeError``
-  with an actionable message so dispatch/tools fail honestly instead of
-  reporting mock results as research.
+- When the ``agent_eye_search`` tool is configured for research, its bounded
+  multi-source provider is tried first and DuckDuckGo remains an honest fallback.
+- :func:`default_fetch_fn` fetches through Alpha's public-URL/redirect guard and
+  uses AgentEye's HTML/structured-data extractor, with the bounded raw response
+  as a dependency-missing fallback.
+- If no search backend can be loaded, the resolver raises ``RuntimeError`` with
+  an actionable message instead of reporting mock results as research.
 """
 
 from __future__ import annotations
 
-from typing import Any, Awaitable, Callable
+import logging
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 SearchFn = Callable[[str, int], Awaitable[list[dict[str, Any]]]]
 FetchFn = Callable[[str], Awaitable[str]]
 
+logger = logging.getLogger(__name__)
+
+
+def configured_agent_eye_search_fn() -> SearchFn | None:
+    """Return the opt-in AgentEye research provider without importing it eagerly."""
+
+    try:
+        from alpha.community.agent_eye.provider import configured_search_fn
+    except ImportError:  # pragma: no cover - provider ships with the harness
+        return None
+    return configured_search_fn()
+
 
 def default_search_fn() -> SearchFn:
-    """Build the live DuckDuckGo search provider.
+    """Build the configured AgentEye + DuckDuckGo live search provider.
 
-    Raises ``RuntimeError`` when the ``ddgs`` package is unavailable so a
-    missing backend surfaces as an honest failure, never as mock sources.
+    AgentEye is used only when its ``agent_eye_search`` tool configuration opts
+    into deep research. DuckDuckGo remains a real, keyless fallback; no mock
+    provider is silently substituted.
     """
     try:
         from ddgs import DDGS
     except ImportError as exc:  # pragma: no cover - ddgs is a core dependency
-        raise RuntimeError(
-            "No live search backend available: the `ddgs` package is not installed. "
-            "Install it, configure a community search tool, or pass an explicit "
-            "search_fn to run deep research."
-        ) from exc
+        raise RuntimeError("No live search backend available: install the locked `ddgs` dependency, configure AgentEye live research, or pass an explicit search_fn.") from exc
+
+    agent_eye_search = configured_agent_eye_search_fn()
 
     async def search(query: str, max_results: int = 5) -> list[dict[str, Any]]:
+        if agent_eye_search is not None:
+            try:
+                results = await agent_eye_search(query, max_results)
+                if results:
+                    return results
+            except Exception:
+                logger.warning("Configured AgentEye search failed; trying DuckDuckGo", exc_info=True)
+
         import asyncio
 
         def _run() -> list[dict[str, Any]]:
@@ -65,16 +86,20 @@ def default_search_fn() -> SearchFn:
 
 
 def default_fetch_fn() -> FetchFn:
-    """Build the live HTTP fetcher; HTTP errors raise (no invented content)."""
-    import httpx
+    """Build the SSRF-screened, size-bounded live research fetcher."""
 
     async def fetch(url: str) -> str:
-        headers = {"User-Agent": "alpha-deep-research/1.0 (+research-engine)"}
-        async with httpx.AsyncClient(
-            follow_redirects=True, timeout=30.0, headers=headers
-        ) as client:
-            response = await client.get(url)
-            response.raise_for_status()
-            return response.text
+        from alpha.community.agent_eye.provider import extract_public_html
+
+        extracted = await extract_public_html(
+            url,
+            max_chars=50_000,
+            timeout_seconds=30.0,
+            max_bytes=2_000_000,
+        )
+        content = str(extracted.get("content") or "").strip()
+        if not content:
+            raise ValueError(f"No readable content extracted from {url}")
+        return content
 
     return fetch

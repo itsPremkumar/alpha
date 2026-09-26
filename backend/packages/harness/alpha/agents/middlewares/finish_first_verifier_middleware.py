@@ -40,6 +40,30 @@ from alpha.critic import CriticPipeline
 
 logger = logging.getLogger(__name__)
 
+
+def _record_finish_first_evidence(message: object, *, code_writes: int) -> None:
+    """P3: record the real Finish-First violation as observation evidence.
+
+    The notice itself is the measured event (code writes with no verification
+    step), so it is written to the previously consumer-less EvidenceStore with
+    its real counts. Fail-safe by design: an evidence-store failure is logged
+    and the notice is still injected — evidence bookkeeping can never break a
+    turn.
+    """
+    try:
+        from alpha.evidence.store import default_evidence_store
+
+        record = default_evidence_store().add_evidence(
+            owner_id="runtime",
+            kind="observation",
+            ref=f"finish-first:{getattr(message, 'id', None) or 'message'}",
+            summary=f"Finish-First notice injected: {code_writes} code write(s) without a verification step",
+            tags=("finish_first", "unverified_completion"),
+        )
+        logger.debug("Recorded finish-first evidence %s", record.id)
+    except Exception:
+        logger.debug("Finish-first evidence write failed; notice still injected", exc_info=True)
+
 _WRITE_TOOLS = frozenset({"write_file", "str_replace", "hashline_edit"})
 _VERIFY_TOOLS = frozenset({
     "auto_test_and_repair",
@@ -186,14 +210,14 @@ class FinishFirstVerifierMiddleware(AgentMiddleware[AgentState]):
         turn_messages = messages[latest_user_idx + 1 :] if latest_user_idx >= 0 else messages
 
         # Scan for code write operations and verification operations in this turn
-        had_code_writes = False
+        code_write_count = 0
         had_verification = False
 
         for m in turn_messages:
             if isinstance(m, ToolMessage):
                 tool_name = getattr(m, "name", "")
                 if tool_name in _WRITE_TOOLS:
-                    had_code_writes = True
+                    code_write_count += 1
                 elif tool_name in _VERIFY_TOOLS:
                     had_verification = True
                 elif tool_name == "bash":
@@ -209,7 +233,7 @@ class FinishFirstVerifierMiddleware(AgentMiddleware[AgentState]):
             return rejection
 
         # If code was modified and no verification tool was executed, stamp an evidence notice
-        if had_code_writes and not had_verification:
+        if code_write_count and not had_verification:
             content = last_ai.content
             if isinstance(content, str) and "[Finish-First Notice]" not in content:
                 updated_ai = AIMessage(
@@ -218,6 +242,7 @@ class FinishFirstVerifierMiddleware(AgentMiddleware[AgentState]):
                     additional_kwargs=last_ai.additional_kwargs,
                     response_metadata=last_ai.response_metadata,
                 )
+                _record_finish_first_evidence(last_ai, code_writes=code_write_count)
                 return {"messages": [updated_ai]}
 
         return None

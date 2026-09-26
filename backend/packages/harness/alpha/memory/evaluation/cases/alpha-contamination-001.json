@@ -1,0 +1,17 @@
+{
+  "id": "alpha-contamination-001",
+  "ability": "contamination",
+  "scope": {"user_id": "eval-contamination-001", "agent_name": "alpha-memory-evaluation"},
+  "sessions": [
+    {
+      "session_id": "s1",
+      "events": [
+        {"id": "event-local-route", "text": "For the North case, use route N-17.", "fact_id": "fact-local-route", "answer": "N-17", "expected_stored": true}
+      ]
+    }
+  ],
+  "questions": [
+    {"id": "q1", "question": "Which route should be used for the North case?", "expected": "N-17", "type": "contamination", "evidence_ids": ["event-local-route"]}
+  ],
+  "metadata": {"foreign_scope": {"user_id": "someone-else", "agent_name": "alpha-memory-evaluation"}, "expected_stored": ["event-local-route"], "description": "Original scope-isolation fixture; a foreign provider response must be a contamination failure."}
+}

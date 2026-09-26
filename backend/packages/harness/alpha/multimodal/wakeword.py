@@ -37,7 +37,12 @@ def load_default_score_fn() -> Callable[[bytes], float]:
 
     Raises ``ImportError`` when the ``voice`` extra is absent — callers turn
     that into an honest ``not_installed`` status. Pretrained weights download
-    once on first load and are cached by openWakeWord itself.
+    once on first load (``openwakeword.utils.download_models``) and are cached
+    on disk afterwards.
+
+    ONNX inference is deliberate: the packaged weights ship in both formats,
+    ``tflite-runtime`` has no Windows / Python 3.12 wheel, and onnxruntime is
+    already required elsewhere in the ``voice`` extra (rapidocr-onnxruntime).
     """
     import numpy as np
 
@@ -46,19 +51,31 @@ def load_default_score_fn() -> Callable[[bytes], float]:
     except ImportError:
         from openwakeword.model import Model as OWWModel
 
-    model = OWWModel(wakeword_models=["hey_jarvis"])
-    model.load_models()
+    # openwakeword 0.6 does not auto-download inside __init__ — fetch both
+    # weight formats (no-op for files already cached) or surface the real
+    # network/IO error instead of a later opaque "file doesn't exist".
+    from openwakeword.utils import download_models
+
+    download_models(model_names=["hey_jarvis"])
+
+    model = OWWModel(wakeword_models=["hey_jarvis"], inference_framework="onnx")
+    if hasattr(model, "load_models"):
+        model.load_models()  # older openWakeWord versions load lazily
 
     def score(pcm: bytes) -> float:
         audio = np.frombuffer(pcm, dtype=np.int16)
         predictions = model.predict(audio)
+        # After warm-up openWakeWord reports np.float32 scores — which are NOT
+        # Python float subclasses — so numpy scalar types must be accepted
+        # explicitly or every real score would be discarded as "wrong shape".
+        real = (int, float, np.floating, np.integer)
         numeric: list[float] = []
         if isinstance(predictions, dict):
             for value in predictions.values():
-                if isinstance(value, (int, float)):
+                if isinstance(value, real):
                     numeric.append(float(value))
                 elif isinstance(value, dict):
-                    nested = [float(v) for v in value.values() if isinstance(v, (int, float))]
+                    nested = [float(v) for v in value.values() if isinstance(v, real)]
                     numeric.extend(nested)
         if not numeric:
             raise RuntimeError(f"unexpected openWakeWord prediction shape: {type(predictions).__name__}")

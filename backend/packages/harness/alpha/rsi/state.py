@@ -12,7 +12,11 @@ Honesty rules (plan §5.6):
   unavailable — never invented;
 * ``advance()`` to ``promoted`` / ``rolled_back`` mechanically requires the
   caller's ``evidence_kind == "measured"`` marker, so simulated evidence can
-  never bypass evaluation (spec §101).
+  never bypass evaluation (spec §101);
+* WP-D2 additive ``budget`` key: an optional per-cycle budget record (real
+  limits/used/remaining accounting from ``alpha.rsi.budgets`` — no score
+  fields) persisted alongside this record; state files without the key load
+  unchanged as ``budget=None`` (backward compatible, round-trips with it).
 """
 
 from __future__ import annotations
@@ -96,6 +100,11 @@ class RsiCycleState:
     evaluator_manifest_sha: str | None = None
     remaining: list[str] = field(default_factory=list)
     updated_at: float = 0.0
+    # WP-D2 additive key (plan §3 WP-D2, coordinate D2-appends-only): per-cycle
+    # budget record (real limits/used/remaining figures from
+    # ``alpha.rsi.budgets.BudgetTracker.snapshot()``, never scores). Optional:
+    # state files written before WP-D2 lack it and still load as ``None``.
+    budget: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -187,6 +196,14 @@ def state_from_dict(payload: Any) -> RsiCycleState:
     updated_at = payload["updated_at"]
     if isinstance(updated_at, bool) or not isinstance(updated_at, (int, float)):
         raise ValueError("updated_at must be a number")
+    # WP-D2 additive budget key: optional (absent -> None, pre-D2 files load
+    # unchanged); when present it must be a JSON object with string keys.
+    budget = payload.get("budget")
+    if budget is not None:
+        if not isinstance(budget, dict):
+            raise ValueError(f"budget must be a JSON object when present, got {type(budget).__name__}")
+        if not all(isinstance(key, str) for key in budget):
+            raise ValueError("budget keys must be strings")
     return RsiCycleState(
         cycle_id=cycle_id,
         stage=str(stage),
@@ -194,6 +211,7 @@ def state_from_dict(payload: Any) -> RsiCycleState:
         evaluator_manifest_sha=sha,
         remaining=list(remaining),
         updated_at=float(updated_at),
+        budget=dict(budget) if budget is not None else None,
     )
 
 

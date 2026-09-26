@@ -1,20 +1,55 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { BotProfile, botDisplayName, botInitials } from "@/types/bots";
-import { X, MessageSquare, Star, Cpu, Wrench, Layers, ListChecks, ShieldCheck, GitBranch } from "lucide-react";
+import { X, MessageSquare, Star, Cpu, Wrench, Layers, ListChecks, ShieldCheck, GitBranch, Building2 } from "lucide-react";
+import { createProject } from "@/lib/projects";
+import { errMsg } from "@/lib/http";
 
 interface BotDetailPanelProps {
   bot: BotProfile | null;
   onClose: () => void;
   onChat: (bot: BotProfile) => void;
+  onProjectCreated?: (projectId: string) => void | Promise<void>;
 }
 
-export function BotDetailPanel({ bot, onClose, onChat }: BotDetailPanelProps) {
+export function BotDetailPanel({ bot, onClose, onChat, onProjectCreated }: BotDetailPanelProps) {
+  const [projectOpen, setProjectOpen] = useState(false);
+  const [projectName, setProjectName] = useState("");
+  const [projectInstructions, setProjectInstructions] = useState("");
+  const [projectBusy, setProjectBusy] = useState(false);
+  const [projectError, setProjectError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setProjectOpen(false);
+    setProjectName("");
+    setProjectInstructions("");
+    setProjectError(null);
+  }, [bot?.name]);
+
   if (!bot) return null;
   const total = Number(bot.task_stats?.total) || 0;
   const succeeded = Number(bot.task_stats?.succeeded) || 0;
   const failed = Number(bot.task_stats?.failed) || 0;
+
+  const submitProject = async () => {
+    if (!projectName.trim() || projectBusy) return;
+    setProjectBusy(true);
+    setProjectError(null);
+    try {
+      const project = await createProject(
+        projectName.trim(),
+        projectInstructions.trim(),
+        [{ name: bot.name, role: "lead" }],
+      );
+      await onProjectCreated?.(project.id);
+      onClose();
+    } catch (error) {
+      setProjectError(errMsg(error));
+    } finally {
+      setProjectBusy(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -47,7 +82,9 @@ export function BotDetailPanel({ bot, onClose, onChat }: BotDetailPanelProps) {
             <div className="rounded-xl bg-muted/40 p-2.5 text-center">
               <div className="flex items-center justify-center gap-1 text-amber-500">
                 <Star className="size-3.5" />
-                <span className="text-sm font-bold text-foreground">{(bot.reputation_score ?? 0).toFixed(2)}</span>
+                <span className="text-sm font-bold text-foreground">
+                  {bot.reputation_score != null ? bot.reputation_score.toFixed(2) : "unverified"}
+                </span>
               </div>
               <div className="text-[10px] text-muted-foreground mt-0.5">Reputation</div>
             </div>
@@ -60,6 +97,59 @@ export function BotDetailPanel({ bot, onClose, onChat }: BotDetailPanelProps) {
               <div className="text-[10px] text-muted-foreground mt-0.5">Succeeded{failed ? ` • ${failed} failed` : ""}</div>
             </div>
           </div>
+
+          <section className="rounded-xl border border-border/60 bg-muted/20 p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <h3 className="text-xs font-semibold inline-flex items-center gap-1.5">
+                  <Building2 className="size-3.5 text-primary" /> Create a project with {botDisplayName(bot)}
+                </h3>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  This bot is attached as the project lead. Add more bots from the Projects page.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setProjectOpen((open) => !open)}
+                className="text-[11px] font-medium text-primary hover:underline"
+              >
+                {projectOpen ? "Close" : "Create"}
+              </button>
+            </div>
+            {projectOpen && (
+              <div className="space-y-2 pt-1">
+                <label className="block space-y-1">
+                  <span className="text-[10px] font-semibold">Project name</span>
+                  <input
+                    value={projectName}
+                    onChange={(event) => setProjectName(event.target.value)}
+                    maxLength={128}
+                    placeholder={`${botDisplayName(bot)} project`}
+                    className="w-full rounded-lg border border-border/70 bg-card px-2.5 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary/40"
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-[10px] font-semibold">Project instructions</span>
+                  <textarea
+                    value={projectInstructions}
+                    onChange={(event) => setProjectInstructions(event.target.value)}
+                    rows={3}
+                    placeholder="Shared goal, working agreements, and expected outcomes…"
+                    className="w-full rounded-lg border border-border/70 bg-card px-2.5 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary/40"
+                  />
+                </label>
+                {projectError && <p className="text-[11px] text-destructive">{projectError}</p>}
+                <button
+                  type="button"
+                  onClick={() => void submitProject()}
+                  disabled={!projectName.trim() || projectBusy}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-[11px] font-semibold text-primary-foreground disabled:opacity-40"
+                >
+                  <Building2 className="size-3.5" /> {projectBusy ? "Creating…" : "Create project"}
+                </button>
+              </div>
+            )}
+          </section>
 
           {bot.soul && (
             <section>
@@ -145,7 +235,7 @@ export function BotDetailPanel({ bot, onClose, onChat }: BotDetailPanelProps) {
           <button
             type="button"
             onClick={() => onChat(bot)}
-            className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:opacity-95"
+            className="flex-1 min-w-0 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:opacity-95"
           >
             <MessageSquare className="size-4" /> Chat with {botDisplayName(bot)}
           </button>

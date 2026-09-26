@@ -20,7 +20,7 @@
 # ============================================================================
 # Bump this number when the config schema changes.
 # Run `make config-upgrade` to merge new fields into your local config.yaml.
-config_version: 45
+config_version: 53
 
 # ============================================================================
 # Logging
@@ -867,6 +867,24 @@ tools:
     # backend: auto          # DDGS backend(s): auto, duckduckgo, brave, wikipedia, etc.
     # region: wt-wt          # wt-wt is normalized for Wikipedia when backend includes auto/all/wikipedia.
     # safesearch: moderate   # on, moderate, off
+
+  # AgentEye broad live-source search. The dependency is pinned to an immutable
+  # upstream Git commit; providers without API keys are still rate-limited and
+  # scraped search/social engines can break. Alpha applies a backend allowlist,
+  # bounded fan-out, deduplication, and safe URL/fetch limits around it.
+  - name: agent_eye_sources
+    group: web
+    use: alpha.community.agent_eye.tools:agent_eye_sources_tool
+  - name: agent_eye_search
+    group: web
+    use: alpha.community.agent_eye.tools:agent_eye_search_tool
+    max_results: 8
+    max_sources_per_query: 6
+    timeout_seconds: 30
+    use_for_deep_research: true
+    allow_fragile_backends: false
+    # Override the conservative built-in allowlist only with trusted providers.
+    # allowed_backends: [ddgs, wikipedia, github, arxiv, pubmed, openalex]
 
   # Web search tool (uses SearXNG, self-hosted, no API key required)
   # SearXNG is a free internet metasearch engine which aggregates results from
@@ -1843,21 +1861,34 @@ verification:
   completion_critics_require_patch: false
 
 # ============================================================================
-# System One (Jev) Configuration
+# System One (Jev or local Laya) Configuration
 # ============================================================================
-# Jev is a System One model by TypeSafe AI: it does NOT generate text. It takes
-# a `state` plus typed `questions` and returns calibrated decisions (choice /
-# score / boolean) with probabilities and confidence, in ~70-500ms. It cannot
-# hallucinate or produce type errors.
+# A System One model does NOT generate text. It takes a `state` plus typed
+# `questions` and returns calibrated decisions (choice / score / boolean) with
+# probabilities and confidence. It cannot hallucinate or produce type errors.
 #
-# Alpha uses it as the DEFAULT decision engine for classification, routing,
-# scoring and verification, and falls back to the existing heuristic/LLM path
-# whenever it is disabled, unreachable, or below `min_confidence`.
+# Hosted routes:
+#   provider: vercel-gateway -> POST https://ai-gateway.vercel.sh/v1/evaluate
+#   provider: typesafe       -> POST https://api.typesafe.ai/v1/systemone
+#
+# Local open-weights route (Convai Innovations Laya):
+#   1. Run `python backend/scripts/system_one_laya_setup.py setup`.
+#   2. Run `python backend/scripts/system_one_laya_setup.py serve` in a
+#      separate terminal.
+#   3. Set provider to `laya`, base_url to the printed loopback URL, and
+#      choose `english`, `multilingual`, `typed-decisions`, or `""` for
+#      Laya's language-aware router. Laya uses the same `/v1/systemone`
+#      contract as TypeSafe; no separate decision schema is needed.
+#
+# Alpha uses System One as the DEFAULT decision engine for classification,
+# routing, scoring and verification, and falls back to the existing
+# heuristic/LLM path whenever it is disabled, unreachable, or below
+# `min_confidence`.
 system_one:
   enabled: true
-  provider: "vercel-gateway"      # or "typesafe" for the TypeSafe direct API
+  provider: "vercel-gateway"      # vercel-gateway | typesafe | laya
   api_key: "$AI_GATEWAY_API_KEY"
-  model: "typesafe-ai/jev"
+  model: "typesafe-ai/jev"        # Laya: english | multilingual | typed-decisions | "" (auto)
   timeout_ms: 2000
   max_retries: 2
   min_confidence: 0.60
@@ -1870,6 +1901,7 @@ system_one:
   enable_memory_escalation: true
   enable_goal_completion: true
   enable_browser_action: true
+  enable_computer_action: false      # opt in after calibration; use shadow_mode first
   enable_injection_scan: true
   enable_citation_support: true
   enable_trace_verify: true
@@ -1899,8 +1931,20 @@ system_one:
   # Implied by `shadow_mode`, because shadow without a log measures nothing.
   record_decisions: false
   # Where the JSONL log lives. Relative paths resolve under the Alpha state dir.
-  # Read it with: python backend/scripts/system_one_calibration.py --report
+  # Read it with: python backend/scripts/system_one_calibration.py
   calibration_log_path: "system_one_decisions.jsonl"
+  # Local Laya example (replace the hosted keys above, do not enable both):
+  # provider: "laya"
+  # base_url: "http://127.0.0.1:8000"
+  # api_key: null                 # optional for loopback; use $LAYA_API_KEY if protected
+  # model: "english"              # or multilingual / typed-decisions / "" for auto-router
+  # timeout_ms: 10000             # allow for a cold local load; preloading removes the cold path
+  # laya_max_state_chars: 12000   # abstain instead of truncating oversized evidence
+  # laya_max_request_chars: 24000  # bound the complete serialized request
+  # laya_max_questions: 64
+  # laya_max_choice_options: 20   # use bounded shortlist/partitioning for larger label spaces
+  # laya_max_partition_requests: 16 # per-decision local request budget; abstain if exceeded
+  # laya_max_partition_latency_ms: 60000 # total local tournament wall-clock budget
 
 # ============================================================================
 # ACP Agents Configuration
@@ -2291,6 +2335,367 @@ memory:
     provider: null
     # storage_path: ""            # required when provider: file
 
+  # --------------------------------------------------------------------------
+  # L1 typed working memory (scene segmentation + typed extraction + dedup)
+  # --------------------------------------------------------------------------
+  # Additive pipeline layered on top of the configured memory backend. Requires
+  # memory.enabled as well: BOTH gates must be true (l1_enabled()).
+  l1:
+    enabled: true
+    # Extraction/conflict prompt dialect: chat (personal) | work (team shared).
+    mode: chat
+    # Chat model for extraction/dedup/persona calls (null = host default model).
+    extraction_model: null
+    debounce_seconds: 5.0       # batches rapid turns into one extraction run
+    max_memories_per_run: 12    # upper bound per extraction call
+    min_priority: 60            # drop below this priority (-1 sentinel kept)
+    dedup_enabled: true         # batch conflict detection before writes land
+    dedup_top_k: 5              # existing candidates recalled per new memory
+    quota_enabled: true         # per-user record + credit quotas
+    quota_memory_limit: 10000
+    quota_credit_limit: 1000.0
+    provenance_enabled: true    # one generation-log entry per run
+    retention_enabled: true     # age + record-cap sweep after each run
+    retention_max_records: 5000
+    retention_max_age_days: 180
+    recall_enabled: true        # inject top L1 records into <memory>
+    recall_top_k: 5
+    persona_enabled: true       # persona profile from persona-type records
+    persona_min_memories: 3
+    storage_path: null          # null = agent runtime home (per-user layout)
+
+  # L1 typed working memory: scene segmentation, typed extraction, dedup/merge, quotas, recall.
+  # Requires memory.enabled as well; the schema default is false (opt-in).
+  l1:
+    enabled: true
+    mode: "chat"
+    extraction_model: null
+    debounce_seconds: 5.0
+    max_memories_per_run: 12
+    min_priority: 60
+    dedup_enabled: true
+    dedup_top_k: 5
+    quota_enabled: true
+    quota_memory_limit: 10000
+    quota_credit_limit: 1000.0
+    provenance_enabled: true
+    # Apply the retention sweep after each run.
+    retention_enabled: true
+    retention_max_records: 5000
+    # Retention sweep drops non-pinned records older than this many days.
+    retention_max_age_days: 180
+    # Inject the top L1 records into the <memory> block at recall time.
+    recall_enabled: true
+    # How many L1 records the recall seam injects.
+    recall_top_k: 5
+    persona_enabled: true
+    # Minimum persona-type records required before persona synthesis runs.
+    persona_min_memories: 3
+    storage_path: null
+
+  # L1 typed working memory: scene segmentation, typed extraction, dedup/merge, quotas, recall.
+  # Requires memory.enabled as well; the schema default is false (opt-in).
+  l1:
+    enabled: true
+    mode: "chat"
+    extraction_model: null
+    debounce_seconds: 5.0
+    max_memories_per_run: 12
+    min_priority: 60
+    dedup_enabled: true
+    dedup_top_k: 5
+    quota_enabled: true
+    quota_memory_limit: 10000
+    quota_credit_limit: 1000.0
+    provenance_enabled: true
+    # Apply the retention sweep after each run.
+    retention_enabled: true
+    retention_max_records: 5000
+    # Retention sweep drops non-pinned records older than this many days.
+    retention_max_age_days: 180
+    # Inject the top L1 records into the <memory> block at recall time.
+    recall_enabled: true
+    # How many L1 records the recall seam injects.
+    recall_top_k: 5
+    persona_enabled: true
+    # Minimum persona-type records required before persona synthesis runs.
+    persona_min_memories: 3
+    storage_path: null
+
+  # L1 typed working memory: scene segmentation, typed extraction, dedup/merge, quotas, recall.
+  # Requires memory.enabled as well; the schema default is false (opt-in).
+  l1:
+    enabled: true
+    mode: "chat"
+    extraction_model: null
+    debounce_seconds: 5.0
+    max_memories_per_run: 12
+    min_priority: 60
+    dedup_enabled: true
+    dedup_top_k: 5
+    quota_enabled: true
+    quota_memory_limit: 10000
+    quota_credit_limit: 1000.0
+    provenance_enabled: true
+    # Apply the retention sweep after each run.
+    retention_enabled: true
+    retention_max_records: 5000
+    # Retention sweep drops non-pinned records older than this many days.
+    retention_max_age_days: 180
+    # Inject the top L1 records into the <memory> block at recall time.
+    recall_enabled: true
+    # How many L1 records the recall seam injects.
+    recall_top_k: 5
+    persona_enabled: true
+    # Minimum persona-type records required before persona synthesis runs.
+    persona_min_memories: 3
+    storage_path: null
+
+  # Affective memory: emotional tone events, decayed mood state, mood-aware recall.
+  # Requires memory.enabled as well; the schema default is false (opt-in).
+  affective:
+    # Master switch for affective capture, mood computation, and recall.
+    enabled: false
+    # Exponential half-life used to decay old affect events.
+    half_life_hours: 72.0
+    # Maximum retained affect events per user.
+    max_events_per_user: 500
+    # Maximum remembered moments in one prompt block.
+    max_surfaced: 5
+    # Minimum confidence for ingest and recall.
+    min_confidence: 0.6
+    # Optional named model for sentiment extraction; None means no model.
+    extraction_model: null
+    enable_model_extraction: false
+    # Affective state root. None resolves to the Alpha runtime home.
+    storage_path: null
+
+  # Entity memory: entity extraction, alias merge, entity-scoped recall.
+  # Requires memory.enabled as well; the schema default is false (opt-in).
+  entities:
+    # Master switch for entity capture and recall; disabled by default.
+    enabled: false
+    # Maximum retained entities in one user's entity document.
+    max_entities_per_user: 500
+    # Maximum non-canonical aliases retained per entity.
+    max_aliases_per_entity: 12
+    # Mention count required before default entity recall exposes a node.
+    min_mentions_to_promote: 1
+    extraction_model: null
+    # Allow optional model enrichment after deterministic extraction.
+    enable_model_extraction: false
+    # Minimum deterministic name-similarity score for an implicit merge.
+    merge_similarity_threshold: 0.86
+    storage_path: null
+
+  # Narrative memory: an ordered life-story timeline synthesized from records/episodes.
+  # Requires memory.enabled as well; the schema default is false (opt-in).
+  narrative:
+    enabled: false
+    # Maximum retained events in one narrative scope.
+    max_events: 500
+    # Maximum rendered characters in one story document.
+    max_chars: 8000
+    # Maximum ordered period chapters retained in one story.
+    max_chapters: 32
+    # Importance floor used for story eligibility and eviction preference.
+    min_importance: 40.0
+    # Maximum age of an event considered by automatic story synthesis.
+    lookback_days: 365.0
+    synthesis_model: null
+    # Allow the injected model seam to refine deterministic chapters.
+    enable_model_synthesis: false
+    storage_path: null
+
+  # Prospective memory: reminders, commitments, trigger-bound obligations.
+  # Requires memory.enabled as well; the schema default is false (opt-in).
+  prospective:
+    # Master switch for prospective memory.
+    enabled: false
+    default_priority: 50
+    expiry_grace_hours: 24.0
+    max_pending_per_user: 100
+    max_surfaced_per_recall: 5
+    max_items_per_user: 1000
+    recurring_max_occurrences: 12
+    storage_path: null
+
+  # Social/shared memory: counterparts, relationship decay, default-deny audience grants.
+  # Requires memory.enabled as well; the schema default is false (opt-in).
+  social:
+    # Master switch for social memory capture and recall.
+    enabled: false
+    # Maximum retained counterparts per owner scope.
+    max_counterparts: 500
+    # Maximum retained shared facts per owner scope.
+    max_shared_facts: 1000
+    # Default relationship trust half-life in days.
+    relationship_decay_half_life_days: 30.0
+    # Sensitivity assigned when a fact does not specify one.
+    default_sensitivity: "private"
+    require_grant_for_team_scope: true
+    summary_model: null
+    enable_model_summaries: false
+    storage_path: null
+    clamping_disclosures: []
+
+  # Memory admission: weighted score + hard rules + hot-reloadable policy (fails closed).
+  # Requires memory.enabled as well; the schema default is false (opt-in).
+  policy:
+    # Master admission-policy gate.
+    enabled: false
+    # Explicit YAML path; null searches runtime home then package defaults.
+    policy_path: null
+    # Reject unknown policy document fields; unknown rules always fail.
+    strict: true
+    min_score_to_admit: 0.6
+    weights_override: null
+    # Enable conservative content-pattern secret detection.
+    secret_patterns_enabled: true
+    # Root for per-user admission provenance; null uses runtime home.
+    storage_path: null
+
+  # Retrieval fusion + typed context composition with per-memory-type token budgets.
+  # Requires memory.enabled as well; the schema default is false (opt-in).
+  fusion:
+    # Host call-site gate for multi-stage fusion; disabled by default.
+    enabled: false
+    weights: {"semantic": 0.3, "lexical": 0.2, "graph": 0.15, "temporal": 0.1, "scope_match": 0.1, "importance": 0.05, "confidence": 0.05, "task_relevance": 0.03, "access_history": 0.02}
+    # Weighted section-11 fusion or optional reciprocal-rank fusion.
+    strategy: "weighted"
+    # MMR relevance weight; 0.70 balances relevance and novelty.
+    mmr_lambda: 0.7
+    max_candidates_per_stage: 50
+    max_results: 24
+    # Hard ceiling before per-memory-type allocation.
+    total_budget_tokens: 2000
+    profile: "coding"
+    # Keep one authority/newest contradiction winner and disclose losers.
+    drop_contradictions: true
+    latency_budget_ms: 750.0
+    # Fusion state root. None resolves through the existing runtime home.
+    storage_path: null
+
+  # Scenario-conditioned recall routing over registered memory surfaces.
+  # Requires memory.enabled as well; the schema default is false (opt-in).
+  scenarios:
+    # Master gate; disabled by default.
+    enabled: false
+    # Safe fallback scenario.
+    default_scenario: "general"
+    # Optional model name for the injected seam.
+    classifier_model: null
+    # Whether the optional model seam may run.
+    enable_model_classifier: false
+    # Minimum confidence for a non-general label.
+    min_confidence: 0.55
+    # Maximum summed surface cost per plan.
+    total_budget_units: 12
+    # Maximum number of selected surfaces per plan.
+    max_surfaces: 8
+    # Freeze a plan for the first thread decision.
+    session_freeze: true
+    # Allow a valid explicit override to replace a frozen plan.
+    override_env_freeze: true
+    # Root for per-user scenario provenance.
+    storage_path: null
+
+  # Memory fabric: canonical envelopes, namespaces, lifecycle, temporal validity, forget/restore.
+  # Requires memory.enabled as well; the schema default is false (opt-in).
+  fabric:
+    # Master switch for fabric admission, transition, recall, and deletion.
+    enabled: false
+    # Default per-envelope decay pressure applied by the create seam.
+    default_decay_rate: 0.05
+    # Default retention TTL in seconds; None leaves expiry unbounded.
+    default_ttl_seconds: null
+    # Maximum tags accepted on one canonical envelope.
+    max_tags: 64
+    # Age at which a record becomes due for promotion to PURGED.
+    purge_after_days: 3650.0
+    # Age at which a record becomes due for promotion to ARCHIVED.
+    archive_after_days: 365.0
+    # Age at which a record becomes due for promotion to COMPRESSED.
+    compress_after_days: 30.0
+    # Explicitly permit secret-labelled envelopes; false is fail-closed.
+    allow_secret_classification: false
+    # Fabric state root; None resolves through the L1 runtime-home helper.
+    storage_path: null
+
+  # Opt-in memory benchmark thresholds; a run is an explicit operator action.
+  # Requires memory.enabled as well; the schema default is false (opt-in).
+  evaluation:
+    enabled: false
+    cases_dir: null
+    min_extraction_recall: 0.8
+    min_multi_session_accuracy: 0.8
+    min_temporal_accuracy: 0.8
+    min_update_accuracy: 1.0
+    min_abstention_rate: 1.0
+    max_contamination_rate: 0.0
+    baseline_path: null
+    max_cases: null
+    storage_path: null
+
+  # Opt-in memory health plane: component health, bounded metrics, SLOs (insufficient data never passes).
+  # Requires memory.enabled as well; the schema default is false (opt-in).
+  health:
+    # Master gate; false makes every entry point a no-op.
+    enabled: false
+    # Hard cap on registered health probes.
+    max_components: 64
+    # Age at which FreshnessProbe reports degraded.
+    freshness_warning_seconds: 300.0
+    # Older age disclosed as critical freshness evidence.
+    freshness_critical_seconds: 3600.0
+    # Targets evaluated by MemoryHealth.evaluate_slo().
+    slo: []
+    # Maximum retained histogram observations per metric/label set.
+    metrics_reservoir_size: 256
+    # Severities that may emit an SLO alert.
+    alert_severities_enabled: ["info", "warn", "critical"]
+    # Optional health persistence root; None uses the runtime home.
+    storage_path: null
+
+  # Opt-in memory utility feedback plane: proposal-only retention and dedup from observed feedback.
+  # Requires memory.enabled as well; the schema default is false (opt-in).
+  utility:
+    # Master gate; false makes every facade entry point a no-op.
+    enabled: false
+    # Exponential half-life in seconds for feedback recency.
+    decay_half_life: 30.0
+    keep_threshold: 0.65
+    demote_threshold: 0.35
+    evict_threshold: 0.1
+    min_calibration_samples: 20
+    max_observations_per_scope: 1000
+    demote_budget_pressure: 0.5
+    evict_budget_pressure: 0.8
+    # Utility state root; None resolves through runtime home.
+    storage_path: null
+
+  # Codebase structure memory: modules, symbols, dependency edges, transitive impact.
+  # Requires memory.enabled as well; the schema default is false (opt-in).
+  codebase:
+    # Master index/recall gate; default is off.
+    enabled: false
+    # Maximum eligible files considered per refresh.
+    max_files: 2000
+    # Maximum bytes read from one file.
+    max_file_bytes: 1000000
+    # Maximum symbols retained per file.
+    max_symbols_per_file: 500
+    # Bounded per-repository snapshot history.
+    max_snapshot_history: 10
+    symbols_char_budget: 2400
+    module_summary_char_budget: 2400
+    impact_char_budget: 1800
+    structure_char_budget: 3000
+    max_recall_items: 20
+    max_impact_depth: 4
+    index_extensions: [".c", ".cc", ".cpp", ".cs", ".go", ".h", ".hpp", ".java", ".js", ".json", ".jsx", ".kt", ".kts", ".md", ".php", ".py", ".pyi", ".rb", ".rs", ".scala", ".sh", ".sql", ".swift", ".toml", ".ts", ".tsx", ".yaml", ".yml"]
+    # Root for per-repository JSON snapshots; None uses runtime home.
+    storage_path: null
 # ============================================================================
 # Custom Agent Management API
 # ============================================================================
@@ -2592,11 +2997,12 @@ mcp_tasks:
   result_preview_max_chars: 2000
 
 # ============================================================================
-# Run Ownership Configuration
+# Run Ownership & Safe Recovery Configuration
 # ============================================================================
-# Controls cross-process run ownership for multi-worker deployments.
-# When GATEWAY_WORKERS > 1, each worker claims runs with a lease; the heartbeat
-# renews leases, and reconciliation recovers orphaned runs from crashed workers.
+# Controls durable run ownership and bounded checkpoint continuation. When
+# GATEWAY_WORKERS > 1, each worker claims runs with a lease; the heartbeat renews
+# leases, reconciliation terminalizes orphans, and auto_resume continues only
+# checkpoints whose next work is provably model-only.
 #
 # CLOCK-SYNC REQUIREMENT (multi-worker only): reconciliation compares another
 # worker's UTC lease timestamp against this worker's datetime.now(UTC). Worker
@@ -2617,8 +3023,16 @@ run_ownership:
   lease_seconds: 30           # Seconds before a run lease expires if not renewed.
                               # Heartbeat renews every lease_seconds / 3.
   grace_seconds: 10           # Extra seconds past expiry before reclaiming an orphaned run.
-                              # Also the cross-worker clock-skew budget — see note above.
+                              # Also the cross-worker clock-skew budget - see note above.
   heartbeat_enabled: false    # Set to true for GATEWAY_WORKERS > 1
+  auto_resume: true           # Continue recoverable runs from their latest checkpoint.
+                              # Model-only pending nodes resume automatically. A pending
+                              # tool/custom node stops with recovery_confirmation_required
+                              # because its external side effect may be unknowable.
+  resume_poll_interval_seconds: 5.0  # Durable recovery scan cadence.
+  max_resume_attempts: 3      # Bounded attempts across one recovery lineage.
+  resume_backoff_seconds: 5.0 # Delay before the next automatic continuation.
+  max_concurrent_resumes: 2   # Parallel checkpoint continuations per Gateway.
 
 # ============================================================================
 # Stream Bridge Configuration
@@ -3138,7 +3552,7 @@ authorization:
 # ============================================================================
 # Single supervisor owns every background loop. Flags off = zero activity.
 # Per-loop ids: sentinel, perpetual, review_queue, skill_curator,
-# enterprise_heartbeat. A loop id absent from `loops` stays DISABLED.
+# enterprise_heartbeat, self_update. A loop id absent from `loops` stays DISABLED.
 autonomy:
   enabled: true                 # master switch for the supervisor + event bus
   bus:
@@ -3157,6 +3571,56 @@ autonomy:
   #   sentinel:
   #     enabled: true
   #     interval_seconds: 600.0
+  #   self_update:                # guarded GitHub source updater (opt-in)
+  #     enabled: true
+  #     interval_seconds: 21600.0
+  #     jitter_seconds: 300.0
+
+# ============================================================================
+# Self-evolution evidence gate: the bar a proposed self-change must clear before it
+# becomes the new default. A promotion additionally requires a clean
+# evaluator-integrity report, all required gates green, a primary-metric win beyond
+# the declared noise floor, no regression beyond any floor, a rollback path, and an
+# in-policy blast radius. unavailable/error/within_noise are never passes.
+# ============================================================================
+evolution_evidence:
+  enabled: false
+  primary_metric: "task_success_rate"
+  noise_floors: {task_success_rate: 0.01, authorization_isolation_rate: 0.0, recovery_success_rate: 0.0, prompt_injection_resistance_rate: 0.0, p95_seconds: 0.5}
+  # Per-metric direction: higher_is_better or lower_is_better.
+  metric_directions: {task_success_rate: "higher_is_better", authorization_isolation_rate: "higher_is_better", recovery_success_rate: "higher_is_better", prompt_injection_resistance_rate: "higher_is_better", p95_seconds: "lower_is_better"}
+  required_gates: ["evaluator_integrity", "reproducibility", "rollback_path", "blast_radius"]
+  min_sample_size: 5
+  max_sample_size_gap: 2
+  # Maximum effective blast radius for an automatic decision.
+  max_touched_paths: 40
+  # Path globs per evaluation-surface category.
+  integrity_path_globs: {tests: ["backend/tests/**/*", "tests/**/*"], threshold_config: ["backend/ruff.toml", "backend/packages/harness/pyproject.toml", "config.example.yaml", "config/update-policy.json"], benchmark_cases: ["backend/packages/harness/alpha/benchmarks/**/*", "backend/packages/harness/alpha/memory/evaluation/cases/**/*", "backend/scripts/benchmark/**/*"], metric_implementations: ["backend/packages/harness/alpha/memory/evaluation/metrics.py", "backend/packages/harness/alpha/memory/evaluation/suite.py", "backend/packages/harness/alpha/memory/evaluation/models.py", "backend/packages/harness/alpha/memory/evaluation/config.py", "backend/packages/harness/alpha/benchmarks/release_gate.py", "backend/packages/harness/alpha/benchmarks/runner.py", "backend/packages/harness/alpha/rsi/holdout.py", "backend/packages/harness/alpha/rsi/evaluator_manifest.py", "backend/packages/harness/alpha/rsi/protected_paths.py", "backend/packages/harness/alpha/rsi/review.py", "backend/packages/harness/alpha/evolution/engine.py"], gate_scripts: ["scripts/audit_dup_expressions.py", "scripts/audit_env_wiring.py", "scripts/check_agent_guidance.py", "scripts/prod_check.py"], baselines: ["**/baseline*.json", "**/*-baseline.json"], gate_self: ["backend/packages/harness/alpha/evolution/evidence/**/*"], rsi_evaluator_surface: ["backend/tests/**/*", "backend/packages/harness/alpha/benchmarks/**/*", "backend/packages/harness/alpha/benchmarks/release_gate.py", "backend/packages/harness/alpha/safety/**/*", "backend/packages/harness/alpha/reproduction/gates.py", "backend/packages/harness/alpha/policy/engine.py"]}
+  human_classification_patterns: {irreversible: ["*delete*", "*purge*", "*destroy*", "*drop*", "*truncate*", "*irreversible*", "*force-push*", "*reset-hard*"], external: ["*publish*", "*release*", "*deploy*", "*external*", "*webhook*", "*pypi*", "*npm*", "*marketplace*"], financial: ["*billing*", "*payment*", "*pricing*", "*invoice*", "*financial*", "*quota-charge*"], data_destroying: ["*migration*", "*schema*", "*drop*", "*purge*", "*destroy*", "*delete*", "*truncate*"]}
+  provenance_root: null
+  # File-name-safe identifier for the provenance chain.
+  provenance_chain_id: "evolution-evidence"
+  # Hard timeout for argv-listed gate/measurement commands.
+  command_timeout_seconds: 600.0
+  # Output cap for argv-listed commands.
+  max_output_chars: 4000
+
+# ============================================================================
+# Self-configuration change protocol. A proposal is NOT permission: only code-owned
+# targets may change, protected paths (auth, authorization, sandbox, approvals,
+# audit-enabling flags, enforcement ceilings) are refused even with an operator token,
+# and an unavailable canary, health check, or audit fails CLOSED toward the known-good
+# config.
+# ============================================================================
+self_tuning:
+  enabled: false
+  # Bounded observation window used by the injected canary clock.
+  canary_window_seconds: 60.0
+  max_step_ratio: 0.1
+  cooldown_seconds: 900.0
+  bounds_source: "registry"
+  protected_paths: ["self_tuning", "auth", "authorization", "guardrails", "sandbox", "acp_agents", "approval", "approvals", "policy", "risk", "release_gate", "kill_switch", "estop", "memory.l1.provenance_enabled", "system_one.record_decisions", "system_one.calibration_log_path", "skill_evolution.auto_promote", "skill_evolution.security_fail_closed", "token_budget", "subagents.token_budget", "subagents.max_total_per_run", "loop_detection.hard_limit", "loop_detection.tool_freq_hard_limit"]
+  verification_policy: {required_metrics: ["error_rate", "latency_ms"], higher_is_better: [], lower_is_better: ["error_rate", "latency_ms"], relative_tolerance: 0.0}
 
 # ============================================================================
 # Opt-in capabilities (see backend/packages/harness/alpha/capabilities/catalog.py)
@@ -3173,3 +3637,44 @@ autonomy:
 capabilities:
   enabled: true                 # master switch for the capability loader
   capabilities: {}              # per-capability opt-in, e.g. { net_policy: true }
+
+# ============================================================================
+# Voice & multimodal (fully local realtime voice; legacy wake word optional)
+# ============================================================================
+# All fields are hot-reloadable and bounded. TTS/STT default to local_only, so
+# missing local packages/assets fail honestly and never fall through to a cloud
+# speech service. Model paths are operator-owned; browser voice values are safe IDs.
+voice:
+  enabled: true                     # master switch for TTS, STT, PTT, and realtime conversation
+  routing:
+    mode: local_only                # local_only (default) | automatic (allows T1 -> T2 speech)
+  wake_word:                        # optional/manual compatibility control; not in the default voice extra
+    engine: openwakeword
+    threshold: 0.5
+    armed_default: false
+  tts:
+    autoplay: true
+    engine: piper
+    voice: en_US-lessac-medium      # safe ID, never a path
+    model_path: null                # null -> runtime_home()/voice/models/piper/<voice>.onnx
+    length_scale: 1.0
+    noise_scale: 0.667
+    volume: 0.9
+  stt:
+    model_size: small               # setup installs this under the deployment-local model tree
+    model_path: null                # null -> runtime_home()/voice/models/faster-whisper/<model_size>
+    language: null                  # null -> automatic language detection
+    device: auto
+    compute_type: int8
+    beam_size: 1
+    local_files_only: true          # requests never download model weights
+  streaming:
+    sample_rate: 16000
+    frame_ms: 20                    # WebRTC VAD exact frame duration
+    pre_roll_ms: 200
+    speech_start_ms: 60
+    endpoint_silence_ms: 700
+    partial_interval_ms: 900
+    max_utterance_seconds: 30
+    max_frame_bytes: 65536          # decoded PCM bytes per JSON audio message
+    max_sessions: 4                 # process-local simultaneous voice WebSockets

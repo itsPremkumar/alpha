@@ -48,20 +48,35 @@ def evaluate_quality_gate(
     )
 
     # 3. Acceptance Criteria Coverage
+    # Disclosed design choice: keyword-overlap threshold of 40% (not semantic
+    # matching). A criterion with no evaluable tokens can never be checked, so
+    # it must never pass — it fails with an explicit reason and is surfaced in
+    # `degenerate_criteria` so callers can see nothing was evaluated for it.
     criteria_passed = 0
+    degenerate_criteria: list[dict[str, str]] = []
     total_criteria = len(acceptance_criteria)
     if total_criteria > 0:
         for criterion in acceptance_criteria:
-            crit_tokens = [t for t in re.findall(r"[a-z0-9_]+", criterion.lower()) if len(t) > 2]
+            crit_tokens = [t for t in re.findall(r"[a-z0-9_]+", criterion.lower()) if len(t) > 2] if isinstance(criterion, str) else []
+            if len(crit_tokens) == 0:
+                degenerate_criteria.append({"criterion": str(criterion), "reason": "criterion has no evaluable tokens"})
+                checks.append(
+                    {
+                        "name": f"Criterion: {str(criterion)[:40]}...",
+                        "passed": False,
+                        "details": "criterion has no evaluable tokens",
+                    }
+                )
+                continue
             # Check keyword presence in deliverable
             matched = sum(1 for t in crit_tokens if t in lower_text)
-            coverage = matched / max(len(crit_tokens), 1)
-            passed = coverage >= 0.40 or len(crit_tokens) == 0
+            coverage = matched / len(crit_tokens)
+            passed = coverage >= 0.40
             if passed:
                 criteria_passed += 1
             checks.append(
                 {
-                    "name": f"Criterion: {criterion[:40]}...",
+                    "name": f"Criterion: {str(criterion)[:40]}...",
                     "passed": passed,
                     "details": f"Keywords matched: {matched}/{len(crit_tokens)}",
                 }
@@ -84,10 +99,18 @@ def evaluate_quality_gate(
     passed_checks = sum(1 for c in checks if c["passed"])
     score = round(passed_checks / max(total_checks, 1), 2)
 
-    # Hard rules for passing: must have substantive output and no failure signatures
-    verdict = "passed" if (length_passed and not has_failure_phrases and score >= 0.60) else "rejected"
+    # Hard rules for passing: must have substantive output, no failure
+    # signatures, and every criterion must have been evaluable. A gate with
+    # degenerate criteria cannot claim a pass when part of its criteria set
+    # was never checked.
+    verdict = "passed" if (length_passed and not has_failure_phrases and not degenerate_criteria and score >= 0.60) else "rejected"
 
-    feedback = "Deliverable passed all automated quality gate checks." if verdict == "passed" else f"Quality gate rejected deliverable: {passed_checks}/{total_checks} checks passed."
+    if verdict == "passed":
+        feedback = "Deliverable passed all automated quality gate checks."
+    else:
+        feedback = f"Quality gate rejected deliverable: {passed_checks}/{total_checks} checks passed."
+        if degenerate_criteria:
+            feedback += " Degenerate criteria (never pass, not evaluable): " + "; ".join(f"{d['criterion']!r} ({d['reason']})" for d in degenerate_criteria) + "."
 
     return {
         "verdict": verdict,
@@ -95,6 +118,7 @@ def evaluate_quality_gate(
         "passed_checks": passed_checks,
         "total_checks": total_checks,
         "checks": checks,
+        "degenerate_criteria": degenerate_criteria,
         "feedback": feedback,
         "timestamp": _now(),
     }

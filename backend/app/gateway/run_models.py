@@ -51,7 +51,7 @@ class RunCreateRequest(BaseModel):
     stream_mode: list[RunStreamMode] | RunStreamMode | None = Field(default=None, description="Supported stream mode(s)")
     stream_subgraphs: bool = Field(default=False, description="Include subgraph events")
     stream_resumable: Literal[False] | None = Field(default=None, description="Compatibility placeholder; only the SDK's non-resumable default (null/false) is accepted")
-    on_disconnect: Literal["cancel", "continue"] = Field(default="cancel", description="Behaviour on SSE disconnect")
+    on_disconnect: Literal["cancel", "continue"] = Field(default="continue", description="Behaviour on SSE disconnect; explicit cancel remains available through the cancel endpoint")
     on_completion: None = Field(default=None, description="Compatibility placeholder; completion behavior is not supported")
     multitask_strategy: Literal["reject", "rollback", "interrupt"] = Field(default="reject", description="Concurrency strategy")
     after_seconds: None = Field(default=None, description="Compatibility placeholder; delayed execution is not supported")

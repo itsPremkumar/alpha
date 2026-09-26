@@ -35,7 +35,6 @@ No additional permission decorator is required here.
 from __future__ import annotations
 
 import logging
-import os
 import time
 from typing import Any
 
@@ -492,17 +491,50 @@ class SystemAlertsResponse(BaseModel):
 
 class ProcessesResponse(BaseModel):
     timestamp: float
-    processes: ProcessSummary
+    processes: ProcessSummary | None = Field(
+        default=None,
+        description="Process summary, or null when enumeration is unsupported/unavailable on this host",
+    )
+    degraded: bool = Field(
+        default=False,
+        description="True when process telemetry could not be collected — null/absent data is not a measured zero",
+    )
+    reason: str | None = Field(
+        default=None,
+        description="Why telemetry is degraded, e.g. 'process enumeration unsupported on this host'",
+    )
 
 
 class NetworkInterfacesResponse(BaseModel):
     timestamp: float
-    interfaces: list[NetworkInterfaceSnapshot] = Field(default_factory=list)
+    interfaces: list[NetworkInterfaceSnapshot] | None = Field(
+        default=None,
+        description="Per-interface network telemetry, or null when interface enumeration is unsupported on this host",
+    )
+    degraded: bool = Field(
+        default=False,
+        description="True when interface telemetry could not be collected — null/absent data is not a measured empty list",
+    )
+    reason: str | None = Field(
+        default=None,
+        description="Why telemetry is degraded, e.g. 'network interface enumeration unsupported on this host'",
+    )
 
 
 class CapabilitiesResponse(BaseModel):
     timestamp: float
-    capabilities: SystemCapabilities
+    capabilities: SystemCapabilities | None = Field(
+        default=None,
+        description="Capability report, or null when the monitor cannot report capabilities on this host",
+    )
+    degraded: bool = Field(
+        default=False,
+        description="True when the capability report could not be collected — null is not a measured capability set",
+    )
+    reason: str | None = Field(
+        default=None,
+        description="Why the capability report is degraded, e.g. 'capability reporting unsupported on this host'",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -649,15 +681,17 @@ async def system_processes(
             sort=sort,
         )
     except AttributeError:
-        # Older monitor implementations can degrade gracefully.
-        data = {
-            "total": 0,
-            "running": 0,
-            "sleeping": 0,
-            "stopped": 0,
-            "top_cpu": [],
-            "top_memory": [],
-        }
+        # Older monitor implementations cannot enumerate processes. Disclose
+        # the gap instead of presenting fabricated zeros as measured data:
+        # processes=null + degraded=true tells clients this is a host
+        # limitation, not a host that genuinely runs zero processes.
+        logger.warning("Process enumeration unsupported by the system monitor on this host")
+        return ProcessesResponse(
+            timestamp=time.time(),
+            processes=None,
+            degraded=True,
+            reason="process enumeration unsupported on this host",
+        )
     except Exception:
         logger.exception("Failed to retrieve process information")
         raise HTTPException(
@@ -683,7 +717,17 @@ async def network_interfaces() -> NetworkInterfacesResponse:
     try:
         interfaces = monitor.get_network_interfaces()
     except AttributeError:
-        interfaces = []
+        # Older monitor implementations cannot enumerate interfaces. Disclose
+        # the gap instead of presenting an empty list as a measured state:
+        # interfaces=null + degraded=true tells clients this is a host
+        # limitation, not a host that genuinely has zero interfaces.
+        logger.warning("Network interface enumeration unsupported by the system monitor on this host")
+        return NetworkInterfacesResponse(
+            timestamp=time.time(),
+            interfaces=None,
+            degraded=True,
+            reason="network interface enumeration unsupported on this host",
+        )
     except Exception:
         logger.exception("Failed to retrieve network interfaces")
         raise HTTPException(
@@ -709,30 +753,18 @@ async def system_capabilities() -> CapabilitiesResponse:
     try:
         capabilities = monitor.get_capabilities()
     except AttributeError:
-        # Conservative fallback for older service implementations.
-        try:
-            import psutil  # noqa: F401
-
-            psutil_available = True
-        except ImportError:
-            psutil_available = False
-
-        capabilities = SystemCapabilities(
-            psutil=psutil_available,
-            cpu=psutil_available,
-            memory=psutil_available,
-            disk=psutil_available,
-            disk_io=psutil_available,
-            network=psutil_available,
-            network_interfaces=psutil_available,
-            gpu=False,
-            nvidia_gpu=False,
-            sensors=psutil_available,
-            battery=psutil_available,
-            process_monitoring=psutil_available,
-            load_average=hasattr(os, "getloadavg"),
-        ).model_dump()
-
+        # Older monitor implementations cannot report capabilities. Disclose
+        # the gap instead of guessing host properties from a mere psutil
+        # import check (those booleans read as measured capability claims):
+        # capabilities=null + degraded=true tells clients this is a host
+        # limitation, not a measured capability report.
+        logger.warning("Capability reporting unsupported by the system monitor on this host")
+        return CapabilitiesResponse(
+            timestamp=time.time(),
+            capabilities=None,
+            degraded=True,
+            reason="capability reporting unsupported on this host",
+        )
     except Exception:
         logger.exception("Failed to retrieve monitor capabilities")
         raise HTTPException(

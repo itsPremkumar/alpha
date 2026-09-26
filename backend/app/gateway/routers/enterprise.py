@@ -18,6 +18,11 @@ from alpha.enterprise import (
     get_mission_pipeline,
     get_rfc_protocol,
 )
+from alpha.enterprise.models import (
+    CONFIDENCE_BASIS_CALLER_SUPPLIED,
+    CONFIDENCE_BASIS_NEUTRAL,
+    NEUTRAL_CONFIDENCE_BASELINE,
+)
 
 logger = logging.getLogger(__name__)
 _inner_router = APIRouter()
@@ -49,7 +54,12 @@ class SubmitRFCReviewRequest(BaseModel):
     department: str = Field(..., description="Reviewer department")
     verdict: str = Field(..., description="Verdict: approve, reject, amend")
     argument: str = Field(..., min_length=2, description="Review justification")
-    epistemic_confidence: float = Field(default=0.85, ge=0.0, le=1.0, description="Confidence rating")
+    epistemic_confidence: float = Field(
+        default=NEUTRAL_CONFIDENCE_BASELINE,
+        ge=0.0,
+        le=1.0,
+        description="Confidence rating. When omitted, the stored value is the disclosed neutral baseline 0.5 (basis 'neutral_baseline_0.5'), not a measured confidence; an explicit value is stored as basis 'caller_supplied'.",
+    )
 
 
 class SubmitDebateArgumentRequest(BaseModel):
@@ -59,7 +69,12 @@ class SubmitDebateArgumentRequest(BaseModel):
     claim: str = Field(..., min_length=2, description="Core argument claim")
     evidence: str = Field(default="", description="Supporting technical evidence")
     counter_to_id: str | None = Field(default=None, description="Countered argument ID if applicable")
-    epistemic_weight: float = Field(default=0.8, ge=0.0, le=1.0, description="Epistemic weight")
+    epistemic_weight: float = Field(
+        default=NEUTRAL_CONFIDENCE_BASELINE,
+        ge=0.0,
+        le=1.0,
+        description="Epistemic weight. When omitted, the stored value is the disclosed neutral baseline 0.5 (basis 'neutral_baseline_0.5'), not a measured weight; an explicit value is stored as basis 'caller_supplied'.",
+    )
 
 
 class DecomposeMissionRequest(BaseModel):
@@ -175,6 +190,11 @@ async def submit_rfc_review(rfc_id: str, payload: SubmitRFCReviewRequest) -> dic
             verdict=payload.verdict,
             argument=payload.argument,
             epistemic_confidence=payload.epistemic_confidence,
+            confidence_basis=(
+                CONFIDENCE_BASIS_CALLER_SUPPLIED
+                if "epistemic_confidence" in payload.model_fields_set
+                else CONFIDENCE_BASIS_NEUTRAL
+            ),
         )
         return review.model_dump()
     except KeyError:
@@ -196,6 +216,11 @@ async def submit_debate_argument(rfc_id: str, payload: SubmitDebateArgumentReque
             evidence=payload.evidence,
             counter_to_id=payload.counter_to_id,
             epistemic_weight=payload.epistemic_weight,
+            confidence_basis=(
+                CONFIDENCE_BASIS_CALLER_SUPPLIED
+                if "epistemic_weight" in payload.model_fields_set
+                else CONFIDENCE_BASIS_NEUTRAL
+            ),
         )
         return arg.model_dump()
     except KeyError:
@@ -328,15 +353,29 @@ async def stage_release(payload: StageReleaseRequest) -> dict[str, Any]:
 
 @router.post("/council/releases/{release_id}/benchmark")
 async def run_release_benchmark(release_id: str) -> dict[str, Any]:
-    """Runs candidate through the SWE holdout test suite and attaches benchmark signature."""
+    """Runs the candidate holdout benchmark preview and attaches its evidence basis.
+
+    The score produced by the council is a simulated preview, not a measured
+    benchmark run, so this response reports evidence_kind alongside the score
+    and explicitly declines to emit a pass verdict derived from it.
+    """
     council = get_council_quorum_engine()
     try:
         score = await asyncio.to_thread(council.run_holdout_benchmark, release_id)
         release = await asyncio.to_thread(council.get_release, release_id)
+        evidence_kind = getattr(release, "evidence_kind", "unknown") if release else "unknown"
         return {
             "release_id": release_id,
             "holdout_benchmark_score": score,
-            "holdout_passed": score >= 90.0,
+            "evidence_kind": evidence_kind,
+            # None, never a boolean pass claim: a verdict cannot be derived
+            # from a simulated score. The stored model gate
+            # (release.holdout_passed) remains False.
+            "holdout_passed": None,
+            "holdout_passed_reason": (
+                f"score is simulated (evidence_kind={evidence_kind}); "
+                "no measured benchmark ran — pass verdict unavailable"
+            ),
             "release": release.model_dump() if release else None,
         }
     except KeyError:
@@ -385,7 +424,7 @@ async def get_discovery_overview() -> dict[str, Any]:
     latest_scan = await asyncio.to_thread(disc.get_latest_scan)
     return {
         "feature_gaps": [g.model_dump() for g in gaps],
-        "latency_profiles": [l.model_dump() for l in latencies],
+        "latency_profiles": [latency.model_dump() for latency in latencies],
         "latest_security_scan": latest_scan.model_dump() if latest_scan else None,
     }
 

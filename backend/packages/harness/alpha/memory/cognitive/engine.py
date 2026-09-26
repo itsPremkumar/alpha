@@ -183,6 +183,7 @@ class CognitiveMemorySystem:
                         last_accessed_at=n_dict.get("last_accessed_at"),
                         created_at=n_dict.get("created_at"),
                         superseded_by=n_dict.get("superseded_by"),
+                        source=n_dict.get("source"),
                     )
                 for e_dict in data.get("semantic_edges", []):
                     self.semantic_graph.add_edge(
@@ -270,35 +271,51 @@ class CognitiveMemorySystem:
         self._bootstrap_defaults()
 
     def _bootstrap_defaults(self) -> None:
-        """Seed foundational architectural beliefs, rules, and procedural skills."""
-        # Foundational Semantic Beliefs
+        """Seed foundational architectural beliefs, rules, and procedural skills.
+
+        Honesty contract (mirrors the established pattern in
+        ``alpha/epistemics/engine.py``): prose written at startup has NO
+        evidence behind it, so every seeded belief is an unverified
+        assumption — seeded at a modest base rate (0.5-0.7, never
+        near-certain), tagged ``bootstrap``, carrying the explicit
+        ``source="bootstrap-assumption"`` provenance, and with an empty
+        evidence ledger. Confidence above the base rate (or any
+        near-certain presentation) may only follow REAL evidence added
+        later; the old ``0.98/0.95/0.96/0.92`` confidences and the
+        ``pinned`` tag asserted knowledge this code never earned.
+        """
+        # Foundational Semantic Beliefs (bootstrap assumptions, not facts)
         b1 = self.semantic_graph.add_belief(
             subject="AgentArchitecture",
             predicate="operates_on",
             object_val="MultiTierCognitiveMemory",
-            confidence=0.98,
-            tags=["architecture", "pinned"],
+            confidence=0.6,
+            tags=["architecture", "bootstrap"],
+            source="bootstrap-assumption",
         )
         b2 = self.semantic_graph.add_belief(
             subject="MemoryRetrieval",
             predicate="uses_hybrid_fusion",
             object_val="BM25_Vector_Graph_TemporalDecay",
-            confidence=0.95,
-            tags=["retrieval", "pinned"],
+            confidence=0.55,
+            tags=["retrieval", "bootstrap"],
+            source="bootstrap-assumption",
         )
         b3 = self.semantic_graph.add_belief(
             subject="CognitiveConsolidation",
             predicate="implements_phases",
             object_val="LightSleep_REM_DeepSleep",
-            confidence=0.96,
-            tags=["consolidation", "dreaming"],
+            confidence=0.55,
+            tags=["consolidation", "dreaming", "bootstrap"],
+            source="bootstrap-assumption",
         )
         b4 = self.semantic_graph.add_belief(
             subject="EpistemicBeliefs",
             predicate="enforces_consistency",
             object_val="ConflictDetectionAndBayesianRecencySupersession",
-            confidence=0.92,
-            tags=["epistemics"],
+            confidence=0.5,
+            tags=["epistemics", "bootstrap"],
+            source="bootstrap-assumption",
         )
 
         # Connect beliefs in graph
@@ -307,7 +324,7 @@ class CognitiveMemorySystem:
         self.semantic_graph.add_edge(b3.node_id, b4.node_id, relation="crystallizes", weight=1.0)
 
         # Foundational Procedural Skills
-        sk1 = self.procedural_mem.register_skill(
+        self.procedural_mem.register_skill(
             name="verify_code_with_targeted_pytest",
             description="Run fast, targeted unit tests before committing changes to avoid regression",
             trigger_pattern=r"(test|pytest|verify|unit test)",
@@ -320,9 +337,11 @@ class CognitiveMemorySystem:
             code_snippet="uv run pytest tests/test_target.py -v",
             postconditions=["Exit code 0 and all tests passed"],
         )
-        sk1.success_count = 5
+        # No fabricated usage stats: success/failure counts start at zero and
+        # may only grow through real executions (previously seeded 5/3 fake
+        # successes were presented as measured history).
 
-        sk2 = self.procedural_mem.register_skill(
+        self.procedural_mem.register_skill(
             name="reconcile_contradictory_user_preferences",
             description="Detect and gracefully resolve conflicting user instructions or facts",
             trigger_pattern=r"(conflict|contradict|supersede|preference)",
@@ -334,7 +353,6 @@ class CognitiveMemorySystem:
             ],
             postconditions=["No unmanaged contradictory beliefs active simultaneously"],
         )
-        sk2.success_count = 3
 
         # Foundational Spatio-Temporal Event
         self.spatio_temporal.record_event(

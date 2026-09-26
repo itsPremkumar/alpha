@@ -48,27 +48,76 @@ export interface Swarm {
   id: string;
   objective: string;
   status: string;
+  mode?: string;
+  maxConcurrency?: number;
+  progress?: { total?: number; completed?: number; running?: number; pending?: number; failed?: number; cancelled?: number };
+  qualityScore?: number | null;
+  terminalReason?: string | null;
+  revision?: number;
+}
+
+export interface SwarmMessage {
+  message_id: string;
+  sequence: number;
+  topic: string;
+  sender: string;
+  kind: string;
+  content: string;
+  task_id?: string | null;
+  trust: string;
+  created_at: number;
 }
 
 export async function listSwarms(): Promise<Swarm[]> {
-  try {
-    const d = await get<unknown>("/swarms");
-    return asList(d, ["swarms", "data"]).map((s, i) => ({
-      id: String(pick(s, ["id", "swarm_id"], `swarm-${i}`)),
-      objective: String(pick(s, ["objective", "goal"], "")),
-      status: String(pick(s, ["status", "state"], "unknown")),
-    }));
-  } catch {
-    return [];
-  }
+  const d = await get<unknown>("/swarms");
+  return asList(d, ["swarms", "data"]).map((s, i) => ({
+    id: String(pick(s, ["id", "swarm_id"], `swarm-${i}`)),
+    objective: String(pick(s, ["objective", "goal"], "")),
+    status: String(pick(s, ["status", "state"], "unknown")),
+    mode: String(pick(s, ["mode"], "")),
+    maxConcurrency: Number(pick(s, ["max_concurrency"], 0)) || undefined,
+    progress: (pick(s, ["progress"], undefined) as Swarm["progress"]) || undefined,
+    qualityScore: typeof pick(s, ["quality_score"], null) === "number" ? Number(pick(s, ["quality_score"], 0)) : null,
+    terminalReason: (pick(s, ["terminal_reason"], null) as string | null) ?? null,
+    revision: Number(pick(s, ["revision"], 0)) || undefined,
+  }));
 }
 
-export async function createSwarm(objective: string): Promise<void> {
-  await send("/swarms", "POST", { objective });
+export async function createSwarm(objective: string, options?: { mode?: string; maxConcurrency?: number; items?: string[] }): Promise<void> {
+  await send("/swarms", "POST", {
+    goal: objective,
+    mode: options?.mode ?? "auto",
+    max_concurrency: options?.maxConcurrency ?? 8,
+    items: options?.items,
+  });
 }
 
-export async function swarmAction(id: string, action: "pause" | "resume" | "cancel" | "step"): Promise<void> {
+export async function swarmAction(id: string, action: "pause" | "resume" | "cancel" | "step" | "run_async"): Promise<void> {
   await send(`/swarms/${encodeURIComponent(id)}/${action}`, "POST", {});
+}
+
+export async function swarmDetails(id: string): Promise<Record<string, unknown>> {
+  return get<Record<string, unknown>>(`/swarms/${encodeURIComponent(id)}`);
+}
+
+export async function swarmMetrics(id: string): Promise<Record<string, unknown>> {
+  return get<Record<string, unknown>>(`/swarms/${encodeURIComponent(id)}/metrics`);
+}
+
+export async function swarmMessages(id: string, topic?: string): Promise<SwarmMessage[]> {
+  const query = topic ? `?topic=${encodeURIComponent(topic)}` : "";
+  const d = await get<unknown>(`/swarms/${encodeURIComponent(id)}/messages${query}`);
+  return asList(d, ["messages", "data"]) as unknown as SwarmMessage[];
+}
+
+export async function publishSwarmMessage(id: string, message: { topic?: string; content: string; task_id?: string }): Promise<void> {
+  await send(`/swarms/${encodeURIComponent(id)}/messages`, "POST", {
+    topic: message.topic ?? "general",
+    sender: "operator",
+    kind: "observation",
+    content: message.content,
+    task_id: message.task_id,
+  });
 }
 
 /* ---------- Durable MCP tasks ---------- */
@@ -192,10 +241,7 @@ export async function matchBots(taskDescription: string, limit = 5): Promise<Arr
 }
 
 export async function orgEvents(limit = 30): Promise<Array<Record<string, unknown>>> {
-  try {
-    const d = await get<unknown>(`/bots/events?limit=${limit}`);
-    return asList(d, ["events", "data"]);
-  } catch {
-    return [];
-  }
+  // Failure propagates: an empty feed must not masquerade as "nothing happened".
+  const d = await get<unknown>(`/bots/events?limit=${limit}`);
+  return asList(d, ["events", "data"]);
 }

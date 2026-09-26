@@ -1,0 +1,17 @@
+{
+  "id": "alpha-evidence-traceability-001",
+  "ability": "evidence_traceability",
+  "scope": {"user_id": "eval-evidence-001", "agent_name": "alpha-memory-evaluation"},
+  "sessions": [
+    {
+      "session_id": "s1",
+      "events": [
+        {"id": "event-evidence", "text": "The canary release is gated by the canary-check command.", "fact_id": "fact-evidence", "answer": "canary-check", "expected_stored": true}
+      ]
+    }
+  ],
+  "questions": [
+    {"id": "q1", "question": "Which command gates the canary release?", "expected": "canary-check", "type": "evidence_traceability", "evidence_ids": ["event-evidence"]}
+  ],
+  "metadata": {"expected_stored": ["event-evidence"], "description": "Original provenance fixture; an answer without a returned record must fail traceability."}
+}

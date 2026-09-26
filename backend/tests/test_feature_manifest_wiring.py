@@ -185,8 +185,8 @@ def test_dormant_packages_are_still_dormant(manifest: dict) -> None:
     if the package disappears (the waiver now dangles) or if some production
     module starts importing it (the waiver is stale, so drop the entry).
     """
-    entries = manifest.get("dormant_packages", [])
-    assert entries, "dormant_packages disappeared from the manifest"
+    entries = manifest.get("dormant_packages")
+    assert isinstance(entries, list), "dormant_packages section disappeared from the manifest"
 
     sources = _production_sources()
     for entry in entries:

@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-The **Alpha Deep Research Engine** is an advanced, autonomous multi-hop research pipeline designed to overcome the limitations of superficial, single-turn web searches. Inspired by frontier deep agent architectures, it formulates multi-lane search strategies, recursively detects and fills knowledge gaps, identifies contradictions, cross-checks evidence, and compiles publication-grade Markdown briefs with strict citations.
+The **Alpha Deep Research Engine** is a bounded multi-hop research pipeline for moving beyond a single web search. It compiles five search lanes, performs one targeted knowledge-gap follow-up pass, screens fetched content for prompt injection, samples citation-support verdicts, and compiles a Markdown evidence report. It reports `no_evidence` rather than inventing findings when discovery returns nothing. The optional pinned AgentEye adapter broadens live source coverage; see [`backend/docs/AGENT_EYE_RESEARCH.md`](../backend/docs/AGENT_EYE_RESEARCH.md).
 
 ---
 
@@ -17,10 +17,10 @@ flowchart TD
     Pass2 --> Pass3["Pass 3: Adversarial Contradiction & Edge Cases"]
     Pass3 --> Pass4["Pass 4: Fact Verification & Cross-Checking"]
     Pass4 --> GapCheck{"Knowledge Gaps Detected?"}
-    GapCheck -- Yes (Recursive) --> FollowUp["Targeted Gap-Filling Sub-Searches"]
+    GapCheck -- Yes (Targeted) --> FollowUp["Bounded Gap-Filling Sub-Searches"]
     FollowUp --> Pass4
-    GapCheck -- No --> Pass5["Pass 5: Strategic Synthesis & Citation Contract"]
-    Pass5 --> Output["Publication-Grade Cited Markdown Report"]
+    GapCheck -- No --> Pass5["Pass 5: Strategic Synthesis & Evidence Report"]
+    Pass5 --> Output["Evidence Markdown Report"]
 ```
 
 ### Pass 1: Discovery & Landscape Mapping
@@ -36,46 +36,45 @@ flowchart TD
 - Ensures the final deliverable presents a balanced, realistic, and hardened perspective rather than promotional vendor bias.
 
 ### Pass 4: Fact Verification & Multi-Source Cross-Checking
-- Corroborates claims across primary documentation, peer-reviewed papers, independent security audits, and production case studies.
-- Computes source confidence scores and filters out unverified assertions.
+- Gathers documentation, papers, independent audits, and production evidence when available.
+- Samples extracted findings through the System One citation-support boundary when that provider is available.
+- Drops findings judged contradicted, flags unsupported findings, and leaves no-verdict findings explicitly unverified.
 
 ### Pass 5: Strategic Synthesis & Gap Resolution
-- Recursively addresses unanswered subtopics identified during earlier passes.
-- Compiles the intelligence into a cohesive, publication-ready report adhering to the strict citation contract.
+- Addresses unanswered subtopics identified during earlier passes.
+- Compiles the evidence into a cohesive Markdown report with explicit support status.
 
 ---
 
-## 3. Recursive Knowledge Gap Filling
+## 3. Targeted Knowledge Gap Filling
 
 During execution, the engine inspects gathered evidence against three critical dimensions:
 1. **Empirical Benchmarks**: If no concrete numbers or percentages were retrieved, a dedicated benchmark query is executed.
 2. **Adversarial Balance**: If no failure modes or criticisms were discovered, targeted risk queries are dispatched.
 3. **Architectural Trade-offs**: Follow-up searches compare the subject against competing alternatives and legacy systems.
 
-The recursive search depth is configurable from **1 (broad landscape)** to **5 (exhaustive multi-pass)**.
+Search depth is configurable from **1 (broad landscape)** to **5 (broader follow-up selection)**. Depths 2–5 enable one targeted gap-resolution stage, currently capped at three follow-up queries; they do not create five independent recursive crawls.
 
 ---
 
-## 4. Contradiction Detection & Nuance Resolution
+## 4. Adversarial juxtaposition & nuance resolution
 
-When evidence contains conflicting statements across sources (e.g., vendor performance claims vs. independent production stress tests), the engine:
-1. Identifies the conflicting claims between Source A and Source B.
-2. Formulates a **Nuance Explanation** reconciling the divergent results (e.g., explaining why peak synthetic throughput differs from real-world network partitioned environments).
-3. Embeds a dedicated `Detected Contradictions & Nuance Analysis` section in the final report.
+The engine places ordinary evidence next to explicitly adversarial-lane evidence and emits a comparison section. This is a research lead, not proof that two sources logically contradict each other. The legacy `contradictions_detected` field counts these juxtapositions; `adversarial_comparisons_detected` is the explicit name. A source is labeled verified only when its sampled findings receive a semantic support verdict; URL registration alone is never treated as verification.
 
 ---
 
-## 5. Strict Citation Contract
+## 5. Evidence and citation contract
 
-Every factual assertion, metric, and finding in the report is bound to an immutable source identifier:
-- **Citation Anchors**: `[S1]`, `[S2]`, `[S3]` attached inline to every key sentence and table row.
-- **Verified Bibliography**: Includes source title, origin URL, domain, search facet, and excerpt snippet.
-- **Example Citation Matrix**:
+Extracted findings are bound to report-local source identifiers, while their verification status remains explicit:
+- **Citation anchors**: `[S1]`, `[S2]`, `[S3]` attach findings to a source URL.
+- **Evidence bibliography**: records title, origin URL, domain, search facet, and snippet.
+- **Verification status**: `verified`, `unsupported`, `unverified`, or `not_checked`; no verdict is not a pass.
+- **Honest empty state**: no sources means `status: "no_evidence"`, no bibliography, and no generated claims.
   ```markdown
-  | Source Domain | Document / Artifact | Research Facet | Key Metric / Highlight |
-  | :--- | :--- | :--- | :--- |
-  | mit.edu | [Solid State Energy Review](https://mit.edu/energy) | `specific_evidence` | 450 Wh/kg energy density |
-  | audit-lab.org | [Production Stress Test](https://audit-lab.org) | `adversarial_contradiction` | Dendrite formation failure |
+  | Source Domain | Document / Artifact | Research Facet | Citation Status | Key Metric / Highlight |
+  | :--- | :--- | :--- | :--- | :--- |
+  | mit.edu | [Solid State Energy Review](https://mit.edu/energy) | `specific_evidence` | `unverified` | 450 Wh/kg energy density |
+  | audit-lab.org | [Production Stress Test](https://audit-lab.org) | `adversarial_contradiction` | `verified` | Dendrite formation failure |
   ```
 
 ---
@@ -90,20 +89,23 @@ deep_research(
     depth=3,                  # Depth from 1 to 5 (default 3)
     max_sources=15,           # Maximum distinct sources to cite (default 15)
     include_adversarial=True, # Actively run falsification queries (default True)
-    output_path="reports/neuromorphic_research.md" # Optional output path
+    output_path="neuromorphic_research.md" # filename under the current thread outputs directory
 )
 ```
 
 The tool writes the full Markdown report to disk and returns an actionable JSON summary:
 ```json
 {
-  "status": "success",
+  "status": "completed",
   "topic": "Neuromorphic Computing Chips Architecture",
   "executive_summary": "...",
   "sources_analyzed": 12,
-  "citations_verified": 12,
+  "citations_registered": 12,
+  "citations_verified": 7,
   "contradictions_detected": 1,
-  "saved_report_path": "reports/neuromorphic_research.md",
+  "adversarial_comparisons_detected": 1,
+  "saved_report_path": "/thread/outputs/neuromorphic_research.md",
+  "output_error": null,
   "core_findings_preview": [...]
 }
 ```
@@ -118,7 +120,7 @@ task(
 ```
 Applying the `deep-research` category automatically:
 - Expands the subagent turn budget to **150 turns**.
-- Whitelists tools: `["deep_research", "web_search", "web_fetch", "compile_five_pass_search"]`.
+- Whitelists tools: `["deep_research", "web_search", "web_fetch", "agent_eye_search", "agent_eye_sources", "compile_five_pass_search"]`.
 - Injects operator guidance enforcing rigorous 5-pass search and citation compliance.
 
 ---
@@ -132,6 +134,8 @@ pytest backend/tests/test_deep_research_engine.py backend/tests/test_deep_resear
 ```
 - Validates 5-pass plan compilation.
 - Verifies source citation formatting.
-- Validates contradiction detection.
-- Tests recursive gap filling and resolution notes.
-- Validates disk artifact writing and tool payload generation.
+- Validates adversarial source juxtaposition without an invented contradiction verdict.
+- Tests bounded gap filling and resolution notes.
+- Validates the no-evidence failure contract, filename-only output confinement, and tool payload generation.
+- Validates AgentEye source allowlisting, dedupe/ranking, backend isolation, and SSRF-safe fetching.
+.

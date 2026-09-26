@@ -231,8 +231,9 @@ class SwarmTaskDecomposer:
             plan.estimated_speedup = 1.0
             return
 
-        # Estimate nominal duration of 15s per node
-        durations = {tid: 15.0 for tid in plan.tasks}
+        # Use per-node estimates when supplied; the default remains a disclosed
+        # planning heuristic rather than a measured duration.
+        durations = {tid: max(0.0, float(task.estimated_seconds or 15.0)) for tid, task in plan.tasks.items()}
         earliest_finish: dict[str, float] = {}
 
         # Topological traversal
@@ -256,7 +257,14 @@ class SwarmTaskDecomposer:
 
         critical_path = max(earliest_finish.values()) if earliest_finish else 15.0
         total_serial = sum(durations.values())
-        speedup = round(total_serial / max(critical_path, 1.0), 2)
+        # A wide graph cannot exceed the configured worker capacity.  Include
+        # that lower bound so the displayed speedup is not an impossible number.
+        capacity_bound = total_serial / max(1, int(plan.max_concurrency))
+        estimated_parallel = max(critical_path, capacity_bound, 0.001)
+        speedup = round(total_serial / estimated_parallel, 2)
 
-        plan.critical_path_seconds = critical_path
+        plan.critical_path_seconds = estimated_parallel
         plan.estimated_speedup = max(speedup, 1.0)
+        plan.metrics["estimated_serial_seconds"] = total_serial
+        plan.metrics["estimated_parallel_seconds"] = estimated_parallel
+        plan.metrics["estimate_method"] = "dependency_critical_path_plus_capacity_v1"

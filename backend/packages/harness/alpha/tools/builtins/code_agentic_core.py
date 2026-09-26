@@ -379,6 +379,7 @@ def get_all_checkpoints() -> list[dict]:
             "checkpoint_id": c.checkpoint_id,
             "label": c.label,
             "created_at": c.created_at,
+            "root_path": c.root_path,
             "files_count": len(c.files_snapshot),
             "test_passed": c.test_passed,
             "failure_count": c.failure_count,
@@ -742,60 +743,6 @@ def run_interactive_debug_session(
 
     result = engine.execute_with_breakpoints(session_id, code_str, filename="<debug_target>")
     return json.dumps(result, indent=2)
-
-
-@tool("run_speculative_synthesis_tournament", parse_docstring=True)
-def run_speculative_synthesis_tournament(
-    file_path: str,
-    original_code: str,
-    issue_type: str = "general",
-) -> str:
-    """Synthesize multiple candidate patches in parallel and conduct a tournament bake-off.
-
-    Evaluates candidates across distinct strategies (surgical guard, idiomatic refactor,
-    algorithmic rewrite) and selects the winning patch using Pareto-optimal scoring.
-
-    Args:
-        file_path: Path to target file being fixed.
-        original_code: Current source code content.
-        issue_type: Category of issue to fix (e.g. 'none_check', 'syntax', 'performance').
-    """
-    from alpha.synthesis.speculative_tournament import SpeculativeSynthesisEngine
-
-    engine = SpeculativeSynthesisEngine()
-    candidates = engine.generate_speculative_candidates(file_path, original_code, issue_type)
-    # Mock bake-off runner asserting syntax and basic execution
-    bakeoff = engine.run_tournament_bakeoff(candidates, lambda c: (1, 0) if len(c) > 10 else (0, 1))
-    winner = engine.select_winner(bakeoff)
-    return json.dumps({
-        "total_candidates": len(candidates),
-        "winner": winner.to_dict() if winner else None,
-        "bakeoff_results": [b.to_dict() for b in bakeoff],
-    }, indent=2)
-
-
-@tool("run_mutation_testing_audit", parse_docstring=True)
-def run_mutation_testing_audit(source_code: str) -> str:
-    """Audit code resilience and test suite strength using AST mutation injection and kill scoring.
-
-    Injects comparison inversions, boolean negations, and return zeroing to ensure
-    tests catch artificial bugs and prevent regression.
-
-    Args:
-        source_code: Source code under test.
-    """
-    from alpha.testing.mutation_fuzzer import MutationTestingEngine
-
-    engine = MutationTestingEngine()
-    # Verification test runner: checks if mutant alters behavior
-    report = engine.run_mutation_audit(source_code, lambda c: c == source_code)
-    return json.dumps({
-        "kill_score": report.kill_score,
-        "total_mutants": report.total_mutants,
-        "killed": report.killed_mutants,
-        "survived": report.survived_mutants,
-        "details": report.details[:5],
-    }, indent=2)
 
 
 @tool("verify_web_ui_visual_regression", parse_docstring=True)

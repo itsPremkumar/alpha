@@ -37,8 +37,47 @@ def _collect_live_tests(
     if config_exists:
         (temp_repo / "config.yaml").write_text("models: []\n", encoding="utf-8")
 
+    # The subprocess must not inherit credentials or a real .env, but it DOES
+    # need the OS variables the platform itself requires. On Windows, Winsock
+    # cannot initialize without SystemRoot/WINDIR: dropping them made every
+    # socket creation in an imported module fail with
+    # "OSError: [WinError 10106] The requested service provider could not be
+    # loaded or initialized", which turned a clean module-level skip into a
+    # collection error. This allowlist carries only platform plumbing — never
+    # API keys, config values, or dotenv files.
+    platform_env = {
+        name: os.environ[name]
+        for name in (
+            "PATH",
+            "SystemRoot",
+            "WINDIR",
+            "SYSTEMDRIVE",
+            "SYSTEMROOT",
+            "ComSpec",
+            "PATHEXT",
+            "TEMP",
+            "TMP",
+            "USERPROFILE",
+            "APPDATA",
+            "LOCALAPPDATA",
+            "ProgramFiles",
+            "ProgramFiles(x86)",
+            "ProgramData",
+            "CommonProgramFiles",
+            "CommonProgramFiles(x86)",
+            "HOME",
+            "LANG",
+            "LC_ALL",
+            "TZ",
+            "SSL_CERT_FILE",
+            "SSL_CERT_DIR",
+            "REQUESTS_CA_BUNDLE",
+            "CURL_CA_BUNDLE",
+        )
+        if name in os.environ
+    }
     env = {
-        "PATH": os.environ.get("PATH", ""),
+        **platform_env,
         "PYTHONDONTWRITEBYTECODE": "1",
         "PYTHONIOENCODING": "utf-8",
         "PYTHONUTF8": "1",

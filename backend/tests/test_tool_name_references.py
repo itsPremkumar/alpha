@@ -37,7 +37,7 @@ ALPHA = BACKEND / "packages" / "harness" / "alpha"
 BUILTINS = ALPHA / "tools" / "builtins"
 
 # Tool names that are not declared with ``@tool("name")`` in builtins: they are
-# wired through ``config.yaml`` (sandbox and community providers). Kept
+# wired through ``config.yaml`` / ``config.example.yaml`` (sandbox and community providers). Kept
 # explicit with a reason so the list cannot silently grow.
 CONFIG_PROVIDED_TOOLS = {
     "read_file": "sandbox file tools declared in config.yaml",
@@ -115,20 +115,20 @@ def _declared_builtin_names() -> set[str]:
 
 
 def _config_tool_names() -> set[str]:
-    """``- name:`` entries inside the top-level ``tools:`` block of config.yaml."""
-    path = ROOT / "config.yaml"
-    if not path.exists():
-        return set()
+    """Active ``- name:`` entries in local and example top-level tools blocks."""
     names: set[str] = set()
-    in_tools = False
-    for line in path.read_text(encoding="utf-8-sig", errors="ignore").splitlines():
-        if line and not line[0].isspace() and line.rstrip().endswith(":"):
-            in_tools = line.split(":", 1)[0].strip() == "tools"
+    for path in (ROOT / "config.yaml", ROOT / "config.example.yaml"):
+        if not path.exists():
             continue
-        if in_tools:
-            match = re.match(r"\s*- name:\s*([A-Za-z0-9_\-.]+)\s*$", line)
-            if match:
-                names.add(match.group(1))
+        in_tools = False
+        for line in path.read_text(encoding="utf-8-sig", errors="ignore").splitlines():
+            if line and not line[0].isspace() and line.rstrip().endswith(":"):
+                in_tools = line.split(":", 1)[0].strip() == "tools"
+                continue
+            if in_tools:
+                match = re.match(r"\s*- name:\s*([A-Za-z0-9_\-.]+)\s*$", line)
+                if match:
+                    names.add(match.group(1))
     return names
 
 
@@ -155,12 +155,7 @@ def _default_allowlist_names() -> set[str]:
 
 
 def test_referenced_tool_names_exist() -> None:
-    known = (
-        _declared_builtin_names()
-        | _config_tool_names()
-        | set(CONFIG_PROVIDED_TOOLS)
-        | set(RUNTIME_BUILT_TOOLS)
-    )
+    known = _declared_builtin_names() | _config_tool_names() | set(CONFIG_PROVIDED_TOOLS) | set(RUNTIME_BUILT_TOOLS)
     assert known, "no tool names resolved — the extraction regexes stopped matching"
 
     sources = [
@@ -207,10 +202,7 @@ def test_no_source_file_starts_with_a_bom() -> None:
                 continue
             if path.open("rb").read(3) == b"\xef\xbb\xbf":
                 offenders.append(str(path.relative_to(BACKEND)))
-    assert not offenders, (
-        "source files start with a UTF-8 BOM (strip the first 3 bytes; keep the "
-        f"line endings byte-identical): {sorted(offenders)}"
-    )
+    assert not offenders, f"source files start with a UTF-8 BOM (strip the first 3 bytes; keep the line endings byte-identical): {sorted(offenders)}"
 
 
 def test_config_provided_tool_names_are_real() -> None:
@@ -218,10 +210,7 @@ def test_config_provided_tool_names_are_real() -> None:
     config_names = _config_tool_names()
     declared = _declared_builtin_names()
     stale = sorted(n for n in CONFIG_PROVIDED_TOOLS if n in declared or (config_names and n not in config_names))
-    assert not stale, (
-        "CONFIG_PROVIDED_TOOLS entries are stale — they are either builtin-declared "
-        f"or absent from config.yaml's tools block: {stale}"
-    )
+    assert not stale, f"CONFIG_PROVIDED_TOOLS entries are stale — they are either builtin-declared or absent from config.yaml's tools block: {stale}"
 
 
 def test_runtime_built_tool_names_are_built_by_their_declared_producer() -> None:
@@ -229,10 +218,7 @@ def test_runtime_built_tool_names_are_built_by_their_declared_producer() -> None
     for name, (relative, _reason) in RUNTIME_BUILT_TOOLS.items():
         path = ALPHA / relative
         assert path.exists(), f"RUNTIME_BUILT_TOOLS[{name!r}] points at a missing file: {relative}"
-        assert name in path.read_text(encoding="utf-8-sig", errors="ignore"), (
-            f"{name!r} is waived as built by {relative}, but that file no longer "
-            "mentions it — the waiver is stale"
-        )
+        assert name in path.read_text(encoding="utf-8-sig", errors="ignore"), f"{name!r} is waived as built by {relative}, but that file no longer mentions it — the waiver is stale"
 
 
 def test_default_allowlist_grants_search_and_listing() -> None:
@@ -245,10 +231,7 @@ def test_default_allowlist_grants_search_and_listing() -> None:
     """
     allowlist = _default_allowlist_names()
     for required in ("read_file", "grep", "ls"):
-        assert required in allowlist, (
-            f"DEFAULT_SUBAGENT_TOOL_ALLOWLIST is missing {required!r}; the "
-            f"read/search-only fallback loses that capability silently: {sorted(allowlist)}"
-        )
+        assert required in allowlist, f"DEFAULT_SUBAGENT_TOOL_ALLOWLIST is missing {required!r}; the read/search-only fallback loses that capability silently: {sorted(allowlist)}"
 
 
 def _tool_functions_with_runtime_annotation() -> list[tuple[Path, str, bool]]:
@@ -273,23 +256,11 @@ def _tool_functions_with_runtime_annotation() -> list[tuple[Path, str, bool]]:
         except SyntaxError:
             continue
 
-        uses_pep563 = any(
-            isinstance(node, ast.ImportFrom)
-            and node.module == "__future__"
-            and any(alias.name == "annotations" for alias in node.names)
-            for node in tree.body
-        )
+        uses_pep563 = any(isinstance(node, ast.ImportFrom) and node.module == "__future__" and any(alias.name == "annotations" for alias in node.names) for node in tree.body)
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
-            decorated = any(
-                isinstance(d, ast.Call)
-                and (
-                    (isinstance(d.func, ast.Name) and d.func.id == "tool")
-                    or (isinstance(d.func, ast.Attribute) and d.func.attr == "tool")
-                )
-                for d in node.decorator_list
-            )
+            decorated = any(isinstance(d, ast.Call) and ((isinstance(d.func, ast.Name) and d.func.id == "tool") or (isinstance(d.func, ast.Attribute) and d.func.attr == "tool")) for d in node.decorator_list)
             if not decorated:
                 continue
             for arg in node.args.args:
@@ -306,15 +277,11 @@ def test_injected_runtime_annotation_is_not_hidden_by_pep563() -> None:
     runtime injection because their module used
     ``from __future__ import annotations``.
     """
-    offenders = [
-        f"{path.relative_to(ALPHA).as_posix()}::{name}"
-        for path, name, uses_pep563 in _tool_functions_with_runtime_annotation()
-        if uses_pep563
-    ]
+    offenders = [f"{path.relative_to(ALPHA).as_posix()}::{name}" for path, name, uses_pep563 in _tool_functions_with_runtime_annotation() if uses_pep563]
     assert not offenders, (
         "These @tool functions declare a `runtime` parameter in a module using "
         "`from __future__ import annotations`. Under PEP 563 the annotation "
-        "becomes the string \"Runtime\", LangChain's injected-argument detection "
+        'becomes the string "Runtime", LangChain\'s injected-argument detection '
         "fails to match it, and `runtime` is exposed as a required schema field. "
         f"Remove the future import from those modules: {offenders}"
     )
@@ -323,7 +290,4 @@ def test_injected_runtime_annotation_is_not_hidden_by_pep563() -> None:
 def test_runtime_taking_tools_are_discoverable() -> None:
     """Sanity: the scan must actually find runtime tools (not silently match none)."""
     found = _tool_functions_with_runtime_annotation()
-    assert len(found) >= 15, (
-        "expected to find the runtime-taking @tool functions; a scan that "
-        f"matches (almost) nothing would make the PEP 563 guard vacuous: {found}"
-    )
+    assert len(found) >= 15, f"expected to find the runtime-taking @tool functions; a scan that matches (almost) nothing would make the PEP 563 guard vacuous: {found}"

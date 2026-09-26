@@ -1,0 +1,77 @@
+---
+title: "Middlewares"
+description: "How custom and configured middleware runs in the lead-agent and subagent pipelines, and where each stage sits."
+---
+
+# Middlewares
+
+A middleware observes or updates agent state at a lifecycle hook. Alpha runs
+built-in middleware, then optional configured extension middleware, then a small
+tail that turns an empty model response into a visible one.
+
+## Writing a middleware
+
+```python
+from langchain.agents import AgentState
+from langchain.agents.middleware import AgentMiddleware
+from langgraph.runtime import Runtime
+
+class MyMiddleware(AgentMiddleware[AgentState]):
+    """Middleware description."""
+
+    def before_model(self, state: AgentState, runtime: Runtime) -> dict | None:
+        """Run before each model call."""
+        print(f"Model input contains {len(state.get('messages', []))} messages")
+        return None
+
+    def after_model(self, state: AgentState, runtime: Runtime) -> dict | None:
+        """Run after each model call."""
+        messages = state.get("messages", [])
+        last_message = messages[-1] if messages else None
+        print(f"Last message type: {type(last_message).__name__ if last_message else 'none'}")
+        return None
+```
+
+Lifecycle hooks can return a dictionary of state updates, which LangChain merges
+into the agent state, or `None` when they only observe state.
+
+## Registering middleware
+
+Register the class in `config.yaml` (or `extensions_config.json`; `config.yaml`
+wins). A class path uses the zero-argument constructor; `{class, kwargs}` passes
+constructor arguments, and `kwargs` values must be JSON types:
+
+```yaml
+extensions:
+  middlewares:
+    - alpha.agents.middlewares.my_middleware:MyMiddleware
+    - class: alpha.agents.middlewares.my_middleware:MyMiddleware
+      kwargs:
+        max_tool_calls: 5
+```
+
+Treat middleware class paths as trusted operator configuration: loading one
+executes Python code.
+
+## Placement in the pipeline
+
+The lead-agent pipeline, in order: the built-in chain (dynamic context,
+continual harness, skill activation, autonomous commands, deferred-tool audit,
+`SkillToolPolicyMiddleware`, `DurableContextMiddleware`, optional
+summarization, token usage, metacognition, title, memory, learning fork, image
+viewing, deferred-tool filtering, `SystemMessageCoalescingMiddleware`, optional
+subagent limits, loop detection and token budget), then your custom and
+Configured extension middlewares (if any), then the terminal tail:
+`TerminalResponseMiddleware`, `ModelLengthFinishReasonMiddleware`, the
+Finish-First verifier, `UserModelMiddleware` and `ClarificationMiddleware`.
+
+On the lead-agent pipeline, it runs before the terminal-response, model-length, safety, and clarification tail; subagents have no terminal-response, model-length, or clarification stage, so configured middleware is followed by the optional safety guard, `DurableContextMiddleware`, optional `SummarizationMiddleware`, then `SubagentDateContextMiddleware` and `SystemMessageCoalescingMiddleware`. Remember that
+other Lead-Agent-specific middlewares such as memory, title generation, and clarification do not run there.
+
+## Embedded callers
+
+`AgentWorkspaceClient(middlewares=[...])`, which builds the full lead-agent chain and places middleware before its terminal tail. `create_agent_workspace_agent(extra_middleware=[...])` instead builds a smaller feature-based lead-agent chain; unanchored extras are placed immediately before `ClarificationMiddleware` (anchored extras follow their `@Next`/`@Prev` placement, but the anchor must exist in that smaller chain). Neither API forwards middleware to subagents.
+
+## Runtime middlewares
+
+Runtime middlewares (`InputSanitizationMiddleware` for input sanitization → `ToolOutputBudgetMiddleware` for output-budget truncation → `ToolResultSanitizationMiddleware` for tool-result sanitization, then thread data, uploads, sandbox, dangling tool-call patching, and LLM error handling; tool receipts (if enabled), authorization/guardrail (if enabled), sandbox audit, read-before-write (if enabled), tool progress (if enabled), and tool error handling follow) run for every invocation; the first three bound prompt size and sanitize untrusted content before any model call.

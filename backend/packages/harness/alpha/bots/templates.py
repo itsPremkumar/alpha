@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from alpha.bots.profile import generate_default_soul as generate_default_soul  # re-export: templates document this soul generator; consumers import it from here
+
 BOT_TEMPLATES: dict[str, dict[str, Any]] = {
     "ceo": {
         "display": "CEO",
@@ -201,6 +203,33 @@ BOT_TEMPLATES: dict[str, dict[str, Any]] = {
         "reports_to": "product-manager",
         "responsibilities": ["Issue triage", "User guidance", "Bug reproduction", "Feedback loop to engineering"],
         "capabilities": ["troubleshooting", "customer_communication", "issue_escalation"],
+    },
+    "workflow_orchestrator": {
+        "display": "Workflow Orchestrator",
+        "role": "Autonomous Dynamic Task Graph & Workflow Director",
+        "avatar": "⚡",
+        "department": "engineering",
+        "reports_to": "cto",
+        "responsibilities": ["Dynamic DAG planning", "Graph mutation & replanning", "Wave scheduling", "Saga compensation"],
+        "capabilities": ["dynamic_workflows", "graph_mutation", "task_dispatch", "wave_scheduling"],
+    },
+    "bot_breeder": {
+        "display": "Bot Breeder",
+        "role": "Workforce Optimizer & Evolutionary Bot Specialist",
+        "avatar": "🧬",
+        "department": "engineering",
+        "reports_to": "architect",
+        "responsibilities": ["Bot cloning & forking", "Capability mutation", "SOUL directive optimization", "Generational breeding"],
+        "capabilities": ["bot_cloning", "prompt_evolution", "capability_synthesis"],
+    },
+    "sentinel_guard": {
+        "display": "Sentinel Guard",
+        "role": "Reliability Sentinel & Policy Integrity Guard",
+        "avatar": "🛡️",
+        "department": "security",
+        "reports_to": "security",
+        "responsibilities": ["Incident diagnosis", "Side-effect verification", "Circuit breaker enforcement", "Emergency triage"],
+        "capabilities": ["security_audit", "circuit_breaking", "sandbox_quarantine"],
     },
 }
 

@@ -39,9 +39,11 @@ _VERSION_DIST_NAMES = ("agent-workspace-harness", "alpha", "agent-workspace")
 
 # Honest, complete list of capabilities actually wired in this build:
 # GET /api/evolution/identity (this module), POST /api/evolution/update-check
-# (release_check), and the persistent evolution ledger (engine +
-# GET /api/evolution/ledger). Never list a capability without a code path.
-WIRED_CAPABILITIES = ("identity", "release_check", "evolution_ledger")
+# (release_check), the persistent evolution ledger (engine +
+# GET /api/evolution/ledger), and the guarded Phase-2 source updater
+# (admin apply/recover routes plus the `self_update` autonomy loop). Never
+# list a capability without a code path.
+WIRED_CAPABILITIES = ("identity", "release_check", "evolution_ledger", "auto_update")
 
 
 def resolve_alpha_version() -> str:

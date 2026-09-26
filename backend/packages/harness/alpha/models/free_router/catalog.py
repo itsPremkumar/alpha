@@ -350,11 +350,12 @@ class FreeLLMRouter:
     # Selection
     # ------------------------------------------------------------------
 
-    def _rank_key(self, name: str, now: float) -> tuple[int, int]:
+    def _rank_key(self, name: str, now: float, target_provider: str | None = None) -> tuple[int, int, int]:
+        target_rank = 0 if (target_provider and name == target_provider) else 1
         state = self._states[name]
         healthy_rank = 0 if state.healthy is True else (1 if state.healthy is None else 2)
         order_rank = list(self._layer.PROVIDER_ORDER).index(name)
-        return (healthy_rank, order_rank)
+        return (target_rank, healthy_rank, order_rank)
 
     def _pick_model(self, spec: Any, state: ProviderState, requested: str) -> str | None:
         if not state.models:
@@ -371,7 +372,12 @@ class FreeLLMRouter:
         first = state.models[0].get("id")
         return str(first) if first else None
 
-    def candidates(self, *, model: str = "auto") -> list[tuple[Any, str]]:
+    def candidates(
+        self,
+        *,
+        model: str = "auto",
+        target_provider: str | None = None,
+    ) -> list[tuple[Any, str]]:
         """Ordered ``(spec, model_id)`` pairs a chat call may attempt.
 
         Skips cooling-down providers strictly. Raises
@@ -379,13 +385,22 @@ class FreeLLMRouter:
         is attemptable (all cooling down / requested model offered nowhere /
         no discovered models at all).
         """
+        if model.startswith("free:"):
+            parts = model.split(":", 2)
+            if len(parts) == 3:
+                target_provider = target_provider or parts[1]
+                model = parts[2]
+            elif len(parts) == 2:
+                target_provider = target_provider or parts[1]
+                model = "auto"
+
         if not self._loaded or (self._clock() - self._last_refresh) >= self._ttl:
             self.refresh()
         now = self._clock()
         pairs: list[tuple[Any, str]] = []
         cooldown_skips = 0
         with self._lock:
-            ordered = sorted(self._states, key=lambda n: self._rank_key(n, now))
+            ordered = sorted(self._states, key=lambda n: self._rank_key(n, now, target_provider))
             for name in ordered:
                 state = self._states[name]
                 if state.cooldown_until > now:
@@ -428,13 +443,14 @@ class FreeLLMRouter:
         messages: list[dict[str, Any]],
         *,
         model: str = "auto",
+        target_provider: str | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
         timeout: float | None = None,
         extra: dict[str, Any] | None = None,
     ) -> FreeChatResult:
         """Try eligible providers in ranked order; honest error if none serve."""
-        pairs = self.candidates(model=model)
+        pairs = self.candidates(model=model, target_provider=target_provider)
         attempts: list[tuple[str, str]] = []
         for spec, mid in pairs:
             start = time.perf_counter()
@@ -570,6 +586,81 @@ class FreeLLMRouter:
                     pairs.append((self._layer.PROVIDERS[name], mid))
         return pairs
 
+    def available_free_models(self) -> list[dict[str, Any]]:
+        """Return a structured list of available free models for selection."""
+        if not self._loaded or (self._clock() - self._last_refresh) >= self._ttl:
+            self.refresh()
+        models: list[dict[str, Any]] = [
+            {
+                "id": "alpha-free",
+                "model_id": "auto",
+                "name": "⚡ Alpha Free Router (Auto Keyless)",
+                "provider": "alpha-free",
+                "description": "Dynamic auto-routing across verified keyless providers with failover.",
+                "is_free": True,
+                "free_status": "no_key_free",
+                "quota_type": "none",
+                "supports_tools": True,
+                "supports_reasoning": True,
+            }
+        ]
+        with self._lock:
+            seen_ids: set[str] = {"alpha-free"}
+            for name in self._layer.PROVIDER_ORDER:
+                state = self._states.get(name)
+                spec = self._layer.PROVIDERS.get(name)
+                if not spec:
+                    continue
+                is_healthy = (state.healthy is True or state.healthy is None) if state else True
+                model_ids: list[str] = []
+                if state and state.models:
+                    model_ids.extend(m["id"] for m in state.models if isinstance(m, dict) and m.get("id"))
+                for doc_m in spec.documented_models:
+                    if doc_m not in model_ids:
+                        model_ids.append(doc_m)
+                for mid in model_ids:
+                    full_id = f"free:{name}:{mid}"
+                    if full_id in seen_ids:
+                        continue
+                    seen_ids.add(full_id)
+                    disp_name = f"✨ {name.capitalize()} - {mid}"
+                    models.append({
+                        "id": full_id,
+                        "model_id": mid,
+                        "name": disp_name,
+                        "provider": name,
+                        "description": f"Direct free model via {name} ({mid}). No API key required.",
+                        "is_free": True,
+                        "free_status": "no_key_free",
+                        "quota_type": "none",
+                        "supports_tools": True,
+                        "supports_reasoning": "reasoning" in mid.lower() or "coder" in mid.lower() or "nemotron" in mid.lower(),
+                        "is_healthy": is_healthy,
+                    })
+        return models
+
+    def sync_daily_models(self, force_probe: bool = True) -> dict[str, Any]:
+        """Perform daily discovery and probe sync without breaking chat or losing fallbacks."""
+        logger.info("Starting daily free models sync (probe=%s)", force_probe)
+        try:
+            discovery_result = self.refresh(force=True)
+            probe_result = self.probe() if force_probe else {}
+            available = self.available_free_models()
+            return {
+                "ok": True,
+                "discovery": discovery_result,
+                "probes": probe_result,
+                "available_count": len(available),
+                "timestamp": self._clock(),
+            }
+        except Exception as exc:
+            logger.error("Error during daily free models sync: %s", exc)
+            return {
+                "ok": False,
+                "error": f"{type(exc).__name__}: {exc}",
+                "timestamp": self._clock(),
+            }
+
 
 # ---------------------------------------------------------------------------
 # Process singleton
@@ -593,3 +684,9 @@ def reset_free_router() -> None:
     global _SINGLETON
     with _SINGLETON_LOCK:
         _SINGLETON = None
+
+
+def available_free_models() -> list[dict[str, Any]]:
+    """Return available free models via the process-wide router."""
+    return get_free_router().available_free_models()
+

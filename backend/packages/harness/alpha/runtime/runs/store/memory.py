@@ -175,6 +175,47 @@ class MemoryRunStore(RunStore):
         run["updated_at"] = datetime.now(UTC).isoformat()
         return True
 
+    async def list_recovery_candidates(
+        self,
+        *,
+        statuses: set[str],
+        stop_reasons: set[str],
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        results = [
+            run
+            for run in self._runs.values()
+            if run.get("operation_kind", "run") == "run"
+            and run.get("status") in statuses
+            and run.get("stop_reason") in stop_reasons
+            # Durable cancellation is an explicit stop fence, even if a later
+            # shutdown/reconciliation write leaves a recoverable-looking reason.
+            and run.get("cancel_action") is None
+            and run.get("cancel_requested_at") is None
+        ]
+        results.sort(key=lambda run: (run.get("updated_at") or run.get("created_at") or "", run["run_id"]))
+        return results[: max(0, limit)]
+
+    async def transition_recovery_stop_reason(
+        self,
+        run_id: str,
+        *,
+        expected_status: str,
+        expected_stop_reason: str,
+        stop_reason: str,
+        error: str | None = None,
+    ) -> bool:
+        run = self._runs.get(run_id)
+        if run is None:
+            return False
+        if run.get("status") != expected_status or (run.get("stop_reason") or "") != expected_stop_reason:
+            return False
+        run["stop_reason"] = stop_reason
+        if error is not None:
+            run["error"] = error
+        run["updated_at"] = datetime.now(UTC).isoformat()
+        return True
+
     async def start_run(self, run_id) -> bool:
         run = self._runs.get(run_id)
         if run is None or run["status"] != "pending":

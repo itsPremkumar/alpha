@@ -140,6 +140,39 @@ def test_bot_health_stalled_task_detection():
     assert stalled[0]["worker"] == "coder"
 
 
+def test_unparseable_heartbeat_timestamp_fails_closed_without_fabricated_seconds():
+    """Honesty + fail-closed pin: a garbage heartbeat timestamp yields no seconds.
+
+    The old code substituted a fabricated 999999.0 elapsed value. Unknown must
+    now be None with a disclosed parse error, while the fail-closed labels
+    (liveness "dead", is_responsive False) are preserved exactly.
+    """
+    reg = BotRegistry()
+    monitor = BotHealthMonitor()
+    bot = reg.get_bot("coder")
+    assert bot is not None
+
+    monitor.record_heartbeat("coder")
+    record = monitor.get_heartbeat("coder")
+    assert record is not None
+    record.timestamp = "not-a-real-timestamp"
+
+    liv = monitor.evaluate_liveness(bot)
+    assert liv["liveness"] == "dead"
+    assert liv["is_responsive"] is False
+    assert liv["seconds_since_heartbeat"] is None
+    assert liv["heartbeat_parse_error"] is True
+    # Never the old fabricated sentinel.
+    assert liv["seconds_since_heartbeat"] != 999999.0
+
+    # Fleet aggregation tolerates the None and keeps the dead classification.
+    fleet = monitor.get_fleet_health([bot])
+    assert fleet["summary"]["dead"] >= 1
+    dead_row = next(r for r in fleet["bots"] if r["bot_name"] == "coder")
+    assert dead_row["seconds_since_heartbeat"] is None
+    assert dead_row["heartbeat_parse_error"] is True
+
+
 def test_organization_chart_and_tree():
     reg = BotRegistry()
     # Add cto and ceo

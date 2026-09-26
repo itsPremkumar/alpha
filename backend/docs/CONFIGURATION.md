@@ -390,6 +390,64 @@ Notes:
 - Manual trigger uses the same scheduled-task resource and run lifecycle.
 - Scheduled task definitions and task-run history are persisted in the application database.
 
+### Real-Time Voice (fully local by default)
+
+Voice uses the existing multimodal API and chat run lifecycle, but speech inference is
+strictly local by default. `make voice-setup` installs the optional runtime packages and
+pinned faster-whisper/Piper assets under `runtime_home()/voice/models`; requests never
+download model weights and no cloud speech API is used.
+
+```yaml
+voice:
+  enabled: true
+  routing:
+    mode: local_only                # local_only | automatic
+  tts:
+    autoplay: true
+    engine: piper
+    voice: en_US-lessac-medium      # safe ID; browser callers cannot provide paths
+    model_path: null                # operator-only override
+    length_scale: 1.0
+    noise_scale: 0.667
+    volume: 0.9
+  stt:
+    model_size: small
+    model_path: null                # operator-only override
+    language: null                  # automatic detection
+    device: auto
+    compute_type: int8
+    beam_size: 1
+    local_files_only: true
+  streaming:
+    sample_rate: 16000
+    frame_ms: 20
+    pre_roll_ms: 200
+    speech_start_ms: 60
+    endpoint_silence_ms: 700
+    partial_interval_ms: 900
+    max_utterance_seconds: 30
+    max_frame_bytes: 65536
+    max_sessions: 4
+```
+
+`local_only` records explicit T1/T2 policy skips for TTS/STT and invokes only T3. A missing
+local model therefore returns an honest `not_configured` capability/attempt row instead of
+silently falling through to a configured remote or keyless online speech provider. Set
+`automatic` only when an operator intentionally wants the historical T1→T2→T3 behavior.
+
+The Gateway keeps one process-cached faster-whisper model and one Piper voice, serializes
+inference, and keys model caches by effective model identity (including device/compute
+settings for Whisper and file identity for Piper). WebRTC
+VAD endpointing retains bounded pre-roll, requires confirmed speech onset, closes on
+bounded silence, emits interim transcripts, and resets after each final utterance. The
+WebSocket additionally requires authentication, same-origin validation, `runs:create`, and
+the configured session/frame/utterance limits.
+
+Wake-word arming is a legacy/manual control and `openwakeword` is not part of the default
+voice extra. Continuous conversation does not require it. See
+[Real-Time Voice Conversation](../../docs/VOICE_CONVERSATION.md) for setup, Docker,
+privacy, licensing, and troubleshooting.
+
 ### Agent Storage
 
 Custom agent **definitions** (`config.yaml` + `SOUL.md`) are stored per-user on

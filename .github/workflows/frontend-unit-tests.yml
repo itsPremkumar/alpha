@@ -38,6 +38,14 @@ jobs:
         working-directory: frontend
         run: pnpm install --frozen-lockfile
 
-      - name: Run unit tests of frontend
+      # 'pnpm test' only globs src/lib/*.test.mjs, so the branding pin in
+      # tests/branding.test.mjs is a separate suite ('pnpm test:branding').
+      # Both run here: the branding pin exists to catch a rename regression and
+      # a gate that skips it is not a gate.
+      - name: Run frontend unit tests (src/lib)
         working-directory: frontend
-        run: make test
+        run: pnpm test
+
+      - name: Run frontend branding pin
+        working-directory: frontend
+        run: pnpm test:branding

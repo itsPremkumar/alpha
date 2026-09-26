@@ -45,16 +45,7 @@ INTENTIONALLY_UNWIRED = [
 # entry exists so the next reader does not rediscover them, and
 # ``test_dormant_packages_are_still_dormant`` fails the moment one becomes
 # reachable (so the list cannot rot) or disappears (so the entry cannot dangle).
-DORMANT_PACKAGES = [
-    {
-        "id": "alpha.ledger",
-        "reason": "ActionLedger/ActionReceipt are implemented and tested (test_action_ledger.py) but nothing constructs them; there is no receipt-writing call site in the run path yet.",
-    },
-    {
-        "id": "alpha.evidence",
-        "reason": "EvidenceStore implements the evidence->candidate->evaluation->promotion cycle but has no consumer and no test suite; wiring it is feature design, not a missing call.",
-    },
-]
+DORMANT_PACKAGES: list[dict[str, str]] = []
 
 
 def read(path: Path) -> str:

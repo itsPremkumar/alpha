@@ -38,6 +38,10 @@ export interface ChatMessage {
   approvalRequest?: HumanApproval;
   autonomousDetection?: AutonomousDetection;
   createdAt: string;
+  /** Durable thread-global message sequence when supplied by the Gateway. */
+  sequence?: number;
+  /** Complete normalized Gateway event, retained by the on-device archive. */
+  raw?: unknown;
   /** Newest run that produced this message (enables feedback + stop). */
   runId?: string;
   /** Your rating for this answer (+1 / -1). */
@@ -62,6 +66,14 @@ export interface AIModel {
   name: string;
   provider: string;
   description?: string;
+  is_free?: boolean;
+  free_status?: string;
+  quota_type?: string;
+  rpm?: number;
+  rpd?: number;
+  reset_interval?: string;
+  supports_tools?: boolean;
+  supports_reasoning?: boolean;
 }
 
 export interface SlashCommandInfo {

@@ -44,7 +44,22 @@ def test_company_single_prompt_bootstrapper():
     assert len(state.projects) >= 2
     assert len(state.objectives) >= 2
     assert len(state.kpis) >= 4
-    assert state.overall_health_percent >= 90.0
+    # Honesty pin: a freshly bootstrapped org has NO health measurement, so the
+    # old fabricated >= 90.0 default (98.5) is gone — health stays unmeasured
+    # until a real computation runs (e.g. ExecutiveDigest.generate_digest).
+    assert state.overall_health_percent is None
+
+
+def test_bootstrapped_archetype_kpi_seed_values_are_disclosed():
+    """Honesty pin: archetype KPI readings are seed examples, not live metrics."""
+    engine = AutonomousCompanyEngine()
+    state = engine.bootstrap_company(
+        prompt="Continuously maintain, review, and release an open-source metrics library",
+        archetype="open_source",
+    )
+    assert state.kpis, "archetype bootstrap should attach KPI specs"
+    for kpi in state.kpis:
+        assert kpi.basis == "seed_demo_data"
 
 
 def test_company_lifecycle_pause_and_resume():

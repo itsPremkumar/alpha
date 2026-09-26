@@ -6,6 +6,10 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "agent-workspace-harness",
+    # AgentEye is pinned to an immutable upstream Git commit because version
+    # 6.5.1 is not published on PyPI. The harness adapter retains operator
+    # allowlists and Alpha's SSRF/output boundaries around it.
+    "agent-eye @ git+https://github.com/itsPremkumar/AgentEye.git@455404ab9fd2ebba3c4c2e1e07932ed738a0c510",
     # Direct dependency on purpose, even though agent-workspace-harness already pulls
     # it in: app/gateway/app.py and app/gateway/services.py import the public
     # contract package themselves (the extension principal resolver, and the
@@ -51,6 +55,8 @@ monocle = ["agent-workspace-harness[monocle]"]
 ollama = ["agent-workspace-harness[ollama]"]
 browser = ["agent-workspace-harness[browser]"]
 memory-zh = ["agent-workspace-harness[memory-zh]"]
+voice = ["agent-workspace-harness[voice]"]
+peer-discovery = ["zeroconf>=0.145.0"]
 
 [dependency-groups]
 # Managed extension packages are added here by `agent-workspace extensions install`.

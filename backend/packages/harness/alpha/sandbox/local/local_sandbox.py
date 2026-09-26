@@ -411,12 +411,22 @@ class LocalSandbox(Sandbox):
 
         return result
 
-    def _resolve_paths_in_command(self, command: str) -> str:
+    @staticmethod
+    def _quote_resolved_command_path(path: str, shell: str) -> str:
+        """Quote a substituted host path for the selected Windows shell."""
+        if LocalSandbox._is_powershell(shell):
+            return "'" + path.replace("'", "''") + "'"
+        if LocalSandbox._is_cmd_shell(shell):
+            return f'"{path}"'
+        return "'" + path.replace("'", "'\"'\"'") + "'"
+
+    def _resolve_paths_in_command(self, command: str, *, shell: str | None = None) -> str:
         """
         Resolve container paths to local paths in a command string.
 
         Args:
             command: Command string that may contain container paths
+            shell: Selected Windows shell, when substituted paths require quoting
 
         Returns:
             Command with container paths resolved to local paths
@@ -429,7 +439,11 @@ class LocalSandbox(Sandbox):
             matched_path = match.group(0)
             # Normalize to forward slashes so bash doesn't interpret Windows
             # backslash sequences (\\U, \\a, \\d, \\s, \\n, \\t) as escapes.
-            return self._resolve_path(matched_path).replace("\\", "/")
+            resolved = self._resolve_path(matched_path).replace("\\", "/")
+            following = command[match.end() : match.end() + 1]
+            if shell is not None and following not in {"'", '"'}:
+                resolved = self._quote_resolved_command_path(resolved, shell)
+            return resolved
 
         return pattern.sub(replace_match, command)
 
@@ -501,9 +515,10 @@ class LocalSandbox(Sandbox):
         # rule on both implementations keeps the contract consistent and forces
         # any new caller to use safe key names.
         _validate_extra_env(env)
-        # Resolve container paths in command before execution
-        resolved_command = self._resolve_paths_in_command(command)
         shell = self._get_shell()
+        # Resolve container paths before execution. Windows host paths may
+        # contain spaces, so quote substitutions for the selected native shell.
+        resolved_command = self._resolve_paths_in_command(command, shell=shell if os.name == "nt" else None)
         if timeout is None:
             timeout = DEFAULT_COMMAND_TIMEOUT_SECONDS
 

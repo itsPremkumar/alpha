@@ -50,18 +50,17 @@ class RetrospectiveEngine:
         # 1. Inspect Postmortem Store
         postmortems: list[dict[str, Any]] = []
         try:
-            from alpha.projects.postmortem import get_postmortem_store
+            from alpha.projects.postmortem import get_postmortem_engine
 
-            store = get_postmortem_store(self.project_id)
-            postmortems = [pm.to_dict() for pm in store.list_heuristics()]
-        except Exception:
-            pass
+            store = get_postmortem_engine(self.project_id)
+            postmortems = [pm.to_dict() for pm in store.list_postmortems()]
+        except Exception as exc:
+            logger.warning("could not load postmortems for project %r: %s: %s", self.project_id, type(exc).__name__, exc)
 
         # 2. Heuristic Pattern Matching
         if postmortems:
             for pm in postmortems[-5:]:
-                symptom = pm.get("symptom", "").lower()
-                fix = pm.get("preventative_rule") or pm.get("root_cause")
+                symptom = pm.get("error_summary", "").lower()
 
                 if "import" in symptom or "modulenotfound" in symptom:
                     prop = PromptEvolutionProposal(
@@ -69,7 +68,7 @@ class RetrospectiveEngine:
                         project_id=self.project_id,
                         bot_name=bot_name,
                         trigger_pattern="Recurring Import / Module Resolution Failure",
-                        heuristic_summary=f"Incident: {pm.get('symptom')}",
+                        heuristic_summary=f"Incident: {pm.get('error_summary')}",
                         proposed_instruction="Always verify that any imported packages are declared in project dependencies before editing code.",
                         target_prompt_section="coding_guidelines",
                     )
@@ -81,7 +80,7 @@ class RetrospectiveEngine:
                         project_id=self.project_id,
                         bot_name=bot_name,
                         trigger_pattern="Runtime Type / Attribute Error",
-                        heuristic_summary=f"Incident: {pm.get('symptom')}",
+                        heuristic_summary=f"Incident: {pm.get('error_summary')}",
                         proposed_instruction="Enforce defensive optional chaining and verify property existence before referencing nested attributes.",
                         target_prompt_section="verification_rules",
                     )
@@ -120,8 +119,8 @@ class RetrospectiveEngine:
                             "trigger_pattern": p.trigger_pattern,
                         },
                     )
-                except Exception as e:
-                    logger.debug(f"Could not queue prompt evolution for approval: {e}")
+                except Exception as exc:
+                    logger.warning("could not queue prompt evolution proposal %s for approval: %s: %s", p.proposal_id, type(exc).__name__, exc)
 
         return new_proposals
 

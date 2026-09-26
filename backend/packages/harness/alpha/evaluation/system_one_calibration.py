@@ -8,8 +8,8 @@ way to know is to measure.
 
 This module provides the two halves:
 
-1. **Recording** — every decision, with its site label, tier, question type,
-   probability/confidence and latency, appended as JSONL.
+1. **Recording** — every decision, with its site label, provider, tier, question
+   type, probability/confidence and latency, appended as JSONL.
 2. **Reporting** — reliability buckets (stated vs observed), Brier score,
    expected calibration error, and per-site coverage.
 
@@ -71,6 +71,11 @@ class DecisionRecord:
     #: Filled in later by :func:`record_outcome`, when the site learns the truth.
     outcome: bool | None = None
     meta: dict[str, Any] = field(default_factory=dict)
+    #: Provider identity is separate from ``model`` so hosted Jev, direct
+    #: TypeSafe, and local Laya decisions are never silently pooled together.
+    #: Appended at the end to preserve the positional constructor contract of
+    #: older callers.
+    provider: str = ""
 
     @property
     def acted(self) -> bool:
@@ -201,6 +206,7 @@ def load_records(path: Path | str) -> list[DecisionRecord]:
                     shadow=bool(raw.get("shadow", False)),
                     outcome=raw.get("outcome"),
                     meta=raw.get("meta") or {},
+                    provider=str(raw.get("provider", "")),
                 )
             )
         except (TypeError, ValueError):
@@ -378,6 +384,7 @@ class CalibrationReport:
     brier: float | None = None
     expected_calibration_error: float | None = None
     by_site: dict[str, dict[str, Any]] = field(default_factory=dict)
+    by_provider: dict[str, dict[str, Any]] = field(default_factory=dict)
     mean_latency_ms: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
@@ -401,6 +408,7 @@ class CalibrationReport:
                 for b in self.buckets
             ],
             "by_site": self.by_site,
+            "by_provider": self.by_provider,
         }
 
     def render(self) -> str:
@@ -432,6 +440,11 @@ class CalibrationReport:
             lines.append(f"  {'site':<26}{'n':>6}{'acted':>8}{'scored':>8}")
             for site, stats in sorted(self.by_site.items()):
                 lines.append(f"  {site:<26}{stats['count']:>6}{stats['acted']:>8}{stats['scored']:>8}")
+        if self.by_provider:
+            lines.append("")
+            lines.append(f"  {'provider':<26}{'n':>6}{'acted':>8}{'scored':>8}")
+            for provider, stats in sorted(self.by_provider.items()):
+                lines.append(f"  {provider:<26}{stats['count']:>6}{stats['acted']:>8}{stats['scored']:>8}")
         if not self.scored:
             lines.append("")
             lines.append("  No outcomes recorded yet — coverage and latency only.")
@@ -464,12 +477,16 @@ def calibration_report(records: Iterable[DecisionRecord]) -> CalibrationReport:
     latency_total = 0.0
 
     per_site: dict[str, dict[str, Any]] = defaultdict(lambda: {"count": 0, "acted": 0, "scored": 0})
+    per_provider: dict[str, dict[str, Any]] = defaultdict(lambda: {"count": 0, "acted": 0, "scored": 0})
 
     for record in all_records:
         stats = per_site[record.site or "(unlabelled)"]
+        provider_stats = per_provider[record.provider or "unknown"]
         stats["count"] += 1
+        provider_stats["count"] += 1
         if record.acted:
             stats["acted"] += 1
+            provider_stats["acted"] += 1
             report.acted += 1
         latency_total += record.latency_ms
 
@@ -481,6 +498,7 @@ def calibration_report(records: Iterable[DecisionRecord]) -> CalibrationReport:
 
         report.scored += 1
         stats["scored"] += 1
+        provider_stats["scored"] += 1
         actual = 1.0 if record.outcome else 0.0
         brier_total += (stated - actual) ** 2
         brier_count += 1
@@ -500,6 +518,7 @@ def calibration_report(records: Iterable[DecisionRecord]) -> CalibrationReport:
 
     report.buckets = buckets
     report.by_site = dict(per_site)
+    report.by_provider = dict(per_provider)
     report.mean_latency_ms = latency_total / len(all_records)
     if brier_count:
         report.brier = round(brier_total / brier_count, 6)

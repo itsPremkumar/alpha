@@ -13,6 +13,7 @@ export function RunsSection(props: { threadId: string | null }) {
   const [selected, setSelected] = useState<RunInfo | null>(null);
   const [detail, setDetail] = useState<{ messages: number; events: number; changes: WorkspaceChange[] } | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
 
   const load = async () => {
     if (!props.threadId) return;
@@ -30,6 +31,7 @@ export function RunsSection(props: { threadId: string | null }) {
   useEffect(() => {
     setSelected(null);
     setDetail(null);
+    setDetailError(null);
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.threadId]);
@@ -38,6 +40,7 @@ export function RunsSection(props: { threadId: string | null }) {
     if (!props.threadId) return;
     setSelected(run);
     setDetailLoading(true);
+    setDetailError(null);
     try {
       const [msgs, evts, changes] = await Promise.all([
         fetchRunMessages(props.threadId, run.run_id),
@@ -45,8 +48,11 @@ export function RunsSection(props: { threadId: string | null }) {
         fetchWorkspaceChanges(props.threadId, run.run_id),
       ]);
       setDetail({ messages: msgs.length, events: evts.length, changes });
-    } catch {
-      setDetail({ messages: 0, events: 0, changes: [] });
+    } catch (e) {
+      // A failed detail fetch must never render as real 0/0/empty counts —
+      // clear the detail and surface an explicit "failed to load" state.
+      setDetail(null);
+      setDetailError(errMsg(e));
     } finally {
       setDetailLoading(false);
     }
@@ -125,6 +131,11 @@ export function RunsSection(props: { threadId: string | null }) {
           <div>
             {!selected ? (
               <EmptyState title="Select a run" hint="Click any run on the left to inspect it." />
+            ) : detailError ? (
+              <ErrorBox
+                message={`Couldn't load this run's detail — messages/events/file changes are unavailable, not zero. (${detailError})`}
+                onRetry={() => inspect(selected)}
+              />
             ) : detailLoading || !detail ? (
               <SkeletonList rows={3} />
             ) : (

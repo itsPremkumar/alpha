@@ -2,9 +2,8 @@
 
 This file provides guidance to AI coding agents (Claude Code, Codex, and others) when working with code in this repository. It is the source of truth; the sibling `CLAUDE.md` imports it via `@AGENTS.md`.
 
-It is the **monorepo orientation layer**: it maps the whole repo and points to the
-module guides that own the depth. For anything inside a module, read that module's
-guide rather than expecting full detail here:
+It is the **monorepo orientation layer**: it maps the repo and points to the module
+guides that own the depth. For anything inside a module, read that module's guide:
 
 - **[backend/AGENTS.md](backend/AGENTS.md)** — backend depth: harness/app split, agent &
   middleware chain, sandbox, MCP, skills, memory, IM channels, persistence/migrations,
@@ -31,10 +30,9 @@ and stops the Gateway started by this invocation. Regression tests live in
 instead of invoking the WSL shim through bare `bash`.
 
 `start.ps1` checks listening ports through both `Get-NetTCPConnection` and a
-`netstat.exe` fallback. Some restricted Windows hosts return a false negative
-from the PowerShell cmdlet; without the fallback the launcher starts a second
-Gateway which later fails with `WinError 10048` and leaves the frontend unable
-to proxy API requests.
+`netstat.exe` fallback: restricted hosts can false-negative on the cmdlet, and
+without it the launcher starts a second Gateway (`WinError 10048`) that leaves
+the frontend unable to proxy API requests.
 
 ## Service Topology
 
@@ -47,23 +45,20 @@ A single `make dev` / Docker stack runs four cooperating services:
 | **Frontend**    | `3000` | Next.js web interface                                               |
 | **Provisioner** | `8002` | Optional — only when sandbox is configured for provisioner/K8s mode |
 
-Nginx is the single public entry: it proxies `/api/*` to the Gateway, rewriting
-`/api/langgraph/*` onto the Gateway's native routes, and serves the frontend — see
-[backend/AGENTS.md](backend/AGENTS.md) for the runtime and router detail. It compresses
-HTML and configured textual assets, deliberately leaving SSE, fonts, images, audio, and
-video uncompressed at the proxy layer.
+Nginx is the single public entry: it proxies `/api/*` to the Gateway (rewriting
+`/api/langgraph/*` onto native routes) and serves the frontend; see
+[backend/AGENTS.md](backend/AGENTS.md) for router detail. It compresses HTML and
+configured textual assets, leaving SSE, fonts, images, audio, and video uncompressed.
 
 Both compose files publish that entry as `"${BIND_HOST:-127.0.0.1}:${PORT:-2026}:2026"`
-— **loopback by default**, matching the README's documented deployment model; a bare
-`"${PORT}:2026"` binds `0.0.0.0`, which does not. The root `PORT` value is Docker ingress
-configuration only; local orchestration pins Next.js to `3000` so loading `.env` cannot
-make `make dev` wait on the wrong port. Nginx listening `default_server` on IPv4+IPv6 and
-the Gateway binding `0.0.0.0:8001` are container-internal on purpose: the published nginx
-port is the entire external surface. Any new published port needs an explicit bind
-address; `backend/tests/test_compose_default_bind_host.py` pins this for every service in
+— **loopback by default**; a bare `"${PORT}:2026"` binds `0.0.0.0`. The root `PORT` is
+Docker ingress config only; local orchestration pins Next.js to `3000` so loading `.env`
+cannot make `make dev` wait on the wrong port. Nginx (`default_server`, IPv4+IPv6) and
+the Gateway (`0.0.0.0:8001`) bind inside the container on purpose: the published nginx
+port is the whole external surface, so any new published port needs an explicit bind
+address. `backend/tests/test_compose_default_bind_host.py` pins this for every service in
 both compose files.
 
-## Repository Map
 
 ```
 agent-workspace/
@@ -129,25 +124,20 @@ Scheduled-task note:
 - Scheduled background runs are intentionally non-interactive: the lead-agent toolset excludes `ask_clarification` when `context.non_interactive=true`. That key, `disable_clarification`, and `github_token` are honored only for internally-authenticated callers; client-supplied copies are dropped from both `body.context` and `body.config`.
 - Busy scheduled occurrences are persisted as `queued`; `launching` is a short lease-fenced claim, `running` remains the normal Gateway run lifecycle, and `scheduler.queue_timeout_seconds` bounds the durable wait. Do not reintroduce skip-on-overlap or count waiting rows against `max_concurrent_runs`.
 
-Workforce layer note (Bot Mode + self-improvement + projects):
-- Harness: `packages/harness/alpha/projects/` (membership, locks, constitution,
-  events/state, decisions, context, routing, workspace, handoffs, evidence, goals,
+Workforce layer (Bot Mode + self-improvement + projects):
+- Harness: `projects/` (membership, locks, constitution, decisions, handoffs, goals,
   conflicts — file-backed under `runtime_home()/projects/`, see its `AGENTS.md`),
-  `bots/dm.py` + `bots/inbox.py` (fire-and-forget DMs, server-side attribution),
-  `skills/usage.py` + `skills/curator.py` + `skills/authoring.py` (telemetry,
-  lifecycle, `/learn` bar), `learning/review_queue.py` (idle-deferred fork reviews),
-  `deliberation/moa.py`, `scheduler/{wake_gate,blueprints,incidents,guards}.py`.
-- Per-turn injections (bot roster, repo context files) ride
-  `DynamicContextMiddleware` reminders keyed off explicit runtime context
-  (`bot_name`, `repo_root`) — never the static system prompt (prefix-cache rule).
+  `bots/dm.py` + `bots/inbox.py`, `skills/{usage,curator,authoring}.py`,
+  `learning/review_queue.py`, `deliberation/moa.py`,
+  `scheduler/{wake_gate,blueprints,incidents,guards}.py`.
+- Per-turn injections (bot roster, repo context) ride `DynamicContextMiddleware`
+  reminders keyed off runtime context (`bot_name`, `repo_root`) — never the static
+  system prompt (prefix-cache rule).
 - Gateway: `/api/projects/{id}/*`, `/api/bots/{name}/dm|inbox|chat`,
-  `/api/skills/curator|usage|tiers`, `/api/council/*`, `/api/policy/*`,
-  `/api/missions`, `/api/benchmarks`, `/api/evolution`,
-  `/api/compat/openai/chat/completions`, `/api/threads/{id}/undo`,
-  `/api/console/insights`, `/api/ops/advice`, `/api/models/local/health`,
-  Signal channel (`app/channels/signal.py`, self-hosted REST wrapper).
-- Frontend: `src/lib/workforce.ts` client + `WorkforceSection` (inbox, presence,
-  curator, automation, oversight, insights tabs) behind the `workforce` NavTab.
+  `/api/skills/curator|usage|tiers`, `/api/{council,policy,missions,benchmarks,
+  evolution}/*`, `/api/threads/{id}/undo`, `/api/console/insights`,
+  `/api/ops/advice`, Signal channel (`app/channels/signal.py`).
+- Frontend: `src/lib/workforce.ts` + `WorkforceSection` behind the `workforce` NavTab.
 
 ## Commands: Root vs. Module
 
@@ -158,9 +148,12 @@ make setup       # Interactive setup wizard (recommended for new users); unatten
 make doctor      # Check configuration and system requirements
 make prod-check  # Production readiness pre-flight (versions, config files, secrets)
 make support-bundle  # Generate redacted troubleshooting summary, AI issue draft, and optional zip
+make update-status|check|apply|recover  # guarded source update (docs/AUTO_UPDATE.md)
+make update-skip VERSION=x.y.z          # skip one verified version
 make config      # Generate local config files from the examples
 make check       # Check that required tools are installed
 make install     # Install all dependencies (frontend + backend + pre-commit hooks)
+make voice-setup|voice-verify  # free local speech models (docs/VOICE_CONVERSATION.md)
 make extension-install SOURCE=...  # Install and enable a trusted Python extension
 make extension-upgrade SOURCE=...  # Replace an installed extension and keep its config
 make extension-list                # List configured Python extensions
@@ -174,11 +167,10 @@ make up / down   # Build/stop the production Docker stack (browser at localhost:
 make docker-start / docker-stop / docker-logs   # Docker development environment
 ```
 
-Production startup uses the image's pre-built Python environment with `uv run
---no-sync`, gives the Gateway a real `/health` probe, and makes `make up` wait
-for that probe before printing its success banner. A readiness failure must
-surface Compose status and recent Gateway logs instead of claiming the stack is
-running.
+Production startup runs the image's pre-built environment (`uv run --no-sync`)
+and makes `make up` wait for the Gateway `/health` probe before printing its
+banner; a readiness failure must surface Compose status and recent Gateway logs
+rather than claim the stack is running (see Service Topology).
 
 Docker log and restart commands resolve `AGENT_WORKSPACE_ROOT` from the current
 checkout before invoking Compose, matching the start and stop commands.
@@ -216,6 +208,7 @@ Corepack honors its pinned package-manager version.
 ```bash
 make config      # copy config.example.yaml -> config.yaml and extensions_config.example.json -> extensions_config.json (both gitignored)
 make install     # install frontend + backend deps and pre-commit hooks
+make voice-setup # optional: local speech models
 make dev         # then start everything
 ```
 
@@ -284,6 +277,8 @@ Every capability in this repo is discoverable and continuously verified:
 - `contracts/feature_manifest.json` — generated by
   `backend/scripts/generate_feature_manifest.py`; proves all 122 registered tool entries, 56
   routers, 41 middlewares and 6 supervisor loops are wired. Regenerate after any
+  `backend/scripts/generate_feature_manifest.py`; proves all 130 tools, 60
+  routers, 42 middlewares and 8 supervisor loops are wired. Regenerate after any
   registry change; `tests/test_feature_manifest_wiring.py` pins every entry.
 - `tests/test_no_orphan_modules.py` — AST reference scan that fails the build if
   any module exists with no import, no dotted-string loader path, no config
@@ -343,6 +338,30 @@ fingerprints are rechecked before mutation, and files move to a local quarantine
 vault with a restore receipt. Never replace quarantine with hard-delete, add a
 network trash dependency, or bypass the existing policy/approval stack. Tests
 live in `backend/tests/test_reversible_delete.py`.
+## Alpha-to-Alpha peer network contract
+
+The separate `alpha.peer_network` package owns installation identity, explicit
+pairing, UDP/mDNS/GitHub discovery adapters, direct HTTP/WebSocket delivery,
+SQLite conversations, topology validation, delivery receipts, and the bounded
+`alpha_peer_network` model tool. The Gateway router is
+`app/gateway/routers/peer_network.py`; the dedicated UI is the `peers` workspace
+view (`PeerNetworkSection`) and client is `frontend/src/lib/peer-network.ts`.
+
+Discovery is untrusted and never grants access. Pairing uses a high-entropy
+out-of-band code; public Agent Card/pair/inbound routes are exact-path public
+surfaces with their own token checks, while local management routes retain
+Gateway auth and `threads:read/write` permissions. Public/model callers cannot
+self-assert a sender id, and the model tool strips endpoints, cards, pairing
+codes, and credentials.
+
+The default free path is LAN UDP + HTTP/WebSocket + SQLite. Optional mDNS uses
+`zeroconf` (`peer-discovery` extra); GitHub is an opt-in Agent Card rendezvous,
+not a public mailbox. libp2p is an external future bridge and must report
+unavailable until a real authenticated adapter is wired. Do not describe
+installation-scoped SQLite as cross-process exactly-once storage. Full setup,
+security/NAT limits, topology semantics, and tests are in
+`docs/ALPHA_PEER_NETWORK.md`; regression coverage is
+`backend/tests/test_peer_network.py` and `frontend/src/lib/peer-network.test.mjs`.
 
 ## Autonomy supervisor contract
 

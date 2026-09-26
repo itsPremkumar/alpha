@@ -3,6 +3,12 @@
 **Repo:** https://github.com/browser-use/jev-ultrafast · by **gregpr07** (Browser Use), Sep 2026.
 **Verdict: not drop-in usable as-is, but the core design is genuinely valuable and worth porting into Alpha.** The novel part is ~150 lines, not the whole repo.
 
+> **Provider note:** this evaluation is about the hosted TypeSafe/Jev browser agent. Alpha's
+> provider-neutral System One client can also target the local Laya server, but Laya's
+> option-head budget is much smaller than Jev's. Keep large browser action spaces on
+> the existing deterministic path, partition/shortlist them, and measure Laya in
+> `shadow_mode` before allowing a browser action to execute.
+
 ---
 
 ## What it is

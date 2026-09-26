@@ -156,6 +156,41 @@ data:
                 proxy_request_buffering off;
             }
 
+            # Voice and Live Browser are long-lived WebSocket upgrades. They
+            # must precede the generic thread/API locations so nginx forwards
+            # Upgrade and Connection instead of downgrading to plain HTTP.
+            location = /api/multimodal/voice {
+                proxy_pass http://$gateway_upstream;
+                proxy_http_version 1.1;
+                proxy_set_header Host $http_host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $forwarded_proto;
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection 'upgrade';
+                proxy_cache_bypass $http_upgrade;
+                proxy_buffering off;
+                proxy_connect_timeout 600s;
+                proxy_send_timeout 600s;
+                proxy_read_timeout 600s;
+            }
+
+            location ~ ^/api/threads/[^/]+/browser/stream {
+                proxy_pass http://$gateway_upstream;
+                proxy_http_version 1.1;
+                proxy_set_header Host $http_host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $forwarded_proto;
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection 'upgrade';
+                proxy_cache_bypass $http_upgrade;
+                proxy_buffering off;
+                proxy_connect_timeout 600s;
+                proxy_send_timeout 600s;
+                proxy_read_timeout 600s;
+            }
+
             location ~ ^/api/threads {
                 proxy_pass http://gateway_upstream;
                 proxy_http_version 1.1;

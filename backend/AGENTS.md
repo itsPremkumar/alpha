@@ -13,12 +13,12 @@ passing evidence of every required kind. Tests: `tests/test_run_acceptance_crite
 
 ## Autonomous run mode
 
-`RunCreateRequest.autonomous` is the Gateway-owned opt-in for prompt-to-
-completion execution. `start_run()` applies plan mode, permitted subagent
-delegation and `non_interactive` only after ordinary client context has been
-sanitized; do not make a client-supplied `context.non_interactive` equivalent.
-This changes agent behavior, never authorization, tool allowlists, sandbox
-policy, budgets, cancellation, or ownership checks.
+`RunCreateRequest.autonomous` is the Gateway-owned opt-in for prompt-to-completion
+execution. `start_run()` applies plan mode, permitted subagent delegation and
+`non_interactive` only after ordinary client context has been sanitized; a
+client-supplied `context.non_interactive` is not equivalent. This changes agent
+behavior, never authorization, tool allowlists, sandbox policy, budgets,
+cancellation or ownership checks.
 
 ## Autonomous release gate
 
@@ -33,14 +33,17 @@ as evidence. Tests: `tests/test_release_gate.py`.
   `scripts/generate_feature_manifest.py`) to a module that imports: 122 registered tool entries,
   56 routers, 41 middlewares, 6 supervisor loops. A module added to any registry
   without a wiring point fails the build.
+  `scripts/generate_feature_manifest.py`) to a module that imports it: 130
+  tools, 60 routers, 42 middlewares, and 8 supervisor loops. A module added to a
+  registry without a wiring point fails the build.
 - `tests/test_no_orphan_modules.py` fails the build if a module exists with no
   import, dotted-string loader path, config `use:` entry, or allowlist reason.
   Fix the list, not the test.
-- New `@tool` functions that need runtime access must take `runtime: Runtime`
-  as a bare required first parameter — never `Runtime | None = None` (the
-  union makes pydantic schema-generate the `Callable` members of `ToolRuntime`
-  and breaks the whole tool list). Run `scripts/check_tool_schemas.py` after
-  any tool signature change.
+- New `@tool` functions needing runtime access must take `runtime: Runtime` as a
+  bare required first parameter — never `Runtime | None = None`, which makes
+  pydantic schema-generate `ToolRuntime`'s `Callable` members and breaks the
+  whole tool list. Run `scripts/check_tool_schemas.py` after any tool signature
+  change.
 - `app/gateway/autonomy/supervisor.py` is the single owner of background loops;
  declare new loops in `register_default_loops()` with a `loops.py` adapter,
   gate them under `config.yaml -> autonomy.loops`, and expose them through
@@ -114,14 +117,14 @@ Alpha is a LangGraph-based AI super agent system with a full-stack architecture.
 - `make dev`, Docker dev, and production all run the agent runtime in Gateway via `RunManager` + `run_agent()` + `StreamBridge` (`packages/harness/alpha/runtime/`). Nginx exposes that runtime at `/api/langgraph/*` and rewrites it to Gateway's native `/api/*` routers.
 - Gateway streams `write_file` and `str_replace` argument deltas in bounded batches for multi-mode `messages-tuple` consumers; single-mode message consumers retain the original per-chunk contract. Non-message frames flush pending batches, and `values` remains an optional complete-state snapshot rather than a prerequisite for batching.
 - With `stream_subgraphs`, subgraph frames keep their namespace in the SSE event name (`values|<ns>`, LangGraph Platform style) instead of impersonating root frames — a delegated subagent inherits the parent checkpoint namespace, so publishing its `values` snapshot as bare `values` replaces the whole thread view in SDK clients (#4399). Root-only consumers (file-tool chunk batcher, subagent event persistence, LLM error-fallback detection) ignore namespaced frames. The web frontend does not request subgraph streaming; subtask progress rides root-namespace `task_*` custom events.
-- Background subagent identity is deliberately split: the provider `tool_call_id` remains the correlation key for `ToolMessage`, `task_*` SSE events, persisted lifecycle events, frontend cards, and the public `ExtensionData.scope_id` contract (stored as `SubagentResult.external_task_id`), while `SubagentExecutor.execute_async()` generates a full server-side `execution_id` for `SubagentResult.task_id`, the process-wide registry, polling, cancellation, timeout handling, and cleanup. Provider IDs are not globally unique across parent runs, so they must never become registry ownership keys; scheduler closures retain their own `SubagentResult` rather than resolving ownership again through the mutable registry. Terminal subagent token usage travels in the current run's `ToolMessage.additional_kwargs` and is attributed from message state, never through a process-global provider-ID cache.
+- Background subagent identity is deliberately split. The provider `tool_call_id` is the correlation key for `ToolMessage`, `task_*` SSE events, persisted lifecycle events, frontend cards and the public `ExtensionData.scope_id` contract (stored as `SubagentResult.external_task_id`). The server-side `execution_id` minted by `SubagentExecutor.execute_async()` is the key for `SubagentResult.task_id`, the process-wide registry, polling, cancellation, timeout and cleanup. **Provider IDs are not globally unique across parent runs, so they must never become registry ownership keys**; scheduler closures keep their own `SubagentResult` instead of re-resolving ownership through the mutable registry. Terminal subagent token usage travels in the current run's `ToolMessage.additional_kwargs` and is attributed from message state, never through a process-global provider-ID cache.
 - Scheduled-task executions must reuse that same Gateway run lifecycle. The scheduler may decide *when* work runs, but it must dispatch through the existing run path rather than introducing a parallel execution stack. Scheduled launches pass `scheduler.recursion_limit` (default 1000, matching the web UI's `recursion_limit: 1000`, clamped by `max_recursion_limit`) via `launch_scheduled_thread_run`; the value is read from `get_app_config()` at dispatch, so a YAML edit applies to the next scheduled run without a Gateway restart.
 - The background scheduler is single-instance by default. `scheduler.multi_instance=true` opts into lease-aware recovery across Gateway instances and requires shared Postgres, `run_ownership.heartbeat_enabled=true`, and `run_events.backend=db`; otherwise startup rejects the configuration. Live scheduled runs are preserved when a peer starts; expired launch claims return to the durable queue, expired run leases are atomically taken over, stale launch writes are fenced by lease ownership, and the Postgres advisory-locked budget makes `max_concurrent_runs` a shared global cap for `launching`/`running` rows.
 - Long-running MCP work uses a separate durable task runtime (`McpTaskService` + `mcp_tasks`, lease-based recovery) rather than keeping remote task IDs or status polling inside the Agent loop; only submit remains Agent-visible, the database is the source of truth, and `ThreadState` receives only a bounded current-thread projection. Full contract (leases, cancellation fencing, delivery idempotency, management-tool exposure): [packages/harness/alpha/mcp/AGENTS.md](packages/harness/alpha/mcp/AGENTS.md).
 - MCP task notification retries, dead-lettering, and the cancel endpoint's worker-stopped 503 are part of that same contract — see [packages/harness/alpha/mcp/AGENTS.md](packages/harness/alpha/mcp/AGENTS.md).
-- Scheduled-task dispatch permits one active occurrence per task via `uq_scheduled_task_run_active` (`task_id WHERE status IN ('queued','launching','running')`). Durable `queued` rows survive restarts; only lease-fenced `launching` may call Gateway launch; `running` references the durable run. Stable admission idempotency keys reuse that run after recovery. Reused-thread `ConflictError` returns `launching` to `queued`; other launch errors become `failed`. Atomic queue claims enforce `max_concurrent_runs`, excluding waiting rows. Repeated triggers coalesce; same-thread FIFO blocks behind older active rows. Queue admission, PATCH/resume, pause and delete lock the parent before the occurrence, freezing active task definitions. Pause/delete atomically cancel `queued` work but reject `launching`/`running`; PATCH/resume reject all active states. Only queued conflicts offer pause cancellation. Manual triggers may queue/run while paused. Recovery locks task/run pairs in task-id/run-id order and restores `run_id`, `started_at` and live errors before releasing launch claims. Launch/failure/timeout updates use one parent-first transaction to prevent interleaved claims. Queue timeout fails the occurrence and advances scheduled work to prevent immediate requeue. Repository boundaries coerce serialized timestamps before SQL `DateTime` binding.
+- Scheduled-task dispatch permits one active occurrence per task (`uq_scheduled_task_run_active`). Durable `queued` rows survive restarts; only lease-fenced `launching` may call Gateway launch; `running` references the durable run, and a reused-thread `ConflictError` returns the occurrence to `queued` (other launch errors become `failed`). Atomic queue claims enforce `max_concurrent_runs`; repeated triggers coalesce. Any mutation (admission, PATCH/resume, pause, delete) locks the parent row first, so active task definitions cannot change under an in-flight occurrence; pause/delete cancel only `queued` work and reject `launching`/`running`. Recovery locks task/run pairs in id order and restores run state before releasing claims. The exhaustive state-machine matrix is pinned by `tests/` (queue, lease, recovery and conflict suites) — read those tests rather than trusting a prose summary.
 - `POST /api/scheduled-tasks/preview-cron` requires authenticated `threads:read`. Bounded cron previews call the shared scheduler calculator in `asyncio.to_thread`, preserving its DST semantics. Capture the optional aware reference once; return UTC and offset-bearing local occurrences without acquiring task/thread/run stores or dispatching work. This advisory API does not reserve execution.
-- `extensions_config.json` is written at runtime by the Gateway (`PUT`/`PATCH /api/mcp/config`, the MCP enable switch, skill updates), so the production compose mounts it read-write while `config.yaml` stays `:ro`; Helm copies its ConfigMap seed into a writable home-volume directory before Gateway starts. Every read-modify-write holds both `extensions_config_write_lock` and the sidecar advisory `extensions_config_file_lock`, because the process-local lock alone loses updates across workers. Docker mounts the compose file as its own mount point, and Linux refuses `rename()` over a mount point with `EBUSY` even when the mount is writable — so `atomic_write_extensions_config` keeps the temp-file-plus-rename path and falls back to an in-place overwrite only on `EBUSY`. That fallback is deliberately non-atomic (a crash mid-write truncates the file); it exists because the alternative is a write that can never succeed, and only its first occurrence per target is logged at warning level. Any other `errno` still propagates. Pinned by `tests/test_compose_extensions_config_writable.py`, `tests/test_extensions_config_atomic_write.py`, and `tests/test_helm_extensions_config_writable.py`.
+- `extensions_config.json` is written at runtime by the Gateway (`PUT`/`PATCH /api/mcp/config`, the MCP enable switch, skill updates), so production compose mounts it read-write while `config.yaml` stays `:ro`; Helm copies its ConfigMap seed into a writable home-volume directory before Gateway starts. Every read-modify-write holds both `extensions_config_write_lock` and the sidecar advisory `extensions_config_file_lock` — the process-local lock alone loses updates across workers. Docker mounts that file as its own mount point and Linux refuses `rename()` over a mount point (`EBUSY`) even when it is writable, so `atomic_write_extensions_config` keeps temp-file+rename and falls back to an in-place overwrite **only** on `EBUSY`; that fallback is deliberately non-atomic (a crash mid-write truncates the file) and exists because the alternative can never succeed. It is logged at warning level once per target; any other `errno` propagates. Pinned by `tests/test_compose_extensions_config_writable.py`, `tests/test_extensions_config_atomic_write.py` and `tests/test_helm_extensions_config_writable.py`.
 
 **Project Structure**:
 ```
@@ -235,15 +238,14 @@ The offline test suite must not require network access, provider credentials,
 or the LongMemEval dataset. Small LongMemEval-shaped fixtures must be synthetic
 and generated by tests.
 
-`scripts/benchmark/concurrency/` measures multi-process contention on the
-`users` table (N separate OS processes, not asyncio tasks) for SQLite vs
-Postgres -- the scenario `CONFIGURATION.md` requires Postgres for. `worker.py`
-connects directly via SQLAlchemy (skipping the ~8.5s Alembic bootstrap the
-orchestrator already ran once) and mirrors the app's per-connection SQLite
-PRAGMAs; `run_concurrency_bench.py` seeds a disposable per-run Postgres schema,
-synchronises workers on a READY/GO barrier before timing, and exits non-zero on
-any crash, short op count, or `errors > 0`. Postgres runs need a throwaway
-database via `--pg-url`; nothing here touches `public`. Run from `backend/`:
+`scripts/benchmark/concurrency/` measures multi-process contention on the `users`
+table (N separate OS processes, not asyncio tasks) for SQLite vs Postgres — the
+scenario `CONFIGURATION.md` requires Postgres for. `worker.py` connects via
+SQLAlchemy directly (skipping the ~8.5s Alembic bootstrap) and mirrors the app's
+per-connection SQLite PRAGMAs; `run_concurrency_bench.py` seeds a disposable
+per-run Postgres schema, syncs workers on a READY/GO barrier, and exits non-zero
+on any crash, short op count, or `errors > 0`. Postgres runs need a throwaway
+`--pg-url` database; nothing here touches `public`. Run from `backend/`:
 
 ```bash
 uv run python scripts/benchmark/concurrency/run_concurrency_bench.py \
@@ -253,21 +255,10 @@ uv run pytest tests/test_bench_concurrency.py tests/test_bench_worker.py -q
 
 ## Commands
 
-**Root directory** (for full application):
-```bash
-make check      # Check system requirements
-make install    # Install all dependencies (frontend + backend)
-make extension-install SOURCE=...  # Install and enable a trusted Python extension
-make extension-upgrade SOURCE=...  # Replace an installed extension and keep its config
-make extension-list                # List configured Python extensions
-make extension-enable NAME=...     # Enable an installed extension
-make extension-disable NAME=...    # Disable an extension without uninstalling it
-make extension-remove NAME=...     # Remove a managed extension
-make detect-thread-boundaries  # Inventory backend executor/thread/event-loop boundaries
-make dev        # Start all services (Gateway + Frontend + Nginx), with config.yaml preflight
-make start      # Start production services locally
-make stop       # Stop all services
-```
+Root-directory targets (`make dev`/`start`/`stop`, `install`, the `extension-*`
+family, `detect-thread-boundaries`, …) are listed once in the root guide's
+[Commands: Root vs. Module](../AGENTS.md#commands-root-vs-module) — do not
+duplicate them here.
 
 **Backend directory** (for backend development only):
 ```bash
@@ -431,19 +422,17 @@ When using `make dev` from root, the frontend automatically connects through ngi
 
 ### Host System Monitor
 
+
 `app/gateway/system_monitor_service.py` samples CPU, RAM, disk, network and
 processes via `psutil` (optional — it degrades to stdlib when absent) and is
 served by `app/gateway/routers/system_monitor.py`.
 
 `app/gateway/system_monitor_extras.py` adds what psutil cannot see, which on
-Windows is most of it:
-
-| Area | Baseline | Extras add |
-|---|---|---|
-| GPU | `nvidia-smi` only; WMI names with no counters | CIM adapter identity for all vendors, AMD `rocm-smi`, host-wide utilization via GPU Engine counters |
-| Thermals | none on Windows (`sensors_temperatures()` is empty) | psutil package temp, else ACPI thermal zone (CIM first; `wmic` is deprecated and commonly blocked) |
-| Disk / ROM | partition usage + IO counters | physical-disk health, media/bus type, capacity, derived IOPS and throughput |
-| Internet | one TCP connect → one RTT | multi-target probes, packet loss, DNS latency, quality grade, cached public IP, opt-in throughput probe |
+Windows is most of it: GPU identity/counters for all vendors (CIM, plus AMD
+`rocm-smi`), thermals (psutil package temp, else the ACPI thermal zone via CIM —
+`wmic` is deprecated and commonly blocked), physical-disk health/media/capacity
+with derived IOPS and throughput, and multi-target internet probes (packet loss,
+DNS latency, quality grade, cached public IP, opt-in throughput).
 
 Rules for this layer:
 
@@ -461,13 +450,24 @@ Rules for this layer:
 
 ### Web Search Recency
 
-DDG, Brave, Tavily, SearXNG, and Sofya `web_search` share optional
-`time_range=day|week|month|year`; omission preserves request shape. DDG maps to
-`d|w|m|y`, Brave to `pd|pw|pm|py`, Tavily/SearXNG pass values unchanged, and
-Sofya passes them unchanged as `freshness`.
-For recency, DDGS 9.14.1 uses only enabled Brave, DuckDuckGo, and Yahoo engines
-that honor `timelimit`: `auto`/`all` resolves to this set, incompatible configured
-engines are removed, and an empty set falls back to it. Re-check on DDGS upgrades.
+DDG, Brave, Tavily, SearXNG and Sofya `web_search` share optional
+`time_range=day|week|month|year` (omission preserves request shape). DDG maps to
+`d|w|m|y`, Brave to `pd|pw|pm|py`, Tavily/SearXNG pass it unchanged, Sofya as
+`freshness`. For recency, DDGS 9.14.1 uses only enabled Brave/DuckDuckGo/Yahoo
+engines that honour `timelimit`: `auto`/`all` resolves to that set, incompatible
+engines are dropped, and an empty set falls back to it — re-check on upgrades.
+
+AgentEye is pinned to an immutable Git commit and integrated through a curated
+`alpha.community.agent_eye` adapter. Only selected fixed-endpoint modules and
+pure ranking/extraction helpers are used; the upstream `AgentSearchLite`, HTTP
+API, MCP server, global caches, arbitrary URL crawler, and dead/duplicate
+backends are not exposed. The adapter enforces an operator backend allowlist,
+fragile-source opt-in, bounded fan-out, per-backend isolation, dedupe, and
+source provenance. When configured, it is the first search lane for deep
+research with DDGS as fallback; fetched pages pass redirect-by-redirect SSRF and
+byte caps. Empty discovery returns `no_evidence`, never a fabricated successful
+report. See `packages/harness/alpha/AGENTS.md` and
+`docs/AGENT_EYE_RESEARCH.md`.
 
 ### Tavily Fetch
 
@@ -480,11 +480,9 @@ Outlines use ATX syntax (1–6 hashes, space/tab separator, ≤3 leading spaces)
 - Supports: PDF, PPT, Excel, Word documents (converted via `markitdown`)
 - Rejects directories before copying to keep uploads all-or-nothing
 - One conversion worker per request when called from an active event loop
-- Files stored in thread-isolated directories under the resolving user's bucket (`users/{user_id}/threads/{thread_id}/user-data/uploads`). For IM channels the owner is threaded explicitly via the `user_id=` kwarg (see IM Channels → Owner-scoped file storage); HTTP/embedded callers resolve it from `get_effective_user_id()`
-- Duplicate filenames within one request get `_N` suffixes to prevent overwrites.
-- Gateway HTTP uploads stage bytes as `.upload-*.part` files and atomically replace the destination only after size validation. These staging files are hidden from upload listings, agent upload context, and sandbox listing/search tools, and swept on Gateway startup if a hard crash leaves one behind.
-- Gateway HTTP upload/list/delete handlers offload filesystem work through `alpha.utils.file_io.run_file_io`, a dedicated ContextVar-preserving file IO executor. Non-mounted sandbox uploads acquire sandboxes with `SandboxProvider.acquire_async()` and offload `read_bytes()` plus `sandbox.update_file()` together.
-- Mounted uploads skip sandbox acquire/sync. AIO remote/provisioner requires accurate `sandbox.thread_data_mounts: true`; omission keeps backend auto-detection.
+- Files are stored in thread-isolated directories under the resolving user's bucket (`users/{user_id}/threads/{thread_id}/user-data/uploads`): IM channels thread the owner explicitly via the `user_id=` kwarg, HTTP/embedded callers resolve it from `get_effective_user_id()`. Duplicate filenames in one request get `_N` suffixes.
+- Gateway HTTP uploads stage bytes as `.upload-*.part` files and atomically replace the destination only after size validation; staging files are hidden from listings, agent upload context and sandbox search tools, and swept at startup after a hard crash.
+- Upload/list/delete offload filesystem work through `alpha.utils.file_io.run_file_io` (a ContextVar-preserving executor). Non-mounted sandbox uploads acquire via `SandboxProvider.acquire_async()` and offload `read_bytes()` + `sandbox.update_file()` together; mounted uploads skip acquire/sync, and AIO remote/provisioner needs an accurate `sandbox.thread_data_mounts: true`.
 - `UploadsMiddleware` caps outline titles at 200 characters and previews at 2000 including markers. Titles use `original_user_content`, not upload-prefixed content; attachment-only titles use a sanitized, bounded filename or count.
 
 See [docs/FILE_UPLOAD.md](docs/FILE_UPLOAD.md) for details.
@@ -520,6 +518,27 @@ For models with `supports_vision: true`:
 - `ViewImageMiddleware` processes images in conversation
 - `view_image_tool` added to agent's toolset
 - Images are converted to base64 and appended to the model request as a hidden message carrying both a reserved ID prefix and a server-owned metadata marker; Gateway strips that marker from untrusted input, and the middleware requires both identifiers to recognize its own message. The middleware injects inside `wrap_model_call`, so the payload never enters graph state: checkpoints retain only lightweight `viewed_images` metadata, while client-chosen IDs survive. It also sweeps its own message out of every request before rebuilding it, so a payload stranded in an older checkpoint by an interrupted run stops being resent
+
+## Alpha-to-Alpha peer network
+
+`packages/harness/alpha/peer_network/` is the harness-owned, installation-scoped
+peer plane. `service.py` owns lifecycle, pairing, topology, delivery, retry, and
+SSE events; `storage.py` is the synchronous SQLite repository and must be
+called through `asyncio.to_thread` at async boundaries; `transport.py` is
+HTTP-first with WebSocket fallback; `discovery.py` owns UDP and optional mDNS;
+`github.py` is an explicit Agent Card rendezvous only.
+
+`app/gateway/routers/peer_network.py` exposes authenticated management routes
+(`threads:read/write`) and exact public peer routes for Agent Cards, pairing,
+and token-authenticated inbound messages. Do not broaden the public prefixes
+or trust a request-supplied owner/sender. The model-facing
+`alpha_peer_network` tool must keep `runtime: Runtime` as its bare first
+parameter and sanitize endpoint/credential fields. Bot `peer/agent` DMs bridge
+through the service rather than duplicating transport logic. The local SQLite
+store is restart-recoverable for one installation, not a multi-process
+exactly-once coordinator. Full operations are in
+`docs/ALPHA_PEER_NETWORK.md`; tests are `tests/test_peer_network.py` and
+`tests/test_bots_dm.py`.
 
 ## Code Style
 

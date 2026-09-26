@@ -1195,3 +1195,77 @@ class TestRunRepository:
         ok = await repo.claim_for_takeover("no-such-run", grace_seconds=10, error="claimed")
         assert ok is False
         await _cleanup()
+
+    @pytest.mark.anyio
+    async def test_list_recovery_candidates_filters_terminal_reason_and_run_kind(self, tmp_path):
+        repo = await _make_repo(tmp_path)
+        await repo.put("recover-1", thread_id="t1", status="error", stop_reason="orphan_recovered")
+        await repo.put("recover-2", thread_id="t2", status="interrupted", stop_reason="gateway_shutdown")
+        await repo.put("manual-stop", thread_id="t3", status="interrupted", stop_reason="user_cancelled")
+        await repo.put(
+            "checkpoint-op",
+            thread_id="t4",
+            status="error",
+            stop_reason="orphan_recovered",
+            operation_kind="checkpoint_write",
+        )
+        await repo.put("cancelled", thread_id="t5", status="running", stop_reason=None)
+        assert await repo.request_cancel("cancelled", action="interrupt") == "interrupt"
+        assert await repo.update_status("cancelled", "interrupted", stop_reason="gateway_shutdown")
+
+        rows = await repo.list_recovery_candidates(
+            statuses={"error", "interrupted"},
+            stop_reasons={"orphan_recovered", "gateway_shutdown"},
+            limit=10,
+        )
+
+        assert [row["run_id"] for row in rows] == ["recover-1", "recover-2"]
+        await _cleanup()
+
+    @pytest.mark.anyio
+    async def test_recovery_candidate_index_exists_on_sqlite(self, tmp_path):
+        from sqlalchemy import text
+
+        from alpha.persistence.engine import get_session_factory
+
+        await _make_repo(tmp_path)
+        try:
+            async with get_session_factory()() as session:
+                indexes = await session.run_sync(lambda connection: connection.execute(text("PRAGMA index_list('runs')")).all())
+            assert "ix_runs_status_stop_reason" in {index[1] for index in indexes}
+        finally:
+            await _cleanup()
+
+    @pytest.mark.anyio
+    async def test_transition_recovery_stop_reason_is_compare_and_set(self, tmp_path):
+        repo = await _make_repo(tmp_path)
+        await repo.put(
+            "recover-1",
+            thread_id="t1",
+            status="error",
+            stop_reason="orphan_recovered",
+            error="worker lost",
+        )
+
+        stale = await repo.transition_recovery_stop_reason(
+            "recover-1",
+            expected_status="error",
+            expected_stop_reason="gateway_shutdown",
+            stop_reason="recovery_confirmation_required",
+        )
+        won = await repo.transition_recovery_stop_reason(
+            "recover-1",
+            expected_status="error",
+            expected_stop_reason="orphan_recovered",
+            stop_reason="recovery_confirmation_required",
+            error="worker lost\nverify external action",
+        )
+
+        row = await repo.get("recover-1")
+        assert stale is False
+        assert won is True
+        assert row is not None
+        assert row["status"] == "error"
+        assert row["stop_reason"] == "recovery_confirmation_required"
+        assert row["error"].endswith("verify external action")
+        await _cleanup()

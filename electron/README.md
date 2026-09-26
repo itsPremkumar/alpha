@@ -46,7 +46,7 @@ virgin machine profile (bundled Node + `uv`, auto-provisioned Python and
 venv, no login, chat opens), and silent uninstall. To publish:
 
 1. `npm run dist` and take `electron/dist/Agent-Workspace-Setup-<ver>.exe`.
-2. Create a GitHub Release (e.g. tag `desktop-v2.1.0`) and attach the exe.
+2. Create a GitHub Release (e.g. tag `v2.1.0`) and attach the exe.
    Anything that serves the file works too (company drive, S3, …).
 3. Tell users: download → **More info → Run anyway** (unsigned) → launch →
    when prompted, add one model API key to
@@ -104,6 +104,7 @@ npx electron . -- --skip-backend --skip-frontend          # attach to everything
 npx electron . -- --frontend-url=http://127.0.0.1:2026   # attach to `make dev` (nginx)
 npx electron . -- --frontend-port=3100 --gateway-port=8101
 npx electron . -- --require-login                        # keep login + admin-setup screens
+npx electron . -- --show-lion-pet                        # open Milo on the Windows desktop at startup
 npx electron . -- --verbose                              # mirror service logs to the console
 ```
 
@@ -138,7 +139,35 @@ package: `npm install --no-save sharp`). The repo's `deer.svg`
 illustration does not rasterize usefully outside a browser, hence the
 geometric mark. Re-run the script after editing it, then rebuild.
 
-## How startup works (and fails safely)
+### Microphone and speaker access
+
+The desktop shell grants microphone-only media capture to the exact local Alpha
+frontend origin. Camera requests and mixed audio/video requests are denied. The
+voice controls still require the user to click a microphone or real-time button;
+the first explicit control also unlocks the shared Web Audio speaker output. Use
+**Test speaker and enable autoplay** in the composer to hear a local confirmation
+phrase. If microphone capture is blocked, check the operating system's input
+device and Windows privacy settings, then click the voice control again.
+
+## Lion companion
+
+Alpha includes **Milo**, a local lion companion drawn as inline SVG with
+articulated legs, layered fur and facial detail, and six looks. In the app,
+right-click the lion to open its controls: pet it, resize it, move it, choose
+one of six looks, trigger walk/run/jump/roar/pounce/play/sleep/stretch/prowl/hunt/shake/spin
+actions (walk, run, prowl, and hunt travel within the desktop work area), enable automatic
+idle actions or sound cues, hide it, or return to chat. It reacts to Alpha's
+bounded run states (`thinking`, `working`, `waiting`,
+`success`, and `error`) without putting prompts, responses, or thread data into
+the pet.
+
+In the Windows desktop build, choose **Detach** in the lion menu (or
+**Tools → Show desktop lion**) to open a transparent, always-on-top companion
+window. The native window is draggable, has Walk, Run, Action, Look, and a small
+return-to-Alpha button, and uses the same state channel; closing the main Alpha
+window closes the companion and stops the local services. The overlay is optional and local-only—it does not
+make requests or persist conversation content.
+
 
 1. Single-instance lock — a second launch just focuses the open window.
 2. Per-user data dir prepared; default configs seeded (never overwritten).

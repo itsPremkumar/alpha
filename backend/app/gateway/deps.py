@@ -33,6 +33,7 @@ from alpha.persistence.feedback import FeedbackRepository
 from alpha.runtime import ORPHAN_RECOVERY_STOP_REASON, STARTUP_ORPHAN_RECOVERY_ERROR, RunContext, RunManager, StreamBridge
 from alpha.runtime.events.store.base import RunEventStore
 from alpha.runtime.runs.store.base import RunStore
+from app.gateway.run_recovery import SafeRunRecoveryService
 
 logger = logging.getLogger(__name__)
 
@@ -273,10 +274,10 @@ async def _flush_recovered_stream_cleanups(
 
 
 if TYPE_CHECKING:
-    from app.gateway.auth.local_provider import LocalAuthProvider
-    from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
     from alpha.persistence.thread_meta.base import ThreadMetaStore
     from alpha.runtime import RunRecord
+    from app.gateway.auth.local_provider import LocalAuthProvider
+    from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
 
 
 T = TypeVar("T")
@@ -597,6 +598,22 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
             recovered_runs,
         )
 
+        # Continue only checkpoints whose next graph node is provably model-only.
+        # Tool/custom nodes may have taken an external effect before their result
+        # was checkpointed, so the service records an explicit confirmation stop
+        # instead of replaying them.  The first pass sees the startup orphan batch;
+        # the loop also picks up terminal model failures and peers' periodic
+        # orphan reconciliations without relying on process memory.
+        app.state.run_recovery_service = None
+        if run_ownership_config is not None and getattr(run_ownership_config, "auto_resume", False):
+            recovery_service = SafeRunRecoveryService(
+                app=app,
+                run_manager=app.state.run_manager,
+                config=run_ownership_config,
+            )
+            app.state.run_recovery_service = recovery_service
+            await recovery_service.start()
+
         # Start the lease heartbeat if enabled (multi-worker deployments).
         await app.state.run_manager.start_heartbeat()
 
@@ -609,6 +626,12 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
             # _checkpointer_put_after_previous aput races the closed pool and
             # raises PoolClosed (issue #3373).
             run_manager = getattr(app.state, "run_manager", None)
+            recovery_service = getattr(app.state, "run_recovery_service", None)
+            if recovery_service is not None:
+                try:
+                    await recovery_service.stop(timeout=1.0)
+                finally:
+                    app.state.run_recovery_service = None
             if run_manager is not None:
                 shutdown_deadline = asyncio.get_running_loop().time() + _RUN_DRAIN_TIMEOUT_SECONDS
                 try:
@@ -758,8 +781,8 @@ def get_local_provider() -> LocalAuthProvider:
     """
     global _cached_local_provider, _cached_repo
     if _cached_repo is None:
-        from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
         from alpha.persistence.engine import get_session_factory
+        from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
 
         sf = get_session_factory()
         if sf is None:

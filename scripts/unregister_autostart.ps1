@@ -1,5 +1,5 @@
 ﻿# Alpha Autostart Unregistration
-# Removes the Alpha_Autostart, Alpha_Watchdog and Alpha_TrayStatus tasks.
+# Removes the Alpha_Autostart, Alpha_Watchdog, Alpha_Update and Alpha_TrayStatus tasks.
 #
 # Usage:
 #   powershell -ExecutionPolicy Bypass -File scripts\unregister_autostart.ps1
@@ -8,7 +8,7 @@ $ErrorActionPreference = "SilentlyContinue"
 
 Write-Host "`nRemoving Alpha autostart scheduled tasks..." -ForegroundColor Yellow
 
-foreach ($name in @("Alpha_Autostart", "Alpha_Watchdog", "Alpha_TrayStatus")) {
+foreach ($name in @("Alpha_Autostart", "Alpha_Watchdog", "Alpha_Update", "Alpha_TrayStatus")) {
     $task = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
     if ($task) {
         Unregister-ScheduledTask -TaskName $name -Confirm:$false -ErrorAction SilentlyContinue

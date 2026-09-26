@@ -45,3 +45,31 @@ class RunOwnershipConfig(BaseModel):
         default=False,
         description="When True, the worker periodically renews leases on its active runs. Enable for multi-worker deployments (GATEWAY_WORKERS > 1).",
     )
+    auto_resume: bool = Field(
+        default=True,
+        description="Automatically continue recoverable runs from their latest durable checkpoint after a Gateway shutdown, expired worker lease, or recoverable model failure.",
+    )
+    resume_poll_interval_seconds: float = Field(
+        default=5.0,
+        ge=0.1,
+        le=300.0,
+        description="How often the safe recovery loop scans durable run records for interrupted work.",
+    )
+    max_resume_attempts: int = Field(
+        default=3,
+        ge=1,
+        le=20,
+        description="Maximum number of automatic checkpoint continuations in one durable recovery lineage.",
+    )
+    resume_backoff_seconds: float = Field(
+        default=5.0,
+        ge=0.0,
+        le=3600.0,
+        description="Delay before retrying a recoverable continuation after its previous attempt failed.",
+    )
+    max_concurrent_resumes: int = Field(
+        default=2,
+        ge=1,
+        le=32,
+        description="Maximum checkpoint continuations launched by one recovery pass.",
+    )

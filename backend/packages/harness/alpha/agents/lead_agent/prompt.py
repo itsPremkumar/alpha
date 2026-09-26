@@ -896,14 +896,68 @@ def _get_memory_context(
                 sk_lines = [f"- {s.name}: {s.description} (Trigger: {s.trigger_pattern})" for s in skills]
                 cognitive_blocks.append("### Learned Procedural Playbooks\n" + "\n".join(sk_lines))
 
-            if cognitive_blocks:
+            # Cognitive data may only ENRICH memory the configured backend
+            # actually returned. When the provider read produced nothing (a
+            # disclosed fail-open after e.g. httpx.ConnectTimeout, or an empty
+            # store), substituting side-channel content here would fabricate a
+            # success-shaped <memory> block and hide the degraded read from
+            # every caller — so the enrichment is dropped instead.
+            if cognitive_blocks and memory_content.strip():
                 cog_text = "\n\n".join(cognitive_blocks)
-                if memory_content.strip():
-                    memory_content = f"{memory_content.strip()}\n\n{cog_text}"
-                else:
-                    memory_content = cog_text
+                memory_content = f"{memory_content.strip()}\n\n{cog_text}"
         except Exception:
-            pass
+            logger.debug("Failed to enrich memory context from cognitive memory", exc_info=True)
+
+        # L1 typed working memory: a separately-gated store appended to the
+        # same <memory> block. L1 content is real store content (never a
+        # stand-in for a failed backend read — see the cognitive rule above),
+        # so it may appear even when the configured backend returned nothing.
+        try:
+            from alpha.agents.memory.l1.gates import l1_enabled
+            from alpha.agents.memory.l1.pipeline import (
+                get_bound_l1_pipeline,
+                get_l1_pipeline,
+            )
+
+            if l1_enabled(config):
+                # An explicitly supplied app_config must govern the L1 gate AND
+                # the store it reads; otherwise the block would be gated by one
+                # config and served from another config's store.
+                l1_pipeline = (
+                    get_l1_pipeline()
+                    if app_config is None
+                    else get_bound_l1_pipeline(config)
+                )
+                l1_block = l1_pipeline.recall(
+                    user_id=user_id or resolve_runtime_user_id(None),
+                    agent_name=agent_name,
+                )
+                if l1_block.strip():
+                    if memory_content.strip():
+                        memory_content = f"{memory_content.strip()}\n\n{l1_block.strip()}"
+                    else:
+                        memory_content = l1_block.strip()
+        except Exception:
+            logger.debug("Failed to load L1 working-memory recall", exc_info=True)
+
+        # Wave-2 typed memory surfaces (affective, prospective, entities,
+        # social, narrative): one composition seam instead of a patch per type.
+        # Each type is default-OFF and renders only real store content, so with
+        # every type off this appends nothing and the block is byte-identical.
+        try:
+            from alpha.memory.recall_composition import compose_typed_memory_blocks
+
+            composed = compose_typed_memory_blocks(
+                config,
+                user_id=user_id or resolve_runtime_user_id(None),
+                agent_name=agent_name,
+            )
+            composed_text = composed.text.strip()
+            if composed_text:
+                base = memory_content.strip()
+                memory_content = f"{base}\n\n{composed_text}" if base else composed_text
+        except Exception:
+            logger.debug('Failed to compose typed memory recall', exc_info=True)
 
         if not memory_content.strip():
             return ""

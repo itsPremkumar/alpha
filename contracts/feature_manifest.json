@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-09-22T09:44:14Z",
+ "generated_at": "2026-09-26T05:18:26Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -87,6 +87,14 @@
    "id": "group_chat_tool",
    "module": "alpha.tools.builtins.group_chat_tool",
    "symbol": "group_chat_tool",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "alpha_peer_network_tool",
+   "module": "alpha.tools.builtins.peer_network_tool",
+   "symbol": "alpha_peer_network_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
    "state": "wired"
@@ -636,6 +644,14 @@
    "state": "wired"
   },
   {
+   "id": "search_session_memory",
+   "module": "alpha.tools.builtins.code_agentic_core",
+   "symbol": "search_session_memory",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
    "id": "enterprise_security_manage",
    "module": "alpha.tools.builtins.enclave_security_tool",
    "symbol": "enterprise_security_manage",
@@ -647,6 +663,14 @@
    "id": "astra_security_manage",
    "module": "alpha.tools.builtins.enclave_security_tool",
    "symbol": "astra_security_manage",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "reversible_delete",
+   "module": "alpha.tools.builtins.reversible_delete_tool",
+   "symbol": "reversible_delete",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
    "state": "wired"
@@ -703,6 +727,22 @@
    "id": "query_knowledge_graph",
    "module": "alpha.tools.builtins.knowledge_graph_tool",
    "symbol": "query_knowledge_graph",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "search_project_docs",
+   "module": "alpha.tools.builtins.self_documentation_tool",
+   "symbol": "search_project_docs",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "autonomy_control",
+   "module": "alpha.tools.builtins.autonomy_control_tool",
+   "symbol": "autonomy_control",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
    "state": "wired"
@@ -844,6 +884,14 @@
    "state": "wired"
   },
   {
+   "id": "verify_web_ui_visual_regression",
+   "module": "alpha.tools.builtins.code_agentic_core",
+   "symbol": "verify_web_ui_visual_regression",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
    "id": "manage_reflexion_memory",
    "module": "alpha.tools.builtins.reflexion_tool",
    "symbol": "manage_reflexion_memory",
@@ -954,6 +1002,70 @@
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
    "state": "wired"
+  },
+  {
+   "id": "keyless_web_search",
+   "module": "alpha.tools.builtins.keyless_web_search_tool",
+   "symbol": "keyless_web_search",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "deep_web_search",
+   "module": "alpha.tools.builtins.deep_web_search_tool",
+   "symbol": "deep_web_search",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "desktop_screenshot_tool",
+   "module": "alpha.tools.builtins.os_computer_tool",
+   "symbol": "desktop_screenshot_tool",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "desktop_inspect_ui_tree_tool",
+   "module": "alpha.tools.builtins.os_computer_tool",
+   "symbol": "desktop_inspect_ui_tree_tool",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "desktop_mouse_action_tool",
+   "module": "alpha.tools.builtins.os_computer_tool",
+   "symbol": "desktop_mouse_action_tool",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "desktop_keyboard_action_tool",
+   "module": "alpha.tools.builtins.os_computer_tool",
+   "symbol": "desktop_keyboard_action_tool",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "desktop_window_manage_tool",
+   "module": "alpha.tools.builtins.os_computer_tool",
+   "symbol": "desktop_window_manage_tool",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "desktop_system_one_action_tool",
+   "module": "alpha.tools.builtins.computer_system_one_tool",
+   "symbol": "desktop_system_one_action_tool",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
   }
  ],
  "routers": [
@@ -1000,6 +1112,14 @@
   {
    "id": "app.gateway.routers.auth",
    "module": "app.gateway.routers.auth",
+   "symbol": "router",
+   "wiring_point": "app.gateway.app:include_router",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "app.gateway.routers.autonomy",
+   "module": "app.gateway.routers.autonomy",
    "symbol": "router",
    "wiring_point": "app.gateway.app:include_router",
    "wired": true,
@@ -1112,6 +1232,14 @@
   {
    "id": "app.gateway.routers.enterprise",
    "module": "app.gateway.routers.enterprise",
+   "symbol": "router",
+   "wiring_point": "app.gateway.app:include_router",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "app.gateway.routers.evidence",
+   "module": "app.gateway.routers.evidence",
    "symbol": "router",
    "wiring_point": "app.gateway.app:include_router",
    "wired": true,
@@ -1238,6 +1366,14 @@
    "state": "wired"
   },
   {
+   "id": "app.gateway.routers.multimodal",
+   "module": "app.gateway.routers.multimodal",
+   "symbol": "router",
+   "wiring_point": "app.gateway.app:include_router",
+   "wired": true,
+   "state": "wired"
+  },
+  {
    "id": "app.gateway.routers.openai_compat",
    "module": "app.gateway.routers.openai_compat",
    "symbol": "router",
@@ -1256,6 +1392,14 @@
   {
    "id": "app.gateway.routers.ops_integration",
    "module": "app.gateway.routers.ops_integration",
+   "symbol": "router",
+   "wiring_point": "app.gateway.app:include_router",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "app.gateway.routers.peer_network",
+   "module": "app.gateway.routers.peer_network",
    "symbol": "router",
    "wiring_point": "app.gateway.app:include_router",
    "wired": true,
@@ -1396,6 +1540,14 @@
    "wiring_point": "app.gateway.app:include_router",
    "wired": true,
    "state": "wired"
+  },
+  {
+   "id": "app.gateway.routers.workflows",
+   "module": "app.gateway.routers.workflows",
+   "symbol": "router",
+   "wiring_point": "app.gateway.app:include_router",
+   "wired": true,
+   "state": "wired"
   }
  ],
  "middlewares": [
@@ -1465,6 +1617,13 @@
   {
    "id": "alpha.agents.middlewares.input_sanitization_middleware",
    "module": "alpha.agents.middlewares.input_sanitization_middleware",
+   "wiring_point": "alpha.agents.lead_agent.agent:middlewares | alpha.agents.middlewares.tool_error_handling_middleware:build_lead_runtime_middlewares | alpha.agents.factory",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "alpha.agents.middlewares.l1_memory_middleware",
+   "module": "alpha.agents.middlewares.l1_memory_middleware",
    "wiring_point": "alpha.agents.lead_agent.agent:middlewares | alpha.agents.middlewares.tool_error_handling_middleware:build_lead_runtime_middlewares | alpha.agents.factory",
    "wired": true,
    "state": "wired"
@@ -1696,6 +1855,13 @@
    "state": "wired"
   },
   {
+   "id": "free_models_sync",
+   "module": "app.gateway.autonomy.loops:free_models_sync_tick",
+   "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
+   "wired": true,
+   "state": "wired"
+  },
+  {
    "id": "perpetual",
    "module": "app.gateway.autonomy.loops:perpetual_tick",
    "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
@@ -1705,6 +1871,13 @@
   {
    "id": "review_queue",
    "module": "app.gateway.autonomy.loops:review_queue_tick",
+   "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "self_update",
+   "module": "app.gateway.autonomy.loops:self_update_tick",
    "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
    "wired": true,
    "state": "wired"
@@ -1737,16 +1910,7 @@
    "reason": "Intentional re-export shim over app.gateway.system_monitor_service; documents namespace-dir resolution (guarded by test_gateway_services_resolution)."
   }
  ],
- "dormant_packages": [
-  {
-   "id": "alpha.ledger",
-   "reason": "ActionLedger/ActionReceipt are implemented and tested (test_action_ledger.py) but nothing constructs them; there is no receipt-writing call site in the run path yet."
-  },
-  {
-   "id": "alpha.evidence",
-   "reason": "EvidenceStore implements the evidence->candidate->evaluation->promotion cycle but has no consumer and no test suite; wiring it is feature design, not a missing call."
-  }
- ],
+ "dormant_packages": [],
  "excluded_local_only": [
   {
    "id": "auth",

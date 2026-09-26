@@ -1,0 +1,80 @@
+name: Generated Drift Gate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/scripts/generate_feature_manifest.py'
+      - 'backend/packages/harness/alpha/tools/tools.py'
+      - 'backend/packages/harness/alpha/tools/builtins/__init__.py'
+      - 'backend/packages/harness/alpha/agents/lead_agent/agent.py'
+      - 'backend/packages/harness/alpha/agents/factory.py'
+      - 'backend/packages/harness/alpha/agents/middlewares/*_middleware.py'
+      - 'backend/app/gateway/app.py'
+      - 'backend/app/gateway/autonomy/supervisor.py'
+      - 'contracts/feature_manifest.json'
+      - 'scripts/check_generated_drift.py'
+      - 'backend/tests/test_generated_drift_gate.py'
+      - '.github/workflows/generated-drift-gate.yml'
+  pull_request:
+    paths:
+      - 'backend/scripts/generate_feature_manifest.py'
+      - 'backend/packages/harness/alpha/tools/tools.py'
+      - 'backend/packages/harness/alpha/tools/builtins/__init__.py'
+      - 'backend/packages/harness/alpha/agents/lead_agent/agent.py'
+      - 'backend/packages/harness/alpha/agents/factory.py'
+      - 'backend/packages/harness/alpha/agents/middlewares/*_middleware.py'
+      - 'backend/app/gateway/app.py'
+      - 'backend/app/gateway/autonomy/autonomy/**'
+      - 'backend/app/gateway/autonomy/supervisor.py'
+      - 'contracts/feature_manifest.json'
+      - 'scripts/check_generated_drift.py'
+      - 'backend/tests/test_generated_drift_gate.py'
+      - '.github/workflows/generated-drift-gate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  generated-drift:
+    runs-on: ubuntu-latest
+    # A gate that hangs is not a gate.  The script also bounds the generator
+    # itself (--generator-timeout); this is the belt to that pair of braces.
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      # Strict byte fidelity.  On this runner the official generator writes LF
+      # (Path.write_text in platform text mode) and .gitattributes pins
+      # '*.json' to eol=lf in the index, so a CRLF artifact really is drift
+      # here and this step must catch it.
+      - name: Check generated artifacts byte for byte
+        run: >-
+          python scripts/check_generated_drift.py
+          --repo-root .
+          --line-endings exact
+          --generator-timeout 480
+
+      # The cross-platform default, which discloses every line-ending-only
+      # difference it tolerates and writes the diff for the CI artifact.
+      - name: Check generated artifacts (newline-normalised report)
+        run: >-
+          python scripts/check_generated_drift.py
+          --repo-root .
+          --line-endings normalized
+          --generator-timeout 480
+          --diff-output "${{ runner.temp }}/generated-drift.diff"
+
+      - name: Upload generated drift diff
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-drift-${{ github.run_id }}
+          path: ${{ runner.temp }}/generated-drift.diff
+          if-no-files-found: warn
