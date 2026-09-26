@@ -26,6 +26,7 @@ from alpha.config.paths import VIRTUAL_PATH_PREFIX
 from alpha.constants import DEFAULT_SKILLS_CONTAINER_PATH
 from alpha.runtime.secret_context import read_active_secrets
 from alpha.runtime.user_context import resolve_runtime_user_id
+from alpha.safety.ast_syntax_guard import validate_syntax_precommit
 from alpha.sandbox.exceptions import (
     SandboxError,
     SandboxNotFoundError,
@@ -44,7 +45,6 @@ from alpha.sandbox.sandbox import Sandbox
 from alpha.sandbox.sandbox_provider import SandboxProvider, get_sandbox_provider
 from alpha.sandbox.search import GrepMatch
 from alpha.sandbox.security import LOCAL_HOST_BASH_DISABLED_MESSAGE, is_host_bash_allowed
-from alpha.safety.ast_syntax_guard import validate_syntax_precommit
 from alpha.tools.types import Runtime
 
 logger = logging.getLogger(__name__)
@@ -593,14 +593,56 @@ def _resolve_max_results(name: str, requested: int, *, default: int, upper_bound
     return min(requested_max_results, configured_max_results)
 
 
-def _resolve_local_read_path(path: str, thread_data: ThreadDataState | None) -> str:
-    validate_local_tool_path(path, thread_data, read_only=True)
+def _resolve_sandbox_tool_path(path: str, thread_data: ThreadDataState | None, *, read_only: bool) -> str:
+    """Resolve one virtual path the way every filesystem tool must.
+
+    Single source of truth for the local-sandbox mapping.  ``ls``, ``read_file``,
+    ``write_file``, ``str_replace``, ``glob`` and the hashline tools all route
+    through this function, so two tools can never disagree about whether a path
+    exists: a path is either mapped (and the same bytes are read) or refused by
+    every one of them.
+
+    Args:
+        path: The tool-supplied (virtual) path.
+        thread_data: Per-thread host roots; required for the local sandbox.
+        read_only: When True, read-only mounts (skills, ACP workspace, a
+            ``read_only`` custom mount) are permitted.
+
+    Raises:
+        SandboxRuntimeError: If *thread_data* is missing.
+        PermissionError: If *path* is outside the mapping or needs write access
+            to a read-only mount.
+    """
+    if thread_data is None:
+        raise SandboxRuntimeError("Thread data not available for local sandbox")
+    validate_local_tool_path(path, thread_data, read_only=read_only)
     if _is_skills_path(path) or _is_acp_workspace_path(path) or _is_custom_mount_path(path):
         # Mounted paths are resolved by the sandbox's PathMapping (which uses
         # acquire-time identity and provider state), not by tool-layer host
         # path reconstruction.
         return path
     return _resolve_and_validate_user_data_path(path, thread_data)
+
+
+def _resolve_local_read_path(path: str, thread_data: ThreadDataState | None) -> str:
+    return _resolve_sandbox_tool_path(path, thread_data, read_only=True)
+
+
+def resolve_sandbox_tool_path(runtime: Runtime | None, path: str, *, read_only: bool) -> str:
+    """Resolve a tool-supplied path for filesystem use in the active sandbox.
+
+    Public entry point for tools that must agree with ``ls``/``read_file``/
+    ``write_file``/``str_replace`` about which host path a virtual path denotes.
+    Non-local (remote) providers own their own path resolution, so the path is
+    returned unchanged and the sandbox resolves it.
+
+    Raises:
+        SandboxRuntimeError: If the local sandbox has no thread data.
+        PermissionError: If *path* is outside the sandbox mapping.
+    """
+    if not is_local_sandbox(runtime):
+        return path
+    return _resolve_sandbox_tool_path(path, get_thread_data(runtime), read_only=read_only)
 
 
 def _format_glob_results(root_path: str, matches: list[str], truncated: bool) -> str:
@@ -2131,17 +2173,7 @@ def ls_tool(runtime: Runtime, path: str, description: str = "") -> str:
         thread_data = None
         if is_local_sandbox(runtime):
             thread_data = get_thread_data(runtime)
-            validate_local_tool_path(path, thread_data, read_only=True)
-            if _is_skills_path(path) or _is_acp_workspace_path(path):
-                # Skills and ACP workspace paths are resolved by the sandbox's
-                # PathMapping (which uses the user_id from acquire time), not
-                # by _resolve_skills_path / _resolve_acp_workspace_path (which
-                # use get_effective_user_id() from contextvar and may differ
-                # from the sandbox mapping's user_id).
-                pass
-            elif not _is_custom_mount_path(path):
-                path = _resolve_and_validate_user_data_path(path, thread_data)
-            # Custom mount paths and skills/ACP paths are resolved by LocalSandbox._resolve_path()
+            path = _resolve_sandbox_tool_path(path, thread_data, read_only=True)
         children = sandbox.list_dir(path)
         if not children:
             return "(empty)"
@@ -2572,11 +2604,7 @@ def write_file_tool(
         sandbox = ensure_sandbox_initialized(runtime)
         ensure_thread_directories_exist(runtime)
         if is_local_sandbox(runtime):
-            thread_data = get_thread_data(runtime)
-            validate_local_tool_path(path, thread_data)
-            if not _is_custom_mount_path(path):
-                path = _resolve_and_validate_user_data_path(path, thread_data)
-            # Custom mount paths are resolved by LocalSandbox._resolve_path()
+            path = _resolve_sandbox_tool_path(path, get_thread_data(runtime), read_only=False)
         with get_file_operation_lock(sandbox, path):
             # Pre-commit AST Syntax Guardrail
             if not append:
@@ -2584,13 +2612,29 @@ def write_file_tool(
                 if not is_valid:
                     return err_msg
             else:
+                # An append must be validated against the CURRENT file content.
+                # A missing file is the one legitimate "nothing to prepend to"
+                # case, so only that skips the guard. Any other failure used to
+                # be swallowed by a bare ``except: pass``, which skipped the
+                # syntax check and then reported "OK" -- a write published as
+                # verified when no verification had happened. Fail closed
+                # instead: an unreadable current version cannot be validated.
                 try:
                     existing = sandbox.read_file(path)
-                    is_valid, err_msg = validate_syntax_precommit(requested_path, existing + content, bypass=False)
-                    if not is_valid:
-                        return err_msg
-                except Exception:
-                    pass
+                except FileNotFoundError:
+                    existing = ""
+                except Exception as read_error:
+                    return _format_write_file_error(
+                        requested_path,
+                        RuntimeError(
+                            "append aborted: the current file content could not be read, "
+                            f"so the result could not be syntax-validated ({type(read_error).__name__}: {read_error})"
+                        ),
+                        runtime,
+                    )
+                is_valid, err_msg = validate_syntax_precommit(requested_path, existing + content, bypass=False)
+                if not is_valid:
+                    return err_msg
             sandbox.write_file(path, content, append)
         return "OK"
     except SandboxError as e:
@@ -2659,11 +2703,7 @@ def str_replace_tool(
         ensure_thread_directories_exist(runtime)
         requested_path = path
         if is_local_sandbox(runtime):
-            thread_data = get_thread_data(runtime)
-            validate_local_tool_path(path, thread_data)
-            if not _is_custom_mount_path(path):
-                path = _resolve_and_validate_user_data_path(path, thread_data)
-            # Custom mount paths are resolved by LocalSandbox._resolve_path()
+            path = _resolve_sandbox_tool_path(path, get_thread_data(runtime), read_only=False)
         with get_file_operation_lock(sandbox, path):
             content = sandbox.read_file(path)
             if not old_str:

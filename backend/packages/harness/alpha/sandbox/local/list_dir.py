@@ -1,6 +1,9 @@
+import logging
 from pathlib import Path
 
 from alpha.sandbox.search import should_ignore_name
+
+logger = logging.getLogger(__name__)
 
 
 def list_dir(path: str, max_depth: int = 2) -> list[str]:
@@ -19,6 +22,9 @@ def list_dir(path: str, max_depth: int = 2) -> list[str]:
 
     Raises:
         FileNotFoundError: If ``path`` does not exist or is not a directory.
+        PermissionError: If ``path`` itself cannot be listed. The
+            ``Sandbox.list_dir`` contract forbids reporting a failed listing as
+            an empty one, because ``ls_tool`` renders ``[]`` as ``(empty)``.
     """
     result: list[str] = []
     root_path = Path(path).resolve()
@@ -65,7 +71,16 @@ def list_dir(path: str, max_depth: int = 2) -> list[str]:
                 if item.is_dir() and current_depth < max_depth:
                     _traverse(item, current_depth + 1)
         except PermissionError:
-            pass
+            # A refusal is not an empty directory. Swallowing it returned [],
+            # and `ls_tool` renders [] as "(empty)" -- so an unreadable
+            # directory was published as "there is nothing here". The
+            # `Sandbox.list_dir` contract requires implementations to raise
+            # rather than return [] for a failed listing.
+            if current_depth == 1:
+                raise
+            # A nested directory we cannot read does not invalidate the parent
+            # listing, but the omission must be visible rather than silent.
+            logger.warning("Skipping unreadable subdirectory during listing: %s", current_path, exc_info=True)
 
     _traverse(root_path, 1)
 

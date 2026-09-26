@@ -84,8 +84,12 @@ def test_process_handle_tool():
         "action": "start",
         "command": cmd,
     })
-    assert "Process started in background" in start_out
-    assert "Handle ID: proc_" in start_out
+    # `start` no longer asserts "Process started in background" unconditionally.
+    # It reports what it observed: a terminal outcome, or a spawn it verified
+    # is still alive. Both shapes carry the handle id; neither may claim a
+    # success that was not observed.
+    assert "FAILED" not in start_out, start_out
+    assert start_out.splitlines()[0].startswith("Process "), start_out
 
     # Extract handle_id
     for line in start_out.splitlines():
@@ -101,3 +105,42 @@ def test_process_handle_tool():
         "handle_id": hid,
     })
     assert "tool_test_ok" in tail_out
+
+
+def test_process_handle_tool_reports_immediate_failure_not_success():
+    # `exit 3` is a shell builtin, so the failure is observable immediately:
+    # no machine-speed assumption about interpreter start-up is involved.
+    start_out = process_handle_tool.invoke({"action": "start", "command": "exit 3"})
+    assert "completed successfully" not in start_out, start_out
+    assert "Process started in background" not in start_out, start_out
+    assert "FAILED" in start_out, start_out
+    assert "exit code 3" in start_out, start_out
+
+    hid = next(line.split("Handle ID:")[1].strip() for line in start_out.splitlines() if "Handle ID:" in line)
+    poll_out = _wait_for_terminal_poll(hid)
+    assert "TERMINATED with exit code 3" in poll_out
+    assert "FAILED" in poll_out
+
+
+def test_process_handle_tool_reports_immediate_success_as_success():
+    # The inverse: the fix must not simply invert everything to failure.
+    start_out = process_handle_tool.invoke({"action": "start", "command": "exit 0"})
+    assert "completed successfully" in start_out, start_out
+    assert "exit code 0" in start_out, start_out
+    assert "FAILED" not in start_out, start_out
+
+    hid = next(line.split("Handle ID:")[1].strip() for line in start_out.splitlines() if "Handle ID:" in line)
+    poll_out = _wait_for_terminal_poll(hid)
+    assert "TERMINATED with exit code 0" in poll_out
+    assert "success" in poll_out
+
+
+def test_kill_does_not_fabricate_exit_code():
+    pm = ProcessManager()
+    cmd = f'"{sys.executable}" -c "import time; time.sleep(30)"'
+    handle = pm.start_background(cmd)
+    assert handle.kill() is True
+    code = handle.poll()
+    assert code is not None
+    assert code != -9, f"kill() fabricated the exit status: {code}"
+    assert not handle.is_running()

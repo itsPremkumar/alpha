@@ -11,12 +11,33 @@ import logging
 import os
 import subprocess
 import threading
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 logger = logging.getLogger(__name__)
+
+
+class ProcessSpawnError(RuntimeError):
+    """Raised when a background command could not be spawned at all."""
+
+
+#: Seconds ``ProcessHandle.await_outcome`` waits for an immediately-observable
+#: failure before the start path reports a command as running. Kept short so
+#: launching a long-lived server costs one short settle, not a stall.
+START_SETTLE_SECONDS = 0.75
+
+#: Seconds ``ProcessHandle.kill`` waits to confirm the process really exited
+#: before refusing to report the kill as successful.
+_KILL_CONFIRM_TIMEOUT_SECONDS = 5.0
+
+#: Status recorded for a process that is confirmed dead but whose own status the
+#: OS never reported. Deliberately a non-zero failure sentinel: it is NOT the
+#: process's exit code, and it must never read as a success. Replaces the old
+#: hard-coded ``-9``, which looked like a real wait-status to every consumer.
+UNREPORTED_EXIT_STATUS = -1
 
 
 def _now() -> str:
@@ -70,6 +91,23 @@ class ProcessHandle:
     def is_running(self) -> bool:
         return self.poll() is None
 
+    def await_outcome(self, timeout: float) -> int | None:
+        """Wait up to *timeout* seconds for a terminal state.
+
+        Returns the real exit code if the process terminated within the window,
+        or ``None`` if it is still running when the window closes. Used by the
+        start path so an immediately-failing command is reported as the failure
+        it is instead of as a successful spawn.
+        """
+        if timeout <= 0:
+            return self.poll()
+        deadline = time.monotonic() + timeout
+        while True:
+            code = self.poll()
+            if code is not None or time.monotonic() >= deadline:
+                return code
+            time.sleep(min(0.01, max(0.0, deadline - time.monotonic())))
+
     def tail(self, lines: int = 20) -> str:
         """Return the last N lines of output."""
         items = list(self._output_lines)[-lines:]
@@ -80,15 +118,43 @@ class ProcessHandle:
         return "\n".join(self._output_lines)
 
     def kill(self) -> bool:
-        """Terminate the running process."""
+        """Terminate the running process and verify it actually went away.
+
+        Returns True only when the process is observed dead. A previous
+        implementation returned True whenever ``terminate()``/``kill()`` did
+        not raise, and stamped a fabricated exit code of ``-9`` onto the
+        handle. That reported a success it had not verified and then handed the
+        model an exit status the process never produced -- which
+        ``process_handle(action='poll')`` and ``list`` both published as if it
+        were real.
+        """
         try:
             self.process.terminate()
             self.process.kill()
-            self._exit_code = -9
-            self.completed_at = _now()
-            return True
-        except Exception:
+        except (OSError, ValueError) as exc:
+            # A process that already exited is not a kill failure; anything
+            # else is, and the caller must be told the truth about it.
+            if self.process.poll() is None:
+                logger.warning("Failed to terminate process %s: %s", self.pid, exc)
+                return False
+        return self.await_death(timeout=_KILL_CONFIRM_TIMEOUT_SECONDS)
+
+    def await_death(self, timeout: float) -> bool:
+        """Reap the process, returning True only when it is really gone."""
+        try:
+            self.process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            logger.warning("Process %s did not exit after kill()", self.pid)
             return False
+        # Record the status the OS actually reported. Never invent one.
+        self.poll()
+        if self._exit_code is None:
+            # Reaped, but the OS never reported a status. The process IS dead,
+            # so the handle must not keep claiming to be running, but it also
+            # must not be handed a success. Use the explicit non-zero sentinel.
+            self._exit_code = UNREPORTED_EXIT_STATUS
+            self.completed_at = _now()
+        return True
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -114,19 +180,33 @@ class ProcessManager:
         command: str,
         cwd: str | Path | None = None,
     ) -> ProcessHandle:
-        """Launch a process in the background without blocking the agent."""
+        """Launch a process in the background without blocking the agent.
+
+        Raises:
+            ProcessSpawnError: If the process could not be spawned. Callers must
+                report this as a failure; there is no handle to poll, so a
+                spawn failure can never be dressed up as a started process.
+        """
         handle_id = f"proc_{uuid4().hex[:8]}"
         effective_cwd = str(Path(cwd).resolve()) if cwd else os.getcwd()
 
-        proc = subprocess.Popen(
-            command,
-            shell=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            cwd=effective_cwd,
-            bufsize=1,
-        )
+        try:
+            proc = subprocess.Popen(
+                command,
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                cwd=effective_cwd,
+                bufsize=1,
+            )
+        except (OSError, ValueError) as exc:
+            raise ProcessSpawnError(f"could not spawn background process: {type(exc).__name__}: {exc}") from exc
+
+        if proc.pid is None or proc.pid <= 0:
+            # Popen returned without a real process: report the spawn as
+            # failed rather than handing out a handle that can never run.
+            raise ProcessSpawnError("spawn returned no usable process id")
 
         handle = ProcessHandle(
             handle_id=handle_id,

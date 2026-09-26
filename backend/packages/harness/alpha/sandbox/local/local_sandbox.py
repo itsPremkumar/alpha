@@ -31,6 +31,30 @@ DEFAULT_COMMAND_TIMEOUT_SECONDS = 600
 _COMMAND_CAPTURE_LIMIT_BYTES = 10 * 1024 * 1024
 _PIPE_DRAIN_JOIN_TIMEOUT_SECONDS = 0.2
 
+#: Exit status reported for a command whose real status is unknown because the
+#: process was never reaped. This is the coreutils ``timeout`` convention, the
+#: same sentinel :meth:`LocalSandbox.execute_command` already emits on timeout.
+#: An unknown status is a FAILURE, never a success -- a fabricated ``0`` would
+#: be read by exit-status evidence consumers as "the command passed".
+UNKNOWN_EXIT_STATUS = 124
+
+
+def resolve_command_exit_status(returncode: int | None, timed_out: bool) -> tuple[int, bool]:
+    """Normalize a possibly-unknown exit status into ``(exit_code, timed_out)``.
+
+    Args:
+        returncode: The status reported by ``Popen``, or ``None`` when the
+            process was not reaped.
+        timed_out: Whether the caller already gave up on the command.
+
+    Returns:
+        The real exit code when one is known, otherwise
+        :data:`UNKNOWN_EXIT_STATUS` with ``timed_out`` forced True.
+    """
+    if returncode is not None:
+        return returncode, timed_out
+    return UNKNOWN_EXIT_STATUS, True
+
 
 class _BoundedPipeCapture:
     """Drain a subprocess pipe while keeping only bounded output in memory."""
@@ -620,7 +644,7 @@ class LocalSandbox(Sandbox):
             except subprocess.TimeoutExpired:
                 timed_out = True
                 LocalSandbox._terminate_windows_process_tree(process)
-            returncode = process.returncode if process.returncode is not None else 0
+            returncode, timed_out = resolve_command_exit_status(process.returncode, timed_out)
         finally:
             join_timeout = 10 if timed_out else _PIPE_DRAIN_JOIN_TIMEOUT_SECONDS
             for thread in (stdout_thread, stderr_thread):
@@ -729,7 +753,7 @@ class LocalSandbox(Sandbox):
             except subprocess.TimeoutExpired:
                 timed_out = True
                 LocalSandbox._terminate_process_group(process)
-            returncode = process.returncode if process.returncode is not None else 0
+            returncode, timed_out = resolve_command_exit_status(process.returncode, timed_out)
         finally:
             join_timeout = 10 if timed_out or not LocalSandbox._process_group_exists(process_group_id) else _PIPE_DRAIN_JOIN_TIMEOUT_SECONDS
             for thread in (stdout_thread, stderr_thread):
