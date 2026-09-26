@@ -34,6 +34,8 @@ see `../IMPLEMENTATION_MATRIX.md` for the same convention applied to our own wor
 | [`03_agentic_architecture.md`](03_agentic_architecture.md) | Architectural patterns for agent systems that actually work: scaffolds, isolation, the trust boundary, evaluation, and the failure modes that recur. |
 | [`04_alpha_gap_analysis.md`](04_alpha_gap_analysis.md) | Where alpha stands against all of the above, honestly, including where alpha is ahead. |
 | [`05_nvidia_avo.md`](05_nvidia_avo.md) | NVIDIA AVO — the agent-decided variation operator, 100% on ARC-AGI-3, and the security argument that indicts alpha's single-envelope design. |
+| [`06_avo_architecture.md`](06_avo_architecture.md) | AVO at paper level: the `Vary(P) = Agent(P, K, f)` formulation, the commit rule, the trajectory analysis, and three optimizations with ablations. |
+| [`07_agent_stack_security.md`](07_agent_stack_security.md) | NVIDIA's layered agent stack, the six common security gaps, five design rules, four security profiles — and what each says about alpha. |
 | [`SOURCES.md`](SOURCES.md) | Every URL, what it supports, and when it was retrieved. |
 
 ## The three findings that matter most

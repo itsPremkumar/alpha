@@ -156,6 +156,54 @@ folder is worse than no note.
 agentic-platform framing alongside NemoClaw, Nemotron 3 and BioNeMo. It is simply a different thing, and
 was the wrong guess.
 
+### Additional AVO and agent-stack sources
+
+Retrieved 2026-09-26, after the first AVO pass. These carry the paper-level and security-model detail in
+[`06_avo_architecture.md`](06_avo_architecture.md) and [`07_agent_stack_security.md`](07_agent_stack_security.md).
+
+- **AVO paper, full text** — https://arxiv.org/html/2603.24517v1 — arXiv:2603.24517v1 [cs.LG], 25 March 2026.
+  Supports: the classical variation formalism and `Vary(P_t) = Generate(Sample(P_t))` decomposition; the
+  AVO replacement `Vary(P_t) = Agent(P_t, K, f)`; the multi-dimensional scoring function with
+  **correctness as a hard zero-gate**; the commit rule ("persists a new committed version only when it
+  passes correctness checks and matches or improves the benchmark score relative to the best committed
+  version so far"); failed attempts kept in the trajectory but out of the lineage; each commit stored as a
+  git commit with its score; the two named failure modes (**stall** and **unproductive cycles**) and the
+  self-supervision mechanism that redirects toward several candidate directions; full experimental setup
+  (B200, CUDA 13.1, PyTorch 2.10.0, cuDNN 9.19.1, FA4 commit 71bf77c, 10 repetitions); MHA results
+  (+0.4–3.5% cuDNN, +5.0–10.5% FA4 causal, up to 1668 TFLOPS) including the honest note that non-causal
+  at short sequences is **within measurement noise**; GQA transfer in ~30 minutes; the trajectory analysis
+  (**500+ internal directions for 40 commits**, discrete jumps at v8/v13/v20/v30/v33, diminishing returns
+  v1–v20 vs v21–v40); and the three analysed optimizations with ablations — branchless accumulator rescaling
+  (+8.1%/+1.6%), correction/MMA pipeline overlap (+1.1%/+0.4%), register rebalancing 192/80/48 → 184/88/56
+  (+2.1%/~0%)
+- Comparators named by the paper: **FunSearch** (Nature 625, 468–475), **AlphaEvolve**
+  (arXiv:2506.13131), **LoongFlow**, **TTT-Discover**, **EvoPrompting** (arXiv:2302.14838),
+  **FlashAttention-4** (arXiv:2603.05451)
+- **"Where Security Fits in an AI Agent Stack"** — https://developer.nvidia.com/blog/where-security-fits-in-an-ai-agent-stack/
+  — Johnny Greco, Kirit Thadaka, Ali Golshan, Alex Watson; 21 August 2026. Supports: behavioral vs
+  infrastructure controls; the five-layer stack (NemoClaw / Omnigent / Claude Code-Codex-Hermes-Pi-DSH /
+  OpenShell / Dynamo); the harness-programmability argument that "a layer designed to be modified cannot
+  reliably enforce controls against its own modification"; boundary establishment at launch with delegated
+  child runtimes for subagents; "a control that the agent can decline to invoke is not an effective
+  security control"; the six common security gaps; the five design rules; risk signals may only reduce
+  authority; the four security profiles; and the four requirements that hold at every level including
+  "security claims remain scoped"
+- **Incident grounding** — same post: within a few weeks, OpenAI, Anthropic and the UK AI Security
+  Institute each reported frontier agents operating beyond intended boundaries, including escaping lab
+  environments to the open internet and gaining unauthorized access to other companies' systems
+- **NVIDIA OpenShell** — https://github.com/NVIDIA/OpenShell — the secure runtime layer
+- **Open Secure AI Alliance, SAFE proposal** —
+  https://github.com/OpenSecureAIAlliance/RFCs/blob/main/rfc-safe-proposal.md — community framework for
+  learning from AI incidents and near misses
+- **"Six Agent Harness Capabilities for Higher Model Performance"** —
+  https://developer.nvidia.com/blog/six-agent-harness-capabilities-for-higher-model-performance/
+- **"Run Autonomous, Self-Evolving Agents More Safely with NVIDIA OpenShell"** —
+  https://developer.nvidia.com/blog/run-autonomous-self-evolving-agents-more-safely-with-nvidia-openshell/
+- **"Agentic Autonomy Levels and Security"** —
+  https://developer.nvidia.com/blog/agentic-autonomy-levels-and-security/
+- **"Four Ways to Deploy More Secure AI Agents"** —
+  https://developer.nvidia.com/blog/four-ways-to-deploy-more-secure-ai-agents/
+
 **NVIDIA NemoClaw**, confirmed and relevant: announced at GTC 2026, an open-source stack for the OpenClaw
 community providing sandboxing (OpenShell kernel-level), fleet management and audit.
 - https://www.nvidia.com/en-us/ai/nemoclaw/
