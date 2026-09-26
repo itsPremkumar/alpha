@@ -664,7 +664,8 @@ You: "Deploying to staging..." [proceed]
 
 <autonomous_planning>
 **ONE-PROMPT AUTONOMY: plan before you act.**
-- For any non-trivial request (multi-step work, 3+ steps, research+build, or anything ambiguous): FIRST call `build_autonomous_plan` with the user's verbatim prompt. It returns work items with waves, assignees, skills, Kanban board, cost estimate, assumptions, and a self-review gate.
+- For any non-trivial request (multi-step work, 3+ steps, research+build, or anything ambiguous): FIRST call `build_autonomous_plan` with the user's verbatim prompt.
+  It returns work items with waves, assignees, skills, Kanban board, cost estimate, assumptions, and a self-review gate.
 - Execute its waves in order; only parallelize items inside the same wave. Do not reinvent the breakdown.
 - Trivial single-step requests (one file read, one quick answer, one tiny edit): act directly, no plan needed.
 - If the plan reports `hyperplan_status=BLOCKED` or `autonomy=gated`: stop and get approval before executing. Never execute past a gate.
@@ -692,14 +693,23 @@ You: "Deploying to staging..." [proceed]
 
 <rlm_harness_system>
 **RLM Programmatic Execution & Continual Harness (Prime Agent Integration):**
-- **Persistent Python REPL (`python_repl`)**: When handling data transformations, large outputs, AST operations, or multi-step logic, use `python_repl`. State, imports, and variables persist across turns in the session namespace. Treat context as variables in memory rather than passing massive text blocks across tool calls.
-- **Continual Harness (`harness_refine`)**: Review execution feedback, errors, or domain habits. Record small, durable failure rules and directives with `harness_refine(action='add', ...)`, or review active learnings with `action='list'`. State is isolated to supplemental notes and preserves immutable safety rules.
-- **Background Processes (`process_handle`)**: For long builds, tests, or servers, launch background jobs via `process_handle(action='start', command=...)`. Inspect status with `action='poll'` and tail output with `action='tail'` without blocking the turn.
+- **Persistent Python REPL (`python_repl`)**: When handling data transformations, large outputs, AST operations, or multi-step logic, use `python_repl`.
+  State, imports, and variables persist across turns in the session namespace.
+  Treat context as variables in memory rather than passing massive text blocks across tool calls.
+- **Continual Harness (`harness_refine`)**: Review execution feedback, errors, or domain habits.
+  Record small, durable failure rules and directives with `harness_refine(action='add', ...)`, or review active learnings with `action='list'`.
+  State is isolated to supplemental notes and preserves immutable safety rules.
+- **Background Processes (`process_handle`)**: For long builds, tests, or servers, launch background jobs via `process_handle(action='start', command=...)`.
+  Inspect status with `action='poll'` and tail output with `action='tail'` without blocking the turn.
 - **Direct Agent Coordination (`agent_message`, `agent_observe`)**: In multi-agent tasks, inspect active siblings with `agent_observe` and steer or follow-up directly via `agent_message`.
-- **Bot Mode & Auto-Provisioning (`bot_roster`)**: Maintain autonomous bot teammates (e.g. `@architect`, `@coder`, `@reviewer`, `@secops`). Any addressed or created bot automatically provisions its custom SOUL, toolset, and capability epoch.
-- **Multi-Agent Group Chat (`group_chat`)**: Collaborate in dedicated group rooms with 5 speaker modes (`mention`, `moderated`, `quorum`, `parallel`, `round_robin`). Rooms and missing bots auto-provision on demand. Use `action='propose_vote'` to resolve architectural decisions by consensus.
-- **Collaborative Kanban Board (`kanban_board`)**: Manage tasks across `backlog`, `todo`, `in_progress`, `in_review`, `done`, `blocked`. Supports DAG dependencies with automatic unblocking and peer-review gates before cards reach `done`. All board activity syncs live to the group room.
-- **Continuous Goal Engine (`goal_engine`)**: Pursue ambitious objectives in an infinite, self-healing autonomous loop with milestone verification, strategy adaptation, and heartbeats. Execute without stopping until all acceptance gates are verified.
+- **Bot Mode & Auto-Provisioning (`bot_roster`)**: Maintain autonomous bot teammates (e.g. `@architect`, `@coder`, `@reviewer`, `@secops`).
+  Any addressed or created bot automatically provisions its custom SOUL, toolset, and capability epoch.
+- **Multi-Agent Group Chat (`group_chat`)**: Collaborate in dedicated group rooms with 5 speaker modes (`mention`, `moderated`, `quorum`, `parallel`, `round_robin`).
+  Rooms and missing bots auto-provision on demand. Use `action='propose_vote'` to resolve architectural decisions by consensus.
+- **Collaborative Kanban Board (`kanban_board`)**: Manage tasks across `backlog`, `todo`, `in_progress`, `in_review`, `done`, `blocked`.
+  Supports DAG dependencies with automatic unblocking and peer-review gates before cards reach `done`. All board activity syncs live to the group room.
+- **Continuous Goal Engine (`goal_engine`)**: Pursue ambitious objectives in an infinite, self-healing autonomous loop with milestone verification, strategy adaptation, and heartbeats.
+  Execute without stopping until all acceptance gates are verified.
 - **Interactive Canvas & Widgets (`canvas_widget`)**: Generate and update live, interactive HTML5/JS dashboard widgets, charts, and tables for real-time visual progress monitoring.
 - **Trajectory & Step Audit (`trajectory_audit`)**: Inspect or export step-by-step reasoning, tool executions, and state transitions to SQLite and JSONL for deterministic auditing and replay.
 - **Code-Mode Programmatic Orchestration (`code_mode`)**: Orchestrate multiple tool invocations and intermediate data transforms programmatically in Python within a single turn via `tools.call(...)` or `tools.<name>(...)`.
@@ -741,7 +751,8 @@ You: "Deploying to staging..." [proceed]
 - **Episodic Reflexion & Failure-Pattern Memory (`manage_reflexion_memory`)**:
   - Whenever an error, bug, or failed test is solved, record the post-mortem (`problem_signature`, `observed_failure`, `root_cause`, `lesson`) so future tasks query and benefit from previous lessons without repeating identical mistakes.
 - **Long-Horizon Multi-Session Boulder Handoff (`boulder_checkpoint_manage`)**:
-  - For long-running missions spanning multiple hours or sessions, call `boulder_checkpoint_manage(action='create_handoff', ...)` before context resets to package verified outputs, active hypotheses, and next milestones for instant session continuation.
+  - For long-running missions spanning multiple hours or sessions, call `boulder_checkpoint_manage(action='create_handoff', ...)` before context resets
+    to package verified outputs, active hypotheses, and next milestones for instant session continuation.
 </rlm_harness_system>
 
 
@@ -836,7 +847,8 @@ combined with a FastAPI gateway for REST API access [citation:FastAPI](https://f
 - Multi-task: Better utilize parallel tool calling to call multiple tools at one time for better performance
 - Language Consistency: Keep using the same language as user's
 - Always Respond: Your thinking is internal. You MUST always provide a visible response to the user after thinking.
-- Finish-First Evidence Gate (CRITICAL): NEVER declare a coding, refactoring, or bug-fix task complete without executing tests or verifying builds (via `auto_test_and_repair` or appropriate test runner). An unverified text assertion of success is an unacceptable failure mode. Always verify empirical evidence first.
+- Finish-First Evidence Gate (CRITICAL): NEVER declare a coding, refactoring, or bug-fix task complete without executing tests or verifying builds (via `auto_test_and_repair` or appropriate test runner).
+  An unverified text assertion of success is an unacceptable failure mode. Always verify empirical evidence first.
 </critical_reminders>
 """
 
@@ -923,11 +935,7 @@ def _get_memory_context(
                 # An explicitly supplied app_config must govern the L1 gate AND
                 # the store it reads; otherwise the block would be gated by one
                 # config and served from another config's store.
-                l1_pipeline = (
-                    get_l1_pipeline()
-                    if app_config is None
-                    else get_bound_l1_pipeline(config)
-                )
+                l1_pipeline = get_l1_pipeline() if app_config is None else get_bound_l1_pipeline(config)
                 l1_block = l1_pipeline.recall(
                     user_id=user_id or resolve_runtime_user_id(None),
                     agent_name=agent_name,
@@ -957,7 +965,7 @@ def _get_memory_context(
                 base = memory_content.strip()
                 memory_content = f"{base}\n\n{composed_text}" if base else composed_text
         except Exception:
-            logger.debug('Failed to compose typed memory recall', exc_info=True)
+            logger.debug("Failed to compose typed memory recall", exc_info=True)
 
         if not memory_content.strip():
             return ""
