@@ -12,6 +12,28 @@ This section accumulates work toward the **2.1.0** milestone
 
 ### Added
 
+- **documentation-seo-geo-aeo:** Rebuilt the user-facing and agent-facing
+  documentation for organic discoverability across classic SEO, generative engine
+  optimization (GEO), and answer engine optimization (AEO). `README.md` is now
+  answer-first: a self-contained definition paragraph, an `Alpha vs. other agent
+  frameworks` matrix, a 60-second quickstart, a task-oriented feature catalog with
+  the exhaustive 89-engine and 24-skill listings collapsed into `<details>`, a
+  "Why Alpha?" production-problem table, and a quotable Q/A FAQ. Added
+  [`docs/COMPARISON.md`](docs/COMPARISON.md) (Alpha vs LangGraph, AutoGen, CrewAI,
+  OpenHands, Dify, plus a selection decision guide),
+  [`docs/USE_CASES.md`](docs/USE_CASES.md) (goal-to-subsystem map),
+  [`docs/GLOSSARY.md`](docs/GLOSSARY.md) (every term defined, caveats marked), and
+  [`docs/DISCOVERABILITY.md`](docs/DISCOVERABILITY.md) (the SEO/GEO/AEO strategy and
+  its maintenance checklist). Added `/llms-full.txt` and `docs/llms.txt` alongside the
+  rewritten spec-compliant `/llms.txt`, so coding and chat agents can load the
+  project as context. Added a root [`LICENSE`](LICENSE) (MIT, matching the license
+  the README badge and `llms.txt` already declared) and
+  [`CITATION.cff`](CITATION.cff). Added
+  [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md). Registered the new documents in
+  `scripts/generate_docs_index.py` and regenerated `docs/INDEX.md`. All capability
+  counts (130 tools, 60 routers, 42 middlewares, 8 loops) are now stated as
+  generated from `contracts/feature_manifest.json` and reproducible with
+  `python backend/scripts/generate_feature_manifest.py`.
 - **alpha-peer-network:** Added a separate free Alpha-to-Alpha session with UDP LAN discovery, optional mDNS, direct HTTP/WebSocket delivery, explicit pairing, SQLite persistence, GitHub Agent Card rendezvous, topology-aware conversations, per-recipient receipts, a bounded model-facing tool, and a dedicated Alpha Network UI. See [`docs/ALPHA_PEER_NETWORK.md`](docs/ALPHA_PEER_NETWORK.md).
 - **agent-eye-live-research:** Pinned AgentEye to an immutable MIT-licensed Git commit and added a curated 39-function live-source adapter across academic, developer, package, government, knowledge, media, language, and social APIs. The integration adds operator allowlists, fragile-source opt-in, bounded fan-out, backend isolation, deduplication/provenance, redirect-by-redirect SSRF protection, and DDGS fallback for deep research. Upstream's unsafe core/API/MCP orchestrators and broken global cache surfaces are not exposed. Deep research now returns `no_evidence` instead of fabricated claims, distinguishes registered from semantically verified citations, and confines report filenames to thread outputs. See [`backend/docs/AGENT_EYE_RESEARCH.md`](backend/docs/AGENT_EYE_RESEARCH.md).
 - **swarm-v2-runtime:** Upgraded Alpha's existing `alpha.swarm` DAG runtime with owner-scoped idempotent admission, atomic JSON/JSONL checkpoints, lease-fenced execution and recovery, bounded communication, measured budgets/circuit breaking, deterministic auto-repair, evidence-aware acceptance/consensus, SSE/API telemetry, and a truthful TeamOps surface. Local persistence remains process-local; cross-worker exactly-once execution still requires shared SQL leases.
@@ -587,6 +609,21 @@ This section accumulates work toward the **2.1.0** milestone
 
 ### Fixed
 
+- **documentation accuracy:** Corrected factual drift in the shipped documentation.
+  `Install.md`, `docs/DEPLOYMENT.md`, and `docs/DEVELOPMENT.md` instructed readers to
+  clone `bytedance/agent-workspace` / `itsPremkumar/agent-workspace-desktop` instead
+  of this repository, which sent every new user to the wrong project; all three now
+  clone `itsPremkumar/alpha`. `SECURITY.md` pointed vulnerability reports at an
+  unrelated repository and now uses this repository's private advisory channel plus
+  concrete operator hardening guidance. `docs/GETTING_STARTED.md` named a
+  non-existent `Alpha-Setup-<ver>.exe`; the artifact is
+  `Agent-Workspace-Setup-<ver>.exe` per `electron/electron-builder.yml`. The Electron
+  data directory is now documented as runtime-derived from `app.getPath('userData')`
+  (surfaced by the app's **User data** menu entry) instead of asserting a hardcoded
+  `%APPDATA%` path that differed between documents and between dev and packaged runs.
+  Stale capability counts were corrected to the generated manifest: 127 -> 130 tools
+  and 57 -> 60 Gateway routers. A duplicated `README.md` "Autonomous One-Prompt
+  Planner" bullet was removed.
 - **skills:** Stop writing resolved secrets into `extensions_config.json` when a
   skill is toggled. The Gateway skill toggle and `AgentWorkspaceClient.update_skill`
   loaded the file through `ExtensionsConfig.from_file()`, which replaces every

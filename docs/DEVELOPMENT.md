@@ -21,8 +21,8 @@ This guide covers setting up a development environment, code conventions, testin
 
 ```bash
 # Clone repository
-git clone https://github.com/itsPremkumar/agent-workspace-desktop.git
-cd agent-workspace-desktop
+git clone https://github.com/itsPremkumar/alpha.git
+cd alpha
 
 # Generate config files (REQUIRED)
 make config

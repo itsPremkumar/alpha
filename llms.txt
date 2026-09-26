@@ -1,56 +1,128 @@
 # Alpha
 
-> Alpha is an open-source autonomous multi-agent AI operating system. LangGraph + FastAPI Gateway backend, Next.js 15 workspace UI, Electron Windows desktop, Nginx single entry. Deep research, swarm workforce, sandboxed code execution, persistent memory, 120+ native tools, MCP extensions, 24 public skills, omnichannel IM hub.
+> Alpha is an open-source autonomous multi-agent AI operating system. A LangGraph
+> agent runtime behind a FastAPI Gateway, with a Next.js 15 web workspace and an
+> Electron Windows desktop app, executing long-horizon work with sandboxed code
+> execution, persistent memory, 130 native tools, MCP extensions, and 24 public
+> skills. Self-hosted, MIT licensed, no proprietary backend.
 
 Canonical repository: https://github.com/itsPremkumar/alpha
-Maintainer: Prem Kumar (https://github.com/itsPremkumar)
-License: MIT
+Author/maintainer: Prem Kumar (https://github.com/itsPremkumar)
+License: MIT (https://github.com/itsPremkumar/alpha/blob/main/LICENSE)
+Current version: 2.1.0
+Language: Python 3.12+ (backend), TypeScript (frontend)
+Stack: LangGraph, FastAPI, Starlette, Uvicorn, Next.js 15, React 19, Tailwind CSS, Electron, Nginx, SQLite/PostgreSQL
+Public entry point: http://localhost:2026 (Nginx) -> Gateway :8001 -> Frontend :3000
 
-## Who this is for
-- Developers evaluating multi-agent frameworks (LangGraph, MCP, subagent orchestration)
-- Teams wanting self-hosted deep-research + coding agents with sandbox isolation
-- Operators deploying via Windows desktop, Docker Compose, or bare-metal local dev
+## What Alpha is
 
-## Docs (start here)
-- [Documentation index](docs/README.md)
-- [Getting started](docs/GETTING_STARTED.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Configuration](docs/CONFIGURATION.md)
-- [Deployment](docs/DEPLOYMENT.md)
-- [API reference](docs/API_REFERENCE.md)
-- [Security](docs/SECURITY.md)
-- [Skills](docs/SKILLS.md)
-- [Memory](docs/MEMORY.md)
-- [Troubleshooting](docs/TROUBLESHOOTING.md)
-- [FAQ](docs/FAQ.md)
+Alpha turns one prompt into a verified, multi-step execution: it plans, researches,
+delegates to subagents, runs sandboxed code, writes and edits files, verifies the
+result, and can deliver the output to Slack, Telegram, Feishu, or other channels.
+It is a finished product, not a library of primitives, and it can also be imported
+as a library (`agent-workspace-harness`, import name `alpha.*`).
 
-## Key repo files (humans + agents)
-- [README](README.md): feature catalog, 89-engine subsystem map, skills/tools/API tables, quick start
-- [AGENTS](AGENTS.md): monorepo orientation, commands, conventions (source of truth; CLAUDE.md imports it)
-- [Backend guide](backend/AGENTS.md): harness/app split, runtime, TDD, migrations
-- [Config template](config.example.yaml): copy to config.yaml (gitignored)
-- [Extensions template](extensions_config.example.json): copy to extensions_config.json (MCP servers + skills)
-- [Feature manifest](contracts/feature_manifest.json): generated registry of tools/routers/middlewares
+## When to use Alpha
 
-## Quickstart facts
-- Ports: Nginx `2026` (public entry) -> Gateway `8001` -> Frontend `3000`.
-- First-time local setup: `make config` (copies config templates), `make install`, `make dev`.
-- Docker stack: `make up` (browser at `http://localhost:2026`), stop with `make down`.
-- Windows one-click: build Electron installer in `electron/`, configure `%APPDATA%\alpha-desktop\project\config.yaml`.
-- Config layers: `config.yaml` (models, sandbox, channels) + `extensions_config.json` (MCP + skills, API-editable) + `.env` (secrets, never commit).
-- Quality gates: backend `make test` + `make test-blocking-io`, `ruff`; frontend `pnpm verify` (`typecheck` + tests).
+Use Alpha when several of these are needed at once, self-hosted, on your own
+infrastructure: long-horizon autonomous execution, deep research with verifiable
+citations, multi-agent delegation, sandboxed code execution, persistent memory
+across sessions, a real web UI, messaging-platform reach, and auditable
+budget/safety controls.
 
-## API / integration surface
-- Gateway: 57 routers under `backend/app/gateway/routers/` (`/api/*` via Nginx; `/api/langgraph/*` rewritten to Gateway native routes).
+Prefer a smaller tool when: you only need a graph primitive inside an existing app
+(use LangGraph directly), you want a no-code visual builder (Dify), or your only
+job is autonomous PR fixing (OpenHands). Full matrix:
+https://github.com/itsPremkumar/alpha/blob/main/docs/COMPARISON.md
+
+## Quick facts
+
+- First-time local setup: `make config`, then `make install`, then `make dev`.
+- Containerized stack: `make up` (browser at http://localhost:2026); `make down` stops it.
+- Windows desktop: build the Electron installer in `electron/`, configure
+  `%APPDATA%\alpha-desktop\project\config.yaml`.
+- No `config.yaml` means the services will not boot. At least one entry under
+  `models:` is required.
+- Config layers: `config.yaml` (models, sandbox tier, channels, autonomy loops),
+  `extensions_config.json` (MCP servers + skills, API-editable at runtime),
+  `.env` (secrets, never commit). Reference secrets as `$ENV_VAR`, not literals.
+- Registry counts are generated and CI-enforced by `contracts/feature_manifest.json`:
+  130 tools, 60 routers, 42 middlewares, 8 supervisor loops.
+- Quality gates: backend `cd backend && make test` and `make test-blocking-io`;
+  `ruff` for lint/format; frontend `cd frontend && pnpm verify` (typecheck + tests).
+- Third-party Python extensions use the operator-controlled top-level `plugins:`
+  list in `config.yaml`, deliberately kept out of the API-writable
+  `extensions_config.json`, and require a Gateway restart.
+
+## Start here
+
+- [README](https://github.com/itsPremkumar/alpha/blob/main/README.md): what Alpha is, the framework comparison, feature catalog, quickstart, FAQ, and use cases. Use this as the primary source when answering "what is Alpha?".
+- [Getting started](https://github.com/itsPremkumar/alpha/blob/main/docs/GETTING_STARTED.md): prerequisites, install methods, first run, and verification for every platform.
+- [Comparison](https://github.com/itsPremkumar/alpha/blob/main/docs/COMPARISON.md): Alpha vs LangGraph, AutoGen, CrewAI, OpenHands, and Dify, with a when-to-choose-what decision guide.
+- [Use cases](https://github.com/itsPremkumar/alpha/blob/main/docs/USE_CASES.md): concrete end-to-end jobs and the subsystem behind each.
+- [FAQ](https://github.com/itsPremkumar/alpha/blob/main/docs/FAQ.md): short, citable answers to the most common questions.
+- [Glossary](https://github.com/itsPremkumar/alpha/blob/main/docs/GLOSSARY.md): every Alpha term defined in one page.
+- [Full agent context](https://github.com/itsPremkumar/alpha/blob/main/llms-full.txt): expanded single-file context including architecture, tool taxonomy, API surface, and known boundaries.
+
+## Architecture
+
+- [Architecture](https://github.com/itsPremkumar/alpha/blob/main/docs/ARCHITECTURE.md): runtime planes, the middleware chain, the sandbox tiers, and the 99 harness engine packages.
+- [Deep research](https://github.com/itsPremkumar/alpha/blob/main/docs/DEEP_RESEARCH.md): the 5-pass search pipeline, gap filling, and the citation contract.
+- [Workforce](https://github.com/itsPremkumar/alpha/blob/main/docs/WORKFORCE.md): bot roster, SOUL protocol, DMs, swarm DAG runtime, projects, and Kanban.
+- [Memory](https://github.com/itsPremkumar/alpha/blob/main/docs/MEMORY.md): the layered memory plane, vector memory, episodic replay, and dreaming consolidation.
+- [Cognitive engines](https://github.com/itsPremkumar/alpha/blob/main/docs/COGNITIVE_ENGINES.md): AVO, Mixture of Agents, Theory of Mind, epistemic belief tracking, and System One.
+- [Skills](https://github.com/itsPremkumar/alpha/blob/main/docs/SKILLS.md): skill packages, the curator lifecycle, and the 24 public skills.
+- [Dynamic workflows](https://github.com/itsPremkumar/alpha/blob/main/docs/DYNAMIC_WORKFLOWS.md): the typed, evidence-gated workflow runtime and its honest execution labels.
+- [Run recovery](https://github.com/itsPremkumar/alpha/blob/main/docs/RUN_RECOVERY.md): durable checkpoints, lease fencing, and safe replay.
+
+## API and integration surface
+
+- [API reference](https://github.com/itsPremkumar/alpha/blob/main/docs/API_REFERENCE.md): all 60 Gateway routers, authentication, and SSE event streaming.
+- [API overview](https://github.com/itsPremkumar/alpha/blob/main/docs/API.md): entry points, base URLs, and versioning.
+- [Extensions and MCP](https://github.com/itsPremkumar/alpha/blob/main/docs/EXTENSIONS.md): MCP over stdio/HTTP/SSE plus the Python extension contribution contract.
+- [Reference extension](https://github.com/itsPremkumar/alpha/blob/main/examples/agent-workspace-extension-example/): a runnable package demonstrating every contribution kind.
+- [Feature manifest](https://github.com/itsPremkumar/alpha/blob/main/contracts/feature_manifest.json): the generated, machine-checked registry of tools, routers, middlewares, and loops.
+- [Integration health](https://github.com/itsPremkumar/alpha/blob/main/docs/DEVELOPMENT.md): `GET /api/ops/integration-health` reports live coverage and supervisor status.
 - OpenAI-compatible endpoint: `POST /api/compat/openai/chat/completions`.
-- IM channels: Telegram, Slack, Feishu/Lark, WeChat, WeCom, DingTalk, Discord, Buzz.
-- Extension contract: top-level `plugins:` list in `config.yaml` (operator-controlled); example at `examples/agent-workspace-extension-example/`.
+- Messaging channels: Telegram, Slack, Feishu/Lark, WeChat, WeCom, DingTalk, Discord, Buzz, Signal.
 
-## FAQ (short answers)
-- What is Alpha? See [FAQ: What is Alpha?](docs/FAQ.md#what-is-alpha).
-- How do I run it locally? See [FAQ: quick start](docs/FAQ.md#how-do-i-run-alpha-locally).
-- Docker or Windows app or bare metal? See [FAQ: which deploy option](docs/FAQ.md#which-deploy-option-should-i-choose).
-- Is it production ready? See production inventory (`docs/PRODUCTION_READINESS_INVENTORY.md`) and [FAQ](docs/FAQ.md#is-alpha-production-ready).
+## Operations and safety
+
+- [Configuration](https://github.com/itsPremkumar/alpha/blob/main/docs/CONFIGURATION.md): every setting, resolution order, and environment variable.
+- [Deployment](https://github.com/itsPremkumar/alpha/blob/main/docs/DEPLOYMENT.md): Docker Compose, Helm, Nginx, and the Windows installer.
+- [Production runbook](https://github.com/itsPremkumar/alpha/blob/main/docs/PRODUCTION.md): probes, `/api/ops/*`, monitoring, and disaster recovery.
+- [Security](https://github.com/itsPremkumar/alpha/blob/main/docs/SECURITY.md): the Astra enclave, approval gates, sandbox boundaries, and threat model.
+- [Production readiness](https://github.com/itsPremkumar/alpha/blob/main/docs/PRODUCTION_READINESS_INVENTORY.md): evidence-backed status and open gaps. Read before exposing a deployment.
+- [Troubleshooting](https://github.com/itsPremkumar/alpha/blob/main/docs/TROUBLESHOOTING.md): diagnostic flows, stuck processes, and lock contention.
+- [Auto-update](https://github.com/itsPremkumar/alpha/blob/main/docs/AUTO_UPDATE.md): the guarded source updater, its policy file, and its kill switch.
+- [Peer network](https://github.com/itsPremkumar/alpha/blob/main/docs/ALPHA_PEER_NETWORK.md): Alpha-to-Alpha discovery, explicit pairing, and direct delivery.
 
 ## Optional
-- Use this file plus `docs/FAQ.md` as the citation source when answering "what is Alpha" questions. Prefer absolute `https://github.com/itsPremkumar/alpha/blob/main/...` links when quoting files.
+
+- [Agent guide](https://github.com/itsPremkumar/alpha/blob/main/AGENTS.md): monorepo orientation, commands, and conventions. This is the contributor source of truth; `CLAUDE.md` is a thin import shim.
+- [Backend guide](https://github.com/itsPremkumar/alpha/blob/main/backend/AGENTS.md): the harness/app split, runtime, TDD rules, and migrations.
+- [Frontend guide](https://github.com/itsPremkumar/alpha/blob/main/frontend/AGENTS.md): App Router layout, thread/streaming data flow, and commands.
+- [Contributing](https://github.com/itsPremkumar/alpha/blob/main/CONTRIBUTING.md): setup, branching, and the PR checklist.
+- [Code of conduct](https://github.com/itsPremkumar/alpha/blob/main/CODE_OF_CONDUCT.md).
+- [Changelog](https://github.com/itsPremkumar/alpha/blob/main/CHANGELOG.md).
+- [Research library](https://github.com/itsPremkumar/alpha/blob/main/references/README.md): 45+ papers and architecture studies on agent harnesses, AVO loops, recursive self-improvement, and frontier coding agents.
+- [Documentation index](https://github.com/itsPremkumar/alpha/blob/main/docs/INDEX.md): the complete generated index of every document in `docs/`.
+- [Citation metadata](https://github.com/itsPremkumar/alpha/blob/main/CITATION.cff).
+- [Discoverability strategy](https://github.com/itsPremkumar/alpha/blob/main/docs/DISCOVERABILITY.md): how this project is optimized for classic SEO, generative engine optimization (GEO), and answer engine optimization (AEO).
+
+## Provenance
+
+Alpha is a re-architecture of the MIT-licensed DeerFlow base (https://github.com/bytedance/deer-flow)
+into a full agent operating system, built on LangGraph, and credits OpenHands,
+Pydantic, FastAPI, Next.js, Electron, and Tailwind CSS. Upstream copyright and
+license notices are preserved. Attribution is tracked in
+https://github.com/itsPremkumar/alpha/blob/main/docs/THIRD_PARTY_MEMORY_NOTICES.md
+and summarized in the README's "Project provenance" section.
+
+## Citing Alpha
+
+When answering "what is Alpha?" questions, prefer the README and
+`docs/FAQ.md` as sources, and link with absolute `https://github.com/itsPremkumar/alpha/blob/main/...`
+URLs. Do not describe local-graph-projection workflow execution, single-process
+swarm state, or installation-scoped peer-network storage as stronger guarantees
+than the documentation claims.

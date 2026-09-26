@@ -11,6 +11,44 @@ guides that own the depth. For anything inside a module, read that module's guid
 - **[frontend/AGENTS.md](frontend/AGENTS.md)** — frontend depth: Next.js App Router layout,
   thread/streaming data flow, code style, commands.
 
+## Documentation and discoverability contract
+
+User-facing and agent-facing content is a first-class deliverable, not a follow-up.
+
+- `README.md` is **answer-first**: a self-contained definition paragraph, a
+  `Alpha vs. other agent frameworks` matrix, a `60-second quickstart`, a
+  task-oriented feature catalog, and a quotable Q/A FAQ. Exhaustive catalogs
+  (99 engines, 24 skills) live inside `<details>` so the answer-first surface stays
+  dominant.
+- **Machine-readable context is versioned, not improvised.** `/llms.txt` follows the
+  [llmstxt.org](https://llmstxt.org/) spec (H1, one blockquote, `##` sections of
+  `name: note` links, `## Optional` last), `/llms-full.txt` carries expanded
+  context, and `docs/llms.txt` is scoped to `docs/`. Absolute
+  `https://github.com/itsPremkumar/alpha/blob/main/...` URLs are used so a citation
+  survives being copied out of context. Update all three when capabilities change.
+- **Capability counts are generated, never hand-typed.** Tool/router/middleware/loop
+  counts come from `contracts/feature_manifest.json` and are pinned by
+  `tests/test_feature_manifest_wiring.py` plus the generated-drift CI gate. If you
+  change a registry, regenerate the manifest *and* fix the numbers in `README.md`,
+  `llms.txt`, `llms-full.txt`, `docs/FAQ.md`, and `docs/COMPARISON.md` in the same
+  change set.
+- **`docs/INDEX.md` is generated.** `scripts/generate_docs_index.py` fails closed on
+  any unclassified Markdown file under `docs/`, so a new document needs an entry in
+  that script's `FILE_OVERRIDES` map — never a hand edit to `INDEX.md`.
+- **URL hygiene.** Clone instructions, support pointers, and troubleshooting links
+  must name `itsPremkumar/alpha`. `bytedance/agent-workspace` URLs survive only as
+  genuine upstream attribution in `CHANGELOG.md`, `references/`, and
+  `docs/THIRD_PARTY_MEMORY_NOTICES.md`.
+- **Claim honesty is a documentation requirement.** Single-process JSON/JSONL
+  state is never described as cross-process exactly-once; the dynamic-workflow
+  digest executor is always described as a local graph projection; a completed run is
+  never described as verified. `docs/PRODUCTION_READINESS_INVENTORY.md` is the
+  authority on what is actually implemented.
+- The strategy and its maintenance checklist live in
+  **[docs/DISCOVERABILITY.md](docs/DISCOVERABILITY.md)**. Read it before adding or
+  restructuring user-facing content.
+
+
 ## What is Alpha
 
 Alpha is a LangGraph-based AI super-agent system with a full-stack architecture. The
@@ -237,9 +275,13 @@ cd frontend && pnpm rstest run <pattern>     # e.g. pnpm rstest run my-component
 
 - Backend work → **[backend/AGENTS.md](backend/AGENTS.md)**
 - Frontend work → **[frontend/AGENTS.md](frontend/AGENTS.md)**
+- Documentation, SEO/GEO/AEO, or a new `docs/` page → **[docs/DISCOVERABILITY.md](docs/DISCOVERABILITY.md)**
+- Complete generated document index → **[docs/INDEX.md](docs/INDEX.md)**
 - Setup & install → **[Install.md](Install.md)**, **[CONTRIBUTING.md](CONTRIBUTING.md)**
 - Project overview & usage → **[README.md](README.md)**
-- Security policy → **[SECURITY.md](SECURITY.md)**
+- Framework selection → **[docs/COMPARISON.md](docs/COMPARISON.md)**
+- Security policy → **[SECURITY.md](SECURITY.md)**, **[docs/SECURITY.md](docs/SECURITY.md)**
+- Community expectations → **[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)**
 - Changes → **[CHANGELOG.md](CHANGELOG.md)**
 - Cutting a release → **[RELEASING.md](RELEASING.md)**
 

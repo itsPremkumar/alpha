@@ -1,0 +1,317 @@
+# Alpha — extended agent context
+
+> Alpha is an open-source autonomous multi-agent AI operating system. A LangGraph
+> agent runtime behind a FastAPI Gateway, with a Next.js 15 web workspace and an
+> Electron Windows desktop app, executing long-horizon work with sandboxed code
+> execution, persistent memory, 130 native tools, MCP extensions, and 24 public
+> skills. Self-hosted, MIT licensed, no proprietary backend.
+
+This file is the expanded, single-document context for AI agents. It is longer than
+[`llms.txt`](./llms.txt); use that file first and read this one when you need
+architecture, tool taxonomy, or API detail. For anything not covered here, follow
+the documentation links in `llms.txt`.
+
+Repository: https://github.com/itsPremkumar/alpha
+Maintainer: Prem Kumar (https://github.com/itsPremkumar) · License: MIT · Version: 2.1.0
+
+---
+
+## 1. One-paragraph definition
+
+Alpha is a self-hosted platform where LLM agents plan, execute, and verify
+long-horizon tasks against real tools, files, and the web. The backend is an
+asynchronous, distributed Python 3.12+ system built on LangGraph and served by a
+FastAPI Gateway exposing 60 routers; the front ends are a Next.js 15 (App Router,
+React 19, Tailwind) web workspace and an Electron Windows desktop app that bundles
+its own Node.js and `uv` runtimes. A single Nginx reverse proxy on port `2026` is
+the only public surface. It ships 130 native tools, 42 middleware layers, 8
+background supervisor loops, 24 public skills, MCP support, nine messaging
+channels, and an OpenAI-compatible chat endpoint.
+
+## 2. Service topology
+
+| Service | Port | Role |
+| :--- | :--- | :--- |
+| Nginx | `2026` | Single public entry point; proxies `/api/*` to the Gateway (rewriting `/api/langgraph/*` onto native routes) and serves the frontend |
+| Gateway API | `8001` | FastAPI REST API plus the embedded LangGraph-compatible agent runtime |
+| Frontend | `3000` | Next.js 15 workspace |
+| Provisioner | `8002` | Optional; only when the sandbox runs in provisioner/Kubernetes mode |
+
+Both compose files publish nginx as `"${BIND_HOST:-127.0.0.1}:${PORT:-2026}:2026"`
+— loopback by default. A bare `"${PORT}:2026"` binds `0.0.0.0`. Any newly
+published port needs an explicit bind address.
+
+## 3. Commands
+
+Root `make` drives the whole stack; `backend/Makefile` and `frontend/` (`pnpm`)
+drive a single module.
+
+```bash
+make setup            # interactive setup wizard; unattended: make setup SETUP_ARGS=--non-interactive
+make config           # copy config.example.yaml -> config.yaml and the extensions template
+make install          # install frontend + backend deps and pre-commit hooks
+make doctor           # verify environment health
+make prod-check       # production pre-flight (versions, config files, secrets)
+make dev              # hot reload: Gateway :8001, Frontend :3000, Nginx :2026
+make start            # production mode locally (SKIP_FRONTEND_BUILD=1 reuses the last build)
+make up / make down   # production Docker stack; browser at http://localhost:2026
+make stop             # stop local services
+make support-bundle   # redacted troubleshooting summary
+make voice-setup      # optional: local Whisper + Piper speech models (~550 MB)
+make voice-verify     # verify those models
+make help             # full target list
+```
+
+```bash
+cd backend && make test               # default suite; excludes live and blocking-IO tests
+cd backend && make test-blocking-io   # strict blocking-IO gate
+cd backend && make lint               # ruff check
+cd backend && make format             # ruff format
+cd frontend && pnpm dev               # dev server (Webpack by default; --turbopack for Turbopack)
+cd frontend && pnpm verify            # typecheck + unit tests
+cd frontend && pnpm test              # unit tests only
+```
+
+`make dev` does **not** generate config files. First-time order is
+`make config` → `make install` → `make dev`.
+
+## 4. Configuration layers
+
+| File | Scope | Contents | Gitignored |
+| :--- | :--- | :--- | :--- |
+| `config.yaml` | Platform core | Models, presets, tool groups, sandbox tier, databases, IM channels, autonomy loops, operator `plugins:` list | Yes |
+| `extensions_config.json` | Extensions | MCP servers and enabled skills; API-editable at runtime | Yes |
+| `.env` | Secrets | API keys, DB connection strings, encryption secrets | Yes |
+
+- Reference secrets as `$ENV_VAR`, never as literals in `config.yaml`.
+- At least one entry under `models:` is required or the runtime will not start.
+- The shipped baseline model is `union-alpha`: `langchain_openai:ChatOpenAI`,
+  OpenRouter API slug `stealth/union-alpha`, key `$OPENROUTER_API_KEY`. The
+  CLI-qualified form `openrouter/stealth/union-alpha` is **not** a valid
+  OpenRouter API slug.
+- Third-party Python extensions use the top-level `plugins:` list in `config.yaml`
+  (operator-controlled, because it causes code to be imported), never the
+  API-writable `extensions_config.json`. Every mutation needs a Gateway restart,
+  and both build hooks and extension code execute with Gateway privileges.
+- Background autonomy loops are gated by `config.yaml -> autonomy.loops`. An
+  absent id means disabled; all flags off means zero tasks.
+
+## 5. Core capabilities
+
+### 5.1 Deep research
+Five-pass search pipeline: discovery → specific evidence → adversarial
+contradiction → fact verification → strategic synthesis. Bounded knowledge-gap
+filling, adversarial source juxtaposition, and a deterministic citation contract
+(`[S1]`, `[S2]`, …) where every source is marked verified / unsupported /
+unverified / not-checked. Exposed both as the `deep_research` tool and as a
+`deep-research` subagent category preset with an expanded 150-turn budget. The
+AgentEye plane adds a curated 39-function free-source catalog with operator
+allowlists, bounded fan-out, SSRF-safe fetching, and DDGS fallback.
+
+### 5.2 Swarms and the workforce layer
+Bot roster with distinct personalities and isolated system prompts; SOUL protocol;
+private inboxes; fire-and-forget DMs at `POST /api/bots/{name}/dm`; multi-agent
+group chat rooms; a real-time collaborative Kanban board; Agent-to-Agent (A2A)
+messaging; project membership, presence, resource locks, constitutions, and ADR
+memory. The Swarm v2 DAG runtime uses atomic checkpoints, ordered JSONL audit
+events, owner-scoped admission, idempotent creation, lease-fenced task attempts,
+retry backoff, and restart recovery, with token/tool-call/wall-clock/task/replan
+budgets and explicit `budget_exhausted` and `stalled` states.
+
+### 5.3 Continuous execution
+One-prompt planner; 8-dimension plan mode (clarity, safety, feasibility,
+reversibility, resource intensity, architectural impact, empirical evidence,
+mission alignment); mission hierarchy and work-queue DAG; a continuous goal
+engine with an integrity gate; the Ralph loop for test-driven self-healing;
+Boulder checkpointing with durable replay; Kibitzer metacognitive supervision.
+Disconnects never cancel work, and ambiguous external effects pause for
+confirmation so irreversible side effects are not duplicated.
+
+### 5.4 Cognitive plane
+Agentic Variation Operators (AVO) for evolutionary prompt and strategy mutation;
+Mixture of Agents (MoA) multi-model deliberation; Theory of Mind (ToM) consult;
+epistemic belief evaluation against an empirical ground truth; dreaming
+consolidation from episodic traces into a semantic knowledge graph; a strategic
+discipline council; a quality council with an evidence matrix; consequence
+simulation before irreversible actions; and System One typed `choice`/`score`/
+`noul` decision models with confidence gating.
+
+### 5.5 Code agentic core
+Pre-commit AST syntax and linter guardrail on `write_file`, `str_replace`, and
+`hashline_edit`; git shadow checkpoints under `refs/alpha-checkpoints/<cid>` with
+`GET/POST /api/checkpoints`, `POST /api/checkpoints/{id}/rollback`, and
+`GET /api/checkpoints/{id}/diff`; automated test-and-repair; repository map AST
+generation; AST-grep structural search and rewrite across TypeScript, Python, Go,
+Rust, and C++; a repo twin sandbox that previews changes; hashline line-level
+precision editing; sandboxed Python and Bash REPLs; and visual artifact and UI
+verification.
+
+### 5.6 Security and governance
+Astra security enclave with a scoped credential vault; a risk-scoring command
+approval gate; emergency stop (Estop); a trajectory flight recorder that
+cryptographically logs every reasoning step, tool call, and state transition;
+universal artifact lineage tracing; and deterministic per-run token budgeting
+with cache-aware cost telemetry.
+
+### 5.7 Channels and integrations
+Telegram, Slack, Feishu/Lark, WeChat, WeCom, DingTalk, Discord, Buzz, and Signal,
+all bidirectional and driving the same agent runtime. Plus cron-based scheduled
+automations with wake gates, blueprints, incident tracking, and auto-pause;
+GitHub webhook automations on pull requests, issues, comments, and releases; and
+an OpenAI-compatible endpoint at `POST /api/compat/openai/chat/completions`.
+
+### 5.8 Presentation
+Electron Windows desktop app (one-click NSIS installer, per-user, no admin);
+Next.js 15 workspace with Chat, Overview, Workforce, Projects, Kanban, Skills,
+Peers, and Settings; an uncapped on-device IndexedDB chat archive with honest
+degraded states and JSON backup/restore; bot-led multi-bot projects; free local
+real-time voice (local Whisper + local Piper, sentence-level streaming, no paid
+speech API); the Milo lion companion; guarded GitHub source auto-update (disabled
+by default); and an interactive canvas with generative UI, live SVG, KaTeX, and
+data tables.
+
+## 6. Harness engine map
+
+99 engine packages live under `backend/packages/harness/alpha/`:
+
+`action` `agency` `agent` `agents` `authz` `autoconfig` `avo` `benchmarks`
+`blackboard` `bots` `browser` `canvas` `capabilities` `channels` `coding`
+`commands` `community` `company` `computer_use` `config` `consequence` `context`
+`council` `critic` `debugging` `deepagent` `deliberation` `diagnostics` `editing`
+`enterprise` `epistemics` `errors` `evaluation` `events` `evidence` `evolution`
+`extensions` `goals` `governance` `groups` `guardrails` `harness` `integrations`
+`jobs` `kanban` `knowledge` `learning` `ledger` `lineage` `mcp` `media` `memory`
+`metacognition` `metacompiler` `mission` `missions` `models` `multimodal`
+`observability` `ops` `orchestration` `orchestrator` `peer_network` `perpetual`
+`persistence` `planning` `policy` `projects` `protocols` `reasoning` `recovery`
+`reflection` `reproduction` `research` `rsi` `rules` `runtime` `safety` `sandbox`
+`scheduler` `security` `selfrepair` `skills` `state` `subagents` `supervision`
+`swarm` `synthesis` `system1` `testing` `tools` `tracing` `trajectory` `tui`
+`uploads` `utils` `verification` `workflow` `workspace_changes`
+
+Count them with `ls backend/packages/harness/alpha | grep -v __pycache__ | wc -l`.
+
+`GET /api/ops/integration-health` reports live coverage and supervisor status at
+runtime.
+
+## 7. Extension contract
+
+Three surfaces, in increasing order of power:
+
+1. **Skills** — a `SKILL.md` plus optional resources, listed in
+   `extensions_config.json`. Lowest privilege.
+2. **MCP servers** — any Model Context Protocol server over stdio, HTTP, or SSE,
+   configured in `extensions_config.json` and API-editable at runtime.
+3. **Python extension packages** — contribute middleware, task lifecycle hooks,
+   system-model observers, Gateway services, and FastAPI HTTP routers. Declared
+   in `config.yaml -> plugins:`; requires a Gateway restart.
+
+Manage them with `alpha extensions install|upgrade|list|enable|disable|remove`, or
+the root `make extension-*` wrappers. A runnable reference implementation of all
+five contribution kinds is in `examples/agent-workspace-extension-example/`.
+
+## 8. Public skills (24)
+
+`academic-paper-review` `bootstrap` `chart-visualization`
+`claude-to-agent-workspace` `code-documentation` `consulting-analysis`
+`data-analysis` `deep-research` `find-skills` `frontend-design`
+`github-deep-research` `image-generation` `music-generation`
+`newsletter-generation` `podcast-generation` `ppt-generation`
+`project-cartographer` `skill-creator` `skill-reviewer` `surprise-me`
+`systematic-literature-review` `vercel-deploy-claimable` `video-generation`
+`web-design-guidelines`
+
+Managed integration skill packs are global at
+`.agent-workspace/integrations/skills/{provider}/`. Skill text is UTF-8; Python
+utilities that read or write `SKILL.md` must pass `encoding="utf-8"`.
+
+## 9. Autonomy supervisor
+
+`backend/app/gateway/autonomy/supervisor.py` is the single lifecycle owner for
+background loops. Loops are declared in `register_default_loops()`, gated by
+`config.yaml -> autonomy.loops`, run synchronous ticks on threads, restart inside
+a budget and then park, and publish `autonomy.loop.completed` on the in-process
+event bus. Swarm is telemetry-only/on-demand. Started from the gateway lifespan
+after scheduler and channel services; stopped first on shutdown.
+
+## 10. Peer network
+
+The `alpha.peer_network` package owns installation identity, explicit pairing,
+UDP/mDNS/GitHub discovery adapters, direct HTTP/WebSocket delivery, SQLite
+conversations, topology validation, delivery receipts, and a bounded
+`alpha_peer_network` model tool. The default free path is LAN UDP + HTTP/WebSocket
++ SQLite. Discovery is untrusted and never grants access; pairing uses a
+high-entropy out-of-band code. Public Agent Card / pair / inbound routes are
+exact-path public surfaces with their own token checks, while local management
+routes keep Gateway auth and `threads:read/write` permissions. mDNS is optional
+(`peer-discovery` extra); GitHub is an opt-in Agent Card rendezvous, not a public
+mailbox; libp2p must report unavailable until a real authenticated adapter exists.
+
+## 11. Known boundaries — state these honestly
+
+- Swarm and dynamic-workflow state is atomic JSON checkpoints plus append-only
+  JSONL events: restart-recoverable for **one Gateway process**. A multi-worker
+  deployment must provide a shared SQL lease repository before claiming
+  cross-process exactly-once execution.
+- The built-in dynamic-workflow digest executor is a **local graph projection**,
+  not proof that a domain task ran. It discloses
+  `execution_label="local_digest_projection"` and `acceptance_passed=false` until
+  a real model/tool/MCP/sandbox/bot executor is bound.
+- A run can complete successfully while remaining **unverified** until sufficient
+  independent evidence is recorded.
+- Installation-scoped SQLite in the peer network is not cross-process
+  exactly-once storage.
+- Agentic browser sessions are process-local; the gateway refuses `GATEWAY_WORKERS > 1`
+  when `browser_navigate` is configured.
+- Production readiness is partial. The evidence-backed open items live in
+  `docs/PRODUCTION_READINESS_INVENTORY.md`.
+- The current `frontend/package.json` declares `typecheck` and `verify`, not
+  `check`, lint, or test scripts; use `pnpm verify`.
+
+## 12. Load-bearing repository contracts
+
+- `contracts/feature_manifest.json` is generated by
+  `backend/scripts/generate_feature_manifest.py` from the live registries and
+  pins all 130 tools, 60 routers, 42 middlewares, and 8 supervisor loops.
+  Regenerate after any registry change; CI fails on drift.
+- `tests/test_no_orphan_modules.py` fails the build if a module exists with no
+  import, no dotted-string loader path, no config `use:` entry, and no allowlist
+  reason.
+- Any `@tool` needing runtime access must declare `runtime: Runtime` as a bare
+  required first parameter. `Runtime | None = None` makes pydantic
+  schema-generate `ToolRuntime`'s `Callable` fields and breaks the whole tool list.
+  Run `backend/scripts/check_tool_schemas.py` after any tool signature change.
+- Version strings must stay identical across `backend/pyproject.toml`,
+  `frontend/package.json`, and `deploy/helm/agent-workspace/Chart.yaml`. Pushing a
+  `v*` tag runs `scripts/verify_versions.sh` and blocks all publishing on drift.
+- `AGENTS.md` is the contributor source of truth; `CLAUDE.md` is a thin import
+  shim and must not be edited.
+- `docs/INDEX.md` is generated by `scripts/generate_docs_index.py`; every Markdown
+  file under `docs/` must be explicitly classified or generation fails.
+
+## 13. Where to go next
+
+- Install and first run: `docs/GETTING_STARTED.md`
+- Framework comparison and selection: `docs/COMPARISON.md`
+- End-to-end jobs: `docs/USE_CASES.md`
+- Every term defined: `docs/GLOSSARY.md`
+- Short answers: `docs/FAQ.md`
+- Architecture: `docs/ARCHITECTURE.md`
+- API: `docs/API_REFERENCE.md`
+- Configuration: `docs/CONFIGURATION.md`
+- Deployment: `docs/DEPLOYMENT.md`
+- Production runbook: `docs/PRODUCTION.md`
+- Security: `docs/SECURITY.md`
+- Troubleshooting: `docs/TROUBLESHOOTING.md`
+- Complete generated index: `docs/INDEX.md`
+- Contributor guide: `AGENTS.md`
+- Attribution: `references/README.md` and `docs/THIRD_PARTY_MEMORY_NOTICES.md`
+
+## 14. Provenance
+
+Alpha is a re-architecture of the MIT-licensed DeerFlow base
+(https://github.com/bytedance/deer-flow) into a full agent operating system,
+built on LangGraph, and credits OpenHands, Pydantic, FastAPI, Next.js, Electron,
+and Tailwind CSS. Model providers include OpenAI, Anthropic, Google Gemini,
+DeepSeek, OpenRouter, Moonshot AI, MiniMax, StepFun, and Ollama. Upstream
+copyright and license notices are preserved in `LICENSE`.

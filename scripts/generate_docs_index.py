@@ -164,6 +164,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "reasoning",
         "Cognitive plane, reasoning engines, and optimization architecture.",
     ),
+    "COMPARISON.md": DocumentSpec(
+        "contributing",
+        "Alpha vs LangGraph, AutoGen, CrewAI, OpenHands, and Dify, with a selection guide.",
+    ),
     "CONFIGURATION.md": DocumentSpec(
         "operations", "Configuration reference for files, settings, and environment."
     ),
@@ -177,6 +181,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "contributing",
         "Development setup, conventions, testing, and contribution guidance.",
     ),
+    "DISCOVERABILITY.md": DocumentSpec(
+        "contributing",
+        "SEO, GEO, and AEO strategy, surfaces, and maintenance checklist.",
+    ),
     "DYNAMIC_WORKFLOWS.md": DocumentSpec(
         "architecture", "Typed, evidence-gated dynamic workflow runtime."
     ),
@@ -186,6 +194,9 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
     "FAQ.md": DocumentSpec(
         "contributing",
         "Frequently asked questions and agent-friendly documentation pointers.",
+    ),
+    "GLOSSARY.md": DocumentSpec(
+        "contributing", "Every Alpha term defined in one place, with caveats marked."
     ),
     "GETTING_STARTED.md": DocumentSpec(
         "contributing", "Installation and first-run guide for Alpha."
@@ -262,6 +273,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
     ),
     "TROUBLESHOOTING.md": DocumentSpec(
         "operations", "Diagnostic procedures and solutions for common issues."
+    ),
+    "USE_CASES.md": DocumentSpec(
+        "contributing",
+        "End-to-end jobs mapped to the subsystem that delivers each one.",
     ),
     "VOICE_CONVERSATION.md": DocumentSpec(
         "architecture", "Real-time local voice conversation loop."

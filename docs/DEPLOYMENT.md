@@ -50,8 +50,8 @@ Alpha supports multiple deployment models:
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/itsPremkumar/agent-workspace-desktop.git
-cd agent-workspace-desktop
+git clone https://github.com/itsPremkumar/alpha.git
+cd alpha
 
 # 2. Configure environment
 cp .env.production.example .env
@@ -486,15 +486,16 @@ npm run dist
 ### Installation
 
 1. Run `Agent-Workspace-Setup-2.1.0.exe`
-2. Per-user install to `%LOCALAPPDATA%\Programs\agent-workspace-desktop`
-3. Data stored in `%APPDATA%\agent-workspace-desktop\`
+2. Per-user install to `%LOCALAPPDATA%\Programs\Alpha`
+3. Data stored in Electron's `userData` directory (`%APPDATA%\agent-workspace-desktop\`
+   by default; the app's **User data** menu entry reveals the exact path)
 4. Desktop Gateway runs on port 8201
 5. Frontend on port 3000 (internal)
 
 ### Configuration
 
 First launch auto-provisions Python environment. User must add API key to:
-`%APPDATA%\agent-workspace-desktop\project\config.yaml`
+`<userData>\project\config.yaml`
 
 ## Production Checklist
 

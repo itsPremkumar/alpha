@@ -1,6 +1,6 @@
 # Alpha Install
 
-This file is for coding agents. If the Alpha repository is not already cloned and open, clone `https://github.com/bytedance/agent-workspace.git` first, then continue from the repository root.
+This file is for coding agents. If the Alpha repository is not already cloned and open, clone `https://github.com/itsPremkumar/alpha.git` first, then continue from the repository root.
 
 ## Goal
 
@@ -35,7 +35,7 @@ Consider the setup successful when all of the following are true:
 
 ## Steps
 
-- If the current directory is not the Alpha repository root, clone `https://github.com/bytedance/agent-workspace.git` if needed, then change into the repository root.
+- If the current directory is not the Alpha repository root, clone `https://github.com/itsPremkumar/alpha.git` if needed, then change into the repository root.
 - Confirm the current directory is the Alpha repository root by checking that `Makefile`, `backend/`, `frontend/`, and `config.example.yaml` exist.
 - Detect whether `config.yaml` already exists.
 - If `config.yaml` does not exist, run `make config`.

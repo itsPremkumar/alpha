@@ -37,11 +37,13 @@ npm run dist
 ```
 
 #### Install and Run
-1. Run `electron/dist/Alpha-Setup-2.1.0.exe`
+1. Run `electron/dist/Agent-Workspace-Setup-2.1.0.exe` (the artifact name is set by
+   `artifactName` in `electron/electron-builder.yml`)
 2. SmartScreen warning → "More info" → "Run anyway"
 3. Per-user install (no admin rights needed)
 4. First launch: Auto-provisions Python and backend (splash screen shows progress)
-5. Add model API key to `%APPDATA%\alpha-desktop\project\config.yaml`
+5. Add a model API key to `<userData>\project\config.yaml` — the app opens this
+   folder for you, and its **User data** menu entry reveals the exact path
 6. Restart app and start chatting
 
 ### Method 2: Docker Deployment (Recommended for Servers)

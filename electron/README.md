@@ -23,10 +23,13 @@ First launch in short:
 2. The app opens on a fresh chat composer.
 3. If no AI model is configured yet, the app says so and offers to open the
    config folder: add at least one model API key to
-   `%APPDATA%\agent-workspace-desktop\project\config.yaml`, restart the app, and chat.
+   `<userData>\project\config.yaml`, restart the app, and chat.
 
-Your data (config, threads, memory, logs) lives per-user under
-`%APPDATA%\agent-workspace-desktop\`:
+Your data (config, threads, memory, logs) lives per-user under Electron's
+`userData` directory, which the app resolves at runtime from
+`app.getPath('userData')` — `%APPDATA%\agent-workspace-desktop\` by default on
+Windows. Read the exact path from the app's **User data** menu entry, which opens
+the folder directly, rather than hardcoding it:
 
 | Location | Contents |
 | -------- | -------- |
@@ -36,7 +39,7 @@ Your data (config, threads, memory, logs) lives per-user under
 | `logs\` | `main.log`, `gateway.log`, `frontend.log` |
 
 To uninstall, use Windows **Settings → Apps** (per-user install, removes the
-app; your `%APPDATA%\agent-workspace-desktop\` data folder is kept — delete it
+app; your `<userData>\` folder is kept — delete it
 manually for a full wipe).
 
 ## Share it with the world
@@ -50,7 +53,8 @@ venv, no login, chat opens), and silent uninstall. To publish:
    Anything that serves the file works too (company drive, S3, …).
 3. Tell users: download → **More info → Run anyway** (unsigned) → launch →
    when prompted, add one model API key to
-   `%APPDATA%\agent-workspace-desktop\project\config.yaml` → restart → chat.
+   `<userData>\project\config.yaml` (the app opens this folder for you) →
+   restart → chat.
    Internet is required on first launch (one-time Python/package download).
 
 **Or skip the local build entirely:** push a `v*` tag, or run the
@@ -186,7 +190,8 @@ make requests or persist conversation content.
 
 ## Troubleshooting
 
-- **Stuck on splash** — open `%APPDATA%\agent-workspace-desktop\logs\gateway.log`.
+- **Stuck on splash** — open `<userData>\logs\gateway.log` (the app's **User
+  data** menu entry opens that folder).
   First launch downloads Python + ~200 packages; slow connections take
   several minutes (progress is in the log). The usual real failure is a
   missing/invalid model API key in `project\config.yaml`.

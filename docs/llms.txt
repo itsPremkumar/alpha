@@ -1,0 +1,86 @@
+# Alpha documentation
+
+> Technical documentation for **Alpha**, the open-source autonomous multi-agent AI
+> operating system. A LangGraph agent runtime behind a FastAPI Gateway, with a
+> Next.js 15 workspace and an Electron Windows desktop app. 130 native tools, MCP
+> extensions, 24 public skills, sandboxed execution, persistent memory, and nine
+> messaging channels. Self-hosted, MIT licensed.
+
+Canonical repository: https://github.com/itsPremkumar/alpha
+Maintainer: Prem Kumar (https://github.com/itsPremkumar) · License: MIT · Version: 2.1.0
+
+This file is the docs-scoped `llms.txt` index. For the repository overview see
+the [root `/llms.txt`](../llms.txt); for expanded context see
+[`/llms-full.txt`](../llms-full.txt).
+
+## Start here
+
+- [Getting started](GETTING_STARTED.md): prerequisites, install methods for every platform, first run, and verification.
+- [FAQ](FAQ.md): short, citable answers to the most common questions.
+- [Comparison](COMPARISON.md): Alpha vs LangGraph, AutoGen, CrewAI, OpenHands, and Dify, plus a selection decision guide.
+- [Use cases](USE_CASES.md): concrete end-to-end jobs mapped to the subsystem that delivers each.
+- [Glossary](GLOSSARY.md): every Alpha term defined in one page, with caveats marked.
+- [Discoverability](DISCOVERABILITY.md): how this project is optimized for SEO, GEO, and AEO.
+
+## Architecture
+
+- [Architecture](ARCHITECTURE.md): runtime planes, the middleware chain, sandbox tiers, and the 89 harness engine packages.
+- [Dynamic workflows](DYNAMIC_WORKFLOWS.md): the typed, evidence-gated workflow runtime and its honest execution labels.
+- [Extensions](EXTENSIONS.md): MCP over stdio/HTTP/SSE plus the Python extension contribution contract.
+- [Skills](SKILLS.md): skill packages, the curator lifecycle, quarantine trust tiers, and the 24 public skills.
+- [Voice conversation](VOICE_CONVERSATION.md): the real-time local voice loop (Whisper + Piper, no paid speech API).
+- [Workforce](WORKFORCE.md): bot roster, SOUL protocol, DMs, swarm DAG runtime, projects, and Kanban.
+- [Lion companion](LION_COMPANION.md): the local-first Milo companion and its presentation contract.
+- [Run recovery](RUN_RECOVERY.md): durable checkpoints, lease fencing, and safe replay.
+- [Peer network](ALPHA_PEER_NETWORK.md): Alpha-to-Alpha discovery, explicit pairing, and direct delivery.
+
+## Reasoning and memory
+
+- [Cognitive engines](COGNITIVE_ENGINES.md): AVO, Mixture of Agents, Theory of Mind, epistemic belief tracking, and dreaming.
+- [Deep research](DEEP_RESEARCH.md): the five-pass search pipeline, gap filling, and the citation contract.
+- [System One](SYSTEM_ONE.md): the fast structured decision layer (typed choice/score/noul).
+- [System One calibration](SYSTEM_ONE_CALIBRATION.md): calibration methodology and trust measurement.
+- [System One use cases](SYSTEM_ONE_AGENT_USE_CASES.md): agentic use-case research for System One models.
+- [System One roadmap](SYSTEM_ONE_ALPHA_ROADMAP.md): implementation roadmap for System One.
+- [System One laptop control](SYSTEM_ONE_LAPTOP_CONTROL_IDEAS.md): computer-use architecture and Alpha's fit.
+- [System One browser eval](SYSTEM_ONE_BROWSER_AGENT_EVAL.md): measured evaluation of a browser agent.
+- [Memory](MEMORY.md): the layered memory plane, vector memory, episodic replay, and dreaming consolidation.
+- [Memory types](MEMORY_TYPES.md): the canonical memory taxonomy and Alpha's coverage of it.
+- [Memory fabric plan](MEMORY_FABRIC_PLAN.md): memory fabric boundaries and deferred work.
+- [Third-party memory notices](THIRD_PARTY_MEMORY_NOTICES.md): subsystem-level attribution for adapted memory code.
+- [Reasoning plan](REASONING_PLAN.md): the default-off reasoning plane, its contracts, and its budgeting.
+
+## API
+
+- [API reference](API_REFERENCE.md): all 60 Gateway routers, authentication, and SSE event streaming.
+- [API overview](API.md): entry points, base URLs, routing, and versioning contracts.
+
+## Operations
+
+- [Configuration](CONFIGURATION.md): every setting, resolution order, and environment variable.
+- [Deployment](DEPLOYMENT.md): Docker Compose, Kubernetes Helm, Nginx, and the Windows installer.
+- [Production runbook](PRODUCTION.md): probes, `/api/ops/*`, monitoring, and disaster recovery.
+- [Production readiness inventory](PRODUCTION_READINESS_INVENTORY.md): evidence-backed status and open gaps. Read before exposing a deployment.
+- [Production readiness transfer guide](PRODUCTION_READINESS_TRANSFER_GUIDE.md): production foundations and operator handoff plan.
+- [Auto-update](AUTO_UPDATE.md): the guarded source updater, its policy file, and its kill switch.
+- [Security](SECURITY.md): the Astra enclave, approval gates, sandbox boundaries, and threat model.
+- [Troubleshooting](TROUBLESHOOTING.md): diagnostic flows, stuck processes, and lock contention.
+
+## Contributing and governance
+
+- [Development](DEVELOPMENT.md): local workflows, hot reloading, test suites, and contribution standards.
+- [Contributing guide](../CONTRIBUTING.md): setup, branching conventions, and the PR checklist.
+- [Code of conduct](../CODE_OF_CONDUCT.md).
+- [Security policy](../SECURITY.md): how to report a vulnerability privately.
+- [Agent guide](../AGENTS.md): monorepo orientation and conventions; the contributor source of truth.
+- [Documentation index](INDEX.md): the complete generated index of every document in `docs/`.
+
+## Plans and research
+
+- [Agent landscape and roadmap](AGENT_LANDSCAPE_AND_ROADMAP.md): research survey and roadmap for the open-source agent landscape.
+- [Unified integration plan](ALPHA_UNIFIED_INTEGRATION_PLAN.md): local-only integration sequencing.
+- [Implementation matrix](IMPLEMENTATION_MATRIX.md): living production status matrix.
+- [Multi-agent project collaboration plan](MULTI_AGENT_PROJECT_COLLABORATION_PLAN.md): enhanced collaboration plan.
+- [Sentinel plan](SENTINEL_AUTONOMOUS_AGENT_PLAN.md): autonomous monitor, diagnose, fix, verify, commit.
+- [Task list](TASK_LIST.md): living master task list.
+- [Research library](../references/README.md): 45+ papers and architecture studies on agent harnesses, AVO loops, recursive self-improvement, and frontier coding agents.

@@ -1,0 +1,51 @@
+cff-version: 1.2.0
+title: "Alpha: An Open-Source Autonomous Multi-Agent AI Operating System"
+message: "If you use Alpha in research or write about it, please cite it using this metadata."
+type: software
+abstract: >-
+  Alpha is a self-hosted, local-first platform where LLM agents plan, execute, and
+  verify long-horizon tasks against real tools, files, and the web. It combines an
+  asynchronous LangGraph agent runtime behind a FastAPI Gateway, a Next.js 15 web
+  workspace, and an Electron Windows desktop application, with 130 native tools, 42
+  middleware layers, 8 background supervisor loops, 24 public skills, Model Context
+  Protocol support, sandboxed code execution across three tiers, a layered memory
+  plane, and nine messaging channels behind a single Nginx entry point.
+authors:
+  - given-names: Prem
+    family-names: Kumar
+    alias: itsPremkumar
+    orcid: ""
+repository-code: "https://github.com/itsPremkumar/alpha"
+url: "https://github.com/itsPremkumar/alpha"
+license: MIT
+version: "2.1.0"
+date-released: "2026-01-01"
+keywords:
+  - ai-agent
+  - agentic-ai
+  - multi-agent
+  - autonomous-agents
+  - agent-framework
+  - agent-operating-system
+  - langgraph
+  - llm
+  - deep-research
+  - multi-agent-swarm
+  - mcp
+  - model-context-protocol
+  - ai-coding-assistant
+  - self-hosted
+  - sandbox
+  - fastapi
+  - nextjs
+  - rag
+  - llmops
+  - task-automation
+  - open-source
+
+# Alphabetic list of the software's languages.
+language:
+  - python
+  - typescript
+  - powershell
+  - shell

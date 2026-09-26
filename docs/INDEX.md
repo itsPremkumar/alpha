@@ -52,10 +52,14 @@
 
 ## Contributing & Governance
 
+- [COMPARISON.md](COMPARISON.md) — Alpha vs LangGraph, AutoGen, CrewAI, OpenHands, and Dify, with a selection guide.
 - [DEVELOPMENT.md](DEVELOPMENT.md) — Development setup, conventions, testing, and contribution guidance.
+- [DISCOVERABILITY.md](DISCOVERABILITY.md) — SEO, GEO, and AEO strategy, surfaces, and maintenance checklist.
 - [FAQ.md](FAQ.md) — Frequently asked questions and agent-friendly documentation pointers.
 - [GETTING_STARTED.md](GETTING_STARTED.md) — Installation and first-run guide for Alpha.
+- [GLOSSARY.md](GLOSSARY.md) — Every Alpha term defined in one place, with caveats marked.
 - [README.md](README.md) — Documentation library entry point and navigation overview.
+- [USE_CASES.md](USE_CASES.md) — End-to-end jobs mapped to the subsystem that delivers each one.
 
 ## Plans & Roadmaps
 

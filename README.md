@@ -1,782 +1,936 @@
-# Alpha 🐺
-
 <div align="center">
 
-### The Autonomous Multi-Agent Operating System & Frontier Cognitive Intelligence Platform
+# Alpha 🐺
 
-[![Python](https://img.shields.io/badge/Python-3.12%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](./backend/pyproject.toml)
-[![Node.js](https://img.shields.io/badge/Node.js-22%2B-339933?style=for-the-badge&logo=node.js&logoColor=white)](./Makefile)
-[![Next.js](https://img.shields.io/badge/Next.js-15-000000?style=for-the-badge&logo=next.js&logoColor=white)](./frontend/package.json)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?style=for-the-badge&logo=fastapi&logoColor=white)](./backend/pyproject.toml)
-[![Electron](https://img.shields.io/badge/Electron-Desktop-47848F?style=for-the-badge&logo=electron&logoColor=white)](./electron/README.md)
-[![Docker](https://img.shields.io/badge/Docker-Enabled-2496ED?style=for-the-badge&logo=docker&logoColor=white)](./docker/docker-compose.yaml)
-[![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](./LICENSE)
+### The Open-Source Autonomous Multi-Agent AI Operating System
 
-*Architected and maintained by [Prem Kumar](https://github.com/itsPremkumar)*  
-*Repository: [https://github.com/itsPremkumar/alpha](https://github.com/itsPremkumar/alpha)*
+**Alpha is a self-hosted, local-first AI agent platform that plans, executes, and
+verifies long-horizon work.** It runs a LangGraph agent runtime behind a FastAPI
+Gateway with a Next.js 15 web workspace and a Windows desktop app — combining deep
+research, multi-agent swarms, sandboxed code execution, persistent memory, 130 native
+tools, MCP extensions, and 24 public skills, with a single Nginx entry point and no
+proprietary backend.
+
+[![CI](https://github.com/itsPremkumar/alpha/actions/workflows/backend-unit-tests.yml/badge.svg?branch=main)](https://github.com/itsPremkumar/alpha/actions/workflows/backend-unit-tests.yml)
+[![Lint](https://github.com/itsPremkumar/alpha/actions/workflows/lint-check.yml/badge.svg?branch=main)](https://github.com/itsPremkumar/alpha/actions/workflows/lint-check.yml)
+[![Frontend](https://github.com/itsPremkumar/alpha/actions/workflows/frontend-unit-tests.yml/badge.svg?branch=main)](https://github.com/itsPremkumar/alpha/actions/workflows/frontend-unit-tests.yml)
+[![E2E](https://github.com/itsPremkumar/alpha/actions/workflows/e2e-tests.yml/badge.svg?branch=main)](https://github.com/itsPremkumar/alpha/actions/workflows/e2e-tests.yml)
+[![Drift Gate](https://github.com/itsPremkumar/alpha/actions/workflows/generated-drift-gate.yml/badge.svg?branch=main)](https://github.com/itsPremkumar/alpha/actions/workflows/generated-drift-gate.yml)
+[![Windows Installer](https://github.com/itsPremkumar/alpha/actions/workflows/windows-installer.yml/badge.svg?branch=main)](https://github.com/itsPremkumar/alpha/actions/workflows/windows-installer.yml)
+[![Release](https://img.shields.io/github/v/release/itsPremkumar/alpha?label=release&logo=github)](https://github.com/itsPremkumar/alpha/releases)
+[![Stars](https://img.shields.io/github/stars/itsPremkumar/alpha?style=social)](https://github.com/itsPremkumar/alpha/stargazers)
+[![Forks](https://img.shields.io/github/forks/itsPremkumar/alpha?style=social)](https://github.com/itsPremkumar/alpha/network/members)
+[![Issues](https://img.shields.io/github/issues/itsPremkumar/alpha?style=social)](https://github.com/itsPremkumar/alpha/issues)
+[![License: MIT](https://img.shields.io/badge/License-MIT-10b981.svg)](https://opensource.org/licenses/MIT)
+
+[![Python](https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white)](./backend/pyproject.toml)
+[![LangGraph](https://img.shields.io/badge/LangGraph-Agent_Runtime-1f7a5c?logo=langgraph)](./backend/pyproject.toml)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white)](./backend/pyproject.toml)
+[![Next.js](https://img.shields.io/badge/Next.js-15-000000?logo=next.js&logoColor=white)](./frontend/package.json)
+[![React](https://img.shields.io/badge/React-19-087ea4?logo=react&logoColor=white)](./frontend/package.json)
+[![Node.js](https://img.shields.io/badge/Node.js-22%2B-339933?logo=node.js&logoColor=white)](./Makefile)
+[![Electron](https://img.shields.io/badge/Electron-Windows_Desktop-47848F?logo=electron&logoColor=white)](./electron/README.md)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](./docker/docker-compose.yaml)
+[![MCP](https://img.shields.io/badge/MCP-Model_Context_Protocol-8A2BE2)](./docs/EXTENSIONS.md)
+
+**Quick links:** [60-Second Quickstart](#60-second-quickstart) ·
+[Alpha vs. other agent frameworks](#alpha-vs-other-agent-frameworks) ·
+[Use cases](#what-can-you-build-with-alpha) ·
+[Documentation](#documentation) ·
+[FAQ](#faq) ·
+[`llms.txt`](./llms.txt) (for AI agents) ·
+[Releases](https://github.com/itsPremkumar/alpha/releases)
+
+**Author:** [Prem Kumar](https://github.com/itsPremkumar) ·
+**Repository:** [github.com/itsPremkumar/alpha](https://github.com/itsPremkumar/alpha) ·
+**License:** [MIT](./LICENSE)
 
 </div>
 
-> Alpha is an open-source autonomous multi-agent AI operating system: LangGraph + FastAPI backend, Next.js 15 workspace, Electron desktop, deep research, swarm workforce, sandboxed coding, and 120+ tools. Start with [Getting Started](docs/GETTING_STARTED.md), [FAQ](docs/FAQ.md), and [llms.txt](llms.txt).
+---
+
+## Table of contents
+
+- [What is Alpha?](#what-is-alpha)
+- [Alpha at a glance](#alpha-at-a-glance)
+- [Why Alpha?](#why-alpha)
+- [Alpha vs. other agent frameworks](#alpha-vs-other-agent-frameworks)
+- [What can you build with Alpha?](#what-can-you-build-with-alpha)
+- [60-second quickstart](#60-second-quickstart)
+- [Feature catalog](#feature-catalog)
+- [System architecture](#system-architecture)
+- [Deployment options](#deployment-options)
+- [Configuration](#configuration)
+- [Documentation](#documentation)
+- [Extending Alpha](#extending-alpha)
+- [Quality gates](#quality-gates)
+- [Alpha Network: agent-to-agent communication](#alpha-network-agent-to-agent-communication)
+- [FAQ](#faq)
+- [Contributing](#contributing)
+- [Security](#security)
+- [Project provenance](#project-provenance)
+- [Citation](#citation)
 
 ---
 
-## 📑 Table of Contents
+## What is Alpha?
 
-- [1. Executive Overview](#1-executive-overview)
-- [2. System Architecture & Topology](#2-system-architecture--topology)
-- [3. Complete High-Level Feature Catalog](#3-complete-high-level-feature-catalog)
-  - [3.1 Autonomous Deep Research & Knowledge Synthesis](#31-autonomous-deep-research--knowledge-synthesis)
-  - [3.2 Swarm Orchestration & Multi-Agent Workforce](#32-swarm-orchestration--multi-agent-workforce)
-  - [3.3 Continuous Execution Harness, Planners & Loops](#33-continuous-execution-harness-planners--loops)
-  - [3.4 Frontier Cognitive Intelligence & Optimization](#34-frontier-cognitive-intelligence--optimization)
-  - [3.5 Code Agentic Core & Developer Tooling](#35-code-agentic-core--developer-tooling)
-  - [3.6 Enterprise Security Enclave & Governance](#36-enterprise-security-enclave--governance)
-  - [3.7 Omnichannel Messaging Hub & Integrations](#37-omnichannel-messaging-hub--integrations)
-  - [3.8 Presentation Layer: Windows Desktop & Web UI](#38-presentation-layer-windows-desktop--web-ui)
-- [4. Complete Subsystem Reference (All 89 Harness Engines)](#4-complete-subsystem-reference-all-89-harness-engines)
-- [5. Public Skills Catalog (All 24 Specialized Skills)](#5-public-skills-catalog-all-24-specialized-skills)
-- [6. Gateway API & Router Directory (All 57 Micro-Endpoints)](#6-gateway-api--router-directory-all-57-micro-endpoints)
-- [7. Complete Built-in Tools Catalog (120+ Native Tools)](#7-complete-built-in-tools-catalog-120-native-tools)
-- [8. Deployment & Quick Start Guide](#8-deployment--quick-start-guide)
-  - [Option A: Windows Desktop Application (One-Click)](#option-a-windows-desktop-application-one-click)
-  - [Option B: Docker Compose Multi-Service Stack](#option-b-docker-compose-multi-service-stack)
-  - [Option C: Bare-Metal Local Development](#option-c-bare-metal-local-development)
-  - [Option D: Non-Interactive / CI Headless Setup](#option-d-non-interactive--ci-headless-setup)
-- [9. Configuration Essentials](#9-configuration-essentials)
-- [10. Quality Assurance & Verification Commands](#10-quality-assurance--verification-commands)
-- [11. Reference Architecture & Research Library](#11-reference-architecture--research-library)
-- [12. Upstream Credits & Open-Source Provenance](#12-upstream-credits--open-source-provenance)
+**Alpha is an open-source autonomous multi-agent AI operating system** — a
+self-hosted platform where LLM agents plan, execute, and verify long-horizon tasks
+against your real tools, files, and the web, instead of only answering a chat prompt.
 
----
+It is **not** a chat wrapper and **not** a hosted SaaS. You run it on your own
+machine or your own server, bring your own model API keys, and every artifact
+(thread, memory, checkpoint, artifact, audit record) stays on infrastructure you
+control.
 
-## 1. Executive Overview
+In one sentence:
 
-### Production verification contracts
+> Alpha is a LangGraph-based agent operating system: a Python/FastAPI Gateway runs
+> the agent runtime and 130 native tools, a Next.js 15 workspace and an Electron
+> Windows app are the front ends, and a single Nginx port is the only thing you
+> expose.
 
-Run requests can optionally declare bounded acceptance criteria. Alpha persists
-the validated criteria with the run record so future verification collectors can
-attach independently checked evidence, such as test results or artifact digests.
-This does not replace the durable run lifecycle: a run can finish successfully
-while remaining unverified until sufficient evidence is recorded. See
-`docs/PRODUCTION_READINESS_TRANSFER_GUIDE.md` for the production rollout and
-operator handoff plan, and `docs/PRODUCTION_READINESS_INVENTORY.md` for the
-evidence-backed gap inventory.
+### The 60-second version
 
-For prompt-to-completion workflows, set the run request's `autonomous` field to
-`true`. Alpha then applies plan mode, permitted subagent delegation, and
-non-interactive execution through the trusted Gateway path; authorization and
-sandbox policy remain enforced.
-
-**Alpha** is a unified Autonomous Multi-Agent Operating System engineered for long-horizon task execution, frontier cognitive reasoning, multi-model swarms, and exhaustive multi-hop research.
-
-Built on an asynchronous, highly distributed Python/LangGraph engine paired with a Next.js 15 web interface and an Electron Windows desktop shell, Alpha bridges raw LLM intelligence with real-world computer action. It guarantees deterministic execution through continuous goal tracking, persistent multi-session checkpointing, evolutionary prompt optimization, and formal verification gates.
+| Question | Answer |
+| :--- | :--- |
+| **What does it do?** | Turns one prompt into a verified, multi-step execution: research, plan, delegate to subagents, run sandboxed code, write files, ship results to Slack/Telegram/Feishu. |
+| **How is it different from a chatbot?** | It has a durable run lifecycle, a sandbox, a memory plane, budgets, approval gates, and a full audit trail — it keeps working after you close the laptop. |
+| **How is it different from a coding CLI?** | It is not tied to a repo or a language. Research, ops, data, docs, and messaging are first-class, not afterthoughts. |
+| **Do I need a paid backend?** | No. Apache-2.0/MIT throughout, no Alpha-operated cloud, no broker, no telemetry requirement. You pay only for the model provider you configure. |
+| **Which models?** | Any provider you put in `config.yaml` — OpenRouter, OpenAI, Anthropic, Google, DeepSeek, Moonshot, Ollama, and self-hosted endpoints. |
+| **Does it run offline?** | Local models, local speech (Whisper + Piper), and local SQLite/PostgreSQL are all supported. |
+| **Is it a framework or an app?** | Both. Use it as a finished app, or import `agent-workspace-harness` (`import alpha.*`) and build your own agent runtime on the same engines. |
 
 ---
 
-## 2. System Architecture & Topology
+## Alpha at a glance
+
+| | |
+| :--- | :--- |
+| **Current version** | `2.1.0` |
+| **Language / runtime** | Python 3.12+ (backend), TypeScript (frontend) |
+| **Agent runtime** | LangGraph (async, checkpointed, interruptible) |
+| **Gateway** | FastAPI 0.115+ / Starlette / Uvicorn — 60 routers |
+| **Frontend** | Next.js 15 (App Router) + React 19 + Tailwind |
+| **Desktop app** | Electron (Windows), self-contained runtimes, one-click NSIS installer |
+| **Edge** | Nginx reverse proxy on `:2026` (the only public port) |
+| **Persistence** | SQLite or PostgreSQL, vector memory, AES-GCM-encrypted checkpoints |
+| **Sandboxing** | Local subprocess, Docker container, or Kubernetes provisioner |
+| **Native tools** | 130 (`contracts/feature_manifest.json`, generated) |
+| **Middleware layers** | 42 |
+| **Background supervisor loops** | 8 |
+| **Public skills** | 24 in `skills/public/` |
+| **Integrations** | Telegram, Slack, Feishu/Lark, WeChat, WeCom, DingTalk, Discord, Buzz, Signal, GitHub webhooks, MCP, generic REST |
+| **API compatibility** | OpenAI-compatible `POST /api/compat/openai/chat/completions` |
+| **Harness subsystems** | 99 engine packages under `backend/packages/harness/alpha/` |
+| **Backend tests** | pytest suite under `backend/tests/` (1,000+ test modules) |
+| **License** | MIT |
+
+### Architecture in one diagram
 
 ```mermaid
 flowchart TB
-    subgraph Presentation ["Presentation & Interaction Layer"]
-        Electron["Alpha Desktop App (Electron · Windows)"]
-        WebWorkspace["Next.js 15 Web Workspace (Port 3000)"]
-        Omnichannel["Omnichannel Hub (Slack, Discord, Telegram, Lark, DingTalk, WeChat, WeCom, Buzz)"]
-        OpenAICompat["OpenAI Compatibility API (/api/compat/openai/chat/completions)"]
+    subgraph Presentation ["Presentation"]
+        Electron["Electron Windows app"]
+        Web["Next.js 15 workspace :3000"]
+        IM["Omnichannel hub: Slack · Telegram · Feishu · WeChat · WeCom · DingTalk · Discord · Buzz · Signal"]
+        OpenAICompat["OpenAI-compatible API"]
     end
 
-    subgraph Ingress ["Edge & Network Routing"]
-        Nginx["Nginx Reverse Proxy & Load Balancer (Port 2026)"]
-        Gateway["FastAPI Gateway & Agent Runtime (Port 8001 / 8201)"]
+    subgraph Edge ["Edge"]
+        Nginx["Nginx reverse proxy :2026 — the only public port"]
     end
 
-    subgraph AgenticCore ["Alpha Autonomous Core Plane"]
-        Planner["Cognitive Planner & 8-Dimensional Strategic Evaluator"]
-        Orchestrator["Swarm & Subagent Orchestrator (A2A, SOUL, DM, DAG)"]
-        DeepResearch["Deep Research Engine (5-Pass Search & Citation Verification)"]
-        Harness["Continuous Execution Harness (Goal Engine, Ralph Loop, Boulder)"]
-        Cognitive["Cognitive Intelligence (AVO Optimization, MoA, ToM, Dreaming)"]
-        CodeCore["Code Agentic Core (AST-Grep, Repo Twin, Auto-Repair, Hashline)"]
+    subgraph Runtime ["Agent runtime"]
+        Planner["Planner + 8-dimension task evaluator"]
+        Orchestrator["Swarm / subagent orchestrator (A2A, DM, DAG)"]
+        Research["Deep research engine (5-pass, citation-verified)"]
+        Harness["Continuous execution harness (goal engine, Ralph loop, checkpoints)"]
+        Cognition["Cognitive plane (AVO, MoA, ToM, dreaming)"]
+        CodeCore["Code agentic core (AST-grep, repo twin, auto-repair)"]
+        Tools["130 tools + 42 middlewares + MCP + 24 skills"]
     end
 
-    subgraph SecurityEnclave ["Security Enclave & Governance Plane"]
-        Astra["Astra Security Enclave & Scoped Credential Vault"]
-        Approval["Smart Command Approval Gate & Emergency Stop (Estop)"]
-        Telemetry["Trajectory Flight Recorder, Audit Logs & Token Spend Meter"]
+    subgraph Security ["Security & governance"]
+        Astra["Astra enclave + scoped credential vault"]
+        Approval["Approval gate + emergency stop"]
+        Audit["Trajectory flight recorder + token spend meter"]
     end
 
-    subgraph Persistence ["Persistence, Memory & Storage Layer"]
-        Relational[("PostgreSQL / SQLite Database")]
-        VectorMem[("Vector Memory & Knowledge Graph")]
-        Checkpoints[("AES-GCM Encrypted Checkpoints & Artifact Archive")]
+    subgraph Storage ["Persistence & memory"]
+        DB[("SQLite / PostgreSQL")]
+        Mem[("Vector memory + knowledge graph")]
+        CKPT[("Encrypted checkpoints + artifact archive")]
     end
 
-    Presentation --> Nginx
-    Nginx --> Gateway
-    Gateway --> AgenticCore
-    AgenticCore --> SecurityEnclave
-    AgenticCore --> Persistence
+    Electron --> Nginx
+    Web --> Nginx
+    IM --> Nginx
+    OpenAICompat --> Nginx
+    Nginx --> Runtime
+    Runtime --> Security
+    Runtime --> Storage
 ```
 
 ---
 
-## 3. Complete High-Level Feature Catalog
+## Why Alpha?
 
-Every advanced feature in Alpha is engineered for production-grade reliability and deep autonomy:
+Most agent frameworks give you a loop and leave the hard parts to you. Alpha ships
+the parts that decide whether an autonomous agent is usable in production.
 
-### 3.1 Autonomous Deep Research & Knowledge Synthesis
-- **5-Pass Autonomous Search Pipeline**: Compiles multi-lane searches across Discovery, Specific Evidence, Adversarial Contradiction, Fact Verification, and Strategic Synthesis.
-- **Targeted Knowledge Gap Filling**: Detects missing empirical metrics, benchmarks, or architectural trade-offs and runs a bounded follow-up search stage.
-- **Adversarial Source Juxtaposition**: Pairs supporting and falsification-lane evidence for explicit review without claiming a logical contradiction that was not independently established.
-- **Explicit Citation Contract**: Assigns deterministic citation anchors (`[S1]`, `[S2]`, etc.) and reports each source as verified, unsupported, unverified, or not checked.
-- **Programmatic `deep_research` Builtin Tool**: Allows any agent or workflow to run comprehensive multi-hop investigations and save artifacts directly to disk under the current thread's outputs directory.
-- **Pinned AgentEye Live-Source Plane**: Adds a curated 39-function free-source catalog across academic, developer, package, government, scientific, knowledge, media, and social APIs, with operator allowlists, bounded fan-out, SSRF-safe fetching, honest provider failures, and DDGS fallback. See [`backend/docs/AGENT_EYE_RESEARCH.md`](backend/docs/AGENT_EYE_RESEARCH.md).
-- **`deep-research` Subagent Category Preset**: Direct task delegation with an expanded 150-turn budget, built-in search tools, and strict citation guidelines.
+| Production problem | How Alpha solves it |
+| :--- | :--- |
+| **The agent dies mid-task** | Durable Boulder checkpoints, worker-lease fencing, and automatic resume after a crash, expired lease, or model error. Browser refresh never cancels work. |
+| **It hallucinates that it finished** | A Goal Engine with verifiable completion criteria plus a finish-first evidence matrix. A run can complete and still be honestly reported as *unverified*. |
+| **It burns your budget** | Token, tool-call, wall-clock, task, and replan budgets per run; explicit `budget_exhausted` / `stalled` states; cache-aware spend telemetry. |
+| **It runs dangerous commands** | A risk-scoring approval gate, an emergency stop (Estop), a scoped credential vault, and per-thread sandbox isolation. |
+| **You can't tell what it did** | A trajectory flight recorder and end-to-end artifact lineage tracing — cryptographic provenance from prompt to output. |
+| **It can't use your tools** | 130 native tools, MCP over stdio/HTTP/SSE, a documented extension contract, and an OpenAI-compatible endpoint for third-party clients. |
+| **It forgets everything** | A layered memory plane: working memory, episodic replay, semantic knowledge graph, and idle-time dreaming consolidation. |
+| **It only works in a terminal** | Web workspace, Windows desktop app, and eight messaging platforms — all driving the same agent runtime. |
+| **You can't evaluate it** | A benchmarks registry, a skill quality reviewer, a 5-pass research citation contract, and a generated `feature_manifest.json` that fails CI on registry drift. |
 
-### 3.2 Swarm Orchestration & Multi-Agent Workforce
-- **Bot Roster & SOUL Protocol**: Maintains registered autonomous bots with distinct personalities, isolated system prompts, and private inboxes.
-- **Bot Mode Direct Messaging (DMs)**: Fire-and-forget asynchronous inter-bot and user-to-bot messaging (`POST /api/bots/{name}/dm`) with server-side attribution.
-- **Multi-Agent Group Chat & Swarms**: Real-time multi-agent collaborative rooms where specialized bots brainstorm, challenge assumptions, and produce unified deliverables.
-- **Swarm v2 DAG Runtime**: Explicit dependency plans use atomic checkpoints, ordered JSONL audit events, owner-scoped admission, idempotent creation, lease-fenced task attempts, retry backoff, and restart recovery.
-- **Bounded Swarm Execution**: Token/tool-call/wall-clock/task/replan budgets, adaptive provider concurrency, watchdog recovery, pause/resume/cancel, metrics, and explicit `budget_exhausted`/`stalled` states keep autonomous runs observable and fail closed.
-- **Typed Swarm Communication & Consensus**: A bounded blackboard carries untrusted observations and task results; explicit evidence-backed votes, leader election, acceptance verification, and acceptance-sensitive aggregation distinguish execution success from verified delivery.
-- **Swarm Operations Surface**: REST/SSE APIs expose task claims and leases, revisions, events, messages, replans, progress, and leader/resource-governor telemetry; the `swarm` tool exposes the same operations to authorized agents.
-- **Real-Time Collaborative Kanban Board**: Live visual project management enabling agents to create, assign, transition, and audit cards on a shared Kanban board.
-- **Agent-to-Agent (A2A) Messaging Protocol**: Structured protocol enabling agents to dispatch peer requests, observe peer outputs, and coordinate distributed workflows.
-- **Project Workforce Layer**: Enterprise workforce management with agent↔project membership, online presence tracking, resource locking, project constitutions, and ADR memory.
-
-Swarm state is persisted locally as atomic JSON checkpoints plus append-only JSONL events. That is restart-recoverable for one Gateway process; a multi-worker deployment must provide a shared SQL lease repository before claiming cross-process exactly-once execution. See [`docs/WORKFORCE.md`](docs/WORKFORCE.md) and [`docs/API_REFERENCE.md`](docs/API_REFERENCE.md).
-
-### 3.3 Continuous Execution Harness, Planners & Loops
-
-#### Dynamic workflow plane
-
-Alpha can opt into a full prompt-to-workflow loop: deterministic intent
-perception, capability/resource discovery, task decomposition, bounded DAG waves,
-typed graph patches, approval gates, retry/replan, evidence-gated replay, and
-saga compensation. Use `POST /api/workflows/dynamic/perceive` for a no-side-effect
-preview and `POST /api/workflows/dynamic/execute` for the correlated workflow
-run; the legacy `/api/workflows/turns` paradigm seam remains available.
-
-The built-in digest executor is deliberately a **local graph projection**, not a
-claim that a domain task ran. Dynamic responses disclose
-`execution_label="local_digest_projection"` and `acceptance_passed=false` until
-a real model/tool/MCP/sandbox/bot executor is bound. Missing executors,
-unavailable registries, failed compensation, and incomplete verification fail
-or disclose honestly. Workflow events, projections, hydration, plan history,
-and replay are exposed through the Gateway; local JSONL storage is
-restart-recoverable for one process, not a multi-worker exactly-once lease
-repository. See [`docs/DYNAMIC_WORKFLOWS.md`](docs/DYNAMIC_WORKFLOWS.md).
-
-- **Autonomous One-Prompt Planner**: Synthesizes unformatted, complex user prompts into structured, multi-step execution plans without manual intervention.
-- **Autonomous One-Prompt Planner**: Synthesizes unformatted, complex user prompts into structured, multi-step execution plans without manual intervention.
-- **Cognitive Plan Mode (8-Dimensional Strategic Evaluation)**: Evaluates tasks across clarity, safety, feasibility, reversibility, resource intensity, architectural impact, empirical evidence, and mission alignment.
-- **Mission Hierarchy & Work Queue DAG**: Builds hierarchical mission trees that decompose macro goals into dependency-ordered work queues.
-- **Continuous Goal Engine & Integrity Gate**: Monitors active task objectives, enforces verifiable completion criteria, and prevents premature or hallucinated task exits.
-- **Ralph Loop (Recursive Self-Improvement Loop)**: Executes test-driven iterative self-healing loops until code passes all unit tests and satisfies architectural invariants.
-- **Boulder Checkpointing & Safe Durable Replay**: Saves multi-session execution snapshots, keeps browser/network disconnects from cancelling active work, and automatically resumes model-side progress after a Gateway crash, expired worker lease, graceful restart, or recoverable model failure. Tool/MCP/custom actions stop for confirmation when an external effect may be ambiguous, preventing duplicate irreversible side effects. See [`docs/RUN_RECOVERY.md`](docs/RUN_RECOVERY.md).
-- **Kibitzer & Metacognitive Supervision**: Background supervisory processes that continuously evaluate agent reasoning to detect loops, thrashing, and prompt drift.
-
-### 3.4 Frontier Cognitive Intelligence & Optimization
-- **Autonomous Agentic Variation Operators (AVO)**: Implements evolutionary prompt and strategy mutations to optimize agent performance across complex tasks.
-- **Mixture of Agents (MoA) Multi-Model Reasoning**: Queries multiple heterogeneous LLMs in parallel and synthesizes diverse perspectives into high-confidence conclusions.
-- **Theory of Mind (ToM) Consult**: Simulates human user mental models, stakeholder expectations, and downstream receiver perspectives.
-- **Epistemic Belief Evaluation**: Evaluates claims against an empirical ground-truth knowledge base to detect and flag unsubstantiated assumptions.
-- **Cognitive Memory & Dreaming Consolidation**: Consolidates ephemeral episodic memory traces into high-level semantic knowledge graphs during idle periods.
-- **Strategic Discipline Council**: Multi-perspective governance team performing invariant verification, gap analysis, and policy compliance audits.
-- **Quality Council & Evidence Matrix**: Deliberates artifact quality and validates finish-first empirical evidence before declaring work complete.
-- **Consequence Simulation & Problem Modeling**: Simulates potential negative outcomes, side-effects, and blast radiuses before executing irreversible actions.
-- **System One decision models**: Provider-neutral typed `choice`/`score`/`noul` decisions through hosted Jev or self-hosted [Laya](https://github.com/NandhaKishorM/laya), with confidence gating and deterministic/LLM fallback. Large Laya choice catalogs use bounded partition tournaments instead of truncation, and browser/desktop targets remain index-only. The optional Windows desktop route observes the accessibility tree, chooses `CLICK`/`TYPE_TEXT`/`PRESS`/`HOTKEY` semantically, and resolves geometry plus caller-supplied values only inside the guarded executor. See [`docs/SYSTEM_ONE.md`](docs/SYSTEM_ONE.md).
-
-### 3.5 Code Agentic Core & Developer Tooling
-- **Pre-Commit AST Syntax & Linter Guardrail**: Intercepts file writes across `write_file`, `str_replace`, and `hashline_edit` prior to disk commit; statically verifies AST syntax (`ast.parse`, `json.loads`, `yaml.safe_load`) and automatically rejects syntactically broken edits with compiler feedback.
-- **Git Shadow Checkpoint & 1-Click Rollback Engine**: Captures lightweight Git shadow references (`refs/alpha-checkpoints/<cid>`) before risky mutations with full REST endpoints (`GET/POST /api/checkpoints`, `POST /api/checkpoints/{id}/rollback`, `GET /api/checkpoints/{id}/diff`) for instant workspace state restoration.
-- **Automated Test & Repair**: Autonomously executes test commands, parses tracebacks, isolates root causes, and applies verified fixes.
-- **Repository Map AST Generator**: Analyzes entire codebases to construct visual and structural abstract syntax tree dependency maps.
-- **Code Checkpoint Management**: Manages temporary Git checkpoints, commits, stashes, and branch rollbacks during experimental refactors.
-- **AST-Grep Search and Rewrite**: Precision semantic code search and structural AST rewrites across TypeScript, Python, Go, Rust, and C++.
-- **Repo Twin Inspection**: Maintains a shadow sandbox twin of the target repository to preview changes before applying them to the working tree.
-- **Hashline Line-Level Precision Editing**: Deterministic line-based reading and editing tool preventing merge conflicts and multi-line edit drift.
-- **Sandboxed Python & Bash REPL**: Secure sandbox execution environments for running data analysis, scripts, and system commands.
-- **Visual Artifact & UI Verification**: Renders and visually inspects generated UI widgets, canvases, and media artifacts.
-
-### 3.6 Enterprise Security Enclave & Governance
-- **Astra & Enclave Security Management**: Hardware- and software-enforced security enclaves safeguarding credentials and enforcing process isolation.
-- **Smart Command Approval Gate**: Risk-scoring engine requiring explicit operator verification before executing high-impact terminal commands.
-- **Emergency Stop (Estop)**: Instant hard-stop mechanism capable of terminating runaway loops, subagents, and background processes.
-- **Trajectory Flight Recorder**: Cryptographically logs every reasoning step, tool call, and state transition for forensic security audits.
-- **Universal Artifact Lineage Tracing**: Tracks the full end-to-end cryptographic provenance of all generated files, code, and documentation.
-- **Deterministic Token Budgeting & Cost Telemetry**: Enforces per-run token ceilings and reports real-time financial spend with provider cache-aware pricing.
-
-### 3.7 Omnichannel Messaging Hub & Integrations
-- **Supported Chat Platforms**: Native bidirectional communication with **Telegram, Slack, Feishu/Lark, WeChat, WeCom, DingTalk, Discord**, and **Buzz**.
-- **Scheduled Automations & Blueprints**: Cron-based scheduled automations, pre-flight wake-gates, and blueprint workflows with incident tracking and auto-pause.
-- **OpenAI-Compatible Chat Gateway**: Full drop-in replacement API at `POST /api/compat/openai/chat/completions` for integration with external AI clients.
-- **GitHub Webhook Automations**: Event-driven agent invocations triggered by GitHub pull requests, issues, comments, and releases.
-
-### 3.8 Presentation Layer: Windows Desktop & Web UI
-- **One-Click Windows Desktop Application**: Electron shell bundling embedded Node.js and `uv` runtimes that launches directly into chat without setup wizards.
-- **Next.js 15 Web Workspace**: Modern responsive dashboard with Chat, Overview, Workforce, Projects, Kanban, Skills, and Settings views.
-- **Complete On-Device Chat History**: Keeps an uncapped IndexedDB archive of every thread/message on the local computer, paginates through the full server history, migrates the previous capped browser cache, and creates durable threads only after a real message/file/command instead of when an empty composer opens. Nothing is ever silently dropped: a temporarily unreachable Gateway shows a banner that you are reading the local copy (not an empty history), a partially loaded chat says so, and an answer that is still streaming is archived without being painted into a conversation you switched to. Backup and Restore move the full archive between computers as JSON.
-- **Bot-Led Multi-Bot Projects**: Every bot profile can create a project with itself attached as lead; the Projects view can add or remove several other bot profiles, assign a project role, and manage their conversations together. Each change is confirmed by re-reading the server's roster before it is reported as done.
-- **Free Local Real-Time Voice**: Browser microphone streaming, local Whisper interim/final transcription, VAD turn endpointing, normal SSE agent streaming, sentence-level local Piper playback, and hands-free resume—with no paid speech API.
-- **Milo Lion Companion**: A local inline-SVG companion with six lion looks, articulated legs, a richer face and fur rig, automatic or manual walk/run/jump/roar/pounce/play/sleep/stretch/prowl/hunt/shake/spin actions, bounded walk/run roaming, lifecycle reactions, petting, dragging, resizing, optional sound cues, reduced motion, and an optional transparent always-on-top Windows desktop window without forwarding prompt or conversation data. See [`docs/LION_COMPANION.md`](docs/LION_COMPANION.md).
-- **Guarded GitHub Source Auto-Update**: Published-release/branch discovery, clean-worktree and fast-forward enforcement, backup refs, detached restart, health verification, and automatic rollback. Disabled by default; see [`docs/AUTO_UPDATE.md`](docs/AUTO_UPDATE.md).
-- **Interactive Canvas & Generative UI**: Inline interactive HTML/React widgets, live SVG diagrams, KaTeX math equations, and data tables.
+**Alpha is honest about its limits.** Where a capability is a local projection
+rather than a real execution, or where a guarantee is restart-recoverable for one
+process but not cross-process, the documentation says so. That is a design
+decision, not a gap in the docs.
 
 ---
 
-## 4. Complete Subsystem Reference (All 89 Harness Engines)
+## Alpha vs. other agent frameworks
 
-Every directory in `backend/packages/harness/alpha/` represents a dedicated functional engine in Alpha:
+If you are evaluating agent frameworks, this is the section to read. Alpha is
+**not** a competitor to every row — it sits in the "finished, self-hostable agent
+product" column, and it is a *superset* of the orchestration column.
 
-| # | Subsystem Engine | Architectural Purpose |
-| :- | :--- | :--- |
-| 1 | `action` | Executes transactional actions with rollback capabilities and atomic side-effect guarantees. |
-| 2 | `agency` | Evaluates agent competence, tracks autonomy profiles, and scores self-efficacy. |
-| 3 | `agent` | Core LangGraph agent loop managing message reducers, state transitions, and step events. |
-| 4 | `agents` | Custom subagent definitions, persona isolation, model overrides, and capability whitelisting. |
-| 5 | `authz` | Granular role-based tool authorization, execution gates, and credential scoping. |
-| 6 | `autoconfig` | Automatic environment probing, GPU acceleration detection, and model provider discovery. |
-| 7 | `avo` | Agentic Variation Operators optimizing reasoning strategies via evolutionary mutations. |
-| 8 | `benchmarks` | Quantitative task evaluation benchmarks and latency/cost performance registries. |
-| 9 | `blackboard` | Shared cognitive blackboard for multi-agent evidence posting, hypothesis testing, and querying. |
-| 10 | `bots` | Dedicated bot roster management, private mailbox dispatch, and SOUL protocol state machines. |
-| 11 | `browser` | Headless browser automation, DOM inspection, screenshot capture, and web navigation. |
-| 12 | `canvas` | Interactive canvas workspace for live artifacts, rich charts, and generative UI widgets. |
-| 13 | `channels` | Omnichannel communication adapters for Slack, Discord, Telegram, Lark, DingTalk, and WeChat. |
-| 14 | `coding` | Autonomous test-and-repair, AST rewriting, repository twin previewing, and git checkpointing. |
-| 15 | `commands` | Slash command parser and autonomous handlers (`/goal`, `/plan`, `/learn`, `/schedule`). |
-| 16 | `community` | External skill marketplace integration and community extension management. |
-| 17 | `company` | Virtual corporate organizational hierarchy, department dispatch, and corporate role structure. |
-| 18 | `config` | Strict Pydantic configuration schemas, environment variable validation, and token ceilings. |
-| 19 | `consequence` | Counterfactual consequence simulation predicting side-effects before tool execution. |
-| 20 | `context` | Dynamic context-as-data management, sliding-window compaction, and prompt injection filters. |
-| 21 | `council` | Strategic Quality Council deliberating deliverable completeness, safety, and compliance. |
-| 22 | `critic` | Adversarial artifact criticism, logic flaw detection, and verification review loops. |
-| 23 | `deliberation` | Multi-agent consensus mechanisms, round-robin debate, and synthesis arbitration. |
-| 24 | `diagnostics` | System health diagnostics, disk space probes, memory leak detection, and CPU telemetry. |
-| 25 | `editing` | Deterministic line-based hashline reading and AST-safe precision code editing. |
-| 26 | `enterprise` | Enclave security plane, audit trails, tenant isolation, and corporate compliance controls. |
-| 27 | `epistemics` | Epistemic belief tracking separating proven empirical facts from assumptions. |
-| 28 | `evaluation` | Task evaluation benchmarks, scoring rubrics, and feedback export datasets. |
-| 29 | `events` | Centralized reactive event bus dispatching telemetry, step notifications, and lifecycle hooks. |
-| 30 | `evidence` | Empirical evidence matrix auditing finish-first claims and quantitative citations. |
-| 31 | `evolution` | Evolutionary prompt optimization and genetic search for optimal reasoning paths. |
-| 32 | `extensions` | Dynamic MCP server loading, stdio/SSE transports, and tool cataloging. |
-| 33 | `goals` | Continuous Goal Engine enforcing verifiable completion criteria without hallucinations. |
-| 34 | `governance` | Discipline council gates, policy invariants, and human-in-the-loop approval mechanisms. |
-| 35 | `groups` | Multi-agent collaborative group chat rooms with automated moderator synthesis. |
-| 36 | `guardrails` | Strict input/output safety filters, prompt injection defenses, and secret redaction. |
-| 37 | `harness` | Continuous execution harness, resilient error recovery, and loop stabilizers. |
-| 38 | `integrations` | External API hooks, webhook receivers, and third-party SaaS integrations. |
-| 39 | `jobs` | Asynchronous background job queues with status polling and cancel signals. |
-| 40 | `kanban` | Real-time collaborative kanban boards for multi-agent project task tracking. |
-| 41 | `knowledge` | Enterprise semantic knowledge graph and cross-session associative search. |
-| 42 | `learning` | Dynamic skill forge synthesizing reusable skills from successful execution traces. |
-| 43 | `ledger` | Cryptographic execution ledger and token consumption bookkeeping. |
-| 44 | `lineage` | Universal artifact provenance tracking full derivation history from initial prompt. |
-| 45 | `mcp` | Model Context Protocol client managing external tool servers over stdio and HTTP/SSE. |
-| 46 | `media` | Multi-modal asset processing, image generation, OCR parsing, and audio handling. |
-| 47 | `memory` | Hybrid cognitive memory combining vector search, episodic replay, and dreaming. |
-| 48 | `metacognition` | Metacognitive health monitoring detecting agent loops, thrashing, and fatigue. |
-| 49 | `metacompiler` | High-level prompt compiler transforming intents into structured execution trees. |
-| 50 | `mission` | Hierarchical mission DAG execution and multi-stage work queue scheduling. |
-| 51 | `missions` | Complex goal decomposition into parallel and sequential execution milestones. |
-| 52 | `models` | Multi-provider routing, load balancing, model fallbacks, and token tracking. |
-| 53 | `ops` | Operator telemetry APIs, runtime diagnostics, and system health status probes. |
-| 54 | `orchestration` | Distributed agent swarms, dynamic work partitioning, and barrier synchronization. |
-| 55 | `orchestrator` | Lead orchestrator delegating bounded subtasks to specialized subagents. |
-| 56 | `perpetual` | Non-terminating continuous background monitoring and recurring cron agents. |
-| 57 | `persistence` | SQLite and PostgreSQL durable checkpointer state saving. |
-| 58 | `planning` | 8-dimensional cognitive planning mode and autonomous one-prompt planners. |
-| 59 | `policy` | Tool execution whitelists, blacklists, permission tiers, and security constraints. |
-| 60 | `projects` | Project workforce layer, presence tracking, resource locks, constitutions, and ADRs. |
-| 61 | `protocols` | Agent-to-Agent (A2A), SOUL protocol, and inter-process RPC communication standards. |
-| 62 | `reasoning` | Mixture of Agents (MoA) multi-model deliberation and multi-perspective consensus. |
-| 63 | `recovery` | Automatic fault recovery, corrupted state reconciliation, and restart handlers. |
-| 64 | `reflection` | Managed reflexion memory and self-critique loops for continuous improvement. |
-| 65 | `reproduction` | Autonomous bug reproduction engine executing isolated repro tests. |
-| 66 | `research` | Advanced 5-pass Deep Research engine, citation verification, and gap filling. |
-| 67 | `rsi` | Recursive Self-Improvement (RSI) cycle for bounded self-optimizing agent code. |
-| 68 | `rules` | Workspace-specific coding and operational rules enforced on every turn. |
-| 69 | `runtime` | LangGraph-powered execution runtime, middleware stack, and interrupt handlers. |
-| 70 | `safety` | Emergency stop (Estop), destructive command gating, and rate limiting. |
-| 71 | `sandbox` | Multi-tier code sandbox (local subprocess, Docker container, Kubernetes provisioner). |
-| 72 | `scheduler` | Background cron scheduler, blueprints, and incident-aware auto-pausing. |
-| 73 | `security` | Astra security enclave, credential vault, and encrypted checkpoint storage. |
-| 74 | `selfrepair` | Automated symptom diagnosis and health verifiers for environment self-repair. |
-| 75 | `skills` | Dynamic skill authoring, curator lifecycle (active/stale/archived), and quarantine. |
-| 76 | `state` | Immutable state snapshots, delta tracking, and rollback capabilities. |
-| 77 | `subagents` | Intent category presets (`general`, `research`, `quick`, `deep-research`), capacity limits. |
-| 78 | `supervision` | Kibitzer active supervisor nudging drifting agents back to task goals. |
-| 79 | `swarm` | Owner-scoped, lease-fenced multi-agent DAG runtime with durable checkpoints, bounded communication/consensus, budgets, recovery, and explicit acceptance state. |
-| 80 | `tools` | 120+ native tools spanning file I/O, coding, shell, web, search, and cognition. |
-| 81 | `tracing` | End-to-end telemetry tracing supporting LangSmith, Langfuse, and Monocle. |
-| 82 | `trajectory` | Forensic trajectory flight recorder storing step-by-step reasoning and tool traces. |
-| 83 | `tui` | Terminal user interface for interactive command-line agent operation. |
-| 84 | `uploads` | File ingestion pipeline supporting PDFs, source code, images, audio, and archives. |
-| 85 | `utils` | Core string manipulation, diff computation, JSON parsing, and async helpers. |
-| 86 | `verification` | Visual UI artifact rendering, DOM assertion, and screenshot comparison. |
-| 87 | `workflow` | Workflow DAG execution engine managing multi-step dependency graphs. |
-| 88 | `workspace_changes` | Git-aware file change tracking and differential workspace audit logs. |
-| 89 | `branding` | Unified display branding identity ensuring neutral presentation across UI layers. |
+| | **Alpha** | LangGraph | AutoGen | CrewAI | OpenHands | Dify |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Shape** | Full agent OS / app | Low-level graph library | Actor/actor library | Agent + flow framework | Coding-agent product | Low-code LLM app platform |
+| **You get** | Running system, UI, deploy, docs | A graph primitive | Message-passing actors | Crews & Flows abstractions | A software-engineering agent | A visual builder + runtime |
+| **Ready-to-run web UI** | ✅ Next.js 15 workspace | ❌ | ❌ (Studio separate) | ❌ | ✅ | ✅ |
+| **Windows desktop app** | ✅ Electron, one-click installer | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **MCP client** | ✅ stdio / HTTP / SSE | Via LangChain | Community | ✅ | ✅ | ✅ |
+| **Multi-agent swarms** | ✅ Lease-fenced DAG, budgets, consensus | Build it yourself | ✅ Core primitive | ✅ Crews | Limited | Workflow nodes |
+| **Deep research with citation contract** | ✅ 5-pass built in | Build it | Build it | Build it | ❌ | ❌ |
+| **Sandboxed code execution** | ✅ local / Docker / K8s | ❌ | ❌ | ❌ | ✅ Docker | ❌ |
+| **Persistent memory + dreaming** | ✅ 9-tier memory plane | Basic checkpointer | Basic | Basic | Episodic | App memory |
+| **Messaging channels** | ✅ 9 platforms | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Durable long-running runs** | ✅ Boulder checkpoints + lease recovery | ✅ Durable execution | Partial | Partial | ✅ | Partial |
+| **Approval gate + emergency stop** | ✅ | Build it | Build it | Build it | ✅ | Partial |
+| **Audit / provenance trail** | ✅ Flight recorder + lineage | LangSmith (opt-in) | Logging | Logging | Event stream | Logs |
+| **Self-host without a cloud account** | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ optional tiers |
+| **Language** | Python + TypeScript | Python + JS/TS | Python (+ .NET) | Python | Python + TS | TypeScript + Python |
+
+### When to pick something else
+
+Alpha is a large system. Choose a smaller tool when:
+
+- **You only need a graph primitive inside an existing app** → use LangGraph
+  directly, and optionally lift Alpha's harness engines as a library.
+- **You want a low-code visual builder for non-engineers** → use Dify or Flowise.
+- **Your only job is autonomous code review / PR fixing** → OpenHands is leaner.
+- **You want a pure library with zero UI and zero services** → LangGraph, Pydantic
+  AI, or Agno.
+
+### When to pick Alpha
+
+Pick Alpha when you need *several* of these at once, self-hosted, on your own
+infrastructure: long-horizon autonomous execution · deep research with verifiable
+citations · multi-agent delegation · sandboxed code · persistent memory across
+sessions · a real UI · messaging-platform reach · budget and safety controls you
+can audit.
+
+> Detailed, cited comparison: **[docs/COMPARISON.md](docs/COMPARISON.md)**.
 
 ---
 
-## 5. Public Skills Catalog (All 24 Specialized Skills)
+## What can you build with Alpha?
 
-Located in [`skills/public/`](./skills/public/), these skills provide pre-packaged agentic capabilities:
+Concrete, end-to-end jobs that ship on this platform — each maps to a documented
+subsystem.
 
-1. **`academic-paper-review`**: Critical peer-review evaluation, methodology assessment, and synthesis of research papers.
-2. **`bootstrap`**: Full repository scaffolding, boilerplate generation, and project environment setup.
-3. **`chart-visualization`**: Automated creation of interactive charts, telemetry graphs, and visual dashboards.
-4. **`claude-to-agent-workspace`**: Adapter and converter for importing skills and prompts from Claude Code/Codex formats.
-5. **`code-documentation`**: Automated generation of architecture guides, docstrings, API references, and inline comments.
-6. **`consulting-analysis`**: Strategic management frameworks including SWOT, Porter's Five Forces, BCG Matrix, and MECE trees.
-7. **`data-analysis`**: Tabular processing, statistical data modeling, pattern recognition, and trend forecasting.
-8. **`deep-research`**: Autonomous 5-pass web research, bounded knowledge-gap follow-up, and evidence-status-aware cited briefs.
-9. **`find-skills`**: Discovery engine that semantically indexes and locates skills across local and public registries.
-10. **`frontend-design`**: Generation of production-grade, accessible UI components and modern styling systems.
-11. **`github-deep-research`**: Comprehensive repository audits, commit history investigations, and issue triage.
-12. **`image-generation`**: Multi-modal image prompt synthesis, style matching, and pipeline execution.
-13. **`music-generation`**: Musical structure design, BPM/key configuration, and audio prompt formulation.
-14. **`newsletter-generation`**: Curated industry digests, executive summaries, and publication-grade newsletters.
-15. **`podcast-generation`**: Multi-speaker dialogue scriptwriting and audio storyboarding.
-16. **`ppt-generation`**: Structured presentation slide decks, visual outlines, and speaker note generation.
-17. **`project-cartographer`**: Codebase structural mapping, dependency graphing, and architectural cartography.
-18. **`skill-creator`**: Autonomous skill synthesis creating reusable skills from successful agent trajectories.
-19. **`skill-reviewer`**: Security auditing, compliance testing, and trust-tier classification for agent skills.
-20. **`surprise-me`**: Open-ended creative problem solving, generative ideas, and unexpected technical exploration.
-21. **`systematic-literature-review`**: PRISMA-compliant academic research reviews with formal citation matrices.
-22. **`vercel-deploy-claimable`**: One-click instant cloud deployment to Vercel with automated claim URLs.
-23. **`video-generation`**: Scene-by-scene scriptwriting, camera angle prompts, and video storyboarding.
-24. **`web-design-guidelines`**: Modern web design heuristics, responsive layouts, and WCAG accessibility standards.
-
----
-
-## 6. Gateway API & Router Directory (All 57 Micro-Endpoints)
-
-The FastAPI Gateway exposes 57 modular routers in `backend/app/gateway/routers/`:
-
-- `a2a.py` — Agent-to-Agent message routing and peer discovery.
-- `agent_messages.py` — Inter-agent message inbox delivery and status polling.
-- `agents.py` — Custom agent CRUD, configuration updates, and model binding.
-- `artifacts.py` — Artifact storage, versioning, diffing, and cryptographic lineage downloads.
-- `assistants_compat.py` — OpenAI Assistants API drop-in compatibility.
-- `auth.py` — BetterAuth session management, API key validation, and token issuance.
-- `benchmarks.py` — Task benchmark execution and latency/cost comparison metrics.
-- `bots.py` — Bot roster registration, personality inspection, and direct message handling.
-- `browser.py` — Remote browser session management, screenshot streaming, and DOM querying.
-- `channel_connections.py` — Management of external IM channel connection pools.
-- `channels.py` — Ingress message dispatch for Slack, Discord, Telegram, Lark, and WeChat.
-- `commands.py` — Slash command registration and execution dispatch.
-- `company.py` — Virtual organization hierarchy, department management, and employee bots.
-- `console.py` — Developer debugging console, real-time log tailing, and trace monitoring.
-- `council.py` — Strategic Discipline Council voting, gate approvals, and audit reports.
-- `deliberation.py` — Multi-agent deliberation session management and consensus voting.
-- `deliveries.py` — Outbound webhooks and automated artifact distribution.
-- `enterprise.py` — Enclave security controls, tenant quotas, and compliance auditing.
-- `evolution.py` — Agentic variation operator tuning and prompt evolution histories.
-- `features.py` — Dynamic runtime feature flag toggling and capability probing.
-- `feedback.py` — Human-in-the-loop feedback capture, ratings, and eval case exports.
-- `github_webhooks.py` — Inbound GitHub webhook event parsing and agent triggering.
-- `goal_contracts.py` — Formal goal contract validation, milestone tracking, and proof checking.
-- `goal_integrity.py` — Verification engine preventing premature task termination.
-- `groups.py` — Group chat room creation, bot participant membership, and transcript export.
-- `input_polish.py` — Autonomous prompt expansion, disambiguation, and objective refinement.
-- `integrations.py` — Third-party developer integration registry and webhook management.
-- `jobs.py` — Background job status tracking, logs, and cancellation endpoints.
-- `mcp.py` — Model Context Protocol server configuration, discovery, and tool registry.
-- `mcp_tasks.py` — Asynchronous task execution routed through external MCP servers.
-- `memory.py` — Cognitive memory queries, semantic vector search, and episodic replay.
-- `missions.py` — Hierarchical mission compilation, DAG visualization, and work queue status.
-- `models.py` — Active model registry, provider routing, and cost telemetry status.
-- `openai_compat.py` — Native OpenAI `/v1/chat/completions` compatibility layer.
-- `ops.py` — Operator diagnostics, server uptime, resource usage, and autonomy advice.
-- `plan_mode.py` — 8-dimensional cognitive planning mode submission and evaluation.
-- `policy.py` — Security policy definition, tool permissions, and network access rules.
-- `projects.py` — Project workforce management, presence, resource locks, and constitutions.
-- `runs.py` — Thread run lifecycle management, step streaming, and cancellation.
-- `scheduled_tasks.py` — Cron automations, schedule blueprints, and incident management.
-- `skills.py` — Skill installation, runtime loading, curator lifecycle, and quarantine management.
-- `subagent_batches.py` — Batch delegation of parallel subagent workloads.
-- `subagent_control.py` — Dynamic concurrency throttling, turn limits, and budget control.
-- `subagents.py` — Subagent invocation, category preset resolution, and output retrieval.
-- `suggestions.py` — Proactive next-step suggestion generation based on run state.
-- `supervision.py` — Kibitzer watchdog supervision, loop detection, and steering nudges.
-- `swarms.py` — Multi-agent swarm orchestration, leader election, and task partitioning.
-- `thread_runs.py` — Asynchronous thread run stream endpoints with SSE event dispatch.
-- `threads.py` — Thread persistence, history search, archiving, and context management.
-- `uploads.py` — Multi-modal file ingestion, text extraction, OCR, and context attachment.
-
----
-
-## 7. Complete Built-in Tools Catalog (120+ Native Tools)
-
-| Tool Name | Domain | Primary Capability |
+| Goal | What Alpha does | Read |
 | :--- | :--- | :--- |
-| `deep_research` | Research | Autonomous 5-pass research, bounded gap follow-up, and explicit evidence-status Markdown reports. |
-| `compile_five_pass_search` | Research | Compiles 5-pass multi-lane search queries for deep investigations. |
-| `catalog_tool_search` | Meta-Tools | Dynamic semantic search across the global tool and MCP catalog. |
-| `catalog_tool_describe` | Meta-Tools | Inspects input schemas and docstrings for any cataloged tool. |
-| `catalog_tool_call` | Meta-Tools | Dynamically executes tools discovered via tool catalog search. |
-| `auto_test_and_repair` | Coding | Executes test suites, parses failure traces, and autonomously repairs code. |
-| `generate_repo_map` | Coding | Constructs visual and structural AST dependency maps of repositories. |
-| `manage_code_checkpoint` | Coding | Manages git checkpoints, commits, stashes, and branch rollbacks during refactors. |
-| `ast_grep_search` | Coding | Precision semantic AST search across multiple programming languages. |
-| `ast_grep_rewrite` | Coding | Structural AST-level code rewriting and automated refactoring. |
-| `hashline_read` | Coding | Deterministic line-based reading with content hashes to prevent stale edits. |
-| `hashline_edit` | Coding | Deterministic line-based editing with collision detection. |
-| `inspect_repo_twin` | Coding | Inspects shadow sandbox copy of the workspace without modifying working tree. |
-| `python_repl_tool` | Execution | Sandboxed Python REPL for running computations, scripts, and data analysis. |
-| `execute_sandboxed_computer_action` | Execution | Sandboxed execution of shell commands, file actions, and terminal tasks. |
-| `build_autonomous_plan` | Planning | Transforms unformatted user requests into fully decided multi-step plans. |
-| `cognitive_plan` | Planning | Evaluates tasks across 8 strategic dimensions before execution. |
-| `compile_mission` | Planning | Decomposes complex macro objectives into dependency-ordered mission trees. |
-| `schedule_work_queue` | Planning | Schedules and partitions mission milestones across available subagents. |
-| `goal_engine_tool` | Planning | Tracks goal progress and enforces verifiable completion conditions. |
-| `goal_integrity_tool` | Planning | Verifies finish-first evidence before allowing task completion. |
-| `ralph_loop_tool` | Loops | Test-driven iterative self-healing loop for autonomous code repair. |
-| `run_rsi_cycle` | Loops | Bounded Recursive Self-Improvement cycle optimizing agent logic. |
-| `boulder_checkpoint_manage` | Persistence | Saves and restores multi-session Boulder execution snapshots. |
-| `manage_durable_orchestration` | Persistence | Orchestrates durable workflow resumption after unexpected interruptions. |
-| `create_workflow_checkpoint` | Persistence | Creates delta state checkpoints during multi-step workflows. |
-| `bot_roster_tool` | Workforce | Inspects registered bot roster, SOUL protocols, and specialized toolsets. |
-| `swarm_tool` | Workforce | Coordinates autonomous multi-agent swarms with dynamic leader election. |
-| `group_chat_tool` | Workforce | Dispatches tasks to collaborative multi-agent group chat rooms. |
-| `kanban_board_tool` | Workforce | Creates, assigns, updates, and audits task cards on a real-time Kanban board. |
-| `a2a_tool` | Workforce | Dispatches structured Agent-to-Agent requests and queries peer agents. |
-| `agent_message_tool` | Workforce | Sends direct messages to specific agents in the workforce. |
-| `agent_observe_tool` | Workforce | Observes execution status and intermediate thoughts of peer agents. |
-| `subagent_control` | Workforce | Dynamically manages subagent concurrency, budget limits, and delegation gates. |
-| `moa_multi_model_reasoning` | Cognitive | Queries multiple LLM backends in parallel and synthesizes consensus. |
-| `run_nvidia_avo_step` | Cognitive | Executes NVIDIA Agentic Variation Operator mutations to optimize prompts. |
-| `run_variation_operator_step` | Cognitive | Evolutionary variation operator for reasoning path optimization. |
-| `tom_consult` | Cognitive | Theory of Mind reasoning simulating user and stakeholder perspectives. |
-| `evaluate_epistemic_claim` | Cognitive | Validates factual claims against proven empirical ground truths. |
-| `cognitive_memory_tool` | Cognitive | Stores and retrieves episodic and semantic memories across sessions. |
-| `consolidate_memory_dream` | Cognitive | Consolidates short-term traces into long-term knowledge graphs during idle time. |
-| `manage_reflexion_memory` | Cognitive | Manages self-critique reflections and learned lessons from past errors. |
-| `consult_experience` | Cognitive | Consults historical execution traces to find proven solutions to similar problems. |
-| `simulate_consequences` | Cognitive | Simulates potential side-effects and blast radiuses of risky actions. |
-| `compile_problem_model` | Cognitive | Builds formal conceptual models of complex problems before planning. |
-| `check_metacognitive_health` | Cognitive | Evaluates agent cognitive health, detecting loops, thrashing, and fatigue. |
-| `deliberate_artifact_quality` | Governance | Quality Council deliberation on artifact completeness and standards. |
-| `audit_finish_first_evidence` | Governance | Audits empirical evidence to verify that deliverables satisfy requirements. |
-| `consult_plan_gap_analysis` | Governance | Identifies blind spots, missing edge cases, and gaps in proposed plans. |
-| `review_plan_invariant_gate` | Governance | Validates proposed plans against security, safety, and operational invariants. |
-| `dispatch_discipline_worker` | Governance | Dispatches specialized discipline workers (security, QA, performance) to review code. |
-| `astra_security_manage` | Security | Manages Astra hardware/software enclave security policies and isolation. |
-| `enterprise_security_manage` | Security | Enforces enterprise security compliance, tenant isolation, and audit gates. |
-| `verify_command_approval` | Security | Evaluates shell command risk and prompts operator for smart approval. |
-| `emergency_stop_manage` | Security | Instant emergency stop (Estop) halting runaway agents and background jobs. |
-| `trajectory_audit_tool` | Security | Inspects cryptographic flight recorder logs for security and debugging. |
-| `trace_artifact_lineage` | Security | Traces the complete provenance graph of any generated artifact. |
-| `browser_navigate_and_inspect` | Environment | Automates web browsing, DOM element inspection, and screenshot capture. |
-| `desktop_system_one_action` | Environment | Optional Laya/Jev-powered semantic Windows UI action; uses accessibility indexes and guarded local execution. |
-| `visual_verify_artifact` | Environment | Renders and visually inspects UI components and graphics. |
-| `canvas_widget_tool` | Environment | Renders interactive HTML/React widgets on the chat canvas. |
-| `cronjob_manage` | Automation | Manages recurring cron jobs, blueprints, and schedule automations. |
-| `batch_task` | Automation | Dispatches batches of concurrent subagent tasks. |
-| `list_background_tasks` | Automation | Lists active background processes, execution times, and resource usage. |
-| `cancel_background_task` | Automation | Terminates specific running background tasks. |
-| `process_handle_tool` | Automation | Manages persistent OS background process handles. |
-| `workflow_dag_manage` | Automation | Manages and executes multi-step workflow dependency graphs. |
-| `skills_hub_manage` | Skills | Manages local and remote skill installations, updates, and removals. |
-| `forge_skill_from_trace` | Skills | Automatically synthesizes a reusable skill from a successful execution trace. |
-| `propose_skill_tool` | Skills | Proposes a newly learned capability as a candidate skill package. |
-| `review_skill_package` | Skills | Audits candidate skill packages for security, quality, and formatting. |
+| **Autonomous research reports** | 5-pass search (discovery → evidence → falsification → verification → synthesis), gap filling, and an explicit `[S1]`-style citation contract with per-source status | [docs/DEEP_RESEARCH.md](docs/DEEP_RESEARCH.md) |
+| **Autonomous coding & repair** | AST-verified edits, git shadow checkpoints with 1-click rollback, test-and-repair loops, repo twin previewing, AST-grep search/rewrite | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| **A team of agents on one project** | Bot roster, SOUL protocol, private inboxes, DMs, group chat rooms, live Kanban board, project constitutions, ADRs, resource locks | [docs/WORKFORCE.md](docs/WORKFORCE.md) |
+| **Scheduled / recurring agents** | Cron scheduler with wake gates, blueprints, incident tracking, and auto-pause; GitHub webhook triggers | [docs/PRODUCTION.md](docs/PRODUCTION.md) |
+| **A support/ops agent on chat** | Telegram, Slack, Feishu/Lark, WeChat, WeCom, DingTalk, Discord, Buzz, Signal | [docs/API.md](docs/API.md) |
+| **An OpenAI-compatible endpoint** | Drop-in `POST /api/compat/openai/chat/completions` for your own clients | [docs/API_REFERENCE.md](docs/API_REFERENCE.md) |
+| **Hands-free voice** | Local Whisper transcription + local Piper speech, sentence-level streaming, no paid speech API | [docs/VOICE_CONVERSATION.md](docs/VOICE_CONVERSATION.md) |
+| **A local-first agent mesh** | Alpha-to-Alpha peer network: LAN UDP discovery, explicit pairing, HTTP/WebSocket delivery, SQLite conversations | [docs/ALPHA_PEER_NETWORK.md](docs/ALPHA_PEER_NETWORK.md) |
+| **Literature reviews & papers** | PRISMA-compliant systematic review and academic peer-review skills | [skills/public/](skills/public/) |
+| **Data and chart work** | Sandboxed Python/REPL, data-analysis skill, chart-visualization skill | [skills/public/](skills/public/) |
+
+More, including research, ops, and content workflows:
+**[docs/USE_CASES.md](docs/USE_CASES.md)**.
 
 ---
 
-## 8. Deployment & Quick Start Guide
+## 60-second quickstart
 
-### Option A: Windows Desktop Application (One-Click)
+### Prerequisites
 
-The Windows Desktop application bundles its own Node.js and `uv` runtimes—users need no external dependencies.
+Python 3.12+ · Node.js 22+ · `uv` · `pnpm` · Git. Docker is optional (needed for
+the containerized stack and the Docker sandbox tier). Full matrix:
+[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md).
 
-1. **Build Installer**:
-   ```powershell
-   cd electron
-   npm install
-   npm run dist
-   ```
-2. **Run Installer**: Execute `electron/dist/Agent-Workspace-Setup-2.1.0.exe` (per-user installation, no admin privileges required).
-3. **First Launch**: Configure your model API key in `%APPDATA%\alpha-desktop\project\config.yaml` and launch the app.
-
----
-
-### Option B: Docker Compose Multi-Service Stack
-
-Deploy the complete multi-service stack with Nginx, FastAPI Gateway, Next.js UI, and Redis:
+### Local development
 
 ```bash
-# 1. Clone repository
 git clone https://github.com/itsPremkumar/alpha.git
 cd alpha
 
-# 2. Configure secrets — OPTIONAL on a fresh clone: make up/deploy.sh
-#    auto-generates BETTER_AUTH_SECRET and the internal auth token on first
-#    run; copy .env only to pre-set provider API keys or override settings.
-cp .env.production.example .env   # optional
+make config      # copy config.example.yaml -> config.yaml and the extensions template
+make install     # install backend + frontend dependencies
+make dev         # start Gateway :8001, Frontend :3000, Nginx :2026
+```
+
+Open **<http://localhost:2026>**, then add a model and an API key under `models:`
+in `config.yaml` (e.g. OpenRouter) and restart. Without `config.yaml` the services
+will not boot.
+
+### Docker (the whole stack, reproducibly)
+
+```bash
+git clone https://github.com/itsPremkumar/alpha.git && cd alpha
+cp .env.production.example .env     # optional: on a fresh clone `make up` generates secrets
 make config
-
-# 3. Pre-flight health check
-python scripts/prod_check.py
-
-# 4. Start all services
-make up
-
-# 5. Access Alpha in your browser:
-# http://localhost:2026
+make prod-check                    # pre-flight: versions, config files, secrets
+make up                            # build + start; waits for the Gateway health probe
+# browser: http://localhost:2026
+make down                          # stop
 ```
 
-To stop:
-```bash
-make down
+### Windows desktop app
+
+```powershell
+cd electron
+npm install
+npm run dist
+# -> electron\dist\Agent-Workspace-Setup-2.1.0.exe  (per-user, no admin rights)
 ```
 
----
+The installer bundles its own Node.js and `uv`; end users need nothing
+pre-installed. First launch provisions CPython and creates the backend venv under
+Electron's per-user data directory. That directory is derived at runtime from
+`app.getPath('userData')`, so rather than hardcoding a path that changes between
+dev and packaged runs, read it from the app: the tray/menu **User data** entry
+opens it directly, and the project config lives at `<userData>/project/config.yaml`.
+Details: [electron/README.md](electron/README.md).
 
-### Option C: Bare-Metal Local Development
-
-For active development with instant hot-reloading:
-
-```bash
-# 1. Generate configuration templates
-make config
-
-# 2. Install dependencies for backend and frontend
-make install
-
-# 3. Optional: install FREE local Whisper + Piper models for real-time voice.
-#    No speech API key is required; only your configured LLM may have a cost.
-make voice-setup
-
-# 4. Start local development servers (Gateway :8001, Frontend :3000, Nginx :2026)
-make dev
-```
-
-Run the interactive setup wizard:
-```bash
-make setup
-```
-Verify environment health:
-```bash
-make doctor
-```
-
-Optional local Laya System One setup (Apache-2.0 weights, isolated from the core
-install):
-```bash
-make system-one-laya-setup
-make system-one-laya-serve
-```
-The Laya server runs on loopback and should be started separately from Alpha. The
-active provider and checkpoint are configured under `system_one` in `config.yaml`;
-see [`docs/SYSTEM_ONE.md`](docs/SYSTEM_ONE.md) before disabling shadow mode.
-
-#### Free real-time voice conversation
-
-Alpha can stream microphone audio to a **local faster-whisper** transcriber, send the final transcript through the normal chat SSE pipeline, and speak completed response sentences with a **local Piper** model while the rest of the answer is still streaming. No browser/cloud speech API is used; the configured LLM remains the only potentially paid component.
-
-```bash
-make voice-setup   # install packages + pinned model assets once (~550 MB)
-make voice-verify  # confirm dependencies and model files
-make dev
-```
-
-Enable **Real-time voice** in the chat composer. Its first click explicitly requests microphone permission and unlocks the browser's default speaker output; the speaker button plays a local confirmation phrase, and status reports denied/missing/in-use devices separately. Push-to-talk, cancellation, interim transcripts, silence endpointing, and automatic resume after playback are supported. See [Real-Time Voice Conversation](docs/VOICE_CONVERSATION.md) for privacy, configuration, Docker, limits, and troubleshooting.
-
-#### Guarded GitHub source auto-update
-
-Local source checkouts can opt into a safe update loop. The default is
-check-only and disabled; copy the reviewed template to an operator policy
-outside the checkout, enable both `enabled` and `auto_apply`, and point
-`ALPHA_UPDATE_POLICY_PATH` at it. A verified GitHub target can then be fetched,
-staged, installed, restarted, health-checked, and rolled back automatically.
-Keeping the mutable policy outside Git lets the updater enforce its clean
-worktree gate. The updater refuses dirty or diverged worktrees and never
-accepts a URL/ref from the browser. See [Auto-Update](docs/AUTO_UPDATE.md) for
-the complete state machine, security boundary, API, and Windows Task Scheduler
-setup.
-
-```bash
-make update-status
-make update-check
-# after reviewing the verified candidate:
-make update-apply
-```
-
----
-
-### Option D: Non-Interactive / CI Headless Setup
-
-For automated Docker builds, CI/CD runners, and cloud instances:
+### Non-interactive / CI setup
 
 ```bash
 AGENT_WORKSPACE_SETUP_PROVIDER=openrouter \
-AGENT_WORKSPACE_SETUP_API_KEY=$OPENROUTER_API_KEY \
+AGENT_WORKSPACE_SETUP_API_KEY="$OPENROUTER_API_KEY" \
 make setup SETUP_ARGS=--non-interactive
 ```
 
----
+### Interactive setup wizard
 
-### Windows Auto-Start & Self-Healing Watchdog
-
-On Windows the stack is launched by `start.bat` / `start.ps1` (Gateway `:8001`,
-Frontend `:3000`) and stopped by `stop.bat` / `stop.ps1`.
-
-```powershell
-.\start.ps1                       # start (or resume) the stack and open the browser
-.\start.ps1 -NoBrowser            # start without opening a browser
-.\start.ps1 -Force                # restart even if a healthy launcher already owns the stack
-.\stop.ps1                        # INTENTIONAL stop: services + watchdog, enters maintenance mode
-.\uninstall.ps1                   # stop Alpha and remove all autonomous operation
-.\scripts\verify_recovery.ps1     # run the real kill/recovery test suite
-.\scripts\verify_reboot.ps1       # after rebooting: confirm Alpha self-recovered
-.\scripts\tray_status.ps1         # tray status icon (auto-started at logon too)
-```
-
-Recovery is a four-layer hierarchy. No layer is responsible for its own
-recovery, and no layer depends on a PowerShell terminal staying open:
-
-| Layer | Component | Recovers |
-| :--- | :--- | :--- |
-| 4 | Windows Task Scheduler (`Alpha_Autostart` at logon, `Alpha_Watchdog` every 5 min, `StartWhenAvailable`, restart-on-failure) | the Layer 3 watchdog loop, via a `-Once` supervision pass |
-| 3 | `scripts/watchdog.ps1` 30 s background loop (own PID + `logs/watchdog_heartbeat.json`) | the launcher and the full stack |
-| 2 | `start.ps1` launcher (own PID + `logs/alpha_health.json` heartbeat) | Gateway/Frontend individually, with exponential backoff (3 s to 300 s, never gives up) |
-| 1 | Gateway, Frontend, workers | - |
-
-How Layer 3 escalates, cheapest action first:
-
-1. **Defer** while a live launcher reports `starting` / `recovering` /
-   `degraded` (bounded, so a wedged launcher cannot defer forever).
-2. **Component restart** - kill only the process tree holding the dead or hung
-   port; the launcher restarts just that component (max 3 attempts each).
-3. **Full-stack restart** - replace the launcher and boot a fresh stack, with
-   backoff between attempts and unlimited retries.
-
-Detection uses ports **and** real HTTP checks (`/health/ready`, frontend `/`),
-so a process that holds its port but stopped answering counts as *hung*.
-Heartbeats are refreshed during long waits, so a working launcher is never
-mistaken for a frozen one. Launcher and watchdog instances are spawned through
-short-lived VBS shims, which makes them orphans of their creator: killing the
-watchdog cannot take the launcher (or the stack) down with it.
-
-**Tray status icon.** `scripts/tray_status.ps1` (registered as the
-`Alpha_TrayStatus` task at logon) shows Alpha's live state in the Windows
-notification area: green `A` = running/healthy, amber = starting/recovering/
-degraded, red `!` = failed, grey = stopped. Hover for the exact state and
-timestamp; left-click opens the UI; the right-click menu starts, stops
-(maintenance), restarts or exits the indicator. The icon is read-only and
-independent of Alpha, so it keeps working - and truthfully shows "Stopped" -
-while the stack is down.
-
-**Maintenance vs. crash.** `stop.ps1` writes `logs/alpha_maintenance.json` and
-stands every layer down - Alpha stays stopped until you run `start.ps1`, which
-clears the flag. An ordinary crash or `taskkill` never creates the flag and is
-always recovered.
-
-**Health status** in `logs/alpha_health.json` uses
-`starting | healthy | degraded | recovering | failed`, and is only `healthy`
-after both HTTP checks pass. LLM provider outages (missing/invalid OpenRouter
-key, no network) never block or crash infrastructure health.
-
-State files are written atomically (temp file + rename), PID reuse is detected
-by comparing recorded process start times, and all logs rotate at 5 MB so they
-cannot grow forever. Recovery attempts are appended to
-`logs/recovery_history.jsonl`.
-
-Logs: `logs/watchdog.log`, `logs/gateway.err.log`, `logs/frontend.log`.
-
----
-
-
-Alpha isolates configuration across three dedicated files:
-
-| Configuration File | Scope | Role |
-| :--- | :--- | :--- |
-| `config.yaml` | Platform Core | Models, presets, tool groups, sandboxing mode, databases, and IM channels. |
-| `extensions_config.json` | Extensions | Model Context Protocol (MCP) servers and enabled skills (API-editable at runtime). |
-| `.env` | Secrets | API keys, database connection strings, and encryption secrets. |
-
----
-
-## 10. Quality Assurance & Verification Commands
-
-Alpha enforces strict quality gates across all layers:
-
-```powershell
-# 1. Run Backend Deep Research & Harness Unit Tests
-$env:PYTHONPATH="backend/packages/harness;backend/packages/extension-api;backend"
-pytest backend/tests/test_deep_research_engine.py backend/tests/test_deep_research_tool.py backend/tests/test_subagent_categories.py -v
-
-# 2. Run Five-Pass Search Compiler Tests
-pytest backend/tests/test_five_pass_search_engine.py -v
-
-# 3. Run Frontend Verification Tests
-cd frontend
-node --test tests/*.test.mjs
-
-# 4. Run Electron Desktop Tests
-cd ../electron
-node --test tests/*.test.mjs
-
-# 5. Execute Production Pre-flight Check
-python scripts/prod_check.py
+```bash
+make setup     # guided: prerequisites, config, deps, first launch
+make doctor    # verify the environment
 ```
 
 ---
 
-## 11. Reference Architecture & Research Library
+## Feature catalog
 
-Alpha maintains an extensive publication-grade library of formal architectural blueprints, evolutionary search operators, frontier coding harnesses, and competitive research in the [`references/`](./references/README.md) directory (over 45 comprehensive papers):
+<details open>
+<summary><b>1. Autonomous deep research &amp; knowledge synthesis</b></summary>
 
-- **[01. Core Architectures & Frameworks](./references/01-architectures/)**: Universal ASI harness specs, Keel architecture, Swarm coordination, [1,000+ Agent Blackboard Federation & Consensus](./references/01-architectures/swarm-consensus-and-blackboard-federation.md), [Enterprise Model Context Protocol (MCP) Harness](./references/01-architectures/enterprise-mcp-and-secure-tool-orchestration.md), and [Tree-Sitter AST & Personalized PageRank Repo Maps](./references/01-architectures/advanced-tree-sitter-ast-codebase-indexing.md).
-- **[02. Agentic Variation Operators (AVO)](./references/02-avo-and-evolution/)**: NVIDIA AVO loop specifications, prompt genome mutation, compiler-grounded feedback, and evolutionary search.
-- **[03. Recursive Self-Improvement (RSI)](./references/03-rsi-and-self-improvement/)**: Safe self-evolution, AST invariant enforcement, [DeepMind Promptbreeder Darwinian Evolution](./references/03-rsi-and-self-improvement/promptbreeder-and-darwinian-self-evolution.md), [Automated Program Repair (APR) & Test-Driven Healing](./references/03-rsi-and-self-improvement/automated-program-repair-and-test-driven-healing.md), and [Formal Verification & Ephemeral Canary Sandboxing](./references/03-rsi-and-self-improvement/formal-verification-and-canary-sandboxing-for-rsi.md).
-- **[04. Frontier Benchmarks & Deep Research](./references/04-frontier-benchmarks-and-deep-research/)**: Comparative harness analyses (Devin, Claude Code, OpenHands, Aider, Cursor), [Princeton SWE-agent & Agent-Computer Interface (ACI)](./references/04-frontier-benchmarks-and-deep-research/swe-agent-and-aci-architecture-study.md), [Roo Code, Cline & Goose Terminal Harnesses](./references/04-frontier-benchmarks-and-deep-research/roo-code-cline-and-goose-terminal-harnesses.md), [AutoGen v0.4 Actor Framework vs. CrewAI Hierarchy](./references/04-frontier-benchmarks-and-deep-research/autogen-studio-vs-crewai-orchestration-patterns.md), and L0-L8 memory benchmarks.
-- **[05. Autonomous Operations & Execution](./references/05-autonomous-operations-and-execution/)**: Long-term autonomous company runbooks, goal decomposition trees, [MetaGPT & ChatDev Multi-Agent SDLC](./references/05-autonomous-operations-and-execution/metagpt-and-chatdev-multi-agent-sdlc.md), and [Human-in-the-Loop Collaborative Co-Work Patterns](./references/05-autonomous-operations-and-execution/human-in-the-loop-collaborative-cowork-patterns.md).
+- **5-pass search pipeline** — Discovery, Specific Evidence, Adversarial
+  Contradiction, Fact Verification, Strategic Synthesis.
+- **Targeted knowledge-gap filling** — detects missing metrics, benchmarks, or
+  architectural trade-offs and runs a bounded follow-up stage.
+- **Adversarial source juxtaposition** — pairs supporting and falsification
+  evidence for review without claiming a contradiction that was not established.
+- **Explicit citation contract** — deterministic anchors (`[S1]`, `[S2]`, …) with
+  each source marked verified / unsupported / unverified / not-checked.
+- **`deep_research` tool** — callable by any agent or workflow; writes artifacts
+  under the thread's outputs directory.
+- **AgentEye live-source plane** — a curated 39-function free-source catalog
+  (academic, developer, package, government, scientific, knowledge, media,
+  social) with operator allowlists, bounded fan-out, SSRF-safe fetching, and
+  honest provider failures plus DDGS fallback.
+- **`deep-research` subagent preset** — direct delegation with an expanded
+  150-turn budget and strict citation guidelines.
 
-For a full breakdown of the 2026 SOTA paradigms (3-tier agent stack, AVO loop, 9-tier cognitive memory plane, and RSI safety bounds), consult the [References Master Guide](./references/README.md).
+→ [docs/DEEP_RESEARCH.md](docs/DEEP_RESEARCH.md)
+</details>
+
+<details>
+<summary><b>2. Swarm orchestration &amp; multi-agent workforce</b></summary>
+
+- **Bot roster & SOUL protocol** — registered autonomous bots with distinct
+  personalities, isolated system prompts, private inboxes.
+- **Bot mode DMs** — `POST /api/bots/{name}/dm`, fire-and-forget, server-side
+  attribution.
+- **Multi-agent group chat & swarms** — collaborative rooms where specialized
+  bots challenge assumptions and produce unified deliverables.
+- **Swarm v2 DAG runtime** — atomic checkpoints, ordered JSONL audit events,
+  owner-scoped admission, idempotent creation, lease-fenced task attempts, retry
+  backoff, restart recovery.
+- **Bounded execution** — token / tool-call / wall-clock / task / replan budgets,
+  adaptive provider concurrency, watchdog recovery, pause / resume / cancel, and
+  explicit `budget_exhausted` / `stalled` states.
+- **Typed communication & consensus** — a bounded blackboard of untrusted
+  observations; evidence-backed votes, leader election, and acceptance
+  verification that separates *execution success* from *verified delivery*.
+- **Swarm operations surface** — REST + SSE for claims, leases, revisions, events,
+  messages, replans, progress, and leader/resource telemetry; the `swarm` tool
+  exposes the same to authorized agents.
+- **Live collaborative Kanban** — agents create, assign, transition, and audit
+  cards on a shared board.
+- **Agent-to-Agent (A2A) messaging** — structured protocol for peer requests and
+  distributed coordination.
+- **Project workforce layer** — agent↔project membership, presence, resource
+  locking, project constitutions, and ADR memory.
+
+Swarm state is atomic JSON checkpoints plus append-only JSONL events —
+restart-recoverable for one Gateway process. A multi-worker deployment must
+provide a shared SQL lease repository before claiming cross-process
+exactly-once execution.
+
+→ [docs/WORKFORCE.md](docs/WORKFORCE.md)
+</details>
+
+<details>
+<summary><b>3. Continuous execution harness, planners &amp; loops</b></summary>
+
+- **Autonomous one-prompt planner** — turns an unformatted, complex prompt into a
+  structured multi-step plan.
+- **8-dimension plan mode** — clarity, safety, feasibility, reversibility, resource
+  intensity, architectural impact, empirical evidence, mission alignment.
+- **Mission hierarchy & work-queue DAG** — macro goals decomposed into
+  dependency-ordered work queues.
+- **Continuous goal engine & integrity gate** — enforces verifiable completion
+  criteria and blocks premature or hallucinated exits.
+- **Ralph loop** — test-driven iterative self-healing until the suite passes and
+  architectural invariants hold.
+- **Boulder checkpointing & safe durable replay** — multi-session snapshots;
+  disconnects never cancel work; resumes after crash, expired lease, restart, or
+  recoverable model failure. Ambiguous external effects pause for confirmation so
+  irreversible side effects are not duplicated.
+- **Kibitzer metacognitive supervision** — background supervision that detects
+  loops, thrashing, and prompt drift.
+- **Dynamic workflow plane** — intent perception, capability discovery, task
+  decomposition, bounded DAG waves, typed graph patches, approval gates,
+  retry/replan, evidence-gated replay, and saga compensation via
+  `POST /api/workflows/dynamic/{perceive,execute}`. The built-in digest executor
+  is deliberately a **local graph projection**, disclosed as
+  `execution_label="local_digest_projection"` with `acceptance_passed=false`
+  until a real executor is bound.
+
+→ [docs/RUN_RECOVERY.md](docs/RUN_RECOVERY.md) ·
+[docs/DYNAMIC_WORKFLOWS.md](docs/DYNAMIC_WORKFLOWS.md)
+</details>
+
+<details>
+<summary><b>4. Frontier cognitive intelligence &amp; optimization</b></summary>
+
+- **Agentic Variation Operators (AVO)** — evolutionary prompt and strategy
+  mutation driven by compiler-grounded feedback.
+- **Mixture of Agents (MoA)** — queries multiple heterogeneous LLMs in parallel
+  and synthesizes diverse perspectives into high-confidence conclusions.
+- **Theory of Mind (ToM) consult** — simulates user mental models, stakeholder
+  expectations, and downstream receiver perspectives.
+- **Epistemic belief evaluation** — checks claims against an empirical
+  ground-truth base to flag unsubstantiated assumptions.
+- **Dreaming consolidation** — folds ephemeral episodic traces into a semantic
+  knowledge graph during idle periods.
+- **Strategic discipline council** — multi-perspective invariant verification, gap
+  analysis, and policy compliance audits.
+- **Quality council & evidence matrix** — deliberates artifact quality and
+  validates finish-first empirical evidence before declaring work complete.
+- **Consequence simulation** — models negative outcomes, side effects, and blast
+  radius before an irreversible action runs.
+- **System One decision models** — provider-neutral typed `choice` / `score` /
+  `noul` decisions (hosted Jev or self-hosted Laya) with confidence gating and
+  deterministic fallback.
+
+→ [docs/COGNITIVE_ENGINES.md](docs/COGNITIVE_ENGINES.md) ·
+[docs/SYSTEM_ONE.md](docs/SYSTEM_ONE.md)
+</details>
+
+<details>
+<summary><b>5. Code agentic core &amp; developer tooling</b></summary>
+
+- **Pre-commit AST guardrail** — intercepts `write_file`, `str_replace`, and
+  `hashline_edit` before disk commit, statically verifying Python / JSON / YAML
+  syntax and rejecting broken edits with compiler feedback.
+- **Git shadow checkpoints & 1-click rollback** — `refs/alpha-checkpoints/<cid>`
+  before risky mutations, with `GET/POST /api/checkpoints`,
+  `POST /api/checkpoints/{id}/rollback`, and `GET /api/checkpoints/{id}/diff`.
+- **Automated test & repair** — runs test commands, parses tracebacks, isolates
+  root cause, applies verified fixes.
+- **Repository map AST generator** — whole-codebase structural dependency maps.
+- **AST-grep search and rewrite** — structural search and rewrite for TypeScript,
+  Python, Go, Rust, and C++.
+- **Repo twin inspection** — a shadow sandbox twin previews changes before they
+  touch your working tree.
+- **Hashline line-level editing** — deterministic line-based read/edit that avoids
+  multi-line merge drift.
+- **Sandboxed Python & Bash REPL** — secure execution for analysis, scripts, and
+  system commands.
+- **Visual artifact & UI verification** — renders and inspects generated widgets,
+  canvases, and media artifacts.
+
+→ [docs/EXTENSIONS.md](docs/EXTENSIONS.md)
+</details>
+
+<details>
+<summary><b>6. Security enclave &amp; governance</b></summary>
+
+- **Astra security enclave & scoped credential vault** — credentials are scoped
+  per tool, never handed to the model in the clear.
+- **Smart command approval gate** — risk scoring with explicit operator
+  verification for high-impact terminal commands.
+- **Emergency stop (Estop)** — hard-stops runaway loops, subagents, and background
+  processes.
+- **Trajectory flight recorder** — cryptographically logs every reasoning step,
+  tool call, and state transition for forensic audit.
+- **Universal artifact lineage** — end-to-end cryptographic provenance of every
+  generated file, code, and document.
+- **Deterministic token budgeting & cost telemetry** — per-run ceilings and
+  real-time spend with cache-aware pricing.
+
+→ [docs/SECURITY.md](docs/SECURITY.md)
+</details>
+
+<details>
+<summary><b>7. Omnichannel messaging hub &amp; integrations</b></summary>
+
+- **Nine channels** — Telegram, Slack, Feishu/Lark, WeChat, WeCom, DingTalk,
+  Discord, Buzz, Signal — bidirectional, driving the same agent runtime.
+- **Scheduled automations & blueprints** — cron schedules, pre-flight wake gates,
+  incident tracking, and auto-pause.
+- **OpenAI-compatible chat gateway** —
+  `POST /api/compat/openai/chat/completions` for drop-in client compatibility.
+- **GitHub webhook automations** — agent invocations from pull requests, issues,
+  comments, and releases.
+
+→ [docs/API_REFERENCE.md](docs/API_REFERENCE.md)
+</details>
+
+<details>
+<summary><b>8. Presentation layer: desktop &amp; web UI</b></summary>
+
+- **One-click Windows desktop app** — Electron shell with bundled Node.js and
+  `uv`; launches straight into chat with no setup wizard.
+- **Next.js 15 web workspace** — Chat, Overview, Workforce, Projects, Kanban,
+  Skills, Peers, and Settings views.
+- **Complete on-device chat history** — uncapped IndexedDB archive, full server
+  history pagination, migration from the old capped cache, and honest degraded
+  states (a banner when you are reading the local copy, a partial-load notice, and
+  streaming answers archived without being painted into a conversation you
+  switched away from). JSON backup/restore moves the whole archive between
+  machines.
+- **Bot-led multi-bot projects** — every bot profile can create a project with
+  itself as lead; other bot profiles can be added, assigned a role, and managed
+  together, with every change confirmed by re-reading the server roster.
+- **Free local real-time voice** — browser mic streaming, local Whisper interim +
+  final transcription, VAD turn endpointing, normal SSE agent streaming,
+  sentence-level local Piper playback, hands-free resume, and no paid speech API.
+- **Milo the lion companion** — a local inline-SVG companion with articulated
+  animation, bounded roaming, petting, and an optional always-on-top desktop
+  window that forwards no prompt or conversation data.
+- **Guarded GitHub source auto-update** — published-release discovery, clean
+  worktree + fast-forward enforcement, backup refs, detached restart, health
+  verification, and automatic rollback. Disabled by default.
+- **Interactive canvas & generative UI** — inline interactive HTML/React widgets,
+  live SVG diagrams, KaTeX math, and data tables.
+
+→ [docs/VOICE_CONVERSATION.md](docs/VOICE_CONVERSATION.md) ·
+[docs/LION_COMPANION.md](docs/LION_COMPANION.md) ·
+[docs/AUTO_UPDATE.md](docs/AUTO_UPDATE.md)
+</details>
+
+<details>
+<summary><b>Full subsystem map (99 harness engines)</b></summary>
+
+Every directory under `backend/packages/harness/alpha/` (99 packages) is a
+dedicated engine:
+
+`action` `agency` `agent` `agents` `authz` `autoconfig` `avo` `benchmarks`
+`blackboard` `bots` `browser` `canvas` `capabilities` `channels` `coding`
+`commands` `community` `company` `computer_use` `config` `consequence` `context`
+`council` `critic` `debugging` `deepagent` `deliberation` `diagnostics` `editing`
+`enterprise` `epistemics` `errors` `evaluation` `events` `evidence` `evolution`
+`extensions` `goals` `governance` `groups` `guardrails` `harness` `integrations`
+`jobs` `kanban` `knowledge` `learning` `ledger` `lineage` `mcp` `media` `memory`
+`metacognition` `metacompiler` `mission` `missions` `models` `multimodal`
+`observability` `ops` `orchestration` `orchestrator` `peer_network` `perpetual`
+`persistence` `planning` `policy` `projects` `protocols` `reasoning` `recovery`
+`reflection` `reproduction` `research` `rsi` `rules` `runtime` `safety` `sandbox`
+`scheduler` `security` `selfrepair` `skills` `state` `subagents` `supervision`
+`swarm` `synthesis` `system1` `testing` `tools` `tracing` `trajectory` `tui`
+`uploads` `utils` `verification` `workflow` `workspace_changes`
+
+Verify the list against the tree at any time:
+
+```bash
+ls backend/packages/harness/alpha | grep -v __pycache__ | wc -l
+```
+
+The authoritative, machine-checked capability registry is
+[`contracts/feature_manifest.json`](contracts/feature_manifest.json), generated by
+`backend/scripts/generate_feature_manifest.py`; CI fails on drift. Per-engine
+detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+</details>
+
+<details>
+<summary><b>24 public skills</b></summary>
+
+`academic-paper-review` · `bootstrap` · `chart-visualization` ·
+`claude-to-agent-workspace` · `code-documentation` · `consulting-analysis` ·
+`data-analysis` · `deep-research` · `find-skills` · `frontend-design` ·
+`github-deep-research` · `image-generation` · `music-generation` ·
+`newsletter-generation` · `podcast-generation` · `ppt-generation` ·
+`project-cartographer` · `skill-creator` · `skill-reviewer` · `surprise-me` ·
+`systematic-literature-review` · `vercel-deploy-claimable` · `video-generation` ·
+`web-design-guidelines`
+
+→ [docs/SKILLS.md](docs/SKILLS.md) and [`skills/public/`](skills/public/)
+</details>
 
 ---
 
-## 12. Upstream Credits & Open-Source Provenance
+## Deployment options
 
-Alpha incorporates and builds upon foundational breakthroughs across the open-source agentic AI ecosystem:
+| Option | Command | Best for | Public port |
+| :--- | :--- | :--- | :--- |
+| **Docker Compose** | `make up` / `make down` | Reproducible team/server deploys | `2026` |
+| **Windows desktop** | `electron/` → `npm run dist` | Single-user desktop use | `2026` (loopback) |
+| **Bare metal** | `make dev` | Active development with hot reload | `2026` |
+| **Kubernetes** | `deploy/helm/agent-workspace` | Cluster deployment | via ingress |
+| **CI / headless** | `make setup SETUP_ARGS=--non-interactive` | Automated provisioning | — |
 
-- **Base Project Provenance**: Originally derived and re-architected from DeerFlow (MIT License). Original copyright and license notices are preserved in [LICENSE](./LICENSE).
-- **[OpenHands](https://github.com/All-Hands-AI/OpenHands)**: Autonomous software-engineering agent patterns, reproduction mechanisms, and episodic memory.
-- **[OpenClaw](https://github.com/openclaw/openclaw)**: Context management engines, interactive canvases, and resilient tool-call repair strategies.
-- **Oh My OpenAgent (OmO / Sisyphus)**: Multi-agent collaboration paradigms, real-time kanban boards, and inter-agent communication protocols.
-- **Hermes Agent**: Mission compilation, epistemic belief evaluation, cognitive blackboards, and metacognitive health tracking.
-- **LangChain / LangGraph & Deep Agents**: Stateful multi-pass graph compilation, subagent communication, and citation contracts.
-- **Model Providers**: OpenAI, Anthropic, Google Gemini, DeepSeek, OpenRouter, Moonshot AI, MiniMax, StepFun, and Ollama.
+### Service topology
+
+| Service | Port | Role |
+| :--- | :--- | :--- |
+| **Nginx** | `2026` | **The only public entry point** — open this in the browser |
+| **Gateway API** | `8001` | FastAPI REST API + embedded LangGraph-compatible agent runtime |
+| **Frontend** | `3000` | Next.js workspace |
+| **Provisioner** | `8002` | Optional — only when the sandbox runs in provisioner/K8s mode |
+
+Nginx proxies `/api/*` to the Gateway (rewriting `/api/langgraph/*` onto native
+routes) and serves the frontend. Both compose files publish nginx as
+`"${BIND_HOST:-127.0.0.1}:${PORT:-2026}:2026"` — **loopback by default**; a bare
+`"${PORT}:2026"` binds `0.0.0.0`. Do not add a published port without an explicit
+bind address.
+
+→ [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
 
 ---
 
-## Alpha Network: free Alpha-to-Alpha communication
+## Configuration
 
-Alpha includes a separate **Alpha Network** workspace for discovering, pairing,
-and messaging independently installed Alpha agents. The default path uses
-LAN UDP discovery plus direct HTTP/WebSocket delivery and local SQLite storage;
-there is no Alpha-operated broker, VPS, or paid database. Optional mDNS and a
-GitHub Agent Card rendezvous are available for broader reach.
+Three files, three responsibilities:
 
-The UI supports direct, one-to-many, many-to-one, many-to-many, and broadcast
-sessions with per-recipient delivery receipts. Discovery is untrusted; pairing
-is explicit. See the complete [Alpha Network guide](./docs/ALPHA_PEER_NETWORK.md)
-for setup, security boundaries, NAT limitations, and the free/open-source
-research comparison.
+| File | Scope | Contents | Committed? |
+| :--- | :--- | :--- | :--- |
+| `config.yaml` | Platform core | Models, presets, tool groups, sandbox tier, databases, IM channels, autonomy loops | ❌ generated by `make config` |
+| `extensions_config.json` | Extensions | MCP servers + enabled skills (API-editable at runtime) | ❌ generated by `make config` |
+| `.env` | Secrets | API keys, DB connection strings, encryption secrets | ❌ **never commit** |
+
+Copy the templates first:
+
+```bash
+make config   # config.example.yaml -> config.yaml, extensions_config.example.json -> extensions_config.json
+```
+
+Rules of thumb:
+
+- Reference secrets as `$ENV_VAR`, never as literals in `config.yaml`.
+- A `models:` list with at least one entry is required or the runtime will not
+  start.
+- Third-party Python extensions go in the top-level `plugins:` list in
+  `config.yaml` — deliberately **not** in the API-writable
+  `extensions_config.json`, because that list causes code to be imported.
+  Every mutation needs a Gateway restart.
+- Background autonomy loops are gated by `config.yaml -> autonomy.loops`; an
+  absent id means disabled, and all flags off means zero tasks.
+
+→ [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
+
+---
+
+## Documentation
+
+| Start here | For |
+| :--- | :--- |
+| [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) | Install and first run, every platform |
+| [docs/FAQ.md](docs/FAQ.md) | Short, citable answers |
+| [docs/COMPARISON.md](docs/COMPARISON.md) | Alpha vs LangGraph / AutoGen / CrewAI / OpenHands / Dify |
+| [docs/USE_CASES.md](docs/USE_CASES.md) | End-to-end jobs and the subsystem behind each |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Runtime planes, middleware chain, engine map |
+| [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Every setting, resolved order, env vars |
+| [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | All 60 Gateway routers, SSE events, auth |
+| [docs/SECURITY.md](docs/SECURITY.md) | Enclave, approvals, sandbox boundaries, threat model |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Docker, Helm, Nginx, Windows installer |
+| [docs/PRODUCTION.md](docs/PRODUCTION.md) | Runbook, probes, `/api/ops/*`, disaster recovery |
+| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Diagnostic flows and lock contention |
+| [docs/MEMORY.md](docs/MEMORY.md) | Layered memory architecture |
+| [docs/EXTENSIONS.md](docs/EXTENSIONS.md) | MCP + the extension contribution contract |
+| [docs/WORKFORCE.md](docs/WORKFORCE.md) | Bots, DMs, swarms, projects, Kanban |
+| [docs/GLOSSARY.md](docs/GLOSSARY.md) | Every Alpha term defined in one page |
+| [docs/INDEX.md](docs/INDEX.md) | The complete, generated document index |
+| [`llms.txt`](./llms.txt) | Compact machine context for AI agents |
+| [`llms-full.txt`](./llms-full.txt) | Expanded machine context for AI agents |
+| [`AGENTS.md`](./AGENTS.md) | Contributor guide (source of truth) |
+
+Deep reference material lives in [`references/`](./references/README.md) — 45+
+papers and architecture studies on agent harnesses, AVO loops, recursive
+self-improvement, frontier coding agents, and multi-agent SDLC.
+
+---
+
+## Extending Alpha
+
+Three extension surfaces, in increasing order of power:
+
+1. **Skills** — a `SKILL.md` plus optional resources. Add to
+   `extensions_config.json`. Lowest privilege, no restart needed for discovery.
+2. **MCP servers** — any Model Context Protocol server over stdio, HTTP, or SSE.
+   Configure in `extensions_config.json`; API-editable at runtime.
+3. **Python extension packages** — contribute middleware, task lifecycle hooks,
+   system-model observers, Gateway services, and FastAPI routers. Declared in the
+   operator-controlled `plugins:` list in `config.yaml`; requires a Gateway
+   restart, and both build hooks and extension code run with Gateway privileges.
+
+A complete, runnable reference implementation of all five contribution kinds:
+[`examples/agent-workspace-extension-example/`](examples/agent-workspace-extension-example/).
+
+```bash
+make extension-list
+make extension-install SOURCE=...
+make extension-enable NAME=...
+make extension-disable NAME=...
+make extension-upgrade SOURCE=...
+make extension-remove NAME=...
+```
+
+→ [docs/EXTENSIONS.md](docs/EXTENSIONS.md)
+
+---
+
+## Quality gates
+
+```bash
+# Backend
+cd backend && make test              # default suite (excludes live + blocking-IO)
+cd backend && make test-blocking-io  # strict blocking-IO gate
+cd backend && make lint              # ruff check
+cd backend && make format            # ruff format
+
+# Frontend
+cd frontend && pnpm verify           # typecheck + unit tests
+cd frontend && pnpm dev              # dev server (Webpack; --turbopack for Turbopack)
+
+# Repository-level contracts
+python scripts/generate_feature_manifest.py     # regenerate the capability manifest
+python backend/scripts/check_tool_schemas.py    # after any tool signature change
+python scripts/generate_docs_index.py --check   # docs index drift
+bash scripts/verify_versions.sh                 # version lockstep gate
+```
+
+Two contracts are worth calling out because they are unusual and load-bearing:
+
+- **`contracts/feature_manifest.json`** is generated from the live registries and
+  pins all 130 tools, 60 routers, 42 middlewares, and 8 supervisor loops. CI fails
+  on drift, so the documented capability counts cannot silently rot.
+- **Tool runtime injection** — any `@tool` needing runtime access must declare
+  `runtime: Runtime` as a bare required first parameter. Writing
+  `Runtime | None = None` makes pydantic schema-generate `ToolRuntime`'s
+  `Callable` fields and breaks the entire tool list for the model. Run
+  `check_tool_schemas.py` after any tool signature change.
+
+→ [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) · [CONTRIBUTING.md](CONTRIBUTING.md)
+
+---
+
+## Alpha Network: agent-to-agent communication
+
+Alpha includes a separate **Alpha Network** workspace for discovering, pairing, and
+messaging independently installed Alpha agents. The default free path is **LAN UDP
+discovery + direct HTTP/WebSocket delivery + SQLite conversations** — no
+Alpha-operated broker, VPS, or paid database. Optional mDNS (`zeroconf`) and a
+GitHub Agent Card rendezvous extend the reach.
+
+Supports direct, one-to-many, many-to-one, many-to-many, and broadcast sessions
+with per-recipient delivery receipts. **Discovery is untrusted and never grants
+access; pairing is explicit and uses a high-entropy out-of-band code.**
+
+→ [docs/ALPHA_PEER_NETWORK.md](docs/ALPHA_PEER_NETWORK.md)
+
+---
+
+## FAQ
+
+**Q: What is Alpha?**
+**A:** An open-source autonomous multi-agent AI operating system: a LangGraph agent
+runtime behind a FastAPI Gateway, with a Next.js 15 workspace and an Electron
+Windows app, running long-horizon work with sandboxed execution, persistent
+memory, 130 native tools, MCP extensions, and 24 public skills. MIT licensed,
+self-hosted, no proprietary backend.
+
+**Q: How do I install and run it?**
+**A:** `make config` → `make install` → `make dev`, then open
+<http://localhost:2026>. For a containerized stack use `make up`. For Windows,
+build the Electron installer. Add at least one entry under `models:` in
+`config.yaml` before the runtime will start.
+
+**Q: Do I need a paid API key?**
+**A:** Not necessarily. Alpha works with any provider you configure, including
+local models through Ollama and self-hosted OpenAI-compatible endpoints. Local
+speech (Whisper + Piper) needs no speech API. The only component that may cost
+money is the model provider you choose.
+
+**Q: Which LLM providers are supported?**
+**A:** Any provider expressible in `config.yaml` — the shipped baseline is
+OpenRouter's `stealth/union-alpha` through `langchain_openai:ChatOpenAI`, and
+OpenAI, Anthropic, Google Gemini, DeepSeek, Moonshot AI, MiniMax, StepFun, and
+Ollama are all wired. Multi-provider routing, load balancing, and fallbacks are
+built in.
+
+**Q: Is Alpha production ready?**
+**A:** Partially, and the repository says exactly where the line is. The run
+lifecycle, thread-scoped auth, health probes (`/health`, `/health/ready`), sandbox
+tiers, and registry drift gates are implemented and tested. Open items —
+independent evidence verification, centralized policy grants, backup/restore
+drills, and release scorecards — are tracked in
+[docs/PRODUCTION_READINESS_INVENTORY.md](docs/PRODUCTION_READINESS_INVENTORY.md).
+Read it before exposing a deployment.
+
+**Q: How is Alpha different from CrewAI, AutoGen, or LangGraph?**
+**A:** Those are libraries/primitives; Alpha is a finished, self-hostable agent
+product built on the same ideas, with a UI, deployment, safety controls, memory
+plane, research engine, and messaging channels included. Full matrix:
+[docs/COMPARISON.md](docs/COMPARISON.md).
+
+**Q: How is Alpha different from OpenHands or Claude Code?**
+**A:** Those are coding agents. Alpha is not repo-bound or language-bound: research,
+data, ops, docs, and chat platforms are first-class, and coding is one capability
+among many.
+
+**Q: What is the relationship to DeerFlow?**
+**A:** Alpha is a re-architecture of the MIT-licensed DeerFlow base into a full
+operating system. Upstream copyright and license notices are preserved. See
+[Project provenance](#project-provenance).
+
+**Q: How much does it cost to run?**
+**A:** Alpha itself is free and has no hosted tier. Your costs are (a) your model
+provider, (b) your own compute, and (c) optional extras such as ~550 MB of local
+speech models or a provisioner VM. Alpha enforces per-run token ceilings and
+reports cache-aware spend so this stays bounded.
+
+**Q: Can I use it with my own tools?**
+**A:** Yes — three ways: write a skill, connect an MCP server, or write a Python
+extension package that contributes middleware, services, and routers. There is a
+runnable reference implementation in `examples/`.
+
+**Q: Is my data sent anywhere?**
+**A:** No Alpha-operated backend exists. Prompts, threads, memory, checkpoints,
+and artifacts stay in your runtime home / database; only the model providers you
+configure receive the prompts you send them.
+
+**Q: How do I get help?**
+**A:** Run `make doctor` and `make prod-check`, read
+[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md), then open an issue with the
+redacted bundle from `make support-bundle`, the `X-Trace-Id` header, and relevant
+Gateway/Frontend logs.
+
+More answers: [docs/FAQ.md](docs/FAQ.md) · terminology:
+[docs/GLOSSARY.md](docs/GLOSSARY.md)
+
+---
+
+## Contributing
+
+Contributions are welcome, including first-time ones.
+
+```bash
+git clone https://github.com/itsPremkumar/alpha.git
+cd alpha
+make install
+cd backend && make test
+```
+
+- **Read [`AGENTS.md`](./AGENTS.md) first.** It is the source of truth for repo
+  orientation, commands, and conventions (`CLAUDE.md` is a thin import shim).
+- Backend changes ship with tests in `backend/tests/` — TDD is mandatory there.
+- Frontend changes ship with tests and must pass `pnpm verify`.
+- Run `make format` (backend) before pushing; CI enforces `ruff format --check`.
+- Keep docs in sync in the same change set: `README.md` for user-facing changes,
+  the relevant `AGENTS.md` for architecture changes, `CHANGELOG.md` for releases.
+- Version strings must stay identical across `backend/pyproject.toml`,
+  `frontend/package.json`, and `deploy/helm/agent-workspace/Chart.yaml`.
+
+Good first issues are labelled on the [issue tracker](https://github.com/itsPremkumar/alpha/issues).
+→ [CONTRIBUTING.md](CONTRIBUTING.md) · [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+
+---
+
+## Security
+
+Do not open a public issue for a vulnerability. Use GitHub's private vulnerability
+reporting on this repository, or contact the maintainer directly.
+Security architecture, threat model, and hardening: [docs/SECURITY.md](docs/SECURITY.md) ·
+[SECURITY.md](SECURITY.md).
+
+---
+
+## Project provenance
+
+Alpha is built on and credits the following open-source work:
+
+- **DeerFlow** (MIT) — the base project Alpha re-architects. Original copyright
+  and license notices are preserved in [LICENSE](./LICENSE).
+- **[LangGraph](https://github.com/langchain-ai/langgraph)** / LangChain — async,
+  checkpointed, stateful agent graphs.
+- **[OpenHands](https://github.com/All-Hands-AI/OpenHands)** — autonomous
+  software-engineering agent patterns, reproduction, and episodic memory.
+- **[Pydantic](https://github.com/pydantic/pydantic)** · **[FastAPI](https://github.com/fastapi/fastapi)** ·
+  **[Next.js](https://github.com/vercel/next.js)** · **[Electron](https://github.com/electron/electron)** ·
+  **[Tailwind CSS](https://github.com/tailwindlabs/tailwindcss)** — runtime and UI foundations.
+- **Model providers** — OpenAI, Anthropic, Google Gemini, DeepSeek, OpenRouter,
+  Moonshot AI, MiniMax, StepFun, Ollama.
+
+Attribution research: [`references/`](./references/README.md) · subsystem notices:
+[docs/THIRD_PARTY_MEMORY_NOTICES.md](docs/THIRD_PARTY_MEMORY_NOTICES.md).
+
+---
+
+## Citation
+
+If you use Alpha in research or write about it, please cite it:
+
+```bibtex
+@misc{alpha2026,
+  title        = {Alpha: An Open-Source Autonomous Multi-Agent AI Operating System},
+  author       = {Kumar, Prem},
+  year         = {2026},
+  howpublished = {\url{https://github.com/itsPremkumar/alpha}},
+  license      = {MIT},
+  note         = {LangGraph agent runtime, FastAPI Gateway, Next.js 15 workspace}
+}
+```
+
+Machine-readable metadata: [`CITATION.cff`](./CITATION.cff).
 
 ---
 
 <div align="center">
 
-**Alpha** — *Autonomous Agentic Intelligence at Scale.*  
-Architected with precision by [Prem Kumar](https://github.com/itsPremkumar).
+**Alpha** — *Autonomous agentic intelligence, self-hosted and auditable.*
+Architected and maintained by [Prem Kumar](https://github.com/itsPremkumar) ·
+[MIT licensed](./LICENSE)
 
 </div>
