@@ -87,6 +87,8 @@ Sandbox authorization (`sandbox:execute`) gates every sandbox acquisition before
 
 Before changing a later authorization phase, read the [authorization RFC](../../../../../../docs/plans/2026-07-10-pluggable-authorization-rfc.md) and its [implementation notes](../../../../../../docs/plans/2026-07-10-pluggable-authorization-implementation-notes.md). The notes are the cumulative handoff record for merged PR behavior, reviewer feedback, trust-boundary decisions, deferred scope, and required regression coverage.
 
+**Autonomy recovery metadata.** `ToolErrorHandlingMiddleware` now classifies every exception with `alpha.ops.autonomy_truth.classify_failure` and attaches bounded `agent_workspace_autonomy_recovery` metadata (category, retryability, retry budget, safe summary, next steps). The model-visible legacy error text remains unchanged; the metadata is server-owned recovery evidence and must not contain raw secrets.
+
 **Lead-only middlewares** (`build_middlewares`, appended after the base):
 
 14. **DynamicContextMiddleware** - Injects the current date (and optionally memory) as a `<system-reminder>` into the first HumanMessage, keeping the base system prompt fully static for prefix-cache reuse. The injected date follows the server-local timezone unless `AGENT_WORKSPACE_DATE_TIMEZONE` names an IANA zone (invalid values fall back to server-local).

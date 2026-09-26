@@ -237,6 +237,17 @@ real gap.
 
 ---
 
+### Current implementation note (2026-09-24)
+
+The active feature branch now implements the C6 self-documentation contract as
+`search_project_docs` and adds a tool-level Autonomy Truth & Recovery layer:
+`autonomy_control(action=readiness|capability|failure|activity|known_limits)`.
+The latter provides fail-closed capability evidence, redacted bounded failure
+classification, and activity digests. The branch also adds the tool-level
+`reversible_delete` quarantine/restore primitive for A3. It does not yet replace planner-level
+preflight integration, a persistent undo ledger, or destructive-operation
+policy; those remain separate follow-up work.
+
 ## Summary Matrix
 
 | Phase | Item | Status | Tier | Proposed Artifact |

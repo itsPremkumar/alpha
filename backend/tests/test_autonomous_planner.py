@@ -2,6 +2,8 @@
 
 import json
 
+from langgraph.prebuilt import ToolRuntime
+
 from alpha.kanban.store import KanbanStore
 from alpha.planning.autonomous import AutonomousPlan, AutonomousPlanner, detect_domains, review_wave
 from alpha.planning.profiles import (
@@ -227,10 +229,54 @@ def test_user_text_is_neutralized_in_cards():
     assert "‮" not in blob
 
 
-def test_autoplan_tool_returns_serializable_plan():
-    result = build_autonomous_plan.invoke({"raw_prompt": "Add a health-check endpoint with tests"})
+def test_autoplan_tool_returns_serializable_server_preflight_plan():
+    runtime = ToolRuntime(
+        state={},
+        context={"model_name": "test-model"},
+        config={},
+        stream_writer=lambda _: None,
+        tool_call_id="autoplan-test",
+        store=None,
+    )
+    result = build_autonomous_plan.invoke({"runtime": runtime, "raw_prompt": "Add a health-check endpoint with tests"})
     data = json.loads(result)
     assert data["goal_statement"]
     assert data["subtasks"]
     assert data["kanban_board"]["tasks"]
     assert data["user_summary_markdown"]
+    assert data["autonomy_readiness"]["evidence_source"] == "server_runtime"
+    assert data["autonomy_readiness"]["ready"] is True
+
+
+def test_autoplan_tool_gates_unready_core_before_persistence(monkeypatch):
+    runtime = ToolRuntime(
+        state={},
+        context={},
+        config={},
+        stream_writer=lambda _: None,
+        tool_call_id="autoplan-unready-test",
+        store=None,
+    )
+    monkeypatch.setattr(
+        "alpha.tools.builtins.autoplan_tool.collect_server_readiness",
+        lambda _: ({"tool_count": 0}, ["test_unready"]),
+    )
+    monkeypatch.setattr(
+        "alpha.kanban.store.get_kanban_store",
+        lambda: (_ for _ in ()).throw(AssertionError("must not persist an unready plan")),
+    )
+
+    data = json.loads(
+        build_autonomous_plan.invoke(
+            {
+                "runtime": runtime,
+                "raw_prompt": "Add a health-check endpoint with tests",
+                "persist_kanban": True,
+            }
+        )
+    )
+
+    assert data["autonomy_readiness"]["status"] == "blocked"
+    assert data["autonomy"] == "gated"
+    assert data["execution_blocked"] is True
+    assert data["kanban_persisted"] is False

@@ -124,6 +124,9 @@ This section accumulates work toward the **2.1.0** milestone
 
 #### Agents & runtime
 
+- **safety:** Added the free, local `reversible_delete` tool bound by hidden runtime state to the authenticated per-user/per-thread workspace, with read-only planning, authenticated project approval bound to exact plan evidence, bounded target batches, quarantine receipts, fingerprint checks, rollback, and restoration instead of hard-delete.
+- **autonomy:** Added the free, offline `autonomy_control` tool for server-observed fail-closed readiness, capability-boundary explanations, redacted failure recovery classification, bounded activity digests with hashed file references, and a privacy-safe current-thread recovery brief. Model-authored readiness/approval claims are ignored; no provider is called and no payload is persisted. `build_autonomous_plan` now embeds this preflight and blocks board/profile mutations while the required core is unready.
+- **knowledge:** Added the free, offline `search_project_docs` tool for deterministic, authority-aware retrieval over current project guidance, product docs, and shipped configuration. Its hidden runtime selects the server project root and cache freshness is automatic; model-selected roots and forced refresh are not exposed. Results include line ranges and SHA-256 evidence; design references are opt-in and labelled non-authoritative, while runtime config and secrets are excluded.
 - **scheduler:** Scheduled tasks can pin `assistant_id` to `lead_agent` (the
   default) or a custom agent the owner already has. Unknown or malformed names
   return 422. The workspace create/edit form exposes the same choice.

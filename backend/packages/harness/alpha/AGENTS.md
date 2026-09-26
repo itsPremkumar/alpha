@@ -200,3 +200,19 @@ Enterprise-level autonomous operations platform:
    - Mounted at `/api/enterprise/*` and `/api/gateway/enterprise/*`. Visualized in War Room tab.
 Tests: `tests/test_enterprise_autonomous_software_company.py`.
 
+### Reversible Mutation & Autonomy Truth (`packages/harness/alpha/safety/`, `ops/`)
+
+`reversible_delete` plans without mutating target files, accepts only a
+server-resolved project approval hash-bound to the exact plan, binds targets to
+the authenticated per-user/per-thread workspace, revalidates persisted metadata,
+re-checks fingerprints, quarantines
+instead of hard-deleting, and persists bounded receipts for restoration.
+`autonomy_control` is a local decision layer with a stdlib-only core. It uses
+hidden runtime/server config evidence for fail-closed readiness, rejects
+model-authored approval claims, explains capability boundaries, redacts failure
+recovery, and produces activity digests with hashed path references. Tool
+errors receive bounded recovery metadata through
+`ToolErrorHandlingMiddleware` without changing the visible legacy message.
+Neither path may call providers, networks, or bypass policy. Tests:
+`tests/test_reversible_delete.py`, `tests/test_autonomy_truth.py`.
+

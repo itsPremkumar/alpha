@@ -37,6 +37,7 @@ logger = logging.getLogger(__name__)
 _MISSING_TOOL_CALL_ID = "missing_tool_call_id"
 _TASK_TOOL_NAME = "task"
 _RECOVERY_HINT = "Continue with available context, or choose an alternative tool."
+_AUTONOMY_RECOVERY_KEY = "agent_workspace_autonomy_recovery"
 
 
 def _stamp_task_exception_status(message: ToolMessage, *, tool_name: str, error: str) -> ToolMessage:
@@ -85,6 +86,21 @@ class ToolErrorHandlingMiddleware(AgentMiddleware[AgentState]):
         # carry the same structured metadata.
         structured_error = f"{exc.__class__.__name__}: {detail}"
         message = _stamp_task_exception_status(message, tool_name=tool_name, error=structured_error)
+        try:
+            from alpha.ops.autonomy_truth import classify_failure
+
+            advice = classify_failure(structured_error)
+            existing = dict(message.additional_kwargs or {})
+            existing[_AUTONOMY_RECOVERY_KEY] = {
+                "category": advice.category,
+                "retryable": advice.retryable,
+                "retry_budget": advice.retry_budget,
+                "next_steps": list(advice.next_steps),
+                "safe_summary": advice.safe_summary,
+            }
+            message.additional_kwargs = existing
+        except Exception:
+            logger.debug("Could not attach autonomy recovery metadata", exc_info=True)
         return stamp_exception_meta(message, structured_error)
 
     def _stamp_skill_read_metadata(

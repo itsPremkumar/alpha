@@ -34,7 +34,7 @@
   - [3.8 Presentation Layer: Windows Desktop & Web UI](#38-presentation-layer-windows-desktop--web-ui)
 - [4. Complete Subsystem Reference (All 89 Harness Engines)](#4-complete-subsystem-reference-all-89-harness-engines)
 - [5. Public Skills Catalog (All 24 Specialized Skills)](#5-public-skills-catalog-all-24-specialized-skills)
-- [6. Gateway API & Router Directory (All 51 Micro-Endpoints)](#6-gateway-api--router-directory-all-51-micro-endpoints)
+- [6. Gateway API & Router Directory (All 56 Micro-Endpoints)](#6-gateway-api--router-directory-all-56-micro-endpoints)
 - [7. Complete Built-in Tools Catalog (60+ Native Tools)](#7-complete-built-in-tools-catalog-60-native-tools)
 - [8. Deployment & Quick Start Guide](#8-deployment--quick-start-guide)
   - [Option A: Windows Desktop Application (One-Click)](#option-a-windows-desktop-application-one-click)
@@ -65,6 +65,37 @@ For prompt-to-completion workflows, set the run request's `autonomous` field to
 `true`. Alpha then applies plan mode, permitted subagent delegation, and
 non-interactive execution through the trusted Gateway path; authorization and
 sandbox policy remain enforced.
+
+### Offline self-documentation retrieval
+
+The built-in `search_project_docs` tool gives agents a free, local source of
+truth for Alpha's own configuration, commands, architecture, and operational
+contracts. It performs deterministic lexical ranking over allowlisted Markdown,
+YAML, TOML, and JSON documentation, returns line-addressable snippets and SHA-256
+source digests, and supports bounded reads with stale-source detection. Runtime
+configuration, secrets, private skills, dependency trees, and generated output
+are excluded. Files under `references/` are opt-in and explicitly labelled
+`design_reference` so proposals are never presented as shipped behaviour. The
+tool's hidden runtime selects the server project root; model-selected roots and
+forced refresh are not exposed. The index uses no network, embedding service,
+database, or paid API.
+
+### Autonomy truth & recovery layer
+
+The built-in `autonomy_control` tool makes the autonomous loop honest and
+recoverable without adding a provider dependency. `readiness` uses hidden
+server runtime/config evidence and produces a fail-closed core decision;
+optional sandbox, vision, network, MCP, and skill limits are reported without
+misrepresenting them as blockers. `capability` explains whether a requested
+operation is available, degraded, unknown, or blocked; `failure` classifies
+redacted errors into bounded retry/fallback/escalation plans; `recovery`
+returns a redacted current-thread resume brief; and `activity` summarizes
+existing trajectory or ledger events into counts, approvals, hashed file
+references, token usage, and estimated spend. Model-authored readiness or
+approval claims, raw context, event payloads, file paths, and error secrets are
+never trusted or returned. The decision logic is stdlib-only and offline.
+`build_autonomous_plan` embeds the same preflight and gates board persistence or
+profile installation whenever the required core is not ready.
 
 **Alpha** is a unified Autonomous Multi-Agent Operating System engineered for long-horizon task execution, frontier cognitive reasoning, multi-model swarms, and exhaustive multi-hop research.
 
@@ -146,6 +177,8 @@ Every advanced feature in Alpha is engineered for production-grade reliability a
 - **Ralph Loop (Recursive Self-Improvement Loop)**: Executes test-driven iterative self-healing loops until code passes all unit tests and satisfies architectural invariants.
 - **Boulder Checkpointing & Durable Replay**: Saves multi-session execution snapshots allowing long-running tasks to resume seamlessly after restarts or network drops.
 - **Kibitzer & Metacognitive Supervision**: Background supervisory processes that continuously evaluate agent reasoning to detect loops, thrashing, and prompt drift.
+- **Autonomy Truth & Recovery**: `autonomy_control` provides fail-closed capability readiness, bounded failure classification, approval-aware decisions, and human-readable activity digests without external services.
+- **Reversible File Quarantine**: `reversible_delete` binds cleanup to the authenticated thread workspace, plans safely, requires a server-resolved project approval, quarantines instead of hard-deleting, and provides receipt-backed restoration.
 
 ### 3.4 Frontier Cognitive Intelligence & Optimization
 - **Autonomous Agentic Variation Operators (AVO)**: Implements evolutionary prompt and strategy mutations to optimize agent performance across complex tasks.
@@ -168,6 +201,7 @@ Every advanced feature in Alpha is engineered for production-grade reliability a
 - **Hashline Line-Level Precision Editing**: Deterministic line-based reading and editing tool preventing merge conflicts and multi-line edit drift.
 - **Sandboxed Python & Bash REPL**: Secure sandbox execution environments for running data analysis, scripts, and system commands.
 - **Visual Artifact & UI Verification**: Renders and visually inspects generated UI widgets, canvases, and media artifacts.
+- **Offline Self-Documentation Retrieval**: `search_project_docs` performs authority-aware, line-addressable retrieval over Alpha's current docs and shipped config without embeddings, network calls, or paid services; design references remain opt-in and clearly non-authoritative.
 
 ### 3.6 Enterprise Security Enclave & Governance
 - **Astra & Enclave Security Management**: Hardware- and software-enforced security enclaves safeguarding credentials and enforcing process isolation.
@@ -236,7 +270,7 @@ Every directory in `backend/packages/harness/alpha/` represents a dedicated func
 | 38 | `integrations` | External API hooks, webhook receivers, and third-party SaaS integrations. |
 | 39 | `jobs` | Asynchronous background job queues with status polling and cancel signals. |
 | 40 | `kanban` | Real-time collaborative kanban boards for multi-agent project task tracking. |
-| 41 | `knowledge` | Enterprise semantic knowledge graph and cross-session associative search. |
+| 41 | `knowledge` | Enterprise semantic knowledge graph, cross-session associative search, and offline authority-aware self-documentation retrieval. |
 | 42 | `learning` | Dynamic skill forge synthesizing reusable skills from successful execution traces. |
 | 43 | `ledger` | Cryptographic execution ledger and token consumption bookkeeping. |
 | 44 | `lineage` | Universal artifact provenance tracking full derivation history from initial prompt. |
@@ -248,7 +282,7 @@ Every directory in `backend/packages/harness/alpha/` represents a dedicated func
 | 50 | `mission` | Hierarchical mission DAG execution and multi-stage work queue scheduling. |
 | 51 | `missions` | Complex goal decomposition into parallel and sequential execution milestones. |
 | 52 | `models` | Multi-provider routing, load balancing, model fallbacks, and token tracking. |
-| 53 | `ops` | Operator telemetry APIs, runtime diagnostics, and system health status probes. |
+| 53 | `ops` | Operator telemetry APIs, runtime diagnostics, autonomy readiness, failure recovery, and system health status probes. |
 | 54 | `orchestration` | Distributed agent swarms, dynamic work partitioning, and barrier synchronization. |
 | 55 | `orchestrator` | Lead orchestrator delegating bounded subtasks to specialized subagents. |
 | 56 | `perpetual` | Non-terminating continuous background monitoring and recurring cron agents. |
@@ -319,9 +353,9 @@ Located in [`skills/public/`](./skills/public/), these skills provide pre-packag
 
 ---
 
-## 6. Gateway API & Router Directory (All 51 Micro-Endpoints)
+## 6. Gateway API & Router Directory (All 56 Micro-Endpoints)
 
-The FastAPI Gateway exposes 51 modular routers in `backend/app/gateway/routers/`:
+The FastAPI Gateway exposes 56 modular routers in `backend/app/gateway/routers/`:
 
 - `a2a.py` — Agent-to-Agent message routing and peer discovery.
 - `agent_messages.py` — Inter-agent message inbox delivery and status polling.
@@ -385,6 +419,9 @@ The FastAPI Gateway exposes 51 modular routers in `backend/app/gateway/routers/`
 | `catalog_tool_search` | Meta-Tools | Dynamic semantic search across the global tool and MCP catalog. |
 | `catalog_tool_describe` | Meta-Tools | Inspects input schemas and docstrings for any cataloged tool. |
 | `catalog_tool_call` | Meta-Tools | Dynamically executes tools discovered via tool catalog search. |
+| `search_project_docs` | Knowledge | Performs free, offline, authority-aware retrieval over current project docs and config with line/digest evidence. |
+| `autonomy_control` | Autonomy | Checks readiness and capabilities, classifies failures, and summarizes activity without external calls. |
+| `reversible_delete` | Safety | Plans, quarantines, and restores approved file deletions without hard-delete. |
 | `auto_test_and_repair` | Coding | Executes test suites, parses failure traces, and autonomously repairs code. |
 | `generate_repo_map` | Coding | Constructs visual and structural AST dependency maps of repositories. |
 | `manage_code_checkpoint` | Coding | Manages git checkpoints, commits, stashes, and branch rollbacks during refactors. |
@@ -655,7 +692,10 @@ Alpha maintains an extensive publication-grade library of formal architectural b
 - **[02. Agentic Variation Operators (AVO)](./references/02-avo-and-evolution/)**: NVIDIA AVO loop specifications, prompt genome mutation, compiler-grounded feedback, and evolutionary search.
 - **[03. Recursive Self-Improvement (RSI)](./references/03-rsi-and-self-improvement/)**: Safe self-evolution, AST invariant enforcement, [DeepMind Promptbreeder Darwinian Evolution](./references/03-rsi-and-self-improvement/promptbreeder-and-darwinian-self-evolution.md), [Automated Program Repair (APR) & Test-Driven Healing](./references/03-rsi-and-self-improvement/automated-program-repair-and-test-driven-healing.md), and [Formal Verification & Ephemeral Canary Sandboxing](./references/03-rsi-and-self-improvement/formal-verification-and-canary-sandboxing-for-rsi.md).
 - **[04. Frontier Benchmarks & Deep Research](./references/04-frontier-benchmarks-and-deep-research/)**: Comparative harness analyses (Devin, Claude Code, OpenHands, Aider, Cursor), [Princeton SWE-agent & Agent-Computer Interface (ACI)](./references/04-frontier-benchmarks-and-deep-research/swe-agent-and-aci-architecture-study.md), [Roo Code, Cline & Goose Terminal Harnesses](./references/04-frontier-benchmarks-and-deep-research/roo-code-cline-and-goose-terminal-harnesses.md), [AutoGen v0.4 Actor Framework vs. CrewAI Hierarchy](./references/04-frontier-benchmarks-and-deep-research/autogen-studio-vs-crewai-orchestration-patterns.md), and L0-L8 memory benchmarks.
-- **[05. Autonomous Operations & Execution](./references/05-autonomous-operations-and-execution/)**: Long-term autonomous company runbooks, goal decomposition trees, [MetaGPT & ChatDev Multi-Agent SDLC](./references/05-autonomous-operations-and-execution/metagpt-and-chatdev-multi-agent-sdlc.md), and [Human-in-the-Loop Collaborative Co-Work Patterns](./references/05-autonomous-operations-and-execution/human-in-the-loop-collaborative-cowork-patterns.md).
+- **[05. Autonomous Operations & Execution](./references/05-autonomous-operations-and-execution/)**: Long-term autonomous company runbooks, goal decomposition trees, [MetaGPT & ChatDev Multi-Agent SDLC](./references/05-autonomous-operations-and-execution/metagpt-and-chatdev-multi-agent-sdlc.md), and [Human-in-the-Loop Collaborative Co-Work Patterns](./references/05-autonomous-operations-and-execution/human-in-the-loop-collaborative-co-work-patterns.md).
+- **[Offline Self-Documentation Guide](./docs/SELF_DOCUMENTATION.md)**: The implemented free, local retrieval contract, authority tiers, safety exclusions, and evidence workflow.
+- **[Autonomy Truth & Recovery Guide](./docs/AUTONOMY_TRUTH.md)**: The implemented fail-closed readiness, capability, failure, and activity decision contract.
+- **[Reversible File Quarantine Guide](./docs/REVERSIBLE_DELETE.md)**: The implemented local, approval-gated delete plan, quarantine, receipt, and restore contract.
 
 For a full breakdown of the 2026 SOTA paradigms (3-tier agent stack, AVO loop, 9-tier cognitive memory plane, and RSI safety bounds), consult the [References Master Guide](./references/README.md).
 

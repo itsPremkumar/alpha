@@ -21,9 +21,12 @@ Welcome to the comprehensive technical documentation for **Alpha**, the Autonomo
 - **[Troubleshooting Guide](TROUBLESHOOTING.md)**: Diagnostic flowcharts, stuck process resolution, lock contention handling, and common error remediation.
 
 ### Developer & Integration References
-- **[API Reference](API_REFERENCE.md)**: Complete endpoint reference for all 51 FastAPI Gateway routers, request/response schemas, and SSE event streaming.
+- **[API Reference](API_REFERENCE.md)**: Complete endpoint reference for all 56 FastAPI Gateway routers, request/response schemas, and SSE event streaming.
 - **[API Architecture](API.md)**: High-level API design principles, authentication protocols, and versioning contracts.
 - **[Configuration Reference](CONFIGURATION.md)**: Detailed specification for `config.yaml`, `extensions_config.json`, intent category presets, model chains, and environment variables.
+- **[Offline Self-Documentation](SELF_DOCUMENTATION.md)**: Free, local, authority-aware retrieval over current project docs with line and digest evidence.
+- **[Autonomy Truth & Recovery](AUTONOMY_TRUTH.md)**: Fail-closed readiness, capability boundaries, failure classification, and activity digests.
+- **[Reversible File Quarantine](REVERSIBLE_DELETE.md)**: Approval-gated local deletion planning, quarantine, receipts, and restore.
 - **[Getting Started](GETTING_STARTED.md)**: Step-by-step setup for Windows Desktop (Electron), Docker Compose, Bare-Metal local development, and unattended CI setup.
 - **[Development Guide](DEVELOPMENT.md)**: Local developer workflows, hot-reloading, test suites, and contribution standards.
 - **[Deployment Guide](DEPLOYMENT.md)**: Infrastructure orchestration across Docker Compose, Kubernetes Helm charts, Nginx load balancing, and cloud providers.

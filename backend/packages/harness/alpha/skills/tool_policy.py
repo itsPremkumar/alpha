@@ -20,6 +20,9 @@ ALWAYS_AVAILABLE_BUILTIN_TOOL_NAMES = frozenset(
         "describe_skill",
         "read_file",
         "review_skill_package",
+        "search_project_docs",
+        "autonomy_control",
+        "reversible_delete",
         "tool_search",
     }
 )
@@ -69,9 +72,7 @@ def filter_tools_by_skill_allowed_tools[ToolT: NamedTool](
     always_allowed_tool_names: set[str] | frozenset[str] = frozenset(),
     allow_all_when_undeclared: bool = True,
 ) -> list[ToolT]:
-    allowed = allowed_tool_names_for_skills(
-        skills, allow_all_when_undeclared=allow_all_when_undeclared
-    )
+    allowed = allowed_tool_names_for_skills(skills, allow_all_when_undeclared=allow_all_when_undeclared)
     if allowed is None:
         return tools
 
