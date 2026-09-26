@@ -10,8 +10,8 @@ can talk its way past them.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
-from typing import Iterable, Mapping
 
 #: Tool names a script may NEVER call, whatever the opt-in allowlist says.
 #: These are the self-recursion, delegation and MCP surfaces.

@@ -679,7 +679,6 @@ def test_bite_startup_refusal_is_load_bearing() -> None:
 
 
 def test_bite_the_scope_intersection_at_the_grant_chokepoint_is_load_bearing() -> None:
-    from alpha.bots import authority_ceiling as ceiling_mod
 
     scope = ScopePolicy.from_dict(
         {"name": "no-exec", "members": ["agent:researcher-3"], "denied_capabilities": ["process_exec"]},

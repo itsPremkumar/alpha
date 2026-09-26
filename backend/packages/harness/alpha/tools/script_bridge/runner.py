@@ -23,8 +23,8 @@ from pathlib import Path
 from typing import Any
 
 from .env import child_python_executable
-from .errors import OutputCapExceeded, WallClockTimeout
-from .policy import ScriptBridgeMode, ScriptBridgeLimits
+from .errors import OutputCapExceeded
+from .policy import ScriptBridgeLimits, ScriptBridgeMode
 
 #: Bootstrap executed in the child before the user's script.  It puts the
 #: harness packages on ``sys.path`` without inheriting ``PYTHONPATH`` from the
@@ -75,12 +75,7 @@ class CappedStream:
         tail = data[-(max_inline - max_inline // 2) :].decode("utf-8", "replace")
         dropped = len(data) - max_inline
         where = f" full_text={self.spill_path}" if self.spill_path else ""
-        return (
-            f"[{self.name} head]\n{head}\n"
-            f"[... {dropped} bytes elided; cap={self.cap} total={self.total_bytes} ...]\n"
-            f"[{self.name} tail]\n{tail}\n"
-            f"[{self.name} truncated: showing {max_inline} of {len(data)} bytes.{where}]"
-        )
+        return f"[{self.name} head]\n{head}\n[... {dropped} bytes elided; cap={self.cap} total={self.total_bytes} ...]\n[{self.name} tail]\n{tail}\n[{self.name} truncated: showing {max_inline} of {len(data)} bytes.{where}]"
 
 
 @dataclass

@@ -26,13 +26,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from . import stubgen, wire
 from .dispatcher import RuntimeCarrier, ScriptDispatcher
 from .env import build_child_env
 from .errors import (
-    OutputCapExceeded,
     PolicyViolation,
     ScriptBridgeError,
-    ToolCallCapExceeded,
     TransportError,
     WallClockTimeout,
 )
@@ -44,7 +43,6 @@ from .policy import (
     forbidden_tool_names_sorted,
 )
 from .runner import run_script
-from . import stubgen, wire
 
 logger = logging.getLogger(__name__)
 
@@ -113,9 +111,7 @@ class ScriptBridgeService:
         clash = sorted(set(allow) & forbidden)
         if clash:
             raise PolicyViolation(
-                "these tools can never be called from inside a script "
-                "(self-recursion, delegation and approval surfaces): "
-                + ", ".join(clash),
+                "these tools can never be called from inside a script (self-recursion, delegation and approval surfaces): " + ", ".join(clash),
                 refused=clash,
             )
 
@@ -134,9 +130,7 @@ class ScriptBridgeService:
                 max_script_bytes=policy.limits.max_script_bytes,
                 supplied_bytes=len(script.encode("utf-8")),
             )
-        dispatcher = ScriptDispatcher(
-            policy=policy, carrier=self.carrier, cache_dir=self.cache_root, tools=self._tools
-        )
+        dispatcher = ScriptDispatcher(policy=policy, carrier=self.carrier, cache_dir=self.cache_root, tools=self._tools)
         endpoint = dispatcher.bind()
         env = build_child_env(
             opt_in=policy.env_opt_in or None,
@@ -196,15 +190,16 @@ class ScriptBridgeService:
         session = self.kernels.get(session_id)
         dispatcher: ScriptDispatcher | None = None
         if session is None or not session.alive():
-            dispatcher = ScriptDispatcher(
-                policy=policy, carrier=self.carrier, cache_dir=self.cache_root, tools=self._tools
-            )
+            dispatcher = ScriptDispatcher(policy=policy, carrier=self.carrier, cache_dir=self.cache_root, tools=self._tools)
             endpoint = dispatcher.bind()
             thread: threading.Thread | None = None
 
             def _factory(sess: Any) -> tuple[ScriptDispatcher, threading.Thread]:
                 nonlocal thread
-                budget = policy.limits.wall_clock_seconds
+                # A kernel lives until it is reset or goes idle, so the
+                # dispatcher's accept loop is bounded by the session, not by one
+                # cell's wall clock.  Per-cell timeouts are enforced by
+                # ``KernelManager.run_cell``.
                 deadline = time.monotonic() + 24 * 3600
 
                 def _serve() -> None:
@@ -237,13 +232,8 @@ class ScriptBridgeService:
             except Exception as exc:
                 dispatcher.close()
                 code = getattr(exc, "code", "kernel_unavailable")
-                degradations.append(
-                    f"{code}: {exc}. FELL BACK TO ONE-SHOT EXECUTION for this call; "
-                    "nothing persists between cells in this mode."
-                )
-                return self.run_oneshot(
-                    script, policy, session_id=f"{session_id}-oneshot"
-                )
+                degradations.append(f"{code}: {exc}. FELL BACK TO ONE-SHOT EXECUTION for this call; nothing persists between cells in this mode.")
+                return self.run_oneshot(script, policy, session_id=f"{session_id}-oneshot")
         else:
             dispatcher = session.dispatcher
             thread = getattr(session, "server", None)
@@ -328,11 +318,7 @@ class ScriptBridgeService:
             payload["status"] = "error"
             payload["error"] = {
                 "code": "wall_clock_timeout",
-                "message": (
-                    "the script exceeded its wall-clock budget and was terminated "
-                    f"(stage: {outcome.killed_by or 'terminate'}). Raise the budget "
-                    "explicitly or split the work."
-                ),
+                "message": (f"the script exceeded its wall-clock budget and was terminated (stage: {outcome.killed_by or 'terminate'}). Raise the budget explicitly or split the work."),
                 "detail": {
                     "wall_clock_seconds": policy.limits.wall_clock_seconds,
                     "sigterm_grace_seconds": policy.limits.sigterm_grace_seconds,
@@ -343,10 +329,7 @@ class ScriptBridgeService:
             payload["status"] = "error"
             payload["error"] = {
                 "code": "tool_call_cap_exceeded",
-                "message": (
-                    "the script hit its tool-call budget; the dispatcher refused the "
-                    "next call rather than silently dropping it"
-                ),
+                "message": ("the script hit its tool-call budget; the dispatcher refused the next call rather than silently dropping it"),
                 "detail": {"cap": policy.limits.max_tool_calls, "used": stats["tool_calls"]},
             }
         return BridgeResult(payload)
@@ -436,9 +419,7 @@ def script_bridge(
             allowed_tool_names=allowed_tools,
             mode="project" if effective_mode == "oneshot" else "project",
             cwd=None,
-            limits=ScriptBridgeLimits(**{**ScriptBridgeLimits().to_dict(), **overrides})
-            if overrides
-            else None,
+            limits=ScriptBridgeLimits(**{**ScriptBridgeLimits().to_dict(), **overrides}) if overrides else None,
             env_opt_in=env_opt_in,
         )
     except ScriptBridgeError as exc:
@@ -452,9 +433,7 @@ def script_bridge(
     except ScriptBridgeError as exc:
         return json.dumps({"status": "error", "error": exc.to_dict()}, indent=2)
     except TransportError as exc:
-        return json.dumps(
-            {"status": "error", "error": {"code": exc.code, "message": exc.message}}, indent=2
-        )
+        return json.dumps({"status": "error", "error": {"code": exc.code, "message": exc.message}}, indent=2)
     return result.render()
 
 
@@ -467,9 +446,7 @@ def script_bridge_reset(session_id: str | None = None, context: dict[str, Any] |
     """
     service = ScriptBridgeService(_carrier_from_context(context))
     dropped = service.reset(session_id)
-    return json.dumps(
-        {"status": "ok", "reset": dropped, "remaining": service.describe_sessions()}, indent=2
-    )
+    return json.dumps({"status": "ok", "reset": dropped, "remaining": service.describe_sessions()}, indent=2)
 
 
 SCRIPT_BRIDGE_SCHEMA: dict[str, Any] = {
@@ -515,11 +492,7 @@ def register_in_catalog(catalog: Any = None) -> bool:
     catalog.register_tool(
         TOOL_NAME,
         script_bridge,
-        description=(
-            "Run a Python script that calls Alpha tools programmatically and return "
-            "only the script's own output. Intermediate tool results never enter the "
-            "context window."
-        ),
+        description=("Run a Python script that calls Alpha tools programmatically and return only the script's own output. Intermediate tool results never enter the context window."),
         category="code",
         parameters_schema=SCRIPT_BRIDGE_SCHEMA,
     )

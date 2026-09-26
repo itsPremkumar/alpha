@@ -4,14 +4,21 @@ Reverting a fix in-place has already left a source file reverted in this
 environment, so this script never touches the working tree. For each mutation it
 
 1. copies the whole ``backend`` python tree to a scratch directory
-   (``copytree``, hard-linked first where possible for speed),
+   (``shutil.copytree`` with REAL BYTES - never ``os.link``; see
+   ``_assert_not_hardlinked``),
 2. applies a textual revert to ONE file inside the COPY,
 3. runs the alpha-leader test file against the copy with that copy first on
    ``sys.path``,
 4. reports whether the expected test FAILED (which is the point: a mutation
    that leaves the suite green is a test that does not bite).
 
-Usage:  python _mutate_alpha_leader.py
+An earlier version of this file used hard links and wrote mutations THROUGH the
+link into the live source tree, which silently turned the default-on leader off
+in ``registry.py``. That is why ``build_copy`` copies bytes and
+``_assert_not_hardlinked`` refuses to proceed if an inode is ever shared.
+
+Usage:  python _mutate_alpha_leader.py [index ...]
+        (optional positional args select mutations by 0-based index)
 """
 
 from __future__ import annotations
@@ -30,7 +37,7 @@ HARNESS = BACKEND / "packages" / "harness"
 PY = BACKEND / ".venv" / "Scripts" / "python.exe"
 TESTS = ["tests/test_alpha_leader_capability_dispatch.py"]
 
-# (label, relative file, pattern, replacement, expected-failing test substring)
+# (label, relative file, pattern, replacement, expected-failing test selector)
 MUTATIONS: list[tuple[str, str, str, str, str]] = [
     (
         "P1 default-off: stop seeding the `alpha` leader on a fresh roster",
@@ -120,14 +127,7 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
 
 
 def build_copy(dest: Path) -> Path:
-    """Clone the python tree so the real working tree is never mutated.
-
-    Real byte copies only. An earlier version of this script used ``os.link``
-    (hard links) and writing the mutation into the copy therefore wrote THROUGH
-    the link into the live source file -- exactly the failure mode this harness
-    exists to avoid. ``_assert_not_hardlinked`` below is the guard against ever
-    repeating that.
-    """
+    """Clone the python tree so the real working tree is never mutated."""
     dest.mkdir(parents=True, exist_ok=True)
     for name in ("packages", "app", "tests"):
         src = BACKEND / name

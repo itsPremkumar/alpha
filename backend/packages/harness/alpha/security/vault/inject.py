@@ -70,9 +70,7 @@ class HttpHeaderInjector:
         return {
             "status_code": response.status_code,
             "body": _scrub(body[:8000], secret),
-            "headers": {
-                k: _scrub(v, secret) for k, v in dict(response.headers).items() if k.lower() != "set-cookie"
-            },
+            "headers": {k: _scrub(v, secret) for k, v in dict(response.headers).items() if k.lower() != "set-cookie"},
         }
 
 
@@ -148,15 +146,12 @@ class TwoFactorCodeInjector:
     def inject(self, secret: str, target: str, **kwargs: Any) -> Any:
         if self.code_provider is None:
             raise TwoFactorUnavailable(
-                "no second factor is available for this target; the vault will not "
-                "ask the model for a code",
+                "no second factor is available for this target; the vault will not ask the model for a code",
                 target=target,
             )
         if "code" in kwargs:
             raise TwoFactorUnavailable(
-                "a two-factor code supplied by the caller was refused: a code must "
-                "come from the stored authenticator key or the user's own UI, never "
-                "from the channel the agent controls",
+                "a two-factor code supplied by the caller was refused: a code must come from the stored authenticator key or the user's own UI, never from the channel the agent controls",
                 target=target,
             )
         code = self.code_provider(target=target)
@@ -164,8 +159,6 @@ class TwoFactorCodeInjector:
         return {
             "target": target,
             "header": self.header,
-            "material_fingerprint": hmac.new(
-                b"vault", value.encode("utf-8"), "sha256"
-            ).hexdigest()[:12],
+            "material_fingerprint": hmac.new(b"vault", value.encode("utf-8"), "sha256").hexdigest()[:12],
             "delivered": True,
         }

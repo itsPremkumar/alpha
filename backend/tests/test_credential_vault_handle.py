@@ -72,9 +72,7 @@ def vault(tmp_path):
 # (f) a vault handle yields the secret to NOBODY
 # ---------------------------------------------------------------------------
 def test_use_returns_only_the_operation_result(vault):
-    handle = vault.deposit(
-        SECRET, operation="http_request", target=TARGET, owner="u-1", ttl_seconds=120
-    )
+    handle = vault.deposit(SECRET, operation="http_request", target=TARGET, owner="u-1", ttl_seconds=120)
     injector = RecordingInjector()
     result = vault.use(handle, injector, operation="http_request", target=TARGET)
     assert result == {"status": "ok", "id": "ch_1"}
@@ -137,9 +135,7 @@ def test_reading_the_raw_secret_is_refused_by_every_door(vault):
 
 def test_exception_paths_cannot_emit_the_secret(vault):
     """Every failure mode is swept for the canary."""
-    handle = vault.deposit(
-        SECRET, operation="http_request", target=TARGET, owner="u-1", ttl_seconds=120
-    )
+    handle = vault.deposit(SECRET, operation="http_request", target=TARGET, owner="u-1", ttl_seconds=120)
     captured: list[str] = []
 
     class Exploding:
@@ -207,7 +203,7 @@ def test_injectors_scrub_a_server_that_echoes_the_secret(vault):
         def __init__(self, *a: Any, **k: Any) -> None:
             pass
 
-        def __enter__(self) -> "FakeClient":
+        def __enter__(self) -> FakeClient:
             return self
 
         def __exit__(self, *a: Any) -> None:
@@ -221,9 +217,7 @@ def test_injectors_scrub_a_server_that_echoes_the_secret(vault):
     original = httpx.Client
     httpx.Client = FakeClient  # type: ignore[assignment]
     try:
-        handle = vault.deposit(
-            SECRET, operation="http_request", target=TARGET, owner="u-1", ttl_seconds=120
-        )
+        handle = vault.deposit(SECRET, operation="http_request", target=TARGET, owner="u-1", ttl_seconds=120)
         result = vault.use(handle, HttpHeaderInjector(), operation="http_request", target=TARGET)
     finally:
         httpx.Client = original  # type: ignore[assignment]
@@ -236,19 +230,13 @@ def test_injectors_scrub_a_server_that_echoes_the_secret(vault):
 
 def test_env_injector_masks_the_secret_from_command_output(tmp_path):
     script = tmp_path / "echo_env.py"
-    script.write_text(
-        "import os\nprint('I see', os.environ.get('VAULT_SECRET'))\n", encoding="utf-8"
-    )
+    script.write_text("import os\nprint('I see', os.environ.get('VAULT_SECRET'))\n", encoding="utf-8")
     import sys
 
     injector = EnvVarInjector(var="VAULT_SECRET", argv=[sys.executable, str(script)])
     vault = HandleVault()
-    handle = vault.deposit(
-        SECRET, operation="subprocess_env", target=sys.executable, owner="u-1", ttl_seconds=120
-    )
-    result = vault.use(
-        handle, injector, operation="subprocess_env", target=sys.executable
-    )
+    handle = vault.deposit(SECRET, operation="subprocess_env", target=sys.executable, owner="u-1", ttl_seconds=120)
+    result = vault.use(handle, injector, operation="subprocess_env", target=sys.executable)
     assert result["returncode"] == 0
     assert SECRET not in json.dumps(result)
     assert "[REDACTED:secret]" in result["stdout"]
@@ -256,9 +244,7 @@ def test_env_injector_masks_the_secret_from_command_output(tmp_path):
 
 
 def test_ledger_records_handle_operation_target_and_time(vault):
-    handle = vault.deposit(
-        SECRET, operation="http_request", target=TARGET, owner="u-1", ttl_seconds=120
-    )
+    handle = vault.deposit(SECRET, operation="http_request", target=TARGET, owner="u-1", ttl_seconds=120)
     vault.use(handle, RecordingInjector(), operation="http_request", target=TARGET)
     rows = vault.ledger.read_back()
     assert len(rows) == 1
@@ -278,9 +264,7 @@ def test_ledger_records_handle_operation_target_and_time(vault):
 # (g) policy: least privilege, time bounds, no override, refusal with a reason
 # ---------------------------------------------------------------------------
 def test_one_entry_grants_one_operation_on_one_target(vault):
-    handle = vault.deposit(
-        SECRET, operation="http_request", target=TARGET, owner="u-1", ttl_seconds=120
-    )
+    handle = vault.deposit(SECRET, operation="http_request", target=TARGET, owner="u-1", ttl_seconds=120)
     with pytest.raises(ScopeViolation) as wrong_target:
         vault.use(handle, RecordingInjector(), operation="http_request", target="https://other")
     assert "authorises target" in str(wrong_target.value)
@@ -334,9 +318,7 @@ def test_agent_supplied_policy_override_is_rejected(vault):
     assert "cannot be overridden" in str(at_deposit.value)
     assert at_deposit.value.detail["rejected"] == ["operation"]
 
-    handle = vault.deposit(
-        SECRET, operation="http_request", target=TARGET, owner="u-1", ttl_seconds=120
-    )
+    handle = vault.deposit(SECRET, operation="http_request", target=TARGET, owner="u-1", ttl_seconds=120)
     for bypass in ("skip_scope_check", "bypass_scope", "override_scope", "force"):
         with pytest.raises(PolicyOverrideRejected):
             vault.use(
@@ -351,18 +333,14 @@ def test_agent_supplied_policy_override_is_rejected(vault):
 
 
 def test_injector_operation_must_match_the_scope(vault):
-    handle = vault.deposit(
-        SECRET, operation="http_request", target=TARGET, owner="u-1", ttl_seconds=120
-    )
+    handle = vault.deposit(SECRET, operation="http_request", target=TARGET, owner="u-1", ttl_seconds=120)
     with pytest.raises(ScopeViolation) as excinfo:
         vault.use(handle, EnvVarInjector(), operation="http_request", target=TARGET)
     assert "injector declares operation" in str(excinfo.value)
 
 
 def test_revocation_is_immediate(vault):
-    handle = vault.deposit(
-        SECRET, operation="http_request", target=TARGET, owner="u-1", ttl_seconds=120
-    )
+    handle = vault.deposit(SECRET, operation="http_request", target=TARGET, owner="u-1", ttl_seconds=120)
     assert vault.revoke(handle) is True
     with pytest.raises(HandleNotFound):
         vault.use(handle, RecordingInjector(), operation="http_request", target=TARGET)
@@ -420,13 +398,9 @@ def test_two_factor_code_never_reaches_the_model():
     auth.enrol(owner="u-1", target=TARGET, account="a", issuer="i")
     provider = auth.code_provider(owner="u-1", target=TARGET)
     vault = HandleVault()
-    handle = vault.deposit(
-        SECRET2, operation="totp_challenge", target=TARGET, owner="u-1", ttl_seconds=120
-    )
+    handle = vault.deposit(SECRET2, operation="totp_challenge", target=TARGET, owner="u-1", ttl_seconds=120)
     injector = TwoFactorCodeInjector(code_provider=provider)
-    result = vault.use(
-        handle, injector, operation="totp_challenge", target=TARGET
-    )
+    result = vault.use(handle, injector, operation="totp_challenge", target=TARGET)
     blob = json.dumps(result)
     assert SECRET2 not in blob
     code = totp_at(vault and "JBSWY3DPEHPK3PXP")
@@ -436,23 +410,17 @@ def test_two_factor_code_never_reaches_the_model():
 
 def test_a_model_supplied_two_factor_code_is_refused():
     vault = HandleVault()
-    handle = vault.deposit(
-        SECRET2, operation="totp_challenge", target=TARGET, owner="u-1", ttl_seconds=120
-    )
+    handle = vault.deposit(SECRET2, operation="totp_challenge", target=TARGET, owner="u-1", ttl_seconds=120)
     injector = TwoFactorCodeInjector(code_provider=lambda **_: "123456")
     with pytest.raises(TwoFactorUnavailable) as excinfo:
-        vault.use(
-            handle, injector, operation="totp_challenge", target=TARGET, code="000000"
-        )
+        vault.use(handle, injector, operation="totp_challenge", target=TARGET, code="000000")
     assert "refused" in str(excinfo.value)
     assert "user's own UI" in str(excinfo.value)
 
 
 def test_two_factor_without_a_source_is_refused_not_asked_for():
     vault = HandleVault()
-    handle = vault.deposit(
-        SECRET2, operation="totp_challenge", target=TARGET, owner="u-1", ttl_seconds=120
-    )
+    handle = vault.deposit(SECRET2, operation="totp_challenge", target=TARGET, owner="u-1", ttl_seconds=120)
     with pytest.raises(TwoFactorUnavailable) as excinfo:
         vault.use(handle, TwoFactorCodeInjector(), operation="totp_challenge", target=TARGET)
     assert "will not ask the model for a code" in str(excinfo.value)
@@ -484,9 +452,7 @@ def test_user_ui_broker_rejects_a_bad_code():
 # ---------------------------------------------------------------------------
 def test_no_surface_of_the_vault_can_emit_the_secret(vault, caplog):
     """The paranoid sweep: capture logs, exceptions, reprs and serialisations."""
-    handle = vault.deposit(
-        SECRET, operation="http_request", target=TARGET, owner="u-1", ttl_seconds=120
-    )
+    handle = vault.deposit(SECRET, operation="http_request", target=TARGET, owner="u-1", ttl_seconds=120)
     stream = io.StringIO()
     handler = logging.StreamHandler(stream)
     root = logging.getLogger()
@@ -514,9 +480,7 @@ def test_no_surface_of_the_vault_can_emit_the_secret(vault, caplog):
                 str(handle),
             ]
         )
-        logging.getLogger("alpha.security.vault").error(
-            "deliberate error mentioning %s", handle
-        )
+        logging.getLogger("alpha.security.vault").error("deliberate error mentioning %s", handle)
     finally:
         root.removeHandler(handler)
         root.setLevel(previous_level)
@@ -542,9 +506,7 @@ def test_injector_protocol_is_structural():
 
 
 def test_handle_dict_is_the_model_facing_shape():
-    handle = SecretHandle(
-        operation="http_request", target=TARGET, owner="u-1", expires_at=1.0, label="billing"
-    )
+    handle = SecretHandle(operation="http_request", target=TARGET, owner="u-1", expires_at=1.0, label="billing")
     assert set(handle.to_dict()) == {
         "handle",
         "fingerprint",

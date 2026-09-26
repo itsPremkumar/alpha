@@ -18,7 +18,7 @@ ENV_TOKEN = "ALPHA_SCRIPT_BRIDGE_TOKEN"
 ENV_TRANSPORT = "ALPHA_SCRIPT_BRIDGE_TRANSPORT"
 ENV_STUB_SHA = "ALPHA_SCRIPT_BRIDGE_STUB_SHA"
 
-_CLIENT: "ToolRpcClient | None" = None
+_CLIENT: ToolRpcClient | None = None
 
 
 class BridgeUnavailable(RuntimeError):
@@ -126,10 +126,7 @@ def get_client() -> ToolRpcClient:
         token = os.environ.get(ENV_TOKEN, "")
         kind = os.environ.get(ENV_TRANSPORT, "") or ("unix" if _is_socket_path(address) else "tcp")
         if not address or not token:
-            raise BridgeUnavailable(
-                "script bridge transport is not configured; this module only works "
-                "inside a script_bridge execution"
-            )
+            raise BridgeUnavailable("script bridge transport is not configured; this module only works inside a script_bridge execution")
         _CLIENT = ToolRpcClient(address, kind, token)
     return _CLIENT
 
@@ -151,9 +148,5 @@ def verify_stub_fingerprint() -> str | None:
 
     declared = os.environ.get(ENV_STUB_SHA, "")
     if declared and declared != generated.STUB_REGISTRY_SHA256:
-        return (
-            "the tool stub this script loaded was generated from a different tool "
-            f"registry than the dispatcher's ({generated.STUB_REGISTRY_SHA256[:12]}... "
-            f"vs {declared[:12]}...); refusing to run"
-        )
+        return f"the tool stub this script loaded was generated from a different tool registry than the dispatcher's ({generated.STUB_REGISTRY_SHA256[:12]}... vs {declared[:12]}...); refusing to run"
     return None

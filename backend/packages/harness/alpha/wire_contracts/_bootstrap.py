@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Callable, Iterable
+from collections.abc import Callable, Iterable
 
-from .registry import REGISTRY, Contract, UnregisteredContract, contract_fields
-from .registry import register as _register
+from .registry import Contract
 from .registry import registered as _registered
 from .registry import render_manifest as _render_manifest
 from .registry import render_typescript as _render_typescript
-from .registry import require as _require
 
 _BOOTSTRAPPED = False
 

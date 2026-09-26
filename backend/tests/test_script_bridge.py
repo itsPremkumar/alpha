@@ -24,6 +24,7 @@ from typing import Any
 
 import pytest
 
+from alpha.tools.script_bridge import stubgen
 from alpha.tools.script_bridge.dispatcher import RuntimeCarrier
 from alpha.tools.script_bridge.env import (
     SAFE_ENV_ALLOWLIST,
@@ -44,7 +45,6 @@ from alpha.tools.script_bridge.service import (
     register_in_catalog,
     script_bridge,
 )
-from alpha.tools.script_bridge import stubgen
 
 pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 
@@ -128,7 +128,7 @@ def _run(service: ScriptBridgeService, code: str, **policy_kwargs: Any) -> dict[
 # ---------------------------------------------------------------------------
 def test_three_call_script_returns_only_its_printed_output(bridge):
     service, tool_a, tool_b = bridge
-    code = f"""
+    code = """
 from alpha.script_bridge_child import tool
 
 first = tool("alpha_probe_a", x=1)
@@ -250,13 +250,7 @@ def test_allowlist_is_deny_by_default(bridge):
     service, tool_a, _ = bridge
     result = _run(
         service,
-        (
-            "from alpha.script_bridge_child import tool\n"
-            "try:\n"
-            "    print(tool('alpha_probe_a'))\n"
-            "except Exception as exc:\n"
-            "    print('REFUSED', str(exc)[:200])\n"
-        ),
+        ("from alpha.script_bridge_child import tool\ntry:\n    print(tool('alpha_probe_a'))\nexcept Exception as exc:\n    print('REFUSED', str(exc)[:200])\n"),
         allowed=[],
     )
     assert tool_a.calls == [], "a non-allowlisted tool must never reach its handler"
@@ -379,15 +373,21 @@ def test_no_credential_named_variable_reaches_the_child(monkeypatch):
         assert name not in env, f"{name} reached the child environment"
         assert value not in "".join(env.values())
     for token in SECRET_NAME_SUBSTRINGS:
-        offenders = [k for k in env if token in k.upper() and k not in {
-            "ALPHA_SCRIPT_BRIDGE",
-            "ALPHA_SCRIPT_BRIDGE_SOCKET",
-            "ALPHA_SCRIPT_BRIDGE_TOKEN",
-            "ALPHA_SCRIPT_BRIDGE_TRANSPORT",
-            "ALPHA_SCRIPT_BRIDGE_STUB_SHA",
-            "ALPHA_SCRIPT_BRIDGE_MODE",
-            "ALPHA_SCRIPT_BRIDGE_KERNEL",
-        }]
+        offenders = [
+            k
+            for k in env
+            if token in k.upper()
+            and k
+            not in {
+                "ALPHA_SCRIPT_BRIDGE",
+                "ALPHA_SCRIPT_BRIDGE_SOCKET",
+                "ALPHA_SCRIPT_BRIDGE_TOKEN",
+                "ALPHA_SCRIPT_BRIDGE_TRANSPORT",
+                "ALPHA_SCRIPT_BRIDGE_STUB_SHA",
+                "ALPHA_SCRIPT_BRIDGE_MODE",
+                "ALPHA_SCRIPT_BRIDGE_KERNEL",
+            }
+        ]
         assert not offenders, f"{token} leaked through: {offenders}"
 
 
@@ -482,16 +482,12 @@ def test_kernel_persists_state_and_freezes_its_environment(bridge, tmp_path):
         limits=ScriptBridgeLimits(wall_clock_seconds=20.0),
         env_opt_in={"MY_STAGE": "one"},
     )
-    first = json.loads(
-        service.run_kernel("counter = 41\nimport os\nstage = os.environ['MY_STAGE']\nprint(counter + 1, stage)", policy, session_id="k1").render()
-    )
+    first = json.loads(service.run_kernel("counter = 41\nimport os\nstage = os.environ['MY_STAGE']\nprint(counter + 1, stage)", policy, session_id="k1").render())
     assert first["status"] == "ok", first
     assert "42 one" in first["stdout"], first
     assert first["kernel"]["env_frozen_at_spawn"] is True
 
-    second = json.loads(
-        service.run_kernel("print(counter + 1, stage)", policy, session_id="k1").render()
-    )
+    second = json.loads(service.run_kernel("print(counter + 1, stage)", policy, session_id="k1").render())
     assert "42 one" in second["stdout"], second
     assert second["kernel"]["env_fingerprint"] == first["kernel"]["env_fingerprint"]
 
@@ -567,9 +563,7 @@ def test_strict_mode_runs_in_a_quarantined_temp_dir(bridge, tmp_path):
     service, _, _ = bridge
     from alpha.tools.script_bridge.policy import ScriptBridgeMode
 
-    policy = service.build_policy(
-        allowed_tool_names=[], mode="project", cwd=None, limits=None, env_opt_in=None
-    )
+    policy = service.build_policy(allowed_tool_names=[], mode="project", cwd=None, limits=None, env_opt_in=None)
     policy = ScriptBridgePolicy(
         limits=policy.limits,
         mode=ScriptBridgeMode(name="strict"),
@@ -577,9 +571,7 @@ def test_strict_mode_runs_in_a_quarantined_temp_dir(bridge, tmp_path):
         env_opt_in={},
         cache_dir=policy.cache_dir,
     )
-    code = "import os\nprint('CWD_IS_TMP', os.getcwd() != %r)\nprint('SYS_PATH_HAS_CWD', os.getcwd() in __import__('sys').path)\n" % str(
-        tmp_path
-    )
+    code = f"import os, sys\nprint('CWD_IS_TMP', os.getcwd() != {str(tmp_path)!r})\nprint('SYS_PATH_HAS_CWD', os.getcwd() in sys.path)\n"
     result = json.loads(service.run_oneshot(code, policy, session_id="strict").render())
     assert result["status"] == "ok", result
     assert "CWD_IS_TMP True" in result["stdout"]
@@ -613,9 +605,7 @@ def test_stub_covers_every_non_forbidden_registry_tool():
     index = set(stubgen.stub_index())
     assert index <= registry
     assert len(index) >= 100, len(index)
-    assert registry - index == set(FORBIDDEN_TOOL_NAMES) | {
-        n for n in registry - index if n.startswith(("mcp__", "mcp_", "__mcp", "alpha_mcp"))
-    } - index or True  # shape documented by the per-name assertions above
+    assert registry - index == set(FORBIDDEN_TOOL_NAMES) | {n for n in registry - index if n.startswith(("mcp__", "mcp_", "__mcp", "alpha_mcp"))} - index or True  # shape documented by the per-name assertions above
     for name in registry & FORBIDDEN_TOOL_NAMES:
         assert name not in index
 
@@ -624,14 +614,7 @@ def test_child_package_imports_without_the_tool_registry():
     """The child runtime must not drag in alpha.tools (a minutes-long import)."""
     import subprocess
 
-    code = (
-        "import sys, time\n"
-        "t=time.time()\n"
-        "import alpha.script_bridge_child as c\n"
-        "print('FAST', round(time.time()-t, 2))\n"
-        "print('LOADED_ALPHA_TOOLS', 'alpha.tools' in sys.modules)\n"
-        "print('NAMES', len(c.available_tool_names()))\n"
-    )
+    code = "import sys, time\nt=time.time()\nimport alpha.script_bridge_child as c\nprint('FAST', round(time.time()-t, 2))\nprint('LOADED_ALPHA_TOOLS', 'alpha.tools' in sys.modules)\nprint('NAMES', len(c.available_tool_names()))\n"
     env = dict(os.environ)
     env["PYTHONPATH"] = str(Path(stubgen.__file__).resolve().parents[3])
     proc = subprocess.run(
@@ -670,14 +653,7 @@ def test_tool_entry_point_uses_the_real_registry():
     assert "tools" not in signature.parameters
     result = json.loads(
         script_bridge(
-            code=(
-                "from alpha.script_bridge_child import tool\n"
-                "try:\n"
-                "    tool('definitely_not_a_real_tool_xyz')\n"
-                "except Exception as exc:\n"
-                "    print('REFUSED', type(exc).__name__)\n"
-                "    print('WHY', str(exc)[:300])\n"
-            ),
+            code=("from alpha.script_bridge_child import tool\ntry:\n    tool('definitely_not_a_real_tool_xyz')\nexcept Exception as exc:\n    print('REFUSED', type(exc).__name__)\n    print('WHY', str(exc)[:300])\n"),
             allowed_tools=["definitely_not_a_real_tool_xyz"],
         )
     )
@@ -693,14 +669,7 @@ def test_bridge_runs_a_real_allowlisted_tool_from_the_live_registry():
 
     names = {t.name for t in get_available_tools()}
     candidate = "read_file" if "read_file" in names else sorted(names)[0]
-    code = (
-        "from alpha.script_bridge_child import tool\n"
-        "try:\n"
-        f"    r = tool({candidate!r})\n"
-        "    print('CALLED', type(r).__name__)\n"
-        "except Exception as exc:\n"
-        "    print('ERR', type(exc).__name__, str(exc)[:200])\n"
-    )
+    code = f"from alpha.script_bridge_child import tool\ntry:\n    r = tool({candidate!r})\n    print('CALLED', type(r).__name__)\nexcept Exception as exc:\n    print('ERR', type(exc).__name__, str(exc)[:200])\n"
     result = json.loads(script_bridge(code=code, allowed_tools=[candidate]))
     assert result["status"] == "ok", result
     # Either the tool ran, or it raised a real error from the real handler.

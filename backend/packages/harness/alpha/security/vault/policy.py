@@ -42,10 +42,7 @@ class VaultScope:
 
     def __post_init__(self) -> None:
         if self.operation not in ALLOWED_OPERATIONS:
-            raise ValueError(
-                f"unsupported vault operation {self.operation!r}; "
-                f"allowed: {sorted(ALLOWED_OPERATIONS)}"
-            )
+            raise ValueError(f"unsupported vault operation {self.operation!r}; allowed: {sorted(ALLOWED_OPERATIONS)}")
         if not self.target or not self.target.strip():
             raise ValueError("a vault scope must name exactly one target")
         if self.target.strip() != self.target:
@@ -54,14 +51,9 @@ class VaultScope:
         # entry must not have.  Rejected at construction so a too-broad grant
         # never exists to be misused.
         if any(ch in self.target for ch in "*?[]"):
-            raise ValueError(
-                f"a vault target must be one literal target, not a pattern: {self.target!r}"
-            )
+            raise ValueError(f"a vault target must be one literal target, not a pattern: {self.target!r}")
         if not (MIN_TTL_SECONDS <= float(self.ttl_seconds) <= MAX_TTL_SECONDS):
-            raise ValueError(
-                f"a vault entry must be time-bounded between {MIN_TTL_SECONDS}s and "
-                f"{MAX_TTL_SECONDS}s; got {self.ttl_seconds}"
-            )
+            raise ValueError(f"a vault entry must be time-bounded between {MIN_TTL_SECONDS}s and {MAX_TTL_SECONDS}s; got {self.ttl_seconds}")
 
     def expires_at(self, *, now: float | None = None) -> float:
         return (time.time() if now is None else now) + float(self.ttl_seconds)
@@ -69,9 +61,7 @@ class VaultScope:
     def permits(self, operation: str, target: str) -> tuple[bool, str]:
         """Least-privilege check.  Exact match on both axes; no wildcards."""
         if operation != self.operation:
-            return False, (
-                f"handle authorises operation {self.operation!r}, not {operation!r}"
-            )
+            return False, (f"handle authorises operation {self.operation!r}, not {operation!r}")
         if target != self.target:
             return False, f"handle authorises target {self.target!r}, not {target!r}"
         return True, "permitted"

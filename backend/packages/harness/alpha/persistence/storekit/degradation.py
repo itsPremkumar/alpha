@@ -32,10 +32,11 @@ from __future__ import annotations
 import logging
 import re
 import sqlite3
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any, Callable, Iterable, Iterator, Sequence
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -108,9 +109,7 @@ SELF_HEALING: frozenset[DamageClass] = frozenset(
 
 #: Whether a class justifies failing the *whole* operation.  Only
 #: ``FILE_CORRUPT`` and ``SCHEMA_TOO_NEW`` do; everything else degrades.
-FAIL_CLOSED_CLASSES: frozenset[DamageClass] = frozenset(
-    {DamageClass.FILE_CORRUPT, DamageClass.SCHEMA_TOO_NEW}
-)
+FAIL_CLOSED_CLASSES: frozenset[DamageClass] = frozenset({DamageClass.FILE_CORRUPT, DamageClass.SCHEMA_TOO_NEW})
 
 _FTS_PATTERNS: tuple[str, ...] = (
     r"database disk image is malformed",
@@ -198,8 +197,7 @@ def classify_damage(
             return _report(
                 DamageClass.STALE_INDEX,
                 component,
-                "the index is behind the data; rebuild the index, do not touch the "
-                "records",
+                "the index is behind the data; rebuild the index, do not touch the records",
                 detail=text,
             )
     for pattern in _QUERY_REJECTED_PATTERNS:
@@ -207,8 +205,7 @@ def classify_damage(
             return _report(
                 DamageClass.QUERY_REJECTED,
                 component,
-                "one query was rejected; degrade that query and leave every other "
-                "read intact",
+                "one query was rejected; degrade that query and leave every other read intact",
                 detail=text,
             )
     for pattern in _FTS_PATTERNS:
@@ -216,42 +213,35 @@ def classify_damage(
             return _report(
                 DamageClass.INDEX_WRITE_CORRUPT,
                 component,
-                "the full-text index itself is damaged; the underlying records are "
-                "untouched and a rebuild of the index alone is the repair",
+                "the full-text index itself is damaged; the underlying records are untouched and a rebuild of the index alone is the repair",
                 detail=text,
             )
-    if "no such module: fts5" in lowered or isinstance(exc, sqlite3.OperationalError) and (
-        "fts5" in lowered
-    ):
+    if "no such module: fts5" in lowered or isinstance(exc, sqlite3.OperationalError) and ("fts5" in lowered):
         return _report(
             DamageClass.INDEX_UNAVAILABLE,
             component,
-            "this SQLite build has no usable FTS5; search falls back to a scan and "
-            "the store is untouched",
+            "this SQLite build has no usable FTS5; search falls back to a scan and the store is untouched",
             detail=text,
         )
     if isinstance(exc, (UnicodeDecodeError,)):
         return _report(
             DamageClass.RECORD_UNREADABLE,
             "record",
-            "one record's stored bytes will not decode; that record is rendered as "
-            "a placeholder and the rest still list",
+            "one record's stored bytes will not decode; that record is rendered as a placeholder and the rest still list",
             detail=text,
         )
     if isinstance(exc, (TypeError, ValueError)) and "record" in lowered:
         return _report(
             DamageClass.RECORD_MALFORMED,
             "record",
-            "one record's payload will not validate; that record is rendered as a "
-            "placeholder and the rest still list",
+            "one record's payload will not validate; that record is rendered as a placeholder and the rest still list",
             detail=text,
         )
     if isinstance(exc, (TypeError, ValueError, KeyError)) and "payload" in lowered:
         return _report(
             DamageClass.FILE_CORRUPT,
             component,
-            "the document container itself is malformed; this is the only class "
-            "that justifies quarantining the whole document",
+            "the document container itself is malformed; this is the only class that justifies quarantining the whole document",
             detail=text,
         )
     if "unsupported_future_version" in lowered or "newer than target" in lowered:
@@ -271,9 +261,7 @@ def classify_damage(
     return _report(
         DamageClass.FILE_CORRUPT,
         component,
-        f"unclassified failure {type(exc).__name__}; treated as container damage "
-        "because no narrower class matched"
-        + (f" (context: {context})" if context else ""),
+        f"unclassified failure {type(exc).__name__}; treated as container damage because no narrower class matched" + (f" (context: {context})" if context else ""),
         detail=text,
     )
 
@@ -353,8 +341,7 @@ def coerce_records(
         out.report = _report(
             DamageClass.RECORD_MALFORMED,
             "record",
-            "one or more records were malformed; they are rendered as explicit "
-            "placeholders and the listing continues",
+            "one or more records were malformed; they are rendered as explicit placeholders and the listing continues",
             damaged_records=damaged,
         )
     return out
@@ -468,21 +455,14 @@ class SafeRepair:
             return RepairOutcome(
                 action=self.action,
                 performed=False,
-                reason=(
-                    f"refusing to {self.action}: the precondition "
-                    f"({self.precondition}) could not be verified - "
-                    f"{type(exc).__name__}: {exc}"
-                ),
+                reason=(f"refusing to {self.action}: the precondition ({self.precondition}) could not be verified - {type(exc).__name__}: {exc}"),
                 precondition=self.precondition,
             )
         if not ok:
             return RepairOutcome(
                 action=self.action,
                 performed=False,
-                reason=(
-                    f"refusing to {self.action}: the precondition "
-                    f"({self.precondition}) was not met - {evidence}"
-                ),
+                reason=(f"refusing to {self.action}: the precondition ({self.precondition}) was not met - {evidence}"),
                 precondition=self.precondition,
                 evidence=evidence,
             )
@@ -522,13 +502,9 @@ def index_health_probe(connection: Any) -> tuple[bool, str]:
     damaged index and destroy the data it was supposed to protect.
     """
     try:
-        row = connection.execute(
-            "SELECT count(*) FROM run_events_fts"
-        ).fetchone()
+        row = connection.execute("SELECT count(*) FROM run_events_fts").fetchone()
         indexed = int(row[0]) if row else 0
-        source = connection.execute(
-            "SELECT count(*) FROM run_events WHERE category = 'message'"
-        ).fetchone()
+        source = connection.execute("SELECT count(*) FROM run_events WHERE category = 'message'").fetchone()
         expected = int(source[0]) if source else 0
     except Exception as exc:  # noqa: BLE001 - unverifiable is a refusal
         return False, f"index health could not be measured ({type(exc).__name__}: {exc})"

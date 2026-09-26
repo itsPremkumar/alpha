@@ -19,8 +19,9 @@ That is the difference between "we emit JSON" and "the JSON is a contract".
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Iterator, Literal, Mapping
+from typing import Any, Literal
 
 SCHEMA_VERSION = 1
 
@@ -32,13 +33,9 @@ TERMINAL_FIELDS: dict[str, frozenset[str]] = {
     "run.started": frozenset({"v", "type", "run_id", "thread_id", "model", "started_at", "tools"}),
     "message.delta": frozenset({"v", "type", "run_id", "message_id", "delta"}),
     "tool.call": frozenset({"v", "type", "run_id", "tool_call_id", "name", "arguments"}),
-    "tool.result": frozenset(
-        {"v", "type", "run_id", "tool_call_id", "name", "ok", "duration_ms", "summary"}
-    ),
+    "tool.result": frozenset({"v", "type", "run_id", "tool_call_id", "name", "ok", "duration_ms", "summary"}),
     "error": frozenset({"v", "type", "run_id", "code", "message", "correlation_id"}),
-    "run.finished": frozenset(
-        {"v", "type", "run_id", "finished_at", "status", "usage", "stop_reason"}
-    ),
+    "run.finished": frozenset({"v", "type", "run_id", "finished_at", "status", "usage", "stop_reason"}),
 }
 
 #: Fields required on every frame, whatever its type.  ``seq`` is here rather
@@ -51,9 +48,7 @@ del _frame_type
 
 #: Keys that must never appear, because they would carry data a consumer has no
 #: contract for (and, historically, a secret).
-FORBIDDEN_FIELDS: frozenset[str] = frozenset(
-    {"api_key", "token", "secret", "password", "credential", "authorization", "auth_token"}
-)
+FORBIDDEN_FIELDS: frozenset[str] = frozenset({"api_key", "token", "secret", "password", "credential", "authorization", "auth_token"})
 
 
 class UnknownFrameField(KeyError):
@@ -114,21 +109,13 @@ class StreamJsonEmitter:
             raise UnknownFrameField(f"undeclared frame type {frame_type!r}")
         forbidden = FORBIDDEN_FIELDS & set(payload)
         if forbidden:
-            raise UnaccountedField(
-                f"frame {frame_type!r} tried to emit contract-excluded fields: "
-                f"{sorted(forbidden)}"
-            )
+            raise UnaccountedField(f"frame {frame_type!r} tried to emit contract-excluded fields: {sorted(forbidden)}")
         frame = {"v": SCHEMA_VERSION, "type": frame_type, "seq": 0, **dict(payload)}
         report = audit_frame(frame)
         if report["unexpected"] and self.strict:
-            raise UnaccountedField(
-                f"frame {frame_type!r} carries undeclared fields {report['unexpected']}; "
-                "add them to TERMINAL_FIELDS or stop emitting them"
-            )
+            raise UnaccountedField(f"frame {frame_type!r} carries undeclared fields {report['unexpected']}; add them to TERMINAL_FIELDS or stop emitting them")
         if report["missing"] and self.strict:
-            raise UnaccountedField(
-                f"frame {frame_type!r} is missing contract fields {report['missing']}"
-            )
+            raise UnaccountedField(f"frame {frame_type!r} is missing contract fields {report['missing']}")
         self._seq += 1
         frame["seq"] = self._seq
         self.frames.append(frame)
@@ -153,9 +140,7 @@ class StreamJsonEmitter:
         )
 
     def message_delta(self, *, message_id: str, delta: str) -> dict[str, Any]:
-        return self._emit(
-            "message.delta", {"run_id": self.run_id, "message_id": message_id, "delta": delta}
-        )
+        return self._emit("message.delta", {"run_id": self.run_id, "message_id": message_id, "delta": delta})
 
     def tool_call(self, *, tool_call_id: str, name: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
         return self._emit(
@@ -168,9 +153,7 @@ class StreamJsonEmitter:
             },
         )
 
-    def tool_result(
-        self, *, tool_call_id: str, name: str, ok: bool, duration_ms: float, summary: str
-    ) -> dict[str, Any]:
+    def tool_result(self, *, tool_call_id: str, name: str, ok: bool, duration_ms: float, summary: str) -> dict[str, Any]:
         return self._emit(
             "tool.result",
             {

@@ -19,8 +19,9 @@ import hashlib
 import json
 import re
 import sys
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from .errors import StaleStubError
 from .policy import FORBIDDEN_TOOL_NAMES, FORBIDDEN_TOOL_PREFIXES
@@ -145,14 +146,10 @@ def registry_fingerprint(tools: Iterable[Any] | None = None) -> str:
 def render_stub(tools: Iterable[Any] | None = None) -> str:
     """Render the full stub module source for the given registry state."""
     index = stub_index(tools)
-    fingerprint = hashlib.sha256(
-        json.dumps(index, sort_keys=True, ensure_ascii=False).encode("utf-8")
-    ).hexdigest()
+    fingerprint = hashlib.sha256(json.dumps(index, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
     # Explicit substitution, not str.format: the index is JSON and contains
     # braces that format() would try to interpret.
-    body = _HEADER.replace("{fingerprint}", fingerprint).replace(
-        "{index}", json.dumps(index, indent=4, sort_keys=True, ensure_ascii=False)
-    )
+    body = _HEADER.replace("{fingerprint}", fingerprint).replace("{index}", json.dumps(index, indent=4, sort_keys=True, ensure_ascii=False))
     for name, meta in index.items():
         doc = (meta["description"] or name).replace('"""', "'''").replace("\\", "\\\\")
         body += _FUNC.format(name=name, doc=doc)
@@ -169,21 +166,14 @@ def read_generated_fingerprint(path: Path | None = None) -> str | None:
 
 
 def drift_report_text(expected: str, live: str) -> str:
-    return (
-        "generated tool stub is stale: it was generated from registry fingerprint "
-        f"{expected[:12]}... but the live registry is {live[:12]}.... "
-        "Regenerate with `python -m alpha.tools.script_bridge.stubgen --write`."
-    )
+    return f"generated tool stub is stale: it was generated from registry fingerprint {expected[:12]}... but the live registry is {live[:12]}.... Regenerate with `python -m alpha.tools.script_bridge.stubgen --write`."
 
 
 def check_stub_drift(*, path: Path | None = None, tools: Iterable[Any] | None = None) -> str | None:
     """Return a drift reason, or ``None`` when the stub matches the registry."""
     generated = read_generated_fingerprint(path)
     if generated is None:
-        return (
-            "generated tool stub is missing or has no fingerprint; regenerate with "
-            "`python -m alpha.tools.script_bridge.stubgen --write`"
-        )
+        return "generated tool stub is missing or has no fingerprint; regenerate with `python -m alpha.tools.script_bridge.stubgen --write`"
     live = registry_fingerprint(tools)
     if live != generated:
         return drift_report_text(generated, live)

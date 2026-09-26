@@ -34,6 +34,9 @@ __all__ = [
     "StreamFrameWire",
     "bootstrap",
     "registered",
+    "render_manifest",
+    "render_typescript",
+    "registry_bootstrap",
 ]
 
 

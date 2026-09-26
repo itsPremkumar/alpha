@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Mapping
+from collections.abc import Mapping
 
 #: Exact names passed through by default.  Deliberately tiny and boring: enough
 #: for CPython to start, resolve files, and print.  No product namespace.
@@ -143,11 +143,7 @@ def build_child_env(
     for name, value in (opt_in or {}).items():
         _validate_env_name(name)
         if is_secret_env_name(name):
-            raise EnvironmentPolicyError(
-                f"refusing to inject '{name}': the name contains a credential token "
-                f"({', '.join(SECRET_NAME_SUBSTRINGS)}). An explicit opt-in cannot "
-                "override the secret barrier; use a vault handle instead."
-            )
+            raise EnvironmentPolicyError(f"refusing to inject '{name}': the name contains a credential token ({', '.join(SECRET_NAME_SUBSTRINGS)}). An explicit opt-in cannot override the secret barrier; use a vault handle instead.")
         env[name] = str(value)
 
     for name in _BRIDGE_SET:

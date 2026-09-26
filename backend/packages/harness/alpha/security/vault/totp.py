@@ -49,10 +49,7 @@ def provisioning_uri(key: str, *, account: str, issuer: str) -> str:
     """
     from urllib.parse import quote
 
-    return (
-        f"otpauth://totp/{quote(issuer)}:{quote(account)}"
-        f"?secret={key}&issuer={quote(issuer)}&algorithm=SHA1&digits={TOTP_DIGITS}&period={TOTP_STEP_SECONDS}"
-    )
+    return f"otpauth://totp/{quote(issuer)}:{quote(account)}?secret={key}&issuer={quote(issuer)}&algorithm=SHA1&digits={TOTP_DIGITS}&period={TOTP_STEP_SECONDS}"
 
 
 def totp_at(key: str, *, timestamp: float | None = None, step: int = TOTP_STEP_SECONDS) -> str:
@@ -119,9 +116,7 @@ class UserCodeBroker:
                 self._pending.pop(challenge_id, None)
                 raise TwoFactorUnavailable("two-factor challenge expired", challenge_id=challenge_id)
             if not (code.isdigit() and len(code) == TOTP_DIGITS):
-                raise TwoFactorUnavailable(
-                    "a two-factor code must be exactly six digits", challenge_id=challenge_id
-                )
+                raise TwoFactorUnavailable("a two-factor code must be exactly six digits", challenge_id=challenge_id)
             self._codes[challenge_id] = (time.time() + self.ttl_seconds, code)
         return challenge
 
@@ -132,8 +127,7 @@ class UserCodeBroker:
             self._pending.pop(challenge_id, None)
         if entry is None:
             raise TwoFactorUnavailable(
-                "no operator-supplied code is available for this challenge; the model "
-                "cannot supply one",
+                "no operator-supplied code is available for this challenge; the model cannot supply one",
                 challenge_id=challenge_id,
             )
         expires_at, code = entry

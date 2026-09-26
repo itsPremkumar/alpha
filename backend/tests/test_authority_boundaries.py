@@ -46,11 +46,10 @@ from alpha.safety.authority.boundaries import (
     resolve_authority_approval,
     resolve_credential_owners,
     security_boundaries,
-    undeclared_unauthenticated_inbound_paths,
     unauthenticated_inbound_paths,
+    undeclared_unauthenticated_inbound_paths,
 )
 from alpha.safety.authority.models import GatePosture
-
 
 # ===========================================================================
 # (o) Every inbound entry point is authenticated by default.

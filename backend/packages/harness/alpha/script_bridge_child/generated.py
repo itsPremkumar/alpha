@@ -16,7 +16,7 @@ from __future__ import annotations
 from .client import get_client, verify_stub_fingerprint
 
 #: Fingerprint of the tool registry this file was generated from.
-STUB_REGISTRY_SHA256 = "85bb11cfdab63a13756f263f18b782517eb4c0a12dcec04f6e57bc8896c79cd5"
+STUB_REGISTRY_SHA256 = "038cab38f50cd7889e05ca6eea9118e6bfe49725952c4d358e01b47a0a817303"
 
 #: Registry snapshot the generator saw: name -> {"description": str}
 STUB_TOOL_INDEX = {
@@ -388,6 +388,9 @@ STUB_TOOL_INDEX = {
     },
     "visual_verify_artifact": {
         "description": "Verify visual, structural, and layout integrity of an HTML/SVG/Canvas artifact."
+    },
+    "war_room": {
+        "description": "Open and steer a group war room, and manage the bot lifecycle behind it. A war room is a staged, time-boxed group deliberation: every stage is bounded"
     },
     "workflow_dag_manage": {
         "description": "Manage dependency-ordered and dynamic task graphs (DAG / DWE)."
@@ -1520,6 +1523,15 @@ def visual_verify_artifact(**kwargs) -> object:
     through the script bridge; authorisation is evaluated parent-side.
     """
     return get_client().call("visual_verify_artifact", dict(kwargs))
+
+
+def war_room(**kwargs) -> object:
+    """Open and steer a group war room, and manage the bot lifecycle behind it. A war room is a staged, time-boxed group deliberation: every stage is bounded
+
+    Generated shim.  ``kwargs`` are forwarded verbatim to the ``war_room`` tool
+    through the script bridge; authorisation is evaluated parent-side.
+    """
+    return get_client().call("war_room", dict(kwargs))
 
 
 def workflow_dag_manage(**kwargs) -> object:

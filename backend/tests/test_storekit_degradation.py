@@ -17,13 +17,13 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
-import threading
 import time
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from alpha.persistence.storekit.config import StoreKitConfig
 from alpha.persistence.storekit.degradation import (
     DAMAGE_SCOPE,
     FAIL_CLOSED_CLASSES,
@@ -41,7 +41,6 @@ from alpha.persistence.storekit.degradation import (
 from alpha.persistence.storekit.documents import DocumentEnvelope
 from alpha.persistence.storekit.locking import FileLock, LockMode
 from alpha.persistence.storekit.store import ScopedStore
-from alpha.persistence.storekit.config import StoreKitConfig
 
 pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 
@@ -56,7 +55,7 @@ pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
         ("malformed database schema (run_events_fts)", DamageClass.INDEX_WRITE_CORRUPT),
         ("no such table: run_events_fts", DamageClass.STALE_INDEX),
         ("index is out of date", DamageClass.STALE_INDEX),
-        ("fts5: syntax error near \"foo\"", DamageClass.QUERY_REJECTED),
+        ('fts5: syntax error near "foo"', DamageClass.QUERY_REJECTED),
         ("unable to use function MATCH in the requested context", DamageClass.INDEX_WRITE_CORRUPT),
         ("no such module: fts5", DamageClass.INDEX_UNAVAILABLE),
     ],
@@ -85,9 +84,7 @@ def test_every_class_declares_its_scope_and_disposition():
 
 
 def test_index_faults_are_scoped_to_the_index_not_the_transcript_store():
-    report = classify_damage(
-        sqlite3.DatabaseError("database disk image is malformed"), component="search_index"
-    )
+    report = classify_damage(sqlite3.DatabaseError("database disk image is malformed"), component="search_index")
     assert report.scope == "search_index"
     assert report.fail_closed is False
     assert "records are untouched" in report.reason or "rebuild" in report.reason
@@ -206,9 +203,7 @@ def _rewrite_document(store: ScopedStore, scope: str, mutate) -> None:
     payload = dict(envelope.payload)
     mutate(payload)
     sealed = envelope.with_payload(payload, clock=time.time).sealed(clock=time.time)
-    path.write_text(
-        json.dumps(sealed.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8", newline="\n"
-    )
+    path.write_text(json.dumps(sealed.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8", newline="\n")
 
 
 def test_storekit_listing_survives_a_corrupt_row(tmp_path):
@@ -313,9 +308,7 @@ def test_a_read_does_not_rewrite_the_owner_record(tmp_path):
     )
     store.put({"id": "a", "text": "1"}, scope="s")
     lock_path = store.lock_path("s")
-    holder_metadata = json.dumps(
-        {"pid": os.getpid(), "acquired_at": time.time(), "mode": "exclusive", "host": "h"}
-    ).encode("utf-8")
+    holder_metadata = json.dumps({"pid": os.getpid(), "acquired_at": time.time(), "mode": "exclusive", "host": "h"}).encode("utf-8")
     lock_path.write_bytes(holder_metadata)
     before = lock_path.read_bytes()
 
@@ -496,7 +489,7 @@ def test_index_health_probe_is_a_refusal_when_it_cannot_measure(tmp_path):
     [
         sqlite3.DatabaseError("database disk image is malformed"),
         sqlite3.OperationalError("no such table: run_events_fts"),
-        sqlite3.OperationalError("fts5: syntax error near \"x\""),
+        sqlite3.OperationalError('fts5: syntax error near "x"'),
         UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte"),
         ValueError("each stored record must be an object"),
     ],

@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import socket
 import threading
 import time
 from collections.abc import Awaitable, Callable
@@ -31,6 +30,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from . import wire
 from .errors import (
     DeniedByPolicy,
     PolicyViolation,
@@ -39,7 +39,6 @@ from .errors import (
     TransportError,
 )
 from .policy import ScriptBridgePolicy
-from . import wire
 
 logger = logging.getLogger(__name__)
 
@@ -110,9 +109,7 @@ class ScriptDispatcher:
         self._guardrails: list[Any] = []
         self._guardrails_built_for: Any = None
         if self._tools_cache is not None:
-            self._mcp_names = frozenset(
-                name for name in (getattr(t, "name", "") for t in self._tools_cache) if _looks_like_mcp(name)
-            )
+            self._mcp_names = frozenset(name for name in (getattr(t, "name", "") for t in self._tools_cache) if _looks_like_mcp(name))
 
     # -- endpoint lifecycle ------------------------------------------------
     def bind(self) -> wire.Endpoint:
@@ -151,9 +148,7 @@ class ScriptDispatcher:
 
         tools = list(get_available_tools(app_config=self.carrier.app_config))
         self._tools_cache = tools
-        self._mcp_names = frozenset(
-            name for name in (getattr(t, "name", "") for t in tools) if _looks_like_mcp(name)
-        )
+        self._mcp_names = frozenset(name for name in (getattr(t, "name", "") for t in tools) if _looks_like_mcp(name))
         return tools
 
     # -- policy ------------------------------------------------------------
@@ -175,8 +170,7 @@ class ScriptDispatcher:
         cap = self.policy.limits.max_transcript_bytes
         if self.stats.transcript_bytes > cap:
             raise ToolCallCapExceeded(
-                "script tool-call transcript exceeded its cap; split the work into "
-                "smaller scripts and page the result",
+                "script tool-call transcript exceeded its cap; split the work into smaller scripts and page the result",
                 cap_bytes=cap,
                 used_bytes=self.stats.transcript_bytes,
             )
@@ -190,8 +184,7 @@ class ScriptDispatcher:
                 # Counted once, at the socket boundary in ``_serve_connection``;
                 # counting here too would double-report a single refusal.
                 raise ToolCallCapExceeded(
-                    "script exceeded its tool-call budget; the dispatcher refused "
-                    "further calls rather than truncating the run",
+                    "script exceeded its tool-call budget; the dispatcher refused further calls rather than truncating the run",
                     cap=self.policy.limits.max_tool_calls,
                     used=self.stats.tool_calls,
                 )
@@ -271,11 +264,7 @@ class ScriptDispatcher:
                         )
                     )
             guardrails_config = getattr(app_config, "guardrails", None)
-            if (
-                guardrails_config is not None
-                and getattr(guardrails_config, "enabled", False)
-                and getattr(guardrails_config, "provider", None)
-            ):
+            if guardrails_config is not None and getattr(guardrails_config, "enabled", False) and getattr(guardrails_config, "provider", None):
                 import inspect
 
                 from alpha.guardrails.middleware import GuardrailMiddleware
@@ -286,21 +275,14 @@ class ScriptDispatcher:
                 if "framework" not in provider_kwargs:
                     try:
                         sig = inspect.signature(provider_cls.__init__)
-                        if "framework" in sig.parameters or any(
-                            p.kind is inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
-                        ):
+                        if "framework" in sig.parameters or any(p.kind is inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
                             provider_kwargs["framework"] = "alpha"
                     except (ValueError, TypeError):
                         pass
-                self._guardrails.append(
-                    GuardrailMiddleware(provider_cls(**provider_kwargs))
-                )
+                self._guardrails.append(GuardrailMiddleware(provider_cls(**provider_kwargs)))
         except Exception:  # noqa: BLE001 - never let policy construction break dispatch
             logger.exception("script bridge guardrail construction failed; failing closed")
-            raise DeniedByPolicy(
-                "authorisation could not be evaluated; the script tool call was refused "
-                "rather than allowed unevaluated"
-            ) from None
+            raise DeniedByPolicy("authorisation could not be evaluated; the script tool call was refused rather than allowed unevaluated") from None
         return self._guardrails
 
     # -- socket server -----------------------------------------------------
@@ -325,7 +307,7 @@ class ScriptDispatcher:
             listener.settimeout(min(0.2, max(0.01, deadline - time.monotonic())))
             try:
                 conn, _ = listener.accept()
-            except (TimeoutError, socket.timeout):
+            except TimeoutError:
                 continue
             except OSError as exc:
                 raise TransportError(f"dispatcher accept failed: {exc}") from exc
@@ -390,9 +372,7 @@ class ScriptDispatcher:
         _ = hello
 
 
-async def _run_through_guardrails(
-    guardrails: list[Any], request: _RequestStandIn, innermost: Callable[[_RequestStandIn], Awaitable[Any]]
-) -> Any:
+async def _run_through_guardrails(guardrails: list[Any], request: _RequestStandIn, innermost: Callable[[_RequestStandIn], Awaitable[Any]]) -> Any:
     """Run the real middleware chain, outermost first, exactly as the graph does."""
 
     async def _call(req: _RequestStandIn) -> Any:
@@ -407,12 +387,14 @@ async def _run_through_guardrails(
 def _wrap(middleware: Any, handler: Callable[[_RequestStandIn], Awaitable[Any]]) -> Callable[[_RequestStandIn], Awaitable[Any]]:
     awrap = getattr(middleware, "awrap_tool_call", None)
     if callable(awrap):
+
         async def _call(request: _RequestStandIn) -> Any:
             return await awrap(request, handler)
 
         return _call
     wrap = getattr(middleware, "wrap_tool_call", None)
     if callable(wrap):
+
         async def _call_sync(request: _RequestStandIn) -> Any:
             return wrap(request, handler)
 
@@ -427,9 +409,7 @@ def _reply_ok(conn: Any, frame: dict[str, Any], value: Any, count: int) -> None:
     )
 
 
-def _reply_error(
-    conn: Any, frame: dict[str, Any], code: str, message: str, detail: dict[str, Any] | None = None
-) -> None:
+def _reply_error(conn: Any, frame: dict[str, Any], code: str, message: str, detail: dict[str, Any] | None = None) -> None:
     wire.send_frame(
         conn,
         {

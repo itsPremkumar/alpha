@@ -34,9 +34,7 @@ from .policy import VaultScope
 
 #: Attributes a caller may try to set on a scope to widen it.  Named explicitly
 #: so the rejection message can be specific.
-UNOVERRIDABLE_POLICY_KEYS: frozenset[str] = frozenset(
-    {"operation", "target", "ttl_seconds", "owner", "expires_at", "skip_scope_check"}
-)
+UNOVERRIDABLE_POLICY_KEYS: frozenset[str] = frozenset({"operation", "target", "ttl_seconds", "owner", "expires_at", "skip_scope_check"})
 
 
 class _Entry:
@@ -90,8 +88,7 @@ class HandleVault:
             bad = sorted(set(policy_overrides) & UNOVERRIDABLE_POLICY_KEYS)
             if bad:
                 raise PolicyOverrideRejected(
-                    "vault policy cannot be overridden from the model channel; "
-                    f"rejected keys: {bad}. Narrow the request instead.",
+                    f"vault policy cannot be overridden from the model channel; rejected keys: {bad}. Narrow the request instead.",
                     rejected=bad,
                 )
         if not isinstance(secret, str) or not secret:
@@ -187,14 +184,11 @@ class HandleVault:
                     detail=f"policy_override_attempt:{key}",
                 )
                 raise PolicyOverrideRejected(
-                    f"'{key}' is not a supported argument: vault scope cannot be "
-                    "bypassed from the model channel",
+                    f"'{key}' is not a supported argument: vault scope cannot be bypassed from the model channel",
                     rejected=[key],
                 )
         entry, resolved = self._resolve(handle)
-        if on_behalf_of is not None and not hmac.compare_digest(
-            str(on_behalf_of), str(entry.owner)
-        ):
+        if on_behalf_of is not None and not hmac.compare_digest(str(on_behalf_of), str(entry.owner)):
             self.ledger.record(
                 handle_fingerprint=resolved.fingerprint,
                 operation=operation,
@@ -204,8 +198,7 @@ class HandleVault:
                 detail="owner_mismatch",
             )
             raise ScopeViolation(
-                "this handle belongs to a different owner; a profile may not spend "
-                "another profile's grant",
+                "this handle belongs to a different owner; a profile may not spend another profile's grant",
                 operation=operation,
                 target=target,
             )
@@ -230,9 +223,7 @@ class HandleVault:
                 detail=f"injector_operation_mismatch:{getattr(injector, 'operation', None)}",
             )
             raise ScopeViolation(
-                f"injector declares operation "
-                f"{getattr(injector, 'operation', None)!r}, which is not the "
-                f"authorised {operation!r}",
+                f"injector declares operation {getattr(injector, 'operation', None)!r}, which is not the authorised {operation!r}",
                 operation=operation,
             )
         with self._lock:
@@ -300,12 +291,8 @@ class HandleVault:
         silent downgrade to something weaker.
         """
         raise RawSecretRefused(
-            "reading the raw secret is not supported: a vault handle authorises one "
-            "operation on one target and nothing else. Use `use()` with an injector, "
-            "or ask the operator to act out of band.",
-            available_operations=sorted(
-                {e.scope.operation for e in self._entries.values()}
-            ),
+            "reading the raw secret is not supported: a vault handle authorises one operation on one target and nothing else. Use `use()` with an injector, or ask the operator to act out of band.",
+            available_operations=sorted({e.scope.operation for e in self._entries.values()}),
         )
 
     # A second, differently named door to the same refusal, because a determined
@@ -331,23 +318,16 @@ class HandleVault:
         """
         marker = "[REDACTED:secret]"
         message = str(exc).replace(secret, marker) if secret else str(exc)
-        scrubbed_args = tuple(
-            (a.replace(secret, marker) if isinstance(a, str) and secret else a)
-            for a in getattr(exc, "args", ())
-        )
+        scrubbed_args = tuple((a.replace(secret, marker) if isinstance(a, str) and secret else a) for a in getattr(exc, "args", ()))
         try:
             new = type(exc)(*scrubbed_args) if scrubbed_args else type(exc)(message)
         except Exception:  # noqa: BLE001 - exotic exception constructors
             new = RuntimeError(f"{type(exc).__name__}: {message}")
         new.args = scrubbed_args or (message,)
         if secret:
-            new.__dict__ = {
-                k: (v.replace(secret, marker) if isinstance(v, str) else v)
-                for k, v in getattr(exc, "__dict__", {}).items()
-            }
+            new.__dict__ = {k: (v.replace(secret, marker) if isinstance(v, str) else v) for k, v in getattr(exc, "__dict__", {}).items()}
         new.__notes__ = [  # type: ignore[attr-defined]
-            f"raised by a vault point-of-use injector for {handle.fingerprint} "
-            f"({operation} -> {target}); the credential was removed from this message"
+            f"raised by a vault point-of-use injector for {handle.fingerprint} ({operation} -> {target}); the credential was removed from this message"
         ]
         return new
 
@@ -366,9 +346,7 @@ class HandleVault:
             with self._lock:
                 self._secrets.pop(identifier, None)
                 self._entries.pop(identifier, None)
-            raise HandleNotFound(
-                "vault handle expired; deposit a new one", fingerprint=_fingerprint_of(handle)
-            )
+            raise HandleNotFound("vault handle expired; deposit a new one", fingerprint=_fingerprint_of(handle))
         resolved = handle
         if not isinstance(handle, SecretHandle):
             resolved = SecretHandle(

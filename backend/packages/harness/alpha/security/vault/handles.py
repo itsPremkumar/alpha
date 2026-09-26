@@ -108,11 +108,7 @@ class SecretHandle:
         return hash(self._id)
 
     def __reduce__(self):
-        raise TypeError(
-            "SecretHandle is not serialisable: a pickled handle would outlive the "
-            "vault entry it points at and travel through channels that have no "
-            "business holding a credential reference"
-        )
+        raise TypeError("SecretHandle is not serialisable: a pickled handle would outlive the vault entry it points at and travel through channels that have no business holding a credential reference")
 
     def __getstate__(self):
         raise TypeError("SecretHandle cannot be pickled or copied")

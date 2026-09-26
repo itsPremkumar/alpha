@@ -16,8 +16,9 @@ models by import is a registry that imports the world.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Iterable, Type
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -25,12 +26,52 @@ from pydantic import BaseModel
 GENERATOR_VERSION = 1
 
 _TS_RESERVED = {
-    "break", "case", "catch", "class", "const", "continue", "debugger", "default",
-    "delete", "do", "else", "export", "extends", "finally", "for", "function",
-    "if", "import", "in", "instanceof", "new", "return", "super", "switch",
-    "this", "throw", "try", "typeof", "var", "void", "while", "with", "yield",
-    "let", "static", "enum", "await", "implements", "package", "protected",
-    "interface", "private", "public", "null", "true", "false",
+    "break",
+    "case",
+    "catch",
+    "class",
+    "const",
+    "continue",
+    "debugger",
+    "default",
+    "delete",
+    "do",
+    "else",
+    "export",
+    "extends",
+    "finally",
+    "for",
+    "function",
+    "if",
+    "import",
+    "in",
+    "instanceof",
+    "new",
+    "return",
+    "super",
+    "switch",
+    "this",
+    "throw",
+    "try",
+    "typeof",
+    "var",
+    "void",
+    "while",
+    "with",
+    "yield",
+    "let",
+    "static",
+    "enum",
+    "await",
+    "implements",
+    "package",
+    "protected",
+    "interface",
+    "private",
+    "public",
+    "null",
+    "true",
+    "false",
 }
 
 #: JSON-Schema keyword -> TypeScript type.
@@ -52,7 +93,7 @@ class Contract:
     """One wire contract: a name and the Pydantic model that defines it."""
 
     name: str
-    model: Type[BaseModel]
+    model: type[BaseModel]
     #: Optional: the module the frontend type should live in.
     module: str = "contracts"
 
@@ -102,10 +143,7 @@ def _ts_inline_object(schema: dict[str, Any], *, indent: int) -> str:
     lines = ["{"]
     for name, sub in properties.items():
         optional = "" if name in required else "?"
-        lines.append(
-            f"{pad}{_ts_property_name(name)}{optional}: "
-            f"{_ts_type(sub, required=name in required, indent=indent + 1)};"
-        )
+        lines.append(f"{pad}{_ts_property_name(name)}{optional}: {_ts_type(sub, required=name in required, indent=indent + 1)};")
     lines.append(close + "}")
     return "\n".join(lines)
 
@@ -134,11 +172,7 @@ def render_typescript(contracts: Iterable[Contract]) -> str:
         chunks.append(f"\n// ---- module: {module} ----\n")
         for contract in sorted(by_module[module], key=lambda c: c.name):
             schema = contract.json_schema()
-            chunks.append(
-                f"export interface {contract.name} "
-                + _ts_inline_object(schema, indent=0)
-                + "\n"
-            )
+            chunks.append(f"export interface {contract.name} " + _ts_inline_object(schema, indent=0) + "\n")
     return "".join(chunks)
 
 

@@ -17,10 +17,8 @@ acceptable; the docstring on each says which report item it tracks.
 
 from __future__ import annotations
 
-import asyncio
 import json
-import os
-import time
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -29,7 +27,6 @@ import pytest
 from alpha.security.vault import (
     EnvVarInjector,
     HandleVault,
-    HttpHeaderInjector,
     PolicyOverrideRejected,
     RawSecretRefused,
     ScopeViolation,
@@ -318,7 +315,7 @@ def test_gap_no_host_wide_gateway_singleton_exists():
 
 def test_gap_a_second_gateway_binds_only_by_tcp_port():
     """The launcher's mutual exclusion is a kill, not a lock."""
-    launcher = Path(__file__).resolve().parents[3] / "start.ps1"
+    launcher = Path(__file__).resolve().parents[2] / "start.ps1"
     if not launcher.exists():  # pragma: no cover - Windows launcher absent
         pytest.skip("start.ps1 is not present in this checkout")
     text = launcher.read_text(encoding="utf-8", errors="replace")
@@ -407,13 +404,13 @@ def test_gap_a_bot_message_with_an_unresolvable_mention_dispatches_to_nothing_si
     ``parse_mentions`` ignores an unknown handle with no record, so the
     transcript shows a clean turn.  Asserted so the fix is deliberate.
     """
-    from alpha.groups.orchestration import GroupOrchestrator, parse_mentions
+    from alpha.groups.orchestration import GroupOrchestrator
     from alpha.groups.room import GroupMessage, GroupRoom
 
-    resolved = parse_mentions("@nobody hello", ["coder", "writer"])
+    resolved = GroupOrchestrator.parse_mentions("@nobody hello", ["coder", "writer"])
     assert resolved == []
-    room = GroupRoom(name="r", members=["coder", "writer"], mode="mention")
-    message = GroupMessage(sender="coder", content="@nobody hello")
+    room = GroupRoom(room_id="r", name="r", members=["coder", "writer"], mode="mention")
+    message = GroupMessage(id="m1", sender="coder", content="@nobody hello")
     speakers = GroupOrchestrator().resolve_next_speakers(room, message)
     assert speakers == []
 

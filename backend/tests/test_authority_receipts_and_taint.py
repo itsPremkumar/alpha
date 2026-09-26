@@ -30,7 +30,7 @@ import json
 
 import pytest
 
-from alpha.bots.authority_ceiling import AuthorityCeiling, clear_scopes, enforce_grant
+from alpha.bots.authority_ceiling import clear_scopes, enforce_grant
 from alpha.bots.governance_ledger import record_decision_receipt
 from alpha.safety.authority.receipts import (
     ActorKind,
@@ -47,15 +47,13 @@ from alpha.safety.authority.receipts import (
     human,
     model_asserted_identity,
 )
-from alpha.safety.authority.scopes import ScopePolicy, baseline_from_ceiling
 from alpha.safety.authority.taint import (
     ISOLATION_CONTROLS,
     TRUSTED_CLEARING_CONTROLS,
     TaintAuthorityError,
     TaintClearRefused,
-    TaintTurn,
-    UntrustedSource,
     UnknownUntrustedSource,
+    UntrustedSource,
     absorb_untrusted,
     bind_turn,
     current_turn,

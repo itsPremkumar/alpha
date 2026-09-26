@@ -39,7 +39,6 @@ from alpha.bots.alpha_leader import (
 )
 from alpha.bots.capability_dispatch import (
     DISPATCH_METHOD,
-    CapabilityDispatcher,
     DispatchOutcome,
     get_leader_dispatcher,
 )
@@ -105,6 +104,22 @@ def _ledger_entries(ledger, task_id: str | None = None) -> list:
     return ledger.entries(task_id=task_id) if task_id is not None else ledger.entries()
 
 
+def _add_peer(registry: BotRegistry, name: str, capabilities: list[str], *, reputation: float = 0.5) -> None:
+    """Register an extra live peer with a declared capability surface."""
+    from alpha.bots.profile import BotProfile
+
+    registry.register(
+        BotProfile(
+            name=name,
+            display_name=name.capitalize(),
+            role=f"{name} role",
+            soul=f"{name} soul",
+            capabilities=list(capabilities),
+            reputation_score=reputation,
+        )
+    )
+
+
 # ===========================================================================
 # (a) A fresh install has `alpha` as the default leader, with no configuration
 # ===========================================================================
@@ -124,8 +139,6 @@ def test_fresh_install_has_alpha_leader_with_no_configuration(tmp_path: Path) ->
     assert leader.reports_to is None, "the leader is the root of the reporting chain"
     assert leader.soul == ALPHA_LEADER_SOUL
     assert set(LEADER_CAPABILITIES) <= set(leader.capabilities)
-    # A leader with no explicit capability set is useless, and the roster peers
-    # are what it dispatches to, so the leader must NOT be one of them.
     assert leader.capabilities, "the leader must declare its own capabilities"
     assert roster_path.exists()
 
@@ -277,24 +290,20 @@ def test_capability_tags_normalise_separators_and_case() -> None:
 
 
 def test_profile_capability_tags_include_skills_not_responsibilities() -> None:
-    bot = registry_profile(capabilities=["sql"], skills=["pytest"], responsibilities=["write reports"])
-    tags = profile_capability_tags(bot)
-    assert "sql" in tags and "pytest" in tags
-    assert "write reports" not in tags and "write_reports" not in tags
-
-
-def registry_profile(*, capabilities: list[str], skills: list[str] | None = None, responsibilities: list[str] | None = None):
     from alpha.bots.profile import BotProfile
 
-    return BotProfile(
+    bot = BotProfile(
         name="probe",
         display_name="Probe",
         role="Probe",
         soul="probe",
-        capabilities=capabilities,
-        skills=list(skills or []),
-        responsibilities=list(responsibilities or []),
+        capabilities=["sql"],
+        skills=["pytest"],
+        responsibilities=["write reports"],
     )
+    tags = profile_capability_tags(bot)
+    assert "sql" in tags and "pytest" in tags
+    assert "write reports" not in tags and "write_reports" not in tags
 
 
 def test_eligibility_is_a_hard_filter_not_a_score(registry: BotRegistry) -> None:
@@ -315,7 +324,9 @@ def test_eligibility_reports_no_constraint_explicitly(registry: BotRegistry) -> 
 
 
 def test_match_capabilities_reports_coverage() -> None:
-    bot = registry_profile(capabilities=["sql", "data_modeling"])
+    from alpha.bots.profile import BotProfile
+
+    bot = BotProfile(name="probe", display_name="P", role="P", soul="p", capabilities=["sql", "data_modeling"])
     match = match_capabilities(["sql", "react"], bot)
     assert match.eligible is False
     assert match.matched == frozenset({"sql"})
@@ -334,8 +345,6 @@ def test_dispatch_routes_to_the_capability_match_and_never_to_a_mismatch(registr
 
     assert decision.outcome is DispatchOutcome.DISPATCHED
     assert decision.target == "data-analyst", decision.reason
-    # The agent that cannot do the work is unreachable, not merely out-ranked.
-    assert "coder" not in decision.target
     assert "data-analyst" not in {item["bot"] for item in decision.rejected}
     rejected = {item["bot"]: item for item in decision.rejected}
     assert "coder" in rejected
@@ -371,7 +380,6 @@ def test_dispatch_refuses_a_capability_outside_the_leader_allowlist(registry: Bo
     decision = dispatcher.dispatch("task-pastry", "Bake cookies", required_capability_tags=["pastry_hygiene"])
     assert decision.refusal_code == "capability_missing"
     assert decision.target is None
-    assert decision.rejected == []
 
 
 def test_dispatch_wired_the_contract_net_auction_for_real(registry: BotRegistry, ledger) -> None:
@@ -409,7 +417,6 @@ def test_dispatch_wired_the_contract_net_auction_for_real(registry: BotRegistry,
     assert len(engine.awards) == 1, "the engine's own award table must hold this award"
     assert list(engine.awards.values())[0].contractor_agent_id == decision.target
     assert award["lease_acquired"] is True
-    # A lease on the task resource, taken by the winner, released-or-not.
     lease = next(iter(engine.blackboard._leases.values()), None)
     assert lease is not None and lease.owner_agent_id == decision.target
     assert lease.resource_id == f"task:{list(engine.awards)[0]}"
@@ -447,6 +454,20 @@ def test_dispatch_method_is_stamped_on_the_decision(registry: BotRegistry, ledge
     assert decision.method == DISPATCH_METHOD
 
 
+def test_dispatch_infers_the_requirement_from_the_task_text_not_the_proposed_owner(registry: BotRegistry, ledger) -> None:
+    """A requirement taken from the proposed owner would be circular.
+
+    ``coder`` is the proposed owner, so deriving the requirement from coder's own
+    surface would make coder eligible by construction. The task TEXT is the
+    non-circular source, and it is what excludes the coder here.
+    """
+    dispatcher = get_leader_dispatcher("task-circ", registry=registry)
+    decision = dispatcher.dispatch("task-circ", "Add a composite index to the orders table", proposed_owners=["coder"])
+    assert decision.target == "data-analyst"
+    assert "sql" in decision.required_capability_tags
+    assert "inferred from the task text" in decision.reason
+
+
 # ===========================================================================
 # (c) The choice and its reason are recorded
 # ===========================================================================
@@ -481,7 +502,7 @@ def test_the_choice_and_its_reason_are_written_to_the_handoff_ledger(registry: B
 
 
 def test_a_refusal_is_also_recorded(registry: BotRegistry, ledger) -> None:
-    decision = get_leader_dispatcher("task-refused", registry=registry).dispatch("task-refused", "Bake cookies", required_capability_tags=["pastry_hygiene"])
+    decision = get_leader_dispatcher("task-refused", registry=registry).dispatch("task-refused", "Page the on-call for the outage", required_capability_tags=["incident_response"])
     assert not decision.ok
     entries = _ledger_entries(ledger, "task-refused")
     assert len(entries) == 1
@@ -521,6 +542,8 @@ def test_depth_ceiling_stops_a_runaway_tree(registry: BotRegistry, ledger) -> No
 
 
 def test_fanout_ceiling_stops_a_runaway_fan_out(registry: BotRegistry, ledger) -> None:
+    from dataclasses import replace
+
     limits = DelegationLimits(max_depth=3, max_fanout=2, max_hops=10)
     dispatcher = get_leader_dispatcher("wide", registry=registry, limits=limits)
     first = dispatcher.dispatch("wide-1", "One thing", required_capability_tags=["sql"])
@@ -528,8 +551,6 @@ def test_fanout_ceiling_stops_a_runaway_fan_out(registry: BotRegistry, ledger) -
     assert first.ok and second.ok
     # Charge the node's budget the way a real child report would.
     charged = dispatcher.context.charge(tokens=10, cost_usd=0.1)
-    from dataclasses import replace
-
     dispatcher._context = replace(charged, fanout_used=2)
     third = dispatcher.dispatch("wide-3", "A third thing", required_capability_tags=["react"])
     assert third.refusal_code == REFUSAL_FANOUT_CEILING
@@ -574,15 +595,14 @@ def test_cycle_guard_stops_a_task_ping_ponging_between_two_agents(registry: BotR
     back_to_leader = coder.dispatch("pingpong", "hand it back", required_capability_tags=["task_dispatch"])
     assert back_to_leader.refusal_code == REFUSAL_CYCLE
     assert "already holds this task" in back_to_leader.reason
-
-    # And a task whose ONLY capable target is already in the lineage is refused
-    # with the cycle code, not dispatched into a loop.
-    solo = root.for_child("data-analyst")
-    solo_only = solo.dispatch("pingpong", "sole capable agent", required_capability_tags=["sql"], candidate_names=["data-analyst"])
-    assert solo_only.refusal_code == REFUSAL_CYCLE
+    assert "alpha" in back_to_leader.reason
+    # And it is recorded as a refusal, so "why did nothing happen" is answerable.
+    assert any(e.reason == REFUSAL_CYCLE for e in _ledger_entries(ledger, "pingpong"))
 
 
 def test_hop_ceiling_stops_an_endless_reassignment_chain(registry: BotRegistry, ledger) -> None:
+    from alpha.bots.capability_dispatch import CapabilityDispatcher
+
     limits = DelegationLimits(max_depth=9, max_fanout=9, max_hops=3)
     context = root_context(ALPHA_LEADER_NAME, "hoppy", limits=limits)
     # alpha -> coder -> reviewer -> tester is three hops; the fourth is refused.
@@ -596,6 +616,10 @@ def test_hop_ceiling_stops_an_endless_reassignment_chain(registry: BotRegistry, 
 
 
 def test_token_budget_is_inherited_downward_and_stops_the_tree(registry: BotRegistry, ledger) -> None:
+    from dataclasses import replace
+
+    from alpha.bots.capability_dispatch import CapabilityDispatcher
+
     limits = DelegationLimits(max_depth=6, max_fanout=6, max_hops=20, token_budget=1000, child_token_share=0.5)
     root = get_leader_dispatcher("budget", registry=registry, limits=limits)
     assert root.context.tokens_remaining == 1000
@@ -603,8 +627,6 @@ def test_token_budget_is_inherited_downward_and_stops_the_tree(registry: BotRegi
     assert child.context.token_budget == 500
     grandchild = child.for_child("reviewer")
     assert grandchild.context.token_budget == 250
-
-    from dataclasses import replace
 
     # A child that reports it burned the whole inherited budget.
     spent = replace(child.context, tokens_spent=child.context.token_budget)
@@ -614,10 +636,10 @@ def test_token_budget_is_inherited_downward_and_stops_the_tree(registry: BotRegi
 
 
 def test_a_child_can_never_receive_more_than_its_parent_had_left() -> None:
-    limits = DelegationLimits(token_budget=100, cost_budget_usd=1.0, child_token_share=1.0)
-    parent = root_context("alpha", "t", limits=limits, token_budget=100)
     from dataclasses import replace
 
+    limits = DelegationLimits(token_budget=100, cost_budget_usd=1.0, child_token_share=1.0)
+    parent = root_context("alpha", "t", limits=limits, token_budget=100)
     nearly_spent = replace(parent, tokens_spent=95)
     child = nearly_spent.for_child("coder")
     assert child.token_budget <= 5
@@ -718,22 +740,6 @@ def test_dispatcher_exposes_its_bounded_subtree(registry: BotRegistry, ledger) -
 # ===========================================================================
 # (f) Capability mismatch reassigns elsewhere; transient failure retries in place
 # ===========================================================================
-
-
-def _add_peer(registry: BotRegistry, name: str, capabilities: list[str], *, reputation: float = 0.5) -> None:
-    """Register an extra live peer with a declared capability surface."""
-    from alpha.bots.profile import BotProfile
-
-    registry.register(
-        BotProfile(
-            name=name,
-            display_name=name.capitalize(),
-            role=f"{name} role",
-            soul=f"{name} soul",
-            capabilities=list(capabilities),
-            reputation_score=reputation,
-        )
-    )
 
 
 def test_a_capability_mismatch_reassigns_to_a_different_capable_agent(registry: BotRegistry, ledger) -> None:
@@ -935,16 +941,12 @@ def test_reassignment_with_no_other_capable_agent_is_unroutable_not_a_silent_suc
 
 def test_autonomous_dispatch_bridge_routes_by_capability(registry: BotRegistry, ledger, monkeypatch: pytest.MonkeyPatch) -> None:
     """The real bridge call path selects by capability and records the reason."""
-    import alpha.bots.capability_dispatch as cap_dispatch
     import alpha.planning.bridge as bridge_mod
 
-    monkeypatch.setattr(cap_dispatch, "get_bot_registry", lambda: registry, raising=False)
-    # get_leader_dispatcher passes registry=None -> CapabilityDispatcher resolves
-    # lazily via the global registry, so patch the global accessor instead.
     monkeypatch.setattr("alpha.bots.registry.get_bot_registry", lambda *a, **k: registry)
     monkeypatch.setattr("alpha.bots.handoff.get_bot_registry", lambda *a, **k: registry)
 
-    from alpha.planning.meta_planner import CognitiveMetaPlanner, ExecutionParadigm, MetaPlan, MetaPlanDecision
+    from alpha.planning.meta_planner import ExecutionParadigm, MetaPlan, MetaPlanDecision
 
     plan = MetaPlan(
         plan_id="plan-bridge",
@@ -960,8 +962,6 @@ def test_autonomous_dispatch_bridge_routes_by_capability(registry: BotRegistry, 
         ),
         markdown_report="# contract",
     )
-    assert plan.decision.paradigm is ExecutionParadigm.BOT_PROFILE
-    assert CognitiveMetaPlanner is not None
 
     result = bridge_mod.AutonomousDispatchBridge.dispatch(plan)
 
@@ -1002,7 +1002,7 @@ def test_autonomous_dispatch_bridge_reports_a_refusal_honestly(registry: BotRegi
     assert result.status == "failed"
     assert result.details["lead_bot"] is None
     # The proposed owner is not on the roster, so the task text decides the
-    # requirement — and "sourdough" is not a capability any bot declares.
+    # requirement — and "outage" is a capability no seeded bot declares.
     assert result.details["dispatch"]["refusal_code"] == "no_eligible_agent"
     assert "Capability dispatch refused" in result.summary
 

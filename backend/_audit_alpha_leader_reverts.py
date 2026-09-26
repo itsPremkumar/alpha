@@ -1,11 +1,16 @@
 """Audit: prove no mutation replacement leaked into the live working tree.
 
-The first run of ``_mutate_alpha_leader.py`` hard-linked its scratch copy and
+An earlier run of ``_mutate_alpha_leader.py`` hard-linked its scratch copy and
 therefore wrote several mutations THROUGH the link into the real source files
 (one of them, a ``pass`` in place of ``ensure_alpha_leader(self)``, silently
-turned the default-off leader off). This script is the standing guard: it greps
-the live tree for every replacement string the harness can inject and fails if
-any of them is present.
+turned the default-on leader off in ``registry.py``). This script is the standing
+guard: it greps the live tree for every replacement string the harness can inject
+and fails if any of them is present.
+
+Scope is deliberately limited to the files this task owns. Other agents are
+actively editing the rest of the tree in parallel, and a forbidden fragment that
+legitimately appears in one of THEIR files (a legitimate ``if False:`` in an
+unrelated test, say) is not evidence of anything about this change.
 """
 
 from __future__ import annotations
@@ -16,10 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _mutate_alpha_leader import BACKEND, MUTATIONS  # noqa: E402
 
-#: Only the files this task owns. Other agents are actively editing the rest of
-#: the tree in parallel, and a forbidden fragment that legitimately appears in
-#: one of THEIR files (a legitimate `if False:` in an unrelated test, say) is
-#: not evidence of anything about this change.
+#: Only the files this task owns.
 SCANNED = (
     "packages/harness/alpha/bots/capability_dispatch.py",
     "packages/harness/alpha/bots/delegation.py",

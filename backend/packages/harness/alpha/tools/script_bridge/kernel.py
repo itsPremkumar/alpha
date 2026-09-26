@@ -36,7 +36,7 @@ from .runner import sys_path_entries
 #: The kernel driver that runs *inside* the child.  Cells arrive on stdin as
 #: JSON lines; responses leave on stdout as JSON lines.  The script's own
 #: prints are captured into buffers so they cannot corrupt the protocol.
-_KERNEL_DRIVER = r'''
+_KERNEL_DRIVER = r"""
 import contextlib, io, json, os, sys, traceback
 
 for _p in __BRIDGE_PATHS__:
@@ -117,7 +117,7 @@ while True:
         "tool_calls": max(0, after - before),
     }, ensure_ascii=False) + "\n")
     _out.flush()
-'''
+"""
 
 
 def env_fingerprint(env: dict[str, str]) -> str:
@@ -263,8 +263,7 @@ class KernelManager:
                 )
             except (OSError, ValueError) as exc:
                 raise KernelUnavailable(
-                    "a persistent kernel could not be spawned on this backend; "
-                    "fall back to one-shot script execution",
+                    "a persistent kernel could not be spawned on this backend; fall back to one-shot script execution",
                     session_id=session_id,
                     cause=f"{type(exc).__name__}: {exc}",
                 ) from exc
@@ -321,11 +320,7 @@ class KernelManager:
     def reset(self, session_id: str | None = None) -> list[str]:
         """Explicit reset.  Drops one kernel, or every kernel in the top pool."""
         with self._lock:
-            targets = (
-                [s for s in self._sessions.values() if s.session_id == session_id]
-                if session_id
-                else [s for s in self._sessions.values() if s.owner == "top"]
-            )
+            targets = [s for s in self._sessions.values() if s.session_id == session_id] if session_id else [s for s in self._sessions.values() if s.owner == "top"]
             for session in targets:
                 self._terminate(session)
                 self._sessions.pop(session.session_id, None)
@@ -407,9 +402,7 @@ class KernelManager:
             self._terminate(session)
             return None
         if "error" in result:  # pragma: no cover - defensive
-            raise KernelUnavailable(
-                "kernel stdout closed", session_id=session.session_id, cause=repr(result["error"])
-            )
+            raise KernelUnavailable("kernel stdout closed", session_id=session.session_id, cause=repr(result["error"]))
         line = result.get("line") or ""
         return line or None
 

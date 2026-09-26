@@ -40,7 +40,6 @@ What is here
 
 from __future__ import annotations
 
-import asyncio
 import inspect
 import json
 from collections.abc import Callable, Iterable, Mapping, Sequence

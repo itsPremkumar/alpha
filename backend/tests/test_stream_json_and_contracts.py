@@ -8,8 +8,6 @@ from __future__ import annotations
 
 import io
 import json
-from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -17,21 +15,21 @@ from alpha.streamjson.emitter import (
     ENVELOPE_FIELDS,
     SCHEMA_VERSION,
     TERMINAL_FIELDS,
-    UnknownFrameField,
+    StreamJsonEmitter,
     UnaccountedField,
+    UnknownFrameField,
     audit_frame,
     audit_stream,
     parse_ndjson,
 )
-from alpha.streamjson.emitter import StreamJsonEmitter
 from alpha.wire_contracts import bootstrap, registered
 from alpha.wire_contracts.generate import DEFAULT_MANIFEST_PATH, DEFAULT_TS_PATH, build
 from alpha.wire_contracts.registry import (
     contract_fields,
-    required_fields,
     render_manifest,
     render_typescript,
     require,
+    required_fields,
 )
 
 
@@ -48,9 +46,7 @@ def test_every_frame_is_accounted_for(emitter):
     emitter.message_delta(message_id="m1", delta="hel")
     emitter.message_delta(message_id="m1", delta="lo")
     emitter.tool_call(tool_call_id="t1", name="read_file", arguments={"path": "a"})
-    emitter.tool_result(
-        tool_call_id="t1", name="read_file", ok=True, duration_ms=12.3456, summary="ok"
-    )
+    emitter.tool_result(tool_call_id="t1", name="read_file", ok=True, duration_ms=12.3456, summary="ok")
     emitter.run_finished(status="ok", usage={"input_tokens": 3, "output_tokens": 4, "total_tokens": 7})
 
     assert len(emitter.frames) == 6
@@ -150,10 +146,7 @@ def test_generated_typescript_is_current():
     """A field added to a model without regenerating is a failing test."""
     typescript, manifest = build()
     assert DEFAULT_TS_PATH.exists(), f"{DEFAULT_TS_PATH} has not been generated"
-    assert DEFAULT_TS_PATH.read_text(encoding="utf-8") == typescript, (
-        "the generated TypeScript is stale; run "
-        "`python -m alpha.wire_contracts.generate --write`"
-    )
+    assert DEFAULT_TS_PATH.read_text(encoding="utf-8") == typescript, "the generated TypeScript is stale; run `python -m alpha.wire_contracts.generate --write`"
     assert DEFAULT_MANIFEST_PATH.exists()
     assert DEFAULT_MANIFEST_PATH.read_text(encoding="utf-8") == manifest
 
@@ -184,18 +177,14 @@ def test_no_contract_carries_a_field_a_consumer_could_mistake_for_a_secret():
     for contract in registered():
         for field in contract_fields(contract):
             lowered = field.lower()
-            assert not any(
-                token in lowered for token in ("secret", "password", "token", "api_key", "credential")
-            ), f"{contract.name}.{field}"
+            assert not any(token in lowered for token in ("secret", "password", "token", "api_key", "credential")), f"{contract.name}.{field}"
 
 
 def test_secret_handle_contract_exactly_matches_the_python_shape():
     from alpha.security.vault import SecretHandle
 
     contract = require("SecretHandle")
-    handle = SecretHandle(
-        operation="http_request", target="https://x", owner="u-1", expires_at=1.0
-    )
+    handle = SecretHandle(operation="http_request", target="https://x", owner="u-1", expires_at=1.0)
     assert contract_fields(contract) == set(handle.to_dict().keys())
 
 

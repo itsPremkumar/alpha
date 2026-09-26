@@ -29,7 +29,6 @@ from alpha.bots.authority_ceiling import (
     RANK_PROCESS_EXEC,
     RANK_REASON,
     RANK_REPOSITORY_MUTATE,
-    RANK_WORKSPACE_WRITE,
     AuthorityCeiling,
     AuthorityViolation,
     baseline_policy,

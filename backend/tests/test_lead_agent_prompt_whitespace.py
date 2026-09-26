@@ -39,7 +39,13 @@ PRE_REWRAP = BACKEND_ROOT / "tests" / "fixtures" / "lead_agent_prompt_prerewrap_
 # Pinned independently of the golden file, so regenerating the golden alone is
 # not enough to rewrite history: changing the prompt means editing this constant
 # too, and both edits then land in the same reviewable diff.
-PROMPT_WORD_STREAM_SHA256 = "b33cf537172a8731057b364ce0fea04f15bbff9c8a02d84b5322009d235f7bce"
+#
+# Re-pinned for the Alpha leader's capability-dispatch block (the
+# `{leader_dispatch_section}` placeholder plus its builder, whose boundary is
+# generated from alpha.bots.alpha_leader so the stated and enforced allowlists
+# cannot drift). The word-stream diff at the time of the re-pin contained only
+# that addition.
+PROMPT_WORD_STREAM_SHA256 = "c1f88b65677a27b436008c7d306398ad5270d74706cc1fc25b518d1816710e9a"
 
 # The cleanup covered exactly ten E501s in this file.
 EXPECTED_PRE_REWRAP_COUNT = 10

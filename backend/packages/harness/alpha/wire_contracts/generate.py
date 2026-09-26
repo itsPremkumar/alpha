@@ -1,7 +1,7 @@
 """Generate the TypeScript wire types from the Pydantic contract registry.
 
-    python -m alpha.wire_contracts.generate --write
-    python -m alpha.wire_contracts.generate --check
+python -m alpha.wire_contracts.generate --write
+python -m alpha.wire_contracts.generate --check
 """
 
 from __future__ import annotations

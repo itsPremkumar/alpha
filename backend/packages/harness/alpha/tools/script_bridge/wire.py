@@ -18,8 +18,9 @@ import secrets
 import socket
 import stat
 import tempfile
+from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Any, Iterator
+from typing import Any
 
 from .errors import TransportError
 
@@ -177,7 +178,5 @@ def authenticate(frames: Iterator[dict[str, Any]], token: str) -> dict[str, Any]
     if not secrets.compare_digest(str(hello.get("token", "")), token):
         raise TransportError("dispatcher handshake rejected: bad token")
     if int(hello.get("protocol", 0)) != PROTOCOL_VERSION:
-        raise TransportError(
-            f"dispatcher handshake rejected: protocol {hello.get('protocol')!r} != {PROTOCOL_VERSION}"
-        )
+        raise TransportError(f"dispatcher handshake rejected: protocol {hello.get('protocol')!r} != {PROTOCOL_VERSION}")
     return hello
