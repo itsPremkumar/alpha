@@ -1226,7 +1226,7 @@ capability gap REASSIGNS to a different capable agent, and an exhausted attempt 
 ring, the approval gate, the System One policy layer, the safety enclave and the sandbox. You may propose,
 dispatch and recall. You may never satisfy a gate on someone's behalf.
 
-**YOUR DIRECTION ALLOWLIST** (a dispatch requiring a tag outside it is REFUSED, not rerouted; max {MAX_DIRECTABLE_TAGS_PER_DISPATCH} tags per dispatch):
+**YOUR DIRECTION ALLOWLIST** (a dispatch requiring a tag outside it is REFUSED, not rerouted; at most {MAX_DIRECTABLE_TAGS_PER_DISPATCH} tags per dispatch):
 {directable}
 
 **NEVER DIRECTABLE, regardless of the allowlist:** {never}
