@@ -297,10 +297,16 @@ class AsyncSwarmRunner:
                             lease_id=lease_id,
                             retry_backoff_seconds=retry_delay,
                         )
-                        if updated is not None and updated.state in {
-                            TaskNodeState.PENDING,
-                            TaskNodeState.FAILED,
-                        }:
+                        # Only a TERMINAL failure counts toward the plan-wide
+                        # consecutive-failure circuit. State PENDING here means
+                        # TASK_RETRY_SCHEDULED (see the branch below) -- the task
+                        # has not given up, and its per-task retries are already
+                        # bounded by SwarmTaskNode.max_attempts. Charging a
+                        # requeue to the shared counter let ONE flaky task burn
+                        # the whole plan's budget, after which _finalize_budget
+                        # CANCELLED every healthy sibling and set a sticky
+                        # terminal budget_exhausted that no resume can reverse.
+                        if updated is not None and updated.state == TaskNodeState.FAILED:
                             plan.budget.record_task_failure()
                         if updated is not None and updated.state == TaskNodeState.PENDING:
                             event_type = "TASK_RETRY_SCHEDULED"

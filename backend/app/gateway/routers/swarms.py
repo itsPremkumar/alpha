@@ -144,7 +144,13 @@ async def create_and_spawn_swarm(
     """Create a validated plan; execution remains an explicit async state transition."""
 
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
-    header_key = idempotency_key.strip() if idempotency_key else ""
+    # FastAPI substitutes the header value only when the request is routed
+    # through ASGI dependency injection. Any direct call (tests, internal
+    # dispatch) still sees the `Header(...)` sentinel as the parameter default:
+    # it is truthy and has no `.strip()`, so the endpoint crashed with
+    # AttributeError before idempotency was ever evaluated. Normalising on
+    # `str` keeps both call paths on the same branch instead of exploding.
+    header_key = idempotency_key.strip() if isinstance(idempotency_key, str) and idempotency_key else ""
     body_key = payload.idempotency_key.strip() if payload.idempotency_key else ""
     if header_key and body_key and header_key != body_key:
         raise HTTPException(status_code=409, detail="Idempotency-Key header and body key must match when both are supplied")

@@ -434,7 +434,13 @@ class SwarmCoordinator:
                 self.append_event(swarm_id, "TASK_RETRY_SCHEDULED", task_id=tid, details={"reason": "lease_expired"})
             for tid in watchdog_report.get("failed_tasks", []):
                 self.append_event(swarm_id, "TASK_FAILED", task_id=tid, details={"reason": "lease_expired_attempts_exhausted"})
-            for _tid in [*watchdog_report.get("retried_tasks", []), *watchdog_report.get("failed_tasks", [])]:
+            # Count only tasks the watchdog actually gave up on. `retried_tasks`
+            # are being requeued (lease expired, attempts remaining), so charging
+            # them here meant a lease blip anywhere in the plan exhausted the
+            # shared budget and cancelled healthy in-flight siblings below.
+            # Per-task retries remain bounded by SwarmTaskNode.max_attempts, so
+            # dropping them from this counter loses no protection.
+            for _tid in watchdog_report.get("failed_tasks", []):
                 plan.budget.record_task_failure()
             if plan.budget.exhausted:
                 plan.status = "budget_exhausted"
