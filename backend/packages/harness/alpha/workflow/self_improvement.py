@@ -195,6 +195,63 @@ def _confidence(samples: int) -> str:
     return "low"
 
 
+def _ancestors(graph: Any, node_id: str) -> set[str]:
+    """Every node that must complete before ``node_id``, transitively."""
+    seen: set[str] = set()
+    frontier = [node_id]
+    while frontier:
+        current = frontier.pop()
+        node = graph.nodes.get(current)
+        deps: set[str] = set()
+        if node is not None:
+            deps.update(node.depends_on)
+        deps.update(edge.source for edge in graph.incoming_edges(current))
+        for dep in deps:
+            if dep != current and dep in graph.nodes and dep not in seen:
+                seen.add(dep)
+                frontier.append(dep)
+    return seen
+
+
+def _descendants(graph: Any, node_id: str) -> set[str]:
+    """Every node that waits on ``node_id``, transitively."""
+    seen: set[str] = set()
+    frontier = [node_id]
+    while frontier:
+        current = frontier.pop()
+        dependents: set[str] = set()
+        node = graph.nodes.get(current)
+        if node is not None:
+            for other_id, other in graph.nodes.items():
+                if current in other.depends_on:
+                    dependents.add(other_id)
+        dependents.update(edge.target for edge in graph.outgoing_edges(current))
+        for dep in dependents:
+            if dep != current and dep in graph.nodes and dep not in seen:
+                seen.add(dep)
+                frontier.append(dep)
+    return seen
+
+
+def _independent_siblings(graph: Any, node_id: str, run: Any) -> list[str]:
+    """Completed nodes that could genuinely run alongside ``node_id``.
+
+    A sibling counts only if it is neither an ancestor nor a descendant, because
+    those are ordered against ``node_id`` by definition and overlapping them
+    would be a scheduling error, not an optimisation. Only nodes that actually
+    completed are returned: a sibling that has not run yet is a hypothesis, not an
+    observed opportunity.
+    """
+    if node_id not in graph.nodes:
+        return []
+    related = _ancestors(graph, node_id) | _descendants(graph, node_id)
+    return sorted(
+        nid
+        for nid, status in run.node_states.items()
+        if nid != node_id and nid not in related and status == NodeStatus.SUCCEEDED
+    )
+
+
 def suggest_improvements(
     engine: DynamicWorkflowEngine,
     run_id: str,
@@ -323,18 +380,24 @@ def suggest_improvements(
             )
         )
 
-    # 7. A dominant slow node on the critical path is the cheapest real win.
+    # 7. A dominant slow node is only a *parallelisation* opportunity if it has an
+    #    independent sibling to overlap with. In a linear chain the last node
+    #    always dominates and always has no sibling, so suggesting concurrency
+    #    there is noise. Requiring a real sibling is what keeps this signal
+    #    worth reading.
     if signals.slowest_node and signals.slowest_seconds > 0 and signals.total_measured_seconds > 0:
         share = signals.slowest_seconds / signals.total_measured_seconds
-        if share >= 0.5 and signals.completed_nodes > 1:
+        siblings = _independent_siblings(graph, signals.slowest_node, run)
+        if share >= 0.5 and signals.completed_nodes > 1 and siblings:
             suggestions.append(
                 Suggestion(
                     kind="parallelisation_candidate",
                     subject=signals.slowest_node,
                     rationale=(
                         f"node '{signals.slowest_node}' consumed {share:.0%} of the run's measured time "
-                        f"({signals.slowest_seconds:.3f}s of {signals.total_measured_seconds:.3f}s); splitting it or running it "
-                        f"concurrently with its independent siblings is the largest available win"
+                        f"({signals.slowest_seconds:.3f}s of {signals.total_measured_seconds:.3f}s) and has "
+                        f"{len(siblings)} independent sibling(s) ({siblings}); those can overlap, which is the "
+                        f"largest available win here"
                     ),
                     evidence={
                         "measured": "node_timed",
@@ -342,6 +405,7 @@ def suggest_improvements(
                         "node_seconds": signals.slowest_seconds,
                         "run_seconds": signals.total_measured_seconds,
                         "share": round(share, 4),
+                        "independent_siblings": siblings,
                     },
                     confidence=_confidence(samples),
                     samples=samples,

@@ -2502,6 +2502,15 @@ class DynamicWorkflowEngine:
             if run.status is WorkflowRunStatus.WAITING_EVENT and not run.waiting_nodes:
                 _set_run_status(run, WorkflowRunStatus.RUNNING, reason="all external waits expired")
                 run.waiting_reason = None
+            # Apply the same fail-closed policy ``execute_step`` applies after a
+            # wave.  Without this a swept wait left a FAILED node inside a RUNNING
+            # run: the run looked alive while carrying a node that can never
+            # succeed, and no terminal status was ever reached.
+            if run.failed_nodes and run.status in (WorkflowRunStatus.PENDING, WorkflowRunStatus.RUNNING):
+                failed = sorted(set(run.failed_nodes))
+                reason = f"fail-closed: {len(failed)} node(s) failed: {failed}; see the node_failed events for the real per-node reasons"
+                _set_run_status(run, WorkflowRunStatus.FAILED, reason=reason)
+                self.events.emit("workflow_failed", run.run_id, reason=reason)
         return run
 
     def suspend_run(self, run_id: str, reason: str = "suspended by operator") -> WorkflowRun:

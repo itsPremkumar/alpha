@@ -249,6 +249,344 @@ export async function stepWorkflowRun(runId: string): Promise<WorkflowRun> {
   return toRun(d);
 }
 
+/* ── Observability, forking, and run control ────────────────────────────── */
+
+export interface RunHistoryEntry {
+  index: number;
+  event_id: string;
+  event_type: string;
+  timestamp: string;
+  idempotency_key: string | null;
+  node_id: string | null;
+  reason: string | null;
+}
+
+export interface RunHistory {
+  run_id: string;
+  count: number;
+  events: RunHistoryEntry[];
+}
+
+/** GET /workflows/runs/{run_id}/history → ordered, replayable timeline. */
+export async function getRunHistory(runId: string): Promise<RunHistory> {
+  const d = await get<Record<string, unknown>>(`/workflows/runs/${encodeURIComponent(runId)}/history`);
+  return {
+    run_id: String(pick(d, ["run_id"], runId)),
+    count: Number(pick(d, ["count"], 0)),
+    events: asList(d["events"]).map((raw) => {
+      const e = raw as Record<string, unknown>;
+      return {
+        index: Number(pick(e, ["index"], 0)),
+        event_id: String(pick(e, ["event_id"], "")),
+        event_type: String(pick(e, ["event_type"], "")),
+        timestamp: String(pick(e, ["timestamp"], "")),
+        idempotency_key: e["idempotency_key"] == null ? null : String(e["idempotency_key"]),
+        node_id: e["node_id"] == null ? null : String(e["node_id"]),
+        reason: e["reason"] == null ? null : String(e["reason"]),
+      };
+    }),
+  };
+}
+
+export interface NodeTiming {
+  node_id: string;
+  started_at: string;
+  ended_at: string | null;
+  duration_seconds: number;
+  status: string;
+  tokens_consumed: number;
+  timed_out: boolean;
+}
+
+export interface WaveMetric {
+  wave_index: number | null;
+  nodes: string[];
+  node_count: number;
+  concurrency: number | null;
+  elapsed_seconds: number | null;
+  peak_in_flight: number | null;
+}
+
+export interface CriticalPath {
+  path: string[];
+  total_seconds: number;
+  measured_nodes: number;
+  complete: boolean;
+  reason: string;
+}
+
+export interface RunObservability {
+  run_id: string;
+  status: string;
+  terminal: boolean;
+  nodes_total: number;
+  nodes_completed: number;
+  nodes_failed: number;
+  nodes_waiting: number;
+  waves_dispatched: number;
+  wave_metrics: WaveMetric[];
+  timed_executions: number;
+  measured_executions: number;
+  /** "event_log" when measurements were projected from real events, else "unavailable". */
+  timeline_source: string;
+  timeline_complete: boolean;
+  total_measured_seconds: number;
+  slowest_nodes: { node_id: string; duration_seconds: number; status: string; tokens_consumed: number }[];
+  timed_out_nodes: string[];
+  critical_path: CriticalPath;
+  timeline: NodeTiming[];
+}
+
+export interface RunReport {
+  run_id: string;
+  workflow_id: string;
+  status: string;
+  history_depth: number;
+  first_event: RunHistoryEntry | null;
+  last_event: RunHistoryEntry | null;
+  status_transitions: Record<string, unknown>[];
+  applied_patches: number;
+  observability: RunObservability;
+  durability: Record<string, unknown>;
+  provenance: Record<string, unknown>;
+}
+
+/**
+ * GET /workflows/runs/{run_id}/report → measured execution report.
+ *
+ * Reports EXECUTION only. There is deliberately no acceptance/verified field in
+ * this type: whether the run's work was verified is the executor evidence
+ * contract, and a completed run is never presented here as verified.
+ */
+export async function getRunReport(runId: string): Promise<RunReport> {
+  const d = await get<Record<string, unknown>>(`/workflows/runs/${encodeURIComponent(runId)}/report`);
+  const obs = (d["observability"] ?? {}) as Record<string, unknown>;
+  const critical = (obs["critical_path"] ?? {}) as Record<string, unknown>;
+  const asNumber = (v: unknown, fallback = 0): number => (typeof v === "number" ? v : fallback);
+  const asNumOrNull = (v: unknown): number | null => (typeof v === "number" ? v : null);
+  return {
+    run_id: String(pick(d, ["run_id"], runId)),
+    workflow_id: String(pick(d, ["workflow_id"], "")),
+    status: String(pick(d, ["status"], "")),
+    history_depth: asNumber(d["history_depth"]),
+    first_event: (d["first_event"] ?? null) as RunHistoryEntry | null,
+    last_event: (d["last_event"] ?? null) as RunHistoryEntry | null,
+    status_transitions: asList(d["status_transitions"]) as Record<string, unknown>[],
+    applied_patches: asNumber(d["applied_patches"]),
+    observability: {
+      run_id: String(pick(obs, ["run_id"], runId)),
+      status: String(pick(obs, ["status"], "")),
+      terminal: obs["terminal"] === true,
+      nodes_total: asNumber(obs["nodes_total"]),
+      nodes_completed: asNumber(obs["nodes_completed"]),
+      nodes_failed: asNumber(obs["nodes_failed"]),
+      nodes_waiting: asNumber(obs["nodes_waiting"]),
+      waves_dispatched: asNumber(obs["waves_dispatched"]),
+      wave_metrics: asList(obs["wave_metrics"]).map((raw) => {
+        const w = raw as Record<string, unknown>;
+        return {
+          wave_index: asNumOrNull(w["wave_index"]),
+          nodes: asList(w["nodes"]).map(String),
+          node_count: asNumber(w["node_count"]),
+          concurrency: asNumOrNull(w["concurrency"]),
+          elapsed_seconds: asNumOrNull(w["elapsed_seconds"]),
+          peak_in_flight: asNumOrNull(w["peak_in_flight"]),
+        };
+      }),
+      timed_executions: asNumber(obs["timed_executions"]),
+      measured_executions: asNumber(obs["measured_executions"]),
+      timeline_source: String(pick(obs, ["timeline_source"], "unavailable")),
+      timeline_complete: obs["timeline_complete"] === true,
+      total_measured_seconds: asNumber(obs["total_measured_seconds"]),
+      slowest_nodes: asList(obs["slowest_nodes"]).map((raw) => {
+        const s = raw as Record<string, unknown>;
+        return {
+          node_id: String(pick(s, ["node_id"], "")),
+          duration_seconds: asNumber(s["duration_seconds"]),
+          status: String(pick(s, ["status"], "")),
+          tokens_consumed: asNumber(s["tokens_consumed"]),
+        };
+      }),
+      timed_out_nodes: asList(obs["timed_out_nodes"]).map(String),
+      critical_path: {
+        path: asList(critical["path"]).map(String),
+        total_seconds: asNumber(critical["total_seconds"]),
+        measured_nodes: asNumber(critical["measured_nodes"]),
+        complete: critical["complete"] === true,
+        reason: String(pick(critical, ["reason"], "")),
+      },
+      timeline: asList(obs["timeline"]).map((raw) => {
+        const t = raw as Record<string, unknown>;
+        return {
+          node_id: String(pick(t, ["node_id"], "")),
+          started_at: String(pick(t, ["started_at"], "")),
+          ended_at: t["ended_at"] == null ? null : String(t["ended_at"]),
+          duration_seconds: asNumber(t["duration_seconds"]),
+          status: String(pick(t, ["status"], "")),
+          tokens_consumed: asNumber(t["tokens_consumed"]),
+          timed_out: t["timed_out"] === true,
+        };
+      }),
+    },
+    durability: (d["durability"] ?? {}) as Record<string, unknown>,
+    provenance: (d["provenance"] ?? {}) as Record<string, unknown>,
+  };
+}
+
+export interface ForkResult {
+  run_id: string;
+  workflow_id: string;
+  status: string;
+  source_run_id: string;
+  forked_at_event_id: string;
+  forked_at_index: number;
+  graph_version: number;
+  inherited_completed_nodes: string[];
+  inherited_state_keys: string[];
+  replayed_events: number;
+  notes: string[];
+}
+
+export interface ForkRequest {
+  at_event_id?: string;
+  at_index?: number;
+  new_run_id?: string;
+  /** Re-runs work the source already did. Disclosed as dangerous in `notes`. */
+  reset_completed_nodes?: boolean;
+}
+
+/** POST /workflows/runs/{run_id}/fork → a NEW run branched from this run's history. */
+export async function forkWorkflowRun(runId: string, req: ForkRequest = {}): Promise<ForkResult> {
+  const d = await send<Record<string, unknown>>(`/workflows/runs/${encodeURIComponent(runId)}/fork`, "POST", {
+    ...(req.at_event_id ? { at_event_id: req.at_event_id } : {}),
+    ...(req.at_index ? { at_index: req.at_index } : {}),
+    ...(req.new_run_id ? { new_run_id: req.new_run_id } : {}),
+    ...(req.reset_completed_nodes ? { reset_completed_nodes: true } : {}),
+  });
+  return {
+    run_id: String(pick(d, ["run_id"], "")),
+    workflow_id: String(pick(d, ["workflow_id"], "")),
+    status: String(pick(d, ["status"], "")),
+    source_run_id: String(pick(d, ["source_run_id"], runId)),
+    forked_at_event_id: String(pick(d, ["forked_at_event_id"], "")),
+    forked_at_index: Number(pick(d, ["forked_at_index"], 0)),
+    graph_version: Number(pick(d, ["graph_version"], 0)),
+    inherited_completed_nodes: asList(d["inherited_completed_nodes"]).map(String),
+    inherited_state_keys: asList(d["inherited_state_keys"]).map(String),
+    replayed_events: Number(pick(d, ["replayed_events"], 0)),
+    notes: asList(d["notes"]).map(String),
+  };
+}
+
+export interface SimulationResult {
+  workflow_id: string;
+  run_id: string;
+  status: string;
+  waves: number;
+  nodes_visited: string[];
+  node_outcomes: Record<string, string>;
+  state_keys: string[];
+  /** Always true: this is a projection, never executed work. */
+  simulated: boolean;
+  /** Always "dry_run_simulation". */
+  execution_label: string;
+  notes: string[];
+}
+
+/** POST /workflows/simulate → side-effect-free dry run of a registered workflow. */
+export async function simulateWorkflow(opts: {
+  workflow_id: string;
+  initial_state?: Record<string, unknown>;
+  max_waves?: number;
+}): Promise<SimulationResult> {
+  const d = await send<Record<string, unknown>>("/workflows/simulate", "POST", {
+    workflow_id: opts.workflow_id,
+    initial_state: opts.initial_state ?? {},
+    max_waves: opts.max_waves ?? 25,
+  });
+  return {
+    workflow_id: String(pick(d, ["workflow_id"], opts.workflow_id)),
+    run_id: String(pick(d, ["run_id"], "")),
+    status: String(pick(d, ["status"], "")),
+    waves: Number(pick(d, ["waves"], 0)),
+    nodes_visited: asList(d["nodes_visited"]).map(String),
+    node_outcomes: (d["node_outcomes"] ?? {}) as Record<string, string>,
+    state_keys: asList(d["state_keys"]).map(String),
+    simulated: d["simulated"] === true,
+    execution_label: String(pick(d, ["execution_label"], "")),
+    notes: asList(d["notes"]).map(String),
+  };
+}
+
+/** POST /workflows/runs/{run_id}/suspend → park a live run without a terminal outcome. */
+export async function suspendWorkflowRun(runId: string, reason = ""): Promise<WorkflowRun> {
+  const suffix = reason ? `?reason=${encodeURIComponent(reason)}` : "";
+  const d = await send<Record<string, unknown>>(`/workflows/runs/${encodeURIComponent(runId)}/suspend${suffix}`, "POST");
+  return toRun(d);
+}
+
+/** POST /workflows/runs/{run_id}/resume → release a suspended run. */
+export async function resumeWorkflowRun(runId: string, reason = ""): Promise<WorkflowRun> {
+  const suffix = reason ? `?reason=${encodeURIComponent(reason)}` : "";
+  const d = await send<Record<string, unknown>>(`/workflows/runs/${encodeURIComponent(runId)}/resume${suffix}`, "POST");
+  return toRun(d);
+}
+
+export interface SignalResult {
+  run: WorkflowRun;
+  event: string;
+  matched_nodes: string[];
+  released_nodes: string[];
+  /** True when nothing was waiting on this event; no node state changed. */
+  unmatched: boolean;
+}
+
+/** POST /workflows/runs/{run_id}/signals → deliver a named external event. */
+export async function signalWorkflowRun(
+  runId: string,
+  event: string,
+  payload?: unknown,
+): Promise<SignalResult> {
+  const d = await send<Record<string, unknown>>(`/workflows/runs/${encodeURIComponent(runId)}/signals`, "POST", {
+    event,
+    payload: payload ?? null,
+  });
+  return {
+    run: toRun(d["run"] as Record<string, unknown>),
+    event: String(pick(d, ["event"], event)),
+    matched_nodes: asList(d["matched_nodes"]).map(String),
+    released_nodes: asList(d["released_nodes"]).map(String),
+    unmatched: d["unmatched"] === true,
+  };
+}
+
+/** POST /workflows/runs/{run_id}/sweep-waits → fail waits whose deadline has passed. */
+export async function sweepWorkflowWaits(runId: string): Promise<WorkflowRun> {
+  const d = await send<Record<string, unknown>>(`/workflows/runs/${encodeURIComponent(runId)}/sweep-waits`, "POST");
+  return toRun(d);
+}
+
+export interface ExecutorListing {
+  bound: string[];
+  count: number;
+  domain_executors: string[];
+  /** The real model/tool/subagent executors currently bound (opt-in). */
+  domain_bound: string[];
+  note: string;
+}
+
+/** GET /workflows/system/executors → which node executors are actually bound. */
+export async function listWorkflowExecutors(): Promise<ExecutorListing> {
+  const d = await get<Record<string, unknown>>("/workflows/system/executors");
+  return {
+    bound: asList(d["bound"]).map(String),
+    count: Number(pick(d, ["count"], 0)),
+    domain_executors: asList(d["domain_executors"]).map(String),
+    domain_bound: asList(d["domain_bound"]).map(String),
+    note: String(pick(d, ["note"], "")),
+  };
+}
+
 /** POST /workflows/runs/{run_id}/approvals/{node_id} → WorkflowRun.model_dump() (workflows.py:205) */
 export async function resolveRunApproval(
   runId: string,

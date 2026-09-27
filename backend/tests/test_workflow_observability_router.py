@@ -21,6 +21,7 @@ is not suspended is a 409, and a dry run never claims acceptance.
 
 from __future__ import annotations
 
+import itertools
 from unittest.mock import MagicMock
 
 import pytest
@@ -69,10 +70,20 @@ def _request() -> MagicMock:
     return MagicMock()
 
 
-async def _register_two_step(request: MagicMock, workflow_id: str = "obs_wf") -> str:
-    """Register a two-step workflow and start a run of it."""
+_WORKFLOW_SEQ = itertools.count(1)
+
+
+async def _register_two_step(request: MagicMock) -> tuple[str, str]:
+    """Register a two-step workflow and start a run of it.
+
+    Returns ``(workflow_id, run_id)``.  The id is generated per call because the
+    router owns ONE module-global engine: a reused id would collide with a
+    definition a previous test left registered instead of being reset between
+    tests.
+    """
     from app.gateway.routers.workflows import register_workflow
 
+    workflow_id = f"obs_wf_{next(_WORKFLOW_SEQ)}"
     await register_workflow(
         WorkflowCreateRequest(
             id=workflow_id,
@@ -89,7 +100,7 @@ async def _register_two_step(request: MagicMock, workflow_id: str = "obs_wf") ->
         request,
     )
     run = await start_workflow_run(workflow_id, WorkflowRunCreateRequest(), request)
-    return str(run["run_id"])
+    return workflow_id, str(run["run_id"])
 
 
 # ------------------------------------------------------------------- history
@@ -97,7 +108,7 @@ async def _register_two_step(request: MagicMock, workflow_id: str = "obs_wf") ->
 
 async def test_history_returns_ordered_events():
     request = _request()
-    run_id = await _register_two_step(request)
+    _, run_id = await _register_two_step(request)
     await step_workflow_run(run_id, request)
 
     payload = await get_workflow_run_history(run_id, request)
@@ -121,7 +132,7 @@ async def test_history_of_an_unknown_run_is_404():
 
 async def test_report_carries_measurements_and_no_acceptance_verdict():
     request = _request()
-    run_id = await _register_two_step(request)
+    _, run_id = await _register_two_step(request)
     await step_workflow_run(run_id, request)
 
     report = await get_workflow_run_report(run_id, request)
@@ -149,7 +160,7 @@ async def test_report_of_an_unknown_run_is_404():
 
 async def test_fork_creates_a_new_run_and_leaves_the_source_alone():
     request = _request()
-    run_id = await _register_two_step(request)
+    _, run_id = await _register_two_step(request)
     await step_workflow_run(run_id, request)
     source = get_workflow_engine().get_run(run_id)
     before_completed = list(source.completed_nodes)
@@ -168,7 +179,7 @@ async def test_fork_creates_a_new_run_and_leaves_the_source_alone():
 
 async def test_fork_from_a_named_event_inherits_only_prior_work():
     request = _request()
-    run_id = await _register_two_step(request)
+    _, run_id = await _register_two_step(request)
     await step_workflow_run(run_id, request)
 
     history = await get_workflow_run_history(run_id, request)
@@ -182,7 +193,7 @@ async def test_fork_from_a_named_event_inherits_only_prior_work():
 
 async def test_fork_with_an_unknown_event_id_is_400_with_the_real_reason():
     request = _request()
-    run_id = await _register_two_step(request)
+    _, run_id = await _register_two_step(request)
     with pytest.raises(HTTPException) as excinfo:
         await fork_workflow_run(run_id, WorkflowForkRequest(at_event_id="nope"), request)
     assert excinfo.value.status_code == 400
@@ -197,7 +208,7 @@ async def test_fork_of_an_unknown_run_is_404():
 
 async def test_reset_completed_nodes_is_disclosed_as_dangerous():
     request = _request()
-    run_id = await _register_two_step(request)
+    _, run_id = await _register_two_step(request)
     await step_workflow_run(run_id, request)
 
     forked = await fork_workflow_run(run_id, WorkflowForkRequest(reset_completed_nodes=True), request)
@@ -211,11 +222,11 @@ async def test_reset_completed_nodes_is_disclosed_as_dangerous():
 
 async def test_simulate_is_labelled_and_creates_no_live_run():
     request = _request()
-    await _register_two_step(request)
+    workflow_id, _ = await _register_two_step(request)
     engine = get_workflow_engine()
     runs_before = set(engine.runs)
 
-    payload = await simulate_workflow(WorkflowSimulateRequest(workflow_id="obs_wf"), request)
+    payload = await simulate_workflow(WorkflowSimulateRequest(workflow_id=workflow_id), request)
 
     assert payload["simulated"] is True
     assert payload["execution_label"] == "dry_run_simulation"
@@ -233,9 +244,9 @@ async def test_simulate_of_an_unknown_workflow_is_404():
 
 async def test_simulate_rejects_a_hostile_wave_ceiling_at_the_boundary():
     request = _request()
-    await _register_two_step(request)
+    workflow_id, _ = await _register_two_step(request)
     with pytest.raises(HTTPException) as excinfo:
-        await simulate_workflow(WorkflowSimulateRequest(workflow_id="obs_wf", max_waves=0), request)
+        await simulate_workflow(WorkflowSimulateRequest(workflow_id=workflow_id, max_waves=0), request)
     # Pydantic rejects 0 before the handler runs.
     assert excinfo.value.status_code in (400, 422)
 
@@ -245,7 +256,7 @@ async def test_simulate_rejects_a_hostile_wave_ceiling_at_the_boundary():
 
 async def test_suspend_parks_a_run_and_resume_releases_it():
     request = _request()
-    run_id = await _register_two_step(request)
+    _, run_id = await _register_two_step(request)
 
     suspended = await suspend_workflow_run(run_id, request, reason="operator hold")
     assert suspended["status"] == "suspended"
@@ -263,7 +274,7 @@ async def test_suspend_parks_a_run_and_resume_releases_it():
 
 async def test_resuming_a_run_that_is_not_suspended_is_409():
     request = _request()
-    run_id = await _register_two_step(request)
+    _, run_id = await _register_two_step(request)
     with pytest.raises(HTTPException) as excinfo:
         await resume_workflow_run(run_id, request)
     assert excinfo.value.status_code == 409
@@ -285,7 +296,7 @@ async def test_signal_releases_a_parked_event_wait():
 
     await register_workflow(
         WorkflowCreateRequest(
-            id="signal_wf",
+            id="signal_wf_a",
             name="Signal workflow",
             graph={
                 "version": 1,
@@ -298,7 +309,7 @@ async def test_signal_releases_a_parked_event_wait():
         ),
         request,
     )
-    run = await start_workflow_run("signal_wf", WorkflowRunCreateRequest(), request)
+    run = await start_workflow_run("signal_wf_a", WorkflowRunCreateRequest(), request)
     run_id = run["run_id"]
 
     parked = await step_workflow_run(run_id, request)
@@ -321,7 +332,7 @@ async def test_an_unmatched_signal_advances_nothing():
 
     await register_workflow(
         WorkflowCreateRequest(
-            id="signal_wf2",
+            id="signal_wf_b",
             name="Signal workflow",
             graph={
                 "version": 1,
@@ -331,7 +342,7 @@ async def test_an_unmatched_signal_advances_nothing():
         ),
         request,
     )
-    run_id = (await start_workflow_run("signal_wf2", WorkflowRunCreateRequest(), request))["run_id"]
+    run_id = (await start_workflow_run("signal_wf_b", WorkflowRunCreateRequest(), request))["run_id"]
     await step_workflow_run(run_id, request)
 
     signalled = await signal_workflow_run(run_id, WorkflowSignalRequest(event="typo.event"), request)
@@ -350,7 +361,7 @@ async def test_sweep_fails_a_wait_nobody_satisfied():
 
     await register_workflow(
         WorkflowCreateRequest(
-            id="sweep_wf",
+            id="sweep_wf_a",
             name="Sweep workflow",
             graph={
                 "version": 1,
@@ -366,7 +377,7 @@ async def test_sweep_fails_a_wait_nobody_satisfied():
         ),
         request,
     )
-    run_id = (await start_workflow_run("sweep_wf", WorkflowRunCreateRequest(), request))["run_id"]
+    run_id = (await start_workflow_run("sweep_wf_a", WorkflowRunCreateRequest(), request))["run_id"]
     await step_workflow_run(run_id, request)
     time.sleep(0.02)
 
