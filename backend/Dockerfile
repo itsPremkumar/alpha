@@ -73,6 +73,16 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     done; \
     UV_INDEX_URL=${UV_INDEX_URL:-https://pypi.org/simple} uv sync --locked --extra redis $extras_flags'
 
+# contracts/ holds the generated feature manifest that GET /api/ops/integration-health
+# reads. The endpoint resolves it as Path(__file__).resolve().parents[4] / "contracts" /
+# "feature_manifest.json", which is <workdir>/contracts/feature_manifest.json inside the
+# container. Without this COPY the lookup misses, `_load_manifest()` swallows the OSError
+# and returns {}, and the endpoint reports manifest_found=false with empty coverage and an
+# empty unwired list -- in every container. Copied after `uv sync` so regenerating the
+# manifest cannot invalidate the dependency layer; the dev stage inherits it from builder;
+# .dockerignore does not exclude contracts/. Pinned by tests/test_feature_manifest_deployment.py.
+COPY contracts ./contracts
+
 # UTF-8 locale prevents UnicodeEncodeError on Chinese/emoji content in minimal
 # containers where locale configuration may be missing and the default encoding is not UTF-8.
 ENV LANG=C.UTF-8
@@ -119,6 +129,10 @@ WORKDIR /app
 
 # Copy backend with pre-built virtualenv from builder
 COPY --from=builder /app/backend ./backend
+
+# Same contract as the builder stage: the module's parents[4] lookup is
+# <workdir>/contracts/feature_manifest.json, so contracts/ must travel with backend.
+COPY --from=builder /app/contracts ./contracts
 
 # Expose Gateway API port.
 EXPOSE 8001
