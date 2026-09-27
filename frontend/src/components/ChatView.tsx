@@ -83,6 +83,7 @@ const SystemSection = lazy(() => import("@/components/sections/SystemSection").t
 const IntegrationSection = lazy(() => import("@/components/sections/IntegrationSection").then((m) => ({ default: m.IntegrationSection })));
 const WorkforceSection = lazy(() => import("@/components/sections/WorkforceSection").then((m) => ({ default: m.WorkforceSection })));
 const WarRoomSection = lazy(() => import("@/components/sections/WarRoomSection").then((m) => ({ default: m.WarRoomSection })));
+const WarRoomRunsSection = lazy(() => import("@/components/sections/WarRoomRunsSection").then((m) => ({ default: m.WarRoomRunsSection })));
 const SettingsSection = lazy(() => import("@/components/sections/SettingsSection").then((m) => ({ default: m.SettingsSection })));
 const WorkflowsSection = lazy(() => import("@/components/sections/WorkflowsSection").then((m) => ({ default: m.WorkflowsSection })));
 const ForgeSection = lazy(() => import("@/components/sections/ForgeSection").then((m) => ({ default: m.ForgeSection })));
@@ -1716,6 +1717,10 @@ export default function ChatView() {
         {view === "warroom" ? (
           <Suspense fallback={<SectionFallback />}>
             <WarRoomSection />
+          </Suspense>
+        ) : view === "deliberation" ? (
+          <Suspense fallback={<SectionFallback />}>
+            <WarRoomRunsSection />
           </Suspense>
         ) : view === "bots" ? (
           <div className="shrink-0 px-4 sm:px-6 pt-3">

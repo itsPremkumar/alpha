@@ -27,11 +27,13 @@ import {
   Workflow,
   Hammer,
   Radar,
+  Scale,
 } from "lucide-react";
 
 export type WorkspaceView =
   | "chat"
   | "warroom"
+  | "deliberation"
   | "bots"
   | "messages"
   | "peers"
@@ -71,6 +73,7 @@ export const WORKSPACE_TABS: WorkspaceTabItem[] = [
   // Primary / Core
   { id: "chat", label: "Chat", icon: <MessageSquare className="size-3.5" />, blurb: "Talk to the agent", category: "core", isPrimary: true },
   { id: "warroom", label: "War Room", icon: <Building2 className="size-3.5" />, blurb: "Autonomous AI Software Enterprise War Room", category: "core", isPrimary: true },
+  { id: "deliberation", label: "Deliberation", icon: <Scale className="size-3.5" />, blurb: "Staged group deliberation: quorum, dissent and taint", category: "core" },
   { id: "bots", label: "Bots", icon: <Bot className="size-3.5" />, blurb: "Specialist profiles & team ops", category: "core", isPrimary: true },
   { id: "kanban", label: "Board", icon: <SquareKanban className="size-3.5" />, blurb: "Full project kanban board", category: "core", isPrimary: true },
   { id: "messages", label: "Messages", icon: <MessagesSquare className="size-3.5" />, blurb: "Agent chats & group rooms", category: "collaboration", isPrimary: true },
