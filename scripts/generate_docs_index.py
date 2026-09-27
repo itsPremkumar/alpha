@@ -61,6 +61,15 @@ DIRECTORY_SECTIONS: dict[str, str] = {
     "adr": "decisions",
     "adrs": "decisions",
     "api": "api",
+    # Measured research dossier on ASI/AGI/RSI plus the gap analysis against
+    # this codebase. Classified as plans for the same reason
+    # AGENT_LANDSCAPE_AND_ROADMAP.md is: it is a survey of the external
+    # landscape that exists to drive what this project builds next, not a
+    # description of Alpha's own reasoning plane (which is what "reasoning"
+    # holds). Without this rule the generator fails closed on the whole
+    # directory, so docs/INDEX.md cannot be regenerated at all and the
+    # docs-index CI job cannot pass.
+    "asi": "plans",
     "architecture": "architecture",
     "architecture/adr": "decisions",
     "architecture/adrs": "decisions",

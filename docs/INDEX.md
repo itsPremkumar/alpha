@@ -45,6 +45,7 @@
 - [AUTO_UPDATE.md](AUTO_UPDATE.md) — Local source auto-update behavior and operational controls.
 - [CONFIGURATION.md](CONFIGURATION.md) — Configuration reference for files, settings, and environment.
 - [DEPLOYMENT.md](DEPLOYMENT.md) — Deployment models and deployment procedures.
+- [INSTALLER.md](INSTALLER.md) — Windows installer: unattended bootstrap, measured footprint, uninstall and troubleshooting.
 - [PRODUCTION.md](PRODUCTION.md) — Production runbook for monitoring, incidents, and maintenance.
 - [PRODUCTION_READINESS_INVENTORY.md](PRODUCTION_READINESS_INVENTORY.md) — Production-readiness status, owners, and test evidence.
 - [PRODUCTION_READINESS_TRANSFER_GUIDE.md](PRODUCTION_READINESS_TRANSFER_GUIDE.md) — Production foundations and readiness transfer guidance.
@@ -73,6 +74,15 @@
 - [SENTINEL_AUTONOMOUS_AGENT_PLAN.md](SENTINEL_AUTONOMOUS_AGENT_PLAN.md) — Autonomous monitor, diagnose, fix, verify, and commit plan.
 - [SYSTEM_ONE_ALPHA_ROADMAP.md](SYSTEM_ONE_ALPHA_ROADMAP.md) — System One implementation roadmap for Alpha.
 - [TASK_LIST.md](TASK_LIST.md) — Living master task list for project delivery.
+- [asi/01_state_of_evidence.md](asi/01_state_of_evidence.md) — Roadmaps, plans, and implementation tracking.
+- [asi/02_learned_orchestration.md](asi/02_learned_orchestration.md) — Roadmaps, plans, and implementation tracking.
+- [asi/03_agentic_architecture.md](asi/03_agentic_architecture.md) — Roadmaps, plans, and implementation tracking.
+- [asi/04_alpha_gap_analysis.md](asi/04_alpha_gap_analysis.md) — Roadmaps, plans, and implementation tracking.
+- [asi/05_nvidia_avo.md](asi/05_nvidia_avo.md) — Roadmaps, plans, and implementation tracking.
+- [asi/06_avo_architecture.md](asi/06_avo_architecture.md) — Roadmaps, plans, and implementation tracking.
+- [asi/07_agent_stack_security.md](asi/07_agent_stack_security.md) — Roadmaps, plans, and implementation tracking.
+- [asi/README.md](asi/README.md) — Roadmaps, plans, and implementation tracking.
+- [asi/SOURCES.md](asi/SOURCES.md) — Roadmaps, plans, and implementation tracking.
 
 ## ADRs & Decisions
 
