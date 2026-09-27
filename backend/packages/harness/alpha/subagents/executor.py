@@ -1017,7 +1017,12 @@ class SubagentExecutor:
         app_config = self._get_resolved_app_config()
         if self.model_name is None:
             self.model_name = resolve_subagent_model_name(self.config, self.parent_model, app_config=app_config)
-        model = create_chat_model(name=self.model_name, thinking_enabled=False, app_config=app_config, attach_tracing=False)
+        # ``retries_orchestrated=True``: the subagent graph is wrapped by
+        # ``LLMErrorHandlingMiddleware`` (reused from the lead base stack via
+        # ``build_subagent_runtime_middlewares``) and, when the category
+        # resolves a fallback chain, by ``FallbackChatModel``. Pin the provider
+        # client's own retry loop to 0 so the layers cannot multiply.
+        model = create_chat_model(name=self.model_name, thinking_enabled=False, app_config=app_config, attach_tracing=False, retries_orchestrated=True)
 
         from alpha.agents.middlewares.tool_error_handling_middleware import build_subagent_runtime_middlewares
 
@@ -1725,10 +1730,7 @@ class SubagentExecutor:
                     # promoting it would tell the parent this subagent SUCCEEDED.
                     result.try_set_terminal(
                         SubagentStatus.FAILED,
-                        error=(
-                            f"Reached max_turns={max_turns} while still executing a turn: "
-                            "the subagent never produced a final answer before the turn budget was spent"
-                        ),
+                        error=(f"Reached max_turns={max_turns} while still executing a turn: the subagent never produced a final answer before the turn budget was spent"),
                         stop_reason=stop_reason,
                         token_usage_records=records,
                         tool_receipts=terminal_receipts(),

@@ -205,7 +205,9 @@ def _get_runtime_config(config: RunnableConfig) -> dict:
 def _resolve_model_name(requested_model_name: str | None = None, *, app_config: AppConfig | None = None) -> str:
     """Resolve a runtime model name safely, falling back to default if invalid. Returns None if no models are configured."""
     app_config = app_config or get_app_config()
-    default_model_name = app_config.models[0].name if app_config.models else None
+    # `default_model_name` honors an explicit `default_model:` key and only then
+    # falls back to the first entry in `models`.
+    default_model_name = app_config.default_model_name
     if default_model_name is None:
         raise ValueError("No chat models are configured. Please configure at least one model in config.yaml.")
 
@@ -444,6 +446,7 @@ Being proactive with task management demonstrates thoroughness and ensures all r
 """
 
     return TodoMiddleware(system_prompt=system_prompt, tool_description=tool_description)
+
 
 def _build_completion_critic_pipeline(app_config: AppConfig):
     """Build the terminal-claim critic pipeline, or ``None`` when disabled.
@@ -1181,7 +1184,7 @@ def _assemble_lead_agent(config: RunnableConfig, *, app_config: AppConfig) -> Le
             subagent_execution_capacity=subagent_execution_capacity,
         )
         graph = create_agent(
-            model=create_chat_model(name=model_name, thinking_enabled=thinking_enabled, app_config=resolved_app_config, attach_tracing=False),
+            model=create_chat_model(name=model_name, thinking_enabled=thinking_enabled, app_config=resolved_app_config, attach_tracing=False, retries_orchestrated=True),
             tools=final_tools,
             middleware=normalize_middleware_state_schemas(middlewares, mode),
             system_prompt=system_prompt,
@@ -1306,7 +1309,7 @@ def _assemble_lead_agent(config: RunnableConfig, *, app_config: AppConfig) -> Le
         subagent_execution_capacity=subagent_execution_capacity,
     )
     graph = create_agent(
-        model=create_chat_model(name=model_name, thinking_enabled=thinking_enabled, reasoning_effort=reasoning_effort, app_config=resolved_app_config, attach_tracing=False, model_overrides=agent_model_overrides),
+        model=create_chat_model(name=model_name, thinking_enabled=thinking_enabled, reasoning_effort=reasoning_effort, app_config=resolved_app_config, attach_tracing=False, model_overrides=agent_model_overrides, retries_orchestrated=True),
         tools=final_tools,
         middleware=normalize_middleware_state_schemas(middlewares, mode),
         system_prompt=system_prompt,

@@ -374,6 +374,11 @@ class TestAgentConstruction:
             # this the subagent would emit both a model-level trace and a
             # graph-level trace per call.
             "attach_tracing": False,
+            # The subagent graph is wrapped by LLMErrorHandlingMiddleware and,
+            # for a category chain, FallbackChatModel. Both already retry, so
+            # the provider client's own loop is pinned to 0 rather than
+            # multiplying with them.
+            "retries_orchestrated": True,
         }
         assert captured["middlewares"] == {
             "app_config": app_config,

@@ -232,7 +232,7 @@ def test_make_lead_agent_attaches_tracing_callbacks_at_graph_root(monkeypatch):
 
     seen_attach_tracing: list[bool] = []
 
-    def _fake_create_chat_model(*, name, thinking_enabled, reasoning_effort=None, app_config=None, attach_tracing=True, model_overrides=None):
+    def _fake_create_chat_model(*, name, thinking_enabled, reasoning_effort=None, app_config=None, attach_tracing=True, model_overrides=None, retries_orchestrated=False):
         seen_attach_tracing.append(attach_tracing)
         return object()
 
@@ -267,7 +267,7 @@ def test_internal_make_lead_agent_uses_explicit_app_config(monkeypatch):
 
     captured: dict[str, object] = {}
 
-    def _fake_create_chat_model(*, name, thinking_enabled, reasoning_effort=None, app_config=None, attach_tracing=True, model_overrides=None):
+    def _fake_create_chat_model(*, name, thinking_enabled, reasoning_effort=None, app_config=None, attach_tracing=True, model_overrides=None, retries_orchestrated=False):
         captured["name"] = name
         captured["app_config"] = app_config
         return object()
@@ -388,7 +388,7 @@ def test_make_lead_agent_uses_runtime_app_config_from_context_without_global_rea
 
     captured: dict[str, object] = {}
 
-    def _fake_create_chat_model(*, name, thinking_enabled, reasoning_effort=None, app_config=None, attach_tracing=True, model_overrides=None):
+    def _fake_create_chat_model(*, name, thinking_enabled, reasoning_effort=None, app_config=None, attach_tracing=True, model_overrides=None, retries_orchestrated=False):
         captured["name"] = name
         captured["app_config"] = app_config
         return object()
@@ -467,7 +467,7 @@ def test_make_lead_agent_disables_thinking_when_model_does_not_support_it(monkey
 
     captured: dict[str, object] = {}
 
-    def _fake_create_chat_model(*, name, thinking_enabled, reasoning_effort=None, app_config=None, attach_tracing=True, model_overrides=None):
+    def _fake_create_chat_model(*, name, thinking_enabled, reasoning_effort=None, app_config=None, attach_tracing=True, model_overrides=None, retries_orchestrated=False):
         captured["name"] = name
         captured["thinking_enabled"] = thinking_enabled
         captured["reasoning_effort"] = reasoning_effort
@@ -511,7 +511,7 @@ def test_make_lead_agent_reads_runtime_options_from_context(monkeypatch):
 
     captured: dict[str, object] = {}
 
-    def _fake_create_chat_model(*, name, thinking_enabled, reasoning_effort=None, app_config=None, attach_tracing=True, model_overrides=None):
+    def _fake_create_chat_model(*, name, thinking_enabled, reasoning_effort=None, app_config=None, attach_tracing=True, model_overrides=None, retries_orchestrated=False):
         captured["name"] = name
         captured["thinking_enabled"] = thinking_enabled
         captured["reasoning_effort"] = reasoning_effort
@@ -1144,7 +1144,7 @@ def test_create_summarization_middleware_uses_configured_model_alias(monkeypatch
     fake_model = MagicMock()
     fake_model.with_config.return_value = fake_model
 
-    def _fake_create_chat_model(*, name=None, thinking_enabled, reasoning_effort=None, app_config=None, attach_tracing=True, model_overrides=None):
+    def _fake_create_chat_model(*, name=None, thinking_enabled, reasoning_effort=None, app_config=None, attach_tracing=True, model_overrides=None, retries_orchestrated=False):
         captured["name"] = name
         captured["thinking_enabled"] = thinking_enabled
         captured["reasoning_effort"] = reasoning_effort
@@ -1248,7 +1248,7 @@ def test_create_summarization_middleware_threads_resolved_app_config_to_model(mo
     fake_model = MagicMock()
     fake_model.with_config.return_value = fake_model
 
-    def _fake_create_chat_model(*, name=None, thinking_enabled, reasoning_effort=None, app_config=None, attach_tracing=True, model_overrides=None):
+    def _fake_create_chat_model(*, name=None, thinking_enabled, reasoning_effort=None, app_config=None, attach_tracing=True, model_overrides=None, retries_orchestrated=False):
         captured["app_config"] = app_config
         return fake_model
 
@@ -1332,7 +1332,7 @@ def test_make_lead_agent_applies_agent_model_settings(monkeypatch):
 
     captured: dict[str, object] = {}
 
-    def _fake_create_chat_model(*, name, thinking_enabled, reasoning_effort=None, app_config=None, attach_tracing=True, model_overrides=None):
+    def _fake_create_chat_model(*, name, thinking_enabled, reasoning_effort=None, app_config=None, attach_tracing=True, model_overrides=None, retries_orchestrated=False):
         captured["thinking_enabled"] = thinking_enabled
         captured["reasoning_effort"] = reasoning_effort
         captured["model_overrides"] = model_overrides
@@ -1361,7 +1361,7 @@ def test_request_thinking_overrides_agent_default(monkeypatch):
 
     captured: dict[str, object] = {}
 
-    def _fake_create_chat_model(*, name, thinking_enabled, reasoning_effort=None, app_config=None, attach_tracing=True, model_overrides=None):
+    def _fake_create_chat_model(*, name, thinking_enabled, reasoning_effort=None, app_config=None, attach_tracing=True, model_overrides=None, retries_orchestrated=False):
         captured["thinking_enabled"] = thinking_enabled
         return object()
 
@@ -1422,7 +1422,7 @@ def test_make_lead_agent_no_agent_settings_passes_none_overrides(monkeypatch):
 
     captured: dict[str, object] = {}
 
-    def _fake_create_chat_model(*, name, thinking_enabled, reasoning_effort=None, app_config=None, attach_tracing=True, model_overrides=None):
+    def _fake_create_chat_model(*, name, thinking_enabled, reasoning_effort=None, app_config=None, attach_tracing=True, model_overrides=None, retries_orchestrated=False):
         captured["model_overrides"] = model_overrides
         return object()
 
