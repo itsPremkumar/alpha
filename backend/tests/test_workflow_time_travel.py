@@ -138,9 +138,7 @@ def test_reset_completed_nodes_is_opt_in_and_disclosed():
 
     assert result.inherited_completed_nodes == []
     assert result.run.node_states["n0"] == NodeStatus.PENDING
-    assert any("idempotency keys cannot protect them" in note for note in result.notes), (
-        "repeating a side effect must be disclosed, not silently allowed"
-    )
+    assert any("idempotency keys cannot protect them" in note for note in result.notes), "repeating a side effect must be disclosed, not silently allowed"
 
 
 def test_forking_from_the_whole_history_carries_every_completion():
@@ -222,7 +220,10 @@ def test_simulation_reports_the_nodes_a_graph_would_reach():
 
 def test_simulation_labels_every_node_as_simulated_and_charges_no_tokens():
     engine, _ = _engine_with_chain(2)
-    result = simulate_run(engine, "chain")
+    # The simulation itself must be labelled, and so must a single recorded node.
+    simulation = simulate_run(engine, "chain")
+    assert simulation.execution_label == SIMULATION_LABEL
+    assert all(status == NodeStatus.SUCCEEDED.value for status in simulation.node_outcomes.values())
 
     recorded = recording_executor(engine.get_definition("chain").graph.nodes["n0"], engine.start_run("chain"))
     assert recorded["output"]["simulated"] is True

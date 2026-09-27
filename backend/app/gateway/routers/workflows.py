@@ -784,10 +784,7 @@ async def list_workflow_executors(request: Request) -> dict[str, Any]:
         "count": len(bound),
         "domain_executors": sorted(DOMAIN_EXECUTORS),
         "domain_bound": sorted(name for name in DOMAIN_EXECUTORS if registry.has(name)),
-        "note": (
-            "a bound executor name means the node seam can resolve it; it is not a claim that any "
-            "model, tool, or subagent was invoked, and the domain executors are opt-in"
-        ),
+        "note": ("a bound executor name means the node seam can resolve it; it is not a claim that any model, tool, or subagent was invoked, and the domain executors are opt-in"),
     }
 
 

@@ -24,7 +24,6 @@ from typing import Any
 
 from alpha.workflow.events import get_event_dispatcher
 from alpha.workflow.execution import (
-    DEFAULT_MAX_CONCURRENCY,
     ConcurrencyGovernor,
     clamp_concurrency,
     execute_wave,
@@ -152,7 +151,6 @@ PARKED_RUN_STATUSES = frozenset(
 # microseconds, and the slow part of a node — the executor call — deliberately
 # runs OUTSIDE the lock, which is what actually delivers wave parallelism.
 _STATE_LOCK = threading.RLock()
-
 
 
 def get_node_runner() -> Callable[[WorkflowNode, WorkflowRun], dict[str, Any]] | None:
@@ -285,20 +283,14 @@ def validate_workflow_graph(graph: WorkflowGraph, *, workflow_id: str | None = N
 
     for edge in graph.edges:
         if edge.source not in graph.nodes:
-            raise WorkflowDefinitionError(
-                f"{label} graph edge {edge.source!r}->{edge.target!r} names an unknown source node '{edge.source}'"
-            )
+            raise WorkflowDefinitionError(f"{label} graph edge {edge.source!r}->{edge.target!r} names an unknown source node '{edge.source}'")
         if edge.target not in graph.nodes:
-            raise WorkflowDefinitionError(
-                f"{label} graph edge {edge.source!r}->{edge.target!r} names an unknown target node '{edge.target}'"
-            )
+            raise WorkflowDefinitionError(f"{label} graph edge {edge.source!r}->{edge.target!r} names an unknown target node '{edge.target}'")
 
     for key, node in graph.nodes.items():
         for dependency in node.depends_on:
             if dependency not in graph.nodes:
-                raise WorkflowDefinitionError(
-                    f"{label} graph node '{key}' depends on unknown node '{dependency}'"
-                )
+                raise WorkflowDefinitionError(f"{label} graph node '{key}' depends on unknown node '{dependency}'")
 
     for edge in graph.edges:
         if edge.source == edge.target:
@@ -309,10 +301,7 @@ def validate_workflow_graph(graph: WorkflowGraph, *, workflow_id: str | None = N
             # ``loop_policy`` (the node returns to READY via ``node_iteration``
             # and is re-admitted because it has no incoming edge).  Refusing the
             # self-edge names the real fix instead of livelocking.
-            raise WorkflowDefinitionError(
-                f"{label} graph node '{edge.source}' is its own successor; a self-edge makes the node "
-                f"permanently unschedulable (express bounded re-entry with loop_policy)"
-            )
+            raise WorkflowDefinitionError(f"{label} graph node '{edge.source}' is its own successor; a self-edge makes the node permanently unschedulable (express bounded re-entry with loop_policy)")
 
     # Kahn's algorithm over depends_on + edges.  A cycle is reported with the
     # real unresolved node ids rather than a generic message.  Self-edges are
@@ -341,10 +330,7 @@ def validate_workflow_graph(graph: WorkflowGraph, *, workflow_id: str | None = N
                 queue.append(dependent)
     if processed != len(graph.nodes):
         unresolved = sorted(nid for nid, degree in indegree.items() if degree > 0)
-        raise WorkflowDefinitionError(
-            f"{label} graph has a dependency cycle through nodes {unresolved}; a cyclic graph cannot be "
-            f"scheduled to completion"
-        )
+        raise WorkflowDefinitionError(f"{label} graph has a dependency cycle through nodes {unresolved}; a cyclic graph cannot be scheduled to completion")
 
 
 def _has_unfinished_work(run: WorkflowRun) -> bool:
@@ -354,10 +340,7 @@ def _has_unfinished_work(run: WorkflowRun) -> bool:
     stopped without a terminal status and without pending work would otherwise
     spin the dispatch loop to its wave ceiling for no reason.
     """
-    return any(
-        status.value not in ("succeeded", "skipped", "failed", "cancelled", "aborted")
-        for status in run.node_states.values()
-    )
+    return any(status.value not in ("succeeded", "skipped", "failed", "cancelled", "aborted") for status in run.node_states.values())
 
 
 def _is_bounded_loop(node: WorkflowNode) -> bool:
@@ -827,9 +810,7 @@ class DynamicWorkflowEngine:
             recovery_attempts = _recovery_attempts(run)
             if recovery_attempts >= STAGNATION_RECOVERY_LIMIT:
                 reason = (
-                    f"Deadlock: no nodes ready to execute; stagnation recovery exhausted after "
-                    f"{recovery_attempts} remediation patch(es) targeting node '{target_id}' "
-                    f"(limit {STAGNATION_RECOVERY_LIMIT}); no further progress is achievable."
+                    f"Deadlock: no nodes ready to execute; stagnation recovery exhausted after {recovery_attempts} remediation patch(es) targeting node '{target_id}' (limit {STAGNATION_RECOVERY_LIMIT}); no further progress is achievable."
                 )
                 _set_run_status(run, WorkflowRunStatus.FAILED, reason=reason)
                 self.events.emit(
@@ -900,10 +881,7 @@ class DynamicWorkflowEngine:
                         admitted=list(wave_nodes),
                         deferred=[nid for wave in waves[1:] for nid in wave],
                         collisions=collisions,
-                        reason=(
-                            f"{len(collisions)} node pair(s) declare overlapping write scopes; they were "
-                            f"deferred to later waves instead of running concurrently"
-                        ),
+                        reason=(f"{len(collisions)} node pair(s) declare overlapping write scopes; they were deferred to later waves instead of running concurrently"),
                     )
 
             governor = self.governor_for(run)
@@ -2004,9 +1982,7 @@ class DynamicWorkflowEngine:
         # with the event's own payload binding.
         self.events.emit("workflow_checkpointed", run.run_id, **record)
         node.evidence.append(
-            f"checkpoint '{label}' captured {len(record['state_keys'])} state key(s); "
-            f"state sha256={digest} (recomputable over the sorted-key JSON of run.state); "
-            f"the append-only event log remains the authoritative durable record"
+            f"checkpoint '{label}' captured {len(record['state_keys'])} state key(s); state sha256={digest} (recomputable over the sorted-key JSON of run.state); the append-only event log remains the authoritative durable record"
         )
         self._succeed_node(run, node, record)
         return True
@@ -2055,16 +2031,12 @@ class DynamicWorkflowEngine:
             expression = criterion.get("expression")
             required = bool(criterion.get("required", True))
             if not isinstance(expression, str) or not expression.strip():
-                results.append(
-                    {"index": index, "name": name, "required": required, "met": False, "evaluated": False, "detail": "criterion declares no expression"}
-                )
+                results.append({"index": index, "name": name, "required": required, "met": False, "evaluated": False, "detail": "criterion declares no expression"})
                 continue
             try:
                 met = evaluate_condition_strict(expression, context)
             except Exception as exc:  # noqa: BLE001 - an unevaluable gate is not a passing gate
-                results.append(
-                    {"index": index, "name": name, "required": required, "met": False, "evaluated": False, "detail": f"{type(exc).__name__}: {exc}"}
-                )
+                results.append({"index": index, "name": name, "required": required, "met": False, "evaluated": False, "detail": f"{type(exc).__name__}: {exc}"})
                 continue
             results.append({"index": index, "name": name, "required": required, "met": met, "evaluated": True, "detail": expression})
 
@@ -2077,10 +2049,7 @@ class DynamicWorkflowEngine:
                 detail += f"; {len(unevaluated)} criterion/criteria could not be evaluated and count as not met: {unevaluated}"
             self._fail_node(run, node, f"goal gate '{nid}' rejected: {detail}", **payload)
             return True
-        node.evidence.append(
-            f"goal gate '{nid}' passed {len(results)} declared criterion/criteria "
-            f"(required: {sorted(item['name'] for item in results if item.get('required'))})"
-        )
+        node.evidence.append(f"goal gate '{nid}' passed {len(results)} declared criterion/criteria (required: {sorted(item['name'] for item in results if item.get('required'))})")
         self._succeed_node(run, node, payload)
         return True
 
@@ -2110,10 +2079,7 @@ class DynamicWorkflowEngine:
         }
         with self.state():
             run.state[f"{nid}_handoff"] = contract
-        node.evidence.append(
-            f"handoff contract recorded: {len(completed)} completed, {len(failed)} failed, "
-            f"{len(remaining)} remaining; decisions are empty because the run recorded none"
-        )
+        node.evidence.append(f"handoff contract recorded: {len(completed)} completed, {len(failed)} failed, {len(remaining)} remaining; decisions are empty because the run recorded none")
         self._succeed_node(run, node, contract)
         return True
 
@@ -2172,10 +2138,7 @@ class DynamicWorkflowEngine:
                 waits.pop(nid, None)
                 run.metrics[EXTERNAL_WAIT_REGISTRY_KEY] = waits
                 run.state[f"{nid}_event_payload"] = payload
-                node.evidence.append(
-                    f"external event '{event_name}' delivered; payload keys: "
-                    f"{sorted(payload) if isinstance(payload, dict) else 'non-mapping payload'}"
-                )
+                node.evidence.append(f"external event '{event_name}' delivered; payload keys: {sorted(payload) if isinstance(payload, dict) else 'non-mapping payload'}")
                 self._succeed_node(run, node, {"event": event_name, "payload": payload})
                 return True
             if not isinstance(registration, dict):
@@ -2379,10 +2342,7 @@ class DynamicWorkflowEngine:
             return True
         with self.state():
             run.state[f"{nid}_subworkflow"] = payload
-        node.evidence.append(
-            f"subworkflow '{child_id}' completed as run '{child.run_id}' after {dispatched} wave(s) "
-            f"with {len(completed_evidence)} verified node(s) and {child.tokens_consumed} token(s)"
-        )
+        node.evidence.append(f"subworkflow '{child_id}' completed as run '{child.run_id}' after {dispatched} wave(s) with {len(completed_evidence)} verified node(s) and {child.tokens_consumed} token(s)")
         self._succeed_node(run, node, payload)
         return True
 
@@ -2407,10 +2367,7 @@ class DynamicWorkflowEngine:
         with self.state():
             waits = run.metrics.get(EXTERNAL_WAIT_REGISTRY_KEY)
             waits = waits if isinstance(waits, dict) else {}
-            matched = sorted(
-                nid for nid, registration in waits.items()
-                if isinstance(registration, dict) and registration.get("event") == event_name and not registration.get("signalled")
-            )
+            matched = sorted(nid for nid, registration in waits.items() if isinstance(registration, dict) and registration.get("event") == event_name and not registration.get("signalled"))
             for nid in matched:
                 waits[nid]["signalled"] = True
                 waits[nid]["signalled_at"] = now_iso()

@@ -178,14 +178,7 @@ class WorkflowScheduler:
                 right_node = graph.nodes.get(right)
                 if right_node is None:
                     continue
-                shared = sorted(
-                    {
-                        (lscope, rscope)
-                        for lscope in left_node.write_scope
-                        for rscope in right_node.write_scope
-                        if _scope_overlap(lscope, rscope)
-                    }
-                )
+                shared = sorted({(lscope, rscope) for lscope in left_node.write_scope for rscope in right_node.write_scope if _scope_overlap(lscope, rscope)})
                 if shared:
                     collisions.append(
                         {
@@ -207,9 +200,7 @@ class WorkflowScheduler:
         collisions = self.find_write_scope_collisions(graph, node_ids)
         if not collisions:
             return
-        described = "; ".join(
-            f"{collision['nodes'][0]} vs {collision['nodes'][1]} on {collision['overlapping_scopes']}" for collision in collisions
-        )
+        described = "; ".join(f"{collision['nodes'][0]} vs {collision['nodes'][1]} on {collision['overlapping_scopes']}" for collision in collisions)
         raise WriteScopeCollisionError(f"overlapping write scopes among ready nodes: {described}")
 
     def partition_into_waves(self, graph: WorkflowGraph, ready_node_ids: list[str]) -> list[list[str]]:

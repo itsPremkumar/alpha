@@ -49,15 +49,12 @@ import time
 from collections.abc import Callable, Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from typing import Any, Generic, TypeVar
+from typing import Any
 
 # Bounded so a pathological graph cannot spawn one OS thread per ready node.
 DEFAULT_MAX_CONCURRENCY = 4
 MIN_CONCURRENCY = 1
 MAX_CONCURRENCY_CEILING = 32
-
-T = TypeVar("T")
-R = TypeVar("R")
 
 
 def clamp_concurrency(value: Any, *, default: int = DEFAULT_MAX_CONCURRENCY) -> int:
@@ -77,7 +74,7 @@ def clamp_concurrency(value: Any, *, default: int = DEFAULT_MAX_CONCURRENCY) -> 
 
 
 @dataclass(frozen=True)
-class DeadlineResult(Generic[T]):
+class DeadlineResult[T]:
     """Outcome of one deadline-bounded call.
 
     ``timed_out`` is the single authority on whether the deadline was missed.
@@ -123,7 +120,7 @@ class DeadlineResult(Generic[T]):
             raise self.error
 
 
-def run_with_deadline(
+def run_with_deadline[T](
     fn: Callable[[], T],
     *,
     timeout_seconds: float | None = None,
@@ -194,7 +191,7 @@ def run_with_deadline(
 
 
 @dataclass(frozen=True)
-class WaveOutcome(Generic[R]):
+class WaveOutcome[R]:
     """Result of one node's invocation inside a wave.
 
     ``error`` is populated only when the invoke callable raised out of itself —
@@ -212,7 +209,7 @@ class WaveOutcome(Generic[R]):
         return self.error is None
 
 
-def execute_wave(
+def execute_wave[R](
     items: Sequence[R],
     invoke: Callable[[R], Any],
     *,

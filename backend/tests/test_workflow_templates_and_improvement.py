@@ -36,7 +36,6 @@ from alpha.workflow.templates import (
     TemplateError,
     TemplateState,
     TemplateStore,
-    get_template_store,
     set_template_store,
 )
 

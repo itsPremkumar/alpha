@@ -145,11 +145,7 @@ def collect_signals(engine: DynamicWorkflowEngine, run_id: str) -> RunSignals:
     observability = build_run_observability(run, graph, events)
 
     slowest = (observability.get("slowest_nodes") or [None])[0]
-    completed_without_evidence = sorted(
-        nid
-        for nid in run.completed_nodes
-        if nid in graph.nodes and not graph.nodes[nid].evidence
-    )
+    completed_without_evidence = sorted(nid for nid in run.completed_nodes if nid in graph.nodes and not graph.nodes[nid].evidence)
     idempotent = run.metrics.get(_KEY_IDEMPOTENT)
     recoveries = run.metrics.get(_KEY_RECOVERY, 0)
     try:
@@ -245,11 +241,7 @@ def _independent_siblings(graph: Any, node_id: str, run: Any) -> list[str]:
     if node_id not in graph.nodes:
         return []
     related = _ancestors(graph, node_id) | _descendants(graph, node_id)
-    return sorted(
-        nid
-        for nid, status in run.node_states.items()
-        if nid != node_id and nid not in related and status == NodeStatus.SUCCEEDED
-    )
+    return sorted(nid for nid, status in run.node_states.items() if nid != node_id and nid not in related and status == NodeStatus.SUCCEEDED)
 
 
 def suggest_improvements(
@@ -283,10 +275,7 @@ def suggest_improvements(
             Suggestion(
                 kind="timeout_tuning",
                 subject=nid,
-                rationale=(
-                    f"node '{nid}' missed its declared {node.timeout_seconds}s deadline; either raise the bound to a value the "
-                    f"work actually needs, or split the node, because a deadline that is always exceeded is not a bound"
-                ),
+                rationale=(f"node '{nid}' missed its declared {node.timeout_seconds}s deadline; either raise the bound to a value the work actually needs, or split the node, because a deadline that is always exceeded is not a bound"),
                 evidence={
                     "measured": "node_timeout",
                     "declared_timeout_seconds": node.timeout_seconds,
@@ -304,10 +293,7 @@ def suggest_improvements(
             Suggestion(
                 kind="missing_evidence",
                 subject=nid,
-                rationale=(
-                    f"node '{nid}' is recorded as succeeded with no evidence attached; the run reports success it cannot "
-                    f"substantiate, so the executor binding for this node must be fixed before its result is trusted"
-                ),
+                rationale=(f"node '{nid}' is recorded as succeeded with no evidence attached; the run reports success it cannot substantiate, so the executor binding for this node must be fixed before its result is trusted"),
                 evidence={"measured": "empty_node_evidence", "node_id": nid, "run_status": signals.status},
                 confidence="high",
                 samples=samples,
@@ -320,10 +306,7 @@ def suggest_improvements(
             Suggestion(
                 kind="budget_tuning",
                 subject=signals.workflow_id,
-                rationale=(
-                    f"the run exhausted its budget at {signals.tokens_consumed} tokens; the graph either needs a larger "
-                    f"declared budget or fewer/cheaper nodes, and raising the limit without reducing work just moves the wall"
-                ),
+                rationale=(f"the run exhausted its budget at {signals.tokens_consumed} tokens; the graph either needs a larger declared budget or fewer/cheaper nodes, and raising the limit without reducing work just moves the wall"),
                 evidence={
                     "measured": "workflow_budget_exhausted",
                     "tokens_consumed": signals.tokens_consumed,
@@ -357,10 +340,7 @@ def suggest_improvements(
             Suggestion(
                 kind="idempotency_observed",
                 subject=signals.run_id,
-                rationale=(
-                    f"{signals.deduplicated_effects} declared idempotent effect(s) were suppressed on re-attempt; the keys are "
-                    f"working, and any SIBLING node performing the same effect should declare the same key"
-                ),
+                rationale=(f"{signals.deduplicated_effects} declared idempotent effect(s) were suppressed on re-attempt; the keys are working, and any SIBLING node performing the same effect should declare the same key"),
                 evidence={"measured": "node_deduplicated", "suppressed_effects": signals.deduplicated_effects},
                 confidence=_confidence(samples),
                 samples=samples,
@@ -373,10 +353,7 @@ def suggest_improvements(
             Suggestion(
                 kind="plan_revision",
                 subject=signals.workflow_id,
-                rationale=(
-                    f"{signals.patches_applied} runtime patch(es) were needed to finish; the authored graph does not match the "
-                    f"work, so capture the patched revision as a template instead of replanning it every run"
-                ),
+                rationale=(f"{signals.patches_applied} runtime patch(es) were needed to finish; the authored graph does not match the work, so capture the patched revision as a template instead of replanning it every run"),
                 evidence={"measured": "patches_applied", "patches": signals.patches_applied},
                 confidence=_confidence(samples),
                 samples=samples,
@@ -419,13 +396,7 @@ def suggest_improvements(
     #    wave. A linear chain is one-node-per-wave by construction, so without an
     #    independence check this fires on every serial workflow and means nothing.
     if signals.completed_nodes > 1 and signals.waves_dispatched >= signals.completed_nodes:
-        overlap_candidates = sorted(
-            {
-                nid
-                for nid in run.completed_nodes
-                if _independent_siblings(graph, nid, run)
-            }
-        )
+        overlap_candidates = sorted({nid for nid in run.completed_nodes if _independent_siblings(graph, nid, run)})
         if overlap_candidates:
             suggestions.append(
                 Suggestion(
@@ -513,10 +484,7 @@ def analyze_corpus(
         "total_tokens": sum(item.tokens_consumed for item in signals),
         "patches_applied_total": sum(item.patches_applied for item in signals),
         "runs": [item.to_dict() for item in signals],
-        "note": (
-            "every rate carries its sample count. A success asserted without evidence is counted separately as unproven "
-            "rather than folded into the success rate."
-        ),
+        "note": ("every rate carries its sample count. A success asserted without evidence is counted separately as unproven rather than folded into the success rate."),
     }
 
 

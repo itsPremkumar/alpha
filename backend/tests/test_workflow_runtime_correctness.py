@@ -199,9 +199,7 @@ def test_governor_bounds_admission_and_reports_measured_peak():
 def test_engine_enforces_a_declared_node_timeout_instead_of_failing_it_outright():
     """The regression pin: this node used to fail WITHOUT the runner ever running."""
     engine = DynamicWorkflowEngine()
-    engine.register_definition(
-        _definition(_single_node_graph(timeout_seconds=0.05, prompt="slow work"))
-    )
+    engine.register_definition(_definition(_single_node_graph(timeout_seconds=0.05, prompt="slow work")))
     run = engine.start_run("wf")
     engine.execute_step(run.run_id, node_runner=lambda node, _run: time.sleep(1.0) or _ok_runner(node, _run))
 
@@ -325,8 +323,6 @@ def test_parallel_wave_records_measured_wave_shape():
 
 
 def test_checkpoint_node_records_a_recomputable_state_digest():
-    import hashlib
-    import json
 
     engine = DynamicWorkflowEngine()
     engine.register_definition(_definition(_single_node_graph("cp", type=NodeType.CHECKPOINT, config={"label": "before-review"})))
@@ -520,9 +516,7 @@ def test_event_wait_with_no_event_name_fails_instead_of_parking_forever():
 
 def test_expired_external_wait_fails_with_the_measured_age():
     engine = DynamicWorkflowEngine()
-    engine.register_definition(
-        _definition(_single_node_graph("waiter", type=NodeType.EVENT_WAIT, config={"event": "never", "timeout_seconds": 0.0}))
-    )
+    engine.register_definition(_definition(_single_node_graph("waiter", type=NodeType.EVENT_WAIT, config={"event": "never", "timeout_seconds": 0.0})))
     run = engine.start_run("wf")
     engine.execute_step(run.run_id)
     assert run.status is WorkflowRunStatus.WAITING_EVENT
@@ -661,9 +655,7 @@ def test_parallel_group_refuses_a_member_that_is_not_in_the_graph():
 
 def test_subworkflow_runs_a_real_child_and_adopts_only_a_completed_one():
     engine = DynamicWorkflowEngine()
-    engine.register_definition(
-        _definition(_single_node_graph("child_work", prompt="child task"), workflow_id="child_wf")
-    )
+    engine.register_definition(_definition(_single_node_graph("child_work", prompt="child task"), workflow_id="child_wf"))
     parent = WorkflowGraph(nodes={"kid": WorkflowNode(id="kid", type=NodeType.SUBWORKFLOW, config={"workflow_id": "child_wf"})}, edges=[])
     engine.register_definition(_definition(parent, workflow_id="parent_wf"))
 
@@ -679,9 +671,7 @@ def test_subworkflow_runs_a_real_child_and_adopts_only_a_completed_one():
 def test_subworkflow_refuses_an_unfinished_child_instead_of_adopting_it():
     engine = DynamicWorkflowEngine()
     # The child can never complete: its only node has no bound executor.
-    engine.register_definition(
-        _definition(_single_node_graph("child_work", prompt="child task"), workflow_id="child_wf")
-    )
+    engine.register_definition(_definition(_single_node_graph("child_work", prompt="child task"), workflow_id="child_wf"))
     parent = WorkflowGraph(nodes={"kid": WorkflowNode(id="kid", type=NodeType.SUBWORKFLOW, config={"workflow_id": "child_wf"})}, edges=[])
     engine.register_definition(_definition(parent, workflow_id="parent_wf"))
 
@@ -821,10 +811,13 @@ def test_timeline_survives_a_corrupt_ledger_row_without_failing_the_projection()
 
     good = NodeTiming(node_id="ok", started_at="t", ended_at="t", duration_seconds=0.1)
     entries = [good, {"garbage": True}, {"node_id": "bad", "duration_seconds": "not-a-number"}]
-    rebuilt = timeline_from_events([{"event_type": "node_timed", "payload": good.to_dict()}] + [
-        {"event_type": "node_timed", "payload": "not-a-mapping"},
-        {"event_type": "other", "payload": {"node_id": "ignored"}},
-    ])
+    rebuilt = timeline_from_events(
+        [{"event_type": "node_timed", "payload": good.to_dict()}]
+        + [
+            {"event_type": "node_timed", "payload": "not-a-mapping"},
+            {"event_type": "other", "payload": {"node_id": "ignored"}},
+        ]
+    )
     assert [entry.node_id for entry in rebuilt.entries] == ["ok"]
     assert entries  # the fixture is intentionally heterogeneous
 

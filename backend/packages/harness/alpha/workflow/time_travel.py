@@ -158,10 +158,7 @@ def _prefix_for_fork(
     if not events:
         raise ForkError("the source run has no events; there is no history to fork from")
     if len(events) > MAX_FORK_EVENTS:
-        raise ForkError(
-            f"source run has {len(events)} events, above the {MAX_FORK_EVENTS} fork ceiling; "
-            f"fork a shorter window or archive this run first"
-        )
+        raise ForkError(f"source run has {len(events)} events, above the {MAX_FORK_EVENTS} fork ceiling; fork a shorter window or archive this run first")
     if at_event_id is not None and at_index is not None:
         raise ForkError("pass either at_event_id or at_index, not both")
     if at_event_id is not None:
@@ -220,10 +217,7 @@ def fork_run(
     prefix, offset = _prefix_for_fork(events, at_event_id=at_event_id, at_index=at_index)
     if not prefix or prefix[0].event_type not in _REPLAYABLE_PREFIX_EVENTS:
         first_type = prefix[0].event_type if prefix else "none"
-        raise ForkError(
-            f"the forked prefix does not begin with a replayable '{sorted(_REPLAYABLE_PREFIX_EVENTS)}' event "
-            f"(it begins with {first_type!r}); the reconstructed state would be incomplete"
-        )
+        raise ForkError(f"the forked prefix does not begin with a replayable '{sorted(_REPLAYABLE_PREFIX_EVENTS)}' event (it begins with {first_type!r}); the reconstructed state would be incomplete")
 
     # Reconstruct the exact state the source had at that point by folding the
     # prefix through the real replay implementation, rather than by copying
@@ -297,10 +291,7 @@ def fork_run(
 
     notes: list[str] = []
     if reset_completed_nodes:
-        notes.append(
-            "completed nodes were RESET: this fork will repeat their side effects, and the engine's "
-            "per-run idempotency keys cannot protect them because they were recorded in the source run"
-        )
+        notes.append("completed nodes were RESET: this fork will repeat their side effects, and the engine's per-run idempotency keys cannot protect them because they were recorded in the source run")
     if any(n.type.value == "compensation" for n in fork_graph.nodes.values()):
         notes.append("the forked graph contains compensation nodes; confirm the rollback path is still intended")
 
@@ -447,10 +438,7 @@ def simulate_run(
 
     notes: list[str] = []
     if run.status in (WorkflowRunStatus.WAITING_APPROVAL, WorkflowRunStatus.WAITING_EVENT, WorkflowRunStatus.SUSPENDED):
-        notes.append(
-            f"the graph parked in '{run.status.value}'; a real run would wait there for an approval, an external "
-            f"signal, or an operator resume, so the simulation cannot project past that point"
-        )
+        notes.append(f"the graph parked in '{run.status.value}'; a real run would wait there for an approval, an external signal, or an operator resume, so the simulation cannot project past that point")
     if waves >= max_waves and run.status not in (
         WorkflowRunStatus.COMPLETED,
         WorkflowRunStatus.FAILED,

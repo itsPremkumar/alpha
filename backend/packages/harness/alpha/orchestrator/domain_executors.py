@@ -87,10 +87,7 @@ def _run_sync(factory: Callable[[], Coroutine[Any, Any, Any]]) -> Any:
     except RuntimeError:
         pass
     else:
-        raise DomainExecutorError(
-            "a domain executor cannot run on a thread with an active event loop; "
-            "dispatch this node from the host's worker boundary instead"
-        )
+        raise DomainExecutorError("a domain executor cannot run on a thread with an active event loop; dispatch this node from the host's worker boundary instead")
 
     with _bridge_lock:
         loop = _bridge_loop
@@ -145,9 +142,7 @@ def _node_prompt(node: WorkflowNode, *, required: bool = True) -> str:
     if isinstance(configured, str) and configured.strip():
         return configured
     if required:
-        raise DomainExecutorError(
-            f"node '{node.id}' declares no prompt; a model call with no instruction cannot be made up"
-        )
+        raise DomainExecutorError(f"node '{node.id}' declares no prompt; a model call with no instruction cannot be made up")
     return ""
 
 
@@ -249,9 +244,7 @@ def local_model_executor(node: WorkflowNode, run: WorkflowRun) -> dict[str, Any]
 
     text = _content_to_text(getattr(response, "content", None))
     if not text.strip():
-        raise DomainExecutorError(
-            f"model {model_name!r} returned an empty response; an empty answer is not a completed task"
-        )
+        raise DomainExecutorError(f"model {model_name!r} returned an empty response; an empty answer is not a completed task")
 
     tokens = _usage_tokens(response)
     run.state[MODEL_OUTPUT_KEY] = text
@@ -264,10 +257,7 @@ def local_model_executor(node: WorkflowNode, run: WorkflowRun) -> dict[str, Any]
     return {
         "status": "completed",
         "output": {"model": model_name, "text": text, "chars": len(text)},
-        "evidence": (
-            f"model {model_name!r} returned {len(text)} characters "
-            f"({tokens} tokens reported by the provider) for node '{node.id}'"
-        ),
+        "evidence": (f"model {model_name!r} returned {len(text)} characters ({tokens} tokens reported by the provider) for node '{node.id}'"),
         "tokens_used": tokens,
     }
 
@@ -288,9 +278,7 @@ def _tool_arguments(node: WorkflowNode) -> dict[str, Any]:
     if isinstance(arguments, dict):
         return dict(arguments)
     if isinstance(arguments, list):
-        raise DomainExecutorError(
-            f"tool node '{node.id}' config.arguments must be a mapping of argument name to value, got a list"
-        )
+        raise DomainExecutorError(f"tool node '{node.id}' config.arguments must be a mapping of argument name to value, got a list")
     single = node.config.get("input")
     if single is not None:
         return {"input": single}
@@ -406,9 +394,7 @@ def local_subagent_executor(node: WorkflowNode, run: WorkflowRun) -> dict[str, A
         )
     )
     if not tools:
-        raise DomainExecutorError(
-            f"subagent {agent_name!r} was resolved but no tools were available to it; refusing to run an agent that cannot act"
-        )
+        raise DomainExecutorError(f"subagent {agent_name!r} was resolved but no tools were available to it; refusing to run an agent that cannot act")
 
     runtime = SubagentRuntime.from_app_config(app_config)
     executor = SubagentExecutor(
@@ -445,10 +431,7 @@ def local_subagent_executor(node: WorkflowNode, run: WorkflowRun) -> dict[str, A
     return {
         "status": "completed",
         "output": {"subagent": agent_name, "text": text, "external_task_id": getattr(result, "external_task_id", None)},
-        "evidence": (
-            f"subagent {agent_name!r} completed task '{task[:120]}' returning {len(text)} characters "
-            f"({tokens} tokens across {len(getattr(result, 'tool_receipts', None) or [])} tool receipt(s))"
-        ),
+        "evidence": (f"subagent {agent_name!r} completed task '{task[:120]}' returning {len(text)} characters ({tokens} tokens across {len(getattr(result, 'tool_receipts', None) or [])} tool receipt(s))"),
         "tokens_used": tokens,
     }
 

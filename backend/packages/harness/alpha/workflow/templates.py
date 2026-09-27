@@ -318,31 +318,19 @@ class TemplateStore:
             if run is None:
                 raise TemplateError(f"run '{run_id}' not found on this engine")
             if run.status.value != "completed":
-                raise TemplateError(
-                    f"run '{run_id}' ended '{run.status.value}', not completed; a template cannot be verified by a run that did not finish"
-                )
+                raise TemplateError(f"run '{run_id}' ended '{run.status.value}', not completed; a template cannot be verified by a run that did not finish")
 
             graph = engine._run_graph_for(run)
             if _graph_fingerprint(graph) != _graph_fingerprint(template.graph):
-                raise TemplateError(
-                    f"run '{run_id}' executed a different graph than template '{template_id}'; "
-                    f"a run can only verify the exact graph it executed"
-                )
+                raise TemplateError(f"run '{run_id}' executed a different graph than template '{template_id}'; a run can only verify the exact graph it executed")
 
-            evidenced = [
-                nid
-                for nid, status in run.node_states.items()
-                if status == NodeStatus.SUCCEEDED and graph.nodes[nid].evidence
-            ]
+            evidenced = [nid for nid, status in run.node_states.items() if status == NodeStatus.SUCCEEDED and graph.nodes[nid].evidence]
             succeeded = [nid for nid, status in run.node_states.items() if status == NodeStatus.SUCCEEDED]
             if not succeeded:
                 raise TemplateError(f"run '{run_id}' completed with no successful node; there is nothing to verify")
             missing = sorted(set(succeeded) - set(evidenced))
             if missing:
-                raise TemplateError(
-                    f"run '{run_id}' reported {len(missing)} node(s) succeeded without evidence: {missing}; "
-                    f"an unevidenced completion cannot verify a template"
-                )
+                raise TemplateError(f"run '{run_id}' reported {len(missing)} node(s) succeeded without evidence: {missing}; an unevidenced completion cannot verify a template")
 
             template.state = TemplateState.VERIFIED
             template.provenance.verified_at = _now()
@@ -362,9 +350,7 @@ class TemplateStore:
             if template is None:
                 raise TemplateError(f"template '{template_id}' not found")
             if template.state is TemplateState.DRAFT:
-                raise TemplateError(
-                    f"template '{template_id}' is an unverified draft; run verify() against a completing run before promoting it"
-                )
+                raise TemplateError(f"template '{template_id}' is an unverified draft; run verify() against a completing run before promoting it")
             template.state = TemplateState.PROMOTED
             template.provenance.promoted_at = _now()
             if note:
@@ -399,10 +385,7 @@ class TemplateStore:
                 definition = template.to_definition(definition_id, owner_id=owner_id)
                 definition.description = f"{definition.description} [verified, not promoted]"
             else:
-                raise TemplateError(
-                    f"template '{template_id}' is an unverified draft ({template.state.value}); "
-                    f"verify and promote it before instantiating"
-                )
+                raise TemplateError(f"template '{template_id}' is an unverified draft ({template.state.value}); verify and promote it before instantiating")
             if variable_overrides:
                 definition.variables.update(copy.deepcopy(variable_overrides))
             if register and engine is not None:
