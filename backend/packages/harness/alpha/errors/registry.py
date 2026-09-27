@@ -231,6 +231,42 @@ _DEFINITIONS: Final[tuple[ErrorDefinition, ...]] = (
         http_status=200,
         notes="A deliberate best-effort boundary: the caller told the truth instead of failing.",
     ),
+    # -- connectivity ------------------------------------------------------
+    # Appended, not repurposed: before this existed the registry had no network
+    # class at all, so a lost link surfaced as MODEL_PROVIDER_UNAVAILABLE or
+    # DEPENDENCY_UNAVAILABLE and the run terminalized as a failure. That is the
+    # one outcome the durable-runtime contract forbids ("an internet outage must
+    # not become a task failure"), so connectivity gets its own family and its
+    # own correlation id.
+    #
+    # Deliberately ONE code, not two. A degraded link that still let the request
+    # through is already exactly what DEGRADED_MODE describes -- "the request
+    # succeeded, and you should know why" -- and that code is the registry's
+    # single disclosed-degradation 2xx by design. A second 2xx meaning the same
+    # thing would split one meaning across two codes, which is the mistake this
+    # registry exists to prevent. A degraded link that *did* fail the request is
+    # this code, or a provider code, depending on what the provider said.
+    #
+    # A caller distinguishes this from a provider problem by asking
+    # alpha.runtime.network.classify_network_error whether the failure *proves*
+    # the link is down, rather than by reading message text: a timeout proves
+    # nothing and stays a provider problem.
+    _d(
+        "NETWORK_UNAVAILABLE",
+        ErrorSeverity.WARNING,
+        True,
+        "The network is unreachable, so work that needs connectivity is paused rather than failed. It resumes automatically when the link returns.",
+        "alpha.errors.network",
+        recovery=RecoveryAction.RETRY,
+        http_status=503,
+        exception_types=(
+            "ConnectionRefusedError",
+            "socket.gaierror",
+            "gaierror",
+        ),
+        message_hints=("network is unreachable", "no route to host", "name or service not known", "temporary failure in name resolution"),
+        notes="Warning, not error: the task is alive and parked. Only a confirmed outage uses this code, and recovery is a resume rather than a re-execution.",
+    ),
     # -- configuration -----------------------------------------------------
     _d(
         "CONFIG_INVALID",
@@ -610,7 +646,11 @@ _DEFINITIONS: Final[tuple[ErrorDefinition, ...]] = (
         "alpha.errors.mcp",
         recovery=RecoveryAction.RETRY,
         http_status=503,
-        exception_types=("MCPConnectionError", "SseError", "stdio_client",),
+        exception_types=(
+            "MCPConnectionError",
+            "SseError",
+            "stdio_client",
+        ),
         message_hints=("mcp", "model context protocol"),
     ),
     _d(
