@@ -94,7 +94,16 @@ async def check_thread_access(user_id: str, thread_id: str, action: str) -> bool
 
 #### File Storage
 - Uploaded files: AES-256-GCM encrypted before storage
-- Checkpoints: AES-256-GCM encrypted (per-thread keys)
+- Checkpoints: **not encrypted at rest by default.** The `CheckpointCrypto`
+  primitive exists (`alpha.security.enclave.checkpoint_crypto`, AES-256-GCM with
+  a PBKDF2-derived key) and is reachable from the model-facing
+  `enterprise_security_manage` tool, but it is **not wired into the LangGraph
+  checkpointer** — `runtime/checkpointer/provider.py` uses the stock
+  `SqliteSaver`/`PostgresSaver`, which persist plaintext. Encrypting checkpoints
+  is therefore an operator decision that this document does not yet claim is
+  automatic. When `ALPHA_CHECKPOINT_KEY` is unset, `CheckpointCrypto` raises
+  rather than falling back to a built-in key, so "encryption available" can
+  never be mistaken for "encryption active with a known key".
 - Cognitive memory: Per-owner encryption keys
 
 ### Encryption in Transit

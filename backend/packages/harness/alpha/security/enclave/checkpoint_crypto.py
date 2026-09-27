@@ -27,7 +27,23 @@ class CheckpointCrypto:
     """
 
     def __init__(self, master_key_or_passphrase: str | None = None) -> None:
-        passphrase = master_key_or_passphrase or os.getenv("ALPHA_CHECKPOINT_KEY", "astra_default_secure_vault_key_2026")
+        passphrase = master_key_or_passphrase or os.getenv("ALPHA_CHECKPOINT_KEY")
+        if not passphrase:
+            # Previously this fell back to a literal default that is published in
+            # this repository, which meant "encryption enabled" and "encrypted
+            # with a key every reader of the source has" were the same state:
+            # ciphertext was unreadable in practice while the docs described it
+            # as protected at rest. Fail closed instead, and require the operator
+            # to name their own key.
+            #
+            # This matches the existing convention in
+            # persistence/channel_connections/sql.py, which raises rather than
+            # defaulting when its encryption key is absent.
+            raise RuntimeError(
+                "ALPHA_CHECKPOINT_KEY is required to encrypt or decrypt checkpoints. "
+                "Set it to a secret passphrase, or pass master_key_or_passphrase "
+                "explicitly. There is deliberately no built-in default key."
+            )
         # Standard salt for deterministic derivation of engine master key
         salt = b"alpha_astra_salt_v1"
         kdf = PBKDF2HMAC(

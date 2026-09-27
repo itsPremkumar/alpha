@@ -22,7 +22,20 @@ from alpha.security.enclave import (
 )
 
 _BOUNDARY = TaskBoundaryPolicy()
-_CRYPTO = CheckpointCrypto()
+# Built lazily, and only for the actions that need it. CheckpointCrypto() now
+# raises when no ALPHA_CHECKPOINT_KEY is set, so constructing it at import time
+# would make the whole tool module - and therefore the entire tool registry,
+# which imports it - fail to load on any host that has not configured a key.
+# Encryption actions surface the actionable error; the rest of the tool works
+# with no key configured.
+_CRYPTO: CheckpointCrypto | None = None
+
+
+def _crypto() -> CheckpointCrypto:
+    global _CRYPTO
+    if _CRYPTO is None:
+        _CRYPTO = CheckpointCrypto()
+    return _CRYPTO
 _FLIGHT_RECORDER = TrajectoryFlightRecorder()
 _CREDENTIAL_VAULT = ScopedCredentialVault()
 _REDACTOR = CredentialRedactor()
@@ -94,12 +107,12 @@ def enterprise_security_manage(
             data = json.loads(payload_json)
         except Exception:
             data = {"raw": payload_json}
-        b64 = _CRYPTO.encrypt_json(data)
+        b64 = _crypto().encrypt_json(data)
         return json.dumps({"status": "encrypted", "cipher_b64": b64}, indent=2)
 
     elif action == "decrypt_checkpoint":
         try:
-            obj = _CRYPTO.decrypt_json(encrypted_blob)
+            obj = _crypto().decrypt_json(encrypted_blob)
             return json.dumps({"status": "decrypted", "data": obj}, indent=2)
         except CheckpointIntegrityError as e:
             return json.dumps({"status": "corrupted_or_tampered", "error": str(e)}, indent=2)

@@ -36,6 +36,26 @@ def is_auth_disabled() -> bool:
 
 
 def warn_if_auth_disabled_enabled() -> None:
+    # The requested-but-ignored case first, because it is the one that used to
+    # be completely silent. is_auth_disabled() returns False in production, so
+    # this warning was skipped while the operator still had ALPHA_AUTH_DISABLED=1
+    # set and reasonably believed it was active. Refusing to start on that
+    # combination would be the stricter fix, but a deployment that sets
+    # ALPHA_ENV=production in a compose file while running locally should still
+    # boot, so the mismatch is reported at ERROR and the effective state is
+    # stated instead of being left to inference.
+    if is_auth_disabled_requested() and not is_auth_disabled():
+        logger.error(
+            "%s=1 is set but IGNORED because this process is an explicit production environment (%s in %s). "
+            "Authentication is ACTIVE. If you meant to run without auth locally, unset that environment variable; "
+            "if you meant to run in production, do not set %s at all.",
+            AUTH_DISABLED_ENV_VAR,
+            "/".join(_PRODUCTION_ENV_VARS),
+            "/".join(v for v in _PRODUCTION_ENV_VARS if os.environ.get(v, "").strip()),
+            AUTH_DISABLED_ENV_VAR,
+        )
+        return
+
     if not is_auth_disabled():
         return
 
