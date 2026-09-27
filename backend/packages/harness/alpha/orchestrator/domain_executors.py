@@ -116,17 +116,24 @@ def _app_config(node: WorkflowNode) -> Any:
 
     A node may pin a specific config path via ``config.config_path``; otherwise
     the process snapshot is used. A missing ``config.yaml`` raises
-    ``FileNotFoundError`` from the real loader and is reported as-is — the whole
-    point of these executors is that the reason is genuine.
+    ``FileNotFoundError`` from the real loader; that is re-raised as a
+    :class:`DomainExecutorError` carrying the loader's own message so the node
+    fails with one honest, readable reason instead of a bare loader traceback.
+    The underlying text is preserved verbatim — this wraps, it does not soften.
     """
     from alpha.config import get_app_config
 
     override = node.config.get("config_path")
-    if isinstance(override, str) and override.strip():
-        from alpha.config import reload_app_config
+    try:
+        if isinstance(override, str) and override.strip():
+            from alpha.config import reload_app_config
 
-        return reload_app_config(override.strip())
-    return get_app_config()
+            return reload_app_config(override.strip())
+        return get_app_config()
+    except DomainExecutorError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - the loader's reason is authoritative
+        raise DomainExecutorError(f"no usable Alpha configuration for node '{node.id}': {type(exc).__name__}: {exc}") from exc
 
 
 def _node_prompt(node: WorkflowNode, *, required: bool = True) -> str:

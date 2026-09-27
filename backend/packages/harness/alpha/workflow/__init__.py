@@ -52,6 +52,14 @@ from alpha.workflow.events import (
     WorkflowEventDispatcher,
     get_event_dispatcher,
 )
+from alpha.workflow.execution import (
+    ConcurrencyGovernor,
+    DeadlineResult,
+    WaveOutcome,
+    clamp_concurrency,
+    execute_wave,
+    run_with_deadline,
+)
 from alpha.workflow.expressions import (
     ExpressionSecurityError,
     SafeExpressionEvaluator,
@@ -75,6 +83,12 @@ from alpha.workflow.models import (
     WorkflowPatch,
     WorkflowRun,
     WorkflowRunStatus,
+)
+from alpha.workflow.observability import (
+    NodeTiming,
+    RunTimeline,
+    build_run_observability,
+    critical_path,
 )
 from alpha.workflow.patch import (
     WorkflowPatchEngine,
@@ -106,6 +120,16 @@ from alpha.workflow.schemas import (
     WorkflowDecisionRecord,
     WorkflowPlanPatch,
     WorkflowPlanVersion,
+)
+from alpha.workflow.time_travel import (
+    ForkError,
+    ForkResult,
+    RunHistoryEntry,
+    SimulationResult,
+    fork_run,
+    run_history,
+    run_report,
+    simulate_run,
 )
 
 __all__ = [
@@ -145,6 +169,27 @@ __all__ = [
     "WorkflowPatchEngine",
     "WorkflowScheduler",
     "WriteScopeCollisionError",
+    # Bounded execution primitives (deadlines, wave concurrency, admission)
+    "ConcurrencyGovernor",
+    "DeadlineResult",
+    "WaveOutcome",
+    "clamp_concurrency",
+    "execute_wave",
+    "run_with_deadline",
+    # Measured execution observability
+    "NodeTiming",
+    "RunTimeline",
+    "build_run_observability",
+    "critical_path",
+    # Forking, time travel, and dry-run simulation
+    "ForkError",
+    "ForkResult",
+    "RunHistoryEntry",
+    "SimulationResult",
+    "fork_run",
+    "run_history",
+    "run_report",
+    "simulate_run",
     "DynamicRouter",
     "RouteDecision",
     "RuntimeReplanner",
