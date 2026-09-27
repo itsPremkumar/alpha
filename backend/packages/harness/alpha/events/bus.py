@@ -78,13 +78,31 @@ class EventBus:
         return sub.id
 
     def unsubscribe(self, subscription_id: int) -> None:
+        """Detach a subscription and stop its pump task.
+
+        The pump is stopped by a poison pill, so this has to work even while the
+        subscription's handler is still blocked and its queue is full. Swallowing
+        ``QueueFull`` here dropped the only stop signal the pump can ever see:
+        it then drained the backlog, parked on ``queue.get()``, and stayed there
+        for the life of the process, leaking the task and the handler it closes
+        over on every subscribe/unsubscribe cycle. Nothing else enqueues into a
+        popped subscription's queue (``publish`` only reaches ``_subs``, and the
+        pump only consumes), so dropping the oldest event is enough to make room
+        for the pill.
+        """
         sub = self._subs.pop(subscription_id, None)
         if sub is None:
             return
         try:
             sub.queue.put_nowait(None)  # poison pill stops the pump
         except asyncio.QueueFull:
-            pass
+            try:
+                sub.queue.get_nowait()
+            except asyncio.QueueEmpty:  # pragma: no cover - the queue was full
+                return
+            sub.dropped += 1
+            self._dropped_total += 1
+            sub.queue.put_nowait(None)
 
     # -- publish ----------------------------------------------------------------
     async def publish(self, name: str, payload: dict[str, Any] | None = None, *, source: str = "") -> None:
