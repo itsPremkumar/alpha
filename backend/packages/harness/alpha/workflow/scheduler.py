@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from alpha.workflow.expressions import evaluate_condition
 from alpha.workflow.models import EdgeMode, NodeStatus, WorkflowGraph, WorkflowRun
 
@@ -152,8 +154,72 @@ class WorkflowScheduler:
                 skipped.append(nid)
         return skipped
 
+    def find_write_scope_collisions(self, graph: WorkflowGraph, node_ids: list[str]) -> list[dict[str, Any]]:
+        """Report every overlapping ``write_scope`` pair inside ``node_ids``.
+
+        :meth:`partition_into_waves` RESOLVES collisions by splitting the colliding
+        nodes into separate waves, which is safe but silent: an operator reading
+        the event log could not tell that two nodes declaring the same write scope
+        had been quietly serialized, nor why their "parallel" work ran in sequence.
+        This method is the disclosure half — it names the pairs and the scopes, so
+        the engine can journal the reason and the operator can fix the graph
+        instead of guessing.
+
+        A collision is reported, never raised, because serializing is the correct
+        conservative behaviour. Use :meth:`validate_disjoint_write_scopes` when a
+        caller wants the strict, raising form.
+        """
+        collisions: list[dict[str, Any]] = []
+        for index, left in enumerate(node_ids):
+            left_node = graph.nodes.get(left)
+            if left_node is None:
+                continue
+            for right in node_ids[index + 1 :]:
+                right_node = graph.nodes.get(right)
+                if right_node is None:
+                    continue
+                shared = sorted(
+                    {
+                        (lscope, rscope)
+                        for lscope in left_node.write_scope
+                        for rscope in right_node.write_scope
+                        if _scope_overlap(lscope, rscope)
+                    }
+                )
+                if shared:
+                    collisions.append(
+                        {
+                            "nodes": [left, right],
+                            "overlapping_scopes": [list(pair) for pair in shared],
+                        }
+                    )
+        return collisions
+
+    def validate_disjoint_write_scopes(self, graph: WorkflowGraph, node_ids: list[str]) -> None:
+        """Raise :class:`WriteScopeCollisionError` if any pair in ``node_ids`` overlaps.
+
+        The strict form, for callers that require a set of nodes to be provably
+        safe to run concurrently (a sandbox quota check, a reviewer asserting a
+        graph is parallel-safe). ``partition_into_waves`` deliberately does NOT
+        call this: serializing a collision is correct there, and failing the wave
+        would turn a recoverable scheduling detail into a run failure.
+        """
+        collisions = self.find_write_scope_collisions(graph, node_ids)
+        if not collisions:
+            return
+        described = "; ".join(
+            f"{collision['nodes'][0]} vs {collision['nodes'][1]} on {collision['overlapping_scopes']}" for collision in collisions
+        )
+        raise WriteScopeCollisionError(f"overlapping write scopes among ready nodes: {described}")
+
     def partition_into_waves(self, graph: WorkflowGraph, ready_node_ids: list[str]) -> list[list[str]]:
-        """Partition ready nodes into parallel execution waves with disjoint write scopes."""
+        """Partition ready nodes into parallel execution waves with disjoint write scopes.
+
+        A collision is resolved by deferring the later node to the next wave, so
+        the returned waves are always internally disjoint and safe to execute
+        concurrently. ``find_write_scope_collisions`` reports what that deferral
+        cost, so the serialization is disclosed rather than silent.
+        """
         waves: list[list[str]] = []
         remaining = list(ready_node_ids)
 

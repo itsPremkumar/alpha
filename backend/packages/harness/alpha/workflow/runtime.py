@@ -871,31 +871,30 @@ class DynamicWorkflowEngine:
         wave_nodes = waves[0] if waves else []
 
         if wave_nodes:
+            # A node deferred out of this wave because its write scope overlapped
+            # an admitted node's is SAFE (it simply runs in the next wave) but it
+            # used to be invisible: nothing in the event log said why "parallel"
+            # work was serialized. Journal the pairs so the graph's author can
+            # see it and fix the scopes rather than guess.
+            if len(waves) > 1:
+                collisions = self.scheduler.find_write_scope_collisions(graph, ready)
+                if collisions:
+                    self.events.emit(
+                        "wave_write_scope_serialized",
+                        run.run_id,
+                        admitted=list(wave_nodes),
+                        deferred=[nid for wave in waves[1:] for nid in wave],
+                        collisions=collisions,
+                        reason=(
+                            f"{len(collisions)} node pair(s) declare overlapping write scopes; they were "
+                            f"deferred to later waves instead of running concurrently"
+                        ),
+                    )
+
             governor = self.governor_for(run)
             wave_started = time.monotonic()
-            # Admit the wave as a unit rather than node-by-node as each one
-            # starts. That is what makes the wave's disjoint write scopes
-            # meaningful: the scheduler promised no two nodes in this wave
-            # overlap, and the governor is what makes "no more than N at once"
-            # true. A wave that cannot be fully admitted is admitted partially
-            # and the refusal is journaled, never silently dropped.
-            admitted = 0
-            for _ in wave_nodes:
-                if not governor.acquire():
-                    self.events.emit(
-                        "wave_admission_refused",
-                        run.run_id,
-                        node_count=len(wave_nodes),
-                        admitted=admitted,
-                        limit=governor.limit,
-                        reason=(f"run concurrency limit {governor.limit} reached; {len(wave_nodes) - admitted} wave node(s) were not admitted and remain ready for the next wave"),
-                    )
-                    break
-                admitted += 1
-            admitted_nodes = wave_nodes[:admitted]
-
             with self.state():
-                for nid in admitted_nodes:
+                for nid in wave_nodes:
                     if nid not in run.active_nodes:
                         run.active_nodes.append(nid)
 
@@ -908,14 +907,19 @@ class DynamicWorkflowEngine:
                 # pretended away.
                 self._execute_single_node(nid, graph, run, runner, compensation_runner)
 
-            outcomes = execute_wave(admitted_nodes, _invoke, max_concurrency=governor.limit)
-            for _ in range(len(admitted_nodes)):
-                governor.release()
+            # ``governor.limit`` is the run's declared cap and is what
+            # ``execute_wave`` bounds the wave by.  A wave is dispatched
+            # synchronously inside this call, so gating admission on an
+            # in-flight count would admit exactly ``limit`` nodes per step and
+            # silently serialise a three-node wave into three steps.  The
+            # governor therefore bounds CONCURRENCY, not wave membership: the
+            # whole wave always runs, at most ``limit`` at a time.
+            outcomes = execute_wave(wave_nodes, _invoke, max_concurrency=governor.limit)
 
             self._record_wave(
                 run,
                 wave_index=self._next_wave_index(run),
-                nodes=list(admitted_nodes),
+                nodes=list(wave_nodes),
                 concurrency=governor.limit,
                 elapsed=time.monotonic() - wave_started,
             )
@@ -929,12 +933,6 @@ class DynamicWorkflowEngine:
                 reason = f"wave dispatch fault: {type(escaped).__name__}: {escaped}"
                 _set_run_status(run, WorkflowRunStatus.FAILED, reason=reason)
                 self.events.emit("workflow_failed", run.run_id, reason=reason)
-
-    def _next_wave_index(self, run: WorkflowRun) -> int:
-        """The 1-based index of the wave about to be recorded."""
-        with self.state():
-            waves = run.metrics.get(WAVE_METRICS_KEY)
-            return (len(waves) if isinstance(waves, list) else 0) + 1
 
         # Gap 1: fail-closed after EVERY wave — a run left with failed nodes is
         # driven to FAILED and journals exactly ONE ``workflow_failed`` event,
@@ -958,7 +956,17 @@ class DynamicWorkflowEngine:
         # Gap 9: waiting_nodes is derived from node statuses on every step.
         _sync_waiting_nodes(run)
         run.updated_at = datetime.now(UTC).isoformat()
+        if run.status in TERMINAL_RUN_STATUSES:
+            # A finished run no longer needs an admission governor; drop it so a
+            # long-lived process does not accumulate one per historical run.
+            self.release_run_resources(run.run_id)
         return run
+
+    def _next_wave_index(self, run: WorkflowRun) -> int:
+        """The 1-based index of the wave about to be recorded."""
+        with self.state():
+            waves = run.metrics.get(WAVE_METRICS_KEY)
+            return (len(waves) if isinstance(waves, list) else 0) + 1
 
     def _fail_node(self, run: WorkflowRun, node: WorkflowNode, reason: str, **extra: Any) -> None:
         """Mark a node honestly failed: real reason in output and event log."""
@@ -1374,11 +1382,16 @@ class DynamicWorkflowEngine:
 
         self._begin_timing(run, node)
         started = time.monotonic()
-        deadline_missed = threading.Event()
+        # A node runs on exactly one thread, so a thread-local flag is the honest
+        # way to carry "this execution missed a deadline" back to the timing
+        # layer without threading it through every node-type branch. Reset it
+        # first so a previous node on a reused pool thread cannot leak into this
+        # node's measurement.
+        reset_timeout_flag()
         try:
-            self._dispatch_node(nid, graph, run, node_runner, compensation_runner, deadline_missed)
+            self._dispatch_node(nid, graph, run, node_runner, compensation_runner)
         finally:
-            self._end_timing(run, node, started, timed_out=deadline_missed.is_set())
+            self._end_timing(run, node, started, timed_out=timeout_occurred())
             with self.state():
                 run.active_nodes = [active for active in run.active_nodes if active != nid]
 
@@ -1978,7 +1991,9 @@ class DynamicWorkflowEngine:
                 checkpoints = []
             checkpoints.append(record)
             run.metrics[CHECKPOINT_LEDGER_KEY] = checkpoints
-        self.events.emit("workflow_checkpointed", run.run_id, node_id=nid, **record)
+        # ``record`` already carries ``node_id``; passing it again would collide
+        # with the event's own payload binding.
+        self.events.emit("workflow_checkpointed", run.run_id, **record)
         node.evidence.append(
             f"checkpoint '{label}' captured {len(record['state_keys'])} state key(s); "
             f"state sha256={digest} (recomputable over the sorted-key JSON of run.state); "
@@ -2225,30 +2240,23 @@ class DynamicWorkflowEngine:
             return True
 
         governor = self.governor_for(run)
-        admitted = 0
-        for _ in member_ids:
-            if not governor.acquire():
-                break
-            admitted += 1
-        target = member_ids[:admitted]
-
         with self.state():
-            for member in target:
+            for member in member_ids:
                 if member not in run.active_nodes:
                     run.active_nodes.append(member)
 
         started = time.monotonic()
+        # As with a scheduling wave, the whole group runs; ``max_concurrency``
+        # bounds how many members overlap rather than truncating the group.
         outcomes = execute_wave(
-            target,
+            member_ids,
             lambda member: self._execute_single_node(member, graph, run, node_runner, compensation_runner),
             max_concurrency=governor.limit,
         )
-        for _ in range(len(target)):
-            governor.release()
         self._record_wave(
             run,
             wave_index=self._next_wave_index(run),
-            nodes=list(target),
+            nodes=list(member_ids),
             concurrency=governor.limit,
             elapsed=time.monotonic() - started,
         )
@@ -2263,7 +2271,7 @@ class DynamicWorkflowEngine:
         payload = {
             "group": nid,
             "members": member_ids,
-            "executed": list(target),
+            "executed": list(member_ids),
             "member_statuses": {member: (status.value if status is not None else "unknown") for member, status in statuses.items()},
             "duration_seconds": round(time.monotonic() - started, 6),
         }
