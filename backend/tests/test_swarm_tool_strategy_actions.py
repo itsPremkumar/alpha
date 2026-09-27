@@ -22,7 +22,8 @@ import typing
 import pytest
 
 import alpha.swarm.coordinator as coord_mod
-from alpha.swarm.models import SwarmPlan
+from alpha.runtime.user_context import get_effective_user_id
+from alpha.swarm.models import SwarmMode, SwarmPlan
 from alpha.tools.builtins.swarm_tool import swarm_tool
 
 
@@ -50,15 +51,18 @@ def test_strategy_reports_the_recorded_choice_not_a_recomputation():
     payload = json.loads(raw)
 
     assert payload["swarm_id"] == sid
-    # The declared mode is what the caller asked for; the effective mode is
-    # what automatic selection resolved it to.  They are separate fields so an
-    # `auto` request is never reported as having been run verbatim.
-    assert payload["declared_mode"] == "auto"
-    assert payload["effective_mode"] in {"debate", "ensemble", "map_reduce", "scatter_gather", "hierarchical", "parallel", "coding_worktree"}
+    # The plan stores only the resolved mode, so `plan_mode` agreeing with the
+    # resolver's `mode` and differing from "auto" is the proof that an `auto`
+    # request was actually resolved instead of run verbatim.
+    assert payload["plan_mode"] == payload["mode"]
+    assert payload["plan_mode"] != "auto"
+    assert payload["plan_mode"] in {"debate", "ensemble", "map_reduce", "scatter_gather", "hierarchical", "parallel", "coding_worktree"}
     assert payload["tier"] in {"direct", "simple", "adapt", "medium", "full"}
     assert payload["source"] in {"explicit", "topology", "heuristic", "fallback"}
     assert isinstance(payload["candidates"], list)
     assert payload["rationale"]
+    # The recorded rationale, not a fresh guess, is what comes back.
+    assert payload["mode"] == coord_mod.get_swarm_coordinator().get_swarm(sid).metrics["strategy"]["mode"]
 
 
 def test_strategy_honors_an_explicit_mode_without_reinterpreting_it():
@@ -66,8 +70,7 @@ def test_strategy_honors_an_explicit_mode_without_reinterpreting_it():
     payload = json.loads(swarm_tool.invoke({"action": "strategy", "swarm_id": sid}))
 
     # An explicit topology is a requirement, so the resolver must not move it.
-    assert payload["declared_mode"] == "debate"
-    assert payload["effective_mode"] == "debate"
+    assert payload["plan_mode"] == payload["mode"] == "debate"
     assert payload["source"] == "explicit"
 
 
@@ -76,11 +79,11 @@ def test_strategy_reports_nothing_recorded_instead_of_inventing_one():
     sid = "swm-unrecorded"
     # A plan that never went through automatic selection (an imported or
     # pre-upgrade checkpoint) must not be given a strategy it does not have.
-    coordinator._swarms[sid] = SwarmPlan(swarm_id=sid, goal="legacy plan")
+    coordinator._swarms[sid] = SwarmPlan(swarm_id=sid, goal="legacy plan", mode=SwarmMode.PARALLEL, owner_id=get_effective_user_id())
 
     response = swarm_tool.invoke({"action": "strategy", "swarm_id": sid})
     assert "**Recorded**: `no`" in response
-    assert "**Declared mode**: `auto`" in response
+    assert "**Mode**: `parallel`" in response
 
 
 def test_strategy_action_requires_a_swarm_id():
@@ -142,8 +145,10 @@ def test_trace_deposit_from_a_second_worker_corroborates():
 
     traces = json.loads(swarm_tool.invoke({"action": "trace", "swarm_id": sid}))
     assert len(traces) == 1
-    # Two independent witnesses, sub-linear: 1 + 0.5 = 1.5, never 2.0.
-    assert traces[0]["strength"] == pytest.approx(1.5)
+    # Two independent witnesses, sub-linear: 1 + 0.5 = 1.5, never 2.0.  The
+    # tolerance is real decay over the wall-clock gap between the two deposits.
+    assert traces[0]["strength"] == pytest.approx(1.5, abs=0.01)
+    assert traces[0]["strength"] < 2.0
     assert traces[0]["deposits"] == 2
     assert traces[0]["provenance"] == ["worker-a", "worker-b"]
 

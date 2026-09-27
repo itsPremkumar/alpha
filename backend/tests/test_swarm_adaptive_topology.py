@@ -17,7 +17,7 @@ from alpha.swarm.decomposer import SwarmTaskDecomposer
 from alpha.swarm.models import SwarmMode, SwarmPlan, SwarmTaskNode, TaskNodeState
 from alpha.swarm.planner import build_candidate, score_plan, select_best_candidate
 from alpha.swarm.strategy import ComplexityTier, resolve_strategy, tier_for
-from alpha.swarm.topology import compute_dag_features, route_topology
+from alpha.swarm.topology import COUPLING_THRESHOLD, compute_dag_features, route_topology
 
 
 def _chain(count: int) -> dict[str, SwarmTaskNode]:
@@ -170,6 +170,51 @@ def test_high_coupling_routes_to_hierarchical():
     assert route.mode is SwarmMode.HIERARCHICAL
     assert route.should_swarm is True
     assert "coupling" in route.rationale
+
+
+def test_a_single_sink_fan_in_is_not_judged_by_edge_density():
+    """A reduce is a dense acyclic shape, and that is not a fault.
+
+    Both graphs below measure the same edge density, so density alone cannot
+    separate them.  What separates them is the sink count: every root feeding
+    one reducer is a fan-in, while two competing sinks are a real mesh that a
+    leader should coordinate.  Getting this backwards would hand a 2-item batch
+    a 5-node leader-sequenced pipeline.
+    """
+    fan_in = {
+        "map-1": SwarmTaskNode(task_id="map-1", objective="m1"),
+        "map-2": SwarmTaskNode(task_id="map-2", objective="m2"),
+        "reduce": SwarmTaskNode(task_id="reduce", objective="r", dependencies=["map-1", "map-2"]),
+    }
+    mesh = {
+        "a1": SwarmTaskNode(task_id="a1", objective="a1"),
+        "a2": SwarmTaskNode(task_id="a2", objective="a2"),
+        "b1": SwarmTaskNode(task_id="b1", objective="b1", dependencies=["a1", "a2"]),
+        "b2": SwarmTaskNode(task_id="b2", objective="b2", dependencies=["a1", "a2"]),
+    }
+    fan_in_features = compute_dag_features(fan_in)
+    mesh_features = compute_dag_features(mesh)
+
+    # Same measured density, opposite verdicts.
+    assert fan_in_features.coupling == pytest.approx(mesh_features.coupling)
+    assert fan_in_features.coupling >= COUPLING_THRESHOLD
+    assert fan_in_features.leaf_count == 1
+    assert mesh_features.leaf_count == 2
+
+    # An item list is what makes it a map: with nothing to map over, the very
+    # same shape is only a gather.
+    assert route_topology(fan_in_features, items=["a", "b"]).mode is SwarmMode.MAP_REDUCE
+    assert route_topology(fan_in_features).mode is SwarmMode.SCATTER_GATHER
+    assert route_topology(mesh_features).mode is SwarmMode.HIERARCHICAL
+
+    # The verdict is the fan-in's, not a small-graph special case.
+    wide = {
+        **{f"map-{i}": SwarmTaskNode(task_id=f"map-{i}", objective=f"m{i}") for i in range(1, 5)},
+        "reduce": SwarmTaskNode(task_id="reduce", objective="r", dependencies=["map-1", "map-2", "map-3", "map-4"]),
+    }
+    wide_features = compute_dag_features(wide)
+    assert wide_features.leaf_count == 1
+    assert route_topology(wide_features, items=["a", "b", "c", "d"]).mode is SwarmMode.MAP_REDUCE
 
 
 def test_deep_wide_graph_routes_to_hierarchical():
