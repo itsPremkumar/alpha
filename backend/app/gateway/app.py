@@ -1113,7 +1113,7 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     app.include_router(plan_mode.router)
     app.include_router(subagent_control.router)
     app.include_router(deliberation.router)
-app.include_router(war_rooms.router)
+    app.include_router(war_rooms.router)
     app.include_router(jobs.router)
     app.include_router(supervision.router)
     app.include_router(autonomy.router)
