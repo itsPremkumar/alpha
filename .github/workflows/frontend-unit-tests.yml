@@ -49,3 +49,10 @@ jobs:
       - name: Run frontend branding pin
         working-directory: frontend
         run: pnpm test:branding
+
+      # tests/reasoning-effort.test.mjs pins the reasoning-effort ladder
+      # contract. It lives outside src/lib, so neither of the globs above
+      # collects it; a test nothing runs is not a gate.
+      - name: Run frontend reasoning-effort contract tests
+        working-directory: frontend
+        run: pnpm test:extra

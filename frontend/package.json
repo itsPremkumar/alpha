@@ -12,7 +12,8 @@
     "lint": "pnpm typecheck",
     "test": "node --test src/lib/*.test.mjs",
     "test:branding": "node --test tests/branding.test.mjs",
-    "verify": "pnpm typecheck && pnpm test"
+    "test:extra": "node --test tests/reasoning-effort.test.mjs",
+    "verify": "pnpm typecheck && pnpm test && pnpm test:branding && pnpm test:extra"
   },
   "dependencies": {
     "@radix-ui/react-dropdown-menu": "^2.1.6",

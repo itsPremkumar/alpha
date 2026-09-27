@@ -26,6 +26,12 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 COMPOSE_PATHS = {
     "prod": REPO_ROOT / "docker" / "docker-compose.yaml",
     "dev": REPO_ROOT / "docker" / "docker-compose-dev.yaml",
+    # The bundled-installer profile. It runs with ALPHA_AUTH_DISABLED=1, so a
+    # published port here is an unauthenticated surface on every interface, and
+    # its 5432 mapping would expose Postgres directly. It has no nginx entry,
+    # so it is asserted loopback-only by the shared rule below rather than by
+    # the nginx-port test.
+    "installer": REPO_ROOT / "build" / "compose.installer.yaml",
 }
 
 EXPECTED_NGINX_PORT_MAPPING = "${BIND_HOST:-127.0.0.1}:${PORT:-2026}:2026"
@@ -45,8 +51,14 @@ def _published_ports(compose_path: Path) -> dict[str, list[str]]:
 
 @pytest.mark.parametrize("variant", sorted(COMPOSE_PATHS))
 def test_nginx_entry_defaults_to_loopback(variant: str):
-    """With BIND_HOST unset, the entry port must bind 127.0.0.1, not 0.0.0.0."""
+    """With BIND_HOST unset, the entry port must bind 127.0.0.1, not 0.0.0.0.
+
+    The installer profile has no nginx service, so it is covered only by the
+    all-interfaces rule in the next test.
+    """
     published = _published_ports(COMPOSE_PATHS[variant])
+    if "nginx" not in published:
+        pytest.skip(f"{variant} compose publishes no nginx entry")
 
     assert published.get("nginx") == [EXPECTED_NGINX_PORT_MAPPING], f"{variant} compose must publish nginx as {EXPECTED_NGINX_PORT_MAPPING!r}; got: {published.get('nginx')!r}"
 
@@ -75,7 +87,11 @@ def test_no_service_publishes_on_all_interfaces(variant: str):
 @pytest.mark.parametrize("variant", sorted(COMPOSE_PATHS))
 def test_bind_address_remains_overridable(variant: str):
     """Operators fronting the stack themselves must be able to widen the bind."""
-    mapping = _published_ports(COMPOSE_PATHS[variant])["nginx"][0]
+    published = _published_ports(COMPOSE_PATHS[variant])
+    if "nginx" not in published:
+        pytest.skip(f"{variant} compose publishes no nginx entry")
+
+    mapping = published["nginx"][0]
 
     assert _bind_address(mapping) == "${BIND_HOST:-127.0.0.1}", f"{variant} compose must keep the bind address overridable via BIND_HOST; got: {mapping!r}"
 

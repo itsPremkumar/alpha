@@ -224,10 +224,10 @@ jobs:
           cd frontend
           pnpm install --frozen-lockfile
 
-      - name: Check frontend formatting
-        run: |
-          cd frontend
-          pnpm format
+      # No separate formatter gate: the frontend declares no `format` script and
+      # no Prettier dependency, so a `pnpm format` step here could only ever fail
+      # with ERR_PNPM_NO_SCRIPT. `pnpm lint` (typecheck) is the enforced gate.
+      # If a formatter is adopted later, add it here with a pinned version.
 
       - name: Run frontend linting
         run: |

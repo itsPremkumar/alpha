@@ -156,11 +156,12 @@ The first model in `config.example.yaml` is `union-alpha`, using
 was checked on 2026-09-17; live account access is not established. The offline
 contract is pinned by `backend/tests/test_model_config.py`.
 
-The current frontend package declares `pnpm typecheck`, but does not declare
-`pnpm check`, lint, or test scripts. Older command examples in
-[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) describe the previous frontend and are
-not verified gates for this checkout; restore those scripts and their tests before
-treating inherited CI workflows as working.
+The frontend package declares `typecheck`, `lint` (an alias of `typecheck`),
+`test`, `test:branding`, `test:extra`, and `verify`; it declares no `format`
+script and has no Prettier dependency, so no formatting gate runs — add both the
+dependency and the CI step together if one is ever adopted. `pnpm test` globs
+`src/lib/*.test.mjs` only, so every suite outside that directory needs its own
+script and its own CI step or it silently never runs.
 
 ## Brand assets
 

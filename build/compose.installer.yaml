@@ -47,7 +47,10 @@ services:
       # operator asks for it, and never leaks host permissions into the container.
       - alpha-installer-data:/app/.alpha
     ports:
-      - "8001:8001"
+      # Loopback-only, matching docker/docker-compose.yaml. The installer
+      # profile runs with ALPHA_AUTH_DISABLED=1, so a bare "8001:8001" would
+      # publish an unauthenticated Gateway on every interface.
+      - "127.0.0.1:8001:8001"
     healthcheck:
       # The gateway's own /health. A container that is merely running is not a
       # container that works.
@@ -73,7 +76,7 @@ services:
       alpha-installer-gateway:
         condition: service_healthy
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     healthcheck:
       test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 15s
@@ -98,7 +101,9 @@ services:
     volumes:
       - alpha-installer-pgdata:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      # Published for local psql only. An open 5432 is a database reachable by
+      # anyone on the network, and this profile ships auth-disabled.
+      - "127.0.0.1:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${ALPHA_PG_USER:-alpha} -d ${ALPHA_PG_DB:-alpha}"]
       interval: 10s

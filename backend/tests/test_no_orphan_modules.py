@@ -59,6 +59,21 @@ ALLOWED_ORPHANS: dict[str, str] = {
     # production wiring lands only with a genuine test-runner seam.
     "alpha.testing.mutation_fuzzer": "audit F8: honest mutation engine; its only consumer was the deleted fake run_mutation_testing_audit tool — dormant until a real test-runner seam wires it",
     "alpha.synthesis.speculative_tournament": "audit F9: honest speculative-synthesis engine; its only consumer was the deleted fabricated run_speculative_synthesis_tournament tool — dormant until wired honestly",
+    # Memory capture (write side) is the symmetric twin of the already-shipped
+    # read side: recall_composition is referenced only from here, so neither
+    # half has a production caller yet. Both land together with the
+    # per-memory-type registration wave, which is why half a pair is correct.
+    "alpha.memory.capture_composition": "write-side twin of alpha.memory.recall_composition; the pair is wired together by the per-memory-type registration wave, so neither half is referenced until then",
+    # Ambient writer binding is the injection-free instrumentation seam for
+    # the injected BehaviourTraceWriter. Its named consumers (alpha.tools.selection
+    # rank_candidates, alpha.runtime.escalation HandoffLedger.append) cannot
+    # take a writer parameter without changing every caller, which is why the
+    # seam exists; those call sites adopt it when they next change.
+    "alpha.observability.ambient": "injection-free instrumentation seam for the injected BehaviourTraceWriter; its consumers adopt it when they next change rather than taking a writer parameter",
+    # Stream-JSON output mode. The emitter owns the TERMINAL_FIELDS contract
+    # and audit_frame(), which is the drift guard for the mode; nothing
+    # selects the mode yet, so it is registered but not reachable from a run.
+    "alpha.streamjson.emitter": "stream-JSON output mode emitter owning the TERMINAL_FIELDS/audit_frame drift guard; no run selects the mode yet, so it is registered but not yet reachable",
 }
 
 # Standalone ``python -m <module>`` entry points. Nothing imports these by
@@ -67,6 +82,7 @@ ALLOWED_ORPHANS: dict[str, str] = {
 CLI_ENTRY_POINTS: dict[str, str] = {
     "alpha.tui.__main__": "CLI entry point: `python -m alpha.tui` launches the workbench",
     "alpha.runtime.sentinel.__main__": "CLI entry point: `python -m alpha.runtime.sentinel` runs the sentinel CLI",
+    "alpha.safety.authority.__main__": "CLI entry point: `python -m alpha.safety.authority` runs the static, read-only authority census (scan/diff/baseline)",
 }
 
 # Escape hatch for modules whose ONLY importer is the test suite. Optional
@@ -276,10 +292,7 @@ def test_no_orphan_modules() -> None:
             if module in ALLOWED_ORPHANS or module in CLI_ENTRY_POINTS or module in TEST_ONLY_MODULES:
                 continue
             orphans.append(module)
-    assert not orphans, (
-        "modules exist but nothing references them — wire them into the system, "
-        f"delete them, or add an ALLOWED_ORPHANS entry with a reason: {sorted(orphans)}"
-    )
+    assert not orphans, f"modules exist but nothing references them — wire them into the system, delete them, or add an ALLOWED_ORPHANS entry with a reason: {sorted(orphans)}"
 
 
 def test_allowed_orphans_have_reasons() -> None:
@@ -299,9 +312,7 @@ def test_cli_entry_points_are_main_modules() -> None:
     could not be bothered to wire up.
     """
     for module in CLI_ENTRY_POINTS:
-        assert module.split(".")[-1] == "__main__", (
-            f"{module} is listed as a CLI entry point but is not a __main__ module"
-        )
+        assert module.split(".")[-1] == "__main__", f"{module} is listed as a CLI entry point but is not a __main__ module"
         path = ALPHA / f"{module[len('alpha.') :].replace('.', '/')}.py"
         assert path.exists(), f"{module} is listed as a CLI entry point but {path} does not exist"
 
@@ -314,10 +325,7 @@ def test_test_only_modules_are_imported_by_tests() -> None:
     """
     test_referenced = _test_referenced_modules()
     for module in TEST_ONLY_MODULES:
-        assert _is_referenced(test_referenced, module), (
-            f"{module} is listed as test-only but no test imports it — the entry "
-            "is stale, so remove it or wire the module up"
-        )
+        assert _is_referenced(test_referenced, module), f"{module} is listed as test-only but no test imports it — the entry is stale, so remove it or wire the module up"
 
 
 def test_test_only_modules_stay_test_only() -> None:
@@ -329,10 +337,7 @@ def test_test_only_modules_stay_test_only() -> None:
     """
     production_referenced = _referenced_modules()
     stale = sorted(m for m in TEST_ONLY_MODULES if _is_referenced(production_referenced, m))
-    assert not stale, (
-        f"these modules are now referenced by production code, so they are no longer "
-        f"test-only — remove them from TEST_ONLY_MODULES: {stale}"
-    )
+    assert not stale, f"these modules are now referenced by production code, so they are no longer test-only — remove them from TEST_ONLY_MODULES: {stale}"
 
 
 def test_dotted_string_references_are_indexed() -> None:
@@ -356,7 +361,4 @@ def test_dotted_string_references_are_indexed() -> None:
         ("app.gateway.langgraph_studio", "./app/gateway/langgraph_studio.py:langgraph_app"),
     ]
     for module, target in expected:
-        assert _normalize_target(target) in referenced, (
-            f"dotted loader target {target!r} was not indexed — the scan regexes "
-            f"are broken again, so {module} would be reported as an orphan"
-        )
+        assert _normalize_target(target) in referenced, f"dotted loader target {target!r} was not indexed — the scan regexes are broken again, so {module} would be reported as an orphan"
