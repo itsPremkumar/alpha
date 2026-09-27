@@ -33,8 +33,14 @@ def validate_metadata_filter_key(key: object) -> bool:
     charset is restricted because the key is interpolated into the
     compiled SQL path expression (``$."<key>"`` / ``->`` literal), so any
     laxer pattern would open a SQL/JSONPath injection surface.
+
+    ``fullmatch``, not ``match``: ``re.match`` anchors only the start, and
+    Python's ``$`` also matches immediately before a trailing newline, so
+    ``"abc\\n"`` passed this gate and then landed verbatim inside the compiled
+    SQL literal on both dialects. ``alpha/config/paths.py`` and
+    ``alpha/utils/thread_id.py`` already use ``fullmatch`` for the same reason.
     """
-    return isinstance(key, str) and bool(_KEY_CHARSET_RE.match(key))
+    return isinstance(key, str) and bool(_KEY_CHARSET_RE.fullmatch(key))
 
 
 def validate_metadata_filter_value(value: object) -> bool:

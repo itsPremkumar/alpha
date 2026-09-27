@@ -20,6 +20,27 @@ DEFAULT_BOULDER_PATH = Path(".alpha") / "boulder.json"
 LEGACY_BOULDER_PATH = Path(".omo") / "boulder.json"
 
 
+def _replace_atomically(target: Path, payload: str) -> None:
+    """Write ``payload`` to ``target`` so no reader ever sees a partial document.
+
+    The caller has already serialized the document in full, so the only
+    operations left are creating a sibling staging file and renaming it over the
+    target. ``Path.replace`` is atomic on the same filesystem, so on any failure
+    the target keeps whatever it held before and only the staging file is
+    discarded. Same contract as ``alpha.state.handoff._replace_atomically`` and
+    ``alpha.projects.handoffs.HandoffStore._save``.
+    """
+    staging = target.with_suffix(f"{target.suffix}.tmp")
+    try:
+        staging.write_text(payload, encoding="utf-8")
+        staging.replace(target)
+    except BaseException:
+        # the target is untouched until replace() runs, so drop the staging file
+        # rather than leave half-written debris for the next save to trip over
+        staging.unlink(missing_ok=True)
+        raise
+
+
 @dataclass
 class ChecklistItem:
     item: str
@@ -79,12 +100,21 @@ def create_boulder(
 
 
 def save_boulder(state: BoulderState, path: Path | None = None) -> None:
-    """Save BoulderState to JSON checkpoint file."""
+    """Save BoulderState to JSON checkpoint file.
+
+    The document is serialized in full before any file is opened, then written
+    through a sibling staging file that atomically replaces the target. Opening
+    the target with mode ``"w"`` truncates it immediately while ``json.dump``
+    only streams afterwards, so a serialization failure or an interrupted write
+    destroyed the checkpoint already on disk -- and because ``load_boulder``
+    swallows the decode error and returns ``None``, that made the whole task
+    progression unreachable rather than merely degraded.
+    """
     target = path or DEFAULT_BOULDER_PATH
     target.parent.mkdir(parents=True, exist_ok=True)
     state.updated_at = time.time()
-    with open(target, "w", encoding="utf-8") as f:
-        json.dump(state.to_dict(), f, indent=2)
+    payload = json.dumps(state.to_dict(), indent=2)
+    _replace_atomically(target, payload)
 
 
 def load_boulder(path: Path | None = None) -> BoulderState | None:
