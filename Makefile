@@ -23,6 +23,27 @@ endif
 
 FRONTEND_PNPM = $(PYTHON) ../scripts/pnpm.py
 
+# Keep every uv-managed directory inside the checkout. uv's own defaults are
+# per-user globals shared with all other projects on the machine: measured on
+# Windows, `uv cache dir` -> %LOCALAPPDATA%\uv\cache, `uv python dir` ->
+# %APPDATA%\uv\python, `uv tool dir` -> %APPDATA%\uv\tools. Unpinned, `make
+# install` shares one wheel cache between every Alpha clone, downloads a managed
+# CPython into the user profile, and `uv tool install` writes a tools directory
+# that deleting the checkout cannot clean up. scripts/toolchain.ps1 pins the same
+# five variables for install.ps1/start.ps1; both sides are gated by
+# backend/tests/test_portable_paths.py so they cannot drift apart.
+TOOLS_DIR           = $(CURDIR)/.tools
+UV_INSTALL_DIR      = $(TOOLS_DIR)/bin
+UV_CACHE_DIR        = $(TOOLS_DIR)/uv-cache
+UV_PYTHON_INSTALL_DIR = $(TOOLS_DIR)/python
+UV_TOOL_DIR         = $(TOOLS_DIR)/uv-tools
+UV_TOOL_BIN_DIR     = $(TOOLS_DIR)/bin
+export UV_INSTALL_DIR
+export UV_CACHE_DIR
+export UV_PYTHON_INSTALL_DIR
+export UV_TOOL_DIR
+export UV_TOOL_BIN_DIR
+
 help:
 	@echo "Alpha Development Commands:"
 	@echo "  make setup           - Interactive setup wizard (recommended for new users)"
@@ -39,6 +60,7 @@ help:
 	@echo "  make update-skip VERSION=x.y.z - Skip one verified version"
 	@echo "  make config          - Generate local config files (aborts if config already exists)"
 	@echo "  make config-upgrade  - Merge new fields from config.example.yaml into config.yaml"
+	@echo "  make migrate-state-dir - Rename pre-rename .agent-workspace state dirs to .alpha (stop Alpha first)"
 	@echo "  make check           - Check if all required tools are installed"
 	@echo "  make check-agent-guidance - Validate scoped AGENTS.md file and chain budgets"
 	@echo "  make detect-thread-boundaries - Inventory backend executor/thread/event-loop boundaries"
@@ -127,7 +149,7 @@ update-skip:
 	@$(BACKEND_UV_RUN) --no-sync python ../scripts/auto_update.py skip --version "$(VERSION)" --json
 
 detect-thread-boundaries:
-	@$(BACKEND_UV_RUN) python ../scripts/detect_thread_boundaries.py --json-output ../.agent-workspace/thread-boundary-inventory.json
+	@$(BACKEND_UV_RUN) python ../scripts/detect_thread_boundaries.py --json-output ../.alpha/thread-boundary-inventory.json
 
 detect-blocking-io:
 	@$(MAKE) -C backend detect-blocking-io
@@ -137,6 +159,16 @@ config:
 
 config-upgrade:
 	@$(RUN_SHELL_SCRIPT) ./scripts/config-upgrade.sh
+
+# One-time rename of the runtime state directory after the agent-workspace ->
+# alpha rename. Alpha must be stopped first: a running Gateway holds open
+# handles on the old directory and the rename cannot complete. The script
+# refuses to merge two non-empty state trees.
+migrate-state-dir:
+	@$(PYTHON) ./scripts/migrate_state_dir.py
+
+migrate-state-dir-check:
+	@$(PYTHON) ./scripts/migrate_state_dir.py --check
 
 # Check required tools
 check:
@@ -184,33 +216,33 @@ system-one-laya-serve:
 system-one-laya-status:
 	@cd backend && uv run --no-sync python scripts/system_one_laya_setup.py status
 
-extension-install: export AGENT_WORKSPACE_EXTENSION_SOURCE := $(value SOURCE)
+extension-install: export ALPHA_EXTENSION_SOURCE := $(value SOURCE)
 extension-install:
 	$(if $(and $(filter command line,$(origin SOURCE)),$(strip $(value SOURCE))),,$(error usage: make extension-install SOURCE=<package|git-url|dir>))
-	@cd backend && uv run --frozen --no-group extensions agent-workspace extensions install --source-env __agent_workspace_extension_source__
+	@cd backend && uv run --frozen --no-group extensions alpha extensions install --source-env __alpha_extension_source__
 
-extension-upgrade: export AGENT_WORKSPACE_EXTENSION_SOURCE := $(value SOURCE)
+extension-upgrade: export ALPHA_EXTENSION_SOURCE := $(value SOURCE)
 extension-upgrade:
 	$(if $(and $(filter command line,$(origin SOURCE)),$(strip $(value SOURCE))),,$(error usage: make extension-upgrade SOURCE=<package|git-url|dir>))
-	@cd backend && uv run --frozen --no-group extensions agent-workspace extensions upgrade --source-env __agent_workspace_extension_source__
+	@cd backend && uv run --frozen --no-group extensions alpha extensions upgrade --source-env __alpha_extension_source__
 
 extension-list:
-	@cd backend && uv run --frozen --no-group extensions agent-workspace extensions list
+	@cd backend && uv run --frozen --no-group extensions alpha extensions list
 
-extension-enable: export AGENT_WORKSPACE_EXTENSION_NAME := $(value NAME)
+extension-enable: export ALPHA_EXTENSION_NAME := $(value NAME)
 extension-enable:
 	$(if $(and $(filter command line,$(origin NAME)),$(strip $(value NAME))),,$(error usage: make extension-enable NAME=<extension>))
-	@cd backend && uv run --frozen --no-group extensions agent-workspace extensions enable --name-env __agent_workspace_extension_name__
+	@cd backend && uv run --frozen --no-group extensions alpha extensions enable --name-env __alpha_extension_name__
 
-extension-disable: export AGENT_WORKSPACE_EXTENSION_NAME := $(value NAME)
+extension-disable: export ALPHA_EXTENSION_NAME := $(value NAME)
 extension-disable:
 	$(if $(and $(filter command line,$(origin NAME)),$(strip $(value NAME))),,$(error usage: make extension-disable NAME=<extension>))
-	@cd backend && uv run --frozen --no-group extensions agent-workspace extensions disable --name-env __agent_workspace_extension_name__
+	@cd backend && uv run --frozen --no-group extensions alpha extensions disable --name-env __alpha_extension_name__
 
-extension-remove: export AGENT_WORKSPACE_EXTENSION_NAME := $(value NAME)
+extension-remove: export ALPHA_EXTENSION_NAME := $(value NAME)
 extension-remove:
 	$(if $(and $(filter command line,$(origin NAME)),$(strip $(value NAME))),,$(error usage: make extension-remove NAME=<extension>))
-	@cd backend && uv run --frozen --no-group extensions agent-workspace extensions remove --name-env __agent_workspace_extension_name__
+	@cd backend && uv run --frozen --no-group extensions alpha extensions remove --name-env __alpha_extension_name__
 
 # Pre-pull sandbox Docker image (optional but recommended)
 setup-sandbox:
@@ -256,7 +288,7 @@ stop:
 # Clean up
 clean: stop
 	@echo "Cleaning up..."
-	@-rm -rf backend/.agent-workspace 2>/dev/null || true
+	@-rm -rf backend/.alpha 2>/dev/null || true
 	@-rm -rf logs/*.log 2>/dev/null || true
 	@echo "✓ Cleanup complete"
 

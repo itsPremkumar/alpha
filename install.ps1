@@ -28,50 +28,22 @@ Write-Host "========================================================`n" -Foregro
 
 # 1. Check & locate uv
 Write-Host "[1/5] Checking Python / uv package manager..." -ForegroundColor Yellow
-# Resolving a bare name through PATHEXT is not reliable: when PATHEXT is missing
-# ".EXE" (or the tool is not on PATH at all), `Get-Command uv` returns nothing
-# even though uv.exe exists and its directory is on PATH. Resolve "<name>.exe"
-# explicitly, then fall back to the known install locations.
-function Resolve-Executable {
-    param(
-        [Parameter(Mandatory = $true)][string]$Name,
-        [string[]]$ExtraCandidates = @()
-    )
-    foreach ($candidate in @("$Name.exe", $Name)) {
-        $cmd = Get-Command $candidate -ErrorAction SilentlyContinue
-        if ($cmd) { return $cmd.Source }
-    }
-    foreach ($c in $ExtraCandidates) {
-        if ($c -and (Test-Path $c)) { return $c }
-    }
-    foreach ($root in @($env:LOCALAPPDATA, $env:ProgramFiles, ${env:ProgramFiles(x86)})) {
-        if (-not $root) { continue }
-        try {
-            $hit = Get-ChildItem -Path $root -Filter "$Name.exe" -Recurse -Depth 2 -ErrorAction SilentlyContinue |
-                Select-Object -First 1
-            if ($hit) { return $hit.FullName }
-        } catch {}
-    }
-    return $null
-}
+# Where uv, Node and pnpm live is decided in exactly one place:
+# `scripts/toolchain.ps1`. It pins every uv directory (install, cache, managed
+# Python, tool dir) inside this checkout, because uv's own defaults are per-user
+# globals shared with every other project on the machine, and it resolves tools
+# project-copy first, then PATH, then a fixed list of conventional directories.
+# This script used to carry its own copy of that logic and also fell back to a
+# recursive scan of the user profile, which could adopt another product's binary.
+. "$RepoRoot\scripts\toolchain.ps1"
+Initialize-AlphaToolchain
 
-$uvCandidates = @(
-    "$env:USERPROFILE\.cargo\bin\uv.exe",
-    "$env:APPDATA\uv\uv.exe",
-    "$env:LOCALAPPDATA\Programs\uv\uv.exe",
-    "$env:LOCALAPPDATA\hermes\bin\uv.exe",
-    "$env:USERPROFILE\.local\bin\uv.exe",
-    "$env:USERPROFILE\scoop\shims\uv.exe",
-    "$env:ProgramData\chocolatey\bin\uv.exe"
-)
-$uvPath = Resolve-Executable -Name "uv" -ExtraCandidates $uvCandidates
+$uvPath = Resolve-AlphaUv
 
 if (-not $uvPath) {
-    Write-Host "  -> 'uv' not found. Installing Astral uv automatically..." -ForegroundColor Yellow
+    Write-Host "  -> 'uv' not found. Installing Astral uv into $ToolchainRoot\bin ..." -ForegroundColor Yellow
     try {
-        powershell -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 | iex"
-        $env:PATH = ("$env:USERPROFILE\.cargo\bin;" + $env:PATH)
-        $uvPath = Resolve-Executable -Name "uv" -ExtraCandidates $uvCandidates
+        $uvPath = Install-AlphaUv
     } catch {
         Write-Error "Failed to auto-install uv. Please install it manually from https://astral.sh/uv and retry."
         exit 1
@@ -88,13 +60,7 @@ Write-Host "  [OK] $uvVersion" -ForegroundColor Green
 
 # 2. Check Node.js
 Write-Host "`n[2/5] Checking Node.js runtime..." -ForegroundColor Yellow
-$nodePath = Resolve-Executable -Name "node" -ExtraCandidates @(
-    "$env:ProgramFiles\nodejs\node.exe",
-    "${env:ProgramFiles(x86)}\nodejs\node.exe",
-    "$env:LOCALAPPDATA\Programs\nodejs\node.exe",
-    "$env:APPDATA\nvm\v22.22.2\node.exe",
-    "$env:LOCALAPPDATA\nvm4w\nodejs\node.exe"
-)
+$nodePath = Resolve-AlphaNode
 if (-not $nodePath) {
     Write-Error "Node.js (version 22+) is required. Please install it from https://nodejs.org/ and rerun this script."
     exit 1
@@ -115,7 +81,7 @@ if (-not (Test-Path "$RepoRoot\.env")) {
     } else {
         New-Item -ItemType File -Path "$RepoRoot\.env" -Force | Out-Null
     }
-    Add-Content -Path "$RepoRoot\.env" -Value "`nBETTER_AUTH_SECRET=$secret`nAGENT_WORKSPACE_AUTH_DISABLED=1`n"
+    Add-Content -Path "$RepoRoot\.env" -Value "`nBETTER_AUTH_SECRET=$secret`nALPHA_AUTH_DISABLED=1`n"
 }
 
 # frontend/.env
