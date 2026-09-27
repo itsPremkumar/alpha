@@ -54,6 +54,19 @@ jobs:
         working-directory: electron
         run: npm install
 
+      # The brand marks in electron/assets/ and frontend/public/ are generated
+      # from frontend/src/assets/images/alpha.png and then committed, so
+      # --check is a byte-for-byte drift gate: a hand-edited mark, or a changed
+      # poster that nobody regenerated, fails here. Placed before the installer
+      # build because that step takes most of the 90-minute budget and there is
+      # no reason to spend it on an already-wrong icon.
+      - name: Check the committed brand marks are not stale
+        run: node scripts/generate-brand-assets.mjs --check
+
+      - name: Electron shell tests
+        working-directory: electron
+        run: npm test
+
       - name: Build desktop installer
         working-directory: electron
         run: npm run dist

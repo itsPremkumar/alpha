@@ -11,6 +11,19 @@ export const metadata: Metadata = {
     template: `%s · ${branding.name}`,
   },
   description: branding.description,
+  // Browser tab, bookmarks and the installed-PWA icon. All of these are the
+  // real Alpha lion, generated from assets/images/alpha.png by
+  // `scripts/generate-brand-assets.mjs`; without this block the tab falls back
+  // to Next.js's default favicon, which is the bug this pins.
+  manifest: branding.icons.manifest,
+  icons: {
+    icon: [
+      { url: branding.icons.favicon16, sizes: "16x16", type: "image/png" },
+      { url: branding.icons.favicon32, sizes: "32x32", type: "image/png" },
+      { url: branding.icons.favicon, sizes: "48x48", type: "image/x-icon" },
+    ],
+    apple: [{ url: branding.icons.apple, sizes: "180x180", type: "image/png" }],
+  },
 };
 
 export const viewport: Viewport = {

@@ -612,6 +612,33 @@ This section accumulates work toward the **2.1.0** milestone
 
 ### Fixed
 
+- **branding:** Every Alpha surface outside the web app header was showing a
+  placeholder instead of the real lion logo. The Windows desktop build packed a
+  geometric "flow orbit" mark that looked like a generic git client, the Start
+  Menu and desktop shortcuts used the `shell32.dll,13` system glyph, the
+  taskbar and both Electron windows fell back to the default Electron icon, the
+  splash screen was text-only and hardcoded the old "Agent Workspace" name, and
+  the browser had no favicon, Apple touch icon, or PWA icon at all because
+  `frontend/public/` did not exist. All of them now read one mark, derived from
+  the single real logo `frontend/src/assets/images/alpha.png` by the new
+  `scripts/generate-brand-assets.mjs` (run `--check` to fail on drift). The
+  generator takes two crops rather than one: the mane circle at 32px and up, and
+  the face at 16px and 24px where the whole mane would average into a dark blob.
+  Outputs are now **tracked** in `electron/assets/` (a real multi-resolution
+  `alpha.ico` at 16/24/32/48/64/128/256, plus `alpha-mark.png`) and
+  `frontend/public/` rather than generated into the gitignored `electron/build/`,
+  so a fresh clone is correct by construction and a build cannot silently ship a
+  placeholder again. `electron-builder.yml` keeps `assets/**` in `files`,
+  `main.js` sets the icon on both windows, `create-shortcuts.ps1` uses the Alpha
+  `.ico` (with the system glyph demoted to a warned fallback),
+  `branding.icons` is the only place a browser icon path is written, and a new
+  `app/manifest.ts` declares the install icons including a maskable variant.
+  Regression coverage in `electron/tests/brand-assets.test.mjs` and
+  `frontend/src/lib/branding.test.mjs` checks the generator and `branding.icons`
+  agree in both directions. Removing the broken one-off
+  `scripts/fix-electron-icon.py`; `electron/scripts/make-icon.mjs` (and
+  `npm run make:icon`) is now a thin delegate to the real generator. See the
+  [brand assets section of `AGENTS.md`](AGENTS.md#brand-assets).
 - **documentation accuracy:** Corrected factual drift in the shipped documentation.
   `Install.md`, `docs/DEPLOYMENT.md`, and `docs/DEVELOPMENT.md` instructed readers to
   clone `bytedance/agent-workspace` / `itsPremkumar/agent-workspace-desktop` instead

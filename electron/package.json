@@ -11,6 +11,7 @@
     "start": "electron .",
     "dev": "electron . --dev",
     "fetch-runtime": "node scripts/fetch-runtime.mjs",
+    "make:icon": "node scripts/make-icon.mjs",
     "build:frontend": "node scripts/build-frontend.mjs",
     "dist": "npm run fetch-runtime && npm run build:frontend && electron-builder --win nsis --x64",
     "dist:dir": "electron-builder --win --x64 --dir"

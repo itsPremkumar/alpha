@@ -51,6 +51,13 @@ const {
 const { LionPetWindow } = require('./lib/lion-pet-window');
 
 const APP_NAME = require('./desktop-config.json').displayName;
+// The real Alpha lion mark, derived from frontend/src/assets/images/alpha.png by
+// `node scripts/make-icon.mjs`. Windows reads the window/taskbar icon from here
+// rather than from the executable, so every BrowserWindow has to be told about
+// it or it falls back to the default Electron icon. A missing file is not fatal:
+// the app still runs, just on the default icon.
+const APP_ICON = path.join(__dirname, 'assets', 'alpha-mark.png');
+const windowIcon = fs.existsSync(APP_ICON) ? APP_ICON : undefined;
 // Single source of truth for desktop ports: electron/desktop-config.json
 // (also read by scripts/build-frontend.mjs so the baked /api rewrites match).
 const DESKTOP_DEFAULTS = require('./desktop-config.json');
@@ -865,6 +872,7 @@ function createSplash() {
     alwaysOnTop: true,
     show: false,
     backgroundColor: '#0b0f14',
+    icon: windowIcon,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -888,6 +896,7 @@ function createMainWindow(targetUrl) {
     title: APP_NAME,
     backgroundColor: '#0b0f14',
     show: false,
+    icon: windowIcon,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

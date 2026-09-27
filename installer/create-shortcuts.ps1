@@ -34,6 +34,17 @@ $shell = New-Object -ComObject WScript.Shell
 $startMenuDir = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Alpha'
 $desktop = [Environment]::GetFolderPath('Desktop')
 
+# The real Alpha lion mark (multi-resolution .ico), derived from
+# frontend/src/assets/images/alpha.png by `node scripts/make-icon.mjs`.
+# It is tracked in the checkout, so a fresh clone already has it. A missing
+# file is a cosmetic problem, not an install failure: fall back to a Windows
+# system glyph rather than writing a shortcut with a broken icon reference.
+$alphaIcon = Join-Path $RepoPath 'electron\assets\alpha.ico'
+$iconLocation = if (Test-Path -LiteralPath $alphaIcon) { "$alphaIcon,0" } else { 'shell32.dll,13' }
+if ($iconLocation -eq 'shell32.dll,13') {
+    Write-Warning "Alpha icon not found at $alphaIcon - shortcuts will use a Windows system icon."
+}
+
 # Start-Process quotes the -File argument for us, so the same quoting works for
 # a path with spaces in it ("C:\Users\Jane Doe\Alpha\...").
 $arguments = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -NoBrowser' -f $launcher
@@ -47,7 +58,7 @@ function New-AlphaShortcut {
     $shortcut.TargetPath = 'powershell.exe'
     $shortcut.Arguments = $arguments
     $shortcut.WorkingDirectory = $RepoPath
-    $shortcut.IconLocation = 'shell32.dll,13'
+    $shortcut.IconLocation = $iconLocation
     $shortcut.Description = $Description
     $shortcut.Save()
     return $Path

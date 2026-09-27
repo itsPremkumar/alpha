@@ -162,6 +162,55 @@ The current frontend package declares `pnpm typecheck`, but does not declare
 not verified gates for this checkout; restore those scripts and their tests before
 treating inherited CI workflows as working.
 
+## Brand assets
+
+There is exactly one logo in this repository:
+`frontend/src/assets/images/alpha.png` (the lion poster). Every other mark is a
+crop or rescale of it, produced by **`scripts/generate-brand-assets.mjs`** —
+never hand-drawn, never re-rasterized anywhere else, and never a placeholder.
+
+```bash
+node scripts/generate-brand-assets.mjs            # regenerate every mark
+node scripts/generate-brand-assets.mjs --check    # fail if any mark is stale
+```
+
+`electron/scripts/make-icon.mjs` (and `npm run make:icon`) is a thin delegate to
+that generator, kept because the desktop build documents it.
+
+**Two crops, not one.** The poster is the lion *plus* the "ALPHA" wordmark
+*plus* the "AUTONOMOUS · INTELLIGENT · EVOLVING" tagline, so no mark may include
+the type. The **mane circle** is the mark at 32px and up; the **face** is the
+favicon at 16px and 24px, where the whole mane averages into a dark blob with no
+readable feature while the face still resolves into two glowing eyes. The
+`FACE_MAX_SIZE` constant in the generator is that boundary — change it there, not
+in an output file.
+
+**The outputs are tracked, not built.** They live in `electron/assets/`
+(`alpha.ico` at 16/24/32/48/64/128/256, and `alpha-mark.png` at 512) and
+`frontend/public/` (`favicon.ico`, `favicon-16x16.png`, `favicon-32x32.png`,
+`apple-touch-icon.png`, `icon-192.png`, `icon-512.png`,
+`icon-maskable-512.png`). This is deliberate: `electron/build/` is gitignored,
+so a package-time-generated icon was invisible to review and a fresh clone could
+easily ship whatever placeholder was lying around. A tracked asset is reviewable
+and a clone is correct by construction. Regenerate **and commit** them together
+when the poster changes.
+
+**Naming a path is a two-sided edit.** `frontend/src/lib/branding.ts` -> `icons`
+is the only place a browser icon path is written, and
+`app/layout.tsx` / `app/manifest.ts` read it from there. Adding an asset without
+adding it to `branding.icons`, or vice versa, is caught in both directions by
+`frontend/src/lib/branding.test.mjs`; the desktop wiring is held by
+`electron/tests/brand-assets.test.mjs`.
+
+**Surface checklist** — every one of these reads the same lion: the in-app
+header and chat hero (`components/BrandLogo.tsx`, the full poster), the browser
+tab and bookmarks, the PWA/Android install, the Apple touch icon, the Windows
+executable, the Start Menu and desktop shortcuts
+(`installer/create-shortcuts.ps1`), the taskbar and window icons
+(`electron/main.js` sets `icon` on **both** the splash and the main window, and
+`electron-builder.yml` must keep `assets/**` in `files`), and the splash screen
+(`electron/splash.html`).
+
 ## Cross-component contracts owned elsewhere
 
 These contracts are stated once, in the guide that owns them. Do not restate them

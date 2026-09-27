@@ -125,10 +125,13 @@ npm run dist       # fetch-runtime → build:frontend → Agent-Workspace-Setup-
 npm run dist:dir   # unpacked folder instead (faster smoke test)
 ```
 
-What gets bundled: the Electron shell, the standalone frontend (marketing
-showcase fixtures excluded — `/showcase/*` 404s in the app, everything else
-identical), the Python backend sources, config templates, and the
-self-contained Node.js + `uv` runtimes (`scripts/fetch-runtime.mjs`,
+The app icon needs no build step: `assets/alpha.ico` and `assets/alpha-mark.png`
+are tracked, not generated at package time (see [Branding](#branding)).
+
+What gets bundled: the Electron shell, the tracked brand marks, the standalone
+frontend (marketing showcase fixtures excluded — `/showcase/*` 404s in the app,
+everything else identical), the Python backend sources, config templates, and
+the self-contained Node.js + `uv` runtimes (`scripts/fetch-runtime.mjs`,
 pinned in `desktop-config.json`).
 
 Port note: the desktop Gateway defaults to **8201** (not 8001) so it never
@@ -137,11 +140,31 @@ targets at build time, so before spawning a production frontend the app
 patches the bundled `routes-manifest.json` to the effective Gateway URL
 (only loopback destinations are touched; failures are loud, never silent).
 
-The installer/taskbar icon (`build/icon-512.png`) is generated from
-shapes-only SVG via `node scripts/make-icon.mjs` (needs the `sharp`
-package: `npm install --no-save sharp`). The repo's `deer.svg`
-illustration does not rasterize usefully outside a browser, hence the
-geometric mark. Re-run the script after editing it, then rebuild.
+### Branding
+
+Every Alpha mark — the Windows executable, the Start Menu and desktop
+shortcuts, the taskbar and window icons, the splash screen, the browser tab,
+the Apple touch icon and the PWA/Android icons — is the same lion, derived from
+the single real logo at `frontend/src/assets/images/alpha.png`.
+
+```bash
+node scripts/make-icon.mjs            # desktop marks (delegates to the generator)
+node ../scripts/generate-brand-assets.mjs   # every mark, web included
+node ../scripts/generate-brand-assets.mjs --check   # fail if they are stale
+```
+
+The generator writes two crops of the poster, because one crop cannot serve
+both jobs: the **mane circle** is the mark at 32px and up, and the **face** is
+the favicon at 16px and 24px, where the whole mane would average out to a dark
+blob. The results are **tracked in git** under `assets/` (here) and
+`frontend/public/`, not generated at package time, so a fresh clone already has
+the right icon and `npm run dist` cannot silently produce a placeholder again.
+`assets/alpha.ico` is a real multi-resolution icon (16/24/32/48/64/128/256) so
+each Windows surface picks a legible size.
+
+To change the logo, replace `frontend/src/assets/images/alpha.png`, re-run the
+generator, and commit the regenerated marks. Do not hand-edit a mark, and do not
+rasterize a logo anywhere else — one generator, one source.
 
 ### Microphone and speaker access
 
@@ -212,5 +235,4 @@ make requests or persist conversation content.
 
 1. Pre-synced backend venv (or PyInstaller gateway) to shorten first launch.
 2. `electron-updater` + private feed for auto-updates.
-3. Hand-tuned multi-size `.ico` for sharper small taskbar icons.
-4. Code-signed installer to skip the SmartScreen warning.
+3. Code-signed installer to skip the SmartScreen warning.

@@ -31,6 +31,10 @@ files:
   - pet-preload.js
   - splash.html
   - pet.html
+  # The tracked brand marks: window/taskbar icon and the splash logo. The
+  # executable and shortcut icon come from assets/alpha.ico, so this directory
+  # has to ship or the app runs on the default Electron icon.
+  - assets/**
   - package.json
   - desktop-config.json
 
@@ -85,9 +89,12 @@ win:
     - target: nsis
       arch:
         - x64
-  # Generated from shapes-only SVG via `node scripts/make-icon.mjs`
-  # (the repo's deer.svg illustration does not rasterize outside a browser).
-  icon: build/icon-512.png
+  # The real Alpha lion mark, derived from
+  # frontend/src/assets/images/alpha.png by `node scripts/make-icon.mjs`
+  # (repo-root `scripts/generate-brand-assets.mjs`). Multi-resolution so the
+  # executable, the Start Menu entry and the taskbar all pick a legible size
+  # instead of one scaled-down raster.
+  icon: assets/alpha.ico
   requestedExecutionLevel: asInvoker
 
 nsis:

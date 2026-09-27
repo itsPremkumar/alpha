@@ -1,32 +1,36 @@
 #!/usr/bin/env node
 
 /**
- * Generate the Alpha desktop icon (512x512 PNG) from pure SVG shapes.
+ * Generate the Alpha desktop icon from the real Alpha logo.
  *
- * The repo's deer.svg illustration does not rasterize usefully outside a
- * browser, so the desktop icon is a geometric "flow orbit" mark on the app's
- * dark tile color. No fonts required — shapes only.
+ * This is the Electron-side entry point only. The marks themselves — and the
+ * frontend favicons, Apple touch icon and PWA icons that must match it — are
+ * all produced by the single generator at the repository root:
+ *
+ *     node scripts/generate-brand-assets.mjs
+ *
+ * It is kept as a separate entry point because the desktop build documents
+ * `node scripts/make-icon.mjs` and `npm run make:icon`, and because the icon
+ * is what `electron-builder.yml` packs into the executable and the shortcuts.
+ * Both paths derive from `frontend/src/assets/images/alpha.png`, so they cannot
+ * disagree about what the logo is.
  *
  * Run:  node scripts/make-icon.mjs   (needs `npm install --no-save sharp`)
  */
 
-import fs from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import sharp from "sharp";
 
 const electronDir = fileURLToPath(new URL("..", import.meta.url));
-const outFile = path.join(electronDir, "build", "icon-512.png");
+const generator = path.resolve(electronDir, "..", "scripts", "generate-brand-assets.mjs");
 
-const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-  <rect x="8" y="8" width="496" height="496" rx="112" fill="#0b0f14"/>
-  <rect x="8" y="8" width="496" height="496" rx="112" fill="none" stroke="#30363d" stroke-width="10"/>
-  <circle cx="256" cy="256" r="118" fill="none" stroke="#58a6ff" stroke-width="44"/>
-  <circle cx="348" cy="164" r="52" fill="#58a6ff"/>
-  <circle cx="348" cy="164" r="22" fill="#0b0f14"/>
-</svg>`;
+const result = spawnSync(process.execPath, [generator, ...process.argv.slice(2)], {
+  stdio: "inherit",
+});
 
-fs.mkdirSync(path.dirname(outFile), { recursive: true });
-await sharp(Buffer.from(svg)).png().toFile(outFile);
-const meta = await sharp(outFile).metadata();
-console.log(`icon written: ${outFile} (${meta.width}x${meta.height})`);
+if (result.error) {
+  console.error(`ERROR: could not run ${generator}: ${result.error.message}`);
+  process.exit(1);
+}
+process.exit(result.status ?? 1);

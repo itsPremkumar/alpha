@@ -32,12 +32,28 @@
         text-align: center;
       }
       .logo {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        margin-bottom: 10px;
+      }
+      /* The real Alpha lion mark, derived from
+         frontend/src/assets/images/alpha.png by `node scripts/make-icon.mjs`.
+         assets/ ships inside the packaged app (see electron-builder.yml). */
+      .logo img {
+        width: 56px;
+        height: 56px;
+        border-radius: 12px;
+        object-fit: cover;
+      }
+      .wordmark {
         font-size: 28px;
         font-weight: 700;
         letter-spacing: 0.5px;
-        margin-bottom: 6px;
+        color: #e6edf3;
       }
-      .logo span {
+      .wordmark span {
         color: #58a6ff;
       }
       .subtitle {
@@ -74,7 +90,10 @@
   </head>
   <body>
     <div class="card">
-      <div class="logo">Agent <span>Workspace</span></div>
+      <div class="logo">
+        <img src="assets/alpha-mark.png" alt="" />
+        <div class="wordmark" id="wordmark">Alpha</div>
+      </div>
       <div class="subtitle">Starting local services…</div>
       <div class="spinner"></div>
       <div id="status">Initializing…</div>
@@ -84,6 +103,20 @@
       (function () {
         var statusEl = document.getElementById("status");
         var detailEl = document.getElementById("detail");
+        var wordmarkEl = document.getElementById("wordmark");
+
+        // The display name is the single source of truth
+        // (electron/desktop-config.json), passed in as a load query.
+        var displayName = new URLSearchParams(window.location.search).get("displayName");
+        if (displayName) {
+          wordmarkEl.innerHTML = "";
+          wordmarkEl.appendChild(document.createTextNode(displayName.slice(0, 1).toLowerCase()));
+          var rest = document.createElement("span");
+          rest.textContent = displayName.slice(1);
+          wordmarkEl.appendChild(rest);
+          document.title = displayName;
+        }
+
         function render(payload) {
           if (!payload) return;
           if (payload.message) statusEl.textContent = payload.message;
