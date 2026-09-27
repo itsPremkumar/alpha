@@ -20,7 +20,7 @@
 # ============================================================================
 # Bump this number when the config schema changes.
 # Run `make config-upgrade` to merge new fields into your local config.yaml.
-config_version: 54
+config_version: 55
 
 # ============================================================================
 # Logging
@@ -3281,6 +3281,46 @@ run_ownership:
   max_resume_attempts: 3      # Bounded attempts across one recovery lineage.
   resume_backoff_seconds: 5.0 # Delay before the next automatic continuation.
   max_concurrent_resumes: 2   # Parallel checkpoint continuations per Gateway.
+
+# ============================================================================
+# Network Connectivity Monitoring (durable runtime)
+# ============================================================================
+# Connectivity is a first-class runtime state. A run that needs the network
+# parks as `waiting_network` instead of failing, and resumes automatically when
+# the link returns - so an internet outage does not become a task failure.
+#
+# Restart-required: the monitor owns a background poll task, an in-flight
+# backoff ladder, and a published state other subsystems have already read, so
+# a mid-flight swap would split the process across two connectivity policies.
+network:
+  enabled: true                 # false starts no background poll task; a one-shot
+                                 # probe is still available through the monitor API.
+  poll_interval_seconds: 15.0   # Base interval between probes while ONLINE.
+  offline_after_consecutive: 2  # Corroborating failures required before publishing
+                                 # OFFLINE. Raising it avoids parking work on one
+                                 # dropped packet; lowering it detects sooner.
+  online_after_consecutive: 2   # Corroborating successes required before publishing
+                                 # ONLINE again, so one lucky packet cannot resume
+                                 # a parked task.
+  unknown_after_consecutive: 3  # Probe executions that may fail before a known-good
+                                 # link is reported as UNKNOWN. UNKNOWN still permits
+                                 # a network attempt; only confirmed OFFLINE refuses.
+  backoff_initial_seconds: 5.0  # First backoff step while not ONLINE.
+  backoff_max_seconds: 300.0    # Real ceiling - jitter only ever reduces the delay.
+  backoff_multiplier: 2.0       # Growth per offline poll.
+  backoff_jitter_ratio: 0.25    # Fraction a delay may be randomly reduced, so hosts
+                                 # that lost the link together do not retry in lockstep.
+  max_observations: 50           # Bound on the in-memory observation history.
+  # Reachability endpoints. Omit to use the built-in public resolvers on
+  # provider-grade ports. The probe is a bounded TCP connect only - no HTTP
+  # request, no TLS handshake, no payload - because it runs on a timer for the
+  # life of the process with no user request attached. An empty list is refused:
+  # it would leave connectivity permanently unknown.
+  # targets:
+  #   - name: corp
+  #     host: proxy.corp.test
+  #     port: 8443
+  #     timeout_seconds: 2.0
 
 # ============================================================================
 # Stream Bridge Configuration

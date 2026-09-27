@@ -1,3 +1,54 @@
+### Durable runtime layer (`runtime/sessions/`, `runtime/network/`, `runtime/side_effects/`, `runtime/supervisor/`, `runtime/shutdown.py`)
+
+These five modules fill the specific gaps that stopped the durable-runtime
+guarantee ("a process/UI/network/provider failure must not become a task
+failure") from being true. They are **additive** and none of them is a second
+lifecycle owner: `RunManager` remains the sole lifecycle owner, and
+`app.gateway.run_recovery.SafeRunRecoveryService` remains the only safe
+continuation authority. The user-facing map is
+[docs/architecture/durable-runtime.md](../../../../../docs/architecture/durable-runtime.md);
+each module's own `AGENTS.md` is the normative contract.
+
+- **`runtime/sessions/`** — the missing lifecycle vocabulary. `SessionState`
+  (seventeen states) classified into `ACTIVE` / `WAITING` / `TERMINAL`, derived
+  from signals existing owners already hold. `is_resumable` is the property a
+  recovery pass asks. Precedence is the contract: a terminal run status outranks
+  every live condition, and a park outranks an in-flight phase. `COMPLETED` still
+  means "the run finished", never "verified". Tests:
+  `tests/test_durable_session_state_machine.py`.
+- **`runtime/network/`** — connectivity as a first-class state. Four states, not
+  two: `UNKNOWN` is real and is never rounded to `OFFLINE`, and it *still
+  permits* a network attempt, so a misconfigured probe cannot park every
+  session on a lie. `DEGRADED` never parks anything. A single probe never flips
+  anything except the very first one. `classify_network_error().proves_link_down`
+  is true only for DNS failure / refused / explicit unreachable — a `TIMEOUT`
+  proves nothing and must not park work. TCP-connect only, no payload, no user
+  data. `config.yaml -> network` is startup-only. Tests:
+  `tests/test_network_resilience.py`.
+- **`runtime/side_effects/`** — the per-effect answer to "what might have
+  happened?". `UNKNOWN` is first-class, durable and enumerable; a lost worker
+  (expired lease) is what creates it, including from `PENDING`; `UNDETERMINED`
+  *reopens* rather than settling, because recording "could not tell" as a
+  failure is how a duplicate side effect gets created. Digests only, never
+  arguments or results. Tests: `tests/test_side_effect_ledger.py`.
+- **`runtime/supervisor/`** — a restart policy that cannot loop forever. Reuses
+  `resilience.RetryPolicy` for the backoff maths but adds a **sliding-window**
+  restart budget, because consecutive-failure counters cannot catch "crashes once
+  an hour, forever". `RESTART` / `SAFE_MODE` (once per episode) / `GIVE_UP`.
+  Liveness is not health. Tests: `tests/test_process_supervisor.py`.
+- **`runtime/shutdown.py`** — the eight-phase ordered drain. A failed or
+  unregistered prerequisite *skips* its dependent step; `is_clean` is true only
+  when every step completed; the emergency path is hard-capped at 5s. The
+  Gateway lifespan drain in `app/gateway/deps.py` runs through it, so a partial
+  drain is logged instead of looking clean. Tests: `tests/test_planned_shutdown.py`.
+
+**Honesty boundary, stated so nobody reads a claim into these modules that the
+code does not make:** there is no cross-process exactly-once here; the
+side-effect ledger has no SQL repository yet; the supervisor is not yet wired
+into the Windows launcher; and a session's parked-across-restart state is
+re-derived rather than kept in a dedicated durable registry. Each module's
+`AGENTS.md` repeats the gaps it owns.
+
 ### Workspace Snapshot Cancellation
 
 `packages/harness/alpha/workspace_changes/recorder.py`: after `_prepare_capture()`

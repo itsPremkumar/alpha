@@ -15,6 +15,7 @@
 - [SKILLS.md](SKILLS.md) — Skills packages, tools, workflows, and runtime integration.
 - [VOICE_CONVERSATION.md](VOICE_CONVERSATION.md) — Real-time local voice conversation loop.
 - [WORKFORCE.md](WORKFORCE.md) — Workforce layer for multi-agent collaboration and execution.
+- [architecture/durable-runtime.md](architecture/durable-runtime.md) — Architecture and subsystem documentation.
 
 ## API Reference
 
