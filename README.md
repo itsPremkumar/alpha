@@ -393,6 +393,17 @@ make doctor    # verify the environment
 - **Swarm v2 DAG runtime** — atomic checkpoints, ordered JSONL audit events,
   owner-scoped admission, idempotent creation, lease-fenced task attempts, retry
   backoff, restart recovery.
+- **Automatic topology selection** — `mode="auto"` measures the DAG it builds and
+  picks the shape (map-reduce, scatter/gather, hierarchical) from measured width,
+  depth, and coupling, then escalates coordination machinery only as complexity
+  warrants. Every choice is recorded with the candidates it rejected, so the
+  selection is auditable rather than a silent default. An explicit `mode` is
+  always honored as given.
+- **Deliberation & failure telemetry** — a sequential test that stops early once
+  evidence is decisive and reports *unresolved* rather than guessing, guarded
+  against one-sided panels and copy-cat votes; plus budget, rework-loop, and
+  information-gain signals that say "unknown" when they genuinely cannot be
+  measured.
 - **Bounded execution** — token / tool-call / wall-clock / task / replan budgets,
   adaptive provider concurrency, watchdog recovery, pause / resume / cancel, and
   explicit `budget_exhausted` / `stalled` states.
@@ -401,7 +412,9 @@ make doctor    # verify the environment
   verification that separates *execution success* from *verified delivery*.
 - **Swarm operations surface** — REST + SSE for claims, leases, revisions, events,
   messages, replans, progress, and leader/resource telemetry; the `swarm` tool
-  exposes the same to authorized agents.
+  exposes the same to authorized agents, plus `strategy` (why this mode was
+  chosen), `telemetry`, and `trace` (ranked advisory context workers leave each
+  other).
 - **Live collaborative Kanban** — agents create, assign, transition, and audit
   cards on a shared board.
 - **Agent-to-Agent (A2A) messaging** — structured protocol for peer requests and

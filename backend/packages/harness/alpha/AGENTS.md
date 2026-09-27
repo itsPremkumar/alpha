@@ -174,6 +174,95 @@ acceptance success. Regression coverage lives in `backend/tests/test_swarm_engin
 `test_swarm_advanced_features.py`, `test_swarm_worker_execution.py`, and
 `test_swarm_v2_runtime.py`.
 
+### Adaptive mode selection, deliberation, and failure-aware telemetry
+
+`SwarmMode.AUTO` is resolved by `alpha.swarm.strategy.resolve_strategy`, not
+hardcoded. Precedence is **explicit > topology (measured DAG shape) > heuristic
+(goal text) > fallback**, and an explicit mode is honored untouched — a named
+topology is a requirement, not a suggestion. `SwarmBenefitEstimator.estimate`
+keeps byte-identical outputs; the structural layers are added on top, never
+substituted for it.
+
+**The plan and its recorded strategy must agree.** `plan.metrics["strategy"]` is
+written for *every* plan, and `plan.mode` must equal `strategy["mode"]`. The
+first pass cannot see structure — there is no plan yet — so it routes on goal
+text alone; that estimate then *builds* a graph, and the graph's own shape can
+route elsewhere (a text heuristic picking `parallel` for a phased goal still
+produces a research/architect/review chain, which measures as `hierarchical`).
+`SwarmTaskDecomposer._settle` therefore rebuilds the plan from the measured
+route. The loop is bounded, and because each rebuild adopts the mode just
+resolved, the pair agrees by construction on exit. Do not "optimize" this away:
+recording the second answer without rebuilding is exactly the bug that leaves a
+plan labelled `parallel` while its own metrics say `hierarchical`.
+
+- `topology.route_topology` never reads goal text and never infers
+  `ENSEMBLE`/`DEBATE` from shape — redundancy is a claim about *intent*, which a
+  graph cannot answer, so those stay semantic or explicit. `max_concurrency` is
+  accepted and deliberately unused: routing is a statement about shape, and
+  capacity belongs to `planner.score_plan`, where makespan is scored.
+- **The single-sink fan-in rule must precede the coupling rule.** A reduce is
+  the densest acyclic shape there is, so `coupling >= COUPLING_THRESHOLD` is a
+  measurement artifact for `depth == 2 and leaf_count == 1`, not a structural
+  finding; the coupling verdict is what should catch a genuine mesh like K2,2,
+  which has two sinks. Getting the order wrong hands a 2-item batch a 5-node
+  leader-sequenced pipeline. `COUPLING_THRESHOLD = 0.30` because a DAG's acyclic
+  ceiling is ~0.333 at K2,2; 0.50 would be a dead rule.
+- `planner.score_plan` reports `exposed_width` (instant parallelism, capped by
+  the plan's own concurrency) separately from `lower_bound_rounds` (idealised
+  makespan floor). A 16-way fan-out on 4 slots exposes the same width as a 4-way
+  fan-out but needs 4 rounds; conflating them lets a wider plan be scored as
+  more parallel than it can be.
+
+Complexity tiers (`DIRECT`/`SIMPLE`/`ADAPT`/`MEDIUM`/`FULL`) gate machinery
+rather than turning it on globally: candidate planning and stigmergy at
+`MEDIUM`+, deliberation at `FULL`. `StrategyResolution` gates compare
+`tier.rank`, **never the enum member** — `ComplexityTier` is a `StrEnum`, so
+`tier >= ComplexityTier.FULL` compares strings and `"full" >= "medium"` is
+`False`, silently inverting every gate on the most complex plans.
+
+`deliberation.run_deliberation` applies Wald's sequential test over the same
+evidence `evaluate_consensus` sees. With the defaults (`target 0.75 ± 0.10`,
+`alpha 0.05`, `beta 0.10`, `max_rounds 5`) ~11 unanimous approvals accept the
+hypothesis and 3 unanimous rejections accept the alternative; anything less
+reports `unresolved` with the reason. **A small undecided panel must say
+"unresolved", never "approved".**
+
+- Guards may only **block**. Domination, sycophancy, evidence-free approval, and
+  any disagreement between the sequential test and the explicit policy downgrade
+  a result to `manual_review`; nothing can raise a refusal to an approval.
+  `SwarmAggregator._apply_deliberation` attaches the full report either way so
+  the disagreement stays visible, and a malformed payload discloses an `error`
+  instead of raising.
+- Domination is measured as `max_share × voter_count` (1.0 = an even panel), not
+  raw share — a raw share flags every healthy two-voter panel, which holds 50%
+  each by definition.
+- Sycophancy counts only flips that moved *toward* the prior plurality and
+  added no new evidence.
+
+`stigmergy.StigmergicTraceStore` is **advisory context and never a gate**: it
+ranks what later workers see and cannot decide anything. It is bounded in
+entries, payload, key, and provenance; amplification is sub-linear and capped, so
+one worker cannot farm its own strength by repeating a deposit. `decayed_at` is
+kept separate from `updated_at` because every read path evaporates: measuring
+decay from `updated_at` without advancing it would re-apply the same window on
+every read and kill a popular trace in proportion to how often it was consulted.
+
+`SwarmTelemetry` reports `None`/`unknown` wherever a signal is genuinely not
+measurable — a plan with no declared tool outcomes reports
+`tool_error_rate = None`, not a reassuring `0.0`. `deliberation_rounds_saved` is
+a **round count**; no round-level token meter exists, so it is never converted
+into a cost figure.
+
+The model surface is the existing `swarm` tool with three new **actions** —
+`strategy` (the recorded choice, never a re-derivation that could disagree with
+the plan), `telemetry`, and `trace` (deposit when `message` is set, otherwise
+list) — not new tools, so `BUILTIN_TOOLS`, `contracts/feature_manifest.json`, and
+the capability counts are unaffected. Regression coverage: `test_swarm_engine.py`
+(pinned estimator output), `test_swarm_adaptive_topology.py` (topology, planner,
+tiers), `test_swarm_deliberation.py` (SPRT, guards), and
+`test_swarm_stigmergy_telemetry.py` (traces, telemetry, coordinator wiring).
+
+
 ## Dynamic workflow plane
 
 `alpha.workflow.runtime.DynamicWorkflowEngine` and
