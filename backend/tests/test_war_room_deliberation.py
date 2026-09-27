@@ -456,7 +456,7 @@ def test_a_transcript_fault_does_not_rewrite_a_delivered_member_as_failed(env, m
     delivered = [r for r in run.all_receipts() if r.participant == "a"]
     assert delivered, "no receipt for the healthy member at all"
     assert all(r.status == MemberStatus.CONTRIBUTED for r in delivered)
-    assert all(r.output == "a position" for r in delivered)
+    assert all(r.output == with_claims("a position", "a position") for r in delivered)
     # And the run does not claim a clean success while its record is broken.
     assert run.status != RunStatus.SUCCEEDED
 
