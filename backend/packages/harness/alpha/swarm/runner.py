@@ -301,7 +301,15 @@ class AsyncSwarmRunner:
                         # A concurrent cancel/budget stop is authoritative; the
                         # task result was already fenced above if necessary.
                         pass
-                self.coordinator.checkpoint(swarm_id)
+                # Mark the plan dirty rather than rewriting the whole snapshot
+                # here.  This runs once per node, and ``checkpoint`` serialises
+                # the entire plan and fsyncs it under the state lock, so a
+                # per-node write makes total write volume quadratic in the node
+                # count -- measured at 81% of a 60-node plan's wall clock.  The
+                # round-boundary ``flush_checkpoint`` above makes it durable, and
+                # the ``finally`` flush plus the terminal checkpoint guarantee a
+                # dirty plan is never abandoned unwritten.
+                self.coordinator.mark_checkpoint_dirty(swarm_id)
             except asyncio.CancelledError:
                 # Two different things arrive here.  (a) An authoritative stop
                 # -- ``cancel_swarm`` / ``_finalize_budget`` already moved the
