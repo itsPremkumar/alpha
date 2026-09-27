@@ -30,6 +30,60 @@ class TestValidateUserId:
             paths.user_dir("")
 
 
+class TestValidateUserIdRejectsTrailingNewline:
+    """`$` in a Python regex also matches just before a trailing newline.
+
+    `_SAFE_USER_ID_RE` is `^[A-Za-z0-9_\\-]+$` and was applied with
+    `re.match`, which anchors only the start. So `"alice\\n"` matched, the
+    validator returned the id unchanged, and `Paths.user_dir` produced a
+    directory literally named ``alice\\n`` from the one function whose
+    docstring says it validates "before using it in filesystem paths".
+
+    `alpha/utils/thread_id.py::validate_thread_id` gets this right with
+    `fullmatch`, so this is an inconsistency rather than a policy choice.
+    """
+
+    @pytest.mark.parametrize(
+        "user_id",
+        [
+            "alice\n",
+            "alice\r",
+            "alice\r\n",
+            "alice\t",
+            "alice ",
+            "alice\n\n",
+            "alice\x0b",
+            "alice\x0c",
+        ],
+    )
+    def test_rejects_trailing_control_and_whitespace(self, paths: Paths, user_id):
+        with pytest.raises(ValueError, match="Invalid user_id"):
+            paths.user_dir(user_id)
+
+    @pytest.mark.parametrize("user_id", ["alice\n", "alice\r\n"])
+    def test_user_dir_never_yields_a_directory_with_a_raw_newline(self, paths: Paths, user_id):
+        """The failure is a filesystem effect, not just a return value."""
+        with pytest.raises(ValueError):
+            d = paths.user_dir(user_id)
+            raise AssertionError(f"user_dir accepted {user_id!r} and returned {d!r}")
+
+    @pytest.mark.parametrize("user_id", ["alice\n", "alice\r\n"])
+    def test_thread_sibling_validator_agrees(self, user_id):
+        """Pin the cross-module contract, not just this regex.
+
+        If a future change makes these two disagree again, this fails.
+        """
+        from alpha.utils.thread_id import validate_thread_id
+
+        with pytest.raises(ValueError, match="Invalid thread_id"):
+            validate_thread_id(user_id)
+
+    @pytest.mark.parametrize("user_id", ["alice", "u-abc-123", "ABC_123", "a", "9"])
+    def test_valid_ids_are_still_accepted(self, paths: Paths, user_id):
+        """The guard must not over-tighten and start rejecting legal ids."""
+        assert paths.user_dir(user_id) == paths.base_dir / "users" / user_id
+
+
 class TestMakeSafeUserId:
     def test_already_safe_id_is_unchanged(self):
         from alpha.config.paths import make_safe_user_id
@@ -89,6 +143,39 @@ class TestValidateIntegrationId:
     def test_host_integration_data_dir_rejects_dot_traversal(self, paths: Paths, integration_id):
         with pytest.raises(ValueError, match="Invalid integration_id"):
             paths.host_user_integration_data_dir("alice", integration_id)
+
+    @pytest.mark.parametrize(
+        "integration_id",
+        ["some.integration\n", "lark-cli\n", "..\n", ".\n", "..\r\n", "x.integration\t", "x.integration "],
+    )
+    def test_rejects_trailing_control_and_whitespace(self, integration_id):
+        """Same `$`-before-trailing-newline hole as the user-id validator."""
+        from alpha.config.paths import _validate_integration_id
+
+        with pytest.raises(ValueError, match="Invalid integration_id"):
+            _validate_integration_id(integration_id)
+
+    @pytest.mark.parametrize("integration_id", ["..\n", ".\n"])
+    def test_dot_traversal_guard_cannot_be_evaded_with_a_newline(self, integration_id):
+        """`'..\\n'` is not in `{'.', '..'}`, so the explicit guard alone misses it.
+
+        This is the concrete consequence of the regex hole: the traversal
+        guard is a literal set membership test, and a trailing byte makes the
+        id a different string that still resolves inside the namespace.
+        """
+        from alpha.config.paths import _validate_integration_id
+
+        with pytest.raises(ValueError, match="Invalid integration_id"):
+            _validate_integration_id(integration_id)
+
+    @pytest.mark.parametrize(
+        "integration_id",
+        ["lark-cli", "some.integration", "a.b.c", "A_b-1.2", "x"],
+    )
+    def test_valid_integration_ids_are_still_accepted(self, integration_id):
+        from alpha.config.paths import _validate_integration_id
+
+        assert _validate_integration_id(integration_id) == integration_id
 
 
 class TestUserDir:

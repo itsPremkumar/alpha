@@ -31,14 +31,20 @@ def _validate_thread_id(thread_id: str) -> str:
 
 def _validate_user_id(user_id: str) -> str:
     """Validate a user ID before using it in filesystem paths."""
-    if not _SAFE_USER_ID_RE.match(user_id):
+    # fullmatch, not match: a `$` anchor also matches immediately before a
+    # trailing newline, so `match` accepted "alice\n" and user_dir() then built
+    # a directory literally named "alice\n". validate_thread_id() already uses
+    # fullmatch for the same reason.
+    if not _SAFE_USER_ID_RE.fullmatch(user_id):
         raise ValueError(f"Invalid user_id {user_id!r}: only alphanumeric characters, hyphens, and underscores are allowed.")
     return user_id
 
 
 def _validate_integration_id(integration_id: str) -> str:
     """Validate an integration ID before using it in filesystem paths."""
-    if not _SAFE_INTEGRATION_ID_RE.match(integration_id):
+    # fullmatch, not match — see _validate_user_id. It also closes the gap where
+    # "..\n" passed the regex and then evaded the {".", ".."} check below.
+    if not _SAFE_INTEGRATION_ID_RE.fullmatch(integration_id):
         raise ValueError(f"Invalid integration_id {integration_id!r}: only alphanumeric characters, dots, hyphens, and underscores are allowed.")
     # The charset allows dots for names like ``some.integration``; reject the
     # bare ``.``/``..`` path components so a future caller cannot escape the
