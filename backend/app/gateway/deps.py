@@ -33,6 +33,7 @@ from alpha.persistence.feedback import FeedbackRepository
 from alpha.runtime import ORPHAN_RECOVERY_STOP_REASON, STARTUP_ORPHAN_RECOVERY_ERROR, RunContext, RunManager, StreamBridge
 from alpha.runtime.events.store.base import RunEventStore
 from alpha.runtime.runs.store.base import RunStore
+from alpha.runtime.shutdown import PlannedShutdown, ShutdownPhase
 from app.gateway.run_recovery import SafeRunRecoveryService
 
 logger = logging.getLogger(__name__)
@@ -633,27 +634,65 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
             # raises PoolClosed (issue #3373).
             run_manager = getattr(app.state, "run_manager", None)
             recovery_service = getattr(app.state, "run_recovery_service", None)
-            if recovery_service is not None:
+            # The drain runs through alpha.runtime.shutdown.PlannedShutdown so its
+            # outcome is *reported* rather than assumed. The previous best-effort
+            # sequence could leave a run undrained while the process exited
+            # looking clean, and nothing downstream could tell. The steps and
+            # their order are unchanged; only the bookkeeping and the honesty
+            # are new.
+            drain = PlannedShutdown(
+                overall_timeout_seconds=_RUN_DRAIN_TIMEOUT_SECONDS,
+                per_step_timeout_seconds=_RUN_DRAIN_TIMEOUT_SECONDS,
+            )
+
+            async def stop_recovery_service() -> None:
+                if recovery_service is None:
+                    return
                 try:
                     await recovery_service.stop(timeout=1.0)
                 finally:
                     app.state.run_recovery_service = None
+
+            # Admission closes first, so no new recovery pass can launch a
+            # continuation while the run manager is being drained.
+            drain.register(
+                ShutdownPhase.ADMISSION_CLOSED,
+                stop_recovery_service,
+                description="stop the safe-recovery service so it admits no new continuations",
+            )
             if run_manager is not None:
-                shutdown_deadline = asyncio.get_running_loop().time() + _RUN_DRAIN_TIMEOUT_SECONDS
-                try:
+
+                async def drain_inflight_runs() -> None:
                     await _drain_inflight_runs(run_manager)
-                finally:
+
+                drain.register(
+                    ShutdownPhase.OPERATIONS_DRAINED,
+                    drain_inflight_runs,
+                    timeout_seconds=_RUN_DRAIN_TIMEOUT_SECONDS,
+                    description="drain in-flight run tasks before the checkpointer pool closes",
+                )
+
+                async def flush_recovered_stream_cleanups() -> None:
+                    # Unfinished stream cleanups become immediate deletes, so no
+                    # recovered run keeps a bridge entry alive.
                     await _flush_recovered_stream_cleanups(
                         app.state.stream_bridge,
                         recovered_stream_cleanup_tasks,
-                        timeout=min(
-                            1.0,
-                            max(
-                                0.0,
-                                shutdown_deadline - asyncio.get_running_loop().time(),
-                            ),
-                        ),
+                        timeout=1.0,
                     )
+
+                drain.register(
+                    ShutdownPhase.WORKERS_STOPPED,
+                    flush_recovered_stream_cleanups,
+                    timeout_seconds=1.0,
+                    description="release recovered-run stream bridge entries",
+                )
+
+            drain_report = await drain.shutdown()
+            if not drain_report.is_clean:
+                # A partial drain is the one thing an operator debugging a
+                # stuck restart needs, so it is logged in full.
+                logger.warning("Gateway drain incomplete:\n%s", drain_report.to_text())
 
 
 # ---------------------------------------------------------------------------
