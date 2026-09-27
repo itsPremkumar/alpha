@@ -107,6 +107,59 @@ mane-vs-face crop rule, and the desktop/installer surfaces are in the
   conversations are paginated, and moving a conversation re-reads the parent's
   thread list through `onThreadsChanged`.
 
+## Build discipline: `next build` and a running server cannot share `.next`
+
+A Next.js server (dev **or** `start`) and `next build` both read and write
+`.next/`. When they overlap, the build emits a bundle whose runtime references
+vendor chunks that were never written, and the failure surfaces as a misleading
+error that changes between runs — all of these were observed from the same
+cause:
+
+- `PageNotFoundError: Cannot find module for page: /_document`
+- `Type error: File '.next/types/app/layout.ts' not found. Root file specified`
+- `Could not find files for /_error in .next/build-manifest.json`
+- `Cannot find module './vendor-chunks/lucide-react@…js'` at runtime (500)
+- `SyntaxError: Unexpected non-whitespace character after JSON at position 4`
+
+None of these are source bugs. **Stop the server before building, and start it
+after.** `next dev` supervises and *respawns* its server child, so killing the
+child is not enough — kill the `next dev` parent or the port comes straight back
+and the race resumes:
+
+```powershell
+# Stop every Next process for this app, parent supervisors included.
+Get-CimInstance Win32_Process |
+  Where-Object { $_.Name -eq 'node.exe' -and $_.CommandLine -match 'Videos\\alpha\\frontend' } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+
+cd frontend
+Remove-Item -Recurse -Force .next          # a failed build leaves a mixed .next
+Remove-Item -Force tsconfig.tsbuildinfo -ErrorAction SilentlyContinue
+node node_modules/next/dist/bin/next build # no `next typegen` first
+node node_modules/next/dist/bin/next start -p 3000
+```
+
+Two traps worth stating:
+
+1. **Do not run `next typegen` before `next build`.** `typegen` writes a
+   *partial* `.next/types` tree and `build` then skips generating the rest, so
+   the type check is handed a root file (`.next/types/app/layout.ts`) that was
+   never created. `next build` runs its own typegen.
+2. **A build that "succeeds" on a reused `.next` can still be broken.** The
+   telling sign is a *partial* `.next/server/vendor-chunks/`: a healthy build of
+   this app has **no** `vendor-chunks` directory at all, and no `webpack-runtime`
+   that requires a chunk from one. If `vendor-chunks` exists but lists fewer
+   chunks than the runtime requires, the server bundle is inconsistent — the
+   process will boot, print `Ready`, and then 500 on the first request. Wipe and
+   rebuild. (`.next/server/pages/` *does* legitimately exist — Next 15 emits the
+   Pages Router fallback files `404.html`/`500.html`/`_app`/`_document`/`_error`
+   even for an App-Router-only app. Its presence is not a defect; a missing
+   vendor chunk it requires is.)
+
+`frontend/AGENTS.md` gates: `node node_modules/typescript\bin\tsc --noEmit` = 0
+errors, `node --test src/lib/*.test.mjs` green. Both are safe to run *while* a
+server is up, because only `next build` writes `.next`.
+
 ## Update control contract
 
 - `components/UpdateControl.tsx` is mounted in the `ChatView` header beside
