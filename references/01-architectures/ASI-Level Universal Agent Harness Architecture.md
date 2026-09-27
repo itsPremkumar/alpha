@@ -19,7 +19,7 @@ Build a persistent, model-agnostic, multimodal, computer-native autonomous agent
 - safely deploying better versions of its own harness
 - functioning entirely with self-hosted/open-source components when required
 
-The architecture is inspired by the strongest public principles from OpenClaw, Hermes, Agent Workspace, Deep Agents, OpenAI Astra, Anthropic Fable/Mythos, NVIDIA AVO and large-model systems such as Kimi, but is intentionally a new synthesis rather than a claimed reproduction of proprietary internal systems.
+The architecture is inspired by the strongest public principles from OpenClaw, Hermes, Alpha, Deep Agents, OpenAI Astra, Anthropic Fable/Mythos, NVIDIA AVO and large-model systems such as Kimi, but is intentionally a new synthesis rather than a claimed reproduction of proprietary internal systems.
 
 ---
 
@@ -750,7 +750,7 @@ Executive
           └── Red Team
 ```
 
-Agent Workspace, Deep Agents and Hermes all reinforce the usefulness of subagent isolation and hierarchical delegation.
+Alpha, Deep Agents and Hermes all reinforce the usefulness of subagent isolation and hierarchical delegation.
 
 ---
 
@@ -1438,7 +1438,7 @@ AVO's results demonstrate why preserving long-horizon state and execution feedba
 
 # 35. AVO-Style Evolution Factory
 
-This is your biggest addition beyond ordinary OpenClaw/Hermes/Agent Workspace.
+This is your biggest addition beyond ordinary OpenClaw/Hermes/Alpha.
 
 ```text
 REAL TASKS
@@ -1712,7 +1712,7 @@ KPIs
 
 The Executive coordinates them.
 
-This is where OpenClaw Bot Mode, Hermes profiles, agent teams and Agent Workspace-style subagent orchestration become useful building blocks.
+This is where OpenClaw Bot Mode, Hermes profiles, agent teams and Alpha-style subagent orchestration become useful building blocks.
 
 ---
 
@@ -2260,7 +2260,7 @@ Hermes
 → checkpoints
 → trajectories
 
-Agent Workspace 2.0
+Alpha 2.0
 → super-agent runtime
 → sandbox
 → long-horizon orchestration

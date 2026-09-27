@@ -9,7 +9,7 @@ else's CI runner. What is asserted instead is *structure* -- that the probe
 parses, attributes and labels correctly, and that the gate *decides* correctly
 -- driven by measurements injected as data. Exactly one opt-in live measurement
 test exists (``test_live_cold_start_measurement``, skipped unless
-``AGENT_WORKSPACE_RUN_LIVE_TESTS=1``) for a human to run deliberately.
+``ALPHA_RUN_LIVE_TESTS=1``) for a human to run deliberately.
 
 **The gate must be able to fail.** Every safety property in
 ``check_cold_start_budget.py`` is tested by feeding it a broken input and
@@ -62,7 +62,7 @@ def _in_fresh_interpreter(body: str, env: dict[str, str] | None = None) -> str:
     child_env = dict(os.environ)
     if env is not None:
         # An explicit env replaces the ambient one wholesale, so an inherited
-        # AGENT_WORKSPACE_* can never leak into the measurement.
+        # ALPHA_* can never leak into the measurement.
         child_env = env
     proc = subprocess.run(  # noqa: S603 - fixed argv, no shell
         [sys.executable, "-c", body],
@@ -94,7 +94,7 @@ models:
 def _isolated_env(tmp_path: Path) -> dict[str, str]:
     """A config path and runtime home that cannot reach outside ``tmp_path``.
 
-    Only ``AGENT_WORKSPACE_CONFIG_PATH`` is set: naming an extensions path
+    Only ``ALPHA_CONFIG_PATH`` is set: naming an extensions path
     asserts that file exists, and leaving it unset exercises the ordinary
     unconfigured fallback instead.
     """
@@ -102,8 +102,8 @@ def _isolated_env(tmp_path: Path) -> dict[str, str]:
     config.write_text(_MINIMAL_CONFIG, encoding="utf-8")
     home = tmp_path / "home"
     home.mkdir(parents=True, exist_ok=True)
-    env = {key: value for key, value in os.environ.items() if key != "AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH"}
-    env.update({"AGENT_WORKSPACE_CONFIG_PATH": str(config), "AGENT_WORKSPACE_HOME": str(home)})
+    env = {key: value for key, value in os.environ.items() if key != "ALPHA_EXTENSIONS_CONFIG_PATH"}
+    env.update({"ALPHA_CONFIG_PATH": str(config), "ALPHA_HOME": str(home)})
     return env
 
 
@@ -941,14 +941,14 @@ class TestExtensionLoaderCycleBreak:
 
 @pytest.mark.live
 @pytest.mark.skipif(
-    os.environ.get("AGENT_WORKSPACE_RUN_LIVE_TESTS") != "1",
-    reason="live wall-clock measurement; opt in with AGENT_WORKSPACE_RUN_LIVE_TESTS=1",
+    os.environ.get("ALPHA_RUN_LIVE_TESTS") != "1",
+    reason="live wall-clock measurement; opt in with ALPHA_RUN_LIVE_TESTS=1",
 )
 def test_live_cold_start_measurement(tmp_path: Path) -> None:
     """HUMAN-INVOKED ONLY. Prints real numbers; asserts nothing about them.
 
     Run with:
-        AGENT_WORKSPACE_RUN_LIVE_TESTS=1 python -m pytest \\
+        ALPHA_RUN_LIVE_TESTS=1 python -m pytest \\
             backend/tests/test_cold_start.py::test_live_cold_start_measurement -q -s
 
     This is the single place wall-clock is observed. It is a report, not a
@@ -976,7 +976,7 @@ def test_live_cold_start_measurement(tmp_path: Path) -> None:
 # --------------------------------------------------------------------------
 
 
-LIVE_ENV_VAR = "AGENT_WORKSPACE_RUN_LIVE_TESTS"
+LIVE_ENV_VAR = "ALPHA_RUN_LIVE_TESTS"
 THIS_FILE = Path(__file__)
 BACKEND_MAKEFILE = REPO_ROOT / "backend" / "Makefile"
 
@@ -1030,7 +1030,7 @@ def _skipif_decorator(node: Any) -> Any:
 
 
 def _evaluate_condition(monkeypatch: pytest.MonkeyPatch, value: str | None) -> bool:
-    """Run the decorator's condition with ``$AGENT_WORKSPACE_RUN_LIVE_TESTS`` set."""
+    """Run the decorator's condition with ``$ALPHA_RUN_LIVE_TESTS`` set."""
     import ast
 
     condition = _skipif_decorator(_live_test_node()).args[0]

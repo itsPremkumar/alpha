@@ -345,7 +345,7 @@ class TitleMiddleware(AgentMiddleware[TitleMiddlewareState]):
             model = create_chat_model(name=config.model_name, **model_kwargs)
             invoke_config = self._get_runnable_config()
 
-            from agent_workspace_extension_api import SystemOperationKind
+            from alpha_extension_api import SystemOperationKind
 
             from alpha.extensions.notify import observe_system_model_call
 
@@ -371,7 +371,7 @@ class TitleMiddleware(AgentMiddleware[TitleMiddlewareState]):
 
     @override
     async def aafter_model(self, state: TitleMiddlewareState, runtime: Runtime) -> dict | None:
-        from agent_workspace_extension_api import task_store_from_runtime
+        from alpha_extension_api import task_store_from_runtime
 
         return await self._agenerate_title_result(
             state,

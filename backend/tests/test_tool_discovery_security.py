@@ -35,9 +35,9 @@ _EXECUTED: list[str] = []
 
 @pytest.fixture(autouse=True)
 def _isolated_workspace(tmp_path, monkeypatch):
-    home = tmp_path / "agent-workspace"
+    home = tmp_path / "alpha"
     home.mkdir()
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(home))
+    monkeypatch.setenv("ALPHA_HOME", str(home))
     _EXECUTED.clear()
     return home
 

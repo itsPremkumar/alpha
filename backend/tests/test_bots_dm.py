@@ -34,7 +34,7 @@ from alpha.bots.inbox import BotInbox
 
 @pytest.fixture(autouse=True)
 def _home(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     import alpha.bots.inbox as inbox_mod
     import alpha.bots.registry as bot_reg
 
@@ -213,7 +213,7 @@ def test_roster_reminder_injected_only_for_bot_runtime(tmp_path, monkeypatch):
 
     from alpha.agents.middlewares.dynamic_context_middleware import DynamicContextMiddleware
 
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     import alpha.bots.registry as bot_reg
 
     monkeypatch.setattr(bot_reg, "_global_registry", None)

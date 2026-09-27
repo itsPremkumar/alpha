@@ -156,7 +156,7 @@ The project includes a unified cleanup script that handles both runtimes:
 **Usage:**
 ```bash
 # Clean up all Alpha sandbox containers
-./scripts/cleanup-containers.sh agent-workspace-sandbox
+./scripts/cleanup-containers.sh alpha-sandbox
 
 # Custom prefix
 ./scripts/cleanup-containers.sh my-prefix
@@ -219,7 +219,7 @@ This will:
 
 2. Run cleanup script manually:
    ```bash
-   ./scripts/cleanup-containers.sh agent-workspace-sandbox
+   ./scripts/cleanup-containers.sh alpha-sandbox
    ```
 
 ### Performance issues

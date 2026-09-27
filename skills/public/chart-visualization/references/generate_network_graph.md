@@ -7,11 +7,11 @@ Visualizes relationships, node clustering, and topological linkages across compl
 ### Required
 - 
 odes: array<object>, list of entities with id and label.
-- edges: array<object>, connections with source and 	arget.
+- edges: array<object>, connections with source and target.
 
 ### Optional
-- 	heme: string, default default.
-- 	itle: string, graph title.
+- theme: string, default default.
+- title: string, graph title.
 
 ## Usage Recommendations
 Use node coloring and edge thickness to encode community groupings and connection weights.

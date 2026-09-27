@@ -93,7 +93,7 @@ def _initialize_against(monkeypatch, config_path: Path) -> None:
     signature after loading tools; the tool load itself is stubbed so this stays
     a cache-state unit test with no real MCP servers.
     """
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(config_path))
 
     async def _fake_get_mcp_tools():
         return []
@@ -165,7 +165,7 @@ def test_config_path_switch_is_stale(cache_globals, monkeypatch, tmp_path):
     older = recorded_mtime - 50
     os.utime(cfg_b, (older, older))  # a DIFFERENT file, mtime <= recorded
 
-    # The resolver now points at cfg_b (e.g. AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH
+    # The resolver now points at cfg_b (e.g. ALPHA_EXTENSIONS_CONFIG_PATH
     # was repointed, or default resolution now finds a different file).
     monkeypatch.setattr(
         ExtensionsConfig,
@@ -264,7 +264,7 @@ def test_config_deleted_after_init_is_not_stale(cache_globals, monkeypatch, tmp_
 def test_config_deleted_after_init_via_real_env_resolution_does_not_raise(cache_globals, monkeypatch, tmp_path):
     """End-to-end regression for the explicit-vs-search distinction raised by
     fancyboi999 [P1] on PR #4275: when the extensions config path comes from
-    ``AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH`` (exactly how Docker dev/prod point at
+    ``ALPHA_EXTENSIONS_CONFIG_PATH`` (exactly how Docker dev/prod point at
     it, per backend/AGENTS.md) and the file is deleted after a successful
     init, ``_is_cache_stale()`` must not raise — even though
     ``ExtensionsConfig.resolve_config_path()`` itself now (again) raises
@@ -284,7 +284,7 @@ def test_config_deleted_after_init_via_real_env_resolution_does_not_raise(cache_
     """
     cfg = tmp_path / "extensions_config.json"
     _write_extensions_config(cfg, {"srv1": _server()})
-    _initialize_against(monkeypatch, cfg)  # sets AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH=cfg
+    _initialize_against(monkeypatch, cfg)  # sets ALPHA_EXTENSIONS_CONFIG_PATH=cfg
     assert cache_module._config_signature is not None  # guard: had a real signature
 
     cfg.unlink()  # config deleted; env var still points at the now-missing path
@@ -314,7 +314,7 @@ class TestCrossLoopReinitialization:
 
             cfg = tmp_path / "extensions_config.json"
             _write_extensions_config(cfg, {"srv1": _server()})
-            monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(cfg))
+            monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(cfg))
 
             async def _fake_tools():
                 return []
@@ -353,7 +353,7 @@ class TestCrossLoopReinitialization:
 
             cfg = tmp_path / "extensions_config.json"
             _write_extensions_config(cfg, {"srv1": _server()})
-            monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(cfg))
+            monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(cfg))
 
             calls = 0
 
@@ -402,7 +402,7 @@ class TestCrossLoopReinitialization:
 
             cfg = tmp_path / "extensions_config.json"
             _write_extensions_config(cfg, {"srv1": _server()})
-            monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(cfg))
+            monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(cfg))
 
             async def _fake_tools():
                 return []
@@ -432,7 +432,7 @@ def test_config_change_during_initialization_discards_stale_tools(cache_globals,
     """A config rewrite during load must not publish tools loaded from the old config."""
     cfg = tmp_path / "extensions_config.json"
     _write_extensions_config(cfg, {"old": _server()})
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(cfg))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(cfg))
 
     calls = 0
 
@@ -495,7 +495,7 @@ def test_config_change_during_initialization_retires_pool_for_same_server_connec
 
     cfg = tmp_path / "extensions_config.json"
     _write_extensions_config(cfg, {"same": _server("npx")})
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(cfg))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(cfg))
 
     calls = 0
     loaded_pools = []
@@ -536,7 +536,7 @@ def test_reset_mcp_tools_cache_does_not_wait_for_in_flight_initialization(cache_
     """Event-loop callers can reset cache state without waiting for a slow tool load."""
     cfg = tmp_path / "extensions_config.json"
     _write_extensions_config(cfg, {"srv1": _server()})
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(cfg))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(cfg))
 
     started = threading.Event()
     finish = threading.Event()
@@ -656,7 +656,7 @@ def test_cancelled_initializer_releases_generation_claim(cache_globals, monkeypa
     """Cancelling the owner task must not strand waiters on its generation claim."""
     cfg = tmp_path / "extensions_config.json"
     _write_extensions_config(cfg, {"srv1": _server()})
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(cfg))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(cfg))
 
     started = asyncio.Event()
     release = asyncio.Event()

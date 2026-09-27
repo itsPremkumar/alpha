@@ -3,7 +3,7 @@
 Bots are autonomous specialist teammates (architect/coder/reviewer/tester/
 researcher by default, auto-provisioned on demand). This router makes the
 harness-layer BotRegistry a real system part: list/get/ensure/update with
-capability-epoch fingerprints, AGENT_WORKSPACE_HOME-aware persistence, and
+capability-epoch fingerprints, ALPHA_HOME-aware persistence, and
 blocking-IO offload so Gateway event-loop rules hold.
 """
 

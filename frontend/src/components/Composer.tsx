@@ -4,6 +4,7 @@ import React, { useRef, useEffect, useState, useMemo } from "react";
 import { Send, Square, Wand2, Paperclip, Terminal, ChevronRight, Zap, Settings, Key, ExternalLink, Check, X } from "lucide-react";
 import { AIModel, SlashCommandInfo } from "@/types/chat";
 import { fetchCommands, BUILTIN_FREE_MODELS, configureProviderCredentials } from "@/lib/api";
+import { errMsg } from "@/lib/http";
 import { ReasoningEffortPicker } from "@/components/ReasoningEffortPicker";
 import { VoiceControls } from "@/components/VoiceControls";
 import { SlashCommand } from "@/lib/commands";
@@ -115,6 +116,7 @@ export function Composer({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [availableCommands, setAvailableCommands] = useState<SlashCommandInfo[]>(DEFAULT_CORE_COMMANDS);
+  const [registryError, setRegistryError] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const [isDismissed, setIsDismissed] = useState<boolean>(false);
 
@@ -126,14 +128,28 @@ export function Composer({
   const [keyStatusMsg, setKeyStatusMsg] = useState<string | null>(null);
 
   // Load registered backend commands on mount, then merge the prop list.
+  // A failed registry read keeps the local defaults (so the palette still works)
+  // but is disclosed: a backend whose command registry could not be read must
+  // not look identical to one that simply has no custom commands.
   useEffect(() => {
+    let cancelled = false;
     async function load() {
-      const cmds = await fetchCommands();
-      if (cmds && cmds.length > 0) {
-        setAvailableCommands(cmds);
+      try {
+        const cmds = await fetchCommands();
+        if (cancelled) return;
+        if (cmds && cmds.length > 0) {
+          setAvailableCommands(cmds);
+          setRegistryError(null);
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setRegistryError(`Backend command registry unavailable — ${errMsg(err)}`);
       }
     }
-    load();
+    void load();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Unified command source: backend registry wins, prop shortcuts fill gaps.
@@ -271,6 +287,11 @@ export function Composer({
             </div>
             <span>Use ↑↓ to navigate • Tab to select • Esc to dismiss</span>
           </div>
+          {registryError && (
+            <div className="px-3 py-1.5 border-b border-border/60 bg-destructive/10 text-[11px] text-destructive">
+              {registryError} — showing the built-in commands only.
+            </div>
+          )}
           <div className="max-h-60 overflow-y-auto p-1 divide-y divide-border/20">
             {suggestions.map((cmd, idx) => (
               <button

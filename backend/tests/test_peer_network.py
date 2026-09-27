@@ -237,7 +237,7 @@ def test_public_message_sender_is_server_owned(services):
 def test_model_facing_peer_tool_exposes_only_public_capability_operations(tmp_path, monkeypatch):
     from alpha.tools.builtins.peer_network_tool import alpha_peer_network_tool
 
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     import alpha.peer_network.service as service_module
 
     monkeypatch.setattr(service_module, "_service", None)

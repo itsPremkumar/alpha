@@ -9,7 +9,7 @@ echo ""
 BASE_URL="${BASE_URL:-http://localhost:2026}"
 DOC_PATH="${DOC_PATH:-/en/docs}"
 
-# When the gateway has authentication enabled (AGENT_WORKSPACE_AUTH_DISABLED != 1),
+# When the gateway has authentication enabled (ALPHA_AUTH_DISABLED != 1),
 # protected /workspace/* routes redirect anonymous requests to /login.
 # We detect auth, register / log in a smoke-test user, and pass the session
 # cookie to all curl calls so the real pages are verified, not the login form.

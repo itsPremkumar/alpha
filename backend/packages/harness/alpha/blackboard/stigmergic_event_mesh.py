@@ -819,4 +819,4 @@ def get_stigmergic_mesh(
 
 def default_mesh_path(workspace_root: str | Path) -> str:
     """Return the conventional on-disk mesh path for a workspace."""
-    return str(Path(workspace_root) / ".agent-workspace" / DEFAULT_DB_FILENAME)
+    return str(Path(workspace_root) / ".alpha" / DEFAULT_DB_FILENAME)

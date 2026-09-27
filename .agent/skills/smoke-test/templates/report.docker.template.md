@@ -144,9 +144,9 @@ Commit Message: {{git_commit_message}}
 
 | Container Name | Status | Uptime |
 |----------|------|----------|
-| agent-workspace-nginx | {{nginx_status}} | {{nginx_uptime}} |
-| agent-workspace-frontend | {{frontend_status}} | {{frontend_uptime}} |
-| agent-workspace-gateway | {{gateway_status}} | {{gateway_uptime}} |
+| alpha-nginx | {{nginx_status}} | {{nginx_uptime}} |
+| alpha-frontend | {{frontend_status}} | {{frontend_uptime}} |
+| alpha-gateway | {{gateway_status}} | {{gateway_uptime}} |
 
 ---
 

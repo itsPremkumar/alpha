@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-os.environ.setdefault("AGENT_WORKSPACE_PROJECT_ROOT", str(ROOT))
+os.environ.setdefault("ALPHA_PROJECT_ROOT", str(ROOT))
 for source_path in (ROOT / "backend", ROOT / "backend" / "packages" / "harness"):
     text = str(source_path)
     if text not in sys.path:

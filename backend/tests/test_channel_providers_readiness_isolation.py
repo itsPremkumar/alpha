@@ -61,7 +61,7 @@ _CONNECTIONS_CONFIG: dict = {
 @pytest.fixture(autouse=True)
 def _stub_app_config(monkeypatch):
     """Keep the router independent of a developer-local config.yaml."""
-    monkeypatch.setenv("AGENT_WORKSPACE_AUTH_DISABLED", "0")
+    monkeypatch.setenv("ALPHA_AUTH_DISABLED", "0")
     set_app_config(AppConfig.model_validate({"sandbox": {"use": "alpha.sandbox.local:LocalSandboxProvider"}}))
     yield
     reset_app_config()

@@ -2928,9 +2928,9 @@ Build:
 2. **Narrow-Waist Core Architecture**: Maintain a minimal, robust core runtime engine while delegating capabilities (tools, cognitive memory backends, domain skills, and protocols) to modular, decoupled subsystems.
 3. **Pluggable Subsystem Boundaries**: Implement capabilities as independent modules with strict schema contracts, allowing rapid evolution without monolithic codebase coupling.
 
-[1]: https://github.com/bytedance/agent-workspace/blob/main/frontend/src/content/en/introduction/core-concepts.mdx?utm_source=chatgpt.com "agent-workspace/frontend/src/content/en/introduction/core-concepts.mdx at main · bytedance/agent-workspace · GitHub"
-[2]: https://github.com/bytedance/agent-workspace/blob/main/CHANGELOG.md?utm_source=chatgpt.com "agent-workspace/CHANGELOG.md at main · bytedance/agent-workspace · GitHub"
-[3]: https://github.com/bytedance/agent-workspace/blob/main/frontend/src/content/en/introduction/index.mdx?utm_source=chatgpt.com "agent-workspace/frontend/src/content/en/introduction/index.mdx at main · bytedance/agent-workspace · GitHub"
+[1]: https://github.com/bytedance/agent-workspace/blob/main/frontend/src/content/en/introduction/core-concepts.mdx?utm_source=chatgpt.com "alpha/frontend/src/content/en/introduction/core-concepts.mdx at main · bytedance/agent-workspace · GitHub"
+[2]: https://github.com/bytedance/agent-workspace/blob/main/CHANGELOG.md?utm_source=chatgpt.com "alpha/CHANGELOG.md at main · bytedance/agent-workspace · GitHub"
+[3]: https://github.com/bytedance/agent-workspace/blob/main/frontend/src/content/en/introduction/index.mdx?utm_source=chatgpt.com "alpha/frontend/src/content/en/introduction/index.mdx at main · bytedance/agent-workspace · GitHub"
 [4]: https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/skills.md?utm_source=chatgpt.com "hermes-agent/website/docs/user-guide/features/skills.md at main · NousResearch/hermes-agent · GitHub"
 [5]: https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/tools.md?utm_source=chatgpt.com "hermes-agent/website/docs/user-guide/features/tools.md at main · NousResearch/hermes-agent · GitHub"
 [6]: https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/overview.md?utm_source=chatgpt.com "hermes-agent/website/docs/user-guide/features/overview.md at main · NousResearch/hermes-agent · GitHub"
@@ -2938,4 +2938,4 @@ Build:
 [8]: https://github.com/bytedance/agent-workspace/issues/3804?utm_source=chatgpt.com "[RFC] Agent eval harness for replay, trajectory, safety, and outcome regression · Issue #3804 · bytedance/agent-workspace · GitHub"
 [9]: https://github.com/openai/openai-agents-js/blob/main/docs/src/content/docs/index.mdx?utm_source=chatgpt.com "openai-agents-js/docs/src/content/docs/index.mdx at main · openai/openai-agents-js · GitHub"
 [10]: https://github.com/NousResearch/hermes-agent/blob/main/AGENTS.md?utm_source=chatgpt.com "hermes-agent/AGENTS.md at main · NousResearch/hermes-agent · GitHub"
-[11]: https://github.com/bytedance/agent-workspace/blob/main/backend/AGENTS.md?utm_source=chatgpt.com "agent-workspace/backend/AGENTS.md at main · bytedance/agent-workspace · GitHub"
+[11]: https://github.com/bytedance/agent-workspace/blob/main/backend/AGENTS.md?utm_source=chatgpt.com "alpha/backend/AGENTS.md at main · bytedance/agent-workspace · GitHub"

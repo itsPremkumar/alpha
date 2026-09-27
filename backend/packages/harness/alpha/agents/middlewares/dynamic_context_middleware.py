@@ -26,7 +26,7 @@ Date-update format:
     </system-reminder>
 
 By default the injected date follows the server's local timezone. Set the
-``AGENT_WORKSPACE_DATE_TIMEZONE`` environment variable to an IANA timezone name (for
+``ALPHA_DATE_TIMEZONE`` environment variable to an IANA timezone name (for
 example ``Asia/Shanghai``) when the host clock runs UTC but the conversation
 date should follow another zone. Invalid values log a warning and fall back to
 the server-local timezone.
@@ -52,7 +52,7 @@ from datetime import datetime, tzinfo
 from typing import TYPE_CHECKING, override
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from agent_workspace_extension_api import ContentKind, provenance_kwargs
+from alpha_extension_api import ContentKind, provenance_kwargs
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.runtime import Runtime
@@ -92,7 +92,7 @@ __all__ = [
 ]
 
 
-_DATE_TIMEZONE_ENV = "AGENT_WORKSPACE_DATE_TIMEZONE"
+_DATE_TIMEZONE_ENV = "ALPHA_DATE_TIMEZONE"
 
 
 def _date_timezone() -> tzinfo | None:
@@ -158,7 +158,7 @@ def _server_local_utc_offset_minutes() -> int:
 def _effective_date_timezone_name() -> str:
     """Stable label of the timezone the injected date actually follows.
 
-    A configured, valid ``AGENT_WORKSPACE_DATE_TIMEZONE`` is reported by its IANA
+    A configured, valid ``ALPHA_DATE_TIMEZONE`` is reported by its IANA
     key; without one, the server-local zone is reported by its resolved IANA
     key when the platform exposes it. When no IANA key is recoverable the
     declaration falls back to a ``server-local(±HH:MM)`` sentinel carrying the
@@ -342,7 +342,7 @@ class SubagentDateContextMiddleware(AgentMiddleware):
 
     @override
     async def abefore_agent(self, state, runtime: Runtime) -> dict | None:
-        # _inject() can resolve AGENT_WORKSPACE_DATE_TIMEZONE through ZoneInfo,
+        # _inject() can resolve ALPHA_DATE_TIMEZONE through ZoneInfo,
         # which reads the OS zone database (or the tzdata wheel) on a cold
         # cache. SubagentDateContextMiddleware runs on the async subagent path,
         # where no assembly observer necessarily warmed that resolution first,

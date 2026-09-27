@@ -32,11 +32,11 @@ The Gateway enforces application-layer limits on upload payloads: by default, a 
     {
       "filename": "document.pdf",
       "size": 1234567,
-      "path": ".agent-workspace/threads/{thread_id}/user-data/uploads/document.pdf",
+      "path": ".alpha/threads/{thread_id}/user-data/uploads/document.pdf",
       "virtual_path": "/mnt/user-data/uploads/document.pdf",
       "artifact_url": "/api/threads/{thread_id}/artifacts/mnt/user-data/uploads/document.pdf",
       "markdown_file": "document.md",
-      "markdown_path": ".agent-workspace/threads/{thread_id}/user-data/uploads/document.md",
+      "markdown_path": ".alpha/threads/{thread_id}/user-data/uploads/document.md",
       "markdown_virtual_path": "/mnt/user-data/uploads/document.md",
       "markdown_artifact_url": "/api/threads/{thread_id}/artifacts/mnt/user-data/uploads/document.md"
     }
@@ -78,7 +78,7 @@ GET /api/threads/{thread_id}/uploads/list
     {
       "filename": "document.pdf",
       "size": 1234567,
-      "path": ".agent-workspace/threads/{thread_id}/user-data/uploads/document.pdf",
+      "path": ".alpha/threads/{thread_id}/user-data/uploads/document.pdf",
       "virtual_path": "/mnt/user-data/uploads/document.pdf",
       "artifact_url": "/api/threads/{thread_id}/artifacts/mnt/user-data/uploads/document.pdf",
       "extension": ".pdf",
@@ -150,11 +150,11 @@ read_file(path="/mnt/user-data/uploads/document.md")
 
 **Path Relationships:**
 - Agent usage: `/mnt/user-data/uploads/document.pdf` (Virtual Path)
-- Physical storage: `backend/.agent-workspace/threads/{thread_id}/user-data/uploads/document.pdf`
+- Physical storage: `backend/.alpha/threads/{thread_id}/user-data/uploads/document.pdf`
 - Frontend access: `/api/threads/{thread_id}/artifacts/mnt/user-data/uploads/document.pdf` (HTTP URL)
 
 The upload workflow follows a "thread directory first" strategy:
-- Writes first to `backend/.agent-workspace/threads/{thread_id}/user-data/uploads/` as the authoritative store.
+- Writes first to `backend/.alpha/threads/{thread_id}/user-data/uploads/` as the authoritative store.
 - Local sandbox (`sandbox_id=local`) uses the thread directory content directly.
 - By default, non-local sandboxes synchronize uploaded files to `/mnt/user-data/uploads/*` upon acquisition via `acquire_async` to ensure runtime visibility.
 - If Gateway and remote sandboxes share the same mounted storage (e.g. aligned PVC, NFS, or hostPath), set `sandbox.thread_data_mounts: true` to skip per-file synchronization.
@@ -215,7 +215,7 @@ print(response.json())
 ## Storage Directory Structure
 
 ```
-backend/.agent-workspace/threads/
+backend/.alpha/threads/
 └── {thread_id}/
     └── user-data/
         └── uploads/
@@ -274,7 +274,7 @@ backend/.agent-workspace/threads/
 
 1. Confirm UploadsMiddleware is registered in `agent.py`.
 2. Verify `thread_id` matches across requests.
-3. Confirm file exists in `backend/.agent-workspace/threads/{thread_id}/user-data/uploads/`.
+3. Confirm file exists in `backend/.alpha/threads/{thread_id}/user-data/uploads/`.
 4. For non-local sandboxes, ensure upload route completes sandbox synchronization without errors.
 
 ---

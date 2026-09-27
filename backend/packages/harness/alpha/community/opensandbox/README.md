@@ -9,7 +9,7 @@ using the synchronous Python SDK behind Alpha's `Sandbox` and
 Install the optional SDK, then select the provider:
 
 ```bash
-pip install "agent-workspace-harness[opensandbox]"
+pip install "alpha-harness[opensandbox]"
 ```
 
 ```yaml

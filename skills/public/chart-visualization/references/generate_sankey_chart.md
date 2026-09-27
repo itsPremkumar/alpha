@@ -7,11 +7,11 @@ Visualizes flow volumes, energy transfer, or budget allocation from source stage
 ### Required
 - 
 odes: array<object>, stage names and categories.
-- links: array<object>, flows with source, 	arget, and alue.
+- links: array<object>, flows with source, target, and value.
 
 ### Optional
-- 	heme: string, default default.
-- 	itle: string, sankey title.
+- theme: string, default default.
+- title: string, sankey title.
 
 ## Usage Recommendations
 Ensure flow conservation across intermediate stages where applicable.

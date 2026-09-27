@@ -325,7 +325,7 @@ def test_storage_class_empty_uses_filememorystorage():
     assert isinstance(dm._storage, FileMemoryStorage)
 
 
-def test_portability_only_abc_contract_imports_agent_workspace():
+def test_portability_only_abc_contract_imports_alpha():
     """backends/deermem/ has exactly ONE host harness import line: the ABC contract in deer_mem.py."""
     import alpha.agents.memory.backends.deermem as pkg
 

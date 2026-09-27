@@ -19,7 +19,7 @@
 #
 # Compatible with both docker-compose.yaml (prod) and docker-compose-dev.yaml
 # (dev): both define a `gateway` service, and Compose merges this volume entry
-# onto it. AGENT_WORKSPACE_DOCKER_SOCKET defaults to /var/run/docker.sock.
+# onto it. ALPHA_DOCKER_SOCKET defaults to /var/run/docker.sock.
 #
 # The `logging` key below is the same bounded `json-file` config the base
 # compose files use, repeated here because a Compose overlay is a separate
@@ -37,4 +37,4 @@ services:
   gateway:
     logging: *bounded_logs
     volumes:
-      - ${AGENT_WORKSPACE_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
+      - ${ALPHA_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock

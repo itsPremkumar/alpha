@@ -1,21 +1,21 @@
-AGENT_WORKSPACE_HOME ?= $(CURDIR)/.agent-workspace
-AGENT_WORKSPACE_HOME := $(abspath $(AGENT_WORKSPACE_HOME))
-AGENT_WORKSPACE_HOME ?= $(AGENT_WORKSPACE_HOME)
+ALPHA_HOME ?= $(CURDIR)/.alpha
+ALPHA_HOME := $(abspath $(ALPHA_HOME))
+ALPHA_HOME ?= $(ALPHA_HOME)
 BACKEND_SANDBOX_HOME := $(abspath $(CURDIR)/sandbox)
 
 install:
 	uv sync --locked
 
 dev:
-	mkdir -p "$(AGENT_WORKSPACE_HOME)" "$(BACKEND_SANDBOX_HOME)"
-	PYTHONPATH=. PYTHONIOENCODING=utf-8 PYTHONUTF8=1 AGENT_WORKSPACE_HOME="$(AGENT_WORKSPACE_HOME)" AGENT_WORKSPACE_HOME="$(AGENT_WORKSPACE_HOME)" uv run --locked uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001 \
+	mkdir -p "$(ALPHA_HOME)" "$(BACKEND_SANDBOX_HOME)"
+	PYTHONPATH=. PYTHONIOENCODING=utf-8 PYTHONUTF8=1 ALPHA_HOME="$(ALPHA_HOME)" ALPHA_HOME="$(ALPHA_HOME)" uv run --locked uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001 \
 		--reload \
 		--reload-include='*.yaml' \
 		--reload-include='.env' \
 		--reload-exclude='*.pyc' \
 		--reload-exclude='__pycache__' \
 		--reload-exclude="$(BACKEND_SANDBOX_HOME)" \
-		--reload-exclude="$(AGENT_WORKSPACE_HOME)"
+		--reload-exclude="$(ALPHA_HOME)"
 
 gateway:
 	PYTHONPATH=. PYTHONIOENCODING=utf-8 PYTHONUTF8=1 uv run --locked uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001
@@ -24,7 +24,7 @@ test:
 	PYTHONPATH=. PYTHONIOENCODING=utf-8 PYTHONUTF8=1 uv run pytest -m "not live" --ignore=tests/blocking_io tests/ -v
 
 test-live:
-	AGENT_WORKSPACE_RUN_LIVE_TESTS=1 AGENT_WORKSPACE_RUN_LIVE_TESTS=1 PYTHONPATH=. PYTHONIOENCODING=utf-8 PYTHONUTF8=1 uv run pytest -m live tests/ -v -s
+	ALPHA_RUN_LIVE_TESTS=1 ALPHA_RUN_LIVE_TESTS=1 PYTHONPATH=. PYTHONIOENCODING=utf-8 PYTHONUTF8=1 uv run pytest -m live tests/ -v -s
 
 test-blocking-io:
 	PYTHONPATH=. PYTHONIOENCODING=utf-8 PYTHONUTF8=1 uv run pytest tests/blocking_io -q --tb=short
@@ -59,7 +59,7 @@ format:
 	uv run ruff check . --fix && uv run ruff format .
 
 detect-blocking-io:
-	@PYTHONPATH=. PYTHONIOENCODING=utf-8 PYTHONUTF8=1 uv run python ../scripts/detect_blocking_io_static.py --output ../.agent-workspace/blocking-io-findings.json
+	@PYTHONPATH=. PYTHONIOENCODING=utf-8 PYTHONUTF8=1 uv run python ../scripts/detect_blocking_io_static.py --output ../.alpha/blocking-io-findings.json
 
 # Generate a new alembic revision by autogenerating the diff against the live
 # ORM models. Usage: make migrate-rev MSG="add foo column to runs"

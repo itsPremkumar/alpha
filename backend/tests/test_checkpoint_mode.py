@@ -65,14 +65,14 @@ def _config() -> dict:
 def test_inject_delta_mode_sets_internal_key_and_metadata_marker() -> None:
     config = _config()
     inject_checkpoint_mode(config, "delta")
-    assert config["configurable"]["__agent_workspace_checkpoint_channel_mode"] == "delta"
+    assert config["configurable"]["__alpha_checkpoint_channel_mode"] == "delta"
     assert config["metadata"][CHECKPOINT_MODE_METADATA_KEY] == "delta"
 
 
 def test_inject_full_mode_does_not_claim_delta_metadata() -> None:
     config = _config()
     inject_checkpoint_mode(config, "full")
-    assert config["configurable"]["__agent_workspace_checkpoint_channel_mode"] == "full"
+    assert config["configurable"]["__alpha_checkpoint_channel_mode"] == "full"
     assert CHECKPOINT_MODE_METADATA_KEY not in config.get("metadata", {})
 
 
@@ -171,7 +171,7 @@ def test_yaml_mode_change_is_rejected_when_graph_is_reconstructed(tmp_path, monk
         )
 
     write_config("full")
-    monkeypatch.setenv("AGENT_WORKSPACE_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("ALPHA_CONFIG_PATH", str(config_path))
     monkeypatch.setattr(checkpoint_mode, "_frozen_checkpoint_channel_mode", None)
     monkeypatch.setattr(lead_agent, "_assemble_lead_agent", lambda config, *, app_config: SimpleNamespace(graph=object()))
     reset_app_config()
@@ -212,7 +212,7 @@ def test_yaml_snapshot_frequency_change_is_rejected_when_graph_is_reconstructed(
         )
 
     write_config(250)
-    monkeypatch.setenv("AGENT_WORKSPACE_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("ALPHA_CONFIG_PATH", str(config_path))
     monkeypatch.setattr(checkpoint_mode, "_frozen_checkpoint_channel_mode", None)
     monkeypatch.setattr(checkpoint_mode, "_frozen_checkpoint_snapshot_frequency", None)
     monkeypatch.setattr(lead_agent, "_assemble_lead_agent", lambda config, *, app_config: SimpleNamespace(graph=object()))

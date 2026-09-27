@@ -157,7 +157,7 @@ def test_auth_disabled_me_includes_default_admin_permissions(monkeypatch, _setup
     from app.gateway.app import create_app
     from app.gateway.auth.config import AuthConfig, set_auth_config
 
-    monkeypatch.setenv("AGENT_WORKSPACE_AUTH_DISABLED", "1")
+    monkeypatch.setenv("ALPHA_AUTH_DISABLED", "1")
     set_auth_config(AuthConfig(jwt_secret=_TEST_SECRET))
     client = TestClient(create_app())
 

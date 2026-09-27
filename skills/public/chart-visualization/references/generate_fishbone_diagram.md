@@ -8,10 +8,10 @@ Renders cause-and-effect root cause diagrams categorizing potential factors cont
 - data: object, structured root problem statement and branch factor categories.
 
 ### Optional
-- 	heme: string, default default.
+- theme: string, default default.
 - width: number, default 800.
 - height: number, default 500.
-- 	itle: string, diagram title.
+- title: string, diagram title.
 
 ## Usage Recommendations
 Organize root causes into standard categories (e.g. People, Process, Technology, Environment).

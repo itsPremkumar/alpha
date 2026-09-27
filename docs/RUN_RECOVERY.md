@@ -43,7 +43,7 @@ took effect, then use the existing manual Resume action or regenerate the turn.
 
 A transient model-provider fallback is the one bounded rewind case: Alpha may
 select the immediate parent checkpoint only when the head's last assistant
-message is explicitly marked `agent_workspace_error_fallback` with a recoverable
+message is explicitly marked `alpha_error_fallback` with a recoverable
 reason (`transient`, `busy`, `burst_rate`, or `circuit_open`). Authentication,
 quota, configuration, and generic deterministic failures are not retried.
 Generic crashes never rewind visible work.

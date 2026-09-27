@@ -61,7 +61,7 @@ def _seed_workspace(tmp_path: Path) -> None:
 
 async def test_capture_workspace_snapshot_cleanup_does_not_block_event_loop(tmp_path: Path, monkeypatch) -> None:
     """The scan-failure branch removes the text cache; that rmtree must be offloaded."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     import alpha.config.paths as paths_mod
 
     monkeypatch.setattr(paths_mod, "_paths", None)
@@ -90,7 +90,7 @@ async def test_capture_workspace_snapshot_cleanup_does_not_block_event_loop(tmp_
 
 async def test_record_workspace_changes_cleanup_does_not_block_event_loop(tmp_path: Path, monkeypatch) -> None:
     """``record_workspace_changes`` rmtrees the snapshot text cache in its ``finally``."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     import alpha.config.paths as paths_mod
 
     monkeypatch.setattr(paths_mod, "_paths", None)
@@ -124,7 +124,7 @@ async def test_capture_workspace_snapshot_cancelled_handoff_leaks_no_text_cache(
     path, nothing downstream owns it. The shield+reclaim guard waits for the
     worker and removes the dir; without it the dir leaks into the temp root.
     """
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     import alpha.config.paths as paths_mod
 
     monkeypatch.setattr(paths_mod, "_paths", None)
@@ -170,7 +170,7 @@ async def test_capture_workspace_snapshot_repeated_cancellation_leaks_no_text_ca
     the reclaim (``except Exception`` does not catch it) while the shielded worker
     still finishes and leaks its dir.
     """
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     import alpha.config.paths as paths_mod
 
     monkeypatch.setattr(paths_mod, "_paths", None)
@@ -213,7 +213,7 @@ async def test_capture_workspace_snapshot_repeated_cancellation_leaks_no_text_ca
 
 async def test_capture_workspace_snapshot_cancelled_scan_drains_before_cleanup(tmp_path: Path, monkeypatch) -> None:
     """A cancelled scan keeps its text cache until its worker is finished."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     import alpha.config.paths as paths_mod
 
     monkeypatch.setattr(paths_mod, "_paths", None)
@@ -257,7 +257,7 @@ async def test_capture_workspace_snapshot_repeated_cancel_during_scan_still_clea
     monkeypatch,
 ) -> None:
     """Repeated cancellation cannot abandon scan draining or cache cleanup."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     import alpha.config.paths as paths_mod
 
     monkeypatch.setattr(paths_mod, "_paths", None)
@@ -303,7 +303,7 @@ async def test_capture_workspace_snapshot_repeated_cancel_during_cleanup_still_c
     monkeypatch,
 ) -> None:
     """A second cancellation cannot abandon cleanup after the scan has drained."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     import alpha.config.paths as paths_mod
 
     monkeypatch.setattr(paths_mod, "_paths", None)

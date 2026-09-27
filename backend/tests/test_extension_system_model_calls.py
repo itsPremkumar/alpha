@@ -10,7 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from agent_workspace_extension_api import (
+from alpha_extension_api import (
     EXTENSION_TASK_STORE_KEY,
     ExtensionData,
     SystemModelRequest,
@@ -360,7 +360,7 @@ async def test_title_middleware_uses_build_bound_snapshot_and_live_task_store(mo
 @pytest.mark.asyncio
 async def test_async_summarization_observes_each_provider_attempt_and_live_store():
     from alpha.agents.middlewares.summarization_middleware import (
-        AgentWorkspaceSummarizationMiddleware,
+        AlphaSummarizationMiddleware,
     )
 
     observer = _Observer()
@@ -375,7 +375,7 @@ async def test_async_summarization_observes_each_provider_attempt_and_live_store
         async def ainvoke(self, prompt, config=None):
             return SimpleNamespace(text="  compact summary  ")
 
-    middleware = AgentWorkspaceSummarizationMiddleware.__new__(AgentWorkspaceSummarizationMiddleware)
+    middleware = AlphaSummarizationMiddleware.__new__(AlphaSummarizationMiddleware)
     middleware._extensions = extensions
     middleware._prepare_summary_prompt = lambda messages, previous_summary=None: "prompt"
     middleware._generation_candidate_names = lambda: ["first", "second"]
@@ -394,7 +394,7 @@ async def test_async_summarization_observes_each_provider_attempt_and_live_store
 @pytest.mark.asyncio
 async def test_summarization_public_hook_propagates_the_live_task_store():
     from alpha.agents.middlewares.summarization_middleware import (
-        AgentWorkspaceSummarizationMiddleware,
+        AlphaSummarizationMiddleware,
     )
 
     observer = _Observer()
@@ -403,7 +403,7 @@ async def test_summarization_public_hook_propagates_the_live_task_store():
     model = MagicMock()
     model.with_config.return_value = model
     model.ainvoke = AsyncMock(return_value=SimpleNamespace(text="compressed"))
-    middleware = AgentWorkspaceSummarizationMiddleware(
+    middleware = AlphaSummarizationMiddleware(
         model=model,
         trigger=("messages", 4),
         keep=("messages", 2),

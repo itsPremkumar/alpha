@@ -23,7 +23,7 @@ def _admin_request():
 
 @pytest.fixture(autouse=True)
 def _isolated_home(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     import alpha.bots.registry as bot_reg
     import alpha.groups.runner as runner
     import alpha.groups.service as grp_svc

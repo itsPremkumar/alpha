@@ -1,6 +1,6 @@
 """Production wiring for bots, group chat, and agent-to-agent messaging.
 
-Covers: BotRegistry defaults + AGENT_WORKSPACE_HOME-aware persistence, GroupChatService
+Covers: BotRegistry defaults + ALPHA_HOME-aware persistence, GroupChatService
 room auto-provisioning + orchestration modes, AgentRoster send/inbox, and Gateway
 route mounting for /api/bots, /api/groups, /api/threads/{id}/agent-messages.
 """
@@ -28,7 +28,7 @@ def _user_request():
 
 @pytest.fixture(autouse=True)
 def _isolated_home(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     # Reset process singletons so each test gets a fresh HOME-bound instance.
     import alpha.bots.registry as bot_reg
     import alpha.groups.service as grp_svc

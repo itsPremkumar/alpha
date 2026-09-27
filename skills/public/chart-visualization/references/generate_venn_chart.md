@@ -10,8 +10,8 @@ ame and size.
 - overlaps: array<object>, intersection mappings with sets and size.
 
 ### Optional
-- 	heme: string, default default.
-- 	itle: string, venn diagram title.
+- theme: string, default default.
+- title: string, venn diagram title.
 
 ## Usage Recommendations
 Best suited for 2 to 3 overlapping sets to avoid visual ambiguity.

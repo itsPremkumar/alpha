@@ -5,7 +5,7 @@
 excludes such a path directly when it already exists as a directory; otherwise
 it falls back to ``Path.cwd().glob(pattern)``, and on **Python 3.12**
 ``pathlib.Path.glob()`` raises ``NotImplementedError: Non-relative patterns are
-unsupported`` for an absolute pattern. ``serve.sh`` created the ``.agent-workspace``
+unsupported`` for an absolute pattern. ``serve.sh`` created the ``.alpha``
 excludes but not ``backend/sandbox``, so a fresh checkout crashed ``make dev``
 on startup.
 

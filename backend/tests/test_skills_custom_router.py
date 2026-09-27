@@ -314,7 +314,7 @@ def test_uploaded_skill_archive_installs_sandbox_readable_tree(monkeypatch, tmp_
     # Monkeypatch paths BEFORE constructing UserScopedSkillStorage
     monkeypatch.setattr("alpha.config.paths.get_paths", lambda: Paths(base_dir=tmp_path))
     monkeypatch.setattr("alpha.config.paths._paths", None)
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(home))
+    monkeypatch.setenv("ALPHA_HOME", str(home))
     monkeypatch.setattr(uploads_router, "get_sandbox_provider", lambda: provider)
     monkeypatch.setattr("alpha.skills.installer.scan_skill_content", _scan)
     monkeypatch.setattr(skills_router, "refresh_user_skills_system_prompt_cache_async", _refresh)
@@ -1057,7 +1057,7 @@ def test_public_skill_toggle_rebuilds_projection_before_response(monkeypatch, tm
         ),
         encoding="utf-8",
     )
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(config_path))
 
     paths = Paths(base_dir=tmp_path)
     config = SimpleNamespace(

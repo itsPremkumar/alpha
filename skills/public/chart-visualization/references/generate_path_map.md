@@ -8,8 +8,8 @@ Renders geographic journey paths, flight routes, logistics tracks, and navigatio
 - paths: array<object>, list of routes with coordinates (origin, destination, waypoints).
 
 ### Optional
-- 	heme: string, default default.
-- 	itle: string, path map title.
+- theme: string, default default.
+- title: string, path map title.
 
 ## Usage Recommendations
 Highlight directionality and transit checkpoints along routes.

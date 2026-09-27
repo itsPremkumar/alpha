@@ -421,7 +421,7 @@ class ExtensionsConfig(BaseModel):
 
         Priority:
         1. If provided `config_path` argument, use it.
-        2. If provided `AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH` environment variable, use it.
+        2. If provided `ALPHA_EXTENSIONS_CONFIG_PATH` environment variable, use it.
         3. Otherwise, search the caller project root for `extensions_config.json`, then `mcp_config.json`.
         4. For backward compatibility, also search legacy backend/repository-root defaults.
         5. If not found via search, return None (extensions are optional).
@@ -431,7 +431,7 @@ class ExtensionsConfig(BaseModel):
 
         Resolution order:
             1. If provided `config_path` argument, use it.
-            2. If provided `AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH` environment variable, use it.
+            2. If provided `ALPHA_EXTENSIONS_CONFIG_PATH` environment variable, use it.
             3. Otherwise, search the caller project root for
                `extensions_config.json`, then legacy `mcp_config.json`.
             4. Finally, search backend/repository-root defaults for monorepo compatibility.
@@ -441,7 +441,7 @@ class ExtensionsConfig(BaseModel):
             order above.
 
             An explicit `config_path` argument or a set
-            `AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH` is an operator assertion that
+            `ALPHA_EXTENSIONS_CONFIG_PATH` is an operator assertion that
             one particular file must be used, so a missing file in either of
             those two modes raises ``FileNotFoundError`` (see Raises below)
             instead of degrading to "no config" — a bad Docker mount, typo,
@@ -458,7 +458,7 @@ class ExtensionsConfig(BaseModel):
 
         Raises:
             FileNotFoundError: If `config_path` is given, or
-                `AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH` is set, and the resolved
+                `ALPHA_EXTENSIONS_CONFIG_PATH` is set, and the resolved
                 path does not exist.
         """
         if config_path:
@@ -466,10 +466,10 @@ class ExtensionsConfig(BaseModel):
             if not path.exists():
                 raise FileNotFoundError(f"Extensions config file specified by param `config_path` not found at {path}")
             return path
-        elif env_path := os.getenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH"):
+        elif env_path := os.getenv("ALPHA_EXTENSIONS_CONFIG_PATH"):
             path = Path(env_path)
             if not path.exists():
-                raise FileNotFoundError(f"Extensions config file specified by environment variable `AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH` not found at {path}")
+                raise FileNotFoundError(f"Extensions config file specified by environment variable `ALPHA_EXTENSIONS_CONFIG_PATH` not found at {path}")
             return path
         else:
             project_config = existing_project_file(("extensions_config.json", "mcp_config.json"))

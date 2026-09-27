@@ -13,7 +13,7 @@ from app.gateway.routers import suggestions
 def _clear_langfuse_env(monkeypatch):
     from alpha.config.tracing_config import reset_tracing_config
 
-    for name in ("LANGFUSE_TRACING", "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_BASE_URL", "AGENT_WORKSPACE_ENV", "ENVIRONMENT"):
+    for name in ("LANGFUSE_TRACING", "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_BASE_URL", "ALPHA_ENV", "ENVIRONMENT"):
         monkeypatch.delenv(name, raising=False)
     reset_tracing_config()
     yield
@@ -150,7 +150,7 @@ def test_generate_suggestions_respects_configured_max(monkeypatch):
     assert result.suggestions == ["Q1", "Q2"]
 
 
-def test_generate_suggestions_injects_agent_workspace_trace_metadata_when_langfuse_enabled(monkeypatch):
+def test_generate_suggestions_injects_alpha_trace_metadata_when_langfuse_enabled(monkeypatch):
     monkeypatch.setenv("LANGFUSE_TRACING", "true")
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
@@ -177,7 +177,7 @@ def test_generate_suggestions_injects_agent_workspace_trace_metadata_when_langfu
 
     assert result.suggestions == ["Q1"]
     metadata = fake_model.ainvoke.await_args.kwargs["config"]["metadata"]
-    assert metadata["agent_workspace_trace_id"] == "suggest-trace-1"
+    assert metadata["alpha_trace_id"] == "suggest-trace-1"
     assert metadata["langfuse_session_id"] == "thread-suggest"
     assert metadata["langfuse_trace_name"] == "suggest_agent"
 

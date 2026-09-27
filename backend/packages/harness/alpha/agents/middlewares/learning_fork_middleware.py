@@ -17,7 +17,7 @@ from langgraph.runtime import Runtime
 
 from alpha.config.learning_fork_config import LearningForkConfig, get_learning_fork_config
 from alpha.models import create_chat_model
-from alpha.trace_context import AGENT_WORKSPACE_TRACE_METADATA_KEY, resolve_trace_id
+from alpha.trace_context import ALPHA_TRACE_METADATA_KEY, resolve_trace_id
 
 if TYPE_CHECKING:
     from alpha.agents.memory import MemoryManager
@@ -132,7 +132,7 @@ class LearningForkMiddleware(AgentMiddleware[LearningForkMiddlewareState]):
         user_id = resolve_runtime_user_id(runtime)
 
         runtime_context = runtime.context if isinstance(runtime.context, dict) else {}
-        trace_id = resolve_trace_id(runtime_context.get(AGENT_WORKSPACE_TRACE_METADATA_KEY))
+        trace_id = resolve_trace_id(runtime_context.get(ALPHA_TRACE_METADATA_KEY))
 
         return thread_id, user_id, messages, trace_id
 

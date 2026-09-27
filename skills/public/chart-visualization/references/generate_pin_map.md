@@ -6,11 +6,11 @@ Plots discrete geographic locations with markers and value callouts on a world o
 ## Input Fields
 ### Required
 - data: array<object>, items with 
-ame, latitude, longitude, and alue.
+ame, latitude, longitude, and value.
 
 ### Optional
-- 	heme: string, default default.
-- 	itle: string, pin map title.
+- theme: string, default default.
+- title: string, pin map title.
 
 ## Usage Recommendations
 Verify GPS coordinates match WGS84 standard decimal degrees.

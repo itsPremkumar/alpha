@@ -25,7 +25,7 @@ from .base import DEFAULT_HEARTBEAT_INTERVAL_SECONDS, StreamBridge
 
 logger = logging.getLogger(__name__)
 
-_ENV_REDIS_URL = "AGENT_WORKSPACE_STREAM_BRIDGE_REDIS_URL"
+_ENV_REDIS_URL = "ALPHA_STREAM_BRIDGE_REDIS_URL"
 
 
 def _resolve_config(app_config: AppConfig | None) -> StreamBridgeConfig | None:

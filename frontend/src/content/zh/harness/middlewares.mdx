@@ -64,8 +64,8 @@ extensions:
 
 ## 嵌入式调用
 
-`AgentWorkspaceClient(middlewares=[...])`,它构建完整的主 Agent 链,并把中间件放在收尾链之前;
-`create_agent_workspace_agent(extra_middleware=[...])` 构建较小的按功能组装的主 Agent 链,
+`AlphaClient(middlewares=[...])`,它构建完整的主 Agent 链,并把中间件放在收尾链之前;
+`create_alpha_agent(extra_middleware=[...])` 构建较小的按功能组装的主 Agent 链,
 未设置锚点的额外中间件紧邻 `ClarificationMiddleware` 之前放置。
 两个 API 均不会将中间件转发给子 Agent。
 

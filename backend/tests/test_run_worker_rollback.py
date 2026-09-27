@@ -1473,7 +1473,7 @@ async def test_run_agent_marks_llm_error_fallback_as_error_status():
                     AIMessage(
                         content="The configured LLM provider is temporarily unavailable after multiple retries.",
                         additional_kwargs={
-                            "agent_workspace_error_fallback": True,
+                            "alpha_error_fallback": True,
                             "error_type": "APIConnectionError",
                             "error_reason": "transient",
                             "error_detail": "Connection error.",
@@ -2381,7 +2381,7 @@ def test_try_extract_from_message_finds_fallback_on_message_object():
     msg = AIMessage(
         content="fallback",
         additional_kwargs={
-            "agent_workspace_error_fallback": True,
+            "alpha_error_fallback": True,
             "error_detail": "Connection error.",
             "error_reason": "transient",
         },
@@ -2393,7 +2393,7 @@ def test_try_extract_from_message_finds_fallback_on_dict():
     msg = {
         "content": "fallback",
         "additional_kwargs": {
-            "agent_workspace_error_fallback": True,
+            "alpha_error_fallback": True,
             "error_detail": "Quota exceeded.",
         },
     }
@@ -2426,7 +2426,7 @@ def test_extract_llm_error_fallback_message_finds_fallback_in_messages_list():
             AIMessage(
                 content="Unavailable.",
                 additional_kwargs={
-                    "agent_workspace_error_fallback": True,
+                    "alpha_error_fallback": True,
                     "error_detail": "Connection error.",
                 },
             ),
@@ -2440,7 +2440,7 @@ def test_extract_llm_error_fallback_message_finds_fallback_in_raw_message():
     msg = AIMessage(
         content="Unavailable.",
         additional_kwargs={
-            "agent_workspace_error_fallback": True,
+            "alpha_error_fallback": True,
             "error_reason": "quota",
         },
     )
@@ -2453,7 +2453,7 @@ def test_extract_llm_error_fallback_message_finds_fallback_in_tuple():
         AIMessage(
             content="Unavailable.",
             additional_kwargs={
-                "agent_workspace_error_fallback": True,
+                "alpha_error_fallback": True,
                 "error_detail": "Circuit open.",
             },
         ),
@@ -2477,7 +2477,7 @@ def test_extract_llm_error_fallback_message_finds_fallback_in_updates_mode():
                 AIMessage(
                     content="Unavailable.",
                     additional_kwargs={
-                        "agent_workspace_error_fallback": True,
+                        "alpha_error_fallback": True,
                         "error_detail": "Connection error.",
                     },
                 )
@@ -2513,7 +2513,7 @@ def test_try_extract_skips_message_with_pre_existing_id():
         id="stale-1",
         content="Unavailable.",
         additional_kwargs={
-            "agent_workspace_error_fallback": True,
+            "alpha_error_fallback": True,
             "error_detail": "Connection error.",
         },
     )
@@ -2528,7 +2528,7 @@ def test_try_extract_still_finds_fresh_message_when_others_are_stale():
         id="fresh-1",
         content="Unavailable.",
         additional_kwargs={
-            "agent_workspace_error_fallback": True,
+            "alpha_error_fallback": True,
             "error_detail": "Connection error.",
         },
     )
@@ -2540,7 +2540,7 @@ def test_try_extract_skips_dict_message_with_pre_existing_id():
         "id": "stale-2",
         "content": "Unavailable.",
         "additional_kwargs": {
-            "agent_workspace_error_fallback": True,
+            "alpha_error_fallback": True,
             "error_detail": "Quota exceeded.",
         },
     }
@@ -2557,7 +2557,7 @@ def test_extract_llm_error_fallback_message_skips_stale_history():
                 id="stale-fallback",
                 content="Unavailable.",
                 additional_kwargs={
-                    "agent_workspace_error_fallback": True,
+                    "alpha_error_fallback": True,
                     "error_detail": "Connection error.",
                 },
             ),
@@ -2575,7 +2575,7 @@ def test_extract_llm_error_fallback_message_returns_fresh_marker_alongside_stale
                 id="stale-fallback",
                 content="Old failure.",
                 additional_kwargs={
-                    "agent_workspace_error_fallback": True,
+                    "alpha_error_fallback": True,
                     "error_detail": "Old error.",
                 },
             ),
@@ -2583,7 +2583,7 @@ def test_extract_llm_error_fallback_message_returns_fresh_marker_alongside_stale
                 id="fresh-fallback",
                 content="New failure.",
                 additional_kwargs={
-                    "agent_workspace_error_fallback": True,
+                    "alpha_error_fallback": True,
                     "error_detail": "Fresh error.",
                 },
             ),
@@ -2600,7 +2600,7 @@ def test_extract_llm_error_fallback_message_default_filter_is_empty():
                 id="any",
                 content="Unavailable.",
                 additional_kwargs={
-                    "agent_workspace_error_fallback": True,
+                    "alpha_error_fallback": True,
                     "error_detail": "Connection error.",
                 },
             )
@@ -2632,7 +2632,7 @@ async def test_run_agent_ignores_stale_llm_error_fallback_from_prior_run():
     must NOT cause a successful current run to be reported as ``error``.
 
     This guards against the regression where one IndexError-driven failure (now
-    classified transient and surfaced as a ``agent_workspace_error_fallback`` AIMessage)
+    classified transient and surfaced as a ``alpha_error_fallback`` AIMessage)
     persisted in thread history and tripped ``RunStatus.error`` on every
     subsequent run that re-played the messages channel via ``stream_mode="values"``.
     """
@@ -2648,7 +2648,7 @@ async def test_run_agent_ignores_stale_llm_error_fallback_from_prior_run():
         id="stale-fallback",
         content="Old failure.",
         additional_kwargs={
-            "agent_workspace_error_fallback": True,
+            "alpha_error_fallback": True,
             "error_type": "IndexError",
             "error_reason": "transient",
             "error_detail": "list index out of range",

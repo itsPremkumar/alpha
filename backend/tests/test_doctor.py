@@ -48,7 +48,7 @@ class TestCheckPnpm:
         # repository root. The derived paths must not depend on that relative
         # invocation path.
         monkeypatch.chdir(REPO_ROOT)
-        relative_doctor = _load_script(Path("scripts/doctor.py"), "agent_workspace_doctor_relative")
+        relative_doctor = _load_script(Path("scripts/doctor.py"), "alpha_doctor_relative")
 
         assert relative_doctor.PNPM_SCRIPT_PATH == REPO_ROOT / "scripts" / "pnpm.py"
         assert relative_doctor.PNPM_SCRIPT_PATH.is_absolute()

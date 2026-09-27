@@ -14,7 +14,7 @@
 #   manager_class: fullmemory
 #   mode: middleware
 #   backend_config:
-#     storage_path: .agent-workspace/data
+#     storage_path: .alpha/data
 #     top_k: 8
 #     max_injection_chars: 12000
 #     wiki_enabled: true
@@ -27,7 +27,7 @@
 #       embedder_provider: ollama
 #       embed_model: nomic-embed-text:latest
 #       embedding_dims: 768
-#       vector_collection: agent_workspace_memory
+#       vector_collection: alpha_memory
 #       startup_policy: tolerate
 #       failure_policy: {read: fail_open, write: log_and_drop}
 #

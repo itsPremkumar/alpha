@@ -68,7 +68,7 @@ logger = logging.getLogger(__name__)
 # Default configuration
 DEFAULT_IMAGE = "enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest"
 DEFAULT_PORT = 8080
-DEFAULT_CONTAINER_PREFIX = "agent-workspace-sandbox"
+DEFAULT_CONTAINER_PREFIX = "alpha-sandbox"
 IDLE_CHECK_INTERVAL = _SHARED_IDLE_CHECK_INTERVAL
 
 
@@ -141,7 +141,7 @@ class AioSandboxProvider(WarmPoolLifecycleMixin[SandboxInfo], SandboxProvider):
         use: alpha.community.aio_sandbox:AioSandboxProvider
         image: <container image>
         port: 8080                      # Base port for local containers
-        container_prefix: agent-workspace-sandbox
+        container_prefix: alpha-sandbox
         idle_timeout: 600               # Idle timeout in seconds (0 to disable)
         replicas: 3                     # Max concurrent sandbox containers (LRU eviction when exceeded)
         thread_data_mounts: null        # null = backend auto-detection
@@ -1010,7 +1010,7 @@ class AioSandboxProvider(WarmPoolLifecycleMixin[SandboxInfo], SandboxProvider):
         that ``Skill.get_container_path()`` category-aware paths resolve
         correctly inside the sandbox.
 
-        Mount sources use ``AGENT_WORKSPACE_HOST_BASE_DIR`` when running inside
+        Mount sources use ``ALPHA_HOST_BASE_DIR`` when running inside
         Docker (DooD) so the host Docker daemon can resolve the projection
         paths.
         """

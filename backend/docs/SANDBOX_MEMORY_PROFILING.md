@@ -29,8 +29,8 @@ Run this from the repository root:
 
 ```bash
 python scripts/sandbox_memory_profile.py \
-  --namespace agent-workspace \
-  --selector app=agent-workspace-sandbox \
+  --namespace alpha \
+  --selector app=alpha-sandbox \
   --sample empty \
   --include-processes \
   --format markdown

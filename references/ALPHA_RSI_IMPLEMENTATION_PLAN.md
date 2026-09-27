@@ -110,7 +110,7 @@ These are reported because honesty outranks confirmation:
 
 Shared conventions for **all** packages below (stated once, binding for every WP):
 
-- **State directory:** `runtime_home()` from `backend/packages/harness/alpha/config/runtime_paths.py` (verified: `runtime_home()` → `$AGENT_WORKSPACE_HOME` or `project_root()/.agent-workspace`). New state lives under `runtime_home()/rsi/…`.
+- **State directory:** `runtime_home()` from `backend/packages/harness/alpha/config/runtime_paths.py` (verified: `runtime_home()` → `$ALPHA_HOME` or `project_root()/.alpha`). New state lives under `runtime_home()/rsi/…`.
 - **Atomic persistence:** reuse `alpha.evolution.identity.atomic_write_json` (tmp + `os.replace`, uuid tmp suffix) instead of writing a duplicate helper (keeps the AST duplicate-name gate at 0).
 - **Append-only ledgers:** follow `EvolutionEngine._record_ledger_event` (one JSON object per line, warn-and-continue on persistence failure, never fail the caller's operation).
 - **Honesty semantics (global):**

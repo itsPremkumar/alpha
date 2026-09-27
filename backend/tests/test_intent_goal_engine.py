@@ -5,7 +5,7 @@ Covers:
 * contextual slash-command resolver: triggers, honest non-triggers, tri-state
   catalog registration flag;
 * deterministic task state machine incl. COMPENSATING on injected failure;
-* durable persistence round-trip under ``AGENT_WORKSPACE_HOME`` (temp dir).
+* durable persistence round-trip under ``ALPHA_HOME`` (temp dir).
 """
 
 from __future__ import annotations
@@ -226,7 +226,7 @@ def test_intent_goal_engine_capability_registered() -> None:
 
 
 def _decomposer(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, project_id: str = "module-a-test") -> GoalDecomposer:
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     return GoalDecomposer(project_id)
 
 
@@ -442,14 +442,14 @@ def test_corrupt_state_fails_closed(monkeypatch: pytest.MonkeyPatch, tmp_path: P
 
 
 def test_invalid_project_id_rejected(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     for bad in ("../evil", "has/slash", "has\\backslash", "", ".hidden.."):
         with pytest.raises(DecompositionError):
             GoalDecomposer(bad)
 
 
 def test_intent_engine_decomposer_factory(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     decomposer = IntentGoalEngine().decomposer_for("factory")
     goal = decomposer.create_goal("g")
     assert goal.id in decomposer.goals

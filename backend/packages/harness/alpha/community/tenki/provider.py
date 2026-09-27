@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_SANDBOX_NAME_PREFIX = "agent-workspace-tenki-"
+_SANDBOX_NAME_PREFIX = "alpha-tenki-"
 # Tenki terminates a sandbox at its max lifetime (~30 min by default), which
 # would silently drop a long-running thread's state mid-conversation. Alpha
 # owns the lifecycle here — the warm pool's idle_timeout reaps unused sandboxes
@@ -91,7 +91,7 @@ def _import_client() -> type[Client]:
     try:
         from tenki_sandbox import Client
     except ImportError as e:  # pragma: no cover - depends on the optional dependency
-        raise ImportError("TenkiSandboxProvider requires the optional 'tenki' dependency (it provides the tenki_sandbox module). Install it with: pip install 'agent-workspace-harness[tenki]' or pip install tenki.") from e
+        raise ImportError("TenkiSandboxProvider requires the optional 'tenki' dependency (it provides the tenki_sandbox module). Install it with: pip install 'alpha-harness[tenki]' or pip install tenki.") from e
     return Client
 
 

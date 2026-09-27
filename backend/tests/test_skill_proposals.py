@@ -158,7 +158,7 @@ async def _call_propose_tool(monkeypatch, tmp_path, **kwargs):
     # as x` would bind the package-level shadowing attribute instead.
     from alpha.tools.builtins.propose_skill_tool import propose_skill_tool as tool_obj
 
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path / "home"))
     coroutine = getattr(tool_obj, "coroutine", None)
     if coroutine is not None:
         return await coroutine(**kwargs)

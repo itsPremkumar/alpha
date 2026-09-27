@@ -87,12 +87,12 @@ def registry(tmp_path: Path) -> BotRegistry:
 def ledger(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """An isolated handoff ledger, reset around the test.
 
-    ``AGENT_WORKSPACE_HOME`` is pinned to a unique directory so the global
+    ``ALPHA_HOME`` is pinned to a unique directory so the global
     ledger never touches a developer's real runtime home.
     """
     home = tmp_path / "home"
     home.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(home))
+    monkeypatch.setenv("ALPHA_HOME", str(home))
     from alpha.runtime import escalation
 
     escalation.reset_ledger_caches()

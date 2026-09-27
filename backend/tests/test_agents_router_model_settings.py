@@ -30,7 +30,7 @@ pytestmark = pytest.mark.asyncio
 
 @pytest.fixture
 def _agent_env(tmp_path: Path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     monkeypatch.setattr("alpha.config.paths._paths", None)
     load_agents_api_config_from_dict({"enabled": True})
     set_app_config(

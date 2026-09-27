@@ -1,12 +1,12 @@
-"""AgentWorkspaceClient — Embedded Python client for Alpha agent system.
+"""AlphaClient — Embedded Python client for Alpha agent system.
 
 Provides direct programmatic access to Alpha's agent capabilities
 without requiring LangGraph Server or Gateway API processes.
 
 Usage:
-    from alpha.client import AgentWorkspaceClient
+    from alpha.client import AlphaClient
 
-    client = AgentWorkspaceClient()
+    client = AlphaClient()
     response = client.chat("Analyze this paper for me", thread_id="my-thread")
     print(response)
 
@@ -67,7 +67,7 @@ from alpha.skills.describe import build_skill_search_setup
 from alpha.skills.storage import get_or_new_user_skill_storage
 from alpha.subagents.capacity import configure_subagent_execution_capacity
 from alpha.tools.builtins.tool_search import assemble_deferred_tools, build_mcp_routing_middleware, get_mcp_routing_hints_prompt_section
-from alpha.trace_context import AGENT_WORKSPACE_TRACE_METADATA_KEY, bind_trace_id, ensure_trace_id, generate_trace_id, get_current_trace_id, reset_trace_id
+from alpha.trace_context import ALPHA_TRACE_METADATA_KEY, bind_trace_id, ensure_trace_id, generate_trace_id, get_current_trace_id, reset_trace_id
 from alpha.tracing import build_tracing_callbacks, inject_langfuse_metadata
 from alpha.uploads.manager import (
     claim_unique_filename,
@@ -261,7 +261,7 @@ StreamErrorCode = Literal["model_unavailable", "llm_error", "recursion_limit", "
 #: the client tell "the model answered with this sentence" from "the model never
 #: answered". See ``agents/middlewares/llm_error_handling_middleware.py``
 #: ``_build_error_fallback_message``.
-_LLM_ERROR_FALLBACK_MARKER = "agent_workspace_error_fallback"
+_LLM_ERROR_FALLBACK_MARKER = "alpha_error_fallback"
 
 
 class StreamRunError(RuntimeError):
@@ -301,7 +301,7 @@ class StreamEvent:
     data: dict[str, Any] = field(default_factory=dict)
 
 
-class AgentWorkspaceClient:
+class AlphaClient:
     """Embedded Python client for Alpha agent system.
 
     Provides direct programmatic access to Alpha's agent capabilities
@@ -319,9 +319,9 @@ class AgentWorkspaceClient:
 
     Example::
 
-        from alpha.client import AgentWorkspaceClient
+        from alpha.client import AlphaClient
 
-        client = AgentWorkspaceClient()
+        client = AlphaClient()
 
         # Simple one-shot
         print(client.chat("hello"))
@@ -381,7 +381,7 @@ class AgentWorkspaceClient:
             environment: Deployment environment label that ends up in
                 ``langfuse_tags`` (e.g. ``"production"`` / ``"staging"``).
                 When ``None`` the worker/client falls back to the
-                ``AGENT_WORKSPACE_ENV`` or ``ENVIRONMENT`` env vars. Pass an
+                ``ALPHA_ENV`` or ``ENVIRONMENT`` env vars. Pass an
                 explicit value for programmatic callers that do not want
                 env-var coupling.
         """
@@ -528,7 +528,7 @@ class AgentWorkspaceClient:
         # Phase 3: enforce model:use authorization on the embedded/library path
         # too, mirroring the Gateway runtime path in ``_make_lead_agent`` so the
         # role-scoped model policy cannot be bypassed by constructing the agent
-        # through ``AgentWorkspaceClient``. Resolve the ``None`` default to a concrete
+        # through ``AlphaClient``. Resolve the ``None`` default to a concrete
         # name first (what ``create_chat_model(name=None)`` would pick) so the
         # policy covers the implicit default model. ``cfg`` already carries the
         # identity that ``apply_tool_authorization`` reads below.
@@ -688,7 +688,7 @@ class AgentWorkspaceClient:
             "type": "ai",
             "content": "",
             "id": msg_id,
-            "tool_calls": AgentWorkspaceClient._serialize_tool_calls(tool_calls),
+            "tool_calls": AlphaClient._serialize_tool_calls(tool_calls),
         }
         if additional_kwargs:
             data["additional_kwargs"] = additional_kwargs
@@ -699,7 +699,7 @@ class AgentWorkspaceClient:
         """Build a ``messages-tuple`` tool-result event from a ToolMessage."""
         data: dict[str, Any] = {
             "type": "tool",
-            "content": AgentWorkspaceClient._extract_text(msg.content),
+            "content": AlphaClient._extract_text(msg.content),
             "name": msg.name,
             "tool_call_id": msg.tool_call_id,
             "id": msg.id,
@@ -714,33 +714,33 @@ class AgentWorkspaceClient:
         if isinstance(msg, AIMessage):
             d: dict[str, Any] = {"type": "ai", "content": msg.content, "id": getattr(msg, "id", None)}
             if msg.tool_calls:
-                d["tool_calls"] = AgentWorkspaceClient._serialize_tool_calls(msg.tool_calls)
+                d["tool_calls"] = AlphaClient._serialize_tool_calls(msg.tool_calls)
             if getattr(msg, "usage_metadata", None):
                 d["usage_metadata"] = msg.usage_metadata
-            if additional_kwargs := AgentWorkspaceClient._serialize_additional_kwargs(msg):
+            if additional_kwargs := AlphaClient._serialize_additional_kwargs(msg):
                 d["additional_kwargs"] = additional_kwargs
             return d
         if isinstance(msg, ToolMessage):
             d = {
                 "type": "tool",
-                "content": AgentWorkspaceClient._extract_text(msg.content),
+                "content": AlphaClient._extract_text(msg.content),
                 "name": getattr(msg, "name", None),
                 "tool_call_id": getattr(msg, "tool_call_id", None),
                 "id": getattr(msg, "id", None),
             }
-            if additional_kwargs := AgentWorkspaceClient._serialize_additional_kwargs(msg):
+            if additional_kwargs := AlphaClient._serialize_additional_kwargs(msg):
                 d["additional_kwargs"] = additional_kwargs
             if (artifact := getattr(msg, "artifact", None)) is not None:
                 d["artifact"] = artifact
             return d
         if isinstance(msg, HumanMessage):
             d = {"type": "human", "content": msg.content, "id": getattr(msg, "id", None)}
-            if additional_kwargs := AgentWorkspaceClient._serialize_additional_kwargs(msg):
+            if additional_kwargs := AlphaClient._serialize_additional_kwargs(msg):
                 d["additional_kwargs"] = additional_kwargs
             return d
         if isinstance(msg, SystemMessage):
             d = {"type": "system", "content": msg.content, "id": getattr(msg, "id", None)}
-            if additional_kwargs := AgentWorkspaceClient._serialize_additional_kwargs(msg):
+            if additional_kwargs := AlphaClient._serialize_additional_kwargs(msg):
                 d["additional_kwargs"] = additional_kwargs
             return d
         return {"type": "unknown", "content": str(msg), "id": getattr(msg, "id", None)}
@@ -1046,7 +1046,7 @@ class AgentWorkspaceClient:
           heartbeats, multi-subscriber fan-out).  A single in-process
           caller with a direct iterator needs none of that.
 
-        So ``AgentWorkspaceClient.stream()`` is a parallel, sync, in-process
+        So ``AlphaClient.stream()`` is a parallel, sync, in-process
         consumer of the same ``create_agent()`` factory — not a wrapper
         around Gateway.  The two paths **should** stay in sync on which
         LangGraph stream modes they subscribe to; that invariant is
@@ -1122,7 +1122,7 @@ class AgentWorkspaceClient:
                 context[key] = kwargs[key]
 
         configurable = config.get("configurable") or {}
-        agent_workspace_trace_id = ensure_trace_id()
+        alpha_trace_id = ensure_trace_id()
         effective_user_id = context.get("user_id") or get_effective_user_id()
         # Materialize the storage owner in runtime context in every auth mode.
         # ContextVars normally propagate, but this explicit channel also
@@ -1135,8 +1135,8 @@ class AgentWorkspaceClient:
             user_id=effective_user_id,
             assistant_id=self._agent_name or "lead-agent",
             model_name=configurable.get("model_name") or self._model_name,
-            environment=self._environment or os.environ.get("AGENT_WORKSPACE_ENV") or os.environ.get("ENVIRONMENT"),
-            agent_workspace_trace_id=agent_workspace_trace_id,
+            environment=self._environment or os.environ.get("ALPHA_ENV") or os.environ.get("ENVIRONMENT"),
+            alpha_trace_id=alpha_trace_id,
         )
 
         # Agent assembly happens before the generator's first yield, so a model
@@ -1161,7 +1161,7 @@ class AgentWorkspaceClient:
             raise StreamRunError("model_unavailable", message, correlation_id=run_id) from exc
 
         state: dict[str, Any] = {"messages": [HumanMessage(content=message, additional_kwargs={"run_id": run_id})]}
-        context[AGENT_WORKSPACE_TRACE_METADATA_KEY] = agent_workspace_trace_id
+        context[ALPHA_TRACE_METADATA_KEY] = alpha_trace_id
         if self._agent_name:
             context["agent_name"] = self._agent_name
 
@@ -1241,7 +1241,7 @@ class AgentWorkspaceClient:
             """Classify the error-handling middleware's placeholder AI message.
 
             The middleware substitutes an ``AIMessage`` for a provider call that
-            failed, stamped with ``agent_workspace_error_fallback``. That message
+            failed, stamped with ``alpha_error_fallback``. That message
             is indistinguishable from an answer by content alone, so the marker is
             the only reliable signal -- and without it a failed run is
             indistinguishable from a successful one. Owned by
@@ -1615,7 +1615,7 @@ class AgentWorkspaceClient:
         """
         config_path = ExtensionsConfig.resolve_config_path()
         if config_path is None:
-            raise FileNotFoundError("Cannot locate extensions_config.json. Set AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH or ensure it exists in the project root.")
+            raise FileNotFoundError("Cannot locate extensions_config.json. Set ALPHA_EXTENSIONS_CONFIG_PATH or ensure it exists in the project root.")
 
         with extensions_config_write_lock, extensions_config_file_lock(config_path):
             # The singleton is process-local, so re-read the shared file under
@@ -1685,7 +1685,7 @@ class AgentWorkspaceClient:
         if skill.category == SkillCategory.PUBLIC:
             config_path = ExtensionsConfig.resolve_config_path()
             if config_path is None:
-                raise FileNotFoundError("Cannot locate extensions_config.json. Set AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH or ensure it exists in the project root.")
+                raise FileNotFoundError("Cannot locate extensions_config.json. Set ALPHA_EXTENSIONS_CONFIG_PATH or ensure it exists in the project root.")
 
             from alpha.skills.projection import skill_projection_mutation
 
@@ -1705,7 +1705,7 @@ class AgentWorkspaceClient:
                 # Fallback for non-user-scoped storage (unlikely in practice)
                 config_path = ExtensionsConfig.resolve_config_path()
                 if config_path is None:
-                    raise FileNotFoundError("Cannot locate extensions_config.json. Set AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH or ensure it exists in the project root.")
+                    raise FileNotFoundError("Cannot locate extensions_config.json. Set ALPHA_EXTENSIONS_CONFIG_PATH or ensure it exists in the project root.")
                 with extensions_config_write_lock, extensions_config_file_lock(config_path):
                     self._write_skill_enabled_state(config_path, name, enabled)
 

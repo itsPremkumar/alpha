@@ -50,7 +50,7 @@ CRITERIA = ["file:report.md exists", "tests_passed:pytest -q"]
 @pytest.fixture(autouse=True)
 def _isolated_store(tmp_path, monkeypatch):
     """A store on its own JSON file, and a clean live feed per test."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     MISSION_FEED._events.clear()
     MISSION_FEED._seq.clear()
     MISSION_FEED._subscribers.clear()

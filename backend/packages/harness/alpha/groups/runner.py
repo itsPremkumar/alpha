@@ -772,7 +772,7 @@ _global_runner_path: str | None = None
 
 
 def get_group_run_service(storage_path: str | Path | None = None) -> GroupRunService:
-    """Return the process-wide group run service (AGENT_WORKSPACE_HOME-aware)."""
+    """Return the process-wide group run service (ALPHA_HOME-aware)."""
     global _global_runner, _global_runner_path
     if storage_path is not None:
         resolved = str(Path(storage_path).resolve())

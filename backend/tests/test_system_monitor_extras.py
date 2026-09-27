@@ -57,11 +57,11 @@ def test_connection_classification():
 
 
 def test_enabled_respects_env(monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_ADVANCED_MONITOR", "0")
+    monkeypatch.setenv("ALPHA_ADVANCED_MONITOR", "0")
     assert extras.enabled() is False
-    monkeypatch.setenv("AGENT_WORKSPACE_ADVANCED_MONITOR", "off")
+    monkeypatch.setenv("ALPHA_ADVANCED_MONITOR", "off")
     assert extras.enabled() is False
-    monkeypatch.setenv("AGENT_WORKSPACE_ADVANCED_MONITOR", "1")
+    monkeypatch.setenv("ALPHA_ADVANCED_MONITOR", "1")
     assert extras.enabled() is True
 
 

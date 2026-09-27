@@ -50,23 +50,23 @@ Docker provides a consistent, isolated environment with all dependencies pre-con
    `make docker-start` reads `config.yaml` and starts `provisioner` only for provisioner/Kubernetes sandbox mode.
 
    Prefer this wrapper over invoking Compose yourself: it checks your Compose
-   version, creates the missing `.env` files, and exports `AGENT_WORKSPACE_ROOT`.
+   version, creates the missing `.env` files, and exports `ALPHA_ROOT`.
 
    If you do run Compose directly, run it **from the repository root** and set
-   `AGENT_WORKSPACE_ROOT` to the absolute path of your checkout. Compose interpolates
-   that variable into host-side paths (`AGENT_WORKSPACE_HOST_BASE_DIR`,
+   `ALPHA_ROOT` to the absolute path of your checkout. Compose interpolates
+   that variable into host-side paths (`ALPHA_HOST_BASE_DIR`,
    `THREADS_HOST_PATH`) that the AIO and provisioner sandbox modes bind-mount;
-   leaving it unset renders them as `/backend/.agent-workspace`, so those mounts
+   leaving it unset renders them as `/backend/.alpha`, so those mounts
    silently miss your checkout instead of failing:
 
    ```bash
    # macOS / Linux
-   AGENT_WORKSPACE_ROOT="$PWD" docker compose -f docker/docker-compose-dev.yaml up --build
+   ALPHA_ROOT="$PWD" docker compose -f docker/docker-compose-dev.yaml up --build
    ```
 
    ```powershell
    # Windows PowerShell
-   $env:AGENT_WORKSPACE_ROOT = (Get-Location).Path
+   $env:ALPHA_ROOT = (Get-Location).Path
    docker compose -f docker/docker-compose-dev.yaml up --build
    ```
 
@@ -124,7 +124,7 @@ Use these as practical starting points for development and review environments:
 If `make docker-init`, `make docker-start`, or `make docker-stop` fails on Linux with an error like below, your current user likely does not have permission to access the Docker daemon socket:
 
 ```text
-unable to get image 'agent-workspace-gateway': permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock
+unable to get image 'alpha-gateway': permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock
 ```
 
 Recommended fix: add your current user to the `docker` group so Docker commands work without `sudo`.
@@ -158,7 +158,7 @@ If `docker ps` still reports a permission error after `usermod`, fully log out a
 ```
 Host Machine
   ↓
-Docker Compose (agent-workspace-dev)
+Docker Compose (alpha-dev)
   ├→ nginx (port 2026) ← Reverse proxy
   ├→ web (port 3000) ← Frontend with hot-reload
   ├→ gateway (port 8001) ← Gateway API + LangGraph-compatible runtime with hot-reload
@@ -248,7 +248,7 @@ The nginx configuration provides:
 ## Project Structure
 
 ```
-agent-workspace/
+alpha/
 ├── config.example.yaml      # Configuration template
 ├── extensions_config.example.json  # MCP and Skills configuration template
 ├── Makefile                 # Build and development commands
@@ -260,7 +260,7 @@ agent-workspace/
 │       ├── nginx.conf      # Nginx config for Docker
 │       └── nginx.local.conf # Nginx config for local dev
 ├── backend/                 # Backend application
-│   ├── packages/harness/   # agent-workspace-harness package (import: alpha.*)
+│   ├── packages/harness/   # alpha-harness package (import: alpha.*)
 │   │   └── alpha/ # Agents, tools, sandbox, MCP, skills, config
 │   ├── app/                # FastAPI Gateway + IM channels (import: app.*)
 │   │   ├── gateway/        # Gateway API and LangGraph-compatible runtime (port 8001)
@@ -342,7 +342,7 @@ make test
 # Strict blocking-I/O tests
 make test-blocking-io
 
-# Live AgentWorkspaceClient integration tests (explicit opt-in)
+# Live AlphaClient integration tests (explicit opt-in)
 # Requires a valid root config.yaml and API credentials.
 make test-live
 
@@ -358,7 +358,7 @@ make test-e2e
 `make test-live` calls real external APIs and may incur API costs or create
 local sandboxes, artifacts, and files. It is never run by the default backend
 test command or CI. Direct pytest invocations of `tests/test_client_live.py`
-must also set `AGENT_WORKSPACE_RUN_LIVE_TESTS=1`.
+must also set `ALPHA_RUN_LIVE_TESTS=1`.
 
 ### PR Regression Checks
 
@@ -392,7 +392,7 @@ make support-bundle
 The command prints reporter next steps, writes a `*-issue-summary.md` file that
 you can paste into the issue, writes a `*-issue-draft.md` file for AI-assisted
 issue filing, and writes an optional evidence zip under
-`.agent-workspace/support-bundles/`. The zip includes toolchain versions, sanitized
+`.alpha/support-bundles/`. The zip includes toolchain versions, sanitized
 `config.yaml` and `extensions_config.json` summaries, enabled tool/skill/MCP
 structure, git metadata, and redacted `make doctor` output.
 

@@ -2,7 +2,7 @@
 
 The shipped bug this file exists to prevent
 --------------------------------------------
-``alpha --json`` drives ``AgentWorkspaceClient.stream()``, which is a
+``alpha --json`` drives ``AlphaClient.stream()``, which is a
 *synchronous* graph invocation. Three hooks in the real lead-agent stack were
 overridden only in their ``async`` form, so every one of them took down the sync
 path before a single token was produced:

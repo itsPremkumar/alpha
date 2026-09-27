@@ -481,7 +481,7 @@ The browser shows a connection failure when visiting http://localhost:2026.
 
 2. Check nginx logs:
    ```bash
-   cd docker && docker compose -p agent-workspace-dev -f docker-compose-dev.yaml logs nginx
+   cd docker && docker compose -p alpha-dev -f docker-compose-dev.yaml logs nginx
    ```
 
 3. Check firewall settings
@@ -565,13 +565,13 @@ docker stats
 
 #### Enter a Container for Debugging
 ```bash
-docker exec -it agent-workspace-gateway sh
+docker exec -it alpha-gateway sh
 ```
 
 #### Clean Up All Alpha-Related Containers and Images
 ```bash
 make docker-stop
-cd docker && docker compose -p agent-workspace-dev -f docker-compose-dev.yaml down -v
+cd docker && docker compose -p alpha-dev -f docker-compose-dev.yaml down -v
 ```
 
 #### Fully Reset the Docker Environment

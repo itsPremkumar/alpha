@@ -223,8 +223,8 @@ attribution/payload data.
 The default database is:
 
 ```text
-${AGENT_WORKSPACE_HOME}/peer_network/network.sqlite3
-${AGENT_WORKSPACE_HOME}/peer_network/identity.json
+${ALPHA_HOME}/peer_network/network.sqlite3
+${ALPHA_HOME}/peer_network/identity.json
 ```
 
 The database contains peer cards, conversation participants, message envelopes,

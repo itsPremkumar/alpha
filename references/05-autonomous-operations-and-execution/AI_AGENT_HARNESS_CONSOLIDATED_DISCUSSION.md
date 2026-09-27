@@ -2,7 +2,7 @@
 
 **Document purpose:** Consolidated reference for the AI-agent-harness discussions in this project, including the architecture direction, self-improvement/RSI, memory, automation, agent orchestration, research targets, and implementation principles.
 
-**Current project:** `github.com/itsPremkumar/agent-workspace-desktop`
+**Current project:** `github.com/itsPremkumar/alpha-desktop`
 
 **Base:** ByteDance Alpha / Alpha 2.x
 
@@ -2217,7 +2217,7 @@ Do not spend large resources on obviously bad candidates.
 # 63. Suggested Repository Structure
 
 ```text
-agent-workspace-desktop/
+alpha-desktop/
 │
 ├── harness/
 │   ├── agents/

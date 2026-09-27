@@ -37,7 +37,7 @@ class FullMemoryManager(MemoryManager):
 
     def model_post_init(self, __context: Any) -> None:
         self._config = FullMemoryConfig.from_backend_config(self.backend_config)
-        self._storage_root = str((self.backend_config or {}).get("storage_path", ".agent-workspace/data"))
+        self._storage_root = str((self.backend_config or {}).get("storage_path", ".alpha/data"))
         # DeerMem is the durable core -- fail fast if it cannot build.
         from alpha.agents.memory.backends.deermem.deer_mem import DeerMem
 

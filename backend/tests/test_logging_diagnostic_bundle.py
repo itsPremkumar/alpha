@@ -80,7 +80,7 @@ def test_bundle_includes_logs_and_trace_by_default(tmp_path: Path) -> None:
     """One command, the whole picture. Logs and trace are not opt-in."""
     root = tmp_path / "repo"
     _write(root / "logs" / "gateway.log", "2026-09-26 12:00:00 - x - INFO - started\n")
-    _write_trace(root / ".agent-workspace" / "traces" / "run.jsonl")
+    _write_trace(root / ".alpha" / "traces" / "run.jsonl")
     out = root / "out" / "bundle.zip"
 
     bundle_path = support_bundle.create_support_bundle(
@@ -114,7 +114,7 @@ def test_bundle_trace_is_rendered_by_the_sibling_module(tmp_path: Path) -> None:
     timeline is what `export_run_trace.render_trace` produces for the same file.
     """
     root = tmp_path / "repo"
-    trace_path = _write_trace(root / ".agent-workspace" / "traces" / "run.jsonl")
+    trace_path = _write_trace(root / ".alpha" / "traces" / "run.jsonl")
     out = root / "out" / "bundle.zip"
     bundle_path = support_bundle.create_support_bundle(
         project_root=root,
@@ -135,8 +135,8 @@ def test_bundle_trace_is_rendered_by_the_sibling_module(tmp_path: Path) -> None:
 def test_bundle_can_scope_the_trace_to_one_run(tmp_path: Path) -> None:
     """`--run-id` is the difference between "the last run" and "their run"."""
     root = tmp_path / "repo"
-    _write_trace(root / ".agent-workspace" / "traces" / "a.jsonl", run_id="a" * 32)
-    _write_trace(root / ".agent-workspace" / "traces" / "b.jsonl", run_id="b" * 32)
+    _write_trace(root / ".alpha" / "traces" / "a.jsonl", run_id="a" * 32)
+    _write_trace(root / ".alpha" / "traces" / "b.jsonl", run_id="b" * 32)
     summary = support_bundle.collect_trace(root, {"present": False}, run_id="b" * 32)
     assert summary["available"] is True
     assert f"run={'b' * 32}" in summary["timeline"]
@@ -391,7 +391,7 @@ def test_trace_secrets_do_not_survive_into_the_bundle(tmp_path: Path) -> None:
             "attributes": {"error": "connect failed for " + _CORPUS["connection_string"].rsplit("/", 1)[0]},
         }
     ]
-    _write(root / ".agent-workspace" / "traces" / "run.jsonl", json.dumps(records[0]) + "\n")
+    _write(root / ".alpha" / "traces" / "run.jsonl", json.dumps(records[0]) + "\n")
     out = root / "out" / "bundle.zip"
     bundle_path = support_bundle.create_support_bundle(
         project_root=root,
@@ -496,7 +496,7 @@ def test_collected_evidence_actually_goes_through_the_composed_scrubber(monkeypa
     try:
         root = tmp_path / "repo"
         _write(root / "logs" / "gateway.log", "2026-09-26 12:00:00 - x - INFO - hello there\n")
-        _write_trace(root / ".agent-workspace" / "traces" / "run.jsonl")
+        _write_trace(root / ".alpha" / "traces" / "run.jsonl")
         support_bundle.collect_logs(root)
         support_bundle.collect_trace(root, {"present": False})
     finally:
@@ -520,7 +520,7 @@ def test_rendered_reports_disclose_that_operational_data_is_included() -> None:
         "doctor": {"included": False, "ok": True, "errors": None, "warnings": None},
         "versions": {},
         "logs": {"included": True, "files": 2, "error_lines": 0, "warning_lines": 0, "tail_truncated": False},
-        "trace": {"included": True, "source": ".agent-workspace/traces/run.jsonl", "reason": None, "run_id_filter": None},
+        "trace": {"included": True, "source": ".alpha/traces/run.jsonl", "reason": None, "run_id_filter": None},
         "reporter_next_steps": [],
         "maintainer_next_steps": [],
         "evidence_files": [],

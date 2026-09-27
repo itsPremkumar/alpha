@@ -138,7 +138,7 @@ require_compose_version() {{ :; }}
 
 
 @pytest.mark.parametrize("docker_command", ["logs --gateway", "stop", "restart"])
-def test_compose_commands_set_agent_workspace_root_before_compose(docker_command):
+def test_compose_commands_set_alpha_root_before_compose(docker_command):
     """Read-only compose commands should resolve mounts from the repository root."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_root = Path(tmpdir)
@@ -147,8 +147,8 @@ def test_compose_commands_set_agent_workspace_root_before_compose(docker_command
             tmp_root,
             f"""
 COMPOSE_CMD=capture_compose
-capture_compose() {{ test "${{AGENT_WORKSPACE_ROOT:-}}" = "$PROJECT_ROOT"; }}
-unset AGENT_WORKSPACE_ROOT
+capture_compose() {{ test "${{ALPHA_ROOT:-}}" = "$PROJECT_ROOT"; }}
+unset ALPHA_ROOT
 {docker_command}
 """,
         )
@@ -281,7 +281,7 @@ docker-compose() {{
   # Real wrapper ops (down/logs/...) must hit this binary, not `docker compose`.
   printf '%s\n' "$*" > '{marker}'
 }}
-unset AGENT_WORKSPACE_ROOT
+unset ALPHA_ROOT
 stop
 """
         result = subprocess.run(
@@ -342,7 +342,7 @@ docker() {{
   fi
   return 0
 }}
-AGENT_WORKSPACE_DOCKER_SOCKET='/var/run/docker.sock'
+ALPHA_DOCKER_SOCKET='/var/run/docker.sock'
 COMPOSE_CMD=echo
 start
 """
@@ -373,7 +373,7 @@ PROJECT_ROOT='{tmp_root}'
 DOCKER_DIR='{tmp_root}'
 require_compose_version() {{ :; }}
 uname() {{ echo 'Linux'; }}
-AGENT_WORKSPACE_DOCKER_SOCKET='/nonexistent/docker.sock'
+ALPHA_DOCKER_SOCKET='/nonexistent/docker.sock'
 COMPOSE_CMD=echo
 start
 """
@@ -410,7 +410,7 @@ docker() {{
   fi
   return 0
 }}
-AGENT_WORKSPACE_DOCKER_SOCKET='/nonexistent/docker.sock'
+ALPHA_DOCKER_SOCKET='/nonexistent/docker.sock'
 COMPOSE_CMD=echo
 start
 """
@@ -451,7 +451,7 @@ docker() {{
   fi
   return 0
 }}
-AGENT_WORKSPACE_DOCKER_SOCKET='/var/run/docker.sock'
+ALPHA_DOCKER_SOCKET='/var/run/docker.sock'
 COMPOSE_CMD=echo
 start
 """
@@ -499,9 +499,9 @@ def test_aio_deploy_socket_preflight_allows_windows_when_docker_reachable(tmp_pa
     env = os.environ.copy()
     env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
     env["BASH_ENV"] = str(bash_env)
-    env["AGENT_WORKSPACE_DOCKER_SOCKET"] = "/var/run/docker.sock"
+    env["ALPHA_DOCKER_SOCKET"] = "/var/run/docker.sock"
     env["BETTER_AUTH_SECRET"] = "test-secret"
-    env["AGENT_WORKSPACE_INTERNAL_AUTH_TOKEN"] = "test-token"
+    env["ALPHA_INTERNAL_AUTH_TOKEN"] = "test-token"
     env["UV_EXTRAS"] = "redis"
 
     result = subprocess.run(
@@ -524,9 +524,9 @@ def test_aio_deploy_socket_preflight_rejects_missing_socket_on_posix(tmp_path):
 
     env = os.environ.copy()
     env["BASH_ENV"] = str(bash_env)
-    env["AGENT_WORKSPACE_DOCKER_SOCKET"] = "/nonexistent/docker.sock"
+    env["ALPHA_DOCKER_SOCKET"] = "/nonexistent/docker.sock"
     env["BETTER_AUTH_SECRET"] = "test-secret"
-    env["AGENT_WORKSPACE_INTERNAL_AUTH_TOKEN"] = "test-token"
+    env["ALPHA_INTERNAL_AUTH_TOKEN"] = "test-token"
     env["UV_EXTRAS"] = "redis"
 
     result = subprocess.run(
@@ -559,9 +559,9 @@ def test_aio_deploy_socket_preflight_rejects_missing_custom_socket_on_windows(tm
     env = os.environ.copy()
     env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
     env["BASH_ENV"] = str(bash_env)
-    env["AGENT_WORKSPACE_DOCKER_SOCKET"] = "/nonexistent/docker.sock"
+    env["ALPHA_DOCKER_SOCKET"] = "/nonexistent/docker.sock"
     env["BETTER_AUTH_SECRET"] = "test-secret"
-    env["AGENT_WORKSPACE_INTERNAL_AUTH_TOKEN"] = "test-token"
+    env["ALPHA_INTERNAL_AUTH_TOKEN"] = "test-token"
     env["UV_EXTRAS"] = "redis"
 
     result = subprocess.run(
@@ -595,9 +595,9 @@ def test_aio_deploy_socket_preflight_rejects_windows_when_docker_unreachable(tmp
     env = os.environ.copy()
     env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
     env["BASH_ENV"] = str(bash_env)
-    env["AGENT_WORKSPACE_DOCKER_SOCKET"] = "/var/run/docker.sock"
+    env["ALPHA_DOCKER_SOCKET"] = "/var/run/docker.sock"
     env["BETTER_AUTH_SECRET"] = "test-secret"
-    env["AGENT_WORKSPACE_INTERNAL_AUTH_TOKEN"] = "test-token"
+    env["ALPHA_INTERNAL_AUTH_TOKEN"] = "test-token"
     env["UV_EXTRAS"] = "redis"
 
     result = subprocess.run(

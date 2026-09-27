@@ -51,7 +51,7 @@ def test_filter_excludes_fts_auxiliary_tables_but_not_run_events() -> None:
     assert include_object(_table("run_events"), "run_events", "table", True, None) is True
 
 
-def test_filter_includes_agent_workspace_tables() -> None:
+def test_filter_includes_alpha_tables() -> None:
     for owned in ("runs", "threads_meta", "feedback", "users", "channel_connections"):
         assert include_object(_table(owned), owned, "table", True, None) is True
 
@@ -66,7 +66,7 @@ def test_filter_excludes_indexes_on_langgraph_tables() -> None:
     assert include_object(idx, idx.name, "index", True, None) is False
 
 
-def test_filter_includes_indexes_on_agent_workspace_tables() -> None:
+def test_filter_includes_indexes_on_alpha_tables() -> None:
     md = sa.MetaData()
     parent = sa.Table("runs", md, sa.Column("run_id", sa.String, primary_key=True))
     idx = sa.Index("ix_runs_something", parent.c.run_id)
@@ -256,7 +256,7 @@ class TestPrefixesReachTheAlembicProcess:
         proc = subprocess.run(
             [sys.executable, str(script), str(tmp_path / "probe.db")],
             cwd=str(backend),
-            env={**os.environ, "AGENT_WORKSPACE_CONFIG_PATH": str(tmp_path / "config.yaml"), "PYTHONPATH": str(backend)},
+            env={**os.environ, "ALPHA_CONFIG_PATH": str(tmp_path / "config.yaml"), "PYTHONPATH": str(backend)},
             capture_output=True,
             text=True,
             timeout=180,

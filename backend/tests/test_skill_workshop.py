@@ -78,7 +78,7 @@ def test_synthesize_reusable_skill_tool():
 
 def test_synthesize_reusable_skill_auto_publish(monkeypatch):
     with TemporaryDirectory() as tmp_dir:
-        monkeypatch.setenv("AGENT_WORKSPACE_PROJECT_ROOT", tmp_dir)
+        monkeypatch.setenv("ALPHA_PROJECT_ROOT", tmp_dir)
         steps = [{"tool": "exec", "action": "Test action", "command": "echo test"}]
         res = synthesize_reusable_skill.invoke(
             {

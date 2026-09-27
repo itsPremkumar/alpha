@@ -745,7 +745,7 @@ class LLMErrorHandlingMiddleware(AgentMiddleware[AgentState]):
         return AIMessage(
             content=content,
             additional_kwargs={
-                "agent_workspace_error_fallback": True,
+                "alpha_error_fallback": True,
                 "error_type": error_type,
                 "error_reason": reason,
                 "error_detail": detail,

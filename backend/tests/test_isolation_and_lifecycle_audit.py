@@ -503,11 +503,11 @@ def test_gap_a_new_plugin_does_not_go_live_in_an_open_session():
     no invalidation hook reaches an open session."""
     import inspect
 
-    from alpha.client import AgentWorkspaceClient
+    from alpha.client import AlphaClient
 
-    source = inspect.getsource(AgentWorkspaceClient._ensure_agent)
+    source = inspect.getsource(AlphaClient._ensure_agent)
     assert "_agent_config_key" in source
-    reset = inspect.getsource(AgentWorkspaceClient.reset_agent)
+    reset = inspect.getsource(AlphaClient.reset_agent)
     assert "self._agent = None" in reset
     # And nothing in production calls reset_agent.
     from alpha.extensions import manager as ext_manager

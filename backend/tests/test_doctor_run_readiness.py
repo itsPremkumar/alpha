@@ -35,7 +35,7 @@ DOCTOR_PATH = REPO_ROOT / "scripts" / "doctor.py"
 def _load_doctor():
     if REPO_ROOT / "scripts" not in sys.path:
         sys.path.insert(0, str(REPO_ROOT / "scripts"))
-    spec = importlib.util.spec_from_file_location("agent_workspace_doctor_p0", DOCTOR_PATH)
+    spec = importlib.util.spec_from_file_location("alpha_doctor_p0", DOCTOR_PATH)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

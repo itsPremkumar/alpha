@@ -17,8 +17,8 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-DEFAULT_NAMESPACE = "agent-workspace"
-DEFAULT_SELECTOR = "app=agent-workspace-sandbox"
+DEFAULT_NAMESPACE = "alpha"
+DEFAULT_SELECTOR = "app=alpha-sandbox"
 DEFAULT_KUBECTL_TIMEOUT = 30
 
 

@@ -74,7 +74,7 @@ PLACEHOLDER_ROLE = "Autonomous Specialist Teammate"
 def _default_storage_path() -> Path:
     """Resolve the bot roster file under the writable runtime home.
 
-    Uses AGENT_WORKSPACE_HOME (via runtime_home()) so Gateway, Electron, Docker,
+    Uses ALPHA_HOME (via runtime_home()) so Gateway, Electron, Docker,
     and embedded clients share one location instead of CWD at import time.
     Falls back to CWD only when runtime_home() is unusable.
     """
@@ -799,7 +799,7 @@ def get_bot_registry(storage_path: str | Path | None = None) -> BotRegistry:
 
     When an explicit storage_path is given and differs from the cached
     singleton's path, a fresh instance bound to that path is returned so
-    Gateway requests (AGENT_WORKSPACE_HOME-aware) never reuse a stale CWD-bound
+    Gateway requests (ALPHA_HOME-aware) never reuse a stale CWD-bound
     registry created at import time.
     """
     global _global_registry, _global_registry_path
@@ -816,7 +816,7 @@ def get_bot_registry(storage_path: str | Path | None = None) -> BotRegistry:
         except Exception:
             _global_registry_path = None
         return _global_registry
-    # Re-resolve the default location: env (AGENT_WORKSPACE_HOME) may have been set
+    # Re-resolve the default location: env (ALPHA_HOME) may have been set
     # after import. If it moved, rebuild so we read/write the live location.
     try:
         live = str(_default_storage_path().resolve())

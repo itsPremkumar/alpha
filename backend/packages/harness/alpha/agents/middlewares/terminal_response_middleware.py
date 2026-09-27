@@ -81,7 +81,7 @@ class TerminalResponseMiddleware(AgentMiddleware[AgentState]):
         self._pending_prompts: BoundedDict[tuple[str, str], bool] = BoundedDict(1000)
 
     def release_policy_parameters(self) -> dict[str, object]:
-        from agent_workspace_extension_api import canonical_hash
+        from alpha_extension_api import canonical_hash
 
         return {
             "post_tool_empty_retry_limit": 1,
@@ -145,7 +145,7 @@ class TerminalResponseMiddleware(AgentMiddleware[AgentState]):
         additional_kwargs = dict(last.additional_kwargs or {})
         additional_kwargs.update(
             {
-                "agent_workspace_error_fallback": True,
+                "alpha_error_fallback": True,
                 "error_reason": "Model returned an empty terminal response after one retry",
             }
         )

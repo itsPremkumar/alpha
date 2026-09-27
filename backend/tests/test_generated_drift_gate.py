@@ -72,9 +72,9 @@ lint_gate = _load_lint_gate()
 
 @pytest.fixture(autouse=True)
 def isolated_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    workspace = tmp_path / "agent-workspace"
+    workspace = tmp_path / "alpha"
     workspace.mkdir()
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(workspace))
+    monkeypatch.setenv("ALPHA_HOME", str(workspace))
     return tmp_path
 
 

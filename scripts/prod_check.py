@@ -12,7 +12,7 @@ FAIL (exit 1):
   - source auto-update policy is malformed or enables auto_apply while disabled
   - version sources disagree (backend/pyproject.toml,
     backend/packages/harness/pyproject.toml, frontend/package.json,
-    deploy/helm/agent-workspace/Chart.yaml version + appVersion). Fix with
+    deploy/helm/alpha/Chart.yaml version + appVersion). Fix with
     scripts/bump_version.sh <version>, like CI's verify-versions gate.
   - config.yaml or extensions_config.json missing (create with `make config`).
 
@@ -33,7 +33,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-CHART = ROOT / "deploy" / "helm" / "agent-workspace" / "Chart.yaml"
+CHART = ROOT / "deploy" / "helm" / "alpha" / "Chart.yaml"
 PYPROJECT = ROOT / "backend" / "pyproject.toml"
 PACKAGE_JSON = ROOT / "frontend" / "package.json"
 HARNESS_PYPROJECT = ROOT / "backend" / "packages" / "harness" / "pyproject.toml"
@@ -140,7 +140,7 @@ def check_update_policy(failures: list[str], warnings: list[str]) -> None:
         failures.append("update policy auto_apply=true requires enabled=true")
     if enabled:
         print("source auto-update enabled (policy-controlled)")
-        if os.environ.get("AGENT_WORKSPACE_IN_CONTAINER"):
+        if os.environ.get("ALPHA_IN_CONTAINER"):
             warnings.append("source auto-update is enabled inside a container; keep auto_apply disabled and update the image/chart externally")
     else:
         print("source auto-update disabled (safe default)")

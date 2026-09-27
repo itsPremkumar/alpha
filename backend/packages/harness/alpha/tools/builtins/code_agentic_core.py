@@ -28,7 +28,7 @@ EXCLUDE_DIRS = {
     "__pycache__",
     ".venv",
     "venv",
-    ".agent-workspace",
+    ".alpha",
     "dist",
     "build",
     ".next",

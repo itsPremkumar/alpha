@@ -60,11 +60,11 @@ test("chat history storage key, content and export identity work properly", (t) 
     else delete globalThis.localStorage;
   });
   const fixture = {
-    app: "agent-workspace-chat-history",
+    app: "alpha-chat-history",
     version: 1,
-    threads: [{ thread_id: "agent-workspace-thread", title: "Alpha conversation" }],
-    messages: { "agent-workspace-thread": [{ id: "agent-workspace-message", role: "assistant", content: "Alpha saved message" }] },
-    meta: { "agent-workspace-thread": { botName: "lead_agent", goal: null } },
+    threads: [{ thread_id: "alpha-thread", title: "Alpha conversation" }],
+    messages: { "alpha-thread": [{ id: "alpha-message", role: "assistant", content: "Alpha saved message" }] },
+    meta: { "alpha-thread": { botName: "lead_agent", goal: null } },
   };
   storage.set("alpha.chatstore.v1", JSON.stringify(fixture));
   assert.deepEqual(history.loadStore().threads, fixture.threads);

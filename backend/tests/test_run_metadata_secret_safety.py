@@ -10,7 +10,7 @@ from alpha.runtime.secret_context import (
     redact_metadata_secrets,
     validate_run_metadata_secrets,
 )
-from alpha.trace_context import AGENT_WORKSPACE_TRACE_METADATA_KEY
+from alpha.trace_context import ALPHA_TRACE_METADATA_KEY
 
 
 @pytest.mark.parametrize("value", ["secret", "", None, {"nested": True}])
@@ -75,12 +75,12 @@ def test_redact_config_secrets_hides_legacy_config_metadata_without_mutating_sou
 
 def test_redact_config_secrets_drops_trace_id_from_metadata_and_context():
     """``body.config`` is persisted as ``runs.kwargs_json`` and echoed verbatim
-    by the runs API. ``agent_workspace_trace_id`` is ignored as an input everywhere
+    by the runs API. ``alpha_trace_id`` is ignored as an input everywhere
     else, so echoing a caller-supplied one back would only manufacture
     disagreement with the response header, the logs, and the run record."""
     source = {
-        "metadata": {AGENT_WORKSPACE_TRACE_METADATA_KEY: "forged-meta", "token_usage": 7},
-        "context": {AGENT_WORKSPACE_TRACE_METADATA_KEY: "forged-ctx", "model_name": "default"},
+        "metadata": {ALPHA_TRACE_METADATA_KEY: "forged-meta", "token_usage": 7},
+        "context": {ALPHA_TRACE_METADATA_KEY: "forged-ctx", "model_name": "default"},
     }
 
     redacted = redact_config_secrets(source)
@@ -89,8 +89,8 @@ def test_redact_config_secrets_drops_trace_id_from_metadata_and_context():
         "metadata": {"token_usage": 7},
         "context": {"model_name": "default"},
     }
-    assert source["metadata"][AGENT_WORKSPACE_TRACE_METADATA_KEY] == "forged-meta"
-    assert source["context"][AGENT_WORKSPACE_TRACE_METADATA_KEY] == "forged-ctx"
+    assert source["metadata"][ALPHA_TRACE_METADATA_KEY] == "forged-meta"
+    assert source["context"][ALPHA_TRACE_METADATA_KEY] == "forged-ctx"
 
 
 def test_run_response_hides_historical_auth_token_without_mutating_record():

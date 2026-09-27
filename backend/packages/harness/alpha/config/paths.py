@@ -81,7 +81,7 @@ def _join_host_path(base: str, *parts: str) -> str:
     """Join host filesystem path segments while preserving native style.
 
     Docker Desktop on Windows expects bind mount sources to stay in Windows
-    path form (for example ``C:\\repo\\backend\\.agent-workspace``).  Using
+    path form (for example ``C:\\repo\\backend\\.alpha``).  Using
     ``Path(base) / ...`` on a POSIX host can accidentally rewrite those paths
     with mixed separators, so this helper preserves the original style.
     """
@@ -127,8 +127,8 @@ class Paths:
 
     BaseDir resolution (in priority order):
         1. Constructor argument `base_dir`
-        2. AGENT_WORKSPACE_HOME environment variable
-        3. Caller project fallback: `{project_root}/.agent-workspace`
+        2. ALPHA_HOME environment variable
+        3. Caller project fallback: `{project_root}/.alpha`
     """
 
     def __init__(self, base_dir: str | Path | None = None) -> None:
@@ -140,18 +140,18 @@ class Paths:
 
         When running inside Docker with a mounted Docker socket (DooD), the Docker
         daemon runs on the host and resolves mount paths against the host filesystem.
-        Set AGENT_WORKSPACE_HOST_BASE_DIR to the host-side path that corresponds to this
+        Set ALPHA_HOST_BASE_DIR to the host-side path that corresponds to this
         container's base_dir so that sandbox container volume mounts work correctly.
 
         Falls back to base_dir when the env var is not set (native/local execution).
         """
-        if env := os.getenv("AGENT_WORKSPACE_HOST_BASE_DIR"):
+        if env := os.getenv("ALPHA_HOST_BASE_DIR"):
             return Path(env)
         return self.base_dir
 
     def _host_base_dir_str(self) -> str:
         """Return the host base dir as a raw string for bind mounts."""
-        if env := os.getenv("AGENT_WORKSPACE_HOST_BASE_DIR"):
+        if env := os.getenv("ALPHA_HOST_BASE_DIR"):
             return env
         return str(self.base_dir)
 
@@ -161,7 +161,7 @@ class Paths:
         if self._base_dir is not None:
             return self._base_dir
 
-        if env_home := os.getenv("AGENT_WORKSPACE_HOME"):
+        if env_home := os.getenv("ALPHA_HOME"):
             return Path(env_home).resolve()
 
         return _default_local_base_dir()

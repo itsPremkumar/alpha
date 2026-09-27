@@ -692,7 +692,7 @@ export async function storageInfo(): Promise<{ threads: number; messages: number
 export async function exportStoreJson(): Promise<string> {
   const store = await loadStore();
   return JSON.stringify(
-    { app: "agent-workspace-chat-history", ...store, exportedAt: new Date().toISOString() },
+    { app: "alpha-chat-history", ...store, exportedAt: new Date().toISOString() },
     null,
     2,
   );

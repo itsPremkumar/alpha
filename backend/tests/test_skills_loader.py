@@ -19,8 +19,8 @@ def _write_skill(skill_dir: Path, name: str, description: str) -> None:
 
 def test_get_skills_root_path_points_to_current_project_skills(tmp_path: Path, monkeypatch):
     """get_skills_root_path() should point to the caller project skills directory."""
-    monkeypatch.delenv("AGENT_WORKSPACE_SKILLS_PATH", raising=False)
-    monkeypatch.delenv("AGENT_WORKSPACE_PROJECT_ROOT", raising=False)
+    monkeypatch.delenv("ALPHA_SKILLS_PATH", raising=False)
+    monkeypatch.delenv("ALPHA_PROJECT_ROOT", raising=False)
     monkeypatch.chdir(tmp_path)
     (tmp_path / "skills").mkdir()
 
@@ -30,9 +30,9 @@ def test_get_skills_root_path_points_to_current_project_skills(tmp_path: Path, m
 
 
 def test_get_skills_root_path_honors_env_override(tmp_path: Path, monkeypatch):
-    """AGENT_WORKSPACE_SKILLS_PATH should override the caller project skills directory."""
+    """ALPHA_SKILLS_PATH should override the caller project skills directory."""
     skills_root = tmp_path / "team-skills"
-    monkeypatch.setenv("AGENT_WORKSPACE_SKILLS_PATH", str(skills_root))
+    monkeypatch.setenv("ALPHA_SKILLS_PATH", str(skills_root))
 
     app_config = SimpleNamespace(skills=SkillsConfig())
     path = get_or_new_skill_storage(app_config=app_config).get_skills_root_path()

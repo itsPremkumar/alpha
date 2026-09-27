@@ -625,7 +625,7 @@ def test_sqlite_is_the_default_and_postgres_is_only_annotated_when_opted_in(tmp_
 
     default_env = run("")
     assert "sqlite" in default_env, "the default install must state the SQLite backend"
-    assert "AGENT_WORKSPACE_DATABASE_BACKEND" not in default_env, "the default install must not enable Postgres"
+    assert "ALPHA_DATABASE_BACKEND" not in default_env, "the default install must not enable Postgres"
 
     fresh = _make_fake_checkout(tmp_path / "pg")
     (tmp_path / "pg").mkdir(exist_ok=True)
@@ -647,7 +647,7 @@ def test_sqlite_is_the_default_and_postgres_is_only_annotated_when_opted_in(tmp_
     )
     assert result.returncode == 0, result.stderr
     optin_env = (fresh / ".env").read_text(encoding="utf-8")
-    assert "AGENT_WORKSPACE_DATABASE_BACKEND=postgres" in optin_env, "-WithPostgres must be the only way Postgres is enabled"
+    assert "ALPHA_DATABASE_BACKEND=postgres" in optin_env, "-WithPostgres must be the only way Postgres is enabled"
     assert "YOUR OWN Postgres" in optin_env, "the Postgres opt-in must say the operator supplies the database"
 
 
@@ -802,7 +802,7 @@ def test_workflow_keeps_the_pre_existing_electron_build() -> None:
     """The workflow is extended, never replaced: the Electron NSIS build stays."""
     text = _read(WORKFLOW)
     assert "npm run dist" in text, "the existing Electron packaging step must be preserved"
-    assert "Agent-Workspace-Windows-Installer" in text, "the existing artifact name must be preserved"
+    assert "Alpha-Windows-Installer" in text, "the existing artifact name must be preserved"
 
 
 def test_workflow_installs_the_artifact_on_a_clean_runner_and_asserts_health() -> None:

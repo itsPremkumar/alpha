@@ -1323,7 +1323,7 @@ class TestAsyncExecutionPath:
         fallback_message = AIMessage(
             content=fallback_text,
             additional_kwargs={
-                "agent_workspace_error_fallback": True,
+                "alpha_error_fallback": True,
                 "error_type": "BadRequestError",
                 "error_reason": "generic",
                 "error_detail": "Error code: 400 - InvalidParameter",
@@ -1378,7 +1378,7 @@ class TestAsyncExecutionPath:
         stale_fallback = AIMessage(
             content="LLM request failed: an earlier parent-history error",
             additional_kwargs={
-                "agent_workspace_error_fallback": True,
+                "alpha_error_fallback": True,
                 "error_type": "BadRequestError",
                 "error_reason": "generic",
                 "error_detail": "Error code: 400 - InvalidParameter",
@@ -1585,7 +1585,7 @@ class TestAsyncExecutionPath:
 
     @pytest.mark.anyio
     async def test_aexecute_step_capture_survives_history_contraction(self, classes, base_config, mock_agent, msg):
-        """Regression for #3875 Phase 3: AgentWorkspaceSummarizationMiddleware rewrites the
+        """Regression for #3875 Phase 3: AlphaSummarizationMiddleware rewrites the
         messages channel mid-run via ``RemoveMessage(id=REMOVE_ALL_MESSAGES)``,
         so a later ``values`` snapshot hands the executor a SHORTER message list
         than the cursor it was tracking. Without the contraction reset in
@@ -1922,7 +1922,7 @@ class TestAsyncExecutionPath:
 
         ``_extract_llm_error_fallback`` (#4042) marks a terminal ``AIMessage``
         as a handled provider failure via
-        ``additional_kwargs.agent_workspace_error_fallback``, and the
+        ``additional_kwargs.alpha_error_fallback``, and the
         normal-completion branch above already consults it before falling
         back to ``_extract_final_result``. This except-block must apply the
         same check before recovering ``usable_partial`` from raw non-empty
@@ -1941,7 +1941,7 @@ class TestAsyncExecutionPath:
         fallback_message = AIMessage(
             content=fallback_text,
             additional_kwargs={
-                "agent_workspace_error_fallback": True,
+                "alpha_error_fallback": True,
                 "error_type": "BadRequestError",
                 "error_reason": "generic",
                 "error_detail": "Error code: 400 - InvalidParameter",
@@ -3198,7 +3198,7 @@ class TestCooperativeCancellation:
 
         SubagentExecutor = classes["SubagentExecutor"]
         SubagentStatus = classes["SubagentStatus"]
-        parent_callback = SimpleNamespace(agent_workspace_loop_bound=True)
+        parent_callback = SimpleNamespace(alpha_loop_bound=True)
         stream_callback = object()
         child_callback = object()
         observed: dict[str, object] = {}
@@ -3257,7 +3257,7 @@ class TestCooperativeCancellation:
         from langchain_core.callbacks.manager import AsyncCallbackManager
         from langchain_core.runnables.config import var_child_runnable_config
 
-        loop_bound = SimpleNamespace(agent_workspace_loop_bound=True)
+        loop_bound = SimpleNamespace(alpha_loop_bound=True)
         stream_handler = object()
         manager = AsyncCallbackManager(
             handlers=[loop_bound, stream_handler],
@@ -3697,7 +3697,7 @@ class TestSubagentTracingWiring:
         yield
         reset_tracing_config()
 
-    def _make_executor(self, classes, *, user_id=None, name="general-purpose", parent_model="test-model", agent_workspace_trace_id=None):
+    def _make_executor(self, classes, *, user_id=None, name="general-purpose", parent_model="test-model", alpha_trace_id=None):
         SubagentExecutor = classes["SubagentExecutor"]
         SubagentConfig = classes["SubagentConfig"]
         config = SubagentConfig(
@@ -3714,7 +3714,7 @@ class TestSubagentTracingWiring:
             thread_id="thread-trace-1",
             trace_id="trace-1",
             user_id=user_id,
-            agent_workspace_trace_id=agent_workspace_trace_id,
+            alpha_trace_id=alpha_trace_id,
         )
 
     @pytest.mark.anyio
@@ -3747,19 +3747,19 @@ class TestSubagentTracingWiring:
         assert len(callbacks) >= 2, "existing callbacks must be preserved when tracing is injected"
         assert result.status.value == SubagentStatus.COMPLETED.value
 
-    def test_agent_workspace_trace_id_is_never_none(self, classes):
+    def test_alpha_trace_id_is_never_none(self, classes):
         """The attribute is part of the non-nullable trace contract: consumers
         write it into the child runtime context unconditionally, so an
         undelegated id must resolve rather than propagate ``None``."""
-        executor = self._make_executor(classes, agent_workspace_trace_id=None)
+        executor = self._make_executor(classes, alpha_trace_id=None)
 
-        assert executor.agent_workspace_trace_id
+        assert executor.alpha_trace_id
 
-    def test_agent_workspace_trace_id_falls_back_to_the_ambient_trace(self, classes):
+    def test_alpha_trace_id_falls_back_to_the_ambient_trace(self, classes):
         with request_trace_context("ambient-trace-1"):
-            executor = self._make_executor(classes, agent_workspace_trace_id=None)
+            executor = self._make_executor(classes, alpha_trace_id=None)
 
-        assert executor.agent_workspace_trace_id == "ambient-trace-1"
+        assert executor.alpha_trace_id == "ambient-trace-1"
 
     @pytest.mark.anyio
     async def test_aexecute_rebinds_the_parent_trace_on_the_isolated_loop(
@@ -3773,7 +3773,7 @@ class TestSubagentTracingWiring:
         also travels as data precisely so it can be rebound here."""
         from alpha.trace_context import get_current_trace_id
 
-        executor = self._make_executor(classes, agent_workspace_trace_id="parent-trace-1")
+        executor = self._make_executor(classes, alpha_trace_id="parent-trace-1")
         fake_agent = _FakeStreamAgent()
         monkeypatch.setattr(executor, "_build_initial_state", self._noop_build_initial_state)
         monkeypatch.setattr(executor, "_create_agent", lambda *a, **kw: fake_agent)
@@ -3816,7 +3816,7 @@ class TestSubagentTracingWiring:
         sentinel = _Sentinel()
         monkeypatch.setattr(executor_module, "build_tracing_callbacks", lambda: [sentinel])
 
-        executor = self._make_executor(classes, user_id="alice", name="general_purpose", agent_workspace_trace_id="gateway-trace-sub")
+        executor = self._make_executor(classes, user_id="alice", name="general_purpose", alpha_trace_id="gateway-trace-sub")
         fake_agent = _FakeStreamAgent()
         monkeypatch.setattr(executor, "_build_initial_state", self._noop_build_initial_state)
         monkeypatch.setattr(executor, "_create_agent", lambda *a, **kw: fake_agent)
@@ -3829,8 +3829,8 @@ class TestSubagentTracingWiring:
         # Underscores are normalized to hyphens so the trace name matches the
         # lead-agent naming shape.
         assert metadata.get("langfuse_trace_name") == "subagent:general-purpose"
-        assert metadata.get("agent_workspace_trace_id") == "gateway-trace-sub"
-        assert fake_agent.captured_context.get("agent_workspace_trace_id") == "gateway-trace-sub"
+        assert metadata.get("alpha_trace_id") == "gateway-trace-sub"
+        assert fake_agent.captured_context.get("alpha_trace_id") == "gateway-trace-sub"
         tags = metadata.get("langfuse_tags") or []
         assert any(t.startswith("model:") for t in tags), "model tag must be emitted for cost attribution"
 
@@ -3931,19 +3931,19 @@ class TestSubagentTracingWiring:
         assert metadata.get("langfuse_trace_name") == "subagent"
 
     @pytest.mark.anyio
-    async def test_environment_tag_emitted_from_agent_workspace_env(
+    async def test_environment_tag_emitted_from_alpha_env(
         self,
         classes,
         executor_module,
         monkeypatch,
     ):
-        """``AGENT_WORKSPACE_ENV`` must surface as an ``env:<value>`` tag so Langfuse
+        """``ALPHA_ENV`` must surface as an ``env:<value>`` tag so Langfuse
         cost aggregation can split traces by deployment environment.
         """
         monkeypatch.setenv("LANGFUSE_TRACING", "true")
         monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
         monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
-        monkeypatch.setenv("AGENT_WORKSPACE_ENV", "staging")
+        monkeypatch.setenv("ALPHA_ENV", "staging")
         from alpha.config.tracing_config import reset_tracing_config
 
         reset_tracing_config()
@@ -4118,7 +4118,7 @@ class TestSubagentGuardrailAttribution:
     ):
         """The IM-channel sender identity captured at task_tool must reach the
         subagent's ``astream`` context so delegated bash commands export the
-        dispatching turn's ``AGENT_WORKSPACE_CHANNEL_USER_ID`` (group chats share one
+        dispatching turn's ``ALPHA_CHANNEL_USER_ID`` (group chats share one
         thread across senders)."""
         SubagentExecutor = classes["SubagentExecutor"]
         SubagentConfig = classes["SubagentConfig"]
@@ -4772,7 +4772,7 @@ class TestBashExecutionHarvest:
 
     def test_harvests_only_bash_family_calls_with_bounded_fields(self, classes, monkeypatch):
         executor_module = importlib.import_module("alpha.subagents.executor")
-        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="agent_workspace_tool_meta"))
+        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="alpha_tool_meta"))
 
         executions = executor_module._harvest_bash_executions(self._final_state(classes))
 
@@ -4787,10 +4787,10 @@ class TestBashExecutionHarvest:
 
     def test_status_comes_from_tool_meta_when_present(self, classes, monkeypatch):
         executor_module = importlib.import_module("alpha.subagents.executor")
-        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="agent_workspace_tool_meta"))
+        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="alpha_tool_meta"))
         state = self._final_state(classes)
         tool_msg = state["messages"][2]
-        tool_msg.additional_kwargs["agent_workspace_tool_meta"] = {"status": "error"}
+        tool_msg.additional_kwargs["alpha_tool_meta"] = {"status": "error"}
 
         executions = executor_module._harvest_bash_executions(state)
 
@@ -4801,10 +4801,10 @@ class TestBashExecutionHarvest:
         ``Exit Code: N`` — tool_meta stays success, so the pass summary would
         otherwise satisfy the leaf. The recorded status must be the shell's."""
         executor_module = importlib.import_module("alpha.subagents.executor")
-        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="agent_workspace_tool_meta"))
+        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="alpha_tool_meta"))
         state = self._final_state(classes)
         state["messages"][2].content = "12 passed, 1 error in 2.0s\nExit Code: 1"
-        state["messages"][2].additional_kwargs["agent_workspace_tool_meta"] = {"status": "success"}
+        state["messages"][2].additional_kwargs["alpha_tool_meta"] = {"status": "success"}
 
         executions = executor_module._harvest_bash_executions(state)
 
@@ -4813,7 +4813,7 @@ class TestBashExecutionHarvest:
 
     def test_command_exited_with_code_marker_is_error(self, classes, monkeypatch):
         executor_module = importlib.import_module("alpha.subagents.executor")
-        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="agent_workspace_tool_meta"))
+        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="alpha_tool_meta"))
         state = self._final_state(classes)
         state["messages"][2].content = "Command exited with code 3"
 
@@ -4826,7 +4826,7 @@ class TestBashExecutionHarvest:
         only as the COMPLETE output — a successful command that prints the
         phrase while exercising an error path must not record failure."""
         executor_module = importlib.import_module("alpha.subagents.executor")
-        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="agent_workspace_tool_meta"))
+        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="alpha_tool_meta"))
         state = self._final_state(classes)
         state["messages"][2].content = "validating error path: Command exited with code 3\n5 passed"
 
@@ -4836,7 +4836,7 @@ class TestBashExecutionHarvest:
 
     def test_zero_exit_code_marker_is_success(self, classes, monkeypatch):
         executor_module = importlib.import_module("alpha.subagents.executor")
-        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="agent_workspace_tool_meta"))
+        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="alpha_tool_meta"))
         state = self._final_state(classes)
         state["messages"][2].content = "12 passed\nExit Code: 0"
 
@@ -4849,7 +4849,7 @@ class TestBashExecutionHarvest:
         from, so the leaf detail can report what was seen instead of asserting
         a failure indistinguishable from the command's own trailing text."""
         executor_module = importlib.import_module("alpha.subagents.executor")
-        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="agent_workspace_tool_meta"))
+        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="alpha_tool_meta"))
         state = self._final_state(classes)
         state["messages"][2].content = "green\nExit Code: 5"
 
@@ -4860,7 +4860,7 @@ class TestBashExecutionHarvest:
 
     def test_remote_form_records_its_marker_text(self, classes, monkeypatch):
         executor_module = importlib.import_module("alpha.subagents.executor")
-        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="agent_workspace_tool_meta"))
+        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="alpha_tool_meta"))
         state = self._final_state(classes)
         state["messages"][2].content = "Command exited with code 3"
 
@@ -4870,7 +4870,7 @@ class TestBashExecutionHarvest:
 
     def test_meta_status_without_marker_records_none(self, classes, monkeypatch):
         executor_module = importlib.import_module("alpha.subagents.executor")
-        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="agent_workspace_tool_meta"))
+        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="alpha_tool_meta"))
 
         executions = executor_module._harvest_bash_executions(self._final_state(classes))
 
@@ -4881,7 +4881,7 @@ class TestBashExecutionHarvest:
         """A command killed on timeout carries Exit Code: 124 after the
         notice — partial passing output must not record success."""
         executor_module = importlib.import_module("alpha.subagents.executor")
-        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="agent_workspace_tool_meta"))
+        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="alpha_tool_meta"))
         state = self._final_state(classes)
         state["messages"][2].content = "12 passed\nCommand timed out after 30 seconds and was terminated. ...\nExit Code: 124"
 
@@ -4894,7 +4894,7 @@ class TestBashExecutionHarvest:
         marker (Exit Code: -9) — it must record failure, not fall back to
         the meta success of an ordinary bash return."""
         executor_module = importlib.import_module("alpha.subagents.executor")
-        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="agent_workspace_tool_meta"))
+        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="alpha_tool_meta"))
         state = self._final_state(classes)
         state["messages"][2].content = "5 passed\nExit Code: -9"
 
@@ -4910,7 +4910,7 @@ class TestBashExecutionHarvest:
         retain it even when a later chunk no longer carries the messages."""
         SubagentExecutor = classes["SubagentExecutor"]
         SubagentStatus = classes["SubagentStatus"]
-        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="agent_workspace_tool_meta"))
+        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="alpha_tool_meta"))
 
         ai_with_call = classes["AIMessage"](
             content="",
@@ -4938,7 +4938,7 @@ class TestBashExecutionHarvest:
 
     def test_output_tail_is_bounded(self, classes, monkeypatch):
         executor_module = importlib.import_module("alpha.subagents.executor")
-        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="agent_workspace_tool_meta"))
+        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="alpha_tool_meta"))
         state = self._final_state(classes)
         state["messages"][2].content = "x" * 5000
 
@@ -4949,7 +4949,7 @@ class TestBashExecutionHarvest:
     def test_long_command_is_capped_and_flagged_truncated(self, classes, monkeypatch):
         """PR review: the matcher must know the command lost its suffix."""
         executor_module = importlib.import_module("alpha.subagents.executor")
-        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="agent_workspace_tool_meta"))
+        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="alpha_tool_meta"))
         state = self._final_state(classes)
         long_command = "make test " + "--long-option " * 60
         state["messages"][1].tool_calls[0]["args"]["command"] = long_command
@@ -4962,7 +4962,7 @@ class TestBashExecutionHarvest:
 
     def test_short_command_is_not_flagged(self, classes, monkeypatch):
         executor_module = importlib.import_module("alpha.subagents.executor")
-        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="agent_workspace_tool_meta"))
+        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="alpha_tool_meta"))
 
         executions = executor_module._harvest_bash_executions(self._final_state(classes))
 
@@ -4975,7 +4975,7 @@ class TestBashExecutionHarvest:
         sandbox cannot mis-adjudicate persistent-session evidence as
         trusted."""
         executor_module = importlib.import_module("alpha.subagents.executor")
-        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="agent_workspace_tool_meta"))
+        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="alpha_tool_meta"))
 
         class _PersistentShellSandbox:
             persistent_shell_sessions = True
@@ -4990,7 +4990,7 @@ class TestBashExecutionHarvest:
 
     def test_fresh_process_sandbox_stamps_false(self, classes, monkeypatch):
         executor_module = importlib.import_module("alpha.subagents.executor")
-        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="agent_workspace_tool_meta"))
+        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="alpha_tool_meta"))
 
         class _OneShotSandbox:
             persistent_shell_sessions = False
@@ -5008,7 +5008,7 @@ class TestBashExecutionHarvest:
         ``persistent_shell_sessions`` is UNKNOWN, not fresh-shell — silence
         cannot be read as a clean-environment proof."""
         executor_module = importlib.import_module("alpha.subagents.executor")
-        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="agent_workspace_tool_meta"))
+        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="alpha_tool_meta"))
 
         class _UndeclaredSandbox:
             pass
@@ -5025,7 +5025,7 @@ class TestBashExecutionHarvest:
         """No sandbox channel in the evidence-carrying state → unknown
         provenance; the acceptance matcher fails closed on it."""
         executor_module = importlib.import_module("alpha.subagents.executor")
-        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="agent_workspace_tool_meta"))
+        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="alpha_tool_meta"))
 
         executions = executor_module._harvest_bash_executions(self._final_state(classes))
 
@@ -5033,7 +5033,7 @@ class TestBashExecutionHarvest:
 
     def test_no_bash_calls_returns_empty_list(self, classes, monkeypatch):
         executor_module = importlib.import_module("alpha.subagents.executor")
-        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="agent_workspace_tool_meta"))
+        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="alpha_tool_meta"))
 
         assert executor_module._harvest_bash_executions({"messages": [classes["HumanMessage"](content="task")]}) == []
 
@@ -5047,7 +5047,7 @@ class TestBashExecutionHarvest:
     async def test_completed_run_attaches_bash_executions_only_with_criteria(self, classes, base_config, mock_agent, msg, monkeypatch):
         SubagentExecutor = classes["SubagentExecutor"]
         SubagentStatus = classes["SubagentStatus"]
-        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="agent_workspace_tool_meta"))
+        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="alpha_tool_meta"))
 
         ai_with_call = classes["AIMessage"](
             content="",
@@ -5079,7 +5079,7 @@ class TestBashExecutionHarvest:
         ``tool_receipts`` already makes."""
         SubagentExecutor = classes["SubagentExecutor"]
         SubagentStatus = classes["SubagentStatus"]
-        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="agent_workspace_tool_meta"))
+        monkeypatch.setitem(sys.modules, "alpha.agents.middlewares.tool_result_meta", _module("alpha.agents.middlewares.tool_result_meta", TOOL_META_KEY="alpha_tool_meta"))
 
         final_state = {"messages": [msg.human("Do something"), msg.ai("Done", "msg-9")]}
         mock_agent.astream = lambda *args, **kwargs: async_iterator([final_state])

@@ -31,7 +31,7 @@ Runtime coupling: the npm-installed ``lark-cli`` binary version is pinned in
 ``backend/Dockerfile`` (``ARG LARK_CLI_NPM_VERSION``) and
 ``docker/docker-compose*.yaml`` as a bootstrap fallback. The admin install path
 also manages a writable Alpha-owned Gateway CLI under
-``.agent-workspace/integrations/lark-cli/gateway-cli`` and prefers it over the system
+``.alpha/integrations/lark-cli/gateway-cli`` and prefers it over the system
 PATH, so users do not need to run terminal installation commands. Reinstalling
 the integration refreshes both the managed Gateway CLI and the skill pack to the
 same version when network access is available. ``get_lark_integration_status``
@@ -97,8 +97,8 @@ LARK_CLI_NPM_VERSION = FALLBACK_LARK_CLI_VERSION.removeprefix("v")
 LARK_CLI_NPM_PACKAGE = "@larksuite/cli"
 LARK_CLI_GITHUB_REPO = "larksuite/cli"
 LARK_CLI_LATEST_RELEASE_API = f"https://api.github.com/repos/{LARK_CLI_GITHUB_REPO}/releases/latest"
-LARK_CLI_SOURCE_ARCHIVE_ENV = "AGENT_WORKSPACE_LARK_CLI_SKILLS_ARCHIVE"
-LARK_CLI_SANDBOX_RUNTIME_SOURCE_ENV = "AGENT_WORKSPACE_LARK_CLI_SANDBOX_RUNTIME_DIR"
+LARK_CLI_SOURCE_ARCHIVE_ENV = "ALPHA_LARK_CLI_SKILLS_ARCHIVE"
+LARK_CLI_SANDBOX_RUNTIME_SOURCE_ENV = "ALPHA_LARK_CLI_SANDBOX_RUNTIME_DIR"
 LARK_CLI_DOWNLOAD_TIMEOUT_SECONDS = 60
 LARK_CLI_NPM_INSTALL_TIMEOUT_SECONDS = 180
 #: Bounds the local ``whoami`` SID probe that the Windows credential hardening
@@ -120,7 +120,7 @@ LARK_CLI_SANDBOX_LOCKS_DIR = f"{LARK_CLI_SANDBOX_CONFIG_DIR}/locks"
 LARK_CLI_SANDBOX_DATA_DIR = "/mnt/integrations/lark-cli/data"
 LARK_CLI_SANDBOX_RUNTIME_DIR = "/mnt/integrations/lark-cli/runtime"
 LARK_CLI_LINUX_ARCHES = ("amd64", "arm64")
-LARK_CLI_RUNTIME_MANIFEST_FILE = ".agent-workspace-lark-cli-runtime.json"
+LARK_CLI_RUNTIME_MANIFEST_FILE = ".alpha-lark-cli-runtime.json"
 LARK_CLI_FLOW_STATE_FILE = ".alpha-lark-cli-flow.json"
 
 # Pattern B (issue #4338): loopback URL the sandbox shim uses to reach the broker
@@ -142,8 +142,8 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 exec "$script_dir/../linux-$arch/lark-cli" "$@"
 """
 _VERSION_TAG_RE = re.compile(r"v?\d+\.\d+\.\d+")
-_AGENT_WORKSPACE_LARK_SHARED_GUIDANCE_MARKER = "<!-- alpha-lark-cli-auth-guidance-v2 -->"
-_AGENT_WORKSPACE_LARK_SHARED_GUIDANCE_LEGACY_MARKERS = ("<!-- alpha-lark-cli-auth-guidance-v1 -->",)
+_ALPHA_LARK_SHARED_GUIDANCE_MARKER = "<!-- alpha-lark-cli-auth-guidance-v2 -->"
+_ALPHA_LARK_SHARED_GUIDANCE_LEGACY_MARKERS = ("<!-- alpha-lark-cli-auth-guidance-v1 -->",)
 _LARK_APP_REGISTRATION_PATH = "/oauth/v1/app/registration"
 
 LARK_SKILL_NAMES: tuple[str, ...] = (
@@ -1193,7 +1193,7 @@ def _download_lark_release_asset(version: str, asset_name: str, *, max_bytes: in
     """Download one official release asset with a strict size bound."""
     request = urllib.request.Request(
         _lark_cli_release_asset_url(version, asset_name),
-        headers={"Accept": "application/octet-stream", "User-Agent": "agent-workspace"},
+        headers={"Accept": "application/octet-stream", "User-Agent": "alpha"},
     )
     try:
         with urllib.request.urlopen(request, timeout=LARK_CLI_DOWNLOAD_TIMEOUT_SECONDS) as response:
@@ -1905,7 +1905,7 @@ def _probe_provisioner_capabilities(config: AppConfig, *, timeout: float = 5.0) 
     headers = {"X-API-Key": api_key} if api_key else {}
     url = f"{base.rstrip('/')}/api/capabilities"
     try:
-        request = urllib.request.Request(url, headers={"User-Agent": "agent-workspace", **headers})
+        request = urllib.request.Request(url, headers={"User-Agent": "alpha", **headers})
         with urllib.request.urlopen(request, timeout=timeout) as response:
             payload = json.loads(response.read().decode("utf-8"))
         if not isinstance(payload, dict):
@@ -2555,7 +2555,7 @@ def _resolve_latest_lark_cli_version() -> str:
     try:
         request = urllib.request.Request(
             LARK_CLI_LATEST_RELEASE_API,
-            headers={"Accept": "application/vnd.github+json", "User-Agent": "agent-workspace"},
+            headers={"Accept": "application/vnd.github+json", "User-Agent": "alpha"},
         )
         with urllib.request.urlopen(request, timeout=LARK_HTTP_TIMEOUT_SECONDS) as response:
             raw = response.read().decode("utf-8")
@@ -2583,7 +2583,7 @@ def _cached_latest_lark_cli_version() -> str | None:
     try:
         request = urllib.request.Request(
             LARK_CLI_LATEST_RELEASE_API,
-            headers={"Accept": "application/vnd.github+json", "User-Agent": "agent-workspace"},
+            headers={"Accept": "application/vnd.github+json", "User-Agent": "alpha"},
         )
         with urllib.request.urlopen(request, timeout=LARK_HTTP_TIMEOUT_SECONDS) as response:
             data = json.loads(response.read().decode("utf-8"))
@@ -2705,7 +2705,7 @@ def _install_lark_skills_from_archive_locked(
             archive_version = version or _infer_lark_archive_version(zf)
             extracted = _extract_lark_skills(zf, staging_target)
         _validate_extracted_lark_skills(staging_target, extracted)
-        _append_agent_workspace_lark_shared_guidance(staging_target)
+        _append_alpha_lark_shared_guidance(staging_target)
         content_sha = _content_sha256(staging_target, extracted)
         _write_manifest(staging_target, extracted, version=archive_version, content_sha256=content_sha)
         make_skill_tree_sandbox_readable(staging_target)
@@ -2805,18 +2805,18 @@ def _validate_extracted_lark_skills(root: Path, extracted: set[str]) -> None:
             raise ValueError(f"Lark skill directory {skill_name!r} declares name {parsed.name!r}")
 
 
-def _append_agent_workspace_lark_shared_guidance(root: Path) -> None:
+def _append_alpha_lark_shared_guidance(root: Path) -> None:
     skill_file = root / "lark-shared" / SKILL_MD_FILE
     content = skill_file.read_text(encoding="utf-8")
-    if _AGENT_WORKSPACE_LARK_SHARED_GUIDANCE_MARKER in content:
+    if _ALPHA_LARK_SHARED_GUIDANCE_MARKER in content:
         return
-    for legacy_marker in _AGENT_WORKSPACE_LARK_SHARED_GUIDANCE_LEGACY_MARKERS:
+    for legacy_marker in _ALPHA_LARK_SHARED_GUIDANCE_LEGACY_MARKERS:
         if legacy_marker in content:
             content = content.split(legacy_marker, maxsplit=1)[0].rstrip()
             break
     guidance = f"""
 
-{_AGENT_WORKSPACE_LARK_SHARED_GUIDANCE_MARKER}
+{_ALPHA_LARK_SHARED_GUIDANCE_MARKER}
 
 ## Alpha Authorization Entry
 

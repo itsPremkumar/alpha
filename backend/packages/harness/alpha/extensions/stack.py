@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from agent_workspace_extension_api import AgentBuildContext, AgentScope, Placement
+from alpha_extension_api import AgentBuildContext, AgentScope, Placement
 
 from alpha.extensions.anchors import (
     PlacementAnchor,

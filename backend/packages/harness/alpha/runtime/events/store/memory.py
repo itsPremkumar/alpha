@@ -17,7 +17,7 @@ from alpha.runtime.events.search import (
     message_rank_group,
     normalize_query,
 )
-from alpha.runtime.events.store.base import RunEventStore
+from alpha.runtime.events.store.base import RunEventStore, take_latest
 from alpha.runtime.user_context import AUTO, _AutoSentinel
 
 #: Bound on scanned message rows per search (dev backend; keeps pathological
@@ -142,14 +142,14 @@ class MemoryRunEventStore(RunEventStore):
         if before_seq is not None:
             # Records with seq < before_seq, then the last `limit` of them.
             hi = bisect.bisect_left(messages, before_seq, key=lambda e: e["seq"])
-            return messages[max(0, hi - limit) : hi]
+            return take_latest(messages[max(0, hi - limit) : hi], limit)
         elif after_seq is not None:
             # Records with seq > after_seq, then the first `limit` of them.
             lo = bisect.bisect_right(messages, after_seq, key=lambda e: e["seq"])
             return messages[lo : lo + limit]
         else:
             # Return the latest `limit` records, ascending.
-            return messages[-limit:]
+            return take_latest(messages, limit)
 
     async def list_events(self, thread_id, run_id, *, event_types=None, task_id=None, limit=500, after_seq=None):
         # ``_events_by_run`` is already scoped to this run and seq-ordered, so we
@@ -176,7 +176,7 @@ class MemoryRunEventStore(RunEventStore):
         # before ``before_seq``). Matches the prior filter-based semantics.
         if after_seq is not None:
             return window[:limit]
-        return window[-limit:]
+        return take_latest(window, limit)
 
     async def get_last_visible_ai_seq_by_run(self, thread_id, run_ids, *, user_id: str | None | _AutoSentinel = AUTO):
         result: dict[str, int] = {}

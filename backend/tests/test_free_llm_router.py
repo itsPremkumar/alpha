@@ -5,9 +5,9 @@ Design under test (single seam): every provider HTTP call goes through
 function and exercise discovery, health/cooldown, selection, failover,
 the LangChain model, and the gateway endpoint for real.
 
-Workspace isolation: the autouse fixture points ``AGENT_WORKSPACE_HOME`` at
+Workspace isolation: the autouse fixture points ``ALPHA_HOME`` at
 a per-test tmp dir (the repo's test env does not isolate it globally), so
-the router's catalog cache never touches the live ``.agent-workspace``.
+the router's catalog cache never touches the live ``.alpha``.
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ from alpha.models.free_router.chat_model import ChatFreeLLM
 
 @pytest.fixture(autouse=True)
 def isolated_workspace(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path / "agent-workspace"))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path / "alpha"))
     reset_free_router()
     yield
     reset_free_router()

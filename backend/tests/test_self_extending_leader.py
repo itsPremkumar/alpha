@@ -155,7 +155,7 @@ def test_a_fresh_install_has_alpha_as_default_leader_with_no_config(monkeypatch,
     This is the fail-safe direction. A missing operator file must not leave the
     fleet with no recognised leader, and it must not leave the ceiling undefined.
     """
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     monkeypatch.delenv("ALPHA_AUTHORITY_CEILING_PATH", raising=False)
     monkeypatch.chdir(tmp_path)
 

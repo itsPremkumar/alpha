@@ -54,7 +54,7 @@ Identity decisions (plan leaves the sources open; stated honestly):
 Persistence: each spec is written atomically (``atomic_write_json``:
 tmp + ``os.replace``) to ``archive_root/<variant_id>.json`` with
 ``archive_root`` defaulting to ``runtime_home()/rsi/variants`` (resolved
-lazily so ``AGENT_WORKSPACE_HOME`` is honored at call time). Lineage record
+lazily so ``ALPHA_HOME`` is honored at call time). Lineage record
 happens before the spec file: lineage is the durable source of truth, and
 ``variants_for()`` never reports a spec the lineage store does not know.
 """
@@ -287,7 +287,7 @@ class CandidateFactory:
     ``lineage`` defaults (lazily, at first use) to the wave-mate
     ``RsiLineageStore`` rooted at ``runtime_home()/rsi``; ``archive_root``
     defaults to ``runtime_home()/rsi/variants`` for per-variant spec files.
-    Both resolve lazily so a test-set ``AGENT_WORKSPACE_HOME`` is honored.
+    Both resolve lazily so a test-set ``ALPHA_HOME`` is honored.
 
     ``skipped`` holds the honest dedup report of the most recent
     ``generate()`` call (reset at entry, including on a failed call): a list

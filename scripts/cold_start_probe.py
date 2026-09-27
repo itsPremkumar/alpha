@@ -237,7 +237,7 @@ def _child_env(home: Path, pycache_prefix: Path, trace: bool) -> dict[str, str]:
     env["PYTHONPYCACHEPREFIX"] = str(pycache_prefix)
     # An isolated home keeps config/runtime discovery out of the measurement and
     # out of the developer's real tree. Never let an inherited value win.
-    env["AGENT_WORKSPACE_HOME"] = str(home)
+    env["ALPHA_HOME"] = str(home)
     if trace:
         env["ALPHA_COLD_START_TRACE"] = "1"
     else:

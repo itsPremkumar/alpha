@@ -8,8 +8,8 @@ Renders text frequency visualizations where word font size corresponds to freque
 - data: array<object>, items with word (string) and weight (number).
 
 ### Optional
-- 	heme: string, default default.
-- 	itle: string, word cloud title.
+- theme: string, default default.
+- title: string, word cloud title.
 
 ## Usage Recommendations
 Filter out common stop words before generating word cloud data.

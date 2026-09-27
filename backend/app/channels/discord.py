@@ -10,11 +10,11 @@ import threading
 from pathlib import Path
 from typing import Any
 
+from alpha.branding import DISPLAY_NAME
 from app.channels.base import Channel
 from app.channels.commands import is_known_channel_command
 from app.channels.connection_identity import attach_connection_identity
 from app.channels.message_bus import InboundMessage, InboundMessageType, InboundReservation, MessageBus, OutboundMessage, ResolvedAttachment
-from alpha.branding import DISPLAY_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +76,7 @@ class DiscordChannel(Channel):
         if store is not None:
             self._thread_store_path = store._path.parent / "discord_threads.json"
         else:
-            self._thread_store_path = Path.home() / ".agent-workspace" / "channels" / "discord_threads.json"
+            self._thread_store_path = Path.home() / ".alpha" / "channels" / "discord_threads.json"
 
         # Typing indicator management
         self._typing_tasks: dict[str, asyncio.Task] = {}

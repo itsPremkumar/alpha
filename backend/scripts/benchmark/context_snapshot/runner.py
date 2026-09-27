@@ -273,13 +273,13 @@ async def run_live(args):
         "git_revision": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=REPO, text=True).strip(),
         "git_dirty": bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=REPO, text=True)),
         "sha256": {str(path.relative_to(REPO)) if path.is_relative_to(REPO) else "external-config": hashlib.sha256(path.read_bytes()).hexdigest() for path in source_paths},
-        "versions": {name: importlib.metadata.version(name) for name in ("agent-workspace-harness", "langchain", "langgraph", "langchain-openai", "httpx")},
+        "versions": {name: importlib.metadata.version(name) for name in ("alpha-harness", "langchain", "langgraph", "langchain-openai", "httpx")},
         "jobs": [f"{case.name}__{rep}__{arm}" for case, arm, rep in jobs],
     }
     (output / "run.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
-    env = {"AGENT_WORKSPACE_HOME": str(output / "runtime"), "LANGCHAIN_TRACING_V2": "false", "LANGSMITH_TRACING": "false"}
+    env = {"ALPHA_HOME": str(output / "runtime"), "LANGCHAIN_TRACING_V2": "false", "LANGSMITH_TRACING": "false"}
     with patch.dict(os.environ, env):
         import alpha.subagents.executor as executor_module
 

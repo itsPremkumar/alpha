@@ -22,9 +22,9 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 MAX_HEADER_BYTES = 65_536
-POLICY_DB = Path(os.environ.get("AGENT_WORKSPACE_POLICY_DB", "/tmp/alpha-network-policy.sqlite3"))
-RELAY_AUTH_HEADER = "X-Agent-Workspace-Relay-Token"
-RELAY_TOKEN_ENV = "AGENT_WORKSPACE_RELAY_TOKEN"
+POLICY_DB = Path(os.environ.get("ALPHA_POLICY_DB", "/tmp/alpha-network-policy.sqlite3"))
+RELAY_AUTH_HEADER = "X-Alpha-Relay-Token"
+RELAY_TOKEN_ENV = "ALPHA_RELAY_TOKEN"
 RELAY_CHUNK_BYTES = 65_536
 # Every socket await in this module carries a deadline. A whole proxy shares
 # one event loop, so a single unbounded read or drain freezes every concurrent
@@ -114,14 +114,14 @@ def address_is_public(address: str, *, allow_synthetic_dns: bool = False) -> boo
 
 def _static_rules() -> tuple[str, ...]:
     try:
-        raw = json.loads(os.environ.get("AGENT_WORKSPACE_ALLOW_DOMAINS_JSON", "[]"))
+        raw = json.loads(os.environ.get("ALPHA_ALLOW_DOMAINS_JSON", "[]"))
     except json.JSONDecodeError:
         return ()
     return tuple(value for value in raw if isinstance(value, str))
 
 
 def _policy_mode() -> str:
-    value = os.environ.get("AGENT_WORKSPACE_NETWORK_MODE", "isolated")
+    value = os.environ.get("ALPHA_NETWORK_MODE", "isolated")
     return value if value in {"isolated", "allowlist"} else "isolated"
 
 
@@ -229,7 +229,7 @@ async def resolve_public(host: str, port: int) -> tuple[tuple[int, tuple], ...] 
         infos = await asyncio.wait_for(loop.getaddrinfo(host, port, type=socket.SOCK_STREAM), timeout=DNS_TIMEOUT_SECONDS)
     except OSError:
         return None
-    allow_synthetic_dns = os.environ.get("AGENT_WORKSPACE_ALLOW_SYNTHETIC_DNS") == "1"
+    allow_synthetic_dns = os.environ.get("ALPHA_ALLOW_SYNTHETIC_DNS") == "1"
     public = [(family, sockaddr) for family, _socktype, _proto, _canonname, sockaddr in infos if address_is_public(str(sockaddr[0]), allow_synthetic_dns=allow_synthetic_dns)]
     if len(public) != len(infos) or not public:
         return None
@@ -617,7 +617,7 @@ async def handle_proxy(reader: asyncio.StreamReader, writer: asyncio.StreamWrite
     # - and with it every concurrent sandboxed run - behind a call that reads
     # like pure network work.
     if not await asyncio.to_thread(policy_allows, host, port):
-        if os.environ.get("AGENT_WORKSPACE_RECORD_DENIALS") == "1":
+        if os.environ.get("ALPHA_RECORD_DENIALS") == "1":
             request_id = await asyncio.to_thread(record_denial, host, port, method)
             detail = f" (request {request_id})"
         else:
@@ -693,7 +693,7 @@ async def handle_relay(reader: asyncio.StreamReader, writer: asyncio.StreamWrite
         await _reject(writer, "403 Forbidden", "Sandbox relay authentication failed")
         return
 
-    target = os.environ.get("AGENT_WORKSPACE_SANDBOX_TARGET", "")
+    target = os.environ.get("ALPHA_SANDBOX_TARGET", "")
     parsed = _parse_authority(target, 8080)
     if parsed is None:
         await _reject(writer, "502 Bad Gateway", "Sandbox relay target is invalid")

@@ -8,12 +8,12 @@ Visualizes data distribution (medians, quartiles, outliers) across categories, s
 - data: array<object>, elements containing category (string) and statistical values (low, q1, median, q3, high).
 
 ### Optional
-- 	heme: string, default default, options: default/cademy/dark.
+- theme: string, default default, options: default/academy/dark.
 - width: number, default 600, chart width.
 - height: number, default 400, chart height.
-- 	itle: string, default empty string, chart title.
-- xisXTitle: string, default empty string, X-axis title.
-- xisYTitle: string, default empty string, Y-axis title.
+- title: string, default empty string, chart title.
+- axisXTitle: string, default empty string, X-axis title.
+- axisYTitle: string, default empty string, Y-axis title.
 
 ## Usage Recommendations
 Useful for identifying anomalies, skewness, and spread across disparate experimental or financial cohorts.

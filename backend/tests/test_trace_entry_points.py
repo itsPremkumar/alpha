@@ -1,7 +1,7 @@
 """Trace binding at the entry points that no ASGI middleware can reach.
 
 ``TraceMiddleware`` covers Gateway HTTP traffic (``test_trace_middleware.py``)
-and ``AgentWorkspaceClient.stream`` covers embedded callers
+and ``AlphaClient.stream`` covers embedded callers
 (``test_client_langfuse_metadata.py``). The remaining ways work enters Alpha
 hold no HTTP request at all: the scheduled-task poller, MCP task notification
 runs, and IM channels, which keep long-lived provider connections. Each must

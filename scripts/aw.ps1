@@ -1,11 +1,11 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Headless passthrough to the agent-workspace CLI.
+    Headless passthrough to the alpha CLI.
 
 .DESCRIPTION
     OpenCode-style non-interactive invocation: wraps
-    `uv run --project backend agent-workspace <args>` so scripting and
+    `uv run --project backend alpha <args>` so scripting and
     automation have one stable entry point. Adds no new execution surface.
 
 .EXAMPLE
@@ -21,7 +21,7 @@ param(
 $root = Split-Path $PSScriptRoot -Parent
 Push-Location $root
 try {
-    & uv run --project backend agent-workspace @Rest
+    & uv run --project backend alpha @Rest
     exit $LASTEXITCODE
 }
 finally { Pop-Location }

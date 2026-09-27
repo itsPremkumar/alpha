@@ -302,13 +302,13 @@ class GitRepository:
             if not isinstance(version, str) or not version.strip():
                 raise GitRepositoryError("target version manifest frontend/package.json has no version")
             sources["frontend/package.json"] = version.strip()
-        chart = self._run(["show", f"{ref}:deploy/helm/agent-workspace/Chart.yaml"], check=False)
+        chart = self._run(["show", f"{ref}:deploy/helm/alpha/Chart.yaml"], check=False)
         if chart.returncode == 0:
             versions = re.findall(r"^(?:version|appVersion):\s*[\"']?([^\"'\s]+)", chart.stdout, flags=re.MULTILINE)
             if len(versions) < 2:
                 raise GitRepositoryError("target Helm Chart.yaml does not declare both version and appVersion")
-            sources["deploy/helm/agent-workspace/Chart.yaml:version"] = versions[0]
-            sources["deploy/helm/agent-workspace/Chart.yaml:appVersion"] = versions[1]
+            sources["deploy/helm/alpha/Chart.yaml:version"] = versions[0]
+            sources["deploy/helm/alpha/Chart.yaml:appVersion"] = versions[1]
         return sources
 
     def version_at(self, ref: str) -> str:

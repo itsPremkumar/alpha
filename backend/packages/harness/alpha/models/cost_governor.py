@@ -411,7 +411,7 @@ def reset_cost_governor() -> None:
     """Drop the process-global governor so the next read rebuilds it.
 
     Needed when the runtime home changes under a long-lived process (tests,
-    multi-tenant workers that rebind ``AGENT_WORKSPACE_HOME``): the governor
+    multi-tenant workers that rebind ``ALPHA_HOME``): the governor
     binds its storage path at construction, so reusing the old instance would
     keep writing (and reading) the previous workspace's ledger.
     """

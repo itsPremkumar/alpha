@@ -341,7 +341,7 @@ def test_unparseable_timestamp_is_never_silently_dropped_by_ttl(tmp_path):
 
 
 def test_default_store_root_follows_runtime_home(monkeypatch, tmp_path):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     store = default_job_memory_store()
     assert store.root == tmp_path / "scheduled-job-memory"
 

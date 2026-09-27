@@ -76,7 +76,7 @@ that pin them — are consolidated in
 ## Repository map
 
 ```
-agent-workspace/
+alpha/
 ├── Makefile                        # Root orchestration for the full stack (dev/start/stop, docker, setup, update-*)
 ├── config.example.yaml             # Template → config.yaml (gitignored): main app config
 ├── models.example.yaml             # Template → models.yaml (gitignored): the model catalog
@@ -84,16 +84,16 @@ agent-workspace/
 ├── backend/                        # Python backend — see backend/AGENTS.md for its own tree and depth
 ├── frontend/                       # Next.js frontend (pnpm) — see frontend/AGENTS.md
 ├── docker/, scripts/, tests/, docs/ # Compose + nginx + provisioner; root orchestration scripts; root-level tests; cross-cutting docs
-├── skills/                         # public/ (committed) + custom/ (gitignored) agent skills; managed integration packs are global at .agent-workspace/integrations/skills/{provider}/
+├── skills/                         # public/ (committed) + custom/ (gitignored) agent skills; managed integration packs are global at .alpha/integrations/skills/{provider}/
 ├── contracts/                      # Cross-component JSON contracts (e.g. subagent status, skill review)
-└── examples/agent-workspace-extension-example/ # Demonstrates all extension contribution kinds
+└── examples/alpha-extension-example/ # Demonstrates all extension contribution kinds
 ```
 
 **`models.yaml` — the one model catalog.** Every model name Alpha knows lives in
 this dedicated file, not in code: runtime-buildable `models`, shared `providers`
 profiles, `routing` (intent category / cost tier -> ordered model names),
 `catalog` (bring-your-own-provider offers), `free_gateways`, `pricing`, and
-`default_model`. `make setup` creates it; `$AGENT_WORKSPACE_MODELS_CONFIG_PATH`
+`default_model`. `make setup` creates it; `$ALPHA_MODELS_CONFIG_PATH`
 relocates it. `models.yaml` is the **base** layer and `config.yaml` overrides it,
 so an existing deployment is untouched, and a `models[]` entry is replaced
 wholesale by name so exactly one file is authoritative. Every name declared under
@@ -110,7 +110,7 @@ Third-party extensions load from a top-level `plugins:` list in `config.yaml`
 (operator-controlled on purpose — that list causes code to be imported, so it is deliberately
 kept out of the API-writable `extensions_config.json`). Packaged extensions can contribute
 middleware, task lifecycle, system-model observers, Gateway services, and FastAPI HTTP
-routers; the [reference extension](examples/agent-workspace-extension-example/) demonstrates all
+routers; the [reference extension](examples/alpha-extension-example/) demonstrates all
 five. Manage them with `alpha extensions install/upgrade/list/enable/disable/remove` or the root
 `make extension-*` wrappers. Every mutation requires a Gateway restart, and both build
 hooks and extension code execute with Gateway privileges, so only trusted operator sources
@@ -263,7 +263,7 @@ These apply repo-wide; module guides own the module-specific detail.
   Python utilities that read or write them must pass `encoding="utf-8"` rather than
   relying on the platform locale.
 - **Version sources must stay in lockstep** — a release version must match identically in
-  `backend/pyproject.toml`, `frontend/package.json`, and `deploy/helm/agent-workspace/Chart.yaml`
+  `backend/pyproject.toml`, `frontend/package.json`, and `deploy/helm/alpha/Chart.yaml`
   (`version` + `appVersion`). Pushing a `v*` git tag triggers CI that runs
   `scripts/verify_versions.sh` and **blocks all publishing** if any source drifts. Before
   bumping, run `scripts/bump_version.sh <ver>` (aligns all four at once) and

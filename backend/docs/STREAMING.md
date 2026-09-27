@@ -6,7 +6,7 @@ This document explains how Alpha delivers LangGraph agent event streams end-to-e
 
 ## TL;DR
 
-- Alpha maintains **two parallel** streaming pipelines: the **Gateway path** (async / HTTP SSE / JSON serialization) serving web browsers and IM channels; and the **AgentWorkspaceClient path** (sync / in-process / native LangChain objects) serving Jupyter notebooks, scripts, and tests. They **cannot be merged** due to fundamentally different consumer execution models.
+- Alpha maintains **two parallel** streaming pipelines: the **Gateway path** (async / HTTP SSE / JSON serialization) serving web browsers and IM channels; and the **AlphaClient path** (sync / in-process / native LangChain objects) serving Jupyter notebooks, scripts, and tests. They **cannot be merged** due to fundamentally different consumer execution models.
 - Both paths originate from the `create_agent()` factory, centered around subscribing to LangGraph's `stream_mode=["values", "messages", "custom"]`. `values` represents node-level state snapshots, `messages` delivers LLM token-level deltas, and `custom` handles explicit `StreamWriter` events. Built-in custom events are also dispatched as `on_custom_event` callbacks under `astream_events(version="v2")` for callback-driven consumers like AG-UI. **These modes are independent event sources, not levels of granularity**; consumers must subscribe to the modes they need.
 - The embedded client maintains three distinct `set[str]` instances for every `stream()` invocation: `seen_ids` / `streamed_ids` / `counted_usage_ids`. While seemingly similar, they enforce **three completely separate invariants** and must not be combined.
 
@@ -16,10 +16,10 @@ This document explains how Alpha delivers LangGraph agent event streams end-to-e
 
 The two paths serve fundamentally divergent consumer execution models:
 
-| Dimension | Gateway Path | AgentWorkspaceClient Path |
+| Dimension | Gateway Path | AlphaClient Path |
 |---|---|---|
-| Entrypoint | FastAPI `/runs/stream` endpoint | `AgentWorkspaceClient.stream(message)` |
-| Trigger Layer | `runtime/runs/worker.py::run_agent` | `packages/harness/alpha/client.py::AgentWorkspaceClient.stream` |
+| Entrypoint | FastAPI `/runs/stream` endpoint | `AlphaClient.stream(message)` |
+| Trigger Layer | `runtime/runs/worker.py::run_agent` | `packages/harness/alpha/client.py::AlphaClient.stream` |
 | Execution Model | `async def` + `agent.astream()` | Sync generator + `agent.stream()` |
 | Event Transport | `StreamBridge` (asyncio Queue) + `sse_consumer` | Direct `yield` |
 | Serialization | `serialize(chunk)` → Pure JSON dict, matching LangGraph Platform wire format | `StreamEvent.data`, preserving native LangChain objects |
@@ -29,12 +29,12 @@ The two paths serve fundamentally divergent consumer execution models:
 
 **The existence of two paths is a deliberate DRY trade-off**: the Gateway's entire infrastructure (async + Queue + JSON + RunManager) exists solely **to transport events across the network boundary to HTTP consumers**. When producer (agent) and consumer (Python call stack) live in the same process, that entire machinery is pure overhead.
 
-### Why AgentWorkspaceClient Cannot Reuse Gateway
+### Why AlphaClient Cannot Reuse Gateway
 
 Three reuse strategies were previously evaluated and rejected:
 
 1. **Changing `client.stream()` to `async def client.astream()`**  
-   Breaking change. Forcing unnecessary `async for` and `asyncio.run()` into synchronous scripts and Jupyter notebooks destroys one of AgentWorkspaceClient's primary value propositions ("call an agent like a standard Python function").
+   Breaking change. Forcing unnecessary `async for` and `asyncio.run()` into synchronous scripts and Jupyter notebooks destroys one of AlphaClient's primary value propositions ("call an agent like a standard Python function").
 
 2. **Spawning an internal event loop thread in `client.stream()` using `StreamBridge` to bridge sync/async**  
    Introduces thread pools, queues, and mutexes. Trading lines of code for massive structural complexity is a textbook "wrong abstraction," where maintenance overhead exceeds reuse gains.
@@ -82,7 +82,7 @@ flowchart LR
 | `custom` | Explicit user code call to `StreamWriter.write()` | Arbitrary dict | Application defined |
 | `on_custom_event` | Explicit user code call to `dispatch_custom_event()`; consumed via `astream_events(version="v2")` | `name` + arbitrary `data` | Application defined |
 
-Alpha internal events must be emitted using sync or async helpers in `alpha.utils.custom_events`, and each built-in payload must carry a non-empty string `type`. Payloads missing a valid `type` enter only the `custom` stream and will not appear in `astream_events`. The helper writes to the `custom` stream first, followed by a best-effort callback dispatch; the callback name is set to the payload's `type`, retaining the full payload in `data`. Gateway / Web UI / `AgentWorkspaceClient` custom streams remain unchanged while `astream_events` consumers observe identical events. Callback dispatch exceptions are logged at debug level without interrupting writer pipelines.
+Alpha internal events must be emitted using sync or async helpers in `alpha.utils.custom_events`, and each built-in payload must carry a non-empty string `type`. Payloads missing a valid `type` enter only the `custom` stream and will not appear in `astream_events`. The helper writes to the `custom` stream first, followed by a best-effort callback dispatch; the callback name is set to the payload's `type`, retaining the full payload in `data`. Gateway / Web UI / `AlphaClient` custom streams remain unchanged while `astream_events` consumers observe identical events. Callback dispatch exceptions are logged at debug level without interrupting writer pipelines.
 
 ### Three Naming Schemes Across Protocol Layers
 
@@ -101,7 +101,7 @@ Application                    HTTP / SSE                    LangGraph Graph
 - **Platform SDK Layer** (`langgraph-sdk` HTTP client): Inter-process wire contract, named **`"messages-tuple"`**.
 - **Gateway Worker**: Translates modes explicitly: `if m == "messages-tuple": lg_modes.append("messages")` (`runtime/runs/worker.py:117-121`).
 
-**Consequence**: `AgentWorkspaceClient.stream()` directly calls `agent.stream()` (Graph Layer), so it must pass `"messages"`. `app/channels/manager.py` connects via `langgraph-sdk` over HTTP, so it passes `"messages-tuple"`. **These strings cannot be interchanged or combined into a single shared constant**, as doing so would violate protocol-specific typing.
+**Consequence**: `AlphaClient.stream()` directly calls `agent.stream()` (Graph Layer), so it must pass `"messages"`. `app/channels/manager.py` connects via `langgraph-sdk` over HTTP, so it passes `"messages-tuple"`. **These strings cannot be interchanged or combined into a single shared constant**, as doing so would violate protocol-specific typing.
 
 ---
 
@@ -160,12 +160,12 @@ A `gap` frame omits the SSE `id:` and does not terminate with an `end` sentinel;
 
 ---
 
-## AgentWorkspaceClient Path: sync + in-process
+## AlphaClient Path: sync + in-process
 
 ```mermaid
 sequenceDiagram
     participant User as Python caller
-    participant Client as AgentWorkspaceClient.stream
+    participant Client as AlphaClient.stream
     participant Agent as LangGraph<br/>agent.stream (sync)
 
     User->>Client: for event in client.stream("hi"):
@@ -191,9 +191,9 @@ The synchronous path has significantly fewer moving parts:
 
 LangGraph `messages` mode delivers **deltas**: each `AIMessageChunk.content` contains only newly yielded tokens, **not** cumulative text from the beginning of the message.
 
-The semantic matches the stream standard: **upstream emits increments, downstream handles accumulation**. The frontend `useStream` React hook manages accumulation internally; `AgentWorkspaceClient.chat()` performs accumulation on behalf of the caller.
+The semantic matches the stream standard: **upstream emits increments, downstream handles accumulation**. The frontend `useStream` React hook manages accumulation internally; `AlphaClient.chat()` performs accumulation on behalf of the caller.
 
-### `AgentWorkspaceClient.chat()` O(n) Accumulator
+### `AlphaClient.chat()` O(n) Accumulator
 
 ```python
 chunks: dict[str, list[str]] = {}
@@ -214,7 +214,7 @@ Using `list` + `"".join()` guarantees O(n) performance, avoiding O(n²) string c
 
 ## Why Three ID Sets Cannot Be Merged
 
-During its execution lifecycle, `AgentWorkspaceClient.stream()` tracks three `set[str]` instances:
+During its execution lifecycle, `AlphaClient.stream()` tracks three `set[str]` instances:
 
 ```python
 seen_ids: set[str] = set()           # Internal deduplication for values snapshots
@@ -247,7 +247,7 @@ When invoking `client.stream("Count from 1 to 15")`, LLM tokens are produced in 
 ```mermaid
 sequenceDiagram
     participant U as User
-    participant C as AgentWorkspaceClient
+    participant C as AlphaClient
     participant A as LangGraph<br/>agent.stream
 
     U->>C: stream("Count ... 15")
@@ -287,9 +287,9 @@ Observations:
 
 | Area | Location |
 |---|---|
-| Embedded streaming client | `packages/harness/alpha/client.py::AgentWorkspaceClient.stream` |
+| Embedded streaming client | `packages/harness/alpha/client.py::AlphaClient.stream` |
 | Embedded ToolMessage artifact serialization | `packages/harness/alpha/client.py::_tool_message_event` / `_serialize_message` |
-| `chat()` delta accumulator | `packages/harness/alpha/client.py::AgentWorkspaceClient.chat` |
+| `chat()` delta accumulator | `packages/harness/alpha/client.py::AlphaClient.chat` |
 | Gateway async stream worker | `packages/harness/alpha/runtime/runs/worker.py::run_agent` |
 | HTTP SSE frame serialization | `app/gateway/services.py::sse_consumer` / `format_sse` |
 | Wire serialization | `packages/harness/alpha/runtime/serialization.py` |
@@ -301,7 +301,7 @@ Observations:
 
 ## Embedded Client ↔ Gateway Method Parity
 
-`AgentWorkspaceClient` is the in-process replacement for the Gateway API. The
+`AlphaClient` is the in-process replacement for the Gateway API. The
 client methods below are the exact Gateway equivalents of the REST surface
 consumed by the UI and IM channels.
 
@@ -318,13 +318,13 @@ consumed by the UI and IM channels.
 Gateway differences: upload takes a local `Path`, not `UploadFile`, rejects
 directories before copying, and reuses one conversion worker inside an active
 event loop. Artifacts return `(bytes, mime_type)`, not an HTTP Response. Gateway
-alone deletes `.agent-workspace/threads/{thread_id}` after LangGraph thread
+alone deletes `.alpha/threads/{thread_id}` after LangGraph thread
 deletion; the client has no equivalent. `update_mcp_config()` and
 `update_skill()` invalidate the cached agent.
 
 ## Embedded Client `stream()` Event Contract
 
-`AgentWorkspaceClient.stream()` subscribes to LangGraph
+`AlphaClient.stream()` subscribes to LangGraph
 `stream_mode=["values", "messages", "custom"]` and yields `StreamEvent`.
 
 - `"values"` — state snapshot (title, messages, artifacts, `summary_text`);
@@ -359,7 +359,7 @@ See "Request Trace Context" below.
 ## Request Trace Context (`packages/harness/alpha/trace_context.py`)
 
 Alpha's request-level correlation id — the `X-Trace-Id` header and the
-`agent_workspace_trace_id` key. Not Langfuse's trace id, not `run_id`, not the
+`alpha_trace_id` key. Not Langfuse's trace id, not `run_id`, not the
 short subagent `trace_id` log label.
 
 **The ContextVar is the only source.** Every path that reaches a run binds one
@@ -369,7 +369,7 @@ Entry points and binders: Gateway HTTP — `TraceMiddleware`; scheduled occurren
 `ScheduledTaskService._attempt_queued_run` → `launch_scheduled_thread_run`; MCP task
 notification — `launch_mcp_task_notification_run`; IM inbound —
 `ChannelManager._worker_loop`; embedded / TUI / CLI turn —
-`AgentWorkspaceClient.stream()`.
+`AlphaClient.stream()`.
 
 Only the first is HTTP; the rest run outside ASGI, so the binding cannot live in
 middleware alone. Each scopes **one unit of work**, never a poller loop — a leaked
@@ -380,7 +380,7 @@ trigger inside a Gateway request on one trace.
 **Every other carrier is a derived output, never read back as an input.**
 `worker._bind_trace_id` stamps the runtime context and `config["metadata"]`;
 `services.start_run` stamps the run record; a caller-sent
-`agent_workspace_trace_id` (`body.metadata`, `body.config.context`) is replaced —
+`alpha_trace_id` (`body.metadata`, `body.config.context`) is replaced —
 honouring it would let the persisted run disagree with the header and the logs.
 `_SERVER_OWNED_RUNTIME_CONTEXT_KEYS` covers the embedded path and also rejects
 caller-supplied sandbox lease/scope identities, `redact_config_secrets` scrubs the

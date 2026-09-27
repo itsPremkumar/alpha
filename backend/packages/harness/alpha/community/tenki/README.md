@@ -28,7 +28,7 @@ sandbox:
 Install the optional SDK before selecting this provider:
 
 ```bash
-pip install "agent-workspace-harness[tenki]"
+pip install "alpha-harness[tenki]"
 ```
 
 The `tenki` package (which provides the `tenki_sandbox` module) is an optional

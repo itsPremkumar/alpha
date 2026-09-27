@@ -27,7 +27,7 @@ def _fixed_now() -> datetime:
 
 def test_compose_ready_when_all_checks_pass() -> None:
     report = compose_readiness_report(
-        service="agent-workspace-gateway",
+        service="alpha-gateway",
         database="ok",
         checkpointer="not_configured",
         event_loop={"status": "ok"},
@@ -42,7 +42,7 @@ def test_compose_ready_when_all_checks_pass() -> None:
 
 def test_compose_collects_every_failing_reason() -> None:
     report = compose_readiness_report(
-        service="agent-workspace-gateway",
+        service="alpha-gateway",
         database="unreachable",
         checkpointer="unreachable",
         event_loop={"status": "degraded"},
@@ -60,7 +60,7 @@ def test_compose_collects_every_failing_reason() -> None:
 
 def test_compose_not_configured_and_no_signal_are_not_failures() -> None:
     report = compose_readiness_report(
-        service="agent-workspace-gateway",
+        service="alpha-gateway",
         database="not_configured",
         checkpointer="not_configured",
         event_loop={"status": "no_signal"},

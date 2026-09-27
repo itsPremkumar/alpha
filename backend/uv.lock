@@ -12,8 +12,8 @@ resolution-markers = [
 
 [manifest]
 members = [
-    "agent-workspace-extension-api",
-    "agent-workspace-harness",
+    "alpha-extension-api",
+    "alpha-harness",
     "alpha",
 ]
 overrides = [{ name = "websockets", specifier = "==16.0" }]
@@ -57,18 +57,18 @@ wheels = [
 ]
 
 [[package]]
-name = "agent-workspace-extension-api"
+name = "alpha-extension-api"
 version = "0.2.0"
 source = { editable = "packages/extension-api" }
 
 [[package]]
-name = "agent-workspace-harness"
+name = "alpha-harness"
 version = "2.1.0"
 source = { editable = "packages/harness" }
 dependencies = [
     { name = "agent-client-protocol" },
     { name = "agent-sandbox" },
-    { name = "agent-workspace-extension-api" },
+    { name = "alpha-extension-api" },
     { name = "aiosqlite" },
     { name = "alembic" },
     { name = "beautifulsoup4" },
@@ -159,7 +159,7 @@ voice = [
 requires-dist = [
     { name = "agent-client-protocol", specifier = ">=0.4.0" },
     { name = "agent-sandbox", specifier = ">=0.0.30" },
-    { name = "agent-workspace-extension-api", editable = "packages/extension-api" },
+    { name = "alpha-extension-api", editable = "packages/extension-api" },
     { name = "aiosqlite", specifier = ">=0.19" },
     { name = "alembic", specifier = ">=1.13" },
     { name = "asyncpg", marker = "extra == 'postgres'", specifier = ">=0.29" },
@@ -372,8 +372,8 @@ version = "2.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "agent-eye" },
-    { name = "agent-workspace-extension-api" },
-    { name = "agent-workspace-harness" },
+    { name = "alpha-extension-api" },
+    { name = "alpha-harness" },
     { name = "bcrypt" },
     { name = "dingtalk-stream" },
     { name = "e2b-code-interpreter" },
@@ -396,7 +396,7 @@ dependencies = [
 
 [package.optional-dependencies]
 browser = [
-    { name = "agent-workspace-harness", extra = ["browser"] },
+    { name = "alpha-harness", extra = ["browser"] },
 ]
 buzz = [
     { name = "coincurve" },
@@ -405,25 +405,25 @@ discord = [
     { name = "discord-py" },
 ]
 memory-zh = [
-    { name = "agent-workspace-harness", extra = ["memory-zh"] },
+    { name = "alpha-harness", extra = ["memory-zh"] },
 ]
 monocle = [
-    { name = "agent-workspace-harness", extra = ["monocle"] },
+    { name = "alpha-harness", extra = ["monocle"] },
 ]
 ollama = [
-    { name = "agent-workspace-harness", extra = ["ollama"] },
+    { name = "alpha-harness", extra = ["ollama"] },
 ]
 peer-discovery = [
     { name = "zeroconf" },
 ]
 postgres = [
-    { name = "agent-workspace-harness", extra = ["postgres"] },
+    { name = "alpha-harness", extra = ["postgres"] },
 ]
 redis = [
-    { name = "agent-workspace-harness", extra = ["redis"] },
+    { name = "alpha-harness", extra = ["redis"] },
 ]
 voice = [
-    { name = "agent-workspace-harness", extra = ["voice"] },
+    { name = "alpha-harness", extra = ["voice"] },
 ]
 
 [package.dev-dependencies]
@@ -444,15 +444,15 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "agent-eye", git = "https://github.com/itsPremkumar/AgentEye.git?rev=455404ab9fd2ebba3c4c2e1e07932ed738a0c510" },
-    { name = "agent-workspace-extension-api", editable = "packages/extension-api" },
-    { name = "agent-workspace-harness", editable = "packages/harness" },
-    { name = "agent-workspace-harness", extras = ["browser"], marker = "extra == 'browser'", editable = "packages/harness" },
-    { name = "agent-workspace-harness", extras = ["memory-zh"], marker = "extra == 'memory-zh'", editable = "packages/harness" },
-    { name = "agent-workspace-harness", extras = ["monocle"], marker = "extra == 'monocle'", editable = "packages/harness" },
-    { name = "agent-workspace-harness", extras = ["ollama"], marker = "extra == 'ollama'", editable = "packages/harness" },
-    { name = "agent-workspace-harness", extras = ["postgres"], marker = "extra == 'postgres'", editable = "packages/harness" },
-    { name = "agent-workspace-harness", extras = ["redis"], marker = "extra == 'redis'", editable = "packages/harness" },
-    { name = "agent-workspace-harness", extras = ["voice"], marker = "extra == 'voice'", editable = "packages/harness" },
+    { name = "alpha-extension-api", editable = "packages/extension-api" },
+    { name = "alpha-harness", editable = "packages/harness" },
+    { name = "alpha-harness", extras = ["browser"], marker = "extra == 'browser'", editable = "packages/harness" },
+    { name = "alpha-harness", extras = ["memory-zh"], marker = "extra == 'memory-zh'", editable = "packages/harness" },
+    { name = "alpha-harness", extras = ["monocle"], marker = "extra == 'monocle'", editable = "packages/harness" },
+    { name = "alpha-harness", extras = ["ollama"], marker = "extra == 'ollama'", editable = "packages/harness" },
+    { name = "alpha-harness", extras = ["postgres"], marker = "extra == 'postgres'", editable = "packages/harness" },
+    { name = "alpha-harness", extras = ["redis"], marker = "extra == 'redis'", editable = "packages/harness" },
+    { name = "alpha-harness", extras = ["voice"], marker = "extra == 'voice'", editable = "packages/harness" },
     { name = "bcrypt", specifier = ">=4.0.0" },
     { name = "coincurve", marker = "extra == 'buzz'", specifier = ">=20.0.0" },
     { name = "dingtalk-stream", specifier = ">=0.24.3" },

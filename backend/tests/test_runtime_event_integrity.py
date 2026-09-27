@@ -15,7 +15,7 @@ payload/fold behavior directly against ``alpha.workflow.runtime``:
   stays READY, NOT completed) while terminal stops journal ``node_completed``
   with ``stopped_by``.
 
-Every test isolates ``AGENT_WORKSPACE_HOME`` to a per-test temp dir.
+Every test isolates ``ALPHA_HOME`` to a per-test temp dir.
 """
 
 from __future__ import annotations
@@ -37,9 +37,9 @@ from alpha.workflow.runtime import DynamicWorkflowEngine
 
 
 @pytest.fixture(autouse=True)
-def _isolate_agent_workspace(tmp_path, monkeypatch):
-    """AGENT_WORKSPACE_HOME points at a per-test temp dir (process-global env)."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+def _isolate_alpha(tmp_path, monkeypatch):
+    """ALPHA_HOME points at a per-test temp dir (process-global env)."""
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
 
 
 def _start(

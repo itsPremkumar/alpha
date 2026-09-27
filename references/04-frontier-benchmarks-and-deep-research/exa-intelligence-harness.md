@@ -2258,7 +2258,7 @@ What did I learn from this experiment?
 What should I improve next?
 ```
 
-That is the architecture I would target for your **agent-workspace-desktop next generation**.
+That is the architecture I would target for your **alpha-desktop next generation**.
 
 One especially important design principle is to make **the evaluator harder to modify than the agent being evaluated**. Otherwise your system can evolve toward becoming better at convincing itself that it improved rather than actually improving.
 
@@ -2267,7 +2267,7 @@ The current research landscape strongly supports combining recursive self-modifi
 I would make this **RSDE layer a first-class subsystem of your harness**, not just another agent/skill.
 
 [1]: https://github.com/jennyzzt/dgm?utm_source=chatgpt.com "GitHub - jennyzzt/dgm: Darwin Gödel Machine: Open-Ended Evolution of Self-Improving Agents · GitHub"
-[2]: https://github.com/bytedance/agent-workspace/blob/main/README.md?utm_source=chatgpt.com "agent-workspace/README.md at main · bytedance/agent-workspace · GitHub"
+[2]: https://github.com/bytedance/agent-workspace/blob/main/README.md?utm_source=chatgpt.com "alpha/README.md at main · bytedance/agent-workspace · GitHub"
 [3]: https://arxiv.org/abs/2303.11366?utm_source=chatgpt.com "Reflexion: Language Agents with Verbal Reinforcement Learning"
 [4]: https://openai.github.io/openai-agents-python/tracing/?utm_source=chatgpt.com "Tracing - OpenAI Agents SDK"
 [5]: https://deepmind.google/blog/alphaevolve-a-gemini-powered-coding-agent-for-designing-advanced-algorithms/?utm_source=chatgpt.com "AlphaEvolve: A Gemini-powered coding agent for designing advanced algorithms — Google DeepMind"

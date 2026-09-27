@@ -47,7 +47,7 @@ TERMINAL_STATES = {TaskNodeState.COMPLETED, TaskNodeState.FAILED, TaskNodeState.
 
 @pytest.fixture(autouse=True)
 def _isolated_swarm_home(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     coord_mod._GLOBAL_COORDINATOR = None
     inc_mod._GLOBAL_INCIDENT_MANAGER = None
     yield

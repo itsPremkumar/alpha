@@ -21,13 +21,13 @@ make voice-setup
 The command installs the optional speech packages and downloads pinned model assets under:
 
 ```text
-$AGENT_WORKSPACE_HOME/voice/models/
+$ALPHA_HOME/voice/models/
 ├── faster-whisper/small/
 └── piper/en_US-lessac-medium.onnx
 ```
 
 For the repository's normal `make dev` / `make up` launchers, the default resolves to
-`backend/.agent-workspace/voice/models/`.
+`backend/.alpha/voice/models/`.
 
 The default download is approximately 550 MB. It happens once; normal Gateway startup and voice requests do not download model weights.
 

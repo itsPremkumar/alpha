@@ -57,8 +57,8 @@ jobs:
             printf '%s: `%s`\n' "$label" "$repo_digest" | tee -a "$GITHUB_STEP_SUMMARY"
           }
 
-          resolve_image "$SANDBOX_SMOKE_IMAGE_REF" AGENT_WORKSPACE_SANDBOX_SMOKE_IMAGE "Configured/default smoke image"
-          resolve_image "$FOWNER_SMOKE_IMAGE_REF" AGENT_WORKSPACE_SANDBOX_FOWNER_SMOKE_IMAGE "FOWNER regression image (1.11.0)"
+          resolve_image "$SANDBOX_SMOKE_IMAGE_REF" ALPHA_SANDBOX_SMOKE_IMAGE "Configured/default smoke image"
+          resolve_image "$FOWNER_SMOKE_IMAGE_REF" ALPHA_SANDBOX_FOWNER_SMOKE_IMAGE "FOWNER regression image (1.11.0)"
 
       - name: Set up Python
         uses: actions/setup-python@v6

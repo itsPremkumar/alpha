@@ -43,7 +43,7 @@ from alpha.supervision.models import AnomalyReport, AnomalySeverity, AnomalyType
 def isolated_home(tmp_path, monkeypatch):
     """Pin runtime_home() to a per-test temp dir (the environment does not isolate it)."""
     home = tmp_path / "agent-home"
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(home))
+    monkeypatch.setenv("ALPHA_HOME", str(home))
     return home
 
 

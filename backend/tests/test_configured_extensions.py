@@ -149,12 +149,12 @@ def test_kwargs_reject_nan():
 
 
 def test_raw_file_round_trips_kwargs_entries(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_TEST_MIDDLEWARE_TOKEN", "test-secret")
+    monkeypatch.setenv("ALPHA_TEST_MIDDLEWARE_TOKEN", "test-secret")
     config_path = tmp_path / "extensions_config.json"
     raw = {
         "middlewares": [
             "pkg:Plain",
-            {"class": "pkg:WithArgs", "kwargs": {"max_tool_calls": 5, "token": "$AGENT_WORKSPACE_TEST_MIDDLEWARE_TOKEN"}},
+            {"class": "pkg:WithArgs", "kwargs": {"max_tool_calls": 5, "token": "$ALPHA_TEST_MIDDLEWARE_TOKEN"}},
         ]
     }
     config_path.write_text(json.dumps(raw), encoding="utf-8")
@@ -170,6 +170,6 @@ def test_raw_file_round_trips_kwargs_entries(tmp_path, monkeypatch):
     assert dumped["skills"] == {"demo": {"enabled": False}}
     assert dumped["middlewares"][0] == "pkg:Plain"
     assert dumped["middlewares"][1]["class"] == "pkg:WithArgs"
-    assert dumped["middlewares"][1]["kwargs"] == {"max_tool_calls": 5, "token": "$AGENT_WORKSPACE_TEST_MIDDLEWARE_TOKEN"}
+    assert dumped["middlewares"][1]["kwargs"] == {"max_tool_calls": 5, "token": "$ALPHA_TEST_MIDDLEWARE_TOKEN"}
     assert restored.middlewares[1].class_path == "pkg:WithArgs"
     assert restored.middlewares[1].kwargs == {"max_tool_calls": 5, "token": "test-secret"}

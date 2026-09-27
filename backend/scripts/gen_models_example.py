@@ -140,7 +140,7 @@ HEADER = """\
 #
 # Path resolution (mirrors `extensions_config.json`):
 #   1. explicit path argument
-#   2. $AGENT_WORKSPACE_MODELS_CONFIG_PATH
+#   2. $ALPHA_MODELS_CONFIG_PATH
 #   3. `models.yaml` in the project root
 #   4. `backend/models.yaml`, then the repository root
 # An explicit path or env var naming a missing file is an error; the file is

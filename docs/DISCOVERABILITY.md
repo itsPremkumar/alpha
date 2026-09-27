@@ -283,7 +283,7 @@ Run through this in the same change set as any user-facing or capability change.
 - [ ] No new `bytedance/agent-workspace` URL in a clone or support instruction
 - [ ] GitHub topics and the "About" blurb still match the capability set
 - [ ] Version strings still agree across `backend/pyproject.toml`,
-      `frontend/package.json`, and `deploy/helm/agent-workspace/Chart.yaml`
+      `frontend/package.json`, and `deploy/helm/alpha/Chart.yaml`
 
 ---
 

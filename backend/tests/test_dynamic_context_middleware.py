@@ -808,21 +808,21 @@ def test_no_recursive_id_swap_in_full_middleware_flow():
 
 
 def test_format_current_date_defaults_to_server_local_without_env(monkeypatch):
-    """Without AGENT_WORKSPACE_DATE_TIMEZONE the formatter keeps the legacy server-local behavior."""
+    """Without ALPHA_DATE_TIMEZONE the formatter keeps the legacy server-local behavior."""
     from datetime import datetime
 
     from alpha.agents.middlewares.dynamic_context_middleware import _format_current_date
 
     with mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
         mock_dt.now.return_value = datetime(2026, 5, 8, 9, 0)
-        monkeypatch.delenv("AGENT_WORKSPACE_DATE_TIMEZONE", raising=False)
+        monkeypatch.delenv("ALPHA_DATE_TIMEZONE", raising=False)
 
         assert _format_current_date() == "2026-05-08, Friday"
         mock_dt.now.assert_called_once_with()
 
 
 def test_format_current_date_honors_configured_timezone(monkeypatch):
-    """A UTC instant must be rendered in the IANA zone named by AGENT_WORKSPACE_DATE_TIMEZONE."""
+    """A UTC instant must be rendered in the IANA zone named by ALPHA_DATE_TIMEZONE."""
     from datetime import UTC, datetime
 
     from alpha.agents.middlewares.dynamic_context_middleware import _format_current_date
@@ -837,7 +837,7 @@ def test_format_current_date_honors_configured_timezone(monkeypatch):
 
     with mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
         mock_dt.now.side_effect = fake_now
-        monkeypatch.setenv("AGENT_WORKSPACE_DATE_TIMEZONE", "Asia/Shanghai")
+        monkeypatch.setenv("ALPHA_DATE_TIMEZONE", "Asia/Shanghai")
 
         assert _format_current_date() == "2026-09-03, Thursday"
 
@@ -850,10 +850,10 @@ def test_format_current_date_invalid_timezone_falls_back(monkeypatch, caplog):
 
     with mock.patch("alpha.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
         mock_dt.now.return_value = datetime(2026, 5, 8, 9, 0)
-        monkeypatch.setenv("AGENT_WORKSPACE_DATE_TIMEZONE", "Not/A_Zone")
+        monkeypatch.setenv("ALPHA_DATE_TIMEZONE", "Not/A_Zone")
 
         assert _format_current_date() == "2026-05-08, Friday"
-    assert "AGENT_WORKSPACE_DATE_TIMEZONE" in caplog.text
+    assert "ALPHA_DATE_TIMEZONE" in caplog.text
 
 
 def _declared_date_timezone_policies():
@@ -870,7 +870,7 @@ def _declared_date_timezone_policies():
 
 def test_date_middlewares_declare_configured_timezone(monkeypatch):
     """Assembly identity must reflect the zone the injected date follows."""
-    monkeypatch.setenv("AGENT_WORKSPACE_DATE_TIMEZONE", "Asia/Shanghai")
+    monkeypatch.setenv("ALPHA_DATE_TIMEZONE", "Asia/Shanghai")
 
     assert _declared_date_timezone_policies() == [
         {"current_date_timezone": "Asia/Shanghai"},
@@ -879,7 +879,7 @@ def test_date_middlewares_declare_configured_timezone(monkeypatch):
 
 
 def test_date_middlewares_declare_utc_timezone(monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_DATE_TIMEZONE", "UTC")
+    monkeypatch.setenv("ALPHA_DATE_TIMEZONE", "UTC")
 
     assert _declared_date_timezone_policies() == [
         {"current_date_timezone": "UTC"},
@@ -892,7 +892,7 @@ def test_date_middlewares_declare_resolved_local_zone_without_env(monkeypatch):
     hosts that render different dates still get different assembly fingerprints."""
     from alpha.agents.middlewares.dynamic_context_middleware import _effective_date_timezone_name
 
-    monkeypatch.delenv("AGENT_WORKSPACE_DATE_TIMEZONE", raising=False)
+    monkeypatch.delenv("ALPHA_DATE_TIMEZONE", raising=False)
     expected = {"current_date_timezone": _effective_date_timezone_name()}
     assert expected["current_date_timezone"]
 
@@ -903,11 +903,11 @@ def test_date_middlewares_declare_resolved_local_zone_for_invalid_env(monkeypatc
     """An invalid IANA name degrades to server-local and is declared as such."""
     from alpha.agents.middlewares.dynamic_context_middleware import _effective_date_timezone_name
 
-    monkeypatch.setenv("AGENT_WORKSPACE_DATE_TIMEZONE", "Not/A_Zone")
+    monkeypatch.setenv("ALPHA_DATE_TIMEZONE", "Not/A_Zone")
     expected = {"current_date_timezone": _effective_date_timezone_name()}
 
     assert _declared_date_timezone_policies() == [expected, expected]
-    assert "AGENT_WORKSPACE_DATE_TIMEZONE" in caplog.text
+    assert "ALPHA_DATE_TIMEZONE" in caplog.text
 
 
 def test_server_local_timezone_name_reads_tz_env(monkeypatch):
@@ -959,7 +959,7 @@ def test_effective_timezone_sentinel_uses_offset_when_local_zone_is_not_resolvab
 
     monkeypatch.setattr(module, "_server_local_timezone_name", lambda: None)
     monkeypatch.setattr(module, "_server_local_utc_offset_minutes", lambda: 8 * 60)
-    monkeypatch.delenv("AGENT_WORKSPACE_DATE_TIMEZONE", raising=False)
+    monkeypatch.delenv("ALPHA_DATE_TIMEZONE", raising=False)
 
     assert module._effective_date_timezone_name() == "server-local(+08:00)"
 

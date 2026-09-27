@@ -70,7 +70,7 @@ other Lead-Agent-specific middlewares such as memory, title generation, and clar
 
 ## Embedded callers
 
-`AgentWorkspaceClient(middlewares=[...])`, which builds the full lead-agent chain and places middleware before its terminal tail. `create_agent_workspace_agent(extra_middleware=[...])` instead builds a smaller feature-based lead-agent chain; unanchored extras are placed immediately before `ClarificationMiddleware` (anchored extras follow their `@Next`/`@Prev` placement, but the anchor must exist in that smaller chain). Neither API forwards middleware to subagents.
+`AlphaClient(middlewares=[...])`, which builds the full lead-agent chain and places middleware before its terminal tail. `create_alpha_agent(extra_middleware=[...])` instead builds a smaller feature-based lead-agent chain; unanchored extras are placed immediately before `ClarificationMiddleware` (anchored extras follow their `@Next`/`@Prev` placement, but the anchor must exist in that smaller chain). Neither API forwards middleware to subagents.
 
 ## Runtime middlewares
 

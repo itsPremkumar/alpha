@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from agent_workspace_extension_api import ExtensionRegistry, extension
+from alpha_extension_api import ExtensionRegistry, extension
 
 INSTALLED: list[str] = []
 

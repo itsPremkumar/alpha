@@ -22,7 +22,7 @@ from alpha.rsi.state import (
 def runtime_home(tmp_path, monkeypatch):
     """Isolate runtime_home() so state never touches the real workspace (env does not isolate it)."""
     home = tmp_path / "agent-home"
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(home))
+    monkeypatch.setenv("ALPHA_HOME", str(home))
     return home.resolve()
 
 

@@ -1,6 +1,6 @@
 """Regression tests for the config reload boundary registry.
 
-Bytedance/agent-workspace issue #3144: the hot-reload boundary is the contract
+Bytedance/alpha issue #3144: the hot-reload boundary is the contract
 between gateway dependencies that resolve ``AppConfig`` every request and the
 infrastructure that captures the snapshot once at startup. The registry in
 ``alpha.config.reload_boundary`` is the machine-readable source of truth;

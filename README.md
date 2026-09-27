@@ -101,7 +101,7 @@ In one sentence:
 | **Do I need a paid backend?** | No. Apache-2.0/MIT throughout, no Alpha-operated cloud, no broker, no telemetry requirement. You pay only for the model provider you configure. |
 | **Which models?** | Any provider you put in `config.yaml` — OpenRouter, OpenAI, Anthropic, Google, DeepSeek, Moonshot, Ollama, and self-hosted endpoints. |
 | **Does it run offline?** | Local models, local speech (Whisper + Piper), and local SQLite/PostgreSQL are all supported. |
-| **Is it a framework or an app?** | Both. Use it as a finished app, or import `agent-workspace-harness` (`import alpha.*`) and build your own agent runtime on the same engines. |
+| **Is it a framework or an app?** | Both. Use it as a finished app, or import `alpha-harness` (`import alpha.*`) and build your own agent runtime on the same engines. |
 
 ---
 
@@ -311,7 +311,7 @@ make down                          # stop
 cd electron
 npm install
 npm run dist
-# -> electron\dist\Agent-Workspace-Setup-2.1.0.exe  (per-user, no admin rights)
+# -> electron\dist\Alpha-Setup-2.1.0.exe  (per-user, no admin rights)
 ```
 
 The installer bundles its own Node.js and `uv`; end users need nothing
@@ -325,8 +325,8 @@ Details: [electron/README.md](electron/README.md).
 ### Non-interactive / CI setup
 
 ```bash
-AGENT_WORKSPACE_SETUP_PROVIDER=openrouter \
-AGENT_WORKSPACE_SETUP_API_KEY="$OPENROUTER_API_KEY" \
+ALPHA_SETUP_PROVIDER=openrouter \
+ALPHA_SETUP_API_KEY="$OPENROUTER_API_KEY" \
 make setup SETUP_ARGS=--non-interactive
 ```
 
@@ -633,7 +633,7 @@ detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 <summary><b>24 public skills</b></summary>
 
 `academic-paper-review` · `bootstrap` · `chart-visualization` ·
-`claude-to-agent-workspace` · `code-documentation` · `consulting-analysis` ·
+`claude-to-alpha` · `code-documentation` · `consulting-analysis` ·
 `data-analysis` · `deep-research` · `find-skills` · `frontend-design` ·
 `github-deep-research` · `image-generation` · `music-generation` ·
 `newsletter-generation` · `podcast-generation` · `ppt-generation` ·
@@ -653,7 +653,7 @@ detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 | **Docker Compose** | `make up` / `make down` | Reproducible team/server deploys | `2026` |
 | **Windows desktop** | `electron/` → `npm run dist` | Single-user desktop use | `2026` (loopback) |
 | **Bare metal** | `make dev` | Active development with hot reload | `2026` |
-| **Kubernetes** | `deploy/helm/agent-workspace` | Cluster deployment | via ingress |
+| **Kubernetes** | `deploy/helm/alpha` | Cluster deployment | via ingress |
 | **CI / headless** | `make setup SETUP_ARGS=--non-interactive` | Automated provisioning | — |
 
 ### Service topology
@@ -789,7 +789,7 @@ Three extension surfaces, in increasing order of power:
    restart, and both build hooks and extension code run with Gateway privileges.
 
 A complete, runnable reference implementation of all five contribution kinds:
-[`examples/agent-workspace-extension-example/`](examples/agent-workspace-extension-example/).
+[`examples/alpha-extension-example/`](examples/alpha-extension-example/).
 
 ```bash
 make extension-list
@@ -954,7 +954,7 @@ cd backend && make test
 - Keep docs in sync in the same change set: `README.md` for user-facing changes,
   the relevant `AGENTS.md` for architecture changes, `CHANGELOG.md` for releases.
 - Version strings must stay identical across `backend/pyproject.toml`,
-  `frontend/package.json`, and `deploy/helm/agent-workspace/Chart.yaml`.
+  `frontend/package.json`, and `deploy/helm/alpha/Chart.yaml`.
 
 Good first issues are labelled on the [issue tracker](https://github.com/itsPremkumar/alpha/issues).
 → [CONTRIBUTING.md](CONTRIBUTING.md) · [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)

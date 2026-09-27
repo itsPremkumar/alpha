@@ -47,7 +47,7 @@ def _call_setup_agent(tmp_path: Path, soul: str, description: str, agent_name: s
 
 
 def test_setup_agent_rejects_invalid_agent_name_before_writing(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     outside_dir = tmp_path.parent / "outside-target"
     traversal_agent = f"../../../{outside_dir.name}/evil"
     runtime = _DummyRuntime(context={"agent_name": traversal_agent}, tool_call_id="tool-1")
@@ -62,7 +62,7 @@ def test_setup_agent_rejects_invalid_agent_name_before_writing(tmp_path, monkeyp
 
 
 def test_setup_agent_rejects_absolute_agent_name_before_writing(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     absolute_agent = str(tmp_path / "outside-agent")
     runtime = _DummyRuntime(context={"agent_name": absolute_agent}, tool_call_id="tool-2")
 

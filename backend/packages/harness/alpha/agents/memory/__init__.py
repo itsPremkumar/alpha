@@ -5,7 +5,7 @@ The shared, backend-agnostic core: the :class:`MemoryManager` contract, the
 Backends live under :mod:`backends` (each self-contained, exposing
 ``MANAGER_CLASS``); the default DeerMem backend's functional modules live in
 ``backends/deermem/core/``. Swap backend = drop a ``backends/<name>/`` folder +
-set ``MemoryConfig.manager_class`` -- nothing else in agent-workspace changes.
+set ``MemoryConfig.manager_class`` -- nothing else in alpha changes.
 
 DeerMem-private symbols (``format_memory_for_injection``, ``get_memory_data``,
 ``MemoryUpdater``, ``FileMemoryStorage``, ...) are NOT re-exported here -- import

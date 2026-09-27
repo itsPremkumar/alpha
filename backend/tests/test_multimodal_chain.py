@@ -23,7 +23,7 @@ from alpha.multimodal.errors import MultimodalUnavailableError
 @pytest.fixture(autouse=True)
 def _isolate_workspace(tmp_path, monkeypatch):
     """Plan §8: tests isolate config/home; legacy tier tests opt into automatic."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     monkeypatch.setattr(chain, "_speech_routing_mode", lambda: "automatic")
 
 

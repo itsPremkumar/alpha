@@ -408,7 +408,7 @@ def test_user_scoped_storage_scan_is_bounded_too(tmp_path: Path, monkeypatch) ->
     (user_root / "custom" / "team" / "my-skill" / "SKILL.md").write_text(
         "---\nname: my-skill\ndescription: d\n---\n\nbody\n", encoding="utf-8"
     )
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(home))
+    monkeypatch.setenv("ALPHA_HOME", str(home))
     monkeypatch.setattr(paths_module, "get_paths", lambda: paths_module.Paths(home))
     try:
         os.symlink(str(user_root / "custom" / "team"), str(user_root / "custom" / "alias"), target_is_directory=True)

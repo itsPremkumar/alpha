@@ -126,7 +126,7 @@ Keys:
 - Rotation is operator-run: the repository ships no `make rotate-secrets`
   target and no rotation script. Rotate out of band (your secret manager, or
   `openssl rand` for the local `.env`/K8s secret) and update
-  `.env`/`deploy/helm/agent-workspace/templates/*-secret.yaml` accordingly.
+  `.env`/`deploy/helm/alpha/templates/*-secret.yaml` accordingly.
 
 ## Sandbox Security
 
@@ -399,12 +399,12 @@ make support-bundle  # Collect evidence
 ### Data Subject Requests
 There is no `scripts/export_user_data.py` in this repository, so no
 one-command export exists. Per-owner data lives under the owner's runtime home
-(`AGENT_WORKSPACE_HOME`, see [MEMORY.md](MEMORY.md)); produce an export from
+(`ALPHA_HOME`, see [MEMORY.md](MEMORY.md)); produce an export from
 that directory with your own tooling and keep the retention windows below.
 
 ```bash
 # Illustrative only - substitute your own export tooling.
-tar -czf export.tar.gz "$AGENT_WORKSPACE_HOME/<owner-id>"
+tar -czf export.tar.gz "$ALPHA_HOME/<owner-id>"
 ```
 
 ## Enterprise Security Enclave & Governance Plane

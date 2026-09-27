@@ -3,11 +3,11 @@
 # Guidelines:
 # - Copy this file to `config.yaml` and customize it for your environment
 # - The default path of this configuration file is `config.yaml` in the project root.
-#   You can set `AGENT_WORKSPACE_PROJECT_ROOT` to define that root explicitly, or use
-#   `AGENT_WORKSPACE_CONFIG_PATH` to point at a specific config file.
-# - Runtime state defaults to `.agent-workspace` under the project root. Override it
-#   with `AGENT_WORKSPACE_HOME` when you need a different writable data directory.
-# - Set `AGENT_WORKSPACE_DATE_TIMEZONE` to an IANA timezone name (e.g. `Asia/Shanghai`)
+#   You can set `ALPHA_PROJECT_ROOT` to define that root explicitly, or use
+#   `ALPHA_CONFIG_PATH` to point at a specific config file.
+# - Runtime state defaults to `.alpha` under the project root. Override it
+#   with `ALPHA_HOME` when you need a different writable data directory.
+# - Set `ALPHA_DATE_TIMEZONE` to an IANA timezone name (e.g. `Asia/Shanghai`)
 #   when the conversation date injected into agents should follow a zone other
 #   than the server's local timezone. It is read at runtime by the date-context
 #   middlewares (not a config-schema field), so it can be set on a container
@@ -56,10 +56,10 @@ logging:
 # (not deprecated) middleware list. Packaged plugins use the `plugins:` block below.
 # extensions:
 #   middlewares:
-#     - my_company.agent_workspace_middlewares:DomainGuardMiddleware
-#     - class: my_company.agent_workspace_middlewares:LatencyStampingMiddleware
+#     - my_company.alpha_middlewares:DomainGuardMiddleware
+#     - class: my_company.alpha_middlewares:LatencyStampingMiddleware
 #       kwargs:
-#         header: X-Agent-Workspace-Latency
+#         header: X-Alpha-Latency
 
 # ============================================================================
 # Tracing / Observability (Monocle)
@@ -164,7 +164,7 @@ max_recursion_limit: 1000
 # ---------------------------------------------------------------------------
 # Every model name Alpha knows about can live in one dedicated file instead of
 # being spread across this config and the code. `make setup` copies
-# `models.example.yaml` -> `models.yaml`; point `$AGENT_WORKSPACE_MODELS_CONFIG_PATH`
+# `models.example.yaml` -> `models.yaml`; point `$ALPHA_MODELS_CONFIG_PATH`
 # at it to load it from elsewhere.
 #
 #   models         runtime-buildable models (same schema as the `models:` list here)
@@ -401,7 +401,7 @@ models:
   # into <think> tags or dropped entirely (ollama/ollama#15293). The native Ollama API
   # (/api/chat) correctly separates thinking from response content.
   #
-  # Install: cd backend && uv pip install 'agent-workspace-harness[ollama]'
+  # Install: cd backend && uv pip install 'alpha-harness[ollama]'
   #
   # - name: qwen3-local
   #   display_name: Qwen3 32B (Ollama)
@@ -1681,7 +1681,7 @@ safety_finish_reason:
   #
   # Example — add a custom detector for an in-house provider:
   # detectors:
-  #   - use: my_company.agent_workspace_ext:WenxinSafetyDetector
+  #   - use: my_company.alpha_ext:WenxinSafetyDetector
   #     config:
   #       error_codes: [336003, 17, 18]
 
@@ -1721,7 +1721,7 @@ sandbox:
   # Optional: Mount additional host directories into the sandbox.
   # Each mount maps a host path to a virtual container path accessible by the agent.
   # Note: with LocalSandboxProvider under `make up` (docker-compose), host_path is
-  # checked from inside the agent-workspace-gateway container — you must also bind-mount
+  # checked from inside the alpha-gateway container — you must also bind-mount
   # the same directory into services.gateway.volumes in docker/docker-compose.yaml
   # for this mount to take effect (see issue #3244).
   # mounts:
@@ -1773,8 +1773,8 @@ sandbox:
 #   # make room for new ones. Use a positive integer here; omit this field to use the default.
 #   # replicas: 3
 #
-#   # Optional: Prefix for container names (default: agent-workspace-sandbox)
-#   # container_prefix: agent-workspace-sandbox
+#   # Optional: Prefix for container names (default: alpha-sandbox)
+#   # container_prefix: alpha-sandbox
 #
 #   # Optional: outbound network policy for locally managed Docker sandboxes.
 #   # open keeps the current behavior. isolated denies all outbound traffic.
@@ -1791,7 +1791,7 @@ sandbox:
 #       - github.com
 #     approval: prompt                  # deny | prompt
 #     temporary_grant_ttl: 300          # 30-3600 seconds
-#     proxy_image: ghcr.io/agent-workspace/sandbox-network-proxy:latest
+#     proxy_image: ghcr.io/alpha/sandbox-network-proxy:latest
 #
 #   # Optional: Override whether the sandbox already sees the gateway's
 #   # thread workspace/uploads/outputs through shared mounts.
@@ -1833,7 +1833,7 @@ sandbox:
 #   #
 #   # MULTIPLE gateway instances / workers sharing one container backend
 #   # (load-balanced deployments, Docker Compose) MUST set type: redis. Docker
-#   # Compose already sets AGENT_WORKSPACE_STREAM_BRIDGE_REDIS_URL, which is taken as
+#   # Compose already sets ALPHA_STREAM_BRIDGE_REDIS_URL, which is taken as
 #   # proof the deployment is multi-instance, so redis ownership is inferred even
 #   # if this section is omitted.
 #   #
@@ -1915,7 +1915,7 @@ sandbox:
 # Option 5: Tenki cloud microVM Sandbox
 # Runs each sandbox as an isolated Tenki cloud microVM. Released sandboxes stay
 # in an in-process warm pool and are reclaimed by the same user/thread without a
-# cold start. Requires the optional SDK: pip install "agent-workspace-harness[tenki]".
+# cold start. Requires the optional SDK: pip install "alpha-harness[tenki]".
 # sandbox:
 #   use: alpha.community.tenki:TenkiSandboxProvider
 #   # api_key: $TENKI_API_KEY        # falls back to TENKI_API_KEY / TENKI_AUTH_TOKEN env var
@@ -1938,7 +1938,7 @@ sandbox:
 # Option 6: OpenSandbox remote Sandbox
 # Runs each sandbox through an OpenSandbox server. Released sandboxes stay in an
 # in-process warm pool and are reclaimed only by the same user/thread. Requires
-# the optional SDK: pip install "agent-workspace-harness[opensandbox]".
+# the optional SDK: pip install "alpha-harness[opensandbox]".
 # sandbox:
 #   use: alpha.community.opensandbox:OpenSandboxProvider
 #   image: python:3.11
@@ -2240,7 +2240,7 @@ system_one:
 skills:
   # Path to skills directory on the host (relative to project root or absolute)
   # Default: skills under the project root
-  # Override with AGENT_WORKSPACE_SKILLS_PATH when this field is omitted.
+  # Override with ALPHA_SKILLS_PATH when this field is omitted.
   # Uncomment to customize:
   # path: /absolute/path/to/custom/skills
 
@@ -2382,7 +2382,7 @@ summarization:
 #   backend_config      - Backend-private config dict (passthrough; each backend self-interprets)
 #
 # DeerMem-private fields live under ``backend_config`` (NOT at the memory: top level):
-#   storage_path        - Data root. Empty = agent-workspace base_dir (factory injects absolute
+#   storage_path        - Data root. Empty = alpha base_dir (factory injects absolute
 #                         runtime_home). Absolute path = that root. Relative = CWD-relative.
 #   model               - LLM config for memory extraction: {provider, model, api_key, base_url,
 #                         temperature}. Omit all fields = no extraction (non-LLM ops still work).
@@ -2414,7 +2414,7 @@ memory:
   # shutdown. Each pending item does one LLM call, so large IM batches may need
   # more. Must fit inside the pod's K8s terminationGracePeriodSeconds (channel
   # stop + this drain + buffer) or K8s SIGKILLs the drain -- set that on the
-  # gateway Helm deployment (see deploy/helm/agent-workspace). Default 30s.
+  # gateway Helm deployment (see deploy/helm/alpha). Default 30s.
   shutdown_flush_timeout_seconds: 30.0
   # Memory backend selector. Either a registered backend name (matching a
   # backends/<name>/ folder that exposes MANAGER_CLASS, e.g. deermem / mem0 / noop)
@@ -2469,12 +2469,12 @@ memory:
   # backend_config:
   #   base_url: http://localhost:8000
   #   # api_key: $HONCHO_API_KEY   # hosted Honcho; plain-http + api_key needs allow_insecure_http: true
-  #   workspace_prefix: agent-workspace-u-   # one isolated workspace per user id
+  #   workspace_prefix: alpha-u-   # one isolated workspace per user id
   #   # workspace_overrides: {}    # map specific user ids to custom workspaces
   #   # user_peer_overrides: {}    # map specific user ids to custom peer names
   #   assistant_peer: alpha
   backend_config:
-    storage_path: ""            # empty = agent-workspace base_dir (factory injects absolute runtime_home); a non-empty path is the root DIRECTORY (per-user memory under {storage_path}/users/{uid}/memory.json)
+    storage_path: ""            # empty = alpha base_dir (factory injects absolute runtime_home); a non-empty path is the root DIRECTORY (per-user memory under {storage_path}/users/{uid}/memory.json)
     storage_class: file         # file (default) or a dotted MemoryStorage class path; invalid persistent backends fail fast
     strict_user_scope: false    # set true in authenticated deployments after all callers propagate user_id
     manifest_filename: memory.json # user-global JSON: version/revision/time + user/history only; no facts or fact index
@@ -2996,9 +2996,9 @@ skill_evolution:
 #
 # If this section is omitted or empty in config.yaml, Alpha uses:
 #   backend: sqlite
-#   sqlite_dir: .agent-workspace/data
+#   sqlite_dir: .alpha/data
 #
-# SQLite mode uses a single agent-workspace.db file with WAL journal mode
+# SQLite mode uses a single alpha.db file with WAL journal mode
 # for the checkpointer, Store, and application data.
 #
 # Postgres mode: put your connection URL in .env as DATABASE_URL,
@@ -3029,7 +3029,7 @@ skill_evolution:
 # If you use `database`, you can remove the `checkpointer` section.
 # database:
 #   backend: sqlite
-#   sqlite_dir: .agent-workspace/data
+#   sqlite_dir: .alpha/data
 #
 # database:
 #   backend: postgres
@@ -3081,7 +3081,7 @@ skill_evolution:
 #      its history). The `public` schema should gain no new Alpha tables.
 database:
   backend: sqlite
-  sqlite_dir: .agent-workspace/data
+  sqlite_dir: .alpha/data
 
 # ============================================================================
 # Inbound webhook dedupe storage (cross-pod redelivery dedup — issue #4120)
@@ -3132,7 +3132,7 @@ database:
   # checkpoint_cache:
   #   type: memory            # memory | redis (redis is Gateway/async only)
   #   max_entries: 128        # 0 disables the cache
-  #   redis_url: null         # or AGENT_WORKSPACE_CHECKPOINT_CACHE_REDIS_URL / REDIS_URL
+  #   redis_url: null         # or ALPHA_CHECKPOINT_CACHE_REDIS_URL / REDIS_URL
   #   ttl_seconds: 86400      # redis leak safety net; bounds residual copies if a
   #                           # thread-delete purge fails (purge itself is immediate).
   #                           # 0 explicitly disables expiry (redis maxmemory only)
@@ -3286,7 +3286,7 @@ run_ownership:
 # Stream Bridge Configuration
 # ============================================================================
 # The stream bridge carries live agent events from gateway workers to SSE
-# clients. Docker Compose sets AGENT_WORKSPACE_STREAM_BRIDGE_REDIS_URL automatically,
+# clients. Docker Compose sets ALPHA_STREAM_BRIDGE_REDIS_URL automatically,
 # so Docker deployments use Redis Streams even if this section is omitted.
 #
 # The redis bridge requires the optional `redis` extra. It is auto-detected from
@@ -3399,7 +3399,7 @@ run_ownership:
 #   # of localhost, for example:
 #   # langgraph_url: http://gateway:8001/api
 #   # gateway_url: http://gateway:8001
-#   # You can also set AGENT_WORKSPACE_CHANNELS_LANGGRAPH_URL / AGENT_WORKSPACE_CHANNELS_GATEWAY_URL.
+#   # You can also set ALPHA_CHANNELS_LANGGRAPH_URL / ALPHA_CHANNELS_GATEWAY_URL.
 #
 #   # Optional: default mobile/session settings for all IM channels
 #   session:
@@ -3449,7 +3449,7 @@ run_ownership:
 #     # QR bootstrap timeout
 #     qrcode_poll_timeout: 180
 #     # Optional: persist getupdates cursor under the gateway container volume
-#     state_dir: ./.agent-workspace/wechat/state
+#     state_dir: ./.alpha/wechat/state
 #     # Optional: max inbound image size in bytes before skipping download
 #     max_inbound_image_bytes: 20971520
 #     # Optional: max outbound image size in bytes before skipping upload
@@ -3531,7 +3531,7 @@ run_ownership:
 # --- Option 2: OAP passport provider (open standard, any implementation) ---
 #   The Open Agent Passport (OAP) spec defines passport format and decision codes.
 #   Any OAP-compliant provider works. Example using APort (reference implementation):
-#     pip install aport-agent-guardrails && aport setup --framework agent-workspace
+#     pip install aport-agent-guardrails && aport setup --framework alpha
 # guardrails:
 #   enabled: true
 #   provider:
@@ -3597,7 +3597,7 @@ run_ownership:
 
 # hooks:
 #   enabled: true
-#   hooks_path: "/etc/agent-workspace/hooks.json"
+#   hooks_path: "/etc/alpha/hooks.json"
 #   default_timeout_seconds: 10.0
 #   fail_open: true
 
@@ -3707,7 +3707,7 @@ authorization:
 # When enabled, the login page will show SSO buttons alongside the standard email/password form.
 #
 # Provider configuration:
-#   - issuer:      The OIDC issuer URL (e.g. https://keycloak.example.com/realms/agent-workspace)
+#   - issuer:      The OIDC issuer URL (e.g. https://keycloak.example.com/realms/alpha)
 #   - client_id:   OAuth2 client ID from the provider
 #   - client_secret: OAuth2 client secret ($ENV_VAR references supported)
 #   - redirect_uri: Callback URL. In production, this must match what you configure in
@@ -3753,16 +3753,16 @@ authorization:
 #     enabled: true
 #     # Base URL of the frontend, used for redirects after SSO callback.
 #     # In production behind a reverse proxy, set this to the public frontend URL
-#     # (e.g. https://agent-workspace.example.com). In development, leave unset.
+#     # (e.g. https://alpha.example.com). In development, leave unset.
 #     # frontend_base_url: http://localhost:3000
 #     providers:
 #       keycloak:
 #         display_name: Keycloak
-#         issuer: https://keycloak.example.com/realms/agent-workspace
-#         client_id: agent-workspace
+#         issuer: https://keycloak.example.com/realms/alpha
+#         client_id: alpha
 #         client_secret: $KEYCLOAK_CLIENT_SECRET
 #         # Optional: explicitly set the callback URL.
-#         # redirect_uri: https://agent-workspace.example.com/api/v1/auth/callback/keycloak
+#         # redirect_uri: https://alpha.example.com/api/v1/auth/callback/keycloak
 #         scopes:
 #           - openid
 #           - email
@@ -3786,8 +3786,8 @@ authorization:
 # block is handed to that package verbatim and validated by the package itself.
 #
 # Prefer the extension manager over editing this list by hand:
-#   make extension-install SOURCE="agent-workspace-extension-acme==1.2.3"
-#   make extension-install SOURCE="git+https://github.com/acme/agent-workspace-extension-acme.git@<commit>"
+#   make extension-install SOURCE="alpha-extension-acme==1.2.3"
+#   make extension-install SOURCE="git+https://github.com/acme/alpha-extension-acme.git@<commit>"
 #   make extension-install SOURCE="/absolute/path/to/local-extension"
 #   make extension-list
 #   make extension-enable NAME=acme
@@ -3815,12 +3815,12 @@ authorization:
 #
 # Plugins can contribute semantically placed middleware, task-lifecycle hooks,
 # system-model observers, Gateway-lifetime services, and eager FastAPI HTTP routers.
-# See examples/agent-workspace-extension-example for a package that exercises all five.
+# See examples/alpha-extension-example for a package that exercises all five.
 #
 # plugins:
 #   - name: example                       # PEP 621 entry-point name
-#     package: agent-workspace-extension-example # Python distribution managed by uv
-#     use: agent_workspace_extension_example:install
+#     package: alpha-extension-example # Python distribution managed by uv
+#     use: alpha_extension_example:install
 #     enabled: true                       # false skips import and registration
 #     required: false                     # true makes load failure abort Gateway startup
 #                                         # (install --required opts in)

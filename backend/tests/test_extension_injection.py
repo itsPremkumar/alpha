@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from agent_workspace_extension_api import (
+from alpha_extension_api import (
     AgentBuildContext,
     AgentScope,
     MiddlewarePlacement,

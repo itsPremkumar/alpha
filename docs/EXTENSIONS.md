@@ -41,7 +41,7 @@ Request/response processing pipeline extensions.
 
 ```python
 # extension/middleware.py
-from agent_workspace_extension_api import Middleware
+from alpha_extension_api import Middleware
 from starlette.requests import Request
 from starlette.responses import Response
 
@@ -62,7 +62,7 @@ Hook into agent execution phases.
 
 ```python
 # extension/lifecycle.py
-from agent_workspace_extension_api import TaskLifecycleHook
+from alpha_extension_api import TaskLifecycleHook
 from alpha.types import AgentState
 
 class MetricsHook(TaskLifecycleHook):
@@ -92,7 +92,7 @@ Monitor agent state changes.
 
 ```python
 # extension/observer.py
-from agent_workspace_extension_api import SystemModelObserver
+from alpha_extension_api import SystemModelObserver
 from alpha.types import SystemEvent
 
 class AlertObserver(SystemModelObserver):
@@ -108,7 +108,7 @@ Long-running background services.
 
 ```python
 # extension/service.py
-from agent_workspace_extension_api import GatewayService
+from alpha_extension_api import GatewayService
 import asyncio
 
 class CleanupService(GatewayService):
@@ -132,7 +132,7 @@ Custom HTTP endpoints.
 
 ```python
 # extension/router.py
-from agent_workspace_extension_api import RouterContribution
+from alpha_extension_api import RouterContribution
 from fastapi import APIRouter
 
 router = APIRouter(prefix="/api/extensions/my-ext", tags=["my-extension"])
@@ -182,7 +182,7 @@ license = {text = "MIT"}
 authors = [{name = "Author", email = "author@example.com"}]
 requires-python = ">=3.12"
 dependencies = [
-    "agent-workspace-extension-api>=2.1.0",
+    "alpha-extension-api>=2.1.0",
     # Other dependencies
 ]
 classifiers = [
@@ -193,12 +193,12 @@ classifiers = [
 my-extension = "my_extension.manifest:ExtensionManifest"
 
 [tool.uv.sources]
-agent-workspace-extension-api = {path = "../../packages/extension-api", editable = true}
+alpha-extension-api = {path = "../../packages/extension-api", editable = true}
 ```
 
 ### Manifest (manifest.py)
 ```python
-from agent_workspace_extension_api import ExtensionManifest, ExtensionConfig
+from alpha_extension_api import ExtensionManifest, ExtensionConfig
 
 class ExtensionManifest(ExtensionManifest):
     name = "my-extension"
@@ -343,7 +343,7 @@ through `alpha/extensions/registry.py`, not by manifest keys.
 ### Contribution interfaces
 An extension contributes by **calling methods on the registry it is handed** from
 its `use:` entry point. The contracts are Protocols owned by the third-party
-`agent_workspace_extension_api` package (imported at
+`alpha_extension_api` package (imported at
 `alpha/extensions/registry.py:15`), not classes you subclass in this repository:
 
 | `ExtensionRegistry` method | Contributor Protocol it accepts |
@@ -376,7 +376,7 @@ events are a real, separate subsystem - see the `run_events:` section of
 ```
 ┌────────────────────────────────────────────────────────────┐
 │                    TRUSTED CODE                            │
-│  • Core agent-workspace packages                           │
+│  • Core alpha packages                           │
 │  • Operator-installed extensions (config.yaml plugins)     │
 │  • Full system access                                      │
 ├────────────────────────────────────────────────────────────┤
@@ -413,7 +413,7 @@ events are a real, separate subsystem - see the `run_events:` section of
       "version": "1.0.0",
       "checksum": "sha256:abc123...",
       "dependencies": {
-        "agent-workspace-extension-api": "2.1.0"
+        "alpha-extension-api": "2.1.0"
       },
       "installed_at": "2026-09-17T10:00:00Z",
       "installed_by": "user-uuid"
@@ -438,7 +438,7 @@ events are a real, separate subsystem - see the `run_events:` section of
 ### Development Setup
 ```bash
 # Create extension template
-cd examples/agent-workspace-extension-example
+cd examples/alpha-extension-example
 cp -r ../my-extension
 
 # Install in development mode
@@ -496,13 +496,13 @@ make extension-install SOURCE=git+https://github.com/user/ext.git@v1.0.0
 
 ## Reference Extension
 
-The `examples/agent-workspace-extension-example/` demonstrates all five contribution types:
+The `examples/alpha-extension-example/` demonstrates all five contribution types:
 
 ```
-agent-workspace-extension-example/
+alpha-extension-example/
 ├── pyproject.toml
 ├── src/
-│   └── agent_workspace_extension_example/
+│   └── alpha_extension_example/
 │       ├── __init__.py
 │       ├── manifest.py
 │       ├── middleware.py      # Request/response logging

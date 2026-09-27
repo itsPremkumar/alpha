@@ -22,9 +22,9 @@ from alpha.evolution.release_check import _is_newer_release, _parse_semver
 
 @pytest.fixture()
 def isolated_home(tmp_path, monkeypatch):
-    """Point runtime_home() at a per-test tmp dir (AGENT_WORKSPACE_HOME)."""
+    """Point runtime_home() at a per-test tmp dir (ALPHA_HOME)."""
     home = tmp_path / "agent-home"
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(home))
+    monkeypatch.setenv("ALPHA_HOME", str(home))
     return home
 
 

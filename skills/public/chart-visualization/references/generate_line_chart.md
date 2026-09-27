@@ -5,14 +5,14 @@ Plots continuous data points connected by straight segments, ideal for time seri
 
 ## Input Fields
 ### Required
-- data: array<object>, items containing 	ime or x (string) and alue (number).
+- data: array<object>, items containing time or x (string) and value (number).
 
 ### Optional
 - series: string, field separating multiple distinct lines.
-- 	heme: string, default default.
+- theme: string, default default.
 - width: number, default 600.
 - height: number, default 400.
-- 	itle: string, chart title.
+- title: string, chart title.
 
 ## Usage Recommendations
 Avoid plotting more than 5 lines on a single chart to preserve legibility.

@@ -208,12 +208,12 @@ Three surfaces, in increasing order of power:
 
 Manage them with `alpha extensions install|upgrade|list|enable|disable|remove`, or
 the root `make extension-*` wrappers. A runnable reference implementation of all
-five contribution kinds is in `examples/agent-workspace-extension-example/`.
+five contribution kinds is in `examples/alpha-extension-example/`.
 
 ## 8. Public skills (24)
 
 `academic-paper-review` `bootstrap` `chart-visualization`
-`claude-to-agent-workspace` `code-documentation` `consulting-analysis`
+`claude-to-alpha` `code-documentation` `consulting-analysis`
 `data-analysis` `deep-research` `find-skills` `frontend-design`
 `github-deep-research` `image-generation` `music-generation`
 `newsletter-generation` `podcast-generation` `ppt-generation`
@@ -222,7 +222,7 @@ five contribution kinds is in `examples/agent-workspace-extension-example/`.
 `web-design-guidelines`
 
 Managed integration skill packs are global at
-`.agent-workspace/integrations/skills/{provider}/`. Skill text is UTF-8; Python
+`.alpha/integrations/skills/{provider}/`. Skill text is UTF-8; Python
 utilities that read or write `SKILL.md` must pass `encoding="utf-8"`.
 
 ## 9. Autonomy supervisor
@@ -282,7 +282,7 @@ mailbox; libp2p must report unavailable until a real authenticated adapter exist
   schema-generate `ToolRuntime`'s `Callable` fields and breaks the whole tool list.
   Run `backend/scripts/check_tool_schemas.py` after any tool signature change.
 - Version strings must stay identical across `backend/pyproject.toml`,
-  `frontend/package.json`, and `deploy/helm/agent-workspace/Chart.yaml`. Pushing a
+  `frontend/package.json`, and `deploy/helm/alpha/Chart.yaml`. Pushing a
   `v*` tag runs `scripts/verify_versions.sh` and blocks all publishing on drift.
 - `AGENTS.md` is the contributor source of truth; `CLAUDE.md` is a thin import
   shim and must not be edited.

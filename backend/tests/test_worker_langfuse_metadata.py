@@ -15,7 +15,7 @@ from alpha.runtime.runs.manager import RunRecord, RunStartOutcome
 from alpha.runtime.runs.schemas import DisconnectMode, RunStatus
 from alpha.runtime.runs.worker import RunContext, run_agent
 from alpha.trace_context import (
-    AGENT_WORKSPACE_TRACE_METADATA_KEY,
+    ALPHA_TRACE_METADATA_KEY,
     request_trace_context,
 )
 
@@ -138,8 +138,8 @@ async def test_run_agent_injects_langfuse_metadata(monkeypatch):
     user_id = metadata.get("langfuse_user_id")
     assert user_id == "test-user-autouse", f"expected test-user-autouse, got {user_id}"
     assert metadata.get("langfuse_trace_name") == "lead-agent"
-    assert metadata.get(AGENT_WORKSPACE_TRACE_METADATA_KEY) == "gateway-trace-1"
-    assert fake_agent.captured_config.get("context", {}).get(AGENT_WORKSPACE_TRACE_METADATA_KEY) == "gateway-trace-1"
+    assert metadata.get(ALPHA_TRACE_METADATA_KEY) == "gateway-trace-1"
+    assert fake_agent.captured_config.get("context", {}).get(ALPHA_TRACE_METADATA_KEY) == "gateway-trace-1"
     tags = metadata.get("langfuse_tags") or []
     assert "model:gpt-4o" in tags
 
@@ -283,7 +283,7 @@ async def test_run_agent_preserves_caller_metadata_overrides(monkeypatch):
         config={
             "configurable": {"thread_id": "thread-default"},
             "metadata": {
-                AGENT_WORKSPACE_TRACE_METADATA_KEY: "explicit-alpha-trace",
+                ALPHA_TRACE_METADATA_KEY: "explicit-alpha-trace",
                 "langfuse_session_id": "custom-session-id",
                 "langfuse_user_id": "explicit-user",
             },
@@ -294,18 +294,18 @@ async def test_run_agent_preserves_caller_metadata_overrides(monkeypatch):
     # Caller-supplied keys win.
     assert metadata["langfuse_session_id"] == "custom-session-id"
     assert metadata["langfuse_user_id"] == "explicit-user"
-    # ...except agent_workspace_trace_id, which the server issues. Honouring the
+    # ...except alpha_trace_id, which the server issues. Honouring the
     # caller here would let the persisted run point at an id that matches
     # neither the response header nor the log lines for the same request.
-    assert metadata[AGENT_WORKSPACE_TRACE_METADATA_KEY] != "explicit-alpha-trace"
-    assert metadata[AGENT_WORKSPACE_TRACE_METADATA_KEY] == fake_agent.captured_config["context"][AGENT_WORKSPACE_TRACE_METADATA_KEY]
+    assert metadata[ALPHA_TRACE_METADATA_KEY] != "explicit-alpha-trace"
+    assert metadata[ALPHA_TRACE_METADATA_KEY] == fake_agent.captured_config["context"][ALPHA_TRACE_METADATA_KEY]
     # Worker still fills in keys that the caller didn't set.
     assert metadata["langfuse_trace_name"] == "lead-agent"
 
 
 @pytest.mark.asyncio
 async def test_run_agent_overwrites_caller_supplied_trace_id(monkeypatch):
-    """The bound request trace is the only source. A ``agent_workspace_trace_id`` in
+    """The bound request trace is the only source. A ``alpha_trace_id`` in
     the caller's metadata is replaced, not honoured, so the persisted run
     cannot disagree with the header and the logs from the same request."""
     monkeypatch.setenv("LANGFUSE_TRACING", "true")
@@ -341,14 +341,14 @@ async def test_run_agent_overwrites_caller_supplied_trace_id(monkeypatch):
             config={
                 "configurable": {"thread_id": "thread-header"},
                 "metadata": {
-                    AGENT_WORKSPACE_TRACE_METADATA_KEY: "metadata-trace-ignored",
+                    ALPHA_TRACE_METADATA_KEY: "metadata-trace-ignored",
                 },
             },
         )
 
     metadata = fake_agent.captured_config.get("metadata") or {}
-    assert metadata[AGENT_WORKSPACE_TRACE_METADATA_KEY] == "header-trace-1"
-    assert fake_agent.captured_config.get("context", {}).get(AGENT_WORKSPACE_TRACE_METADATA_KEY) == "header-trace-1"
+    assert metadata[ALPHA_TRACE_METADATA_KEY] == "header-trace-1"
+    assert fake_agent.captured_config.get("context", {}).get(ALPHA_TRACE_METADATA_KEY) == "header-trace-1"
 
 
 @pytest.mark.asyncio

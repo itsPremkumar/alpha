@@ -18,7 +18,7 @@ from alpha.memory.session_search import SessionSearchEngine
 
 @pytest.fixture(autouse=True)
 def _workspace_home(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     return tmp_path
 
 

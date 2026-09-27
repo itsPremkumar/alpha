@@ -22,7 +22,7 @@ Nginx reverse proxy on port `2026`. Maintained by
 ### Is Alpha a framework or a finished application?
 
 Both. It ships as a finished, self-hostable application, and its agent framework is
-also importable as `agent-workspace-harness` (import name `alpha.*`) with 99 engine
+also importable as `alpha-harness` (import name `alpha.*`) with 99 engine
 modules you can use to build your own runtime.
 
 ### Is Alpha a chatbot?
@@ -67,9 +67,9 @@ you need at least one entry under `models:`. Full guide:
 - **Docker Compose** — `make up` / `make down`, browser at `http://localhost:2026`.
   Best for reproducible team and server deployments.
 - **Bare metal** — `make dev` with hot reload. Best for active development.
-- **Kubernetes** — `deploy/helm/agent-workspace`. Best for cluster deployment.
+- **Kubernetes** — `deploy/helm/alpha`. Best for cluster deployment.
 - **CI / headless** — `make setup SETUP_ARGS=--non-interactive` with
-  `AGENT_WORKSPACE_SETUP_*` environment variables.
+  `ALPHA_SETUP_*` environment variables.
 
 ### What are the ports and routes?
 
@@ -188,7 +188,7 @@ uses a hosted model (Jev) or a self-hosted open-weights alternative (Laya).
 
 Middleware, task lifecycle hooks, system-model observers, Gateway services, and
 FastAPI HTTP routers. A runnable reference package demonstrating all five is in
-[`examples/agent-workspace-extension-example/`](../examples/agent-workspace-extension-example/).
+[`examples/alpha-extension-example/`](../examples/alpha-extension-example/).
 Manage extensions with `alpha extensions install|upgrade|list|enable|disable|remove`
 or the root `make extension-*` wrappers.
 
@@ -201,7 +201,7 @@ Gateway privileges, so an extension is effectively trusted code. See
 ### What are the 24 public skills?
 
 `academic-paper-review`, `bootstrap`, `chart-visualization`,
-`claude-to-agent-workspace`, `code-documentation`, `consulting-analysis`,
+`claude-to-alpha`, `code-documentation`, `consulting-analysis`,
 `data-analysis`, `deep-research`, `find-skills`, `frontend-design`,
 `github-deep-research`, `image-generation`, `music-generation`,
 `newsletter-generation`, `podcast-generation`, `ppt-generation`,

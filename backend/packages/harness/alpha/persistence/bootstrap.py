@@ -311,7 +311,7 @@ def _get_alembic_config(engine: AsyncEngine, *, postgres_schema: str = "") -> Al
     depend on a working-directory-relative file lookup. The ``script_location``
     is anchored at the package path on disk.
 
-    When *postgres_schema* is set it is forwarded as the ``agent_workspace_pg_schema``
+    When *postgres_schema* is set it is forwarded as the ``alpha_pg_schema``
     main option so ``env.py`` can pin its alembic-spawned engine's
     ``search_path`` to the same schema the app engine uses. Without it,
     alembic's own engine -- built from the bare URL -- would create
@@ -322,7 +322,7 @@ def _get_alembic_config(engine: AsyncEngine, *, postgres_schema: str = "") -> Al
     cfg.set_main_option("script_location", str(_MIGRATIONS_DIR))
     cfg.set_main_option("sqlalchemy.url", _alembic_safe_url(engine))
     if postgres_schema:
-        cfg.set_main_option("agent_workspace_pg_schema", postgres_schema)
+        cfg.set_main_option("alpha_pg_schema", postgres_schema)
     return cfg
 
 
@@ -395,7 +395,7 @@ def _reflect_state(sync_conn: Any) -> dict[str, bool]:
     """Inspect *sync_conn* (sync connection inside ``run_sync``) and return:
 
     - ``has_alembic_version``: bool
-    - ``has_agent_workspace_tables``: True iff at least one table that ``Base.metadata``
+    - ``has_alpha_tables``: True iff at least one table that ``Base.metadata``
       knows about is present in the DB. Computed as ``reflected ∩ metadata`` so
       the bootstrap layer never hardcodes a specific table or column name --
       adding a new ORM model only changes ``Base.metadata``, not this module.
@@ -414,7 +414,7 @@ def _reflect_state(sync_conn: Any) -> dict[str, bool]:
     metadata_tables = set(Base.metadata.tables)
     return {
         "has_alembic_version": "alembic_version" in reflected,
-        "has_agent_workspace_tables": bool(reflected & metadata_tables),
+        "has_alpha_tables": bool(reflected & metadata_tables),
     }
 
 
@@ -428,7 +428,7 @@ def _decide_state(state: dict[str, bool]) -> str:
     """
     if state["has_alembic_version"]:
         return "versioned"
-    if not state["has_agent_workspace_tables"]:
+    if not state["has_alpha_tables"]:
         # Either a brand-new DB or a DB containing only tables we don't own
         # (e.g. LangGraph's checkpointer tables on a fresh deployment). The
         # empty branch provisions the tables alembic owns, then stamps head.

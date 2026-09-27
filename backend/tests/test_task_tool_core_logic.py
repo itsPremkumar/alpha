@@ -788,7 +788,7 @@ def test_task_tool_emits_running_and_completed_events(monkeypatch):
             "extension": ".pdf",
         }
     ]
-    runtime.context["agent_workspace_trace_id"] = "task-trace-1"
+    runtime.context["alpha_trace_id"] = "task-trace-1"
     events = []
     dispatched_events = []
     captured = {}
@@ -850,7 +850,7 @@ def test_task_tool_emits_running_and_completed_events(monkeypatch):
     assert captured["task_id"] == "tc-123"
     assert captured["executor_kwargs"]["thread_id"] == "thread-1"
     assert captured["executor_kwargs"]["parent_model"] == "ark-model"
-    assert captured["executor_kwargs"]["agent_workspace_trace_id"] == "task-trace-1"
+    assert captured["executor_kwargs"]["alpha_trace_id"] == "task-trace-1"
     assert captured["executor_kwargs"]["uploaded_files"] == runtime.state["uploaded_files"]
     assert captured["executor_kwargs"]["config"].max_turns == config.max_turns
     # Skills are no longer appended to system_prompt; they are loaded per-session
@@ -2152,7 +2152,7 @@ def test_deferred_final_usage_reported_on_parent_loop_with_real_recorder(monkeyp
     ``_report_subagent_usage`` → ``journal.record_external_llm_usage_records``)
     instead of stubbing ``_report_subagent_usage``: the journal captures the
     running loop of every call, so a cross-thread report would surface here as
-    a wrong-loop (or no-loop) entry — the exact hazard ``agent_workspace_loop_bound``
+    a wrong-loop (or no-loop) entry — the exact hazard ``alpha_loop_bound``
     exists to prevent."""
     config = _make_subagent_config()
     cleanup_calls: list[str] = []

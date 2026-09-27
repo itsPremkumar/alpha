@@ -35,10 +35,10 @@ logger = logging.getLogger(__name__)
 
 # The sandbox and the broker sidecar share the Pod network namespace, so the
 # shim reaches the broker on loopback. The port is fixed and injected into the
-# sandbox as AGENT_WORKSPACE_LARK_BROKER_URL.
+# sandbox as ALPHA_LARK_BROKER_URL.
 LARK_BROKER_DEFAULT_HOST = "127.0.0.1"
 LARK_BROKER_DEFAULT_PORT = 8788
-LARK_BROKER_URL_ENV = "AGENT_WORKSPACE_LARK_BROKER_URL"
+LARK_BROKER_URL_ENV = "ALPHA_LARK_BROKER_URL"
 LARK_BROKER_EXEC_PATH = "/v1/exec"
 LARK_BROKER_HEALTH_PATH = "/v1/health"
 
@@ -55,7 +55,7 @@ LARK_BROKER_MAX_CONCURRENCY = 8
 LARK_BROKER_SOCKET_TIMEOUT_SECONDS = 30
 
 # Optional env knob (comma-separated) for the subcommand denylist below.
-LARK_BROKER_DENY_SUBCOMMANDS_ENV = "AGENT_WORKSPACE_LARK_BROKER_DENY_SUBCOMMANDS"
+LARK_BROKER_DENY_SUBCOMMANDS_ENV = "ALPHA_LARK_BROKER_DENY_SUBCOMMANDS"
 
 # The runtime layout the sandbox sees is two files in ``bin/``:
 #
@@ -70,7 +70,7 @@ LARK_BROKER_DENY_SUBCOMMANDS_ENV = "AGENT_WORKSPACE_LARK_BROKER_DENY_SUBCOMMANDS
 # and only surface for an operator. The ``/bin/sh`` launcher resolves a Python 3
 # interpreter itself (using only shell built-ins, so it still works when PATH is
 # empty and the interpreter is pinned) and, if none exists, fails *loudly* with
-# an actionable message instead of an opaque ENOEXEC. ``AGENT_WORKSPACE_LARK_BROKER_PYTHON``
+# an actionable message instead of an opaque ENOEXEC. ``ALPHA_LARK_BROKER_PYTHON``
 # pins a specific interpreter for images that ship Python under a non-standard
 # name.
 #
@@ -83,7 +83,7 @@ LARK_BROKER_DENY_SUBCOMMANDS_ENV = "AGENT_WORKSPACE_LARK_BROKER_DENY_SUBCOMMANDS
 # Both scripts are kept here as the single source of truth and mirrored by the
 # broker image build via ``install_shim``, exactly like ``LARK_CLI_SANDBOX_LAUNCHER_SCRIPT``
 # for Pattern A, so the image copies can never drift from the Gateway's.
-LARK_BROKER_PYTHON_ENV = "AGENT_WORKSPACE_LARK_BROKER_PYTHON"
+LARK_BROKER_PYTHON_ENV = "ALPHA_LARK_BROKER_PYTHON"
 LARK_CLI_BROKER_SHIM_FILENAME = "lark-cli-shim.py"
 _LARK_CLI_BROKER_SHIM_PATH_PLACEHOLDER = "@@LARK_CLI_BROKER_SHIM_PATH@@"
 
@@ -92,12 +92,12 @@ LARK_CLI_BROKER_LAUNCHER_TEMPLATE = (
     "# Alpha lark-cli broker launcher (Pattern B). Resolves a Python 3\n"
     "# interpreter and execs the forwarding shim. Fails loudly (not with an opaque\n"
     "# ENOEXEC) when the sandbox image ships no python3. Uses only shell built-ins\n"
-    "# so it still works when PATH is empty and AGENT_WORKSPACE_LARK_BROKER_PYTHON pins\n"
+    "# so it still works when PATH is empty and ALPHA_LARK_BROKER_PYTHON pins\n"
     "# the interpreter.\n"
     "set -eu\n"
     'shim="' + _LARK_CLI_BROKER_SHIM_PATH_PLACEHOLDER + '"\n'
-    'if [ -n "${AGENT_WORKSPACE_LARK_BROKER_PYTHON:-}" ]; then\n'
-    '  exec "$AGENT_WORKSPACE_LARK_BROKER_PYTHON" "$shim" "$@"\n'
+    'if [ -n "${ALPHA_LARK_BROKER_PYTHON:-}" ]; then\n'
+    '  exec "$ALPHA_LARK_BROKER_PYTHON" "$shim" "$@"\n'
     "fi\n"
     "for _py in python3 python; do\n"
     '  if command -v "$_py" >/dev/null 2>&1; then\n'
@@ -105,7 +105,7 @@ LARK_CLI_BROKER_LAUNCHER_TEMPLATE = (
     "  fi\n"
     "done\n"
     'echo "lark-cli: broker mode needs a Python 3 interpreter but none was found;" >&2\n'
-    'echo "          set AGENT_WORKSPACE_LARK_BROKER_PYTHON to a python3 path in the sandbox image." >&2\n'
+    'echo "          set ALPHA_LARK_BROKER_PYTHON to a python3 path in the sandbox image." >&2\n'
     "exit 127\n"
 )
 
@@ -134,7 +134,7 @@ import sys
 import urllib.error
 import urllib.request
 
-BROKER_URL = os.environ.get("AGENT_WORKSPACE_LARK_BROKER_URL", "http://127.0.0.1:8788")
+BROKER_URL = os.environ.get("ALPHA_LARK_BROKER_URL", "http://127.0.0.1:8788")
 
 
 def _fail(message, code=127):
@@ -395,7 +395,7 @@ def install_shim(dest_dir: str, *, version: str | None = None) -> str:
     """Write the launcher + shim + runtime marker into the sandbox runtime dir.
 
     Called by the broker image's ``install-shim`` init-container mode. Produces
-    the same ``bin/lark-cli`` + ``.agent-workspace-lark-cli-runtime.json`` layout Pattern
+    the same ``bin/lark-cli`` + ``.alpha-lark-cli-runtime.json`` layout Pattern
     A stages, but marked ``kind="shim"`` so the runtime validator knows the
     ``linux-*`` binaries are intentionally absent (the sidecar holds the real
     binary).
@@ -418,7 +418,7 @@ def install_shim(dest_dir: str, *, version: str | None = None) -> str:
     with open(launcher, "w", encoding="utf-8") as handle:
         handle.write(render_launcher_script(shim_body))
     os.chmod(launcher, 0o755)
-    marker = os.path.join(dest, ".agent-workspace-lark-cli-runtime.json")
+    marker = os.path.join(dest, ".alpha-lark-cli-runtime.json")
     with open(marker, "w", encoding="utf-8") as handle:
         json.dump({"version": version or "unknown", "kind": "shim"}, handle)
     return launcher
@@ -426,12 +426,12 @@ def install_shim(dest_dir: str, *, version: str | None = None) -> str:
 
 def _config_from_env() -> BrokerConfig:
     return BrokerConfig(
-        lark_cli_path=os.environ.get("AGENT_WORKSPACE_LARK_BROKER_CLI", "lark-cli"),
+        lark_cli_path=os.environ.get("ALPHA_LARK_BROKER_CLI", "lark-cli"),
         config_dir=os.environ.get("LARKSUITE_CLI_CONFIG_DIR", "/var/lark/config"),
         data_dir=os.environ.get("LARKSUITE_CLI_DATA_DIR", "/var/lark/data"),
-        host=os.environ.get("AGENT_WORKSPACE_LARK_BROKER_HOST", LARK_BROKER_DEFAULT_HOST),
-        port=int(os.environ.get("AGENT_WORKSPACE_LARK_BROKER_PORT", str(LARK_BROKER_DEFAULT_PORT))),
-        timeout_seconds=int(os.environ.get("AGENT_WORKSPACE_LARK_BROKER_TIMEOUT", str(LARK_BROKER_DEFAULT_TIMEOUT_SECONDS))),
+        host=os.environ.get("ALPHA_LARK_BROKER_HOST", LARK_BROKER_DEFAULT_HOST),
+        port=int(os.environ.get("ALPHA_LARK_BROKER_PORT", str(LARK_BROKER_DEFAULT_PORT))),
+        timeout_seconds=int(os.environ.get("ALPHA_LARK_BROKER_TIMEOUT", str(LARK_BROKER_DEFAULT_TIMEOUT_SECONDS))),
         deny_subcommands=parse_deny_subcommands(os.environ.get(LARK_BROKER_DENY_SUBCOMMANDS_ENV)),
     )
 

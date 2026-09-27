@@ -873,12 +873,12 @@ All endpoints return standard error format:
 
 ## Client Libraries
 
-### Python (AgentWorkspaceClient)
+### Python (AlphaClient)
 
 ```python
-from alpha.client import AgentWorkspaceClient
+from alpha.client import AlphaClient
 
-client = AgentWorkspaceClient(base_url="http://localhost:2026")
+client = AlphaClient(base_url="http://localhost:2026")
 client.authenticate(token="your-token")
 
 # Create thread
@@ -898,9 +898,9 @@ memory = client.get_memory()
 ### JavaScript/TypeScript
 
 ```typescript
-import { AgentWorkspaceClient } from '@agent-workspace/client';
+import { AlphaClient } from '@alpha/client';
 
-const client = new AgentWorkspaceClient({ baseUrl: 'http://localhost:2026' });
+const client = new AlphaClient({ baseUrl: 'http://localhost:2026' });
 await client.authenticate({ token: 'your-token' });
 
 const thread = await client.threads.create({ title: 'My Task' });

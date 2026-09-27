@@ -23,7 +23,7 @@ Honesty pins (plan §3 WP-C2 evidence-bundle design bullet, §5.6 guardrails):
   upstream payloads, by contrast, are carried VERBATIM (pinned here);
 - ``add()`` refuses ``None``/unknown/duplicate/post-finalize payloads and
   unsafe ids; writes are atomic (no leftover ``*.tmp``) and round-trip;
-- deterministic: injectable fixed clock, ``AGENT_WORKSPACE_HOME`` ->
+- deterministic: injectable fixed clock, ``ALPHA_HOME`` ->
   ``tmp_path`` autouse fixture, no network, no subprocesses.
 """
 
@@ -81,8 +81,8 @@ FIXED_CLOCK = 1_700_000_000.0
 
 @pytest.fixture(autouse=True)
 def rsi_home(tmp_path, monkeypatch):
-    """Run every test against a temp AGENT_WORKSPACE_HOME (env is global)."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    """Run every test against a temp ALPHA_HOME (env is global)."""
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     return tmp_path
 
 

@@ -16,8 +16,8 @@ Order of resolution:
    - channels.buzz.enabled == true       -> buzz
    - models[].use == langchain_ollama:*  -> ollama
 3. Runtime environment toggles that enable optional backends:
-   - AGENT_WORKSPACE_STREAM_BRIDGE_REDIS_URL   -> redis
-   - AGENT_WORKSPACE_SANDBOX_OWNERSHIP_REDIS_URL -> redis
+   - ALPHA_STREAM_BRIDGE_REDIS_URL   -> redis
+   - ALPHA_SANDBOX_OWNERSHIP_REDIS_URL -> redis
 
 Each extra name is validated against ``^[A-Za-z][A-Za-z0-9_-]*$`` (the same
 shape uv enforces for `[project.optional-dependencies]` keys). Anything else
@@ -65,7 +65,7 @@ def parse_env_extras(value: str) -> list[str]:
 
 def find_config_file() -> Path | None:
     """Locate config.yaml using the same precedence as serve.sh."""
-    explicit = os.environ.get("AGENT_WORKSPACE_CONFIG_PATH")
+    explicit = os.environ.get("ALPHA_CONFIG_PATH")
     if explicit:
         candidate = Path(explicit)
         if candidate.is_file():
@@ -351,9 +351,9 @@ def detect_from_config(path: Path) -> list[str]:
 
 def detect_from_runtime_env() -> list[str]:
     extras: set[str] = set()
-    if os.environ.get("AGENT_WORKSPACE_STREAM_BRIDGE_REDIS_URL", "").strip():
+    if os.environ.get("ALPHA_STREAM_BRIDGE_REDIS_URL", "").strip():
         extras.add("redis")
-    if os.environ.get("AGENT_WORKSPACE_SANDBOX_OWNERSHIP_REDIS_URL", "").strip():
+    if os.environ.get("ALPHA_SANDBOX_OWNERSHIP_REDIS_URL", "").strip():
         extras.add("redis")
     return sorted(extras)
 

@@ -13,7 +13,7 @@ from alpha.agents import thread_state as thread_state_module
 from alpha.agents.lead_agent import agent as lead_agent_module
 from alpha.agents.middlewares.durable_context_middleware import DurableContextMiddleware
 from alpha.agents.middlewares.subagent_limit_middleware import SubagentLimitMiddleware
-from alpha.agents.middlewares.summarization_middleware import AgentWorkspaceSummarizationMiddleware
+from alpha.agents.middlewares.summarization_middleware import AlphaSummarizationMiddleware
 from alpha.agents.middlewares.tool_error_handling_middleware import ToolErrorHandlingMiddleware
 from alpha.agents.thread_state import ThreadState, merge_delegations
 from alpha.config.app_config import AppConfig
@@ -679,7 +679,7 @@ class TestGraphIntegration:
             tools=[fake_task],
             middleware=[
                 DurableContextMiddleware(),
-                AgentWorkspaceSummarizationMiddleware(
+                AlphaSummarizationMiddleware(
                     model=summary_model,
                     trigger=("messages", 4),
                     keep=("messages", 2),
@@ -731,7 +731,7 @@ def test_mixed_acceptance_gaps_stay_actionable_in_data_after_real_compaction():
         tools=[fake_task],
         middleware=[
             DurableContextMiddleware(),
-            AgentWorkspaceSummarizationMiddleware(
+            AlphaSummarizationMiddleware(
                 model=FakeToolCallingModel(responses=[AIMessage(content="compressed summary without checklist")]),
                 trigger=("messages", 4),
                 keep=("messages", 2),
@@ -854,7 +854,7 @@ class TestSkillContextInjection:
             middleware=[
                 ToolErrorHandlingMiddleware(),
                 DurableContextMiddleware(),
-                AgentWorkspaceSummarizationMiddleware(model=summary_model, trigger=("messages", 4), keep=("messages", 2), token_counter=len),
+                AlphaSummarizationMiddleware(model=summary_model, trigger=("messages", 4), keep=("messages", 2), token_counter=len),
             ],
             state_schema=ThreadState,
             checkpointer=InMemorySaver(),
@@ -969,7 +969,7 @@ class TestSummaryRecordWindowSplit:
             tools=[fake_task],
             middleware=[
                 DurableContextMiddleware(),
-                AgentWorkspaceSummarizationMiddleware(
+                AlphaSummarizationMiddleware(
                     model=summary_model,
                     trigger=("messages", 2),
                     keep=("messages", 1),

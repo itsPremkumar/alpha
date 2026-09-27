@@ -17,7 +17,7 @@
 # launch. The backend venv is created on first launch inside the installed
 # backend directory.
 
-appId: ai.agent-workspace.desktop
+appId: ai.alpha.desktop
 productName: Alpha
 copyright: Copyright © 2026 Prem Kumar
 
@@ -75,8 +75,8 @@ extraResources:
       - "!samples/**"
       - "!docs/**"
       - "!sandbox/**"
-      - "!**/.agent-workspace/**"
-      - "!**/.agent-workspace/**"
+      - "!**/.alpha/**"
+      - "!**/.alpha/**"
       - "!.vscode/**"
       - "!Dockerfile*"
   - from: ../config.example.yaml
@@ -104,4 +104,4 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: Alpha
-  artifactName: Agent-Workspace-Setup-${version}.exe
+  artifactName: Alpha-Setup-${version}.exe

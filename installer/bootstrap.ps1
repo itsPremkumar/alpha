@@ -967,15 +967,15 @@ function Initialize-UserConfiguration {
                 "BETTER_AUTH_SECRET=$authSecret"
                 "CSRF_SECRET=$csrfSecret"
                 '# Single-user local install: no login prompt on localhost.'
-                'AGENT_WORKSPACE_AUTH_DISABLED=1'
+                'ALPHA_AUTH_DISABLED=1'
                 "# Database: sqlite (the default needs no database server)."
             )
             if ($WithPostgres) {
                 Add-Content -LiteralPath $envPath -Encoding UTF8 -ErrorAction Stop -Value @(
                     '# -WithPostgres was requested: point this at YOUR OWN Postgres instance.'
                     '# The installer never creates a database and never ships credentials.'
-                    'AGENT_WORKSPACE_DATABASE_BACKEND=postgres'
-                    '# AGENT_WORKSPACE_DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/alpha'
+                    'ALPHA_DATABASE_BACKEND=postgres'
+                    '# ALPHA_DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/alpha'
                 )
             }
             Write-StepLog -Message '  .env created; two secrets generated locally and written only to the gitignored .env' -Level 'INFO'

@@ -1,6 +1,6 @@
 """Regression tests for gateway config freshness on the request hot path.
 
-Bytedance/agent-workspace issue #3107 BUG-001: the worker and lead-agent path
+Bytedance/alpha issue #3107 BUG-001: the worker and lead-agent path
 captured ``app.state.config`` at gateway startup. ``config.yaml`` edits during
 runtime were therefore ignored — ``get_app_config()``'s mtime-based reload
 existed but was bypassed because the snapshot object was passed through
@@ -83,7 +83,7 @@ def test_get_config_reflects_file_mtime_reload(tmp_path, monkeypatch):
     """
     config_file = tmp_path / "config.yaml"
     _write_config_yaml(config_file, log_level="info")
-    monkeypatch.setenv("AGENT_WORKSPACE_CONFIG_PATH", str(config_file))
+    monkeypatch.setenv("ALPHA_CONFIG_PATH", str(config_file))
 
     app = _build_app()
     client = TestClient(app)
@@ -102,7 +102,7 @@ def test_get_config_respects_runtime_context_override(tmp_path, monkeypatch):
     """Per-request ``push_current_app_config`` injection must still win."""
     config_file = tmp_path / "config.yaml"
     _write_config_yaml(config_file, log_level="info")
-    monkeypatch.setenv("AGENT_WORKSPACE_CONFIG_PATH", str(config_file))
+    monkeypatch.setenv("ALPHA_CONFIG_PATH", str(config_file))
 
     override = AppConfig(sandbox=SandboxConfig(use="test"), log_level="trace")
     push_current_app_config(override)
@@ -138,7 +138,7 @@ def test_run_context_app_config_reflects_yaml_edit(tmp_path, monkeypatch):
 
     config_file = tmp_path / "config.yaml"
     _write_config_yaml(config_file, log_level="info")
-    monkeypatch.setenv("AGENT_WORKSPACE_CONFIG_PATH", str(config_file))
+    monkeypatch.setenv("ALPHA_CONFIG_PATH", str(config_file))
 
     app = FastAPI()
     # Sentinel values for the rest of the RunContext wiring — we only care
@@ -177,7 +177,7 @@ def test_run_context_freezes_checkpoint_channel_mode_at_startup(tmp_path, monkey
 
     config_file = tmp_path / "config.yaml"
     _write_config_yaml(config_file, log_level="info", checkpoint_channel_mode="delta")
-    monkeypatch.setenv("AGENT_WORKSPACE_CONFIG_PATH", str(config_file))
+    monkeypatch.setenv("ALPHA_CONFIG_PATH", str(config_file))
 
     request = MagicMock()
     request.app.state.checkpointer = MagicMock()
@@ -204,7 +204,7 @@ def test_run_context_freezes_checkpoint_channel_mode_at_startup(tmp_path, monkey
 def test_get_config_returns_503_on_any_load_failure(monkeypatch, exception):
     """Any failure to materialise the config must surface as 503, not 500.
 
-    Bytedance/agent-workspace issue #3107 BUG-001 review: the original snapshot
+    Bytedance/alpha issue #3107 BUG-001 review: the original snapshot
     contract returned 503 when ``app.state.config is None``. The first cut of
     this fix only mapped ``FileNotFoundError`` to 503, which left
     ``PermissionError`` / ``yaml.YAMLError`` / ``ValidationError`` etc. bubbling

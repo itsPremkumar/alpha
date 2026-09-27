@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 def _default_assembly_workers() -> int:
-    raw = os.getenv("AGENT_WORKSPACE_ASSEMBLY_WORKERS")
+    raw = os.getenv("ALPHA_ASSEMBLY_WORKERS")
     if raw:
         try:
             workers = int(raw)
@@ -24,7 +24,7 @@ def _default_assembly_workers() -> int:
                 return workers
         except ValueError:
             pass
-        logger.warning("Invalid AGENT_WORKSPACE_ASSEMBLY_WORKERS value; using default assembly worker count")
+        logger.warning("Invalid ALPHA_ASSEMBLY_WORKERS value; using default assembly worker count")
     return 8
 
 

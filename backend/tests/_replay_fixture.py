@@ -102,7 +102,7 @@ def prepare_hermetic_extras(home: Path) -> Path:
     system prompt has no environment-dependent skills/MCP content.
 
     Returns the extensions-config path; the caller must point
-    ``AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH`` at it. Call before starting the gateway.
+    ``ALPHA_EXTENSIONS_CONFIG_PATH`` at it. Call before starting the gateway.
     """
     (home / "skills" / "public").mkdir(parents=True, exist_ok=True)
     (home / "skills" / "custom").mkdir(parents=True, exist_ok=True)

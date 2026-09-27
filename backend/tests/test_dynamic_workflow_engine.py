@@ -40,9 +40,9 @@ from alpha.workflow.runtime import DynamicWorkflowEngine
 
 
 @pytest.fixture(autouse=True)
-def _isolate_agent_workspace(tmp_path, monkeypatch):
-    """Point AGENT_WORKSPACE_HOME at a per-test temp dir (the env is process-global)."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+def _isolate_alpha(tmp_path, monkeypatch):
+    """Point ALPHA_HOME at a per-test temp dir (the env is process-global)."""
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
 
 
 def test_safe_expression_evaluator_basic():

@@ -699,8 +699,8 @@ def _harvest_roles(registry: Any) -> dict[str, str]:
 
 
 def _default_journal_root() -> Path:
-    """Journal root: inside the agent workspace, never next to credentials."""
-    base = os.environ.get("AGENT_WORKSPACE_HOME")
+    """Journal root: inside the alpha, never next to credentials."""
+    base = os.environ.get("ALPHA_HOME")
     if base:
         return Path(base) / "bot_journals"
     return Path.home() / ".alpha" / "bot_journals"
@@ -713,7 +713,7 @@ def _default_export_root() -> Path:
     reach anywhere else on the machine — the resolver refuses anything that
     resolves outside this root.
     """
-    base = os.environ.get("AGENT_WORKSPACE_HOME")
+    base = os.environ.get("ALPHA_HOME")
     if base:
         return Path(base) / "bot_exports"
     return Path.home() / ".alpha" / "bot_exports"

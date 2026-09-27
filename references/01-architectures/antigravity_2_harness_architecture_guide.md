@@ -3068,7 +3068,7 @@ rollback plan
 
 # 82. Recommended Repo Architecture
 
-For `agent-workspace-desktop`, add a harness layer around the existing Alpha capability boundary.
+For `alpha-desktop`, add a harness layer around the existing Alpha capability boundary.
 
 ```text
 src/
@@ -4124,7 +4124,7 @@ Use these as the authoritative starting points and re-check them before implemen
 
 ---
 
-# 106. Implementation Interpretation for `agent-workspace-desktop`
+# 106. Implementation Interpretation for `alpha-desktop`
 
 Recommended strategy:
 

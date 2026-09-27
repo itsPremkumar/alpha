@@ -89,7 +89,7 @@ async def run_migrations_online() -> None:
     # migration's DDL would land in the default (``public``) schema while the
     # ORM tables land in the custom schema. ``init_engine`` has already created
     # the schema (``CREATE SCHEMA IF NOT EXISTS``) before bootstrap runs.
-    pg_schema = config.get_main_option("agent_workspace_pg_schema")
+    pg_schema = config.get_main_option("alpha_pg_schema")
     connect_args: dict = {}
     # Accept both the canonical ``postgresql`` scheme and libpq's ``postgres``
     # short scheme (with or without a SQLAlchemy ``+driver`` suffix) so a

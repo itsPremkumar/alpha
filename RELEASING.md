@@ -18,7 +18,7 @@ duplicated across four files that **must** stay identical.
 | `backend/pyproject.toml` | `version` | `2.1.0` |
 | `backend/packages/harness/pyproject.toml` | `version` | `2.1.0` |
 | `frontend/package.json` | `version` | `2.1.0` |
-| `deploy/helm/agent-workspace/Chart.yaml` | `version` and `appVersion` | `2.1.0` / `"2.1.0"` |
+| `deploy/helm/alpha/Chart.yaml` | `version` and `appVersion` | `2.1.0` / `"2.1.0"` |
 
 ---
 
@@ -99,7 +99,7 @@ for the Electron installer.
 ### 7. Publish the GitHub Release
 
 - [ ] Create the release from the pushed tag.
-- [ ] Attach the Electron installer artifact (`Agent-Workspace-Setup-<ver>.exe`).
+- [ ] Attach the Electron installer artifact (`Alpha-Setup-<ver>.exe`).
 - [ ] Copy the `[Unreleased]`-derived notes from `CHANGELOG.md` into the release body.
 - [ ] Update the `[![Release](…/badge/release/…)]` badge target if needed — it
       tracks the latest release automatically.

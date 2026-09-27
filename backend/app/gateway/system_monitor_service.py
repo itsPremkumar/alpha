@@ -1076,13 +1076,13 @@ class SystemMonitorService:
         try:
             from importlib import metadata as _metadata
 
-            version: str | None = _metadata.version("agent-workspace")
+            version: str | None = _metadata.version("alpha")
         except Exception:
             version = None
         return {
             "service_name": "alpha",
             "version": version,
-            "environment": os.environ.get("AGENT_WORKSPACE_ENV"),
+            "environment": os.environ.get("ALPHA_ENV"),
             "pid": os.getpid(),
             "started_at": self._service_started_wall,
             "uptime_seconds": round(now - self._service_started_wall, 1),

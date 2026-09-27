@@ -28,7 +28,7 @@ cannot load; optional plugins fail open with attributed diagnostics.
 
 Packaged extensions use one PEP 621 entry point in the
 `alpha.extensions` group, for example
-`example = "agent_workspace_extension_example:install"`. The operator CLI is dispatched from
+`example = "alpha_extension_example:install"`. The operator CLI is dispatched from
 the existing `alpha` console script to `extensions/cli.py` and exposes only these
 surfaces: `install SOURCE [--yes]`, `upgrade SOURCE [--yes]`, `list`, `enable NAME`,
 `disable NAME`, and `remove NAME`. `NAME` resolves against the entry-point name, distribution name, or
@@ -73,7 +73,7 @@ depends on; index, proxy, cache, and credential-provider settings remain availab
 The `--no-workspace` boundary requires uv 0.8.0 or newer. The stock Docker paths pin uv
 0.11.1, and the manager fails before mutation when the host uv is older.
 All install/upgrade/remove/enable/disable mutations for a checkout hold the cross-process
-`.agent-workspace/extension-manager.lock`; remove deactivates config before changing the package
+`.alpha/extension-manager.lock`; remove deactivates config before changing the package
 declaration, and rollback preserves a concurrent external config edit instead of replacing
 it. Upgrade replaces a managed local snapshot (or re-pins a package requirement that is already
 in the `extensions` group) and adopts the existing `plugins:` record so private `config`,
@@ -181,7 +181,7 @@ subclass, which reports one answer when iterated and another when measured.
 `LeadAgentAssembly(graph, descriptor)`; `make_lead_agent()` remains the
 graph-only LangGraph Server ABI declared in `langgraph.json` and must keep that
 signature. The descriptor
-(`agent_workspace_extension_api.assembly.AgentAssemblyDescriptor`) captures the
+(`alpha_extension_api.assembly.AgentAssemblyDescriptor`) captures the
 resolved model, rendered prompt hash, authorization-filtered tool list,
 composed middleware stack with each middleware's declared policy, deferred tool
 names, enabled skills, and effective policies — all of which are decided inside
@@ -235,7 +235,7 @@ snapshot on runtime context under the host-internal `EXTENSION_SNAPSHOT_CONTEXT_
 `task_tool` reads it back through `resolve_run_extensions()` (type-checked — runtime
 context is caller-mergeable), and `SubagentExecutor` binds it at construction. That key is
 written after the caller merge and popped when the run has none, so a caller-supplied value
-is never authoritative. Absent the key — embedded `AgentWorkspaceClient`, standalone LangGraph
+is never authoritative. Absent the key — embedded `AlphaClient`, standalone LangGraph
 Server — the executor keeps its `get_loaded_extensions()` fallback.
 
 The lead worker awaits `on_task_start` after the run has started and awaits `on_task_stop`
@@ -275,7 +275,7 @@ there. Shutdown stops accepting detached observations before the memory shutdown
 resets the loop only after in-flight run/subagent drain ordering is complete.
 
 `ContextCompactionObserver` reports the one moment a lossy context transform can still be
-described: `AgentWorkspaceSummarizationMiddleware.compact_state()` / `acompact_state()` hash each
+described: `AlphaSummarizationMiddleware.compact_state()` / `acompact_state()` hash each
 about-to-be-removed message's content before the summary model call, then — once a summary
 is produced and the pre-compaction hooks have run — build a `CompactionEvent` (transform
 kind/version, source content hashes, the produced summary's content hash, and the
@@ -336,7 +336,7 @@ contract: the public registry accepts `Sequence[Any]`
 to keep extension-api dependency-free.
 
 Contributed routes are session-authenticated and cannot opt out. Within that, an extension
-distinguishes an ordinary user from an administrator through `agent_workspace_extension_api.auth`:
+distinguishes an ordinary user from an administrator through `alpha_extension_api.auth`:
 `resolve_principal(request)` returns the caller, `require_admin(request)` raises
 `PermissionError` for anyone else and fails closed when identity cannot be determined.
 Extensions receive a projection — user id, admin flag, internal flag, roles — never the

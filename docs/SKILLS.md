@@ -43,7 +43,7 @@ The skills system provides extensible capabilities for agents. Skills are Python
   1. `academic-paper-review`: Peer review evaluation, methodology assessment, and synthesis of research papers.
   2. `bootstrap`: Full repository scaffolding, boilerplate generation, and project environment setup.
   3. `chart-visualization`: Interactive charts, telemetry graphs, and visual dashboards.
-  4. `claude-to-agent-workspace`: Adapter and converter for importing skills and prompts from Claude Code/Codex formats.
+  4. `claude-to-alpha`: Adapter and converter for importing skills and prompts from Claude Code/Codex formats.
   5. `code-documentation`: Automated generation of architecture guides, docstrings, API references, and comments.
   6. `consulting-analysis`: Strategic management frameworks (SWOT, Porter's Five Forces, BCG Matrix, MECE trees).
   7. `data-analysis`: Tabular processing, statistical data modeling, pattern recognition, and trend forecasting.
@@ -73,7 +73,7 @@ The skills system provides extensible capabilities for agents. Skills are Python
 - **Use case**: Organization-specific, experimental
 
 ### 3. Integration Skills
-- **Location**: `.agent-workspace/integrations/skills/{provider}/`
+- **Location**: `.alpha/integrations/skills/{provider}/`
 - **Managed by**: Extension system
 - **Credentials**: Per-user, stored securely
 - **Examples**: GitHub, Slack, Jira, Linear, Notion
@@ -500,7 +500,7 @@ Agent: Skill saved to skills/custom/stock-price. You can now use @stock_price in
     "directories": [
       "skills/public",
       "skills/custom",
-      ".agent-workspace/integrations/skills"
+      ".alpha/integrations/skills"
     ],
     "config": {
       "web-search": {

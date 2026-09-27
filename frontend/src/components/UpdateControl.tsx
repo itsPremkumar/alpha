@@ -27,7 +27,7 @@ import { RefreshCw, ArrowUpCircle, AlertTriangle, Wrench } from "lucide-react";
  * - Applying requires the engine's `canApply`, not merely a newer tag. When
  *   that is false the control stays disabled and shows the server's `reason`.
  * - The three mutating routes require a real interactive admin session and
- *   answer 403 under `AGENT_WORKSPACE_AUTH_DISABLED`. That refusal is shown
+ *   answer 403 under `ALPHA_AUTH_DISABLED`. That refusal is shown
  *   verbatim; it is never retried into a fake success.
  * - A state the server did not send renders as unknown, not as "up to date".
  */

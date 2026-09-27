@@ -216,7 +216,7 @@ def _manifest_path(name: str) -> Path:
     # whole config tree (~seconds on cold start); keeping it out of module
     # import lets cycle wiring import this integrity helper cheaply.
     # ``runtime_home()`` is still called per invocation so the
-    # ``AGENT_WORKSPACE_HOME`` isolation contract holds.
+    # ``ALPHA_HOME`` isolation contract holds.
     from alpha.config.runtime_paths import runtime_home
 
     return runtime_home() / "rsi" / "manifests" / f"{name}.json"

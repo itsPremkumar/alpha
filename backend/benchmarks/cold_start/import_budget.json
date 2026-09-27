@@ -15,7 +15,7 @@
   "first_party_roots": [
     "alpha",
     "app",
-    "agent_workspace_extension_api"
+    "alpha_extension_api"
   ],
   "third_party_roots": [
     "agent_sandbox",

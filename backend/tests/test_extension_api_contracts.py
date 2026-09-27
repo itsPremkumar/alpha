@@ -14,7 +14,7 @@ import importlib.resources
 import inspect
 
 import pytest
-from agent_workspace_extension_api import (
+from alpha_extension_api import (
     API_VERSION,
     AgentBuildContext,
     AgentScope,
@@ -36,7 +36,7 @@ from agent_workspace_extension_api import (
     TaskOutcome,
     extension,
 )
-from agent_workspace_extension_api.runtime_bridge import (
+from alpha_extension_api.runtime_bridge import (
     EXTENSION_TASK_STORE_KEY,
     task_store_from_runtime,
 )
@@ -200,17 +200,17 @@ def test_system_model_request_normalizes_messages_into_an_immutable_sequence():
 
 
 def test_gateway_contribution_points_are_part_of_the_public_surface():
-    import agent_workspace_extension_api
+    import alpha_extension_api
 
     for name in (
         "ExtensionRuntimeDeps",
         "ExtensionService",
     ):
-        assert name in agent_workspace_extension_api.__all__
-        assert hasattr(agent_workspace_extension_api, name)
+        assert name in alpha_extension_api.__all__
+        assert hasattr(alpha_extension_api, name)
     assert callable(ExtensionRegistry.service)
     assert callable(ExtensionRegistry.routers)
-    assert not hasattr(agent_workspace_extension_api, "RouterContributor")
+    assert not hasattr(alpha_extension_api, "RouterContributor")
 
 
 def test_task_store_from_runtime_reads_the_host_key():
@@ -238,8 +238,8 @@ def test_extension_decorator_stamps_api_requirement():
     def install(registry, config):
         return None
 
-    assert install.__agent_workspace_api__ == "0.1"
-    assert install.__agent_workspace_name__ == "demo"
+    assert install.__alpha_api__ == "0.1"
+    assert install.__alpha_name__ == "demo"
 
 
 def test_task_outcome_members():
@@ -256,16 +256,16 @@ def test_registry_and_install_alias_are_part_of_the_public_surface():
     them to the harness release cadence and advertise host-only machinery."""
     import typing
 
-    import agent_workspace_extension_api
+    import alpha_extension_api
 
-    assert "ExtensionRegistry" in agent_workspace_extension_api.__all__
-    assert "ExtensionInstall" in agent_workspace_extension_api.__all__
+    assert "ExtensionRegistry" in alpha_extension_api.__all__
+    assert "ExtensionInstall" in alpha_extension_api.__all__
     parameters, return_type = typing.get_args(ExtensionInstall)
     assert parameters[0] is ExtensionRegistry, "install()'s first argument must be the public registry contract"
 
 
 def test_distribution_marks_the_contract_package_as_typed():
-    marker = importlib.resources.files("agent_workspace_extension_api").joinpath("py.typed")
+    marker = importlib.resources.files("alpha_extension_api").joinpath("py.typed")
     assert marker.is_file()
 
 
@@ -294,10 +294,10 @@ def test_harness_pins_the_contract_package_exactly():
 
     pyproject = Path(__file__).parent.parent / "packages" / "harness" / "pyproject.toml"
     dependencies = tomllib.loads(pyproject.read_text())["project"]["dependencies"]
-    requirement = next(Requirement(dep) for dep in dependencies if Requirement(dep).name == "agent-workspace-extension-api")
+    requirement = next(Requirement(dep) for dep in dependencies if Requirement(dep).name == "alpha-extension-api")
 
-    expected = f"=={version('agent-workspace-extension-api')}"
-    assert str(requirement.specifier) == expected, f"the host must pin agent-workspace-extension-api exactly ({expected}); a range lets pip resolve a contract newer than the host implements"
+    expected = f"=={version('alpha-extension-api')}"
+    assert str(requirement.specifier) == expected, f"the host must pin alpha-extension-api exactly ({expected}); a range lets pip resolve a contract newer than the host implements"
 
 
 def test_runtime_api_version_matches_the_installed_contract_package():
@@ -305,7 +305,7 @@ def test_runtime_api_version_matches_the_installed_contract_package():
     from importlib.metadata import version
 
     assert API_VERSION == "0.2.0"
-    assert API_VERSION == version("agent-workspace-extension-api")
+    assert API_VERSION == version("alpha-extension-api")
 
 
 def test_extension_service_contract_is_public_and_defaults_to_noop():

@@ -7,7 +7,7 @@ honest SHA-256 provenance (hashes equal ``hashlib.sha256`` over the actual
 bytes), suite-version drift, and honest handling of missing/corrupt stored
 baselines.
 
-Every test pins ``AGENT_WORKSPACE_HOME`` to a temp dir (the environment does
+Every test pins ``ALPHA_HOME`` to a temp dir (the environment does
 not isolate it); tamper/determinism scenarios run over temp trees — the
 repository's own surface is never written. (Concurrent Wave-1 siblings *do*
 write ``backend/tests/**`` while this suite runs, which is why equal-dicts
@@ -51,7 +51,7 @@ _SURFACE_FILES = {
 @pytest.fixture(autouse=True)
 def _isolate_runtime_home(tmp_path, monkeypatch):
     """Pin runtime state (manifest store) to a temp dir for every test."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path / "runtime_home"))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path / "runtime_home"))
 
 
 def _write_surface(root: Path) -> None:

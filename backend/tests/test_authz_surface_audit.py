@@ -53,15 +53,15 @@ _PAIRING_CODE = "test-only-pairing-code-abcdefghijklmnop"
 def _auth_on(monkeypatch):
     """Force authentication ON.
 
-    ``is_auth_disabled()`` reads ``AGENT_WORKSPACE_AUTH_DISABLED``, and the repo
+    ``is_auth_disabled()`` reads ``ALPHA_AUTH_DISABLED``, and the repo
     ``.env`` ships ``=1`` (loaded by ``load_dotenv``). Left ambient, every refusal
     assertion below would really be asserting a property of the developer's
     ``.env``.
     """
     monkeypatch.setattr("app.gateway.auth_middleware.is_auth_disabled", lambda: False)
     monkeypatch.setattr("app.gateway.csrf_middleware.is_auth_disabled", lambda: False)
-    monkeypatch.setenv("AGENT_WORKSPACE_AUTH_DISABLED", "")
-    monkeypatch.delenv("AGENT_WORKSPACE_ENV", raising=False)
+    monkeypatch.setenv("ALPHA_AUTH_DISABLED", "")
+    monkeypatch.delenv("ALPHA_ENV", raising=False)
     monkeypatch.delenv("ENVIRONMENT", raising=False)
     monkeypatch.setattr(
         "app.gateway.authz._get_route_authorization_config",

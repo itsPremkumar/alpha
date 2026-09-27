@@ -248,7 +248,7 @@ async def test_run_agent_assembles_off_loop(monkeypatch, tmp_path):
     """run_agent dispatches agent_factory (lead-agent assembly) to a worker thread."""
     cfg = tmp_path / "extensions_config.json"
     cfg.write_text(json.dumps({"mcpServers": {}, "skills": {}}), encoding="utf-8")
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(cfg))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(cfg))
     observed_threads: list = []
     # Sentinel bound via ctx.extensions: pins that run_assembly() preserves
     # ContextVars, so bind_agent_build_extensions reaches the factory. Dropping
@@ -296,7 +296,7 @@ async def test_state_accessor_build_assembles_off_loop(monkeypatch, tmp_path):
     """abuild_checkpoint_state_accessor dispatches assembly to the assembly pool."""
     cfg = tmp_path / "extensions_config.json"
     cfg.write_text(json.dumps({"mcpServers": {}, "skills": {}}), encoding="utf-8")
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(cfg))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(cfg))
     observed_threads: list = []
 
     ctx = SimpleNamespace(
@@ -345,7 +345,7 @@ async def test_extensions_config_read_trips_the_gate(monkeypatch, tmp_path):
 
     cfg = tmp_path / "extensions_config.json"
     cfg.write_text(json.dumps({"mcpServers": {}, "skills": {}}), encoding="utf-8")
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(cfg))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(cfg))
 
     with pytest.raises(BlockingError):
         ExtensionsConfig.from_file()

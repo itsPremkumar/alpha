@@ -6,7 +6,7 @@ Usage:
     uv run python scripts/setup_wizard.py --non-interactive  # env-driven, no TTY needed
 
 The unattended mode reads scripts/wizard/noninteractive.py environment
-variables (AGENT_WORKSPACE_SETUP_PROVIDER, AGENT_WORKSPACE_SETUP_API_KEY, ...) so
+variables (ALPHA_SETUP_PROVIDER, ALPHA_SETUP_API_KEY, ...) so
 Docker, Electron automation, and CI can provision Alpha with zero prompts.
 """
 
@@ -47,7 +47,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--non-interactive",
         action="store_true",
-        help="resolve every step from AGENT_WORKSPACE_SETUP_* env vars (no prompts)",
+        help="resolve every step from ALPHA_SETUP_* env vars (no prompts)",
     )
     parser.add_argument(
         "--reconfigure",
@@ -226,8 +226,8 @@ def _run_noninteractive(allow_reconfigure: bool) -> int:
     config_path = project_root / "config.yaml"
     env_path = project_root / ".env"
 
-    if config_path.exists() and not (allow_reconfigure or os.environ.get("AGENT_WORKSPACE_SETUP_RECONFIGURE") == "1"):
-        print("config.yaml already exists. Set AGENT_WORKSPACE_SETUP_RECONFIGURE=1 or pass --reconfigure to overwrite it.")
+    if config_path.exists() and not (allow_reconfigure or os.environ.get("ALPHA_SETUP_RECONFIGURE") == "1"):
+        print("config.yaml already exists. Set ALPHA_SETUP_RECONFIGURE=1 or pass --reconfigure to overwrite it.")
         return 1
 
     try:
@@ -247,7 +247,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.non_interactive:
             return _run_noninteractive(allow_reconfigure=args.reconfigure)
         if not _is_interactive():
-            print("Non-interactive environment detected.\nRe-run with --non-interactive plus AGENT_WORKSPACE_SETUP_* env vars, or run 'make setup' in a terminal.")
+            print("Non-interactive environment detected.\nRe-run with --non-interactive plus ALPHA_SETUP_* env vars, or run 'make setup' in a terminal.")
             return 1
         return _run_interactive()
     except KeyboardInterrupt:

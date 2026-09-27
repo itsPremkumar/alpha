@@ -533,7 +533,7 @@ async def test_unreachable_context_read_raise_aborts_async_dynamic_context_injec
     assert exc_info.value.__cause__ is not None
 
 
-def test_manager_refuses_to_share_single_user_key_across_agent_workspace_users(
+def test_manager_refuses_to_share_single_user_key_across_alpha_users(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     official_integration: None,

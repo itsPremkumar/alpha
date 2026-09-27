@@ -31,7 +31,7 @@ class SandboxNetworkConfig(BaseModel):
         description="Lifetime in seconds for the temporary approval choice.",
     )
     proxy_image: str = Field(
-        default="ghcr.io/bytedance/agent-workspace-sandbox-network-proxy:latest",
+        default="ghcr.io/itsPremkumar/alpha-sandbox-network-proxy:latest",
         min_length=1,
         description="Managed Python runtime image used for the trusted network-policy sidecar.",
     )
@@ -89,7 +89,7 @@ class SandboxOwnershipConfig(BaseModel):
     )
     redis_url: str | None = Field(
         default=None,
-        description="Redis URL for the redis ownership type. If omitted, AGENT_WORKSPACE_SANDBOX_OWNERSHIP_REDIS_URL, AGENT_WORKSPACE_STREAM_BRIDGE_REDIS_URL, REDIS_URL, or redis://localhost:6379/0 is used.",
+        description="Redis URL for the redis ownership type. If omitted, ALPHA_SANDBOX_OWNERSHIP_REDIS_URL, ALPHA_STREAM_BRIDGE_REDIS_URL, REDIS_URL, or redis://localhost:6379/0 is used.",
     )
     renewal_interval_seconds: float = Field(
         default=30.0,
@@ -122,7 +122,7 @@ class VolumeMountConfig(BaseModel):
             "``LocalSandboxProvider`` checks this path from the gateway process — in "
             "``make dev`` that is the host machine, but in Docker deployments "
             "(``make up`` / docker-compose) it is the path *inside* the "
-            "``agent-workspace-gateway`` container, so the host directory must also be "
+            "``alpha-gateway`` container, so the host directory must also be "
             "bind-mounted into the gateway service for the mount to take effect. "
             "``AioSandboxProvider`` (DooD) passes this value straight to ``docker -v`` "
             "for the sandbox container, where it is resolved by the host Docker daemon "
@@ -154,7 +154,7 @@ class SandboxConfig(BaseModel):
 
     AioSandboxProvider specific options:
         port: Base port for sandbox containers (default: 8080)
-        container_prefix: Prefix for container names (default: agent-workspace-sandbox)
+        container_prefix: Prefix for container names (default: alpha-sandbox)
         mounts: List of volume mounts to share directories with the container
         thread_data_mounts: Override whether thread data is already visible to
             the sandbox through shared mounts. Omit to auto-detect from the backend.

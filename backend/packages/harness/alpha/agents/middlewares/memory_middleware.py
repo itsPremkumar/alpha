@@ -12,7 +12,7 @@ from langgraph.runtime import Runtime
 from alpha.agents.memory import get_memory_manager
 from alpha.config.memory_config import get_memory_config
 from alpha.runtime.user_context import resolve_runtime_user_id
-from alpha.trace_context import AGENT_WORKSPACE_TRACE_METADATA_KEY, resolve_trace_id
+from alpha.trace_context import ALPHA_TRACE_METADATA_KEY, resolve_trace_id
 
 if TYPE_CHECKING:
     from alpha.config.memory_config import MemoryConfig
@@ -81,7 +81,7 @@ class MemoryMiddleware(AgentMiddleware[MemoryMiddlewareState]):
         # (worker._bind_trace_id always fills it); the ambient fallback covers
         # embedded callers driving the agent outside a Gateway run.
         runtime_context = runtime.context if isinstance(runtime.context, dict) else {}
-        trace_id = resolve_trace_id(runtime_context.get(AGENT_WORKSPACE_TRACE_METADATA_KEY))
+        trace_id = resolve_trace_id(runtime_context.get(ALPHA_TRACE_METADATA_KEY))
 
         return thread_id, messages, user_id, trace_id
 

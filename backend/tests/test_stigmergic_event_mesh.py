@@ -284,7 +284,7 @@ def test_store_purge_filters(tmp_path):
 
 def test_default_mesh_path_convention(tmp_path):
     assert default_mesh_path(tmp_path).endswith("stigmergic_event_mesh.db")
-    assert ".agent-workspace" in default_mesh_path(tmp_path)
+    assert ".alpha" in default_mesh_path(tmp_path)
 
 
 def test_shared_mesh_registry_is_keyed_by_path(tmp_path):

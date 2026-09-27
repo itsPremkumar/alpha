@@ -15,7 +15,7 @@ from collections.abc import Awaitable, Callable, Collection
 from html import escape
 from typing import override
 
-from agent_workspace_extension_api import ContentKind, provenance_kwargs
+from alpha_extension_api import ContentKind, provenance_kwargs
 from langchain.agents import AgentState
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import ModelCallResult, ModelRequest, ModelResponse

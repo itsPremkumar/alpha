@@ -113,7 +113,7 @@ class TodoMiddleware(TodoListMiddleware):
     state_schema = ThreadState
 
     def release_policy_parameters(self) -> dict[str, object]:
-        from agent_workspace_extension_api import canonical_hash
+        from alpha_extension_api import canonical_hash
 
         return {
             "system_prompt_hash": canonical_hash(self.system_prompt),

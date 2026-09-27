@@ -2,7 +2,7 @@
 
 ## Middleware List
 
-The complete middleware chain assembled by `create_agent_workspace_agent` via `RuntimeFeatures` (when all features are enabled by default):
+The complete middleware chain assembled by `create_alpha_agent` via `RuntimeFeatures` (when all features are enabled by default):
 
 | # | Middleware | `before_agent` | `before_model` | `after_model` | `after_agent` | `wrap_model_call` | `wrap_tool_call` | Lead Agent | Subagent | Source |
 |---|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|---|
@@ -21,7 +21,7 @@ The complete middleware chain assembled by `create_agent_workspace_agent` via `R
 | 12 | LoopDetectionMiddleware | ✓ | | ✓ | ✓ | ✓ | | ✓ | ✗ | Always on |
 | 13 | ClarificationMiddleware | | | | | | ✓ | ✓ | ✗ | Always last |
 
-The lead agent has **14** middlewares (`make_lead_agent`), while subagents have **4** (ThreadData, Sandbox, Guardrail, ToolErrorHandling). `create_agent_workspace_agent` implements **13** in Phase 1 (Guardrail supports custom instances only, with no built-in default).
+The lead agent has **14** middlewares (`make_lead_agent`), while subagents have **4** (ThreadData, Sandbox, Guardrail, ToolErrorHandling). `create_alpha_agent` implements **13** in Phase 1 (Guardrail supports custom instances only, with no built-in default).
 
 ## Execution Flow
 

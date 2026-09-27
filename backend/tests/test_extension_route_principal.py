@@ -8,7 +8,7 @@ different questions and an extension must be able to ask the second one.
 from types import SimpleNamespace
 
 import pytest
-from agent_workspace_extension_api import (
+from alpha_extension_api import (
     EXTENSION_PRINCIPAL_RESOLVER_KEY,
     ExtensionPrincipal,
     require_admin,

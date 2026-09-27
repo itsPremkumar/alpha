@@ -1,8 +1,8 @@
-"""``AgentWorkspaceClient`` must be runnable with zero configuration.
+"""``AlphaClient`` must be runnable with zero configuration.
 
 The shipped bug this file exists to prevent
 --------------------------------------------
-``AgentWorkspaceClient.__init__`` defaulted ``thinking_enabled=True``, while
+``AlphaClient.__init__`` defaulted ``thinking_enabled=True``, while
 ``alpha.models.factory.create_chat_model`` fails closed when thinking is
 requested for a model that declares ``supports_thinking: false``
 (``ValueError: Model <name> does not support thinking...``). Both models in the
@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import pytest
 
-from alpha.client import AgentWorkspaceClient
+from alpha.client import AlphaClient
 from alpha.config.app_config import AppConfig
 from alpha.config.model_config import ModelConfig
 from alpha.config.sandbox_config import SandboxConfig
@@ -71,7 +71,7 @@ def _app_config(*models: ModelConfig) -> AppConfig:
 def test_client_default_thinking_is_false(monkeypatch):
     with monkeypatch.context() as m:
         m.setattr("alpha.client.get_app_config", lambda: _app_config())
-        client = AgentWorkspaceClient()
+        client = AlphaClient()
     assert client._thinking_enabled is False
 
 
@@ -84,7 +84,7 @@ def test_runnable_config_default_thinking_is_false(monkeypatch):
     """
     with monkeypatch.context() as m:
         m.setattr("alpha.client.get_app_config", lambda: _app_config())
-        client = AgentWorkspaceClient()
+        client = AlphaClient()
     config = client._get_runnable_config("thread-1")
     assert config["configurable"]["thinking_enabled"] is False
 
@@ -92,7 +92,7 @@ def test_runnable_config_default_thinking_is_false(monkeypatch):
 def test_explicit_true_is_still_honoured(monkeypatch):
     with monkeypatch.context() as m:
         m.setattr("alpha.client.get_app_config", lambda: _app_config())
-        client = AgentWorkspaceClient(thinking_enabled=True)
+        client = AlphaClient(thinking_enabled=True)
     assert client._thinking_enabled is True
     assert client._get_runnable_config("t")["configurable"]["thinking_enabled"] is True
 
@@ -100,7 +100,7 @@ def test_explicit_true_is_still_honoured(monkeypatch):
 def test_per_run_override_still_wins(monkeypatch):
     with monkeypatch.context() as m:
         m.setattr("alpha.client.get_app_config", lambda: _app_config())
-        client = AgentWorkspaceClient()
+        client = AlphaClient()
     assert client._get_runnable_config("t", thinking_enabled=True)["configurable"]["thinking_enabled"] is True
 
 
@@ -127,7 +127,7 @@ def test_zero_configuration_client_builds_a_non_thinking_model(monkeypatch):
         m.setattr("alpha.client.get_app_config", lambda: _app_config())
         m.setattr("alpha.client.create_chat_model", _fake_create)
         m.setattr("alpha.client.build_middlewares", lambda *a, **k: [])
-        client = AgentWorkspaceClient()
+        client = AlphaClient()
         client._ensure_agent(client._get_runnable_config("t"))
 
     assert captured["thinking_enabled"] is False, "a default client still requests thinking"
@@ -149,7 +149,7 @@ def test_ensure_agent_without_the_thinking_key_resolves_to_false(monkeypatch):
         m.setattr("alpha.client.get_app_config", lambda: _app_config())
         m.setattr("alpha.client.create_chat_model", _fake_create)
         m.setattr("alpha.client.build_middlewares", lambda *a, **k: [])
-        client = AgentWorkspaceClient()
+        client = AlphaClient()
         client._ensure_agent({"configurable": {"thread_id": "t"}})
 
     assert captured["thinking_enabled"] is False

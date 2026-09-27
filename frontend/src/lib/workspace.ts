@@ -107,7 +107,7 @@ export interface OpsStatus {
 export async function fetchOpsVersion(): Promise<string> {
   try {
     const d = await get<Record<string, unknown>>("/ops/version");
-    return String(pick(d, ["version", "agent_workspace_version"], "unknown"));
+    return String(pick(d, ["version", "alpha_version"], "unknown"));
   } catch {
     return "unknown";
   }

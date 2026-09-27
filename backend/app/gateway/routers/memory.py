@@ -460,7 +460,7 @@ async def get_memory_config_endpoint() -> MemoryConfigResponse:
             "mode": "middleware",
             "manager_class": "deermem",
             "backend_config": {
-                "storage_path": "/.../.agent-workspace",
+                "storage_path": "/.../.alpha",
                 "debounce_seconds": 30,
                 "max_facts": 100,
                 "fact_confidence_threshold": 0.7,

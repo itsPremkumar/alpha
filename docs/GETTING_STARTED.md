@@ -37,7 +37,7 @@ npm run dist
 ```
 
 #### Install and Run
-1. Run `electron/dist/Agent-Workspace-Setup-2.1.0.exe` (the artifact name is set by
+1. Run `electron/dist/Alpha-Setup-2.1.0.exe` (the artifact name is set by
    `artifactName` in `electron/electron-builder.yml`)
 2. SmartScreen warning → "More info" → "Run anyway"
 3. Per-user install (no admin rights needed)
@@ -266,7 +266,7 @@ make docker-logs
 
 ### Windows Path Issues
 - Use Git Bash for `make` commands
-- Ensure `AGENT_WORKSPACE_ROOT` resolves correctly
+- Ensure `ALPHA_ROOT` resolves correctly
 - Use forward slashes in paths
 
 ## Next Steps

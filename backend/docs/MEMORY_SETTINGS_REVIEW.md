@@ -58,6 +58,6 @@ Use this when reviewing the Memory Settings add/edit flow locally with the fewes
 ## Fixture Files
 
 - Sample fixture: `backend/docs/memory-settings-sample.json`
-- Default local runtime target: `backend/.agent-workspace/memory.json`
+- Default local runtime target: `backend/.alpha/memory.json`
 
 The loader script creates a timestamped backup automatically before overwriting an existing runtime memory file.

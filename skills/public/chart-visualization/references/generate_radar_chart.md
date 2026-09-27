@@ -5,11 +5,11 @@ Compares multidimensional metrics across several categories or profiles on a spi
 
 ## Input Fields
 ### Required
-- data: array<object>, items with dimension (string), alue (number), and group (string).
+- data: array<object>, items with dimension (string), value (number), and group (string).
 
 ### Optional
-- 	heme: string, default default.
-- 	itle: string, radar chart title.
+- theme: string, default default.
+- title: string, radar chart title.
 
 ## Usage Recommendations
 Normalize disparate metrics to a shared 0-100 scale for meaningful profile comparison.

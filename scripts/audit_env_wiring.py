@@ -3,7 +3,7 @@
 
 Companion to audit_frontend_wiring.py for the configuration layer. A global
 rename once collapsed ``X || Y`` pairs (see ops/version fix), so an
-``AGENT_WORKSPACE_*``/``ALPHA_*`` variable that launchers still SET while no
+``ALPHA_*``/``ALPHA_*`` variable that launchers still SET while no
 file in the repo READS it is a silently dead override — exactly the
 unwired-feature class this audit exists to catch.
 
@@ -14,7 +14,7 @@ Scans tracked source files for:
          PowerShell ``$env:X`` used anywhere, shell ``${X:-}``/``"$X"`` in
          .sh/.ps1, pydantic/dotenv contract keys (.env.example = implicit read).
 
-Verdicts (rename families only, ``AGENT_WORKSPACE_*`` and ``ALPHA_*``):
+Verdicts (rename families only, ``ALPHA_*`` and ``ALPHA_*``):
   DEAD-SET   set by a launcher but zero reads anywhere -> unwired config.
   SET-ONLY   set and only ever mentioned in launcher/.env files (no app read).
   READ-ONLY  read explicitly but no launcher/.env sets it (may be user-supplied;
@@ -57,7 +57,7 @@ PATTERNS: list[tuple[re.Pattern[str], int, str, frozenset[str] | None]] = [
     # ^ wizard-style env.get("NAME") on a plain mapping (setup_wizard/noninteractive).
 ]
 
-FAMILIES = ("AGENT_WORKSPACE_", "ALPHA_")
+FAMILIES = ("ALPHA_", "ALPHA_")
 
 
 def iter_files():

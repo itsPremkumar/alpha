@@ -99,7 +99,7 @@ class TestDatabaseConfig:
             # ``public``). ``re.fullmatch`` on an unanchored pattern rejects it.
             "alpha\n",
             "alpha\t",
-            "\nagent_workspace",
+            "\nalpha",
             "alpha ",
         ],
     )

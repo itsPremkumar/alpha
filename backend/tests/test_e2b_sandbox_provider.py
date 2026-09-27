@@ -626,7 +626,7 @@ def test_sync_agent_skills_serializes_reset_and_upload_for_same_thread(
         "/boot",
         "/dev",
         "/etc",
-        "/etc/agent-workspace-skills",
+        "/etc/alpha-skills",
         "/lib",
         "/lib32",
         "/lib64",
@@ -643,9 +643,9 @@ def test_sync_agent_skills_serializes_reset_and_upload_for_same_thread(
         "/sys",
         "/tmp",
         "/usr",
-        "/usr/local/agent-workspace-skills",
+        "/usr/local/alpha-skills",
         "/var",
-        "/var/lib/agent-workspace-skills",
+        "/var/lib/alpha-skills",
     ],
 )
 def test_sync_agent_skills_rejects_unsafe_reset_roots_before_remote_access(
@@ -2136,10 +2136,10 @@ def _info(
     return SimpleNamespace(
         sandbox_id=sandbox_id,
         metadata={
-            "agent_workspace_provider": "e2b_sandbox_provider",
-            "agent_workspace_user": user_id,
-            "agent_workspace_thread": thread_id,
-            "agent_workspace_skills_root": skills_container_path,
+            "alpha_provider": "e2b_sandbox_provider",
+            "alpha_user": user_id,
+            "alpha_thread": thread_id,
+            "alpha_skills_root": skills_container_path,
         },
     )
 
@@ -2159,7 +2159,7 @@ def test_create_metadata_records_the_snapshotted_skills_root(monkeypatch):
 
     provider.acquire("t1", user_id="u1")
 
-    assert fake_cls.create_calls[0]["metadata"]["agent_workspace_skills_root"] == "/custom-skills"
+    assert fake_cls.create_calls[0]["metadata"]["alpha_skills_root"] == "/custom-skills"
 
 
 def test_discover_remote_sandbox_walks_paginator(monkeypatch):
@@ -2418,7 +2418,7 @@ def test_reconcile_kills_metadata_orphan_only_after_ttl(monkeypatch):
     fake_cls.list_return = [
         SimpleNamespace(
             sandbox_id="sb-orphan",
-            metadata={"agent_workspace_provider": "e2b_sandbox_provider"},
+            metadata={"alpha_provider": "e2b_sandbox_provider"},
         )
     ]
     client = FakeClient(sandbox_id="sb-orphan")
@@ -3684,11 +3684,11 @@ def test_deployment_capacity_reserves_commits_and_rejects_globally(monkeypatch) 
         gateway_b.acquire("thread-b", user_id="user-b")
 
     metadata = sdk_a.create_calls[0]["metadata"]
-    assert metadata["agent_workspace_capacity_ledger"] == store.key
-    assert metadata["agent_workspace_capacity_reservation"]
+    assert metadata["alpha_capacity_ledger"] == store.key
+    assert metadata["alpha_capacity_reservation"]
     store.track.assert_called_once_with(
         sandbox_id,
-        reservation_token=metadata["agent_workspace_capacity_reservation"],
+        reservation_token=metadata["alpha_capacity_reservation"],
     )
     assert len(sdk_a.create_calls) == 1
     assert sdk_b.create_calls == []
@@ -3717,20 +3717,20 @@ def test_discovery_uses_sdk_query_and_tracks_without_reserving(monkeypatch) -> N
     entry = SimpleNamespace(
         sandbox_id="sandbox-existing",
         metadata={
-            "agent_workspace_provider": "e2b_sandbox_provider",
-            "agent_workspace_user": "user-a",
-            "agent_workspace_thread": "thread-a",
-            "agent_workspace_skills_root": "/mnt/skills",
-            "agent_workspace_capacity_ledger": store.key,
+            "alpha_provider": "e2b_sandbox_provider",
+            "alpha_user": "user-a",
+            "alpha_thread": "thread-a",
+            "alpha_skills_root": "/mnt/skills",
+            "alpha_capacity_ledger": store.key,
         },
     )
     expected_query = {
         key: entry.metadata[key]
         for key in (
-            "agent_workspace_provider",
-            "agent_workspace_user",
-            "agent_workspace_thread",
-            "agent_workspace_skills_root",
+            "alpha_provider",
+            "alpha_user",
+            "alpha_thread",
+            "alpha_skills_root",
         )
     }
     sdk.list_return = SimpleNamespace(
@@ -3754,16 +3754,16 @@ def test_reconciliation_repairs_crash_and_uses_safe_reservation_age(monkeypatch)
         {
             "sandbox_id": "sandbox-existing",
             "metadata": {
-                "agent_workspace_provider": "e2b_sandbox_provider",
-                "agent_workspace_capacity_ledger": store.key,
-                "agent_workspace_capacity_reservation": "reservation-crashed",
+                "alpha_provider": "e2b_sandbox_provider",
+                "alpha_capacity_ledger": store.key,
+                "alpha_capacity_reservation": "reservation-crashed",
             },
         },
         {
             "sandbox_id": "sandbox-other-deployment",
             "metadata": {
-                "agent_workspace_provider": "e2b_sandbox_provider",
-                "agent_workspace_capacity_ledger": "alpha:other:e2b-capacity",
+                "alpha_provider": "e2b_sandbox_provider",
+                "alpha_capacity_ledger": "alpha:other:e2b-capacity",
             },
         },
     ]
@@ -4873,10 +4873,10 @@ def test_discovery_reports_busy_capacity_without_killing_remote_vm(monkeypatch):
         SimpleNamespace(
             sandbox_id="sb-remote",
             metadata={
-                "agent_workspace_provider": "e2b_sandbox_provider",
-                "agent_workspace_user": "u2",
-                "agent_workspace_thread": "t2",
-                "agent_workspace_skills_root": "/mnt/skills",
+                "alpha_provider": "e2b_sandbox_provider",
+                "alpha_user": "u2",
+                "alpha_thread": "t2",
+                "alpha_skills_root": "/mnt/skills",
             },
         )
     ]
@@ -4899,10 +4899,10 @@ def test_discovery_reports_shutdown_without_killing_remote_vm(monkeypatch, caplo
         SimpleNamespace(
             sandbox_id=client.sandbox_id,
             metadata={
-                "agent_workspace_provider": "e2b_sandbox_provider",
-                "agent_workspace_user": "u1",
-                "agent_workspace_thread": "t1",
-                "agent_workspace_skills_root": "/mnt/skills",
+                "alpha_provider": "e2b_sandbox_provider",
+                "alpha_user": "u1",
+                "alpha_thread": "t1",
+                "alpha_skills_root": "/mnt/skills",
             },
         )
     ]
@@ -4937,10 +4937,10 @@ def test_discovery_bootstrap_kill_failure_retains_reserved_slot(monkeypatch):
         SimpleNamespace(
             sandbox_id=client.sandbox_id,
             metadata={
-                "agent_workspace_provider": "e2b_sandbox_provider",
-                "agent_workspace_user": "u1",
-                "agent_workspace_thread": "t1",
-                "agent_workspace_skills_root": "/mnt/skills",
+                "alpha_provider": "e2b_sandbox_provider",
+                "alpha_user": "u1",
+                "alpha_thread": "t1",
+                "alpha_skills_root": "/mnt/skills",
             },
         )
     ]
@@ -4972,10 +4972,10 @@ def test_shutdown_does_not_retry_kill_for_unowned_discovery_vm(monkeypatch):
         SimpleNamespace(
             sandbox_id=client.sandbox_id,
             metadata={
-                "agent_workspace_provider": "e2b_sandbox_provider",
-                "agent_workspace_user": "u1",
-                "agent_workspace_thread": "t1",
-                "agent_workspace_skills_root": "/mnt/skills",
+                "alpha_provider": "e2b_sandbox_provider",
+                "alpha_user": "u1",
+                "alpha_thread": "t1",
+                "alpha_skills_root": "/mnt/skills",
             },
         )
     ]
@@ -5017,10 +5017,10 @@ def test_shutdown_during_discovery_does_not_kill_unowned_vm(monkeypatch):
         SimpleNamespace(
             sandbox_id=client.sandbox_id,
             metadata={
-                "agent_workspace_provider": "e2b_sandbox_provider",
-                "agent_workspace_user": "u1",
-                "agent_workspace_thread": "t1",
-                "agent_workspace_skills_root": "/mnt/skills",
+                "alpha_provider": "e2b_sandbox_provider",
+                "alpha_user": "u1",
+                "alpha_thread": "t1",
+                "alpha_skills_root": "/mnt/skills",
             },
         )
     ]

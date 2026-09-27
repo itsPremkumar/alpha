@@ -16,18 +16,18 @@ from alpha.runtime.checkpointer.provider import _resolve_checkpointer_config, _s
 from alpha.runtime.store.async_provider import make_store
 from alpha.runtime.store.provider import _resolve_store_config, _sync_store_cm
 
-POSTGRES_URL = os.getenv("AGENT_WORKSPACE_TEST_POSTGRES_URL")
+POSTGRES_URL = os.getenv("ALPHA_TEST_POSTGRES_URL")
 
 pytestmark = pytest.mark.skipif(
     not POSTGRES_URL,
-    reason="set AGENT_WORKSPACE_TEST_POSTGRES_URL to run live PostgreSQL schema integration tests",
+    reason="set ALPHA_TEST_POSTGRES_URL to run live PostgreSQL schema integration tests",
 )
 
 
 @pytest.mark.anyio
 async def test_postgres_schema_places_orm_checkpointer_and_store_tables_together():
     """Verify a real PostgreSQL backend places all persistence tables in one schema."""
-    schema = f"agent_workspace_test_{uuid.uuid4().hex[:12]}"
+    schema = f"alpha_test_{uuid.uuid4().hex[:12]}"
     db_config = DatabaseConfig(backend="postgres", postgres_url=POSTGRES_URL or "", postgres_schema=schema)
     app_config = SimpleNamespace(checkpointer=None, database=db_config)
 
@@ -76,7 +76,7 @@ def test_sync_postgres_schema_places_checkpointer_and_store_tables_together():
     """
     import psycopg
 
-    schema = f"agent_workspace_test_{uuid.uuid4().hex[:12]}"
+    schema = f"alpha_test_{uuid.uuid4().hex[:12]}"
     db_config = DatabaseConfig(
         backend="postgres",
         postgres_url=POSTGRES_URL or "",

@@ -64,7 +64,7 @@ def _import_sdk() -> tuple[type[SandboxSync], type[ConnectionConfigSync], type[R
         from opensandbox.models.execd import RunCommandOpts
         from opensandbox.sync import SandboxSync
     except ImportError as exc:  # pragma: no cover - depends on optional install state
-        raise ImportError("OpenSandboxProvider requires the optional 'opensandbox' dependency. Install it with: pip install 'agent-workspace-harness[opensandbox]' or pip install 'opensandbox>=0.1.15,<0.2.0'.") from exc
+        raise ImportError("OpenSandboxProvider requires the optional 'opensandbox' dependency. Install it with: pip install 'alpha-harness[opensandbox]' or pip install 'opensandbox>=0.1.15,<0.2.0'.") from exc
     return SandboxSync, ConnectionConfigSync, RunCommandOpts
 
 
@@ -288,11 +288,11 @@ class OpenSandboxProvider(WarmPoolLifecycleMixin[OpenSandboxSandbox], SandboxPro
 
         sandbox_cls, connection_config_cls, run_command_opts_cls = self._get_sdk()
         connection_config = self._new_connection_config(connection_config_cls)
-        metadata = {"agent_workspace_provider": "opensandbox"}
+        metadata = {"alpha_provider": "opensandbox"}
         if thread_id is not None:
-            metadata["agent_workspace_thread"] = thread_id
+            metadata["alpha_thread"] = thread_id
         if user_id is not None:
-            metadata["agent_workspace_user"] = user_id
+            metadata["alpha_user"] = user_id
         remote = sandbox_cls.create(
             self._config["image"],
             timeout=None if self._config["sandbox_timeout"] is None else timedelta(seconds=self._config["sandbox_timeout"]),

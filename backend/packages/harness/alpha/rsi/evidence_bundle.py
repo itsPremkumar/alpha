@@ -436,7 +436,7 @@ def begin_bundle(candidate_id: str, *, clock: Callable[[], float] = time.time) -
     """Start the evidence bundle directory for ``candidate_id`` (plan §3 WP-C2).
 
     Directory: ``runtime_home()/rsi/bundles/<candidate_id>/``, resolved at
-    call time so a test-set ``AGENT_WORKSPACE_HOME`` is honored. A directory
+    call time so a test-set ``ALPHA_HOME`` is honored. A directory
     that already contains evidence (a prior finalized or partial bundle) is
     refused with the real location instead of being overwritten — existing
     provenance is never silently replaced. ``clock`` is the injectable time

@@ -50,7 +50,7 @@ _KERNEL = ExecutionKernel(engine=_GLOBAL_ENGINE)
 # dispatcher, so every event the engine and the loop emit is journaled without
 # touching runtime code (22+ emit sites). The store root is resolved at CALL
 # time from ``runtime_home()`` and cached per root, so a test (or a launcher)
-# that redirects ``AGENT_WORKSPACE_HOME`` gets its own store and can never
+# that redirects ``ALPHA_HOME`` gets its own store and can never
 # write into the real workspace. A sink failure is counted and disclosed by
 # the dispatcher (see ``GET /api/workflows/durability``), never swallowed.
 _DURABLE_LOGS: dict[str, DurableEventLog] = {}

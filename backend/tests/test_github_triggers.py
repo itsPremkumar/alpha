@@ -376,13 +376,13 @@ def test_pull_request_review_require_mention_skips_without_mention() -> None:
 
 
 # ---------------------------------------------------------------------------
-# @-mention boundary: ``@alpha`` must NOT match ``@agent-workspace-bot``
+# @-mention boundary: ``@alpha`` must NOT match ``@alpha-bot``
 # ---------------------------------------------------------------------------
 
 
 def test_mention_prefix_does_not_match_longer_login() -> None:
     # Agent with mention_login='alpha' must NOT fire on a comment that
-    # addresses a different account, '@agent-workspace-bot'. Regression for the
+    # addresses a different account, '@alpha-bot'. Regression for the
     # naive substring ``f'@{login}' in body`` check.
     trigger = _resolve("issue_comment", GitHubTriggerConfig(require_mention=True, mention_login="alpha"))
     fire, reason = event_should_fire(
@@ -390,7 +390,7 @@ def test_mention_prefix_does_not_match_longer_login() -> None:
         {
             "action": "created",
             "issue": {"number": 1, "user": {"login": "alice"}},
-            "comment": {"body": "Hey @agent-workspace-bot please review", "user": {"login": "alice"}},
+            "comment": {"body": "Hey @alpha-bot please review", "user": {"login": "alice"}},
             "repository": {"full_name": "a/b"},
         },
         trigger,

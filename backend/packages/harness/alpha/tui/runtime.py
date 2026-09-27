@@ -1,4 +1,4 @@
-"""Runtime bridge between ``AgentWorkspaceClient`` streaming and the view-state reducer.
+"""Runtime bridge between ``AlphaClient`` streaming and the view-state reducer.
 
 Two layers, both kept free of Textual:
 
@@ -35,7 +35,7 @@ class _StreamEventLike(Protocol):
 
 class _ClientLike(Protocol):
     def stream(self, message: str, *, thread_id: str | None = None, **kwargs: Any) -> Iterator[Any]:
-        """Yield streaming events for *message* (see ``AgentWorkspaceClient.stream``)."""
+        """Yield streaming events for *message* (see ``AlphaClient.stream``)."""
 
 
 def translate(event: _StreamEventLike) -> list[Action]:

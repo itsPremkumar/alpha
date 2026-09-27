@@ -24,7 +24,7 @@ def test_ops_version_returns_service_and_version(monkeypatch) -> None:
         response = client.get("/api/ops/version")
 
     assert response.status_code == 200
-    assert response.json() == {"service": "agent-workspace-gateway", "version": "2.1.0"}
+    assert response.json() == {"service": "alpha-gateway", "version": "2.1.0"}
 
 
 def test_ops_version_falls_back_to_unknown_without_package_metadata(monkeypatch) -> None:
@@ -37,7 +37,7 @@ def test_ops_version_falls_back_to_unknown_without_package_metadata(monkeypatch)
 
 
 def test_ops_version_resolves_installed_harness_then_legacy_names(monkeypatch) -> None:
-    """Pin the lookup chain: agent-workspace-harness first (it carries the
+    """Pin the lookup chain: alpha-harness first (it carries the
     release version), then legacy names. A duplicated name tuple previously
     made every packaged deployment report "unknown"."""
     looked_up: list[str] = []
@@ -51,14 +51,14 @@ def test_ops_version_resolves_installed_harness_then_legacy_names(monkeypatch) -
 
         return _version
 
-    monkeypatch.setattr(ops_module.metadata, "version", _resolver({"agent-workspace-harness": "2.1.0"}))
+    monkeypatch.setattr(ops_module.metadata, "version", _resolver({"alpha-harness": "2.1.0"}))
     assert ops_module._resolve_gateway_version() == "2.1.0"
-    assert looked_up == ["agent-workspace-harness"]
+    assert looked_up == ["alpha-harness"]
 
     looked_up.clear()
-    monkeypatch.setattr(ops_module.metadata, "version", _resolver({"agent-workspace": "9.9.9"}))
+    monkeypatch.setattr(ops_module.metadata, "version", _resolver({"alpha": "9.9.9"}))
     assert ops_module._resolve_gateway_version() == "9.9.9"
-    assert looked_up == ["agent-workspace-harness", "alpha", "agent-workspace"]
+    assert looked_up == ["alpha-harness", "alpha", "alpha"]
 
 
 def test_ops_status_returns_runtime_health(monkeypatch) -> None:
@@ -69,7 +69,7 @@ def test_ops_status_returns_runtime_health(monkeypatch) -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["service"] == "agent-workspace-gateway"
+    assert payload["service"] == "alpha-gateway"
     assert payload["status"] == "ok"
     assert isinstance(payload["uptime_seconds"], int)
     assert payload["uptime_seconds"] >= 0

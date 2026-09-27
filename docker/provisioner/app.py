@@ -56,7 +56,7 @@ logging.basicConfig(
 
 # ── Configuration (all tuneable via environment variables) ───────────────
 
-K8S_NAMESPACE = os.environ.get("K8S_NAMESPACE", "agent-workspace")
+K8S_NAMESPACE = os.environ.get("K8S_NAMESPACE", "alpha")
 SANDBOX_IMAGE = os.environ.get(
     "SANDBOX_IMAGE",
     "enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest",
@@ -78,7 +78,7 @@ LARK_CLI_BROKER_IMAGE = os.environ.get("LARK_CLI_BROKER_IMAGE", "")
 # Optional comma-separated lark-cli subcommand denylist forwarded to the broker
 # sidecar (issue #4338 hardening). Empty ⇒ no subcommand is blocked. See the
 # broker README's "subcommand denylist" section.
-LARK_CLI_BROKER_DENY_SUBCOMMANDS = os.environ.get("AGENT_WORKSPACE_LARK_BROKER_DENY_SUBCOMMANDS", "")
+LARK_CLI_BROKER_DENY_SUBCOMMANDS = os.environ.get("ALPHA_LARK_BROKER_DENY_SUBCOMMANDS", "")
 LARK_CLI_CONFIG_CONTAINER_PATH = "/mnt/integrations/lark-cli/config"
 LARK_CLI_LOCKS_CONTAINER_PATH = f"{LARK_CLI_CONFIG_CONTAINER_PATH}/locks"
 LARK_CLI_DATA_CONTAINER_PATH = "/mnt/integrations/lark-cli/data"
@@ -90,8 +90,8 @@ LARK_BROKER_CONFIG_VOLUME_NAME = "lark-cli-config"
 LARK_BROKER_LOCKS_VOLUME_NAME = "lark-cli-locks"
 LARK_BROKER_DATA_VOLUME_NAME = "lark-cli-data"
 LARK_BROKER_URL = "http://127.0.0.1:8788"
-THREADS_HOST_PATH = os.environ.get("THREADS_HOST_PATH", "/.agent-workspace/threads")
-AGENT_WORKSPACE_HOST_BASE_DIR = os.environ.get("AGENT_WORKSPACE_HOST_BASE_DIR", "/.agent-workspace")
+THREADS_HOST_PATH = os.environ.get("THREADS_HOST_PATH", "/.alpha/threads")
+ALPHA_HOST_BASE_DIR = os.environ.get("ALPHA_HOST_BASE_DIR", "/.alpha")
 SKILLS_PVC_NAME = os.environ.get("SKILLS_PVC_NAME", "")
 USERDATA_PVC_NAME = os.environ.get("USERDATA_PVC_NAME", "")
 SKILLS_PVC_SUBPATH_TEMPLATE = os.environ.get("SKILLS_PVC_SUBPATH_TEMPLATE", "")
@@ -153,7 +153,7 @@ def join_host_path(base: str, *parts: str) -> str:
             result /= part
         return str(result)
 
-    # POSIX-styled base (e.g. "/.agent-workspace"): the joined result feeds
+    # POSIX-styled base (e.g. "/.alpha"): the joined result feeds
     # Kubernetes hostPath fields, which are interpreted by the (Linux) node —
     # never by the OS the provisioner itself runs on. Building the path with
     # the native ``Path`` class would rewrite "/" to "\\" on a Windows host
@@ -168,11 +168,11 @@ def join_host_path(base: str, *parts: str) -> str:
 
 def _host_base_dir_for_extra_mounts() -> str:
     """Return the host-visible Alpha state root used for controlled mounts."""
-    if AGENT_WORKSPACE_HOST_BASE_DIR:
+    if ALPHA_HOST_BASE_DIR:
         # posixpath on purpose: this value feeds Kubernetes hostPath fields and
         # POSIX-styled containment checks, so it must not be rewritten into
         # Windows separators when the provisioner runs on a Windows host.
-        return posixpath.normpath(AGENT_WORKSPACE_HOST_BASE_DIR)
+        return posixpath.normpath(ALPHA_HOST_BASE_DIR)
 
     normalized_threads = posixpath.normpath(THREADS_HOST_PATH)
     if posixpath.basename(normalized_threads) == "threads":
@@ -358,7 +358,7 @@ def _extra_mount_pvc_sub_path(host_path: str) -> str:
     rel_parts = [part for part in rel_path.replace(os.sep, "/").split("/") if part and part != "."]
     if not rel_parts or any(part == ".." for part in rel_parts):
         raise HTTPException(status_code=400, detail=f"Invalid extra mount host path: {host_path}")
-    return posixpath.join("agent-workspace", *rel_parts)
+    return posixpath.join("alpha", *rel_parts)
 
 
 # ── K8s client setup ────────────────────────────────────────────────────
@@ -429,7 +429,7 @@ def _ensure_namespace() -> None:
                 metadata=k8s_client.V1ObjectMeta(
                     name=K8S_NAMESPACE,
                     labels={
-                        "app.kubernetes.io/name": "agent-workspace",
+                        "app.kubernetes.io/name": "alpha",
                         "app.kubernetes.io/component": "sandbox",
                     },
                 )
@@ -626,7 +626,7 @@ def _build_volumes(
         )
     elif not SKILLS_PVC_NAME:
         # hostPath mode: three-way layout
-        public_path = join_host_path(AGENT_WORKSPACE_HOST_BASE_DIR, "skills_view", "public")
+        public_path = join_host_path(ALPHA_HOST_BASE_DIR, "skills_view", "public")
         if posixpath.join(skills_root, "public") not in skill_overrides:
             volumes.append(
                 k8s_client.V1Volume(
@@ -639,7 +639,7 @@ def _build_volumes(
             )
 
         user_custom_path = join_host_path(
-            AGENT_WORKSPACE_HOST_BASE_DIR,
+            ALPHA_HOST_BASE_DIR,
             "users",
             user_id,
             "skills_view",
@@ -656,7 +656,7 @@ def _build_volumes(
                 )
             )
 
-        legacy_path = join_host_path(AGENT_WORKSPACE_HOST_BASE_DIR, "users", user_id, "skills_view", "legacy")
+        legacy_path = join_host_path(ALPHA_HOST_BASE_DIR, "users", user_id, "skills_view", "legacy")
         if posixpath.join(skills_root, "legacy") not in skill_overrides:
             volumes.append(
                 k8s_client.V1Volume(
@@ -808,7 +808,7 @@ def _build_volume_mounts(
         read_only=False,
     )
     if USERDATA_PVC_NAME:
-        userdata_mount.sub_path = f"agent-workspace/users/{user_id}/threads/{thread_id}/user-data"
+        userdata_mount.sub_path = f"alpha/users/{user_id}/threads/{thread_id}/user-data"
     mounts.append(userdata_mount)
     mounts.extend(
         _build_extra_volume_mounts(
@@ -925,7 +925,7 @@ def _build_lark_cli_broker_sidecars(
     if LARK_CLI_BROKER_DENY_SUBCOMMANDS:
         broker_env.append(
             k8s_client.V1EnvVar(
-                name="AGENT_WORKSPACE_LARK_BROKER_DENY_SUBCOMMANDS",
+                name="ALPHA_LARK_BROKER_DENY_SUBCOMMANDS",
                 value=LARK_CLI_BROKER_DENY_SUBCOMMANDS,
             )
         )
@@ -963,9 +963,9 @@ def _build_pod(
             name=_pod_name(sandbox_id),
             namespace=K8S_NAMESPACE,
             labels={
-                "app": "agent-workspace-sandbox",
+                "app": "alpha-sandbox",
                 "sandbox-id": sandbox_id,
-                "app.kubernetes.io/name": "agent-workspace",
+                "app.kubernetes.io/name": "alpha",
                 "app.kubernetes.io/component": "sandbox",
             },
         ),
@@ -975,7 +975,7 @@ def _build_pod(
                     name="sandbox",
                     image=SANDBOX_IMAGE,
                     image_pull_policy="IfNotPresent",
-                    env=([k8s_client.V1EnvVar(name="AGENT_WORKSPACE_LARK_BROKER_URL", value=LARK_BROKER_URL)] if _lark_cli_broker_enabled(provision_lark_cli_broker) else None),
+                    env=([k8s_client.V1EnvVar(name="ALPHA_LARK_BROKER_URL", value=LARK_BROKER_URL)] if _lark_cli_broker_enabled(provision_lark_cli_broker) else None),
                     ports=[
                         k8s_client.V1ContainerPort(
                             name="http",
@@ -1057,9 +1057,9 @@ def _build_service(sandbox_id: str) -> k8s_client.V1Service:
             name=_svc_name(sandbox_id),
             namespace=K8S_NAMESPACE,
             labels={
-                "app": "agent-workspace-sandbox",
+                "app": "alpha-sandbox",
                 "sandbox-id": sandbox_id,
-                "app.kubernetes.io/name": "agent-workspace",
+                "app.kubernetes.io/name": "alpha",
                 "app.kubernetes.io/component": "sandbox",
             },
         ),
@@ -1277,7 +1277,7 @@ def list_sandboxes():
     try:
         services = core_v1.list_namespaced_service(
             K8S_NAMESPACE,
-            label_selector="app=agent-workspace-sandbox",
+            label_selector="app=alpha-sandbox",
         )
     except ApiException as exc:
         raise HTTPException(status_code=500, detail=f"Failed to list services: {exc.reason}")

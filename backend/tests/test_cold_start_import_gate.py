@@ -165,8 +165,8 @@ class TestWhatCountsAsEager:
 
     def test_workspace_extension_api_counts_as_first_party(self, tmp_path: Path) -> None:
         """It ships from this repository; treating it as a dependency would hide it."""
-        record = _collect(gate, tmp_path, "from agent_workspace_extension_api import principal\n")
-        assert [item.root for item in record.first_party] == ["agent_workspace_extension_api"]
+        record = _collect(gate, tmp_path, "from alpha_extension_api import principal\n")
+        assert [item.root for item in record.first_party] == ["alpha_extension_api"]
         assert record.third_party == ()
 
     def test_line_numbers_are_reported_for_every_eager_import(self, tmp_path: Path) -> None:

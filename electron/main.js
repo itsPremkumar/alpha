@@ -27,7 +27,7 @@
  *   --skip-frontend        Do not spawn the frontend (attach to an existing one).
  *   --require-login        Keep the Gateway/frontend login + admin-setup screens.
  *   --show-lion-pet        Open the optional native lion companion at startup.
- *                          By default the desktop app sets AGENT_WORKSPACE_AUTH_DISABLED=1
+ *                          By default the desktop app sets ALPHA_AUTH_DISABLED=1
  *                          (upstream's local single-user mode) so it opens straight
  *                          into the workspace with a synthetic admin user.
  *   --verbose              Mirror child-process output to the console.
@@ -126,9 +126,9 @@ const configTemplatesDir = isPackaged
 
 const userDataRoot = app.getPath('userData');
 const projectDir = path.join(userDataRoot, 'project');
-const agent_workspaceHomeDir = fs.existsSync(path.join(userDataRoot, 'alpha-home'))
+const alphaHomeDir = fs.existsSync(path.join(userDataRoot, 'alpha-home'))
   ? path.join(userDataRoot, 'alpha-home')
-  : path.join(userDataRoot, 'agent-workspace-home');
+  : path.join(userDataRoot, 'alpha-home');
 const logsDir = path.join(userDataRoot, 'logs');
 const mainLogFile = path.join(logsDir, 'main.log');
 // Per-user Python provisioning: the install directory stays read-only-safe
@@ -242,7 +242,7 @@ function broadcastStatus(message, detail) {
   const payload = { message, detail: detail || '' };
   for (const win of BrowserWindow.getAllWindows()) {
     try {
-      win.webContents.send('agent-workspace:status', payload);
+      win.webContents.send('alpha:status', payload);
       win.webContents.send('alpha:status', payload);
     } catch {
       // Window may be closing; ignore.
@@ -307,7 +307,7 @@ function httpGetStatus(url, timeoutMs) {
   });
 }
 
-async function isAgentWorkspaceGateway(gatewayBaseUrl) {
+async function isAlphaGateway(gatewayBaseUrl) {
   // Verify identity, not just liveness: a foreign service on the same port
   // must never be mistaken for our Gateway.
   try {
@@ -322,13 +322,13 @@ async function isAgentWorkspaceGateway(gatewayBaseUrl) {
       clearTimeout(timer);
     }
     // Service identity as reported by app/gateway/app.py health_check.
-    return !!data && data.service === 'agent-workspace-gateway';
+    return !!data && data.service === 'alpha-gateway';
   } catch {
     return false;
   }
 }
 
-async function isAgentWorkspaceFrontend(frontendUrl) {
+async function isAlphaFrontend(frontendUrl) {
   // Same identity rule for the frontend: only reuse a port when it actually
   // serves this app (Next.js marker), never a foreign occupant.
   const status = await httpGetStatus(frontendUrl, 3000);
@@ -397,13 +397,13 @@ async function waitForHealthy(label, checkFn, timeoutMs, progressFn, abortIf) {
 /**
  * Desktop single-user mode: open straight into the workspace without the
  * login / admin-setup screens. Both the Gateway and the Next.js server honor
- * AGENT_WORKSPACE_AUTH_DISABLED=1 at runtime (synthetic admin user), and both bind
+ * ALPHA_AUTH_DISABLED=1 at runtime (synthetic admin user), and both bind
  * to loopback only, so this stays a local-machine trust boundary.
  * Pass --require-login to keep the normal auth screens.
  */
 function applyDesktopAuthMode(env) {
   if (!args.requireLogin) {
-    env.AGENT_WORKSPACE_AUTH_DISABLED = '1';
+    env.ALPHA_AUTH_DISABLED = '1';
   }
   return env;
 }
@@ -533,18 +533,18 @@ function killTree(kind) {
 // ---------------------------------------------------------------------------
 
 function isExplicitProdEnv() {
-  const value = (process.env.AGENT_WORKSPACE_ENV || process.env.ENVIRONMENT || '').trim().toLowerCase();
+  const value = (process.env.ALPHA_ENV || process.env.ENVIRONMENT || '').trim().toLowerCase();
   return value === 'prod' || value === 'production';
 }
 
 /**
  * Warn when a machine-wide production marker would silently switch the
- * direct-open behavior off: both services ignore AGENT_WORKSPACE_AUTH_DISABLED in
+ * direct-open behavior off: both services ignore ALPHA_AUTH_DISABLED in
  * an explicit production environment, so the login screen would appear.
  */
 async function warnIfProdEnvDisablesDirectOpen() {
   if (args.requireLogin || !isExplicitProdEnv()) return;
-  log('Warning: AGENT_WORKSPACE_ENV/ENVIRONMENT marks production; services will ignore AGENT_WORKSPACE_AUTH_DISABLED');
+  log('Warning: ALPHA_ENV/ENVIRONMENT marks production; services will ignore ALPHA_AUTH_DISABLED');
   const choice = await dialog.showMessageBox({
     type: 'warning',
     buttons: ['Continue anyway', 'Quit'],
@@ -553,7 +553,7 @@ async function warnIfProdEnvDisablesDirectOpen() {
     title: `${APP_NAME} â€” production environment detected`,
     message: 'This machine declares a production environment.',
     detail:
-      'AGENT_WORKSPACE_ENV (or ENVIRONMENT) is set to a production value, so the ' +
+      'ALPHA_ENV (or ENVIRONMENT) is set to a production value, so the ' +
       'Gateway and frontend will IGNORE the desktop single-user mode and show ' +
       'the login screen.\n\nUnset that variable (or start with --require-login) ' +
       'to keep the direct-open behavior.',
@@ -656,9 +656,9 @@ function spawnBackend(gatewayPort) {
     PYTHONUTF8: '1',
     GATEWAY_HOST: '127.0.0.1',
     GATEWAY_PORT: String(gatewayPort),
-    AGENT_WORKSPACE_PROJECT_ROOT: projectDir,
-    AGENT_WORKSPACE_CONFIG_PATH: path.join(projectDir, 'config.yaml'),
-    AGENT_WORKSPACE_HOME: agent_workspaceHomeDir,
+    ALPHA_PROJECT_ROOT: projectDir,
+    ALPHA_CONFIG_PATH: path.join(projectDir, 'config.yaml'),
+    ALPHA_HOME: alphaHomeDir,
     // Keep all uv-managed writes (downloaded Python, project venv) under the
     // per-user data folder: the install directory may be read-only
     // (per-machine installs) and must never be written at runtime.
@@ -692,7 +692,7 @@ function spawnFrontendDev(nodeExe, frontendPort, gatewayBaseUrl) {
   const env = applyDesktopAuthMode({
     ...process.env,
     PORT: String(frontendPort),
-    AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL: gatewayBaseUrl,
+    ALPHA_INTERNAL_GATEWAY_BASE_URL: gatewayBaseUrl,
   });
   const fArgs = [nextBin, 'dev', '--port', String(frontendPort)];
   log(`Starting frontend (dev): ${nodeExe} ${fArgs.join(' ')}`, `cwd=${frontendDir}`);
@@ -707,7 +707,7 @@ function spawnFrontendDev(nodeExe, frontendPort, gatewayBaseUrl) {
  *
  * Next.js resolves `rewrites()` from next.config.js at BUILD time and bakes
  * the concrete URLs into `.next/routes-manifest.json`, so the runtime
- * AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL env var alone cannot steer a production
+ * ALPHA_INTERNAL_GATEWAY_BASE_URL env var alone cannot steer a production
  * server (it only affects dev SSR paths). The desktop app picks its Gateway
  * port dynamically, so it rewrites the baked loopback destinations to the
  * effective Gateway URL just before spawning the frontend. Only loopback
@@ -738,7 +738,7 @@ function patchStandaloneGatewayUrl(standaloneDir, gatewayBaseUrl) {
     if (!allMatch) {
       throw new Error(
         `Cannot point the bundled frontend at the Gateway: no loopback /api rewrite destinations found in ${manifestPath}. ` +
-          `Expected /api rewrites to http://127.0.0.1:<port> (built with AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL). Rebuild the frontend.`,
+          `Expected /api rewrites to http://127.0.0.1:<port> (built with ALPHA_INTERNAL_GATEWAY_BASE_URL). Rebuild the frontend.`,
       );
     }
     log(`Rewrite destinations already point at Gateway ${gatewayBaseUrl}`);
@@ -762,7 +762,7 @@ function spawnFrontendProd(nodeExe, frontendPort, gatewayBaseUrl) {
     ...process.env,
     PORT: String(frontendPort),
     HOSTNAME: '127.0.0.1',
-    AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL: gatewayBaseUrl,
+    ALPHA_INTERNAL_GATEWAY_BASE_URL: gatewayBaseUrl,
   });
   // Remove split-origin overrides if the user exported them globally: the
   // desktop app always talks to the Gateway through Next.js rewrites.
@@ -992,7 +992,7 @@ function buildMenu() {
 
 async function boot() {
   ensureDir(projectDir);
-  ensureDir(agent_workspaceHomeDir);
+  ensureDir(alphaHomeDir);
   ensureDir(logsDir);
   runStartupDiagnostics();
   fileLoggingReady = true;
@@ -1022,7 +1022,7 @@ async function boot() {
   log(
     args.requireLogin
       ? 'Auth: login/setup screens enabled (--require-login)'
-      : 'Auth: local single-user mode, app opens directly (AGENT_WORKSPACE_AUTH_DISABLED=1)',
+      : 'Auth: local single-user mode, app opens directly (ALPHA_AUTH_DISABLED=1)',
   );
   await warnIfProdEnvDisablesDirectOpen();
 
@@ -1039,10 +1039,10 @@ async function boot() {
   let gatewayBaseUrl = `http://127.0.0.1:${gatewayPort}`;
   let gatewayReused = false;
 
-  if (!args.skipBackend && (await isAgentWorkspaceGateway(gatewayBaseUrl))) {
+  if (!args.skipBackend && (await isAlphaGateway(gatewayBaseUrl))) {
     gatewayReused = true;
     log(`Reusing existing Gateway at ${gatewayBaseUrl}`);
-  } else if (args.skipBackend && (await isAgentWorkspaceGateway(gatewayBaseUrl))) {
+  } else if (args.skipBackend && (await isAlphaGateway(gatewayBaseUrl))) {
     // Explicit attach mode: still prefer the live Gateway on the preferred port.
     gatewayReused = true;
     log(`Attaching to existing Gateway at ${gatewayBaseUrl}`);
@@ -1054,7 +1054,7 @@ async function boot() {
       spawnBackend(gatewayPort);
       await waitForHealthy(
         'Gateway API',
-        () => isAgentWorkspaceGateway(gatewayBaseUrl),
+        () => isAlphaGateway(gatewayBaseUrl),
         BACKEND_STARTUP_TIMEOUT_MS,
         () =>
           broadcastStatus('Starting Gateway APIâ€¦', 'installing Python deps on first launch can take a few minutes'),
@@ -1072,7 +1072,7 @@ async function boot() {
     log(`Using explicit frontend URL (no spawn): ${frontendUrl}`);
   } else {
     const preferredUrl = `http://127.0.0.1:${args.frontendPort}`;
-    if (await isAgentWorkspaceFrontend(preferredUrl)) {
+    if (await isAlphaFrontend(preferredUrl)) {
       frontendUrl = preferredUrl;
       log(`${args.skipFrontend ? 'Attaching to' : 'Reusing'} existing frontend at ${frontendUrl}`);
     } else {
@@ -1098,7 +1098,7 @@ async function boot() {
         }
         await waitForHealthy(
           'Frontend',
-          () => isAgentWorkspaceFrontend(frontendUrl),
+          () => isAlphaFrontend(frontendUrl),
           FRONTEND_STARTUP_TIMEOUT_MS,
           () =>
             broadcastStatus('Starting frontendâ€¦', 'first launch can take a while â€” check logs/frontend.log'),
@@ -1151,13 +1151,13 @@ if (!gotLock) {
     }
   });
 
-  ipcMain.handle('agent-workspace:status', () => runtimeStatus);
   ipcMain.handle('alpha:status', () => runtimeStatus);
-  ipcMain.handle('agent-workspace:open-user-data', () => shell.openPath(userDataRoot));
+  ipcMain.handle('alpha:status', () => runtimeStatus);
   ipcMain.handle('alpha:open-user-data', () => shell.openPath(userDataRoot));
-  ipcMain.handle('agent-workspace:get-auto-start', () => getAutoStartState());
+  ipcMain.handle('alpha:open-user-data', () => shell.openPath(userDataRoot));
   ipcMain.handle('alpha:get-auto-start', () => getAutoStartState());
-  ipcMain.handle('agent-workspace:set-auto-start', (_event, enabled) => applyAutoStartSetting(enabled));
+  ipcMain.handle('alpha:get-auto-start', () => getAutoStartState());
+  ipcMain.handle('alpha:set-auto-start', (_event, enabled) => applyAutoStartSetting(enabled));
   ipcMain.handle('alpha:set-auto-start', (_event, enabled) => applyAutoStartSetting(enabled));
   ipcMain.on('alpha:lion-pet-state', (event, payload) => {
     lionPetController.handleState(event.sender, payload);

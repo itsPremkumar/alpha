@@ -138,7 +138,7 @@ def test_thread_id_none_still_produces_metadata(monkeypatch):
     assert result["langfuse_user_id"] == "u-1"
 
 
-def test_agent_workspace_trace_id_comes_from_current_trace_context(monkeypatch):
+def test_alpha_trace_id_comes_from_current_trace_context(monkeypatch):
     _enable_langfuse(monkeypatch)
 
     with request_trace_context("gateway-trace-1"):
@@ -147,17 +147,17 @@ def test_agent_workspace_trace_id_comes_from_current_trace_context(monkeypatch):
             user_id="user-42",
         )
 
-    assert result["agent_workspace_trace_id"] == "gateway-trace-1"
+    assert result["alpha_trace_id"] == "gateway-trace-1"
 
 
-def test_agent_workspace_trace_id_explicit_argument_wins(monkeypatch):
+def test_alpha_trace_id_explicit_argument_wins(monkeypatch):
     _enable_langfuse(monkeypatch)
 
     with request_trace_context("ambient-trace"):
         result = tracing_metadata.build_langfuse_trace_metadata(
             thread_id="thread-abc",
             user_id="user-42",
-            agent_workspace_trace_id="explicit-trace",
+            alpha_trace_id="explicit-trace",
         )
 
-    assert result["agent_workspace_trace_id"] == "explicit-trace"
+    assert result["alpha_trace_id"] == "explicit-trace"

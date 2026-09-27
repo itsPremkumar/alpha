@@ -5,7 +5,7 @@ implementation through the same fixture, so the memory and redis backends cannot
 drift apart on the semantics the provider depends on.
 
 Redis coverage is opt-in and self-skipping, mirroring the stream-bridge
-integration tier: point at a server with ``AGENT_WORKSPACE_TEST_REDIS_URL`` (defaults
+integration tier: point at a server with ``ALPHA_TEST_REDIS_URL`` (defaults
 to redis://localhost:6379/15 — DB 15 to avoid clobbering real data). There is no
 fake-redis tier on purpose — the redis backend's exclusion lives in Lua scripts
 that a hand-rolled fake would not execute, so a fake would pin the mock rather
@@ -34,7 +34,7 @@ from alpha.community.aio_sandbox.ownership import (
 from alpha.config.sandbox_config import SandboxOwnershipConfig
 from alpha.config.stream_bridge_config import StreamBridgeConfig
 
-REDIS_TEST_URL = os.environ.get("AGENT_WORKSPACE_TEST_REDIS_URL", "redis://localhost:6379/15")
+REDIS_TEST_URL = os.environ.get("ALPHA_TEST_REDIS_URL", "redis://localhost:6379/15")
 
 
 def _redis_available() -> bool:
@@ -374,7 +374,7 @@ def test_stream_bridge_redis_env_implies_redis_ownership(monkeypatch):
     Defaulting it to memory ownership would leave #4206 open on exactly the
     deployments that hit it.
     """
-    monkeypatch.setenv("AGENT_WORKSPACE_STREAM_BRIDGE_REDIS_URL", "redis://somewhere:6379/0")
+    monkeypatch.setenv("ALPHA_STREAM_BRIDGE_REDIS_URL", "redis://somewhere:6379/0")
     resolved = resolve_ownership_config(None)
     assert resolved.type == "redis"
     assert resolved.redis_url == "redis://somewhere:6379/0"
@@ -388,8 +388,8 @@ def test_stream_bridge_redis_in_config_yaml_implies_redis_ownership(monkeypatch)
     configures the bridge in config.yaml — i.e. exactly the multi-instance
     deployments this inference exists for.
     """
-    monkeypatch.delenv("AGENT_WORKSPACE_STREAM_BRIDGE_REDIS_URL", raising=False)
-    monkeypatch.delenv("AGENT_WORKSPACE_SANDBOX_OWNERSHIP_REDIS_URL", raising=False)
+    monkeypatch.delenv("ALPHA_STREAM_BRIDGE_REDIS_URL", raising=False)
+    monkeypatch.delenv("ALPHA_SANDBOX_OWNERSHIP_REDIS_URL", raising=False)
 
     resolved = resolve_ownership_config(None, stream_bridge=StreamBridgeConfig(type="redis", redis_url="redis://in-yaml:6379/0"))
 
@@ -399,8 +399,8 @@ def test_stream_bridge_redis_in_config_yaml_implies_redis_ownership(monkeypatch)
 
 def test_memory_stream_bridge_does_not_imply_redis_ownership(monkeypatch):
     """The other direction: a single-process bridge must not force redis."""
-    monkeypatch.delenv("AGENT_WORKSPACE_STREAM_BRIDGE_REDIS_URL", raising=False)
-    monkeypatch.delenv("AGENT_WORKSPACE_SANDBOX_OWNERSHIP_REDIS_URL", raising=False)
+    monkeypatch.delenv("ALPHA_STREAM_BRIDGE_REDIS_URL", raising=False)
+    monkeypatch.delenv("ALPHA_SANDBOX_OWNERSHIP_REDIS_URL", raising=False)
 
     resolved = resolve_ownership_config(None, stream_bridge=StreamBridgeConfig(type="memory"))
 
@@ -408,14 +408,14 @@ def test_memory_stream_bridge_does_not_imply_redis_ownership(monkeypatch):
 
 
 def test_explicit_config_wins_over_env(monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_STREAM_BRIDGE_REDIS_URL", "redis://somewhere:6379/0")
+    monkeypatch.setenv("ALPHA_STREAM_BRIDGE_REDIS_URL", "redis://somewhere:6379/0")
     resolved = resolve_ownership_config(SandboxOwnershipConfig(type="memory"))
     assert resolved.type == "memory"
 
 
 def test_no_env_defaults_to_memory(monkeypatch):
-    monkeypatch.delenv("AGENT_WORKSPACE_STREAM_BRIDGE_REDIS_URL", raising=False)
-    monkeypatch.delenv("AGENT_WORKSPACE_SANDBOX_OWNERSHIP_REDIS_URL", raising=False)
+    monkeypatch.delenv("ALPHA_STREAM_BRIDGE_REDIS_URL", raising=False)
+    monkeypatch.delenv("ALPHA_SANDBOX_OWNERSHIP_REDIS_URL", raising=False)
     assert resolve_ownership_config(None).type == "memory"
 
 

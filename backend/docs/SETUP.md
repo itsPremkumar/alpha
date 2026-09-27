@@ -10,7 +10,7 @@ Alpha uses a YAML configuration file that should be placed in the **project root
 
 1. **Navigate to project root**:
    ```bash
-   cd /path/to/agent-workspace
+   cd /path/to/alpha
    ```
 
 2. **Copy example configuration**:
@@ -24,7 +24,7 @@ Alpha uses a YAML configuration file that should be placed in the **project root
    export OPENAI_API_KEY="your-key-here"
 
    # Optional: pin the project root when running from another directory
-   export AGENT_WORKSPACE_PROJECT_ROOT="/path/to/agent-workspace"
+   export ALPHA_PROJECT_ROOT="/path/to/alpha"
 
    # Option B: Edit config.yaml directly
    vim config.yaml  # or your preferred editor
@@ -38,22 +38,22 @@ Alpha uses a YAML configuration file that should be placed in the **project root
 
 ## Important Notes
 
-- **Location**: `config.yaml` should be in `agent-workspace/` (project root)
+- **Location**: `config.yaml` should be in `alpha/` (project root)
 - **Git**: `config.yaml` is automatically ignored by git (contains secrets)
-- **Runtime root**: Set `AGENT_WORKSPACE_PROJECT_ROOT` if Alpha may start from outside the project root
-- **Runtime data**: State defaults to `.agent-workspace` under the project root; set `AGENT_WORKSPACE_HOME` to move it
-- **Skills**: Skills default to `skills/` under the project root; set `AGENT_WORKSPACE_SKILLS_PATH` or `skills.path` to move them
+- **Runtime root**: Set `ALPHA_PROJECT_ROOT` if Alpha may start from outside the project root
+- **Runtime data**: State defaults to `.alpha` under the project root; set `ALPHA_HOME` to move it
+- **Skills**: Skills default to `skills/` under the project root; set `ALPHA_SKILLS_PATH` or `skills.path` to move them
 
 ## Configuration File Locations
 
 The backend searches for `config.yaml` in this order:
 
 1. Explicit `config_path` argument from code
-2. `AGENT_WORKSPACE_CONFIG_PATH` environment variable (if set)
-3. `config.yaml` under `AGENT_WORKSPACE_PROJECT_ROOT`, or the current working directory when `AGENT_WORKSPACE_PROJECT_ROOT` is unset
+2. `ALPHA_CONFIG_PATH` environment variable (if set)
+3. `config.yaml` under `ALPHA_PROJECT_ROOT`, or the current working directory when `ALPHA_PROJECT_ROOT` is unset
 4. Legacy backend/repository-root locations for monorepo compatibility
 
-**Recommended**: Place `config.yaml` in project root (`agent-workspace/config.yaml`).
+**Recommended**: Place `config.yaml` in project root (`alpha/config.yaml`).
 
 ## Sandbox Setup (Optional but Recommended)
 
@@ -105,13 +105,13 @@ the wire contract, authentication, and fallback rules.
 
 ```bash
 # Check where the backend is looking
-cd agent-workspace/backend
+cd alpha/backend
 python -c "from alpha.config.app_config import AppConfig; print(AppConfig.resolve_config_path())"
 ```
 
 If it can't find the config:
 1. Ensure you've copied `config.example.yaml` to `config.yaml`
-2. Verify you're in the project root, or set `AGENT_WORKSPACE_PROJECT_ROOT`
+2. Verify you're in the project root, or set `ALPHA_PROJECT_ROOT`
 3. Check the file exists: `ls -la config.yaml`
 
 ### Permission denied

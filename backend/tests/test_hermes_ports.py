@@ -104,12 +104,12 @@ def test_kanban_stop_guard(monkeypatch):
     assert build_stop_nudge(messages=[{"role": "assistant", "tool_calls": [{"name": "kanban_block"}]}]) is None
     assert build_stop_nudge(messages=[], attempts=5) is None
 
-    monkeypatch.delenv("AGENT_WORKSPACE_KANBAN_STOP_NUDGE", raising=False)
-    monkeypatch.delenv("AGENT_WORKSPACE_KANBAN_TASK", raising=False)
+    monkeypatch.delenv("ALPHA_KANBAN_STOP_NUDGE", raising=False)
+    monkeypatch.delenv("ALPHA_KANBAN_TASK", raising=False)
     assert stop_nudge_enabled() is False
-    monkeypatch.setenv("AGENT_WORKSPACE_KANBAN_TASK", "task-1")
+    monkeypatch.setenv("ALPHA_KANBAN_TASK", "task-1")
     assert stop_nudge_enabled() is True
-    monkeypatch.setenv("AGENT_WORKSPACE_KANBAN_STOP_NUDGE", "off")
+    monkeypatch.setenv("ALPHA_KANBAN_STOP_NUDGE", "off")
     assert stop_nudge_enabled() is False
 
 

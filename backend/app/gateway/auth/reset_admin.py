@@ -4,7 +4,7 @@ Usage:
     python -m app.gateway.auth.reset_admin
     python -m app.gateway.auth.reset_admin --email admin@example.com
 
-Writes the new password to ``.agent-workspace/admin_initial_credentials.txt``
+Writes the new password to ``.alpha/admin_initial_credentials.txt``
 (mode 0600) instead of printing it, so CI / log aggregators never see
 the cleartext secret.
 """
@@ -18,10 +18,10 @@ import sys
 
 from sqlalchemy import select
 
+from alpha.persistence.user.model import UserRow
 from app.gateway.auth.credential_file import write_initial_credentials
 from app.gateway.auth.password import hash_password
 from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
-from alpha.persistence.user.model import UserRow
 
 
 async def _run(email: str | None) -> int:

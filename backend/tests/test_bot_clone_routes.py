@@ -43,7 +43,7 @@ from app.gateway.routers import bots as bots_router
 @pytest.fixture(autouse=True)
 def _isolated_bot_state(tmp_path, monkeypatch):
     """Point every bot/ephemeral singleton at a per-test temp home."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
 
     import alpha.bots.cloning as cloning_mod
     import alpha.bots.ephemeral as ephemeral_mod

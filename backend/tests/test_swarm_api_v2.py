@@ -14,7 +14,7 @@ from alpha.swarm.models import SwarmMode, TaskNodeState
 
 @pytest.fixture(autouse=True)
 def _isolated_swarm_api(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     coord_mod._GLOBAL_COORDINATOR = None
     yield
     coord_mod._GLOBAL_COORDINATOR = None

@@ -15,7 +15,7 @@ from alpha.scheduler.wake_gate import should_wake, wrap_executor_with_gate
 
 @pytest.fixture(autouse=True)
 def _home(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     yield
 
 

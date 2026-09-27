@@ -10,16 +10,16 @@ name: Nightly Build
 # release. Images are amd64-only to match the release builds.
 #
 # Artifacts (under the running repo's owner):
-#   ghcr.io/<owner>/agent-workspace-{backend,frontend,provisioner}:nightly
-#   ghcr.io/<owner>/agent-workspace-{backend,frontend,provisioner}:nightly-YYYYMMDD
-#   oci://ghcr.io/<owner>/charts/agent-workspace   chart version <base>-nightly.YYYYMMDD-<sha>
+#   ghcr.io/<owner>/alpha-{backend,frontend,provisioner}:nightly
+#   ghcr.io/<owner>/alpha-{backend,frontend,provisioner}:nightly-YYYYMMDD
+#   oci://ghcr.io/<owner>/charts/alpha   chart version <base>-nightly.YYYYMMDD-<sha>
 #
 # The nightly chart defaults image.tag=nightly and image.registry=ghcr.io/<owner>
 # (patched in-workflow, never committed), so installing it pulls the matching
 # nightly images with no values overrides.
 #
 # Restricted to the upstream repo: every job is gated on
-# `github.repository == 'bytedance/agent-workspace'`, so a scheduled run or manual
+# `github.repository == 'itsPremkumar/alpha'`, so a scheduled run or manual
 # dispatch on a fork skips all jobs rather than pushing to the fork's own GHCR
 # namespace. Scheduled workflows also only fire on the default branch.
 
@@ -57,7 +57,7 @@ jobs:
   # excess clears BOTH the tolerance and that run's own spread. No
   # `continue-on-error`, no `|| true`.
   cold-start-budget:
-    if: github.repository == 'bytedance/agent-workspace'
+    if: github.repository == 'itsPremkumar/alpha'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -95,7 +95,7 @@ jobs:
         run: python scripts/check_cold_start_budget.py --json
 
   prepare:
-    if: github.repository == 'bytedance/agent-workspace'
+    if: github.repository == 'itsPremkumar/alpha'
     runs-on: ubuntu-latest
     outputs:
       date: ${{ steps.date.outputs.date }}
@@ -119,7 +119,7 @@ jobs:
         # users see and the chart version can't drift apart.
         run: |
           set -euo pipefail
-          BASE=$(grep -m1 '^version:' deploy/helm/agent-workspace/Chart.yaml | awk '{print $2}')
+          BASE=$(grep -m1 '^version:' deploy/helm/alpha/Chart.yaml | awk '{print $2}')
           # A malformed/missing Chart.yaml version would yield an empty BASE ->
           # `-nightly.<date>-<sha>` (invalid semver) that now flows into both
           # the chart publish and the frontend About-page version. Fail loudly.
@@ -132,7 +132,7 @@ jobs:
           echo "Nightly version: ${NIGHTLY}"
 
   validate-chart:
-    if: github.repository == 'bytedance/agent-workspace'
+    if: github.repository == 'itsPremkumar/alpha'
     # Catch a broken render or a stale config_version before publish. A broken
     # chart published under an OCI version is immutable (GHCR won't let you
     # overwrite --version), so a regression must fail here, not on install.
@@ -144,9 +144,9 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 #v6.0.3
 
       - name: Lint chart
-        run: helm lint deploy/helm/agent-workspace
+        run: helm lint deploy/helm/alpha
       - name: Validate templates render
-        run: helm template agent-workspace deploy/helm/agent-workspace --include-crds >/dev/null
+        run: helm template alpha deploy/helm/alpha --include-crds >/dev/null
 
       # The chart's `config:` block embeds a config_version that must not fall
       # behind config.example.yaml. Shared with chart.yaml via
@@ -156,7 +156,7 @@ jobs:
 
   build-images:
     needs: prepare
-    if: github.repository == 'bytedance/agent-workspace'
+    if: github.repository == 'itsPremkumar/alpha'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -233,7 +233,7 @@ jobs:
     # failed image build withholds the chart rather than publishing one that
     # would fail to pull in-cluster.
     needs: [prepare, validate-chart, build-images]
-    if: github.repository == 'bytedance/agent-workspace'
+    if: github.repository == 'itsPremkumar/alpha'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -257,7 +257,7 @@ jobs:
         # committed back.
         run: |
           set -eu
-          CHART=deploy/helm/agent-workspace
+          CHART=deploy/helm/alpha
           echo "Nightly chart version: ${NIGHTLY}"
           sed -i "s|^version:.*|version: ${NIGHTLY}|" "$CHART/Chart.yaml"
           sed -i "s|^appVersion:.*|appVersion: \"${NIGHTLY}\"|" "$CHART/Chart.yaml"
@@ -275,7 +275,7 @@ jobs:
           echo "--- image block ---"; sed -n '11,14p' "$CHART/values.yaml"
 
       - name: Lint patched chart
-        run: helm lint deploy/helm/agent-workspace
+        run: helm lint deploy/helm/alpha
 
       - name: Log in to GHCR
         run: |
@@ -284,7 +284,7 @@ jobs:
 
       - name: Package and push chart
         run: |
-          helm package deploy/helm/agent-workspace --destination ./packages
+          helm package deploy/helm/alpha --destination ./packages
           for pkg in ./packages/*.tgz; do
             echo "--- pushing $pkg"
             helm push "$pkg" oci://ghcr.io/${{ github.repository_owner }}/charts

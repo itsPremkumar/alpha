@@ -112,7 +112,7 @@ system_one:
 ```
 
 For local Laya, use the project-local setup helper. It creates an isolated environment
-under `.agent-workspace/laya` (so Alpha's normal lockfile and install do not pull
+under `.alpha/laya` (so Alpha's normal lockfile and install do not pull
 PyTorch/Transformers), downloads only the selected checkpoint(s), and keeps the Hugging
 Face cache inside the project:
 

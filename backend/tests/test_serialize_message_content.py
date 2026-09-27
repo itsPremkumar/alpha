@@ -8,7 +8,7 @@ See: https://github.com/bytedance/agent-workspace/issues/1149
 
 from langchain_core.messages import ToolMessage
 
-from alpha.client import AgentWorkspaceClient
+from alpha.client import AlphaClient
 
 # ---------------------------------------------------------------------------
 # _serialize_message
@@ -16,11 +16,11 @@ from alpha.client import AgentWorkspaceClient
 
 
 class TestSerializeToolMessageContent:
-    """AgentWorkspaceClient._serialize_message should normalize ToolMessage content."""
+    """AlphaClient._serialize_message should normalize ToolMessage content."""
 
     def test_string_content(self):
         msg = ToolMessage(content="ok", tool_call_id="tc1", name="search")
-        result = AgentWorkspaceClient._serialize_message(msg)
+        result = AlphaClient._serialize_message(msg)
         assert result["content"] == "ok"
         assert result["type"] == "tool"
 
@@ -31,7 +31,7 @@ class TestSerializeToolMessageContent:
             tool_call_id="tc1",
             name="search",
         )
-        result = AgentWorkspaceClient._serialize_message(msg)
+        result = AlphaClient._serialize_message(msg)
         assert result["content"] == "hello world"
         # Must NOT contain Python repr artifacts
         assert "[" not in result["content"]
@@ -47,7 +47,7 @@ class TestSerializeToolMessageContent:
             tool_call_id="tc1",
             name="search",
         )
-        result = AgentWorkspaceClient._serialize_message(msg)
+        result = AlphaClient._serialize_message(msg)
         assert result["content"] == "line 1\nline 2"
 
     def test_string_chunks_are_joined_without_newlines(self):
@@ -57,7 +57,7 @@ class TestSerializeToolMessageContent:
             tool_call_id="tc1",
             name="search",
         )
-        result = AgentWorkspaceClient._serialize_message(msg)
+        result = AlphaClient._serialize_message(msg)
         assert result["content"] == '{"a": "b"}'
 
     def test_mixed_string_chunks_and_blocks(self):
@@ -67,7 +67,7 @@ class TestSerializeToolMessageContent:
             tool_call_id="tc1",
             name="search",
         )
-        result = AgentWorkspaceClient._serialize_message(msg)
+        result = AlphaClient._serialize_message(msg)
         assert result["content"] == "prefix-continued\nblock text"
 
     def test_mixed_blocks_with_non_text(self):
@@ -80,12 +80,12 @@ class TestSerializeToolMessageContent:
             tool_call_id="tc1",
             name="view_image",
         )
-        result = AgentWorkspaceClient._serialize_message(msg)
+        result = AlphaClient._serialize_message(msg)
         assert result["content"] == "found results"
 
     def test_empty_list_content(self):
         msg = ToolMessage(content=[], tool_call_id="tc1", name="search")
-        result = AgentWorkspaceClient._serialize_message(msg)
+        result = AlphaClient._serialize_message(msg)
         assert result["content"] == ""
 
     def test_plain_string_in_list(self):
@@ -95,13 +95,13 @@ class TestSerializeToolMessageContent:
             tool_call_id="tc1",
             name="search",
         )
-        result = AgentWorkspaceClient._serialize_message(msg)
+        result = AlphaClient._serialize_message(msg)
         assert result["content"] == "plain text block"
 
     def test_unknown_content_type_falls_back(self):
         """Unexpected types should not crash — return str()."""
         msg = ToolMessage(content=42, tool_call_id="tc1", name="calc")
-        result = AgentWorkspaceClient._serialize_message(msg)
+        result = AlphaClient._serialize_message(msg)
         # int → not str, not list → falls to str()
         assert result["content"] == "42"
 
@@ -112,16 +112,16 @@ class TestSerializeToolMessageContent:
 
 
 class TestExtractText:
-    """AgentWorkspaceClient._extract_text should handle all content shapes."""
+    """AlphaClient._extract_text should handle all content shapes."""
 
     def test_string_passthrough(self):
-        assert AgentWorkspaceClient._extract_text("hello") == "hello"
+        assert AlphaClient._extract_text("hello") == "hello"
 
     def test_list_text_blocks(self):
-        assert AgentWorkspaceClient._extract_text([{"type": "text", "text": "hi"}]) == "hi"
+        assert AlphaClient._extract_text([{"type": "text", "text": "hi"}]) == "hi"
 
     def test_empty_list(self):
-        assert AgentWorkspaceClient._extract_text([]) == ""
+        assert AlphaClient._extract_text([]) == ""
 
     def test_fallback_non_iterable(self):
-        assert AgentWorkspaceClient._extract_text(123) == "123"
+        assert AlphaClient._extract_text(123) == "123"

@@ -111,7 +111,7 @@ class CDPBrowserBridge:
 
             req = urllib.request.Request(
                 f"{self.cdp_endpoint}/json/list",
-                headers={"User-Agent": "AgentWorkspace-CDPBridge/2.0"},
+                headers={"User-Agent": "Alpha-CDPBridge/2.0"},
             )
             with urllib.request.urlopen(req, timeout=1.5) as resp:
                 raw = json.loads(resp.read().decode("utf-8"))

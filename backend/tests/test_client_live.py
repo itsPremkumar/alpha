@@ -1,4 +1,4 @@
-"""Live integration tests for AgentWorkspaceClient with real external APIs.
+"""Live integration tests for AlphaClient with real external APIs.
 
 These tests require a working config.yaml with valid API credentials.
 They can incur API costs and create local sandboxes, artifacts, or files.
@@ -8,7 +8,7 @@ They are skipped in CI and default test runs and must be run explicitly:
 
 For direct pytest invocation, set the explicit opt-in flag:
 
-    AGENT_WORKSPACE_RUN_LIVE_TESTS=1 PYTHONPATH=. uv run pytest tests/test_client_live.py -v -s
+    ALPHA_RUN_LIVE_TESTS=1 PYTHONPATH=. uv run pytest tests/test_client_live.py -v -s
 """
 
 import json
@@ -17,13 +17,13 @@ from pathlib import Path
 
 import pytest
 
-from alpha.client import AgentWorkspaceClient, StreamEvent
+from alpha.client import AlphaClient, StreamEvent
 from alpha.sandbox.security import is_host_bash_allowed
 from alpha.uploads.manager import PathTraversalError
 
 pytestmark = pytest.mark.live
 
-_LIVE_TEST_OPT_IN = "AGENT_WORKSPACE_RUN_LIVE_TESTS"
+_LIVE_TEST_OPT_IN = "ALPHA_RUN_LIVE_TESTS"
 
 # Skip the entire module unless every live-test precondition is satisfied.
 _skip_reason = None
@@ -44,8 +44,8 @@ if _skip_reason:
 
 @pytest.fixture(scope="module")
 def client():
-    """Create a real AgentWorkspaceClient (no mocks)."""
-    return AgentWorkspaceClient(thinking_enabled=False)
+    """Create a real AlphaClient (no mocks)."""
+    return AlphaClient(thinking_enabled=False)
 
 
 @pytest.fixture

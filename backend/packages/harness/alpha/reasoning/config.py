@@ -2,7 +2,7 @@
 
 This module deliberately does **not** import ``alpha.config`` or register an
 ``AppConfig`` field.  Defaults live with the package.  An operator may place a
-small JSON override at ``$AGENT_WORKSPACE_HOME/reasoning/config.json`` or pass
+small JSON override at ``$ALPHA_HOME/reasoning/config.json`` or pass
 an explicit path; a missing optional file yields defaults and a malformed file
 fails loudly.
 
@@ -95,7 +95,7 @@ def resolve_reasoning_config_path(
             raise ReasoningConfigError(f"explicit reasoning config path does not exist: {resolved}")
         return resolved
     environment = os.environ if env is None else env
-    home = (environment.get("AGENT_WORKSPACE_HOME") or "").strip()
+    home = (environment.get("ALPHA_HOME") or "").strip()
     if not home:
         return None
     candidate = Path(home).expanduser() / _RUNTIME_RELATIVE_PATH

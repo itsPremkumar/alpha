@@ -17,7 +17,7 @@ from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from typing import Any, Final
 
-from agent_workspace_extension_api import PROVENANCE_KEYS
+from alpha_extension_api import PROVENANCE_KEYS
 from fastapi import HTTPException, Request
 from langchain_core.messages import BaseMessage
 from langchain_core.messages.utils import convert_to_messages
@@ -74,7 +74,7 @@ from alpha.runtime.stream_modes import normalize_stream_modes
 from alpha.runtime.user_context import reset_current_user, set_current_user
 from alpha.sandbox.lease import SANDBOX_SERVER_OWNED_CONTEXT_KEYS
 from alpha.subagents.status_contract import SUBAGENT_ACCEPTANCE_VERDICT_KEY, SUBAGENT_RECEIPT_VERDICT_KEY, SUBAGENT_TOOL_RECEIPTS_KEY
-from alpha.trace_context import AGENT_WORKSPACE_TRACE_METADATA_KEY, ensure_trace_context, ensure_trace_id, resolve_trace_id
+from alpha.trace_context import ALPHA_TRACE_METADATA_KEY, ensure_trace_context, ensure_trace_id, resolve_trace_id
 from alpha.utils.assembly_io import run_assembly
 from alpha.utils.messages import ORIGINAL_USER_CONTENT_KEY
 from alpha.utils.thread_id import validate_thread_id
@@ -219,7 +219,7 @@ async def _ensure_thread_metadata(
             # membership key: run admission never modifies project membership —
             # the column is written only by POST /api/threads and
             # /threads/{id}/move — so the key must not persist either.
-            if key not in (AGENT_WORKSPACE_TRACE_METADATA_KEY, THREAD_PROJECT_METADATA_KEY)
+            if key not in (ALPHA_TRACE_METADATA_KEY, THREAD_PROJECT_METADATA_KEY)
         }
         await thread_store.create(
             record.thread_id,
@@ -336,7 +336,7 @@ def _status_value(record: RunRecord) -> str:
 def _run_trace_id(record: RunRecord) -> str:
     """The run's server-issued trace id, falling back to the ambient one."""
     metadata = record.metadata if isinstance(record.metadata, Mapping) else {}
-    return resolve_trace_id(metadata.get(AGENT_WORKSPACE_TRACE_METADATA_KEY))
+    return resolve_trace_id(metadata.get(ALPHA_TRACE_METADATA_KEY))
 
 
 def terminal_end_payload(record: RunRecord) -> dict[str, Any]:
@@ -1642,7 +1642,7 @@ async def start_run(
     # via check_access; only a thread already owned by another user is rejected
     # with 404, matching thread_runs.py's anti-enumeration behaviour. Internal
     # channel runs act on behalf of the connection owner carried in
-    # X-Agent-Workspace-Owner-User-Id, so they are scoped to that owner instead of
+    # X-Alpha-Owner-User-Id, so they are scoped to that owner instead of
     # bypassing the check -- a leaked internal token must not grant cross-user
     # thread access.
     user = getattr(request.state, "user", None)
@@ -1680,7 +1680,7 @@ async def start_run(
             graph_input = Command(resume=command["resume"])
         else:
             graph_input = normalize_input(body.input, trusted_internal=is_internal_caller)
-        # agent_workspace_trace_id is server-issued, so the caller's value is replaced
+        # alpha_trace_id is server-issued, so the caller's value is replaced
         # here at the trust boundary. body.metadata forks two ways -- through
         # build_run_config into config["metadata"], which the run worker
         # restamps, and through create_or_reject into the run record, which the
@@ -1689,7 +1689,7 @@ async def start_run(
         # id, disagreeing with the response header, the logs, and the
         # checkpoint. The caller's own metadata keys are preserved.
         run_metadata = dict(body.metadata) if isinstance(body.metadata, dict) else {}
-        run_metadata[AGENT_WORKSPACE_TRACE_METADATA_KEY] = ensure_trace_id()
+        run_metadata[ALPHA_TRACE_METADATA_KEY] = ensure_trace_id()
         if body_autonomous:
             run_metadata["autonomous"] = True
         if body_acceptance_criteria is not None:

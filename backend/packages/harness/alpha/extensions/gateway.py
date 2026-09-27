@@ -5,7 +5,7 @@ Every contributed router mounted here runs behind the host's ``AuthMiddleware``
 auth-exempt prefix, so every request reaching a contributed route is already
 session-authenticated. "Logged in" and "administrator" are still different
 questions, though, and a contributed route asks the second one through
-``agent_workspace_extension_api.auth``: ``resolve_principal(request)`` /
+``alpha_extension_api.auth``: ``resolve_principal(request)`` /
 ``require_admin(request)`` read a resolver the host installs on ``app.state``,
 handing the router a neutral projection of identity rather than the host's
 own auth context.
@@ -19,7 +19,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from agent_workspace_extension_api import ExtensionRuntimeDeps
+from alpha_extension_api import ExtensionRuntimeDeps
 
 from alpha.extensions.loader import Diagnostic
 from alpha.extensions.policy import project_host_policy

@@ -40,8 +40,8 @@ from alpha.workflow.time_travel import (
 
 
 @pytest.fixture(autouse=True)
-def _isolate_agent_workspace(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+def _isolate_alpha(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
 
 
 def _ok(node, run):

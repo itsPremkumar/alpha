@@ -10,7 +10,7 @@ Regression targets:
   clone payload), the honest ``lease_status`` payload on success/failure/zero
   TTL, and that lease failures are logged at ERROR with the real exception.
 
-Registry state is isolated per test via ``AGENT_WORKSPACE_HOME`` -> tmp_path.
+Registry state is isolated per test via ``ALPHA_HOME`` -> tmp_path.
 """
 
 from __future__ import annotations
@@ -29,13 +29,13 @@ from alpha.bots.profile import BotProfile
 def isolated_bot_state(tmp_path, monkeypatch):
     """Point all bot/ephemeral persistence at a per-test temp home.
 
-    ``AGENT_WORKSPACE_HOME`` redirects ``runtime_home()`` for both the bot
+    ``ALPHA_HOME`` redirects ``runtime_home()`` for both the bot
     roster and ``bots/ephemeral.json``. The singletons are reset because
     ``get_bot_registry()``/``get_ephemeral_manager()`` may already hold
     instances bound to a previous home; unlike the registry, the ephemeral
     manager never re-resolves the environment variable.
     """
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
 
     import alpha.bots.ephemeral as ephemeral_mod
     import alpha.bots.registry as registry_mod

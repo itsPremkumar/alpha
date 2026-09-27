@@ -1,7 +1,7 @@
 """W-N1 durability at the REST layer: journaled events, projection, hydration, plans.
 
 The real handlers are called directly (same pattern as
-``test_dynamic_workflow_router``), and ``AGENT_WORKSPACE_HOME`` is redirected
+``test_dynamic_workflow_router``), and ``ALPHA_HOME`` is redirected
 per test, so the durable store is always a temp dir. The gateway's sink is
 attached to the GLOBAL event dispatcher at router import, so events emitted by
 a real run through the real kernel are journaled for real — these tests assert
@@ -39,8 +39,8 @@ from app.gateway.routers.workflows import (
 
 
 @pytest.fixture(autouse=True)
-def _isolate_agent_workspace(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+def _isolate_alpha(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
 
 
 async def _register_and_start(workflow_id: str = "wf_rest"):

@@ -196,8 +196,8 @@ class TestCoalesceRequest:
             "source": "prompt",
             "hide_from_ui": True,
             "dynamic_context_reminder": True,
-            "agent_workspace_content_kind": "middleware_injection",
-            "agent_workspace_producer_kind": "system_coalescing",
+            "alpha_content_kind": "middleware_injection",
+            "alpha_producer_kind": "system_coalescing",
         }
 
     def test_merged_kwargs_later_parts_override(self):

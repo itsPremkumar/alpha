@@ -79,37 +79,37 @@ def test_docker_dev_mounts_mutable_configs_through_project_directory():
     assert re.search(r"^\s*-\s*\.\./:/app/project(?:\:\S+)?\s*$", compose, re.M)
     assert not re.search(r"^\s*-\s*[^\n#]*config\.yaml\s*:\s*[^\n#]*$", compose, re.M)
     assert not re.search(r"^\s*-\s*[^\n#]*extensions_config\.json\s*:\s*[^\n#]*$", compose, re.M)
-    assert "AGENT_WORKSPACE_CONFIG_PATH=/app/project/config.yaml" in compose
-    assert "AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH=/app/project/extensions_config.json" in compose
+    assert "ALPHA_CONFIG_PATH=/app/project/config.yaml" in compose
+    assert "ALPHA_EXTENSIONS_CONFIG_PATH=/app/project/extensions_config.json" in compose
 
 
 def test_local_dev_gateway_reload_excludes_runtime_state_with_absolute_dirs():
     serve_sh = _read("scripts/serve.sh")
 
-    assert 'export AGENT_WORKSPACE_PROJECT_ROOT="$REPO_ROOT"' in serve_sh
-    assert 'BACKEND_RUNTIME_HOME="$REPO_ROOT/backend/.agent-workspace"' in serve_sh
-    assert 'export AGENT_WORKSPACE_HOME="$BACKEND_RUNTIME_HOME"' in serve_sh
+    assert 'export ALPHA_PROJECT_ROOT="$REPO_ROOT"' in serve_sh
+    assert 'BACKEND_RUNTIME_HOME="$REPO_ROOT/backend/.alpha"' in serve_sh
+    assert 'export ALPHA_HOME="$BACKEND_RUNTIME_HOME"' in serve_sh
     # Every absolute reload-exclude must be pre-created, including backend/sandbox
     # (#3459 / #3454) — see test_uvicorn_reload_exclude.py for the mechanism.
-    assert 'mkdir -p "$AGENT_WORKSPACE_HOME" "$BACKEND_RUNTIME_HOME" "$REPO_ROOT/backend/sandbox"' in serve_sh
-    assert "--reload-exclude='$AGENT_WORKSPACE_HOME'" in serve_sh
+    assert 'mkdir -p "$ALPHA_HOME" "$BACKEND_RUNTIME_HOME" "$REPO_ROOT/backend/sandbox"' in serve_sh
+    assert "--reload-exclude='$ALPHA_HOME'" in serve_sh
     assert "--reload-exclude='$BACKEND_RUNTIME_HOME'" in serve_sh
     assert "--reload-exclude='sandbox/'" not in serve_sh
-    assert "--reload-exclude='.agent-workspace/'" not in serve_sh
+    assert "--reload-exclude='.alpha/'" not in serve_sh
 
 
 def test_backend_make_dev_gateway_reload_excludes_runtime_state_with_absolute_dirs():
     makefile = _read("backend/Makefile")
 
-    assert "AGENT_WORKSPACE_HOME ?= $(CURDIR)/.agent-workspace" in makefile
-    assert "AGENT_WORKSPACE_HOME := $(abspath $(AGENT_WORKSPACE_HOME))" in makefile
+    assert "ALPHA_HOME ?= $(CURDIR)/.alpha" in makefile
+    assert "ALPHA_HOME := $(abspath $(ALPHA_HOME))" in makefile
     assert "BACKEND_SANDBOX_HOME := $(abspath $(CURDIR)/sandbox)" in makefile
-    assert 'mkdir -p "$(AGENT_WORKSPACE_HOME)" "$(BACKEND_SANDBOX_HOME)"' in makefile
+    assert 'mkdir -p "$(ALPHA_HOME)" "$(BACKEND_SANDBOX_HOME)"' in makefile
     # The launch line may carry runtime-only uv flags (`--locked` pins the
-    # extension lock); what this guards is that AGENT_WORKSPACE_HOME is exported on it,
+    # extension lock); what this guards is that ALPHA_HOME is exported on it,
     # so the reload-excludes below resolve to the same absolute directories.
-    assert re.search(r'AGENT_WORKSPACE_HOME="\$\(AGENT_WORKSPACE_HOME\)" uv run(?: --(?:locked|no-sync))? uvicorn', makefile)
-    assert '--reload-exclude="$(AGENT_WORKSPACE_HOME)"' in makefile
+    assert re.search(r'ALPHA_HOME="\$\(ALPHA_HOME\)" uv run(?: --(?:locked|no-sync))? uvicorn', makefile)
+    assert '--reload-exclude="$(ALPHA_HOME)"' in makefile
     assert '--reload-exclude="$(BACKEND_SANDBOX_HOME)"' in makefile
 
 
@@ -203,7 +203,7 @@ def test_frontend_rewrites_langgraph_prefix_to_gateway():
     next_config = _read("frontend/next.config.mjs")
     api_client = _read("frontend/src/lib/api-client.ts")
 
-    assert "AGENT_WORKSPACE_INTERNAL_LANGGRAPH_BASE_URL" not in next_config
+    assert "ALPHA_INTERNAL_LANGGRAPH_BASE_URL" not in next_config
     assert "http://127.0.0.1:2024" not in next_config
     assert "langgraph-compat" not in api_client
 
@@ -223,7 +223,7 @@ def test_smoke_test_docs_do_not_expect_standalone_langgraph_server():
     for path, content in smoke_files.items():
         assert "localhost:2024" not in content, path
         assert "127.0.0.1:2024" not in content, path
-        assert "agent-workspace-langgraph" not in content, path
+        assert "alpha-langgraph" not in content, path
         assert "langgraph.log" not in content, path
         assert "LangGraph service" not in content, path
         assert "langgraph dev" not in content, path

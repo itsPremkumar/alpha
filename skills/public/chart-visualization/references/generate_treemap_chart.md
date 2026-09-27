@@ -8,8 +8,8 @@ Displays nested hierarchical data as proportional rectangular tiles, ideal for p
 - data: object, nested hierarchy with category names and leaf values.
 
 ### Optional
-- 	heme: string, default default.
-- 	itle: string, treemap title.
+- theme: string, default default.
+- title: string, treemap title.
 
 ## Usage Recommendations
 Use high-contrast palettes across parent categories to aid visual distinction.

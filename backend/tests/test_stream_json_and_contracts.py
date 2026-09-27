@@ -249,9 +249,9 @@ def test_a_surface_switch_does_not_rebuild_the_agent():
     """``_agent_config_key`` is the cache key; a surface switch must not alter it."""
     import inspect
 
-    from alpha.client import AgentWorkspaceClient
+    from alpha.client import AlphaClient
 
-    source = inspect.getsource(AgentWorkspaceClient._ensure_agent)
+    source = inspect.getsource(AlphaClient._ensure_agent)
     key_fields = [
         token
         for token in (

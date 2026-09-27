@@ -8,7 +8,7 @@
     the working tree or the stash list. Nothing is modified by taking a
     checkpoint, so it is safe to run at any time.
 
-    The commit id is written to .agent-workspace\checkpoints\latest.txt
+    The commit id is written to .alpha\checkpoints\latest.txt
     (already gitignored).
 
 .EXAMPLE
@@ -24,7 +24,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$dir = '.agent-workspace\checkpoints'
+$dir = '.alpha\checkpoints'
 $latest = Join-Path $dir 'latest.txt'
 $log = Join-Path $dir 'history.log'
 

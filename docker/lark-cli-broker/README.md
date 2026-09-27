@@ -15,7 +15,7 @@ filesystem**, so a compromised or prompt-injected agent can no longer
 Dispatched by the first CLI argument:
 
 - `install-shim <dest>` — **init container**: writes the launcher + Python shim +
-  `.agent-workspace-lark-cli-runtime.json` (`kind: "shim"`) into the shared `emptyDir`
+  `.alpha-lark-cli-runtime.json` (`kind: "shim"`) into the shared `emptyDir`
   at `<dest>` (default `/mnt/integrations/lark-cli/runtime`), then exits `0`. The
   sandbox then finds `bin/lark-cli` exactly where
   `lark_cli_env_overlay(sandbox_paths=True)` points `PATH` — same layout the
@@ -33,7 +33,7 @@ when run off `PATH`); both are written from the in-process
 the Gateway's. Splitting the sh launcher from the Python body means broker mode
 does **not** hard-depend on `python3` resolving via a `#!/usr/bin/env python3`
 shebang: if no `python3`/`python` is on the sandbox `PATH`, the launcher exits
-`127` with an actionable message (set `AGENT_WORKSPACE_LARK_BROKER_PYTHON` to a known
+`127` with an actionable message (set `ALPHA_LARK_BROKER_PYTHON` to a known
 interpreter path) instead of an opaque ENOEXEC. The stock `all-in-one-sandbox`
 image ships Python 3, so the default path needs no configuration.
 
@@ -42,7 +42,7 @@ image ships Python 3, so the default path needs no configuration.
 Build context is the **repo root** (the broker module lives under `backend/`):
 
 ```bash
-docker build -t agent-workspace/lark-cli-broker:v1.0.65 \
+docker build -t alpha/lark-cli-broker:v1.0.65 \
   --build-arg LARK_CLI_VERSION=v1.0.65 \
   -f docker/lark-cli-broker/Dockerfile .
 ```
@@ -51,7 +51,7 @@ The tag should encode the lark-cli version so it can be bumped independently of
 the upstream `all-in-one-sandbox` image.
 
 CI publishes multi-arch (`linux/amd64,linux/arm64`) images to
-`ghcr.io/<owner>/agent-workspace-lark-cli-broker:<lark-cli-version>` via
+`ghcr.io/<owner>/alpha-lark-cli-broker:<lark-cli-version>` via
 `.github/workflows/lark-cli-images.yaml` (run it with a `lark_cli_version` input,
 or push a `lark-cli-v*` tag). This is decoupled from the Alpha `v*` release
 because the image tracks the upstream `larksuite/cli` version.
@@ -69,7 +69,7 @@ and pointing the provisioner at it:
   - a `lark-cli-shim-init` init container (`install-shim`) that stages the shim;
   - a `lark-cli-broker` **sidecar** (`serve`) with the per-user `config` (RO) /
     `data` (RW) credential mounts — **into the sidecar only**;
-  - the sandbox container gets the runtime RO mount + `AGENT_WORKSPACE_LARK_BROKER_URL`
+  - the sandbox container gets the runtime RO mount + `ALPHA_LARK_BROKER_URL`
     and **no** `config`/`data` mounts.
 - Broker mode **supersedes** Pattern A when both are configured.
 - The provisioner reports it via `GET /api/capabilities`
@@ -107,10 +107,10 @@ paths still refer to the sidecar's filesystem, not the sandbox's.
 
 The broker removes the credential *files* from the sandbox, but the full
 `lark-cli` command surface stays reachable, so any subcommand that prints/exports
-tokens could still exfiltrate them. Set `AGENT_WORKSPACE_LARK_BROKER_DENY_SUBCOMMANDS`
+tokens could still exfiltrate them. Set `ALPHA_LARK_BROKER_DENY_SUBCOMMANDS`
 on the sidecar to a comma-separated list of command prefixes the broker should
 refuse (matched against the leading non-flag tokens), e.g.
-`AGENT_WORKSPACE_LARK_BROKER_DENY_SUBCOMMANDS="config show, auth token"`. Denied calls
+`ALPHA_LARK_BROKER_DENY_SUBCOMMANDS="config show, auth token"`. Denied calls
 return exit `126` with a `subcommand ... is disabled` message and never spawn the
 binary. Empty by default (no behavior change); confirm the deployed `lark-cli`
 version's subcommand surface has no trivial secret-dump command before enabling

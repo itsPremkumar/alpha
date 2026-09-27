@@ -39,7 +39,7 @@ Honesty pins (plan §5 guardrails + task assignment):
 - deterministic: ``tmp_path`` + injected clocks, no network, no subprocess, no
   git. The evolution engine's process-global singleton is reset per test (a
   state reset so each test builds a REAL engine over its own tmp home), and
-  every test's ``AGENT_WORKSPACE_HOME`` is a temp directory.
+  every test's ``ALPHA_HOME`` is a temp directory.
 """
 
 import hashlib
@@ -129,7 +129,7 @@ def _release_dir(release_id: str) -> Path:
 
 @pytest.fixture(autouse=True)
 def isolated_workspace(tmp_path, monkeypatch):
-    """Temp ``AGENT_WORKSPACE_HOME`` + a fresh REAL evolution engine per test.
+    """Temp ``ALPHA_HOME`` + a fresh REAL evolution engine per test.
 
     The ``_engine = None`` reset is singleton STATE hygiene (each test's
     ``get_evolution_engine()`` constructs a real engine bound to its own tmp
@@ -137,7 +137,7 @@ def isolated_workspace(tmp_path, monkeypatch):
     ``RSI_COOLDOWN_SECONDS`` is dropped so window length is this suite's own
     explicit input, never ambient operator state.
     """
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     monkeypatch.delenv("RSI_COOLDOWN_SECONDS", raising=False)
     monkeypatch.setattr(evolution_engine_module, "_engine", None)
     return tmp_path

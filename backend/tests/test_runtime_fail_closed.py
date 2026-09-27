@@ -14,7 +14,7 @@ behavior directly against ``alpha.workflow.runtime`` (and the kernel seam):
 - gap 9: run-status transitions land in ``run.history`` and ``waiting_nodes``
   stays derived from the per-node statuses.
 
-Every test isolates ``AGENT_WORKSPACE_HOME`` to a per-test temp dir.
+Every test isolates ``ALPHA_HOME`` to a per-test temp dir.
 """
 
 from __future__ import annotations
@@ -42,9 +42,9 @@ FAIL_CLOSED_REASON_N1 = (
 
 
 @pytest.fixture(autouse=True)
-def _isolate_agent_workspace(tmp_path, monkeypatch):
-    """AGENT_WORKSPACE_HOME points at a per-test temp dir (process-global env)."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+def _isolate_alpha(tmp_path, monkeypatch):
+    """ALPHA_HOME points at a per-test temp dir (process-global env)."""
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
 
 
 @pytest.fixture()

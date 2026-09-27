@@ -19,7 +19,7 @@
 # property the gate actually needs, so it no longer needs `--isolated`.
 #
 # backend/ruff.toml now extends this file instead of restating it, and
-# examples/agent-workspace-extension-example/pyproject.toml carries the same
+# examples/alpha-extension-example/pyproject.toml carries the same
 # policy for its own tree.  Keep them in step: this file is the source of truth.
 line-length = 240
 target-version = "py312"

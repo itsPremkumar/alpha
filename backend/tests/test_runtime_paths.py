@@ -18,11 +18,11 @@ from alpha.skills.storage import get_or_new_skill_storage
 
 def _clear_path_env(monkeypatch):
     for name in (
-        "AGENT_WORKSPACE_CONFIG_PATH",
-        "AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH",
-        "AGENT_WORKSPACE_HOME",
-        "AGENT_WORKSPACE_PROJECT_ROOT",
-        "AGENT_WORKSPACE_SKILLS_PATH",
+        "ALPHA_CONFIG_PATH",
+        "ALPHA_EXTENSIONS_CONFIG_PATH",
+        "ALPHA_HOME",
+        "ALPHA_PROJECT_ROOT",
+        "ALPHA_SKILLS_PATH",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -40,19 +40,19 @@ def test_default_runtime_paths_resolve_from_current_project(tmp_path: Path, monk
 
     assert AppConfig.resolve_config_path() == tmp_path / "config.yaml"
     assert ExtensionsConfig.resolve_config_path() == tmp_path / "extensions_config.json"
-    assert Paths().base_dir == tmp_path / ".agent-workspace"
+    assert Paths().base_dir == tmp_path / ".alpha"
     assert SkillsConfig().get_skills_path() == tmp_path / "skills"
     assert get_or_new_skill_storage(skills_path=SkillsConfig().get_skills_path()).get_skills_root_path() == tmp_path / "skills"
 
 
-def test_agent_workspace_project_root_overrides_current_directory(tmp_path: Path, monkeypatch):
+def test_alpha_project_root_overrides_current_directory(tmp_path: Path, monkeypatch):
     _clear_path_env(monkeypatch)
     project_root = tmp_path / "project"
     other_cwd = tmp_path / "other"
     project_root.mkdir()
     other_cwd.mkdir()
     monkeypatch.chdir(other_cwd)
-    monkeypatch.setenv("AGENT_WORKSPACE_PROJECT_ROOT", str(project_root))
+    monkeypatch.setenv("ALPHA_PROJECT_ROOT", str(project_root))
 
     (project_root / "config.yaml").write_text(
         yaml.safe_dump({"sandbox": {"use": "alpha.sandbox.local:LocalSandboxProvider"}}),
@@ -62,40 +62,40 @@ def test_agent_workspace_project_root_overrides_current_directory(tmp_path: Path
 
     assert AppConfig.resolve_config_path() == project_root / "config.yaml"
     assert ExtensionsConfig.resolve_config_path() == project_root / "mcp_config.json"
-    assert Paths().base_dir == project_root / ".agent-workspace"
+    assert Paths().base_dir == project_root / ".alpha"
     assert SkillsConfig(path="custom-skills").get_skills_path() == project_root / "custom-skills"
 
 
-def test_agent_workspace_skills_path_overrides_project_default(tmp_path: Path, monkeypatch):
+def test_alpha_skills_path_overrides_project_default(tmp_path: Path, monkeypatch):
     _clear_path_env(monkeypatch)
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("AGENT_WORKSPACE_SKILLS_PATH", "team-skills")
+    monkeypatch.setenv("ALPHA_SKILLS_PATH", "team-skills")
 
     assert SkillsConfig().get_skills_path() == tmp_path / "team-skills"
     assert get_or_new_skill_storage(skills_path=SkillsConfig().get_skills_path()).get_skills_root_path() == tmp_path / "team-skills"
 
 
-def test_agent_workspace_project_root_must_exist(tmp_path: Path, monkeypatch):
+def test_alpha_project_root_must_exist(tmp_path: Path, monkeypatch):
     _clear_path_env(monkeypatch)
     missing_root = tmp_path / "missing"
-    monkeypatch.setenv("AGENT_WORKSPACE_PROJECT_ROOT", str(missing_root))
+    monkeypatch.setenv("ALPHA_PROJECT_ROOT", str(missing_root))
 
     with pytest.raises(ValueError, match="does not exist"):
         project_root()
 
 
-def test_agent_workspace_project_root_must_be_directory(tmp_path: Path, monkeypatch):
+def test_alpha_project_root_must_be_directory(tmp_path: Path, monkeypatch):
     _clear_path_env(monkeypatch)
     project_root_file = tmp_path / "project-root"
     project_root_file.write_text("", encoding="utf-8")
-    monkeypatch.setenv("AGENT_WORKSPACE_PROJECT_ROOT", str(project_root_file))
+    monkeypatch.setenv("ALPHA_PROJECT_ROOT", str(project_root_file))
 
     with pytest.raises(ValueError, match="not a directory"):
         project_root()
 
 
 def test_app_config_falls_back_to_legacy_when_project_root_lacks_config(tmp_path: Path, monkeypatch):
-    """When AGENT_WORKSPACE_PROJECT_ROOT is unset and cwd has no config.yaml, the
+    """When ALPHA_PROJECT_ROOT is unset and cwd has no config.yaml, the
     legacy backend/repo-root candidates must be used for monorepo compatibility."""
     _clear_path_env(monkeypatch)
     cwd = tmp_path / "cwd"
@@ -124,7 +124,7 @@ def test_app_config_falls_back_to_legacy_when_project_root_lacks_config(tmp_path
 
 
 def test_skills_config_falls_back_to_legacy_when_project_root_lacks_skills(tmp_path: Path, monkeypatch):
-    """When AGENT_WORKSPACE_PROJECT_ROOT is unset and cwd has no `skills/`, the legacy
+    """When ALPHA_PROJECT_ROOT is unset and cwd has no `skills/`, the legacy
     repo-root candidate must be used so monorepo runs (cwd=backend/) keep finding
     `<repo>/skills` instead of `<repo>/backend/skills` (regression test for #2694)."""
     _clear_path_env(monkeypatch)
@@ -207,13 +207,13 @@ def test_extensions_config_explicit_path_missing_file_raises(tmp_path: Path, mon
 
 
 def test_extensions_config_env_var_missing_file_raises(tmp_path: Path, monkeypatch):
-    """``AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH`` pointing at a file that has since
+    """``ALPHA_EXTENSIONS_CONFIG_PATH`` pointing at a file that has since
     been deleted must raise ``FileNotFoundError`` identifying the environment
     variable as the culprit, not silently return ``None``.
 
     This is the exact resolution mode Docker dev/prod uses (see
-    backend/AGENTS.md: "Docker development ... points `AGENT_WORKSPACE_CONFIG_PATH`
-    / `AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH`" at the mounted config directory), so
+    backend/AGENTS.md: "Docker development ... points `ALPHA_CONFIG_PATH`
+    / `ALPHA_EXTENSIONS_CONFIG_PATH`" at the mounted config directory), so
     a bad mount or deleted file at this explicit, operator-configured path is
     a real misconfiguration that must surface loudly (PR #4275 review,
     fancyboi999 [P1]) instead of silently starting with every MCP server and
@@ -231,26 +231,26 @@ def test_extensions_config_env_var_missing_file_raises(tmp_path: Path, monkeypat
     _clear_path_env(monkeypatch)
     cfg = tmp_path / "extensions_config.json"
     cfg.write_text('{"mcpServers": {}, "skills": {}}', encoding="utf-8")
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(cfg))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(cfg))
 
     assert ExtensionsConfig.resolve_config_path() == cfg  # sanity: resolves while present
 
     cfg.unlink()
 
-    with pytest.raises(FileNotFoundError, match="AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH"):
+    with pytest.raises(FileNotFoundError, match="ALPHA_EXTENSIONS_CONFIG_PATH"):
         ExtensionsConfig.resolve_config_path()
 
 
 def test_extensions_config_search_finds_nothing_returns_none(tmp_path: Path, monkeypatch):
     """The fallback *search* mode (no explicit ``config_path``, no
-    ``AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH``) must still return ``None`` — not
+    ``ALPHA_EXTENSIONS_CONFIG_PATH``) must still return ``None`` — not
     raise — when none of the search locations (project root, legacy
     backend/repo-root) have an extensions config file.
 
     This is the one resolution mode where "not found" is the expected,
     non-error case (extensions are entirely optional throughout the
     application), so it must keep its pre-existing ``None`` contract even
-    though the explicit `config_path`/`AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH`
+    though the explicit `config_path`/`ALPHA_EXTENSIONS_CONFIG_PATH`
     branches now raise ``FileNotFoundError`` for the analogous "missing file"
     condition (see ``test_extensions_config_explicit_path_missing_file_raises``
     and ``test_extensions_config_env_var_missing_file_raises`` above).

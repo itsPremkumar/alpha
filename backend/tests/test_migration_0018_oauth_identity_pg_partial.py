@@ -11,7 +11,7 @@ alembic-upgrade to 0017 (index created full by 0001_baseline, which passed
 predicate appears; the downgrade must restore the full index.
 
 Postgres-only (the revision is a no-op on SQLite -- 0001_baseline already
-gave that backend ``sqlite_where``). Opt in with AGENT_WORKSPACE_TEST_POSTGRES_URL,
+gave that backend ``sqlite_where``). Opt in with ALPHA_TEST_POSTGRES_URL,
 same as test_pg_schema_integration.py.
 """
 
@@ -28,11 +28,11 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from alpha.persistence.bootstrap import _get_alembic_config
 
-POSTGRES_URL = os.getenv("AGENT_WORKSPACE_TEST_POSTGRES_URL")
+POSTGRES_URL = os.getenv("ALPHA_TEST_POSTGRES_URL")
 
 pytestmark = [
     pytest.mark.asyncio,
-    pytest.mark.skipif(not POSTGRES_URL, reason="set AGENT_WORKSPACE_TEST_POSTGRES_URL to run live PostgreSQL tests"),
+    pytest.mark.skipif(not POSTGRES_URL, reason="set ALPHA_TEST_POSTGRES_URL to run live PostgreSQL tests"),
 ]
 
 _PREVIOUS = "0017_personal_access_tokens"
@@ -55,7 +55,7 @@ async def _index_predicate(engine, schema: str) -> str | None:
 
 
 async def test_0018_adds_partial_predicate_and_downgrade_restores_full_index() -> None:
-    schema = f"agent_workspace_test_{uuid.uuid4().hex[:12]}"
+    schema = f"alpha_test_{uuid.uuid4().hex[:12]}"
     engine = create_async_engine(POSTGRES_URL or "")
     cfg = _get_alembic_config(engine, postgres_schema=schema)
 

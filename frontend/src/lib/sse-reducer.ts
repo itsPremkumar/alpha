@@ -58,9 +58,9 @@ export type SseState = {
 /* ── Wire contract for tool verdicts (see types/chat.ts ToolCallVerdict) ──── */
 
 /** Backend stamp: `ToolResultMeta` in `tool_result_meta.py`. */
-const TOOL_META_KEY = "agent_workspace_tool_meta";
+const TOOL_META_KEY = "alpha_tool_meta";
 /** Backend stamp: deterministic tool receipt in `tool_receipt.py`. */
-const TOOL_RECEIPT_KEY = "agent_workspace_tool_receipt";
+const TOOL_RECEIPT_KEY = "alpha_tool_receipt";
 /** `subagents/status_contract.py` failure states, reported via additional_kwargs. */
 const SUBAGENT_FAILURE_STATUSES = new Set(["failed", "cancelled", "timed_out", "polling_timed_out"]);
 const VERDICT_TO_STATUS: Partial<Record<ToolCallVerdict, ToolCallStatus>> = {

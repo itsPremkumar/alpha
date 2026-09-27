@@ -8,7 +8,7 @@ import time
 from collections.abc import Awaitable, Callable, Coroutine, Mapping
 from typing import Any
 
-from agent_workspace_extension_api import (
+from alpha_extension_api import (
     EXTENSION_TASK_STORE_KEY,
     CompactionEvent,
     ExtensionData,

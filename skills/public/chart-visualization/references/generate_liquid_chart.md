@@ -5,11 +5,11 @@ Displays progress towards a percentage goal or capacity quota as an animated liq
 
 ## Input Fields
 ### Required
-- alue: number, percentage value between 0.0 and 1.0.
+- value: number, percentage value between 0.0 and 1.0.
 
 ### Optional
-- 	heme: string, default default.
-- 	itle: string, gauge title.
+- theme: string, default default.
+- title: string, gauge title.
 
 ## Usage Recommendations
 Best suited for single KPI completion targets or resource capacity meters.

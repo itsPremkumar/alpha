@@ -8,7 +8,6 @@ from typing import Any, Literal, NamedTuple, NoReturn
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
-from app.gateway.deps import require_admin_user
 from alpha.config.extensions_config import (
     ExtensionsConfig,
     McpRoutingConfig,
@@ -26,6 +25,7 @@ from alpha.config.extensions_config import (
 from alpha.config.runtime_paths import project_root
 from alpha.constants import DEFAULT_MCP_SESSION_INIT_TIMEOUT
 from alpha.mcp.cache import reset_mcp_tools_cache
+from app.gateway.deps import require_admin_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["mcp"])
@@ -33,7 +33,7 @@ router = APIRouter(prefix="/api", tags=["mcp"])
 _ADMIN_REQUIRED_DETAIL = "Admin privileges required to manage MCP configuration."
 
 
-_MCP_STDIO_COMMAND_ALLOWLIST_ENV = "AGENT_WORKSPACE_MCP_STDIO_COMMAND_ALLOWLIST"
+_MCP_STDIO_COMMAND_ALLOWLIST_ENV = "ALPHA_MCP_STDIO_COMMAND_ALLOWLIST"
 _DEFAULT_MCP_STDIO_COMMAND_ALLOWLIST = frozenset({"npx", "uvx"})
 _SHELL_METACHARS = frozenset(";|&`$<>\n\r")
 

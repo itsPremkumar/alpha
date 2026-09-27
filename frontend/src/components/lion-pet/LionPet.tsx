@@ -105,8 +105,8 @@ function reducedMotionEnabled(): boolean {
 
 function desktopBridge(): DesktopBridge | null {
   if (typeof window === "undefined") return null;
-  const candidate = (window as Window & { alpha?: DesktopBridge; agentWorkspace?: DesktopBridge }).alpha
-    || (window as Window & { alpha?: DesktopBridge; agentWorkspace?: DesktopBridge }).agentWorkspace;
+  const candidate = (window as Window & { alpha?: DesktopBridge; alpha?: DesktopBridge }).alpha
+    || (window as Window & { alpha?: DesktopBridge; alpha?: DesktopBridge }).alpha;
   return candidate || null;
 }
 

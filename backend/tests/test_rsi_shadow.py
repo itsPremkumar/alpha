@@ -45,9 +45,9 @@ from alpha.rsi.shadow import (
 
 @pytest.fixture(autouse=True)
 def _isolate_runtime_home(tmp_path, monkeypatch):
-    """Every test gets its own state dir: AGENT_WORKSPACE_HOME -> tmp_path (task-mandated)."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
-    monkeypatch.delenv("AGENT_WORKSPACE_PROJECT_ROOT", raising=False)
+    """Every test gets its own state dir: ALPHA_HOME -> tmp_path (task-mandated)."""
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
+    monkeypatch.delenv("ALPHA_PROJECT_ROOT", raising=False)
     yield
 
 

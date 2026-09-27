@@ -1,5 +1,5 @@
 {
-  "name": "agent-workspace-monorepo",
+  "name": "alpha-monorepo",
   "version": "2.1.0",
   "private": true,
   "packageManager": "pnpm@10.26.2",

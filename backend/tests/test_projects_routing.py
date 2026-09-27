@@ -9,7 +9,7 @@ from alpha.projects.routing import decayed_reputation, rank_candidates, record_r
 
 @pytest.fixture(autouse=True)
 def _home(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     import alpha.bots.registry as bot_reg
 
     monkeypatch.setattr(bot_reg, "_global_registry", None)

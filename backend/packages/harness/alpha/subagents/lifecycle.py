@@ -238,7 +238,7 @@ class SubagentLifecycleManager:
         if storage_dir:
             self.storage_dir = Path(storage_dir)
         else:
-            base = os.environ.get("AGENT_WORKSPACE_HOME", "~/.agent-workspace")
+            base = os.environ.get("ALPHA_HOME", "~/.alpha")
             self.storage_dir = Path(os.path.expanduser(base)) / "subagents"
 
         self.storage_dir.mkdir(parents=True, exist_ok=True)

@@ -17,9 +17,9 @@ DEFAULT_MAX_ATTEMPTS = 2
 
 def stop_nudge_enabled(task_marker: str | None = None) -> bool:
     """On when a kanban task is active, unless explicitly disabled."""
-    if (os.environ.get("AGENT_WORKSPACE_KANBAN_STOP_NUDGE") or "").strip().lower() in {"0", "false", "no", "off"}:
+    if (os.environ.get("ALPHA_KANBAN_STOP_NUDGE") or "").strip().lower() in {"0", "false", "no", "off"}:
         return False
-    marker = task_marker if task_marker is not None else os.environ.get("AGENT_WORKSPACE_KANBAN_TASK", "")
+    marker = task_marker if task_marker is not None else os.environ.get("ALPHA_KANBAN_TASK", "")
     return bool((marker or "").strip())
 
 

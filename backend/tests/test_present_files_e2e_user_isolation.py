@@ -10,7 +10,7 @@ from _agent_e2e_helpers import FakeToolCallingModel
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.runtime import Runtime
 
-from alpha.agents.factory import create_agent_workspace_agent
+from alpha.agents.factory import create_alpha_agent
 from alpha.agents.middlewares.thread_data_middleware import ThreadDataMiddleware
 from alpha.agents.thread_state import ThreadState
 from alpha.config.paths import Paths
@@ -36,7 +36,7 @@ def _build_present_files_graph(tmp_path: Path):
             AIMessage(content="Presented the report."),
         ]
     )
-    return create_agent_workspace_agent(
+    return create_alpha_agent(
         model,
         tools=[present_file_tool],
         middleware=[ThreadDataMiddleware(base_dir=str(tmp_path), lazy_init=True)],

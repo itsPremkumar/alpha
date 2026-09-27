@@ -9,7 +9,7 @@ name: Publish Helm Chart
 # config.example.yaml) so a broken or stale chart fails the PR, not the release.
 #
 # Users then install with:
-#   helm install agent-workspace oci://ghcr.io/${{ owner }}/charts/agent-workspace --version <ver>
+#   helm install alpha oci://ghcr.io/${{ owner }}/charts/alpha --version <ver>
 
 on:
   push:
@@ -17,7 +17,7 @@ on:
       - "v*"
   pull_request:
     paths:
-      - "deploy/helm/agent-workspace/**"
+      - "deploy/helm/alpha/**"
       - "config.example.yaml"
       - ".github/workflows/chart.yaml"
       - "scripts/check_config_version.sh"
@@ -40,9 +40,9 @@ jobs:
 
       # ubuntu-latest ships with helm 3 preinstalled - no setup-helm action needed.
       - name: Lint chart
-        run: helm lint deploy/helm/agent-workspace
+        run: helm lint deploy/helm/alpha
       - name: Validate templates render
-        run: helm template agent-workspace deploy/helm/agent-workspace --include-crds >/dev/null
+        run: helm template alpha deploy/helm/alpha --include-crds >/dev/null
 
       # Assert the sandbox Service-type gating: default emits
       # SANDBOX_SERVICE_TYPE=ClusterIP and no NODE_HOST; the NodePort opt-in
@@ -90,7 +90,7 @@ jobs:
             helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
 
       - name: Package chart
-        run: helm package deploy/helm/agent-workspace --destination ./packages
+        run: helm package deploy/helm/alpha --destination ./packages
 
       - name: Push chart to GHCR
         run: |

@@ -123,7 +123,7 @@ def test_runtime_home_override_loads_without_shared_config(tmp_path: Path, monke
         "storage_path": "state/reasoning.json",
     }
     (override_dir / "config.json").write_text(json.dumps(payload), encoding="utf-8")
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
 
     config = load_reasoning_config()
     assert config.enabled is True

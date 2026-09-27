@@ -183,10 +183,10 @@ class ThreadState(AgentState):
 
 | Virtual Path | Physical Path |
 |-------------|---------------|
-| `/mnt/user-data/workspace` | `backend/.agent-workspace/threads/{thread_id}/user-data/workspace` |
-| `/mnt/user-data/uploads` | `backend/.agent-workspace/threads/{thread_id}/user-data/uploads` |
-| `/mnt/user-data/outputs` | `backend/.agent-workspace/threads/{thread_id}/user-data/outputs` |
-| `/mnt/skills` | `agent-workspace/skills/` |
+| `/mnt/user-data/workspace` | `backend/.alpha/threads/{thread_id}/user-data/workspace` |
+| `/mnt/user-data/uploads` | `backend/.alpha/threads/{thread_id}/user-data/uploads` |
+| `/mnt/user-data/outputs` | `backend/.alpha/threads/{thread_id}/user-data/outputs` |
+| `/mnt/skills` | `alpha/skills/` |
 
 ### Tool System
 
@@ -390,14 +390,14 @@ SKILL.md Format:
 
 2. Gateway receives file
    - Validates file
-   - Stores in .agent-workspace/threads/{thread_id}/user-data/uploads/
+   - Stores in .alpha/threads/{thread_id}/user-data/uploads/
    - If document: converts to Markdown via markitdown
 
 3. Returns response
    {
      "files": [{
        "filename": "doc.pdf",
-       "path": ".agent-workspace/.../uploads/doc.pdf",
+       "path": ".alpha/.../uploads/doc.pdf",
        "virtual_path": "/mnt/user-data/uploads/doc.pdf",
        "artifact_url": "/api/threads/.../artifacts/mnt/.../doc.pdf"
      }]
@@ -419,7 +419,7 @@ SKILL.md Format:
    DELETE /api/threads/{thread_id}
 
 3. Gateway removes local Alpha-managed files
-   - Deletes .agent-workspace/threads/{thread_id}/ recursively
+   - Deletes .alpha/threads/{thread_id}/ recursively
    - Missing directories are treated as a no-op
    - Invalid thread IDs are rejected before filesystem access
 ```
@@ -510,4 +510,4 @@ Rules for this layer:
   claims the number — it is exposed separately as
   `gpu_system_utilization_percent`, and per-GPU `utilization_scope` says
   `unavailable`. Only a single-adapter host may fold it into that adapter.
-- Kill switch: `AGENT_WORKSPACE_ADVANCED_MONITOR=0` disables all extras.
+- Kill switch: `ALPHA_ADVANCED_MONITOR=0` disables all extras.

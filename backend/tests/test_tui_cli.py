@@ -74,7 +74,7 @@ def test_force_tui_even_without_tty():
 
 
 def test_env_var_forces_tui():
-    p = plan([], stdin_tty=False, stdout_tty=False, env={"AGENT_WORKSPACE_TUI": "1"})
+    p = plan([], stdin_tty=False, stdout_tty=False, env={"ALPHA_TUI": "1"})
     assert p.mode == "tui"
 
 
@@ -85,7 +85,7 @@ def test_transparent_flag_is_carried_to_tui_plan():
 
 
 def test_transparent_env_is_carried_to_tui_plan():
-    p = plan([], env={"AGENT_WORKSPACE_TUI_TRANSPARENT": "yes"})
+    p = plan([], env={"ALPHA_TUI_TRANSPARENT": "yes"})
     assert p.mode == "tui"
     assert p.transparent is True
 

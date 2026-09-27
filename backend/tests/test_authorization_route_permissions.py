@@ -260,7 +260,7 @@ def _make_middleware_app() -> FastAPI:
 
 
 def test_auth_middleware_stamps_provider_derived_permissions(monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_AUTH_DISABLED", "1")
+    monkeypatch.setenv("ALPHA_AUTH_DISABLED", "1")
     permission_resolver = AsyncMock(return_value=[Permissions.THREADS_READ])
     monkeypatch.setattr("app.gateway.auth_middleware.resolve_route_permissions", permission_resolver)
 
@@ -291,8 +291,8 @@ _STATELESS_RUN_PATHS = ("/api/runs/stream", "/api/runs/wait")
 
 
 def _enable_auth_disabled_for_route_test(monkeypatch) -> None:
-    monkeypatch.setenv("AGENT_WORKSPACE_AUTH_DISABLED", "1")
-    monkeypatch.delenv("AGENT_WORKSPACE_ENV", raising=False)
+    monkeypatch.setenv("ALPHA_AUTH_DISABLED", "1")
+    monkeypatch.delenv("ALPHA_ENV", raising=False)
     monkeypatch.delenv("ENVIRONMENT", raising=False)
 
 

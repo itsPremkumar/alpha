@@ -90,7 +90,7 @@ def _default_version() -> str:
     try:
         from importlib.metadata import version as package_version
 
-        for distribution in ("agent-workspace-harness", "alpha"):
+        for distribution in ("alpha-harness", "alpha"):
             try:
                 return package_version(distribution)
             except Exception:

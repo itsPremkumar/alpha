@@ -120,7 +120,7 @@ def _terminal_llm_fallback_reason(snapshot: Any) -> str | None:
         return None
     last_message = messages[-1]
     additional_kwargs = last_message.get("additional_kwargs") if isinstance(last_message, dict) else getattr(last_message, "additional_kwargs", None)
-    if not isinstance(additional_kwargs, dict) or additional_kwargs.get("agent_workspace_error_fallback") is not True:
+    if not isinstance(additional_kwargs, dict) or additional_kwargs.get("alpha_error_fallback") is not True:
         return None
     reason = additional_kwargs.get("error_reason")
     return reason if isinstance(reason, str) else None

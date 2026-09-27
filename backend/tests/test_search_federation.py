@@ -21,7 +21,7 @@ What these tests assert, in the order the requirements were stated:
   from the default chain.
 * The cooldown policy matches ``alpha/models/free_router/catalog.py``.
 
-Workspace isolation: the autouse fixture points ``AGENT_WORKSPACE_HOME`` at a
+Workspace isolation: the autouse fixture points ``ALPHA_HOME`` at a
 per-test tmp dir so the health/budget caches never touch a live workspace.
 """
 
@@ -81,7 +81,7 @@ REAL_DDG_ADAPTER = providers.duckduckgo_search
 
 @pytest.fixture(autouse=True)
 def isolated_workspace(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path / "agent-workspace"))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path / "alpha"))
     for var in ("TAVILY_API_KEY", "EXA_API_KEY", "SERPER_API_KEY"):
         monkeypatch.delenv(var, raising=False)
     # DuckDuckGo's own HTTP seam is the bundled ``ddgs`` client. Replacing the

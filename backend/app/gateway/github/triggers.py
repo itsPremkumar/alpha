@@ -133,7 +133,7 @@ def _mentions(body: str, login: str) -> bool:
 
     GitHub logins are ``[A-Za-z0-9-]+``, so the character immediately
     after the login in a mention must NOT be one of those — otherwise
-    ``@alpha`` would falsely match ``@agent-workspace-bot`` (a different,
+    ``@alpha`` would falsely match ``@alpha-bot`` (a different,
     legitimate GitHub user). A plain substring ``in`` check is wrong for
     this reason.
 
@@ -198,7 +198,7 @@ def event_should_fire(
         login = trigger.mention_login or default_mention_login
         body = _comment_body(event, payload)
         # Boundary-aware @-mention match: ``@alpha`` must NOT match
-        # ``@agent-workspace-bot`` (a distinct, legitimate GitHub login). See
+        # ``@alpha-bot`` (a distinct, legitimate GitHub login). See
         # :func:`_mentions` for the full rationale.
         if not login or not _mentions(body, login):
             return False, f"mention required for @{login}"

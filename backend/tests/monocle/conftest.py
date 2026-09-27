@@ -1,6 +1,6 @@
 """Fixtures for the Alpha Monocle behavioural tests.
 
-Only fixtures live here. Paths and ``run_agent_workspace`` are in ``_helpers.py`` so
+Only fixtures live here. Paths and ``run_alpha`` are in ``_helpers.py`` so
 nothing imports ``conftest`` as a module. The ``sys.path`` insert (mirroring the
 backend root ``conftest.py``) makes ``_helpers`` importable under any pytest
 import mode. The ``.env`` load is scoped to the live fixture, so collecting or
@@ -28,7 +28,7 @@ def run_agent() -> Callable[[str], str]:
     ``config.yaml`` may select any provider, not just OpenAI, so there is no
     hard-coded key check here.
     """
-    from _helpers import CONFIG_PATH, REPO_ROOT, live_tests_enabled, run_agent_workspace
+    from _helpers import CONFIG_PATH, REPO_ROOT, live_tests_enabled, run_alpha
 
     if not live_tests_enabled():
         pytest.skip("live tests are opt-in: set MONOCLE_LIVE_TESTS=1")
@@ -39,4 +39,4 @@ def run_agent() -> Callable[[str], str]:
     load_dotenv(REPO_ROOT / ".env")
     if not CONFIG_PATH.exists():
         pytest.skip(f"config.yaml not found at {CONFIG_PATH}")
-    return run_agent_workspace
+    return run_alpha

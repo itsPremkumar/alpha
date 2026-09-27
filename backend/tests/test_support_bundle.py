@@ -151,9 +151,9 @@ def test_redact_text_masks_env_assignments_and_bearer_tokens():
 def test_redact_text_masks_home_directory_paths():
     text = "\n".join(
         [
-            "/Users/alice/agent-workspace/config.yaml",
-            "/home/bob/agent-workspace/config.yaml",
-            r"C:\Users\carol\agent-workspace\config.yaml",
+            "/Users/alice/alpha/config.yaml",
+            "/home/bob/alpha/config.yaml",
+            r"C:\Users\carol\alpha\config.yaml",
         ]
     )
 
@@ -162,9 +162,9 @@ def test_redact_text_masks_home_directory_paths():
     assert "alice" not in redacted
     assert "bob" not in redacted
     assert "carol" not in redacted
-    assert "/Users/<user>/agent-workspace/config.yaml" in redacted
-    assert "/home/<user>/agent-workspace/config.yaml" in redacted
-    assert r"C:\Users\<user>\agent-workspace\config.yaml" in redacted
+    assert "/Users/<user>/alpha/config.yaml" in redacted
+    assert "/home/<user>/alpha/config.yaml" in redacted
+    assert r"C:\Users\<user>\alpha\config.yaml" in redacted
 
 
 def test_redact_data_masks_non_keyword_env_secrets_but_keeps_var_references():
@@ -268,14 +268,14 @@ def test_redact_data_does_not_over_redact_lookalike_non_secret_keys():
     guardrails "passport" path/ID are real, non-secret fields."""
     data = {
         "routing": {"mode": "prefer", "priority": 50, "keywords": ["database", "SQL", "table"]},
-        "guardrails": {"passport": "/etc/agent-workspace/passport.json"},
+        "guardrails": {"passport": "/etc/alpha/passport.json"},
     }
 
     redacted = support_bundle.redact_data(data)
 
     assert redacted["routing"]["keywords"] == ["database", "SQL", "table"]
     assert redacted["routing"]["priority"] == 50
-    assert redacted["guardrails"]["passport"] == "/etc/agent-workspace/passport.json"
+    assert redacted["guardrails"]["passport"] == "/etc/alpha/passport.json"
 
 
 def test_redact_data_masks_passphrase_and_passcode_without_over_redacting_passport():
@@ -295,7 +295,7 @@ def test_redact_data_masks_passphrase_and_passcode_without_over_redacting_passpo
                 "config": {
                     "passphrase": "hunter2-literal",
                     "passcode": "0000-literal",
-                    "passport": "/etc/agent-workspace/passport.json",
+                    "passport": "/etc/alpha/passport.json",
                     "compass_bearing": 42,
                     "bypass_reason": "maintenance window",
                 }
@@ -308,7 +308,7 @@ def test_redact_data_masks_passphrase_and_passcode_without_over_redacting_passpo
 
     assert config["passphrase"] == "<redacted>"
     assert config["passcode"] == "<redacted>"
-    assert config["passport"] == "/etc/agent-workspace/passport.json"
+    assert config["passport"] == "/etc/alpha/passport.json"
     assert config["compass_bearing"] == 42
     assert config["bypass_reason"] == "maintenance window"
 
@@ -657,8 +657,8 @@ def test_triage_flags_extensions_parse_errors(tmp_path):
 
 def test_thread_summary_lists_files_without_file_contents(tmp_path):
     project_root = tmp_path / "project"
-    outputs = project_root / ".agent-workspace" / "threads" / "thread-123" / "user-data" / "outputs"
-    uploads = project_root / ".agent-workspace" / "threads" / "thread-123" / "user-data" / "uploads"
+    outputs = project_root / ".alpha" / "threads" / "thread-123" / "user-data" / "outputs"
+    uploads = project_root / ".alpha" / "threads" / "thread-123" / "user-data" / "uploads"
     outputs.mkdir(parents=True)
     uploads.mkdir(parents=True)
     (outputs / "report.md").write_text("raw report content with secret-content", encoding="utf-8")

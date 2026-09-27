@@ -139,8 +139,8 @@ _REPO_STATE_DIRECTORIES = frozenset(
     {
         ".alpha",
         ".claude",
-        ".agent-workspace",
-        ".agent_workspace_projects",
+        ".alpha",
+        ".alpha_projects",
         ".cache",
         ".claude",
         ".deerflow_projects",

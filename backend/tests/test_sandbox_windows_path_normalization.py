@@ -11,9 +11,9 @@ from alpha.sandbox.tools import replace_virtual_paths_in_command
 
 # Windows-style thread data with backslash paths
 _WIN_THREAD_DATA = {
-    "workspace_path": r"C:\Users\admin\agent-workspace\backend\.agent-workspace\users\user1\threads\t1\user-data\workspace",
-    "uploads_path": r"C:\Users\admin\agent-workspace\backend\.agent-workspace\users\user1\threads\t1\user-data\uploads",
-    "outputs_path": r"C:\Users\admin\agent-workspace\backend\.agent-workspace\users\user1\threads\t1\user-data\outputs",
+    "workspace_path": r"C:\Users\admin\alpha\backend\.alpha\users\user1\threads\t1\user-data\workspace",
+    "uploads_path": r"C:\Users\admin\alpha\backend\.alpha\users\user1\threads\t1\user-data\uploads",
+    "outputs_path": r"C:\Users\admin\alpha\backend\.alpha\users\user1\threads\t1\user-data\outputs",
 }
 
 
@@ -35,7 +35,7 @@ class TestReplaceVirtualPathsWindows:
         result = replace_virtual_paths_in_command(cmd, _WIN_THREAD_DATA)
         assert "\\" not in result, f"Backslash in: {result}"
 
-    @patch("alpha.sandbox.tools._get_skills_host_path", return_value=r"C:\Users\admin\agent-workspace\skills")
+    @patch("alpha.sandbox.tools._get_skills_host_path", return_value=r"C:\Users\admin\alpha\skills")
     @patch("alpha.sandbox.tools._get_skills_container_path", return_value="/mnt/skills")
     def test_skills_path_no_backslash(self, _mock_container, _mock_host) -> None:
         cmd = "python /mnt/skills/custom/skill/scripts/run.py"
@@ -81,10 +81,10 @@ class TestLocalSandboxResolvePathsInCommandWindows:
         sandbox = LocalSandbox(
             "test",
             path_mappings=[
-                PathMapping(container_path="/mnt/acp-workspace", local_path=r"C:\Users\admin\agent-workspace\acp-workspace", read_only=False),
+                PathMapping(container_path="/mnt/acp-workspace", local_path=r"C:\Users\admin\alpha\acp-workspace", read_only=False),
             ],
         )
         cmd = "cat /mnt/acp-workspace/data.json"
         result = sandbox._resolve_paths_in_command(cmd)
         assert "\\" not in result, f"Backslash in: {result}"
-        assert "C:/Users/admin/agent-workspace/acp-workspace/data.json" in result
+        assert "C:/Users/admin/alpha/acp-workspace/data.json" in result

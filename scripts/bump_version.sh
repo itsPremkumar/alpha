@@ -8,7 +8,7 @@
 #   backend/pyproject.toml              (version = "...")
 #   backend/packages/harness/pyproject.toml (version = "...")
 #   frontend/package.json               ("version": "...")
-#   deploy/helm/agent-workspace/Chart.yaml    (version: + appVersion:)
+#   deploy/helm/alpha/Chart.yaml    (version: + appVersion:)
 #
 # This does NOT edit CHANGELOG.md or create/push a git tag — keep those manual.
 # After running, commit and tag v<version> to trigger the release workflows
@@ -32,7 +32,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PYPROJECT="$ROOT/backend/pyproject.toml"
 HARNESS="$ROOT/backend/packages/harness/pyproject.toml"
 PACKAGE="$ROOT/frontend/package.json"
-CHART="$ROOT/deploy/helm/agent-workspace/Chart.yaml"
+CHART="$ROOT/deploy/helm/alpha/Chart.yaml"
 
 for f in "$PYPROJECT" "$HARNESS" "$PACKAGE" "$CHART"; do
   if [ ! -f "$f" ]; then
@@ -70,7 +70,7 @@ if new == src:
 with open(package, "w") as f:
     f.write(new)
 
-# deploy/helm/agent-workspace/Chart.yaml — version: X.Y.Z and appVersion: "X.Y.Z"
+# deploy/helm/alpha/Chart.yaml — version: X.Y.Z and appVersion: "X.Y.Z"
 with open(chart) as f:
     src = f.read()
 new = re.sub(r'(?m)^version:\s*\S+', f'version: {version}', src, count=1)
@@ -95,7 +95,7 @@ echo "Bumped version to $VERSION in:"
 echo "  backend/pyproject.toml"
 echo "  backend/packages/harness/pyproject.toml"
 echo "  frontend/package.json"
-echo "  deploy/helm/agent-workspace/Chart.yaml (version + appVersion)"
+echo "  deploy/helm/alpha/Chart.yaml (version + appVersion)"
 echo
 
 if ! bash "$ROOT/scripts/verify_versions.sh" "$VERSION"; then

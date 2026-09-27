@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Mapping, Sequence
 
-from agent_workspace_extension_api import AgentBuildContext, AgentScope, MiddlewarePlacement, Placement
+from alpha_extension_api import AgentBuildContext, AgentScope, MiddlewarePlacement, Placement
 from langchain.agents.middleware import AgentMiddleware
 
 from alpha.extensions.anchors import PlacementAnchor

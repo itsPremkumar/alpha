@@ -8,8 +8,8 @@ Visualizes hierarchical concepts, brainstorming branches, and taxonomic breakdow
 - data: object, nested node structure with id, label, and children.
 
 ### Optional
-- 	heme: string, default default.
-- 	itle: string, mind map title.
+- theme: string, default default.
+- title: string, mind map title.
 
 ## Usage Recommendations
 Limit branching depth to 3-4 tiers to keep diagram legible.

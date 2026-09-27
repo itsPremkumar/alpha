@@ -35,13 +35,13 @@ def _isolated_lifecycle_home(tmp_path, monkeypatch):
     until the per-parent cap rejects new spawns. Skill writes
     (/skill:create) and reads (/skill:list, /skill:test, the doctor skills
     probe) are redirected to a temp skills root so tests never mutate the
-    repository's skills/ tree (AGENT_WORKSPACE_HOME alone does not redirect
-    the skills path — SkillsConfig reads AGENT_WORKSPACE_SKILLS_PATH).
+    repository's skills/ tree (ALPHA_HOME alone does not redirect
+    the skills path — SkillsConfig reads ALPHA_SKILLS_PATH).
     """
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     skills_root = tmp_path / "skills"
     (skills_root / "custom").mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("AGENT_WORKSPACE_SKILLS_PATH", str(skills_root))
+    monkeypatch.setenv("ALPHA_SKILLS_PATH", str(skills_root))
     import alpha.subagents.lifecycle as lifecycle_mod
 
     monkeypatch.setattr(lifecycle_mod, "_GLOBAL_LIFECYCLE_MANAGER", None)

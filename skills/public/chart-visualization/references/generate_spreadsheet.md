@@ -9,7 +9,7 @@ Renders formatted tabular data sheets with headers, sorted columns, and formatte
 - data: array<object>, table row records.
 
 ### Optional
-- 	itle: string, table title.
+- title: string, table title.
 
 ## Usage Recommendations
 Keep columns concise; format currency, percentages, and dates uniformly.

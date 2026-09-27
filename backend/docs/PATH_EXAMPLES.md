@@ -7,7 +7,7 @@ The Alpha file upload system returns three distinct path representations, each t
 ### 1. Actual Filesystem Path (`path`)
 
 ```
-.agent-workspace/threads/{thread_id}/user-data/uploads/document.pdf
+.alpha/threads/{thread_id}/user-data/uploads/document.pdf
 ```
 
 **Usage:**
@@ -19,7 +19,7 @@ The Alpha file upload system returns three distinct path representations, each t
 ```python
 # Direct access in Python backend code
 from pathlib import Path
-file_path = Path("backend/.agent-workspace/threads/abc123/user-data/uploads/document.pdf")
+file_path = Path("backend/.alpha/threads/abc123/user-data/uploads/document.pdf")
 content = file_path.read_bytes()
 ```
 
@@ -99,11 +99,11 @@ async function uploadAndProcess(threadId: string, file: File) {
   console.log('File Metadata:', fileInfo);
   // {
   //   filename: "report.pdf",
-  //   path: ".agent-workspace/threads/abc123/user-data/uploads/report.pdf",
+  //   path: ".alpha/threads/abc123/user-data/uploads/report.pdf",
   //   virtual_path: "/mnt/user-data/uploads/report.pdf",
   //   artifact_url: "/api/threads/abc123/artifacts/mnt/user-data/uploads/report.pdf",
   //   markdown_file: "report.md",
-  //   markdown_path: ".agent-workspace/threads/abc123/user-data/uploads/report.md",
+  //   markdown_path: ".alpha/threads/abc123/user-data/uploads/report.md",
   //   markdown_virtual_path: "/mnt/user-data/uploads/report.md",
   //   markdown_artifact_url: "/api/threads/abc123/artifacts/mnt/user-data/uploads/report.md"
   // }
@@ -132,11 +132,11 @@ async function uploadAndProcess(threadId: string, file: File) {
 
 | Scenario | Path Representation | Example |
 |---|---|---|
-| Server Backend Direct Access | `path` | `.agent-workspace/threads/abc123/user-data/uploads/file.pdf` |
+| Server Backend Direct Access | `path` | `.alpha/threads/abc123/user-data/uploads/file.pdf` |
 | Agent Tool Invocations | `virtual_path` | `/mnt/user-data/uploads/file.pdf` |
 | Frontend Download / Preview | `artifact_url` | `/api/threads/abc123/artifacts/mnt/user-data/uploads/file.pdf` |
-| Backup Scripts | `path` | `.agent-workspace/threads/abc123/user-data/uploads/file.pdf` |
-| Server Logging & Auditing | `path` | `.agent-workspace/threads/abc123/user-data/uploads/file.pdf` |
+| Backup Scripts | `path` | `.alpha/threads/abc123/user-data/uploads/file.pdf` |
+| Server Logging & Auditing | `path` | `.alpha/threads/abc123/user-data/uploads/file.pdf` |
 
 ## Code Examples
 

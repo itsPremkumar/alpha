@@ -22,14 +22,14 @@ return value would have passed against the shipped binary for all four.
 Why it is opt-in
 ----------------
 It calls a real paid API and takes minutes. It runs only under the repo's
-existing live-test opt-in, ``AGENT_WORKSPACE_RUN_LIVE_TESTS=1``, and is marked
+existing live-test opt-in, ``ALPHA_RUN_LIVE_TESTS=1``, and is marked
 ``live`` so ``make test`` (``pytest -m "not live"``) never picks it up. The
 opt-in is load-bearing, not a formality: a live test that silently became a
 permanent skip is how these four defects stayed invisible in the first place.
 
 Run it with::
 
-    AGENT_WORKSPACE_RUN_LIVE_TESTS=1 python -m pytest tests/test_p0_live_binary_integration.py -v -s
+    ALPHA_RUN_LIVE_TESTS=1 python -m pytest tests/test_p0_live_binary_integration.py -v -s
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ import pytest
 
 pytestmark = pytest.mark.live
 
-_LIVE_TEST_OPT_IN = "AGENT_WORKSPACE_RUN_LIVE_TESTS"
+_LIVE_TEST_OPT_IN = "ALPHA_RUN_LIVE_TESTS"
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = BACKEND_ROOT.parent
@@ -138,7 +138,7 @@ def _run_alpha(argv: list[str], *, task: str) -> BinaryRun:
     env = dict(os.environ)
     # The agent writes thread state, artifacts and a checkpointer. Isolate them so
     # a live run cannot touch a developer's real workspace.
-    env.setdefault("AGENT_WORKSPACE_HOME", str(Path(os.environ.get("TEMP", "/tmp")) / "ag_p0_live"))
+    env.setdefault("ALPHA_HOME", str(Path(os.environ.get("TEMP", "/tmp")) / "ag_p0_live"))
     env["PYTHONIOENCODING"] = "utf-8"
     env["PYTHONUTF8"] = "1"
 
@@ -288,8 +288,8 @@ def failing_run(tmp_path_factory) -> BinaryRun:
     )
 
     env = dict(os.environ)
-    env["AGENT_WORKSPACE_CONFIG_PATH"] = str(config)
-    env["AGENT_WORKSPACE_HOME"] = str(workspace / "home")
+    env["ALPHA_CONFIG_PATH"] = str(config)
+    env["ALPHA_HOME"] = str(workspace / "home")
     env["PYTHONIOENCODING"] = "utf-8"
     env["PYTHONUTF8"] = "1"
     (workspace / "home").mkdir(parents=True, exist_ok=True)

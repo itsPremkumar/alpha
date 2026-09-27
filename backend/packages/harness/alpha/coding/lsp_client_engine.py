@@ -414,7 +414,7 @@ class LanguageServerSession:
                 "initialize",
                 {
                     "processId": os.getpid(),
-                    "clientInfo": {"name": "agent-workspace", "version": "1.0.0"},
+                    "clientInfo": {"name": "alpha", "version": "1.0.0"},
                     "rootUri": self.workspace_root.as_uri(),
                     "rootPath": str(self.workspace_root),
                     "capabilities": {

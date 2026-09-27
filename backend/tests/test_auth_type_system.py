@@ -66,14 +66,14 @@ def _setup_config():
 def _auth_enabled(monkeypatch):
     """Keep auth active regardless of the developer's local `.env`.
 
-    install.ps1 writes AGENT_WORKSPACE_AUTH_DISABLED=1 into the repo-root `.env`,
+    install.ps1 writes ALPHA_AUTH_DISABLED=1 into the repo-root `.env`,
     and load_dotenv() (called when app config / auth config is imported) lifts it
     into os.environ. That silently bypasses authentication and makes every
     assertion that a request is *rejected* fail, even though the code under test
     is correct. Force the flag off so these tests are self-isolating and behave
     identically with or without a local `.env`.
     """
-    monkeypatch.setenv("AGENT_WORKSPACE_AUTH_DISABLED", "0")
+    monkeypatch.setenv("ALPHA_AUTH_DISABLED", "0")
 
 
 # ── CSRF Middleware Path Matching ────────────────────────────────────
@@ -547,7 +547,7 @@ def test_api_auth_me_no_cookie_returns_structured_401():
 
 def test_api_auth_me_auth_disabled_returns_synthetic_user(monkeypatch):
     _setup_config()
-    monkeypatch.setenv("AGENT_WORKSPACE_AUTH_DISABLED", "1")
+    monkeypatch.setenv("ALPHA_AUTH_DISABLED", "1")
     client = _get_auth_client()
 
     resp = client.get("/api/v1/auth/me")
@@ -819,13 +819,13 @@ def test_register_remember_me_false_keeps_access_and_csrf_session_only():
     set_cookies = _get_set_cookie_headers(resp)
     access_cookies = [h for h in set_cookies if "access_token=" in h]
     csrf_cookies = [h for h in set_cookies if "csrf_token=" in h]
-    preference_cookies = [h for h in set_cookies if "agent_workspace_session_persistent=" in h]
+    preference_cookies = [h for h in set_cookies if "alpha_session_persistent=" in h]
     assert access_cookies and csrf_cookies and preference_cookies
     assert "secure" in access_cookies[0].lower()
     assert "secure" in csrf_cookies[0].lower()
     assert "max-age" not in access_cookies[0].lower()
     assert "max-age" not in csrf_cookies[0].lower()
-    assert "agent_workspace_session_persistent=0" in preference_cookies[0].lower()
+    assert "alpha_session_persistent=0" in preference_cookies[0].lower()
 
 
 def test_login_https_sets_secure_cookie():
@@ -947,10 +947,10 @@ def test_change_password_preserves_session_only_preference():
     assert resp.status_code == 200
     set_cookies = _get_set_cookie_headers(resp)
     access_cookies = [h for h in set_cookies if "access_token=" in h]
-    preference_cookies = [h for h in set_cookies if "agent_workspace_session_persistent=" in h]
+    preference_cookies = [h for h in set_cookies if "alpha_session_persistent=" in h]
     assert access_cookies and preference_cookies
     assert "max-age" not in access_cookies[0].lower()
-    assert "agent_workspace_session_persistent=0" in preference_cookies[0].lower()
+    assert "alpha_session_persistent=0" in preference_cookies[0].lower()
 
 
 def test_change_password_reissues_access_and_csrf_in_lockstep_when_preference_changes():
@@ -998,13 +998,13 @@ def test_initialize_remember_me_false_keeps_access_and_csrf_session_only():
     set_cookies = _get_set_cookie_headers(resp)
     access_cookies = [h for h in set_cookies if "access_token=" in h]
     csrf_cookies = [h for h in set_cookies if "csrf_token=" in h]
-    preference_cookies = [h for h in set_cookies if "agent_workspace_session_persistent=" in h]
+    preference_cookies = [h for h in set_cookies if "alpha_session_persistent=" in h]
     assert access_cookies and csrf_cookies and preference_cookies
     assert "secure" in access_cookies[0].lower()
     assert "secure" in csrf_cookies[0].lower()
     assert "max-age" not in access_cookies[0].lower()
     assert "max-age" not in csrf_cookies[0].lower()
-    assert "agent_workspace_session_persistent=0" in preference_cookies[0].lower()
+    assert "alpha_session_persistent=0" in preference_cookies[0].lower()
 
 
 def test_logout_clears_access_and_csrf_without_reissuing_csrf():
@@ -1021,7 +1021,7 @@ def test_logout_clears_access_and_csrf_without_reissuing_csrf():
     set_cookies = _get_set_cookie_headers(resp)
     access_cookies = [h for h in set_cookies if "access_token=" in h]
     csrf_cookies = [h for h in set_cookies if "csrf_token=" in h]
-    preference_cookies = [h for h in set_cookies if "agent_workspace_session_persistent=" in h]
+    preference_cookies = [h for h in set_cookies if "alpha_session_persistent=" in h]
     assert access_cookies and "max-age=0" in access_cookies[0].lower()
     assert csrf_cookies and "max-age=0" in csrf_cookies[0].lower()
     assert preference_cookies and "max-age=0" in preference_cookies[0].lower()

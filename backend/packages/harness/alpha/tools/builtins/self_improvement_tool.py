@@ -62,7 +62,7 @@ from alpha.subagents.status_contract import (
 )
 from alpha.tools.builtins.task_tool import _get_runtime_app_config
 from alpha.tools.types import Runtime
-from alpha.trace_context import AGENT_WORKSPACE_TRACE_METADATA_KEY, resolve_trace_id
+from alpha.trace_context import ALPHA_TRACE_METADATA_KEY, resolve_trace_id
 from alpha.utils.assembly_io import run_assembly
 from alpha.utils.custom_events import aemit_custom_event
 
@@ -251,7 +251,7 @@ async def ralph_loop_tool(
     parent_model = None
     trace_id = None
     user_id = None
-    agent_workspace_trace_id = None
+    alpha_trace_id = None
     parent_context: dict = {}
     if runtime is not None:
         sandbox_state = runtime.state.get("sandbox")
@@ -278,13 +278,13 @@ async def ralph_loop_tool(
         is_internal = parent_context.get("is_internal") is True
         authz_attributes = normalize_authz_attributes(parent_context.get("authz_attributes"))
         run_extensions = resolve_run_extensions(parent_context)
-        agent_workspace_trace_id = resolve_trace_id(parent_context.get(AGENT_WORKSPACE_TRACE_METADATA_KEY))
+        alpha_trace_id = resolve_trace_id(parent_context.get(ALPHA_TRACE_METADATA_KEY))
     else:
         user_role = oauth_provider = oauth_id = run_id = channel_user_id = None
         is_internal = False
         authz_attributes = normalize_authz_attributes(None)
         run_extensions = resolve_run_extensions({})
-        agent_workspace_trace_id = resolve_trace_id(None)
+        alpha_trace_id = resolve_trace_id(None)
 
     parent_available_skills = metadata.get("available_skills")
     if parent_available_skills is not None:
@@ -339,7 +339,7 @@ async def ralph_loop_tool(
             channel_user_id=channel_user_id,
             is_internal=is_internal,
             authz_attributes=authz_attributes,
-            agent_workspace_trace_id=agent_workspace_trace_id,
+            alpha_trace_id=alpha_trace_id,
             acceptance_criteria=[completion_promise],
             app_config=resolved_app_config,
             extensions=run_extensions,

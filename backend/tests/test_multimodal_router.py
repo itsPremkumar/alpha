@@ -28,8 +28,8 @@ from app.gateway.routers import multimodal as multimodal_router
 
 @pytest.fixture(autouse=True)
 def _isolate_workspace(tmp_path, monkeypatch):
-    """Plan §8: tests isolate AGENT_WORKSPACE_HOME to a temp dir."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    """Plan §8: tests isolate ALPHA_HOME to a temp dir."""
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
 
 
 # ---------------------------------------------------------------------------

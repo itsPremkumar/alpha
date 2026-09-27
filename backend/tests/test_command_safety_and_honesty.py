@@ -48,7 +48,7 @@ def isolated_skills_root(tmp_path, monkeypatch):
     """Point skill storage at a temp root so no test mutates the repo skills tree."""
     root = tmp_path / "skills"
     (root / "custom").mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("AGENT_WORKSPACE_SKILLS_PATH", str(root))
+    monkeypatch.setenv("ALPHA_SKILLS_PATH", str(root))
     from alpha.skills import storage as storage_mod
 
     monkeypatch.setattr(storage_mod, "reset_skill_storage", lambda *a, **k: None, raising=False)

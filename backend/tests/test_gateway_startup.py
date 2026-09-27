@@ -43,7 +43,7 @@ def _deploy_fixture(tmp_path: Path, *, docker_script: str) -> tuple[Path, dict[s
     env = os.environ.copy()
     env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
     env["BETTER_AUTH_SECRET"] = "test-better-auth-secret"
-    env["AGENT_WORKSPACE_INTERNAL_AUTH_TOKEN"] = "test-internal-auth-token"
+    env["ALPHA_INTERNAL_AUTH_TOKEN"] = "test-internal-auth-token"
     return worktree, env
 
 

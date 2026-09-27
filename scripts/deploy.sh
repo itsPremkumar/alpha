@@ -45,9 +45,9 @@ cd "$REPO_ROOT"
 ENV_FILE="$REPO_ROOT/.env"
 DOCKER_DIR="$REPO_ROOT/docker"
 if [ -f "$ENV_FILE" ]; then
-    COMPOSE_CMD=(docker compose --env-file "$ENV_FILE" -p agent-workspace -f "$DOCKER_DIR/docker-compose.yaml")
+    COMPOSE_CMD=(docker compose --env-file "$ENV_FILE" -p alpha -f "$DOCKER_DIR/docker-compose.yaml")
 else
-    COMPOSE_CMD=(docker compose -p agent-workspace -f "$DOCKER_DIR/docker-compose.yaml")
+    COMPOSE_CMD=(docker compose -p alpha -f "$DOCKER_DIR/docker-compose.yaml")
 fi
 
 load_uv_extras_from_dotenv() {
@@ -112,31 +112,31 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-# ── AGENT_WORKSPACE_HOME ────────────────────────────────────────────────────────────
+# ── ALPHA_HOME ────────────────────────────────────────────────────────────
 
-if [ -z "$AGENT_WORKSPACE_HOME" ]; then
-    export AGENT_WORKSPACE_HOME="$REPO_ROOT/backend/.agent-workspace"
+if [ -z "$ALPHA_HOME" ]; then
+    export ALPHA_HOME="$REPO_ROOT/backend/.alpha"
 fi
-echo -e "${BLUE}AGENT_WORKSPACE_HOME=$AGENT_WORKSPACE_HOME${NC}"
-mkdir -p "$AGENT_WORKSPACE_HOME"
+echo -e "${BLUE}ALPHA_HOME=$ALPHA_HOME${NC}"
+mkdir -p "$ALPHA_HOME"
 
-# ── AGENT_WORKSPACE_REPO_ROOT (for skills host path in DooD) ───────────────────────
+# ── ALPHA_REPO_ROOT (for skills host path in DooD) ───────────────────────
 
-export AGENT_WORKSPACE_REPO_ROOT="$REPO_ROOT"
+export ALPHA_REPO_ROOT="$REPO_ROOT"
 
 # ── config.yaml ───────────────────────────────────────────────────────────────
 
-if [ -z "$AGENT_WORKSPACE_CONFIG_PATH" ]; then
-    export AGENT_WORKSPACE_CONFIG_PATH="$REPO_ROOT/config.yaml"
+if [ -z "$ALPHA_CONFIG_PATH" ]; then
+    export ALPHA_CONFIG_PATH="$REPO_ROOT/config.yaml"
 fi
 
-if  [ "$CMD" != "down" ] && [ ! -f "$AGENT_WORKSPACE_CONFIG_PATH" ]; then
+if  [ "$CMD" != "down" ] && [ ! -f "$ALPHA_CONFIG_PATH" ]; then
     # Try to seed from repo (config.example.yaml is the canonical template)
     if [ -f "$REPO_ROOT/config.example.yaml" ]; then
-        cp "$REPO_ROOT/config.example.yaml" "$AGENT_WORKSPACE_CONFIG_PATH"
-        echo -e "${GREEN}✓ Seeded config.example.yaml → $AGENT_WORKSPACE_CONFIG_PATH${NC}"
+        cp "$REPO_ROOT/config.example.yaml" "$ALPHA_CONFIG_PATH"
+        echo -e "${GREEN}✓ Seeded config.example.yaml → $ALPHA_CONFIG_PATH${NC}"
         echo -e "${YELLOW}⚠ config.yaml was seeded from the example template.${NC}"
-        echo "  Run 'make setup' to generate a minimal config, or edit $AGENT_WORKSPACE_CONFIG_PATH manually before use."
+        echo "  Run 'make setup' to generate a minimal config, or edit $ALPHA_CONFIG_PATH manually before use."
     else
         echo -e "${RED}✗ No config.yaml found.${NC}"
         echo "  Run 'make setup' from the repo root (recommended),"
@@ -144,26 +144,26 @@ if  [ "$CMD" != "down" ] && [ ! -f "$AGENT_WORKSPACE_CONFIG_PATH" ]; then
         exit 1
     fi
 else
-    echo -e "${GREEN}✓ config.yaml: $AGENT_WORKSPACE_CONFIG_PATH${NC}"
+    echo -e "${GREEN}✓ config.yaml: $ALPHA_CONFIG_PATH${NC}"
 fi
 
 # ── extensions_config.json ───────────────────────────────────────────────────
 
-if [ -z "$AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH" ]; then
-    export AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH="$REPO_ROOT/extensions_config.json"
+if [ -z "$ALPHA_EXTENSIONS_CONFIG_PATH" ]; then
+    export ALPHA_EXTENSIONS_CONFIG_PATH="$REPO_ROOT/extensions_config.json"
 fi
 
-if [ ! -f "$AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH" ]; then
+if [ ! -f "$ALPHA_EXTENSIONS_CONFIG_PATH" ]; then
     if [ -f "$REPO_ROOT/extensions_config.json" ]; then
-        cp "$REPO_ROOT/extensions_config.json" "$AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH"
-        echo -e "${GREEN}✓ Seeded extensions_config.json → $AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH${NC}"
+        cp "$REPO_ROOT/extensions_config.json" "$ALPHA_EXTENSIONS_CONFIG_PATH"
+        echo -e "${GREEN}✓ Seeded extensions_config.json → $ALPHA_EXTENSIONS_CONFIG_PATH${NC}"
     else
         # Create a minimal empty config so the gateway doesn't fail on startup
-        echo '{"mcpServers":{},"skills":{}}' > "$AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH"
-        echo -e "${YELLOW}⚠ extensions_config.json not found, created empty config at $AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH${NC}"
+        echo '{"mcpServers":{},"skills":{}}' > "$ALPHA_EXTENSIONS_CONFIG_PATH"
+        echo -e "${YELLOW}⚠ extensions_config.json not found, created empty config at $ALPHA_EXTENSIONS_CONFIG_PATH${NC}"
     fi
 else
-    echo -e "${GREEN}✓ extensions_config.json: $AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH${NC}"
+    echo -e "${GREEN}✓ extensions_config.json: $ALPHA_EXTENSIONS_CONFIG_PATH${NC}"
 fi
 
 
@@ -171,7 +171,7 @@ fi
 # Required by Next.js in production. Generated once and persisted so auth
 # sessions survive container restarts.
 
-_secret_file="$AGENT_WORKSPACE_HOME/.better-auth-secret"
+_secret_file="$ALPHA_HOME/.better-auth-secret"
 if [ -z "$BETTER_AUTH_SECRET" ]; then
     if [ -f "$_secret_file" ]; then
         export BETTER_AUTH_SECRET
@@ -199,35 +199,35 @@ if [ -z "$BETTER_AUTH_SECRET" ]; then
     fi
 fi
 
-# ── AGENT_WORKSPACE_INTERNAL_AUTH_TOKEN ────────────────────────────────────────────
+# ── ALPHA_INTERNAL_AUTH_TOKEN ────────────────────────────────────────────
 # Shared by all Gateway workers so channel workers can call internal Gateway
 # APIs even when the request is handled by a different Uvicorn worker.
 
-_internal_auth_token_file="$AGENT_WORKSPACE_HOME/.internal-auth-token"
-if  [ "$CMD" != "down" ] && [ -z "$AGENT_WORKSPACE_INTERNAL_AUTH_TOKEN" ]; then
+_internal_auth_token_file="$ALPHA_HOME/.internal-auth-token"
+if  [ "$CMD" != "down" ] && [ -z "$ALPHA_INTERNAL_AUTH_TOKEN" ]; then
     if [ -f "$_internal_auth_token_file" ]; then
-        export AGENT_WORKSPACE_INTERNAL_AUTH_TOKEN
-        AGENT_WORKSPACE_INTERNAL_AUTH_TOKEN="$(cat "$_internal_auth_token_file")"
-        echo -e "${GREEN}✓ AGENT_WORKSPACE_INTERNAL_AUTH_TOKEN loaded from $_internal_auth_token_file${NC}"
+        export ALPHA_INTERNAL_AUTH_TOKEN
+        ALPHA_INTERNAL_AUTH_TOKEN="$(cat "$_internal_auth_token_file")"
+        echo -e "${GREEN}✓ ALPHA_INTERNAL_AUTH_TOKEN loaded from $_internal_auth_token_file${NC}"
     else
-        export AGENT_WORKSPACE_INTERNAL_AUTH_TOKEN
+        export ALPHA_INTERNAL_AUTH_TOKEN
         if command -v python3 > /dev/null 2>&1 && \
-            AGENT_WORKSPACE_INTERNAL_AUTH_TOKEN="$(python3 -c 'import sys; sys.version_info >= (3, 6) or sys.exit(1); import secrets; print(secrets.token_urlsafe(32))' 2>/dev/null)"; then
+            ALPHA_INTERNAL_AUTH_TOKEN="$(python3 -c 'import sys; sys.version_info >= (3, 6) or sys.exit(1); import secrets; print(secrets.token_urlsafe(32))' 2>/dev/null)"; then
             true
         elif command -v python > /dev/null 2>&1 && \
-            AGENT_WORKSPACE_INTERNAL_AUTH_TOKEN="$(python -c 'import sys; sys.version_info >= (3, 6) or sys.exit(1); import secrets; print(secrets.token_urlsafe(32))' 2>/dev/null)"; then
+            ALPHA_INTERNAL_AUTH_TOKEN="$(python -c 'import sys; sys.version_info >= (3, 6) or sys.exit(1); import secrets; print(secrets.token_urlsafe(32))' 2>/dev/null)"; then
             true
         elif command -v openssl > /dev/null 2>&1 && \
-            AGENT_WORKSPACE_INTERNAL_AUTH_TOKEN="$(openssl rand -hex 32)"; then
+            ALPHA_INTERNAL_AUTH_TOKEN="$(openssl rand -hex 32)"; then
             true
         else
-            echo -e "${RED}✗ Cannot generate AGENT_WORKSPACE_INTERNAL_AUTH_TOKEN: python3, python, and openssl are all unavailable.${NC}" >&2
-            echo -e "${RED}  Set AGENT_WORKSPACE_INTERNAL_AUTH_TOKEN manually before running make up.${NC}" >&2
+            echo -e "${RED}✗ Cannot generate ALPHA_INTERNAL_AUTH_TOKEN: python3, python, and openssl are all unavailable.${NC}" >&2
+            echo -e "${RED}  Set ALPHA_INTERNAL_AUTH_TOKEN manually before running make up.${NC}" >&2
             exit 1
         fi
-        echo "$AGENT_WORKSPACE_INTERNAL_AUTH_TOKEN" > "$_internal_auth_token_file"
+        echo "$ALPHA_INTERNAL_AUTH_TOKEN" > "$_internal_auth_token_file"
         chmod 600 "$_internal_auth_token_file"
-        echo -e "${GREEN}✓ AGENT_WORKSPACE_INTERNAL_AUTH_TOKEN generated → $_internal_auth_token_file${NC}"
+        echo -e "${GREEN}✓ ALPHA_INTERNAL_AUTH_TOKEN generated → $_internal_auth_token_file${NC}"
     fi
 fi
 
@@ -275,7 +275,7 @@ detect_sandbox_mode() {
     local sandbox_use=""
     local provisioner_url=""
 
-    [ -f "$AGENT_WORKSPACE_CONFIG_PATH" ] || { echo "local"; return; }
+    [ -f "$ALPHA_CONFIG_PATH" ] || { echo "local"; return; }
 
     sandbox_use=$(awk '
         /^[[:space:]]*sandbox:[[:space:]]*$/ { in_sandbox=1; next }
@@ -283,7 +283,7 @@ detect_sandbox_mode() {
         in_sandbox && /^[[:space:]]*use:[[:space:]]*/ {
             line=$0; sub(/^[[:space:]]*use:[[:space:]]*/, "", line); print line; exit
         }
-    ' "$AGENT_WORKSPACE_CONFIG_PATH")
+    ' "$ALPHA_CONFIG_PATH")
 
     provisioner_url=$(awk '
         /^[[:space:]]*sandbox:[[:space:]]*$/ { in_sandbox=1; next }
@@ -291,7 +291,7 @@ detect_sandbox_mode() {
         in_sandbox && /^[[:space:]]*provisioner_url:[[:space:]]*/ {
             line=$0; sub(/^[[:space:]]*provisioner_url:[[:space:]]*/, "", line); print line; exit
         }
-    ' "$AGENT_WORKSPACE_CONFIG_PATH")
+    ' "$ALPHA_CONFIG_PATH")
 
     if [[ "$sandbox_use" == *"alpha.community.aio_sandbox:AioSandboxProvider"* ]] || [[ "$sandbox_use" == *"alpha.community.aio_sandbox:AioSandboxProvider"* ]]; then
         if [ -n "$provisioner_url" ]; then
@@ -309,12 +309,12 @@ detect_sandbox_mode() {
 if [ "$CMD" = "down" ]; then
     # Set minimal env var defaults so docker compose can parse the file without
     # warning about unset variables that appear in volume specs.
-    export AGENT_WORKSPACE_HOME="${AGENT_WORKSPACE_HOME:-$REPO_ROOT/backend/.agent-workspace}"
-    export AGENT_WORKSPACE_CONFIG_PATH="${AGENT_WORKSPACE_CONFIG_PATH:-$AGENT_WORKSPACE_HOME/config.yaml}"
-    export AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH="${AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH:-$AGENT_WORKSPACE_HOME/extensions_config.json}"
-    export AGENT_WORKSPACE_REPO_ROOT="${AGENT_WORKSPACE_REPO_ROOT:-$REPO_ROOT}"
+    export ALPHA_HOME="${ALPHA_HOME:-$REPO_ROOT/backend/.alpha}"
+    export ALPHA_CONFIG_PATH="${ALPHA_CONFIG_PATH:-$ALPHA_HOME/config.yaml}"
+    export ALPHA_EXTENSIONS_CONFIG_PATH="${ALPHA_EXTENSIONS_CONFIG_PATH:-$ALPHA_HOME/extensions_config.json}"
+    export ALPHA_REPO_ROOT="${ALPHA_REPO_ROOT:-$REPO_ROOT}"
     export BETTER_AUTH_SECRET="${BETTER_AUTH_SECRET:-placeholder}"
-    export AGENT_WORKSPACE_INTERNAL_AUTH_TOKEN="${AGENT_WORKSPACE_INTERNAL_AUTH_TOKEN:-placeholder}"
+    export ALPHA_INTERNAL_AUTH_TOKEN="${ALPHA_INTERNAL_AUTH_TOKEN:-placeholder}"
     "${COMPOSE_CMD[@]}" down
     exit 0
 fi
@@ -360,29 +360,29 @@ if [ "$sandbox_mode" = "provisioner" ]; then
     services="$services provisioner"
 fi
 
-# ── AGENT_WORKSPACE_DOCKER_SOCKET (aio / pure-DooD mode only) ──────────────────────
+# ── ALPHA_DOCKER_SOCKET (aio / pure-DooD mode only) ──────────────────────
 # Only aio mode (AioSandboxProvider without provisioner_url) needs the host
 # Docker socket. It is mounted via the opt-in docker-compose.dood.yaml overlay,
 # appended here, so the default (local) and provisioner modes never expose the
 # host daemon. Mounting the socket = root-equivalent host control; see SECURITY.md.
 
-if [ -z "$AGENT_WORKSPACE_DOCKER_SOCKET" ]; then
-    export AGENT_WORKSPACE_DOCKER_SOCKET="/var/run/docker.sock"
+if [ -z "$ALPHA_DOCKER_SOCKET" ]; then
+    export ALPHA_DOCKER_SOCKET="/var/run/docker.sock"
 fi
 
 if [ "$sandbox_mode" = "aio" ]; then
-    if [ ! -S "$AGENT_WORKSPACE_DOCKER_SOCKET" ]; then
+    if [ ! -S "$ALPHA_DOCKER_SOCKET" ]; then
         # On Windows (Git Bash / MSYS), Docker Desktop mounts the default
         # /var/run/docker.sock into containers even though no host socket file exists.
-        if [ "$AGENT_WORKSPACE_DOCKER_SOCKET" = "/var/run/docker.sock" ] && [[ "$(uname -s)" =~ ^(MINGW|MSYS|CYGWIN) ]] && docker info >/dev/null 2>&1; then
+        if [ "$ALPHA_DOCKER_SOCKET" = "/var/run/docker.sock" ] && [[ "$(uname -s)" =~ ^(MINGW|MSYS|CYGWIN) ]] && docker info >/dev/null 2>&1; then
             :
         else
-            echo -e "${RED}⚠ Docker socket not found at $AGENT_WORKSPACE_DOCKER_SOCKET${NC}"
+            echo -e "${RED}⚠ Docker socket not found at $ALPHA_DOCKER_SOCKET${NC}"
             echo "  AioSandboxProvider (DooD) will not work."
             exit 1
         fi
     fi
-    echo -e "${GREEN}✓ Docker socket: $AGENT_WORKSPACE_DOCKER_SOCKET${NC}"
+    echo -e "${GREEN}✓ Docker socket: $ALPHA_DOCKER_SOCKET${NC}"
     echo -e "${YELLOW}  Mounting host Docker socket into gateway (DooD = host root-equivalent). See SECURITY.md.${NC}"
     COMPOSE_CMD+=(-f "$DOCKER_DIR/docker-compose.dood.yaml")
 fi

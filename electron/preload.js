@@ -21,22 +21,22 @@ const bridgeApi = {
    */
   onStatus(callback) {
     const listener = (_event, payload) => callback(payload);
-    ipcRenderer.on('agent-workspace:status', listener);
+    ipcRenderer.on('alpha:status', listener);
     ipcRenderer.on('alpha:status', listener);
     return () => {
-      ipcRenderer.removeListener('agent-workspace:status', listener);
+      ipcRenderer.removeListener('alpha:status', listener);
       ipcRenderer.removeListener('alpha:status', listener);
     };
   },
 
   /** Current orchestration state (URLs, child PIDs, mode). */
   getStatus() {
-    return ipcRenderer.invoke('agent-workspace:status');
+    return ipcRenderer.invoke('alpha:status');
   },
 
   /** Open the per-user data folder (config, homes, logs) in Explorer. */
   openUserData() {
-    return ipcRenderer.invoke('agent-workspace:open-user-data');
+    return ipcRenderer.invoke('alpha:open-user-data');
   },
 
   /**
@@ -44,7 +44,7 @@ const bridgeApi = {
    * @returns {Promise<{ supported: boolean, enabled: boolean, active: boolean }>}
    */
   getAutoStart() {
-    return ipcRenderer.invoke('agent-workspace:get-auto-start');
+    return ipcRenderer.invoke('alpha:get-auto-start');
   },
 
   /**
@@ -53,7 +53,7 @@ const bridgeApi = {
    * @returns {Promise<boolean>} the OS-reported state after applying.
    */
   setAutoStart(enabled) {
-    return ipcRenderer.invoke('agent-workspace:set-auto-start', Boolean(enabled));
+    return ipcRenderer.invoke('alpha:set-auto-start', Boolean(enabled));
   },
 
   /**
@@ -78,5 +78,5 @@ const bridgeApi = {
   },
 };
 
-contextBridge.exposeInMainWorld('agentWorkspace', bridgeApi);
+contextBridge.exposeInMainWorld('alpha', bridgeApi);
 contextBridge.exposeInMainWorld('alpha', bridgeApi);

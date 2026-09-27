@@ -4,7 +4,7 @@ The factory knows things nothing downstream can recover: which model survived
 the runtime overrides, what the rendered prompt actually said, which tools
 authorization left in place, and the order the middleware stack ended up in.
 This module turns that transient knowledge into
-:class:`~agent_workspace_extension_api.assembly.AgentAssemblyDescriptor`.
+:class:`~alpha_extension_api.assembly.AgentAssemblyDescriptor`.
 
 Two rules shape the projection:
 
@@ -24,7 +24,7 @@ import os
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-from agent_workspace_extension_api import (
+from alpha_extension_api import (
     AgentAssemblyDescriptor,
     MiddlewareDescriptor,
     ToolDescriptor,
@@ -212,7 +212,7 @@ def _tool_source(tool: object) -> str:
         return f"mcp:{source['server_name']}" if source is not None else "mcp:unknown"
     metadata = getattr(tool, "metadata", None)
     if isinstance(metadata, dict):
-        declared = metadata.get("agent_workspace_tool_source")
+        declared = metadata.get("alpha_tool_source")
         if isinstance(declared, str) and declared:
             return declared
     callable_object = getattr(tool, "func", None) or getattr(tool, "coroutine", None)
@@ -347,13 +347,13 @@ def _build_identity() -> dict[str, str]:
     agent's fingerprint.
     """
     try:
-        package_version = version("agent-workspace-harness")
+        package_version = version("alpha-harness")
     except PackageNotFoundError:
         package_version = "unknown"
     return {
         "package_version": package_version,
-        "image_digest": os.environ.get("AGENT_WORKSPACE_IMAGE_DIGEST", "unknown"),
-        "git_commit": os.environ.get("AGENT_WORKSPACE_GIT_COMMIT", "unknown"),
+        "image_digest": os.environ.get("ALPHA_IMAGE_DIGEST", "unknown"),
+        "git_commit": os.environ.get("ALPHA_GIT_COMMIT", "unknown"),
     }
 
 

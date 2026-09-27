@@ -34,9 +34,9 @@ from alpha.workflow.models import WorkflowNode, WorkflowRun
 
 
 @pytest.fixture(autouse=True)
-def _isolate_agent_workspace(tmp_path, monkeypatch):
-    """AGENT_WORKSPACE_HOME points at a per-test temp dir (process-global env)."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+def _isolate_alpha(tmp_path, monkeypatch):
+    """ALPHA_HOME points at a per-test temp dir (process-global env)."""
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
 
 
 def _run(run_id: str = "run_unit") -> WorkflowRun:

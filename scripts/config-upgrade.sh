@@ -12,10 +12,10 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EXAMPLE="$REPO_ROOT/config.example.yaml"
 
 # Resolve config.yaml location: env var > backend/ > repo root
-if [ -n "$AGENT_WORKSPACE_CONFIG_PATH" ] && [ -f "$AGENT_WORKSPACE_CONFIG_PATH" ]; then
-    CONFIG="$AGENT_WORKSPACE_CONFIG_PATH"
-elif [ -n "$AGENT_WORKSPACE_CONFIG_PATH" ] && [ -f "$AGENT_WORKSPACE_CONFIG_PATH" ]; then
-    CONFIG="$AGENT_WORKSPACE_CONFIG_PATH"
+if [ -n "$ALPHA_CONFIG_PATH" ] && [ -f "$ALPHA_CONFIG_PATH" ]; then
+    CONFIG="$ALPHA_CONFIG_PATH"
+elif [ -n "$ALPHA_CONFIG_PATH" ] && [ -f "$ALPHA_CONFIG_PATH" ]; then
+    CONFIG="$ALPHA_CONFIG_PATH"
 elif [ -f "$REPO_ROOT/backend/config.yaml" ]; then
     CONFIG="$REPO_ROOT/backend/config.yaml"
 elif [ -f "$REPO_ROOT/config.yaml" ]; then

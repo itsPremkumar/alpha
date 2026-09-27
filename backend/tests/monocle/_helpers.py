@@ -2,7 +2,7 @@
 
 Kept out of ``conftest.py`` so nothing imports ``conftest`` as a module.
 Monocle instrumentation is owned by the Test Tools validator (installed by the
-``monocle_trace_asserter`` fixture), so ``run_agent_workspace`` only drives the agent;
+``monocle_trace_asserter`` fixture), so ``run_alpha`` only drives the agent;
 the already-installed instrumentation captures the run's spans.
 """
 
@@ -30,13 +30,13 @@ def live_tests_enabled() -> bool:
     return os.getenv("MONOCLE_LIVE_TESTS", "").strip().lower() in _TRUTHY
 
 
-def run_agent_workspace(message: str) -> str:
+def run_alpha(message: str) -> str:
     """Run the Alpha agent once and return its response text.
 
     The model is resolved from ``config.yaml`` (no hardcoded override) so the
     live test exercises Alpha's own model-resolution path.
     """
-    from alpha.client import AgentWorkspaceClient
+    from alpha.client import AlphaClient
 
-    client = AgentWorkspaceClient(config_path=str(CONFIG_PATH))
+    client = AlphaClient(config_path=str(CONFIG_PATH))
     return client.chat(message, thread_id=f"monocle-test-{uuid.uuid4().hex[:8]}")

@@ -367,7 +367,7 @@ curl http://localhost:2026/health
 
 **Steps**:
 1. Run `bash .agent/skills/smoke-test/scripts/frontend_check.sh`.
-2. The script auto-detects whether authentication (`AGENT_WORKSPACE_AUTH_DISABLED`) is enabled.
+2. The script auto-detects whether authentication (`ALPHA_AUTH_DISABLED`) is enabled.
 3. When auth is on, the script registers / logs in a smoke-test user (`smoke-test@alpha.dev` by default) and passes the session cookie so the real `/workspace/*` pages are verified — not the login redirect.
 4. When auth is off, the routes are checked anonymously as before.
 
@@ -384,9 +384,9 @@ curl http://localhost:2026/health
 **Steps**:
 1. Run `docker ps`
 2. Confirm that the following containers are running:
-   - `agent-workspace-nginx`
-   - `agent-workspace-frontend`
-   - `agent-workspace-gateway`
+   - `alpha-nginx`
+   - `alpha-frontend`
+   - `alpha-gateway`
 
 ---
 
@@ -433,7 +433,7 @@ curl http://localhost:2026/health
 
 **Steps**:
 1. Run `bash .agent/skills/smoke-test/scripts/frontend_check.sh`.
-2. The script auto-detects whether authentication (`AGENT_WORKSPACE_AUTH_DISABLED`) is enabled.
+2. The script auto-detects whether authentication (`ALPHA_AUTH_DISABLED`) is enabled.
 3. When auth is on, the script registers / logs in a smoke-test user (`smoke-test@alpha.dev` by default) and passes the session cookie so the real `/workspace/*` pages are verified — not the login redirect.
 4. When auth is off, the routes are checked anonymously as before.
 

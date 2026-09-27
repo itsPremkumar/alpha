@@ -488,7 +488,7 @@ def test_every_health_config_key_has_a_real_package_reader() -> None:
 
 def test_paths_atomic_round_trip_safe_segments_and_runtime_home(tmp_path: Path, monkeypatch) -> None:
     runtime = tmp_path / "runtime"
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(runtime))
+    monkeypatch.setenv("ALPHA_HOME", str(runtime))
     assert safe_segment("../user name") == "user_name"
     assert health_root() == (runtime / "memory" / "health").resolve()
     assert metrics_path().name == "metrics.json"

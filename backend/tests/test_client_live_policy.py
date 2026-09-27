@@ -12,7 +12,7 @@ import pytest
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = BACKEND_ROOT.parent
 LIVE_TEST_PATH = BACKEND_ROOT / "tests" / "test_client_live.py"
-LIVE_OPT_IN = "AGENT_WORKSPACE_RUN_LIVE_TESTS"
+LIVE_OPT_IN = "ALPHA_RUN_LIVE_TESTS"
 REPRESENTATIVE_LIVE_NODE_IDS = (
     "::TestLiveBasicChat::test_chat_returns_nonempty_string",
     "::TestLiveStreaming::test_stream_yields_messages_tuple_and_end",

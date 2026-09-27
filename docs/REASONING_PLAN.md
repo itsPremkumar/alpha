@@ -176,7 +176,7 @@ Resolved keys (`config.py:52-65`):
 - `max_atoms=12`, `max_depth=4`, `max_width=6`;
 - `storage_path=null` — no persistence location exists unless an operator names one.
 
-Resolution: an explicit path is an operator assertion and must exist; otherwise `$AGENT_WORKSPACE_HOME/reasoning/config.json` is used **only if it exists**, so a fresh install yields defaults. A present file that is unreadable, non-UTF-8, not a JSON object, over `MAX_REASONING_CONFIG_BYTES` (64 KiB), or schema-invalid raises `ReasoningConfigError`. Loading is uncached and returns instance-scoped objects, so no config state can leak between tests, threads, or tenants.
+Resolution: an explicit path is an operator assertion and must exist; otherwise `$ALPHA_HOME/reasoning/config.json` is used **only if it exists**, so a fresh install yields defaults. A present file that is unreadable, non-UTF-8, not a JSON object, over `MAX_REASONING_CONFIG_BYTES` (64 KiB), or schema-invalid raises `ReasoningConfigError`. Loading is uncached and returns instance-scoped objects, so no config state can leak between tests, threads, or tenants.
 
 `backend/tests/test_reasoning_models_config.py::test_every_top_level_config_key_has_a_real_reader` enumerates every top-level key and asserts a production reader consumes it, so a key cannot exist as a dormant setting.
 
@@ -369,7 +369,7 @@ Target: no worker patch. Patch (a) is sufficient: `CheckpointStateAccessor` (`ba
 
 ## 14. Gate results at `1664c76`
 
-Every command ran from the worktree root on Windows with `PYTHONPATH=<worktree>/backend;<worktree>/backend/packages/harness` and a per-run `AGENT_WORKSPACE_HOME`.
+Every command ran from the worktree root on Windows with `PYTHONPATH=<worktree>/backend;<worktree>/backend/packages/harness` and a per-run `ALPHA_HOME`.
 
 | Gate | Command | Result | Exit |
 |---|---|---|---|

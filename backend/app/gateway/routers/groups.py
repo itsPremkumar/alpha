@@ -5,7 +5,7 @@ orchestration modes (mention/moderated/quorum/parallel/round_robin),
 member auto-provisioning against the BotRegistry, message posting with
 @mention parsing, and deterministic next-speaker resolution.
 
-Persistence is file-backed under AGENT_WORKSPACE_HOME (single-instance by design,
+Persistence is file-backed under ALPHA_HOME (single-instance by design,
 like agent_storage file backend). All sync file IO runs via asyncio.to_thread
 to respect the Gateway blocking-IO gate.
 """

@@ -17,7 +17,7 @@ shadow-mode, and stale decisions dispatch nothing. Tests:
 
 ### Request Trace Context (`packages/harness/alpha/trace_context.py`)
 
-`X-Trace-Id` / `agent_workspace_trace_id` is the request-level correlation id, and
+`X-Trace-Id` / `alpha_trace_id` is the request-level correlation id, and
 the `ContextVar` is its only source: every path that reaches a run binds one first
 and downstream treats the id as a plain `str` with no `if trace_id:` guards. Bind
 one unit of work, never a poller loop. Every other carrier is a derived output and
@@ -63,7 +63,7 @@ and [docs/DEEP_RESEARCH.md](../../../docs/DEEP_RESEARCH.md).
 
 ### Embedded Client (`packages/harness/alpha/client.py`)
 
-`AgentWorkspaceClient` provides in-process access without HTTP or a FastAPI
+`AlphaClient` provides in-process access without HTTP or a FastAPI
 dependency. It shares Gateway's `alpha` modules, config files, data directories, and
 response schemas for compatible consumers. The method-to-Gateway-endpoint parity
 table, the per-mode delivery contract, and the full streaming design (why Gateway
@@ -84,7 +84,7 @@ Pydantic model (so a missing required field raises `ValidationError` in CI) acro
 `SkillInstallResponse`, `McpConfigResponse`, `UploadResponse`,
 `MemoryConfigResponse`, and `MemoryStatusResponse`. `tests/test_client_live.py`
 requires root `config.yaml`, valid API credentials, and opt-in via `make test-live`
-or `AGENT_WORKSPACE_RUN_LIVE_TESTS=1`; it calls real APIs (possible costs) and may
+or `ALPHA_RUN_LIVE_TESTS=1`; it calls real APIs (possible costs) and may
 create local sandboxes, artifacts, and files. Marked `live`, it is excluded from
 `make test` and skipped in default CI.
 
@@ -443,7 +443,7 @@ Supporting modules, each with its own contract:
   only when named in `workspace_roots`, and anything credential-shaped is
   scrubbed before it can reach a Bot's memory. `SurveyResult.clone()` — not
   `to_dict()` — is how a cached result is handed back. The whole scan is gated
-  on the `AGENT_WORKSPACE_BOT_SURVEY` kill switch (set to `0` to disable), which
+  on the `ALPHA_BOT_SURVEY` kill switch (set to `0` to disable), which
   is checked *before* the cache so a disabled survey can never be served as a
   real one; a disabled survey reports the reason in `next_steps` rather than
   silently claiming it found nothing.

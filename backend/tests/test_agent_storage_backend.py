@@ -76,8 +76,8 @@ def test_validation_warns_on_file_under_multiworker_postgres(monkeypatch, caplog
 
 @pytest.fixture()
 def file_home(tmp_path, monkeypatch):
-    """Root file stores at a temp AGENT_WORKSPACE_HOME with seeded definitions."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    """Root file stores at a temp ALPHA_HOME with seeded definitions."""
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     from alpha.config import paths as paths_module
 
     monkeypatch.setattr(paths_module, "_paths", None)
@@ -156,7 +156,7 @@ def test_importer_dry_run_writes_nothing(file_home, monkeypatch):
 
 
 def test_importer_runs_when_only_managed_subagents_exist(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     from alpha.config import paths as paths_module
 
     monkeypatch.setattr(paths_module, "_paths", None)
@@ -211,7 +211,7 @@ def test_file_create_race_maps_file_exists_to_agent_exists(tmp_path, monkeypatch
 
     from alpha.persistence.agents.base import AgentExistsError
 
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     from alpha.config import paths as paths_module
 
     monkeypatch.setattr(paths_module, "_paths", None)
@@ -251,7 +251,7 @@ def test_get_agent_store_resolves_db_backend_from_on_disk_config(tmp_path, monke
     """
     cfg_path = tmp_path / "config.yaml"
     _write_min_config(cfg_path, {"agent_storage": {"backend": "db"}, "database": {"backend": "sqlite", "sqlite_dir": str(tmp_path / "db")}})
-    monkeypatch.setenv("AGENT_WORKSPACE_CONFIG_PATH", str(cfg_path))
+    monkeypatch.setenv("ALPHA_CONFIG_PATH", str(cfg_path))
     try:
         reset_app_config()  # force a fresh read from the on-disk file
         assert isinstance(get_agent_store(), SqlAgentStore)
@@ -263,8 +263,8 @@ def test_get_agent_store_falls_back_to_file_without_config(tmp_path, monkeypatch
     """The ``except -> file`` fallback is for genuinely unresolvable config only
     (CLI/tests); it must not fire when a config exists — that asymmetry is what
     keeps a misconfigured graph process from silently downgrading db to file."""
-    monkeypatch.delenv("AGENT_WORKSPACE_CONFIG_PATH", raising=False)
-    monkeypatch.setenv("AGENT_WORKSPACE_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.delenv("ALPHA_CONFIG_PATH", raising=False)
+    monkeypatch.setenv("ALPHA_PROJECT_ROOT", str(tmp_path))
     from alpha.config import app_config
 
     monkeypatch.setattr(app_config, "_legacy_config_candidates", lambda: ())
@@ -277,10 +277,10 @@ def test_get_agent_store_falls_back_to_file_without_config(tmp_path, monkeypatch
 
 def test_get_agent_store_does_not_fallback_when_explicit_config_is_missing(tmp_path, monkeypatch):
     """An explicit config path is an operator assertion and must fail closed."""
-    monkeypatch.setenv("AGENT_WORKSPACE_CONFIG_PATH", str(tmp_path / "does-not-exist.yaml"))
+    monkeypatch.setenv("ALPHA_CONFIG_PATH", str(tmp_path / "does-not-exist.yaml"))
     try:
         reset_app_config()
-        with pytest.raises(FileNotFoundError, match="AGENT_WORKSPACE_CONFIG_PATH"):
+        with pytest.raises(FileNotFoundError, match="ALPHA_CONFIG_PATH"):
             get_agent_store()
     finally:
         reset_app_config()
@@ -302,7 +302,7 @@ def test_get_agent_store_propagates_invalid_on_disk_config(tmp_path, monkeypatch
     """A present config with an invalid backend must fail instead of falling back."""
     cfg_path = tmp_path / "config.yaml"
     _write_min_config(cfg_path, {"agent_storage": {"backend": "invalid"}})
-    monkeypatch.setenv("AGENT_WORKSPACE_CONFIG_PATH", str(cfg_path))
+    monkeypatch.setenv("ALPHA_CONFIG_PATH", str(cfg_path))
     try:
         reset_app_config()
         with pytest.raises(ValueError, match="agent_storage.backend"):
@@ -315,7 +315,7 @@ def test_get_agent_store_propagates_malformed_yaml(tmp_path, monkeypatch):
     """An unparseable config.yaml must surface the parse error, not fall back to file."""
     cfg_path = tmp_path / "config.yaml"
     cfg_path.write_text("agent_storage: [oops\n", encoding="utf-8")
-    monkeypatch.setenv("AGENT_WORKSPACE_CONFIG_PATH", str(cfg_path))
+    monkeypatch.setenv("ALPHA_CONFIG_PATH", str(cfg_path))
     try:
         reset_app_config()
         with pytest.raises(yaml.YAMLError):  # ParserError/ScannerError, previously swallowed
@@ -334,8 +334,8 @@ def test_get_agent_store_does_not_fallback_when_extensions_config_is_missing(tmp
             "database": {"backend": "sqlite", "sqlite_dir": str(tmp_path / "db")},
         },
     )
-    monkeypatch.setenv("AGENT_WORKSPACE_CONFIG_PATH", str(cfg_path))
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(tmp_path / "missing-extensions.json"))
+    monkeypatch.setenv("ALPHA_CONFIG_PATH", str(cfg_path))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(tmp_path / "missing-extensions.json"))
     try:
         reset_app_config()
         with pytest.raises(FileNotFoundError, match="Extensions config"):

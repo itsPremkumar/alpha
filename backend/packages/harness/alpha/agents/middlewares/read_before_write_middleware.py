@@ -71,9 +71,9 @@ from alpha.sandbox.tools import (
 
 logger = logging.getLogger(__name__)
 
-READ_MARK_KEY = "agent_workspace_read_mark"
+READ_MARK_KEY = "alpha_read_mark"
 #: Stamped on the error ToolMessage of a gate-blocked call: ``{"path", "tool"}``.
-WRITE_BLOCK_KEY = "agent_workspace_write_block"
+WRITE_BLOCK_KEY = "alpha_write_block"
 
 _READ_TOOLS = frozenset({"read_file"})
 _GATED_WRITE_TOOLS = frozenset({"write_file", "str_replace"})
@@ -178,7 +178,7 @@ class ReadBeforeWriteMiddleware(AgentMiddleware):
                     with self._lock_for(request, path):
                         blocked = self._check_write_gate(request)
                         if blocked is not None:
-                            # Stamp agent_workspace_tool_meta so ToolProgressMiddleware can classify
+                            # Stamp alpha_tool_meta so ToolProgressMiddleware can classify
                             # the blocked write even though it bypasses ToolErrorHandlingMiddleware.
                             return normalize_tool_result(blocked)
                         return handler(request)

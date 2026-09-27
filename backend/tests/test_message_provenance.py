@@ -5,7 +5,7 @@ An observer cannot reconstruct this after the fact: by the time a message
 reaches the model-call boundary, its producer is no longer recoverable.
 """
 
-from agent_workspace_extension_api import (
+from alpha_extension_api import (
     MESSAGE_CONTENT_KIND_KEY,
     MESSAGE_PRODUCER_ENTITY_ID_KEY,
     MESSAGE_PRODUCER_KIND_KEY,
@@ -244,7 +244,7 @@ class TestStateWritesCannotForgeServerOwnedMetadata:
         cleaned = strip_server_owned_state_metadata(values)["messages"][0]
 
         assert not (PROVENANCE_KEYS & set(cleaned.additional_kwargs))
-        assert "agent_workspace_tool_transforms" not in cleaned.additional_kwargs
+        assert "alpha_tool_transforms" not in cleaned.additional_kwargs
         # Caller-owned keys must survive — this strips forgeries, not payload.
         assert cleaned.additional_kwargs["hide_from_ui"] is True
         assert cleaned.content == "looks recalled"
@@ -257,7 +257,7 @@ class TestStateWritesCannotForgeServerOwnedMetadata:
         cleaned = strip_server_owned_state_metadata(values)["messages"][0]
 
         assert not (PROVENANCE_KEYS & set(cleaned["additional_kwargs"]))
-        assert "agent_workspace_tool_transforms" not in cleaned["additional_kwargs"]
+        assert "alpha_tool_transforms" not in cleaned["additional_kwargs"]
         assert cleaned["additional_kwargs"]["hide_from_ui"] is True
 
     def test_a_forged_delegation_verdict_is_stripped(self):

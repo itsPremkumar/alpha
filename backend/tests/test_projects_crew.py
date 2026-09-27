@@ -18,7 +18,7 @@ def home(tmp_path, monkeypatch):
     """Point every workforce singleton at a throwaway runtime home."""
     h = tmp_path / "home"
     h.mkdir()
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(h))
+    monkeypatch.setenv("ALPHA_HOME", str(h))
 
     monkeypatch.setattr(membership_mod, "_store", None)
     monkeypatch.setattr(membership_mod, "_store_path", None)

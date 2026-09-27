@@ -54,22 +54,22 @@ def _build_fake_create_chat_model(agent_name: str):
 
 
 @pytest.fixture
-def isolated_agent_workspace_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def isolated_alpha_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Stand up an isolated Alpha data root + config under tmp_path.
 
-    - Sets ``AGENT_WORKSPACE_HOME`` so paths land under tmp_path, not the real
-      ``.agent-workspace`` directory.
+    - Sets ``ALPHA_HOME`` so paths land under tmp_path, not the real
+      ``.alpha`` directory.
     - Stages a copy of the project's ``config.yaml`` (or ``config.example.yaml``
       on a fresh CI checkout where ``config.yaml`` is gitignored) and pins
-      ``AGENT_WORKSPACE_CONFIG_PATH`` to it, so lifespan boot doesn't depend on the
+      ``ALPHA_CONFIG_PATH`` to it, so lifespan boot doesn't depend on the
       developer's local config layout.
     - Sets a placeholder OPENAI_API_KEY because the config has
       ``$OPENAI_API_KEY`` that gets resolved at parse time; the LLM itself is
       mocked, so any non-empty value works.
     """
-    home = tmp_path / "agent-workspace-home"
+    home = tmp_path / "alpha-home"
     home.mkdir()
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(home))
+    monkeypatch.setenv("ALPHA_HOME", str(home))
     monkeypatch.setenv("OPENAI_API_KEY", "sk-fake-key-not-used-because-llm-is-mocked")
     monkeypatch.setenv("OPENAI_API_BASE", "https://example.invalid")
 
@@ -77,10 +77,10 @@ def isolated_agent_workspace_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     # ``config.yaml`` at the repo root. CI's ``actions/checkout`` only ships
     # ``config.example.yaml`` (and its ``models:`` list is commented out, so
     # AppConfig validation would reject it). Write a minimal, self-sufficient
-    # config to tmp_path and pin ``AGENT_WORKSPACE_CONFIG_PATH`` to it.
+    # config to tmp_path and pin ``ALPHA_CONFIG_PATH`` to it.
     staged_config = tmp_path / "config.yaml"
     staged_config.write_text(_MINIMAL_CONFIG_YAML, encoding="utf-8")
-    monkeypatch.setenv("AGENT_WORKSPACE_CONFIG_PATH", str(staged_config))
+    monkeypatch.setenv("ALPHA_CONFIG_PATH", str(staged_config))
 
     return home
 
@@ -115,11 +115,11 @@ def _reset_process_singletons(monkeypatch: pytest.MonkeyPatch) -> None:
     This fixture stands up a full FastAPI app + sqlite DB + LangGraph runtime
     inside ``tmp_path``. To get true per-test isolation we have to invalidate
     a handful of module-level caches that production normally never resets,
-    so they pick up our test-only ``AGENT_WORKSPACE_HOME`` and sqlite path:
+    so they pick up our test-only ``ALPHA_HOME`` and sqlite path:
 
     - ``alpha.config.app_config`` caches the parsed ``config.yaml``.
     - ``alpha.config.paths`` caches the ``Paths`` singleton derived from
-      ``AGENT_WORKSPACE_HOME`` at first access.
+      ``ALPHA_HOME`` at first access.
     - ``alpha.persistence.engine`` caches the SQLAlchemy engine and
       session factory after the first call to ``init_engine_from_config``.
 
@@ -145,20 +145,20 @@ def _reset_process_singletons(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture
-def isolated_app(isolated_agent_workspace_home: Path, monkeypatch: pytest.MonkeyPatch):
-    """Build a fresh FastAPI app inside a clean AGENT_WORKSPACE_HOME.
+def isolated_app(isolated_alpha_home: Path, monkeypatch: pytest.MonkeyPatch):
+    """Build a fresh FastAPI app inside a clean ALPHA_HOME.
 
     Each test gets its own sqlite DB and checkpoint store under ``tmp_path``,
     with no cross-test contamination.
     """
     _reset_process_singletons(monkeypatch)
 
-    # Re-resolve the config from the test-only AGENT_WORKSPACE_HOME and pin its
+    # Re-resolve the config from the test-only ALPHA_HOME and pin its
     # sqlite path into tmp_path so the lifespan-time engine init lands there.
     from alpha.config import app_config as app_config_module
 
     cfg = app_config_module.get_app_config()
-    cfg.database.sqlite_dir = str(isolated_agent_workspace_home / "db")
+    cfg.database.sqlite_dir = str(isolated_alpha_home / "db")
 
     from app.gateway.app import create_app
 
@@ -210,7 +210,7 @@ def _wait_for_file(path: Path, *, timeout: float = 10.0) -> bool:
 @pytest.mark.no_auto_user
 def test_real_http_create_agent_lands_in_authenticated_user_dir(
     isolated_app: Any,
-    isolated_agent_workspace_home: Path,
+    isolated_alpha_home: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
     """The full real-server contract test.
@@ -306,8 +306,8 @@ def test_real_http_create_agent_lands_in_authenticated_user_dir(
         assert "event:" in transcript, f"no SSE events in response: {transcript[:500]!r}"
 
         # --- 4. Verify filesystem outcome ---
-        expected_dir = isolated_agent_workspace_home / "users" / auth_uid / "agents" / agent_name
-        default_dir = isolated_agent_workspace_home / "users" / "default" / "agents" / agent_name
+        expected_dir = isolated_alpha_home / "users" / auth_uid / "agents" / agent_name
+        default_dir = isolated_alpha_home / "users" / "default" / "agents" / agent_name
 
         # The setup_agent tool runs inside the background asyncio task spawned
         # by start_run; SSE-drain typically waits for it, but we add a bounded
@@ -315,7 +315,7 @@ def test_real_http_create_agent_lands_in_authenticated_user_dir(
         assert _wait_for_file(expected_dir / "SOUL.md", timeout=15.0), (
             "SOUL.md did not appear under users/<auth_uid>/agents/. "
             f"Expected: {expected_dir / 'SOUL.md'}. "
-            f"tmp tree: {sorted(str(p.relative_to(isolated_agent_workspace_home)) for p in isolated_agent_workspace_home.rglob('SOUL.md'))}. "
+            f"tmp tree: {sorted(str(p.relative_to(isolated_alpha_home)) for p in isolated_alpha_home.rglob('SOUL.md'))}. "
             f"SSE transcript tail: {transcript[-1000:]!r}"
         )
 

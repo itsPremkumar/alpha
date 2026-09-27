@@ -30,7 +30,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root   = Split-Path $PSScriptRoot -Parent
-$task   = 'AgentWorkspaceTrigger'
+$task   = 'AlphaTrigger'
 $logDir = Join-Path $root 'logs'
 $log    = Join-Path $logDir 'trigger.log'
 

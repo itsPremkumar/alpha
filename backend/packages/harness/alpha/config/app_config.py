@@ -73,7 +73,7 @@ logger = logging.getLogger(__name__)
 
 CONFIG_FILE_DATABASE_DEFAULTS = {
     "backend": "sqlite",
-    "sqlite_dir": ".agent-workspace/data",
+    "sqlite_dir": ".alpha/data",
 }
 
 
@@ -199,11 +199,11 @@ def logging_level_from_config(name: str | None) -> int:
 #: all -- the process had to be restarted with an edited config file. Read it in
 #: :func:`apply_logging_level` so every caller (the Gateway lifespan, the
 #: embedded client, ``debug.py``) honours the same override.
-LOG_LEVEL_ENV: Final[str] = "AGENT_WORKSPACE_LOG_LEVEL"
+LOG_LEVEL_ENV: Final[str] = "ALPHA_LOG_LEVEL"
 
 
 def logging_level_name_from_env(environ: Mapping[str, str] | None = None) -> str | None:
-    """Return the ``AGENT_WORKSPACE_LOG_LEVEL`` override, or ``None`` when unset.
+    """Return the ``ALPHA_LOG_LEVEL`` override, or ``None`` when unset.
 
     An unrecognised value is reported and discarded rather than coerced, so a
     typo cannot silently change the effective level. Returning ``None`` leaves
@@ -228,7 +228,7 @@ def logging_level_name_from_env(environ: Mapping[str, str] | None = None) -> str
 def apply_logging_level(name: str | None) -> None:
     """Resolve *name* to a logging level and apply it to the ``alpha``/``app`` logger hierarchies.
 
-    ``AGENT_WORKSPACE_LOG_LEVEL`` takes precedence over *name* when it holds a
+    ``ALPHA_LOG_LEVEL`` takes precedence over *name* when it holds a
     valid level, so one environment variable is enough to move a deployment to
     ``debug`` without editing a restart-required config field.
 
@@ -491,7 +491,7 @@ class AppConfig(BaseModel):
 
         Priority:
         1. If provided `config_path` argument, use it.
-        2. If provided `AGENT_WORKSPACE_CONFIG_PATH` environment variable, use it.
+        2. If provided `ALPHA_CONFIG_PATH` environment variable, use it.
         3. Otherwise, search the caller project root.
         4. Finally, search legacy backend/repository-root defaults for monorepo compatibility.
         """
@@ -500,10 +500,10 @@ class AppConfig(BaseModel):
             if not Path.exists(path):
                 raise FileNotFoundError(f"Config file specified by param `config_path` not found at {path}")
             return path
-        elif os.getenv("AGENT_WORKSPACE_CONFIG_PATH"):
-            path = Path(os.getenv("AGENT_WORKSPACE_CONFIG_PATH"))
+        elif os.getenv("ALPHA_CONFIG_PATH"):
+            path = Path(os.getenv("ALPHA_CONFIG_PATH"))
             if not Path.exists(path):
-                raise FileNotFoundError(f"Config file specified by environment variable `AGENT_WORKSPACE_CONFIG_PATH` not found at {path}")
+                raise FileNotFoundError(f"Config file specified by environment variable `ALPHA_CONFIG_PATH` not found at {path}")
             return path
         else:
             project_config = existing_project_file(("config.yaml",))
@@ -974,8 +974,8 @@ _app_config_path: Path | None = None
 _app_config_mtime: float | None = None
 _app_config_signature: _ConfigSignature | None = None
 _app_config_is_custom = False
-_current_app_config: ContextVar[AppConfig | None] = ContextVar("agent_workspace_current_app_config", default=None)
-_current_app_config_stack: ContextVar[tuple[AppConfig | None, ...]] = ContextVar("agent_workspace_current_app_config_stack", default=())
+_current_app_config: ContextVar[AppConfig | None] = ContextVar("alpha_current_app_config", default=None)
+_current_app_config_stack: ContextVar[tuple[AppConfig | None, ...]] = ContextVar("alpha_current_app_config_stack", default=())
 
 
 def _get_config_mtime(config_path: Path) -> float | None:

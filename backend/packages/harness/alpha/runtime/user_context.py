@@ -50,7 +50,7 @@ class CurrentUser(Protocol):
     id: str
 
 
-_current_user: Final[ContextVar[CurrentUser | None]] = ContextVar("agent_workspace_current_user", default=None)
+_current_user: Final[ContextVar[CurrentUser | None]] = ContextVar("alpha_current_user", default=None)
 
 
 def set_current_user(user: CurrentUser) -> Token[CurrentUser | None]:

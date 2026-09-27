@@ -38,11 +38,11 @@ def main() -> int:
     cfg.write_text(build_config_yaml(model_block=REPLAY_MODEL_BLOCK, home=home), encoding="utf-8")
 
     # Override (not setdefault): the replay gateway must be hermetic, so an outer
-    # AGENT_WORKSPACE_HOME can't leak in and shift prompt-affecting paths/skills.
-    os.environ["AGENT_WORKSPACE_HOME"] = str(home)
-    os.environ["AGENT_WORKSPACE_CONFIG_PATH"] = str(cfg)
-    os.environ["AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH"] = str(prepare_hermetic_extras(home))
-    os.environ["AGENT_WORKSPACE_REPLAY_FIXTURE"] = args.fixture
+    # ALPHA_HOME can't leak in and shift prompt-affecting paths/skills.
+    os.environ["ALPHA_HOME"] = str(home)
+    os.environ["ALPHA_CONFIG_PATH"] = str(cfg)
+    os.environ["ALPHA_EXTENSIONS_CONFIG_PATH"] = str(prepare_hermetic_extras(home))
+    os.environ["ALPHA_REPLAY_FIXTURE"] = args.fixture
     os.environ.setdefault("AUTH_JWT_SECRET", "ci-replay-secret")
     os.environ["GATEWAY_CORS_ORIGINS"] = args.cors
     # Child / dynamic imports (resolve_class) search PYTHONPATH too.
@@ -55,7 +55,7 @@ def main() -> int:
     # e2e (#3352). Imported from tests/ and mounted here only — never in the
     # production app. Pass the app object (not the import string) so the extra
     # router is registered before uvicorn serves it.
-    if os.environ.get("AGENT_WORKSPACE_ENABLE_TEST_SEED") == "1":
+    if os.environ.get("ALPHA_ENABLE_TEST_SEED") == "1":
         from seed_runs_router import router as seed_router
 
         from app.gateway.app import app as gateway_app

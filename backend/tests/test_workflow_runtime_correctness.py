@@ -61,9 +61,9 @@ from alpha.workflow.runtime import DynamicWorkflowEngine
 
 
 @pytest.fixture(autouse=True)
-def _isolate_agent_workspace(tmp_path, monkeypatch):
-    """AGENT_WORKSPACE_HOME is process-global; point it at a per-test temp dir."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+def _isolate_alpha(tmp_path, monkeypatch):
+    """ALPHA_HOME is process-global; point it at a per-test temp dir."""
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
 
 
 def _ok_runner(node: WorkflowNode, run: WorkflowRun) -> dict:

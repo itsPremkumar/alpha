@@ -2,7 +2,7 @@
 
 import pytest
 
-from alpha.tui.app import AgentWorkspaceTUI, SelectScreen
+from alpha.tui.app import AlphaTUI, SelectScreen
 from alpha.tui.cli import LaunchPlan
 from alpha.tui.theme import THEME
 
@@ -24,7 +24,7 @@ class _FakeSession:
 
 @pytest.mark.asyncio
 async def test_transparent_tui_uses_terminal_default_for_background_surfaces():
-    app = AgentWorkspaceTUI(_FakeSession(), LaunchPlan(mode="tui", transparent=True))
+    app = AlphaTUI(_FakeSession(), LaunchPlan(mode="tui", transparent=True))
     async with app.run_test() as pilot:
         await pilot.pause()
 
@@ -42,7 +42,7 @@ async def test_transparent_tui_uses_terminal_default_for_background_surfaces():
 
 @pytest.mark.asyncio
 async def test_default_tui_keeps_solid_theme_backgrounds():
-    app = AgentWorkspaceTUI(_FakeSession(), LaunchPlan(mode="tui"))
+    app = AlphaTUI(_FakeSession(), LaunchPlan(mode="tui"))
     async with app.run_test() as pilot:
         await pilot.pause()
         assert app.screen.styles.background.hex.lower() == THEME.bg

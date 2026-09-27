@@ -498,7 +498,7 @@ Content-Type: application/json
 
 Requires an authenticated admin session. API-managed `stdio` MCP servers may
 only use allowed executable names for `command` (default: `npx`, `uvx`). Set
-`AGENT_WORKSPACE_MCP_STDIO_COMMAND_ALLOWLIST` to a comma-separated list when a
+`ALPHA_MCP_STDIO_COMMAND_ALLOWLIST` to a comma-separated list when a
 deployment needs additional trusted launchers.
 
 **Request Body:**
@@ -868,11 +868,11 @@ Content-Type: multipart/form-data
     {
       "filename": "document.pdf",
       "size": 1234567,
-      "path": ".agent-workspace/threads/abc123/user-data/uploads/document.pdf",
+      "path": ".alpha/threads/abc123/user-data/uploads/document.pdf",
       "virtual_path": "/mnt/user-data/uploads/document.pdf",
       "artifact_url": "/api/threads/abc123/artifacts/mnt/user-data/uploads/document.pdf",
       "markdown_file": "document.md",
-      "markdown_path": ".agent-workspace/threads/abc123/user-data/uploads/document.md",
+      "markdown_path": ".alpha/threads/abc123/user-data/uploads/document.md",
       "markdown_virtual_path": "/mnt/user-data/uploads/document.md",
       "markdown_artifact_url": "/api/threads/abc123/artifacts/mnt/user-data/uploads/document.md"
     }
@@ -900,7 +900,7 @@ GET /api/threads/{thread_id}/uploads/list
     {
       "filename": "document.pdf",
       "size": 1234567,
-      "path": ".agent-workspace/threads/abc123/user-data/uploads/document.pdf",
+      "path": ".alpha/threads/abc123/user-data/uploads/document.pdf",
       "virtual_path": "/mnt/user-data/uploads/document.pdf",
       "artifact_url": "/api/threads/abc123/artifacts/mnt/user-data/uploads/document.pdf",
       "extension": ".pdf",
@@ -927,7 +927,7 @@ DELETE /api/threads/{thread_id}/uploads/{filename}
 
 ### Thread Cleanup
 
-Remove Alpha-managed local thread files under `.agent-workspace/threads/{thread_id}` after the LangGraph thread itself has been deleted.
+Remove Alpha-managed local thread files under `.alpha/threads/{thread_id}` after the LangGraph thread itself has been deleted.
 
 ```http
 DELETE /api/threads/{thread_id}
@@ -993,7 +993,7 @@ Alpha supports four HTTP identity sources. They share the same thread/run isolat
 | Browser session | `access_token` cookie after login/register | Yes | `users.id` |
 | OIDC / SSO | OAuth callback → cookie | Yes | `users.id` (see [SSO.md](SSO.md)) |
 | IM channel binding | Connect code + `channel_connections` | Bound to registered user | `channel_connections.owner_user_id` |
-| **Internal Auth** | `X-Agent-Workspace-Internal-Token` + `X-Agent-Workspace-Owner-User-Id` | **No** | Owner string on `threads_meta.user_id` |
+| **Internal Auth** | `X-Alpha-Internal-Token` + `X-Alpha-Owner-User-Id` | **No** | Owner string on `threads_meta.user_id` |
 
 **IM channel binding** and **Internal Auth** are both *platform-trust* integrations: Alpha trusts the channel/platform to authenticate end users. IM bindings persist the mapping in `channel_connections` / `channel_conversations` and require a Alpha `users` row. Internal Auth lets a platform call the Gateway API directly with a deployment-shared token and a per-request owner header—no `users` row, but thread/run/checkpoint isolation works the same way.
 
@@ -1027,13 +1027,13 @@ Note: MCP outbound connections can still use OAuth for configured HTTP/SSE MCP s
 For server-to-server integrations (e.g. a Feishu or WeCom/Enterprise WeChat bot backend), configure:
 
 ```bash
-export AGENT_WORKSPACE_INTERNAL_AUTH_TOKEN="<long-random-secret>"
+export ALPHA_INTERNAL_AUTH_TOKEN="<long-random-secret>"
 ```
 
 | Header | Required | Description |
 |---|---|---|
-| `X-Agent-Workspace-Internal-Token` | Yes | Must match `AGENT_WORKSPACE_INTERNAL_AUTH_TOKEN`; missing/invalid → `401` |
-| `X-Agent-Workspace-Owner-User-Id` | Yes for per-user isolation | Platform user id (e.g. `feishu_ou_alice`, `wecom_user_bob`); omit → `default` bucket |
+| `X-Alpha-Internal-Token` | Yes | Must match `ALPHA_INTERNAL_AUTH_TOKEN`; missing/invalid → `401` |
+| `X-Alpha-Owner-User-Id` | Yes for per-user isolation | Platform user id (e.g. `feishu_ou_alice`, `wecom_user_bob`); omit → `default` bucket |
 
 Does **not** use browser cookies or CSRF tokens. Does **not** insert into `users`; sets `threads_meta.user_id` / `runs.user_id` from the owner header. Alpha validates only the platform token—not whether the owner id represents a real end user; user validity is entirely the platform's responsibility. See [AUTH_DESIGN.md — Internal Auth](AUTH_DESIGN.md#internal-auth-direct-http) for trust boundaries, persistence, and security notes.
 
@@ -1303,7 +1303,7 @@ Omit the field or use null to include both. Filtering applies before `limit` and
 `metadata` and `status` filters when needed.
 
 Archive with `PATCH /api/threads/{thread_id}` and body
-`{"metadata":{"agent_workspace_archived":true}}`; use false to restore. The flag must be
+`{"metadata":{"alpha_archived":true}}`; use false to restore. The flag must be
 a JSON boolean. Writes containing only boolean pin/archive flags preserve
 `updated_at` and all other metadata. The owner-checked endpoint returns the normal
 thread metadata response; original thread and artifact URLs remain available.

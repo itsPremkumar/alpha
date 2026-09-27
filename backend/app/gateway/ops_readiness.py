@@ -122,7 +122,7 @@ async def build_readiness_report(request: Request) -> dict[str, Any]:
     event_loop = _event_loop_check(sampler.snapshot())
     scheduler = _scheduler_check(request.app.state)
     report = compose_readiness_report(
-        service="agent-workspace-gateway",
+        service="alpha-gateway",
         database=str(payload.get("database", "unreachable")),
         checkpointer=str(payload.get("checkpointer", "unreachable")),
         event_loop=event_loop,

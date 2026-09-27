@@ -1,11 +1,11 @@
-"""DeerMem's own LLM construction (no agent-workspace ``create_chat_model``).
+"""DeerMem's own LLM construction (no alpha ``create_chat_model``).
 
 ``build_llm(model_config)`` builds a langchain ``ChatModel`` from DeerMem's
 model sub-config (provider/model/api_key/base_url/temperature) via
 ``langchain.chat_models.init_chat_model``. DeerMem owns the resulting instance
 (``self._llm``) and injects it into ``MemoryUpdater`` (dependency injection).
 
-``DeerMem.__init__`` prefers a host-injected ``host_llm`` (the agent-workspace
+``DeerMem.__init__`` prefers a host-injected ``host_llm`` (the alpha
 factory injects the app default model there when ``model`` is empty, mirroring
 pre-abstraction ``model_name: null``); this ``build_llm`` is the fallback that
 builds from the ``model`` sub-config. Returns ``None`` when ``model`` is empty

@@ -40,7 +40,7 @@ class ContainerSandboxRunner:
     """Executes arbitrary code and test commands within ephemeral container boundaries."""
 
     def __init__(self, default_image: str = "python:3.12-slim", timeout_seconds: int = 120):
-        self.default_image = os.environ.get("AGENT_WORKSPACE_SANDBOX_IMAGE", default_image)
+        self.default_image = os.environ.get("ALPHA_SANDBOX_IMAGE", default_image)
         self.timeout_seconds = timeout_seconds
         self._runtime_cache: str | None = None
 

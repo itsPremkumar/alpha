@@ -816,7 +816,7 @@ EXECUTIVE
           └── Security Review
 ```
 
-Agent Workspace, Hermes, Deep Agents and OpenHands all provide useful patterns for subagent isolation and orchestration.
+Alpha, Hermes, Deep Agents and OpenHands all provide useful patterns for subagent isolation and orchestration.
 
 ---
 
@@ -2839,7 +2839,7 @@ OpenClaw
 Hermes
 → procedural memory / profiles / delegation / cron / trajectories
 
-Agent Workspace
+Alpha
 → super-agent / sandbox / persistent memory / subagents
 
 Deep Agents
