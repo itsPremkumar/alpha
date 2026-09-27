@@ -481,6 +481,7 @@ def run_report(engine: DynamicWorkflowEngine, run_id: str) -> dict[str, Any]:
     if run is None:
         raise ForkError(f"run '{run_id}' not found on this engine")
     graph = engine._run_graph_for(run)
+    events = engine.events.get_events(run_id)
     history = run_history(engine, run_id)
     return {
         "run_id": run.run_id,
@@ -491,7 +492,7 @@ def run_report(engine: DynamicWorkflowEngine, run_id: str) -> dict[str, Any]:
         "last_event": history[-1].to_dict() if history else None,
         "status_transitions": list(run.history),
         "applied_patches": len(run.patches_applied),
-        "observability": build_run_observability(run, graph),
+        "observability": build_run_observability(run, graph, events),
         "durability": engine.events.durable_status(),
         "provenance": {
             "owner_id": run.owner_id,

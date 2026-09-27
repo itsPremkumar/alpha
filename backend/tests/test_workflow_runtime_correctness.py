@@ -54,6 +54,7 @@ from alpha.workflow.observability import (
     RunTimeline,
     build_run_observability,
     critical_path,
+    timeline_from_events,
     topological_order,
 )
 from alpha.workflow.runtime import DynamicWorkflowEngine
@@ -229,7 +230,7 @@ def test_a_timed_out_node_is_marked_in_the_measured_timeline():
     run = engine.start_run("wf")
     engine.execute_step(run.run_id, node_runner=lambda node, _run: time.sleep(1.0) or _ok_runner(node, _run))
 
-    report = build_run_observability(run, engine._run_graph_for(run))
+    report = build_run_observability(run, engine._run_graph_for(run), engine.events.get_events(run.run_id))
     assert report["timed_out_nodes"] == ["n1"]
     assert report["timeline_complete"] is True, "the window must close even on failure"
 
@@ -309,11 +310,15 @@ def test_parallel_wave_records_measured_wave_shape():
     run = engine.start_run("wf")
     engine.execute_step(run.run_id, node_runner=_ok_runner)
 
-    waves = run.metrics["wave_metrics"]
-    assert len(waves) == 1
-    assert waves[0]["node_count"] == 2
-    assert waves[0]["concurrency"] == 2
-    assert waves[0]["elapsed_seconds"] >= 0.0
+    report = build_run_observability(run, engine._run_graph_for(run), engine.events.get_events(run.run_id))
+    assert report["waves_dispatched"] == 1
+    wave = report["wave_metrics"][0]
+    assert wave["node_count"] == 2
+    assert wave["concurrency"] == 2
+    assert wave["elapsed_seconds"] >= 0.0
+    # Wave shape is journalled, not stored on the run: run.metrics must stay
+    # exactly reconstructible from the event log.
+    assert "wave_metrics" not in run.metrics
 
 
 # --------------------------------------------------------- structural node kinds
@@ -764,7 +769,7 @@ def test_observability_separates_execution_from_acceptance():
     run = engine.start_run("wf")
     engine.execute_step(run.run_id, node_runner=_ok_runner)
 
-    report = build_run_observability(run, engine._run_graph_for(run))
+    report = build_run_observability(run, engine._run_graph_for(run), engine.events.get_events(run.run_id))
     assert report["status"] == "completed"
     assert report["terminal"] is True
     assert report["nodes_completed"] == 2
@@ -775,13 +780,53 @@ def test_observability_separates_execution_from_acceptance():
     assert "verified" not in report
 
 
+def test_observability_without_events_reports_no_timeline_rather_than_guessing():
+    """An absent event stream must yield an empty timeline, not invented numbers."""
+    engine = DynamicWorkflowEngine()
+    engine.register_definition(_definition(_single_node_graph()))
+    run = engine.start_run("wf")
+    engine.execute_step(run.run_id, node_runner=_ok_runner)
+
+    report = build_run_observability(run, engine._run_graph_for(run))
+    assert report["timeline_source"] == "unavailable"
+    assert report["timeline"] == []
+    assert report["measured_executions"] == 0
+    assert report["total_measured_seconds"] == 0.0
+
+
+def test_timings_survive_in_the_event_log_rather_than_run_state():
+    """The timeline is journalled, so it is reconstructible and restart-durable."""
+    engine = DynamicWorkflowEngine()
+    engine.register_definition(_definition(_fanout_graph(["a", "b"])))
+    run = engine.start_run("wf")
+    engine.execute_step(run.run_id, node_runner=_ok_runner)
+
+    journalled = [e for e in engine.events.get_events(run.run_id) if e.event_type == "node_timed"]
+    assert {e.payload["node_id"] for e in journalled} == {"a", "b"}
+    # run.metrics must stay exactly reconstructible from the journal, which is
+    # why the ledger is NOT stored there.
+    assert "node_timings" not in run.metrics
+    assert "wave_metrics" not in run.metrics
+
+    rebuilt = timeline_from_events(engine.events.get_events(run.run_id))
+    assert sorted(entry.node_id for entry in rebuilt.entries) == ["a", "b"]
+    assert all(entry.duration_seconds >= 0.0 for entry in rebuilt.entries)
+
+
 def test_timeline_survives_a_corrupt_ledger_row_without_failing_the_projection():
     engine = DynamicWorkflowEngine()
     engine.register_definition(_definition(_single_node_graph()))
     run = engine.start_run("wf")
-    run.metrics["node_timings"] = {"entries": [{"node_id": "a", "duration_seconds": "not-a-number"}, "garbage", {}]}
-    report = build_run_observability(run, engine._run_graph_for(run))
-    assert report["timeline"] == []
+    engine.execute_step(run.run_id, node_runner=_ok_runner)
+
+    good = NodeTiming(node_id="ok", started_at="t", ended_at="t", duration_seconds=0.1)
+    entries = [good, {"garbage": True}, {"node_id": "bad", "duration_seconds": "not-a-number"}]
+    rebuilt = timeline_from_events([{"event_type": "node_timed", "payload": good.to_dict()}] + [
+        {"event_type": "node_timed", "payload": "not-a-mapping"},
+        {"event_type": "other", "payload": {"node_id": "ignored"}},
+    ])
+    assert [entry.node_id for entry in rebuilt.entries] == ["ok"]
+    assert entries  # the fixture is intentionally heterogeneous
 
 
 # ------------------------------------------------------------- shared-state lock

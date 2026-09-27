@@ -4,21 +4,30 @@ The engine already journals rich per-node facts (evidence, outputs, iteration
 counts, token charges) but never *measured time or shape*, so an operator could
 not answer the two questions that matter when a run is slow or stuck:
 
-- **Where did the time go?**  Every node execution is now timed with a monotonic
+- **Where did the time go?**  Every node execution is timed with a monotonic
   clock, so the timeline is a measurement rather than an inference from event
   ordering (two events can share a timestamp; a monotonic interval cannot lie).
 - **What is the critical path?**  A run is bounded by its slowest dependency
   chain, not by its slowest single node.  :func:`critical_path` computes that
-  chain from measured durations over the graph's dependency edges, which turns
-  "this run took 40s" into "these four nodes, in this order, are the 38s".
+  chain from measured durations over the graph's dependency edges.
 
-Everything here is derived from real recorded state.  A node that never executed
+**The ledger is derived from the append-only event log, not from run state.**
+That is a deliberate design choice with two consequences, both good:
+
+- The DWE guarantees that everything in ``run.metrics`` is reconstructible from
+  the journal, so a replayed run's metrics equal the live run's exactly. Storing
+  timings in ``run.metrics`` would break that guarantee, because a duration
+  cannot be re-derived from the events that recorded the *work*. So measurements
+  are journalled as their own ``node_timed`` / ``wave_dispatched`` events and the
+  ledger is projected from them.
+- Timings therefore survive a process restart and a durable hydration, because
+  the log does. A timeline that only lived in memory would be blank for exactly
+  the runs an operator most wants to inspect after a crash.
+
+Everything here is derived from real recorded state. A node that never executed
 has no timing and is reported as such; a node that timed out reports the measured
-overrun.  Nothing is interpolated, and a partial timeline is labelled partial
+overrun. Nothing is interpolated, and a partial timeline is labelled partial
 rather than presented as a complete one.
-
-The payload is a pure projection of the run plus the engine's timing ledger, so it
-can be recomputed at any time and cannot drift from the run it describes.
 """
 
 from __future__ import annotations
@@ -29,11 +38,10 @@ from typing import Any
 
 from alpha.workflow.models import NodeStatus, WorkflowGraph, WorkflowRun, WorkflowRunStatus
 
-# Key under which the engine persists its timing ledger on the run's metrics.
-TIMING_LEDGER_KEY = "node_timings"
-
-# Key under which the engine persists measured wave shape on the run's metrics.
-WAVE_METRICS_KEY = "wave_metrics"
+# Event types the observability projection reads. Named here so the emit sites
+# and the projection cannot drift apart silently.
+NODE_TIMED_EVENT = "node_timed"
+WAVE_DISPATCHED_EVENT = "wave_dispatched"
 
 
 @dataclass
@@ -96,14 +104,60 @@ class RunTimeline:
         return timeline
 
 
-def load_timeline(run: WorkflowRun) -> RunTimeline:
-    """Read the run's persisted timing ledger (empty when never recorded)."""
-    return RunTimeline.from_dict(run.metrics.get(TIMING_LEDGER_KEY))
+def timeline_from_events(events: Any) -> RunTimeline:
+    """Project the measured timeline from a run's journalled events.
+
+    ``events`` may be ``WorkflowEvent`` objects or the ``PersistedEventRecord``
+    dicts the durable log returns, so the same projection works for a live
+    engine, a replayed engine, and a hydrated run read back from disk. Records
+    that are not shaped like a timing measurement are skipped rather than
+    failing the projection: observability must not be able to break a run.
+    """
+    timeline = RunTimeline()
+    for event in events or []:
+        if isinstance(event, dict):
+            if event.get("event_type") != NODE_TIMED_EVENT:
+                continue
+            payload = event.get("payload")
+        else:
+            if getattr(event, "event_type", None) != NODE_TIMED_EVENT:
+                continue
+            payload = getattr(event, "payload", None)
+        if not isinstance(payload, dict) or not payload.get("node_id"):
+            continue
+        fields = {key: value for key, value in payload.items() if key in NodeTiming.__dataclass_fields__}
+        try:
+            timeline.entries.append(NodeTiming(**fields))
+        except (TypeError, ValueError):
+            continue
+    return timeline
 
 
-def persist_timeline(run: WorkflowRun, timeline: RunTimeline) -> None:
-    """Write the timing ledger back onto the run's metrics."""
-    run.metrics[TIMING_LEDGER_KEY] = timeline.to_dict()
+def waves_from_events(events: Any) -> list[dict[str, Any]]:
+    """Project the measured wave shape from a run's journalled events."""
+    waves: list[dict[str, Any]] = []
+    for event in events or []:
+        if isinstance(event, dict):
+            if event.get("event_type") != WAVE_DISPATCHED_EVENT:
+                continue
+            payload = event.get("payload")
+        else:
+            if getattr(event, "event_type", None) != WAVE_DISPATCHED_EVENT:
+                continue
+            payload = getattr(event, "payload", None)
+        if not isinstance(payload, dict):
+            continue
+        waves.append(
+            {
+                "wave_index": payload.get("wave_index"),
+                "nodes": list(payload.get("nodes") or []),
+                "node_count": len(payload.get("nodes") or []),
+                "concurrency": payload.get("concurrency"),
+                "elapsed_seconds": payload.get("elapsed_seconds"),
+                "peak_in_flight": payload.get("peak_in_flight"),
+            }
+        )
+    return waves
 
 
 def _dependencies(graph: WorkflowGraph, node_id: str) -> set[str]:
@@ -205,15 +259,20 @@ def critical_path(graph: WorkflowGraph, timeline: RunTimeline) -> dict[str, Any]
     }
 
 
-def build_run_observability(run: WorkflowRun, graph: WorkflowGraph | None = None) -> dict[str, Any]:
+def build_run_observability(run: WorkflowRun, graph: WorkflowGraph | None = None, events: Any = None) -> dict[str, Any]:
     """Project the run's measured execution shape.
 
     Returns a payload that distinguishes **execution** from **acceptance**: it
     reports what ran, how long it took, and how the run ended, and it never
     implies the work was verified.  Acceptance remains the executor's evidence
     contract, owned by the runtime.
+
+    ``events`` is the run's journalled event stream (live dispatcher events or
+    durable records). Omit it and the timeline is reported empty rather than
+    guessed — an observability payload that invented durations would be worse
+    than one that admits it has none.
     """
-    timeline = load_timeline(run)
+    timeline = timeline_from_events(events)
     entries = timeline.entries
     completed = [entry for entry in entries if entry.complete]
     in_flight = [entry for entry in entries if not entry.complete]
@@ -225,9 +284,8 @@ def build_run_observability(run: WorkflowRun, graph: WorkflowGraph | None = None
     timed_out = [entry.node_id for entry in entries if entry.timed_out]
     slowest = sorted(completed, key=lambda e: (-e.duration_seconds, e.node_id))[:10]
 
-    observed_graph = graph
-    if observed_graph is None:
-        observed_graph = WorkflowGraph()
+    observed_graph = graph if graph is not None else WorkflowGraph()
+    waves = waves_from_events(events)
 
     return {
         "run_id": run.run_id,
@@ -248,10 +306,13 @@ def build_run_observability(run: WorkflowRun, graph: WorkflowGraph | None = None
         "nodes_completed": len(run.completed_nodes),
         "nodes_failed": len(set(run.failed_nodes)),
         "nodes_waiting": len(run.waiting_nodes),
+        "waves_dispatched": len(waves),
+        "wave_metrics": waves,
         "timed_executions": len(entries),
         "measured_executions": len(completed),
         "in_flight_executions": len(in_flight),
         "timeline_complete": not in_flight,
+        "timeline_source": "event_log" if events else "unavailable",
         "total_measured_seconds": round(sum(entry.duration_seconds for entry in completed), 6),
         "slowest_nodes": [
             {
@@ -275,14 +336,14 @@ def now_iso() -> str:
 
 
 __all__ = [
-    "TIMING_LEDGER_KEY",
-    "WAVE_METRICS_KEY",
+    "NODE_TIMED_EVENT",
+    "WAVE_DISPATCHED_EVENT",
     "NodeTiming",
     "RunTimeline",
     "build_run_observability",
     "critical_path",
-    "load_timeline",
     "now_iso",
-    "persist_timeline",
+    "timeline_from_events",
     "topological_order",
+    "waves_from_events",
 ]

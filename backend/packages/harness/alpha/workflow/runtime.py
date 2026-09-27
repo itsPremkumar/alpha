@@ -46,11 +46,11 @@ from alpha.workflow.models import (
     WorkflowRunStatus,
 )
 from alpha.workflow.observability import (
-    WAVE_METRICS_KEY,
+    NODE_TIMED_EVENT,
+    WAVE_DISPATCHED_EVENT,
     NodeTiming,
-    load_timeline,
     now_iso,
-    persist_timeline,
+    waves_from_events,
 )
 from alpha.workflow.patch import WorkflowPatchEngine
 from alpha.workflow.replanner import RuntimeReplanner
@@ -492,10 +492,17 @@ class DynamicWorkflowEngine:
     # ------------------------------------------------------------- timing
 
     def _begin_timing(self, run: WorkflowRun, node: WorkflowNode) -> NodeTiming:
-        """Open a measured execution window for ``node``."""
+        """Open a measured execution window for ``node``.
+
+        The window is returned rather than stored: the measurement is JOURNALLED
+        as a ``node_timed`` event when the window closes, not written into
+        ``run.metrics``.  That is deliberate — the DWE guarantees everything in
+        ``run.metrics`` is reconstructible from the journal, and a duration
+        cannot be re-derived from the events that recorded the work.  Journalling
+        also means the timeline survives a restart and a durable hydration.
+        """
         with self.state():
-            timeline = load_timeline(run)
-            timing = NodeTiming(
+            return NodeTiming(
                 node_id=node.id,
                 started_at=now_iso(),
                 status=NodeStatus.RUNNING.value,
@@ -503,19 +510,17 @@ class DynamicWorkflowEngine:
                 tokens_consumed=node.tokens_consumed,
                 thread_name=threading.current_thread().name,
             )
-            timeline.record(timing)
-            persist_timeline(run, timeline)
-            return timing
 
     def _end_timing(
         self,
         run: WorkflowRun,
         node: WorkflowNode,
+        timing: NodeTiming,
         started: float,
         *,
         timed_out: bool = False,
     ) -> float:
-        """Close the node's measured window and return its duration.
+        """Close the node's measured window, journal it, and return its duration.
 
         The duration is measured on a monotonic clock rather than derived from
         the two ISO timestamps, so a wall-clock adjustment during a long run
@@ -523,35 +528,45 @@ class DynamicWorkflowEngine:
         """
         elapsed = max(0.0, time.monotonic() - started)
         with self.state():
-            timeline = load_timeline(run)
-            for timing in reversed(timeline.entries):
-                if timing.node_id == node.id and not timing.complete:
-                    timing.ended_at = now_iso()
-                    timing.duration_seconds = elapsed
-                    timing.status = node.status.value
-                    timing.tokens_consumed = node.tokens_consumed
-                    timing.timed_out = timed_out
-                    break
-            persist_timeline(run, timeline)
+            timing.ended_at = now_iso()
+            timing.duration_seconds = elapsed
+            timing.status = node.status.value
+            timing.tokens_consumed = node.tokens_consumed
+            timing.timed_out = timed_out
+        self.events.emit(NODE_TIMED_EVENT, run.run_id, **timing.to_dict())
         return elapsed
 
-    def _record_wave(self, run: WorkflowRun, *, wave_index: int, nodes: list[str], concurrency: int, elapsed: float) -> None:
-        """Append one measured wave-shape record to the run's metrics."""
-        with self.state():
-            waves = run.metrics.get(WAVE_METRICS_KEY)
-            if not isinstance(waves, list):
-                waves = []
-            waves.append(
-                {
-                    "wave_index": wave_index,
-                    "nodes": list(nodes),
-                    "node_count": len(nodes),
-                    "concurrency": concurrency,
-                    "elapsed_seconds": round(elapsed, 6),
-                    "recorded_at": now_iso(),
-                }
-            )
-            run.metrics[WAVE_METRICS_KEY] = waves
+    def _record_wave(
+        self,
+        run: WorkflowRun,
+        *,
+        wave_index: int,
+        nodes: list[str],
+        concurrency: int,
+        elapsed: float,
+        peak_in_flight: int = 0,
+    ) -> None:
+        """Journal one measured wave-shape record.
+
+        Journalled rather than accumulated in ``run.metrics`` for the same
+        reason as the timing ledger: a wave's elapsed time is not re-derivable
+        from the log, and the replay-equality contract requires that
+        ``run.metrics`` match between a live run and its replay.
+        """
+        self.events.emit(
+            WAVE_DISPATCHED_EVENT,
+            run.run_id,
+            wave_index=wave_index,
+            nodes=list(nodes),
+            concurrency=concurrency,
+            elapsed_seconds=round(elapsed, 6),
+            peak_in_flight=peak_in_flight,
+        )
+
+    def _next_wave_index(self, run: WorkflowRun) -> int:
+        """The 1-based index of the wave about to be journalled."""
+        waves = waves_from_events(self.events.get_events(run.run_id))
+        return len(waves) + 1
 
     def register_definition(self, definition: WorkflowDefinition, *, allow_replace: bool = False) -> None:
         """Register an immutable definition without cross-owner replacement.
@@ -961,12 +976,6 @@ class DynamicWorkflowEngine:
             # long-lived process does not accumulate one per historical run.
             self.release_run_resources(run.run_id)
         return run
-
-    def _next_wave_index(self, run: WorkflowRun) -> int:
-        """The 1-based index of the wave about to be recorded."""
-        with self.state():
-            waves = run.metrics.get(WAVE_METRICS_KEY)
-            return (len(waves) if isinstance(waves, list) else 0) + 1
 
     def _fail_node(self, run: WorkflowRun, node: WorkflowNode, reason: str, **extra: Any) -> None:
         """Mark a node honestly failed: real reason in output and event log."""
@@ -1380,7 +1389,7 @@ class DynamicWorkflowEngine:
             )
             return
 
-        self._begin_timing(run, node)
+        timing = self._begin_timing(run, node)
         started = time.monotonic()
         # A node runs on exactly one thread, so a thread-local flag is the honest
         # way to carry "this execution missed a deadline" back to the timing
@@ -1391,7 +1400,7 @@ class DynamicWorkflowEngine:
         try:
             self._dispatch_node(nid, graph, run, node_runner, compensation_runner)
         finally:
-            self._end_timing(run, node, started, timed_out=timeout_occurred())
+            self._end_timing(run, node, timing, started, timed_out=timeout_occurred())
             with self.state():
                 run.active_nodes = [active for active in run.active_nodes if active != nid]
 
