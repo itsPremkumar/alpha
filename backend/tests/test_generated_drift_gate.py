@@ -573,11 +573,26 @@ _SLEEPER = "import time; time.sleep(600)\n"
 
 
 def _git_repo(tmp_path: Path) -> Path:
-    """A minimal two-commit repository with one clean Python file."""
+    """A minimal two-commit repository with one clean Python file.
+
+    It carries a repository-wide ``ruff.toml`` because the gate refuses to
+    trust a ruff verdict it cannot attribute to the repository policy, and it
+    checks that *before* launching ruff.  A fixture without one is not a
+    repository this gate can run against: it dies at policy lookup, so any test
+    built on this fixture that means to exercise a later step -- a wedged ruff,
+    say -- silently stops testing it and passes for the wrong reason.
+    """
     repo = tmp_path / "lint-repo"
     (repo / "backend").mkdir(parents=True)
     target = repo / "backend" / "clean_module.py"
     target.write_text("VALUE = 1\n", encoding="utf-8")
+    # The two keys _expected_policy insists on: a numeric line-length and a
+    # non-empty lint.select. Deliberately minimal -- this fixture stands for
+    # "any repository", not for this project's own rule set.
+    (repo / "ruff.toml").write_text(
+        'line-length = 100\n\n[lint]\nselect = ["E", "F"]\n',
+        encoding="utf-8",
+    )
     for args in (
         ["init", "-q"],
         ["config", "user.email", "gate@example.invalid"],
@@ -666,7 +681,11 @@ def test_lint_gate_reports_a_clean_tree_and_rejects_unpaired_refs(tmp_path: Path
     head = lint_gate.run_command(["git", "rev-parse", "HEAD"], cwd=repo, timeout=60).stdout.decode().strip()
 
     assert lint_gate.main(["--repo-root", str(repo), "--base-ref", head, "--head-ref", head]) == 0
-    assert "incremental ruff gate: 0 (no changed Python files)" in capsys.readouterr().out
+    # The gate prints this only after walking every changed file and explaining
+    # each one it skipped, so the number it reports is "lintable", not "changed".
+    # Pinning the real wording keeps the promise honest when both are zero and
+    # they read the same only by coincidence.
+    assert "incremental ruff gate: 0 (no lintable changed Python files)" in capsys.readouterr().out
 
     assert lint_gate.main(["--base-ref", "HEAD"]) == 2
     assert lint_gate.main(["--ruff-timeout", "0"]) == 2
@@ -750,16 +769,51 @@ def test_no_gate_failure_is_swallowed_without_disclosure() -> None:
     but only because they capture its exit code, print it, label themselves
     non-gating, and still fail when the report itself cannot be produced.  That
     disclosure is asserted here rather than trusted to review.
+
+    Only executable lines are scanned.  A YAML comment cannot hide a failure,
+    and two workflows *document* the ban -- cold-start-budget.yml says "no
+    `continue-on-error`, no `|| true`" and windows-installer.yml says
+    "`continue-on-error`: exceeding the budget must fail the build" -- so a
+    literal substring scan reported the sentence forbidding the pattern as an
+    instance of it.  A false positive like that is not harmless: the first
+    person to hit it deletes the comment that was doing the work, and the next
+    real directive walks in behind it.
+
+    The positive control below runs the same scan over a tiny fixture, so a
+    green run here can never mean the scan quietly stopped looking.
     """
+
+    def _hidden(workflow: str) -> str | None:
+        """The construct that would hide a failure, ignoring YAML comments."""
+        executable = "\n".join(
+            line for line in workflow.splitlines()
+            if not line.lstrip().startswith("#")
+        )
+        if re.search(r"^\s*continue-on-error\s*:", executable, re.MULTILINE):
+            return "continue-on-error"
+        if "|| true" in executable:
+            return "|| true"
+        return None
+
+    # Positive control: the comment must be tolerated and the directive caught.
+    # Without this, the narrowed scan could pass forever by matching nothing.
+    assert _hidden("# no continue-on-error and no || true here\n") is None, "the scan now flags the documentation of the ban"
+    assert _hidden("jobs:\n  build:\n    continue-on-error: true\n") == "continue-on-error", "the scan no longer sees a real continue-on-error directive"
+    assert _hidden("      run: make check || true\n") == "|| true", "the scan no longer sees || true"
+    assert _hidden("      run: |\n        # harmless || true in a shell comment\n") is None, "a shell comment must not be flagged"
+
     for path in sorted(WORKFLOWS.glob("*.yml")):
         text = path.read_text(encoding="utf-8")
-        assert "continue-on-error" not in text, f"{path.name} would hide a failure"
-        assert "|| true" not in text, f"{path.name} would hide a failure"
-        for index, line in enumerate(text.splitlines()):
+        assert _hidden(text) is None, f"{path.name} would hide a failure"
+        lines = text.splitlines()
+        for index, line in enumerate(lines):
+            if line.lstrip().startswith("#"):
+                # Prose about errexit cannot disable errexit.
+                continue
             if "set +e" in line:
                 # Locality matters: the disclosure has to sit next to the line
                 # that disables errexit, not twenty lines below it.
-                window = "\n".join(text.splitlines()[index : index + 8])
+                window = "\n".join(lines[index : index + 8])
                 assert re.search(r"status=\$\?", window), f"{path.name}:{index + 1} disables errexit without capturing an exit code"
                 assert "non-gating" in window, f"{path.name}:{index + 1} disables errexit without labelling itself non-gating"
 
