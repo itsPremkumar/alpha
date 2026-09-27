@@ -324,6 +324,47 @@ capabilities are actions on it (`forge`, `teach`, `journal`, `waiting_on`,
 `BUILTIN_TOOLS`, `contracts/feature_manifest.json` and the capability counts in
 the root docs are unaffected. `teach` does **not** install: it validates the
 draft against `alpha.skills.authoring.validate_skill_draft`, runs the static
-scan, and queues a `SkillProposal` — the admin approve gate remains the control,
+scan, and queues a `SkillProposal` - the admin approve gate remains the control,
 and the reply says the skill is not active yet. Tests:
 `backend/tests/test_bots_forge.py`.
+
+## Bot self-service
+
+`bot_roster` also carries the two actions that let a Bot configure *itself*
+without an operator in the loop: `update_profile` (identity) and `routine` (its
+own automation). Like the forge actions they are actions on the existing tool,
+so the tool count and the generated manifest are unchanged.
+
+**The property is "a Bot may configure itself, but may not widen itself."**
+Because these actions deliberately remove the human from the loop, the refusal
+path has to be the default rather than the thing a caller remembers to request,
+and that decides three things in the tool:
+
+- **`actor` is required, never defaulted.** An empty actor is refused outright
+  instead of falling back to the operator, because every other available
+  default would hand an *unidentified* caller more privilege than an identified
+  one. `actor=<own handle>` means self-service; a leader handle
+  (`SELF_EXTENSION_ACTORS` = alpha/lead/system/server) means editing somebody
+  else. It stays a declared string rather than a runtime-derived identity, which
+  is the convention `registry._assert_leader` and `war_room` already use - the
+  point of the gate is the leader-only field split, not identity attestation.
+- **Presentation is self-editable; grants are not.** `_SELF_EDITABLE` is
+  `display_name` and `avatar` only. Everything that decides what a Bot may *do*
+  is leader-only: `role` (fed to `ToolPermissionGate.check_permission`),
+  `model` and `skills` (hashed into `capability_fingerprint()`), `capabilities`
+  (what it is offered), and `department`/`reports_to` (org placement). A batch
+  mixing the two is refused **whole** - naming the offending fields - rather
+  than partly applied, so a caller never has to diff to find out what landed.
+- **`update_soul` carries the same actor gate.** `soul` is *not* leader-only (a
+  Bot evolving its own persona is the point of self-modification), but the gate
+  is still required: writing another Bot's SOUL is how a refused `role` edit
+  gets re-applied a moment later as prose. Removing the `actor` parameter from
+  `update_soul` would reopen that path, and `update_soul` must not be widened
+  back into an unguarded write.
+
+`routine` reuses `forge.plan_routine_guard` for the same 30-minute frequency
+floor (`allow_frequent` still overrides it), so a Bot cannot schedule itself
+into a token burn that `forge` would have refused at birth. Reading routines
+needs no `actor`; any write does. `tests/test_bots_selfservice.py` covers all of
+it, including the negative cases - and `tests/test_advanced_bot_tools.py` calls
+`update_soul` with an explicit actor, so the gate is pinned there too.

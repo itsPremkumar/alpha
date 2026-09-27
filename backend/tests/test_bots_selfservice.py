@@ -199,11 +199,20 @@ def test_a_leader_edit_changes_the_capability_epoch(registry):
 
 
 def test_capabilities_stay_descriptive_not_epoch_bearing(registry):
-    """Pins the split: ``capabilities`` is stored but not hashed; ``skills`` is both."""
+    """``capabilities`` is stored and advertised but not hashed; ``skills`` is both.
+
+    Recorded because it is the whole reason ``capabilities`` and ``skills`` are
+    treated as one leader-only group even though only one of them moves the
+    epoch: both change what a Bot is *offered*, and ``create`` already merges
+    the template's defaults rather than replacing them.
+    """
+    epoch_before = _bot("coder").capability_fingerprint()
     before = list(_bot("coder").capabilities)
-    bot_roster_tool.invoke({"action": "update_profile", "name": "coder", "actor": "alpha", "capabilities": "python, sql, rust"})
-    assert before == ["python", "sql"]
-    assert _bot("coder").capabilities == ["python", "sql", "rust"]
+    out = bot_roster_tool.invoke({"action": "update_profile", "name": "coder", "actor": "alpha", "capabilities": "python, sql, rust"})
+    assert not out.lower().startswith("error")
+    after = _bot("coder").capabilities
+    assert "rust" in after and "rust" not in before
+    assert _bot("coder").capability_fingerprint() == epoch_before, "capabilities is not an epoch input"
 
 
 def test_update_profile_rejects_an_unknown_actor_set(registry):

@@ -11,6 +11,7 @@ from typing import Any, Literal
 
 from langchain.tools import tool
 
+from alpha.bots.authority_ceiling import AuthorityViolation
 from alpha.bots.health import get_health_monitor
 from alpha.bots.kill_switch import (
     get_kill_switch_status,
@@ -19,7 +20,6 @@ from alpha.bots.kill_switch import (
     resume_bot,
     set_global_kill_switch,
 )
-from alpha.bots.authority_ceiling import AuthorityViolation
 from alpha.bots.organization import generate_organization_for_goal
 from alpha.bots.performance import get_bot_performance
 from alpha.bots.registry import SELF_EXTENSION_ACTORS, get_bot_registry
