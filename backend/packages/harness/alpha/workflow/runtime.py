@@ -102,6 +102,12 @@ RUN_STARTED_AT_KEY = "run_started_at"
 CONCURRENCY_POLICY_KEY = "max_concurrency"
 NODE_CONCURRENCY_CONFIG_KEY = "max_concurrency"
 
+# A run executes SEQUENTIALLY unless its definition/graph declares a wider
+# ``max_concurrency``.  Concurrency reorders the event log relative to node
+# order, so it is opt-in: an existing definition's observable behaviour must not
+# change because the engine gained a thread pool.
+SEQUENTIAL_CONCURRENCY = 1
+
 # Key holding the run's checkpoint ledger.  Each entry is a content-addressed
 # snapshot record written by a ``CHECKPOINT`` node.
 CHECKPOINT_LEDGER_KEY = "checkpoints"
@@ -463,7 +469,14 @@ class DynamicWorkflowEngine:
                 graph = self._run_graphs.get(run.run_id)
                 if graph is not None:
                     declared = graph.metadata.get(CONCURRENCY_POLICY_KEY)
-            governor = ConcurrencyGovernor(limit=clamp_concurrency(declared))
+            # SEQUENTIAL unless the workflow explicitly declares a wider limit.
+            # Parallel waves reorder the event log relative to node order, so
+            # making concurrency the default would silently change the observable
+            # behaviour of every existing definition — and of every deterministic
+            # replay, projection and hydration built on that log — with nothing
+            # in the workflow having asked for it. Widening is a declared,
+            # auditable property of a workflow instead.
+            governor = ConcurrencyGovernor(limit=clamp_concurrency(declared, default=SEQUENTIAL_CONCURRENCY))
             self._governors[run.run_id] = governor
             return governor
 
@@ -2372,6 +2385,7 @@ class DynamicWorkflowEngine:
         if not isinstance(event_name, str) or not event_name.strip():
             raise ValueError("event_name must be a non-empty string")
         event_name = event_name.strip()
+        graph = self._run_graph_for(run)
 
         with self.state():
             waits = run.metrics.get(EXTERNAL_WAIT_REGISTRY_KEY)
@@ -2387,15 +2401,32 @@ class DynamicWorkflowEngine:
             if matched:
                 run.metrics[EXTERNAL_WAIT_REGISTRY_KEY] = waits
 
+        # Return the parked node to READY.  The scheduler only admits a node in
+        # PENDING or READY, so a signalled node left in WAITING would stay
+        # permanently unschedulable and the run could never leave WAITING_EVENT.
+        # The next step re-enters ``_handle_event_wait``, which consumes the
+        # recorded signal and completes the node with the delivered payload.
+        released: list[str] = []
+        for nid in matched:
+            node = graph.nodes.get(nid)
+            if node is None:
+                continue
+            with self.state():
+                if run.node_states.get(nid) == NodeStatus.WAITING:
+                    node.status = NodeStatus.READY
+                    run.node_states[nid] = NodeStatus.READY
+                    released.append(nid)
+
         self.events.emit(
             "external_event_signalled",
             run_id,
             event=event_name,
             matched_nodes=matched,
+            released_nodes=released,
             unmatched=not matched,
             payload_keys=sorted(payload) if isinstance(payload, dict) else None,
         )
-        if matched and run.status is WorkflowRunStatus.WAITING_EVENT:
+        if released and run.status is WorkflowRunStatus.WAITING_EVENT:
             _set_run_status(run, WorkflowRunStatus.RUNNING, reason=f"external event '{event_name}' delivered")
             run.waiting_reason = None
             _sync_waiting_nodes(run)
