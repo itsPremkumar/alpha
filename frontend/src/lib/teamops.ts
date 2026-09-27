@@ -21,7 +21,7 @@ export async function listGroups(): Promise<GroupRoom[]> {
     // listSwarms does. Resolving [] here made TeamOpsSection's `Promise.all`
     // always resolve, so its `catch -> setError` could never fire and a down
     // Gateway rendered as "no rooms".
-    return [];
+    throw err instanceof Error ? err : new Error("Failed to list group rooms");
   }
 }
 
@@ -189,7 +189,7 @@ export async function listMcpTasks(threadId: string): Promise<Array<Record<strin
     const d = await get<unknown>(`/threads/${encodeURIComponent(threadId)}/mcp-tasks`);
     return asList(d, ["tasks", "data"]);
   } catch (err) {
-    return [];
+    throw err instanceof Error ? err : new Error("Failed to list MCP tasks");
   }
 }
 
@@ -210,7 +210,7 @@ export async function listJobs(): Promise<Job[]> {
       status: String(pick(j, ["status", "state"], "unknown")),
     }));
   } catch (err) {
-    return [];
+    throw err instanceof Error ? err : new Error("Failed to list background jobs");
   }
 }
 
@@ -242,7 +242,7 @@ export async function companyKpis(): Promise<Array<Record<string, unknown>>> {
     const d = await get<unknown>("/company/kpis");
     return asList(d, ["kpis", "data"]);
   } catch (err) {
-    return [];
+    throw err instanceof Error ? err : new Error("Failed to read company KPIs");
   }
 }
 

@@ -78,5 +78,7 @@ const bridgeApi = {
   },
 };
 
-contextBridge.exposeInMainWorld('alpha', bridgeApi);
+// Exposed once. The renderer reads `window.alpha` and falls back to the
+// pre-rename `agentWorkspace` spelling; re-exposing the same key twice is a
+// leftover of that rename, and the second call is not a second bridge.
 contextBridge.exposeInMainWorld('alpha', bridgeApi);
