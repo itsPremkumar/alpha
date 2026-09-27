@@ -53,8 +53,17 @@ $LauncherHeartbeatMaxAge  = 360   # start.ps1 can legitimately pause up to 300 s
 $StartupGraceSeconds      = 600   # a launcher younger than this is still in first boot
 $MaxDeferredRecoveries    = 8     # checks we let a live launcher heal itself first
 $MaxComponentRecoveries   = 3     # per-component restarts before escalating to the stack
-$GatewayHungThreshold     = 6     # port up but no HTTP answer x 30 s = 3 min
-$FrontendHungThreshold    = 12    # cold Next.js compile measured 281 s - allow 6 min
+# A supervisor must be MORE patient than the process it supervises, otherwise it
+# kills a component that is still legitimately booting. start.ps1 waits
+# `MaxWaitSeconds 240` for the gateway and `360` for the frontend before it
+# declares defeat and retries; these thresholds must therefore stay strictly
+# ABOVE those budgets (threshold x $CheckIntervalSeconds > budget). When the
+# gateway's was 6 (180 s) the watchdog killed a booting gateway 60 s before the
+# launcher would have accepted it, so on a loaded machine the stack could never
+# converge and the UI sat at "starting ... waiting for services" forever.
+# Pinned by backend/tests/test_launcher_watchdog_budget.py.
+$GatewayHungThreshold     = 10    # 300 s > start.ps1's 240 s gateway budget
+$FrontendHungThreshold    = 45    # 1350 s > start.ps1's 1200 s frontend budget
 $ActionBackoffStart       = 30    # full-stack restart backoff (doubles, capped)
 $ActionBackoffCap         = 300
 
@@ -182,6 +191,23 @@ function Get-FileAgeSeconds {
     } catch { return [double]::MaxValue }
 }
 
+# True when a log file was written to within $WithinSeconds.
+#
+# This is the progress signal that keeps the watchdog from killing a component
+# that is still legitimately working. Next.js binds its port BEFORE it finishes
+# compiling, so "port open + HTTP not answering" is ambiguous: it is what a
+# wedged process looks like AND what a 14-minute cold compile looks like. A
+# supervisor must not kill a process that is demonstrably still advancing, and
+# restarting a compiling frontend throws away the whole compile.
+function Test-FileRecentlyWritten {
+    param([string]$Path, [int]$WithinSeconds = 120)
+    if (-not $Path -or -not (Test-Path $Path)) { return $false }
+    try {
+        $written = (Get-Item $Path -ErrorAction Stop).LastWriteTime
+        return (((Get-Date) - $written).TotalSeconds -lt $WithinSeconds)
+    } catch { return $false }
+}
+
 # Layer 2 liveness with PID-reuse detection: a recycled PID whose process start
 # time does not match what the launcher recorded is NOT our launcher.
 function Test-LauncherAlive {
@@ -253,12 +279,94 @@ function Invoke-Detached {
     } catch { return $false }
 }
 
-function Stop-StaleLauncher {
-    $lp = Get-PidFileValue -Path $AlphaPid
-    if ($lp -gt 0 -and $lp -ne $PID -and (Get-Process -Id $lp -ErrorAction SilentlyContinue)) {
-        & taskkill /PID $lp /T /F 2>&1 | Out-Null
-        Start-Sleep -Seconds 1
+# --------------------------------------------------------------- supervisor lock ---
+# Only ONE supervisor may act on the stack.
+#
+# A persistent watchdog loop and a `watchdog.ps1 -Once` pass can both observe the
+# same unhealthy stack, and both can escalate independently. Each escalation
+# spawns a launcher, and a launcher's startup clears ports 8001/3000, so the two
+# supervisors tear the stack down and rebuild it in a loop. Measured on this
+# machine: `launcher=dead` / `launcher=alive` flip-flopping every ~40 s with the
+# frontend never finishing its compile.
+#
+# An exclusive open is used rather than a PID file because the OS releases it
+# when the holder exits, so a crashed supervisor cannot leave a lock that blocks
+# recovery forever. A second supervisor that cannot take the lock WAITS - it
+# never acts, and never kills. This mirrors openclaw's file-lock coordinator
+# (src/infra/gateway-lock.ts) rather than kill-then-start.
+$script:SupervisorLockStream = $null
+
+function Enter-SupervisorLock {
+    if ($script:SupervisorLockStream) { return $true }
+    $path = "$LogDir\watchdog.lock"
+    try {
+        # FileShare.None: the kernel refuses a concurrent open and drops the
+        # handle automatically if this process dies.
+        $fs = [System.IO.File]::Open(
+            $path,
+            [System.IO.FileMode]::OpenOrCreate,
+            [System.IO.FileAccess]::ReadWrite,
+            [System.IO.FileShare]::None
+        )
+        $payload = [System.Text.Encoding]::UTF8.GetBytes("pid=$PID acquired=$([DateTime]::UtcNow.ToString('o'))")
+        $fs.Write($payload, 0, $payload.Length)
+        $fs.Flush()
+        $script:SupervisorLockStream = $fs
+        return $true
+    } catch {
+        return $false
     }
+}
+
+function Exit-SupervisorLock {
+    if (-not $script:SupervisorLockStream) { return }
+    try { $script:SupervisorLockStream.Close() } catch { }
+    $script:SupervisorLockStream = $null
+}
+
+function Stop-StaleLauncher {
+    # The PID file records only the MOST RECENT launcher. A launcher that
+    # started before the file was last written, or one whose entry a competing
+    # launcher has already overwritten, is invisible to a PID-file-only sweep.
+    #
+    # Two live launchers are fatal, not merely wasteful: each one's startup
+    # clears whatever holds ports 8001/3000, so they alternately kill each
+    # other's gateway and neither ever finishes binding. Measured on this
+    # machine: launchers 4140 and 15500 both alive and both running a gateway,
+    # while logs\alpha.pid named only 15500 - so nothing would ever reap 4140,
+    # port 8001 was never stably bound, and the tray sat at
+    # "waiting for services (gateway=False frontend=False)".
+    #
+    # So: stop the recorded PID *and* discover every other live launcher by
+    # command line. The watchdog itself is excluded, or it would kill itself.
+    $targets = @()
+
+    $lp = Get-PidFileValue -Path $AlphaPid
+    if ($lp -gt 0 -and $lp -ne $PID) { $targets += $lp }
+
+    try {
+        $procs = @(Get-CimInstance Win32_Process -ErrorAction Stop |
+            Where-Object { $_.Name -in @("powershell.exe", "pwsh.exe") })
+        foreach ($p in $procs) {
+            $pid2 = [int]$p.ProcessId
+            if ($pid2 -le 0 -or $pid2 -eq $PID) { continue }
+            $cmd = [string]$p.CommandLine
+            if (-not $cmd) { continue }
+            # This watchdog runs from watchdog.ps1; never target ourselves.
+            if ($cmd -match 'watchdog\.ps1') { continue }
+            if ($cmd -like "*$StartScript*") { $targets += $pid2 }
+        }
+    } catch { }
+
+    $targets = @($targets | Where-Object { $_ -gt 0 -and $_ -ne $PID } | Select-Object -Unique)
+    if ($targets.Count -eq 0) { return }
+
+    foreach ($id in $targets) {
+        if (Get-Process -Id $id -ErrorAction SilentlyContinue) {
+            & taskkill /PID $id /T /F 2>&1 | Out-Null
+        }
+    }
+    Start-Sleep -Seconds 1
 }
 
 # Kill only what holds a port: the smallest recovery that unblocks the
@@ -312,7 +420,21 @@ function Restart-Component {
 function Start-AlphaStack {
     param([string]$Reason)
     Stop-StaleLauncher
-    $shimCmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$StartScript`" -NoBrowser -WatchdogMode"
+    # Serve the frontend from a production build when one exists.
+    #
+    # `next dev` binds :3000 and then cold-compiles: measured at 880 s (1710
+    # modules) on this machine, versus "Ready in 43.7s" for a `next start` that
+    # has a build to serve. That compile is the single largest cost in a cold
+    # start and it is paid again on every boot. start.ps1 already implements the
+    # -Prod path (it builds once if .next/BUILD_ID is missing, then runs
+    # `next start`), so the watchdog just has to ask for it.
+    #
+    # Auto-detected rather than forced, so editing components still gets HMR: no
+    # build present means the dev server, exactly as before. The mode in force is
+    # written to the heartbeat so the choice is never silent.
+    $prodFlag = ""
+    if (Test-Path "$RepoRoot\frontend\.next\BUILD_ID") { $prodFlag = " -Prod" }
+    $shimCmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$StartScript`" -NoBrowser -WatchdogMode$prodFlag"
     $shim = Write-Shim -Name "alpha_launch_shim.vbs" -CommandLine $shimCmd
     if (Invoke-Detached -ShimPath $shim) {
         Write-RecoveryEvent -Component "stack" -Action "full_restart" -Result "spawned" -Reason $Reason
@@ -339,6 +461,15 @@ function Get-StackSnapshot {
     if ($fePort) {
         if (Test-HttpOk -Port $FrontendPort -Path "/") {
             $script:FeHttpFail = 0; $fe = "up"
+        } elseif (Test-FileRecentlyWritten -Path "$LogDir\frontend.log" -WithinSeconds 120) {
+            # Next.js binds the port before it finishes compiling, and this app's
+            # cold compile of "/" measured 880 s (1710 modules) on a loaded
+            # machine. A frontend whose build log is still advancing is making
+            # progress, not hung. Treating it as hung restarted the process and
+            # reset the compile, which is what pinned the tray at
+            # "starting ... waiting for services (gateway=True frontend=False)"
+            # through launcher attempt 189/450.
+            $script:FeHttpFail = 0; $fe = "compiling"
         } else {
             $script:FeHttpFail++
             $fe = if ($script:FeHttpFail -ge $FrontendHungThreshold) { "hung" } else { "starting" }
@@ -412,12 +543,23 @@ function Invoke-HealthCheck {
         }
     }
 
+    # ---- Supervisor exclusivity -------------------------------------------------
+    # Everything below this line DESTROYS or RESPAWNS something. Only the process
+    # holding the supervisor lock may do that; a second watchdog that merely
+    # *observes* an unhealthy stack must wait instead of racing the first one.
+    if (-not (Enter-SupervisorLock)) {
+        Write-Heartbeat -Status "deferring" -Stack $s.Summary
+        if ($n -eq 1 -or ($n % 8 -eq 0)) {
+            Write-WdLog "Another supervisor holds $LogDir\watchdog.lock - observing only, not acting ($($s.Summary))"
+        }
+        return
+    }
+
     # Cooldown between recovery actions - never spin at full speed.
     if ($script:LastActionUtc -and $script:ActionBackoff -gt 0) {
         $sinceAction = ([DateTime]::UtcNow - $script:LastActionUtc).TotalSeconds
         if ($sinceAction -lt $script:ActionBackoff) {
-            Write-Heartbeat -Status "cooldown" -Stack $s.Summary
-            return
+            Write-Heartbeat -Status "cooldown" -Stack $s.Summary            return
         }
     }
 

@@ -786,15 +786,23 @@ function Restart-FrontendService {
             -RedirectStandardOutput $frontendLogOut -RedirectStandardError $frontendLogErr
     }
     Write-Host "  Frontend relaunched (PID: $($script:frontendProcess.Id)). Verifying..." -ForegroundColor Gray
-    # A cold Next.js compile of / took 281 s on this machine - 180 s declared
-    # a healthy frontend dead and cascaded into a full restart.
-    $ok = Wait-ForHealthy -Port $FrontendPort -Path "/" -MaxWaitSeconds 360
+    # Next.js binds the port BEFORE it finishes compiling, so this wait is really
+    # a cold-compile wait. It was raised 180 s -> 360 s after a 281 s compile, but
+    # a later measurement on a loaded machine recorded "Compiled / in 880.1s
+    # (1710 modules)" - over three times that. At 360 s the launcher declared the
+    # frontend dead and RELAUNCHED it, which threw away the compile and restarted
+    # it from zero; that is what pinned the tray at "starting ... waiting for
+    # services (gateway=True frontend=False)" through launcher attempt 189/450.
+    # Budget must stay above the measured worst case, and above
+    # scripts/watchdog.ps1's FrontendHungThreshold (pinned by
+    # backend/tests/test_launcher_watchdog_budget.py).
+    $ok = Wait-ForHealthy -Port $FrontendPort -Path "/" -MaxWaitSeconds 1200
     if ($ok) {
         Write-Host "  [OK] Frontend is healthy after restart." -ForegroundColor Green
         $script:frontendLastStable = [DateTime]::UtcNow
         Write-HealthFile -Status "healthy" -Detail "frontend restarted OK"
     } else {
-        Write-Host "  [WARN] Frontend did not become healthy within 360s - will retry." -ForegroundColor Yellow
+        Write-Host "  [WARN] Frontend did not become healthy within 1200s - will retry." -ForegroundColor Yellow
     }
 }
 
