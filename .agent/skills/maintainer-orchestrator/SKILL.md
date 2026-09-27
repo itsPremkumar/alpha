@@ -21,7 +21,7 @@ Match the dominant language of the issue or PR unless the maintainer asks for an
 
 Use GitHub tooling to resolve artifact type and scope. Do not ask the maintainer to clarify when `gh` or GitHub API can determine the answer.
 
-1. Default repository is `bytedance/agent-workspace` unless a URL or explicit repo says otherwise.
+1. Default repository is `itsPremkumar/alpha` unless a URL or explicit repo says otherwise.
 2. For URLs, route `/issues/<number>` to Issue Flow and `/pull/<number>` to PR Review Flow.
 3. For typed numbers, use the typed command:
    - Issue: `gh issue view <number> --repo <repo> --json number,title,url,state,body,labels,author,comments`

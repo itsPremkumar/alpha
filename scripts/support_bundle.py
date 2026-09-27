@@ -1356,7 +1356,7 @@ def render_ai_issue_draft(
         "",
         "### Before you start",
         "",
-        "- [ ] I searched [existing issues](https://github.com/bytedance/agent-workspace/issues?q=is%3Aissue) and this is not a duplicate.",
+        "- [ ] I searched [existing issues](https://github.com/itsPremkumar/alpha/issues?q=is%3Aissue) and this is not a duplicate.",
         "- [ ] I can reproduce this on the latest `main`.",
         "",
         "### Problem summary",

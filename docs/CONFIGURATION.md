@@ -402,8 +402,8 @@ DINGTALK_CLIENT_SECRET="..."
 - **Frontend dev bundler**: Webpack by default; run `pnpm dev --turbopack` for Turbopack.
 - **Gateway log level**: `log_level:` in `config.yaml` (`DEBUG|INFO|WARNING|ERROR`,
   restart-required field in `AppConfig`).
-- **Skip frontend build**: `SKIP_FRONTEND_BUILD=1 make prod` or
-  `./scripts/serve.sh --prod --skip-frontend-build` — a make/shell variable,
+- **Skip frontend build**: `./scripts/serve.sh --prod --skip-frontend-build` or
+  `SKIP_FRONTEND_BUILD=1 ./scripts/serve.sh --prod` — a make/shell variable,
   not an `.env` key (bash does not read `.env`). On Windows, `start.ps1`
   reuses an existing `.next` build automatically (no flag needed).
 
@@ -759,8 +759,10 @@ diff config.example.yaml config.yaml
 ### Database Migrations
 ```bash
 # Backend migrations
-cd backend && make migrate-rev MESSAGE="description"
-cd backend && make migrate-upgrade
+# The Gateway applies `alembic upgrade head` itself at startup via
+# `bootstrap_schema`, so there is no separate apply step. This target only
+# AUTHORS a new revision after changing the ORM models, and its flag is MSG=.
+cd backend && make migrate-rev MSG="description"
 ```
 
 ## Alpha-to-Alpha peer network

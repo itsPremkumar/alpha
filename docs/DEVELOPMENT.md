@@ -689,11 +689,11 @@ cd frontend && pnpm build && npx @next/bundle-analyzer
 # Create migration
 cd backend && make migrate-rev MESSAGE="add user preferences"
 
-# Apply migrations
-cd backend && make migrate-upgrade
-
-# Rollback
-cd backend && make migrate-downgrade
+# Migrations are applied by the Gateway at startup (`alembic upgrade head`
+# via `bootstrap_schema`). There is deliberately no `migrate-upgrade` /
+# `migrate-downgrade` target: one execution path keeps operator mistakes off
+# the table. Authoring a new revision after an ORM change is:
+cd backend && make migrate-rev MSG="add foo column to runs"
 ```
 
 ### Configuration Changes

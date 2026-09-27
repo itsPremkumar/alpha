@@ -346,14 +346,20 @@ make test-blocking-io
 # Requires a valid root config.yaml and API credentials.
 make test-live
 
-# Frontend unit tests
+# Frontend unit tests (the frontend is pnpm-driven; it has no Makefile)
 cd frontend
-make test
-
-# Frontend E2E tests (requires Chromium; builds and auto-starts the Next.js production server)
-cd frontend
-make test-e2e
+pnpm verify
 ```
+
+`pnpm verify` chains `typecheck`, the `src/lib/*.test.mjs` suite, the branding
+pin, and the reasoning-effort contract. `pnpm test:extra` exists because
+`pnpm test` globs `src/lib/` only, so a suite outside that directory needs its
+own script or it silently never runs.
+
+There is no frontend E2E command: the browser suite is not in the tree (no
+`@playwright/*` dependency, no `playwright*.config.ts`, no specs), so
+`.github/workflows/e2e-tests.yml` and the Playwright job in
+`replay-e2e.yml` are disabled.
 
 `make test-live` calls real external APIs and may incur API costs or create
 local sandboxes, artifacts, and files. It is never run by the default backend

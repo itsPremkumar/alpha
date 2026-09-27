@@ -651,7 +651,9 @@ curl -X POST /api/groups/team-name/runs/run-id/cancel
 
 ### Enabling Workforce
 1. Ensure `config.yaml` has bots configured
-2. Run database migrations: `cd backend && make migrate-upgrade`
+2. Apply database migrations: nothing to run by hand — the Gateway applies
+   `alembic upgrade head` at startup via `bootstrap_schema`, so the restart in
+   step 3 is what migrates the schema
 3. Restart gateway
 4. Access Workforce tab in frontend
 

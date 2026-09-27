@@ -185,6 +185,41 @@ def collect_loops() -> list[dict[str, object]]:
     ]
 
 
+def collect_engines() -> list[dict[str, object]]:
+    """Count the engine modules under ``alpha/`` as importable subpackages.
+
+    This exists because the engine count was previously hand-typed in four
+    documents and had drifted into three different values (89, 97, 99). A
+    capability count nobody generates is a capability count nobody maintains,
+    which is the same rule the tools/routers/middlewares/loops counts already
+    follow.
+
+    An *engine module* is a direct child directory of ``alpha/`` that either
+    declares ``__init__.py`` or contains a submodule of its own. Directories
+    holding only data (or nothing) are excluded, as is ``__pycache__``. The
+    definition is deliberately mechanical so the number is reproducible: it
+    counts directories, not intent.
+    """
+    engines: list[dict[str, object]] = []
+    for child in sorted(ALPHA.iterdir()):
+        if not child.is_dir() or child.name == "__pycache__":
+            continue
+        has_init = (child / "__init__.py").is_file()
+        submodules = sorted(p.name for p in child.iterdir() if p.is_dir() and p.name != "__pycache__")
+        py_files = sorted(p.name for p in child.glob("*.py"))
+        if not has_init and not submodules and not py_files:
+            # Data-only or empty directory: not an importable engine.
+            continue
+        engines.append(
+            {
+                "id": f"alpha.{child.name}",
+                "kind": "package" if has_init else "namespace",
+                "submodules": submodules,
+            }
+        )
+    return engines
+
+
 def main() -> int:
     manifest = {
         "version": "1.0",
@@ -194,6 +229,7 @@ def main() -> int:
         "routers": collect_routers(),
         "middlewares": collect_middlewares(),
         "loops": collect_loops(),
+        "engines": collect_engines(),
         "intentionally_unwired": INTENTIONALLY_UNWIRED,
         "dormant_packages": DORMANT_PACKAGES,
         "excluded_local_only": EXCLUDED_LOCAL_ONLY,
@@ -201,7 +237,7 @@ def main() -> int:
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(manifest, indent=1) + "\n", encoding="utf-8")
 
-    counts = {key: len(manifest[key]) for key in ("tools", "routers", "middlewares", "loops")}
+    counts = {key: len(manifest[key]) for key in ("tools", "routers", "middlewares", "loops", "engines")}
     print(f"manifest written: {OUT}")
     print(f"counts: {counts}")
     for key in ("tools", "routers", "middlewares", "loops"):

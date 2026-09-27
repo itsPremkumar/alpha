@@ -583,8 +583,10 @@ helm upgrade alpha ./deploy/helm/alpha \
 ```bash
 # If migration caused issues
 # 1. Restore from backup
-# 2. Rollback migration
-cd backend && make migrate-downgrade
+# 2. Schema migrations are not run by hand: the Gateway applies
+#    `alembic upgrade head` at startup via `bootstrap_schema`, and rolling one
+#    back is an alembic operation against the restored database
+#    (`cd backend && uv run alembic downgrade -1`).
 ```
 
 ## Troubleshooting Deployment

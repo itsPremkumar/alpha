@@ -57,8 +57,9 @@ Fixes #
 
 <!-- What you actually ran. Run at least the checks for the area you changed:
        Backend:   cd backend  && make lint && make test
-       Frontend:  cd frontend && pnpm format && pnpm lint && pnpm typecheck && BETTER_AUTH_SECRET=local-dev-secret pnpm build && make test
-       Frontend E2E (if you touched frontend/): cd frontend && make test-e2e -->
+       Frontend:  cd frontend && pnpm verify && BETTER_AUTH_SECRET=local-dev-secret pnpm build
+       There is no `pnpm format` (the frontend declares no formatter) and no
+       frontend E2E command (the Playwright suite is not in the tree). -->
 
 
 ## AI assistance

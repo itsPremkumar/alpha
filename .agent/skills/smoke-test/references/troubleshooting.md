@@ -588,6 +588,6 @@ make docker-start
 ## Get More Help
 
 If the solutions above do not resolve the issue:
-1. Check the GitHub issues for the project: https://github.com/bytedance/agent-workspace/issues
+1. Check the GitHub issues for the project: https://github.com/itsPremkumar/alpha/issues
 2. Review the project documentation: README.md and the `backend/docs/` directory
 3. Open a new issue and include detailed error logs

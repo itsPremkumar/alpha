@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-09-27T08:41:09Z",
+ "generated_at": "2026-09-27T16:51:36Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -1918,6 +1918,673 @@
    "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
    "wired": true,
    "state": "wired"
+  }
+ ],
+ "engines": [
+  {
+   "id": "alpha.action",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.agency",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.agent",
+   "kind": "namespace",
+   "submodules": [
+    "oracle"
+   ]
+  },
+  {
+   "id": "alpha.agents",
+   "kind": "package",
+   "submodules": [
+    "lead_agent",
+    "memory",
+    "middlewares",
+    "task_continuity"
+   ]
+  },
+  {
+   "id": "alpha.authz",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.autoconfig",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.avo",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.benchmarks",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.blackboard",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.bots",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.browser",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.canvas",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.capabilities",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.channels",
+   "kind": "package",
+   "submodules": [
+    "debounce"
+   ]
+  },
+  {
+   "id": "alpha.coding",
+   "kind": "namespace",
+   "submodules": [
+    "repo_twin",
+    "structural_intelligence"
+   ]
+  },
+  {
+   "id": "alpha.commands",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.community",
+   "kind": "namespace",
+   "submodules": [
+    "agent_eye",
+    "aio_sandbox",
+    "boxlite",
+    "brave",
+    "browser_automation",
+    "browserless",
+    "crawl4ai",
+    "ddg_search",
+    "e2b_sandbox",
+    "exa",
+    "fastcrw",
+    "firecrawl",
+    "groundroute",
+    "image_search",
+    "infoquest",
+    "jina_ai",
+    "lightrag",
+    "opensandbox",
+    "ragflow",
+    "search_federation",
+    "searxng",
+    "serper",
+    "serply",
+    "sofya",
+    "tavily",
+    "tencent_wsa",
+    "tenki"
+   ]
+  },
+  {
+   "id": "alpha.company",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.computer_use",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.config",
+   "kind": "package",
+   "submodules": [
+    "self_tuning"
+   ]
+  },
+  {
+   "id": "alpha.consequence",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.context",
+   "kind": "package",
+   "submodules": [
+    "condenser"
+   ]
+  },
+  {
+   "id": "alpha.council",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.critic",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.debugging",
+   "kind": "namespace",
+   "submodules": []
+  },
+  {
+   "id": "alpha.deepagent",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.deliberation",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.diagnostics",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.editing",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.enterprise",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.epistemics",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.errors",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.evaluation",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.events",
+   "kind": "package",
+   "submodules": [
+    "stream"
+   ]
+  },
+  {
+   "id": "alpha.evidence",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.evolution",
+   "kind": "package",
+   "submodules": [
+    "evidence"
+   ]
+  },
+  {
+   "id": "alpha.extensions",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.goals",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.governance",
+   "kind": "namespace",
+   "submodules": [
+    "council"
+   ]
+  },
+  {
+   "id": "alpha.groups",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.guardrails",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.harness",
+   "kind": "package",
+   "submodules": [
+    "continual",
+    "continuous"
+   ]
+  },
+  {
+   "id": "alpha.integrations",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.jobs",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.kanban",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.knowledge",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.learning",
+   "kind": "package",
+   "submodules": [
+    "curriculum",
+    "experience"
+   ]
+  },
+  {
+   "id": "alpha.ledger",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.lineage",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.mcp",
+   "kind": "package",
+   "submodules": [
+    "tasks"
+   ]
+  },
+  {
+   "id": "alpha.media",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.memory",
+   "kind": "package",
+   "submodules": [
+    "affective",
+    "codebase",
+    "cognitive",
+    "dreaming",
+    "entities",
+    "evaluation",
+    "fabric",
+    "fusion",
+    "health",
+    "narrative",
+    "policy",
+    "prospective",
+    "scenarios",
+    "social",
+    "utility",
+    "wiki_vault"
+   ]
+  },
+  {
+   "id": "alpha.metacognition",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.metacompiler",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.mission",
+   "kind": "package",
+   "submodules": [
+    "goalloop"
+   ]
+  },
+  {
+   "id": "alpha.missions",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.models",
+   "kind": "package",
+   "submodules": [
+    "free_router",
+    "moa"
+   ]
+  },
+  {
+   "id": "alpha.multimodal",
+   "kind": "package",
+   "submodules": [
+    "engines"
+   ]
+  },
+  {
+   "id": "alpha.observability",
+   "kind": "package",
+   "submodules": [
+    "trace"
+   ]
+  },
+  {
+   "id": "alpha.ops",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.orchestration",
+   "kind": "package",
+   "submodules": [
+    "discipline"
+   ]
+  },
+  {
+   "id": "alpha.orchestrator",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.peer_network",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.perpetual",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.persistence",
+   "kind": "package",
+   "submodules": [
+    "agents",
+    "channel_connections",
+    "feedback",
+    "managed_subagents",
+    "mcp_tasks",
+    "migrations",
+    "models",
+    "personal_access_tokens",
+    "projects",
+    "run",
+    "scheduled_task_runs",
+    "scheduled_tasks",
+    "storekit",
+    "subagent_batches",
+    "thread_meta",
+    "user",
+    "webhook_delivery"
+   ]
+  },
+  {
+   "id": "alpha.planning",
+   "kind": "package",
+   "submodules": [
+    "compiler"
+   ]
+  },
+  {
+   "id": "alpha.policy",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.projects",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.protocols",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.reasoning",
+   "kind": "package",
+   "submodules": [
+    "tom"
+   ]
+  },
+  {
+   "id": "alpha.recovery",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.reflection",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.reproduction",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.research",
+   "kind": "package",
+   "submodules": [
+    "five_pass"
+   ]
+  },
+  {
+   "id": "alpha.rsi",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.rules",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.runtime",
+   "kind": "package",
+   "submodules": [
+    "checkpoint",
+    "checkpoint_cache",
+    "checkpointer",
+    "events",
+    "resilience",
+    "rlm",
+    "runs",
+    "selfheal",
+    "sentinel",
+    "store",
+    "stream_bridge"
+   ]
+  },
+  {
+   "id": "alpha.safety",
+   "kind": "package",
+   "submodules": [
+    "authority",
+    "guardian"
+   ]
+  },
+  {
+   "id": "alpha.sandbox",
+   "kind": "package",
+   "submodules": [
+    "local",
+    "repl"
+   ]
+  },
+  {
+   "id": "alpha.scheduler",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.script_bridge_child",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.security",
+   "kind": "namespace",
+   "submodules": [
+    "autonomy",
+    "enclave",
+    "shell_ast",
+    "vault"
+   ]
+  },
+  {
+   "id": "alpha.selfrepair",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.skills",
+   "kind": "package",
+   "submodules": [
+    "audit",
+    "forge",
+    "hub",
+    "review",
+    "skillscan",
+    "storage",
+    "triggers"
+   ]
+  },
+  {
+   "id": "alpha.state",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.streamjson",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.subagents",
+   "kind": "package",
+   "submodules": [
+    "builtins"
+   ]
+  },
+  {
+   "id": "alpha.supervision",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.swarm",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.synthesis",
+   "kind": "namespace",
+   "submodules": []
+  },
+  {
+   "id": "alpha.system1",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.testing",
+   "kind": "namespace",
+   "submodules": []
+  },
+  {
+   "id": "alpha.tools",
+   "kind": "package",
+   "submodules": [
+    "builtins",
+    "code_mode",
+    "repair",
+    "script_bridge",
+    "search"
+   ]
+  },
+  {
+   "id": "alpha.tracing",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.trajectory",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.tui",
+   "kind": "package",
+   "submodules": [
+    "widgets"
+   ]
+  },
+  {
+   "id": "alpha.uploads",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.utils",
+   "kind": "namespace",
+   "submodules": []
+  },
+  {
+   "id": "alpha.verification",
+   "kind": "namespace",
+   "submodules": [
+    "evidence"
+   ]
+  },
+  {
+   "id": "alpha.wire_contracts",
+   "kind": "package",
+   "submodules": []
+  },
+  {
+   "id": "alpha.workflow",
+   "kind": "package",
+   "submodules": [
+    "registry"
+   ]
+  },
+  {
+   "id": "alpha.workspace_changes",
+   "kind": "package",
+   "submodules": []
   }
  ],
  "intentionally_unwired": [

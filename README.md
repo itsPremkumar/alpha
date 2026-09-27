@@ -124,7 +124,7 @@ In one sentence:
 | **Public skills** | 24 in `skills/public/` |
 | **Integrations** | Telegram, Slack, Feishu/Lark, WeChat, WeCom, DingTalk, Discord, Buzz, Signal, GitHub webhooks, MCP, generic REST |
 | **API compatibility** | OpenAI-compatible `POST /api/compat/openai/chat/completions` |
-| **Harness subsystems** | 99 engine packages under `backend/packages/harness/alpha/` |
+| **Harness subsystems** | 102 engine packages under `backend/packages/harness/alpha/` (count is generated: `contracts/feature_manifest.json`) |
 | **Backend tests** | pytest suite under `backend/tests/` (1,000+ test modules) |
 | **License** | MIT |
 
@@ -597,10 +597,10 @@ exactly-once execution.
 </details>
 
 <details>
-<summary><b>Full subsystem map (99 harness engines)</b></summary>
+<summary><b>Full subsystem map (102 harness engines)</b></summary>
 
-Every directory under `backend/packages/harness/alpha/` (99 packages) is a
-dedicated engine:
+Every directory under `backend/packages/harness/alpha/` (102 packages, counted by
+`backend/scripts/generate_feature_manifest.py`) is a dedicated engine:
 
 `action` `agency` `agent` `agents` `authz` `autoconfig` `avo` `benchmarks`
 `blackboard` `bots` `browser` `canvas` `capabilities` `channels` `coding`
