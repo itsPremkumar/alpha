@@ -385,6 +385,31 @@ def first_error(outcomes: Iterable[WaveOutcome[Any]]) -> BaseException | None:
     return None
 
 
+# Per-thread record of whether a deadline was missed.  A node body funnels
+# through many helpers (the default path, MAP, REDUCE, RACE, QUORUM) and each of
+# them would otherwise have to thread a "did we time out" flag back out to the
+# timing layer.  Thread-local state carries it honestly: a node runs on exactly
+# one thread, so the flag cannot leak between nodes, and the worker thread a
+# timed-out call is fenced onto is a DIFFERENT thread — so the flag is never set
+# by the late work itself, only by the thread that observed the miss.
+_TIMEOUT_STATE = threading.local()
+
+
+def mark_timeout_occurred() -> None:
+    """Record that a deadline was missed on the CURRENT thread."""
+    _TIMEOUT_STATE.missed = True
+
+
+def timeout_occurred() -> bool:
+    """Whether a deadline was missed on this thread since the last reset."""
+    return bool(getattr(_TIMEOUT_STATE, "missed", False))
+
+
+def reset_timeout_flag() -> None:
+    """Clear the current thread's deadline-miss record."""
+    _TIMEOUT_STATE.missed = False
+
+
 __all__ = [
     "DEFAULT_MAX_CONCURRENCY",
     "MAX_CONCURRENCY_CEILING",
@@ -396,5 +421,8 @@ __all__ = [
     "execute_wave",
     "first_error",
     "governor_slot",
+    "mark_timeout_occurred",
+    "reset_timeout_flag",
     "run_with_deadline",
+    "timeout_occurred",
 ]
