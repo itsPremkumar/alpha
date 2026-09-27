@@ -9,6 +9,7 @@ import {
 import { fetchRoster } from "@/lib/inbox";
 import { sendAgentMessage } from "@/lib/inbox";
 import { runCouncil, CouncilStrategy } from "@/lib/deliberation";
+import { clockTime, dayLabel as sharedDayLabel } from "@/lib/time";
 import { orgEvents } from "@/lib/teamops";
 import { Section, EmptyState, ErrorBox, Btn, Badge, Field, SkeletonList, inputCls } from "@/components/ui";
 import { errMsg } from "@/lib/http";
@@ -26,7 +27,7 @@ interface Conv {
   title: string;
   subtitle: string;
   lastText: string;
-  lastAt: string;
+  lastAt: string | null;
   unread: number;
   members: string[];
 }
@@ -166,7 +167,7 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
         title: `# ${r.name}`,
         subtitle: `${r.members.length} members${r.status ? ` • ${r.status}` : ""}`,
         lastText: last ? `${last.sender}: ${last.content.slice(0, 80)}` : "No messages yet",
-        lastAt: last?.at || "",
+        lastAt: last?.at ?? null,
         unread: unreadCount(`group:${r.name}`, msgs),
         members: r.members,
       };
@@ -179,7 +180,7 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
         title: d.peer,
         subtitle: roster.find((x) => x.name === d.peer)?.status || "direct thread",
         lastText: last ? last.content.slice(0, 80) : "No messages yet",
-        lastAt: last?.at || "",
+        lastAt: last?.at ?? null,
         unread: unreadCount(d.id, d.messages),
         members: [OPERATOR, d.peer],
       });
@@ -266,24 +267,11 @@ export function MessagesSection(props: { threadId: string | null; botNames: stri
     }
   };
 
-  const fmtTime = (at: string) => {
-    if (!at) return "";
-    const d = new Date(at);
-    if (isNaN(d.getTime())) return "";
-    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  };
+  // Delegates to lib/time.ts so this pane, the roster and the transcript all
+  // read one clock vocabulary. `""` renders no time, never a fabricated one.
+  const fmtTime = (at: string | null) => clockTime(at) ?? "";
 
-  const dayLabel = (at: string) => {
-    if (!at) return "";
-    const d = new Date(at);
-    if (isNaN(d.getTime())) return "";
-    const today = new Date();
-    const y = new Date();
-    y.setDate(y.getDate() - 1);
-    if (d.toDateString() === today.toDateString()) return "Today";
-    if (d.toDateString() === y.toDateString()) return "Yesterday";
-    return d.toLocaleDateString();
-  };
+  const dayLabel = (at: string | null) => sharedDayLabel(at) ?? "";
 
   let lastDay = "";
 

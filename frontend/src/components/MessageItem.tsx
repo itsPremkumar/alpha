@@ -6,6 +6,7 @@ import remarkGfm from "remark-gfm";
 import { Bot, User, Brain, Copy, Check, ThumbsUp, ThumbsDown, RotateCcw, Pencil, Users, ShieldCheck, FileDown } from "lucide-react";
 import { ChatMessage } from "@/types/chat";
 import { branding } from "@/lib/branding";
+import { absoluteStamp, clockTime } from "@/lib/time";
 import { ToolGroup } from "./ToolGroup";
 import { TodoBlock } from "./TodoBlock";
 import { HumanApprovalCard } from "./HumanApprovalCard";
@@ -43,6 +44,9 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
   const groupMatch = !dmMatch && message.content ? message.content.match(/^\[(Group(?:\s+Chat)?(?::\s*([^\]]+))?)\](?:\s*@?([a-zA-Z0-9_-]+):)?\s*([\s\S]*)$/i) : null;
 
   const isA2A = Boolean(dmMatch);
+  /** Server-stamped clock time, or `null` for a row the Gateway never stamped. */
+  const stamp = clockTime(message.createdAt);
+  const stampFull = absoluteStamp(message.createdAt);
   const a2aSender = dmMatch ? dmMatch[1] : null;
   const isGroupChat = Boolean(groupMatch);
   const groupName = groupMatch ? (groupMatch[2] || "Team Channel") : null;
@@ -162,6 +166,13 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
                       : "Team Channel"
                     : branding.assistantLabel}
             </span>
+            {/* The Gateway stamps every feed row; a row it never stamped shows
+                no time rather than the moment this page loaded (lib/time.ts). */}
+            {stamp && (
+              <time dateTime={stampFull ?? undefined} title={stampFull ?? undefined} className="text-[10px] font-normal text-muted-foreground tabular-nums">
+                {stamp}
+              </time>
+            )}
             {isA2A && (
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400 font-medium">
                 Agent-to-Agent DM

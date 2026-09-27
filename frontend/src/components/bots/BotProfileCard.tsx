@@ -2,7 +2,16 @@
 
 import React from "react";
 import { BotProfile, botDisplayName, botInitials } from "@/types/bots";
+import { absoluteStamp, isRecent, relTime } from "@/lib/time";
 import { MessageSquare, Star, CheckCircle2, PauseCircle, XCircle, Building2 } from "lucide-react";
+
+/**
+ * Presence window: a bot counts as working when it was last seen inside this.
+ * Matches the 90s active-now reading the roster is compared against; it is a
+ * *display* threshold, not a liveness verdict — `alpha.bots.health` owns the
+ * real healthy/stale/stalled/dead classification.
+ */
+const ACTIVE_WINDOW_SECONDS = 90;
 
 interface BotProfileCardProps {
   bot: BotProfile;
@@ -35,6 +44,9 @@ export function BotProfileCard({ bot, isActive, onSelect, onChat }: BotProfileCa
   const total = Number(bot.task_stats?.total) || 0;
   const succeeded = Number(bot.task_stats?.succeeded) || 0;
   const successRate = total > 0 ? Math.round((succeeded / total) * 100) : null;
+  const working = isRecent(bot.last_active, ACTIVE_WINDOW_SECONDS);
+  const lastSeen = relTime(bot.last_active);
+  const lastSeenFull = absoluteStamp(bot.last_active);
 
   return (
     <div
@@ -55,6 +67,12 @@ export function BotProfileCard({ bot, isActive, onSelect, onChat }: BotProfileCa
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <h3 className="text-sm font-semibold truncate">{botDisplayName(bot)}</h3>
+            {/* Presence is derived from the server's own `last_active`; a bot
+                with no recorded activity never reads as working. */}
+            <span
+              className={`size-1.5 rounded-full shrink-0 ${working ? "bg-emerald-500" : "bg-border"}`}
+              title={working ? "Seen working within the last 90 seconds" : lastSeenFull ? `Last seen ${lastSeenFull}` : "No activity recorded"}
+            />
             {isActive && (
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary text-primary-foreground font-semibold">
                 IN CHAT
@@ -66,6 +84,12 @@ export function BotProfileCard({ bot, isActive, onSelect, onChat }: BotProfileCa
             {statusBadge(bot.status)}
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
               {bot.department}
+            </span>
+            <span
+              className="text-[10px] text-muted-foreground truncate"
+              title={lastSeenFull ?? "The Gateway has recorded no activity for this bot yet"}
+            >
+              {lastSeen ?? "no activity recorded"}
             </span>
           </div>
         </div>

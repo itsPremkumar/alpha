@@ -19,9 +19,16 @@ export interface ChatMsg {
   id: string;
   sender: string;
   content: string;
-  at: string;
+  /** Server stamp, or `null` when the row carried none — never `""` as a time. */
+  at: string | null;
   kind: string;
   read?: boolean;
+}
+
+function asTime(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const raw = typeof value === "string" ? value.trim() : String(value);
+  return raw ? raw : null;
 }
 
 function toMsg(m: Record<string, unknown>, i: number): ChatMsg {
@@ -29,7 +36,7 @@ function toMsg(m: Record<string, unknown>, i: number): ChatMsg {
     id: String(pick(m, ["id", "message_id"], `m-${i}-${Date.now()}`)),
     sender: String(pick(m, ["sender", "sender_name", "author", "bot", "role"], "?")),
     content: String(pick(m, ["content", "text", "message"], "")),
-    at: String(pick(m, ["created_at", "timestamp", "at", "time"], "")),
+    at: asTime(pick<unknown>(m, ["created_at", "timestamp", "at", "time"], null)),
     kind: String(pick(m, ["intent", "kind", "message_type", "type"], "discussion")),
     read: pick<boolean | undefined>(m, ["read"], undefined),
   };
@@ -111,7 +118,9 @@ export async function listDmThreads(threadId: string, me = OPERATOR): Promise<Dm
       try {
         const inbox = await fetchInbox(threadId, n);
         for (const m of inbox) {
-          all.push({ id: m.id, sender: m.from, content: m.content, at: "", kind: "message", read: m.read, to: m.to });
+          // Carry the row's own stamp through — this was hardcoded to "",
+          // which is why DM bubbles never showed a time.
+          all.push({ id: m.id, sender: m.from, content: m.content, at: m.createdAt, kind: "message", read: m.read, to: m.to });
         }
       } catch {
         /* per-agent tolerance: a single inbox may be inaccessible by design */

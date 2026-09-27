@@ -41,18 +41,26 @@ export interface InboxMessage {
   to: string;
   content: string;
   read: boolean;
+  /** Server-stamped creation time, or `null` when the row carries none. */
+  createdAt: string | null;
 }
 
 export async function fetchInbox(threadId: string, agent: string): Promise<InboxMessage[]> {
   try {
     const d = await get<unknown>(`${base(threadId)}/inbox?agent_name=${encodeURIComponent(agent)}`);
-    return asList(d, ["messages", "inbox", "data"]).map((m, i) => ({
-      id: String(pick(m, ["id", "message_id"], `msg-${i}`)),
-      from: String(pick(m, ["sender_name", "from", "sender"], "")),
-      to: String(pick(m, ["receiver_name", "to", "receiver"], "")),
-      content: String(pick(m, ["content", "text"], "")),
-      read: Boolean(pick(m, ["read"], true)),
-    }));
+    return asList(d, ["messages", "inbox", "data"]).map((m, i) => {
+      const at = pick<unknown>(m, ["created_at", "timestamp", "at", "time"], null);
+      return {
+        id: String(pick(m, ["id", "message_id"], `msg-${i}`)),
+        from: String(pick(m, ["sender_name", "from", "sender"], "")),
+        to: String(pick(m, ["receiver_name", "to", "receiver"], "")),
+        content: String(pick(m, ["content", "text"], "")),
+        read: Boolean(pick(m, ["read"], true)),
+        // Absent stays absent: `""` would read as a real (empty) stamp and
+        // `String(null)` would render the word "null" next to the message.
+        createdAt: at === null || at === undefined || at === "" ? null : String(at),
+      };
+    });
   } catch {
     return [];
   }

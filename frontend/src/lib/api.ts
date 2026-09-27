@@ -227,7 +227,10 @@ function messageFromRow(message: any, index: number): ChatMessage[] {
             status: "failed" as const,
           })),
         ],
-        createdAt: message.created_at || inner.created_at || new Date().toISOString(),
+        // `null` when the Gateway stamped no time — never "now". Painting the
+        // page-load instant onto an unstamped history row makes a fabricated
+        // time indistinguishable from a measured one (see lib/time.ts).
+        createdAt: message.created_at || inner.created_at || null,
         sequence: typeof message.seq === "number" ? message.seq : undefined,
         raw: message,
         runId: message.run_id || undefined,
@@ -248,7 +251,7 @@ function messageFromRow(message: any, index: number): ChatMessage[] {
         name: toolCall.name,
         args: toolCall.args || {},
       })),
-      createdAt: message.created_at || new Date().toISOString(),
+      createdAt: message.created_at || null,
       raw: message,
     } as ChatMessage,
   ];

@@ -69,7 +69,7 @@ export interface ChatMessage {
   artifacts?: ArtifactItem[];
   approvalRequest?: HumanApproval;
   autonomousDetection?: AutonomousDetection;
-  createdAt: string;
+  createdAt: string | null;
   /** Durable thread-global message sequence when supplied by the Gateway. */
   sequence?: number;
   /** Complete normalized Gateway event, retained by the on-device archive. */

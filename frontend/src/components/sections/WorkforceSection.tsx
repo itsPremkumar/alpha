@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { EmptyState, ErrorBox, Btn, Badge, Field, inputCls } from "@/components/ui";
 import { errMsg } from "@/lib/http";
+import { absoluteStamp, relTime } from "@/lib/time";
 import { listProjects } from "@/lib/projects";
 import {
   fetchInbox, sendDM, ackDM, fetchPresence, fetchProjectState, fetchSkillUsage,
@@ -143,6 +144,15 @@ function InboxTab(props: { bots: WorkforceBot[] }) {
                   <div className="flex items-center gap-2">
                     <strong>{m.sender}</strong>
                     <Badge tone={m.status === "unread" ? "blue" : "gray"}>{m.status}</Badge>
+                    {/* DMInboxMessage.created_at is epoch seconds from
+                        alpha/bots/inbox.py — parseTime handles that shape. */}
+                    <time
+                      dateTime={absoluteStamp(m.created_at) ?? undefined}
+                      title={absoluteStamp(m.created_at) ?? undefined}
+                      className="text-[10px] text-muted-foreground tabular-nums"
+                    >
+                      {relTime(m.created_at) ?? "no time recorded"}
+                    </time>
                     <span className="ml-auto" />
                     {m.status !== "acked" && <Btn variant="ghost" onClick={() => ack(m.delivery_id)}>Ack</Btn>}
                   </div>

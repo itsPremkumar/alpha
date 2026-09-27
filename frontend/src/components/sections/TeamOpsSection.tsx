@@ -6,7 +6,25 @@ import { listKanbanTasks, moveKanbanTask, kanbanEvents, KANBAN_COLUMNS, KanbanTa
 import { fetchRoster, registerRosterAgent, sendAgentMessage, fetchInbox, setRosterStatus, RosterAgent, InboxMessage } from "@/lib/inbox";
 import { Section, EmptyState, ErrorBox, Notice, Btn, Badge, Field, SkeletonList, inputCls } from "@/components/ui";
 import { errMsg } from "@/lib/http";
+import { absoluteStamp, clockTime, type TimeInput } from "@/lib/time";
 import { Plus, Send, Play, RefreshCw, Ban } from "lucide-react";
+
+/**
+ * Compact clock stamp for a message row.
+ *
+ * Returns nothing at all when the row carries no readable stamp: these rows
+ * come from three different endpoints, and a row none of them stamped must not
+ * inherit the time this page happened to render.
+ */
+function rowStamp(value: TimeInput) {
+  const stamp = clockTime(value);
+  if (!stamp) return null;
+  return (
+    <span className="ml-1.5 text-[10px] font-normal text-muted-foreground tabular-nums" title={absoluteStamp(value) ?? undefined}>
+      {stamp}
+    </span>
+  );
+}
 
 type SubTab = "groups" | "inbox" | "swarms" | "jobs" | "company";
 
@@ -174,6 +192,7 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
                           <div key={i} className="text-[11px] rounded-lg bg-muted/40 px-2.5 py-1.5">
                             <span className="font-semibold">{String(m.author ?? m.bot ?? m.role ?? "bot")}: </span>
                             {String(m.content ?? m.text ?? JSON.stringify(m)).slice(0, 500)}
+                            {rowStamp((m.created_at ?? m.timestamp ?? m.at ?? null) as TimeInput)}
                           </div>
                         ))
                       )}
@@ -373,6 +392,7 @@ function SwarmMessagesPanel(props: { swarmId: string }) {
                 <p className="font-semibold">
                   {m.sender}
                   <span className="font-normal text-muted-foreground"> · {m.topic} · #{m.sequence}</span>
+                  {rowStamp(m.created_at)}
                 </p>
                 <p className="whitespace-pre-wrap break-words">{m.content}</p>
               </div>
@@ -583,8 +603,9 @@ function InboxPanel(props: { threadId: string | null; onError: (m: string) => vo
             ) : (
               msgs.slice(-20).map((m) => (
                 <div key={m.id} className="text-[11px] rounded-lg bg-muted/40 px-2.5 py-1.5">
-                  <span className="font-semibold">{m.from || "?"} ? {m.to || "all"}: </span>
+                  <span className="font-semibold">{m.from || "?"} → {m.to || "all"}: </span>
                   {m.content.slice(0, 500)}
+                  {rowStamp(m.createdAt)}
                 </div>
               ))
             )}
