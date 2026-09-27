@@ -17,11 +17,21 @@ import threading
 import time
 import uuid
 from collections.abc import Callable
+from contextlib import contextmanager
 from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any
 
 from alpha.workflow.events import get_event_dispatcher
+from alpha.workflow.execution import (
+    DEFAULT_MAX_CONCURRENCY,
+    ConcurrencyGovernor,
+    clamp_concurrency,
+    execute_wave,
+    first_error,
+    governor_slot,
+    run_with_deadline,
+)
 from alpha.workflow.expressions import evaluate_condition, evaluate_condition_strict
 from alpha.workflow.models import (
     NodeStatus,
@@ -32,6 +42,13 @@ from alpha.workflow.models import (
     WorkflowPatch,
     WorkflowRun,
     WorkflowRunStatus,
+)
+from alpha.workflow.observability import (
+    WAVE_METRICS_KEY,
+    NodeTiming,
+    load_timeline,
+    now_iso,
+    persist_timeline,
 )
 from alpha.workflow.patch import WorkflowPatchEngine
 from alpha.workflow.replanner import RuntimeReplanner
@@ -68,6 +85,31 @@ COMPLETED_IDEMPOTENCY_KEYS = "completed_idempotency_keys"
 # in ``metrics``: the attempt key is a hash of ``run.state``.
 IDEMPOTENT_OUTPUTS_KEY = "idempotent_outputs"
 
+# Key holding the run's external-wait registrations (``event_wait``/``wait``
+# nodes parked until a signal or a deadline).  The engine owns this map so a
+# suspended run can be resumed by signal, by deadline sweep, or by an operator.
+EXTERNAL_WAIT_REGISTRY_KEY = "external_waits"
+
+# Key holding the measured wall-clock instant a run was first created, so a
+# suspended run can report its true elapsed time instead of "since last step".
+RUN_STARTED_AT_KEY = "run_started_at"
+
+# Policy keys a definition/graph may declare to widen the default wave
+# concurrency.  Unparsable or absent values fall back to the module default via
+# ``clamp_concurrency`` rather than being trusted or raising.
+CONCURRENCY_POLICY_KEY = "max_concurrency"
+NODE_CONCURRENCY_CONFIG_KEY = "max_concurrency"
+
+# Process-wide reentrant lock guarding every read-modify-write on shared run and
+# graph bookkeeping.  It is process-wide (not per engine) because the mutation
+# helpers below are module-level functions called from deep inside node handlers;
+# plumbing a per-engine lock into each of them would invite a missed call site,
+# and a missed call site is a silent lost update.  Contention is irrelevant
+# here: every critical section is a dict or list operation measured in
+# microseconds, and the slow part of a node — the executor call — deliberately
+# runs OUTSIDE the lock, which is what actually delivers wave parallelism.
+_STATE_LOCK = threading.RLock()
+
 
 
 def get_node_runner() -> Callable[[WorkflowNode, WorkflowRun], dict[str, Any]] | None:
@@ -87,7 +129,12 @@ def _no_runner_reason(node: WorkflowNode) -> str:
 
 
 def _record_executor_state(run: WorkflowRun, key: str) -> None:
-    """Record that ``run.state[key]`` was written from real executor results."""
+    """Record that ``run.state[key]`` was written from real executor results.
+
+    Runs under the engine's state lock: the produced-keys list is a
+    read-append-write, so two concurrent wave nodes writing different keys would
+    otherwise lose one entry and a later REDUCE would refuse a valid input.
+    """
     produced = run.metrics.get(EXECUTOR_STATE_KEYS)
     if not isinstance(produced, list):
         produced = []
@@ -110,16 +157,22 @@ def _set_run_status(run: WorkflowRun, new_status: WorkflowRunStatus, reason: str
     entry with the real ``reason`` when one exists. No-op transitions append
     nothing, and ``start_run`` records nothing — history stays empty until
     something actually happened.
+
+    The compare-then-append-then-assign sequence holds ``_STATE_LOCK`` because
+    two nodes of a parallel wave can reach a terminal decision at the same
+    instant, and an unguarded read-modify-write would drop one transition from
+    ``run.history`` entirely.
     """
-    if run.status == new_status:
-        return
-    now = datetime.now(UTC).isoformat()
-    entry: dict[str, Any] = {"timestamp": now, "from": run.status.value, "to": new_status.value}
-    if reason:
-        entry["reason"] = reason
-    run.history.append(entry)
-    run.status = new_status
-    run.updated_at = now
+    with _STATE_LOCK:
+        if run.status == new_status:
+            return
+        now = datetime.now(UTC).isoformat()
+        entry: dict[str, Any] = {"timestamp": now, "from": run.status.value, "to": new_status.value}
+        if reason:
+            entry["reason"] = reason
+        run.history.append(entry)
+        run.status = new_status
+        run.updated_at = now
 
 
 def _sync_waiting_nodes(run: WorkflowRun) -> None:
@@ -127,9 +180,13 @@ def _sync_waiting_nodes(run: WorkflowRun) -> None:
 
     The list mirrors whichever nodes are ``WAITING`` right now (currently only
     human-approval gates set that status), so it is derived state — never a
-    hand-maintained second source of truth.
+    hand-maintained second source of truth.  It is rebuilt from a snapshot of
+    the per-node status map so a node finishing concurrently cannot be missed or
+    duplicated by the rebuild.
     """
-    run.waiting_nodes = [nid for nid, status in run.node_states.items() if status == NodeStatus.WAITING]
+    with _STATE_LOCK:
+        statuses = list(run.node_states.items())
+    run.waiting_nodes = [nid for nid, status in statuses if status == NodeStatus.WAITING]
 
 
 class DynamicWorkflowError(RuntimeError):
@@ -310,6 +367,128 @@ class DynamicWorkflowEngine:
         self.events = get_event_dispatcher()
         self._workflow_locks: dict[str, threading.RLock] = {}
         self._workflow_locks_guard = threading.Lock()
+        # Serializes every read-modify-write on shared run/graph bookkeeping.
+        # Wave nodes now execute CONCURRENTLY (their ``write_scope`` entries are
+        # disjoint by construction), so the run's own mutable state is no longer
+        # single-threaded by construction.  A lock around each *short* mutation
+        # is what keeps that safe; the expensive executor call deliberately runs
+        # OUTSIDE it, which is the whole point of the parallel wave.  The lock
+        # itself is the process-wide ``_STATE_LOCK`` (see :meth:`state`).
+        # Per-run admission control, so a run's declared concurrency cap is
+        # enforced in exactly one place regardless of which caller dispatches.
+        self._governors: dict[str, ConcurrencyGovernor] = {}
+        self._governors_guard = threading.Lock()
+
+    # -------------------------------------------------------------- run state
+
+    @contextmanager
+    def state(self) -> Any:
+        """Hold the engine's run-state lock.
+
+        Every mutation of shared ``run``/``graph`` bookkeeping that is a
+        read-modify-write (token charges, list appends guarded by a membership
+        test, status transitions, timing-ledger updates) must happen inside this
+        lock, because a parallel wave can have several nodes in flight at once.
+        Plain single-key dict assignment is atomic on its own and needs no lock.
+        """
+        with _STATE_LOCK:
+            yield
+
+    def governor_for(self, run: WorkflowRun) -> ConcurrencyGovernor:
+        """Return (creating on first use) the admission governor for ``run``.
+
+        The limit comes from the definition's ``policies`` and then the run
+        graph's ``metadata``, so widening concurrency is a declared, auditable
+        property of a workflow rather than a global tuning knob.
+        """
+        with self._governors_guard:
+            existing = self._governors.get(run.run_id)
+            if existing is not None:
+                return existing
+            declared: Any = None
+            definition = self.definitions.get(run.workflow_id)
+            if definition is not None:
+                declared = definition.policies.get(CONCURRENCY_POLICY_KEY)
+            if declared is None:
+                graph = self._run_graphs.get(run.run_id)
+                if graph is not None:
+                    declared = graph.metadata.get(CONCURRENCY_POLICY_KEY)
+            governor = ConcurrencyGovernor(limit=clamp_concurrency(declared))
+            self._governors[run.run_id] = governor
+            return governor
+
+    def release_run_resources(self, run_id: str) -> None:
+        """Drop per-run admission state for a finished run.
+
+        Called when a run reaches a terminal status so a long-lived process does
+        not accumulate one governor and lock per historical run forever.
+        """
+        with self._governors_guard:
+            self._governors.pop(run_id, None)
+
+    # ------------------------------------------------------------- timing
+
+    def _begin_timing(self, run: WorkflowRun, node: WorkflowNode) -> NodeTiming:
+        """Open a measured execution window for ``node``."""
+        with self.state():
+            timeline = load_timeline(run)
+            timing = NodeTiming(
+                node_id=node.id,
+                started_at=now_iso(),
+                status=NodeStatus.RUNNING.value,
+                attempts=run.iteration_counts.get(node.id, 0),
+                tokens_consumed=node.tokens_consumed,
+                thread_name=threading.current_thread().name,
+            )
+            timeline.record(timing)
+            persist_timeline(run, timeline)
+            return timing
+
+    def _end_timing(
+        self,
+        run: WorkflowRun,
+        node: WorkflowNode,
+        started: float,
+        *,
+        timed_out: bool = False,
+    ) -> float:
+        """Close the node's measured window and return its duration.
+
+        The duration is measured on a monotonic clock rather than derived from
+        the two ISO timestamps, so a wall-clock adjustment during a long run
+        cannot produce a negative or inflated interval.
+        """
+        elapsed = max(0.0, time.monotonic() - started)
+        with self.state():
+            timeline = load_timeline(run)
+            for timing in reversed(timeline.entries):
+                if timing.node_id == node.id and not timing.complete:
+                    timing.ended_at = now_iso()
+                    timing.duration_seconds = elapsed
+                    timing.status = node.status.value
+                    timing.tokens_consumed = node.tokens_consumed
+                    timing.timed_out = timed_out
+                    break
+            persist_timeline(run, timeline)
+        return elapsed
+
+    def _record_wave(self, run: WorkflowRun, *, wave_index: int, nodes: list[str], concurrency: int, elapsed: float) -> None:
+        """Append one measured wave-shape record to the run's metrics."""
+        with self.state():
+            waves = run.metrics.get(WAVE_METRICS_KEY)
+            if not isinstance(waves, list):
+                waves = []
+            waves.append(
+                {
+                    "wave_index": wave_index,
+                    "nodes": list(nodes),
+                    "node_count": len(nodes),
+                    "concurrency": concurrency,
+                    "elapsed_seconds": round(elapsed, 6),
+                    "recorded_at": now_iso(),
+                }
+            )
+            run.metrics[WAVE_METRICS_KEY] = waves
 
     def register_definition(self, definition: WorkflowDefinition, *, allow_replace: bool = False) -> None:
         """Register an immutable definition without cross-owner replacement.
@@ -673,13 +852,17 @@ class DynamicWorkflowEngine:
 
     def _fail_node(self, run: WorkflowRun, node: WorkflowNode, reason: str, **extra: Any) -> None:
         """Mark a node honestly failed: real reason in output and event log."""
-        node.status = NodeStatus.FAILED
-        run.node_states[node.id] = NodeStatus.FAILED
-        if node.id not in run.failed_nodes:
-            run.failed_nodes.append(node.id)
-        # Gap 5: deepcopy the extras so neither the node output nor the log can
-        # be rewritten through a caller-owned mutable object.
-        node.output = {"status": "failed", "reason": reason, **deepcopy(extra)}
+        with self.state():
+            node.status = NodeStatus.FAILED
+            run.node_states[node.id] = NodeStatus.FAILED
+            # Membership-then-append: two concurrent wave nodes can fail at once,
+            # so the guard and the append must be one atomic step or the same id
+            # lands in ``failed_nodes`` twice.
+            if node.id not in run.failed_nodes:
+                run.failed_nodes.append(node.id)
+            # Gap 5: deepcopy the extras so neither the node output nor the log can
+            # be rewritten through a caller-owned mutable object.
+            node.output = {"status": "failed", "reason": reason, **deepcopy(extra)}
         # Gap 10: evidence + iteration counts travel WITH the failure so a replay
         # can reconstruct them without the caller's definition snapshot.
         failure_payload = {
@@ -723,11 +906,12 @@ class DynamicWorkflowEngine:
 
     def _succeed_node(self, run: WorkflowRun, node: WorkflowNode, output: Any, **event_payload: Any) -> None:
         """Mark a node succeeded; the caller must have attached real evidence first."""
-        node.status = NodeStatus.SUCCEEDED
-        run.node_states[node.id] = NodeStatus.SUCCEEDED
-        if node.id not in run.completed_nodes:
-            run.completed_nodes.append(node.id)
-        node.output = output
+        with self.state():
+            node.status = NodeStatus.SUCCEEDED
+            run.node_states[node.id] = NodeStatus.SUCCEEDED
+            if node.id not in run.completed_nodes:
+                run.completed_nodes.append(node.id)
+            node.output = output
         if not event_payload:
             event_payload = {"output": output}
         # Gap 10: additive evidence/iteration_counts; gap 5: the logged payload
@@ -759,15 +943,40 @@ class DynamicWorkflowEngine:
 
         Returns True when the budget is spent and the node has been failed
         accordingly (never reported as succeeded).
+
+        The accumulate-then-test sequence holds ``_STATE_LOCK``: with parallel
+        waves, two nodes can charge concurrently and an unguarded
+        ``run.tokens_consumed += charge`` would lose one charge, letting a run
+        overspend its real budget before the guard noticed.
         """
         charge = max(0, int(tokens or 0))
-        node.tokens_consumed += charge
-        run.tokens_consumed += charge
-        if run.budget_limit is not None and run.tokens_consumed > run.budget_limit:
-            node.status = NodeStatus.FAILED
-            run.node_states[node.id] = NodeStatus.FAILED
-            if node.id not in run.failed_nodes:
-                run.failed_nodes.append(node.id)
+        with self.state():
+            node.tokens_consumed += charge
+            run.tokens_consumed += charge
+            if run.budget_limit is not None and run.tokens_consumed > run.budget_limit:
+                node.status = NodeStatus.FAILED
+                run.node_states[node.id] = NodeStatus.FAILED
+                if node.id not in run.failed_nodes:
+                    run.failed_nodes.append(node.id)
+                run_exhausted = True
+                node_exhausted = False
+            elif node.budget is not None and node.tokens_consumed > node.budget:
+                node.status = NodeStatus.FAILED
+                run.node_states[node.id] = NodeStatus.FAILED
+                # Gap-8-consistent bookkeeping: a budget-killed node is a failed
+                # node, so keep run.failed_nodes (fail-close/handoff/replay folds)
+                # in sync with run.node_states. BUDGET_EXHAUSTED is terminal, so
+                # this never triggers a fail-closed transition on its own.
+                if node.id not in run.failed_nodes:
+                    run.failed_nodes.append(node.id)
+                run_exhausted = True
+                node_exhausted = True
+            else:
+                run_exhausted = False
+                node_exhausted = False
+
+        if run_exhausted and not node_exhausted:
+            # Gap 9: budget exhaustion is a real run-status transition.
             self._exhaust_budget(run, "Workflow token budget exhausted.")
             self.events.emit(
                 "node_failed",
@@ -778,16 +987,7 @@ class DynamicWorkflowEngine:
                 iteration_counts=dict(run.iteration_counts),
             )
             return True
-        if node.budget is not None and node.tokens_consumed > node.budget:
-            node.status = NodeStatus.FAILED
-            run.node_states[node.id] = NodeStatus.FAILED
-            # Gap-8-consistent bookkeeping: a budget-killed node is a failed
-            # node, so keep run.failed_nodes (fail-close/handoff/replay folds)
-            # in sync with run.node_states. BUDGET_EXHAUSTED is terminal, so
-            # this never triggers a fail-closed transition on its own.
-            if node.id not in run.failed_nodes:
-                run.failed_nodes.append(node.id)
-            # Gap 9: budget exhaustion is a real run-status transition.
+        if run_exhausted and node_exhausted:
             self._exhaust_budget(run, "Node budget exhausted.")
             self.events.emit(
                 "node_failed",
@@ -820,10 +1020,11 @@ class DynamicWorkflowEngine:
 
     def _record_idempotency_key(self, run: WorkflowRun, attempt_key: str) -> None:
         """Remember that this exact attempt already produced a verified success."""
-        completed = self._completed_idempotency_keys(run)
-        if attempt_key not in completed:
-            completed.append(attempt_key)
-        run.metrics[COMPLETED_IDEMPOTENCY_KEYS] = completed
+        with self.state():
+            completed = self._completed_idempotency_keys(run)
+            if attempt_key not in completed:
+                completed.append(attempt_key)
+            run.metrics[COMPLETED_IDEMPOTENCY_KEYS] = completed
 
     def _deduplicated_attempt(self, node: WorkflowNode, run: WorkflowRun) -> str | None:
         """The recorded attempt key for this node's effect, if it already ran.
@@ -835,11 +1036,65 @@ class DynamicWorkflowEngine:
         per attempt.  Returning the key here lets the caller skip the runner and
         report the recorded evidence instead, which is what makes a declared
         idempotent step actually idempotent.
+
+        The check and the later record in :meth:`_invoke_runner` are not one
+        atomic step, so the whole decision is made under the state lock: a node
+        must never pass the dedupe check and then find its key already recorded
+        by a concurrent attempt.
         """
         attempt_key = self._node_attempt_key(node, run)
         if attempt_key is None:
             return None
-        return attempt_key if attempt_key in self._completed_idempotency_keys(run) else None
+        with self.state():
+            return attempt_key if attempt_key in self._completed_idempotency_keys(run) else None
+
+    def _call_runner_bounded(
+        self,
+        node: WorkflowNode,
+        run: WorkflowRun,
+        runner: Callable[[WorkflowNode, WorkflowRun], dict[str, Any]],
+    ) -> tuple[dict[str, Any] | None, str]:
+        """Invoke ``runner`` under the node's declared deadline.
+
+        Returns ``(result, timeout_reason)``.  Exactly one is meaningful:
+        ``result`` is ``None`` **only** when the deadline was missed, in which
+        case ``timeout_reason`` carries the measured, honest description.
+
+        A node with no declared timeout is called inline on the calling thread,
+        so unbounded nodes keep their exact previous behaviour.
+
+        A Map/Reduce/Race/Quorum child inherits its parent's
+        ``timeout_seconds`` through :meth:`_fanout_child`, so the bound is
+        **per child execution** rather than for the whole fan-out. That is the
+        useful semantic (one pathological item cannot consume the entire budget)
+        and it is deliberately not a whole-node budget: a node that wants a
+        total bound should set ``node.budget`` for tokens and a wall-clock bound
+        on the parent, not rely on this per-item limit.
+        """
+        if node.timeout_seconds is None or node.timeout_seconds <= 0:
+            return runner(node, run), ""
+
+        result = run_with_deadline(
+            lambda: runner(node, run),
+            timeout_seconds=float(node.timeout_seconds),
+            label=node.id,
+        )
+        if result.timed_out:
+            reason = result.describe_timeout(f"node '{node.id}'")
+            self.events.emit(
+                "node_timeout",
+                run.run_id,
+                node_id=node.id,
+                timeout_seconds=float(node.timeout_seconds),
+                elapsed_seconds=round(result.elapsed_seconds, 6),
+                overrun_seconds=round(result.overrun_seconds, 6),
+                late_work_fenced=result.late_work_fenced,
+                reason=reason,
+            )
+            return None, reason
+        if result.error is not None:
+            raise result.error
+        return result.value, ""
 
     def _invoke_runner(
         self,
@@ -851,11 +1106,13 @@ class DynamicWorkflowEngine:
 
         Retries are opt-in through ``RetryPolicy``.  A failure is retried only
         when its measured text matches an allowed marker (or ``*``), never on a
-        blanket assumption that every error is transient.  The final typed
-        result is returned unchanged so the normal evidence/failure gates
-        remain the single completion authority; a direct non-retryable runner
-        exception is re-raised to the outer engine boundary so its real reason
-        is not wrapped a second time.
+        blanket assumption that every error is transient.  Each attempt is bounded
+        by the node's ``timeout_seconds`` deadline; a missed deadline is a retryable
+        failure carrying the real measured overrun, and the worker's late result is
+        discarded rather than adopted.  The final typed result is returned
+        unchanged so the normal evidence/failure gates remain the single completion
+        authority; a direct non-retryable runner exception is re-raised to the outer
+        engine boundary so its real reason is not wrapped a second time.
         """
         if runner is None:
             return {"status": "failed", "output": _no_runner_reason(node), "evidence": "", "tokens_used": 0}
@@ -898,7 +1155,15 @@ class DynamicWorkflowEngine:
                 idempotency_key=self._node_attempt_key(node, run),
             )
             try:
-                raw = runner(node, run)
+                bounded, timeout_reason = self._call_runner_bounded(node, run, runner)
+                if bounded is None:
+                    # Deadline missed: a real, measured failure. The in-flight
+                    # call is fenced (not killed) and its late result discarded,
+                    # so it flows through the same retry-marker gate as any other
+                    # failure instead of being reported as a success.
+                    raw = {"status": "failed", "output": timeout_reason, "evidence": "", "tokens_used": 0}
+                else:
+                    raw = bounded
             except Exception as exc:  # noqa: BLE001 - preserve the real failure boundary
                 raised_exception = exc
                 if attempt >= attempts:
@@ -974,6 +1239,46 @@ class DynamicWorkflowEngine:
         node_runner: Callable[[WorkflowNode, WorkflowRun], dict[str, Any]] | None,
         compensation_runner: Callable[[WorkflowNode, WorkflowRun], dict[str, Any]] | None = None,
     ) -> None:
+        """Execute one node inside a measured window.
+
+        Every node has many terminal exits (approval gate, loop stop, each node
+        type's success/failure branch, the exception boundary), so the timing
+        window is opened and closed HERE rather than inside each branch. A branch
+        that forgot to close its window would leave the node permanently
+        "in flight" and the run's timeline permanently incomplete.
+        """
+        node = graph.nodes.get(nid)
+        if node is None:
+            # A node removed by a concurrent patch between wave computation and
+            # dispatch. Skip it honestly rather than inventing a result.
+            self.events.emit(
+                "node_dispatch_skipped",
+                run.run_id,
+                node_id=nid,
+                reason="node is no longer present in the run graph at dispatch time",
+            )
+            return
+
+        self._begin_timing(run, node)
+        started = time.monotonic()
+        deadline_missed = threading.Event()
+        try:
+            self._dispatch_node(nid, graph, run, node_runner, compensation_runner, deadline_missed)
+        finally:
+            self._end_timing(run, node, started, timed_out=deadline_missed.is_set())
+            with self.state():
+                run.active_nodes = [active for active in run.active_nodes if active != nid]
+
+    def _dispatch_node(
+        self,
+        nid: str,
+        graph: WorkflowGraph,
+        run: WorkflowRun,
+        node_runner: Callable[[WorkflowNode, WorkflowRun], dict[str, Any]] | None,
+        compensation_runner: Callable[[WorkflowNode, WorkflowRun], dict[str, Any]] | None = None,
+        deadline_missed: threading.Event | None = None,
+    ) -> None:
+        """The real node body: gates, loop policy, node-type handlers, default run."""
         node = graph.nodes[nid]
 
         # 1. Human-in-the-loop gate
@@ -1103,17 +1408,17 @@ class DynamicWorkflowEngine:
 
             run.iteration_counts[nid] = count + 1
 
-        if node.timeout_seconds is not None:
-            self._fail_node(
-                run,
-                node,
-                f"node timeout {node.timeout_seconds}s requested but the bound synchronous executor has no cancellation seam",
-            )
-            return
+        # A declared ``timeout_seconds`` is now ENFORCED, not refused: every
+        # runner invocation for this node runs under the real deadline enforced
+        # by ``_call_runner_bounded``.  The old code failed the node outright
+        # with "the bound synchronous executor has no cancellation seam", which
+        # meant a declared timeout guaranteed failure instead of bounding
+        # anything.
 
         # Mark Running
-        node.status = NodeStatus.RUNNING
-        run.node_states[nid] = NodeStatus.RUNNING
+        with self.state():
+            node.status = NodeStatus.RUNNING
+            run.node_states[nid] = NodeStatus.RUNNING
         self.events.emit(
             "node_started",
             run.run_id,
