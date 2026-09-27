@@ -165,18 +165,50 @@ def test_execute_wave_captures_per_item_errors_without_abandoning_the_wave():
 
 
 def test_execute_wave_actually_overlaps_when_concurrency_allows_it():
-    """Two 0.25s items at concurrency 2 must finish in ~0.25s, not ~0.5s."""
+    """Two 0.25s items at concurrency 2 must be in flight together.
+
+    Asserted on observed concurrency rather than wall time, for the same reason
+    the engine test is: the thread hand-off itself has a cost that varies with
+    machine load, so a duration threshold would be flaky. This test does not
+    touch the event bus, so a generous duration bound is safe as a secondary
+    signal that nothing pathological happened.
+    """
+    lock = threading.Lock()
+    live = 0
+    peak = 0
+
+    def invoke(_item: int) -> None:
+        nonlocal live, peak
+        with lock:
+            live += 1
+            peak = max(peak, live)
+        time.sleep(0.25)
+        with lock:
+            live -= 1
+
     started = time.monotonic()
-    execute_wave([1, 2], lambda _item: time.sleep(0.25), max_concurrency=2)
+    execute_wave([1, 2], invoke, max_concurrency=2)
     elapsed = time.monotonic() - started
-    assert elapsed < 0.45, f"expected overlapping execution, took {elapsed:.3f}s"
+    assert peak == 2, f"expected overlapping execution, peak in flight was {peak}"
+    assert elapsed < 2.0, f"unexpectedly slow wave: {elapsed:.3f}s"
 
 
 def test_execute_wave_is_sequential_at_concurrency_one():
-    started = time.monotonic()
-    execute_wave([1, 2], lambda _item: time.sleep(0.2), max_concurrency=1)
-    elapsed = time.monotonic() - started
-    assert elapsed >= 0.4, f"concurrency 1 must not overlap, took {elapsed:.3f}s"
+    lock = threading.Lock()
+    live = 0
+    peak = 0
+
+    def invoke(_item: int) -> None:
+        nonlocal live, peak
+        with lock:
+            live += 1
+            peak = max(peak, live)
+        time.sleep(0.2)
+        with lock:
+            live -= 1
+
+    execute_wave([1, 2], invoke, max_concurrency=1)
+    assert peak == 1, "concurrency 1 must not overlap"
 
 
 def test_governor_bounds_admission_and_reports_measured_peak():
@@ -278,13 +310,42 @@ def test_declared_concurrency_runs_a_wave_in_parallel():
             live -= 1
         return _ok_runner(node, _run)
 
-    started = time.monotonic()
     engine.execute_step(run.run_id, node_runner=runner)
-    elapsed = time.monotonic() - started
 
     assert sorted(order) == ["a", "b", "c"]
-    assert peak > 1, "the wave must genuinely overlap"
-    assert elapsed < 0.55, f"expected overlapping waves, took {elapsed:.3f}s"
+    # ``peak`` is the assertion, not elapsed wall time. It directly observes that
+    # the nodes were in flight together, which is what "parallel" means here.
+    # Wall time is deliberately NOT asserted: every workflow event spawns a
+    # thread to publish to the event bus, so on a loaded machine a genuinely
+    # parallel wave can still take longer than a sequential one, and a timing
+    # threshold would make this test flaky for reasons unrelated to the feature.
+    assert peak == 3, f"all three wave nodes should overlap, peak in flight was {peak}"
+    assert sorted(run.completed_nodes) == ["a", "b", "c"]
+
+
+def test_a_wave_stays_sequential_when_no_concurrency_is_declared():
+    """The default must not overlap, and must be observable rather than timed."""
+    engine = DynamicWorkflowEngine()
+    engine.register_definition(_definition(_fanout_graph(["a", "b", "c"])))
+    run = engine.start_run("wf")
+
+    lock = threading.Lock()
+    peak = 0
+    live = 0
+
+    def runner(node, _run):
+        nonlocal peak, live
+        with lock:
+            live += 1
+            peak = max(peak, live)
+        time.sleep(0.05)
+        with lock:
+            live -= 1
+        return _ok_runner(node, _run)
+
+    engine.execute_step(run.run_id, node_runner=runner)
+
+    assert peak == 1, "an undeclared workflow must not run its wave concurrently"
     assert sorted(run.completed_nodes) == ["a", "b", "c"]
 
 

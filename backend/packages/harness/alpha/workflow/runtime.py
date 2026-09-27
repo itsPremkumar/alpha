@@ -49,7 +49,6 @@ from alpha.workflow.observability import (
     WAVE_DISPATCHED_EVENT,
     NodeTiming,
     now_iso,
-    waves_from_events,
 )
 from alpha.workflow.patch import WorkflowPatchEngine
 from alpha.workflow.replanner import RuntimeReplanner
@@ -417,6 +416,8 @@ class DynamicWorkflowEngine:
         # enforced in exactly one place regardless of which caller dispatches.
         self._governors: dict[str, ConcurrencyGovernor] = {}
         self._governors_guard = threading.Lock()
+        # Per-run wave counter. Kept beside the governor and released with it.
+        self._wave_counts: dict[str, int] = {}
 
     # -------------------------------------------------------------- run state
 
@@ -467,10 +468,11 @@ class DynamicWorkflowEngine:
         """Drop per-run admission state for a finished run.
 
         Called when a run reaches a terminal status so a long-lived process does
-        not accumulate one governor and lock per historical run forever.
+        not accumulate a governor and a counter per historical run forever.
         """
         with self._governors_guard:
             self._governors.pop(run_id, None)
+            self._wave_counts.pop(run_id, None)
 
     # ------------------------------------------------------------- timing
 
@@ -531,11 +533,13 @@ class DynamicWorkflowEngine:
     ) -> None:
         """Journal one measured wave-shape record.
 
-        Journalled rather than accumulated in ``run.metrics`` for the same
-        reason as the timing ledger: a wave's elapsed time is not re-derivable
-        from the log, and the replay-equality contract requires that
-        ``run.metrics`` match between a live run and its replay.
+        Journalled rather than accumulated in ``run.metrics`` for the same reason
+        as the timing ledger: a wave's elapsed time is not re-derivable from the
+        log, and the replay-equality contract requires that ``run.metrics`` match
+        between a live run and its replay.
         """
+        with self.state():
+            self._wave_counts[run.run_id] = max(int(self._wave_counts.get(run.run_id, 0)), wave_index)
         self.events.emit(
             WAVE_DISPATCHED_EVENT,
             run.run_id,
@@ -547,9 +551,15 @@ class DynamicWorkflowEngine:
         )
 
     def _next_wave_index(self, run: WorkflowRun) -> int:
-        """The 1-based index of the wave about to be journalled."""
-        waves = waves_from_events(self.events.get_events(run.run_id))
-        return len(waves) + 1
+        """The 1-based index of the wave about to be journalled.
+
+        A counter, not a rescan of the run's events. Counting the journalled
+        ``wave_dispatched`` records would make every step of a long run re-parse
+        its entire history, turning a wave loop into O(events^2) work for no
+        additional information — the count is already known.
+        """
+        with self.state():
+            return int(self._wave_counts.get(run.run_id, 0)) + 1
 
     def register_definition(self, definition: WorkflowDefinition, *, allow_replace: bool = False) -> None:
         """Register an immutable definition without cross-owner replacement.
