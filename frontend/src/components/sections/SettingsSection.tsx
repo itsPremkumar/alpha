@@ -38,6 +38,18 @@ import {
 import { fetchOpsStatus, fetchOpsVersion, fetchFeatures, FeatureFlags, fetchEvolutionIdentity, EvolutionIdentity } from "@/lib/workspace";
 import { probeAll, Probe } from "@/lib/system";
 import { applyThemeMode, isThemeMode, THEME_STORAGE_KEY } from "@/lib/theme";
+import { FALLBACK_LABELS, modelEffortLadder } from "@/lib/reasoning-effort";
+
+/**
+ * Display label per rung. Server-declared labels reach the composer through
+ * `GET /api/models`; this static table is the settings-page fallback for the
+ * same vocabulary, so a rung is never rendered as a raw wire string when the
+ * human name is known.
+ */
+const EFFORT_LABELS = FALLBACK_LABELS;
+
+/** The declared effort ladder for a model entry, normalized. */
+const effortLadderOf = (model: AIModel): string[] => modelEffortLadder(model);
 import { fetchIntegrationHealth, IntegrationHealth } from "@/lib/integration";
 import { Section, StatCard, Badge, Btn, Field, inputCls, EmptyState, ErrorBox, Notice, SkeletonList } from "@/components/ui";
 import { errMsg } from "@/lib/http";
@@ -1078,6 +1090,22 @@ export function SettingsSection({
                         <div className="mt-3 pt-2 border-t border-border/40 flex items-center justify-between text-[10px]">
                           <div className="flex items-center gap-1 text-muted-foreground">
                             {m.supports_reasoning && <span className="text-amber-500 font-semibold">🧠 Thinking</span>}
+                            {/* The declared effort ladder, spelled out. A model with none says so rather than
+                                implying a control exists — that is the same honesty rule the composer picker
+                                follows, and a badge that claims an "effort" nobody can choose is worse than
+                                no badge. */}
+                            {effortLadderOf(m).length > 0 ? (
+                              <span
+                                className="text-amber-600/80"
+                                title={`Reasoning effort levels: ${effortLadderOf(m).join(", ")}${
+                                  m.default_reasoning_effort ? ` (defaults to ${m.default_reasoning_effort})` : ""
+                                }`}
+                              >
+                                • effort: {effortLadderOf(m).map((rung) => EFFORT_LABELS[rung] ?? rung).join(" / ")}
+                              </span>
+                            ) : (
+                              m.supports_reasoning && <span className="opacity-70">• effort fixed by provider</span>
+                            )}
                             <span>• {m.provider}</span>
                           </div>
                           <div className="flex items-center gap-1 font-semibold">

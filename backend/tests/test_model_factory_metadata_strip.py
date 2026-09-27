@@ -139,6 +139,18 @@ def _poison_value(field_name: str):
         # Valid entries, but non-empty: the field's default is [], so a
         # default-populated payload is distinguishable from an absent one.
         return ["vision", "stt"]
+    if field_name == "reasoning_efforts":
+        # Valid rungs, but non-empty (the default is None) so the field is
+        # genuinely exercised. These three fields are validated rather than
+        # free-form, so a sentinel string is rejected at construction and would
+        # not reach the strip path the invariant is about.
+        return ["low", "high"]
+    if field_name == "default_reasoning_effort":
+        # No ladder is declared alongside it, which is the valid combination:
+        # the entry pins a rung without claiming to know the ceiling.
+        return "high"
+    if field_name == "reasoning_effort_style":
+        return "openai"
     if field_name in {"when_thinking_enabled", "when_thinking_disabled", "thinking"}:
         # A genuine provider kwarg, not a sentinel: the factory *deliberately*
         # expands these dicts into the settings (the when_thinking_* /

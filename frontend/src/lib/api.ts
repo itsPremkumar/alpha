@@ -482,7 +482,28 @@ export interface LLMProviderCatalogItem {
   default_models: ProviderModelItem[];
 }
 
-export async function fetchAvailableModels(): Promise<AIModel[]> {
+/**
+ * One `GET /api/models` read: the configured models plus the server-declared
+ * reasoning-effort vocabulary.
+ *
+ * The ladder and labels travel with the models on purpose. A client that
+ * hardcodes its own copy of the rung order/labels drifts the moment a provider
+ * adds a level, and the drift is invisible — the picker just shows a name the
+ * server has never heard of. An absent field means an older Gateway, so the
+ * caller's fallback vocabulary applies; it is never invented as an empty list.
+ */
+export interface ModelCatalog {
+  models: AIModel[];
+  /** Canonical effort rungs, weakest → strongest. */
+  reasoningEffortLevels: string[];
+  /** Display label per rung, keyed by the names above. */
+  reasoningEffortLabels: Record<string, string>;
+}
+
+/** The vocabulary a read that carried none must fall back to. */
+export const FALLBACK_EFFORT_LEVELS: readonly string[] = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
+
+export async function fetchModelCatalog(): Promise<ModelCatalog> {
   try {
     const res = await apiFetch(`/models`);
     if (!res.ok) throw new Error("Models endpoint error");
@@ -500,6 +521,10 @@ export async function fetchAvailableModels(): Promise<AIModel[]> {
         quota_type: m.quota_type || (isFree ? "keyless_free" : "paid"),
         supports_tools: m.supports_tools,
         supports_reasoning: m.supports_reasoning || m.supports_thinking,
+        // Absent stays absent: an entry that declared no ladder must keep
+        // reading as "no effort control" rather than "declares zero levels".
+        ...(Array.isArray(m.reasoning_efforts) ? { reasoning_efforts: m.reasoning_efforts } : {}),
+        ...(m.default_reasoning_effort ? { default_reasoning_effort: m.default_reasoning_effort } : {}),
       };
     });
     const seen = new Set(serverModels.map((m) => m.id));
@@ -509,10 +534,16 @@ export async function fetchAvailableModels(): Promise<AIModel[]> {
         seen.add(fm.id);
       }
     }
-    return serverModels;
+    const levels = Array.isArray(data.reasoning_effort_levels) && data.reasoning_effort_levels.length > 0 ? data.reasoning_effort_levels : FALLBACK_EFFORT_LEVELS;
+    const labels = data.reasoning_effort_labels && typeof data.reasoning_effort_labels === "object" ? data.reasoning_effort_labels : {};
+    return { models: serverModels, reasoningEffortLevels: levels, reasoningEffortLabels: labels };
   } catch {
-    return BUILTIN_FREE_MODELS;
+    return { models: BUILTIN_FREE_MODELS, reasoningEffortLevels: [...FALLBACK_EFFORT_LEVELS], reasoningEffortLabels: {} };
   }
+}
+
+export async function fetchAvailableModels(): Promise<AIModel[]> {
+  return (await fetchModelCatalog()).models;
 }
 
 export async function fetchProvidersCatalog(): Promise<LLMProviderCatalogItem[]> {

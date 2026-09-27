@@ -34,6 +34,8 @@
 
 **Runtime Configuration** (via `config.configurable`):
 - `thinking_enabled` - Enable model's extended thinking
+- `reasoning_effort` - Requested reasoning rung (`low`/`medium`/`high`/`xhigh`/`max`, plus `none`/`minimal`). Precedence is request > custom agent default > none. The lead agent normalizes it to a canonical spelling *before* recording it in run metadata and the assembly descriptor, so a trace cannot claim a level the run did not use, and folds `none` into `thinking_enabled=False` so the model is never asked to both stop reasoning and reason hard. An unrecognized value is dropped with a warning rather than forwarded. The run boundary canonicalizes aliases and rejects a value that names no rung (`app/gateway/run_models.py::_canonicalize_effort_section`), so this layer receives one canonical spelling. Clamping and wire translation are owned by
+  [the models guide](../models/AGENTS.md#reasoning-effort-one-ladder-per-provider-wire-shapes).
 - `model_name` - Select specific LLM model
 - `is_plan_mode` - Enable TodoList middleware
 - `subagent_enabled` - Enable task delegation tool

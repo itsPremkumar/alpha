@@ -6,6 +6,8 @@ from langchain_openai.chat_models.base import BaseChatOpenAI
 from alpha.config import get_app_config
 from alpha.config.app_config import AppConfig
 from alpha.config.model_config import ModelConfig
+from alpha.config.reasoning_effort import EFFORT_STYLE_GOOGLE, EFFORT_STYLE_INERT, clamp_effort, normalize_effort
+from alpha.models.effort_translation import apply_effort, resolve_effort
 from alpha.models.fallback import FallbackChatModel
 from alpha.reflection import resolve_class
 from alpha.tracing import build_tracing_callbacks
@@ -134,6 +136,11 @@ def _warn_unknown_model_settings(model_class, model_name: str, model_settings_fr
 # trips on long thinking pauses; the LLMErrorHandlingMiddleware still retries
 # (budget=2) if a real stall happens. Users can override per-model in config.yaml.
 _DEFAULT_STREAM_CHUNK_TIMEOUT_SECONDS: float = 240.0
+
+#: Rungs the ChatGPT Codex endpoint accepts, used only by the Codex fallback path
+#: below. ``none`` is excluded because "off" is expressed by disabling thinking,
+#: not by a rung, and is written separately.
+_CODEX_EFFORTS: tuple[str, ...] = ("low", "medium", "high", "xhigh")
 
 
 def _apply_stream_chunk_timeout_default(model_class: type, model_settings_from_config: dict) -> None:
@@ -316,6 +323,14 @@ def create_chat_model(
         name: The name of the model to create. If None, the configured default
             (``default_model:``, else the first entry in ``models``) is used.
         thinking_enabled: Enable the model's extended-thinking mode when supported.
+        reasoning_effort: Requested rung (``low``/``medium``/``high``/``xhigh``/
+            ``max``, plus ``none`` and ``minimal``), passed as a keyword and
+            resolved by :mod:`alpha.models.effort_translation` into whatever
+            shape the resolved client speaks. ``None`` (the default) sends
+            nothing, so the provider's own default applies. A rung the entry
+            does not declare is clamped onto the rungs it does, never rejected.
+            ``"none"`` routes through the thinking-disable path, because "do
+            not reason" is a thinking decision rather than a separate knob.
         app_config: Explicit application config; falls back to the cached global if omitted.
         model_overrides: Optional per-caller sampling overrides (e.g. a custom
             agent's ``temperature`` / ``max_tokens``) layered on top of the
@@ -474,6 +489,30 @@ def _build_single_model(
     # value exactly as it would a profile-native one.
     if model_overrides:
         model_settings_from_config.update({key: value for key, value in model_overrides.items() if value is not None})
+    # Reasoning effort arrives as a caller kwarg (the lead agent forwards the
+    # per-run value) or as a rung pinned in the entry's own `reasoning_effort:`
+    # key. Take both out of the constructor kwargs here so exactly one rung
+    # reaches the wire translation below and an unresolvable request can never
+    # be splatted onto a client that does not declare the field.
+    requested_effort = kwargs.pop("reasoning_effort", None)
+    if requested_effort is None:
+        requested_effort = model_settings_from_config.pop("reasoning_effort", None)
+    else:
+        model_settings_from_config.pop("reasoning_effort", None)
+    effort_level, effort_style = resolve_effort(model_config, requested_effort, model_class=model_class, thinking_enabled=thinking_enabled)
+    if effort_level == "none":
+        # "Off" is a request for the thinking-disable path, not a separate
+        # knob. Resolving it here — before the transforms below — is what keeps
+        # a `thinking: disabled` body from ever being paired with a high effort,
+        # which Claude rejects with a 400 at xhigh/max. Every provider already
+        # has a disable representation in `when_thinking_disabled` /
+        # `when_thinking_enabled`, so that path owns the wire and the rung is
+        # cleared; the sole exception is Google, whose only "off" is a zero
+        # thinking budget that no `when_thinking_*` block can express.
+        thinking_enabled = False
+        if effort_style == EFFORT_STYLE_GOOGLE:
+            apply_effort(model_class, model_config, model_settings_from_config, "none", style=EFFORT_STYLE_GOOGLE)
+        effort_level = None
     # Compute effective when_thinking_enabled by merging in the `thinking` shortcut field.
     # The `thinking` shortcut is equivalent to setting when_thinking_enabled["thinking"].
     has_thinking_settings = (model_config.when_thinking_enabled is not None) or (model_config.thinking is not None)
@@ -507,8 +546,13 @@ def _build_single_model(
             # Native langchain_anthropic: thinking is a direct constructor parameter
             model_settings_from_config["thinking"] = {"type": "disabled"}
     if not model_config.supports_reasoning_effort:
-        kwargs.pop("reasoning_effort", None)
-        model_settings_from_config.pop("reasoning_effort", None)
+        # A pinned rung on an entry that never declared effort support is an
+        # operator mistake, not a request. The strip already happened above
+        # (both kwargs and the entry key), so nothing reaches the constructor;
+        # say so once, because otherwise the value simply vanishes and reads
+        # as "the model ignored it".
+        if requested_effort is not None:
+            logger.warning("Model '%s': ignoring reasoning effort %r because the entry declares neither `supports_reasoning_effort: true` nor a `reasoning_efforts` ladder.", name, requested_effort)
 
     # Normalize the api_base -> base_url alias FIRST, so the downstream OpenAI-compatible
     # heuristics (stream_usage default below / stream_chunk_timeout) see the canonical endpoint key.
@@ -516,21 +560,37 @@ def _build_single_model(
     _apply_stream_chunk_timeout_default(model_class, model_settings_from_config)
     _pin_provider_retries_when_orchestrated(model_class, name, model_settings_from_config, retries_orchestrated=retries_orchestrated)
 
-    # For Codex Responses API models: map thinking mode to reasoning_effort
+    # For Codex Responses API models: the endpoint rejects max_tokens/max_output_tokens.
     from alpha.models.openai_codex_provider import CodexChatModel
 
-    if issubclass(model_class, CodexChatModel):
-        # The ChatGPT Codex endpoint currently rejects max_tokens/max_output_tokens.
+    is_codex = issubclass(model_class, CodexChatModel)
+    if is_codex:
         model_settings_from_config.pop("max_tokens", None)
 
-        # Use explicit reasoning_effort from frontend if provided (low/medium/high)
-        explicit_effort = kwargs.pop("reasoning_effort", None)
+    # Write the resolved rung in this provider's wire shape. A client with no
+    # effort knob (EFFORT_STYLE_INERT) is a no-op: its `when_thinking_enabled`
+    # block is the only thing that can shape the request.
+    if effort_level is not None and effort_style != EFFORT_STYLE_INERT:
+        apply_effort(model_class, model_config, model_settings_from_config, effort_level, style=effort_style)
+    elif is_codex:
+        # Codex is the one OpenAI-compatible endpoint that has always been
+        # driven by an explicit rung, so it keeps its own resolution even when
+        # the style detector could not classify the class — which happens for
+        # an extension's own `CodexChatModel` subclass, whose ``__module__`` is
+        # not this package. Two rules survive that: an explicit request is
+        # honoured (clamped onto the OpenAI ladder, so it is still a value the
+        # endpoint accepts), and a run that pins nothing keeps its documented
+        # `medium` floor rather than silently changing which rung it reasons at.
         if not thinking_enabled:
             model_settings_from_config["reasoning_effort"] = "none"
-        elif explicit_effort and explicit_effort in ("low", "medium", "high", "xhigh"):
-            model_settings_from_config["reasoning_effort"] = explicit_effort
-        elif "reasoning_effort" not in model_settings_from_config:
-            model_settings_from_config["reasoning_effort"] = "medium"
+        else:
+            codex_level = clamp_effort(requested_effort, _CODEX_EFFORTS)
+            if codex_level is None:
+                codex_level = normalize_effort(model_config.default_reasoning_effort)
+            if codex_level is None and "reasoning_effort" not in model_settings_from_config:
+                codex_level = "medium"
+            if codex_level is not None:
+                model_settings_from_config["reasoning_effort"] = codex_level
 
     # For MindIE models: enforce conservative retry defaults.
     # Timeout normalization is handled inside MindIEChatModel itself.

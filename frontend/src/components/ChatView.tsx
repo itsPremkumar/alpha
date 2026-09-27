@@ -11,8 +11,15 @@ import { Composer } from "@/components/Composer";
 import { NavTabs, WorkspaceView } from "@/components/NavTabs";
 import { ChatMessage, Thread, AIModel } from "@/types/chat";
 import { BotProfile } from "@/types/bots";
-import { fetchThreadsResult, createThread, fetchThreadHistoryResult, fetchAvailableModels, autoTriggerCommand } from "@/lib/api";
+import { fetchThreadsResult, createThread, fetchThreadHistoryResult, fetchAvailableModels, fetchModelCatalog, autoTriggerCommand } from "@/lib/api";
 import { apiFetch, ApiClientError } from "@/lib/api-client";
+import {
+  DEFAULT_EFFORT,
+  FALLBACK_LABELS,
+  FALLBACK_LADDER,
+  reconcileEffortForModel,
+  type EffortChoice,
+} from "@/lib/reasoning-effort";
 import { consumeChatStream } from "@/lib/chat-stream";
 import type { StreamMessage } from "@/lib/sse-reducer";
 import { chatRequestErrorMessage, ChatRequestFailure } from "@/lib/chat-request-error";
@@ -247,6 +254,20 @@ export default function ChatView() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [models, setModels] = useState<AIModel[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("default");
+  /**
+   * Selected reasoning effort. `default` means "send nothing", so the model
+   * entry's own default (or the provider's) applies. Reconciled against the
+   * selected model on every change, so the trigger never shows a rung the
+   * server would clamp.
+   */
+  const [reasoningEffort, setReasoningEffort] = useState<EffortChoice>(DEFAULT_EFFORT);
+  /**
+   * The canonical effort ladder and its labels, as declared by the server. The
+   * fallbacks are the same seven rungs; a degraded read must still render a
+   * working picker, so this is never left empty.
+   */
+  const [effortLadder, setEffortLadder] = useState<readonly string[]>(FALLBACK_LADDER);
+  const [effortLabels, setEffortLabels] = useState<Readonly<Record<string, string>>>(FALLBACK_LABELS);
   const [input, setInput] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -508,13 +529,14 @@ export default function ChatView() {
         flash(`Local history could not be opened. ${errMsg(error)}`);
       }
 
-      const [threadResult, mList, bList, feats, suggOn] = await Promise.all([
+      const [threadResult, effortCatalog, bList, feats, suggOn] = await Promise.all([
         fetchThreadsResult(),
-        fetchAvailableModels(),
+        fetchModelCatalog(),
         fetchBots(),
         fetchFeatures(),
         suggestionsEnabled(),
       ]);
+      const mList = effortCatalog.models;
       const serverThreads = threadResult.ok
         ? (await hideConfirmedEmptyDrafts(threadResult.value, localMessages)).visible
         : [];
@@ -532,6 +554,8 @@ export default function ChatView() {
       // Keep the whole history on this computer without blocking first paint.
       if (threadResult.ok) startHistoryArchive(serverThreads, archiveInFlightRef, flash);
       setModels(mList);
+      if (effortCatalog.reasoningEffortLevels.length > 0) setEffortLadder(effortCatalog.reasoningEffortLevels);
+      if (Object.keys(effortCatalog.reasoningEffortLabels).length > 0) setEffortLabels(effortCatalog.reasoningEffortLabels);
       let initialModel = "default";
       try {
         const savedModel = localStorage.getItem("alpha_selected_model");
@@ -544,6 +568,20 @@ export default function ChatView() {
         if (mList.length > 0) initialModel = mList[0].id;
       }
       setSelectedModel(initialModel);
+      // A stored effort is only restored when the model that will serve it
+      // actually declares that rung. Restoring it blindly would show a level in
+      // the picker that the factory clamps server-side, which is exactly the
+      // mismatch this control must not have.
+      let initialEffort: EffortChoice = DEFAULT_EFFORT;
+      try {
+        const savedEffort = localStorage.getItem("alpha_reasoning_effort");
+        if (savedEffort) {
+          const target = mList.find((m) => m.id === initialModel) ?? null;
+          initialEffort = reconcileEffortForModel(savedEffort, target);
+          if (initialEffort === DEFAULT_EFFORT) localStorage.removeItem("alpha_reasoning_effort");
+        }
+      } catch {}
+      setReasoningEffort(initialEffort);
       setActiveThreadId((prev) => prev || (merged.length > 0 ? merged[0].thread_id : null));
       setBots(bList);
       setBotsLoading(false);
@@ -976,6 +1014,10 @@ export default function ChatView() {
             configurable: {
               model_name: selectedModel,
               ...(planMode ? { is_plan_mode: true } : {}),
+              // `default` is omitted rather than sent as a level: it means "no
+              // explicit request", and sending the literal string would be
+              // rejected by the run boundary.
+              ...(reasoningEffort !== DEFAULT_EFFORT ? { reasoning_effort: reasoningEffort } : {}),
             },
           },
         }),
@@ -1802,7 +1844,13 @@ export default function ChatView() {
               initialTab={settingsInitialTab}
               currentModel={selectedModel}
               onModelChange={(m) => {
-                setSelectedModel(m);
+                setSelectedModel((current) => {
+                  const next = m;
+                  if (next !== current) {
+                    setReasoningEffort((effort) => reconcileEffortForModel(effort, models.find((x) => x.id === next) ?? null));
+                  }
+                  return next;
+                });
                 try {
                   localStorage.setItem("alpha_selected_model", m);
                 } catch {}
@@ -2032,7 +2080,24 @@ export default function ChatView() {
                 isLoading={isLoading}
                 models={models}
                 selectedModel={selectedModel}
-                onSelectModel={setSelectedModel}
+                onSelectModel={(m) => {
+                  setSelectedModel((current) => {
+                    if (m !== current) {
+                      setReasoningEffort((effort) => reconcileEffortForModel(effort, models.find((x) => x.id === m) ?? null));
+                    }
+                    return m;
+                  });
+                }}
+                effort={reasoningEffort}
+                onEffortChange={(next) => {
+                  setReasoningEffort(next);
+                  try {
+                    if (next === DEFAULT_EFFORT) localStorage.removeItem("alpha_reasoning_effort");
+                    else localStorage.setItem("alpha_reasoning_effort", next);
+                  } catch {}
+                }}
+                effortLadder={effortLadder}
+                effortLabels={effortLabels}
                 onPolish={handlePolish}
                 polishing={polishing}
                 onAttach={handleAttach}

@@ -41,6 +41,13 @@ async function send(fetchResponse, { draft = "  retry me  ", newerDraft = "", ab
   const dependencies = {
     activeThreadId: "thread-1", isLoading: false, activeBot: null, selectedModel: "model", planMode: false,
     suggestionsOn: true, messages: [], abortRef, runGenerationRef, lastByteAtRef,
+    // The per-run reasoning effort. `sendMessage` reads it to decide whether to
+    // put `reasoning_effort` in the run's `configurable`, so a missing binding
+    // here would throw inside the request and mask every status-code assertion
+    // below behind a generic "request could not be completed". No scenario here
+    // exercises a non-default effort, so the unset value is the honest one.
+    reasoningEffort: "default",
+    DEFAULT_EFFORT: "default",
     setInput: setter("input"), setIsLoading: setter("loading"), setRequestError: setter("error"),
     setMessages: setter("messages"), setSuggestions: setter("suggestions"), setUsage: () => {},
     // Live subagent receipt; this harness only needs it to be settable.

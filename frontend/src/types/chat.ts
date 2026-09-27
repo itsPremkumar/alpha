@@ -106,6 +106,19 @@ export interface AIModel {
   reset_interval?: string;
   supports_tools?: boolean;
   supports_reasoning?: boolean;
+  /**
+   * Reasoning-effort rungs this model actually serves, weakest first, as
+   * reported by the server. `null`/absent means the entry declared no ladder,
+   * which is a real answer: the effort picker must be hidden rather than
+   * offering rungs the factory would silently clamp. Never coerce this to an
+   * empty-object or a default rung.
+   */
+  reasoning_efforts?: string[] | null;
+  /**
+   * The rung used when a run requests no explicit effort. `null` means the
+   * provider's own default applies.
+   */
+  default_reasoning_effort?: string | null;
 }
 
 export interface SlashCommandInfo {

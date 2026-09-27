@@ -1552,10 +1552,28 @@ class ChannelManager:
                 run_config["recursion_limit"] = max(run_config.get("recursion_limit", 100), policy.default_recursion_limit)
 
         self._reconcile_thinking_support(run_context)
+        self._reconcile_reasoning_effort(run_context)
         return assistant_id, run_config, run_context
 
     @staticmethod
-    def _reconcile_thinking_support(run_context: dict[str, Any]) -> None:
+    def _resolved_model_name_for_reconciliation(run_context: dict[str, Any]):
+        """The model a run context will actually use, or ``None`` when unresolvable.
+
+        An unresolvable name is returned as ``None`` on purpose so the
+        reconciliation helpers stay out of ``lead_agent._resolve_model_name``'s
+        fallback-and-warn path, which owns that decision.
+        """
+        from alpha.config import get_app_config
+
+        config = get_app_config()
+        requested_name = run_context.get("model_name")
+        model_name = requested_name if isinstance(requested_name, str) and requested_name.strip() else config.default_model_name
+        if not model_name:
+            return None
+        return config, model_name, config.get_model_config(model_name)
+
+    @classmethod
+    def _reconcile_thinking_support(cls, run_context: dict[str, Any]) -> None:
         """Downgrade an explicit ``thinking_enabled`` the resolved model cannot serve.
 
         ``create_chat_model`` fails closed when thinking is requested for a
@@ -1574,23 +1592,64 @@ class ChannelManager:
         """
         if run_context.get("thinking_enabled") is not True:
             return
-        requested_name = run_context.get("model_name")
         try:
-            from alpha.config import get_app_config
-
-            config = get_app_config()
+            resolved = cls._resolved_model_name_for_reconciliation(run_context)
         except Exception:  # noqa: BLE001 - never fail a delivery over a config read
             logger.debug("[Manager] could not read app config to reconcile thinking_enabled", exc_info=True)
             return
-        model_name = requested_name if isinstance(requested_name, str) and requested_name.strip() else config.default_model_name
-        if not model_name:
+        if resolved is None:
             return
-        model_config = config.get_model_config(model_name)
+        _config, model_name, model_config = resolved
         if model_config is None or model_config.supports_thinking:
             return
         run_context["thinking_enabled"] = False
         logger.warning(
             "[Manager] thinking_enabled requested but model '%s' declares supports_thinking: false; continuing with thinking disabled for this run.",
+            model_name,
+        )
+
+    @classmethod
+    def _reconcile_reasoning_effort(cls, run_context: dict[str, Any]) -> None:
+        """Drop a pinned ``reasoning_effort`` the resolved model cannot serve.
+
+        The same failure mode as thinking, with one difference worth stating: a
+        rung the model *does* support but at a different ceiling is **not**
+        dropped. It is left for the factory to clamp (and log), because
+        downgrading ``max`` to ``low`` is a different answer from "this model has
+        no effort control at all" and the operator needs to see which one
+        happened.
+
+        ``"none"`` is a thinking decision rather than a rung, so it is left
+        alone here and routed by the factory through the thinking-disable path.
+        """
+        requested = run_context.get("reasoning_effort")
+        if not isinstance(requested, str) or not requested.strip():
+            return
+        from alpha.config.reasoning_effort import normalize_effort
+
+        level = normalize_effort(requested)
+        if level is None or level == "none":
+            # Unset, or a thinking decision the factory owns. Neither is a
+            # capability this model can refuse.
+            return
+        try:
+            resolved = cls._resolved_model_name_for_reconciliation(run_context)
+        except Exception:  # noqa: BLE001 - never fail a delivery over a config read
+            logger.debug("[Manager] could not read app config to reconcile reasoning_effort", exc_info=True)
+            return
+        if resolved is None:
+            return
+        _config, model_name, model_config = resolved
+        if model_config is None:
+            return
+        from alpha.models.effort_translation import supports_effort_control
+
+        if supports_effort_control(model_config):
+            return
+        run_context["reasoning_effort"] = None
+        logger.warning(
+            "[Manager] reasoning_effort '%s' requested but model '%s' declares neither supports_reasoning_effort nor a reasoning_efforts ladder; continuing at the model's own default for this run.",
+            level,
             model_name,
         )
 

@@ -71,9 +71,26 @@ def test_reasoning_effort_rejects_unknown_value() -> None:
         AgentConfig(name="x", reasoning_effort="turbo")  # type: ignore[arg-type]
 
 
-def test_reasoning_effort_rejects_codex_unsupported_minimal() -> None:
-    with pytest.raises(ValidationError):
-        AgentConfig(name="x", reasoning_effort="minimal")  # type: ignore[arg-type]
+def test_reasoning_effort_accepts_the_whole_canonical_ladder() -> None:
+    # The field used to be `Literal["low", "medium", "high"]`, which rejected
+    # `minimal` because Codex did not serve it. That coupled a per-agent
+    # declaration to one provider: an agent that serves both a Codex model and a
+    # Gemini model could not name a rung only one of them accepts. The ladder is
+    # now provider-neutral here and the *factory* clamps per model, so an agent
+    # declares intent and each model resolves it.
+    for rung in ("none", "minimal", "low", "medium", "high", "xhigh", "max"):
+        assert AgentConfig(name="x", reasoning_effort=rung).reasoning_effort == rung
+
+
+def test_reasoning_effort_normalizes_accepted_aliases() -> None:
+    assert AgentConfig(name="x", reasoning_effort="x-high").reasoning_effort == "xhigh"
+    assert AgentConfig(name="x", reasoning_effort="OFF").reasoning_effort == "none"
+    assert AgentConfig(name="x", reasoning_effort="ultra").reasoning_effort == "max"
+
+
+def test_reasoning_effort_rejects_a_rung_that_names_nothing() -> None:
+    with pytest.raises(ValidationError, match="unknown reasoning_effort"):
+        AgentConfig(name="x", reasoning_effort="gpt-5")  # type: ignore[arg-type]
 
 
 def test_model_settings_are_managed_fields() -> None:

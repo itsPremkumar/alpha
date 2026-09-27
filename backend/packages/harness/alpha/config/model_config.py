@@ -1,5 +1,6 @@
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from alpha.config.reasoning_effort import EFFORT_LABELS, EFFORT_STYLES, canonical_order, is_effort, normalize_effort
 from alpha.multimodal.capabilities import MODEL_CAPABILITIES
 
 
@@ -56,7 +57,34 @@ class ModelConfig(BaseModel):
         description="Structured output version for OpenAI responses content, e.g. responses/v1",
     )
     supports_thinking: bool = Field(default_factory=lambda: False, description="Whether the model supports thinking")
-    supports_reasoning_effort: bool = Field(default_factory=lambda: False, description="Whether the model supports reasoning effort")
+    supports_reasoning_effort: bool = Field(
+        default_factory=lambda: False,
+        description=("Whether the model accepts a reasoning-effort level. Redundant (and implied) when `reasoning_efforts` is declared; keep it for entries that accept an effort but let the provider choose which rungs exist."),
+    )
+    reasoning_efforts: list[str] | None = Field(
+        default=None,
+        description=(
+            "The reasoning-effort rungs this model actually serves, weakest first. Declaring the "
+            "ladder is the contract: a request above the ceiling is clamped down and a request "
+            f"below the floor is raised to it (never a provider 400), and the picker in the chat "
+            f"UI offers exactly these rungs. Allowed rungs: {', '.join(EFFORT_LABELS)}. Omit to "
+            "declare nothing, which the UI renders as 'this model has no effort control' rather "
+            "than offering a control the factory would silently ignore."
+        ),
+    )
+    default_reasoning_effort: str | None = Field(
+        default=None,
+        description=("Rung used when a run requests no explicit effort. Must appear in `reasoning_efforts` when both are declared. Leave unset to let the provider's own default apply."),
+    )
+    reasoning_effort_style: str | None = Field(
+        default=None,
+        description=(
+            "Which provider wire shape carries the rung. Omit (or `auto`) to detect it from the "
+            f"model class. Allowed: {', '.join(EFFORT_STYLES)}. Set it explicitly only for a "
+            "gateway whose effort knob does not match its SDK package — for example an "
+            "OpenRouter-shaped endpoint served through an OpenAI-compatible client."
+        ),
+    )
     when_thinking_enabled: dict | None = Field(
         default_factory=lambda: None,
         description="Extra settings to be passed to the model when thinking is enabled",
@@ -85,6 +113,65 @@ class ModelConfig(BaseModel):
             allowed = ", ".join(sorted(MODEL_CAPABILITIES))
             raise ValueError(f"unknown model capability(ies) {unknown}; allowed: {allowed}")
         return [entry for entry in normalized if entry]
+
+    @field_validator("reasoning_efforts")
+    @classmethod
+    def _validate_reasoning_efforts(cls, value: list[str] | None) -> list[str] | None:
+        """Reject a misspelled rung instead of dropping it.
+
+        ``normalize_effort`` cannot tell "absent" from "unrecognized", and this
+        is a hand-authored operator assertion, so a typo must fail at config
+        load rather than quietly shrink the ladder. Aliases (``off``,
+        ``x-high``, ``ultra``) are accepted and rewritten to canonical rungs.
+        """
+        if value is None:
+            return None
+        unknown = [str(entry) for entry in value if not is_effort(entry)]
+        if unknown:
+            raise ValueError(f"unknown reasoning effort(s) {unknown}; allowed: {', '.join(EFFORT_LABELS)}")
+        ladder = canonical_order(value)
+        if not ladder:
+            raise ValueError("`reasoning_efforts` was declared but resolved to no usable rung; omit the key instead")
+        return ladder
+
+    @field_validator("default_reasoning_effort")
+    @classmethod
+    def _validate_default_reasoning_effort(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = normalize_effort(value)
+        if normalized is None:
+            raise ValueError(f"unknown default_reasoning_effort {value!r}; allowed: {', '.join(EFFORT_LABELS)}")
+        return normalized
+
+    @field_validator("reasoning_effort_style")
+    @classmethod
+    def _validate_reasoning_effort_style(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip().lower()
+        if normalized not in EFFORT_STYLES:
+            raise ValueError(f"unknown reasoning_effort_style {value!r}; allowed: {', '.join(EFFORT_STYLES)}")
+        return normalized
+
+    @model_validator(mode="after")
+    def _validate_reasoning_effort_default(self):
+        """A default outside the declared ladder is an operator error.
+
+        Silently dropping it would run every request at the provider default
+        while the operator believed they had pinned a level, so this raises.
+        The reverse order is fine and common: a default with no ladder still
+        applies, clamped by whatever the provider accepts.
+        """
+        default = self.default_reasoning_effort
+        if default is None:
+            return self
+        if not is_effort(default):
+            raise ValueError(f"unknown default_reasoning_effort {default!r}; allowed: {', '.join(EFFORT_LABELS)}")
+        if self.reasoning_efforts and canonical_order([default])[0] not in self.reasoning_efforts:
+            raise ValueError(f"default_reasoning_effort {default!r} is not in reasoning_efforts {self.reasoning_efforts}; add it to the declared ladder or drop one of the two keys")
+        return self
+
     context_window: int | None = Field(
         default=None,
         gt=0,
