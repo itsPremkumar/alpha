@@ -470,6 +470,21 @@ exactly-once execution.
 - **System One decision models** — provider-neutral typed `choice` / `score` /
   `noul` decisions (hosted Jev or self-hosted Laya) with confidence gating and
   deterministic fallback.
+- **Staged group deliberation (the War Room engine)** — when one agent's answer is
+  not enough, a bounded room runs several agents through a staged sequence under a
+  quorum policy (`all` / `any` / `majority` / `supermajority`). Agreement is
+  measured over the *claims* participants state, so silence is never counted as
+  agreement, the minority view is preserved verbatim, and correlated voters on one
+  model collapse to a single voice. Ten deliberation strategies are available
+  (`council`, `debate`, `red_team`, `expert_panel`, …) and `auto` routes through the
+  deliberation classifier. Open the **Deliberation** tab to read every stage,
+  receipt, quorum tally, dissent and transcript of a run.
+  A run is never reported as *verified* — a quorum establishes that agents agreed,
+  not that they were right.
+- **Cross-agent taint screening** — every contribution is screened for
+  instruction-override and exfiltration patterns, a detected payload is redacted
+  before it re-enters another participant's prompt, and an unaddressed match
+  downgrades the run instead of letting it report a clean pass.
 
 → [docs/COGNITIVE_ENGINES.md](docs/COGNITIVE_ENGINES.md) ·
 [docs/SYSTEM_ONE.md](docs/SYSTEM_ONE.md)

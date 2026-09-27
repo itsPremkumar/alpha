@@ -98,7 +98,6 @@ async def list_war_rooms(room: str | None = None, limit: int = 50) -> dict:
 @require_permission("threads", "read")
 async def war_room_analytics(room: str | None = None) -> dict:
     """Cross-run totals: statuses, strategies, taint, dissent, duration."""
-    limit = max(1, min(int(room and 500 or 500), 500))
 
     def _do() -> dict[str, Any]:
         from alpha.groups.war_room import list_persisted_runs

@@ -21,7 +21,6 @@ import time
 from pathlib import Path
 
 import pytest
-from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from alpha.bots.events import OrgEventStore
@@ -45,10 +44,10 @@ async def _seed(root: Path, *, topic: str = "should we migrate") -> str:
     """Run one real room with test participants and return its run id."""
 
     async def alice(ctx):
-        return f"alice\nSTATED CLAIMS: adopt postgres | keep the ops team\nSELF CONFIDENCE: 0.8"
+        return "alice\nSTATED CLAIMS: adopt postgres | keep the ops team\nSELF CONFIDENCE: 0.8"
 
     async def bob(ctx):
-        return f"bob\nSTATED CLAIMS: adopt postgres\nSELF CONFIDENCE: 0.7"
+        return "bob\nSTATED CLAIMS: adopt postgres\nSELF CONFIDENCE: 0.7"
 
     async def moderator(ctx):
         return "DECISION: adopt postgres"
@@ -133,10 +132,21 @@ async def test_a_missing_run_is_a_404_with_the_id_in_the_reason(client):
     assert "wrun_nope" in response.json()["detail"]
 
 
-@pytest.mark.parametrize("run_id", ["../escape", "..%2Fescape", "a/b", "a\\b", ".hidden", ""])
+@pytest.mark.parametrize("run_id", ["../escape", "..%2Fescape", "a/b", "a\\b", ".hidden"])
 async def test_a_traversal_attempt_in_run_id_is_refused_not_resolved(client, run_id):
     response = client.get(f"/api/war-rooms/{run_id}")
     assert response.status_code in (400, 404), f"{run_id!r} produced {response.status_code}"
+
+
+async def test_an_empty_run_id_resolves_to_the_collection_not_a_run(client):
+    """`/api/war-rooms/` is the list route, so it can never be read as a run id.
+
+    Worth pinning because the alternative - treating the empty string as a run id
+    and then joining it onto a path - is how a traversal bug gets introduced.
+    """
+    response = client.get("/api/war-rooms/")
+    assert response.status_code == 200
+    assert "runs" in response.json()
 
 
 # ---------------------------------------------------------------- corrupt state

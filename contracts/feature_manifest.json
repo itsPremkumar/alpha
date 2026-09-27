@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-09-26T17:45:49Z",
+ "generated_at": "2026-09-27T07:11:49Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -1544,6 +1544,14 @@
   {
    "id": "app.gateway.routers.uploads",
    "module": "app.gateway.routers.uploads",
+   "symbol": "router",
+   "wiring_point": "app.gateway.app:include_router",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "app.gateway.routers.war_rooms",
+   "module": "app.gateway.routers.war_rooms",
    "symbol": "router",
    "wiring_point": "app.gateway.app:include_router",
    "wired": true,
