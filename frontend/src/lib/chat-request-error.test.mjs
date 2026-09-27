@@ -32,12 +32,19 @@ async function send(fetchResponse, { draft = "  retry me  ", newerDraft = "", ab
   // Bumped by user navigation. The test can raise it mid-stream to simulate the
   // user opening a different conversation while a run is still streaming.
   const runGenerationRef = { current: 0 };
+  // Byte-level liveness clock behind the silence notice. Exposed on `state`
+  // so a test can assert the run-start reset, which is what stops a clock left
+  // dead by the previous turn from announcing a stall in this one.
+  const lastByteAtRef = { current: null };
+  state.lastByteAtRef = lastByteAtRef;
   let controllerAborted = false;
   const dependencies = {
     activeThreadId: "thread-1", isLoading: false, activeBot: null, selectedModel: "model", planMode: false,
-    suggestionsOn: true, messages: [], abortRef, runGenerationRef,
+    suggestionsOn: true, messages: [], abortRef, runGenerationRef, lastByteAtRef,
     setInput: setter("input"), setIsLoading: setter("loading"), setRequestError: setter("error"),
     setMessages: setter("messages"), setSuggestions: setter("suggestions"), setUsage: () => {},
+    // Live subagent receipt; this harness only needs it to be settable.
+    setSubagentTasks: setter("subagentTasks"),
     autoTriggerCommand: async () => null,
     appendLocalMessages: (_tid, messages) => state.saved.push(...messages),
     persistLocalHistory: async (operation) => {
@@ -240,4 +247,23 @@ test("error UI is thread-scoped, accessible, and uses plain text for incomplete 
   assert.match(source, /<ErrorBox\s+message=\{requestError.message\}/);
   assert.match(source, /<pre[^>]*>\{requestError.partial\}<\/pre>/);
   assert.doesNotMatch(source, /has received your request and evaluated the workflow/);
+});
+
+test("each run seeds its own silence clock, so a clock left dead by the last turn cannot announce a stall", async () => {
+  const state = await send(() => ({ ok: true, body: { getReader: () => ({ read: async () => ({ done: true }), releaseLock: () => {} }) } }));
+  const at = state.lastByteAtRef.current;
+  // `null` would mean "no reading" and render no notice at all — the run must
+  // start from a real timestamp, and it must be THIS run's.
+  assert.ok(typeof at === "number" && Number.isFinite(at), "a run must begin with a byte reading");
+  assert.ok(Date.now() - at < 10_000, "the reading belongs to this run, not a previous turn");
+});
+
+test("the silence notice is fed raw bytes, and the subagent stream mode is requested", () => {
+  // Heartbeat comments parse to nothing, so a hook on parsed frames would
+  // never fire during exactly the quiet period the notice exists to catch.
+  assert.match(sendSource, /onActivity:\s*\(/, "ChatView must subscribe to byte arrivals");
+  assert.match(sendSource, /lastByteAtRef\.current\s*=\s*Date\.now\(\)/, "and reset the clock per run");
+  // Subagent `task_*` progress only arrives on the `custom` channel; without
+  // it the transcript shows a spinner and nothing else during a delegation.
+  assert.match(sendSource, /stream_mode:\s*\[[^\]]*"custom"/);
 });

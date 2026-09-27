@@ -254,6 +254,26 @@ function messageFromRow(message: any, index: number): ChatMessage[] {
   ];
 }
 
+/**
+ * Collapse feed rows that resolve to the same message id.
+ *
+ * The render list keys messages by `msg.id`, so two rows carrying the same id
+ * — a re-journaled turn, or a legacy row whose message id equals the run id —
+ * crash the chat view with a React duplicate-key error. The local archive merge
+ * (`mergeMessages`) already treats same-id rows as one message; the direct
+ * server-history path applies the same rule so both paths agree. First
+ * occurrence wins: the feed is chronological, so the earliest row is the
+ * canonical write of the message.
+ */
+function uniqueMessages(messages: ChatMessage[]): ChatMessage[] {
+  const seen = new Set<string>();
+  return messages.filter((message) => {
+    if (seen.has(message.id)) return false;
+    seen.add(message.id);
+    return true;
+  });
+}
+
 export async function fetchThreadHistoryResult(threadId: string): Promise<FetchResult<ChatMessage[]>> {
   // The message feed is backward-paginated with a sequence cursor. Walk all
   // pages so reopening a long chat never silently drops its oldest turns.
@@ -313,7 +333,7 @@ export async function fetchThreadHistoryResult(threadId: string): Promise<FetchR
       if (partial.length > 0) {
         return {
           ok: true,
-          value: partial,
+          value: uniqueMessages(partial),
           incomplete: failed(error).error,
           // The last accepted cursor, not the newest page's: a later page's
           // cursor would skip everything already fetched.
@@ -327,11 +347,13 @@ export async function fetchThreadHistoryResult(threadId: string): Promise<FetchR
 
   return {
     ok: true,
-    value: pages
-      .slice()
-      .reverse()
-      .flat()
-      .flatMap((message, index) => messageFromRow(message, index)),
+    value: uniqueMessages(
+      pages
+        .slice()
+        .reverse()
+        .flat()
+        .flatMap((message, index) => messageFromRow(message, index)),
+    ),
   };
 }
 

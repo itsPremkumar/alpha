@@ -44,6 +44,15 @@ export type SseState = {
   toolOwners: Map<string, string>;
   /** Latest payload per non-message channel; bounded by the fixed key set. */
   channels: Partial<Record<SseChannelEvent, SseChannelFrame>>;
+  /**
+   * Subagent tasks folded from root-namespace `task_*` custom events, in the
+   * order they were first seen.
+   *
+   * A plain array rather than a map so the reference is stable across frames
+   * that carry no task news — React can then skip re-rendering the subagent
+   * list on every ordinary message delta. Bounded by `MAX_SUBAGENT_TASKS`.
+   */
+  tasks: SubagentTask[];
 };
 
 /* ── Wire contract for tool verdicts (see types/chat.ts ToolCallVerdict) ──── */
@@ -70,9 +79,85 @@ const MAX_TOOL_RESULTS = 2048;
 const MAX_TOOL_OUTPUT_CHARS = 4000;
 const MAX_CHANNEL_CHARS = 8000;
 const MAX_ERROR_MESSAGE_CHARS = 1000;
+/** Ceiling on the live subagent list; a deeper fan-out is a pathological run. */
+const MAX_SUBAGENT_TASKS = 128;
+/** Ceiling on per-task step/error text carried into the live view. */
+const MAX_TASK_TEXT_CHARS = 2000;
+
+/* ── Subagent progress: `task_*` custom events on the root namespace ─────── */
+
+/**
+ * Outcome of one delegated subagent task, derived ONLY from the `task_*`
+ * custom events the run emitted.
+ *
+ * `running` is what a task is between `task_started` and its terminal event.
+ * It is deliberately NOT a success: a task whose stream ends before any
+ * terminal event stays `running`, and the UI must render that as still
+ * running rather than inventing a completion the run never reported.
+ */
+export type SubagentTaskStatus = "running" | "completed" | "failed" | "cancelled" | "timed_out";
+
+/** Cumulative token totals for one task, copied verbatim from the event. */
+export type SubagentUsage = { input_tokens: number; output_tokens: number; total_tokens: number };
+
+export type SubagentTask = {
+  id: string;
+  status: SubagentTaskStatus;
+  /** Model-visible progress label from `task_started`. Absent = never reported. */
+  description?: string;
+  modelName?: string;
+  /** Latest step text the subagent streamed. */
+  message?: string;
+  /** 1-based step number, and how many steps the task had reported in total. */
+  messageIndex?: number;
+  totalMessages?: number;
+  /** Reason a task ended unsuccessfully, from the terminal event. */
+  error?: string;
+  /** Cumulative tokens the run reported. Absent = not reported, never zero. */
+  usage?: SubagentUsage;
+};
+
+/**
+ * Terminal `task_*` event type -> status.
+ *
+ * The payload itself carries no status field, so the event name IS the
+ * verdict; an unrecognized `task_*` type maps to nothing and is ignored
+ * rather than being guessed into a status.
+ */
+const TERMINAL_TASK_EVENT: Readonly<Record<string, SubagentTaskStatus>> = {
+  task_completed: "completed",
+  task_failed: "failed",
+  task_cancelled: "cancelled",
+  task_timed_out: "timed_out",
+};
+
+function isTerminalTaskStatus(status: SubagentTaskStatus): boolean {
+  return status !== "running";
+}
+
+function boundedTaskText(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value.slice(0, MAX_TASK_TEXT_CHARS) : undefined;
+}
+
+/** Copy the token totals only when the event actually carried numbers. */
+function taskUsage(value: unknown): SubagentUsage | undefined {
+  const usage = record(value);
+  const pick = (key: string) => (typeof usage[key] === "number" && Number.isFinite(usage[key]) ? (usage[key] as number) : undefined);
+  const input = pick("input_tokens");
+  const output = pick("output_tokens");
+  const total = pick("total_tokens");
+  // A usage block with none of its three fields is not usage; reporting it as
+  // `{0,0,0}` would fabricate a measurement the run never made.
+  if (input === undefined && output === undefined && total === undefined) return undefined;
+  return {
+    input_tokens: input ?? 0,
+    output_tokens: output ?? 0,
+    total_tokens: total ?? 0,
+  };
+}
 
 export function createSseState(runId?: string): SseState {
-  return { runId, messages: new Map(), seen: new Set(), pending: [], ended: false, toolResults: new Map(), toolOwners: new Map(), channels: {} };
+  return { runId, messages: new Map(), seen: new Set(), pending: [], ended: false, toolResults: new Map(), toolOwners: new Map(), channels: {}, tasks: [] };
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -228,6 +313,73 @@ function withChannel(state: SseState, event: SseChannelEvent, data: unknown, eve
   return { ...state, channels: { ...state.channels, [event]: frame } };
 }
 
+/**
+ * Fold one `task_*` custom payload into the live subagent list.
+ *
+ * The rules that keep this honest:
+ * - the FIRST terminal report wins. A replayed or late frame can never flip an
+ *   outcome the run already settled, and `task_running` can never downgrade a
+ *   settled task back to running.
+ * - a task whose `task_started` was missed (the subscription began mid-run) is
+ *   still tracked from its first observed event rather than dropped.
+ * - an unrecognized `task_*` type is ignored instead of being guessed into a
+ *   status nobody reported.
+ * - step numbers only move forward, so an out-of-order frame cannot rewind the
+ *   progress the UI is showing.
+ *
+ * Returns `state` unchanged when there is nothing to add, which keeps the array
+ * reference stable and lets React skip the re-render.
+ */
+function withTaskEvent(state: SseState, data: Record<string, unknown>): SseState {
+  const type = typeof data.type === "string" ? data.type : "";
+  if (!type.startsWith("task_")) return state;
+  const id = identifier(data.task_id);
+  if (!id) return state;
+
+  const terminal = TERMINAL_TASK_EVENT[type];
+  const isStarted = type === "task_started";
+  const isStep = type === "task_running";
+  if (!isStarted && !isStep && terminal === undefined) return state;
+
+  const index = state.tasks.findIndex((task) => task.id === id);
+  const previous = index >= 0 ? state.tasks[index] : undefined;
+  if (previous && isTerminalTaskStatus(previous.status)) return state;
+  if (!previous && state.tasks.length >= MAX_SUBAGENT_TASKS) return state;
+
+  const next: SubagentTask = previous ? { ...previous } : { id, status: "running" };
+
+  const description = boundedTaskText(data.description);
+  if (description) next.description = description;
+  const model = boundedTaskText(data.model_name);
+  if (model) next.modelName = model;
+
+  if (isStep) {
+    const reportedIndex = typeof data.message_index === "number" && Number.isSafeInteger(data.message_index) && data.message_index > 0 ? data.message_index : undefined;
+    const knownIndex = next.messageIndex ?? 0;
+    // Only a step at least as advanced as the one on screen may overwrite it.
+    if (reportedIndex === undefined || reportedIndex >= knownIndex) {
+      const message = boundedTaskText(data.message);
+      if (message) next.message = message;
+      if (reportedIndex !== undefined) next.messageIndex = reportedIndex;
+      const reportedTotal = typeof data.total_messages === "number" && Number.isSafeInteger(data.total_messages) && data.total_messages > 0 ? data.total_messages : undefined;
+      if (reportedTotal !== undefined) next.totalMessages = Math.max(reportedTotal, next.totalMessages ?? 0);
+      const usage = taskUsage(data.usage);
+      if (usage) next.usage = usage;
+    }
+  } else if (terminal !== undefined) {
+    next.status = terminal;
+    const error = boundedTaskText(data.error);
+    if (error) next.error = error;
+    const usage = taskUsage(data.usage);
+    if (usage) next.usage = usage;
+  }
+
+  const tasks = state.tasks.slice();
+  if (index >= 0) tasks[index] = next;
+  else tasks.push(next);
+  return { ...state, tasks };
+}
+
 function structuredContent(message: Record<string, unknown>): { toolCalls: ToolPart[]; thinking: string } {
   const blocks = Array.isArray(message.content) ? message.content.map(record) : [];
   const additional = record(message.additional_kwargs);
@@ -308,6 +460,42 @@ function displayTools(calls: ToolPart[], results: Map<string, ToolResult>): Tool
   });
 }
 
+/**
+ * Node name of the root agent node in the LangGraph `create_agent` graph.
+ *
+ * LangGraph tags EVERY message it emits with `langgraph_checkpoint_ns`, in the
+ * form `<node_name>:<task_id>` for a top-level node. Measured against the live
+ * Gateway, the assistant's own answer arrives as
+ * `langgraph_checkpoint_ns: "model:<task-id>"` — the root model node — while
+ * middleware and sub-agent work arrives under its own node names (for example
+ * `DynamicContextMiddleware.before_agent:<id>`).
+ *
+ * Treating *any* namespace as "a subgraph" therefore discarded the primary
+ * answer channel, and because the answer then only survived in a `values`
+ * snapshot — which is deliberately hidden — `streamMessages()` returned an
+ * empty list and the composer reported an empty response. See
+ * `sse-reducer.test.mjs` for the capture that pins this.
+ */
+const ROOT_AGENT_NODE = "model";
+
+/**
+ * True when a `messages` frame's namespace belongs to a NESTED sub-graph, i.e.
+ * when the message is a child's answer and must not be presented as the main
+ * agent's answer.
+ *
+ * A namespace is `<node_name>:<task_id>`; a nested path is additionally
+ * `|`-joined (`supervisor:<id>|worker:<id>`). The root agent node is never a
+ * subgraph, so its frames stay on the primary channel.
+ */
+export function isNestedSubgraphFrame(metadata: Record<string, unknown>): boolean {
+  const raw = metadata.langgraph_checkpoint_ns ?? metadata.checkpoint_ns;
+  const namespace = typeof raw === "string" ? raw.trim() : "";
+  if (!namespace) return false;
+  if (namespace.includes("|")) return true;
+  const node = namespace.split(":")[0] ?? "";
+  return node !== ROOT_AGENT_NODE;
+}
+
 export function reduceSse(state: SseState, frame: SseFrame): SseState {
   if (state.failure) return state;
   const data = record(frame.data);
@@ -340,14 +528,20 @@ export function reduceSse(state: SseState, frame: SseFrame): SseState {
   if (frame.event.includes("|")) return next;
   // Sub-graph channels (`updates|child`) stay excluded by the check above;
   // only the root channel of each non-message mode is retained.
-  if (CHANNEL_EVENTS.has(frame.event)) return withChannel(next, frame.event as SseChannelEvent, frame.data, eventId);
+  if (CHANNEL_EVENTS.has(frame.event)) {
+    const channeled = withChannel(next, frame.event as SseChannelEvent, frame.data, eventId);
+    // Subagent progress rides root-namespace `task_*` on the `custom` channel.
+    // Keep the bounded raw frame for diagnostics AND fold it into the list the
+    // UI actually renders.
+    return frame.event === "custom" ? withTaskEvent(channeled, data) : channeled;
+  }
   if (frame.event === "values" && data.__interrupt__) return { ...next, failure: "interrupted" };
   let incoming: unknown[];
   let snapshot = false;
   if (frame.event === "messages" || frame.event === "messages-tuple") {
     if (!Array.isArray(frame.data) || frame.data.length !== 2) return { ...next, failure: "protocol" };
     const metadata = record(frame.data[1]);
-    if (metadata.langgraph_checkpoint_ns || metadata.checkpoint_ns) return next;
+    if (isNestedSubgraphFrame(metadata)) return next;
     incoming = [frame.data[0]];
   } else if (frame.event === "values") {
     incoming = Array.isArray(data.messages) ? data.messages : [];
@@ -395,6 +589,17 @@ export function streamMessages(state: SseState): StreamMessage[] {
     .filter((message) => message.visible)
     .sort((a, b) => compareIds(a.firstEventId, b.firstEventId) || a.id.localeCompare(b.id))
     .map(({ id, runId, content, toolCalls, thinking }) => ({ id, runId, content, ...(toolCalls ? { toolCalls } : {}), ...(thinking ? { thinking } : {}) }));
+}
+
+/**
+ * Subagent tasks for this run, in first-seen order.
+ *
+ * The array reference only changes when a `task_*` frame actually landed, so
+ * consumers can hand it straight to `setState` and React will bail out of the
+ * re-render on frames that carried no subagent news.
+ */
+export function streamTasks(state: SseState): SubagentTask[] {
+  return state.tasks;
 }
 
 export function runIdFromLocation(location: string | null | undefined, threadId: string): string | undefined {

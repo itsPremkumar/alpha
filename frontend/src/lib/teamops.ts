@@ -92,7 +92,23 @@ export async function createSwarm(objective: string, options?: { mode?: string; 
   });
 }
 
-export async function swarmAction(id: string, action: "pause" | "resume" | "cancel" | "step" | "run_async"): Promise<void> {
+/**
+ * Lifecycle verbs the Gateway actually mounts under `/api/swarms/{swarm_id}/`.
+ *
+ * These strings ARE the route segment — they are not a UI vocabulary that gets
+ * translated later. The router mounts `run-async` (kebab), so `run_async`
+ * addressed a path that does not exist and every "Run" press 404'd at routing.
+ * Keeping the union here, next to the client that puts it on the wire, means
+ * there is no second spelling to drift.
+ *
+ * Server: backend/app/gateway/routers/swarms.py
+ *   @router.post("/{swarm_id}/pause" | "/resume" | "/cancel" | "/step" | "/run-async")
+ */
+export const SWARM_ACTIONS = ["pause", "resume", "cancel", "step", "run-async"] as const;
+
+export type SwarmAction = (typeof SWARM_ACTIONS)[number];
+
+export async function swarmAction(id: string, action: SwarmAction): Promise<void> {
   await send(`/swarms/${encodeURIComponent(id)}/${action}`, "POST", {});
 }
 

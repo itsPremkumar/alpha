@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { listGroups, createGroup, postGroupMessage, groupMessages, startGroupRun, listSwarms, createSwarm, swarmAction, swarmMessages, publishSwarmMessage, SWARM_MESSAGE_WINDOW, type Swarm, type SwarmMessage, listMcpTasks, listJobs, cancelJob, companyStatus, executiveDigest, companyKpis } from "@/lib/teamops";
+import { listGroups, createGroup, postGroupMessage, groupMessages, startGroupRun, listSwarms, createSwarm, swarmAction, swarmMessages, publishSwarmMessage, SWARM_MESSAGE_WINDOW, type Swarm, type SwarmAction, type SwarmMessage, listMcpTasks, listJobs, cancelJob, companyStatus, executiveDigest, companyKpis } from "@/lib/teamops";
 import { listKanbanTasks, moveKanbanTask, kanbanEvents, KANBAN_COLUMNS, KanbanTask, KanbanStatus } from "@/lib/kanban";
 import { fetchRoster, registerRosterAgent, sendAgentMessage, fetchInbox, setRosterStatus, RosterAgent, InboxMessage } from "@/lib/inbox";
 import { Section, EmptyState, ErrorBox, Notice, Btn, Badge, Field, SkeletonList, inputCls } from "@/components/ui";
@@ -9,12 +9,24 @@ import { errMsg } from "@/lib/http";
 import { Plus, Send, Play, RefreshCw, Ban } from "lucide-react";
 
 type SubTab = "groups" | "inbox" | "swarms" | "jobs" | "company";
-type SwarmAction = "run_async" | "step" | "pause" | "resume" | "cancel";
+
+/**
+ * Button caption per lifecycle verb. The verbs themselves are the Gateway's
+ * route segments and are owned by lib/teamops; only the caption is a UI
+ * concern, so it is mapped here.
+ */
+const SWARM_ACTION_LABEL: Record<SwarmAction, string> = {
+  "run-async": "Run",
+  step: "Step",
+  pause: "Pause",
+  resume: "Resume",
+  cancel: "Cancel",
+};
 
 function swarmActions(status: string): SwarmAction[] {
   if (["completed", "failed", "cancelled", "budget_exhausted", "stalled"].includes(status)) return [];
   if (status === "paused") return ["resume", "cancel"];
-  return ["run_async", "step", "pause", "cancel"];
+  return ["run-async", "step", "pause", "cancel"];
 }
 
 export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailable: boolean }) {
@@ -156,7 +168,7 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
                   <div className="px-4 pb-4 border-t border-border/50 pt-3 space-y-2">
                     <div className="space-y-1.5 max-h-56 overflow-y-auto">
                       {(groupMsgs[g.name] || []).length === 0 ? (
-                        <p className="text-[11px] text-muted-foreground">No messages yet ” say hello below.</p>
+                        <p className="text-[11px] text-muted-foreground">No messages yet — say hello below.</p>
                       ) : (
                         (groupMsgs[g.name] || []).slice(-20).map((m, i) => (
                           <div key={i} className="text-[11px] rounded-lg bg-muted/40 px-2.5 py-1.5">
@@ -224,7 +236,7 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
                   </Btn>
                   {swarmActions(s.status).map((a) => (
                     <Btn key={a} variant="ghost" onClick={() => act(() => swarmAction(s.id, a))}>
-                      {a === "run_async" ? "Run" : a[0].toUpperCase() + a.slice(1)}
+                      {SWARM_ACTION_LABEL[a]}
                     </Btn>
                   ))}
                 </div>
@@ -239,7 +251,7 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
             <div className="rounded-2xl border border-border/60 bg-card p-4">
               <p className="text-xs font-semibold mb-1.5">Long-running tool tasks in this chat ({mcpTasks.length})</p>
               {mcpTasks.length === 0 ? (
-                <p className="text-[11px] text-muted-foreground">None ” durable tool work appears here.</p>
+                <p className="text-[11px] text-muted-foreground">None — durable tool work appears here.</p>
               ) : (
                 mcpTasks.slice(0, 10).map((t, i) => (
                   <p key={i} className="text-[11px] font-mono rounded-lg bg-muted/40 px-2.5 py-1.5 mb-1 break-all">
@@ -280,7 +292,7 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {kpis.slice(0, 12).map((k, i) => (
                   <div key={i} className="rounded-xl bg-muted/40 p-2.5">
-                    <p className="text-sm font-bold">{String(k.value ?? k.current ?? "”")}</p>
+                    <p className="text-sm font-bold">{String(k.value ?? k.current ?? "")}</p>
                     <p className="text-[10px] text-muted-foreground">{String(k.name ?? k.label ?? k.metric ?? `KPI ${i + 1}`)}</p>
                   </div>
                 ))}

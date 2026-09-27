@@ -188,7 +188,16 @@ function serverToCard(t: ServerTask): Card {
  * after the last sync — tracked implicitly by updatedAt ordering.
  */
 export function mergeServerCards(local: Card[], server: ServerTask[]): Card[] {
-  const byServer = new Map(local.map((c) => [c.serverId || "", c]));
+  // Local-only cards carry no serverId. Bucketing them all under one "" Map
+  // key makes the Map retain only the last of them, so every sync silently
+  // drops the rest of the user's own board. They are not mirrors, so they are
+  // kept in their own list instead of competing for a server-id key.
+  const byServer = new Map<string, Card>();
+  const localOnly: Card[] = [];
+  for (const c of local) {
+    if (c.serverId) byServer.set(c.serverId, c);
+    else localOnly.push(c);
+  }
   const out: Card[] = [];
   for (const t of server) {
     const existing = byServer.get(t.id);
@@ -203,6 +212,7 @@ export function mergeServerCards(local: Card[], server: ServerTask[]): Card[] {
     if (c.serverId) continue; // server card deleted remotely — drop mirror
     out.push(c);
   }
+  out.push(...localOnly);
   return out;
 }
 

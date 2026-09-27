@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useState } from "react";
 import {
@@ -104,12 +104,12 @@ export function KanbanSection(props: { bots: BoardBot[] }) {
     if (card.status === to) return;
     if (to === "blocked" && !card.blockedReason.trim()) {
       setEditing({ ...card });
-      setError("A blocked card needs a reason ” added it in the editor.");
+      setError("A blocked card needs a reason — added it in the editor.");
       return;
     }
     const prev = card.status;
     const next = { ...card, status: to };
-    setCards((cs) => saveCard(next, `${labelOf(prev)} â†’ ${labelOf(to)}`));
+    setCards((cs) => saveCard(next, `${labelOf(prev)} → ${labelOf(to)}`));
     if (next.serverId) {
       try {
         await pushStatus(next, to);
@@ -128,7 +128,7 @@ export function KanbanSection(props: { bots: BoardBot[] }) {
   return (
     <Section
       title="Project board"
-      hint="Every piece of work as a card ” pick it up, move it across, attach evidence. Server board cards sync automatically."
+      hint="Every piece of work as a card — pick it up, move it across, attach evidence. Server board cards sync automatically."
       actions={
         <>
           <div className="flex gap-2 text-[11px]">
@@ -202,7 +202,7 @@ export function KanbanSection(props: { bots: BoardBot[] }) {
       ) : filtered.length === 0 ? (
         <EmptyState
           title={cards.length === 0 ? "Board is empty" : "No cards match"}
-          hint={cards.length === 0 ? "Create the first task above ” backlog it, assign a bot, move it across as work happens." : "Loosen the filters."}
+          hint={cards.length === 0 ? "Create the first task above — backlog it, assign a bot, move it across as work happens." : "Loosen the filters."}
           action={cards.length === 0 ? <Btn onClick={() => setEditing(emptyCard())}><Plus className="size-3.5" /> New task</Btn> : undefined}
         />
       ) : (
@@ -242,13 +242,13 @@ export function KanbanSection(props: { bots: BoardBot[] }) {
                     <p className="text-xs font-semibold leading-snug">{c.title || "(untitled)"}</p>
                     <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                       <Badge tone={PRIORITY_TONE[c.priority]}>{c.priority}</Badge>
-                      {c.agent && <span className="text-[10px] font-medium text-primary">ðŸ‘¤ {botName(c.agent)}</span>}
+                      {c.agent && <span className="text-[10px] font-medium text-primary">👤 {botName(c.agent)}</span>}
                     </div>
                     {(c.projectId || c.projectName) && (
-                      <p className="text-[10px] text-muted-foreground mt-1 truncate">ðŸ“ {projectName(c)}</p>
+                      <p className="text-[10px] text-muted-foreground mt-1 truncate">📁 {projectName(c)}</p>
                     )}
                     {c.status === "blocked" && c.blockedReason && (
-                      <p className="text-[10px] text-amber-600 mt-1 line-clamp-2">â›” {c.blockedReason}</p>
+                      <p className="text-[10px] text-amber-600 mt-1 line-clamp-2">⛔ {c.blockedReason}</p>
                     )}
                     <div className="flex items-center gap-2 mt-2">
                       <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden" title={`${c.progress}% complete`}>
@@ -310,7 +310,7 @@ export function KanbanSection(props: { bots: BoardBot[] }) {
               return;
             }
             if (c.status === "blocked" && !c.blockedReason.trim()) {
-              setError("Blocked cards need a reason ” what is stopping it?");
+              setError("Blocked cards need a reason — what is stopping it?");
               return;
             }
             setCards(saveCard(c, "Card edited."));
@@ -426,7 +426,7 @@ function CardEditor(props: {
               <textarea value={c.evidence} onChange={(e) => set({ evidence: e.target.value })} rows={2} placeholder="commit abc123, test report…" className={inputCls} />
             </Field>
             <Field label="Tests">
-              <textarea value={c.tests} onChange={(e) => set({ tests: e.target.value })} rows={2} placeholder="pytest -q â†’ 42 passed" className={inputCls} />
+              <textarea value={c.tests} onChange={(e) => set({ tests: e.target.value })} rows={2} placeholder="pytest -q → 42 passed" className={inputCls} />
             </Field>
           </div>
           {c.history.length > 0 && (
@@ -435,14 +435,14 @@ function CardEditor(props: {
               <div className="space-y-1 max-h-32 overflow-y-auto">
                 {[...c.history].reverse().slice(0, 20).map((h, i) => (
                   <p key={i} className="text-[11px] text-muted-foreground">
-                    <span className="font-mono">{h.at ? new Date(h.at).toLocaleString() : ""}</span> ” {h.text}
+                    <span className="font-mono">{h.at ? new Date(h.at).toLocaleString() : ""}</span> — {h.text}
                   </p>
                 ))}
               </div>
             </div>
           )}
           <p className="text-[10px] text-muted-foreground inline-flex items-center gap-1">
-            <User className="size-3" /> Created {c.createdAt ? new Date(c.createdAt).toLocaleString() : "”"}
+            <User className="size-3" /> Created {c.createdAt ? new Date(c.createdAt).toLocaleString() : ""}
           </p>
         </div>
         <div className="p-3 border-t border-border/60 flex gap-2">

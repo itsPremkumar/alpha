@@ -6,7 +6,19 @@ export interface ThreadGoal {
 }
 
 /** Title from a ThreadResponse record: metadata.title, then values.title, else fallback. */
-function threadTitle(t: Record<string, unknown>): string {
+/**
+ * The title a thread actually has, per the Gateway.
+ *
+ * `GET/POST /threads` omits `title` entirely for a thread that has never been
+ * titled — measured live: all 31 rows from `/api/threads/search` came back with
+ * keys `created_at, interrupts, metadata, status, thread_id, updated_at, values`
+ * and **no** `title`. The title can live on the row, in `metadata`, or in
+ * `values`, so every reader must go through here instead of touching
+ * `thread.title` directly: a bare `thread.title.toLowerCase()` threw
+ * `TypeError: Cannot read properties of undefined (reading 'toLowerCase')` and
+ * took down the whole app on load.
+ */
+export function threadTitle(t: Record<string, unknown>): string {
   const meta = (t.metadata ?? {}) as Record<string, unknown>;
   const values = (t.values ?? {}) as Record<string, unknown>;
   const title = t.title ?? meta.title ?? values.title;

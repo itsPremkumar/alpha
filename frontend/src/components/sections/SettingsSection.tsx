@@ -39,242 +39,22 @@ import { fetchOpsStatus, fetchOpsVersion, fetchFeatures, FeatureFlags, fetchEvol
 import { probeAll, Probe } from "@/lib/system";
 import { applyThemeMode, isThemeMode, THEME_STORAGE_KEY } from "@/lib/theme";
 import { fetchIntegrationHealth, IntegrationHealth } from "@/lib/integration";
-import { Section, StatCard, Badge, Btn, Field, inputCls, ErrorBox, Notice, SkeletonList } from "@/components/ui";
+import { Section, StatCard, Badge, Btn, Field, inputCls, EmptyState, ErrorBox, Notice, SkeletonList } from "@/components/ui";
 import { errMsg } from "@/lib/http";
 import { branding } from "@/lib/branding";
 import { getCapabilities, type CapabilitiesReport } from "@/lib/multimodal";
 import { readAutoplayEnabled, writeAutoplayEnabled } from "@/lib/voice";
 import { checkForEvolutionUpdate, getEvolutionUpdateState, requestEvolutionUpdate, type EvolutionUpdateState } from "@/lib/evolution";
 
-const FALLBACK_PROVIDER_CATALOG: LLMProviderCatalogItem[] = [
-  {
-    id: "gemini",
-    name: "Google AI Studio (Gemini)",
-    category: "recurring_free",
-    key_env: "GEMINI_API_KEY",
-    configured: false,
-    masked_key: null,
-    portal_url: "https://aistudio.google.com/apikey",
-    free_tier_note: "Recurring $0 free tier: 15 RPM / 1,500 requests per day with Gemini 2.5 Flash & Pro.",
-    base_url: "https://generativelanguage.googleapis.com/v1beta/openai",
-    default_models: [
-      { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash", model_id: "gemini-2.5-flash", supports_thinking: true },
-      { id: "gemini-2.5-flash-lite", name: "Gemini 2.5 Flash-Lite", model_id: "gemini-2.5-flash-lite", supports_thinking: false },
-      { id: "gemini-2.0-pro-exp-02-05", name: "Gemini 2.0 Pro Exp", model_id: "gemini-2.0-pro-exp-02-05", supports_thinking: true },
-    ],
-  },
-  {
-    id: "groq",
-    name: "GroqCloud",
-    category: "recurring_free",
-    key_env: "GROQ_API_KEY",
-    configured: false,
-    masked_key: null,
-    portal_url: "https://console.groq.com/keys",
-    free_tier_note: "Recurring $0 free quota: 30 RPM / 14,400 requests/day at 500+ tokens/sec on LPUs.",
-    base_url: "https://api.groq.com/openai/v1",
-    default_models: [
-      { id: "groq-llama-3.3-70b", name: "LLaMA 3.3 70B Versatile (Groq)", model_id: "llama-3.3-70b-versatile" },
-      { id: "groq-deepseek-r1-70b", name: "DeepSeek R1 Distill 70B (Groq)", model_id: "deepseek-r1-distill-llama-70b", supports_thinking: true },
-      { id: "groq-llama-3.1-8b", name: "LLaMA 3.1 8B Instant (Groq)", model_id: "llama-3.1-8b-instant" },
-    ],
-  },
-  {
-    id: "openrouter",
-    name: "OpenRouter",
-    category: "free_gateway",
-    key_env: "OPENROUTER_API_KEY",
-    configured: false,
-    masked_key: null,
-    portal_url: "https://openrouter.ai/keys",
-    free_tier_note: "Single API key unlocks Union Alpha and 25+ rotating :free models at $0 cost.",
-    base_url: "https://openrouter.ai/api/v1",
-    default_models: [
-      { id: "union-alpha", name: "Union Alpha", model_id: "stealth/union-alpha", supports_thinking: true },
-      { id: "openrouter-free-llama-70b", name: "LLaMA 3.3 70B :free", model_id: "meta-llama/llama-3.3-70b-instruct:free" },
-      { id: "openrouter-free-deepseek-r1", name: "DeepSeek R1 :free", model_id: "deepseek/deepseek-r1:free", supports_thinking: true },
-    ],
-  },
-  {
-    id: "sambanova",
-    name: "SambaNova Cloud",
-    category: "recurring_free",
-    key_env: "SAMBANOVA_API_KEY",
-    configured: false,
-    masked_key: null,
-    portal_url: "https://cloud.sambanova.ai/apis",
-    free_tier_note: "Recurring $0 developer tier on ultra-fast SN40L Reconfigurable Dataflow Units.",
-    base_url: "https://api.sambanova.ai/v1",
-    default_models: [
-      { id: "sambanova-llama-3.3-70b", name: "LLaMA 3.3 70B (SambaNova)", model_id: "Meta-Llama-3.3-70B-Instruct" },
-      { id: "sambanova-deepseek-r1", name: "DeepSeek R1 (SambaNova)", model_id: "DeepSeek-R1", supports_thinking: true },
-    ],
-  },
-  {
-    id: "mistral",
-    name: "Mistral La Plateforme",
-    category: "recurring_free",
-    key_env: "MISTRAL_API_KEY",
-    configured: false,
-    masked_key: null,
-    portal_url: "https://console.mistral.ai/api-keys/",
-    free_tier_note: "Free Experiment tier with Codestral, Mistral Small, and Nemo.",
-    base_url: "https://api.mistral.ai/v1",
-    default_models: [
-      { id: "mistral-codestral", name: "Codestral (Mistral)", model_id: "codestral-latest" },
-      { id: "mistral-small", name: "Mistral Small (Mistral)", model_id: "mistral-small-latest" },
-    ],
-  },
-  {
-    id: "cohere",
-    name: "Cohere Coral",
-    category: "recurring_free",
-    key_env: "COHERE_API_KEY",
-    configured: false,
-    masked_key: null,
-    portal_url: "https://dashboard.cohere.com/api-keys",
-    free_tier_note: "Free Trial Key with 1,000 API calls/month.",
-    base_url: "https://api.cohere.ai/compatibility/v1",
-    default_models: [
-      { id: "cohere-command-r-plus", name: "Command R+ (Cohere)", model_id: "command-r-plus-08-2024" },
-    ],
-  },
-  {
-    id: "cloudflare",
-    name: "Cloudflare Workers AI",
-    category: "recurring_free",
-    key_env: "CLOUDFLARE_API_KEY",
-    configured: false,
-    masked_key: null,
-    portal_url: "https://dash.cloudflare.com/",
-    free_tier_note: "10,000 free neurons/day across Cloudflare global edge network.",
-    base_url: "https://api.cloudflare.com/client/v4/accounts/default/ai/v1",
-    default_models: [
-      { id: "cf-llama-3.3-70b", name: "LLaMA 3.3 70B FP8 (Cloudflare)", model_id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast" },
-    ],
-  },
-  {
-    id: "nvidia",
-    name: "NVIDIA NIM",
-    category: "trial_credits",
-    key_env: "NVIDIA_API_KEY",
-    configured: false,
-    masked_key: null,
-    portal_url: "https://build.nvidia.com/",
-    free_tier_note: "1,000 free inference API credits on NVIDIA enterprise DGX cloud.",
-    base_url: "https://integrate.api.nvidia.com/v1",
-    default_models: [
-      { id: "nvidia-nemotron-70b", name: "Nemotron 70B (NVIDIA NIM)", model_id: "nvidia/llama-3.1-nemotron-70b-instruct" },
-      { id: "nvidia-deepseek-r1", name: "DeepSeek R1 (NVIDIA NIM)", model_id: "deepseek-ai/deepseek-r1", supports_thinking: true },
-    ],
-  },
-  {
-    id: "cerebras",
-    name: "Cerebras Cloud",
-    category: "trial_credits",
-    key_env: "CEREBRAS_API_KEY",
-    configured: false,
-    masked_key: null,
-    portal_url: "https://cloud.cerebras.ai/",
-    free_tier_note: "1 Million free tokens/day on wafer-scale inference engine (2,000+ t/s).",
-    base_url: "https://api.cerebras.ai/v1",
-    default_models: [
-      { id: "cerebras-llama-3.3-70b", name: "LLaMA 3.3 70B (Cerebras)", model_id: "llama-3.3-70b" },
-    ],
-  },
-  {
-    id: "openai",
-    name: "OpenAI",
-    category: "paid",
-    key_env: "OPENAI_API_KEY",
-    configured: false,
-    masked_key: null,
-    portal_url: "https://platform.openai.com/api-keys",
-    free_tier_note: "Official OpenAI commercial platform (GPT-4o, GPT-4o-mini, o3-mini).",
-    base_url: "https://api.openai.com/v1",
-    default_models: [
-      { id: "gpt-4o", name: "GPT-4o", model_id: "gpt-4o" },
-      { id: "gpt-4o-mini", name: "GPT-4o mini", model_id: "gpt-4o-mini" },
-      { id: "o3-mini", name: "o3-mini", model_id: "o3-mini", supports_thinking: true },
-    ],
-  },
-  {
-    id: "anthropic",
-    name: "Anthropic Claude",
-    category: "paid",
-    key_env: "ANTHROPIC_API_KEY",
-    configured: false,
-    masked_key: null,
-    portal_url: "https://console.anthropic.com/settings/keys",
-    free_tier_note: "Official Anthropic API (Claude 3.7 Sonnet with Hybrid Thinking, Claude 3.5 Sonnet).",
-    base_url: "https://api.anthropic.com",
-    default_models: [
-      { id: "claude-3-7-sonnet", name: "Claude 3.7 Sonnet", model_id: "claude-3-7-sonnet-latest", supports_thinking: true },
-      { id: "claude-3-5-sonnet", name: "Claude 3.5 Sonnet", model_id: "claude-3-5-sonnet-latest" },
-    ],
-  },
-  {
-    id: "deepseek",
-    name: "DeepSeek Official",
-    category: "paid",
-    key_env: "DEEPSEEK_API_KEY",
-    configured: false,
-    masked_key: null,
-    portal_url: "https://platform.deepseek.com/api_keys",
-    free_tier_note: "Direct high-concurrency DeepSeek V3 and R1 reasoning endpoints.",
-    base_url: "https://api.deepseek.com/v1",
-    default_models: [
-      { id: "deepseek-chat", name: "DeepSeek V3", model_id: "deepseek-chat" },
-      { id: "deepseek-reasoner", name: "DeepSeek R1", model_id: "deepseek-reasoner", supports_thinking: true },
-    ],
-  },
-  {
-    id: "ovhcloud",
-    name: "OVHcloud AI Endpoints",
-    category: "keyless_free",
-    key_env: null,
-    configured: true,
-    masked_key: null,
-    portal_url: "https://endpoints.kepler.ai.cloud.ovh.net/",
-    free_tier_note: "100% Free European sovereign endpoints. No API key required.",
-    base_url: "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1",
-    default_models: [
-      { id: "free:ovhcloud:Meta-Llama-3_3-70B-Instruct", name: "LLaMA 3.3 70B (OVHcloud Free)", model_id: "Meta-Llama-3_3-70B-Instruct" },
-      { id: "free:ovhcloud:Qwen3-Coder-30B-A3B-Instruct", name: "Qwen3 Coder 30B (OVHcloud Free)", model_id: "Qwen3-Coder-30B-A3B-Instruct" },
-      { id: "free:ovhcloud:Mistral-7B-Instruct-v0.3", name: "Mistral 7B v0.3 (OVHcloud Free)", model_id: "Mistral-7B-Instruct-v0.3" },
-    ],
-  },
-  {
-    id: "pollinations",
-    name: "Pollinations AI",
-    category: "keyless_free",
-    key_env: null,
-    configured: true,
-    masked_key: null,
-    portal_url: "https://pollinations.ai",
-    free_tier_note: "Instant public AI router with high concurrency. Zero auth required.",
-    base_url: "https://text.pollinations.ai",
-    default_models: [
-      { id: "free:pollinations:openai-fast", name: "OpenAI Fast (Pollinations Free)", model_id: "openai-fast" },
-      { id: "free:pollinations:openai", name: "OpenAI Standard (Pollinations Free)", model_id: "openai" },
-    ],
-  },
-  {
-    id: "llm7",
-    name: "LLM7 Gateway",
-    category: "keyless_free",
-    key_env: null,
-    configured: true,
-    masked_key: null,
-    portal_url: "https://llm7.io",
-    free_tier_note: "Free community router with Codestral and Mistral-Nemo.",
-    base_url: "https://api.llm7.io/v1",
-    default_models: [
-      { id: "free:llm7:codestral-latest", name: "Codestral Latest (LLM7 Free)", model_id: "codestral-latest" },
-      { id: "free:llm7:mistral-Nemo-Instruct-2407", name: "Mistral Nemo 12B (LLM7 Free)", model_id: "mistral-Nemo-Instruct-2407" },
-    ],
-  },
-];
+// NOTE: there is deliberately no hardcoded provider-catalog fallback here.
+//
+// This list used to be a hand-copy of the backend's provider catalog, which made
+// it a second source of truth that silently drifted: it advertised
+// `union-alpha` with thinking support while the backend declared
+// `supports_thinking: false`, so the UI offered a control the factory rejects.
+// The catalog is now served from the backend's models.yaml over
+// `GET /api/models/providers`. A failed read renders as unavailable rather than
+// silently substituting a stale list.
 
 /** Observed probe-status badge styling for the Voice & Speakers engine matrix. */
 function probeBadge(status: string): string {
@@ -310,7 +90,11 @@ export function SettingsSection({
 
   // Models & Providers state
   const [models, setModels] = useState<AIModel[]>(BUILTIN_FREE_MODELS);
-  const [providersCatalog, setProvidersCatalog] = useState<LLMProviderCatalogItem[]>(FALLBACK_PROVIDER_CATALOG);
+  const [providersCatalog, setProvidersCatalog] = useState<LLMProviderCatalogItem[]>([]);
+  // True when the provider catalog could not be read. An empty catalog with this
+  // set is a failed request, not "no providers configured" - the two must never
+  // look the same.
+  const [providersCatalogUnavailable, setProvidersCatalogUnavailable] = useState<boolean>(false);
   const [selectedModel, setSelectedModel] = useState<string>(currentModel);
   const [modelsLoading, setModelsLoading] = useState(true);
   const [modelFilter, setModelFilter] = useState<"all" | "keyless" | "quota" | "paid">("all");
@@ -438,7 +222,15 @@ export function SettingsSection({
     try {
       const [mList, pCat, pResult, v, f, ih, id, updateState] = await Promise.all([
         fetchAvailableModels().catch(() => BUILTIN_FREE_MODELS),
-        fetchProvidersCatalog().catch(() => FALLBACK_PROVIDER_CATALOG),
+        // A failed catalog read must surface, never become a stale hardcoded
+        // list. The provider catalog is served from the backend's models.yaml;
+        // a hand-copied fallback in the browser is a second source of truth that
+        // drifts (it is how `union-alpha` came to advertise thinking support the
+        // backend rejects). An empty list here means "the call failed" and is
+        // reported as unavailable rather than rendered as "no providers".
+        fetchProvidersCatalog()
+          .then((list) => ({ ok: true as const, list }))
+          .catch((err: unknown) => ({ ok: false as const, list: [] as LLMProviderCatalogItem[], err })),
         probeAll()
           .then((list) => ({ ok: true as const, list }))
           .catch(() => ({ ok: false as const, list: [] as Probe[] })),
@@ -449,7 +241,8 @@ export function SettingsSection({
         getEvolutionUpdateState().catch(() => null),
       ]);
       setModels(mList && mList.length > 0 ? mList : BUILTIN_FREE_MODELS);
-      setProvidersCatalog(pCat && pCat.length > 0 ? pCat : FALLBACK_PROVIDER_CATALOG);
+      setProvidersCatalog(pCat.list);
+      setProvidersCatalogUnavailable(!pCat.ok);
       setProbes(pResult.list);
       setProbesUnavailable(!pResult.ok);
       setOpsVersion(v);
@@ -818,6 +611,18 @@ export function SettingsSection({
                 ))}
               </div>
             </div>
+
+            {providersCatalogUnavailable ? (
+              <ErrorBox
+                message="Could not read the provider catalog from the Gateway. This is a failed request, not an empty catalog. Check that the Gateway is running and that models.yaml declares providers under `catalog:`."
+                onRetry={() => void loadData()}
+              />
+            ) : providersCatalog.length === 0 ? (
+              <EmptyState
+                title="No providers declared"
+                hint="Add entries under `catalog:` in models.yaml (see models.example.yaml) to offer providers here."
+              />
+            ) : null}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
               {providersCatalog

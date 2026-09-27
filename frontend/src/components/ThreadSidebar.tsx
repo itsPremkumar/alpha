@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Plus, MessageSquare, Search, PanelLeftClose, PanelLeft, MoreHorizontal, Pencil, GitBranch, FolderInput, Trash2, Download, Upload, FileText, Settings } from "lucide-react";
+import { Plus, MessageSquare, Search, PanelLeftClose, PanelLeft, MoreHorizontal, Pencil, GitBranch, FolderInput, Trash2, Download, Upload, FileText, Settings, Folder, ChevronRight, ChevronDown } from "lucide-react";
 import { Thread } from "@/types/chat";
-import { searchThreads, renameThread, deleteThread, branchThread, moveThread } from "@/lib/threads-ext";
+import { searchThreads, renameThread, deleteThread, branchThread, moveThread, threadTitle } from "@/lib/threads-ext";
 import { searchLocalMessages, removeLocalThread, upsertLocalThread, storageInfo, clearLocalStore, SearchHit } from "@/lib/history-store";
 import { listProjects, Project } from "@/lib/projects";
 import { errMsg } from "@/lib/http";
@@ -71,6 +71,12 @@ export function ThreadSidebar({
   // Search responses are matched against this generation before they are
   // applied, so a slow earlier query cannot paint over a newer one.
   const searchGenerationRef = React.useRef(0);
+  // Collapsed/expanded state per project id. Absent = expanded, so a new
+  // project's conversations are visible without a second click.
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  const toggleGroup = (key: string) =>
+    setCollapsed((previous) => ({ ...previous, [key]: !previous[key] }));
 
   const refreshStorage = async () => {
     try {
@@ -118,7 +124,125 @@ export function ThreadSidebar({
     return () => window.clearTimeout(t);
   }, [search]);
 
-  const local = threads.filter((t) => t.title.toLowerCase().includes(search.toLowerCase()));
+  // A thread the Gateway has never titled has NO `title` key at all (measured:
+  // all 31 rows from /threads/search), so this must go through threadTitle()
+  // rather than touching t.title — the bare `.title.toLowerCase()` threw
+  // "Cannot read properties of undefined (reading 'toLowerCase')" and crashed
+  // the entire app on load.
+  const local = threads.filter((t) => threadTitle(t as unknown as Record<string, unknown>).toLowerCase().includes(search.toLowerCase()));
+
+  /**
+   * Conversations grouped by the project the server assigned them to.
+   *
+   * A thread with no `projectId` is a real state — most chats are not in a
+   * project — so it gets its own trailing "No project" group instead of being
+   * hidden or folded into an arbitrary project. A project whose name is not in
+   * the loaded list renders under its raw id rather than being dropped: an
+   * unreadable project name must not cost the user their conversation.
+   */
+  const groups = (() => {
+    const order: string[] = [];
+    const buckets = new Map<string, Thread[]>();
+    for (const t of local) {
+      const key = t.projectId || "";
+      if (!buckets.has(key)) {
+        buckets.set(key, []);
+        order.push(key);
+      }
+      buckets.get(key)!.push(t);
+    }
+    return order.map((key) => ({
+      key,
+      name: key ? projects.find((p) => p.id === key)?.name || key : "No project",
+      isUngrouped: key === "",
+      items: buckets.get(key)!,
+    }));
+  })();
+
+  /** One conversation row, including its options menu. */
+  const renderThread = (t: Thread) => {
+    const isActive = t.thread_id === activeThreadId;
+    const menuOpen = menuFor === t.thread_id;
+    return (
+      <div
+        key={t.thread_id}
+        className={`group relative rounded-lg transition-all ${isActive ? "bg-muted text-foreground shadow-2xs" : "hover:bg-muted/50"}`}
+      >
+        <div className="flex items-center gap-1 pl-3 pr-1 py-1">
+          <button
+            type="button"
+            onClick={() => onSelectThread(t.thread_id)}
+            className={`flex items-center gap-2.5 flex-1 min-w-0 text-left text-xs py-1 ${isActive ? "font-medium text-foreground" : "text-muted-foreground group-hover:text-foreground"}`}
+          >
+            <MessageSquare className={`size-3.5 shrink-0 ${isActive ? "text-primary" : "opacity-60"}`} />
+            {renaming?.id === t.thread_id ? (
+              <input
+                value={renaming.title}
+                autoFocus
+                onChange={(e) => setRenaming({ id: t.thread_id, title: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") doRename();
+                  if (e.key === "Escape") setRenaming(null);
+                }}
+                onClick={(e) => e.stopPropagation()}
+                className="flex-1 min-w-0 bg-background border border-border rounded px-1.5 py-0.5 text-xs"
+                aria-label="Rename conversation"
+              />
+            ) : (
+              <span className="flex-1 min-w-0">
+                <span className="block truncate">{threadTitle(t as unknown as Record<string, unknown>)}</span>
+                {!scopeLabel && ownerLabel(t) && (
+                  <span className="block text-[10px] text-primary/80 font-medium truncate">
+                    {ownerLabel(t)}
+                  </span>
+                )}
+              </span>
+            )}
+          </button>
+          {renaming?.id === t.thread_id ? (
+            <button type="button" onClick={doRename} className="text-[11px] font-semibold text-primary px-1.5" aria-label="Save name">
+              Save
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setMenuFor(menuOpen ? null : t.thread_id)}
+              className={`p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted ${menuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+              title="Conversation options"
+              aria-label={`Options for ${t.title}`}
+            >
+              <MoreHorizontal className="size-3.5" />
+            </button>
+          )}
+        </div>
+        {menuOpen && (
+          <div className="mx-2 mb-2 rounded-xl border border-border bg-card shadow-lg p-1 text-xs z-10">
+            <MenuBtn icon={<Pencil className="size-3.5" />} label="Rename" onClick={() => { setRenaming({ id: t.thread_id, title: threadTitle(t as unknown as Record<string, unknown>) }); setMenuFor(null); }} />
+            <MenuBtn icon={<GitBranch className="size-3.5" />} label="Branch off (safe copy)" onClick={() => doBranch(t.thread_id)} />
+            {moving === t.thread_id ? (
+              <div className="p-1.5 space-y-1">
+                <p className="text-[10px] font-semibold text-muted-foreground px-1">Move to project…</p>
+                <select
+                  defaultValue=""
+                  onChange={(e) => doMove(t.thread_id, e.target.value)}
+                  className="w-full text-xs bg-muted/60 border border-border rounded-lg px-2 py-1.5"
+                  aria-label="Move to project"
+                >
+                  <option value="">No project</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <MenuBtn icon={<FolderInput className="size-3.5" />} label="Move to project…" onClick={() => setMoving(t.thread_id)} />
+            )}
+            <MenuBtn icon={<Trash2 className="size-3.5" />} label="Delete" danger onClick={() => doDelete(t.thread_id, threadTitle(t as unknown as Record<string, unknown>))} />
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const doRename = async () => {
     if (!renaming || !renaming.title.trim()) return;
@@ -307,86 +431,31 @@ export function ThreadSidebar({
                     </button>
                   );
                 })
-              : local.map((t) => {
-                  const isActive = t.thread_id === activeThreadId;
-                  const menuOpen = menuFor === t.thread_id;
+              : groups.map((group) => {
+                  const isCollapsed = collapsed[group.key] === true;
                   return (
-                    <div
-                      key={t.thread_id}
-                      className={`group relative rounded-lg transition-all ${isActive ? "bg-muted text-foreground shadow-2xs" : "hover:bg-muted/50"}`}
-                    >
-                      <div className="flex items-center gap-1 pl-3 pr-1 py-1">
-                        <button
-                          type="button"
-                          onClick={() => onSelectThread(t.thread_id)}
-                          className={`flex items-center gap-2.5 flex-1 min-w-0 text-left text-xs py-1 ${isActive ? "font-medium text-foreground" : "text-muted-foreground group-hover:text-foreground"}`}
-                        >
-                          <MessageSquare className={`size-3.5 shrink-0 ${isActive ? "text-primary" : "opacity-60"}`} />
-                          {renaming?.id === t.thread_id ? (
-                            <input
-                              value={renaming.title}
-                              autoFocus
-                              onChange={(e) => setRenaming({ id: t.thread_id, title: e.target.value })}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") doRename();
-                                if (e.key === "Escape") setRenaming(null);
-                              }}
-                              onClick={(e) => e.stopPropagation()}
-                              className="flex-1 min-w-0 bg-background border border-border rounded px-1.5 py-0.5 text-xs"
-                              aria-label="Rename conversation"
-                            />
-                          ) : (
-                            <span className="flex-1 min-w-0">
-                              <span className="block truncate">{t.title}</span>
-                              {!scopeLabel && ownerLabel(t) && (
-                                <span className="block text-[10px] text-primary/80 font-medium truncate">
-                                  {ownerLabel(t)}
-                                </span>
-                              )}
-                            </span>
-                          )}
-                        </button>
-                        {renaming?.id === t.thread_id ? (
-                          <button type="button" onClick={doRename} className="text-[11px] font-semibold text-primary px-1.5" aria-label="Save name">
-                            Save
-                          </button>
+                    <div key={group.key} className="space-y-0.5">
+                      <button
+                        type="button"
+                        onClick={() => toggleGroup(group.key)}
+                        aria-expanded={!isCollapsed}
+                        className="w-full flex items-center gap-1.5 px-2 pt-1.5 pb-0.5 text-left text-[10px] font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground transition-colors"
+                        title={group.isUngrouped ? "Conversations not in any project" : `Conversations in ${group.name}`}
+                      >
+                        {isCollapsed ? (
+                          <ChevronRight className="size-3 shrink-0" />
                         ) : (
-                          <button
-                            type="button"
-                            onClick={() => setMenuFor(menuOpen ? null : t.thread_id)}
-                            className={`p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted ${menuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
-                            title="Conversation options"
-                            aria-label={`Options for ${t.title}`}
-                          >
-                            <MoreHorizontal className="size-3.5" />
-                          </button>
+                          <ChevronDown className="size-3 shrink-0" />
                         )}
-                      </div>
-                      {menuOpen && (
-                        <div className="mx-2 mb-2 rounded-xl border border-border bg-card shadow-lg p-1 text-xs z-10">
-                          <MenuBtn icon={<Pencil className="size-3.5" />} label="Rename" onClick={() => { setRenaming({ id: t.thread_id, title: t.title }); setMenuFor(null); }} />
-                          <MenuBtn icon={<GitBranch className="size-3.5" />} label="Branch off (safe copy)" onClick={() => doBranch(t.thread_id)} />
-                          {moving === t.thread_id ? (
-                            <div className="p-1.5 space-y-1">
-                              <p className="text-[10px] font-semibold text-muted-foreground px-1">Move to project…</p>
-                              <select
-                                defaultValue=""
-                                onChange={(e) => doMove(t.thread_id, e.target.value)}
-                                className="w-full text-xs bg-muted/60 border border-border rounded-lg px-2 py-1.5"
-                                aria-label="Move to project"
-                              >
-                                <option value="">No project</option>
-                                {projects.map((p) => (
-                                  <option key={p.id} value={p.id}>{p.name}</option>
-                                ))}
-                              </select>
-                            </div>
-                          ) : (
-                            <MenuBtn icon={<FolderInput className="size-3.5" />} label="Move to project…" onClick={() => setMoving(t.thread_id)} />
-                          )}
-                          <MenuBtn icon={<Trash2 className="size-3.5" />} label="Delete" danger onClick={() => doDelete(t.thread_id, t.title)} />
-                        </div>
-                      )}
+                        {group.isUngrouped ? (
+                          <MessageSquare className="size-3 shrink-0" />
+                        ) : (
+                          <Folder className="size-3 shrink-0" />
+                        )}
+                        <span className="truncate flex-1 normal-case tracking-normal">{group.name}</span>
+                        <span className="font-bold">{group.items.length}</span>
+                      </button>
+                      {!isCollapsed && <div className="space-y-1">{group.items.map(renderThread)}</div>}
                     </div>
                   );
                 })}

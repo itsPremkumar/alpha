@@ -175,6 +175,57 @@ test("thread history success maps run-event rows to messages", async () => {
   assert.equal(result.value[0].content, "hello");
 });
 
+test("thread history collapses rows that share one message id so the render list never carries a React duplicate key", async () => {
+  // Two feed rows whose message id equals the run id — the reported crash:
+  // "Encountered two children with the same key, 'lc_run--…'" in
+  // ChatView's messages.map(msg => <MessageItem key={msg.id} …>). The render
+  // list keys by msg.id, so the second row must not survive as a duplicate.
+  const sharedId = "lc_run--01a0de70-8a80-7413-841d-d2df20963265";
+  const row = (seq) => ({
+    seq,
+    run_id: sharedId,
+    event_type: "llm.ai.response",
+    content: { type: "ai", id: sharedId, content: "answer" },
+    created_at: "2026-01-01T00:00:00Z",
+  });
+  setResponse({
+    ok: true,
+    status: 200,
+    json: async () => ({ data: [row(1), row(2)], has_more: false, next_before_seq: null }),
+  });
+  const result = await fetchThreadHistoryResult("thread-1");
+  assert.equal(result.ok, true);
+  const ids = result.value.map((message) => message.id);
+  assert.equal(new Set(ids).size, ids.length, "message ids must be unique");
+  assert.deepEqual(ids, [sharedId]);
+});
+
+test("a truncated history page collapses duplicate ids the same way", async () => {
+  const sharedId = "lc_run--01a0de70-8a80-7413-841d-d2df20963265";
+  const row = (seq) => ({
+    seq,
+    run_id: sharedId,
+    event_type: "llm.ai.response",
+    content: { type: "ai", id: sharedId, content: "answer" },
+    created_at: "2026-01-01T00:00:00Z",
+  });
+  setResponses([
+    {
+      ok: true,
+      status: 200,
+      json: async () => ({ data: [row(1), row(2)], has_more: true, next_before_seq: 1 }),
+    },
+    { ok: false, status: 503, json: async () => ({}) },
+  ]);
+  const result = await fetchThreadHistoryResult("thread-1");
+  assert.equal(result.ok, true);
+  const ids = result.value.map((message) => message.id);
+  assert.equal(new Set(ids).size, ids.length, "message ids must be unique");
+  assert.deepEqual(ids, [sharedId]);
+  // The truncation is still disclosed — dedup must not hide the gap.
+  assert.match(result.incomplete, /503/);
+});
+
 test("thread history follows every backward page and restores chronological order", async () => {
   setResponses([
     {

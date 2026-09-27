@@ -44,7 +44,7 @@ export function SubagentsSection(props: { threadId: string | null }) {
     try {
       await spawnSubagent(objective.trim());
       setObjective("");
-      flash("Helper started ” watch it below.");
+      flash("Helper started — watch it below.");
       await load();
     } catch (e) {
       setError(errMsg(e));
@@ -53,7 +53,7 @@ export function SubagentsSection(props: { threadId: string | null }) {
 
   const onViewResult = async (s: LiveSubagent) => {
     const r = await subagentResult(s.id);
-    setResult({ id: s.id, text: r ? JSON.stringify(r, null, 2).slice(0, 8000) : "No result yet ” it may still be working." });
+    setResult({ id: s.id, text: r ? JSON.stringify(r, null, 2).slice(0, 8000) : "No result yet — it may still be working." });
   };
 
   return (

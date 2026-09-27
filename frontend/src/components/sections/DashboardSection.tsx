@@ -63,7 +63,7 @@ export function DashboardSection(props: { onOpenThread: (id: string) => void }) 
   return (
     <Section
       title="Usage & activity"
-      hint="How much the team has worked, which models it used, and what it cost. Needs a SQL database backend ” shows an error on in-memory deployments."
+      hint="How much the team has worked, which models it used, and what it cost. Needs a SQL database backend — shows an error on in-memory deployments."
       actions={
         <>
           {version && <Badge tone="gray">server {version}</Badge>}
@@ -91,7 +91,7 @@ export function DashboardSection(props: { onOpenThread: (id: string) => void }) 
             <StatCard label="Tokens" value={stats.tokens.toLocaleString()} />
             <StatCard
               label="Cost"
-              value={stats.cost !== null ? `${stats.cost.toFixed(2)}${stats.currency ? ` ${stats.currency}` : ""}` : "”"}
+              value={stats.cost !== null ? `${stats.cost.toFixed(2)}${stats.currency ? ` ${stats.currency}` : ""}` : ""}
               sub={stats.cost === null ? "no pricing set" : undefined}
             />
           </div>
