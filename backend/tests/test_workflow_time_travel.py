@@ -287,21 +287,37 @@ def test_simulation_rejects_a_hostile_wave_ceiling():
 
 
 def test_simulation_of_a_conditional_graph_follows_the_evaluated_branch():
+    """Branch selection lives on the EDGE condition, not on ``depends_on``.
+
+    Two nodes that merely ``depends_on`` the same parent are both legitimately
+    ready, so this graph expresses the branch the way the engine actually
+    discriminates it: conditional edges out of the router.
+
+    The losing arm is still *visited* — the scheduler reached a decision about
+    it — so the assertion is that it was proven-SKIPPED rather than executed.
+    """
     engine = DynamicWorkflowEngine()
     engine.events = WorkflowEventDispatcher(durable_sink=None)
     graph = WorkflowGraph(
         nodes={
-            "check": WorkflowNode(id="check", type=NodeType.CONDITION, condition="state.go == true"),
-            "yes": WorkflowNode(id="yes", prompt="taken", depends_on=["check"]),
-            "no": WorkflowNode(id="no", prompt="not taken", depends_on=["check"]),
+            "check": WorkflowNode(id="check", type=NodeType.CONDITION, condition="state.score > 0.5"),
+            "yes": WorkflowNode(id="yes", prompt="taken", write_scope=["yes"]),
+            "no": WorkflowNode(id="no", prompt="not taken", write_scope=["no"]),
         },
-        edges=[],
+        edges=[
+            WorkflowEdge(source="check", target="yes", condition="state.score > 0.5"),
+            WorkflowEdge(source="check", target="no", condition="state.score <= 0.5"),
+        ],
     )
     engine.register_definition(WorkflowDefinition(id="branch", name="branch", graph=graph, policies={}))
 
-    taken = simulate_run(engine, "branch", initial_state={"go": True})
-    assert "yes" in taken.nodes_visited
-    assert "no" not in taken.nodes_visited
+    taken = simulate_run(engine, "branch", initial_state={"score": 0.9})
+    assert taken.node_outcomes["yes"] == NodeStatus.SUCCEEDED.value
+    assert taken.node_outcomes["no"] == NodeStatus.SKIPPED.value, "the losing arm must be proven-skipped, not executed"
+
+    declined = simulate_run(engine, "branch", initial_state={"score": 0.1})
+    assert declined.node_outcomes["no"] == NodeStatus.SUCCEEDED.value
+    assert declined.node_outcomes["yes"] == NodeStatus.SKIPPED.value
 
 
 # --------------------------------------------------------------------- report
