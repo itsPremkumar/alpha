@@ -8,6 +8,8 @@ from pydantic import BaseModel, Field
 from alpha.authz.provider import AuthzDecision, AuthzRequest
 from alpha.community.url_safety import ModelEndpointBlockedError
 from alpha.config.app_config import AppConfig
+from alpha.config.reasoning_effort import CANONICAL_EFFORTS, EFFORT_LABELS
+from alpha.models.effort_translation import effective_effort_support
 from app.gateway.authz import (
     _AuthorizationUnavailable,
     _is_internal_caller,
@@ -32,6 +34,16 @@ class ModelResponse(BaseModel):
     description: str | None = Field(None, description="Model description")
     supports_thinking: bool = Field(default=False, description="Whether model supports thinking mode")
     supports_reasoning_effort: bool = Field(default=False, description="Whether model supports reasoning effort")
+    reasoning_efforts: list[str] = Field(
+        default_factory=list,
+        description=(
+            "The reasoning-effort rungs this model actually serves, weakest first. Empty means the entry declares no ladder, which the chat UI must render as 'no effort control' rather than offering rungs the factory would silently clamp."
+        ),
+    )
+    default_reasoning_effort: str | None = Field(
+        default=None,
+        description="Rung used when a run requests no explicit effort; null lets the provider's own default apply.",
+    )
     provider: str | None = Field(default=None, description="Provider identifier (e.g. ovhcloud, pollinations, groq, gemini)")
     is_free: bool = Field(default=False, description="Whether this model is free to use")
     quota_type: str | None = Field(default=None, description="Free quota category: keyless_free, recurring_free, free_gateway, trial_credits, paid, custom")
@@ -49,6 +61,12 @@ class ModelsListResponse(BaseModel):
 
     models: list[ModelResponse]
     token_usage: TokenUsageResponse
+    #: The canonical effort ladder, weakest → strongest. Shipped by the server so the
+    #: client orders, labels, and offers rungs from one source instead of a
+    #: hardcoded copy that drifts when a provider adds a level.
+    reasoning_effort_levels: list[str] = Field(default_factory=lambda: list(CANONICAL_EFFORTS))
+    #: Display label per rung, keyed by the canonical names above.
+    reasoning_effort_labels: dict[str, str] = Field(default_factory=lambda: dict(EFFORT_LABELS))
 
 
 # ---------------------------------------------------------------------------
@@ -311,6 +329,8 @@ async def list_models(
                 description=model.description,
                 supports_thinking=model.supports_thinking,
                 supports_reasoning_effort=model.supports_reasoning_effort,
+                reasoning_efforts=effective_effort_support(model),
+                default_reasoning_effort=getattr(model, "default_reasoning_effort", None),
                 provider=getattr(model, "provider", None) or ("free" if is_free_model else None),
                 is_free=is_free_model,
                 quota_type="keyless" if is_free_model else "paid",

@@ -34,7 +34,11 @@ logger = logging.getLogger(__name__)
 #: Capabilities compared across namespaces. ``context_window`` is included
 #: because a wrong window silently corrupts the "% context used" indicator and
 #: the thresholds that fraction-based summarization triggers resolve from.
-COMPARED_FIELDS: tuple[str, ...] = ("supports_thinking", "supports_vision", "supports_reasoning_effort", "context_window")
+#: ``reasoning_efforts`` is included because a drifted ladder is the effort
+#: picker's version of the same bug: the UI offers exactly the rungs the
+#: namespace advertised, and a rung the factory then clamps is a control that
+#: silently changes the level the user picked.
+COMPARED_FIELDS: tuple[str, ...] = ("supports_thinking", "supports_vision", "supports_reasoning_effort", "reasoning_efforts", "context_window")
 
 
 @dataclass
@@ -76,9 +80,21 @@ def _normalized(value: Any) -> Any:
     ``None`` on either side is not drift: it means the namespace simply did not
     declare the capability, which is legitimate (the free router, for example,
     may know a model is free without knowing its context window).
+
+    A ``reasoning_efforts`` list is normalized onto the canonical ladder first,
+    so a namespace that lists ``[max, low]`` and one that lists ``[low, max]``
+    agree. Comparing raw lists would report an ordering difference as drift,
+    which would train operators to ignore this check.
     """
     if value is None:
         return None
+    if isinstance(value, (list, tuple, set)):
+        from alpha.config.reasoning_effort import canonical_order
+
+        ordered = canonical_order(list(value))
+        # An empty declaration is "undeclared", not "declares zero rungs", so it
+        # must stay comparable to an absent value on the other side.
+        return tuple(ordered) or None
     if isinstance(value, bool):
         return value
     if isinstance(value, int):
@@ -113,6 +129,7 @@ def check_model_catalog_consistency(app_config: Any, *, include_free_router: boo
                             "supports_thinking": bool(getattr(descriptor, "supports_thinking", False)),
                             "supports_vision": None,
                             "supports_reasoning_effort": False,
+                            "reasoning_efforts": getattr(descriptor, "reasoning_efforts", None),
                             "context_window": None,
                             "_source": f"provider_manager.PROVIDER_SPECS[{spec.id}]",
                         },
@@ -133,6 +150,7 @@ def check_model_catalog_consistency(app_config: Any, *, include_free_router: boo
                         "supports_thinking": bool(free_model.get("supports_thinking", False)),
                         "supports_vision": None,
                         "supports_reasoning_effort": False,
+                        "reasoning_efforts": free_model.get("reasoning_efforts"),
                         "context_window": free_model.get("context_window"),
                         "_source": "free_router catalog",
                     },

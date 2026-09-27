@@ -14,6 +14,74 @@
 
 ## config.yaml Schema
 
+### Reasoning effort (thinking depth)
+
+Every major coding agent exposes the same control under a different name —
+Claude Code's `/effort`, Codex's `model_reasoning_effort`, OpenCode's
+`/variants`. Alpha speaks one provider-neutral ladder, ordered weakest to
+strongest:
+
+| Rung | Meaning |
+| ---- | ------- |
+| `none` | Do not reason. Routed to the model's thinking-disable path. |
+| `minimal` | Barely any reasoning. |
+| `low` | Light reasoning for well-scoped work. |
+| `medium` | Balanced; the everyday default for most coding work. |
+| `high` | Thorough; complex debugging, refactors, design decisions. |
+| `xhigh` | Deep reasoning for long agentic runs. Costs noticeably more than `high`. |
+| `max` | The most reasoning the model will spend in one pass. |
+
+`default` (the picker) is **not** a rung — it means "send nothing", so the
+model entry's `default_reasoning_effort` (or the provider's own default)
+applies. Aliases are accepted anywhere a rung is read (`off`, `x-high`,
+`ultra`, `ultrathink`, `adaptive`, …) and are rewritten to the canonical
+spelling.
+
+Declare the ladder to enable the effort picker in the composer:
+
+```yaml
+models:
+  - name: claude-opus-4-7
+    use: langchain_anthropic:ChatAnthropic
+    model: claude-opus-4-7
+    max_tokens: 32000        # hard cap on thinking PLUS reply
+    supports_thinking: true
+    reasoning_efforts: [low, medium, high, xhigh, max]
+    default_reasoning_effort: high
+
+  - name: gpt-5-2
+    use: langchain_openai:ChatOpenAI
+    model: gpt-5.2
+    supports_thinking: true
+    reasoning_efforts: [none, minimal, low, medium, high, xhigh]
+    default_reasoning_effort: medium
+```
+
+Four rules make the control honest:
+
+1. **The declared ladder is the contract and the ceiling.** The picker offers
+   exactly the rungs you listed. A request above the top is clamped down and
+   logged; a request below the floor is raised to it and logged. A rung you did
+   not declare is never sent, so you never get a provider 400 from a level the
+   UI offered.
+2. **Omitting `reasoning_efforts` means "no effort control", not "any
+   effort".** The composer says so instead of showing a menu whose selections
+   would be silently ignored.
+3. **The wire shape is detected, not configured.** The same rung travels as
+   `reasoning_effort` (OpenAI-compatible), `extra_body.reasoning.effort`
+   (OpenRouter), `output_config.effort` (Anthropic), `thinking_level` (Google),
+   `reasoningConfig` (Bedrock), or chat-template kwargs (vLLM). Set
+   `reasoning_effort_style` explicitly only for a gateway whose knob does not
+   match its SDK package; `auto` is the default.
+4. **`max_tokens` caps thinking plus reply.** On Anthropic, a small cap at
+   `high`/`xhigh`/`max` truncates the reasoning itself, so Alpha warns.
+
+The rung is also settable per run (`context.reasoning_effort` or
+`config.configurable.reasoning_effort`), per custom agent
+(`reasoning_effort:` in its `config.yaml`), and per IM channel
+(`channels.<name>.run_context.reasoning_effort`). A value that names no rung is
+a 422 at the run boundary rather than a silent fallback.
+
 ### Root Structure
 ```yaml
 # Model Configuration
@@ -23,10 +91,14 @@ models:
     model: string          # Model identifier
     api_key: string        # Environment variable reference or literal
     base_url: string       # Optional custom endpoint
-    max_tokens: integer    # Output token limit
+    max_tokens: integer    # Output token limit (thinking included on Anthropic)
     temperature: float     # Sampling temperature
     top_p: float           # Nucleus sampling
-    reasoning: object      # Reasoning configuration (if supported)
+    supports_thinking: bool        # Whether the model reasons at all
+    supports_reasoning_effort: bool # Whether it accepts a named rung
+    reasoning_efforts: list        # Rungs it serves, weakest first (see above)
+    default_reasoning_effort: str  # Rung used when a run requests none
+    reasoning_effort_style: str    # Wire shape; `auto` detects from the client
     fallback: list         # Fallback model names
 
 # Sandbox Configuration

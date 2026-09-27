@@ -4,9 +4,11 @@ import React, { useRef, useEffect, useState, useMemo } from "react";
 import { Send, Square, Wand2, Paperclip, Terminal, ChevronRight, Zap, Settings, Key, ExternalLink, Check, X } from "lucide-react";
 import { AIModel, SlashCommandInfo } from "@/types/chat";
 import { fetchCommands, BUILTIN_FREE_MODELS, configureProviderCredentials } from "@/lib/api";
+import { ReasoningEffortPicker } from "@/components/ReasoningEffortPicker";
 import { VoiceControls } from "@/components/VoiceControls";
 import { SlashCommand } from "@/lib/commands";
 import { branding } from "@/lib/branding";
+import { DEFAULT_EFFORT, FALLBACK_LABELS, FALLBACK_LADDER, type EffortChoice } from "@/lib/reasoning-effort";
 
 const DEFAULT_CORE_COMMANDS: SlashCommandInfo[] = [
   { command: "/goal", category: "mission", description: "Define and orchestrate autonomous goals", usage: "/goal <objective>", is_core: true, is_autonomous_trigger: true, requires_approval: false },
@@ -66,6 +68,15 @@ interface ComposerProps {
   onModelsUpdated?: () => Promise<void> | void;
   /** All shortcut commands (for the "/" palette). */
   slashCommands?: SlashCommand[];
+  /**
+   * Selected reasoning effort. Omit `onEffortChange` to hide the picker
+   * entirely — a read-only surface should not show a control it cannot drive.
+   */
+  effort?: EffortChoice;
+  onEffortChange?: (effort: EffortChoice) => void;
+  /** Canonical ladder + labels from `GET /api/models` (weakest → strongest). */
+  effortLadder?: readonly string[];
+  effortLabels?: Readonly<Record<string, string>>;
 }
 
 export function Composer({
@@ -96,6 +107,10 @@ export function Composer({
   onOpenModelSettings,
   onModelsUpdated,
   slashCommands,
+  effort = DEFAULT_EFFORT,
+  onEffortChange,
+  effortLadder = FALLBACK_LADDER,
+  effortLabels = FALLBACK_LABELS,
 }: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -561,6 +576,16 @@ export function Composer({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            {onEffortChange && (
+              <ReasoningEffortPicker
+                models={models}
+                selectedModel={selectedModel}
+                effort={effort}
+                onEffortChange={onEffortChange}
+                ladder={effortLadder}
+                labels={effortLabels}
+              />
+            )}
             {isLoading ? (
               <button
                 type="button"

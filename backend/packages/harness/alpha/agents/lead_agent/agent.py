@@ -58,6 +58,7 @@ from alpha.authz.tool_filter import apply_tool_authorization
 from alpha.config.agents_config import load_agent_config, validate_agent_name
 from alpha.config.app_config import AppConfig, get_app_config
 from alpha.config.memory_config import should_use_memory_tools
+from alpha.config.reasoning_effort import normalize_effort
 from alpha.config.subagents_config import (
     DEFAULT_MAX_TOTAL_SUBAGENTS_PER_RUN,
     effective_subagent_concurrency,
@@ -1047,7 +1048,20 @@ def _assemble_lead_agent(config: RunnableConfig, *, app_config: AppConfig) -> Le
     agent_thinking = getattr(agent_config, "thinking_enabled", None) if agent_config else None
     agent_reasoning = getattr(agent_config, "reasoning_effort", None) if agent_config else None
     thinking_enabled = bool(_resolve_runtime_option(cfg, "thinking_enabled", agent_thinking, True))
-    reasoning_effort = _resolve_runtime_option(cfg, "reasoning_effort", agent_reasoning, None)
+    # Normalize the resolved rung here so run metadata, the assembly descriptor,
+    # and every downstream reader agree on one canonical spelling. A request
+    # that names no rung is dropped rather than forwarded: the factory applies
+    # the model entry's own default, and recording the garbage value in metadata
+    # would make the trace claim a level the run never used.
+    requested_effort = _resolve_runtime_option(cfg, "reasoning_effort", agent_reasoning, None)
+    reasoning_effort = normalize_effort(requested_effort)
+    if reasoning_effort is None and requested_effort:
+        logger.warning("Create Agent(%s): ignoring unrecognized reasoning_effort %r.", agent_name or "default", requested_effort)
+    if reasoning_effort == "none":
+        # "Off" is a thinking decision. Fold it into `thinking_enabled` here so
+        # the capability check below (and the factory) see one coherent request
+        # instead of a model asked to both stop thinking and reason hard.
+        thinking_enabled = False
 
     # Per-agent sampling overrides (temperature / max_tokens) layered on top of
     # the resolved model profile (issue #4336). None when the agent set none.

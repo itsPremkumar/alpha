@@ -6,6 +6,7 @@ with zero-configuration auto-provisioning, liveness tracking, and dynamic team g
 
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 from langchain.tools import tool
@@ -21,6 +22,178 @@ from alpha.bots.kill_switch import (
 from alpha.bots.organization import generate_organization_for_goal
 from alpha.bots.performance import get_bot_performance
 from alpha.bots.registry import get_bot_registry
+from alpha.skills.authoring import _MARKETING_WORDS
+
+# Length of the fixed words in "Runs the  procedure." — used to size the topic.
+_DESC_STEM_CHARS = len("Runs the  procedure.")
+
+# Executables we recognise as a real invocation when the line carries no
+# ``$`` prompt. Kept deliberately small: a false negative fails the bar
+# honestly ("no verification command"), a false positive lets prose through.
+_KNOWN_EXECUTABLES = frozenset(
+    {
+        "python",
+        "python3",
+        "pytest",
+        "pip",
+        "pip3",
+        "uv",
+        "node",
+        "npm",
+        "pnpm",
+        "yarn",
+        "git",
+        "make",
+        "docker",
+        "podman",
+        "curl",
+        "wget",
+        "rg",
+        "grep",
+        "cat",
+        "bash",
+        "sh",
+        "zsh",
+        "powershell",
+        "pwsh",
+        "cmd",
+        "ruff",
+        "mypy",
+        "go",
+        "cargo",
+        "rustc",
+        "java",
+        "mvn",
+        "gradle",
+        "terraform",
+        "kubectl",
+        "alpha",
+        "uvicorn",
+        "poetry",
+        "tox",
+        "nox",
+        "sed",
+        "awk",
+        "jq",
+        "tar",
+    }
+)
+
+_TOKEN_RE = re.compile(r"^\$?\s*([A-Za-z0-9_./:-]+)\s*(.*)$")
+_PREREQ_HINT = re.compile(
+    r"(?:\bexport\s+\w+=|\bpip(?:3)?\s+install\b|\bnpm\s+(?:i|install)\b|"
+    r"\brequires?\b|\bneeds?\b|\binstall\b|\benvironment\s+variable\b)",
+    re.I,
+)
+_PITFALL_HINT = re.compile(
+    r"(?:\bnever\b|\bdon'?t\b|\bdo not\b|\bwarning\b|\bcaution\b|\blimit\b|"
+    r"\brates?\s+limit\b|\bfalse positive\b|\bmust not\b|\bcareful\b)",
+    re.I,
+)
+
+
+def _looks_like_command(candidate: str) -> str | None:
+    """Return the candidate if it is unambiguously a command, else ``None``."""
+    line = candidate.strip()
+    if not line:
+        return None
+    prompted = line.startswith("$")
+    if prompted:
+        line = line.lstrip("$").strip()
+    match = _TOKEN_RE.match(line)
+    if not match:
+        return None
+    head, rest = match.group(1), match.group(2)
+    executable = head.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+    if prompted:
+        return line
+    if executable not in _KNOWN_EXECUTABLES:
+        return None
+    if re.match(r"^-{1,2}\w", rest) or "/" in rest or "://" in rest:
+        return line
+    if rest and " " in rest.strip():
+        return line  # subcommand form: `git status`, `pytest tests/...`
+    return None
+
+
+def _command_line(text: str) -> str | None:
+    """Return the first line that is unambiguously a command, or ``None``.
+
+    Prefers an explicit ``$`` prompt. Without one, the first token must be a
+    recognised executable *and* the line must carry a flag, path, URL, or
+    subcommand - otherwise ordinary prose such as "call the API" would be
+    mistaken for a runnable check and would satisfy the verification bar.
+    Procedures routinely embed the check inline, so backtick spans are tested
+    as candidates too: ``Run `pytest -q` after every edit`` yields the command.
+    """
+    for raw in (text or "").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        found = _looks_like_command(line)
+        if found:
+            return found
+        for span in re.findall(r"`([^`\n]+)`", line):
+            found = _looks_like_command(span)
+            if found:
+                return found
+    return None
+
+
+def _teach_description(topic: str, bot_name: str) -> str:
+    """A capability-first description that fits the 60-char authoring bar.
+
+    Marketing words are stripped rather than submitted and failed: the bar
+    exists to keep descriptions honest, not to score own-goals on wording.
+    """
+    clean = " ".join((topic or "").split())
+    for word in _MARKETING_WORDS:
+        clean = re.sub(rf"\b{re.escape(word)}\b", "", clean, flags=re.I)
+    clean = " ".join(clean.split()) or "operator"
+    desc = f"Runs the {clean} procedure."
+    if len(desc) > 60:
+        desc = f"Runs the {clean[:_DESC_STEM_CHARS].strip()} procedure."
+    with_bot = f"{desc[:-1]} for {bot_name}."
+    if len(with_bot) <= 60:
+        desc = with_bot
+    return desc
+
+
+def _teach_body(topic: str, bot_name: str, content: str) -> str:
+    """Structure a raw procedure into the six sections the authoring bar requires.
+
+    Only *derivable* sections are filled. Where the instructor gave nothing —
+    notably a Verification command — the section is left honestly empty so
+    ``validate_skill_draft`` reports the gap instead of a fabricated section
+    passing the bar.
+    """
+    procedure = (content or "").strip()
+    lines = procedure.splitlines()
+
+    command = _command_line(procedure)
+    prereqs = [ln.strip() for ln in lines if _PREREQ_HINT.search(ln)][:5]
+    pitfalls = [ln.strip() for ln in lines if _PITFALL_HINT.search(ln)][:5]
+
+    def bullets(items: list[str], empty: str) -> str:
+        return "\n".join(f"- {item}" for item in items) if items else empty
+
+    how_to_run = command or "See the Procedure below."
+    verification = f"```\n{command}\n```" if command else "No verification command was supplied."
+
+    return (
+        f"## {topic}\n\n"
+        f"Repeats the {topic} procedure for the Bot `{bot_name}`. It covers only the "
+        "steps written below — it does not decide scope, and it does not publish, "
+        "spend, or delete anything without approval.\n\n"
+        "## When to Use\n\n"
+        f"- the operator asks {bot_name} to {topic}\n"
+        "- the same steps have been written out by hand at least once already\n\n"
+        "## Prerequisites\n\n" + bullets(prereqs, "None declared by the instructor.\n") + "\n\n## How to Run\n\n"
+        f"```\n{how_to_run}\n```\n\n"
+        "## Procedure\n\n"
+        f"{procedure}\n\n"
+        "## Pitfalls\n\n" + bullets(pitfalls, "None declared by the instructor.\n") + "\n\n## Verification\n\n" + verification + "\n"
+    )
 
 
 @tool("bot_roster", parse_docstring=True)
@@ -36,6 +209,14 @@ def bot_roster_tool(
         "pause",
         "resume",
         "kill_switch",
+        "forge",
+        "teach",
+        "waiting_on",
+        "journal",
+        "share",
+        "import",
+        "doctor",
+        "sandbox",
     ],
     name: str = "",
     role: str = "",
@@ -51,18 +232,35 @@ def bot_roster_tool(
     task_id: str = "",
     objective: str = "",
     reason: str = "",
+    approvals: str = "",
+    sandbox: str = "",
+    path: str = "",
+    schedule: str = "",
+    content: str = "",
+    completed: str = "",
+    allow_frequent: bool = False,
+    allow_overlap: bool = False,
+    journal_enabled: bool = True,
 ) -> str:
     """Create, configure, inspect, and monitor autonomous AI agent profiles and fleet operations.
 
     Args:
         action: Operation to perform:
             - 'create': Quickly provision a new AI agent profile with role, template, department, or reporting line.
+            - 'forge': Build a COMPLETE Bot transactionally — persona, approvals, routines, journal — rolled back on any failure and only reported alive after a smoke test. Refuses duplicate roles and unaffordable routines.
             - 'monitor': Monitor the entire AI agent fleet in real-time (health, liveness, active tasks, stalled workers, kill switch).
             - 'inspect': Deeply inspect an agent's profile, department, reputation, execution stats, and liveness.
             - 'list': List all active agent profiles in the roster.
             - 'generate_team': Dynamically formulate and auto-provision a specialized multi-agent team from a goal description.
             - 'handoff': Coordinate a structured work handoff between two bots with task ID and objective.
             - 'update_soul': Update the SOUL/personality prompt of an existing agent.
+            - 'teach': Save a procedure as a skill the named Bot keeps and loads when the job comes up.
+            - 'journal': Enable, append to, or read a Bot's private dated work journal.
+            - 'waiting_on': Answer 'anything waiting on me?' — every unresolved blocker across every Bot, with its age.
+            - 'share': Export a Bot to a secret-scanned .alphabot.json template (design only — never chats, facts or keys).
+            - 'import': Build a Bot from a .alphabot.json template, re-scanned on the way in.
+            - 'doctor': Check the installation itself: roster state, stalled routines, stopped bots, journals, sandbox coverage.
+            - 'sandbox': Report which sandbox backends are usable on this machine and which Bots run on the real host.
             - 'pause': Pause execution for a specific bot.
             - 'resume': Resume a paused bot.
             - 'kill_switch': Toggle fleet-wide emergency stop.
@@ -79,7 +277,16 @@ def bot_roster_tool(
         target_bot: Recipient bot handle for 'handoff'.
         task_id: Task identifier for 'handoff'.
         objective: Work objective for 'handoff'.
-        reason: Justification reason for 'pause' or 'kill_switch'.
+        reason: Justification reason for 'pause', 'kill_switch', or a journal blocker.
+        approvals: Comma-separated approval checkpoints written into the SOUL at birth (default: publish/send, spend money, delete data). Pass 'none' to deliberately forge a bot with no checkpoints; an empty value keeps the default.
+        sandbox: Sandbox backend for 'forge'/'sandbox' — 'docker', 'singularity', 'apptainer', 'podman' or 'none'. Refused before creating anything if unusable here.
+        path: File path for 'share'/'import'.
+        schedule: Schedule string for routine cost checking on 'forge' (e.g. 'every 30 minutes', '0 7 * * *').
+        content: Body text for 'teach' (the procedure) and the title of a 'journal' entry.
+        completed: Work recorded as finished on a 'journal' entry; an entry carrying this closes the matching open blocker automatically.
+        allow_frequent: Operator override for the routine frequency floor (default 30 minutes).
+        allow_overlap: Operator override for the duplicate-role refusal.
+        journal_enabled: Whether 'forge' creates a work journal (default true).
     """
     registry = get_bot_registry()
     monitor = get_health_monitor()
@@ -189,11 +396,7 @@ def bot_roster_tool(
         rep_text = "unverified" if rep_score is None else str(rep_score)
         success_rate = perf["success_rate_percent"]
         success_text = "unverified" if success_rate is None else f"{success_rate}%"
-        avg_text = (
-            f"{perf['avg_duration_seconds']}s"
-            if perf["total_runs"] > 0
-            else "unverified (no recorded runs)"
-        )
+        avg_text = f"{perf['avg_duration_seconds']}s" if perf["total_runs"] > 0 else "unverified (no recorded runs)"
         reports_to_text = f"@{bot.reports_to}" if bot.reports_to else "none"
 
         return (
@@ -268,5 +471,336 @@ def bot_roster_tool(
         new_active = not is_active if not reason else True
         st = set_global_kill_switch(new_active, reason=reason or "Agent emergency stop")
         return f"🚨 Global Kill Switch is now {'ACTIVATED (All bot operations stopped)' if st['global_kill_switch_active'] else 'DEACTIVATED (Normal operations resumed)'}."
+
+    # 10. FORGE — transactional build with rollback + smoke test
+    elif action == "forge":
+        if not name:
+            return "Error: 'name' is required for 'forge'."
+        from alpha.bots.forge import forge_bot
+
+        if approvals.strip():
+            token = approvals.strip().lower()
+            if token in {"none", "off", "no approvals"}:
+                # Explicit opt-out: the operator takes the checkpoint-free path.
+                approvals_list = []
+            else:
+                approvals_list = [a.strip() for a in approvals.split(",") if a.strip()]
+        else:
+            # Not supplied -> draft-first default. An empty string cannot mean
+            # "no approvals" because it is indistinguishable from "not asked";
+            # pass approvals="none" to opt out.
+            approvals_list = None
+
+        routines: list[dict[str, object]] = []
+        if schedule:
+            routines.append(
+                {
+                    "name": f"{name.strip().lower()}-routine",
+                    "schedule": schedule,
+                    "action": objective or goal or role or "daily check-in",
+                }
+            )
+
+        result = forge_bot(
+            name=name,
+            role=role or "Specialist",
+            registry=registry,
+            soul=soul or None,
+            template=template or None,
+            department=department or None,
+            reports_to=reports_to or None,
+            display_name=display_name or None,
+            skills=[s.strip() for s in skills.split(",") if s.strip()] or None,
+            toolsets=[t.strip() for t in capabilities.split(",") if t.strip()] or None,
+            approvals=approvals_list,
+            sandbox=sandbox or None,
+            routines=routines or None,
+            allow_frequent=allow_frequent,
+            allow_overlap=allow_overlap,
+            journal_enabled=journal_enabled,
+        )
+        return result.reply()
+
+    # 11. TEACH — record a procedure as a Bot's skill, through the approve gate
+    elif action == "teach":
+        if not name or not content:
+            return "Error: 'teach' requires 'name' and 'content'."
+        from alpha.skills.authoring import validate_skill_draft
+        from alpha.skills.proposals import (
+            SkillProposalStore,
+            proposals_root,
+            scan_proposal_markdown,
+        )
+        from alpha.skills.workshop import SkillWorkshopEngine
+
+        clean = name.lower().strip()
+        bot = registry.get_bot(clean)
+        if not bot:
+            return f"Error: Bot '@{clean}' not found."
+
+        topic = " ".join((role or objective or goal or "operator procedure").split())
+        slug = SkillWorkshopEngine._sanitize_name(f"{topic} for {clean}")
+        description = _teach_description(topic, clean)
+        body = _teach_body(topic, clean, content)
+
+        findings = validate_skill_draft(slug, description, body)
+        if findings:
+            # Report the bar the draft missed rather than installing it anyway.
+            lines = [f"NOT taught — @`{slug}` fails the skill authoring bar:"]
+            lines.extend(f"  - {f}" for f in findings)
+            lines.append("Fix the procedure (a Verification command is required) and retry.")
+            return "\n".join(lines)
+
+        skill_md = f"---\nname: {slug}\ndescription: {description}\nversion: 0.1.0\n---\n\n{body}"
+        try:
+            scan_proposal_markdown(slug, skill_md)
+        except Exception as exc:
+            return f"NOT taught — static scan blocked `{slug}`: {exc}"
+
+        store = SkillProposalStore(proposals_root())
+        try:
+            proposal = store.create(clean, slug, description, skill_md)
+        except Exception as exc:
+            return f"NOT taught — could not queue `{slug}`: {type(exc).__name__}: {exc}"
+
+        bot.metadata.setdefault("proposed_skills", {})[slug] = proposal.id
+        registry.update_bot(clean, bump_version=True)
+
+        return (
+            f"Taught @{clean}: `{slug}` is queued for review.\n"
+            f"proposal: {proposal.id} (status: {proposal.status})\n"
+            f"scan: clean | description: {description} ({len(description)} chars)\n"
+            "The skill is NOT active yet — the admin approve gate installs it. "
+            f"Do not claim it as an installed skill until approval flips it to installed."
+        )
+
+    # 12. JOURNAL — enable / append / read a Bot's private work journal
+    elif action == "journal":
+        if not name:
+            return "Error: 'name' is required for 'journal'."
+        from alpha.bots.forge import _default_journal_root
+        from alpha.bots.journal import get_journal
+
+        clean = name.lower().strip()
+        if registry.get_bot(clean) is None:
+            # A journal for a Bot that does not exist is a blocker nobody will
+            # ever see. Refuse rather than silently creating an orphan.
+            return f"Error: Bot '@{clean}' not found - create it before journaling."
+        journal = get_journal(_default_journal_root(), clean)
+        if not content and not reason:
+            if not journal.enabled:
+                return f"Journal for @{clean} is not enabled yet. Pass content= to enable it and record the first entry."
+            entries = journal.read()
+            if not entries:
+                return f"@{clean} journal is enabled but has no entries yet."
+            lines = [f"=== @{clean} work journal ({len(entries)} most recent) ==="]
+            for entry in entries:
+                lines.append(f"- [{entry.day}] {entry.title} ({entry.state})")
+                if entry.outcome:
+                    lines.append(f"    outcome: {entry.outcome}")
+                if entry.blocker:
+                    lines.append(f"    blocker: {entry.blocker}")
+                if entry.completed:
+                    lines.append(f"    completed: {entry.completed}")
+                for item in entry.evidence:
+                    lines.append(f"    evidence: {item}")
+            summary = journal.summary()
+            if summary["blockers_open"]:
+                lines.append(f"open blockers: {summary['blockers_open']}")
+            return "\n".join(lines)
+
+        entry = journal.append(
+            (content or reason or "work note").strip(),
+            tried=objective or "",
+            outcome=goal or "",
+            blocker=reason.strip(),
+            completed=completed.strip(),
+            evidence=[e.strip() for e in capabilities.split(",") if e.strip()],
+        )
+        if isinstance(entry, str):
+            # A refusal string, not an entry — tell the Bot why it was refused.
+            return f"@{clean}: {entry}"
+        summary = journal.summary()
+        state = {
+            "blocked": "blocker opened — it shows up in waiting_on until closed",
+            "done": "outcome recorded",
+            "noted": "noted",
+        }[entry.state]
+        reply = f"Journal entry recorded for @{clean} [{entry.day}] ({state})."
+        if summary["blockers_open"]:
+            reply += f"\nopen blockers for @{clean}: {summary['blockers_open']}."
+        return reply
+
+    # 13. WAITING_ON — the one question that answers for the whole roster
+    elif action == "waiting_on":
+        from alpha.bots.forge import _default_journal_root
+        from alpha.bots.journal import discover_journals, format_waiting, waiting_on_you
+
+        # Disk-driven, not roster-driven: a blocker recorded by a Bot that was
+        # later retired or renamed must still surface, or it piles up unseen.
+        journals = discover_journals(_default_journal_root())
+        rows = waiting_on_you(journals)
+        lines = [format_waiting(rows)]
+        if rows:
+            lines.append("")
+            for row in rows:
+                lines.append(f"  - @{row['bot']} ({row['days_waiting']}d): {row['needs']}")
+            lines.append("\nAn item closes itself when that Bot records the same work as completed - nothing to tick off by hand.")
+            off_roster = sorted({r["bot"] for r in rows} - {b.name for b in registry.list_bots(include_archived=False)})
+            if off_roster:
+                lines.append("off the roster (journal survives the Bot): " + ", ".join(f"@{n}" for n in off_roster))
+        return "\n".join(lines)
+
+    # 14. SHARE — secret-scanned, design-only export
+    elif action == "share":
+        if not name:
+            return "Error: 'name' is required for 'share'."
+        from alpha.bots.forge import _default_export_root
+        from alpha.bots.portable import TemplateError, export_template
+
+        clean = name.lower().strip()
+        bot = registry.get_bot(clean)
+        if not bot:
+            return f"Error: Bot '@{clean}' not found."
+        try:
+            out = export_template(
+                bot.to_dict(),
+                path or f"{clean}.alphabot.json",
+                export_root=_default_export_root(),
+                mode="backup" if reason.strip().lower() == "backup" else "template",
+            )
+        except TemplateError as exc:
+            return f"Error: {exc}"
+        excluded = ", ".join(out["excluded"]) or "none"
+        return f"Exported @{clean} to {out['path']}\nscan: {out['verdict']} | private: {out['private']} | {out['bytes']} bytes\nexcluded (never shared): {excluded}"
+
+    # 15. IMPORT — re-scanned on the way in
+    elif action == "import":
+        if not path:
+            return "Error: 'path' is required for 'import'."
+        from alpha.bots.portable import TemplateError, import_template
+
+        known = [b.name for b in registry.list_bots(include_archived=False)]
+        try:
+            incoming = import_template(
+                path,
+                known_names=known,
+                proposed_name=name or None,
+            )
+        except TemplateError as exc:
+            return f"Error: {exc}"
+        profile = incoming["profile"]
+        created = registry.get_or_create(
+            profile["name"],
+            display_name=profile.get("display_name"),
+            role=profile.get("role"),
+            soul=profile.get("soul"),
+            department=profile.get("department"),
+            reports_to=profile.get("reports_to"),
+            responsibilities=profile.get("responsibilities"),
+            capabilities=profile.get("capabilities"),
+            skills=profile.get("skills"),
+            toolsets=profile.get("toolsets"),
+        )
+        return f"Imported @{created.name} from {incoming['source']}\nscan: {incoming['verdict']} | renamed: {incoming['renamed']}\nrole: {created.role} | epoch: `{created.capability_fingerprint()}`"
+
+    # 16. DOCTOR — is this installation actually working?
+    elif action == "doctor":
+        from alpha.bots.forge import (
+            MIN_ROUTINE_INTERVAL_MINUTES,
+            _default_journal_root,
+            plan_routine_guard,
+            probe_sandbox,
+        )
+        from alpha.bots.journal import get_journal
+
+        problems: list[str] = []
+        notes: list[str] = []
+        bots = registry.list_bots(include_archived=False)
+
+        if not bots:
+            problems.append("roster is empty — no Bots to work with")
+
+        root = _default_journal_root()
+        no_journal: list[str] = []
+        overdue: list[str] = []
+        frequent: list[str] = []
+        shell_on_host: list[str] = []
+
+        for bot in bots:
+            journal = get_journal(root, bot.name)
+            if not journal.enabled:
+                no_journal.append(bot.name)
+            summary = journal.summary() if journal.enabled else None
+            if summary and summary["blockers_open"]:
+                overdue.append(f"@{bot.name} ({summary['blockers_open']} open)")
+
+            if bot.routines:
+                schedules = [str(r.get("schedule", "")) for r in bot.routines]
+                report = plan_routine_guard(schedules)
+                if not report.allowed:
+                    frequent.append(f"@{bot.name}: {report.reason}")
+
+            declared_sandbox = bot.metadata.get("sandbox")
+            shell_capable = {"terminal", "code_execution", "computer_use"} & set(bot.toolsets)
+            if shell_capable and declared_sandbox in (None, "", "none"):
+                shell_on_host.append(bot.name)
+            elif declared_sandbox:
+                ok, why = probe_sandbox(str(declared_sandbox))
+                if not ok:
+                    problems.append(f"@{bot.name}: sandbox unavailable — {why}")
+
+        notes.append(f"bots: {len(bots)} active")
+        notes.append(f"routine frequency floor: {MIN_ROUTINE_INTERVAL_MINUTES} minutes")
+
+        if no_journal:
+            notes.append(f"no journal yet: {', '.join(no_journal)} — ask to 'enable journaling'")
+        if overdue:
+            problems.append("bots with open blockers: " + ", ".join(overdue))
+        if frequent:
+            problems.extend(f"routine cost: {f}" for f in frequent)
+        if shell_on_host:
+            problems.append("shell-capable Bots running on the REAL HOST (no sandbox): " + ", ".join(shell_on_host))
+
+        lines = ["=== Bot Forge Doctor ==="]
+        lines.append(f"status: {'ISSUES FOUND' if problems else 'OK'}")
+        for note in notes:
+            lines.append(f"  - {note}")
+        if problems:
+            lines.append("\nProblems:")
+            for problem in problems:
+                lines.append(f"  ! {problem}")
+        else:
+            lines.append("\nNo problems found.")
+        return "\n".join(lines)
+
+    # 17. SANDBOX — which backends are usable, and who runs on the host
+    elif action == "sandbox":
+        from alpha.bots.forge import SANDBOX_BACKENDS, probe_sandbox
+
+        lines = ["=== Sandbox backends on this machine ==="]
+        usable: list[str] = []
+        for backend in SANDBOX_BACKENDS:
+            ok, why = probe_sandbox(backend)
+            lines.append(f"  {'OK ' if ok else 'NO '} {backend}: {why}")
+            if ok and backend != "none":
+                usable.append(backend)
+        lines.append("usable: " + (", ".join(usable) if usable else "none (host only)"))
+
+        host_bots: list[str] = []
+        lines.append("\nPer-Bot sandbox:")
+        for bot in registry.list_bots(include_archived=False):
+            declared = bot.metadata.get("sandbox")
+            shell = {"terminal", "code_execution", "computer_use"} & set(bot.toolsets)
+            if declared:
+                lines.append(f"  - @{bot.name}: {declared}")
+            elif shell:
+                host_bots.append(bot.name)
+                lines.append(f"  - @{bot.name}: REAL HOST (shell-capable, no sandbox)")
+            else:
+                lines.append(f"  - @{bot.name}: no shell capability")
+        if host_bots:
+            lines.append("\nWARNING: shell-capable Bots on the real host can read your files — ask to forge them with sandbox='docker'.")
+        return "\n".join(lines)
 
     return f"Error: Unknown action '{action}'."

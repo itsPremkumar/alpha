@@ -7,6 +7,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 from pydantic_core import PydanticCustomError
 
+from alpha.config.reasoning_effort import CANONICAL_EFFORTS, normalize_effort
 from alpha.runtime.stream_modes import RunStreamMode, UnsupportedStreamModeError, normalize_stream_modes
 from alpha.utils.thread_id import validate_thread_id
 
@@ -28,6 +29,43 @@ class AcceptanceCriterion(BaseModel):
         if len(set(value)) != len(value):
             raise ValueError("evidence kinds must not contain duplicates")
         return value
+
+
+def _canonicalize_effort_section(section: Any, path: str) -> Any:
+    """Resolve ``reasoning_effort`` inside *section* to a canonical rung.
+
+    The value rides into the checkpointed ``configurable`` block, into the
+    assembly descriptor, into run metadata, and finally into the model
+    constructor, so an alias like ``x-high`` must be resolved **once**, at the
+    request boundary, rather than four times downstream where a partial fix
+    would leave two layers disagreeing.
+
+    A value that is present, non-empty, and names no rung is a client asking
+    for a level that does not exist. Silently running at the model default
+    would leave the picker showing a level the run never used, so it raises a
+    422 that names the valid rungs.
+    """
+    if not isinstance(section, dict) or "reasoning_effort" not in section:
+        return section
+    requested = section["reasoning_effort"]
+    if requested is None or requested == "":
+        return section
+    level = normalize_effort(requested)
+    if level is not None:
+        return {**section, "reasoning_effort": level}
+    if str(requested).strip().lower() in _UNSET_EFFORT_SPELLINGS:
+        # An explicit "let the provider decide" is a real request, distinct
+        # from omitting the key: it must clear any value already in place.
+        return {**section, "reasoning_effort": None}
+    raise PydanticCustomError(
+        "unsupported_reasoning_effort",
+        "{path}.reasoning_effort '{value}' is not a reasoning effort level; use one of: {levels}",
+        {"path": path, "value": str(requested)[:64], "levels": ", ".join(CANONICAL_EFFORTS)},
+    )
+
+
+#: Spellings that mean "send nothing and let the provider decide".
+_UNSET_EFFORT_SPELLINGS: frozenset[str] = frozenset({"default", "auto", "provider", "inherit"})
 
 
 class RunCreateRequest(BaseModel):
@@ -77,6 +115,30 @@ class RunCreateRequest(BaseModel):
         if len(set(identifiers)) != len(identifiers):
             raise ValueError("acceptance criteria must not contain duplicate ids")
         return self
+
+    @field_validator("context", mode="before")
+    @classmethod
+    def normalize_reasoning_effort(cls, value: Any) -> Any:
+        """Canonicalize ``context.reasoning_effort`` and reject a value that names no rung."""
+        return _canonicalize_effort_section(value, "context")
+
+    @field_validator("config", mode="before")
+    @classmethod
+    def normalize_reasoning_effort_in_config(cls, value: Any) -> Any:
+        """Apply the same canonicalization to the free-form ``config`` carriers.
+
+        The web client sends its run options under ``config.configurable`` while
+        the LangGraph SDK channel sends them under ``body.context``, and
+        ``merge_run_context_overrides`` then copies the latter into the former.
+        Validating only one of the two would leave a hole exactly where the
+        other kind of caller sends it.
+        """
+        if not isinstance(value, dict):
+            return value
+        updated = _canonicalize_effort_section(value.get("configurable"), "config.configurable")
+        if updated is not value.get("configurable"):
+            value = {**value, "configurable": updated}
+        return _canonicalize_effort_section(value, "config")
 
     @field_validator(
         "webhook",

@@ -98,6 +98,69 @@ labelled advisory *suggestions* for operators who declared nothing. This is the
 mechanism the rest of the field converged on: Continue `roles:`, Aider
 `weak_model_name`, OpenHands `usage_id`, Letta's required `model`+`embedding`.
 
+### Reasoning effort: one ladder, per-provider wire shapes
+
+Effort is the control the whole field converged on — Claude Code's `/effort`,
+Codex's `model_reasoning_effort`, OpenCode's `/variants`, Inspect's
+`--reasoning-effort` — and no two spell the rungs or place the value the same
+way. Alpha keeps **one canonical ladder** and a separate translation layer.
+
+- **`config/reasoning_effort.py` owns the ladder**, weakest → strongest:
+  `none, minimal, low, medium, high, xhigh, max`. It is dependency-free and
+  lives under `config/` precisely so `config/model_config.py` can validate a
+  declared ladder without importing `alpha.models` (which would cycle through
+  the factory). It also owns the aliases (`off`, `x-high`, `ultra`,
+  `ultrathink`, `adaptive`) and `clamp_effort`.
+- **`models/effort_translation.py` owns the wire shapes** and is the only place
+  that knows about LangChain client classes. Styles: `openai`,
+  `openrouter`, `anthropic`, `anthropic_budget`, `google`, `bedrock`, `vllm`,
+  `inert` (no knob), plus `auto` detection. `_STYLE_LADDER` is the **fallback**
+  used when an entry declares nothing; a declared `reasoning_efforts` is
+  authoritative and is never second-guessed, because declaring it *is* the
+  assertion that this endpoint serves those rungs.
+
+Four invariants, all regression-covered by `tests/test_reasoning_effort.py`:
+
+1. **A rung is never sent that the resolved ladder cannot express, and effort is
+   never silently raised.** `clamp_effort` picks the strongest rung at or below
+   the request and, only when the request is under the floor, the floor itself.
+   Both directions are logged. A *declared* ladder is the ceiling, so
+   second-guessing it with `_STYLE_LADDER` is a bug, not a safety net.
+2. **`none` is a thinking decision, not a rung.** It is resolved in
+   `_build_single_model` *before* the thinking transforms and flips
+   `thinking_enabled = False`, which routes it to the per-provider disable path
+   that already exists (`when_thinking_disabled`, `extra_body.thinking.type=disabled`
+   + `minimal`, vLLM `enable_thinking: false`, Anthropic `thinking: disabled`).
+   Never write a disable alongside a high effort: Claude rejects
+   `thinking: disabled` at `xhigh`/`max` with a 400. Google is the sole
+   exception, because a zero `thinking_budget` is the only "off" it has.
+3. **An unrecognized value is never silently honored.** `models[]` and a custom
+   agent's `config.yaml` reject a misspelled rung at load; a run boundary value
+   is a 422 (`app/gateway/run_models.py::_canonicalize_effort_section`, which
+   canonicalizes `body.context` *and* the two free-form `config` carriers
+   because the web client and the LangGraph SDK send it in different places).
+4. **A capability the client lacks must not receive a request.** A model that
+   declares neither `supports_reasoning_effort` nor a ladder gets the kwarg
+   stripped and a warning naming the model, and an IM channel pinned to one has
+   the value reconciled away in `ChannelManager._reconcile_reasoning_effort`
+   rather than failing the delivery. Cross-namespace ladder drift is part of
+   `catalog_consistency.COMPARED_FIELDS`, because a drifted ladder is the
+   effort picker's version of the `union-alpha` `supports_thinking` bug: the UI
+   offers exactly the rungs the drifted namespace advertised.
+
+The composer's picker is fed by `GET /api/models`, which returns each entry's
+`reasoning_efforts` / `default_reasoning_effort` plus the canonical
+`reasoning_effort_levels` / `reasoning_effort_labels`. A model that declares
+no ladder must render as "no effort control" rather than a menu whose
+selections would be clamped.
+
+**Don't edit `AgentConfig.reasoning_effort` back to a `Literal`.** It used to be
+`Literal["low", "medium", "high"]`, which rejected `minimal` because Codex did
+not serve it. That coupled a per-agent declaration to one provider: an agent
+serving both a Codex model and a Gemini model could not name a rung only one of
+them accepts. Agents now declare provider-neutral intent and the factory
+clamps per model.
+
 ### One retry owner per call (`factory.py`)
 
 Alpha stacks three retry/failover layers: `LLMErrorHandlingMiddleware`
@@ -118,6 +181,14 @@ them would retry otherwise. See `_pin_provider_retries_when_orchestrated`.
 
 - `create_chat_model(name, thinking_enabled)` instantiates LLM from config via reflection
 - Supports `thinking_enabled` flag with per-model `when_thinking_enabled` overrides
+- Accepts `reasoning_effort=<rung>` as a caller kwarg; it is popped before the
+  constructor splat and resolved per provider (see the reasoning-effort section).
+  An entry that pins `reasoning_effort:` in `models[]` is treated as a request
+  too, so a pinned rung is clamped and logged rather than forwarded blindly.
+  Codex keeps its own resolution (`none` when thinking is off, `medium` when
+  nothing is pinned) so an existing deployment does not change which rung it
+  reasons at, and an explicit request still wins even when the style detector
+  cannot classify an extension's own `CodexChatModel` subclass.
 - Provider failover: `models[].fallbacks` names an ordered chain tried on retryable errors only (429, 5xx, timeout/connection); deterministic failures raise at once. Single-member chains return the plain client (zero behavior change). Chain members that lack `supports_thinking` are skipped with a warning when thinking is on; `FallbackChatModel` (`models/fallback.py`) stays a `BaseChatModel` so `bind_tools`/streaming/middlewares work, binds tools per member, and reports the serving member via `get_last_effective_model()`. Exhaustion raises `ModelFallbackExhaustedError` carrying names + error classes only (never messages/secrets). Chains cap at 5, resolve transitively, reject cycles at build.
 - Provider profiles: top-level `providers:` (`config/model_config.py::ProviderConfig`) supplies defaults (`use`, endpoint, keys, timeouts) inherited by `models[].provider` entries; model-level keys win, `name` never inherits. A model with neither `use` nor a supplying provider fails closed at build.
 - Supports vLLM-style thinking toggles via `when_thinking_enabled.extra_body.chat_template_kwargs.enable_thinking` for Qwen reasoning models, while normalizing legacy `thinking` configs for backward compatibility

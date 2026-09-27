@@ -365,6 +365,14 @@ models:
   #   context_window: 128000    # Total prompt + completion capacity
   #   temperature: 0.7
   #   supports_vision: true # Enable vision support for view_image tool
+  #   supports_thinking: true
+  #   supports_reasoning_effort: true
+  #   # The rungs this endpoint actually serves, weakest first. Declaring them is
+  #   # what enables the composer effort picker, and it is the ceiling: a request
+  #   # above the top is clamped down (and logged) rather than sent and 400'd.
+  #   # Allowed: none, minimal, low, medium, high, xhigh, max.
+  #   reasoning_efforts: [low, medium, high, xhigh]
+  #   default_reasoning_effort: medium
 
   # Example: OpenAI Responses API model
   # - name: gpt-5-responses
@@ -445,6 +453,64 @@ models:
   #   when_thinking_disabled:
   #     thinking:
   #       type: disabled
+
+  # Example: Claude Opus with adaptive reasoning effort
+  # Modern Claude models take a *named* effort level instead of a raw token
+  # budget. Declaring `reasoning_efforts` is what puts the effort picker in the
+  # composer: the list the user sees is exactly the list below, a request above
+  # the ceiling is clamped down (and logged), and a run that requests nothing
+  # uses `default_reasoning_effort`. Omit the key and the picker correctly
+  # reports that this model has no effort control.
+  #
+  # `max_tokens` is a hard cap on thinking PLUS reply, so Anthropic's guidance
+  # is a large cap at high effort and above — a small one truncates the
+  # reasoning itself. Alpha warns when a high rung meets a small cap.
+  # - name: claude-opus-4-7
+  #   display_name: Claude Opus 4.7
+  #   use: langchain_anthropic:ChatAnthropic
+  #   model: claude-opus-4-7
+  #   api_key: $ANTHROPIC_API_KEY
+  #   max_tokens: 32000
+  #   context_window: 200000
+  #   supports_vision: true
+  #   supports_thinking: true
+  #   reasoning_efforts: [low, medium, high, xhigh, max]
+  #   default_reasoning_effort: high
+  #   # Omit this for auto: Alpha detects the wire shape from the client class
+  #   # (Anthropic -> output_config.effort, OpenAI -> reasoning_effort, Google ->
+  #   # thinking_level, Bedrock -> reasoningConfig, vLLM -> chat-template kwargs).
+  #   # Set it only for a gateway whose knob does not match its SDK package.
+  #   reasoning_effort_style: auto
+
+  # Example: OpenAI GPT-5.2 with the full reasoning ladder
+  # - name: gpt-5-2
+  #   display_name: GPT-5.2
+  #   use: langchain_openai:ChatOpenAI
+  #   model: gpt-5.2
+  #   api_key: $OPENAI_API_KEY
+  #   max_tokens: 32000
+  #   context_window: 400000
+  #   supports_vision: true
+  #   supports_thinking: true
+  #   reasoning_efforts: [none, minimal, low, medium, high, xhigh]
+  #   default_reasoning_effort: medium
+  #   # `max` is intentionally absent: it is Anthropic's rung and this endpoint
+  #   # has never heard of it, so declaring it would only produce a 400.
+
+  # Example: Google Gemini via the native SDK
+  # `thinking_level` accepts minimal/low/medium/high; "off" is a zero budget
+  # rather than a level, and Alpha writes it that way.
+  # - name: gemini-3-pro
+  #   display_name: Gemini 3 Pro
+  #   use: langchain_google_genai:ChatGoogleGenerativeAI
+  #   model: gemini-3-pro
+  #   gemini_api_key: $GEMINI_API_KEY
+  #   max_tokens: 8192
+  #   context_window: 1048576
+  #   supports_vision: true
+  #   supports_thinking: true
+  #   reasoning_efforts: [none, minimal, low, medium, high]
+  #   default_reasoning_effort: high
 
   # Example: Google Gemini model (native SDK, no thinking support)
   # - name: gemini-2.5-pro
@@ -3478,6 +3544,48 @@ run_ownership:
 #     use: my_package:MyGuardrailProvider
 #     config:
 #       key: value
+
+# --- Option 4: CommandPolicyProvider (gates the *content* of shell commands) ---
+# AllowlistProvider gates on tool NAME, so it answers "may the agent call
+# bash?" and nothing about what it is about to run. Once host bash is enabled,
+# `git push --force`, `curl ... | bash`, and `rm -rf /` all reach the host.
+# This provider parses the command structurally and returns a four-way verdict
+# (allow / ask / deny / defer) instead of a binary one.
+#
+# It is a GUARDRAIL, not a sandbox: an allowed command can still do anything
+# its user can. Containment is the sandbox provider's job.
+#
+# Profiles:
+#   read-only  - pure reads (ls/cat/grep/find, `git status|log|diff|show`).
+#                Anything that writes or runs project code defers to a human.
+#   repo-write - adds `git add/commit/push/build/test/...` at the `ask` tier.
+#                Destructive git (`push --force`, `reset --hard`) asks and
+#                names the safer alternative.
+#
+# The hard-deny list is deliberately tiny. A hard deny cannot be overridden,
+# so anything a real workflow might need belongs in the `ask` tier instead.
+#
+# guardrails:
+#   enabled: true
+#   fail_closed: true
+#   provider:
+#     use: alpha.guardrails.command_policy:CommandPolicyProvider
+#     config:
+#       profile: read-only
+#       # Optional: gate more than the bash tool (defaults to ["bash"]).
+#       # guarded_tools: ["bash", "run_shell"]
+#       # Optional: a fully custom rule list. Selector fields are ANDed, and
+#       # rules avoid glob syntax on purpose (`git diff*` would also match
+#       # `git diff-index`), so match on executables + token predicates.
+#       # rules:
+#       #   - executables: ["curl"]
+#       #     has_any: ["-L"]          # follow redirects: never auto-allowed
+#       #     verdict: deny
+#       #     reason: "HTTP redirects can bypass a domain allowlist."
+#       #   - executables: ["rm"]
+#       #     roles: ["standalone"]
+#       #     verdict: ask
+#       #     reason: "recursive delete; confirm the target path."
 
 # ============================================================================
 # Shell Hooks Bridge Configuration

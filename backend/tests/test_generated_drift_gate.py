@@ -471,25 +471,83 @@ def test_docstring_and_contract_agree_on_what_is_ignored() -> None:
     assert "compared on raw bytes" not in flat
 
 
-def test_lint_gate_checks_each_file_under_one_stable_rule() -> None:
+def test_lint_gate_holds_every_scope_to_one_repository_policy(tmp_path: Path) -> None:
     """A verdict that depends on the caller's working directory is not a verdict.
 
-    Only ``backend/`` has a ``ruff.toml`` above it.  Measured on this host, an
-    unconfigured file such as ``scripts/check_changed_python_lint.py`` is held
-    to line-length 88 when ruff runs from the repository root and to 240 when it
-    runs from ``backend/``.  The gate therefore pins ruff to the backend root
-    and hands every unconfigured file ``--isolated`` (ruff's documented default
-    configuration), so both invocations mean the same thing forever.
-    """
-    repo = Path("C:/repo")
-    paths = [Path("backend/agents/lead.py"), Path("backend/tests/test_x.py"), Path("scripts/check_changed_python_lint.py"), Path("tools/deep/x.py")]
-    inside, outside = lint_gate._config_scopes(repo, Path("C:/repo/backend"), paths)
+    This used to be enforced by splitting the changed files in two: those under
+    ``backend/`` had a ``ruff.toml`` above them, and every other file was handed
+    ``--isolated``.  Two directories were therefore measured by two different
+    rule sets -- measured on this host, an unconfigured file such as
+    ``scripts/check_changed_python_lint.py`` was held to line-length 88 from the
+    repository root and 240 from ``backend/`` -- and which set a file landed in
+    depended on where the gate happened to be launched.
 
-    assert inside == [Path("backend/agents/lead.py"), Path("backend/tests/test_x.py")]
-    assert outside == [Path("scripts/check_changed_python_lint.py"), Path("tools/deep/x.py")]
-    assert "--isolated" in lint_gate._ruff_command(Path("C:/repo/backend"), "format", [Path("C:/repo/scripts/x.py")], isolated=True)
-    assert "--isolated" not in lint_gate._ruff_command(Path("C:/repo/backend"), "format", [Path("C:/repo/backend/x.py")], isolated=False)
-    assert "--isolated" in (lint_gate.__doc__ or "")
+    There is now one policy at the repository root that ``backend/ruff.toml``
+    extends, and the gate proves it instead of assuming it.  It picks one
+    representative file per configuration scope, asks ruff which settings that
+    file actually resolved to, and fails closed when a scope resolves to no
+    configuration at all -- ruff then silently falls back to its own defaults,
+    which is exactly how 108 findings outside ``backend/`` went unmeasured -- or
+    resolves to anything other than the repository policy, or resolves with a
+    blanket ``exclude``/``per_file_ignores`` that could hide findings behind it.
+    """
+    # One representative per configuration scope, shallowest first.  Two files in
+    # one directory always resolve identically, so ``tools/deep/nested`` is
+    # already covered by ``tools/deep``; two sibling directories under backend/
+    # are two scopes and each has to be asked.  Paths are absolute because ruff
+    # is launched from ruff_cwd, where a repo-relative path would resolve
+    # against the wrong root.
+    paths = [
+        "C:/repo/scripts/check_changed_python_lint.py",
+        "C:/repo/backend/agents/lead.py",
+        "C:/repo/backend/tests/test_x.py",
+        "C:/repo/tools/deep/x.py",
+        "C:/repo/tools/deep/nested/y.py",
+    ]
+    assert lint_gate._scope_representatives(paths) == [
+        "C:/repo/scripts/check_changed_python_lint.py",
+        "C:/repo/backend/agents/lead.py",
+        "C:/repo/backend/tests/test_x.py",
+        "C:/repo/tools/deep/x.py",
+    ]
+
+    # The repository's own config is the rule set, so the answer does not move
+    # with the caller's cwd.  Read it from the real checkout, where the policy
+    # is actually authored.
+    line_length, target_version, selected = lint_gate._expected_policy(ROOT)
+    assert isinstance(line_length, int) and line_length > 0, "policy must declare a numeric line-length"
+    assert target_version.startswith("py"), f"unexpected target-version {target_version!r}"
+    assert selected and all(isinstance(rule, str) and rule for rule in selected), "policy must select rules"
+    # and it must be the same file the whole tree is measured against
+    assert (ROOT / "ruff.toml").is_file(), "the repository-wide policy is missing"
+
+    # Failing closed is the point: with no policy above it the gate must refuse
+    # to guess, because a gate that proceeds is a gate that reports a clean tree
+    # it never measured.
+    with pytest.raises(lint_gate.GateError) as excinfo:
+        lint_gate._expected_policy(tmp_path)
+    assert "missing" in str(excinfo.value)
+    # ...and policy verification must refuse before it ever launches ruff
+    with pytest.raises(lint_gate.GateError) as excinfo:
+        lint_gate._verify_policy(tmp_path, tmp_path / "x.py",
+                                 ruff_cwd=tmp_path, timeout=5)
+    assert "missing" in str(excinfo.value)
+
+    # No scope is measured with ruff's built-in defaults any more, and the gate
+    # must never turn that back on.
+    command = lint_gate._ruff_command(Path("C:/repo/backend"), "check",
+                                      [Path("C:/repo/scripts/x.py")])
+    assert "--isolated" not in command, "a default-configuration scope is a hole in the measurement"
+    assert "isolated=True" not in LINT_GATE_PATH.read_text(encoding="utf-8"), (
+        "the gate itself must not enable --isolated; every scope is measured "
+        "against the repository policy")
+    # the escape hatch still exists for callers that ask for it explicitly
+    assert "--isolated" in lint_gate._ruff_command(Path("C:/repo/backend"), "format",
+                                                   [Path("C:/repo/scripts/x.py")],
+                                                   isolated=True)
+    assert "--isolated" not in lint_gate._ruff_command(Path("C:/repo/backend"), "format",
+                                                       [Path("C:/repo/backend/x.py")],
+                                                       isolated=False)
 
 
 # --------------------------------------------------------------------------
@@ -515,11 +573,26 @@ _SLEEPER = "import time; time.sleep(600)\n"
 
 
 def _git_repo(tmp_path: Path) -> Path:
-    """A minimal two-commit repository with one clean Python file."""
+    """A minimal two-commit repository with one clean Python file.
+
+    It carries a repository-wide ``ruff.toml`` because the gate refuses to
+    trust a ruff verdict it cannot attribute to the repository policy, and it
+    checks that *before* launching ruff.  A fixture without one is not a
+    repository this gate can run against: it dies at policy lookup, so any test
+    built on this fixture that means to exercise a later step -- a wedged ruff,
+    say -- silently stops testing it and passes for the wrong reason.
+    """
     repo = tmp_path / "lint-repo"
     (repo / "backend").mkdir(parents=True)
     target = repo / "backend" / "clean_module.py"
     target.write_text("VALUE = 1\n", encoding="utf-8")
+    # The two keys _expected_policy insists on: a numeric line-length and a
+    # non-empty lint.select. Deliberately minimal -- this fixture stands for
+    # "any repository", not for this project's own rule set.
+    (repo / "ruff.toml").write_text(
+        'line-length = 100\n\n[lint]\nselect = ["E", "F"]\n',
+        encoding="utf-8",
+    )
     for args in (
         ["init", "-q"],
         ["config", "user.email", "gate@example.invalid"],
@@ -608,7 +681,11 @@ def test_lint_gate_reports_a_clean_tree_and_rejects_unpaired_refs(tmp_path: Path
     head = lint_gate.run_command(["git", "rev-parse", "HEAD"], cwd=repo, timeout=60).stdout.decode().strip()
 
     assert lint_gate.main(["--repo-root", str(repo), "--base-ref", head, "--head-ref", head]) == 0
-    assert "incremental ruff gate: 0 (no changed Python files)" in capsys.readouterr().out
+    # The gate prints this only after walking every changed file and explaining
+    # each one it skipped, so the number it reports is "lintable", not "changed".
+    # Pinning the real wording keeps the promise honest when both are zero and
+    # they read the same only by coincidence.
+    assert "incremental ruff gate: 0 (no lintable changed Python files)" in capsys.readouterr().out
 
     assert lint_gate.main(["--base-ref", "HEAD"]) == 2
     assert lint_gate.main(["--ruff-timeout", "0"]) == 2
@@ -692,16 +769,51 @@ def test_no_gate_failure_is_swallowed_without_disclosure() -> None:
     but only because they capture its exit code, print it, label themselves
     non-gating, and still fail when the report itself cannot be produced.  That
     disclosure is asserted here rather than trusted to review.
+
+    Only executable lines are scanned.  A YAML comment cannot hide a failure,
+    and two workflows *document* the ban -- cold-start-budget.yml says "no
+    `continue-on-error`, no `|| true`" and windows-installer.yml says
+    "`continue-on-error`: exceeding the budget must fail the build" -- so a
+    literal substring scan reported the sentence forbidding the pattern as an
+    instance of it.  A false positive like that is not harmless: the first
+    person to hit it deletes the comment that was doing the work, and the next
+    real directive walks in behind it.
+
+    The positive control below runs the same scan over a tiny fixture, so a
+    green run here can never mean the scan quietly stopped looking.
     """
+
+    def _hidden(workflow: str) -> str | None:
+        """The construct that would hide a failure, ignoring YAML comments."""
+        executable = "\n".join(
+            line for line in workflow.splitlines()
+            if not line.lstrip().startswith("#")
+        )
+        if re.search(r"^\s*continue-on-error\s*:", executable, re.MULTILINE):
+            return "continue-on-error"
+        if "|| true" in executable:
+            return "|| true"
+        return None
+
+    # Positive control: the comment must be tolerated and the directive caught.
+    # Without this, the narrowed scan could pass forever by matching nothing.
+    assert _hidden("# no continue-on-error and no || true here\n") is None, "the scan now flags the documentation of the ban"
+    assert _hidden("jobs:\n  build:\n    continue-on-error: true\n") == "continue-on-error", "the scan no longer sees a real continue-on-error directive"
+    assert _hidden("      run: make check || true\n") == "|| true", "the scan no longer sees || true"
+    assert _hidden("      run: |\n        # harmless || true in a shell comment\n") is None, "a shell comment must not be flagged"
+
     for path in sorted(WORKFLOWS.glob("*.yml")):
         text = path.read_text(encoding="utf-8")
-        assert "continue-on-error" not in text, f"{path.name} would hide a failure"
-        assert "|| true" not in text, f"{path.name} would hide a failure"
-        for index, line in enumerate(text.splitlines()):
+        assert _hidden(text) is None, f"{path.name} would hide a failure"
+        lines = text.splitlines()
+        for index, line in enumerate(lines):
+            if line.lstrip().startswith("#"):
+                # Prose about errexit cannot disable errexit.
+                continue
             if "set +e" in line:
                 # Locality matters: the disclosure has to sit next to the line
                 # that disables errexit, not twenty lines below it.
-                window = "\n".join(text.splitlines()[index : index + 8])
+                window = "\n".join(lines[index : index + 8])
                 assert re.search(r"status=\$\?", window), f"{path.name}:{index + 1} disables errexit without capturing an exit code"
                 assert "non-gating" in window, f"{path.name}:{index + 1} disables errexit without labelling itself non-gating"
 
@@ -710,6 +822,11 @@ def test_non_gating_reports_still_fail_when_they_cannot_produce_output() -> None
     runs = _runs("lint-check.yml", "agent-guidance-debt-report")
     assert "non-gating" in runs
     assert "exit 1" in runs, "an empty report must fail the step, not pass quietly"
-    debt = _runs("lint-check.yml", "backend-ruff-debt-report")
+    debt = _runs("lint-check.yml", "ruff-debt-report")
     assert "non-gating" in debt
-    assert "raise SystemExit" in debt
+    # Both debt reports are shell steps, so `exit 1` is the idiom that makes an
+    # empty report fatal -- the same guarantee line 712 pins for the sibling job.
+    assert "exit 1" in debt
+    # and the capture has to be real: set +e without reading $? would swallow
+    # the checker's own failure before the empty-report check could run
+    assert "status=$?" in debt

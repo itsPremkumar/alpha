@@ -72,6 +72,42 @@ The return path matters as much as the outbound one:
 When a frame or field is missing, render the honest unknown state. A partially
 received stream is not a successful one.
 
+## Reasoning-effort picker (composer)
+
+`components/ReasoningEffortPicker.tsx` sets how hard the selected model
+reasons. `lib/reasoning-effort.ts` is the client mirror of the server's
+canonical ladder; `tests/reasoning-effort.test.mjs` owns the contract.
+
+- **The ladder and labels come from the server.** `GET /api/models` returns
+  `reasoning_effort_levels` / `reasoning_effort_labels` (via
+  `fetchModelCatalog()`) so the picker orders and names rungs from one source.
+  `FALLBACK_LADDER` / `FALLBACK_LABELS` are for a degraded or older-Gateway read
+  only — never hardcode a second copy as the primary source.
+- **No declared ladder, no control.** A model that declares no rungs renders a
+  muted "Reasoning fixed" chip carrying the reason. Do **not** render a
+  permanently disabled menu: a control that can never succeed implies a pending
+  state that does not exist.
+- **Only declared rungs are offered**, weakest first, plus a `Default` row that
+  means "send nothing" and whose hint discloses the entry's own
+  `default_reasoning_effort` when it has one. The `Default` row is a real
+  choice, not the absence of one: collapsing it into a rung pins the user to a
+  level the provider never chose.
+- **Never show a rung the server will clamp.** `reconcileEffortForModel` runs on
+  every model switch and on the restored `localStorage` value; a rung the new
+  model cannot serve becomes `Default`. When a clamp is unavoidable it is
+  disclosed in the open menu, not applied silently.
+- **`default` is omitted from the request, never sent as a string.** The run
+  boundary rejects a value that names no rung, so `ChatView` spreads
+  `reasoning_effort` into `config.configurable` only when it is a real rung.
+- The stored key is `alpha_reasoning_effort`, and a value that no longer applies
+  is removed rather than left to be re-read on every load.
+
+`sendMessage` closes over `reasoningEffort` and `DEFAULT_EFFORT`, so
+`src/lib/chat-request-error.test.mjs` injects both. A missing binding there
+throws inside the request and masks every status-code assertion behind a generic
+"request could not be completed" — that is the failure mode to watch for when
+adding a run option.
+
 ## Live activity layer (what shows between prompt and answer)
 
 Four pieces, all inline in the transcript and quiet by default:

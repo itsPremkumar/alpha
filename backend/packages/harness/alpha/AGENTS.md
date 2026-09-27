@@ -311,3 +311,71 @@ not a mailbox, and libp2p is an external future seam that must not be reported a
 active without a real implementation. See
 [docs/ALPHA_PEER_NETWORK.md](../../../docs/ALPHA_PEER_NETWORK.md) and
 `backend/tests/test_peer_network.py`.
+
+## Bot forge
+
+`alpha.bots.forge` builds a Bot as a **transaction**: every step records its own
+inverse, any failure rolls the build back to *nothing*, and a Bot is only
+reported alive after it answers a smoke test. The point is that a half-built
+Bot is indistinguishable from a working one by looking at it, so "the files
+exist" and "the Bot works" must never be reported the same way.
+
+- **Pre-flight refusals happen before anything is created.** An unusable
+  sandbox backend, a routine faster than the cost floor, a duplicate role, and
+  a malformed handle are all refused with the reason, leaving the roster
+  untouched — never a partial profile that has to be cleaned up later.
+- **Rollback removes the profile outright.** `retire_bot()` is a soft delete
+  that archives in place, which would leave a ghost and make the
+  "no partial Bot remains" claim in `ForgeResult.reply()` false; forge pops the
+  profile from the registry and re-saves instead. Rollback failures are
+  reported per step rather than swallowed.
+- **No model is called.** The workspace survey, the overlap check and the
+  routine guard are deterministic word/rule matching, so the same inputs always
+  produce the same build.
+
+Guardrails are written into the SOUL at birth by `build_guardrail_soul()` —
+approvals, the escalation target, and where the Bot runs — because approvals
+that live only in a config file are approvals nobody reads. `DEFAULT_APPROVALS`
+is draft-first; passing an explicit empty list is the operator opting out.
+
+**The thin-query rule is load-bearing.** `_overlap_score` normalises against
+the *query's* ceiling, so a one-word role (`Security`) scores 1.0 against any
+SOUL that merely shares the word. `check_overlap` therefore requires at least
+`survey.MIN_OVERLAP_TERMS` (3) distinct significant terms before it will refuse;
+below that the score is returned as evidence only. Do not remove that floor —
+it is what stops a legitimate `role="Security"` build being refused by an
+unrelated leader SOUL.
+
+Supporting modules, each with its own contract:
+
+- `alpha/bots/survey.py` — read-only, shallow, time-bounded, cached workspace
+  survey. Only directory names, git remotes and the *head* of README/AGENTS/
+  CLAUDE are read; dependency trees are skipped, the home directory is scanned
+  only when named in `workspace_roots`, and anything credential-shaped is
+  scrubbed before it can reach a Bot's memory. `SurveyResult.clone()` — not
+  `to_dict()` — is how a cached result is handed back. The whole scan is gated
+  on the `AGENT_WORKSPACE_BOT_SURVEY` kill switch (set to `0` to disable), which
+  is checked *before* the cache so a disabled survey can never be served as a
+  real one; a disabled survey reports the reason in `next_steps` rather than
+  silently claiming it found nothing.
+- `alpha/bots/journal.py` — append-only per-Bot work journal (Markdown record +
+  `index.json` blocker state). It refuses credential-shaped text and private
+  reasoning at write time, and a blocker closes itself when the same work is
+  recorded as completed. `waiting_on_you()` is the cross-Bot roll-up: the answer
+  to "anything waiting on me?" for the whole roster.
+- `alpha/bots/portable.py` — `.alphabot.json` export/import with a secret
+  scanner that runs at **both** doors (a template can be hand-edited between
+  them). Verdicts are CLEAN/WARN/BLOCK; findings name the field and line, never
+  the value. Chat history, operator facts and journals never travel in a
+  template, exports are confined to one root directory, and nothing is
+  overwritten.
+
+The model-facing surface is the existing `bot_roster` tool — the new
+capabilities are actions on it (`forge`, `teach`, `journal`, `waiting_on`,
+`share`, `import`, `doctor`, `sandbox`) rather than new tools, so
+`BUILTIN_TOOLS`, `contracts/feature_manifest.json` and the capability counts in
+the root docs are unaffected. `teach` does **not** install: it validates the
+draft against `alpha.skills.authoring.validate_skill_draft`, runs the static
+scan, and queues a `SkillProposal` — the admin approve gate remains the control,
+and the reply says the skill is not active yet. Tests:
+`backend/tests/test_bots_forge.py`.

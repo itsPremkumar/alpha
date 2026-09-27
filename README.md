@@ -369,6 +369,23 @@ make doctor    # verify the environment
 
 - **Bot roster & SOUL protocol** — registered autonomous bots with distinct
   personalities, isolated system prompts, private inboxes.
+- **Transactional bot forge** — `bot_roster(action="forge")` builds a complete
+  bot (persona, approvals, routines, journal) as a single transaction: it
+  refuses duplicate roles and unaffordable schedules *before* creating
+  anything, rolls the whole build back if any step fails, and only reports a
+  bot alive after it answers a smoke test. Approvals and the sandbox are
+  written into its SOUL at birth.
+- **Work journal & blocker roll-up** — every bot keeps an append-only work
+  journal that refuses credentials and chain-of-thought;
+  `bot_roster(action="waiting_on")` answers "anything waiting on me?" across
+  the whole roster in one line.
+- **Secret-scanned bot templates** — export a bot to a shareable
+  `.alphabot.json` (design only: never chats, operator facts, or journals) and
+  import one back through the same scanner at both doors; a detected secret
+  blocks the transfer and names the field, never the value.
+- **Bot Forge Doctor** — `bot_roster(action="doctor")` checks the installation
+  itself: open blockers, over-frequent routines, shell-capable bots running on
+  the real host, missing journals, and unusable sandbox backends.
 - **Bot mode DMs** — `POST /api/bots/{name}/dm`, fire-and-forget, server-side
   attribution.
 - **Multi-agent group chat & swarms** — collaborative rooms where specialized
@@ -659,6 +676,44 @@ Rules of thumb:
   absent id means disabled, and all flags off means zero tasks.
 
 → [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
+
+### Reasoning effort (thinking depth)
+
+The composer has an effort picker next to the model selector, so you can choose
+how hard a model thinks per run instead of editing config: `Off`, `Minimal`,
+`Low`, `Medium`, `High`, `Extra High`, `Max`, plus a `Default` that sends
+nothing and lets the model decide. It is the same control as Claude Code's
+`/effort`, Codex's `model_reasoning_effort`, and OpenCode's `/variants`, spoken
+as one vocabulary.
+
+You get the picker by declaring which levels a model actually serves:
+
+```yaml
+models:
+  - name: claude-opus-4-7
+    use: langchain_anthropic:ChatAnthropic
+    model: claude-opus-4-7
+    max_tokens: 32000        # hard cap on thinking PLUS reply
+    supports_thinking: true
+    reasoning_efforts: [low, medium, high, xhigh, max]
+    default_reasoning_effort: high
+```
+
+That list is the contract, not a hint. The picker offers exactly those levels, a
+request above the top is lowered to it (and logged), and a level you did not
+declare is never sent — so you cannot pick something the provider rejects. Leave
+`reasoning_efforts` out and the picker reports that the model has no effort
+control, rather than showing a menu that would do nothing.
+
+Alpha translates the level into whichever shape your provider wants —
+`reasoning_effort` for OpenAI-compatible endpoints, `output_config.effort` for
+Anthropic, `thinking_level` for Gemini, `reasoningConfig` for Bedrock, chat
+template kwargs for vLLM — so you never configure the wire format yourself. One
+caveat worth knowing: on Anthropic, `max_tokens` caps thinking *and* the reply,
+so a small cap at High or above truncates the reasoning itself. Alpha warns when
+it sees that.
+
+→ [Reasoning effort in docs/CONFIGURATION.md](docs/CONFIGURATION.md#reasoning-effort-thinking-depth)
 
 ---
 

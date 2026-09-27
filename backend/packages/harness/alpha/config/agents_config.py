@@ -11,11 +11,12 @@ import logging
 import re
 import unicodedata
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
 from alpha.config.paths import get_paths
+from alpha.config.reasoning_effort import CANONICAL_EFFORTS, normalize_effort
 from alpha.runtime.user_context import get_effective_user_id
 
 logger = logging.getLogger(__name__)
@@ -230,7 +231,27 @@ class AgentConfig(BaseModel):
     thinking_enabled: bool | None = None
     # Per-agent reasoning-effort default for models that support it. None = do
     # not override (a request-supplied reasoning_effort still wins over this).
-    reasoning_effort: Literal["low", "medium", "high"] | None = None
+    # Accepts the whole canonical ladder — ``none`` and ``minimal`` included —
+    # because a model that serves them is a model that should be able to name
+    # them here too; a rung the model does not serve is clamped by the factory
+    # and logged, never rejected.
+    reasoning_effort: str | None = None
+
+    @field_validator("reasoning_effort")
+    @classmethod
+    def _validate_reasoning_effort(cls, value: str | None) -> str | None:
+        """Reject a misspelled rung at config load rather than at model build.
+
+        A hand-authored agent config is an operator assertion, so a typo must
+        be an error. Aliases are accepted and rewritten to the canonical rung.
+        """
+        if value is None:
+            return None
+        level = normalize_effort(value)
+        if level is None:
+            raise ValueError(f"unknown reasoning_effort {value!r}; allowed: {', '.join(CANONICAL_EFFORTS)} (or omit the key to inherit the runtime default)")
+        return level
+
     # Optional binding to GitHub repositories so this agent can respond to
     # webhook events from the gateway dispatcher. None means "no GitHub
     # integration", which is the case for every existing agent.
