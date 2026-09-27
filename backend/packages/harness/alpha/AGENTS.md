@@ -200,16 +200,68 @@ callbacks, or verification evidence fail or disclose honestly.
 
 The default `alpha.local.digest` executor is a `local_digest_projection`: it hashes
 inputs to exercise graph mechanics, keeps `acceptance_passed=false`, and is never
-reported as domain-task acceptance — a real model/tool/MCP/sandbox/bot executor must
-be bound for domain work. Recurring prompts disclose the missing scheduler handoff
-rather than creating a second cron owner. Workflow events are appended to the
-durable JSONL sink before listeners run; the Gateway sink is fail-closed, redacts
-event payloads, validates paths/schema, and exposes durability, projection,
-hydration, replay, and append-only plan history. That local adapter is atomic and
-restart-recoverable for one Gateway process, not a shared multi-worker
-lease/exactly-once repository: do not claim true concurrent wave parallelism or
-cross-process exactly-once execution. Full operations, API examples, and the
-regression suites are in
+reported as domain-task acceptance. Real domain work is reachable through
+`alpha.orchestrator.domain_executors` (`alpha.local.model`,
+`alpha.local.tool`, `alpha.local.subagent`), which invoke the model factory, the
+guarded `ScriptDispatcher`, and the real `SubagentExecutor`. They are **opt-in**
+via `bind_domain_executors()` and are never bound at import, because they spend
+money and reach the network; the async-to-sync bridge refuses when called from a
+thread with a running event loop rather than deadlocking. Recurring prompts
+disclose the missing scheduler handoff rather than creating a second cron owner.
+
+**Bounded execution and concurrency.** `WorkflowNode.timeout_seconds` is
+ENFORCED through `alpha.workflow.execution.run_with_deadline`; a missed deadline
+fails the node with the measured overrun and **fences** the in-flight call
+(CPython cannot kill a thread), discarding its late result rather than adopting
+it. A `MAP`/`REDUCE`/`RACE`/`QUORUM` child inherits the bound **per child**, not
+per fan-out. Wave concurrency is **opt-in** through `policies.max_concurrency`:
+the engine dispatches a wave on a bounded pool so the scheduler's disjoint
+`write_scope` guarantee buys real overlap, but an undeclared workflow runs
+sequentially, because parallel waves reorder the event log and would silently
+change every existing definition's replay, projection and hydration. Every
+read-modify-write on shared run/graph bookkeeping happens under the
+process-wide `_STATE_LOCK` while the executor call runs outside it; when a write
+scope does overlap, the later node is deferred and `wave_write_scope_serialized`
+names the pairs. Measured time is **journalled** as `node_timed` /
+`wave_dispatched` events, never stored in `run.metrics`, because the replay
+contract requires `run.metrics` to be reconstructible from the log and a duration
+is not re-derivable from the events that recorded the work.
+
+**Executor-free node kinds.** `CHECKPOINT` (content-addressed state digest),
+`GOAL_GATE` (safe-AST acceptance criteria where an unevaluable required criterion
+counts as NOT met; the patch validator already refuses to remove or replace it),
+`HANDOFF` (real-state contract, `decisions` stays empty), `WAIT` (clamped timer
+reporting the measured sleep), `EVENT_WAIT` (parks the run in `WAITING_EVENT`),
+`PARALLEL` (named member group, all-or-nothing), and `SUBWORKFLOW` (a real child
+run; only a `completed` child is adopted, self recursion refused) complete on a
+measurement the runtime takes itself.
+
+**Waiting, signals, and suspension.** `signal_event` releases only nodes
+registered for that exact event and returns them to `READY` (the scheduler admits
+only `PENDING`/`READY`, so a node left `WAITING` could never re-dispatch); an
+unmatched signal changes no state. `sweep_expired_waits` fails expired waits with
+the measured age and then applies the same fail-closed policy a wave does, so a
+wait nobody satisfies cannot leave a run non-terminal. `suspend_run` /
+`resume_run` park and release without inventing a terminal outcome, and stepping
+a parked run returns its real status.
+
+**Fork, dry run, templates, proposals.** `alpha.workflow.time_travel` forks a
+new run from a point in an event history, inheriting completed work rather than
+repeating it (each fork gets its own workflow id and graph; the source is never
+mutated), and `simulate_run` dry-runs a graph on a **throwaway** engine so it
+cannot touch the caller's definitions, runs, durable sink or budgets — labelled
+`dry_run_simulation`, zero tokens, no acceptance verdict, and a graph that parks
+says so. `alpha.workflow.templates` enforces `draft -> verified -> promoted`,
+where `verify` re-checks that a run completed, that its graph is structurally
+identical, and that every succeeded node carried evidence.
+`alpha.workflow.self_improvement` only **proposes**: nothing in it mutates a run,
+graph or template, every suggestion cites its measured signal, confidence is
+derived from sample count, an unevidenced completion is reported as `unproven`
+rather than folded into a success rate, and the parallelisation / wave-underuse
+signals require a real independent sibling so they do not fire on every serial
+chain.
+
+Workflow events are appended to the durable JSONL sink before listeners run; the Gateway sink is fail-closed, redacts event payloads, validates paths/schema, and exposes durability, projection, hydration, replay, and append-only plan history. That local adapter is atomic and restart-recoverable for one Gateway process, not a shared multi-worker lease/exactly-once repository: do not claim cross-process exactly-once execution, and note that wave concurrency is likewise process-local. Full operations, API examples, and the regression suites are in
 [`docs/DYNAMIC_WORKFLOWS.md`](../../../docs/DYNAMIC_WORKFLOWS.md).
 
 ## Guarded source auto-update contract

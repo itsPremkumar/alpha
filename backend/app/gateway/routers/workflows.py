@@ -22,6 +22,13 @@ from alpha.workflow.models import (
 )
 from alpha.workflow.plan_graph import PlanGraphError, PlanGraphStore, PlanVersionConflict
 from alpha.workflow.runtime import DynamicWorkflowEngine
+from alpha.workflow.time_travel import (
+    ForkError,
+    fork_run,
+    run_history,
+    run_report,
+    simulate_run,
+)
 from app.gateway.authz import require_permission
 
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
@@ -520,6 +527,265 @@ async def execute_dynamic_workflow(body: DynamicExecuteRequest, request: Request
     except Exception as exc:
         # Keep arbitrary assembler/executor failures honest as 500s.
         raise HTTPException(status_code=500, detail=f"dynamic workflow execution failed: {type(exc).__name__}: {exc}") from exc
+
+
+# ---------------------------------------------------------------------------
+# Observability, forking, simulation, and run control.
+#
+# Declared before ``/{workflow_id}`` so the single-segment ``/simulate`` path is
+# matched here rather than being swallowed by the definition-id catch-all.
+# ---------------------------------------------------------------------------
+
+
+class WorkflowSimulateRequest(BaseModel):
+    workflow_id: str = Field(..., min_length=1, max_length=100)
+    initial_state: dict[str, Any] = Field(default_factory=dict)
+    max_waves: int = Field(default=25, ge=1, le=200)
+
+
+class WorkflowForkRequest(BaseModel):
+    at_event_id: str | None = None
+    at_index: int | None = Field(default=None, ge=1)
+    new_run_id: str | None = Field(default=None, max_length=128)
+    reset_completed_nodes: bool = False
+
+
+class WorkflowSignalRequest(BaseModel):
+    event: str = Field(..., min_length=1, max_length=200)
+    payload: Any = None
+
+
+@router.get("/runs/{run_id}/history")
+@require_permission("runs", "read")
+async def get_workflow_run_history(run_id: str, request: Request) -> dict[str, Any]:
+    """The ordered, replayable event timeline of one run.
+
+    Indexes are 1-based and stable, so a client can quote one back to
+    ``POST /runs/{run_id}/fork`` to branch from that exact point.
+    """
+    engine = get_workflow_engine()
+    run = engine.get_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
+    _assert_workflow_owner(run, request)
+    try:
+        entries = await asyncio.to_thread(run_history, engine, run_id)
+    except ForkError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"run_id": run_id, "count": len(entries), "events": [entry.to_dict() for entry in entries]}
+
+
+@router.get("/runs/{run_id}/report")
+@require_permission("runs", "read")
+async def get_workflow_run_report(run_id: str, request: Request) -> dict[str, Any]:
+    """Measured execution report: timeline, critical path, and provenance.
+
+    Reports EXECUTION only. It carries no acceptance verdict: whether the work was
+    verified remains the executor evidence contract, and a completed run is never
+    presented as verified here.
+    """
+    engine = get_workflow_engine()
+    run = engine.get_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
+    _assert_workflow_owner(run, request)
+    try:
+        return await asyncio.to_thread(run_report, engine, run_id)
+    except ForkError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"run report failed: {type(exc).__name__}: {exc}") from exc
+
+
+@router.post("/runs/{run_id}/fork", status_code=201)
+@require_permission("runs", "create")
+async def fork_workflow_run(run_id: str, body: WorkflowForkRequest, request: Request) -> dict[str, Any]:
+    """Branch a NEW run from a point in this run's history.
+
+    The source is never mutated. The fork inherits the work already completed at
+    the fork point instead of repeating it, which is the point of forking: a
+    replayed model call or sandbox write would double a real side effect. Pass
+    ``reset_completed_nodes`` only when repeating those effects is intended — the
+    engine's idempotency keys are per-run and cannot protect them here, and the
+    response says so.
+    """
+    engine = get_workflow_engine()
+    run = engine.get_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
+    _assert_workflow_owner(run, request)
+
+    def _fork() -> dict[str, Any]:
+        result = fork_run(
+            engine,
+            run_id,
+            at_event_id=body.at_event_id,
+            at_index=body.at_index,
+            new_run_id=body.new_run_id,
+            reset_completed_nodes=body.reset_completed_nodes,
+        )
+        return result.to_dict()
+
+    try:
+        return await asyncio.to_thread(_fork)
+    except ForkError as exc:
+        # A bad fork point is the caller's input problem, not a server fault.
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"fork failed: {type(exc).__name__}: {exc}") from exc
+
+
+@router.post("/simulate")
+@require_permission("runs", "read")
+async def simulate_workflow(body: WorkflowSimulateRequest, request: Request) -> dict[str, Any]:
+    """Dry-run a registered workflow with no side effects.
+
+    Runs on a throwaway engine, so the caller's definitions, runs, durable log and
+    token budgets are untouched. The response is explicitly labelled
+    ``dry_run_simulation`` and reports no acceptance: it says which nodes the
+    scheduler would reach, never that any work was done.
+    """
+    engine = get_workflow_engine()
+    definition = engine.get_definition(body.workflow_id)
+    if not definition:
+        raise HTTPException(status_code=404, detail=f"Workflow '{body.workflow_id}' not found.")
+    _assert_workflow_owner(definition, request)
+    try:
+        result = await asyncio.to_thread(
+            simulate_run,
+            engine,
+            body.workflow_id,
+            initial_state=dict(body.initial_state),
+            max_waves=body.max_waves,
+        )
+        return result.to_dict()
+    except ForkError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"simulation failed: {type(exc).__name__}: {exc}") from exc
+
+
+@router.post("/runs/{run_id}/suspend")
+@require_permission("runs", "cancel")
+async def suspend_workflow_run(
+    run_id: str,
+    request: Request,
+    reason: str = "suspended by operator",
+) -> dict[str, Any]:
+    """Park a live run without inventing a terminal outcome.
+
+    A suspended run stays non-terminal and non-dispatchable, so a subsequent
+    ``step`` returns the real status rather than continuing held work.
+    """
+    engine = get_workflow_engine()
+    run = engine.get_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
+    _assert_workflow_owner(run, request)
+    try:
+        return (await asyncio.to_thread(engine.suspend_run, run_id, reason[:2000])).model_dump()
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/runs/{run_id}/resume")
+@require_permission("runs", "create")
+async def resume_workflow_run(
+    run_id: str,
+    request: Request,
+    reason: str = "resumed by operator",
+) -> dict[str, Any]:
+    """Return a suspended run to RUNNING so it can be stepped again."""
+    engine = get_workflow_engine()
+    run = engine.get_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
+    _assert_workflow_owner(run, request)
+    try:
+        return (await asyncio.to_thread(engine.resume_run, run_id, reason[:2000])).model_dump()
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        # Resuming a run that is not suspended is a caller-state error.
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/runs/{run_id}/signals")
+@require_permission("runs", "create")
+async def signal_workflow_run(run_id: str, body: WorkflowSignalRequest, request: Request) -> dict[str, Any]:
+    """Deliver a named external signal, releasing any ``event_wait`` node waiting on it.
+
+    Only nodes registered for exactly this event are released. A signal nothing
+    waits on is journalled as unmatched and changes no node state, so a typo in
+    the event name cannot silently advance a run.
+    """
+    engine = get_workflow_engine()
+    run = engine.get_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
+    _assert_workflow_owner(run, request)
+    try:
+        updated = await asyncio.to_thread(engine.signal_event, run_id, body.event, body.payload)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    signalled = [e for e in engine.events.get_events(run_id) if e.event_type == "external_event_signalled"]
+    latest = signalled[-1].payload if signalled else {}
+    return {
+        "run": updated.model_dump(),
+        "event": body.event,
+        "matched_nodes": latest.get("matched_nodes", []),
+        "released_nodes": latest.get("released_nodes", []),
+        "unmatched": bool(latest.get("unmatched", True)),
+    }
+
+
+@router.post("/runs/{run_id}/sweep-waits")
+@require_permission("runs", "create")
+async def sweep_workflow_waits(run_id: str, request: Request) -> dict[str, Any]:
+    """Fail every external wait whose declared deadline has already passed.
+
+    A wait nobody satisfies must end, and it ends as a FAILURE carrying the
+    measured deadline — not as a run that parks forever reporting no error.
+    """
+    engine = get_workflow_engine()
+    run = engine.get_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
+    _assert_workflow_owner(run, request)
+    try:
+        updated = await asyncio.to_thread(engine.sweep_expired_waits, run_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return updated.model_dump()
+
+
+@router.get("/system/executors")
+@require_permission("runs", "read")
+async def list_workflow_executors(request: Request) -> dict[str, Any]:
+    """Which node executors are actually bound right now.
+
+    Discovery is not execution: a name listed here is resolvable, which is not the
+    same as a model, tool, or subagent having actually been invoked. The
+    ``domain_bound`` flag makes the opt-in nature of the real executors visible,
+    because ``alpha.local.model`` spends money and must never be bound by
+    accident at import time.
+    """
+    from alpha.orchestrator.domain_executors import DOMAIN_EXECUTORS
+
+    registry = get_executor_registry()
+    bound = list(registry.names())
+    return {
+        "bound": bound,
+        "count": len(bound),
+        "domain_executors": sorted(DOMAIN_EXECUTORS),
+        "domain_bound": sorted(name for name in DOMAIN_EXECUTORS if registry.has(name)),
+        "note": ("a bound executor name means the node seam can resolve it; it is not a claim that any model, tool, or subagent was invoked, and the domain executors are opt-in"),
+    }
 
 
 @router.get("/{workflow_id}")

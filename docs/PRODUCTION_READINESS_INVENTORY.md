@@ -28,6 +28,12 @@ requires a deliberate audit before it can be claimed in a production release.
 | Observability and incident response | partial | Trace middleware and health endpoints exist | Publish dashboards, alerts, runbooks, and an on-call ownership model. |
 | Self-improvement governance | partial | Learning/review components are present | Require opt-in, redaction, offline evaluation, canary, provenance, rollback. |
 | Autonomous side effects | partial | Scheduler and run idempotency exist | Require expiry, budget, policy grant, approval, and evidence before default enablement. |
+| Dynamic workflow runtime | implemented | `alpha.workflow.runtime`, `alpha.workflow.execution`, `alpha.orchestrator.loop`; `test_workflow_runtime_correctness.py` | Wave concurrency and the durable store are process-local: a multi-worker deployment needs shared lease coordination before claiming cross-process exactly-once execution. |
+| Dynamic workflow observability | implemented | `alpha.workflow.observability`, journalled `node_timed`/`wave_dispatched` events; `test_workflow_observability_router.py` | Reports execution only. Add a dashboard and alert thresholds on the critical path and timed-out nodes. |
+| Dynamic workflow forking and dry run | implemented | `alpha.workflow.time_travel`; `test_workflow_time_travel.py` | Dry runs are throwaway projections and prove nothing about acceptance; add a re-measurement gate before any optimization is trusted. |
+| Dynamic workflow domain executors | partial | `alpha.orchestrator.domain_executors` (`alpha.local.model` / `.tool` / `.subagent`); opt-in via `bind_domain_executors()` | Exercised only in refusal paths by the offline suite. Needs live-provider contract tests, per-node cost ceilings, and a cancellation seam for the fenced in-flight call. |
+| Workflow template promotion | partial | `alpha.workflow.templates`; `test_workflow_templates_and_improvement.py` | Promotion is evidence-gated by a completed run, but there is no cross-revision regression corpus, so a promoted template can still drift as the engine changes. |
+| Workflow improvement proposals | partial | `alpha.workflow.self_improvement`; proposes only, never mutates | Nothing is shown to work until a re-run is measured. Add an offline evaluation harness and canary before allowing any automated application. |
 
 ## Immediate implementation queue
 

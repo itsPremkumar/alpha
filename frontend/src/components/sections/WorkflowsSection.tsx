@@ -22,6 +22,7 @@ import {
 } from "@/lib/goals";
 import type { GoalContract, PlanVersion, TaskAttempt, IntegrityReport, Mission, AttemptStatus } from "@/lib/goals";
 import { Section, EmptyState, ErrorBox, Notice, Btn, Badge, Field, SkeletonList, inputCls } from "@/components/ui";
+import { WorkflowRunInspector } from "@/components/sections/WorkflowRunInspector";
 import { errMsg } from "@/lib/http";
 import { RefreshCw, Plus, Check, X, Zap, Search, ScrollText, RotateCcw, GitCompare, Sparkles, Rocket, Eye, Wrench } from "lucide-react";
 
@@ -966,6 +967,20 @@ function WorkflowsPanel(props: { refreshKey: number; onNotice: (m: string) => vo
                     </p>
                   ))}
                 </div>
+              )}
+
+              {/* Measured run inspector: graph, timeline, critical path, fork,
+                  dry run, suspend/resume, and external signals. Rendered here
+                  rather than as its own workspace view so it is reachable for
+                  whichever run is selected. */}
+              {activeRunId && activeRun && (
+                <WorkflowRunInspector
+                  runId={activeRunId}
+                  workflowId={activeRun.workflow_id}
+                  run={activeRun}
+                  onRunChange={(next) => setRuns((prev) => ({ ...prev, [next.run_id]: next }))}
+                  onNotice={props.onNotice}
+                />
               )}
 
               {/* Replay verification */}

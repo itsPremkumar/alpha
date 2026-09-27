@@ -240,6 +240,46 @@ CAPABILITY_CATALOG: dict[str, CapabilitySpec] = {
         description="Read-only discovery registries (capabilities, tools, skills, MCP servers, memory) behind one list/describe/health plane for dynamic-workflow planning.",
         kind="utility",
     ),
+    # --- Runtime-correctness wave -----------------------------------------
+    # These earn a production reference so `test_no_orphan_modules` can see them
+    # wired. They are NOT enabled by default: a capability id only declares that
+    # the module is importable and reachable, never that it performs work.
+    "workflow_execution_primitives": CapabilitySpec(
+        module="alpha.workflow.execution",
+        target="execute_wave",
+        description="Bounded workflow execution primitives: deadline-bounded node calls, a bounded wave executor, and per-run concurrency admission.",
+        kind="utility",
+    ),
+    "workflow_observability": CapabilitySpec(
+        module="alpha.workflow.observability",
+        target="build_run_observability",
+        description="Measured workflow observability projected from the event log: per-node timing, critical path, and wave shape.",
+        kind="utility",
+    ),
+    "workflow_time_travel": CapabilitySpec(
+        module="alpha.workflow.time_travel",
+        target="fork_run",
+        description="Workflow forking, time travel, and side-effect-free dry-run simulation over the append-only event log.",
+        kind="utility",
+    ),
+    "workflow_templates": CapabilitySpec(
+        module="alpha.workflow.templates",
+        target="TemplateStore",
+        description="Workflow template library with an evidence-gated draft -> verified -> promoted lifecycle.",
+        kind="utility",
+    ),
+    "workflow_self_improvement": CapabilitySpec(
+        module="alpha.workflow.self_improvement",
+        target="suggest_improvements",
+        description="Evidence-cited workflow improvement proposals; proposes only, never mutates a run or graph.",
+        kind="utility",
+    ),
+    "workflow_domain_executors": CapabilitySpec(
+        module="alpha.orchestrator.domain_executors",
+        target="bind_domain_executors",
+        description="Opt-in node executors that perform real work through the model factory, the guarded tool bridge, and the subagent executor.",
+        kind="engine",
+    ),
 }
 
 
