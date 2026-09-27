@@ -52,13 +52,7 @@ logger = logging.getLogger(__name__)
 #: rank: rewriting the repository and minting authority belong to the operator
 #: and the Sentinel, never to a teammate alpha created. See
 #: :mod:`alpha.bots.authority_ceiling` for the full rationale.
-FLEET_CAPABILITY_GRANT: tuple[str, ...] = tuple(
-    sorted(
-        name
-        for name in ALLOWED_CAPABILITIES
-        if CAPABILITY_RANKS[name] <= DEFAULT_MAX_CAPABILITY_RANK
-    )
-)
+FLEET_CAPABILITY_GRANT: tuple[str, ...] = tuple(sorted(name for name in ALLOWED_CAPABILITIES if CAPABILITY_RANKS[name] <= DEFAULT_MAX_CAPABILITY_RANK))
 
 #: Who may exercise self-extension. Only the leader may hire, re-scope or retire;
 #: a teammate asking to widen its own grant is the exact escalation this refuses.
@@ -522,9 +516,7 @@ class BotRegistry:
             bot = self._bots.get(key)
             if bot is None:
                 return None
-            routine = bot.add_routine(
-                routine_name, schedule, action, enabled=enabled, **extra
-            )
+            routine = bot.add_routine(routine_name, schedule, action, enabled=enabled, **extra)
         self._save()
         return routine
 
@@ -602,8 +594,7 @@ class BotRegistry:
         who = (actor or "").strip().lower()
         if who not in SELF_EXTENSION_ACTORS:
             raise AuthorityViolation(
-                f"{who!r} may not {action}: self-extension is a leader capability "
-                f"(allowed actors: {sorted(SELF_EXTENSION_ACTORS)})",
+                f"{who!r} may not {action}: self-extension is a leader capability (allowed actors: {sorted(SELF_EXTENSION_ACTORS)})",
                 violations=[f"not_leader:{who}"],
             )
         return who
@@ -637,11 +628,7 @@ class BotRegistry:
         counted.
         """
         with self._lock:
-            return sum(
-                1
-                for b in self._bots.values()
-                if not b.is_retired and (b.metadata or {}).get("created_by")
-            )
+            return sum(1 for b in self._bots.values() if not b.is_retired and (b.metadata or {}).get("created_by"))
 
     def hire_bot(
         self,
@@ -675,11 +662,7 @@ class BotRegistry:
         # every recognised one reads as a grant. Authority comes from the
         # explicit request, defaulted to the leader's own grant.
         domain_tags = list(spec.get("capabilities", [])) if spec else []
-        wanted = (
-            list(requested_capabilities)
-            if requested_capabilities is not None
-            else list(FLEET_CAPABILITY_GRANT)
-        )
+        wanted = list(requested_capabilities) if requested_capabilities is not None else list(FLEET_CAPABILITY_GRANT)
         # A self-declared capability list is UNTRUSTED input: it is intersected
         # with the leader's own grant and the ceiling, never honoured verbatim.
         grant = enforce_grant(
@@ -688,9 +671,7 @@ class BotRegistry:
             subject=f"hire of {key!r}",
             ceiling=self.ceiling(),
         )
-        self.ceiling().assert_population_within_ceiling(
-            live=self._live_count(), total=len(self._bots), subject=f"hire of {key!r}"
-        )
+        self.ceiling().assert_population_within_ceiling(live=self._live_count(), total=len(self._bots), subject=f"hire of {key!r}")
         with self._lock:
             bot = BotProfile(
                 name=key,
@@ -731,9 +712,7 @@ class BotRegistry:
             bot = self._bots.get((name or "").strip().lower())
             if bot is None:
                 return None
-            creator_grant = normalise_capabilities(
-                (bot.metadata or {}).get("creator_grant") or FLEET_CAPABILITY_GRANT
-            )
+            creator_grant = normalise_capabilities((bot.metadata or {}).get("creator_grant") or FLEET_CAPABILITY_GRANT)
             grant = enforce_grant(
                 new_capabilities,
                 creator_grant=creator_grant or FLEET_CAPABILITY_GRANT,
@@ -754,17 +733,13 @@ class BotRegistry:
     #: bot. A runtime-created profile is installed ``disabled`` and only becomes
     #: dispatchable once it has been through the lifecycle governor, so
     #: ``disabled`` is a meaningful refusal state for it.
-    _SELF_EXTENDED_REFUSAL_STATUSES: frozenset[str] = frozenset(
-        {"disabled", "suspended", "archived", "draining", "retired", "quarantined"}
-    )
+    _SELF_EXTENDED_REFUSAL_STATUSES: frozenset[str] = frozenset({"disabled", "suspended", "archived", "draining", "retired", "quarantined"})
 
     #: Statuses that mean a bot must not be handed work, for a SEED/TEMPLATE bot.
     #: ``disabled`` is deliberately absent: on the pre-existing roster it is a
     #: long-standing status with its own meaning, and treating it as a refusal
     #: here would change behaviour the rest of bot mode already depends on.
-    _SEED_REFUSAL_STATUSES: frozenset[str] = frozenset(
-        {"suspended", "archived", "draining", "retired"}
-    )
+    _SEED_REFUSAL_STATUSES: frozenset[str] = frozenset({"suspended", "archived", "draining", "retired"})
 
     def authorized_bot(self, name: str) -> BotProfile | None:
         """The only read path a dispatcher should use for a created profile.
@@ -785,15 +760,11 @@ class BotRegistry:
             bot = self._bots.get(key)
             if bot is None:
                 return None
-            kept, removed = narrow_to_ceiling(
-                bot.capabilities, subject=key, ceiling=self.ceiling()
-            )
+            kept, removed = narrow_to_ceiling(bot.capabilities, subject=key, ceiling=self.ceiling())
             if removed:
                 bot.capabilities = sorted(kept)
                 metadata = dict(bot.metadata or {})
-                metadata["demoted_capabilities"] = sorted(
-                    set(metadata.get("demoted_capabilities", [])) | set(removed)
-                )
+                metadata["demoted_capabilities"] = sorted(set(metadata.get("demoted_capabilities", [])) | set(removed))
                 bot.metadata = metadata
                 bot.version += 1
                 bot.updated_at = _now()
@@ -808,15 +779,10 @@ class BotRegistry:
                     violations=[f"demoted:{r}" for r in removed],
                 )
             self_extended = bool((bot.metadata or {}).get("created_by"))
-            refusals = (
-                self._SELF_EXTENDED_REFUSAL_STATUSES
-                if self_extended
-                else self._SEED_REFUSAL_STATUSES
-            )
+            refusals = self._SELF_EXTENDED_REFUSAL_STATUSES if self_extended else self._SEED_REFUSAL_STATUSES
             if bot.is_retired or bot.status in refusals:
                 return None
             return bot
-
 
     def get_subordinates(self, manager_name: str) -> list[BotProfile]:
         m = manager_name.lower().strip()

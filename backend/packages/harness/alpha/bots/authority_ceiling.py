@@ -307,10 +307,7 @@ class AuthorityCeiling:
     # -- construction ------------------------------------------------------
     def __post_init__(self) -> None:
         if self.max_capability_rank not in set(CAPABILITY_RANKS.values()):
-            raise ValueError(
-                f"max_capability_rank must be one of {sorted(set(CAPABILITY_RANKS.values()))}, "
-                f"got {self.max_capability_rank}"
-            )
+            raise ValueError(f"max_capability_rank must be one of {sorted(set(CAPABILITY_RANKS.values()))}, got {self.max_capability_rank}")
         if self.allowed_capabilities is None:
             # DERIVE the allowed set from the rank rather than defaulting to the
             # full lattice. Defaulting to "everything" and then relying on the
@@ -319,11 +316,7 @@ class AuthorityCeiling:
             object.__setattr__(
                 self,
                 "allowed_capabilities",
-                frozenset(
-                    name
-                    for name in ALLOWED_CAPABILITIES
-                    if CAPABILITY_RANKS[name] <= self.max_capability_rank
-                ),
+                frozenset(name for name in ALLOWED_CAPABILITIES if CAPABILITY_RANKS[name] <= self.max_capability_rank),
             )
         if self.max_live_profiles < 1:
             raise ValueError("max_live_profiles must be >= 1")
@@ -334,15 +327,9 @@ class AuthorityCeiling:
             raise ValueError(f"allowed_capabilities contains unknown names: {unknown}")
         # A capability allowed but ranked above the ceiling is a contradiction
         # that would make "allowed" and "within rank" disagree. Refuse the file.
-        too_high = sorted(
-            c for c in self.allowed_capabilities
-            if CAPABILITY_RANKS[c] > self.max_capability_rank
-        )
+        too_high = sorted(c for c in self.allowed_capabilities if CAPABILITY_RANKS[c] > self.max_capability_rank)
         if too_high:
-            raise ValueError(
-                f"allowed_capabilities {too_high} rank above max_capability_rank "
-                f"{self.max_capability_rank}"
-            )
+            raise ValueError(f"allowed_capabilities {too_high} rank above max_capability_rank {self.max_capability_rank}")
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any], *, source: str) -> AuthorityCeiling:
@@ -380,11 +367,7 @@ class AuthorityCeiling:
             raise ValueError(f"max_total_profiles in {source} must be an integer")
         return cls(
             max_capability_rank=rank,
-            allowed_capabilities=(
-                frozenset(normalise_capabilities(raw_caps))
-                if raw_caps is not None
-                else None
-            ),
+            allowed_capabilities=(frozenset(normalise_capabilities(raw_caps)) if raw_caps is not None else None),
             max_live_profiles=live,
             max_total_profiles=total,
             schema_version=int(data.get("schema_version", 1) or 1),
@@ -413,10 +396,7 @@ class AuthorityCeiling:
             if name not in self.allowed_capabilities:
                 violations.append(f"capability {name!r} is not in the authority ceiling")
             if CAPABILITY_RANKS[name] > self.max_capability_rank:
-                violations.append(
-                    f"capability {name!r} ranks {CAPABILITY_RANKS[name]} above "
-                    f"max_capability_rank {self.max_capability_rank}"
-                )
+                violations.append(f"capability {name!r} ranks {CAPABILITY_RANKS[name]} above max_capability_rank {self.max_capability_rank}")
         return (not violations), violations
 
     def assert_within_ceiling(self, capabilities: object, *, subject: str = "profile") -> frozenset[str]:
@@ -443,37 +423,26 @@ class AuthorityCeiling:
 
         if is_protected_component(target):
             raise AuthorityViolation(
-                f"actor {actor!r} may not modify protected component {target!r}: "
-                f"it enforces the authority ceiling. reason={reason!r}",
+                f"actor {actor!r} may not modify protected component {target!r}: it enforces the authority ceiling. reason={reason!r}",
                 violations=[f"protected_component:{_normalise(target)}"],
             )
         for scope in get_scopes():
             if is_protected_component(scope.name) or scope.protects():
                 raise AuthorityViolation(
-                    f"actor {actor!r} may not modify {target!r}: registered scope "
-                    f"{scope.name!r} binds the enforcement machinery "
-                    f"{list(scope.protects()) or [scope.name]}, and a scope may never reach the "
-                    "component that enforces it",
-                    violations=[
-                        f"scope_reaches_enforcer:{item}"
-                        for item in (scope.protects() or (scope.name,))
-                    ],
+                    f"actor {actor!r} may not modify {target!r}: registered scope {scope.name!r} binds the enforcement machinery {list(scope.protects()) or [scope.name]}, and a scope may never reach the component that enforces it",
+                    violations=[f"scope_reaches_enforcer:{item}" for item in (scope.protects() or (scope.name,))],
                 )
 
-    def assert_population_within_ceiling(
-        self, *, live: int, total: int, subject: str = "profile"
-    ) -> None:
+    def assert_population_within_ceiling(self, *, live: int, total: int, subject: str = "profile") -> None:
         """REFUSE creation that would exceed the live or total population bound."""
         if live >= self.max_live_profiles:
             raise AuthorityViolation(
-                f"{subject} refused: live profile population {live} is at the ceiling "
-                f"of {self.max_live_profiles}. Retire a profile before creating another.",
+                f"{subject} refused: live profile population {live} is at the ceiling of {self.max_live_profiles}. Retire a profile before creating another.",
                 violations=[f"max_live_profiles:{self.max_live_profiles}"],
             )
         if total >= self.max_total_profiles:
             raise AuthorityViolation(
-                f"{subject} refused: total profile population {total} is at the ceiling "
-                f"of {self.max_total_profiles}.",
+                f"{subject} refused: total profile population {total} is at the ceiling of {self.max_total_profiles}.",
                 violations=[f"max_total_profiles:{self.max_total_profiles}"],
             )
 
@@ -821,10 +790,7 @@ def _record_grant_refusal(
     try:
         from alpha.safety.authority.receipts import RejectedAlternative
 
-        alternatives = rejected or tuple(
-            RejectedAlternative(option=f"grant {sorted(requested)}", reason=violation)
-            for violation in violations[:8]
-        )
+        alternatives = rejected or tuple(RejectedAlternative(option=f"grant {sorted(requested)}", reason=violation) for violation in violations[:8])
         _receipt_chain().append(
             decision="authority_grant",
             identity=_grant_actor(subject),
@@ -855,18 +821,12 @@ def _record_grant_approval(
 
         alternatives: tuple[RejectedAlternative, ...] = ()
         if resolution is not None:
-            denied = sorted(
-                set(resolution.baseline.allowed_capabilities)
-                - set(resolution.effective.allowed_capabilities)
-            )
+            denied = sorted(set(resolution.baseline.allowed_capabilities) - set(resolution.effective.allowed_capabilities))
             if denied:
                 alternatives = (
                     RejectedAlternative(
                         option=f"also grant {denied}",
-                        reason=(
-                            f"the effective policy for {subject!r} does not include {denied}; a "
-                            "scope may deny but never enable, so this was never an option"
-                        ),
+                        reason=(f"the effective policy for {subject!r} does not include {denied}; a scope may deny but never enable, so this was never an option"),
                     ),
                 )
         _receipt_chain().append(
@@ -943,15 +903,10 @@ def enforce_grant(
     requested_norm = normalise_capabilities(requested)
     escalated = sorted(requested_norm - creator)
     if escalated:
-        violations.append(
-            f"capabilities {escalated} are not held by the creator; "
-            f"a created profile may never exceed its creator"
-        )
+        violations.append(f"capabilities {escalated} are not held by the creator; a created profile may never exceed its creator")
 
     if isinstance(requested, (set, frozenset, list, tuple)):
-        unrecognised = sorted(
-            _normalise(c) for c in requested if _normalise(c) not in CAPABILITY_RANKS
-        )
+        unrecognised = sorted(_normalise(c) for c in requested if _normalise(c) not in CAPABILITY_RANKS)
         if unrecognised:
             violations.append(f"unrecognised capabilities: {unrecognised}")
 
@@ -976,10 +931,7 @@ def enforce_grant(
             if permitted:
                 continue
             explanation = _explain(capability, resolution, subject)
-            scope_violations.append(
-                f"capability {capability!r} is not in the effective policy "
-                f"(scope={explanation.scope!r} rule={explanation.rule_id!r}): {explanation.reason}"
-            )
+            scope_violations.append(f"capability {capability!r} is not in the effective policy (scope={explanation.scope!r} rule={explanation.rule_id!r}): {explanation.reason}")
     violations.extend(scope_violations)
 
     # -- check 5a: taint bounds authority -----------------------------------
@@ -988,15 +940,9 @@ def enforce_grant(
     turn = _current_taint_turn()
     if turn is not None and turn.tainted:
         taint_sources = turn.sources()
-        taint_violations.append(
-            f"turn {turn.turn_id!r} is tainted by {list(taint_sources)}; taint bounds authority, "
-            "so an authority grant cannot be taken on a tainted turn"
-        )
+        taint_violations.append(f"turn {turn.turn_id!r} is tainted by {list(taint_sources)}; taint bounds authority, so an authority grant cannot be taken on a tainted turn")
         if resolution is None or resolution.effective.taint_bounds_authority:
-            taint_violations.append(
-                "a tainted turn requires human review of the effective policy before any authority "
-                "action, and no such review is recorded on this turn"
-            )
+            taint_violations.append("a tainted turn requires human review of the effective policy before any authority action, and no such review is recorded on this turn")
     violations.extend(taint_violations)
 
     rule_id = _grant_rule_id(resolution, scope_violations, taint_violations)
@@ -1010,9 +956,7 @@ def enforce_grant(
             resolution=resolution,
             taint_sources=taint_sources,
         )
-        raise AuthorityViolation(
-            f"{subject} refused: {len(violations)} authority violation(s)", violations=violations
-        )
+        raise AuthorityViolation(f"{subject} refused: {len(violations)} authority violation(s)", violations=violations)
 
     if highest_rank(requested_norm) > _UNTRUSTED_MAX_RANK:
         # Defence in depth: even if a ceiling were somehow constructed too high,
@@ -1026,8 +970,7 @@ def enforce_grant(
             taint_sources=taint_sources,
         )
         raise AuthorityViolation(
-            f"{subject} refused: requested rank {highest_rank(requested_norm)} exceeds the "
-            f"hard untrusted-input rank limit {_UNTRUSTED_MAX_RANK}",
+            f"{subject} refused: requested rank {highest_rank(requested_norm)} exceeds the hard untrusted-input rank limit {_UNTRUSTED_MAX_RANK}",
             violations=[f"untrusted_rank_limit:{_UNTRUSTED_MAX_RANK}"],
         )
 
@@ -1052,8 +995,7 @@ def enforce_grant(
                 ),
             )
             raise AuthorityViolation(
-                f"{subject} refused: the effective policy requires human approval for this grant "
-                f"and the gate did not approve ({result.reason})",
+                f"{subject} refused: the effective policy requires human approval for this grant and the gate did not approve ({result.reason})",
                 violations=[f"approval:{result.reason}"],
             )
 

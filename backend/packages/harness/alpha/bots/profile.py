@@ -227,9 +227,7 @@ class BotProfile:
             gate = ToolPermissionGate()
             kept: list[str] = []
             for name in candidate_tools:
-                allowed, _reason, requires_approval = gate.check_permission(
-                    self.role, name
-                )
+                allowed, _reason, requires_approval = gate.check_permission(self.role, name)
                 if allowed or requires_approval:
                     kept.append(name)
             allowed_tools = kept

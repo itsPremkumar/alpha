@@ -149,10 +149,7 @@ class BotCloneEngine:
                     prompt_objective=specialist_directive or f"Cloned from {source_name}",
                     ttl_seconds=ttl_seconds,
                 )
-                lease_status = (
-                    f"active: lease={lease.bot_name} "
-                    f"ttl_seconds={lease.ttl_seconds} expires_at={lease.expires_at}"
-                )
+                lease_status = f"active: lease={lease.bot_name} ttl_seconds={lease.ttl_seconds} expires_at={lease.expires_at}"
             except Exception as e:
                 # Honest failure surface: the real exception text goes to the
                 # caller (payload) and to the logs at ERROR with traceback.
@@ -194,12 +191,7 @@ class BotCloneEngine:
         new_version = source_profile.version + 1
         new_name = f"{source_name}_v{new_version}"
 
-        evolution_soul = (
-            source_profile.soul
-            + f"\n\n### EVOLUTIONARY DIRECTIVE (Generation {new_version})\n"
-            + f"{improvement_directive}\n"
-            + f"Performance telemetry baseline: {performance_delta}\n"
-        )
+        evolution_soul = source_profile.soul + f"\n\n### EVOLUTIONARY DIRECTIVE (Generation {new_version})\n" + f"{improvement_directive}\n" + f"Performance telemetry baseline: {performance_delta}\n"
 
         merged_skills = list(dict.fromkeys(source_profile.skills + (promoted_skills or [])))
 

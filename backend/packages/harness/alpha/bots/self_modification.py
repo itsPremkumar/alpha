@@ -231,9 +231,7 @@ def is_self_modifiable(target: str, *, repo_root: str | Path | None = None) -> b
     if not raw:
         return False
     normalised = raw.replace("\\", "/")
-    if is_protected_component(normalised) or any(
-        item.lower() in normalised.lower() for item in PERMANENTLY_OFF_LIMITS
-    ):
+    if is_protected_component(normalised) or any(item.lower() in normalised.lower() for item in PERMANENTLY_OFF_LIMITS):
         return False
     if repo_root is not None:
         try:
@@ -285,15 +283,10 @@ class SelfModificationGuard:
             )
 
     def assert_within_blast_radius(self, proposal: SelfModificationProposal) -> None:
-        violations = [
-            target
-            for target in proposal.targets
-            if not is_self_modifiable(target, repo_root=self.repo_root)
-        ]
+        violations = [target for target in proposal.targets if not is_self_modifiable(target, repo_root=self.repo_root)]
         if violations:
             raise SelfModificationRefused(
-                f"target(s) {violations} are outside the self-modification blast radius "
-                f"or permanently off-limits",
+                f"target(s) {violations} are outside the self-modification blast radius or permanently off-limits",
                 reason=VERDICT_REFUSED,
                 violations=[f"outside_blast_radius:{t}" for t in violations],
             )

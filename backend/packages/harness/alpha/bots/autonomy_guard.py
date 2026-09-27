@@ -333,8 +333,7 @@ class AutonomyGuard:
         elapsed = self.elapsed()
         if elapsed > self.bounds.max_wall_clock_seconds:
             raise AutonomyCeilingExceeded(
-                f"delegation tree exceeded its wall-clock ceiling "
-                f"({elapsed:.1f}s > {self.bounds.max_wall_clock_seconds:.1f}s); tree stopped",
+                f"delegation tree exceeded its wall-clock ceiling ({elapsed:.1f}s > {self.bounds.max_wall_clock_seconds:.1f}s); tree stopped",
                 bound="max_wall_clock_seconds",
                 limit=self.bounds.max_wall_clock_seconds,
             )
@@ -372,8 +371,7 @@ class AutonomyGuard:
         siblings = self._children.setdefault(parent_id, [])
         if len(siblings) >= self.bounds.max_children_per_parent:
             raise AutonomyCeilingExceeded(
-                f"dispatch refused: parent {parent_id!r} already has {len(siblings)} children "
-                f"(limit {self.bounds.max_children_per_parent})",
+                f"dispatch refused: parent {parent_id!r} already has {len(siblings)} children (limit {self.bounds.max_children_per_parent})",
                 bound="max_children_per_parent",
                 limit=self.bounds.max_children_per_parent,
             )
@@ -381,8 +379,7 @@ class AutonomyGuard:
         attempts = self._attempts.get(task_id, 0)
         if attempts >= self.bounds.max_attempts_per_task:
             raise AutonomyCeilingExceeded(
-                f"dispatch refused: task {task_id!r} reached its attempt ceiling "
-                f"({attempts}/{self.bounds.max_attempts_per_task})",
+                f"dispatch refused: task {task_id!r} reached its attempt ceiling ({attempts}/{self.bounds.max_attempts_per_task})",
                 bound="max_attempts_per_task",
                 limit=self.bounds.max_attempts_per_task,
             )
@@ -391,26 +388,21 @@ class AutonomyGuard:
 
         if self._tasks_dispatched >= self.bounds.max_total_tasks:
             raise AutonomyCeilingExceeded(
-                f"dispatch refused: tree reached its total task ceiling "
-                f"({self._tasks_dispatched}/{self.bounds.max_total_tasks})",
+                f"dispatch refused: tree reached its total task ceiling ({self._tasks_dispatched}/{self.bounds.max_total_tasks})",
                 bound="max_total_tasks",
                 limit=self.bounds.max_total_tasks,
             )
 
         if self.budget.tasks_remaining <= 0 or self.budget.tokens_remaining <= 0:
             raise AutonomyCeilingExceeded(
-                f"dispatch refused: inherited budget exhausted "
-                f"(tasks {self.budget.tasks_dispatched}/{self.budget.max_tasks}, "
-                f"tokens {self.budget.tokens_used}/{self.budget.max_tokens})",
+                f"dispatch refused: inherited budget exhausted (tasks {self.budget.tasks_dispatched}/{self.budget.max_tasks}, tokens {self.budget.tokens_used}/{self.budget.max_tokens})",
                 bound="inherited_budget",
                 limit=self.budget.max_tokens,
             )
 
         if child_budget is not None and child_budget.max_tokens > self.budget.tokens_remaining:
             raise AutonomyCeilingExceeded(
-                f"dispatch refused: requested child budget {child_budget.max_tokens} exceeds the "
-                f"{self.budget.tokens_remaining} tokens remaining in the parent budget; "
-                f"budgets must be inherited, not re-created",
+                f"dispatch refused: requested child budget {child_budget.max_tokens} exceeds the {self.budget.tokens_remaining} tokens remaining in the parent budget; budgets must be inherited, not re-created",
                 bound="inherited_budget",
                 limit=self.budget.tokens_remaining,
             )
@@ -455,8 +447,7 @@ class AutonomyGuard:
             return
         if len(history) >= 1 + self.bounds.max_revisits_per_task:
             raise CycleDetected(
-                f"task {task_id!r} has been re-dispatched {len(history)} times "
-                f"(limit {1 + self.bounds.max_revisits_per_task}); stopped",
+                f"task {task_id!r} has been re-dispatched {len(history)} times (limit {1 + self.bounds.max_revisits_per_task}); stopped",
                 path=[*history, assignee],
             )
         if history[-1] == assignee:

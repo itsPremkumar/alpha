@@ -7,7 +7,7 @@ with zero-configuration auto-provisioning, liveness tracking, and dynamic team g
 from __future__ import annotations
 
 import re
-from typing import Literal
+from typing import Any, Literal
 
 from langchain.tools import tool
 
@@ -19,9 +19,10 @@ from alpha.bots.kill_switch import (
     resume_bot,
     set_global_kill_switch,
 )
+from alpha.bots.authority_ceiling import AuthorityViolation
 from alpha.bots.organization import generate_organization_for_goal
 from alpha.bots.performance import get_bot_performance
-from alpha.bots.registry import get_bot_registry
+from alpha.bots.registry import SELF_EXTENSION_ACTORS, get_bot_registry
 from alpha.skills.authoring import _MARKETING_WORDS
 
 # Length of the fixed words in "Runs the  procedure." — used to size the topic.
@@ -196,6 +197,65 @@ def _teach_body(topic: str, bot_name: str, content: str) -> str:
     )
 
 
+# ---------------------------------------------------------------------------
+# Self-service authorisation (`update_profile`, `routine`)
+# ---------------------------------------------------------------------------
+#
+# The property both helpers protect is *a Bot may configure itself, but may not
+# widen itself.* They exist because these two actions deliberately take the
+# operator out of the loop, so the refusal path has to be the default one
+# rather than the thing a caller remembers to ask for.
+
+#: Fields a Bot may change about its **own** profile. Presentation only: a
+#: name and a face are read by the roster UI and by nothing else, so editing
+#: one cannot change what the Bot is allowed to do or what it costs to run.
+_SELF_EDITABLE: frozenset[str] = frozenset({"display_name", "avatar"})
+
+#: Fields that are a grant rather than a label. ``role`` is fed to
+#: ``ToolPermissionGate.check_permission()``, ``model`` and ``skills`` are part
+#: of ``capability_fingerprint()``, ``capabilities`` decides what is offered,
+#: and ``department``/``reports_to`` move the Bot around the org chart — a Bot
+#: naming any of them would be naming its own authority or its own budget.
+_LEADER_ONLY: frozenset[str] = frozenset({"role", "model", "department", "reports_to", "skills", "capabilities"})
+
+
+def _resolve_actor(actor: str) -> str:
+    """Normalise who says they are acting, or refuse when nobody said.
+
+    An empty actor fails closed instead of defaulting to the operator: every
+    other default available here would hand an *unidentified* caller more
+    privilege than an identified one, which is the exact inversion a
+    self-service surface must not ship.
+    """
+    who = (actor or "").strip().lower()
+    if not who:
+        raise ValueError(f"actor is required — pass actor=<your own bot handle> to change yourself, or a leader handle ({', '.join(sorted(SELF_EXTENSION_ACTORS))}) to change somebody else.")
+    return who
+
+
+def _authorize_edit(target: str, who: str, fields: set[str]) -> None:
+    """Permit the edit, or raise :class:`AuthorityViolation` saying why not.
+
+    ``fields`` is the set of things being touched, so a refusal names the
+    actual offenders instead of rejecting a whole batch over one field.
+    """
+    if who in SELF_EXTENSION_ACTORS:
+        return
+    if who != target:
+        raise AuthorityViolation(
+            f"{who!r} may not edit {target!r}: a Bot edits its own profile only (leader actors: {sorted(SELF_EXTENSION_ACTORS)})",
+            violations=[f"not_leader:{who}"],
+        )
+    refused = sorted(fields & _LEADER_ONLY)
+    if refused:
+        raise AuthorityViolation(
+            f"{who!r} may not change {refused} on its own profile: those are grants, not labels. "
+            f"Self-service covers presentation only ({', '.join(sorted(_SELF_EDITABLE))}) and the Bot's own routines; "
+            f"ask a leader ({', '.join(sorted(SELF_EXTENSION_ACTORS))}) for the rest.",
+            violations=[f"self_grant:{field}" for field in refused],
+        )
+
+
 @tool("bot_roster", parse_docstring=True)
 def bot_roster_tool(
     action: Literal[
@@ -206,6 +266,8 @@ def bot_roster_tool(
         "generate_team",
         "handoff",
         "update_soul",
+        "update_profile",
+        "routine",
         "pause",
         "resume",
         "kill_switch",
@@ -224,9 +286,13 @@ def bot_roster_tool(
     department: str = "",
     reports_to: str = "",
     display_name: str = "",
+    model: str = "",
+    avatar: str = "",
     soul: str = "",
     skills: str = "",
     capabilities: str = "",
+    actor: str = "",
+    routine: str = "",
     goal: str = "",
     target_bot: str = "",
     task_id: str = "",
@@ -241,6 +307,7 @@ def bot_roster_tool(
     allow_frequent: bool = False,
     allow_overlap: bool = False,
     journal_enabled: bool = True,
+    enabled: bool = True,
 ) -> str:
     """Create, configure, inspect, and monitor autonomous AI agent profiles and fleet operations.
 
@@ -254,6 +321,8 @@ def bot_roster_tool(
             - 'generate_team': Dynamically formulate and auto-provision a specialized multi-agent team from a goal description.
             - 'handoff': Coordinate a structured work handoff between two bots with task ID and objective.
             - 'update_soul': Update the SOUL/personality prompt of an existing agent.
+            - 'update_profile': Self-service profile edit. A Bot may change its own presentation (display_name, avatar, model); role, department, reports_to, skills and capabilities are grants and stay leader-only. Requires actor.
+            - 'routine': List, schedule or remove a Bot's scheduled routines. Reading needs only name; any write requires actor and the same frequency floor forge applies at birth.
             - 'teach': Save a procedure as a skill the named Bot keeps and loads when the job comes up.
             - 'journal': Enable, append to, or read a Bot's private dated work journal.
             - 'waiting_on': Answer 'anything waiting on me?' — every unresolved blocker across every Bot, with its age.
@@ -270,9 +339,13 @@ def bot_roster_tool(
         department: Department name ('executive', 'engineering', 'product', 'qa', 'operations', 'security', 'growth', 'support').
         reports_to: Manager bot handle (e.g. 'architect', 'cto', 'ceo').
         display_name: Human-readable display name (e.g. 'Alex the Security Lead').
+        model: Model to pin on the profile ('update_profile').
+        avatar: Avatar glyph/text shown on the roster row ('update_profile').
         soul: Custom SOUL instructions/personality.
         skills: Comma-separated list of skills for the bot.
         capabilities: Comma-separated list of capabilities (e.g. 'python, sql, fastapi').
+        actor: Who is performing an 'update_soul', 'update_profile' or 'routine' write — your own bot handle to change yourself, or a leader handle (alpha/lead/system/server) to change somebody else. Refused when omitted.
+        routine: Routine name for 'routine'; omit it to list the Bot's routines, supply it alone to remove that routine, or supply it with schedule and content to add it.
         goal: Project goal description for 'generate_team'.
         target_bot: Recipient bot handle for 'handoff'.
         task_id: Task identifier for 'handoff'.
@@ -281,12 +354,13 @@ def bot_roster_tool(
         approvals: Comma-separated approval checkpoints written into the SOUL at birth (default: publish/send, spend money, delete data). Pass 'none' to deliberately forge a bot with no checkpoints; an empty value keeps the default.
         sandbox: Sandbox backend for 'forge'/'sandbox' — 'docker', 'singularity', 'apptainer', 'podman' or 'none'. Refused before creating anything if unusable here.
         path: File path for 'share'/'import'.
-        schedule: Schedule string for routine cost checking on 'forge' (e.g. 'every 30 minutes', '0 7 * * *').
-        content: Body text for 'teach' (the procedure) and the title of a 'journal' entry.
+        schedule: Schedule for 'routine' or routine cost checking on 'forge' (e.g. 'every 30 minutes', '0 7 * * *').
+        content: Body text for 'teach' (the procedure), the title of a 'journal' entry, and what a 'routine' runs.
         completed: Work recorded as finished on a 'journal' entry; an entry carrying this closes the matching open blocker automatically.
         allow_frequent: Operator override for the routine frequency floor (default 30 minutes).
         allow_overlap: Operator override for the duplicate-role refusal.
         journal_enabled: Whether 'forge' creates a work journal (default true).
+        enabled: Whether a 'routine' is scheduled to run (default true).
     """
     registry = get_bot_registry()
     monitor = get_health_monitor()
@@ -446,10 +520,109 @@ def bot_roster_tool(
     elif action == "update_soul":
         if not name or not soul:
             return "Error: 'name' and 'soul' are required for 'update_soul'."
-        bot = registry.update_bot(name, soul=soul)
+        target = name.lower().strip()
+        if registry.get_bot(target) is None:
+            return f"Error: Bot '@{name}' not found."
+        try:
+            who = _resolve_actor(actor)
+            # `soul` is deliberately *not* leader-only: a Bot evolving its own
+            # persona is the point of self-modification. The gate exists
+            # because writing somebody else's soul is exactly how a refused
+            # `role` edit gets re-applied a moment later as prose.
+            _authorize_edit(target, who, {"soul"})
+        except (ValueError, AuthorityViolation) as exc:
+            return f"Error: {exc}"
+        bot = registry.update_bot(target, soul=soul)
         if not bot:
             return f"Error: Bot '@{name}' not found."
         return f"Updated SOUL for @{bot.name}. New capability epoch: {bot.capability_fingerprint()}."
+
+    # 7b. SELF-SERVICE PROFILE EDIT
+    elif action == "update_profile":
+        if not name:
+            return "Error: 'name' is required for 'update_profile'."
+        target = name.lower().strip()
+        if registry.get_bot(target) is None:
+            return f"Error: Bot '@{target}' not found."
+        try:
+            who = _resolve_actor(actor)
+        except ValueError as exc:
+            return f"Error: {exc}"
+
+        changes: dict[str, Any] = {
+            key: value.strip()
+            for key, value in {
+                "display_name": display_name,
+                "model": model,
+                "avatar": avatar,
+                "role": role,
+                "department": department,
+                "reports_to": reports_to,
+            }.items()
+            if (value or "").strip()
+        }
+        if (skills or "").strip():
+            changes["skills"] = [part.strip() for part in skills.split(",") if part.strip()]
+        if (capabilities or "").strip():
+            changes["capabilities"] = [part.strip() for part in capabilities.split(",") if part.strip()]
+
+        if not changes:
+            return f"Error: nothing to change. Settable here — presentation: {', '.join(sorted(_SELF_EDITABLE))}; leader-only: {', '.join(sorted(_LEADER_ONLY))}. Status, reputation and task stats belong to pause/resume and the task ledger."
+        try:
+            _authorize_edit(target, who, set(changes))
+        except AuthorityViolation as exc:
+            return f"Error: {exc}"
+
+        bot = registry.update_bot(target, **changes)
+        if bot is None:
+            return f"Error: Bot '@{target}' not found."
+        return f"Updated @{bot.name}: {', '.join(changes)}\nVersion: v{bot.version} | Epoch: `{bot.capability_fingerprint()}`"
+
+    # 7c. SCHEDULED ROUTINES — a Bot's own automation, self-service
+    elif action == "routine":
+        from alpha.bots.forge import plan_routine_guard
+
+        if not name:
+            return "Error: 'name' is required for 'routine'."
+        target = name.lower().strip()
+        bot = registry.get_bot(target)
+        if bot is None:
+            return f"Error: Bot '@{target}' not found."
+
+        routine_name = (routine or "").strip()
+        if not routine_name:
+            if not bot.routines:
+                return f"@{target} has no scheduled routines. Add one with action='routine', routine=<name>, schedule='every 60 minutes', content=<what it runs>, actor=<you>."
+            lines = [f"@{target} routines ({len(bot.routines)}):"]
+            for entry in bot.routines:
+                state = "on" if entry.get("enabled", True) else "off"
+                lines.append(f" - {entry.get('name')}: {entry.get('schedule')} -> {entry.get('action')} [{state}]")
+            return "\n".join(lines)
+
+        # Reading above needs no actor; every write below does.
+        try:
+            who = _resolve_actor(actor)
+            _authorize_edit(target, who, {"routines"})
+        except (ValueError, AuthorityViolation) as exc:
+            return f"Error: {exc}"
+
+        sched = (schedule or "").strip()
+        body = (content or "").strip()
+        if not sched and not body:
+            if registry.remove_routine(target, routine_name):
+                return f"Removed routine '{routine_name}' from @{target}."
+            return f"@{target} has no routine named '{routine_name}' — nothing removed."
+        if not sched or not body:
+            return "Error: a routine write needs both schedule= and content= (pass neither to remove it)."
+
+        verdict = plan_routine_guard([sched], allow_frequent=allow_frequent)
+        if not verdict.allowed:
+            return f"Error: routine '{routine_name}' refused: {verdict.reason}"
+
+        stored = registry.add_routine(target, routine_name, sched, body, enabled=enabled)
+        if stored is None:
+            return f"Error: Bot '@{target}' not found."
+        return f"Scheduled routine '{routine_name}' on @{target}: {sched} -> {body}\nState: {'on' if enabled else 'off'} | Interval: {verdict.interval_minutes} min | Runs/day: {verdict.runs_per_day}"
 
     # 8. PAUSE / RESUME
     elif action == "pause":

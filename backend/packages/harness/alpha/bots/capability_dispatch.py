@@ -492,8 +492,7 @@ class CapabilityDispatcher:
             return _refusal(
                 task_id,
                 REFUSAL_CYCLE,
-                f"delegation bound: every capability-eligible agent {cyclic} already holds this task in its lineage "
-                f"{' -> '.join(self._context.lineage)}; handing it on would loop",
+                f"delegation bound: every capability-eligible agent {cyclic} already holds this task in its lineage {' -> '.join(self._context.lineage)}; handing it on would loop",
                 issuer=issuer,
                 guard=cycle or GuardVerdict(False, REFUSAL_CYCLE, "no candidate outside the delegation lineage"),
                 rejected=eligibility.rejected,
@@ -738,11 +737,7 @@ def _build_reason(
         capability_clause = f"no capability constraint; @{target} won the auction over {', '.join(eligible)}"
     fit_clause = f"; declared fit: {'; '.join(fit_reasons)}" if fit_reasons else ""
     score_clause = f" (match_score={fit_score})" if fit_score is not None else ""
-    return (
-        f"{capability_clause}{score_clause}{fit_clause}; "
-        f"auction award score={round(getattr(award, 'winning_bid_score', 0.0), 3)}; "
-        f"requirement: {constraint_reason}"
-    )
+    return f"{capability_clause}{score_clause}{fit_clause}; auction award score={round(getattr(award, 'winning_bid_score', 0.0), 3)}; requirement: {constraint_reason}"
 
 
 def get_leader_dispatcher(
@@ -777,11 +772,7 @@ def dispatch_task(
     exclude: Sequence[str] | None = None,
 ) -> DispatchDecision:
     """Convenience wrapper: one leader-initiated dispatch, no object ceremony."""
-    dispatcher = (
-        CapabilityDispatcher(context, registry=registry)
-        if context is not None
-        else get_leader_dispatcher(task_id, registry=registry, limits=limits)
-    )
+    dispatcher = CapabilityDispatcher(context, registry=registry) if context is not None else get_leader_dispatcher(task_id, registry=registry, limits=limits)
     return dispatcher.dispatch(
         task_id,
         objective,

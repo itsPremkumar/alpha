@@ -84,9 +84,7 @@ PROPOSAL_PENDING: Final = "pending"
 PROPOSAL_APPROVED: Final = "approved"
 PROPOSAL_REJECTED: Final = "rejected"
 PROPOSAL_INSTALLED: Final = "installed"
-PROPOSAL_STATES: Final[frozenset[str]] = frozenset(
-    {PROPOSAL_PENDING, PROPOSAL_APPROVED, PROPOSAL_REJECTED, PROPOSAL_INSTALLED}
-)
+PROPOSAL_STATES: Final[frozenset[str]] = frozenset({PROPOSAL_PENDING, PROPOSAL_APPROVED, PROPOSAL_REJECTED, PROPOSAL_INSTALLED})
 
 #: A created profile starts life DISABLED even after approval, so installing one
 #: never immediately puts new authority to work before a human has seen it.
@@ -129,9 +127,7 @@ def _validate_name(name: Any) -> str:
     # names. The same sanitisation the memory-namespace helper does, applied at
     # the door rather than at the point of use.
     if not all(ch.isalnum() or ch in "._-" for ch in clean):
-        raise ProfileValidationError(
-            f"profile name {name!r} may only contain letters, digits, dot, underscore and dash"
-        )
+        raise ProfileValidationError(f"profile name {name!r} may only contain letters, digits, dot, underscore and dash")
     if clean.startswith(".") or ".." in clean:
         raise ProfileValidationError(f"profile name {name!r} may not contain dot-runs")
     return clean
@@ -177,9 +173,7 @@ def _validate_metadata(value: Any) -> dict[str, Any]:
         if len(key) > _METADATA_KEY_MAX:
             raise ProfileValidationError(f"metadata key {key!r} is too long")
         if not isinstance(item, (str, int, float, bool, list, dict, type(None))):
-            raise ProfileValidationError(
-                f"metadata[{key!r}] has unsupported type {type(item).__name__}"
-            )
+            raise ProfileValidationError(f"metadata[{key!r}] has unsupported type {type(item).__name__}")
         out[key.strip()] = item
     return out
 
@@ -336,21 +330,13 @@ class ProfileProposal:
     def __post_init__(self) -> None:
         self.profile_name = _validate_name(self.profile_name)
         self.state = _validate_state(self.state)
-        self.requested_capabilities = _validate_str_list(
-            self.requested_capabilities, field_name="requested_capabilities"
-        )
+        self.requested_capabilities = _validate_str_list(self.requested_capabilities, field_name="requested_capabilities")
         self.skills = _validate_str_list(self.skills, field_name="skills")
         self.mcp_servers = _validate_str_list(self.mcp_servers, field_name="mcp_servers")
         self.role = _validate_text(self.role, field_name="role", limit=512, required=False)
-        self.system_prompt = _validate_text(
-            self.system_prompt, field_name="system_prompt", limit=_SYSTEM_PROMPT_MAX, required=False
-        )
-        self.description = _validate_text(
-            self.description, field_name="description", limit=_DESCRIPTION_MAX, required=False
-        )
-        self.rationale = _validate_text(
-            self.rationale, field_name="rationale", limit=_DESCRIPTION_MAX, required=False
-        )
+        self.system_prompt = _validate_text(self.system_prompt, field_name="system_prompt", limit=_SYSTEM_PROMPT_MAX, required=False)
+        self.description = _validate_text(self.description, field_name="description", limit=_DESCRIPTION_MAX, required=False)
+        self.rationale = _validate_text(self.rationale, field_name="rationale", limit=_DESCRIPTION_MAX, required=False)
         self.creator = (self.creator or "alpha").strip().lower() or "alpha"
         self.creator_grant = _validate_str_list(self.creator_grant, field_name="creator_grant")
         self.metadata = _validate_metadata(self.metadata)
@@ -374,9 +360,7 @@ class ProfileProposal:
 
 def _validate_state(state: Any) -> str:
     if not isinstance(state, str) or state.strip() not in PROPOSAL_STATES:
-        raise ProfileValidationError(
-            f"proposal state must be one of {sorted(PROPOSAL_STATES)}, got {state!r}"
-        )
+        raise ProfileValidationError(f"proposal state must be one of {sorted(PROPOSAL_STATES)}, got {state!r}")
     return state.strip()
 
 
@@ -439,9 +423,7 @@ class DynamicProfileStore:
         approval_gate: ApprovalGate | None = None,
         event_store: Any = None,
     ) -> None:
-        self.storage_path = (
-            Path(storage_path).resolve() if storage_path else _default_store_path()
-        )
+        self.storage_path = Path(storage_path).resolve() if storage_path else _default_store_path()
         self._ceiling = ceiling
         self._approval_gate = approval_gate
         self._event_store = event_store
@@ -477,33 +459,19 @@ class DynamicProfileStore:
             raw = self.storage_path.read_text(encoding="utf-8")
         except OSError as exc:
             raise ProfileStoreUnreadable(
-                f"runtime profile store {self.storage_path} exists but could not be read: {exc}. "
-                f"Refusing to start with an empty roster: that would silently delete every "
-                f"profile alpha created. Fix or remove the file deliberately."
+                f"runtime profile store {self.storage_path} exists but could not be read: {exc}. Refusing to start with an empty roster: that would silently delete every profile alpha created. Fix or remove the file deliberately."
             ) from exc
         if not raw.strip():
-            raise ProfileStoreUnreadable(
-                f"runtime profile store {self.store_label()} is empty. Refusing to treat an "
-                f"empty document as 'no profiles' — that is indistinguishable from data loss."
-            )
+            raise ProfileStoreUnreadable(f"runtime profile store {self.store_label()} is empty. Refusing to treat an empty document as 'no profiles' — that is indistinguishable from data loss.")
         try:
             data = json.loads(raw)
         except json.JSONDecodeError as exc:
-            raise ProfileStoreUnreadable(
-                f"runtime profile store {self.store_label()} is not valid JSON: {exc}. "
-                f"Refusing to revert to defaults."
-            ) from exc
+            raise ProfileStoreUnreadable(f"runtime profile store {self.store_label()} is not valid JSON: {exc}. Refusing to revert to defaults.") from exc
         if not isinstance(data, dict):
-            raise ProfileStoreUnreadable(
-                f"runtime profile store {self.store_label()} must contain an object, "
-                f"got {type(data).__name__}."
-            )
+            raise ProfileStoreUnreadable(f"runtime profile store {self.store_label()} must contain an object, got {type(data).__name__}.")
         version = data.get("schema_version")
         if version != PROFILE_STORE_SCHEMA_VERSION:
-            raise ProfileStoreUnreadable(
-                f"runtime profile store {self.store_label()} has schema_version {version!r}; "
-                f"this build understands {PROFILE_STORE_SCHEMA_VERSION}. Refusing to guess."
-            )
+            raise ProfileStoreUnreadable(f"runtime profile store {self.store_label()} has schema_version {version!r}; this build understands {PROFILE_STORE_SCHEMA_VERSION}. Refusing to guess.")
         # Any single bad profile fails the WHOLE load. Partially loading a
         # roster would let a malformed record silently disappear.
         try:
@@ -514,10 +482,7 @@ class DynamicProfileStore:
                 proposal = ProfileProposal.from_dict(item)
                 self._proposals[proposal.profile_name] = proposal
         except ProfileValidationError as exc:
-            raise ProfileStoreUnreadable(
-                f"runtime profile store {self.store_label()} failed schema validation: {exc}. "
-                f"Refusing to partially load it."
-            ) from exc
+            raise ProfileStoreUnreadable(f"runtime profile store {self.store_label()} failed schema validation: {exc}. Refusing to partially load it.") from exc
 
     def store_label(self) -> str:
         return str(self.storage_path)
@@ -537,9 +502,7 @@ class DynamicProfileStore:
                 json.dump(payload, handle, indent=2)
             os.replace(tmp, self.storage_path)
         except OSError as exc:
-            raise ProfileStoreUnreadable(
-                f"could not persist runtime profile store {self.store_label()}: {exc}"
-            ) from exc
+            raise ProfileStoreUnreadable(f"could not persist runtime profile store {self.store_label()}: {exc}") from exc
 
     # -- reads -------------------------------------------------------------
     def get_profile(self, name: str) -> RuntimeProfile | None:
@@ -582,16 +545,9 @@ class DynamicProfileStore:
         """
         with self._lock:
             if proposal.profile_name in self._profiles:
-                raise ProfileValidationError(
-                    f"profile {proposal.profile_name!r} already exists; re-scope or retire it "
-                    f"instead of creating a second one"
-                )
-            if proposal.profile_name in self._proposals and self._proposals[
-                proposal.profile_name
-            ].state == PROPOSAL_PENDING:
-                raise ProfileValidationError(
-                    f"a pending proposal for {proposal.profile_name!r} already exists"
-                )
+                raise ProfileValidationError(f"profile {proposal.profile_name!r} already exists; re-scope or retire it instead of creating a second one")
+            if proposal.profile_name in self._proposals and self._proposals[proposal.profile_name].state == PROPOSAL_PENDING:
+                raise ProfileValidationError(f"a pending proposal for {proposal.profile_name!r} already exists")
             # Refuse early, but do NOT narrow: an over-privileged request is an
             # error the operator must see.
             enforce_grant(
@@ -642,10 +598,7 @@ class DynamicProfileStore:
             if proposal is None:
                 raise ProfileApprovalError(f"no proposal named {name!r}")
             if proposal.state != PROPOSAL_APPROVED:
-                raise ProfileApprovalError(
-                    f"proposal {key!r} is {proposal.state!r}, not approved. "
-                    f"Creation is a proposal; it is not an authorisation."
-                )
+                raise ProfileApprovalError(f"proposal {key!r} is {proposal.state!r}, not approved. Creation is a proposal; it is not an authorisation.")
             if key in self._profiles:
                 raise ProfileValidationError(f"profile {key!r} already exists")
 
@@ -665,13 +618,10 @@ class DynamicProfileStore:
                 name=key,
                 display_name=proposal.profile_name.capitalize(),
                 role=proposal.role or "Autonomous Specialist Teammate",
-                system_prompt=proposal.system_prompt
-                or generate_default_soul(key, proposal.role or "Autonomous Specialist Teammate"),
+                system_prompt=proposal.system_prompt or generate_default_soul(key, proposal.role or "Autonomous Specialist Teammate"),
                 description=proposal.description,
                 granted_capabilities=grant,
-                declared_capabilities=frozenset(
-                    normalise_capabilities(proposal.requested_capabilities)
-                ),
+                declared_capabilities=frozenset(normalise_capabilities(proposal.requested_capabilities)),
                 skills=list(proposal.skills),
                 mcp_servers=list(proposal.mcp_servers),
                 model=proposal.model,
@@ -683,9 +633,7 @@ class DynamicProfileStore:
             )
             # Carry declared-vs-granted forensics into the operator-visible view
             # without ever letting it authorise anything.
-            profile.metadata.setdefault("declared_only", sorted(
-                set(profile.declared_capabilities) - set(grant)
-            ))
+            profile.metadata.setdefault("declared_only", sorted(set(profile.declared_capabilities) - set(grant)))
             self._profiles[key] = profile
             proposal.state = PROPOSAL_INSTALLED
             proposal.resolved_at = _now()
@@ -739,9 +687,7 @@ class DynamicProfileStore:
             profile = self._profiles.get(key)
             if profile is None:
                 return None, []
-            kept, removed = narrow_to_ceiling(
-                profile.granted_capabilities, subject=key, ceiling=self.ceiling()
-            )
+            kept, removed = narrow_to_ceiling(profile.granted_capabilities, subject=key, ceiling=self.ceiling())
             if not removed:
                 return profile, []
             demoted_from = profile.demoted_from | (profile.granted_capabilities - kept)

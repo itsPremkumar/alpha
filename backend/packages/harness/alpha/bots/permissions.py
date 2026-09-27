@@ -264,9 +264,7 @@ def filter_tools_by_role[ToolT: NamedTool](
     for tool in tools:
         allowed, _reason, requires_approval = resolved.check_permission(bot_role, tool.name)
         if not (allowed or requires_approval):
-            logger.debug(
-                "Tool %s withheld from role %s by permission ring", tool.name, bot_role
-            )
+            logger.debug("Tool %s withheld from role %s by permission ring", tool.name, bot_role)
             continue
         # The authority ceiling is a SECOND, independent filter on the same
         # path. The role ring answers "may this role use this tool"; the ceiling
@@ -275,9 +273,7 @@ def filter_tools_by_role[ToolT: NamedTool](
         # acquired an over-broad role still cannot be handed a tool above the
         # ceiling -- the two checks cannot be satisfied by editing one of them.
         if not TOOL_CAPABILITY_FLOOR.get(tool.name):
-            logger.debug(
-                "Tool %s withheld: no authority-ceiling capability covers it", tool.name
-            )
+            logger.debug("Tool %s withheld: no authority-ceiling capability covers it", tool.name)
             continue
         ok, _violations = bound.within_ceiling(TOOL_CAPABILITY_FLOOR[tool.name])
         if not ok:
@@ -363,8 +359,7 @@ class ToolPermissionGate:
         if clean_tool in ring.denied_tools:
             return (
                 False,
-                f"Permission Denied: Role '{bot_role}' is not authorized to execute tool '{tool_name}'. "
-                f"Please delegate this task to an authorized specialist (e.g. coder or DevOps).",
+                f"Permission Denied: Role '{bot_role}' is not authorized to execute tool '{tool_name}'. Please delegate this task to an authorized specialist (e.g. coder or DevOps).",
                 False,
             )
 
