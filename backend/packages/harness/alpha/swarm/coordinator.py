@@ -30,6 +30,8 @@ from alpha.swarm.models import (
     is_terminal_swarm_status,
 )
 from alpha.swarm.scheduler import SwarmPlanValidationError, SwarmScheduler
+from alpha.swarm.stigmergy import StigmergicTraceStore, TraceCategory
+from alpha.swarm.telemetry import SwarmTelemetry
 
 logger = logging.getLogger(__name__)
 
@@ -274,6 +276,7 @@ class SwarmCoordinator:
             mode=mode,
             items=normalized_items or None,
             max_concurrency=effective_concurrency,
+            requires_consensus=bool(requires_consensus),
         )
         plan.owner_id = normalized_owner
         plan.budget = effective_budget
@@ -793,6 +796,7 @@ class SwarmCoordinator:
                         [dict(item) for item in (evidence or []) if isinstance(item, Mapping)],
                     )
                 plan.budget.record_task_success()
+                self._deposit_completion_traces(plan, updated)
                 self.append_event(
                     swarm_id,
                     "TASK_COMPLETED",
@@ -833,7 +837,90 @@ class SwarmCoordinator:
                 "terminal_reason": plan.terminal_reason,
                 "rounds": plan.round,
                 "replans": plan.replan_count,
+                "strategy": dict(plan.metrics.get("strategy") or {}),
+                "telemetry": SwarmTelemetry.snapshot(plan),
             }
+
+    # -- stigmergic traces -------------------------------------------------
+
+    @staticmethod
+    def _stigmergy_enabled(plan: SwarmPlan) -> bool:
+        """Whether this plan's complexity tier earns trace bookkeeping.
+
+        Traces cost a write on every completion, so a ``direct``/``simple``
+        three-node plan does not pay for machinery it cannot use.  The tier
+        comes from the recorded strategy; a plan with no recorded strategy
+        (a pre-upgrade checkpoint) keeps the cheaper default.
+        """
+
+        strategy = plan.metrics.get("strategy")
+        if not isinstance(strategy, Mapping):
+            return False
+        return str(strategy.get("tier", "")) in {"medium", "full"}
+
+    @classmethod
+    def _deposit_completion_traces(cls, plan: SwarmPlan, task: SwarmTaskNode) -> int:
+        """Leave bounded traces a later worker can rank, never a verdict.
+
+        Only *what* was worked on is recorded (capability tags, assigned role,
+        produced artefact handles).  Result prose is not copied into a trace:
+        the blackboard already carries the bounded summary, and duplicating it
+        would re-create the broadcast duplication the trace layer exists to
+        avoid.
+        """
+
+        if not cls._stigmergy_enabled(plan):
+            return 0
+        store = StigmergicTraceStore.from_dict(plan.blackboard_context.get("stigmergy"))
+        provenance = str(task.lease_owner or task.assigned_worker or task.worker_type or "worker")[:64]
+        deposits = 0
+        for tag in list(task.capability_tags)[:3]:
+            store.deposit(category=TraceCategory.WORK, key=str(tag), payload=str(task.objective)[:200], provenance=provenance)
+            deposits += 1
+        for artifact in list(task.output_artifacts)[:3]:
+            store.deposit(category=TraceCategory.ARTIFACT, key=str(artifact), payload=str(task.task_id), provenance=provenance)
+            deposits += 1
+        if not deposits:
+            store.deposit(category=TraceCategory.WORK, key=str(task.assigned_worker or task.worker_type or task.task_id), payload=str(task.objective)[:200], provenance=provenance)
+            deposits = 1
+        plan.blackboard_context["stigmergy"] = store.to_dict()
+        return deposits
+
+    def traces(self, swarm_id: str, *, category: str | None = None, limit: int = 10, owner_id: str | None = None) -> list[dict[str, Any]]:
+        """Rank the plan's stigmergic traces strongest-first."""
+
+        with self._lock:
+            plan = self._swarms.get(swarm_id)
+            if not plan or owner_id is not None and plan.owner_id != owner_id:
+                return []
+            store = StigmergicTraceStore.from_dict(plan.blackboard_context.get("stigmergy"))
+            traces = store.rank(category=category or None, limit=max(1, min(int(limit), 50)))
+            return [trace.to_dict() for trace in traces]
+
+    def deposit_trace(
+        self,
+        swarm_id: str,
+        *,
+        category: str,
+        key: str,
+        payload: str = "",
+        provenance: str = "",
+        owner_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Publish one bounded trace; owner-scoped and advisory only."""
+
+        with self._lock:
+            plan = self._swarms.get(swarm_id)
+            if not plan or owner_id is not None and plan.owner_id != owner_id:
+                raise KeyError(f"unknown swarm: {swarm_id}")
+            store = StigmergicTraceStore.from_dict(plan.blackboard_context.get("stigmergy"))
+            try:
+                trace = store.deposit(category=category, key=key, payload=payload, provenance=provenance)
+            except ValueError as exc:
+                raise ValueError(str(exc)) from exc
+            plan.blackboard_context["stigmergy"] = store.to_dict()
+            self.checkpoint(swarm_id)
+            return trace.to_dict()
 
     def dynamic_expand(
         self,

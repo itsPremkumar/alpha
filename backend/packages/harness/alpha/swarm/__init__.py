@@ -52,6 +52,23 @@ from alpha.swarm.models import (
 from alpha.swarm.reflection import SwarmReflection, SwarmReflector
 from alpha.swarm.runner import AsyncSwarmRunner
 from alpha.swarm.scheduler import SwarmPlanValidationError, SwarmScheduler
+from alpha.swarm.deliberation import (
+    DeliberationPolicy,
+    DeliberationReport,
+    rounds_from_evidence,
+    run_deliberation,
+)
+from alpha.swarm.planner import (
+    PlanCandidate,
+    PlanScore,
+    build_candidate,
+    score_plan,
+    select_best_candidate,
+)
+from alpha.swarm.stigmergy import StigmergicTrace, StigmergicTraceStore, TraceCategory
+from alpha.swarm.strategy import ComplexityTier, StrategyResolution, resolve_strategy, tier_for
+from alpha.swarm.telemetry import BudgetPressure, SwarmTelemetry
+from alpha.swarm.topology import DagFeatures, TopologyRoute, compute_dag_features, route_topology
 from alpha.swarm.triggers import AutonomousWorkTrigger
 from alpha.swarm.watchdog import SwarmWatchdog
 from alpha.swarm.worker import (
@@ -65,17 +82,27 @@ from alpha.swarm.worker import (
 __all__ = [
     "AsyncSwarmRunner",
     "AutonomousWorkTrigger",
+    "BudgetPressure",
     "CodingWorktreeWorker",
+    "ComplexityTier",
     "ContractAward",
     "ContractNetAuctionEngine",
     "ConsensusPolicy",
     "ConsensusResult",
     "ConsensusVote",
+    "DagFeatures",
+    "DeliberationPolicy",
+    "DeliberationReport",
     "EphemeralSubagentWorker",
     "HermesBotWorker",
     "LeaderCandidate",
     "LeaderElection",
+    "PlanCandidate",
+    "PlanScore",
     "SpecialistBotWorker",
+    "StigmergicTrace",
+    "StigmergicTraceStore",
+    "StrategyResolution",
     "SwarmAggregator",
     "SwarmBudget",
     "SwarmCoordinator",
@@ -98,12 +125,17 @@ __all__ = [
     "SwarmTaskDecomposer",
     "SwarmTaskLease",
     "SwarmTaskNode",
+    "SwarmTelemetry",
     "SwarmWatchdog",
     "SwarmWorkerAgent",
     "SwarmWorkerBackend",
     "TaskNodeState",
+    "TopologyRoute",
+    "TraceCategory",
     "VoteStance",
     "SwarmBenefitEstimator",
+    "build_candidate",
+    "compute_dag_features",
     "elect_leader",
     "evaluate_consensus",
     "get_swarm_coordinator",
@@ -111,4 +143,11 @@ __all__ = [
     "get_swarm_memory_manager",
     "get_swarm_resource_governor",
     "is_terminal_swarm_status",
+    "resolve_strategy",
+    "route_topology",
+    "rounds_from_evidence",
+    "run_deliberation",
+    "score_plan",
+    "select_best_candidate",
+    "tier_for",
 ]

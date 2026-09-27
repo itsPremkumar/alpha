@@ -28,6 +28,9 @@ def swarm_tool(
         "message",
         "observe",
         "metrics",
+        "strategy",
+        "telemetry",
+        "trace",
         "leader",
         "incidents",
         "governor",
@@ -60,7 +63,8 @@ def swarm_tool(
     Args:
         action: Operation to perform. Supported values are evaluate, spawn,
             status, step, run_async, expand, replan, claim, message, observe,
-            metrics, incidents, governor, pause, resume, and cancel.
+            metrics, strategy, telemetry, trace, leader, incidents, governor,
+            pause, resume, and cancel.
         goal: High-level mission for evaluation or swarm creation.
         swarm_id: Existing swarm id for operations other than evaluate/spawn.
         mode: Swarm strategy: auto, parallel, map_reduce, scatter_gather,
@@ -68,10 +72,13 @@ def swarm_tool(
         items_json: JSON array of independent work items.
         tasks_json: JSON array of task objects for expand/replan.
         parent_task_id: Optional parent task for an injected task.
-        task_id: Task id for claim or a message association.
+        task_id: Task id for claim or a message association; for a `trace`
+            deposit it names the leaving worker (provenance).
         lease_id: Lease returned by claim; accepted by external completion flows.
-        topic: Topic used for message/observe operations.
+        topic: Topic used for message/observe operations; for a `trace`
+            deposit it is the trace key (what the hint is about).
         message: Bounded message content; message payloads are untrusted data.
+            For a `trace` deposit it is the trace payload.
         limit: Maximum rows/messages/events to return.
         max_concurrency: Maximum concurrent workers, hard-capped at 64.
         max_tokens: Optional measured token ceiling for a new swarm.
@@ -82,7 +89,8 @@ def swarm_tool(
             reporting completion.
         idempotency_key: Optional owner-scoped key that makes spawn retries
             return the existing plan instead of creating a second swarm.
-        reason: Optional rationale for pause/cancellation.
+        reason: Optional rationale for pause/cancellation, or the category for
+            a `trace` deposit (work, discovery, artifact, conflict, dead_end).
     """
 
     coordinator = get_swarm_coordinator()
@@ -145,7 +153,7 @@ def swarm_tool(
             f"Run it with `swarm(action='run_async', swarm_id='{plan.swarm_id}')`; `step` only dispatches work."
         )
 
-    if action in {"status", "step", "run_async", "expand", "replan", "claim", "message", "observe", "metrics", "incidents", "pause", "resume", "cancel"}:
+    if action in {"status", "step", "run_async", "expand", "replan", "claim", "message", "observe", "metrics", "strategy", "telemetry", "trace", "leader", "incidents", "pause", "resume", "cancel"}:
         if not swarm_id.strip():
             return "Error: 'swarm_id' parameter is required."
         swarm_id = swarm_id.strip()
@@ -223,6 +231,60 @@ def swarm_tool(
 
     if action == "metrics":
         return json.dumps(coordinator.metrics(swarm_id), indent=2, ensure_ascii=False)
+
+    if action == "strategy":
+        # The recorded choice, not a re-derivation: recomputing here could
+        # disagree with what the plan actually ran under.
+        strategy = dict(plan.metrics.get("strategy") or {})
+        if not strategy:
+            return (
+                f"### Swarm Strategy: `{plan.swarm_id}`\n"
+                f"- **Recorded**: `no` — no mode selection has been recorded for this plan.\n"
+                f"- **Declared mode**: `{plan.mode.value}`\n"
+            )
+        summary = {
+            "swarm_id": plan.swarm_id,
+            "declared_mode": plan.mode.value,
+            "effective_mode": strategy.get("mode"),
+            "should_swarm": strategy.get("should_swarm"),
+            "tier": strategy.get("tier"),
+            "source": strategy.get("source"),
+            "confidence": strategy.get("confidence"),
+            "rationale": strategy.get("rationale"),
+            "considered": strategy.get("considered"),
+            "candidates": plan.metrics.get("strategy_candidates") or [],
+        }
+        return json.dumps(summary, indent=2, ensure_ascii=False)
+
+    if action == "telemetry":
+        # A focused read of the signal set rather than the whole metrics blob,
+        # so a long run can be inspected without pulling events and leases too.
+        telemetry = coordinator.metrics(swarm_id)["telemetry"]
+        return (
+            f"### Swarm Telemetry: `{swarm_id}`\n"
+            f"- **Risk signals**: {', '.join(f'`{signal}`' for signal in telemetry['risk_signals']) or 'none'}\n"
+            f"- **Basis**: {telemetry['basis']}\n\n"
+            f"```json\n{json.dumps(telemetry, indent=2, ensure_ascii=False)}\n```"
+        )
+
+    if action == "trace":
+        if message.strip():
+            try:
+                trace = coordinator.deposit_trace(
+                    swarm_id,
+                    category=reason.strip() or "work",
+                    key=topic.strip(),
+                    payload=message,
+                    provenance=task_id.strip() or "swarm-tool",
+                    owner_id=owner_id,
+                )
+            except (KeyError, ValueError) as exc:
+                return f"Error: trace rejected: {exc}"
+            return f"Trace deposited: `{trace['trace_id']}` at strength `{trace['strength']}` (category `{trace['category']}`, key `{trace['key']}`)."
+        traces = coordinator.traces(swarm_id, category=reason.strip() or None, limit=max(1, limit), owner_id=owner_id)
+        if not traces:
+            return f"No stigmergic traces recorded for swarm '{swarm_id}'. Traces are advisory context only and never gate a decision."
+        return json.dumps(traces, indent=2, ensure_ascii=False)
 
     if action == "leader":
         return json.dumps(plan.metrics.get("leader_election", {"leader": None, "reason": "not evaluated"}), indent=2, ensure_ascii=False)

@@ -9,6 +9,7 @@ from typing import Any
 from alpha.bots.quality_gate import evaluate_quality_gate
 from alpha.runtime.runs.verification import verify_acceptance_criteria
 from alpha.swarm.consensus import ConsensusPolicy, evaluate_consensus, votes_from_evidence
+from alpha.swarm.deliberation import DeliberationPolicy, rounds_from_evidence, run_deliberation
 from alpha.swarm.models import SwarmPlan, SwarmTaskNode, TaskNodeState
 
 
@@ -55,6 +56,42 @@ class SwarmAggregator:
         task.acceptance_status = "passed" if verification.verified else "failed"
 
     @classmethod
+    def _apply_deliberation(cls, consensus_result: dict[str, Any], evidence: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+        """Run sequential deliberation over the same evidence, guards can only block.
+
+        Deliberation is strictly a *downgrade* channel: it may turn a clean
+        approval into ``manual_review`` when a guard fires or when the
+        sequential test flatly disagrees with the explicit policy, and it
+        attaches its full report either way.  It can never raise ``rejected``
+        to ``approved`` — an approval the explicit policy already refused is
+        not up for a second opinion.
+        """
+
+        try:
+            report = run_deliberation(
+                rounds_from_evidence(evidence),
+                DeliberationPolicy(min_votes=2, target_approve_rate=0.75, require_evidence=True),
+            )
+        except (TypeError, ValueError) as exc:
+            # A malformed policy/vote record must not take aggregation down;
+            # disclose the failure and leave the explicit verdict untouched.
+            return {**consensus_result, "deliberation": {"status": "error", "reason": str(exc)}}
+        payload = report.to_dict()
+        blocking = sorted(set(report.guards))
+        if report.status == "rejected" and consensus_result.get("approved"):
+            blocking = sorted(set(blocking) | {"sequential_test_disagreement"})
+        if blocking and consensus_result.get("approved"):
+            return {
+                **consensus_result,
+                "approved": False,
+                "status": "manual_review",
+                "reason": f"explicit consensus approved, but deliberation blocked it: {', '.join(blocking)}",
+                "blocked_by": blocking,
+                "deliberation": payload,
+            }
+        return {**consensus_result, "deliberation": payload}
+
+    @classmethod
     def aggregate(cls, plan: SwarmPlan) -> dict[str, Any]:
         completed_tasks = [task for task in plan.tasks.values() if task.state == TaskNodeState.COMPLETED]
         failed_tasks = [task for task in plan.tasks.values() if task.state == TaskNodeState.FAILED]
@@ -80,6 +117,7 @@ class SwarmAggregator:
                     evidence.append(task.result_payload)
             votes = votes_from_evidence(evidence)
             consensus_result = evaluate_consensus(votes, ConsensusPolicy(min_voters=2, quorum=0.5, threshold=0.75, require_evidence=True)).to_dict()
+            consensus_result = cls._apply_deliberation(consensus_result, evidence)
             plan.consensus = consensus_result
 
         report_lines = [
@@ -115,6 +153,14 @@ class SwarmAggregator:
             report_lines.extend(["", "## Consensus Gate"])
             report_lines.append(f"- **Status**: `{consensus_result['status']}` — {consensus_result['reason']}")
             report_lines.append(f"- **Agreement**: {consensus_result['agreement'] if consensus_result['agreement'] is not None else 'unavailable'}")
+            deliberation = consensus_result.get("deliberation")
+            if isinstance(deliberation, Mapping):
+                report_lines.append(f"- **Sequential Deliberation**: `{deliberation.get('status', 'unknown')}` — {deliberation.get('explanation') or deliberation.get('reason') or 'no explanation recorded'}")
+                guards = deliberation.get("guards") or []
+                if guards:
+                    report_lines.append(f"- **Deliberation Guards**: {', '.join(str(guard) for guard in guards)}")
+                if deliberation.get("stopped_early"):
+                    report_lines.append(f"- **Early Stop**: test crossed a boundary after {deliberation.get('rounds_used')} of {deliberation.get('policy', {}).get('max_rounds')} round(s)")
         if artifacts:
             report_lines.extend(["", "## Generated Artifacts"])
             for artifact in artifacts:

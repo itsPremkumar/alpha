@@ -5,8 +5,10 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 
-from alpha.swarm.estimator import SwarmBenefitEstimator
 from alpha.swarm.models import SwarmMode, SwarmPlan, SwarmTaskNode, TaskNodeState
+from alpha.swarm.planner import MAX_CANDIDATES, PlanCandidate, build_candidate, select_best_candidate
+from alpha.swarm.strategy import StrategyResolution, resolve_strategy
+from alpha.swarm.topology import compute_dag_features
 
 
 class SwarmTaskDecomposer:
@@ -20,16 +22,67 @@ class SwarmTaskDecomposer:
         items: Sequence[str] | None = None,
         swarm_id: str | None = None,
         max_concurrency: int = 8,
+        *,
+        requires_consensus: bool = False,
     ) -> SwarmPlan:
-        """Constructs a SwarmPlan with dependency-linked SwarmTaskNode instances."""
+        """Construct a SwarmPlan with dependency-linked SwarmTaskNode instances.
+
+        An explicit *mode* is honored as given — a named topology is a
+        requirement, not a suggestion.  ``SwarmMode.AUTO`` is different: it runs
+        the automated resolver, measures the candidate graphs it produces, and
+        keeps the decomposition that scores best under its own concurrency
+        limit.  The whole decision, including the losing candidates and why they
+        lost, is recorded in ``plan.metrics["strategy"]`` so the choice is
+        auditable after the fact rather than a silent default.
+        """
+
         sid = swarm_id or f"swm-{uuid.uuid4().hex[:8]}"
+        automatic = mode == SwarmMode.AUTO
 
-        # Resolve mode if AUTO
-        if mode == SwarmMode.AUTO:
-            decision = SwarmBenefitEstimator.estimate(goal, items=items)
-            mode = decision.mode if decision.should_swarm else SwarmMode.PARALLEL
+        resolution = resolve_strategy(goal, items=items, mode=mode, requires_consensus=requires_consensus, max_concurrency=max_concurrency)
+        effective_mode = mode if mode != SwarmMode.AUTO else resolution.mode
 
-        tasks: dict[str, SwarmTaskNode] = {}
+        plan = cls._build_plan(goal, effective_mode, items, sid, max_concurrency)
+        features = compute_dag_features(plan.tasks)
+        resolved = resolve_strategy(
+            goal,
+            items=items,
+            mode=mode,
+            requires_consensus=requires_consensus,
+            features=features,
+            max_concurrency=max_concurrency,
+        )
+
+        if automatic and resolved.allows_candidate_planning:
+            candidate = cls._select_candidate_plan(goal, items, sid, max_concurrency, resolved)
+            if candidate is not None:
+                plan = candidate
+                features = compute_dag_features(plan.tasks)
+                resolved = resolve_strategy(
+                    goal,
+                    items=items,
+                    mode=mode,
+                    requires_consensus=requires_consensus,
+                    features=features,
+                    max_concurrency=max_concurrency,
+                )
+
+        # Recorded for every plan, explicit or automatic: an operator looking at
+        # a finished run can see which signal chose the mode and which tier gated
+        # the coordination machinery.
+        plan.metrics["strategy"] = resolved.to_dict()
+        return plan
+
+    @classmethod
+    def _build_plan(
+        cls,
+        goal: str,
+        mode: SwarmMode,
+        items: Sequence[str] | None,
+        swarm_id: str,
+        max_concurrency: int,
+    ) -> SwarmPlan:
+        """Decompose one mode into tasks and compute its critical path."""
 
         if mode in (SwarmMode.MAP_REDUCE, SwarmMode.PARALLEL) and items and len(items) > 0:
             tasks = cls._decompose_map_reduce(goal, items)
@@ -40,18 +93,70 @@ class SwarmTaskDecomposer:
         elif mode == SwarmMode.CODING_WORKTREE:
             tasks = cls._decompose_coding_worktree(goal)
         else:
-            # Default Hierarchical decomposition
             tasks = cls._decompose_hierarchical(goal)
 
         plan = SwarmPlan(
-            swarm_id=sid,
+            swarm_id=swarm_id,
             goal=goal,
             mode=mode,
             tasks=tasks,
             max_concurrency=max_concurrency,
         )
-
         cls._compute_critical_path_and_speedup(plan)
+        return plan
+
+    @classmethod
+    def _candidate_modes(cls, resolved: StrategyResolution, items: Sequence[str] | None) -> list[SwarmMode]:
+        """Structurally neutral modes worth scoring against each other.
+
+        ``DEBATE`` and ``CODING_WORKTREE`` are excluded on purpose: the first
+        is a semantic request and the second needs worktree isolation, so
+        silently replacing either with a "better-scoring" flat plan would break
+        what the caller actually asked for.
+        """
+
+        if resolved.mode in (SwarmMode.DEBATE, SwarmMode.CODING_WORKTREE):
+            return []
+        pool: list[SwarmMode] = [resolved.mode, SwarmMode.PARALLEL, SwarmMode.HIERARCHICAL]
+        if items:
+            pool.append(SwarmMode.MAP_REDUCE)
+        if resolved.mode in (SwarmMode.ENSEMBLE, SwarmMode.SCATTER_GATHER):
+            pool.extend([SwarmMode.ENSEMBLE, SwarmMode.SCATTER_GATHER])
+        ordered: list[SwarmMode] = []
+        for candidate in pool:
+            if candidate not in ordered:
+                ordered.append(candidate)
+        return ordered[:MAX_CANDIDATES]
+
+    @classmethod
+    def _select_candidate_plan(
+        cls,
+        goal: str,
+        items: Sequence[str] | None,
+        swarm_id: str,
+        max_concurrency: int,
+        resolved: StrategyResolution,
+    ) -> SwarmPlan | None:
+        """Score every viable decomposition for this goal and keep the winner.
+
+        Every candidate is built under the *same* swarm id because only one is
+        ever registered; the losers are discarded in-process and never reach
+        storage, the event journal, or the lease registry.
+        """
+
+        modes = cls._candidate_modes(resolved, items)
+        if len(modes) < 2:
+            return None
+        route_mode = resolved.route.mode if resolved.route is not None else None
+        candidates: list[PlanCandidate] = []
+        for candidate_mode in modes:
+            plan = cls._build_plan(goal, candidate_mode, items, swarm_id, max_concurrency)
+            candidates.append(build_candidate(plan, max_concurrency=max_concurrency, endorsed=(route_mode is not None and candidate_mode == route_mode)))
+        winner = select_best_candidate(candidates)
+        if winner is None:
+            return None
+        plan = winner.plan
+        plan.metrics["strategy_candidates"] = [candidate.to_dict() for candidate in sorted(candidates, key=lambda item: item.mode.value)]
         return plan
 
     @classmethod
