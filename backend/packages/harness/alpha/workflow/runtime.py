@@ -29,8 +29,10 @@ from alpha.workflow.execution import (
     clamp_concurrency,
     execute_wave,
     first_error,
-    governor_slot,
+    mark_timeout_occurred,
+    reset_timeout_flag,
     run_with_deadline,
+    timeout_occurred,
 )
 from alpha.workflow.expressions import evaluate_condition, evaluate_condition_strict
 from alpha.workflow.models import (
@@ -99,6 +101,41 @@ RUN_STARTED_AT_KEY = "run_started_at"
 # ``clamp_concurrency`` rather than being trusted or raising.
 CONCURRENCY_POLICY_KEY = "max_concurrency"
 NODE_CONCURRENCY_CONFIG_KEY = "max_concurrency"
+
+# Key holding the run's checkpoint ledger.  Each entry is a content-addressed
+# snapshot record written by a ``CHECKPOINT`` node.
+CHECKPOINT_LEDGER_KEY = "checkpoints"
+
+# Hard ceiling on a ``WAIT`` node's delay.  A declared delay is clamped rather
+# than obeyed, because an unbounded timer silently parks a run for as long as a
+# typo says and nothing would report it.
+MAX_WAIT_SECONDS = 300.0
+
+# Hard ceiling on the waves a ``SUBWORKFLOW`` node may drive its child through.
+SUBWORKFLOW_WAVE_CEILING = 200
+
+# Statuses after which a run is never re-dispatched.  Shared by ``execute_step``,
+# ``cancel_run``, ``suspend_run`` and the subworkflow driver so "terminal" is
+# defined once instead of drifting between four literal sets.
+TERMINAL_RUN_STATUSES = frozenset(
+    {
+        WorkflowRunStatus.COMPLETED,
+        WorkflowRunStatus.FAILED,
+        WorkflowRunStatus.CANCELLED,
+        WorkflowRunStatus.BUDGET_EXHAUSTED,
+        WorkflowRunStatus.ABORTED,
+    }
+)
+
+# Statuses that are non-terminal but not dispatchable: the run is parked and a
+# step must return it unchanged rather than resuming work the operator is holding.
+PARKED_RUN_STATUSES = frozenset(
+    {
+        WorkflowRunStatus.WAITING_APPROVAL,
+        WorkflowRunStatus.WAITING_EVENT,
+        WorkflowRunStatus.SUSPENDED,
+    }
+)
 
 # Process-wide reentrant lock guarding every read-modify-write on shared run and
 # graph bookkeeping.  It is process-wide (not per engine) because the mutation
@@ -302,6 +339,19 @@ def validate_workflow_graph(graph: WorkflowGraph, *, workflow_id: str | None = N
             f"{label} graph has a dependency cycle through nodes {unresolved}; a cyclic graph cannot be "
             f"scheduled to completion"
         )
+
+
+def _has_unfinished_work(run: WorkflowRun) -> bool:
+    """Whether ``run`` still has a node that is neither done nor terminally stuck.
+
+    Used as the no-progress guard when driving a child workflow: a child that
+    stopped without a terminal status and without pending work would otherwise
+    spin the dispatch loop to its wave ceiling for no reason.
+    """
+    return any(
+        status.value not in ("succeeded", "skipped", "failed", "cancelled", "aborted")
+        for status in run.node_states.values()
+    )
 
 
 def _is_bounded_loop(node: WorkflowNode) -> bool:
@@ -666,18 +716,12 @@ class DynamicWorkflowEngine:
         if not run:
             raise KeyError(f"Run '{run_id}' not found.")
 
-        if run.status in (
-            WorkflowRunStatus.COMPLETED,
-            WorkflowRunStatus.FAILED,
-            WorkflowRunStatus.CANCELLED,
-            WorkflowRunStatus.BUDGET_EXHAUSTED,
-            WorkflowRunStatus.WAITING_APPROVAL,
-            WorkflowRunStatus.WAITING_EVENT,
-            WorkflowRunStatus.SUSPENDED,
-            WorkflowRunStatus.ABORTED,
-        ):
+        if run.status in TERMINAL_RUN_STATUSES or run.status in PARKED_RUN_STATUSES:
             # Gap 3: BUDGET_EXHAUSTED is terminal for scheduling purposes too —
             # a budget-spent run is never re-entered (its node already failed).
+            # PARKED statuses (approval / external event / operator suspend) are
+            # non-terminal but equally not dispatchable: stepping a parked run
+            # must return its real status rather than resume held work.
             return run
 
         runner = node_runner if node_runner is not None else get_node_runner()
@@ -813,18 +857,71 @@ class DynamicWorkflowEngine:
         waves = self.scheduler.partition_into_waves(graph, ready)
         wave_nodes = waves[0] if waves else []
 
-        for nid in wave_nodes:
-            if nid not in run.active_nodes:
-                run.active_nodes.append(nid)
-            try:
+        if wave_nodes:
+            governor = self.governor_for(run)
+            wave_started = time.monotonic()
+            # Admit the wave as a unit rather than node-by-node as each one
+            # starts. That is what makes the wave's disjoint write scopes
+            # meaningful: the scheduler promised no two nodes in this wave
+            # overlap, and the governor is what makes "no more than N at once"
+            # true. A wave that cannot be fully admitted is admitted partially
+            # and the refusal is journaled, never silently dropped.
+            admitted = 0
+            for _ in wave_nodes:
+                if not governor.acquire():
+                    self.events.emit(
+                        "wave_admission_refused",
+                        run.run_id,
+                        node_count=len(wave_nodes),
+                        admitted=admitted,
+                        limit=governor.limit,
+                        reason=(f"run concurrency limit {governor.limit} reached; {len(wave_nodes) - admitted} wave node(s) were not admitted and remain ready for the next wave"),
+                    )
+                    break
+                admitted += 1
+            admitted_nodes = wave_nodes[:admitted]
+
+            with self.state():
+                for nid in admitted_nodes:
+                    if nid not in run.active_nodes:
+                        run.active_nodes.append(nid)
+
+            def _invoke(nid: str) -> None:
+                # The whole wave is submitted before any result is inspected, so
+                # a node that fails cannot abandon its siblings mid-wave and
+                # strand them in RUNNING forever. A gate or failure becomes a
+                # run-level stop only AFTER the wave drains, which is the honest
+                # semantics: work already in flight really happened and is not
+                # pretended away.
                 self._execute_single_node(nid, graph, run, runner, compensation_runner)
-            finally:
-                run.active_nodes = [active for active in run.active_nodes if active != nid]
-            # A gate or failure in one ready node is a run-level stop.  Do not
-            # let later nodes in the same wave perform side effects after the
-            # run has already paused or fail-closed.
-            if run.status is not WorkflowRunStatus.RUNNING or run.failed_nodes:
-                break
+
+            outcomes = execute_wave(admitted_nodes, _invoke, max_concurrency=governor.limit)
+            for _ in range(len(admitted_nodes)):
+                governor.release()
+
+            self._record_wave(
+                run,
+                wave_index=self._next_wave_index(run),
+                nodes=list(admitted_nodes),
+                concurrency=governor.limit,
+                elapsed=time.monotonic() - wave_started,
+            )
+
+            escaped = first_error(outcomes)
+            if escaped is not None:
+                # ``execute_wave`` captures per-node errors so one node cannot
+                # abandon the wave. An exception that still escaped the node body
+                # is an unexpected fault and must fail the run honestly instead of
+                # being swallowed.
+                reason = f"wave dispatch fault: {type(escaped).__name__}: {escaped}"
+                _set_run_status(run, WorkflowRunStatus.FAILED, reason=reason)
+                self.events.emit("workflow_failed", run.run_id, reason=reason)
+
+    def _next_wave_index(self, run: WorkflowRun) -> int:
+        """The 1-based index of the wave about to be recorded."""
+        with self.state():
+            waves = run.metrics.get(WAVE_METRICS_KEY)
+            return (len(waves) if isinstance(waves, list) else 0) + 1
 
         # Gap 1: fail-closed after EVERY wave — a run left with failed nodes is
         # driven to FAILED and journals exactly ONE ``workflow_failed`` event,
@@ -1081,6 +1178,9 @@ class DynamicWorkflowEngine:
         )
         if result.timed_out:
             reason = result.describe_timeout(f"node '{node.id}'")
+            # Recorded on this thread so the node's timing entry can be marked
+            # ``timed_out`` without threading a flag back out of every branch.
+            mark_timeout_occurred()
             self.events.emit(
                 "node_timeout",
                 run.run_id,
@@ -1438,7 +1538,16 @@ class DynamicWorkflowEngine:
             )
 
         try:
-            # 3. Dynamic Node Type Handlers
+            # 3. Structural node types (checkpoint / goal_gate / handoff /
+            #    wait / event_wait / parallel / subworkflow).  These need no
+            #    executor: their completion evidence is a measurement the engine
+            #    can take itself.  Handled first so such a node cannot fall
+            #    through to the default runner path and demand an executor for
+            #    work the runtime already did.
+            if self._handle_structural_node(nid, graph, run, node_runner, compensation_runner):
+                return
+
+            # 4. Dynamic Node Type Handlers
             if node.type == NodeType.CONDITION:
                 context = {"state": run.state, "metrics": run.metrics}
                 try:
@@ -1788,6 +1897,596 @@ class DynamicWorkflowEngine:
                 run.node_states[comp_node.id] = NodeStatus.COMPENSATING
                 self.events.emit("compensation_triggered", run.run_id, node_id=comp_node.id)
 
+    # ------------------------------------------------------- structural nodes
+
+    def _handle_structural_node(
+        self,
+        nid: str,
+        graph: WorkflowGraph,
+        run: WorkflowRun,
+        node_runner: Callable[[WorkflowNode, WorkflowRun], dict[str, Any]] | None,
+        compensation_runner: Callable[[WorkflowNode, WorkflowRun], dict[str, Any]] | None,
+    ) -> bool:
+        """Handle node kinds whose evidence the engine can produce itself.
+
+        Returns ``True`` when the node was handled (it is now terminal or
+        parked) and ``False`` when the kind is not structural, in which case the
+        caller continues into the executor-driven handlers.
+
+        Every branch is fail-closed: a structural node that cannot take its
+        measurement fails with the real reason rather than being skipped or
+        treated as complete. The one thing these nodes never do is *invent*
+        domain work — a ``CHECKPOINT`` proves a digest of the state it snapshotted,
+        and a ``GOAL_GATE`` proves which declared criteria it could actually
+        measure, not that the underlying goal was met.
+        """
+        node = graph.nodes[nid]
+        kind = node.type
+
+        if kind == NodeType.CHECKPOINT:
+            return self._handle_checkpoint(nid, run, node)
+        if kind == NodeType.GOAL_GATE:
+            return self._handle_goal_gate(nid, run, node)
+        if kind == NodeType.HANDOFF:
+            return self._handle_handoff_node(nid, run, node)
+        if kind == NodeType.WAIT:
+            return self._handle_wait(nid, run, node)
+        if kind == NodeType.EVENT_WAIT:
+            return self._handle_event_wait(nid, run, node)
+        if kind == NodeType.PARALLEL:
+            return self._handle_parallel(nid, graph, run, node, node_runner, compensation_runner)
+        if kind == NodeType.SUBWORKFLOW:
+            return self._handle_subworkflow(nid, run, node, node_runner, compensation_runner)
+        return False
+
+    def _handle_checkpoint(self, nid: str, run: WorkflowRun, node: WorkflowNode) -> bool:
+        """Record a verifiable, content-addressed snapshot of the run state.
+
+        The evidence is a SHA-256 over the exact state captured, so any consumer
+        can recompute it and detect whether the state really was the one
+        checkpointed. This is a measurement, not a durability claim: the
+        authoritative durable record is still the append-only event log
+        (:mod:`alpha.workflow.event_log`), and the node's evidence says so.
+        """
+        material = json.dumps(run.state, sort_keys=True, default=str, ensure_ascii=False).encode("utf-8")
+        digest = hashlib.sha256(material).hexdigest()
+        label = str(node.config.get("label") or nid)
+        record = {
+            "label": label,
+            "node_id": nid,
+            "state_sha256": digest,
+            "state_keys": sorted(str(key) for key in run.state),
+            "tokens_consumed": run.tokens_consumed,
+            "recorded_at": now_iso(),
+        }
+        with self.state():
+            checkpoints = run.metrics.get(CHECKPOINT_LEDGER_KEY)
+            if not isinstance(checkpoints, list):
+                checkpoints = []
+            checkpoints.append(record)
+            run.metrics[CHECKPOINT_LEDGER_KEY] = checkpoints
+        self.events.emit("workflow_checkpointed", run.run_id, node_id=nid, **record)
+        node.evidence.append(
+            f"checkpoint '{label}' captured {len(record['state_keys'])} state key(s); "
+            f"state sha256={digest} (recomputable over the sorted-key JSON of run.state); "
+            f"the append-only event log remains the authoritative durable record"
+        )
+        self._succeed_node(run, node, record)
+        return True
+
+    def _handle_goal_gate(self, nid: str, run: WorkflowRun, node: WorkflowNode) -> bool:
+        """Evaluate the run's declared acceptance criteria as a real gate.
+
+        Criteria are ``{name, expression, required}`` records evaluated by the
+        SAME safe AST evaluator used for routing, so a gate cannot smuggle in
+        arbitrary code. A criterion that cannot be evaluated is reported as
+        ``unevaluated`` and counts as NOT met when required — a gate must never
+        pass on the strength of a check that did not run.
+
+        The patch validator already refuses to remove or replace a ``goal_gate``,
+        so it stays a real barrier between execution and a ``completed`` status.
+        """
+        raw_criteria = node.config.get("acceptance_criteria")
+        if raw_criteria is None:
+            state_criteria = run.state.get("acceptance_criteria")
+            raw_criteria = state_criteria if isinstance(state_criteria, list) else []
+        if not isinstance(raw_criteria, list) or not raw_criteria:
+            self._fail_node(
+                run,
+                node,
+                f"goal gate '{nid}' declares no acceptance criteria; a gate with nothing to verify cannot pass",
+                criteria=[],
+            )
+            return True
+
+        context = {"state": run.state, "metrics": run.metrics}
+        results: list[dict[str, Any]] = []
+        for index, criterion in enumerate(raw_criteria):
+            if not isinstance(criterion, dict):
+                results.append(
+                    {
+                        "index": index,
+                        "name": f"criterion[{index}]",
+                        "required": False,
+                        "met": False,
+                        "evaluated": False,
+                        "detail": f"criterion is not a mapping: {criterion!r}",
+                    }
+                )
+                continue
+            name = str(criterion.get("name") or f"criterion[{index}]")
+            expression = criterion.get("expression")
+            required = bool(criterion.get("required", True))
+            if not isinstance(expression, str) or not expression.strip():
+                results.append(
+                    {"index": index, "name": name, "required": required, "met": False, "evaluated": False, "detail": "criterion declares no expression"}
+                )
+                continue
+            try:
+                met = evaluate_condition_strict(expression, context)
+            except Exception as exc:  # noqa: BLE001 - an unevaluable gate is not a passing gate
+                results.append(
+                    {"index": index, "name": name, "required": required, "met": False, "evaluated": False, "detail": f"{type(exc).__name__}: {exc}"}
+                )
+                continue
+            results.append({"index": index, "name": name, "required": required, "met": met, "evaluated": True, "detail": expression})
+
+        unmet_required = [item["name"] for item in results if item.get("required") and not item.get("met")]
+        unevaluated = [item["name"] for item in results if not item.get("evaluated")]
+        payload = {"passed": not unmet_required, "criteria": results, "unmet_required": unmet_required, "unevaluated": unevaluated}
+        if unmet_required:
+            detail = f"unmet required criteria: {unmet_required}"
+            if unevaluated:
+                detail += f"; {len(unevaluated)} criterion/criteria could not be evaluated and count as not met: {unevaluated}"
+            self._fail_node(run, node, f"goal gate '{nid}' rejected: {detail}", **payload)
+            return True
+        node.evidence.append(
+            f"goal gate '{nid}' passed {len(results)} declared criterion/criteria "
+            f"(required: {sorted(item['name'] for item in results if item.get('required'))})"
+        )
+        self._succeed_node(run, node, payload)
+        return True
+
+    def _handle_handoff_node(self, nid: str, run: WorkflowRun, node: WorkflowNode) -> bool:
+        """Publish a cross-mode handoff contract into the run's state.
+
+        The contract is built from REAL run state only: completed nodes, failed
+        nodes, and what remains. ``decisions`` stays empty because the engine
+        journals no DecisionRecords, so this node cannot become a place where
+        artefacts are conjured up to make a handoff look complete.
+        """
+        completed = list(run.completed_nodes)
+        failed = sorted(set(run.failed_nodes))
+        remaining = sorted(nid_ for nid_, status in run.node_states.items() if status.value not in ("succeeded", "skipped"))
+        declared_files = node.config.get("files")
+        files = [str(item) for item in declared_files] if isinstance(declared_files, list) else []
+        contract = {
+            "objective": str(run.state.get("objective") or node.prompt or nid),
+            "from_node": nid,
+            "to": node.config.get("handoff_to") or node.config.get("to"),
+            "status": run.status.value,
+            "completed": completed,
+            "failed": failed,
+            "remaining": remaining,
+            "files": files,
+            "decisions": [],
+        }
+        with self.state():
+            run.state[f"{nid}_handoff"] = contract
+        node.evidence.append(
+            f"handoff contract recorded: {len(completed)} completed, {len(failed)} failed, "
+            f"{len(remaining)} remaining; decisions are empty because the run recorded none"
+        )
+        self._succeed_node(run, node, contract)
+        return True
+
+    def _handle_wait(self, nid: str, run: WorkflowRun, node: WorkflowNode) -> bool:
+        """A bounded in-process timer.
+
+        Distinct from ``EVENT_WAIT``: this is a delay the run owes itself, not an
+        external signal. The duration is clamped to a hard ceiling so a typo
+        (``delay_seconds: 100000``) cannot park a run for days, and the MEASURED
+        sleep is reported rather than the requested number.
+        """
+        raw_delay = node.config.get("delay_seconds", node.config.get("seconds"))
+        try:
+            requested = float(raw_delay)
+        except (TypeError, ValueError):
+            self._fail_node(run, node, f"wait node '{nid}' has a non-numeric delay_seconds {raw_delay!r}", requested=raw_delay)
+            return True
+        if requested < 0:
+            self._fail_node(run, node, f"wait node '{nid}' declares a negative delay_seconds {requested}", requested=requested)
+            return True
+        effective = min(requested, MAX_WAIT_SECONDS)
+        started = time.monotonic()
+        if effective > 0:
+            time.sleep(effective)
+        measured = time.monotonic() - started
+        payload = {"requested_seconds": requested, "slept_seconds": round(measured, 6), "clamped": effective != requested}
+        if effective != requested:
+            node.evidence.append(f"wait delay clamped from {requested}s to the {MAX_WAIT_SECONDS:g}s ceiling")
+        self._succeed_node(run, node, payload)
+        return True
+
+    def _handle_event_wait(self, nid: str, run: WorkflowRun, node: WorkflowNode) -> bool:
+        """Park the node until an external signal or its deadline.
+
+        This is the node kind that makes ``WorkflowRunStatus.WAITING_EVENT``
+        reachable — previously that status existed but nothing could ever set it,
+        so a workflow had no way to wait for an outside world at all.
+
+        Resolution is explicit: :meth:`signal_event` delivers a named signal, or
+        :meth:`sweep_expired_waits` fails the wait honestly once its deadline
+        passes. Nothing polls, guesses, or times the wait out silently.
+        """
+        event_name = node.config.get("event") or node.config.get("event_name")
+        if not isinstance(event_name, str) or not event_name.strip():
+            self._fail_node(run, node, f"event_wait node '{nid}' declares no event name; a wait with nothing to wait for cannot park")
+            return True
+        event_name = event_name.strip()
+
+        with self.state():
+            waits = run.metrics.get(EXTERNAL_WAIT_REGISTRY_KEY)
+            if not isinstance(waits, dict):
+                waits = {}
+            registration = waits.get(nid)
+            if isinstance(registration, dict) and registration.get("signalled"):
+                payload = registration.get("payload")
+                waits.pop(nid, None)
+                run.metrics[EXTERNAL_WAIT_REGISTRY_KEY] = waits
+                run.state[f"{nid}_event_payload"] = payload
+                node.evidence.append(
+                    f"external event '{event_name}' delivered; payload keys: "
+                    f"{sorted(payload) if isinstance(payload, dict) else 'non-mapping payload'}"
+                )
+                self._succeed_node(run, node, {"event": event_name, "payload": payload})
+                return True
+            if not isinstance(registration, dict):
+                registration = {
+                    "event": event_name,
+                    "registered_at": now_iso(),
+                    "deadline_seconds": node.config.get("timeout_seconds", node.gate_timeout_seconds),
+                }
+                waits[nid] = registration
+                run.metrics[EXTERNAL_WAIT_REGISTRY_KEY] = waits
+                self.events.emit(
+                    "external_wait_registered",
+                    run.run_id,
+                    node_id=nid,
+                    event=event_name,
+                    deadline_seconds=registration.get("deadline_seconds"),
+                )
+
+        # Park: the node goes WAITING and the run reports WAITING_EVENT — a real,
+        # non-terminal state the engine refuses to re-dispatch until a signal or
+        # a deadline sweep resolves it.
+        with self.state():
+            node.status = NodeStatus.WAITING
+            run.node_states[nid] = NodeStatus.WAITING
+        reason = f"Node '{nid}' is waiting for external event '{event_name}'."
+        _set_run_status(run, WorkflowRunStatus.WAITING_EVENT, reason=reason)
+        run.waiting_reason = reason
+        self.events.emit(
+            "external_wait_parked",
+            run.run_id,
+            node_id=nid,
+            event=event_name,
+            node_status=NodeStatus.WAITING.value,
+            reason=reason,
+        )
+        _sync_waiting_nodes(run)
+        return True
+
+    def _handle_parallel(
+        self,
+        nid: str,
+        graph: WorkflowGraph,
+        run: WorkflowRun,
+        node: WorkflowNode,
+        node_runner: Callable[[WorkflowNode, WorkflowRun], dict[str, Any]] | None,
+        compensation_runner: Callable[[WorkflowNode, WorkflowRun], dict[str, Any]] | None,
+    ) -> bool:
+        """Execute an explicitly named set of child nodes concurrently.
+
+        ``NodeType.PARALLEL`` used to be a no-op that fell through to the default
+        runner path, so declaring it silently demanded an executor instead of
+        expressing intent. It now means what it says: the node names its members
+        in ``config.nodes`` and the engine runs them as one bounded wave.
+
+        Membership is validated against the real graph before anything executes —
+        a name that is not a node of this run fails the gate rather than being
+        skipped. The parent succeeds only when EVERY member succeeded, so a
+        partially-completed group is never reported as a completed group.
+        """
+        members = node.config.get("nodes")
+        if not isinstance(members, list) or not members:
+            self._fail_node(run, node, f"parallel node '{nid}' declares no member nodes in config.nodes; an empty group cannot run")
+            return True
+        member_ids = [str(item) for item in members]
+        missing = [member for member in member_ids if member not in graph.nodes]
+        if missing:
+            self._fail_node(run, node, f"parallel node '{nid}' names member(s) absent from the run graph: {missing}", members=member_ids)
+            return True
+        if nid in member_ids:
+            self._fail_node(run, node, f"parallel node '{nid}' lists itself as a member, which would recurse forever")
+            return True
+
+        governor = self.governor_for(run)
+        admitted = 0
+        for _ in member_ids:
+            if not governor.acquire():
+                break
+            admitted += 1
+        target = member_ids[:admitted]
+
+        with self.state():
+            for member in target:
+                if member not in run.active_nodes:
+                    run.active_nodes.append(member)
+
+        started = time.monotonic()
+        outcomes = execute_wave(
+            target,
+            lambda member: self._execute_single_node(member, graph, run, node_runner, compensation_runner),
+            max_concurrency=governor.limit,
+        )
+        for _ in range(len(target)):
+            governor.release()
+        self._record_wave(
+            run,
+            wave_index=self._next_wave_index(run),
+            nodes=list(target),
+            concurrency=governor.limit,
+            elapsed=time.monotonic() - started,
+        )
+
+        escaped = first_error(outcomes)
+        if escaped is not None:
+            self._fail_node(run, node, f"parallel group '{nid}' dispatch fault: {type(escaped).__name__}: {escaped}")
+            return True
+
+        statuses = {member: run.node_states.get(member) for member in member_ids}
+        not_succeeded = sorted(member for member, status in statuses.items() if status != NodeStatus.SUCCEEDED)
+        payload = {
+            "group": nid,
+            "members": member_ids,
+            "executed": list(target),
+            "member_statuses": {member: (status.value if status is not None else "unknown") for member, status in statuses.items()},
+            "duration_seconds": round(time.monotonic() - started, 6),
+        }
+        if not_succeeded:
+            self._fail_node(
+                run,
+                node,
+                f"parallel group '{nid}' did not complete: {len(not_succeeded)}/{len(member_ids)} member(s) are not succeeded: {not_succeeded}",
+                **payload,
+            )
+            return True
+        node.evidence.append(f"parallel group '{nid}' completed all {len(member_ids)} member(s): {member_ids}")
+        self._succeed_node(run, node, payload)
+        return True
+
+    def _handle_subworkflow(
+        self,
+        nid: str,
+        run: WorkflowRun,
+        node: WorkflowNode,
+        node_runner: Callable[[WorkflowNode, WorkflowRun], dict[str, Any]] | None,
+        compensation_runner: Callable[[WorkflowNode, WorkflowRun], dict[str, Any]] | None,
+    ) -> bool:
+        """Run a registered child workflow to a terminal state, then adopt it.
+
+        The child is a REAL run of a REAL registered definition, driven through
+        this same engine — not a simulation and not a summarized claim. The
+        parent adopts the child's MEASURED terminal status: a child that failed
+        fails the parent, and only a genuinely ``completed`` child lets the
+        parent succeed.
+
+        Recursion is bounded: a child naming its own parent workflow is refused,
+        because an unbounded subworkflow cycle would grow the run's state with no
+        bound the operator ever declared.
+        """
+        child_id = node.config.get("workflow_id") or node.config.get("subworkflow")
+        if not isinstance(child_id, str) or not child_id.strip():
+            self._fail_node(run, node, f"subworkflow node '{nid}' declares no workflow_id in its config")
+            return True
+        child_id = child_id.strip()
+        if child_id == run.workflow_id:
+            self._fail_node(run, node, f"subworkflow node '{nid}' targets its own workflow '{child_id}', which would recurse forever")
+            return True
+        if not self.get_definition(child_id):
+            self._fail_node(run, node, f"subworkflow node '{nid}' targets workflow '{child_id}', which is not registered on this engine")
+            return True
+
+        try:
+            waves = int(node.config.get("max_waves", SUBWORKFLOW_WAVE_CEILING))
+        except (TypeError, ValueError):
+            waves = SUBWORKFLOW_WAVE_CEILING
+        waves = max(1, min(waves, SUBWORKFLOW_WAVE_CEILING))
+
+        started = time.monotonic()
+        try:
+            child = self.start_run(child_id, initial_state=dict(node.config.get("initial_state") or {}), owner_id=run.owner_id)
+        except Exception as exc:  # noqa: BLE001 - surfaced with its real reason
+            self._fail_node(run, node, f"subworkflow node '{nid}' could not start child '{child_id}': {type(exc).__name__}: {exc}")
+            return True
+
+        dispatched = 0
+        try:
+            while dispatched < waves:
+                self.execute_step(child.run_id, node_runner=node_runner, compensation_runner=compensation_runner)
+                dispatched += 1
+                if child.status in TERMINAL_RUN_STATUSES:
+                    break
+                if not _has_unfinished_work(child):
+                    break
+        except Exception as exc:  # noqa: BLE001
+            self._fail_node(
+                run,
+                node,
+                f"subworkflow node '{nid}' child '{child_id}' faulted: {type(exc).__name__}: {exc}",
+                child_run_id=child.run_id,
+            )
+            return True
+
+        completed_evidence = [nid_ for nid_, status in child.node_states.items() if status == NodeStatus.SUCCEEDED]
+        payload = {
+            "child_workflow_id": child_id,
+            "child_run_id": child.run_id,
+            "child_status": child.status.value,
+            "waves_dispatched": dispatched,
+            "child_completed_nodes": completed_evidence,
+            "child_tokens_consumed": child.tokens_consumed,
+            "duration_seconds": round(time.monotonic() - started, 6),
+        }
+        if child.status is not WorkflowRunStatus.COMPLETED:
+            self._fail_node(
+                run,
+                node,
+                f"subworkflow node '{nid}' child run '{child.run_id}' ended '{child.status.value}', not completed; the parent does not adopt an unfinished child",
+                **payload,
+            )
+            return True
+        with self.state():
+            run.state[f"{nid}_subworkflow"] = payload
+        node.evidence.append(
+            f"subworkflow '{child_id}' completed as run '{child.run_id}' after {dispatched} wave(s) "
+            f"with {len(completed_evidence)} verified node(s) and {child.tokens_consumed} token(s)"
+        )
+        self._succeed_node(run, node, payload)
+        return True
+
+    # ------------------------------------------------- external signal surface
+
+    def signal_event(self, run_id: str, event_name: str, payload: Any = None) -> WorkflowRun:
+        """Deliver a named external signal and release its waiting nodes.
+
+        The counterpart to :meth:`_handle_event_wait`. Only nodes registered for
+        exactly this event are released; a signal for an event nothing waits on is
+        journalled as unmatched and changes no node state, so a typo in a caller's
+        event name cannot silently advance a run.
+        """
+        run = self.get_run(run_id)
+        if run is None:
+            raise KeyError(f"Run '{run_id}' not found.")
+        if not isinstance(event_name, str) or not event_name.strip():
+            raise ValueError("event_name must be a non-empty string")
+        event_name = event_name.strip()
+
+        with self.state():
+            waits = run.metrics.get(EXTERNAL_WAIT_REGISTRY_KEY)
+            waits = waits if isinstance(waits, dict) else {}
+            matched = sorted(
+                nid for nid, registration in waits.items()
+                if isinstance(registration, dict) and registration.get("event") == event_name and not registration.get("signalled")
+            )
+            for nid in matched:
+                waits[nid]["signalled"] = True
+                waits[nid]["signalled_at"] = now_iso()
+                waits[nid]["payload"] = payload
+            if matched:
+                run.metrics[EXTERNAL_WAIT_REGISTRY_KEY] = waits
+
+        self.events.emit(
+            "external_event_signalled",
+            run_id,
+            event=event_name,
+            matched_nodes=matched,
+            unmatched=not matched,
+            payload_keys=sorted(payload) if isinstance(payload, dict) else None,
+        )
+        if matched and run.status is WorkflowRunStatus.WAITING_EVENT:
+            _set_run_status(run, WorkflowRunStatus.RUNNING, reason=f"external event '{event_name}' delivered")
+            run.waiting_reason = None
+            _sync_waiting_nodes(run)
+        return run
+
+    def sweep_expired_waits(self, run_id: str) -> WorkflowRun:
+        """Fail every external wait whose declared deadline has already passed.
+
+        The honest counterpart to :meth:`signal_event`: a wait nobody ever
+        satisfies must end, and it must end as a FAILURE carrying the measured
+        deadline. Letting it park forever would make the run permanently
+        non-terminal while reporting no error at all.
+        """
+        run = self.get_run(run_id)
+        if run is None:
+            raise KeyError(f"Run '{run_id}' not found.")
+        graph = self._run_graph_for(run)
+        now = datetime.now(UTC)
+
+        expired: list[tuple[str, float]] = []
+        with self.state():
+            waits = run.metrics.get(EXTERNAL_WAIT_REGISTRY_KEY)
+            waits = dict(waits) if isinstance(waits, dict) else {}
+            for nid, registration in waits.items():
+                if not isinstance(registration, dict) or registration.get("signalled"):
+                    continue
+                try:
+                    deadline = float(registration.get("deadline_seconds"))
+                except (TypeError, ValueError):
+                    continue
+                registered_at = registration.get("registered_at")
+                age = 0.0
+                if isinstance(registered_at, str):
+                    try:
+                        age = (now - datetime.fromisoformat(registered_at)).total_seconds()
+                    except ValueError:
+                        age = 0.0
+                if age >= deadline:
+                    expired.append((nid, age))
+            for nid, _age in expired:
+                waits.pop(nid, None)
+            if expired:
+                run.metrics[EXTERNAL_WAIT_REGISTRY_KEY] = waits
+
+        for nid, age in expired:
+            node = graph.nodes.get(nid)
+            if node is None:
+                continue
+            self._fail_node(
+                run,
+                node,
+                f"external wait on node '{nid}' expired after {age:.3f}s without a matching signal; the run cannot wait forever",
+            )
+        if expired:
+            _sync_waiting_nodes(run)
+            if run.status is WorkflowRunStatus.WAITING_EVENT and not run.waiting_nodes:
+                _set_run_status(run, WorkflowRunStatus.RUNNING, reason="all external waits expired")
+                run.waiting_reason = None
+        return run
+
+    def suspend_run(self, run_id: str, reason: str = "suspended by operator") -> WorkflowRun:
+        """Park a live run in ``SUSPENDED`` without inventing a terminal outcome.
+
+        A suspended run is non-terminal and non-dispatchable, so a step after a
+        suspend is a no-op returning the real status rather than quietly
+        continuing the work the operator asked to hold.
+        """
+        run = self.get_run(run_id)
+        if run is None:
+            raise KeyError(f"Run '{run_id}' not found.")
+        if run.status in TERMINAL_RUN_STATUSES:
+            return run
+        _set_run_status(run, WorkflowRunStatus.SUSPENDED, reason=reason)
+        run.waiting_reason = reason
+        self.events.emit("workflow_suspended", run_id, reason=reason)
+        self._publish_run_graph(run_id)
+        return run
+
+    def resume_run(self, run_id: str, reason: str = "resumed by operator") -> WorkflowRun:
+        """Return a ``SUSPENDED`` run to ``RUNNING`` so it can be stepped again."""
+        run = self.get_run(run_id)
+        if run is None:
+            raise KeyError(f"Run '{run_id}' not found.")
+        if run.status is not WorkflowRunStatus.SUSPENDED:
+            raise ValueError(f"run '{run_id}' is '{run.status.value}', not suspended; nothing to resume")
+        _set_run_status(run, WorkflowRunStatus.RUNNING, reason=reason)
+        run.waiting_reason = None
+        self.events.emit("workflow_resumed", run_id, reason=reason)
+        self._publish_run_graph(run_id)
+        return run
+
     def apply_patch(self, run_id: str, patch: WorkflowPatch) -> tuple[WorkflowGraph, Any]:
         run = self.get_run(run_id)
         if not run:
@@ -1809,13 +2508,7 @@ class DynamicWorkflowEngine:
         run = self.get_run(run_id)
         if not run:
             raise KeyError(f"Run '{run_id}' not found.")
-        if run.status in {
-            WorkflowRunStatus.COMPLETED,
-            WorkflowRunStatus.FAILED,
-            WorkflowRunStatus.CANCELLED,
-            WorkflowRunStatus.BUDGET_EXHAUSTED,
-            WorkflowRunStatus.ABORTED,
-        }:
+        if run.status in TERMINAL_RUN_STATUSES:
             return run
         _set_run_status(run, WorkflowRunStatus.CANCELLED, reason=reason)
         run.active_nodes.clear()
