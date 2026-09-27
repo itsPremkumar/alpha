@@ -43,6 +43,21 @@ function CoverageCard(props: { name: string; cov: ClassCoverage }) {
   );
 }
 
+export function UnwiredBadge(props: { manifestFound: boolean; count: number }) {
+  const { manifestFound, count } = props;
+  // With no readable manifest the Gateway reports `coverage: {}` and
+  // `unwired: []` (backend/Dockerfile:80; backend/tests/
+  // test_feature_manifest_deployment.py:9), so an empty list here means
+  // "nothing was diffed", not "everything is wired". Green on that is a
+  // fabricated all-clear for a measurement that was never taken.
+  if (!manifestFound) return <Badge tone="gray">unwired unknown</Badge>;
+  return count === 0 ? (
+    <Badge tone="green">no unwired entries</Badge>
+  ) : (
+    <Badge tone="amber">{count} unwired</Badge>
+  );
+}
+
 export function IntegrationSection() {
   const [health, setHealth] = useState<IntegrationHealth | null>(null);
   const [loading, setLoading] = useState(true);
@@ -118,7 +133,7 @@ export function IntegrationSection() {
 
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
         {health.manifest_found ? <Badge tone="green">manifest present</Badge> : <Badge tone="amber">manifest missing</Badge>}
-        {totalUnwired === 0 ? <Badge tone="green">no unwired entries</Badge> : <Badge tone="amber">{totalUnwired} unwired</Badge>}
+        <UnwiredBadge manifestFound={health.manifest_found} count={totalUnwired} />
         <span className="text-muted-foreground">
           capabilities: {enabledCount}/{caps.length} enabled
         </span>
