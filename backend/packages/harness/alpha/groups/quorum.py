@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import uuid4
 
-VoteChoice = Literal["agree", "disagree", "amend"]
+VoteChoice = Literal["agree", "disagree", "amend", "abstain"]
 ProposalStatus = Literal["in_progress", "approved", "rejected"]
 
 
@@ -85,6 +85,10 @@ class QuorumEngine:
         agree_count = sum(1 for v in proposal.votes.values() if v["choice"] == "agree")
         disagree_count = sum(1 for v in proposal.votes.values() if v["choice"] == "disagree")
         amend_count = sum(1 for v in proposal.votes.values() if v["choice"] == "amend")
+        # Abstain is counted, not discarded: a member that participated but took
+        # no legible position is neither agreeing nor disagreeing, and hiding it
+        # would inflate the apparent breadth of the room.
+        abstain_count = sum(1 for v in proposal.votes.values() if v["choice"] == "abstain")
         total_votes = len(proposal.votes)
 
         # Quorum threshold check
@@ -102,6 +106,7 @@ class QuorumEngine:
             "agree": agree_count,
             "disagree": disagree_count,
             "amend": amend_count,
+            "abstain": abstain_count,
             "total_votes": total_votes,
             "eligible": total_eligible_voters,
             "ratio": ratio,

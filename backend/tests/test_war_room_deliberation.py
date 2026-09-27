@@ -25,6 +25,15 @@ from alpha.groups.war_room import (
 )
 
 
+#: The war room measures agreement over CLAIMS a member states, so a test
+#: participant has to satisfy the same contribution contract a real subagent is
+#: asked to satisfy. Every invariant assertion in this file is unchanged; only the
+#: fixture's output format follows the documented contract. Moderator returns are
+#: deliberately left alone - the synthesis stage is not tallied.
+def with_claims(text: str, *claims: str) -> str:
+    return f"{text}\nSTATED CLAIMS: " + " | ".join(claims or ("a position",))
+
+
 @pytest.fixture
 def env(tmp_path):
     return {"root": tmp_path, "store": OrgEventStore(tmp_path / "events.jsonl")}
@@ -57,11 +66,11 @@ def test_a_runs_staged_clocked_bounded_deliberation_to_a_synthesis(env):
 
     async def alice(ctx):
         order.append(f"alice:{ctx.stage.name}")
-        return f"alice says ship it because of {ctx.topic}"
+        return with_claims(f"alice says ship it because of {ctx.topic}", "ship it")
 
     async def bob(ctx):
         order.append(f"bob:{ctx.stage.name}")
-        return "bob agrees, with caveats"
+        return with_claims("bob agrees, with caveats", "ship it")
 
     async def moderator(ctx):
         order.append("moderator")
@@ -92,13 +101,11 @@ def test_a_runs_staged_clocked_bounded_deliberation_to_a_synthesis(env):
 )
 def test_quorum_policy_is_explicit_and_reported(env, policy, expected_required):
     """The room REPORTS which policy it used, and enforces that policy's count."""
-    config = build_default_config(
-        "policy check", ["a", "b", "c"], quorum_policy=policy
-    )
+    config = build_default_config("policy check", ["a", "b", "c"], quorum_policy=policy)
     assert config.required_votes() == expected_required
 
     async def ok(ctx):
-        return "a position"
+        return with_claims("a position", "a position")
 
     async def moderator(ctx):
         return "synthesis"
@@ -126,7 +133,7 @@ def test_quorum_uses_the_quorum_engine_and_records_the_proposal(env):
     engine = QuorumEngine()
 
     async def ok(ctx):
-        return "a position"
+        return with_claims("a position", "a position")
 
     async def moderator(ctx):
         return "synthesis"
@@ -156,7 +163,7 @@ def test_b_wedged_participant_ends_the_run_in_a_typed_timeout(env):
     started = time.monotonic()
 
     async def healthy(ctx):
-        return "I delivered"
+        return with_claims("I delivered", "I delivered")
 
     async def wedged(ctx):
         await asyncio.sleep(3600)  # never returns
@@ -191,8 +198,9 @@ def test_b_wedged_participant_ends_the_run_in_a_typed_timeout(env):
 
 def test_b_timeout_is_reported_in_the_quorum_decision(env):
     """A timeout still reports the policy and the tally behind it."""
+
     async def healthy(ctx):
-        return "delivered"
+        return with_claims("delivered", "delivered")
 
     async def wedged(ctx):
         await asyncio.sleep(3600)
@@ -200,22 +208,25 @@ def test_b_timeout_is_reported_in_the_quorum_decision(env):
     async def moderator(ctx):
         return "synthesis"
 
-    room = make_room(
-        env, {"healthy": healthy, "wedged": wedged}, policy="all", timeout=0.4, grace=0.2, moderator=moderator
-    )
+    room = make_room(env, {"healthy": healthy, "wedged": wedged}, policy="all", timeout=0.4, grace=0.2, moderator=moderator)
     run = asyncio.run(room.execute())
     assert run.final_quorum is not None
     assert run.final_quorum.passed is False
-    assert run.final_quorum.agree == 1
-    assert run.final_quorum.disagree == 1
+    # `agree` counts MEMBERS IN A SHARED POSITION, and a single surviving
+    # opinion is not agreement - it is isolation. The old status-proxy tally
+    # reported 1 here, which read as "half the room agreed" when in fact nobody
+    # agreed with anybody. The wedged member is still counted as a failure.
+    assert run.final_quorum.agree == 0
+    assert run.final_quorum.consensus["isolated"] == ["healthy"]
     assert "all" in run.final_quorum.human_line()
 
 
 # ---------------------------------------------------------------------- (c)
 def test_c_empty_synthesis_fails_instead_of_reporting_success(env):
     """(c) NEVER publish synthesis="" with status="succeeded"."""
+
     async def ok(ctx):
-        return "a real position"
+        return with_claims("a real position", "a real position")
 
     async def empty_moderator(ctx):
         return "   \n\t  "  # whitespace only: an empty deliverable
@@ -236,7 +247,7 @@ def test_c_empty_synthesis_fails_instead_of_reporting_success(env):
 
 def test_c_synthesis_returning_none_also_fails(env):
     async def ok(ctx):
-        return "a real position"
+        return with_claims("a real position", "a real position")
 
     async def none_moderator(ctx):
         return None
@@ -249,7 +260,7 @@ def test_c_synthesis_returning_none_also_fails(env):
 
 def test_c_a_synthesis_that_raises_fails_loudly(env):
     async def ok(ctx):
-        return "a real position"
+        return with_claims("a real position", "a real position")
 
     async def broken_moderator(ctx):
         raise RuntimeError("moderator exploded")
@@ -268,14 +279,14 @@ def test_d_one_members_failure_does_not_degrade_a_healthy_sibling(env):
 
     async def healthy_one(ctx):
         delivered.append(f"one:{ctx.stage.name}")
-        return "one delivered fully"
+        return with_claims("one delivered fully", "the shared position")
 
     async def explodes(ctx):
         raise RuntimeError("this member is broken")
 
     async def healthy_two(ctx):
         delivered.append(f"two:{ctx.stage.name}")
-        return "two delivered fully"
+        return with_claims("two delivered fully", "the shared position")
 
     async def moderator(ctx):
         # The moderator must SEE both healthy siblings, by handle and in full.
@@ -295,9 +306,9 @@ def test_d_one_members_failure_does_not_degrade_a_healthy_sibling(env):
     for stage in run.stages[:2]:
         by_name = {r.participant: r for r in stage.receipts}
         assert by_name["one"].status == MemberStatus.CONTRIBUTED
-        assert by_name["one"].output == "one delivered fully"
+        assert by_name["one"].output == with_claims("one delivered fully", "the shared position")
         assert by_name["two"].status == MemberStatus.CONTRIBUTED
-        assert by_name["two"].output == "two delivered fully"
+        assert by_name["two"].output == with_claims("two delivered fully", "the shared position")
         assert by_name["explodes"].status == MemberStatus.FAILED
         # The failure is in its OWN receipt, not smeared across the others.
         assert "explodes" not in by_name["one"].error
@@ -314,7 +325,10 @@ def test_d_an_empty_contribution_is_not_counted_as_agreement(env):
     """A member that returns nothing is EMPTY, never agreement."""
 
     async def talks(ctx):
-        return "a real position"
+        return with_claims("a real position", "a real position")
+
+    async def agrees_too(ctx):
+        return with_claims("the same position", "a real position")
 
     async def says_nothing(ctx):
         return ""
@@ -322,27 +336,31 @@ def test_d_an_empty_contribution_is_not_counted_as_agreement(env):
     async def moderator(ctx):
         return "synthesis"
 
-    # quorum_policy="any" is deliberate: it IS satisfied by the one real
-    # contribution, so the run succeeds and the stage does NOT fail on policy.
-    # What is being proved here is narrower and more interesting: an empty
-    # contribution must never be counted as a delivery, and must never be
-    # laundered into "this member agreed".
-    room = make_room(env, {"talks": talks, "quiet": says_nothing}, policy="any", moderator=moderator)
+    # quorum_policy="any" is deliberate: it IS satisfied once two members share a
+    # position, so the run reaches synthesis and does NOT fail on policy. What is
+    # being proved here is narrower and more interesting: an empty contribution
+    # must never be counted as a delivery, and must never be laundered into
+    # "this member agreed". A third member is needed so the two real positions
+    # actually form a shared position - one speaker alone is isolated, not agreed.
+    room = make_room(env, {"talks": talks, "agrees": agrees_too, "quiet": says_nothing}, policy="any", moderator=moderator)
     run = asyncio.run(room.execute())
 
     empties = [r for r in run.all_receipts() if r.participant == "quiet"]
     assert empties, "the empty member has no receipt at all"
     assert all(r.status == MemberStatus.EMPTY for r in empties)
     assert all(r.output == "" for r in empties)
-    # The empty output did NOT become agreement: only the real one did.
-    # final_quorum is the LAST stage that voted, so its counts are per-stage.
-    assert run.final_quorum.agree == 1, "an empty output was counted as agreement"
+    # The empty output did NOT become agreement. The two real members share a
+    # position and form the agreeing set; the silent one is in none of the
+    # buckets that count. Under the claims-based tally the guarantee is
+    # STRONGER than the old status proxy, which scored any member that returned
+    # a string as "agree".
+    assert run.final_quorum.consensus["agreeing"] == ["agrees", "talks"]
+    assert "quiet" not in run.final_quorum.consensus["agreeing"]
+    assert run.final_quorum.agree == 2
     assert run.final_quorum.disagree == 0
-    assert run.final_quorum.amend == 1, "an empty output should be an amend, not an agree"
     # Every stage recorded the empty member as EMPTY, never as agreement.
     for stage in run.stages[:2]:
-        assert stage.quorum.agree == 1
-        assert stage.quorum.amend == 1
+        assert "quiet" not in stage.quorum.consensus["agreeing"]
     # And it is reported as a degraded run, not a clean one.
     assert run.status == RunStatus.PARTIAL
     assert "did not deliver" in run.failure_reason
@@ -352,7 +370,7 @@ def test_d_an_empty_contribution_cannot_satisfy_an_all_quorum(env):
     """A stricter policy is not satisfiable by silence."""
 
     async def talks(ctx):
-        return "a real position"
+        return with_claims("a real position", "a real position")
 
     async def says_nothing(ctx):
         return ""
@@ -369,15 +387,20 @@ def test_d_an_empty_contribution_cannot_satisfy_an_all_quorum(env):
     assert run.status == RunStatus.FAILED, "an empty contribution must not satisfy an ALL quorum"
     empties = [r for r in run.all_receipts() if r.participant == "quiet"]
     assert empties and all(r.status == MemberStatus.EMPTY for r in empties)
-    assert run.final_quorum.agree == 1, "an empty output was counted as agreement"
+    # One member spoke and one stayed silent, so no two members share a
+    # position: `agree` is 0 and the speaker is recorded as isolated. Silence
+    # therefore cannot satisfy an ALL quorum, and neither can a lone opinion.
+    assert run.final_quorum.agree == 0, "an empty output was counted as agreement"
+    assert run.final_quorum.consensus["isolated"] == ["talks"]
     assert run.final_quorum.passed is False
 
 
 # ------------------------------------------------------------- transcript
 def test_transcript_is_durable_gap_free_and_replayable(env):
     """Per-message attribution and timing, durable and replayable."""
+
     async def ok(ctx):
-        return "a position"
+        return with_claims("a position", "a position")
 
     async def moderator(ctx):
         return "DECISION"
@@ -404,8 +427,9 @@ def test_transcript_is_durable_gap_free_and_replayable(env):
 
 def test_a_transcript_fault_does_not_rewrite_a_delivered_member_as_failed(env, monkeypatch):
     """A transcript fault must NOT be able to rewrite an already-delivered member."""
+
     async def ok(ctx):
-        return "a position"
+        return with_claims("a position", "a position")
 
     async def moderator(ctx):
         return "DECISION"
@@ -442,7 +466,7 @@ def test_a_lost_failure_receipt_is_never_swallowed(env, monkeypatch):
     from alpha.channels.transcript import TranscriptError
 
     async def ok(ctx):
-        return "a position"
+        return with_claims("a position", "a position")
 
     async def explodes(ctx):
         raise RuntimeError("member is broken")

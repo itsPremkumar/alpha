@@ -1,11 +1,22 @@
 """The war room: a staged, clock-bounded group deliberation inside a chat channel.
 
 This is a *scheduler over the existing engines*, not a second deliberation
-system. Reasoning comes from :mod:`alpha.deliberation` (via a participant
-callable), vote recording and tallying come from :class:`alpha.groups.quorum.QUorumEngine`,
-participants are real subagents through the same
-:class:`alpha.subagents.executor.SubagentExecutor` seam ``groups/runner.py``
-uses, and every transition lands in the one governance ledger.
+system. Vote recording and tallying come from
+:class:`alpha.groups.quorum.QuorumEngine`, participants are real subagents
+through the same :class:`alpha.subagents.executor.SubagentExecutor` seam
+``groups/runner.py`` uses, and every transition lands in the one governance
+ledger.
+
+What this module uses from :mod:`alpha.deliberation` is the
+``DeliberationStrategy`` contract and, for ``strategy="auto"``, the
+``DeliberationRouter`` classifier: ``plan_stages()`` gives each strategy a real
+stage shape and the run records the router's own rationale. What it does **not**
+do is execute the multi-model engines - a ``council`` room's three stages run one
+subagent each, not :class:`~alpha.deliberation.council.CouncilEngine`. See
+``groups/AGENTS.md`` for that boundary.
+
+Claims-level agreement lives in :mod:`alpha.groups.consensus` and cross-agent
+taint screening in :mod:`alpha.groups.taint`.
 
 The five invariants this module exists to hold, each with a test:
 
@@ -54,9 +65,14 @@ from uuid import uuid4
 from alpha.channels import ledger as channel_ledger
 from alpha.channels.timing import Clock, Deadline, RoomIntake, StageBudget, monotonic_clock, run_bounded
 from alpha.channels.transcript import TranscriptStore, utc_now_iso
+from alpha.deliberation.models import DeliberationStrategy
+from alpha.groups import taint as taint_mod
+from alpha.groups.consensus import measure as measure_consensus
+from alpha.groups.consensus import read_position
 from alpha.groups.quorum import QuorumEngine
 
 logger = logging.getLogger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # vocabulary
@@ -118,6 +134,135 @@ class LedgerUnavailable(RuntimeError):
 
 
 # ---------------------------------------------------------------------------
+# strategy -> stage plan
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True, slots=True)
+class StagePlan:
+    """A stage shape before it is given a budget.
+
+    ``requires_previous_quorum`` is the field that makes the strategy plans
+    usable. A stage that collects contributions but is *exploratory* must not end
+    the run when it fails quorum: in a debate nobody is supposed to agree after
+    one round, and a red-team attack is *supposed* to find something. Only the
+    stage that actually decides gets to terminate the room.
+    """
+
+    name: str
+    prompt: str
+    collects: bool = True
+    requires_previous_quorum: bool = True
+
+
+#: Rounds of adversarial exchange a debating strategy runs before judging.
+DEFAULT_DEBATE_ROUNDS = 2
+
+
+def _plan(*stages: StagePlan) -> tuple[StagePlan, ...]:
+    """Open a plan: every collecting stage except the last is exploratory."""
+    collecting = [index for index, stage in enumerate(stages) if stage.collects]
+    deciding = collecting[-1] if collecting else None
+    return tuple(
+        StagePlan(
+            name=stage.name,
+            prompt=stage.prompt,
+            collects=stage.collects,
+            # A non-collecting tail (synthesis/verdict) is never consulted, so it
+            # keeps the default and is simply inert.
+            requires_previous_quorum=(index == deciding),
+        )
+        for index, stage in enumerate(stages)
+    )
+
+
+#: The stage shape each deliberation strategy implies. The names and prompts are
+#: the contract a reader can audit: a COUNCIL really does draft, then review
+#: blind, then chair; a RED_TEAM really does propose, attack, defend, judge.
+STRATEGY_STAGE_PLANS: Mapping[DeliberationStrategy, tuple[StagePlan, ...]] = {
+    DeliberationStrategy.SINGLE: _plan(
+        StagePlan("position", "State the single most defensible answer, and say what would change it."),
+        StagePlan("answer", "Deliver the final answer plainly. No hedging, no committee voice.", collects=False),
+    ),
+    DeliberationStrategy.ENSEMBLE: _plan(
+        StagePlan("positions", "Answer from your own perspective. Do not try to agree with anyone."),
+        StagePlan("aggregate", "Merge the perspectives above into one answer, naming where they genuinely conflict.", collects=False),
+    ),
+    DeliberationStrategy.COUNCIL: _plan(
+        StagePlan("draft", "Draft your independent answer. Nobody else has spoken yet."),
+        StagePlan(
+            "blind_review",
+            "Critique the drafts above against correctness, evidence, reasoning, completeness and clarity. Name concrete flaws, not adjectives.",
+        ),
+        StagePlan("chairman", "Weigh the reviews and issue the council's single decision.", collects=False),
+    ),
+    DeliberationStrategy.DEBATE: _plan(
+        StagePlan("opening", "Open the case for your position. Make it your strongest."),
+        StagePlan(
+            "cross_exam",
+            "Attack the arguments above. Find the weakest joint and press it. Concede nothing you do not believe.",
+        ),
+        StagePlan("judge", "Weigh every turn and rule. State the ruling and the reasoning.", collects=False),
+    ),
+    DeliberationStrategy.PEER_REVIEW: _plan(
+        StagePlan("draft", "Produce your answer for review."),
+        StagePlan("peer_review", "Review the other drafts. Score them and list the flaws you would fix first."),
+        StagePlan("synthesis", "Fold the reviews into one reviewed answer.", collects=False),
+    ),
+    DeliberationStrategy.MOA: _plan(
+        StagePlan("references", "Produce a high-quality independent answer to be used as a reference."),
+        StagePlan("aggregate", "Synthesise the references above into a single better answer. Do not simply concatenate them.", collects=False),
+    ),
+    DeliberationStrategy.JUDGE: _plan(
+        StagePlan("case", "Lay out the case as you see it, with your ruling on contested points."),
+        StagePlan("judge", "Rule on the case above and state the decision.", collects=False),
+    ),
+    DeliberationStrategy.RESEARCH_COUNCIL: _plan(
+        StagePlan("research", "Research the topic and report what you found, with sources."),
+        StagePlan("cross_exam", "Challenge the research above: what is missing, unsupported, or stale?"),
+        StagePlan("synthesis", "Produce the council's research answer.", collects=False),
+    ),
+    DeliberationStrategy.RED_TEAM: _plan(
+        StagePlan("proposal", "State the proposal you are about to attack."),
+        StagePlan("attack", "Attack the proposal above. Produce the strongest available attack, not a token objection."),
+        StagePlan("defense", "Defend the proposal against the attack, or concede what genuinely fails."),
+        StagePlan("verdict", "Rule: does the proposal survive? State what must change if it does not.", collects=False),
+    ),
+    DeliberationStrategy.EXPERT_PANEL: _plan(
+        StagePlan("expertise", "Answer strictly from your domain expertise. Say what is outside it."),
+        StagePlan("panel", "Compare the expert answers above and surface the genuine disagreements."),
+        StagePlan("synthesis", "Deliver the panel's answer, preserving any unresolved disagreement.", collects=False),
+    ),
+}
+
+
+def plan_stages(strategy: DeliberationStrategy, *, debate_rounds: int = DEFAULT_DEBATE_ROUNDS) -> tuple[StagePlan, ...]:
+    """The stage shape for one strategy.
+
+    ``DEBATE`` is the only plan whose length varies: it interleaves
+    ``cross_exam`` rounds between one opening and one judgment, which is the shape
+    a multi-round adversarial exchange actually needs.
+    """
+    if strategy is not DeliberationStrategy.DEBATE:
+        return STRATEGY_STAGE_PLANS[strategy]
+
+    rounds = max(1, int(debate_rounds))
+    opening, cross_exam, judge = STRATEGY_STAGE_PLANS[DeliberationStrategy.DEBATE]
+    stages: list[StagePlan] = [opening]
+    for index in range(rounds):
+        stages.append(
+            StagePlan(
+                name=cross_exam.name if index == 0 else f"{cross_exam.name}_{index + 1}",
+                prompt=cross_exam.prompt,
+                collects=True,
+                # Every round but the last is exploratory: a room that has not
+                # agreed after round 1 is behaving correctly, not failing.
+                requires_previous_quorum=(index == rounds - 1),
+            )
+        )
+    stages.append(judge)
+    return tuple(stages)
+
+
+# ---------------------------------------------------------------------------
 # configuration
 # ---------------------------------------------------------------------------
 @dataclass(frozen=True, slots=True)
@@ -156,6 +301,15 @@ class WarRoomConfig:
     max_parallel_participants: int = 4
     #: Refuse to open a room with fewer live participants than this.
     min_participants: int = 2
+    #: Which deliberation strategy shaped ``stages``. ``None`` means the legacy
+    #: fixed ``positions -> cross_exam -> synthesis`` plan, recorded as
+    #: ``"legacy_fixed"`` rather than dressed up as a strategy.
+    strategy: DeliberationStrategy | None = None
+    #: The router's own words for why ``AUTO`` resolved to ``strategy``. Empty for
+    #: an explicit strategy, which needs no justification.
+    strategy_rationale: str = ""
+    #: Adversarial rounds for the DEBATE plan.
+    debate_rounds: int = DEFAULT_DEBATE_ROUNDS
 
     def __post_init__(self) -> None:
         topic = (self.topic or "").strip()
@@ -165,9 +319,7 @@ class WarRoomConfig:
             raise ValueError("war room topic exceeds 20000 characters")
         participants = tuple(dict.fromkeys(p.strip() for p in self.participants if p and p.strip()))
         if len(participants) < self.min_participants:
-            raise ValueError(
-                f"war room needs at least {self.min_participants} participants, got {len(participants)}"
-            )
+            raise ValueError(f"war room needs at least {self.min_participants} participants, got {len(participants)}")
         if not self.stages:
             raise ValueError("a war room needs at least one stage")
         object.__setattr__(self, "topic", topic)
@@ -205,6 +357,9 @@ class WarRoomConfig:
             "quorum_min_votes": self.quorum_min_votes,
             "required_votes": self.required_votes(),
             "max_parallel_participants": self.max_parallel_participants,
+            "strategy": str(self.strategy) if self.strategy is not None else "legacy_fixed",
+            "strategy_rationale": self.strategy_rationale,
+            "debate_rounds": self.debate_rounds,
         }
 
 
@@ -226,13 +381,31 @@ class MemberReceipt:
     seq: int = 0
     #: Set when this receipt could not be persisted. Never silently dropped.
     persistence_error: str = ""
+    #: Claims the member stated, parsed out of ``output``.
+    claims: list[str] = field(default_factory=list)
+    #: The member's own confidence. Recorded only, never used to move a
+    #: threshold: self-reported confidence does not separate correct from
+    #: incorrect answers, so weighting on it would be theatre.
+    self_confidence: float | None = None
+    #: ``clean`` / ``suspect`` / ``infected``. See :mod:`alpha.groups.taint`.
+    taint: str = "clean"
+    taint_categories: list[str] = field(default_factory=list)
+    #: The model that answered, when known. Two members sharing it are collapsed
+    #: to one voice by the consensus measurement.
+    model_id: str = ""
 
     @property
     def delivered(self) -> bool:
         return MemberStatus(self.status) is MemberStatus.CONTRIBUTED
 
+    @property
+    def tainted(self) -> bool:
+        return self.taint != taint_mod.Taint.CLEAN
+
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        data = asdict(self)
+        data["tainted"] = self.tainted
+        return data
 
 
 @dataclass(slots=True)
@@ -253,17 +426,22 @@ class QuorumDecision:
     #: False when QuorumEngine's own tally verdict disagrees with the policy
     #: evaluation. Recorded rather than smoothed over.
     engine_agrees_with_policy: bool = True
+    #: Claim-level agreement behind the verdict. The policy decides *whether* the
+    #: stage passed; this says *what the room actually agreed about*.
+    consensus: dict[str, Any] = field(default_factory=dict)
+    #: Unanimity/duplication signal. Disclosed, never decisive on its own.
+    collusion: dict[str, Any] = field(default_factory=dict)
+    #: Screens that flagged a contribution this stage.
+    taint_findings: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        data = asdict(self)
+        data["human_line"] = self.human_line()
+        return data
 
     def human_line(self) -> str:
         verdict = "PASSED" if self.passed else "NOT MET"
-        return (
-            f"stage={self.stage} policy={self.policy} required={self.required_votes} "
-            f"agree={self.agree} disagree={self.disagree} amend={self.amend} "
-            f"of eligible={self.eligible_voters} -> {verdict}"
-        )
+        return f"stage={self.stage} policy={self.policy} required={self.required_votes} agree={self.agree} disagree={self.disagree} amend={self.amend} of eligible={self.eligible_voters} -> {verdict}"
 
 
 @dataclass(slots=True)
@@ -315,6 +493,18 @@ class WarRoomRun:
     receipt_loss: list[str] = field(default_factory=list)
     final_quorum: QuorumDecision | None = None
     schema_version: int = 1
+    #: Which deliberation strategy produced ``stages``, or ``"legacy_fixed"``.
+    #: Mirrored onto the run so a reader does not have to open ``config`` to
+    #: learn what shape the room ran.
+    strategy: str = "legacy_fixed"
+    strategy_rationale: str = ""
+    #: Preserved minority view across the run, keyed by stage then member. A
+    #: consensus number with the objection deleted is a quieter lie than none.
+    minority_dissent: dict[str, dict[str, str]] = field(default_factory=dict)
+    #: Every contribution the taint screen flagged, with its reasons.
+    taint_findings: list[dict[str, Any]] = field(default_factory=list)
+    #: True when any stage recorded an ``infected`` contribution.
+    tainted: bool = False
 
     @property
     def terminal(self) -> bool:
@@ -352,6 +542,11 @@ class WarRoomRun:
             "transcript_errors": list(self.transcript_errors),
             "receipt_loss": list(self.receipt_loss),
             "final_quorum": self.final_quorum.to_dict() if self.final_quorum else None,
+            "strategy": self.strategy,
+            "strategy_rationale": self.strategy_rationale,
+            "minority_dissent": {stage: dict(members) for stage, members in self.minority_dissent.items()},
+            "taint_findings": list(self.taint_findings),
+            "tainted": self.tainted,
         }
 
 
@@ -375,9 +570,7 @@ class ContributionContext:
     def prompt(self) -> str:
         prior = ""
         if self.previous_outputs:
-            rendered = "\n".join(
-                f"--- @{name} ---\n{text}" for name, text in self.previous_outputs.items() if text
-            )
+            rendered = "\n".join(f"--- @{name} ---\n{text}" for name, text in self.previous_outputs.items() if text)
             prior = f"\n\nEarlier in this room:\n{rendered}"
         return (
             f"War room topic: {self.topic}\n"
@@ -385,7 +578,14 @@ class ContributionContext:
             f"Your instruction: {self.stage.prompt}\n"
             f"{prior}\n\n"
             f"Answer as @{self.participant}. Your answer is your only contribution to this "
-            "stage; it is recorded verbatim and attributed to you."
+            "stage; it is recorded verbatim and attributed to you.\n\n"
+            # This trailing block is a CONTRACT, not decoration: the room measures
+            # agreement over these claims, so a member that omits them is recorded
+            # as unparsed rather than counted as agreeing.
+            "Finish your answer with exactly these two lines:\n"
+            "STATED CLAIMS: <claim one> | <claim two>\n"
+            "SELF CONFIDENCE: <0.00-1.00>\n"
+            "Keep each claim to a single falsifiable position."
         )
 
 
@@ -432,9 +632,7 @@ class SubagentParticipant:
             disallowed_tools=list(self.disallowed_tools),
         )
         executor = SubagentExecutor(config=config, agent_type=self.agent_type)
-        execution_id = executor.execute_async(
-            ctx.prompt(), task_id=f"{ctx.run_id}:{ctx.stage.name}:{ctx.participant}"
-        )
+        execution_id = executor.execute_async(ctx.prompt(), task_id=f"{ctx.run_id}:{ctx.stage.name}:{ctx.participant}")
         if self._cancel is not None:
             self._cancel(execution_id)
         from alpha.subagents.executor import get_background_task_result
@@ -486,7 +684,13 @@ class WarRoom:
         self.dir = Path(root) / room / self.run_id
         self.dir.mkdir(parents=True, exist_ok=True)
         self.transcript = TranscriptStore(self.dir / "transcript.jsonl")
-        self.run = WarRoomRun(run_id=self.run_id, room=room, config=config)
+        self.run = WarRoomRun(
+            run_id=self.run_id,
+            room=room,
+            config=config,
+            strategy=str(config.strategy) if config.strategy is not None else "legacy_fixed",
+            strategy_rationale=config.strategy_rationale,
+        )
         self._cancelled = asyncio.Event()
         self._kill_watcher: asyncio.Task[None] | None = None
         self._saved = False
@@ -525,9 +729,7 @@ class WarRoom:
     # -- persistence ------------------------------------------------------
     def _persist(self) -> None:
         tmp = self.dir / "run.json.tmp"
-        tmp.write_text(
-            json.dumps(self.run.to_dict(), indent=2, ensure_ascii=True), encoding="utf-8", newline="\n"
-        )
+        tmp.write_text(json.dumps(self.run.to_dict(), indent=2, ensure_ascii=True), encoding="utf-8", newline="\n")
         os.replace(tmp, self.dir / "run.json")
         self._saved = True
 
@@ -563,19 +765,45 @@ class WarRoom:
             )
         except Exception as exc:  # noqa: BLE001
             receipt.persistence_error = f"{type(exc).__name__}: {exc}"
-            self.run.receipt_loss.append(
-                f"stage={receipt.stage} participant={receipt.participant} status={receipt.status}: "
-                f"{receipt.persistence_error}"
-            )
+            self.run.receipt_loss.append(f"stage={receipt.stage} participant={receipt.participant} status={receipt.status}: {receipt.persistence_error}")
             logger.error("receipt loss: %s", receipt.persistence_error)
             return
         receipt.seq = message.seq
 
     # -- quorum -----------------------------------------------------------
+    def _absorb_evidence(self, stage_name: str, decision: QuorumDecision) -> None:
+        """Lift dissent and taint findings from one stage onto the run.
+
+        Dissent is copied verbatim, not summarised: the point of preserving it is
+        that a reader can see the objection in the words its author used.
+        """
+        dissent = decision.consensus.get("dissent_text") or {}
+        if dissent:
+            # `dissent_text` carries both members who opposed a winning position
+            # and members whose position nobody else shared. Both are views a
+            # reader needs, and both are recorded under the same honest heading.
+            self.run.minority_dissent[stage_name] = dict(dissent)
+        for finding in decision.taint_findings:
+            self.run.taint_findings.append(dict(finding))
+        if any(f.get("taint") == str(taint_mod.Taint.INFECTED) for f in decision.taint_findings):
+            self.run.tainted = True
+
     def _tally(self, stage_name: str, receipts: Sequence[MemberReceipt]) -> QuorumDecision:
-        """Record votes in the QuorumEngine and evaluate the configured policy."""
+        """Record votes in the QuorumEngine and evaluate the configured policy.
+
+        A member's vote is its position, parsed from its stated claims - not its
+        status. ``CONTRIBUTED`` used to mean ``agree``, which reported agreement
+        for any member that emitted a string; now a member that stated no
+        parseable claim abstains, and agreement is measured over claims that two
+        or more members actually share.
+        """
         eligible = len(self.config.participants)
         required = self.config.required_votes(eligible)
+
+        delivered = {r.participant: r for r in receipts if r.delivered}
+        positions = [read_position(name, r.output, model_id=r.model_id) for name, r in delivered.items()]
+        outcome = measure_consensus(positions, texts={name: r.output for name, r in delivered.items()})
+
         # Set the engine threshold to exactly what the policy demands, so the
         # engine's own approve test is the policy test.
         proposal = self.engine.create_proposal(
@@ -585,42 +813,55 @@ class WarRoom:
             threshold=required / eligible,
         )
         for receipt in receipts:
-            if receipt.status == MemberStatus.CONTRIBUTED:
+            if receipt.status != MemberStatus.CONTRIBUTED:
+                choice = "amend" if receipt.status == MemberStatus.EMPTY else "disagree"
+            elif receipt.participant in outcome.agreeing:
                 choice = "agree"
-            elif receipt.status == MemberStatus.EMPTY:
+            elif receipt.participant in outcome.dissenting or receipt.participant in outcome.isolated:
+                # A real non-agreeing position, not a failed member.
                 choice = "amend"
             else:
-                choice = "disagree"
+                # Contributed but stated nothing parseable: unknowable, and the
+                # old code called exactly this "agree".
+                choice = "abstain"
             self.engine.cast_vote(proposal.proposal_id, receipt.participant, choice)
 
         tally = self.engine.tally(proposal.proposal_id, total_eligible_voters=eligible)
         if tally.get("status") == "error":
             raise QuorumError(f"quorum tally failed for stage {stage_name!r}: {tally.get('error')}")
-        agree = int(tally.get("agree", 0))
+
+        # The policy counts DELIVERED AGREEMENT, not raw participation, so a
+        # policy decision is grounded in the claim-level evidence.
+        agree = len(outcome.agreeing)
         passed = agree >= required
         engine_passed = str(tally.get("status")) == "approved"
+
+        collusion = taint_mod.room_is_colluding({name: r.output for name, r in delivered.items()})
+        findings = [{"stage": stage_name, "participant": r.participant, "taint": r.taint, "categories": list(r.taint_categories)} for r in receipts if r.tainted]
+
         return QuorumDecision(
             stage=stage_name,
             policy=str(self.config.quorum_policy),
             required_votes=required,
             eligible_voters=eligible,
             agree=agree,
-            disagree=int(tally.get("disagree", 0)),
+            disagree=len(outcome.dissenting),
             amend=int(tally.get("amend", 0)),
             total_votes=int(tally.get("total_votes", 0)),
             passed=passed,
             proposal_id=proposal.proposal_id,
             engine_status=str(tally.get("status")),
             engine_agrees_with_policy=(engine_passed == passed),
+            consensus=outcome.to_dict(),
+            collusion=collusion.to_dict(),
+            taint_findings=findings,
         )
 
     # -- intake -----------------------------------------------------------
     def _intake(self, stage_name: str) -> RoomIntake:
         """Fresh per-stage intake. Constructing it here is what makes
         :mod:`alpha.channels.debounce` reachable from a real runtime path."""
-        return RoomIntake(
-            f"{self.run_id}:{stage_name}", debounce_seconds=self.debounce_seconds
-        )
+        return RoomIntake(f"{self.run_id}:{stage_name}", debounce_seconds=self.debounce_seconds)
 
     # -- one stage --------------------------------------------------------
     async def _run_stage(self, stage: StageSpec, prior: Mapping[str, str]) -> tuple[StageResult, dict[str, str]]:
@@ -700,9 +941,7 @@ class WarRoom:
                         ),
                         clock=self.clock,
                     )
-                    status, value, error = await run_bounded(
-                        lambda: self.participants[name](ctx), participant_deadline
-                    )
+                    status, value, error = await run_bounded(lambda: self.participants[name](ctx), participant_deadline)
                 finally:
                     semaphore.release()
 
@@ -730,18 +969,26 @@ class WarRoom:
                         receipt.error_type = "empty"
                     else:
                         receipt.status = MemberStatus.CONTRIBUTED
-                        receipt.output = text
+                        # Screen BEFORE the text is stored or re-embedded. The
+                        # receipt keeps the contribution (the transcript is
+                        # evidence) but the NEXT participant sees a redacted
+                        # version, so a detected payload cannot ride the hop.
+                        screening = taint_mod.screen(text)
+                        receipt.taint = str(screening.taint)
+                        receipt.taint_categories = list(screening.categories)
+                        receipt.output = taint_mod.sanitize_for_prompt(text, screening) if screening.taint is taint_mod.Taint.INFECTED else text
+                        if screening.taint is taint_mod.Taint.INFECTED:
+                            receipt.error_type = "taint_infected"
+                        position = read_position(receipt.participant, text)
+                        receipt.claims = list(position.claims)
+                        receipt.self_confidence = position.self_confidence
             except TimeoutError:
                 # A wedge INSIDE run_bounded is already converted to a
                 # ("timeout", ...) tuple, so a TimeoutError reaching here can
                 # only be the slot acquisition. The branch is kept explicit
                 # rather than merged so the two cases cannot be confused.
                 receipt.status = MemberStatus.TIMEOUT
-                receipt.error = (
-                    "no execution slot within the stage bound"
-                    if slot_timed_out
-                    else "timed out before the participant could be scheduled"
-                )
+                receipt.error = "no execution slot within the stage bound" if slot_timed_out else "timed out before the participant could be scheduled"
                 receipt.error_type = "slot_timeout" if slot_timed_out else "timeout"
                 receipt.duration_ms = int((self.clock() - started) * 1000)
             except asyncio.CancelledError:
@@ -782,6 +1029,7 @@ class WarRoom:
         for receipt in receipts:
             self._record_receipt(receipt)
         result.quorum = self._tally(stage.name, receipts)
+        self._absorb_evidence(stage.name, result.quorum)
         self._ledger(
             channel_ledger.EV_STAGE,
             actor="war_room",
@@ -792,9 +1040,7 @@ class WarRoom:
         )
 
         delivered = {r.participant: r.output for r in receipts if r.delivered}
-        result.synthesis = "\n\n".join(
-            f"--- @{r.participant} ---\n{r.output}" for r in receipts if r.delivered
-        )
+        result.synthesis = "\n\n".join(f"--- @{r.participant} ---\n{r.output}" for r in receipts if r.delivered)
         if not result.quorum.passed:
             # A member that was itself reaped for exceeding ITS slice means the
             # stage ran out of clock, which is a TIMEOUT. A member that merely
@@ -802,18 +1048,10 @@ class WarRoom:
             # (FAILED), which is a different claim about the world and is
             # reported as such. Conflating the two would make a genuinely
             # disagreeing room indistinguishable from a wedged one.
-            stage_expired = deadline.expired or any(
-                r.status is MemberStatus.TIMEOUT for r in receipts
-            )
+            stage_expired = deadline.expired or any(r.status is MemberStatus.TIMEOUT for r in receipts)
             result.status = StageStatus.TIMEOUT if stage_expired else StageStatus.FAILED
-            result.error = (
-                f"quorum not met: {result.quorum.agree}/{result.quorum.required_votes} "
-                f"delivered under policy {result.quorum.policy}"
-                + (
-                    "; at least one member exceeded its slice of the stage bound"
-                    if stage_expired and not deadline.expired
-                    else ""
-                )
+            result.error = f"quorum not met: {result.quorum.agree}/{result.quorum.required_votes} delivered under policy {result.quorum.policy}" + (
+                "; at least one member exceeded its slice of the stage bound" if stage_expired and not deadline.expired else ""
             )
         else:
             result.status = StageStatus.COMPLETED
@@ -895,10 +1133,7 @@ class WarRoom:
                         # quorum stands behind.
                         if result.status is StageStatus.TIMEOUT:
                             self.run.status = RunStatus.TIMEOUT
-                            detail = (
-                                f"exceeded its {stage.budget.total_seconds:.3f}s bound "
-                                f"without reaching quorum"
-                            )
+                            detail = f"exceeded its {stage.budget.total_seconds:.3f}s bound without reaching quorum"
                         else:
                             self.run.status = RunStatus.FAILED
                             detail = "did not reach quorum"
@@ -922,10 +1157,7 @@ class WarRoom:
                     # INVARIANT 3, enforced here and nowhere else.
                     if not (synth.synthesis or "").strip():
                         synth.status = StageStatus.FAILED
-                        synth.error = (
-                            "synthesis produced no deliverable; refusing to publish an empty "
-                            "synthesis as a successful run"
-                        )
+                        synth.error = "synthesis produced no deliverable; refusing to publish an empty synthesis as a successful run"
                         self.run.status = RunStatus.FAILED
                         self.run.failure_reason = synth.error
                         self.run.error = synth.error
@@ -1028,18 +1260,11 @@ class WarRoom:
     def _finish(self) -> WarRoomRun:
         """Settle the run into a terminal, honest state and persist it."""
         if self.run.status is RunStatus.RUNNING:
-            degraded = [
-                r
-                for r in self.run.all_receipts()
-                if r.status in {MemberStatus.FAILED, MemberStatus.TIMEOUT, MemberStatus.EMPTY}
-            ]
+            degraded = [r for r in self.run.all_receipts() if r.status in {MemberStatus.FAILED, MemberStatus.TIMEOUT, MemberStatus.EMPTY}]
             if self.run.synthesis:
                 self.run.status = RunStatus.PARTIAL if degraded else RunStatus.SUCCEEDED
                 if degraded:
-                    self.run.failure_reason = (
-                        f"{len(degraded)} participant(s) did not deliver; synthesis completed "
-                        f"on the remaining contributions"
-                    )
+                    self.run.failure_reason = f"{len(degraded)} participant(s) did not deliver; synthesis completed on the remaining contributions"
             else:
                 self.run.status = RunStatus.FAILED
                 self.run.failure_reason = self.run.failure_reason or "run produced no synthesis"
@@ -1052,9 +1277,18 @@ class WarRoom:
             if self.run.status is RunStatus.SUCCEEDED:
                 self.run.status = RunStatus.PARTIAL
             note = f"{len(self.run.receipt_loss)} receipt(s) could not be persisted"
-            self.run.failure_reason = (
-                f"{self.run.failure_reason}; {note}" if self.run.failure_reason else note
-            )
+            self.run.failure_reason = f"{self.run.failure_reason}; {note}" if self.run.failure_reason else note
+
+        if self.run.tainted and self.run.status is RunStatus.SUCCEEDED:
+            # An ENFORCEMENT channel. A room that recorded an infected
+            # contribution and still answered cleanly has not addressed it, so it
+            # does not get to claim an unqualified success. Research on emergent
+            # multi-agent collusion is blunt about why this matters:
+            # transparency without enforcement is what let a corrupted result
+            # ship even while agents were spontaneously whistleblowing.
+            self.run.status = RunStatus.PARTIAL
+            note = f"{len(self.run.taint_findings)} contribution(s) matched an injection heuristic and were redacted before re-entry"
+            self.run.failure_reason = f"{self.run.failure_reason}; {note}" if self.run.failure_reason else note
 
         if not self.run.finished_at:
             self.run.finished_at = utc_now_iso()
@@ -1095,6 +1329,142 @@ class WarRoom:
         return self.run
 
 
+# ---------------------------------------------------------------------------
+# read side: what the ``status`` action and the REST surface report
+# ---------------------------------------------------------------------------
+def run_dir(root: str | Path, room: str, run_id: str) -> Path:
+    """Where one run's durable state lives. Single source of the layout."""
+    return Path(root) / room / run_id
+
+
+def list_persisted_runs(root: str | Path, room: str | None = None) -> list[dict[str, Any]]:
+    """Every persisted run record under ``root``, newest first.
+
+    A ``run.json`` that cannot be parsed is reported as ``status="unreadable"``
+    carrying the parse error, never silently dropped: a truncated record is
+    exactly what an operator listing rooms needs to see, and omitting it would
+    let a broken run look like a run that never existed.
+    """
+    base = Path(root)
+    if not base.is_dir():
+        return []
+    candidates = [base / room] if room is not None else [path for path in base.iterdir() if path.is_dir()]
+    records: list[dict[str, Any]] = []
+    for room_dir in candidates:
+        if not room_dir.is_dir():
+            continue
+        for entry in sorted(room_dir.iterdir()):
+            record_path = entry / "run.json"
+            if not entry.is_dir() or not record_path.is_file():
+                continue
+            try:
+                raw = json.loads(record_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                records.append(
+                    {
+                        "run_id": entry.name,
+                        "room": room_dir.name,
+                        "status": "unreadable",
+                        "error": f"{type(exc).__name__}: {exc}",
+                        "path": str(record_path),
+                    }
+                )
+                continue
+            raw.setdefault("room", room_dir.name)
+            raw.setdefault("run_id", entry.name)
+            raw["transcript_path"] = str(entry / "transcript.jsonl")
+            records.append(raw)
+    records.sort(key=lambda record: str(record.get("started_at") or ""), reverse=True)
+    return records
+
+
+def read_transcript_tail(path: str | Path, limit: int = 20) -> list[dict[str, Any]]:
+    """The last ``limit`` transcript messages, oldest first.
+
+    Only complete JSONL lines are returned; a partial trailing line (a write
+    interrupted by a crash) is ignored rather than raising, because a status view
+    must still work on a room that was killed mid-append.
+    """
+    target = Path(path)
+    if not target.is_file():
+        return []
+    try:
+        lines = target.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    messages: list[dict[str, Any]] = []
+    for line in lines[-max(1, limit) :]:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            messages.append(json.loads(stripped))
+        except ValueError:
+            continue
+    return messages
+
+
+def load_run_record(root: str | Path, room: str, run_id: str) -> dict[str, Any] | None:
+    """One run's persisted record, or ``None`` when it does not exist."""
+    base = run_dir(root, room, run_id)
+    record_path = base / "run.json"
+    if not record_path.is_file():
+        return None
+    try:
+        raw = json.loads(record_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return {
+            "run_id": run_id,
+            "room": room,
+            "status": "unreadable",
+            "error": f"{type(exc).__name__}: {exc}",
+            "path": str(record_path),
+        }
+    raw.setdefault("room", room)
+    raw.setdefault("run_id", run_id)
+    raw["transcript_path"] = str(base / "transcript.jsonl")
+    return raw
+
+
+def resolve_strategy(
+    strategy: DeliberationStrategy | str | None,
+    topic: str,
+) -> tuple[DeliberationStrategy | None, str]:
+    """Turn a requested strategy into a concrete one, plus why.
+
+    ``None`` means "no strategy": the caller wants the legacy fixed plan and the
+    room records that honestly rather than borrowing a strategy's name.
+
+    ``AUTO`` asks :class:`~alpha.deliberation.router.DeliberationRouter`, the same
+    classifier the ``deliberate`` tool uses. Its rationale is carried through
+    verbatim so a reader sees the actual reasoning rather than a post-hoc label.
+    """
+    if strategy is None:
+        return None, ""
+    requested_text = str(strategy).strip()
+    # An empty request is a request for the legacy plan, not a bad strategy name.
+    if not requested_text:
+        return None, ""
+    try:
+        requested = DeliberationStrategy(requested_text.lower())
+    except ValueError:
+        return None, f"unknown strategy {strategy!r}; falling back to the legacy fixed plan"
+
+    if requested is not DeliberationStrategy.AUTO:
+        return requested, ""
+
+    # Imported here: the router pulls in the model-invocation layer, and a room
+    # that never asks for AUTO should not pay for that import.
+    from alpha.deliberation.router import DeliberationRouter
+
+    try:
+        evaluation = DeliberationRouter.classify_smart(topic, user_strategy=requested)
+        return evaluation.strategy, evaluation.rationale
+    except Exception as exc:  # noqa: BLE001 - a router fault must not block a room
+        fallback = DeliberationStrategy.COUNCIL
+        return fallback, f"deliberation router unavailable ({type(exc).__name__}: {exc}); defaulted to {fallback.value}"
+
+
 def build_default_config(
     topic: str,
     participants: Sequence[str],
@@ -1104,36 +1474,60 @@ def build_default_config(
     quorum_policy: str = "majority",
     moderator: str | None = None,
     stage_names: Sequence[str] = DEFAULT_STAGE_NAMES,
+    strategy: DeliberationStrategy | str | None = None,
+    debate_rounds: int = DEFAULT_DEBATE_ROUNDS,
 ) -> WarRoomConfig:
-    """Build a config with the default three-stage shape.
+    """Build a config, from a deliberation strategy or the legacy fixed shape.
 
-    The final stage does not collect: it is the synthesis pass. Naming the
-    synthesis stage explicitly (rather than inferring it) is what lets a caller
+    With no ``strategy`` this is the original three-stage room and nothing about
+    its behaviour changes. With one, the stage sequence comes from
+    :func:`plan_stages` and the run records which strategy shaped it.
+
+    The final stage does not collect: it is the synthesis/verdict pass. Naming
+    the tail stage explicitly (rather than inferring it) is what lets a caller
     say "no synthesis" by asking for the first two stages only.
     """
-    stages: list[StageSpec] = []
-    for index, name in enumerate(stage_names):
-        is_last = index == len(stage_names) - 1
-        stages.append(
-            StageSpec(
-                name=name,
-                prompt=(
-                    "Synthesise the room's positions on the topic into one decision."
-                    if is_last
-                    else f"Give your position on the topic for the {name.replace('_', ' ')} stage."
-                ),
-                budget=StageBudget(
+    resolved, rationale = resolve_strategy(strategy, topic)
+
+    if resolved is None:
+        stages: list[StageSpec] = []
+        for index, name in enumerate(stage_names):
+            is_last = index == len(stage_names) - 1
+            stages.append(
+                StageSpec(
                     name=name,
+                    prompt=("Synthesise the room's positions on the topic into one decision." if is_last else f"Give your position on the topic for the {name.replace('_', ' ')} stage."),
+                    budget=StageBudget(
+                        name=name,
+                        timeout_seconds=stage_timeout_seconds,
+                        grace_seconds=stage_grace_seconds,
+                    ),
+                    collects=not is_last,
+                )
+            )
+    else:
+        stages = [
+            StageSpec(
+                name=plan.name,
+                prompt=plan.prompt,
+                budget=StageBudget(
+                    name=plan.name,
                     timeout_seconds=stage_timeout_seconds,
                     grace_seconds=stage_grace_seconds,
                 ),
-                collects=not is_last,
+                collects=plan.collects,
+                requires_previous_quorum=plan.requires_previous_quorum,
             )
-        )
+            for plan in plan_stages(resolved, debate_rounds=debate_rounds)
+        ]
+
     return WarRoomConfig(
         topic=topic,
         participants=tuple(participants),
         stages=tuple(stages),
         quorum_policy=QuorumPolicy(quorum_policy),
         moderator=moderator,
+        strategy=resolved,
+        strategy_rationale=rationale,
+        debate_rounds=debate_rounds,
     )
