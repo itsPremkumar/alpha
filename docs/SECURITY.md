@@ -43,6 +43,31 @@ Authorization: Bearer <api-key>
 X-Internal-Auth: <internal-token>
 ```
 
+### Disabling authentication (local development only)
+
+`ALPHA_AUTH_DISABLED=1` makes every unauthenticated request run as a single
+synthetic admin user. It exists so the app is usable on a laptop with no
+credential setup, and it is a full authorisation bypass.
+
+**It is force-ignored in production.** `is_auth_disabled()` requires the
+variable to be `1` *and* the process to not be an explicit production
+environment (`ALPHA_ENV` or `ENVIRONMENT` set to `prod`/`production`), so setting
+both means authentication stays on.
+
+That combination is a configuration mistake rather than a supported mode, so it
+is reported loudly instead of silently: with `ALPHA_AUTH_DISABLED=1` and
+`ALPHA_ENV=production`, the Gateway logs an **ERROR** at startup stating that
+the variable is set but ignored and that authentication is **ACTIVE**. The
+process still boots, because a compose file that sets `ALPHA_ENV=production`
+while running locally is a reasonable thing to do; the point is that the
+operator is told which state they are actually in rather than having to infer it
+from the absence of a warning.
+
+Do not set `ALPHA_AUTH_DISABLED` on a shared, LAN-exposed, or production
+deployment. The shipped compose files bind the entry point to `127.0.0.1` for
+this reason, and `build/compose.installer.yaml` — which does set it — is
+loopback-bound on every published port.
+
 ### Session Security
 - HttpOnly, Secure, SameSite=Strict cookies
 - Session timeout: 24 hours (configurable)
@@ -113,18 +138,21 @@ async def check_thread_access(user_id: str, thread_id: str, action: str) -> bool
 - Redis: TLS required
 
 ### Key Management
-```
-Keys:
-├── Master Key (KMIP/HSM or env)
-│   ├── Data Encryption Keys (DEK) - per resource
-│   │   ├── Thread checkpoint keys
-│   │   ├── File encryption keys
-│   │   └── Cognitive memory keys
-│   └── Key Encryption Keys (KEK) - for DEK wrapping
-├── TLS Certificates (Let's Encrypt or custom)
-├── JWT Signing Keys (rotated weekly)
-└── API Keys (hashed with bcrypt)
-```
+
+The keys Alpha actually derives or stores today:
+
+| Key | Source | Behaviour when unset |
+|-----|--------|------------------------|
+| `AUTH_JWT_SECRET` | operator secret, else auto-generated | Auto-generates a 32-byte secret and persists it as `.jwt_secret` at mode `0600` under the runtime home, logging a warning. Cryptographically sound, but it is **not** shared between hosts, so a multi-instance deployment must set it explicitly or sessions will not validate across instances. |
+| `ALPHA_INTERNAL_AUTH_TOKEN` | operator secret | No internal callers can authenticate; the multi-worker IM-channel path is gated on it. |
+| `ALPHA_CHECKPOINT_KEY` | operator secret | `CheckpointCrypto` raises. There is deliberately no built-in default, so "encryption available" is never confused with "encrypted under a published key". Only affects the enclave tool until the checkpointer is wired (see File Storage above). |
+| Channel-connection secrets | operator secret | `persistence/channel_connections/sql.py` raises "channel connection encryption key is required" rather than defaulting. |
+| API keys / PATs | never stored raw | Hashed; a PAT is a SHA-256 digest. |
+| TLS certificates | operator-provisioned | Loopback HTTP only without them. |
+
+There is **no** KMIP/HSM integration, **no** per-resource data-encryption-key
+hierarchy, and **no** automatic key rotation in this codebase. Treat any diagram
+suggesting one as a design target rather than a description of the system.
 
 ### Secret Handling
 - **Never** in config files (gitignored)
@@ -450,15 +478,25 @@ tar -czf export.tar.gz "$ALPHA_HOME/<owner-id>"
 
 ## Security Testing
 
-### Penetration Testing
-- Annual third-party pen test
-- Scope: Full stack (API, frontend, infrastructure)
-- Report shared with customers on request
+**What exists today is automated, not third-party.** There is no annual
+penetration test and no bug-bounty programme in this repository; those lines
+used to be present and were not backed by anything. What is real:
 
-### Bug Bounty
-- Private program (HackerOne/Intigriti)
-- Scope: *.alpha.dev, API endpoints
-- Rewards based on severity
+- The offline pytest suite under `backend/tests/`, including the
+  security-audit regressions (`test_sec_audit_*.py`, `test_enclave_crypto.py`,
+  `test_auth_middleware.py`, `test_csrf_middleware.py`, `test_authz_surface_audit.py`).
+- `tests/blocking_io/` as a hard CI gate: any synchronous blocking IO reached
+  from async Alpha code on the event loop fails the build
+  (`backend-blocking-io-tests.yml`).
+- `scripts/check_generated_drift.py` proving the generated capability manifest
+  matches its generator, and the `docs/INDEX.md` drift gate.
+- `scripts/review_changed_public_skills.py` gating skill changes behind a
+  versioned, SHA-256-pinned waiver manifest that can never waive a blocker.
+- The offline adapter-binding suite (`backend/tests/test_compose_default_bind_host.py`)
+  asserting no shipped profile publishes a port on all interfaces.
+
+Reporting a vulnerability: use GitHub's private vulnerability reporting on this
+repository (Security → Report a vulnerability). Do **not** open a public issue.
 
 ### Internal Testing
 - SAST: Semgrep in CI
@@ -508,20 +546,29 @@ tar -czf export.tar.gz "$ALPHA_HOME/<owner-id>"
 ## Reporting Security Issues
 
 ### Responsible Disclosure
-- Email: security@alpha.dev
-- PGP Key: [link]
-- Response within 48 hours
-- Fix timeline based on severity
-- Credit in advisory (if desired)
+- **Channel: GitHub private vulnerability reporting** on this repository
+  (Security → Report a vulnerability). This is the only channel that is
+  actually set up; the previous `security@alpha.dev` address and its
+  `[link]` PGP placeholder described a process that does not exist here.
+- Please do not open a public issue for a suspected vulnerability.
+- Acknowledgement target: 48 hours. Fix timelines are set by severity and are
+  agreed with the reporter rather than pre-announced.
+- Credit in the advisory is offered on request.
 
 ### Scope
-- In scope: All alpha.dev subdomains, API, desktop app
-- Out of scope: Third-party services, social engineering, DoS
+- In scope: the Gateway API, the web workspace, the desktop shell, the Docker
+  and Helm deployment surfaces, and the agent tool/sandbox boundary.
+- Out of scope: third-party services and model providers, social engineering,
+  and volumetric denial of service.
 
 ## Security Contacts
 
 | Role | Contact |
 |------|---------|
-| Security Team | security@alpha.dev |
-| Incident Response | incident@alpha.dev |
-| Privacy Officer | privacy@alpha.dev |
+| Maintainer | Prem Kumar — <https://github.com/itsPremkumar> |
+| Security reports | GitHub private vulnerability reporting on this repository |
+
+There is no staffed security team, no dedicated incident-response rotation, and
+no privacy officer for this project. The earlier `security@alpha.dev`,
+`incident@alpha.dev` and `privacy@alpha.dev` addresses were placeholders on a
+domain the project does not control; mail to them would not have been read.
