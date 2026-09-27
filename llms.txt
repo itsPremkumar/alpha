@@ -3,7 +3,7 @@
 > Alpha is an open-source autonomous multi-agent AI operating system. A LangGraph
 > agent runtime behind a FastAPI Gateway, with a Next.js 15 web workspace and an
 > Electron Windows desktop app, executing long-horizon work with sandboxed code
-> execution, persistent memory, 130 native tools, MCP extensions, and 24 public
+> execution, persistent memory, 134 native tools, MCP extensions, and 24 public
 > skills. Self-hosted, MIT licensed, no proprietary backend.
 
 Canonical repository: https://github.com/itsPremkumar/alpha
@@ -47,7 +47,7 @@ https://github.com/itsPremkumar/alpha/blob/main/docs/COMPARISON.md
   `extensions_config.json` (MCP servers + skills, API-editable at runtime),
   `.env` (secrets, never commit). Reference secrets as `$ENV_VAR`, not literals.
 - Registry counts are generated and CI-enforced by `contracts/feature_manifest.json`:
-  130 tools, 60 routers, 42 middlewares, 8 supervisor loops.
+  134 tools, 61 routers, 42 middlewares, 8 supervisor loops.
 - Quality gates: backend `cd backend && make test` and `make test-blocking-io`;
   `ruff` for lint/format; frontend `cd frontend && pnpm verify` (typecheck + tests).
 - Third-party Python extensions use the operator-controlled top-level `plugins:`
@@ -77,7 +77,7 @@ https://github.com/itsPremkumar/alpha/blob/main/docs/COMPARISON.md
 
 ## API and integration surface
 
-- [API reference](https://github.com/itsPremkumar/alpha/blob/main/docs/API_REFERENCE.md): all 60 Gateway routers, authentication, and SSE event streaming.
+- [API reference](https://github.com/itsPremkumar/alpha/blob/main/docs/API_REFERENCE.md): all 61 Gateway routers, authentication, and SSE event streaming.
 - [API overview](https://github.com/itsPremkumar/alpha/blob/main/docs/API.md): entry points, base URLs, and versioning.
 - [Extensions and MCP](https://github.com/itsPremkumar/alpha/blob/main/docs/EXTENSIONS.md): MCP over stdio/HTTP/SSE plus the Python extension contribution contract.
 - [Reference extension](https://github.com/itsPremkumar/alpha/blob/main/examples/agent-workspace-extension-example/): a runnable package demonstrating every contribution kind.
