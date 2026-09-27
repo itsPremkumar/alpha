@@ -34,6 +34,21 @@ export interface BotProfile {
   routines: Array<Record<string, unknown>>;
   created_at?: string | null;
   updated_at?: string | null;
+  /**
+   * Roster activity, present only when the client asked for it
+   * (`GET /api/bots?activity=true`) and `null` otherwise — an unrequested
+   * projection is absent, not an empty roster row.
+   *
+   * `last_message_withheld` means the newest body looked credential-shaped and
+   * the server deliberately did not project it; `last_message_preview` is then
+   * null even though a message exists. `last_message_at` is epoch **seconds**,
+   * which `lib/time.ts` normalizes.
+   */
+  unread_count?: number | null;
+  last_message_preview?: string | null;
+  last_message_at?: number | null;
+  last_message_sender?: string | null;
+  last_message_withheld?: boolean | null;
 }
 
 export interface BotTemplate {

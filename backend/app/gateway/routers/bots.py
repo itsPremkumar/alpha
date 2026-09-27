@@ -16,6 +16,7 @@ import re
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from alpha.bots.inbox import roster_activity
 from alpha.bots.profile import _now
 from app.gateway.authz import require_permission
 from app.gateway.deps import require_admin_user
@@ -346,7 +347,7 @@ async def get_org_events(
 
 
 @router.get("", summary="List bots")
-async def list_bots(status: str | None = None, department: str | None = None) -> dict:
+async def list_bots(status: str | None = None, department: str | None = None, activity: bool = False) -> dict:
     if status is not None:
         from alpha.bots.templates import BOT_STATUSES
 
@@ -354,7 +355,15 @@ async def list_bots(status: str | None = None, department: str | None = None) ->
             raise HTTPException(status_code=422, detail=f"status must be one of {list(BOT_STATUSES)}")
 
     def _list():
-        return [_bot_to_response(b) for b in _registry().list_bots(status=status, department=department)]
+        rows = [_bot_to_response(b) for b in _registry().list_bots(status=status, department=department)]
+        # Opt-in: the projection adds a per-Bot inbox read and a secret scan of
+        # the newest body, which a polled roster read should not pay for by
+        # default. `roster_activity` never raises, so one broken inbox degrades
+        # its own row instead of the response.
+        if activity:
+            for row in rows:
+                row.update(roster_activity(row["name"]))
+        return rows
 
     bots = await asyncio.to_thread(_list)
     return {"bots": bots, "count": len(bots)}

@@ -21,6 +21,9 @@ logger = logging.getLogger(__name__)
 MAX_INBOX_MESSAGES = 200
 MAX_BODY_CHARS = 16000
 
+#: Bounded width of a roster last-message preview, in characters.
+PREVIEW_CHARS = 120
+
 DMStatus = Literal["unread", "read", "acked"]
 
 
@@ -147,3 +150,74 @@ def get_bot_inbox(bot_name: str) -> BotInbox:
             box = BotInbox(key)
             _inboxes[key] = box
         return box
+
+
+# ---------------------------------------------------------------------------
+# Roster activity projection
+# ---------------------------------------------------------------------------
+# The roster row wants "what did this Bot last say" and "is anything waiting",
+# which is a *presentation* concern sitting on top of the message store. It
+# lives here rather than in a router because this module already owns the
+# per-Bot file, the lock, and the failure mode.
+
+#: A projection with nothing to show. Shape is fixed so a caller can render a
+#: row without branching on which fields happened to be present.
+_EMPTY_ACTIVITY: dict[str, Any] = {
+    "unread_count": 0,
+    "last_message_preview": None,
+    "last_message_at": None,
+    "last_message_sender": None,
+    "last_message_withheld": False,
+}
+
+
+def _preview_text(body: str) -> tuple[str, bool]:
+    """One-line bounded preview, plus whether it had to be withheld.
+
+    A credential-shaped body is withheld **whole**. Truncating a secret still
+    ships the first half of it, and the roster is a wider blast radius than the
+    DM inbox a user opened deliberately.
+    """
+    from alpha.bots.portable import scan_text
+
+    if scan_text(body or "").blocked:
+        return "", True
+    flat = " ".join((body or "").split())
+    if not flat:
+        return "", False
+    if len(flat) > PREVIEW_CHARS:
+        return f"{flat[:PREVIEW_CHARS].rstrip()}…", False
+    return flat, False
+
+
+def roster_activity(bot_name: str) -> dict[str, Any]:
+    """Newest-message preview and unread count for one Bot. Never raises.
+
+    Opt-in by the caller (``GET /api/bots?activity=true``) because a roster
+    read is otherwise a pure registry read, and this makes it a per-Bot inbox
+    read plus a secret scan of the newest body.
+
+    The unread count reflects this process's view of the inbox: ``BotInbox``
+    caches per name for the process lifetime, so a second Gateway writing the
+    same file is not seen here. That is the same single-process boundary the
+    inbox itself has, not a new one.
+    """
+    try:
+        box = get_bot_inbox(bot_name)
+        newest = box.list(limit=1)
+        unread = box.unread_count()
+    except Exception:
+        # One unreadable inbox must not take a whole roster read down with it.
+        logger.warning("Roster activity read failed for %s", bot_name, exc_info=True)
+        return dict(_EMPTY_ACTIVITY)
+    if not newest:
+        return dict(_EMPTY_ACTIVITY)
+    last = newest[0]
+    preview, withheld = _preview_text(last.body)
+    return {
+        "unread_count": unread,
+        "last_message_preview": None if withheld else preview,
+        "last_message_at": last.created_at,
+        "last_message_sender": last.sender,
+        "last_message_withheld": withheld,
+    }

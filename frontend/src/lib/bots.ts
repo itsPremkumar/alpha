@@ -29,16 +29,27 @@ function normalizeBot(raw: Record<string, unknown>): BotProfile {
     routines: Array.isArray(raw.routines) ? (raw.routines as Array<Record<string, unknown>>) : [],
     created_at: typeof raw.created_at === "string" ? raw.created_at : null,
     updated_at: typeof raw.updated_at === "string" ? raw.updated_at : null,
+    // Activity is a requested projection. Absent stays null: rendering an
+    // unrequested row as "0 unread" would claim the server measured zero
+    // rather than that nobody asked.
+    unread_count: typeof raw.unread_count === "number" ? raw.unread_count : null,
+    last_message_preview: typeof raw.last_message_preview === "string" ? raw.last_message_preview : null,
+    last_message_at: typeof raw.last_message_at === "number" ? raw.last_message_at : null,
+    last_message_sender: typeof raw.last_message_sender === "string" ? raw.last_message_sender : null,
+    last_message_withheld: raw.last_message_withheld === true,
   };
 }
 
-export async function fetchBots(params?: { status?: string; department?: string }): Promise<BotProfile[]> {
+export async function fetchBots(params?: { status?: string; department?: string; activity?: boolean }): Promise<BotProfile[]> {
   // Live data only: an unreachable backend or an empty fleet returns [],
   // and the UI shows its honest empty state. No fabricated bots.
   try {
     const qs = new URLSearchParams();
     if (params?.status) qs.set("status", params.status);
     if (params?.department) qs.set("department", params.department);
+    // Activity costs a per-bot inbox read plus a secret scan server-side, so it
+    // is requested explicitly and the default roster read stays cheap.
+    if (params?.activity) qs.set("activity", "true");
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
     const res = await apiFetch(`/bots${suffix}`);
     const data = await res.json();

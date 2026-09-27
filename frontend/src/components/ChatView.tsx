@@ -533,7 +533,9 @@ export default function ChatView() {
       const [threadResult, effortCatalog, bList, feats, suggOn] = await Promise.all([
         fetchThreadsResult(),
         fetchModelCatalog(),
-        fetchBots(),
+        // The roster is the one surface that renders last-message previews and
+        // unread badges, so it is the caller that opts into the projection.
+        fetchBots({ activity: true }),
         fetchFeatures(),
         suggestionsEnabled(),
       ]);
@@ -617,7 +619,9 @@ export default function ChatView() {
 
   const refreshBots = async () => {
     setBotsLoading(true);
-    const bList = await fetchBots();
+    // Keep the activity projection on refresh: a manual refresh that silently
+    // dropped unread badges would make a read look like a write.
+    const bList = await fetchBots({ activity: true });
     setBots(bList);
     setBotsLoading(false);
     if (activeBot) {

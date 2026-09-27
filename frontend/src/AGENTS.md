@@ -165,6 +165,32 @@ implies the run finished without reporting one. Historical messages pass no
 Coverage: `lib/activity.test.mjs`, `lib/subagent-events.test.mjs`, and the
 pre-existing `lib/tool-status-honesty.test.mjs`.
 
+## Roster activity projection
+
+`lib/bots.ts` opts into `GET /api/bots?activity=true`, which adds per-bot
+`unread_count`, `last_message_preview`, `last_message_at` (epoch **seconds**,
+normalized by `lib/time.ts`), `last_message_sender` and `last_message_withheld`.
+
+- **The opt-in is the caller's job.** `fetchBots()` sends no `activity` param,
+  so the default roster read stays a cheap registry read. `ChatView` passes
+  `{ activity: true }` on mount *and* on `refreshBots` — dropping it on refresh
+  would make a read look like it had cleared the badges.
+- **Absent is not zero.** A row fetched without the projection has
+  `unread_count === null`, and `BotProfileCard` renders no message line at all.
+  Rendering "0 unread" would claim the server measured zero rather than that
+  nobody asked, so `activityRequested` gates the whole block.
+- **A withheld body is announced, never paraphrased.**
+  `last_message_withheld: true` pairs with a `null` preview because the gateway
+  found credential-shaped content and chose not to project it; the card says
+  so in words. Do not fill in a placeholder body or hide the flag.
+- **"Working now" is a display reading, not liveness.** `isRecent(bot.last_active,
+  PRESENCE_WINDOW_SECONDS)` is the only presence signal in the UI;
+  `alpha.bots.health` owns healthy/stale/stalled/dead. The window lives in
+  `lib/time.ts` so the per-card dot and the gallery strip cannot drift apart,
+  and the gallery strip hides itself entirely when the window is empty.
+
+Coverage: `lib/bots-activity-client.test.mjs`.
+
 ## Honesty patterns to copy
 
 - A control that is off by default renders as off, with the reason it is off.

@@ -2,8 +2,8 @@
 
 import React from "react";
 import { BotProfile, botDisplayName, botInitials } from "@/types/bots";
-import { absoluteStamp, isRecent, relTime } from "@/lib/time";
-import { MessageSquare, Star, CheckCircle2, PauseCircle, XCircle, Building2 } from "lucide-react";
+import { absoluteStamp, isRecent, PRESENCE_WINDOW_SECONDS, relTime } from "@/lib/time";
+import { MessageSquare, Star, CheckCircle2, PauseCircle, XCircle, Building2, Mail } from "lucide-react";
 
 /**
  * Presence window: a bot counts as working when it was last seen inside this.
@@ -11,7 +11,7 @@ import { MessageSquare, Star, CheckCircle2, PauseCircle, XCircle, Building2 } fr
  * *display* threshold, not a liveness verdict — `alpha.bots.health` owns the
  * real healthy/stale/stalled/dead classification.
  */
-const ACTIVE_WINDOW_SECONDS = 90;
+const ACTIVE_WINDOW_SECONDS = PRESENCE_WINDOW_SECONDS;
 
 interface BotProfileCardProps {
   bot: BotProfile;
@@ -48,6 +48,14 @@ export function BotProfileCard({ bot, isActive, onSelect, onChat }: BotProfileCa
   const lastSeen = relTime(bot.last_active);
   const lastSeenFull = absoluteStamp(bot.last_active);
 
+  // Activity is a projection nobody may have requested: `unread_count === null`
+  // means the server was not asked, which is a different claim from "0 unread".
+  const activityRequested = bot.unread_count !== null && bot.unread_count !== undefined;
+  const unread = activityRequested ? (bot.unread_count ?? 0) : 0;
+  const withheld = bot.last_message_withheld === true;
+  const messageAt = relTime(bot.last_message_at);
+  const messageFull = absoluteStamp(bot.last_message_at);
+
   return (
     <div
       className={`group rounded-2xl border bg-card p-4 flex flex-col gap-3 transition-all hover:shadow-md cursor-pointer ${
@@ -78,6 +86,14 @@ export function BotProfileCard({ bot, isActive, onSelect, onChat }: BotProfileCa
                 IN CHAT
               </span>
             )}
+            {unread > 0 && (
+              <span
+                className="ml-auto text-[10px] min-w-4 px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground font-semibold text-center"
+                title={`${unread} unread message${unread === 1 ? "" : "s"}`}
+              >
+                {unread}
+              </span>
+            )}
           </div>
           <p className="text-[11px] text-muted-foreground truncate">{bot.role}</p>
           <div className="flex items-center gap-2 mt-1.5">
@@ -94,6 +110,27 @@ export function BotProfileCard({ bot, isActive, onSelect, onChat }: BotProfileCa
           </div>
         </div>
       </div>
+
+      {activityRequested && (
+        <div
+          className="flex items-start gap-1.5 text-[11px] text-muted-foreground min-w-0"
+          title={messageFull ?? undefined}
+        >
+          <Mail className="size-3 mt-0.5 shrink-0 opacity-60" />
+          {withheld ? (
+            <span className="truncate italic">
+              Last message withheld — the gateway found credential-shaped content
+            </span>
+          ) : bot.last_message_preview ? (
+            <span className="truncate">
+              <span className="font-medium text-foreground/80">{bot.last_message_sender ?? "unknown"}</span>
+              {messageAt ? ` · ${messageAt}` : ""}: {bot.last_message_preview}
+            </span>
+          ) : (
+            <span className="truncate italic">No messages yet</span>
+          )}
+        </div>
+      )}
 
       {bot.capabilities.length > 0 && (
         <div className="flex flex-wrap gap-1">

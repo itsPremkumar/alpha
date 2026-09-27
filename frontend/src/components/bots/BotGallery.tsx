@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from "react";
 import { BotProfile } from "@/types/bots";
 import { uniqueDepartments, computeFleetHealth } from "@/lib/bots";
+import { isRecent, PRESENCE_WINDOW_SECONDS } from "@/lib/time";
 import { BotProfileCard } from "./BotProfileCard";
 import { FleetHealthBar } from "./FleetHealthBar";
 import { Search, RotateCcw } from "lucide-react";
@@ -23,6 +24,21 @@ export function BotGallery({ bots, activeBotName, isLoading, onSelect, onChat, o
 
   const departments = useMemo(() => uniqueDepartments(bots), [bots]);
   const health = useMemo(() => computeFleetHealth(bots), [bots]);
+
+  /**
+   * "Working right now" is a display reading off `last_active`, not a liveness
+   * verdict — `alpha.bots.health` owns healthy/stale/stalled/dead. The strip is
+   * hidden when the window is empty so an idle fleet is not given a header that
+   * says nothing.
+   */
+  const activeNow = useMemo(
+    () => bots.filter((b) => isRecent(b.last_active, PRESENCE_WINDOW_SECONDS)),
+    [bots],
+  );
+  const unreadTotal = useMemo(
+    () => bots.reduce((sum, b) => sum + (typeof b.unread_count === "number" ? b.unread_count : 0), 0),
+    [bots],
+  );
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -54,6 +70,31 @@ export function BotGallery({ bots, activeBotName, isLoading, onSelect, onChat, o
       </div>
 
       <FleetHealthBar health={health} />
+
+      {activeNow.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap rounded-xl border border-border/60 bg-card px-3 py-2">
+          <span className="text-[11px] font-medium text-muted-foreground inline-flex items-center gap-1.5">
+            <span className="size-1.5 rounded-full bg-emerald-500" />
+            Working now
+          </span>
+          {activeNow.map((b) => (
+            <button
+              key={b.name}
+              type="button"
+              onClick={() => onSelect(b)}
+              title={`Open ${b.display_name || b.name}`}
+              className="text-[11px] px-2 py-0.5 rounded-full border border-border/60 hover:border-primary/50 hover:bg-muted"
+            >
+              {b.display_name || b.name}
+            </button>
+          ))}
+          {unreadTotal > 0 && (
+            <span className="ml-auto text-[11px] text-muted-foreground">
+              {unreadTotal} unread across the team
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="flex flex-col sm:flex-row gap-2">
         <div className="relative flex-1">

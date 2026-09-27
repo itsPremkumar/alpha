@@ -123,3 +123,12 @@ export function isRecent(value: TimeInput, windowSeconds: number, now: number = 
   if (ms === null) return false;
   return Math.max(0, now - ms) <= windowSeconds * SECOND;
 }
+
+/**
+ * The window the roster's "active now" reading uses. It is a *display*
+ * threshold, not a liveness verdict: `alpha.bots.health` owns the real
+ * healthy/stale/stalled/dead classification, so this must never be shown as if
+ * it were one. Defined here so the per-card dot and the gallery strip cannot
+ * drift apart.
+ */
+export const PRESENCE_WINDOW_SECONDS = 90;

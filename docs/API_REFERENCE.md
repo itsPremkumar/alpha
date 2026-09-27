@@ -363,6 +363,37 @@ Content-Type: application/json
 GET /api/bots/{bot_name}/inbox
 ```
 
+### List Bots (with optional activity)
+```http
+GET /api/bots
+GET /api/bots?activity=true
+```
+
+| Param | Values | Effect |
+| --- | --- | --- |
+| `status` | a bot status | Filter by status |
+| `department` | a department name | Filter by department |
+| `activity` | `true` (default off) | Adds the per-bot activity projection |
+
+`activity` is **opt-in** because it costs a per-bot inbox read plus a secret
+scan of the newest body, which a polled roster read should not pay for by
+default. With it set, each row also carries:
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `unread_count` | int | Unread messages for this Bot, as *this process* sees them |
+| `last_message_preview` | string \| null | Newest body, whitespace-collapsed and capped at 120 chars with a trailing `…` |
+| `last_message_at` | float | Epoch **seconds** of the newest message |
+| `last_message_sender` | string | Who sent it |
+| `last_message_withheld` | bool | `true` when the body looked credential-shaped |
+
+`last_message_withheld: true` always pairs with `last_message_preview: null`: a
+credential-shaped body is withheld **whole** rather than shortened, because
+truncating a secret still ships the first half of it. `last_message_at` still
+reports the time, so a client can say a message exists without showing it. One
+unreadable inbox degrades only its own row to "no activity" and never fails the
+response.
+
 ---
 
 ## Scheduled Tasks API
