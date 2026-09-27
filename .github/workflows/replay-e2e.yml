@@ -69,7 +69,13 @@ jobs:
 
   fullstack-replay-render:
     name: Layer 2 — full-stack render (no API key)
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    # Disabled: this job drives Playwright with playwright.real-backend.config.ts,
+    # which is not in the tree, and frontend/package.json declares no
+    # @playwright/* dependency -- so `pnpm exec playwright test` could only fail
+    # with "command not found". Layer 1 (backend-replay-golden) above is a real
+    # gate and still runs. Re-enable this job when a Playwright config and specs
+    # are committed; the step bodies below are otherwise unchanged.
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:

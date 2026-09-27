@@ -20,36 +20,64 @@ def copy_if_missing(src: Path, dst: Path) -> None:
 def main() -> int:
     project_root = Path(__file__).resolve().parent.parent
 
-    existing_config = [
-        project_root / "config.yaml",
-        project_root / "config.yml",
-        project_root / "configure.yml",
-    ]
-
-    if any(path.exists() for path in existing_config):
-        print("Error: configuration file already exists (config.yaml/config.yml/configure.yml). Aborting.")
-        return 1
-
-    try:
-        copy_if_missing(project_root / "config.example.yaml", project_root / "config.yaml")
+    # Seed every template, reporting which were created and which already
+    # existed. This is idempotent by construction rather than by an early
+    # abort: Install.md requires that re-running setup never damages an existing
+    # configuration, and a pre-check that refused whenever config.yaml existed
+    # made a partially-failed first run impossible to recover with the same
+    # command. copy_if_missing already skips an existing destination, so an
+    # operator's edits are never overwritten.
+    seeds: list[tuple[Path, Path]] = [
+        (project_root / "config.example.yaml", project_root / "config.yaml"),
         # Dedicated model catalog. Separate from config.yaml for the same reason
         # Aider/Goose/LiteLLM split theirs out: model names drift when they are
         # hand-maintained in several places. config.yaml still overrides it, so
         # an existing deployment is unaffected by this file existing.
-        copy_if_missing(project_root / "models.example.yaml", project_root / "models.yaml")
-        copy_if_missing(project_root / ".env.example", project_root / ".env")
-        copy_if_missing(
-            project_root / "frontend" / ".env.example",
-            project_root / "frontend" / ".env",
+        (project_root / "models.example.yaml", project_root / "models.yaml"),
+        (project_root / ".env.example", project_root / ".env"),
+        (project_root / "frontend" / ".env.example", project_root / "frontend" / ".env"),
+    ]
+
+    # extensions_config.json is optional at runtime (the config loader treats a
+    # missing file as "no extensions configured"), but the MCP/skills templates
+    # are what a new operator needs to enable their first server, so seed it
+    # alongside the rest rather than leaving it to the Docker path only.
+    seeds.append(
+        (
+            project_root / "extensions_config.example.json",
+            project_root / "extensions_config.json",
         )
+    )
+
+    created: list[Path] = []
+    skipped: list[Path] = []
+    try:
+        for src, dst in seeds:
+            if dst.exists():
+                skipped.append(dst.relative_to(project_root))
+                continue
+            copy_if_missing(src, dst)
+            created.append(dst.relative_to(project_root))
     except (FileNotFoundError, OSError) as exc:
         print("Error while generating configuration files:")
         print(f"  {exc}")
         if isinstance(exc, PermissionError):
             print("Hint: Check file permissions and ensure the files are not read-only or locked by another process.")
+        if created:
+            print("Already created (re-run to finish the remaining files):")
+            for path in created:
+                print(f"  + {path}")
         return 1
 
-    print("✓ Configuration files generated")
+    for path in created:
+        print(f"  + {path}")
+    for path in skipped:
+        print(f"  = {path} (already present, left unchanged)")
+    # ASCII only: this script runs under `make config` on a stock Windows console
+    # whose encoding is cp1252, and a non-ASCII status character raises
+    # UnicodeEncodeError *after* the files are written -- so the setup appeared
+    # to fail on a machine where it had actually succeeded.
+    print("[ok] Configuration files ready")
     return 0
 
 

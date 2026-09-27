@@ -249,7 +249,7 @@ ingress:
 # -- Alpha config.yaml content. Secrets MUST stay as $VAR references — never
 #    inline literal secret values here. The default enables provisioner sandbox.
 config: |
-  config_version: 45
+  config_version: 54
   log_level: info
 
   models: []

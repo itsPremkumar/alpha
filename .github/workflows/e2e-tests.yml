@@ -1,4 +1,45 @@
-name: E2E Tests
+name: E2E Tests (disabled - no browser suite in tree)
+
+# DISABLED. This workflow referenced a Playwright suite that is not in the
+# repository: frontend/package.json declares no @playwright/* dependency, and
+# there is no playwright.config.ts, no playwright.auth.config.ts, and no
+# *.spec.ts anywhere in the tree. `pnpm exec playwright test` could therefore
+# only fail with "command not found", and `npx playwright install` would
+# prompt to download a browser package on a runner.
+#
+# It is kept, disabled, rather than deleted so the removal is visible in
+# review. To re-enable: add the Playwright dependency to frontend/package.json,
+# commit a playwright.config.ts plus specs, then delete this banner and restore
+# `on:` and the job below. Until then the offline gates (backend unit tests,
+# blocking-io, lint, frontend unit tests) are the real coverage.
+#
+# Replace the whole file with the following when the suite returns:
+#
+#   on:
+#     push:
+#       branches: [ 'main' ]
+#       paths: [ 'frontend/**' ]
+#     pull_request:
+#       paths: [ 'frontend/**' ]
+#   jobs:
+#     e2e:
+#       runs-on: ubuntu-latest
+#       steps:
+#         - uses: actions/checkout@v6
+#         - uses: actions/setup-node@v4
+#           with: { node-version: '24' }
+#         - run: corepack enable
+#         - run: corepack prepare pnpm@10.26.2 --activate
+#         - working-directory: frontend
+#           run: pnpm install --frozen-lockfile
+#         - working-directory: frontend
+#           run: pnpm exec playwright install --with-deps chromium
+#         - working-directory: frontend
+#           run: pnpm exec playwright test
+#
+# The remainder of this file is the original job. The `jobs.<id>.if` guard
+# below is what actually disables it: a workflow-level `if` is not valid
+# GitHub Actions syntax and would fail the whole file at parse time.
 
 on:
   push:
@@ -21,7 +62,9 @@ permissions:
 
 jobs:
   e2e-tests:
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
+    # Disabled with the rest of this workflow: there is no Playwright suite in
+    # the tree to run. See the banner at the top of this file.
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 15
 

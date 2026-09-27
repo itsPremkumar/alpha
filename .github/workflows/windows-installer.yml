@@ -139,11 +139,16 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
+      # pytest and ruff come from the backend's dev group, resolved through the
+      # pinned uv above rather than a bare `pip install`: this job has no
+      # checkout-local venv, so a plain `python -m pytest` found neither module
+      # and failed with "No module named". `uv run --project backend --no-sync`
+      # uses the environment the pinned uv already resolved above.
       - name: Installer contract tests
-        run: python -m pytest installer/tests/test_installer_contract.py -q
+        run: uv run --project backend --no-sync python -m pytest ../installer/tests/test_installer_contract.py -q
 
       - name: Lint the installer measurement tool
-        run: python -m ruff check build/measure_footprint.py installer/tests/test_installer_contract.py
+        run: uv run --project backend --no-sync python -m ruff check ../build/measure_footprint.py ../installer/tests/test_installer_contract.py
 
       - name: Upload the native bootstrapper
         uses: actions/upload-artifact@v4
