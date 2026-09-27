@@ -158,10 +158,10 @@ def test_status_reads_a_persisted_run_with_its_transcript_tail(monkeypatch, tmp_
     from alpha.groups.war_room import WarRoom, build_default_config
 
     async def alice(ctx):
-        return f"alice\nSTATED CLAIMS: ship it"
+        return "alice\nSTATED CLAIMS: ship it"
 
     async def bob(ctx):
-        return f"bob\nSTATED CLAIMS: ship it"
+        return "bob\nSTATED CLAIMS: ship it"
 
     config = build_default_config("phase zero status", ["alice", "bob"], stage_timeout_seconds=1.0, stage_grace_seconds=0.3)
     room = WarRoom(
