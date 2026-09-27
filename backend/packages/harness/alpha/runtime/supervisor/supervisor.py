@@ -349,14 +349,12 @@ class ProcessSupervisor:
         env = self._safe_mode_env if (self._safe_mode_active and self._safe_mode_env is not None) else self._env
 
         try:
-            self._process = subprocess.Popen(  # noqa: S603 - argv is operator-supplied, never shell
-                list(argv),
-                env=env,
-                cwd=self._cwd,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+            # Spawning a process is blocking IO, so it is offloaded rather than
+            # run on the event loop: on Windows a cold ``Popen`` pays DLL and
+            # profile setup, which is easily long enough to stall an agent
+            # stream by hundreds of milliseconds. ``_spawn`` is a plain sync
+            # method precisely so the thread boundary is the only async change.
+            self._process = await asyncio.to_thread(self._spawn, list(argv), env, self._cwd)
         except (OSError, ValueError) as exc:
             # Could not even start: nothing ran, so another identical attempt
             # cannot help. The ledger skips safe mode for this reason.
@@ -399,6 +397,21 @@ class ProcessSupervisor:
             # is released only when the supervisor is about to do something other
             # than keep restarting inside it.
             self._safe_mode_active = False
+
+    def _spawn(self, argv: list[str], env: dict[str, str] | None, cwd: str | None) -> subprocess.Popen[bytes]:
+        """Start the child. Synchronous on purpose: the caller offloads it.
+
+        Stdio is sent to DEVNULL because a supervisor is not a log sink — the
+        child owns its own logging, and an unread pipe would fill and block it.
+        """
+        return subprocess.Popen(  # noqa: S603 - argv is operator-supplied, never shell
+            argv,
+            env=env,
+            cwd=cwd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
 
     async def _await_health(self) -> bool:
         """Wait up to ``health_timeout_seconds`` for the readiness probe.
