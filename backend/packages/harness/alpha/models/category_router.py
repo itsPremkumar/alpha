@@ -1,7 +1,6 @@
 """Intent-Driven Category Routing Matrix & Dual Fallback Engine.
 
-Inspired by oh-my-openagent (OmO) category routing:
-Agents select a Category (intent) instead of choosing hardcoded model names:
+Agents select a Category (intent) instead of choosing a model name:
 - "ultrabrain": Deep architectural reasoning, maximum thinking budget.
 - "deep": Multi-step algorithmic coding, browser/system execution.
 - "visual-engineering": Frontend UI/UX, CSS, canvas components.
@@ -13,11 +12,23 @@ Agents select a Category (intent) instead of choosing hardcoded model names:
 Provides dual fallback:
 1. Proactive selection based on available providers/keys.
 2. Reactive runtime recovery shifting to next model upon 429/500/context errors.
+
+**Model names are operator configuration, not code.** ``DEFAULT_CATEGORY_SPECS``
+below is a legacy advisory table of vendor model ids kept only as a last-resort
+fallback; those names exist in no operator's ``models[]``, so a decision built
+from it cannot be executed. Declare real routes under
+``config.yaml -> model_routing.categories`` instead — every declared name is
+validated against ``models[]`` at config load, and
+:func:`resolve_configured_chain` prefers it. See
+``alpha.config.model_routing_config``.
 """
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -30,6 +41,61 @@ class CategorySpec:
     description: str = ""
 
 
+def resolve_configured_chain(category: str, app_config=None) -> list[str]:
+    """Operator-declared models for ``category``, or ``[]`` when not declared.
+
+    Reads ``config.yaml -> model_routing.categories`` and returns the declared
+    chain only when routing is enabled. Returns an empty list — never a
+    fallback — so callers can distinguish "operator declared this" from "we
+    have nothing configured", which is what lets the routers fail closed
+    instead of silently degrading to the default model.
+    """
+    try:
+        if app_config is None:
+            from alpha.config import get_app_config
+
+            app_config = get_app_config()
+        routing = app_config.model_routing
+        if not routing.enabled:
+            return []
+        return routing.chain_for_category(category)
+    except Exception:
+        # Routing is an optimization. Never fail a call because config could
+        # not be read; the caller falls back to the static chain.
+        logger.debug("Configured routing unavailable for category '%s'", category, exc_info=True)
+        return []
+
+
+def resolve_configured_tier_chain(tier: str, app_config=None) -> list[str]:
+    """Operator-declared models for a cost ``tier``, or ``[]`` when not declared.
+
+    Counterpart to :func:`resolve_configured_chain` for
+    :mod:`alpha.models.workforce_router`, reading
+    ``config.yaml -> model_routing.tiers``.
+    """
+    try:
+        if app_config is None:
+            from alpha.config import get_app_config
+
+            app_config = get_app_config()
+        routing = app_config.model_routing
+        if not routing.enabled:
+            return []
+        return routing.chain_for_tier(tier)
+    except Exception:
+        logger.debug("Configured tier routing unavailable for tier '%s'", tier, exc_info=True)
+        return []
+
+
+# Legacy advisory fallback only.
+#
+# These are vendor model ids from the upstream OmO table this module was
+# modelled on. They are NOT resolvable against an operator's `models[]`, so a
+# chain built from this table cannot be executed by `create_chat_model`. They
+# are retained so an operator who has declared no `model_routing.categories`
+# still gets a non-empty, ordered, human-meaningful suggestion chain from the
+# advisory endpoints — never as an executable route. Declare real routes under
+# `model_routing.categories`; `resolve_configured_chain` takes precedence.
 DEFAULT_CATEGORY_SPECS: dict[str, CategorySpec] = {
     "ultrabrain": CategorySpec(
         name="ultrabrain",
@@ -103,22 +169,40 @@ class CategoryRouter:
         category: str,
         available_models: set[str] | None = None,
     ) -> CategorySpec:
-        """Resolve category with proactive provider availability checking."""
+        """Resolve category, preferring the operator's configured chain.
+
+        Precedence: ``config.yaml -> model_routing.categories[category]`` first
+        (its names are validated against ``models[]`` at load, so they are
+        executable), then this router's static table, then the built-in
+        per-category suggestion chain.
+
+        ``available_models`` filters the chain. When it filters *everything*
+        away the unfiltered chain is NOT returned — that fallback used to hand
+        back model names that resolve against nothing. The spec is returned
+        with an empty ``models`` list so the caller sees "nothing available"
+        rather than a route that cannot run.
+        """
         spec = self._categories.get(category.lower())
         if not spec:
-            raise KeyError(
-                f"Unknown category '{category}'. Available categories: {list(self._categories.keys())}"
+            raise KeyError(f"Unknown category '{category}'. Available categories: {list(self._categories.keys())}")
+
+        configured = resolve_configured_chain(category)
+        if configured:
+            spec = CategorySpec(
+                name=spec.name,
+                models=configured,
+                reasoning_effort=spec.reasoning_effort,
+                temperature=spec.temperature,
+                prompt_append=spec.prompt_append,
+                description=spec.description,
             )
 
         if not available_models:
             return spec
 
-        # Filter model chain to those available
+        # Filter to what is actually available. An empty result is reported
+        # honestly (empty models) instead of restoring the unfiltered chain.
         valid_models = [m for m in spec.models if m in available_models]
-        if not valid_models:
-            # Return spec with original models if none match
-            return spec
-
         return CategorySpec(
             name=spec.name,
             models=valid_models,

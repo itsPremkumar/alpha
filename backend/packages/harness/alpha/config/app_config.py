@@ -32,6 +32,7 @@ from alpha.config.loop_detection_config import LoopDetectionConfig
 from alpha.config.mcp_tasks_config import McpTasksConfig
 from alpha.config.memory_config import MemoryConfig, load_memory_config_from_dict
 from alpha.config.model_config import ModelConfig, ProviderConfig
+from alpha.config.model_routing_config import ModelRoutingConfig
 from alpha.config.read_before_write_config import ReadBeforeWriteConfig
 from alpha.config.reload_boundary import format_field_description
 from alpha.config.review_guard_config import ReviewGuardConfig
@@ -285,9 +286,26 @@ class AppConfig(BaseModel):
         description="Hard server-side ceiling for a client-supplied run recursion_limit. Client values above this are clamped; prevents runaway LangGraph super-steps (LLM cost / DoS).",
     )
     models: list[ModelConfig] = Field(default_factory=list, description="Available models")
+    default_model: str | None = Field(
+        default=None,
+        description=(
+            "Name of the model a run uses when it does not select one. Defaults to the first entry in "
+            "`models`. Set it explicitly: reordering or prepending the list otherwise silently switches "
+            "the model every default run uses. Must name an entry in `models` — an unknown name is a "
+            "config-load error rather than a silent positional fallback."
+        ),
+    )
     providers: dict[str, ProviderConfig] = Field(
         default_factory=dict,
         description="Named provider profiles: shared connection defaults referenced by models[].provider",
+    )
+    model_routing: ModelRoutingConfig = Field(
+        default_factory=ModelRoutingConfig,
+        description=(
+            "Operator-declared intent-category and cost-tier -> configured-model mappings used by the "
+            "model routers. Every declared name must exist in `models` (validated at load), so a routed "
+            "turn can never name a model the factory would reject."
+        ),
     )
     sandbox: SandboxConfig = Field(
         description=format_field_description(
@@ -536,6 +554,7 @@ class AppConfig(BaseModel):
         config_data["extensions"] = extensions_data
 
         result = cls.model_validate(config_data)
+        result._apply_models_catalog()
         if not result.models:
             logger.warning(
                 "No models are configured in %s. Add at least one entry under `models:` (see the commented examples in config.example.yaml) or run `make setup`.",
@@ -544,6 +563,65 @@ class AppConfig(BaseModel):
         acp_agents = cls._validate_acp_agents(config_data.get("acp_agents", {}))
         cls._apply_singleton_configs(result, acp_agents)
         return result
+
+    def _apply_models_catalog(self) -> None:
+        """Overlay ``models.yaml`` beneath this config's own model declarations.
+
+        ``models.yaml`` is the base layer and ``config.yaml`` overrides it, so an
+        existing deployment is untouched while an operator migrates entries into
+        the dedicated catalog at their own pace. A ``models[]`` entry is replaced
+        **wholesale by name**, not field-merged: one file stays authoritative for
+        any given name, which is what makes a capability declared in exactly one
+        place. ``providers`` merges per key for the same reason.
+
+        Re-runs the derived state afterwards: the merged model list changes the
+        name index, the positional default, and whether every routing chain
+        resolves.
+        """
+        from alpha.config.models_catalog import get_models_catalog
+
+        try:
+            catalog = get_models_catalog()
+        except FileNotFoundError:
+            # An explicit path/env var naming a missing file is an operator
+            # assertion; surface it rather than silently running on config.yaml
+            # alone with the operator believing the catalog is in effect.
+            raise
+        except Exception:
+            # A malformed catalog must not make config.yaml-only deployments
+            # unbootable, but it must be loud: a half-read catalog is exactly
+            # the silent-drift failure this file exists to prevent.
+            logger.warning("Could not load models.yaml; continuing with config.yaml model declarations only.", exc_info=True)
+            return
+
+        if not (catalog.models or catalog.providers or catalog.routing.categories or catalog.routing.tiers or catalog.routing.default_model or catalog.default_model):
+            return
+
+        merged: dict[str, ModelConfig] = {model.name: model for model in catalog.models}
+        for model in self.models:
+            merged[model.name] = model
+        self.models = list(merged.values())
+
+        merged_providers: dict[str, ProviderConfig] = dict(catalog.providers)
+        merged_providers.update(self.providers)
+        self.providers = merged_providers
+
+        if self.default_model is None and catalog.default_model is not None:
+            self.default_model = catalog.default_model
+
+        routing = self.model_routing
+        if not routing.categories:
+            routing.categories = dict(catalog.routing.categories)
+        if not routing.tiers:
+            routing.tiers = dict(catalog.routing.tiers)
+        if routing.default_model is None:
+            routing.default_model = catalog.routing.default_model
+
+        self._models_by_name = {}
+        for model in self.models:
+            self._models_by_name.setdefault(model.name, model)
+        self._validate_default_model()
+        self._validate_model_routing()
 
     @classmethod
     def _validate_acp_agents(
@@ -711,7 +789,70 @@ class AppConfig(BaseModel):
         self._models_by_name = models_by_name
         self._tools_by_name = tools_by_name
         self._tool_groups_by_name = tool_groups_by_name
+        self._validate_default_model()
+        self._validate_model_routing()
         return self
+
+    def _validate_model_routing(self) -> None:
+        """Fail closed when a declared route names a model that does not exist.
+
+        The routers used to carry hardcoded vendor model ids that resolve
+        against no operator's ``models[]``, so a routing decision could name a
+        model the factory rejects and the lead agent would silently fall back to
+        the default. Validating at config load moves that from a per-request
+        surprise to a startup error, and makes ``model_routing`` the single
+        place a route is declared.
+
+        Only checked when at least one model is configured: a models-less config
+        is already warned about by ``from_file`` and has nothing to validate
+        against.
+        """
+        routing = self.model_routing
+        if not self.models:
+            return
+        known = set(self._models_by_name)
+        declared: list[tuple[str, str, str]] = []
+        for key, names in routing.categories.items():
+            declared.extend((f"categories.{key}", name, "category") for name in names)
+        for key, names in routing.tiers.items():
+            declared.extend((f"tiers.{key}", name, "tier") for name in names)
+        if routing.default_model:
+            declared.append(("default_model", routing.default_model, "fallback"))
+        unknown = [(where, name, kind) for where, name, kind in declared if name not in known]
+        if unknown:
+            details = "; ".join(f"`model_routing.{where}` -> '{name}' ({kind}) is not in `models`" for where, name, kind in unknown)
+            available = ", ".join(m.name for m in self.models)
+            raise ValueError(f"Unresolvable model_routing entries: {details}. Configured models: {available}.")
+
+    def _validate_default_model(self) -> None:
+        """Fail closed when ``default_model`` names a model that does not exist.
+
+        A typo would otherwise be indistinguishable from "unset", silently
+        falling back to ``models[0]`` and running every default turn on a model
+        the operator did not choose. Reference this through
+        :attr:`default_model_name` everywhere so the resolution rule (explicit
+        key, else first entry) has exactly one implementation.
+        """
+        name = self.default_model
+        if name is None:
+            return
+        if not name.strip():
+            raise ValueError("`default_model` must be a non-empty model name from `models`, or omitted to use the first entry.")
+        if name not in self._models_by_name:
+            known = ", ".join(m.name for m in self.models) or "<none configured>"
+            raise ValueError(f"`default_model: {name}` is not present in `models`. Configured models: {known}.")
+
+    @property
+    def default_model_name(self) -> str | None:
+        """The model a run uses when nothing selects one, or ``None`` if no models exist.
+
+        Resolution order: the explicit ``default_model`` key, else the first
+        entry in ``models``. Callers that previously read ``config.models[0].name``
+        directly should use this so an explicit key is honoured everywhere.
+        """
+        if self.default_model is not None:
+            return self.default_model
+        return self.models[0].name if self.models else None
 
     def get_model_config(self, name: str) -> ModelConfig | None:
         """Get the model config by name.

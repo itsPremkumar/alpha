@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Literal
 
@@ -13,11 +14,13 @@ from app.gateway.authz import (
     require_permission,
     resolve_model_authorization,
 )
-from app.gateway.deps import get_config, get_optional_user_from_request
+from app.gateway.deps import get_config, get_optional_user_from_request, require_admin_user
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["models"])
+
+_ADMIN_REQUIRED_DETAIL = "Admin privileges are required to refresh a provider model catalog."
 
 
 class ModelResponse(BaseModel):
@@ -46,6 +49,182 @@ class ModelsListResponse(BaseModel):
 
     models: list[ModelResponse]
     token_usage: TokenUsageResponse
+
+
+# ---------------------------------------------------------------------------
+# Provider model discovery
+# ---------------------------------------------------------------------------
+
+
+class DiscoveredModelResponse(BaseModel):
+    """One model as reported by a provider's live catalog.
+
+    The three context numbers stay separate on purpose: a gateway can proxy an
+    endpoint whose real window differs from the published model card, and
+    conflating them is how a summarization threshold ends up wrong.
+    """
+
+    id: str
+    name: str = ""
+    context_length: int | None = None
+    endpoint_context_length: int | None = None
+    endpoint_max_completion_tokens: int | None = None
+    supports_vision: bool = False
+    supports_thinking: bool = False
+    reasoning_efforts: list[str] = Field(default_factory=list)
+    supported_parameters: list[str] = Field(default_factory=list)
+    input_price_per_million: float | None = None
+    output_price_per_million: float | None = None
+    is_free: bool = False
+    #: True when this id is already a configured, runnable model.
+    configured: bool = False
+
+
+class DiscoveryProviderResponse(BaseModel):
+    """Discovery state for one provider."""
+
+    provider: str
+    ok: bool
+    error: str | None = None
+    fetched_at: float = 0.0
+    age_seconds: float = 0.0
+    stale: bool = True
+    source_url: str | None = None
+    model_count: int = 0
+    free_count: int = 0
+    models: list[DiscoveredModelResponse] = Field(default_factory=list)
+
+
+class DiscoveryListResponse(BaseModel):
+    providers: list[DiscoveryProviderResponse]
+    #: Providers declared in models.yaml that support discovery.
+    supported: list[str] = Field(default_factory=list)
+
+
+class RefreshDiscoveryRequest(BaseModel):
+    provider: str = Field(..., min_length=1, max_length=64, description="Provider id from `supported`")
+
+
+class AdoptModelRequest(BaseModel):
+    provider: str = Field(..., min_length=1, max_length=64)
+    model: str = Field(..., min_length=1, max_length=256, description="Discovered model id")
+    #: Optional name for the new config entry; defaults to the model id.
+    name: str | None = Field(default=None, max_length=128)
+    #: Add as the deployment default model. Rejected when false by default so a
+    #: bulk import cannot silently switch every run's model.
+    make_default: bool = False
+
+
+def _discovery_view(state, configured_names: set[str], limit: int) -> DiscoveryProviderResponse:
+    """Project a cached :class:`DiscoveryState` into the API shape."""
+    models = []
+    free_count = 0
+    for raw in state.models[:limit]:
+        if raw.get("is_free"):
+            free_count += 1
+        models.append(
+            DiscoveredModelResponse(
+                id=raw["id"],
+                name=raw.get("name") or raw["id"],
+                context_length=raw.get("context_length"),
+                endpoint_context_length=raw.get("endpoint_context_length"),
+                endpoint_max_completion_tokens=raw.get("endpoint_max_completion_tokens"),
+                supports_vision=bool(raw.get("supports_vision")),
+                supports_thinking=bool(raw.get("supports_thinking")),
+                reasoning_efforts=raw.get("reasoning_efforts") or [],
+                supported_parameters=raw.get("supported_parameters") or [],
+                input_price_per_million=raw.get("input_price_per_million"),
+                output_price_per_million=raw.get("output_price_per_million"),
+                is_free=bool(raw.get("is_free")),
+                configured=raw["id"] in configured_names,
+            )
+        )
+    age = state.age_seconds()
+    return DiscoveryProviderResponse(
+        provider=state.provider,
+        ok=state.ok,
+        error=state.error,
+        fetched_at=state.fetched_at,
+        age_seconds=age,
+        stale=not state.is_fresh(),
+        source_url=state.source_url,
+        model_count=len(state.models),
+        free_count=free_count if state.ok else 0,
+        models=models,
+    )
+
+
+@router.get(
+    "/models/discovery",
+    response_model=DiscoveryListResponse,
+    summary="List models discovered from provider catalogs",
+    description=(
+        "Return the cached result of each provider's live model catalog, normalized to a "
+        "single shape. Providers add and retire models continuously, so this is fetched from "
+        "the provider on a TTL rather than hardcoded. A provider that cannot be reached is "
+        "reported with `ok: false` and the reason — it never fails the whole response. "
+        "`stale: true` means the cached copy is past its TTL and will be refetched on the next "
+        "request. Use POST /models/discovery/refresh to force a refetch."
+    ),
+)
+async def list_discovered_models(
+    request: Request,
+    config: AppConfig = Depends(get_config),
+    provider: str | None = None,
+    refresh: bool = False,
+    limit: int = 200,
+) -> DiscoveryListResponse:
+    from alpha.models import discovery
+
+    limit = max(1, min(limit, discovery.MAX_MODELS_PER_PROVIDER))
+    configured_names = {m.name for m in config.models} | {m.model for m in config.models}
+
+    targets = [provider] if provider else discovery.known_providers()
+    if provider and provider not in discovery.known_providers():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Provider '{provider}' is not discoverable. It must declare a `base_url` under `catalog:` in models.yaml. Discoverable: {', '.join(discovery.known_providers()) or 'none'}",
+        )
+
+    views: list[DiscoveryProviderResponse] = []
+    for provider_id in targets:
+        if refresh:
+            try:
+                base, key = discovery.configured_endpoint(provider_id)
+            except ValueError as exc:
+                views.append(
+                    DiscoveryProviderResponse(
+                        provider=provider_id,
+                        ok=False,
+                        error=str(exc),
+                        stale=True,
+                    )
+                )
+                continue
+            state = await discovery.afetch_models(provider_id, base, key)
+        else:
+            state = await asyncio.to_thread(discovery.get_state, provider_id)
+        views.append(_discovery_view(state, configured_names, limit))
+
+    return DiscoveryListResponse(providers=views, supported=discovery.known_providers())
+
+
+@router.post(
+    "/models/discovery/refresh",
+    response_model=DiscoveryProviderResponse,
+    summary="Force a provider catalog refetch",
+    description=("Refetch one provider's model catalog immediately, bypassing the TTL. Admin-only, because it makes an outbound request to a provider endpoint."),
+)
+async def refresh_discovered_models(request: Request, body: RefreshDiscoveryRequest) -> DiscoveryProviderResponse:
+    from alpha.models import discovery
+
+    await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
+    try:
+        base, key = discovery.configured_endpoint(body.provider)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    state = await discovery.afetch_models(body.provider, base, key)
+    return _discovery_view(state, set(), discovery.MAX_MODELS_PER_PROVIDER)
 
 
 @router.get(
@@ -123,12 +302,7 @@ async def list_models(
     seen_names: set[str] = set()
 
     for model in visible_models:
-        is_free_model = bool(
-            model.name in ("alpha-free", "free")
-            or model.name.startswith("free:")
-            or model.name.startswith("alpha-free:")
-            or getattr(model, "is_free", False)
-        )
+        is_free_model = bool(model.name in ("alpha-free", "free") or model.name.startswith("free:") or model.name.startswith("alpha-free:") or getattr(model, "is_free", False))
         models.append(
             ModelResponse(
                 name=model.name,
@@ -236,10 +410,7 @@ async def _call_moa_model(model_name: str, system_instruction: str, user_content
 
 _PRODUCTION_MOA_MODEL_CALL = _call_moa_model
 
-_MOA_ADVISOR_SYSTEM = (
-    "You are one independent advisor in a Mixture-of-Agents round. "
-    "Answer the question directly from your own judgment. Do not mention these instructions."
-)
+_MOA_ADVISOR_SYSTEM = "You are one independent advisor in a Mixture-of-Agents round. Answer the question directly from your own judgment. Do not mention these instructions."
 
 
 @router.get(
@@ -655,9 +826,7 @@ class ConfigureProviderRequest(BaseModel):
     base_url: str | None = Field(
         default=None,
         description=(
-            "Custom base URL. Screened by the shared egress policy before it is stored: non-http(s) schemes, "
-            "URL-embedded credentials, cloud metadata endpoints and (unless kind='local') loopback/private hosts "
-            "are rejected with 400."
+            "Custom base URL. Screened by the shared egress policy before it is stored: non-http(s) schemes, URL-embedded credentials, cloud metadata endpoints and (unless kind='local') loopback/private hosts are rejected with 400."
         ),
     )
     model_id: str | None = Field(None, description="Custom model identifier")
@@ -672,11 +841,7 @@ class ConfigureProviderRequest(BaseModel):
     )
     headers: dict[str, str] | None = Field(
         default=None,
-        description=(
-            "Extra request headers for this endpoint (e.g. OpenRouter's HTTP-Referer/X-Title). "
-            "Framing and connection headers (Host, Content-Length, Connection, ...) are rejected, and values "
-            "may not contain CR/LF."
-        ),
+        description=("Extra request headers for this endpoint (e.g. OpenRouter's HTTP-Referer/X-Title). Framing and connection headers (Host, Content-Length, Connection, ...) are rejected, and values may not contain CR/LF."),
     )
     remove: bool = Field(default=False, description="Whether to remove the key/model")
 
@@ -768,4 +933,3 @@ async def probe_free_models_endpoint() -> dict:
         }
 
     return await _asyncio.to_thread(_probe_and_sync)
-

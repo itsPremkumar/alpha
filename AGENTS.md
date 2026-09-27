@@ -79,6 +79,7 @@ that pin them — are consolidated in
 agent-workspace/
 ├── Makefile                        # Root orchestration for the full stack (dev/start/stop, docker, setup, update-*)
 ├── config.example.yaml             # Template → config.yaml (gitignored): main app config
+├── models.example.yaml             # Template → models.yaml (gitignored): the model catalog
 ├── extensions_config.example.json  # Template → extensions_config.json (gitignored): MCP servers + skills
 ├── backend/                        # Python backend — see backend/AGENTS.md for its own tree and depth
 ├── frontend/                       # Next.js frontend (pnpm) — see frontend/AGENTS.md
@@ -87,6 +88,23 @@ agent-workspace/
 ├── contracts/                      # Cross-component JSON contracts (e.g. subagent status, skill review)
 └── examples/agent-workspace-extension-example/ # Demonstrates all extension contribution kinds
 ```
+
+**`models.yaml` — the one model catalog.** Every model name Alpha knows lives in
+this dedicated file, not in code: runtime-buildable `models`, shared `providers`
+profiles, `routing` (intent category / cost tier -> ordered model names),
+`catalog` (bring-your-own-provider offers), `free_gateways`, `pricing`, and
+`default_model`. `make setup` creates it; `$AGENT_WORKSPACE_MODELS_CONFIG_PATH`
+relocates it. `models.yaml` is the **base** layer and `config.yaml` overrides it,
+so an existing deployment is untouched, and a `models[]` entry is replaced
+wholesale by name so exactly one file is authoritative. Every name declared under
+`routing:` is validated against `models[]` at load, so a typo is a startup error
+rather than a silent fallback to the default model. Model lists also refresh
+themselves from the provider (`GET /api/models/discovery`), so a daily-rotating
+catalog such as OpenRouter's `:free` set is fetched rather than hand-maintained.
+Config schema, precedence, and the hot-reload/honest-failure rules are in
+[backend/packages/harness/alpha/config/AGENTS.md](backend/packages/harness/alpha/config/AGENTS.md);
+discovery, cross-namespace drift detection, and the fail-closed routers are in
+[backend/packages/harness/alpha/models/AGENTS.md](backend/packages/harness/alpha/models/AGENTS.md).
 
 Third-party extensions load from a top-level `plugins:` list in `config.yaml`
 (operator-controlled on purpose — that list causes code to be imported, so it is deliberately

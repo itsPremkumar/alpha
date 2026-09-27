@@ -37,6 +37,10 @@ system_one_decisions*.jsonl
 config.yaml
 mcp_config.json
 extensions_config.json
+# Dedicated model catalog (template: models.example.yaml). Operator-owned like
+# config.yaml - it holds $VAR references and per-deployment model choices.
+models.yaml
+models.yml
 # Runtime lock files written by the Gateway next to those configs.
 .*.json.lock
 *.json.lock

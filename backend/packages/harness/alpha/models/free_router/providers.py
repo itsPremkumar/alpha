@@ -33,12 +33,15 @@ sensitive data to anonymous endpoints.
 
 from __future__ import annotations
 
+import logging
 import re
 import time
 from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 USER_AGENT = "Alpha-Free-LLM-Router/1.1 (+anonymous-public-llm-integration)"
 DEFAULT_TIMEOUT = 60.0
@@ -96,86 +99,55 @@ class ProviderSpec:
     openai_compat: bool = True
 
 
-PROVIDERS: dict[str, ProviderSpec] = {
-    "ovhcloud": ProviderSpec(
-        name="ovhcloud",
-        base_url="https://oai.endpoints.kepler.ai.cloud.ovh.net/v1",
-        chat_path="/chat/completions",
-        models_path="/models",
-        documented_models=(
-            "Meta-Llama-3_3-70B-Instruct",
-            "Qwen3-Coder-30B-A3B-Instruct",
-            "Mistral-7B-Instruct-v0.3",
-            "gpt-oss-20b",
-        ),
-    ),
-    "vireonix": ProviderSpec(
-        name="vireonix",
-        base_url="https://vireonix.ai",
-        chat_path="/v1/chat/completions",
-        models_path="/v1/models",
-        documented_models=("auto",),
-    ),
-    "blockrun": ProviderSpec(
-        name="blockrun",
-        base_url="https://blockrun.ai/api/v1",
-        chat_path="/chat/completions",
-        models_path="/models",
-    ),
-    "llm7": ProviderSpec(
-        name="llm7",
-        base_url="https://api.llm7.io/v1",
-        chat_path="/chat/completions",
-        models_path="/models",
-        auth_header=(("Authorization", "Bearer unused"),),
-        documented_models=(
-            "codestral-latest",
-            "mistral-Nemo-Instruct-2407",
-            "gemma4:31b",
-            "minimax-m2.7",
-            "gpt-oss",
-        ),
-    ),
-    "persorai": ProviderSpec(
-        name="persorai",
-        base_url="https://persorai.com/v1",
-        chat_path="/chat/completions",
-        models_path="/models",
-        auth_header=(("Authorization", "Bearer alpha-public-anonymous"),),
-    ),
-    "pollinations": ProviderSpec(
-        name="pollinations",
-        base_url="https://text.pollinations.ai",
-        chat_path="/openai",
-        models_path="/models",
-        documented_models=("openai-fast", "openai"),
-    ),
-    "cehpoint": ProviderSpec(
-        name="cehpoint",
-        base_url="https://ai-api.cehpoint.co.in/v1",
-        chat_path="/chat/completions",
-        models_path=None,  # no public catalog endpoint is documented
-        documented_models=("cehpoint-ai", "cehpoint-ai-multilingual"),
-    ),
-    "aihorde": ProviderSpec(
-        name="aihorde",
-        base_url="https://aihorde.net/api",
-        chat_path=None,  # Kobold-style async schema, handled specially
-        models_path="/v2/status/models",
-        openai_compat=False,
-    ),
-}
+def _providers_from_catalog() -> tuple[dict[str, ProviderSpec], tuple[str, ...]]:
+    """Build the keyless-gateway list from ``models.yaml -> free_gateways``.
 
-PROVIDER_ORDER: tuple[str, ...] = (
-    "vireonix",
-    "blockrun",
-    "ovhcloud",
-    "pollinations",
-    "llm7",
-    "persorai",
-    "cehpoint",
-    "aihorde",
-)
+    The gateway endpoints and their documented model ids used to be ~80 lines of
+    literals in this module. They are operator configuration, not code: anonymous
+    gateway reachability changes without notice, and a hardcoded list goes stale
+    silently. ``models.yaml`` is the single source of truth and is hot-reloadable,
+    so an operator can add or drop a gateway without a code change.
+
+    Returns ``({}, ())`` when no catalog is configured, which degrades the free
+    router to "no gateways available" rather than contacting a stale endpoint.
+    """
+    try:
+        from alpha.config.models_catalog import get_models_catalog
+
+        catalog = get_models_catalog()
+    except Exception:
+        logger.debug("models.yaml unavailable; no free gateways configured", exc_info=True)
+        return {}, ()
+    providers: dict[str, ProviderSpec] = {}
+    order: list[str] = []
+    for entry in catalog.free_gateways:
+        providers[entry.id] = ProviderSpec(
+            name=entry.id,
+            base_url=entry.base_url,
+            chat_path=entry.chat_path,
+            models_path=entry.models_path,
+            auth_header=tuple((header[0], header[1]) for header in entry.auth_header),
+            documented_models=tuple(entry.documented_models),
+            openai_compat=entry.openai_compat,
+        )
+        order.append(entry.id)
+    return providers, tuple(order)
+
+
+#: Lazily resolved from ``models.yaml`` on first use. Call
+#: :func:`refresh_free_gateways` after editing the catalog in a long-lived process.
+PROVIDERS, PROVIDER_ORDER = _providers_from_catalog()
+
+
+def refresh_free_gateways() -> tuple[dict[str, ProviderSpec], tuple[str, ...]]:
+    """Re-read the keyless-gateway list from ``models.yaml`` and rebind the module globals.
+
+    Resolved on each router construction so a catalog edit applies without a
+    restart, matching how ``config.yaml`` is hot-reloaded.
+    """
+    global PROVIDERS, PROVIDER_ORDER
+    PROVIDERS, PROVIDER_ORDER = _providers_from_catalog()
+    return PROVIDERS, PROVIDER_ORDER
 
 
 # ---------------------------------------------------------------------------
@@ -206,9 +178,7 @@ def request(
     timeout: float = DEFAULT_TIMEOUT,
 ) -> httpx.Response:
     """The single module-level HTTP seam (tests stub this function)."""
-    return _client().request(
-        method, url, headers=headers, params=params, json=json_body, timeout=timeout
-    )
+    return _client().request(method, url, headers=headers, params=params, json=json_body, timeout=timeout)
 
 
 # ---------------------------------------------------------------------------
@@ -327,9 +297,7 @@ def _extract_price(entry: dict[str, Any], kind: str) -> float | None:
 
 
 def _is_text_model(model_id: str, entry: dict[str, Any]) -> bool:
-    modality = str(
-        entry.get("modality") or entry.get("type") or entry.get("task") or entry.get("category") or ""
-    ).lower()
+    modality = str(entry.get("modality") or entry.get("type") or entry.get("task") or entry.get("category") or "").lower()
     if any(word in modality for word in ("image", "video", "audio", "speech")):
         return False
     return not bool(NON_TEXT_HINTS.search(model_id.lower()))
@@ -425,12 +393,8 @@ def discover(spec: ProviderSpec) -> DiscoveryResult:
             {
                 "id": mid,
                 "display_name": str(entry.get("name") or mid),
-                "context_length": _to_int(
-                    entry.get("context_length") or entry.get("context_window") or entry.get("context")
-                ),
-                "max_output_tokens": _to_int(
-                    entry.get("max_output_tokens") or entry.get("max_completion_tokens")
-                ),
+                "context_length": _to_int(entry.get("context_length") or entry.get("context_window") or entry.get("context")),
+                "max_output_tokens": _to_int(entry.get("max_output_tokens") or entry.get("max_completion_tokens")),
                 "created": _to_int(entry.get("created")),
                 "source": "catalog",
             }
@@ -488,9 +452,7 @@ def _extract_openai_chat(payload: dict[str, Any]) -> ProviderChatResult:
 
     text = _content_to_text(message.get("content"))
     tool_calls_raw = message.get("tool_calls")
-    tool_calls = (
-        [tc for tc in tool_calls_raw if isinstance(tc, dict)] if isinstance(tool_calls_raw, list) else []
-    )
+    tool_calls = [tc for tc in tool_calls_raw if isinstance(tc, dict)] if isinstance(tool_calls_raw, list) else []
 
     if not text and not tool_calls:
         # Never present a raw payload dump as if the model wrote it.

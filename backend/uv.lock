@@ -475,7 +475,7 @@ requires-dist = [
     { name = "wecom-aibot-python-sdk", specifier = ">=0.1.6" },
     { name = "zeroconf", marker = "extra == 'peer-discovery'", specifier = ">=0.145.0" },
 ]
-provides-extras = ["postgres", "redis", "discord", "buzz", "monocle", "ollama", "browser", "memory-zh", "voice", "peer-discovery"]
+provides-extras = ["postgres", "redis", "discord", "buzz", "monocle", "ollama", "browser", "memory-zh", "voice", "peer-discovery", "self-trace"]
 
 [package.metadata.requires-dev]
 dev = [

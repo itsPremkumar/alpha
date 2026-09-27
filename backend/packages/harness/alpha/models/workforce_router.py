@@ -18,18 +18,24 @@ logger = logging.getLogger(__name__)
 
 class ModelTier(str, Enum):
     FRONTIER = "frontier"  # Deep reasoning, architecture, security, postmortem
-    CODING = "coding"      # Code generation, refactoring, test synthesis
-    FAST = "fast"          # Research, review, summary, docs, triage
-    LOCAL = "local"        # Offline, air-gapped, zero-cost fallback
+    CODING = "coding"  # Code generation, refactoring, test synthesis
+    FAST = "fast"  # Research, review, summary, docs, triage
+    LOCAL = "local"  # Offline, air-gapped, zero-cost fallback
 
 
+# Legacy advisory suggestions only.
+#
+# These are vendor model ids that resolve against no operator's `models[]`, so
+# a chain built from this table is a *suggestion*, not an executable route.
+# Declare real tiers under `config.yaml -> model_routing.tiers`; every declared
+# name is validated against `models[]` at config load and takes precedence in
+# `route_model`. See `alpha.config.model_routing_config`.
 DEFAULT_TIER_MODELS: dict[ModelTier, list[str]] = {
     ModelTier.FRONTIER: ["claude-3-7-sonnet", "o3-mini", "gpt-4o", "ollama/qwen3:32b"],
     ModelTier.CODING: ["claude-3-5-sonnet", "deepseek-coder", "gpt-4o", "ollama/qwen3-coder:30b"],
     ModelTier.FAST: ["gpt-4o-mini", "gemini-2.0-flash", "claude-3-5-haiku", "ollama/llama3.1:8b"],
     ModelTier.LOCAL: ["ollama/qwen3-coder:30b", "ollama/llama3.1:8b", "local-default"],
 }
-
 TIER_COST_INDICATORS: dict[ModelTier, str] = {
     ModelTier.FRONTIER: "$$$",
     ModelTier.CODING: "$$",
@@ -87,9 +93,7 @@ class WorkforceModelRouter:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._tier_models: dict[ModelTier, list[str]] = {
-            k: list(v) for k, v in DEFAULT_TIER_MODELS.items()
-        }
+        self._tier_models: dict[ModelTier, list[str]] = {k: list(v) for k, v in DEFAULT_TIER_MODELS.items()}
 
     def set_tier_models(self, tier: ModelTier | str, models: list[str]) -> None:
         t = ModelTier(tier) if isinstance(tier, str) else tier
@@ -144,16 +148,33 @@ class WorkforceModelRouter:
             selected_tier = ModelTier.LOCAL
             reason += " (Local-only mode active)"
 
-        # Step 4: Resolve models and fallback chain
+        # Step 4: Resolve models and fallback chain.
+        #
+        # Operator-declared tiers (`model_routing.tiers`) win over the legacy
+        # advisory table. The local tier is appended as a fallback only when
+        # the LOCAL tier itself was declared — appending undeclared advisory
+        # names here is what used to hand callers models the factory rejects.
+        declared_local = self._declared_tier_chain(ModelTier.LOCAL)
         with self._lock:
-            chain = list(self._tier_models.get(selected_tier, []))
-            # Append local tier fallback if not already present
-            if selected_tier != ModelTier.LOCAL:
-                for local_m in self._tier_models.get(ModelTier.LOCAL, []):
-                    if local_m not in chain:
-                        chain.append(local_m)
+            overridden = self._overridden_tiers()
+        chain = self._declared_tier_chain(selected_tier) or list(self._tier_models.get(selected_tier, []))
+        if selected_tier != ModelTier.LOCAL and declared_local and overridden:
+            for local_m in declared_local:
+                if local_m not in chain:
+                    chain.append(local_m)
 
-        primary = chain[0] if chain else "default"
+        if not chain:
+            # Fail closed: an empty chain previously became the literal string
+            # "default", which reads like a model name and is not one.
+            return ModelRouteDecision(
+                tier=selected_tier.value,
+                primary_model="",
+                fallback_chain=[],
+                cost_tier=TIER_COST_INDICATORS.get(selected_tier, "$"),
+                reasoning=f"{reason} No models are configured for the '{selected_tier.value}' tier; declare them under `model_routing.tiers`.",
+            )
+
+        primary = chain[0]
         fallbacks = chain[1:]
 
         return ModelRouteDecision(
@@ -164,17 +185,36 @@ class WorkforceModelRouter:
             reasoning=reason,
         )
 
+    def _declared_tier_chain(self, tier: ModelTier) -> list[str]:
+        """Operator-declared models for ``tier``, or ``[]`` when not declared."""
+        try:
+            from alpha.models.category_router import resolve_configured_tier_chain
+
+            return resolve_configured_tier_chain(tier.value)
+        except Exception:
+            logger.debug("Declared tier routing unavailable for '%s'", tier.value, exc_info=True)
+            return []
+
+    def _overridden_tiers(self) -> set[ModelTier]:
+        """Tiers an operator declared under ``model_routing.tiers``."""
+        try:
+            from alpha.config import get_app_config
+
+            routing = get_app_config().model_routing
+            if not routing.enabled:
+                return set()
+            return {ModelTier(name) for name in routing.tiers if name in {t.value for t in ModelTier}}
+        except Exception:
+            logger.debug("Could not read declared model_routing.tiers", exc_info=True)
+            return set()
+
     def get_fallback_model(
         self,
         current_model: str,
         tier: ModelTier | str | None = None,
     ) -> str | None:
         """Find the next eligible fallback model after a failure or rate limit."""
-        target_tier = (
-            (ModelTier(tier) if isinstance(tier, str) else tier)
-            if tier
-            else None
-        )
+        target_tier = (ModelTier(tier) if isinstance(tier, str) else tier) if tier else None
 
         with self._lock:
             candidates: list[str] = []

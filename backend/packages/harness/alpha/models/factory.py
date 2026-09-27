@@ -231,9 +231,7 @@ _EXTRA_NON_CONSTRUCTOR_MODEL_KEYS = frozenset(
 # would divert unknown kwargs into the request payload — see
 # _warn_unknown_model_settings). Derived from the field metadata so it cannot
 # fall behind ``ModelConfig``; see ``_MODEL_CONFIG_PROVIDER_PASSTHROUGH`` above.
-_NON_CONSTRUCTOR_MODEL_KEYS = (
-    frozenset(ModelConfig.model_fields) - _MODEL_CONFIG_PROVIDER_PASSTHROUGH
-) | _EXTRA_NON_CONSTRUCTOR_MODEL_KEYS
+_NON_CONSTRUCTOR_MODEL_KEYS = (frozenset(ModelConfig.model_fields) - _MODEL_CONFIG_PROVIDER_PASSTHROUGH) | _EXTRA_NON_CONSTRUCTOR_MODEL_KEYS
 
 
 def _resolve_chain_configs(name: str, config: AppConfig) -> list[ModelConfig]:
@@ -302,11 +300,21 @@ def _resolve_effective_use(model_config: ModelConfig, config: AppConfig) -> str:
     raise ValueError(f"Model '{model_config.name}' declares neither `use` nor a provider supplying `use`. Set a class path on the model or on its provider profile.") from None
 
 
-def create_chat_model(name: str | None = None, thinking_enabled: bool = False, *, app_config: AppConfig | None = None, attach_tracing: bool = True, model_overrides: dict | None = None, **kwargs) -> BaseChatModel:
+def create_chat_model(
+    name: str | None = None,
+    thinking_enabled: bool = False,
+    *,
+    app_config: AppConfig | None = None,
+    attach_tracing: bool = True,
+    model_overrides: dict | None = None,
+    retries_orchestrated: bool = False,
+    **kwargs,
+) -> BaseChatModel:
     """Create a chat model instance from the config.
 
     Args:
-        name: The name of the model to create. If None, the first model in the config will be used.
+        name: The name of the model to create. If None, the configured default
+            (``default_model:``, else the first entry in ``models``) is used.
         thinking_enabled: Enable the model's extended-thinking mode when supported.
         app_config: Explicit application config; falls back to the cached global if omitted.
         model_overrides: Optional per-caller sampling overrides (e.g. a custom
@@ -326,6 +334,13 @@ def create_chat_model(name: str | None = None, thinking_enabled: bool = False, *
             the model) and ``session_id`` / ``user_id`` metadata never reach the trace
             because the model becomes a nested observation whose ``langfuse_*`` keys
             get stripped.
+        retries_orchestrated: Set True when a retry owner wraps every call to
+            this model — ``LLMErrorHandlingMiddleware`` for in-graph calls, and
+            ``FallbackChatModel`` for a chain. The provider client's own
+            ``max_retries`` is then pinned to ``0`` so the two retry loops cannot
+            multiply (see :func:`_pin_provider_retries_when_orchestrated`).
+            Leave it False for standalone one-shot callers that invoke the model
+            directly and rely on the SDK's internal retries.
 
     Returns:
         A chat model instance. When the resolved chain has a single member
@@ -335,7 +350,9 @@ def create_chat_model(name: str | None = None, thinking_enabled: bool = False, *
     """
     config = app_config or get_app_config()
     if name is None:
-        name = config.models[0].name
+        name = config.default_model_name
+    if name is None:
+        raise ValueError("No models are configured. Add at least one entry under `models:` in config.yaml.") from None
     chain = _resolve_chain_configs(name, config)
     if thinking_enabled:
         supported = [member for member in chain if member.supports_thinking]
@@ -352,7 +369,15 @@ def create_chat_model(name: str | None = None, thinking_enabled: bool = False, *
     members = [
         # Each member gets its own kwargs copy: the single-model pipeline
         # pops keys (e.g. reasoning_effort) that must remain for siblings.
-        _build_single_model(member, thinking_enabled, config, attach_tracing, model_overrides, dict(kwargs))
+        _build_single_model(
+            member,
+            thinking_enabled,
+            config,
+            attach_tracing,
+            model_overrides,
+            dict(kwargs),
+            retries_orchestrated=retries_orchestrated,
+        )
         for member in chain
     ]
     if len(members) == 1:
@@ -368,6 +393,56 @@ def create_chat_model(name: str | None = None, thinking_enabled: bool = False, *
     return wrapper
 
 
+def _pin_provider_retries_when_orchestrated(model_class: type, name: str, model_settings_from_config: dict, *, retries_orchestrated: bool) -> None:
+    """Collapse the provider client's own retry loop when an outer owner retries.
+
+    Alpha stacks up to three independent retry/failover layers around a single
+    user message:
+
+    1. ``LLMErrorHandlingMiddleware`` — ``retry_max_attempts`` (default 3)
+       attempts with decorrelated-jitter backoff, plus a circuit breaker.
+    2. The provider SDK client's own ``max_retries`` (the ``max_retries`` key in
+       ``models[]``; the OpenAI SDK treats 2 as 1 + 2 = 3 wire calls).
+    3. ``FallbackChatModel`` — up to 5 chain members, each retried by (1) and (2).
+
+    Those loops multiply. With the shipped defaults a single persistently
+    failing message costs up to ``3 x 3 x 5 = 45`` upstream calls, and the
+    operator's ``max_retries: 2`` reads like "two retries" rather than "two
+    retries inside every attempt of every fallback member".
+
+    LiteLLM hit exactly this and resolves it by pinning the provider client to
+    ``max_retries: 0`` whenever its router owns retries, so a configured
+    ``num_retries: N`` cannot turn one request into ``(1 + N) ** 2`` upstream
+    calls. This applies the same rule, but *scoped by the caller* rather than
+    globally: a graph call is wrapped by ``LLMErrorHandlingMiddleware`` (and a
+    chain by ``FallbackChatModel``), so those callers pass
+    ``retries_orchestrated=True`` and the inner loop is removed. Standalone
+    one-shot callers that invoke the model directly keep the SDK's retries,
+    because nothing above them would retry otherwise.
+
+    Gated on ``issubclass(model_class, BaseChatOpenAI)`` so only the
+    OpenAI-compatible family — where ``max_retries`` is a real declared field —
+    is touched. An operator who deliberately wants both loops is not blocked;
+    the log line names the value that was overridden so the change is visible.
+    """
+    if not retries_orchestrated:
+        return
+    if not issubclass(model_class, BaseChatOpenAI):
+        return
+    if "max_retries" not in getattr(model_class, "model_fields", {}):
+        return
+    configured = model_settings_from_config.get("max_retries")
+    if configured == 0:
+        return
+    if configured is not None:
+        logger.debug(
+            "Model '%s': max_retries=%s overridden to 0 because an outer retry owner (LLMErrorHandlingMiddleware / FallbackChatModel) already retries this call; keeping both loops would multiply them.",
+            name,
+            configured,
+        )
+    model_settings_from_config["max_retries"] = 0
+
+
 def _build_single_model(
     model_config: ModelConfig,
     thinking_enabled: bool,
@@ -375,6 +450,8 @@ def _build_single_model(
     attach_tracing: bool,
     model_overrides: dict | None,
     kwargs: dict,
+    *,
+    retries_orchestrated: bool = False,
 ) -> BaseChatModel:
     """Build one provider client from a resolved model entry.
 
@@ -437,6 +514,7 @@ def _build_single_model(
     # heuristics (stream_usage default below / stream_chunk_timeout) see the canonical endpoint key.
     _normalize_openai_base_url(model_class, model_settings_from_config)
     _apply_stream_chunk_timeout_default(model_class, model_settings_from_config)
+    _pin_provider_retries_when_orchestrated(model_class, name, model_settings_from_config, retries_orchestrated=retries_orchestrated)
 
     # For Codex Responses API models: map thinking mode to reasoning_effort
     from alpha.models.openai_codex_provider import CodexChatModel

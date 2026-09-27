@@ -32,6 +32,11 @@ def main() -> int:
 
     try:
         copy_if_missing(project_root / "config.example.yaml", project_root / "config.yaml")
+        # Dedicated model catalog. Separate from config.yaml for the same reason
+        # Aider/Goose/LiteLLM split theirs out: model names drift when they are
+        # hand-maintained in several places. config.yaml still overrides it, so
+        # an existing deployment is unaffected by this file existing.
+        copy_if_missing(project_root / "models.example.yaml", project_root / "models.yaml")
         copy_if_missing(project_root / ".env.example", project_root / ".env")
         copy_if_missing(
             project_root / "frontend" / ".env.example",

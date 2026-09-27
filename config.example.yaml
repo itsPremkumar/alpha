@@ -20,7 +20,7 @@
 # ============================================================================
 # Bump this number when the config schema changes.
 # Run `make config-upgrade` to merge new fields into your local config.yaml.
-config_version: 53
+config_version: 54
 
 # ============================================================================
 # Logging
@@ -158,6 +158,62 @@ max_recursion_limit: 1000
 #     model: doubao-seed-1-8-251228
 #     fallbacks: [doubao-seed-1.8-lite] # other models[] names, in priority order
 #     context_window: 262144
+#
+# ---------------------------------------------------------------------------
+# Dedicated model catalog: models.yaml
+# ---------------------------------------------------------------------------
+# Every model name Alpha knows about can live in one dedicated file instead of
+# being spread across this config and the code. `make setup` copies
+# `models.example.yaml` -> `models.yaml`; point `$AGENT_WORKSPACE_MODELS_CONFIG_PATH`
+# at it to load it from elsewhere.
+#
+#   models         runtime-buildable models (same schema as the `models:` list here)
+#   providers      named connection profiles (same schema as `providers:` here)
+#   routing        intent category / cost tier -> ordered model names
+#   catalog        bring-your-own-provider offers shown in Settings
+#   free_gateways  keyless public gateways for the free router
+#   pricing        fallback per-model prices, per 1M tokens
+#   default_model  the model a run uses when nothing selects one
+#
+# `models.yaml` is the BASE layer and this file OVERRIDES it, so an existing
+# deployment is unaffected. A `models[]` entry is replaced wholesale by name
+# (never field-merged), so exactly one file is authoritative for a given name.
+# Every name declared under `routing:` is validated against `models[]` at load:
+# an unresolvable chain is a startup error, not a silent fallback to the
+# default model. See the header of `models.example.yaml` for the full contract.
+#
+# Model lists also refresh themselves from the provider: `GET /api/models/discovery`
+# returns each provider's live catalog (OpenRouter rotates its :free set daily),
+# normalized with the model's context window kept separate from the endpoint's.
+# `POST /api/models/discovery/refresh` forces a refetch.
+# ---------------------------------------------------------------------------
+
+# The model a run uses when the request, agent, or thread selects none.
+# Defaults to the first entry in `models`. Set it explicitly so reordering or
+# prepending the list cannot silently switch the model every default run uses.
+# Must name an entry in `models` - an unknown name is a config-load error.
+# default_model: union-alpha
+
+# Intent-category and cost-tier routing. This is the only executable routing
+# source: the model routers prefer these chains and FAIL CLOSED rather than
+# naming a model that is not in `models`. Keys are the categories the routers
+# understand (quick, deep, ultrabrain, writing, artistry,
+# visual-engineering, unspecified-low, unspecified-high) and the tiers
+# (frontier, coding, fast, local); values are ordered `models[]` names, index 0
+# primary and the rest fallbacks.
+#
+# Leaving this out is fine - the routers then fall back to advisory suggestion
+# chains that name no runnable model, and a routed request degrades honestly
+# instead of quietly running on your most expensive model.
+# model_routing:
+#   enabled: true
+#   default_model: null            # null = the configured `default_model`
+#   categories:
+#     quick: [cheap-model]
+#     deep: [flagship-model, cheap-model]
+#   tiers:
+#     fast: [cheap-model]
+#     frontier: [flagship-model]
 
 models:
   - name: union-alpha

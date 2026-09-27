@@ -109,466 +109,76 @@ class ProviderDescriptor:
     default_use: str = "langchain_openai:ChatOpenAI"
 
 
-PROVIDER_SPECS: list[ProviderDescriptor] = [
-    # 1. Keyless Free Providers
-    ProviderDescriptor(
-        id="ovhcloud",
-        name="OVHcloud AI Endpoints",
-        category="keyless_free",
-        key_env=None,
-        portal_url="https://endpoints.kepler.ai.cloud.ovh.net/",
-        free_tier_note="100% Free European sovereign endpoints. No API key required.",
-        default_base_url="https://oai.endpoints.kepler.ai.cloud.ovh.net/v1",
-        default_models=[
-            ModelDescriptor(
-                id="free:ovhcloud:Meta-Llama-3_3-70B-Instruct",
-                name="LLaMA 3.3 70B (OVHcloud Free)",
-                model_id="Meta-Llama-3_3-70B-Instruct",
-                description="Meta LLaMA 3.3 70B running on OVHcloud European AI cloud. Keyless & fast.",
-            ),
-            ModelDescriptor(
-                id="free:ovhcloud:Qwen3-Coder-30B-A3B-Instruct",
-                name="Qwen3 Coder 30B (OVHcloud Free)",
-                model_id="Qwen3-Coder-30B-A3B-Instruct",
-                description="Alibaba Qwen3 Coder 30B MoE model for programming tasks.",
-            ),
-            ModelDescriptor(
-                id="free:ovhcloud:Mistral-7B-Instruct-v0.3",
-                name="Mistral 7B v0.3 (OVHcloud Free)",
-                model_id="Mistral-7B-Instruct-v0.3",
-                description="Fast lightweight instruction-tuned model by Mistral AI.",
-            ),
-            ModelDescriptor(
-                id="free:ovhcloud:gpt-oss-20b",
-                name="GPT-OSS 20B (OVHcloud Free)",
-                model_id="gpt-oss-20b",
-                description="Open-weight GPT architecture on sovereign infrastructure.",
-            ),
-        ],
-    ),
-    ProviderDescriptor(
-        id="pollinations",
-        name="Pollinations AI",
-        category="keyless_free",
-        key_env=None,
-        portal_url="https://pollinations.ai",
-        free_tier_note="Instant public AI router with high concurrency. Zero auth required.",
-        default_base_url="https://text.pollinations.ai",
-        default_models=[
-            ModelDescriptor(
-                id="free:pollinations:openai-fast",
-                name="OpenAI Fast (Pollinations Free)",
-                model_id="openai-fast",
-                description="Ultra-fast public text model via Pollinations router.",
-            ),
-            ModelDescriptor(
-                id="free:pollinations:openai",
-                name="OpenAI Standard (Pollinations Free)",
-                model_id="openai",
-                description="Standard OpenAI compatible generation via Pollinations.",
-            ),
-        ],
-    ),
-    ProviderDescriptor(
-        id="llm7",
-        name="LLM7 Gateway",
-        category="keyless_free",
-        key_env=None,
-        portal_url="https://llm7.io",
-        free_tier_note="Free community router with Codestral and Mistral-Nemo.",
-        default_base_url="https://api.llm7.io/v1",
-        default_models=[
-            ModelDescriptor(
-                id="free:llm7:codestral-latest",
-                name="Codestral Latest (LLM7 Free)",
-                model_id="codestral-latest",
-                description="Mistral Codestral for coding and code review without key.",
-            ),
-            ModelDescriptor(
-                id="free:llm7:mistral-Nemo-Instruct-2407",
-                name="Mistral Nemo 12B (LLM7 Free)",
-                model_id="mistral-Nemo-Instruct-2407",
-                description="Mistral Nemo 12B 128k context model hosted for free.",
-            ),
-            ModelDescriptor(
-                id="free:llm7:gemma4:31b",
-                name="Gemma 4 31B (LLM7 Free)",
-                model_id="gemma4:31b",
-                description="Google Gemma 4 architecture via LLM7.",
-            ),
-        ],
-    ),
-    ProviderDescriptor(
-        id="vireonix",
-        name="Vireonix AI",
-        category="keyless_free",
-        key_env=None,
-        portal_url="https://vireonix.ru",
-        free_tier_note="Public OpenAI-compatible free router.",
-        default_base_url="https://api.vireonix.ru/v1",
-        default_models=[
-            ModelDescriptor(
-                id="free:vireonix:auto",
-                name="Vireonix Auto Free",
-                model_id="auto",
-                description="Dynamic auto-routed model via Vireonix open gateway.",
+def _provider_specs_from_catalog() -> list[ProviderDescriptor]:
+    """Build the bring-your-own-provider catalog from ``models.yaml``.
+
+    The catalog file is the single source of truth for every provider and model
+    name offered in Settings. This function is the only reader, so adding a
+    provider is a YAML edit rather than a code change, and the capability a
+    provider declares can no longer disagree with the one ``models[]`` declares
+    for the same name without :mod:`alpha.models.catalog_consistency` noticing.
+
+    Returns ``[]`` when no catalog is configured. That is honest rather than a
+    regression: with no ``models.yaml`` there is no declared catalog, and
+    offering a stale in-code list would be the exact drift this replaced.
+    """
+    try:
+        from alpha.config.models_catalog import get_models_catalog
+
+        catalog = get_models_catalog()
+    except Exception:
+        logger.debug("models.yaml unavailable; provider catalog is empty", exc_info=True)
+        return []
+    specs: list[ProviderDescriptor] = []
+    for entry in catalog.catalog:
+        specs.append(
+            ProviderDescriptor(
+                id=entry.id,
+                name=entry.name,
+                category=entry.category,
+                key_env=entry.key_env,
+                portal_url=entry.portal_url,
+                free_tier_note=entry.free_tier_note,
+                default_base_url=entry.base_url,
+                default_use=entry.default_use,
+                default_models=[
+                    ModelDescriptor(
+                        id=model.id,
+                        name=model.name,
+                        model_id=model.model_id,
+                        supports_thinking=model.supports_thinking,
+                        description=model.description,
+                    )
+                    for model in entry.models
+                ],
             )
-        ],
-    ),
-    ProviderDescriptor(
-        id="cehpoint",
-        name="Cehpoint AI",
-        category="keyless_free",
-        key_env=None,
-        portal_url="https://cehpoint.co.in",
-        free_tier_note="Free endpoint with fine-tuned model.",
-        default_base_url="https://ai.cehpoint.co.in/api/v1",
-        default_models=[
-            ModelDescriptor(
-                id="free:cehpoint:cehpoint-ai",
-                name="Cehpoint AI Free",
-                model_id="cehpoint-ai",
-                description="Free public inference model by Cehpoint.",
-            )
-        ],
-    ),
-    # 2. Recurring $0 Free Quota Providers (Free API Key Required)
-    ProviderDescriptor(
-        id="gemini",
-        name="Google AI Studio (Gemini)",
-        category="recurring_free",
-        key_env="GEMINI_API_KEY",
-        portal_url="https://aistudio.google.com/apikey",
-        free_tier_note="Recurring $0 free tier: 15 RPM / 1,500 requests per day with Gemini 2.5 Flash & Pro.",
-        default_base_url="https://generativelanguage.googleapis.com/v1beta/openai",
-        default_models=[
-            ModelDescriptor(
-                id="gemini-2.5-flash",
-                name="Gemini 2.5 Flash",
-                model_id="gemini-2.5-flash",
-                supports_thinking=True,
-                description="Google flagship multimodal model with speed, reasoning, and 1M token context.",
-            ),
-            ModelDescriptor(
-                id="gemini-2.5-flash-lite",
-                name="Gemini 2.5 Flash-Lite",
-                model_id="gemini-2.5-flash-lite",
-                supports_thinking=False,
-                description="Extremely fast, cost-effective Gemini model for real-time applications.",
-            ),
-            ModelDescriptor(
-                id="gemini-2.0-pro-exp-02-05",
-                name="Gemini 2.0 Pro Experimental",
-                model_id="gemini-2.0-pro-exp-02-05",
-                supports_thinking=True,
-                description="Next-gen frontier reasoning model from Google DeepMind.",
-            ),
-        ],
-    ),
-    ProviderDescriptor(
-        id="groq",
-        name="GroqCloud",
-        category="recurring_free",
-        key_env="GROQ_API_KEY",
-        portal_url="https://console.groq.com/keys",
-        free_tier_note="Recurring $0 free quota: 30 RPM / 14,400 requests/day at 500+ tokens/sec on LPUs.",
-        default_base_url="https://api.groq.com/openai/v1",
-        default_models=[
-            ModelDescriptor(
-                id="groq-llama-3.3-70b",
-                name="LLaMA 3.3 70B Versatile (Groq)",
-                model_id="llama-3.3-70b-versatile",
-                supports_thinking=False,
-                description="Meta LLaMA 3.3 70B running at lightning speed on Groq LPUs.",
-            ),
-            ModelDescriptor(
-                id="groq-deepseek-r1-70b",
-                name="DeepSeek R1 Distill 70B (Groq)",
-                model_id="deepseek-r1-distill-llama-70b",
-                supports_thinking=True,
-                description="DeepSeek R1 reasoning distilled into LLaMA 70B, running with near-zero latency.",
-            ),
-            ModelDescriptor(
-                id="groq-llama-3.1-8b",
-                name="LLaMA 3.1 8B Instant (Groq)",
-                model_id="llama-3.1-8b-instant",
-                supports_thinking=False,
-                description="Sub-100ms response time for lightweight agent tasks and tool calls.",
-            ),
-        ],
-    ),
-    ProviderDescriptor(
-        id="openrouter",
-        name="OpenRouter",
-        category="free_gateway",
-        key_env="OPENROUTER_API_KEY",
-        portal_url="https://openrouter.ai/keys",
-        free_tier_note="Single API key unlocks Union Alpha and 25+ rotating :free models at $0 cost.",
-        default_base_url="https://openrouter.ai/api/v1",
-        default_models=[
-            ModelDescriptor(
-                id="union-alpha",
-                name="Union Alpha (Stealth Model)",
-                model_id="stealth/union-alpha",
-                supports_thinking=True,
-                description="Unified hybrid agent intelligence architecture model.",
-            ),
-            ModelDescriptor(
-                id="openrouter-free-llama-70b",
-                name="LLaMA 3.3 70B :free (OpenRouter)",
-                model_id="meta-llama/llama-3.3-70b-instruct:free",
-                supports_thinking=False,
-                description="Meta LLaMA 3.3 70B free tier via OpenRouter gateway.",
-            ),
-            ModelDescriptor(
-                id="openrouter-free-deepseek-r1",
-                name="DeepSeek R1 :free (OpenRouter)",
-                model_id="deepseek/deepseek-r1:free",
-                supports_thinking=True,
-                description="Full DeepSeek R1 reasoning model with open router free tier.",
-            ),
-            ModelDescriptor(
-                id="openrouter-free-gemini-flash",
-                name="Gemini 2.0 Flash :free (OpenRouter)",
-                model_id="google/gemini-2.0-flash-exp:free",
-                supports_thinking=True,
-                description="Google Gemini 2.0 Flash free endpoint on OpenRouter.",
-            ),
-        ],
-    ),
-    ProviderDescriptor(
-        id="sambanova",
-        name="SambaNova Cloud",
-        category="recurring_free",
-        key_env="SAMBANOVA_API_KEY",
-        portal_url="https://cloud.sambanova.ai/apis",
-        free_tier_note="Recurring $0 developer tier on ultra-fast SN40L Reconfigurable Dataflow Units.",
-        default_base_url="https://api.sambanova.ai/v1",
-        default_models=[
-            ModelDescriptor(
-                id="sambanova-llama-3.3-70b",
-                name="LLaMA 3.3 70B (SambaNova)",
-                model_id="Meta-Llama-3.3-70B-Instruct",
-                supports_thinking=False,
-                description="High throughput LLaMA 3.3 70B on SambaNova RDUs.",
-            ),
-            ModelDescriptor(
-                id="sambanova-deepseek-r1",
-                name="DeepSeek R1 (SambaNova)",
-                model_id="DeepSeek-R1",
-                supports_thinking=True,
-                description="Full 671B DeepSeek R1 reasoning model on SambaNova RDUs.",
-            ),
-            ModelDescriptor(
-                id="sambanova-qwen-coder-32b",
-                name="Qwen 2.5 Coder 32B (SambaNova)",
-                model_id="Qwen2.5-Coder-32B-Instruct",
-                supports_thinking=False,
-                description="Specialized coding model running at enterprise speeds.",
-            ),
-        ],
-    ),
-    ProviderDescriptor(
-        id="mistral",
-        name="Mistral La Plateforme",
-        category="recurring_free",
-        key_env="MISTRAL_API_KEY",
-        portal_url="https://console.mistral.ai/api-keys/",
-        free_tier_note="Free Experiment tier with Codestral, Mistral Small, and Nemo.",
-        default_base_url="https://api.mistral.ai/v1",
-        default_models=[
-            ModelDescriptor(
-                id="mistral-codestral",
-                name="Codestral (Mistral)",
-                model_id="codestral-latest",
-                supports_thinking=False,
-                description="Mistral AI state-of-the-art model for coding and code generation.",
-            ),
-            ModelDescriptor(
-                id="mistral-small",
-                name="Mistral Small (Mistral)",
-                model_id="mistral-small-latest",
-                supports_thinking=False,
-                description="Fast and cost-efficient enterprise model by Mistral AI.",
-            ),
-        ],
-    ),
-    ProviderDescriptor(
-        id="cohere",
-        name="Cohere Coral",
-        category="recurring_free",
-        key_env="COHERE_API_KEY",
-        portal_url="https://dashboard.cohere.com/api-keys",
-        free_tier_note="Free Trial Key with 1,000 API calls/month.",
-        default_base_url="https://api.cohere.ai/compatibility/v1",
-        default_models=[
-            ModelDescriptor(
-                id="cohere-command-r-plus",
-                name="Command R+ (Cohere)",
-                model_id="command-r-plus-08-2024",
-                supports_thinking=False,
-                description="Cohere flagship model optimized for conversational agents and RAG.",
-            )
-        ],
-    ),
-    ProviderDescriptor(
-        id="cloudflare",
-        name="Cloudflare Workers AI",
-        category="recurring_free",
-        key_env="CLOUDFLARE_API_KEY",
-        portal_url="https://dash.cloudflare.com/",
-        free_tier_note="10,000 free neurons/day across Cloudflare global edge network.",
-        default_base_url="https://api.cloudflare.com/client/v4/accounts/default/ai/v1",
-        default_models=[
-            ModelDescriptor(
-                id="cf-llama-3.3-70b",
-                name="LLaMA 3.3 70B FP8 (Cloudflare)",
-                model_id="@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-                supports_thinking=False,
-                description="Meta LLaMA 3.3 70B served from Cloudflare distributed edge GPUs.",
-            )
-        ],
-    ),
-    # 3. Trial Credit Providers
-    ProviderDescriptor(
-        id="nvidia",
-        name="NVIDIA NIM",
-        category="trial_credits",
-        key_env="NVIDIA_API_KEY",
-        portal_url="https://build.nvidia.com/",
-        free_tier_note="1,000 free inference API credits on NVIDIA enterprise DGX cloud.",
-        default_base_url="https://integrate.api.nvidia.com/v1",
-        default_models=[
-            ModelDescriptor(
-                id="nvidia-nemotron-70b",
-                name="Nemotron 70B (NVIDIA NIM)",
-                model_id="nvidia/llama-3.1-nemotron-70b-instruct",
-                supports_thinking=False,
-                description="NVIDIA aligned model trained for exceptional reasoning and instruction following.",
-            ),
-            ModelDescriptor(
-                id="nvidia-deepseek-r1",
-                name="DeepSeek R1 (NVIDIA NIM)",
-                model_id="deepseek-ai/deepseek-r1",
-                supports_thinking=True,
-                description="DeepSeek R1 full reasoning hosted on NVIDIA NIM microservices.",
-            ),
-        ],
-    ),
-    ProviderDescriptor(
-        id="cerebras",
-        name="Cerebras Cloud",
-        category="trial_credits",
-        key_env="CEREBRAS_API_KEY",
-        portal_url="https://cloud.cerebras.ai/",
-        free_tier_note="1 Million free tokens/day on wafer-scale inference engine (2,000+ t/s).",
-        default_base_url="https://api.cerebras.ai/v1",
-        default_models=[
-            ModelDescriptor(
-                id="cerebras-llama-3.3-70b",
-                name="LLaMA 3.3 70B (Cerebras 2,000 t/s)",
-                model_id="llama-3.3-70b",
-                supports_thinking=False,
-                description="World-record inference speeds on wafer-scale engines.",
-            )
-        ],
-    ),
-    # 4. Commercial Frontier Providers
-    ProviderDescriptor(
-        id="openai",
-        name="OpenAI",
-        category="paid",
-        key_env="OPENAI_API_KEY",
-        portal_url="https://platform.openai.com/api-keys",
-        free_tier_note="Official OpenAI commercial platform (GPT-4o, GPT-4o-mini, o3-mini).",
-        default_base_url="https://api.openai.com/v1",
-        default_models=[
-            ModelDescriptor(
-                id="gpt-4o",
-                name="GPT-4o",
-                model_id="gpt-4o",
-                supports_thinking=False,
-                description="OpenAI flagship omni model for multimodal reasoning and coding.",
-            ),
-            ModelDescriptor(
-                id="gpt-4o-mini",
-                name="GPT-4o mini",
-                model_id="gpt-4o-mini",
-                supports_thinking=False,
-                description="Affordable and intelligent small model for fast tasks.",
-            ),
-            ModelDescriptor(
-                id="o3-mini",
-                name="o3-mini",
-                model_id="o3-mini",
-                supports_thinking=True,
-                description="OpenAI high-speed reasoning model with configurable reasoning effort.",
-            ),
-        ],
-    ),
-    ProviderDescriptor(
-        id="anthropic",
-        name="Anthropic Claude",
-        category="paid",
-        key_env="ANTHROPIC_API_KEY",
-        portal_url="https://console.anthropic.com/settings/keys",
-        free_tier_note="Official Anthropic API (Claude 3.7 Sonnet with Hybrid Thinking, Claude 3.5 Sonnet).",
-        default_base_url="https://api.anthropic.com",
-        default_use="langchain_anthropic:ChatAnthropic",
-        default_models=[
-            ModelDescriptor(
-                id="claude-3-7-sonnet",
-                name="Claude 3.7 Sonnet",
-                model_id="claude-3-7-sonnet-latest",
-                supports_thinking=True,
-                description="Anthropic hybrid thinking model with unmatched coding abilities.",
-            ),
-            ModelDescriptor(
-                id="claude-3-5-sonnet",
-                name="Claude 3.5 Sonnet",
-                model_id="claude-3-5-sonnet-latest",
-                supports_thinking=False,
-                description="Industry-standard benchmark model for coding and agent workflows.",
-            ),
-        ],
-    ),
-    ProviderDescriptor(
-        id="deepseek",
-        name="DeepSeek Official",
-        category="paid",
-        key_env="DEEPSEEK_API_KEY",
-        portal_url="https://platform.deepseek.com/api_keys",
-        free_tier_note="Direct high-concurrency DeepSeek V3 and R1 reasoning endpoints at ultra-low price.",
-        default_base_url="https://api.deepseek.com/v1",
-        default_models=[
-            ModelDescriptor(
-                id="deepseek-chat",
-                name="DeepSeek V3",
-                model_id="deepseek-chat",
-                supports_thinking=False,
-                description="Direct 671B parameter DeepSeek V3 general intelligence model.",
-            ),
-            ModelDescriptor(
-                id="deepseek-reasoner",
-                name="DeepSeek R1",
-                model_id="deepseek-reasoner",
-                supports_thinking=True,
-                description="Direct DeepSeek R1 reasoning model with visible thought chains.",
-            ),
-        ],
-    ),
-    # 5. Custom / Local Endpoints
-    ProviderDescriptor(
-        id="custom",
-        name="Custom / Local OpenAI Endpoint",
-        category="custom",
-        key_env="CUSTOM_LLM_API_KEY",
-        portal_url="",
-        free_tier_note="Connect any local server (Ollama, LM Studio, vLLM) or private proxy.",
-        default_base_url="http://127.0.0.1:11434/v1",
-        default_models=[],
-    ),
-]
+        )
+    return specs
+
+
+#: Lazily resolved from ``models.yaml`` on first use. Kept as a module-level
+#: name so existing importers keep working; call :func:`refresh_provider_specs`
+#: after editing the catalog in a long-lived process.
+PROVIDER_SPECS: list[ProviderDescriptor] = _provider_specs_from_catalog()
+
+
+def refresh_provider_specs() -> list[ProviderDescriptor]:
+    """Re-read the provider catalog from ``models.yaml`` and rebind ``PROVIDER_SPECS``.
+
+    ``models.yaml`` is hot-reloadable, so a Gateway serving a long-lived process
+    re-resolves the catalog on the next request through
+    :func:`get_providers_catalog`. This explicit refresh exists for callers that
+    captured the module-level list at import time.
+    """
+    global PROVIDER_SPECS
+    PROVIDER_SPECS = _provider_specs_from_catalog()
+    return PROVIDER_SPECS
+
+
+# The provider/model catalog that used to live here as ~470 lines of literals
+# now comes from `models.yaml` via `_provider_specs_from_catalog`. Regenerate
+# `models.example.yaml` from a pre-catalog build with
+# `backend/scripts/gen_models_example.py` when upgrading.
 
 
 def _credentials_path() -> Path:
@@ -689,8 +299,7 @@ def _encrypt_payload(plaintext: bytes) -> tuple[str, str]:
 
         return Fernet(_fernet_key()).encrypt(plaintext).decode("ascii"), backend
     logger.warning(
-        "No at-rest encryption available for %s (neither Windows DPAPI nor the 'cryptography' package). "
-        "Provider keys are being stored in PLAINTEXT; restrict access to the runtime home or install one of them.",
+        "No at-rest encryption available for %s (neither Windows DPAPI nor the 'cryptography' package). Provider keys are being stored in PLAINTEXT; restrict access to the runtime home or install one of them.",
         CREDENTIALS_FILE_NAME,
     )
     return base64.b64encode(plaintext).decode("ascii"), "none"
@@ -819,8 +428,7 @@ def load_credentials_file() -> dict[str, Any]:
             plaintext = _decrypt_payload(str(raw.get("ciphertext", "")), str(raw.get("encryption", "")))
         except Exception as exc:
             logger.error(
-                "Failed to decrypt %s with the '%s' backend (%s: %s). Provider keys are unreadable in this process; "
-                "re-configure the affected providers. Keys encrypted for another OS user or host cannot be recovered here.",
+                "Failed to decrypt %s with the '%s' backend (%s: %s). Provider keys are unreadable in this process; re-configure the affected providers. Keys encrypted for another OS user or host cannot be recovered here.",
                 path,
                 raw.get("encryption"),
                 type(exc).__name__,
@@ -1007,12 +615,20 @@ def validate_endpoint_headers(headers: Any) -> dict[str, str]:
 
 
 def get_providers_catalog() -> list[dict[str, Any]]:
-    """Build honest provider catalog with configuration status and masked keys."""
+    """Build honest provider catalog with configuration status and masked keys.
+
+    Re-resolves ``models.yaml`` on every call rather than reading the
+    import-time ``PROVIDER_SPECS`` binding, so a catalog edit is visible to the
+    next request without a restart — matching how ``config.yaml`` itself is
+    hot-reloaded. Returns an empty list when no catalog is configured, which
+    renders as "no providers offered" rather than a stale in-code list.
+    """
+    specs = refresh_provider_specs()
     creds = load_credentials_file()
     saved_providers = creds.get("providers", {})
 
     catalog = []
-    for spec in PROVIDER_SPECS:
+    for spec in specs:
         configured = False
         masked = None
         current_base_url = spec.default_base_url
@@ -1092,7 +708,7 @@ def configure_provider(
     """
     from datetime import datetime
 
-    spec = next((s for s in PROVIDER_SPECS if s.id == provider_id), None)
+    spec = next((s for s in refresh_provider_specs() if s.id == provider_id), None)
     if not spec and provider_id != "custom":
         raise ValueError(f"Unknown provider '{provider_id}'")
 
@@ -1217,7 +833,7 @@ def sync_all_persisted_credentials_to_env() -> None:
     """Load all persisted credentials and populate os.environ so clients find them."""
     creds = load_credentials_file()
     saved = creds.get("providers", {})
-    for spec in PROVIDER_SPECS:
+    for spec in refresh_provider_specs():
         if not spec.key_env:
             continue
         persisted = saved.get(spec.id)

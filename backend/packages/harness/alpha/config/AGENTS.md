@@ -30,6 +30,53 @@ raise, and API create/update validation remains strict.
 
 Setup: Copy `config.example.yaml` to `config.yaml` in the **project root** directory.
 
+**Model catalog (`models.yaml`)**: every model name Alpha knows about lives in one
+dedicated file. `make setup` copies `models.example.yaml` -> `models.yaml` (both
+gitignored). It holds `models` (runtime-buildable), `providers` (connection
+profiles), `routing` (intent category / cost tier -> ordered model names),
+`catalog` (bring-your-own-provider offers), `free_gateways` (keyless router
+gateways), `pricing` (fallback per-1M prices), and `default_model`. Schema and
+loader: `packages/harness/alpha/config/models_catalog.py`; tests:
+`tests/test_models_catalog.py`.
+
+- **Precedence is `models.yaml` as the BASE layer, `config.yaml` overriding it.**
+  `AppConfig._apply_models_catalog()` runs from `from_file`, so an existing
+  deployment is unaffected. A `models[]` entry is replaced **wholesale by name**,
+  never field-merged, so exactly one file is authoritative for a given name —
+  that is what makes a capability declared in one place.
+- **Path resolution mirrors `extensions_config.json`**: explicit `config_path` ->
+  `$AGENT_WORKSPACE_MODELS_CONFIG_PATH` -> project root -> `backend/` and repo
+  root -> `None`. An explicit path or env var naming a missing file raises
+  `FileNotFoundError`; only the fallback search returns `None` (the catalog is
+  optional and a deployment may configure everything through `config.yaml`).
+  Path derivation is `__file__`-relative — never an absolute developer path.
+- **`$VAR` resolves on load and the resolved catalog is never written back.** Use
+  `read_raw_models_catalog()` for anything operator-facing; there is no writer,
+  because a round-trip would persist secrets and erase the references.
+- **Hot reload** via `get_models_catalog()`: a content digest (not mtime, which
+  is stale on network/object-store mounts) re-reads the file when it changes, so
+  a `max_tokens` or routing edit applies to the next message without a restart.
+- **Load-time validation is fail-closed.** `ModelsCatalog` is
+  `extra="forbid"`, so a misspelled key is an error rather than a half-read
+  file. `AppConfig._validate_model_routing` rejects any `routing:` name absent
+  from `models[]`, and `_validate_default_model` rejects an unknown
+  `default_model`. An empty declared chain is rejected by `ModelRoutingConfig`
+  so it cannot read as "declared but unusable" and silently degrade.
+- **A malformed catalog must not make a `config.yaml`-only deployment
+  unbootable**: a load failure is caught and logged, and `config.yaml`'s own
+  declarations stand. An explicit path/env-var `FileNotFoundError` still
+  propagates, because both are an operator assertion.
+- **`default_model`** is the model a run uses when nothing selects one. Read it
+  through `AppConfig.default_model_name`, never `config.models[0].name`, so an
+  explicit key is honoured everywhere. With the key absent, the first entry in
+  `models` is still used, so an unkeyed deployment is unchanged.
+- `models.example.yaml` is **generated**, not hand-edited, by
+  `backend/scripts/gen_models_example.py`. That script exists so the migration
+  out of the old in-code provider catalog is reproducible and auditable rather
+  than a one-off edit nobody can verify; edit the YAML, not the script.
+
+Setup: Copy `config.example.yaml` to `config.yaml` in the **project root** directory.
+
 **Config Versioning**: `config.example.yaml` has a `config_version` field. On startup, `AppConfig.from_file()` compares user version vs example version and emits a warning if outdated. Missing `config_version` = version 0. Run `make config-upgrade` to auto-merge missing fields. When changing the config schema, bump `config_version` in `config.example.yaml`.
 
 **Config Caching**: `get_app_config()` caches the parsed config, but automatically reloads it when the resolved config path or file content signature changes. The signature includes file metadata and a content digest, so Gateway and LangGraph reads stay aligned with `config.yaml` edits even on object-store or network mounts where mtime can remain stale.

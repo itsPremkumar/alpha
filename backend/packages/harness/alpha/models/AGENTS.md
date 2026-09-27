@@ -14,6 +14,106 @@
 - **Credit exhaustion is a typed, routed condition.** `models/fallback.py::CreditExhaustedError` normalizes HTTP 402 / `insufficient_quota` / "out of credits" (rate-limit phrasing is excluded so a throttle is not misread as billing), counts as retryable, and moves the chain forward; an exhausted chain sets `budget_status="CREDIT_EXHAUSTED"`. Provider switches are recorded as `FailoverEvent`s (`get_last_failover_events()`, optional `on_failover` callback) instead of only being logged, and an empty member response fails over too.
 - **Cost accounting is wired.** `FallbackChatModel` charges the provider-reported usage of the member that actually served the call to `CostGovernor.record_usage` via `cost_governor.record_token_usage`, attributed through `usage_attribution(...)` / `ALPHA_COST_PROJECT_ID`. Accounting never fails an answer: a tripped breaker is recorded as a `budget_exhausted` `FailoverEvent`. Tests: `tests/test_byo_model_egress_policy.py`, `tests/test_credit_exhaustion_failover.py`.
 
+### Model catalog data lives in `models.yaml`, never in code
+
+`provider_manager.PROVIDER_SPECS` and `free_router.PROVIDERS` used to be ~550
+lines of literals in this package. They are now read from the dedicated
+`models.yaml` catalog (`alpha.config.models_catalog`), because a hand-maintained
+provider list is a second source of truth that drifts silently. Add a provider
+or gateway in YAML, not in Python. Both are re-resolved per call
+(`refresh_provider_specs`, `refresh_free_gateways`) so a catalog edit is visible
+without a restart; the module-level `PROVIDER_SPECS` / `PROVIDERS` bindings exist
+only for importers that captured them at import time. With no catalog configured
+they are **empty**, which is honest — offering a stale in-code list is the exact
+drift this removed. Regenerate `models.example.yaml` from a pre-catalog build
+with `backend/scripts/gen_models_example.py`.
+
+### Cross-namespace capability drift (`catalog_consistency.py`)
+
+`GET /api/models` merges four namespaces first-wins by name: `models[]`, the
+bring-your-own-provider catalog, `custom_models`, and the free router. When the
+same name appears in two with different capabilities, the API silently keeps the
+`models[]` value while the other declaration keeps claiming something else — the
+UI then offers a control the factory rejects. This shipped: `union-alpha` was
+`supports_thinking: false` in `config.example.yaml` (pinned by
+`tests/test_model_config.py`) and `true` in `PROVIDER_SPECS` and in a
+hand-copied frontend fallback.
+
+`check_model_catalog_consistency` compares `supports_thinking`,
+`supports_vision`, `supports_reasoning_effort` and `context_window` across the
+namespaces; `enforce_model_catalog_consistency(..., strict=True)` logs each
+disagreement at ERROR. A `None` on either side is *undeclared*, not drift. Run it
+on boot and keep `tests/test_model_catalog_consistency.py` green — a hand-typed
+capability table is the industry's most common source of this bug.
+
+### Provider model discovery (`discovery.py`)
+
+Providers turn catalogs over continuously (OpenRouter rotates its `:free` set
+daily), so the live list is **fetched, not hardcoded**. `GET
+/api/models/discovery` returns each provider's catalog; `POST
+/api/models/discovery/refresh` forces a refetch (admin-only — it makes an
+outbound request). `backend/scripts/check_discovery.py` prints what each provider
+reports.
+
+- **Normalized to OpenRouter's descriptor shape**, the best capability contract
+  any provider offers: `context_length` (the model), `endpoint_context_length`
+  and `endpoint_max_completion_tokens` (what *this* endpoint serves) stay three
+  separate numbers. Collapsing them is the documented cause of wrong
+  summarization thresholds. `reasoning` is
+  `{mandatory, supported_efforts[], default_effort}`, not one boolean.
+- **Free is computed, not trusted**: a model is free only when both the input
+  and output price are zero, because providers label free-input/paid-output
+  models `:free` too.
+- **"Undeclared" stays distinguishable from "declared false"**: a minimal
+  OpenAI-compatible `{"data":[{"id":...}]}` entry leaves every richer field
+  `None` rather than guessing.
+- **Operational bounds**: 12s per-request timeout, 6h success TTL, 15m negative
+  TTL (a down provider is not re-probed on every request), results cached under
+  `runtime_home()/models/discovery/` so a restart does not re-fetch, 2000-model
+  cap, `follow_redirects=False`, and a cache filename that cannot escape its
+  directory.
+- **Egress-screened** by `assert_model_endpoint_url` before every request — the
+  same policy that guards BYO model configuration — so discovery cannot become
+  an SSRF probe against loopback, RFC1918, or cloud metadata.
+- **A provider with no dedicated adapter still works**: any catalog provider with
+  a `base_url` falls back to the OpenAI-compatible `GET {base}/models` probe, so
+  adding a gateway needs no code change. Tests: `tests/test_model_discovery.py`.
+
+### Model routers fail closed on unresolvable routes
+
+`task_router` / `category_router` / `workforce_router` used to carry hardcoded
+vendor model ids (`gpt-4o`, `claude-opus-5`, `kimi-k3`, `ollama/qwen3:32b`, …)
+that resolve against no operator's `models[]`. `task_router`'s
+`[m for m in chain if m in have] or chain` then handed the unfiltered chain back,
+so `POST /api/bots/route-task` returned a `primary` the factory rejects and the
+lead agent silently degraded to the default model — a "quick" task quietly ran on
+the flagship and billed accordingly.
+
+Now: `model_routing.categories` / `model_routing.tiers` in `models.yaml` (or
+`config.yaml`) are the only executable routing source, every declared name is
+validated against `models[]` at load, and a chain that filters to nothing returns
+an **empty `chain`/`primary` plus a `reason`** instead of inventing a route.
+Escalation never invents one either. The built-in tables remain only as clearly
+labelled advisory *suggestions* for operators who declared nothing. This is the
+mechanism the rest of the field converged on: Continue `roles:`, Aider
+`weak_model_name`, OpenHands `usage_id`, Letta's required `model`+`embedding`.
+
+### One retry owner per call (`factory.py`)
+
+Alpha stacks three retry/failover layers: `LLMErrorHandlingMiddleware`
+(`retry_max_attempts`, default 3), the provider client's own `max_retries`, and
+`FallbackChatModel` (up to 5 members). They multiply: the shipped defaults made
+one persistently failing message cost up to `3 x 3 x 5 = 45` upstream calls, and
+`max_retries: 2` read like "two retries" rather than "two retries inside every
+attempt of every fallback member". LiteLLM hit this and pins the client to
+`max_retries: 0` whenever its router owns retries.
+
+`create_chat_model(..., retries_orchestrated=True)` does the same, **scoped by the
+caller** rather than globally: the lead agent and the subagent executor pass it
+(their graphs are wrapped by the middleware, and a chain by `FallbackChatModel`),
+while standalone one-shot callers keep the SDK's retries because nothing above
+them would retry otherwise. See `_pin_provider_retries_when_orchestrated`.
+
 ### Model Factory (`packages/harness/alpha/models/factory.py`)
 
 - `create_chat_model(name, thinking_enabled)` instantiates LLM from config via reflection
