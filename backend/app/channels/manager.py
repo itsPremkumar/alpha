@@ -20,6 +20,17 @@ import httpx
 from fastapi import HTTPException
 from langgraph_sdk.errors import ConflictError
 
+from alpha.branding import DISPLAY_NAME
+from alpha.config.agents_config import list_custom_agents, load_agent_config
+from alpha.config.paths import make_safe_user_id
+from alpha.runtime import END_SENTINEL, StreamBridge
+from alpha.runtime.goal import parse_goal_command
+from alpha.runtime.user_context import get_effective_user_id
+from alpha.skills.slash import parse_slash_skill_reference
+from alpha.skills.storage import get_or_new_skill_storage
+from alpha.skills.storage.skill_storage import SkillStorage
+from alpha.trace_context import ensure_trace_context
+from alpha.utils.messages import ORIGINAL_USER_CONTENT_KEY
 from app.channels import buzz_run_policy as _buzz_run_policy  # noqa: F401
 from app.channels import feishu_run_policy as _feishu_run_policy  # noqa: F401
 from app.channels.commands import KNOWN_CHANNEL_COMMANDS
@@ -42,17 +53,6 @@ from app.gateway.csrf_middleware import CSRF_COOKIE_NAME, CSRF_HEADER_NAME, gene
 from app.gateway.github import run_policy as _github_run_policy  # noqa: F401
 from app.gateway.internal_auth import create_internal_auth_headers
 from app.gateway.path_utils import resolve_outputs_confined_path
-from alpha.branding import DISPLAY_NAME
-from alpha.config.agents_config import list_custom_agents, load_agent_config
-from alpha.config.paths import make_safe_user_id
-from alpha.runtime import END_SENTINEL, StreamBridge
-from alpha.runtime.goal import parse_goal_command
-from alpha.runtime.user_context import get_effective_user_id
-from alpha.skills.slash import parse_slash_skill_reference
-from alpha.skills.storage import get_or_new_skill_storage
-from alpha.skills.storage.skill_storage import SkillStorage
-from alpha.trace_context import ensure_trace_context
-from alpha.utils.messages import ORIGINAL_USER_CONTENT_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -73,8 +73,23 @@ MAX_CHANNEL_AGENT_DESCRIPTION_CHARS = 120
 # limit via `subagents.max_turns` (see SubagentExecutor). Do not conflate this
 # 100 with the general-purpose subagent's max_turns.
 DEFAULT_RUN_CONFIG: dict[str, Any] = {"recursion_limit": 100}
+# ``thinking_enabled`` is deliberately ABSENT from this base layer.
+#
+# It used to be hardcoded ``True`` here, which made every IM-channel run
+# request extended thinking implicitly. That is a latent crash on any
+# deployment whose resolved model does not support thinking: the shipped
+# default (``union-alpha``) declares ``supports_thinking: false``, and
+# ``alpha.models.factory.create_chat_model`` fails closed with
+# "Model <name> does not support thinking" when thinking is requested for
+# such a model. The Web UI never hit this because it hides the toggle for a
+# non-thinking model, so the failure was specific to channels.
+#
+# Thinking is now requested explicitly (a channel / session / user ``context``
+# layer, all of which override this base through ``_merge_dicts``) and
+# reconciled against the resolved model by
+# :meth:`ChannelManager._reconcile_thinking_support`, which downgrades with an
+# actionable warning instead of raising mid-run.
 DEFAULT_RUN_CONTEXT: dict[str, Any] = {
-    "thinking_enabled": True,
     "is_plan_mode": False,
     "subagent_enabled": False,
 }
@@ -1536,7 +1551,48 @@ class ChannelManager:
             else:
                 run_config["recursion_limit"] = max(run_config.get("recursion_limit", 100), policy.default_recursion_limit)
 
+        self._reconcile_thinking_support(run_context)
         return assistant_id, run_config, run_context
+
+    @staticmethod
+    def _reconcile_thinking_support(run_context: dict[str, Any]) -> None:
+        """Downgrade an explicit ``thinking_enabled`` the resolved model cannot serve.
+
+        ``create_chat_model`` fails closed when thinking is requested for a
+        model that does not support it, which is the right behavior for a
+        deliberate request. A channel operator who sets
+        ``context: {thinking_enabled: true}`` on a channel pinned to a
+        non-thinking model would otherwise get an opaque mid-run
+        ``ValueError`` and no reply at all. Reconcile here instead: keep the
+        run, disable thinking, and say which model refused it.
+
+        Only an explicit truthy value is reconciled. An absent value (the
+        normal case now that ``DEFAULT_RUN_CONTEXT`` no longer forces it) is
+        left alone so the lead agent's own default applies, and an unresolvable
+        model name is left alone so ``lead_agent._resolve_model_name`` keeps
+        ownership of the fallback-and-warn path.
+        """
+        if run_context.get("thinking_enabled") is not True:
+            return
+        requested_name = run_context.get("model_name")
+        try:
+            from alpha.config import get_app_config
+
+            config = get_app_config()
+        except Exception:  # noqa: BLE001 - never fail a delivery over a config read
+            logger.debug("[Manager] could not read app config to reconcile thinking_enabled", exc_info=True)
+            return
+        model_name = requested_name if isinstance(requested_name, str) and requested_name.strip() else config.default_model_name
+        if not model_name:
+            return
+        model_config = config.get_model_config(model_name)
+        if model_config is None or model_config.supports_thinking:
+            return
+        run_context["thinking_enabled"] = False
+        logger.warning(
+            "[Manager] thinking_enabled requested but model '%s' declares supports_thinking: false; continuing with thinking disabled for this run.",
+            model_name,
+        )
 
     async def _apply_channel_policy(self, msg: InboundMessage, run_context: dict[str, Any]) -> ChannelRunPolicy | None:
         """Apply per-channel run policy that needs ``run_context`` access.
