@@ -359,10 +359,10 @@ class TestStripUploadMentionsFromMemory:
 
     def test_uploading_a_test_file_removed(self):
         """'uploading a test file' (with intervening words) must be caught."""
-        mem = self._make_memory("User conducted a hands-on test by uploading a test file titled 'test_agent_workspace_memory_bug.txt'. User is also learning Python.")
+        mem = self._make_memory("User conducted a hands-on test by uploading a test file titled 'test_alpha_memory_bug.txt'. User is also learning Python.")
         result = _strip_upload_mentions_from_memory(mem)
         summary = result["user"]["topOfMind"]["summary"]
-        assert "test_agent_workspace_memory_bug.txt" not in summary
+        assert "test_alpha_memory_bug.txt" not in summary
         assert "uploading a test file" not in summary
 
     # --- facts ---

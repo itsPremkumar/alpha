@@ -121,7 +121,7 @@ class CheckpointCacheConfig(BaseModel):
     )
     redis_url: str | None = Field(
         default=None,
-        description=("Redis URL for type=redis. If omitted, AGENT_WORKSPACE_CHECKPOINT_CACHE_REDIS_URL, REDIS_URL, or redis://localhost:6379/0 is used."),
+        description=("Redis URL for type=redis. If omitted, ALPHA_CHECKPOINT_CACHE_REDIS_URL, REDIS_URL, or redis://localhost:6379/0 is used."),
     )
     ttl_seconds: int = Field(
         default=86400,
@@ -166,7 +166,7 @@ class DatabaseConfig(BaseModel):
         description="Delta-mode checkpoint history cache. Performance-only; safe to differ across workers.",
     )
     sqlite_dir: str = Field(
-        default=".agent-workspace/data",
+        default=".alpha/data",
         description=("Directory for the SQLite database file. Both checkpointer and application data share {sqlite_dir}/alpha.db."),
     )
     postgres_url: str = Field(

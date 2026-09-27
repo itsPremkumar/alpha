@@ -22,8 +22,8 @@ from alpha.rsi import strategy_memory as sm
 
 @pytest.fixture(autouse=True)
 def _isolated_workspace(tmp_path, monkeypatch):
-    """Pin AGENT_WORKSPACE_HOME to a per-test temp dir (the env does not isolate it)."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    """Pin ALPHA_HOME to a per-test temp dir (the env does not isolate it)."""
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     sm.clear_memory_cache()
     yield
     sm.clear_memory_cache()

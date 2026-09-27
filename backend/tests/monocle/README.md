@@ -32,9 +32,9 @@ The suite has two:
 
 ## Layout
 
-- `test_agent_workspace.py` — the offline example + two live tests
+- `test_alpha.py` — the offline example + two live tests
 - `conftest.py` — the `run_agent` fixture (live path only)
-- `_helpers.py` — paths and `run_agent_workspace()`
+- `_helpers.py` — paths and `run_alpha()`
 - `traces/` — the recorded trace the offline example loads
 - `requirements.txt` — standalone dependencies
 

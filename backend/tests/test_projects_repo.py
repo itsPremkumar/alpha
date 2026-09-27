@@ -81,4 +81,4 @@ class TestProjectRepository:
         assert await repo.delete(p["id"], user_id="u1") is True
         record = await threads.get("t1", user_id="u1")
         assert record is not None  # thread row intact
-        assert "agent_workspace_project_id" not in record["metadata"]
+        assert "alpha_project_id" not in record["metadata"]

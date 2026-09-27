@@ -101,7 +101,7 @@ test('both BrowserWindows are given the app icon', () => {
 test('the splash screen shows the lion instead of a text-only wordmark', () => {
   const splash = read('splash.html');
   assert.match(splash, /<img src="assets\/alpha-mark\.png"/);
-  // The old markup hardcoded "Agent Workspace" while the product is Alpha and
+  // The old markup hardcoded "Alpha" while the product is Alpha and
   // the name already arrives as the displayName query parameter.
   assert.doesNotMatch(splash, /Agent\s*<span>Workspace/);
   assert.match(splash, /get\("displayName"\)/);

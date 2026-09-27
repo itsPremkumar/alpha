@@ -78,8 +78,8 @@ function buildStandalone() {
       // Bake the desktop Gateway URL into /api rewrite rules so a default
       // production launch needs no manifest patching. Custom ports are still
       // handled at startup by main.js (patchStandaloneGatewayUrl).
-      AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL: `http://127.0.0.1:${desktopConfig.gatewayPort}`,
-      AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL: `http://127.0.0.1:${desktopConfig.gatewayPort}`,
+      ALPHA_INTERNAL_GATEWAY_BASE_URL: `http://127.0.0.1:${desktopConfig.gatewayPort}`,
+      ALPHA_INTERNAL_GATEWAY_BASE_URL: `http://127.0.0.1:${desktopConfig.gatewayPort}`,
     },
   });
 }

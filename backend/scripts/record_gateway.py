@@ -8,7 +8,7 @@ resulting fixture replays cleanly against the browser.
 
 Used by ``frontend/playwright.record.config.ts``. Env:
   OPENAI_API_KEY / OPENAI_API_BASE  - the real upstream (never committed)
-  AGENT_WORKSPACE_RECORD_OUT               - JSONL path to append captured turns to
+  ALPHA_RECORD_OUT               - JSONL path to append captured turns to
   RECORD_PORT (default 8012), RECORD_MODEL (default gpt-5.5)
 """
 
@@ -90,9 +90,9 @@ def main() -> int:
         print("ERROR: set OPENAI_API_KEY and OPENAI_API_BASE (an OpenAI-compatible /v1 endpoint)", file=sys.stderr)
         return 2
 
-    record_out = os.environ.get("AGENT_WORKSPACE_RECORD_OUT")
+    record_out = os.environ.get("ALPHA_RECORD_OUT")
     if not record_out:
-        print("ERROR: set AGENT_WORKSPACE_RECORD_OUT to the JSONL path to append captured turns to", file=sys.stderr)
+        print("ERROR: set ALPHA_RECORD_OUT to the JSONL path to append captured turns to", file=sys.stderr)
         return 2
 
     port = int(os.environ.get("RECORD_PORT", "8012"))
@@ -107,10 +107,10 @@ def main() -> int:
     cfg = home / "config.yaml"
     cfg.write_text(build_config_yaml(model_block=real_model_block(model), home=home), encoding="utf-8")
     # Override (not setdefault): the recorder must be hermetic, so an outer
-    # AGENT_WORKSPACE_HOME can't leak in and shift prompt-affecting paths/skills.
-    os.environ["AGENT_WORKSPACE_HOME"] = str(home)
-    os.environ["AGENT_WORKSPACE_CONFIG_PATH"] = str(cfg)
-    os.environ["AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH"] = str(prepare_hermetic_extras(home))
+    # ALPHA_HOME can't leak in and shift prompt-affecting paths/skills.
+    os.environ["ALPHA_HOME"] = str(home)
+    os.environ["ALPHA_CONFIG_PATH"] = str(cfg)
+    os.environ["ALPHA_EXTENSIONS_CONFIG_PATH"] = str(prepare_hermetic_extras(home))
     os.environ.setdefault("AUTH_JWT_SECRET", "record-secret")
     os.environ["PYTHONPATH"] = os.pathsep.join(p for p in (str(_BACKEND), str(_BACKEND / "tests"), os.environ.get("PYTHONPATH", "")) if p)
 

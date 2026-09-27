@@ -78,7 +78,7 @@ def gateway_config(tmp_path, monkeypatch) -> tuple[Path, list[str]]:
     """Point the gateway at a seeded temp extensions config; mock admin + cache reset."""
     config_path = tmp_path / "extensions_config.json"
     config_path.write_text(json.dumps({"mcpServers": {}, "skills": {}}), encoding="utf-8")
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(config_path))
 
     async def _noop_admin(_request, **_kwargs) -> None:
         return None

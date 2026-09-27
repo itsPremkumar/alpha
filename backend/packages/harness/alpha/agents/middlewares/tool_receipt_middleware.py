@@ -5,7 +5,7 @@ Ordering contract (enforced by the build-time constraints in
 outermost ``wrap_tool_call`` layer — Guardrail, SandboxAudit, ReadBeforeWrite,
 and ToolProgress can short-circuit or rebuild results, and an inner receipt
 layer would silently gap the ledger on those. Normal results still carry a
-normalized ``agent_workspace_tool_meta`` status when stamped (ToolErrorHandling runs
+normalized ``alpha_tool_meta`` status when stamped (ToolErrorHandling runs
 on the inner return path); short-circuit messages either self-stamp the meta
 or fall back to ``message.status`` in ``make_tool_receipt``.
 
@@ -39,7 +39,7 @@ from alpha.agents.middlewares.tool_receipt import (
 
 logger = logging.getLogger(__name__)
 
-_RECEIPT_CONTEXT_KEY = "agent_workspace_tool_receipt_context"
+_RECEIPT_CONTEXT_KEY = "alpha_tool_receipt_context"
 
 
 class ToolReceiptMiddleware(AgentMiddleware[AgentState]):

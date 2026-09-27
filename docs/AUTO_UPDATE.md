@@ -73,7 +73,7 @@ The committed, credential-free policy is
 [`config/update-policy.json`](../config/update-policy.json). It is discovered
 from the repository root. Treat it as a reviewed template: for a real
 unattended deployment, copy it to a path under the deployment's runtime home
-(for example `.agent-workspace/update-policy.json`) and point
+(for example `.alpha/update-policy.json`) and point
 `ALPHA_UPDATE_POLICY_PATH` at that copy.
 Keeping the mutable policy outside the checkout prevents an operator policy
 edit from making the clean-worktree gate permanently fail. The repository file
@@ -153,7 +153,7 @@ version/identity card.
   bookkeeping only). `POST /api/evolution/update-recover` restores the backup
   ref after an update that staged but never verified (`RECOVERY_REQUIRED`).
 - All three mutating routes require a real interactive administrator session and
-  answer **403** under `AGENT_WORKSPACE_AUTH_DISABLED` or an internal/PAT
+  answer **403** under `ALPHA_AUTH_DISABLED` or an internal/PAT
   caller. The UI surfaces that refusal; it never retries it into a success.
 - A `CHECK_FAILED` state shows the server's real error, and a corrupt persisted
   state file (`stateCorrupt`) is disclosed as "no update state claimed" rather
@@ -184,11 +184,11 @@ as sensitive: rollback snapshots can contain the existing local configuration
 logs are credential-redacted.
 
 ```text
-.agent-workspace/update_state.json       # current durable state
-.agent-workspace/update_history.jsonl    # bounded append-only audit trail
-.agent-workspace/update.lock/            # cross-process transaction lock
-.agent-workspace/updates/daemon.log      # rotated detached helper output
-.agent-workspace/update_maintenance.json  # cross-process run-admission barrier
+.alpha/update_state.json       # current durable state
+.alpha/update_history.jsonl    # bounded append-only audit trail
+.alpha/update.lock/            # cross-process transaction lock
+.alpha/updates/daemon.log      # rotated detached helper output
+.alpha/update_maintenance.json  # cross-process run-admission barrier
 ```
 
 The state machine includes the honest intermediate values

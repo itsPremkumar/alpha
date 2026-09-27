@@ -12,7 +12,7 @@ export type ToolCallStatus = "running" | "completed" | "failed" | "partial" | "e
 /**
  * Verdict vocabulary the backend writes onto a tool result, in precedence
  * order: `ToolMessage.status === "error"`, then the
- * `agent_workspace_tool_meta` stamp, then the `agent_workspace_tool_receipt`
+ * `alpha_tool_meta` stamp, then the `alpha_tool_receipt`
  * stamp, then a structured `subagent_status` failure, then the bare
  * `ToolMessage.status` field.
  *

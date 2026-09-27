@@ -229,7 +229,7 @@ The audit findings that invalidate the original plan.
 | MSYS/Git Bash | absent | `_is_msys_shell` + `_msys_path_conversion_exclusions()` setting `MSYS2_ARG_CONV_EXCL`. |
 | Browser | absent | `alpha/community/browser_automation/` — 8 Playwright tools, stable numeric `[ref]` (`data-df-ref`) re-stamped on every action, SSRF screening, hard `max_sessions` cap, `cdp_url` fails closed without `allow_unguarded_cdp`. Plus a CDP/stealth suite in `alpha/browser/` and a Live WebSocket router. |
 | Tool-output budget | absent | `config/tool_output_config.py::prune_tiers` per-tool-class externalization (`{'bash': 65536, 'web_fetch': 16384}`), plus `ToolOutputBudgetMiddleware` and `ToolResultSanitizationMiddleware`. |
-| Compaction | absent | `AgentWorkspaceSummarizationMiddleware`, `trajectory_compressor` and `micro_compaction` capabilities, `context_as_data_tool`. |
+| Compaction | absent | `AlphaSummarizationMiddleware`, `trajectory_compressor` and `micro_compaction` capabilities, `context_as_data_tool`. |
 | Programmatic tool calling | "phase 8" | `alpha/tools/programmatic_calling.py` (`ToolExecutionBridge`, `MAX_STDOUT_BYTES = 50_000`, spills to disk). |
 | Progressive tool disclosure | absent | `skills.deferred_discovery`, `tool_search` deferred catalog, `agent_presets` that may only *narrow*. |
 | HITL | absent | `ClarificationMiddleware` + `ask_clarification` form cards; `non_interactive` correctly drops it for scheduled runs. |

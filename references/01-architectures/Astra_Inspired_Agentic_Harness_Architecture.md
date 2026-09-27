@@ -278,7 +278,7 @@ OpenAI's Astra safety material describes confirmation policies for consequential
 Recommended repository structure:
 
 ```text
-agent-workspace-desktop/
+alpha-desktop/
 ├── apps/
 │   ├── desktop/
 │   ├── web/
@@ -2762,7 +2762,7 @@ The **runtime**, not merely the model, becomes the intelligence multiplier.
 
 # 75. Recommended Final Architecture for Your Project
 
-For `agent-workspace-desktop`, use this top-level architecture:
+For `alpha-desktop`, use this top-level architecture:
 
 ```text
 PREM AGENTIC HARNESS

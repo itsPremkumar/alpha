@@ -65,7 +65,7 @@ class _Response:
 def _ready_body(**overrides) -> bytes:
     payload = {
         "status": "ready",
-        "service": "agent-workspace-gateway",
+        "service": "alpha-gateway",
         "database": "ok",
         "checkpointer": "ok",
     }
@@ -77,7 +77,7 @@ def _degraded_body(database: str = "unreachable", checkpointer: str = "ok") -> b
     return json.dumps(
         {
             "status": "degraded",
-            "service": "agent-workspace-gateway",
+            "service": "alpha-gateway",
             "database": database,
             "checkpointer": checkpointer,
         }

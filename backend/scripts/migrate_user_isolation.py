@@ -251,7 +251,7 @@ def _build_owner_map_from_db(paths: Paths) -> dict[str, str]:
     """
     import sqlite3
 
-    db_path = paths.base_dir / "agent-workspace.db"
+    db_path = paths.base_dir / "alpha.db"
     if not db_path.exists():
         logger.info("No database found at %s — using empty owner map.", db_path)
         return {}

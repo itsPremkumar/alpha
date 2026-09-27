@@ -21,7 +21,7 @@ env:
 jobs:
   build-images:
     # Only publish from the upstream repo; a fork dispatch/tag skips the job.
-    if: github.repository == 'bytedance/agent-workspace'
+    if: github.repository == 'itsPremkumar/alpha'
     runs-on: ubuntu-latest
     permissions:
       contents: read

@@ -754,7 +754,7 @@ def get_dynamic_profile_store(storage_path: str | Path | None = None) -> Dynamic
     """Process-wide runtime profile store.
 
     Rebuilds when the resolved path changes, so a test (or a Gateway request
-    with a different ``AGENT_WORKSPACE_HOME``) never reuses a store bound to a
+    with a different ``ALPHA_HOME``) never reuses a store bound to a
     stale location.
     """
     global _global_store, _global_store_path
@@ -771,7 +771,7 @@ def get_dynamic_profile_store(storage_path: str | Path | None = None) -> Dynamic
         except Exception:
             _global_store_path = None
         return _global_store
-    # Re-resolve the default location: AGENT_WORKSPACE_HOME may have been set
+    # Re-resolve the default location: ALPHA_HOME may have been set
     # after import, and a store bound to a stale path would read the wrong file.
     try:
         live = str(_default_store_path().resolve())

@@ -183,7 +183,7 @@ def test_schema_violating_line_fails_closed_with_line_number(tmp_path: Path) -> 
 def test_default_store_root_follows_runtime_home(tmp_path: Path, monkeypatch) -> None:
     home = tmp_path / "home"
     home.mkdir()
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(home))
+    monkeypatch.setenv("ALPHA_HOME", str(home))
 
     store = default_sentinel_report_store()
 

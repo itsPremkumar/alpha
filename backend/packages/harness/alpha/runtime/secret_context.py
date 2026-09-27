@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from alpha.trace_context import AGENT_WORKSPACE_TRACE_METADATA_KEY
+from alpha.trace_context import ALPHA_TRACE_METADATA_KEY
 
 # Reserved sub-key of the run context that holds request-scoped secrets supplied
 # by the caller. Source of truth for what a skill *may* receive.
@@ -158,7 +158,7 @@ def redact_config_secrets(config: Any) -> Any:
     that drives the run (built separately) keeps them. Ordinary metadata is
     preserved. Non-dict configs pass through unchanged.
 
-    ``agent_workspace_trace_id`` is dropped from both containers as well: the id is
+    ``alpha_trace_id`` is dropped from both containers as well: the id is
     server-issued and ignored as an input, so echoing a caller-supplied one
     back would only manufacture disagreement with the ``X-Trace-Id`` header,
     the logs, and the run record's own stamped metadata.
@@ -170,13 +170,13 @@ def redact_config_secrets(config: Any) -> Any:
     context = config.get("context")
     if isinstance(context, dict):
         scrubbed_context = redact_secret_context_keys(context)
-        scrubbed_context.pop(AGENT_WORKSPACE_TRACE_METADATA_KEY, None)
+        scrubbed_context.pop(ALPHA_TRACE_METADATA_KEY, None)
         redacted["context"] = scrubbed_context
 
     metadata = config.get("metadata")
     if isinstance(metadata, dict):
         scrubbed_metadata = redact_metadata_secrets(metadata)
-        scrubbed_metadata.pop(AGENT_WORKSPACE_TRACE_METADATA_KEY, None)
+        scrubbed_metadata.pop(ALPHA_TRACE_METADATA_KEY, None)
         redacted["metadata"] = scrubbed_metadata
 
     return redacted

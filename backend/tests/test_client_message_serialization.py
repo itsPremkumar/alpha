@@ -1,8 +1,8 @@
-"""Tests for AgentWorkspaceClient message serialization helpers."""
+"""Tests for AlphaClient message serialization helpers."""
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-from alpha.client import AgentWorkspaceClient
+from alpha.client import AlphaClient
 
 
 def test_serialize_ai_message_preserves_additional_kwargs():
@@ -19,7 +19,7 @@ def test_serialize_ai_message_preserves_additional_kwargs():
         usage_metadata={"input_tokens": 12, "output_tokens": 3, "total_tokens": 15},
     )
 
-    serialized = AgentWorkspaceClient._serialize_message(message)
+    serialized = AlphaClient._serialize_message(message)
 
     assert serialized["type"] == "ai"
     assert serialized["usage_metadata"] == {
@@ -43,7 +43,7 @@ def test_serialize_human_message_preserves_additional_kwargs():
         additional_kwargs={"files": [{"name": "diagram.png"}]},
     )
 
-    serialized = AgentWorkspaceClient._serialize_message(message)
+    serialized = AlphaClient._serialize_message(message)
 
     assert serialized == {
         "type": "human",

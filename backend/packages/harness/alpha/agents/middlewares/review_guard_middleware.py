@@ -191,7 +191,7 @@ class ReviewGuardMiddleware(AgentMiddleware[ReviewGuardMiddlewareState]):
         """Return the content a permitted write actually applied, or ``None``.
 
         This method is called by :meth:`wrap_tool_call` but was never defined: the
-        call site survived the ``agent_workspace`` -> ``alpha`` rebrand while the
+        call site survived the ``alpha`` -> ``alpha`` rebrand while the
         method did not. The consequence was silent and severe — every write that
         passed the role check reached ``self._extract_new_content(...)`` and
         raised ``AttributeError`` AFTER the edit had already been applied, so the

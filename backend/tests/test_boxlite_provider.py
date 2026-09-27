@@ -104,7 +104,7 @@ def _no_existing_boxlite_boxes(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_import_simplebox_missing_raises_actionable(monkeypatch: pytest.MonkeyPatch) -> None:
     _no_boxlite(monkeypatch)
-    with pytest.raises(ImportError, match=r"agent-workspace-harness\[boxlite\]"):
+    with pytest.raises(ImportError, match=r"alpha-harness\[boxlite\]"):
         _import_simplebox()
 
 
@@ -116,7 +116,7 @@ def test_acquire_without_boxlite_raises_and_shuts_down_cleanly(monkeypatch: pyte
 
     provider = BoxliteProvider()
     try:
-        with pytest.raises(ImportError, match=r"agent-workspace-harness\[boxlite\]"):
+        with pytest.raises(ImportError, match=r"alpha-harness\[boxlite\]"):
             provider.acquire("thread-1", user_id="u")
     finally:
         provider.shutdown()  # must not raise even though no box was ever created
@@ -387,7 +387,7 @@ def test_create_box_passes_prefixed_sandbox_id_as_name(monkeypatch):
 
     box = provider._create_box("test-sandbox-id")
     assert len(created_boxes) == 1
-    assert created_boxes[0]["name"] == "agent-workspace-boxlite-test-sandbox-id"
+    assert created_boxes[0]["name"] == "alpha-boxlite-test-sandbox-id"
     assert box.id == "test-sandbox-id"
 
 
@@ -412,13 +412,13 @@ def test_startup_reconciliation_adopts_prefixed_existing_boxes(monkeypatch):
 
         def list_info(self):
             return [
-                types.SimpleNamespace(name="agent-workspace-boxlite-adopted"),
+                types.SimpleNamespace(name="alpha-boxlite-adopted"),
                 types.SimpleNamespace(name="unrelated-box"),
                 types.SimpleNamespace(name=None),
             ]
 
         def get(self, name):
-            if name == "agent-workspace-boxlite-adopted":
+            if name == "alpha-boxlite-adopted":
                 return _NativeBox()
             raise AssertionError(f"unexpected box lookup: {name}")
 
@@ -678,7 +678,7 @@ def test_adopted_warm_pool_box_still_health_checks(monkeypatch):
     provider = BoxliteProvider()
     adopted = BoxliteBox(
         "adopted",
-        _FakeBox(name="agent-workspace-boxlite-adopted"),
+        _FakeBox(name="alpha-boxlite-adopted"),
         _fake_run,
         default_env={},
     )
@@ -1213,13 +1213,13 @@ def test_late_same_tenant_collision_reuses_active_box(monkeypatch):
     key = ("user-a", "thread-a")
     active = BoxliteBox(
         sandbox_id,
-        _FakeBox(name=f"agent-workspace-boxlite-{sandbox_id}"),
+        _FakeBox(name=f"alpha-boxlite-{sandbox_id}"),
         _fake_run,
         default_env={},
     )
     duplicate = BoxliteBox(
         sandbox_id,
-        _FakeBox(name=f"agent-workspace-boxlite-{sandbox_id}"),
+        _FakeBox(name=f"alpha-boxlite-{sandbox_id}"),
         _fake_run,
         default_env={},
     )
@@ -1254,13 +1254,13 @@ def test_failed_health_check_does_not_remove_swapped_warm_entry(monkeypatch):
     provider = BoxliteProvider()
     stale = BoxliteBox(
         "shared-id",
-        _FakeBox(name="agent-workspace-boxlite-shared-id"),
+        _FakeBox(name="alpha-boxlite-shared-id"),
         _fake_run,
         default_env={},
     )
     replacement = BoxliteBox(
         "shared-id",
-        _FakeBox(name="agent-workspace-boxlite-shared-id"),
+        _FakeBox(name="alpha-boxlite-shared-id"),
         _fake_run,
         default_env={},
     )

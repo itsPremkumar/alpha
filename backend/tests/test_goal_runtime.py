@@ -140,7 +140,7 @@ def test_evaluate_goal_completion_uses_non_thinking_model(monkeypatch):
     assert captured["thinking_enabled"] is False
     # The goal evaluator runs from runtime/runs/worker.py after the main graph
     # run has already finished, so there is no graph root for it to inherit
-    # tracing callbacks from (unlike make_lead_agent/AgentWorkspaceClient.stream,
+    # tracing callbacks from (unlike make_lead_agent/AlphaClient.stream,
     # which attach build_tracing_callbacks() at the graph root and correctly
     # pass attach_tracing=False to avoid double-attaching). It must attach its
     # own model-level tracing callbacks, same as the other standalone,
@@ -188,7 +188,7 @@ def test_evaluate_goal_completion_injects_langfuse_metadata(monkeypatch):
                 app_config=object(),
                 thread_id="thread-xyz",
                 user_id="alice",
-                agent_workspace_trace_id="gateway-trace-1",
+                alpha_trace_id="gateway-trace-1",
             )
         )
     finally:
@@ -202,7 +202,7 @@ def test_evaluate_goal_completion_injects_langfuse_metadata(monkeypatch):
     assert metadata.get("langfuse_session_id") == "thread-xyz", "goal evaluator trace must group under the thread's session"
     assert metadata.get("langfuse_user_id") == "alice"
     assert metadata.get("langfuse_trace_name") == "goal_evaluator"
-    assert metadata.get("agent_workspace_trace_id") == "gateway-trace-1"
+    assert metadata.get("alpha_trace_id") == "gateway-trace-1"
     tags = metadata.get("langfuse_tags") or []
     assert "model:gpt-4o" in tags
 

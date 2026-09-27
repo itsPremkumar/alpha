@@ -30,7 +30,7 @@ async def test_invoke_acp_agent_setup_does_not_block_event_loop(monkeypatch, tmp
         '{"mcpServers": {"test-server": {"enabled": true, "type": "http", "url": "https://example.test/mcp"}}, "skills": {}}',
         encoding="utf-8",
     )
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(config_path))
 
     captured: dict[str, Any] = {}
 

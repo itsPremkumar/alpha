@@ -1811,7 +1811,7 @@ That is the **recursive** part.
 Given your current architecture, I would add:
 
 ```text
-agent-workspace/
+alpha/
 │
 ├── backend/
 │

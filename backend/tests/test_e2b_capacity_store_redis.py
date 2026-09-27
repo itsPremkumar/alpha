@@ -17,7 +17,7 @@ from alpha.community.e2b_sandbox.capacity import (
 )
 from alpha.config.sandbox_config import SandboxOwnershipConfig
 
-REDIS_URL = os.environ.get("AGENT_WORKSPACE_TEST_REDIS_URL", "redis://localhost:6379/15")
+REDIS_URL = os.environ.get("ALPHA_TEST_REDIS_URL", "redis://localhost:6379/15")
 pytestmark = pytest.mark.integration
 
 

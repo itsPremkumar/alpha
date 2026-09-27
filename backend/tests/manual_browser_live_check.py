@@ -127,14 +127,14 @@ def main() -> int:
     base = f"http://127.0.0.1:{port}/"
     tmpdir = Path(tempfile.mkdtemp(prefix="alpha-browser-live-"))
     try:
-        from alpha.client import AgentWorkspaceClient
+        from alpha.client import AlphaClient
 
         config_path = _write_config(tmpdir)
         # Make config resolution deterministic: get_available_tools() re-resolves
         # via get_app_config(), which would otherwise pick up a project-root
-        # config.yaml. AGENT_WORKSPACE_CONFIG_PATH is resolution priority #2.
-        os.environ["AGENT_WORKSPACE_CONFIG_PATH"] = str(config_path)
-        client = AgentWorkspaceClient(config_path=str(config_path))
+        # config.yaml. ALPHA_CONFIG_PATH is resolution priority #2.
+        os.environ["ALPHA_CONFIG_PATH"] = str(config_path)
+        client = AlphaClient(config_path=str(config_path))
 
         prompt = (
             f"Use the browser tools to complete this task. "

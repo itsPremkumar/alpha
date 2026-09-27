@@ -81,9 +81,9 @@ def _recomputed_evidence(run_id: str, node_id: str, prompt: str) -> str:
 
 
 @pytest.fixture(autouse=True)
-def _isolate_agent_workspace(tmp_path, monkeypatch):
-    """AGENT_WORKSPACE_HOME points at a per-test temp dir (process-global env)."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+def _isolate_alpha(tmp_path, monkeypatch):
+    """ALPHA_HOME points at a per-test temp dir (process-global env)."""
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
 
 
 def _bind_digest_registry(monkeypatch: pytest.MonkeyPatch) -> ExecutorRegistry:

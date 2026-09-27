@@ -299,8 +299,8 @@ if [ ! -f extensions_config.json ]; then
     cp extensions_config.example.json extensions_config.json 2>/dev/null || echo "{}" > extensions_config.json
 fi
 
-export AGENT_WORKSPACE_AUTH_DISABLED=1
-export AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL="http://127.0.0.1:${GATEWAY_PORT}"
+export ALPHA_AUTH_DISABLED=1
+export ALPHA_INTERNAL_GATEWAY_BASE_URL="http://127.0.0.1:${GATEWAY_PORT}"
 export PORT="$FRONTEND_PORT"
 export PYTHONPATH=.
 

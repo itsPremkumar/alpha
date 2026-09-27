@@ -131,7 +131,7 @@ def test_sessions_catalog_branch_search():
 
 def test_tracing_helpers():
     child = bind_trace_for_subagent({"foo": "bar"}, "trace-123")
-    assert child["agent_workspace_trace_id"] == "trace-123"
+    assert child["alpha_trace_id"] == "trace-123"
 
 
 def test_acp_binding_registry():

@@ -330,7 +330,7 @@ class TestImageSearch:
         mock_get_client.assert_called_once()
         mock_client.image_search.assert_called_once_with("test query")
 
-    # In /Users/bytedance/python/agent-workspacev2/agent-workspace/backend/tests/test_infoquest_client.py
+    # In /Users/bytedance/python/alphav2/alpha/backend/tests/test_infoquest_client.py
 
     @patch("alpha.community.infoquest.tools._get_infoquest_client")
     def test_image_search_tool_with_parameters(self, mock_get_client):

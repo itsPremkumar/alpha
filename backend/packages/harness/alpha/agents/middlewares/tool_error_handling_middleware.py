@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 _MISSING_TOOL_CALL_ID = "missing_tool_call_id"
 _TASK_TOOL_NAME = "task"
 _RECOVERY_HINT = "Continue with available context, or choose an alternative tool."
-_AUTONOMY_RECOVERY_KEY = "agent_workspace_autonomy_recovery"
+_AUTONOMY_RECOVERY_KEY = "alpha_autonomy_recovery"
 
 
 def _stamp_task_exception_status(message: ToolMessage, *, tool_name: str, error: str) -> ToolMessage:
@@ -237,7 +237,7 @@ def _build_runtime_middlewares(
     # SandboxAudit, ReadBeforeWrite, and ToolProgress can all short-circuit a
     # call with their own ToolMessage, and SandboxAudit rebuilds medium-risk
     # results — an inner receipt layer would miss those results and silently
-    # gap the ledger. Stamping out here still sees agent_workspace_tool_meta on
+    # gap the ledger. Stamping out here still sees alpha_tool_meta on
     # normal results (ToolErrorHandling stamps it on the inner return path)
     # and on self-stamped short-circuit messages; the remainder fall back to
     # message.status (see make_tool_receipt).
@@ -303,7 +303,7 @@ def _build_runtime_middlewares(
     # ReadBeforeWriteMiddleware is the outermost write gate: it blocks writes to files
     # the model hasn't read in their current version.  It must sit outside ToolProgress
     # and ToolErrorHandling so that a blocked write returns immediately without consuming
-    # a ToolProgress slot.  The middleware stamps agent_workspace_tool_meta on the blocked
+    # a ToolProgress slot.  The middleware stamps alpha_tool_meta on the blocked
     # ToolMessage itself so downstream callers receive a well-formed result, and its
     # wrap_model_call elides the dead payload of blocked calls from model-bound
     # requests (config-gated, state untouched).
@@ -321,7 +321,7 @@ def _build_runtime_middlewares(
         tail.append(build_review_guard_middleware(review_guard_config=app_config.review_guard))
 
     # ToolProgressMiddleware must be outer (lower index) so its wrap_tool_call handler
-    # chain includes ToolErrorHandlingMiddleware (inner), which stamps agent_workspace_tool_meta
+    # chain includes ToolErrorHandlingMiddleware (inner), which stamps alpha_tool_meta
     # on every result before ToolProgressMiddleware reads it in _update_state_from_result.
     # Framework rule: first in list = outermost (types.py: "compose with first in list as outermost layer").
     tool_progress_config = app_config.tool_progress
@@ -545,7 +545,7 @@ def build_subagent_runtime_middlewares(
         )
     )
 
-    # AgentWorkspaceSummarizationMiddleware — subagents inherit none of the lead's
+    # AlphaSummarizationMiddleware — subagents inherit none of the lead's
     # context compaction today (#3875 Phase 3): a deep-research subagent
     # (``max_turns`` up to 150) can accumulate >1M cumulative input before
     # max_turns/timeout/token_budget engage, even though Phase 2's budget now
@@ -616,14 +616,14 @@ def build_subagent_runtime_middlewares(
 
     middlewares.append(SystemMessageCoalescingMiddleware())
 
-    from agent_workspace_extension_api import AgentScope
+    from alpha_extension_api import AgentScope
 
     from alpha.extensions.stack import compose_with_extensions
 
     if not resolved_extensions.has_middleware_contributors:
         return compose_with_extensions(middlewares, AgentScope.SUBAGENT, None, resolved_extensions)
 
-    from agent_workspace_extension_api import AgentBuildContext
+    from alpha_extension_api import AgentBuildContext
 
     from alpha.extensions.policy import project_host_policy
 

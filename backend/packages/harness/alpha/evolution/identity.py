@@ -35,7 +35,7 @@ IDENTITY_FILE = "identity.json"
 # tests/test_evolution_identity.py asserts
 # resolve_alpha_version() == ops._resolve_gateway_version() so the two copies
 # can never disagree silently.
-_VERSION_DIST_NAMES = ("agent-workspace-harness", "alpha", "agent-workspace")
+_VERSION_DIST_NAMES = ("alpha-harness", "alpha", "alpha")
 
 # Honest, complete list of capabilities actually wired in this build:
 # GET /api/evolution/identity (this module), POST /api/evolution/update-check

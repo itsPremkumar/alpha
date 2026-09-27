@@ -359,7 +359,7 @@ class CognitiveMemorySystem:
             title="Cognitive Memory Architecture Activation",
             description="Multi-tier cognitive memory system initialized with working, episodic, semantic, procedural, spatio-temporal, and associative tiers.",
             environment="production",
-            location="agent-workspace-core",
+            location="alpha-core",
             entities=["AgentArchitecture", "MemoryConsolidation", "HybridRetriever"],
         )
 

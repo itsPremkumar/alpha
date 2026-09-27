@@ -2,7 +2,7 @@
 
 Every test here fails against a metric that counts proposals, denied names, or
 unmeasured calls as successes. The suite is hermetic: a per-test
-``AGENT_WORKSPACE_HOME``, an injected skill-storage stub, a fake chat model, and
+``ALPHA_HOME``, an injected skill-storage stub, a fake chat model, and
 a per-test :class:`UniversalToolCatalog` -- no real BM25 corpus, no network, and
 no wall-clock assertions.
 """
@@ -39,10 +39,10 @@ _DEFERRED = frozenset({"calc", "denied_lookup"})
 
 @pytest.fixture(autouse=True)
 def _isolated_workspace(tmp_path, monkeypatch):
-    """Never read or write the developer's real agent workspace."""
-    home = tmp_path / "agent-workspace"
+    """Never read or write the developer's real alpha."""
+    home = tmp_path / "alpha"
     home.mkdir()
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(home))
+    monkeypatch.setenv("ALPHA_HOME", str(home))
     return home
 
 

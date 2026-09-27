@@ -43,7 +43,7 @@ from alpha.subagents.status_contract import (
     make_subagent_additional_kwargs,
 )
 from alpha.tools.types import Runtime
-from alpha.trace_context import AGENT_WORKSPACE_TRACE_METADATA_KEY, resolve_trace_id
+from alpha.trace_context import ALPHA_TRACE_METADATA_KEY, resolve_trace_id
 from alpha.utils.assembly_io import run_assembly
 from alpha.utils.custom_events import aemit_custom_event
 
@@ -70,11 +70,11 @@ _UNEXPECTED_EXIT_GRACE_SECONDS = 5.0
 _STATUS_UNREADABLE = object()
 
 _explicit_execution_capacity: ContextVar[SubagentExecutionCapacity | None] = ContextVar(
-    "agent_workspace_explicit_subagent_execution_capacity",
+    "alpha_explicit_subagent_execution_capacity",
     default=None,
 )
 _explicit_app_config: ContextVar[Any | None] = ContextVar(
-    "agent_workspace_explicit_subagent_app_config",
+    "alpha_explicit_subagent_app_config",
     default=None,
 )
 
@@ -298,7 +298,7 @@ def _deliver_final_usage_report(
 ) -> None:
     """Schedule the FINAL usage report onto the loop that owns the RunJournal.
 
-    ``RunJournal`` is deliberately ``agent_workspace_loop_bound``: its accumulators
+    ``RunJournal`` is deliberately ``alpha_loop_bound``: its accumulators
     are unlocked read-modify-write fields and ``_tokens_by_model`` is iterated
     by ``get_completion_data()``, so reporting from any other thread races the
     parent run's own journal writes (lost token updates, ``dictionary changed
@@ -657,7 +657,7 @@ def _report_subagent_usage(runtime: Any, result: Any, *, final: bool = False) ->
     delivered, and the journal dedupes per ``source_run_id`` so nothing is
     double-counted. Both call sites run on the parent run's loop — directly
     from the poller, or via ``call_soon_threadsafe`` from the deferred
-    cleaner — preserving the journal's ``agent_workspace_loop_bound`` contract.
+    cleaner — preserving the journal's ``alpha_loop_bound`` contract.
     """
     _report_usage_records(_find_usage_recorder(runtime), result, final=final)
 
@@ -925,7 +925,7 @@ async def task_tool(
     parent_model = None
     trace_id = None
     user_id = None
-    agent_workspace_trace_id = None
+    alpha_trace_id = None
     if runtime is not None:
         sandbox_state = runtime.state.get("sandbox")
         thread_data = runtime.state.get("thread_data")
@@ -980,7 +980,7 @@ async def task_tool(
     # that labels this one subagent execution in log prefixes. The parent
     # runtime context is authoritative (worker._bind_trace_id always fills it);
     # the ambient fallback covers tools invoked outside a Gateway run.
-    agent_workspace_trace_id = resolve_trace_id(parent_context.get(AGENT_WORKSPACE_TRACE_METADATA_KEY))
+    alpha_trace_id = resolve_trace_id(parent_context.get(ALPHA_TRACE_METADATA_KEY))
 
     parent_available_skills = metadata.get("available_skills")
     if parent_available_skills is not None:
@@ -1035,7 +1035,7 @@ async def task_tool(
         "channel_user_id": channel_user_id,
         "is_internal": is_internal,
         "authz_attributes": authz_attributes,
-        "agent_workspace_trace_id": agent_workspace_trace_id,
+        "alpha_trace_id": alpha_trace_id,
         # RFC #4651 PR3: lead-supplied acceptance criteria are handed to the
         # executor, which appends them to the subagent's task HumanMessage as
         # untrusted data (sanitized and boundary-framed by

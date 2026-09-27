@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from agent_workspace_extension_api import (
+from alpha_extension_api import (
     EXTENSION_TASK_STORE_KEY,
     ExtensionData,
     TaskInfo,

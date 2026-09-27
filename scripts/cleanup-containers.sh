@@ -8,7 +8,7 @@
 
 set -e
 
-PREFIX="${1:-agent-workspace-sandbox}"
+PREFIX="${1:-alpha-sandbox}"
 
 # Colors for output
 RED='\033[0;31m'

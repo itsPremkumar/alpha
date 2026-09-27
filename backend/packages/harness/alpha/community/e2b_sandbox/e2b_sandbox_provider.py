@@ -238,14 +238,14 @@ class _MountUploadBudget:
 
 # Metadata keys we attach to every sandbox so we can discover ours via
 # ``Sandbox.list(query={...})`` from any gateway process.
-META_KEY_USER = "agent_workspace_user"
-META_KEY_THREAD = "agent_workspace_thread"
-META_KEY_PROVIDER = "agent_workspace_provider"
-META_KEY_GATEWAY = "agent_workspace_gateway"
-META_KEY_CREATED_AT = "agent_workspace_created_at"
-META_KEY_CAPACITY_LEDGER = "agent_workspace_capacity_ledger"
-META_KEY_CAPACITY_RESERVATION = "agent_workspace_capacity_reservation"
-META_KEY_SKILLS_ROOT = "agent_workspace_skills_root"
+META_KEY_USER = "alpha_user"
+META_KEY_THREAD = "alpha_thread"
+META_KEY_PROVIDER = "alpha_provider"
+META_KEY_GATEWAY = "alpha_gateway"
+META_KEY_CREATED_AT = "alpha_created_at"
+META_KEY_CAPACITY_LEDGER = "alpha_capacity_ledger"
+META_KEY_CAPACITY_RESERVATION = "alpha_capacity_reservation"
+META_KEY_SKILLS_ROOT = "alpha_skills_root"
 META_VAL_PROVIDER = "e2b_sandbox_provider"
 E2B_EXTRA_CONFIG_KEYS = frozenset(
     {

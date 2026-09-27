@@ -382,7 +382,7 @@ class TestInstallSkillFromArchive:
         assert (skills_root / "custom" / "test-skill" / "SKILL.md").exists()
 
     def test_install_with_warning_findings_succeeds_and_writes_only_the_skill(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path / "runtime-home"))
+        monkeypatch.setenv("ALPHA_HOME", str(tmp_path / "runtime-home"))
         zip_path = tmp_path / "warning-skill.skill"
         with zipfile.ZipFile(zip_path, "w") as zf:
             zf.writestr(

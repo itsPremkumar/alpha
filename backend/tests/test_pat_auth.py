@@ -60,7 +60,7 @@ def _default_route_authorization_config(monkeypatch):
         "app.gateway.authz._get_route_authorization_config",
         lambda: AuthorizationConfig(),
     )
-    monkeypatch.setenv("AGENT_WORKSPACE_AUTH_DISABLED", "")
+    monkeypatch.setenv("ALPHA_AUTH_DISABLED", "")
     from app.gateway.auth.config import AuthConfig, set_auth_config
 
     set_auth_config(AuthConfig(jwt_secret=TEST_JWT_SECRET, token_expiry_days=7))
@@ -762,7 +762,7 @@ def test_start_run_gate_denies_create_only_credential_behaviorally():
 
 
 def test_auth_disabled_mode_ignores_bearer_header(monkeypatch, tmp_path):
-    """AGENT_WORKSPACE_AUTH_DISABLED is an operator override of all authentication.
+    """ALPHA_AUTH_DISABLED is an operator override of all authentication.
 
     A stray Authorization header (e.g. added by a proxy in front of an E2E
     sandbox) must not turn into a 401 in that mode.

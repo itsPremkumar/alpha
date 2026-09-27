@@ -249,8 +249,8 @@ def test_tool_error_middleware_attaches_recovery_metadata_without_changing_visib
 
     message = middleware._build_error_message(request, ConnectionError("network down"))
 
-    assert message.additional_kwargs["agent_workspace_autonomy_recovery"]["category"] == "network"
-    assert message.additional_kwargs["agent_workspace_autonomy_recovery"]["retryable"] is True
+    assert message.additional_kwargs["alpha_autonomy_recovery"]["category"] == "network"
+    assert message.additional_kwargs["alpha_autonomy_recovery"]["retryable"] is True
     assert "Tool 'web_search' failed" in message.text
     assert "Continue with available context" in message.text
 

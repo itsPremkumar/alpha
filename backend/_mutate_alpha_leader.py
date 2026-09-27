@@ -162,7 +162,7 @@ def run_mutation(label: str, rel: str, pattern: str, replacement: str, expected:
 
         env = dict(os.environ)
         env["PYTHONPATH"] = f"{copy / 'packages' / 'harness'}{os.pathsep}{copy}{os.pathsep}{env.get('PYTHONPATH', '')}"
-        env["AGENT_WORKSPACE_HOME"] = str(scratch / "home")
+        env["ALPHA_HOME"] = str(scratch / "home")
         env["PYTHONDONTWRITEBYTECODE"] = "1"
         proc = subprocess.run(
             [str(PY), "-m", "pytest", *TESTS, "-q", "-p", "no:randomly", "--no-header", "-x", "-k", expected],

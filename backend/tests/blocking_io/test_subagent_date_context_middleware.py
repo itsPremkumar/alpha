@@ -1,6 +1,6 @@
 """Regression anchor: SubagentDateContextMiddleware must not block the event loop.
 
-``_inject`` can resolve ``AGENT_WORKSPACE_DATE_TIMEZONE`` through ``ZoneInfo``, which
+``_inject`` can resolve ``ALPHA_DATE_TIMEZONE`` through ``ZoneInfo``, which
 reads the OS timezone database (or the bundled ``tzdata`` wheel) on a cold
 cache. ``abefore_agent`` runs on the async subagent path with no guarantee that
 an assembly observer warmed that resolution first, so it offloads the call via
@@ -38,8 +38,8 @@ class _FakeModel(FakeMessagesListChatModel):
 
 
 async def test_subagent_abefore_agent_does_not_block_event_loop_with_timezone_enabled(monkeypatch) -> None:
-    """A cold AGENT_WORKSPACE_DATE_TIMEZONE resolution must stay off the event loop."""
-    monkeypatch.setenv("AGENT_WORKSPACE_DATE_TIMEZONE", "Asia/Shanghai")
+    """A cold ALPHA_DATE_TIMEZONE resolution must stay off the event loop."""
+    monkeypatch.setenv("ALPHA_DATE_TIMEZONE", "Asia/Shanghai")
     middleware = SubagentDateContextMiddleware()
 
     agent = await asyncio.to_thread(

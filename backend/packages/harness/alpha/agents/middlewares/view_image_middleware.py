@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import override
 from uuid import uuid4
 
-from agent_workspace_extension_api import ContentKind, provenance_kwargs
+from alpha_extension_api import ContentKind, provenance_kwargs
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import ModelCallResult, ModelRequest, ModelResponse
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 # case the file grew between view and injection.
 _MAX_IMAGE_BYTES = 20 * 1024 * 1024
 _IMAGE_CONTEXT_MESSAGE_ID_PREFIX = "view-image-context:"
-_IMAGE_CONTEXT_MESSAGE_MARKER_KEY = "agent_workspace_view_image_context"
+_IMAGE_CONTEXT_MESSAGE_MARKER_KEY = "alpha_view_image_context"
 
 
 class ViewImageMiddlewareState(ThreadState):

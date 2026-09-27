@@ -11,9 +11,9 @@ test('start URL defaults to the app root', () => {
   assert.equal(resolveStartUrl('http://127.0.0.1:3000', {}), 'http://127.0.0.1:3000/');
 });
 
-test('start URL honors AGENT_WORKSPACE_START_PATH', () => {
+test('start URL honors ALPHA_START_PATH', () => {
   assert.equal(
-    resolveStartUrl('http://127.0.0.1:3000', { AGENT_WORKSPACE_START_PATH: '/workspace' }),
+    resolveStartUrl('http://127.0.0.1:3000', { ALPHA_START_PATH: '/workspace' }),
     'http://127.0.0.1:3000/workspace',
   );
 });

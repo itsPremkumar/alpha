@@ -28,7 +28,7 @@ sandbox:
 Install the optional runtime before selecting this provider:
 
 ```bash
-pip install "agent-workspace-harness[boxlite]"
+pip install "alpha-harness[boxlite]"
 ```
 
 The `boxlite` package is an optional Alpha harness extra, not part of the

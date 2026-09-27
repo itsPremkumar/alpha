@@ -245,13 +245,13 @@ test("an errored result reaches the pill as an error", () => {
 
 test("the backend's success-default trap: status:\"success\" + error meta = error", () => {
   // LangChain defaults ToolMessage.status to "success"; the authoritative
-  // verdict lives in the agent_workspace_tool_meta stamp.
+  // verdict lives in the alpha_tool_meta stamp.
   const call = onlyToolCall(reduce([
     aiWithCall("answer", "100-1"),
     toolResult("100-2", {
       content: "Error: TimeoutError: took too long",
       additional_kwargs: {
-        agent_workspace_tool_meta: {
+        alpha_tool_meta: {
           status: "error", error_type: "transient", source: "exception", recoverable_by_model: false,
         },
       },
@@ -266,9 +266,9 @@ test("verdict precedence matches the backend's _honest_tool_status", () => {
   // 1. LangChain's own failure marker wins.
   assert.equal(resolve({ status: "error" }), "error");
   // 2. tool meta beats the bare field.
-  assert.equal(resolve({ status: "success", additional_kwargs: { agent_workspace_tool_meta: { status: "partial_success" } } }), "partial");
+  assert.equal(resolve({ status: "success", additional_kwargs: { alpha_tool_meta: { status: "partial_success" } } }), "partial");
   // 3. the receipt stamp is consulted next.
-  assert.equal(resolve({ additional_kwargs: { agent_workspace_tool_receipt: { status: "error" } } }), "error");
+  assert.equal(resolve({ additional_kwargs: { alpha_tool_receipt: { status: "error" } } }), "error");
   // 4. a structured subagent failure is honoured over a default "success".
   assert.equal(resolve({ status: "success", additional_kwargs: { subagent_status: "timed_out" } }), "error");
   // 5. a bare recognised field is used only when nothing stronger exists.

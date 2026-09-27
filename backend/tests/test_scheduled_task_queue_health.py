@@ -100,9 +100,9 @@ _MISSING = object()
 
 
 @pytest.fixture(autouse=True)
-def _agent_workspace_home(tmp_path, monkeypatch):
-    """Confine ``AGENT_WORKSPACE_HOME`` to a per-test temp directory."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+def _alpha_home(tmp_path, monkeypatch):
+    """Confine ``ALPHA_HOME`` to a per-test temp directory."""
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
 
 
 # -- stubs -------------------------------------------------------------

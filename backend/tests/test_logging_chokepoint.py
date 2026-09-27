@@ -103,9 +103,9 @@ def test_safety_filters_install_even_with_enhancement_disabled(root_handler: log
     """
     configure_logging(_config(enabled=False))
     names = {getattr(f, "name", None) for f in root_handler.filters}
-    assert "agent_workspace_log_redaction_filter" in names
-    assert "agent_workspace_log_context_filter" in names
-    assert "agent_workspace_trace_context_filter" in names
+    assert "alpha_log_redaction_filter" in names
+    assert "alpha_log_context_filter" in names
+    assert "alpha_trace_context_filter" in names
 
 
 def test_safety_filters_survive_a_caller_supplied_formatter(root_handler: logging.Handler) -> None:
@@ -118,8 +118,8 @@ def test_safety_filters_survive_a_caller_supplied_formatter(root_handler: loggin
     root_handler.setFormatter(logging.Formatter("%(message)s"))
     configure_logging(_config(enabled=False))
     names = {getattr(f, "name", None) for f in root_handler.filters}
-    assert "agent_workspace_log_redaction_filter" in names
-    assert "agent_workspace_log_context_filter" in names
+    assert "alpha_log_redaction_filter" in names
+    assert "alpha_log_context_filter" in names
     # ...and a caller-supplied format string is not overwritten.
     assert root_handler.formatter._fmt == "%(message)s"
 
@@ -277,9 +277,9 @@ def test_remove_log_safety_filters_is_a_supported_opt_out(root_handler: logging.
     configure_logging(_config(enabled=False))
     remove_log_safety_filters(root_handler)
     names = {getattr(f, "name", None) for f in root_handler.filters}
-    assert "agent_workspace_log_redaction_filter" not in names
-    assert "agent_workspace_log_context_filter" not in names
-    assert "agent_workspace_trace_context_filter" in names
+    assert "alpha_log_redaction_filter" not in names
+    assert "alpha_log_context_filter" not in names
+    assert "alpha_trace_context_filter" in names
 
 
 def test_reconfiguring_after_a_policy_change_replaces_the_filter(root_handler: logging.Handler) -> None:

@@ -27,7 +27,7 @@ make detect-blocking-io
 The report is written to:
 
 ```text
-.agent-workspace/blocking-io-findings.json
+.alpha/blocking-io-findings.json
 ```
 
 Use this output for review and triage. A static finding is a candidate, not

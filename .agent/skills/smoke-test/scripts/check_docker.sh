@@ -48,7 +48,7 @@ if [ -n "$port_2026_usage" ]; then
     echo "  Occupying process:"
     echo "$port_2026_usage"
 
-    agent_workspace_process_found=0
+    alpha_process_found=0
     while IFS= read -r pid; do
         if [ -z "$pid" ]; then
             continue
@@ -57,14 +57,14 @@ if [ -n "$port_2026_usage" ]; then
         process_command="$(ps -p "$pid" -o command= 2>/dev/null || true)"
         case "$process_command" in
             *[Dd]eer[Ff]low*|*[Dd]eerflow*|*[Nn]ginx*alpha*|*alpha/*[Nn]ginx*)
-                agent_workspace_process_found=1
+                alpha_process_found=1
                 ;;
         esac
     done <<EOF
 $(printf '%s\n' "$port_2026_usage" | awk 'NR > 1 {print $2}')
 EOF
 
-    if [ "$agent_workspace_process_found" -eq 1 ]; then
+    if [ "$alpha_process_found" -eq 1 ]; then
         echo "✓ Port 2026 is occupied by Alpha"
     else
         echo "✗ Port 2026 must be free before starting Alpha"

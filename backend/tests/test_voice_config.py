@@ -128,4 +128,4 @@ def test_voice_extra_is_bounded_local_runtime_and_root_forwards_it():
         "webrtcvad-wheels>=2.0.11,<3",
     ]
     assert not any(dependency.startswith(("edge-tts", "openwakeword")) for dependency in voice_dependencies)
-    assert root["project"]["optional-dependencies"]["voice"] == ["agent-workspace-harness[voice]"]
+    assert root["project"]["optional-dependencies"]["voice"] == ["alpha-harness[voice]"]

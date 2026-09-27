@@ -13,7 +13,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from agent_workspace_extension_api import API_VERSION
+from alpha_extension_api import API_VERSION
 from pydantic import BaseModel, ConfigDict, Field
 
 from alpha.extensions.registry import ExtensionRegistry, LoadedExtensions
@@ -211,7 +211,7 @@ def load_extensions(specs: Sequence[ExtensionSpec]) -> tuple[LoadedExtensions, l
             continue
 
         try:
-            declared = getattr(install, "__agent_workspace_api__", None)
+            declared = getattr(install, "__alpha_api__", None)
         except Exception as exc:
             message = f"could not inspect extension-api version marker: {type(exc).__name__}"
             diagnostics.append(Diagnostic.error(spec.use, message))
@@ -233,7 +233,7 @@ def load_extensions(specs: Sequence[ExtensionSpec]) -> tuple[LoadedExtensions, l
             # implementation before compatibility checks and rendering.
             declared = str.__str__(declared)
         if declared is not None and not _compatible(declared, API_VERSION):
-            message = f"extension requires extension-api {declared}, host provides {API_VERSION}. Install a matching version: pip install 'agent-workspace-extension-api{_range_for(declared)}'"
+            message = f"extension requires extension-api {declared}, host provides {API_VERSION}. Install a matching version: pip install 'alpha-extension-api{_range_for(declared)}'"
             diagnostics.append(Diagnostic.error(spec.use, message))
             logger.error("Extension %s: %s", spec.use, message)
             if spec.required:

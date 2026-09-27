@@ -10,16 +10,16 @@ import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-CHART = REPO_ROOT / "deploy" / "helm" / "agent-workspace"
+CHART = REPO_ROOT / "deploy" / "helm" / "alpha"
 GATEWAY_TEMPLATE = CHART / "templates" / "gateway-deployment.yaml"
-RUNTIME_CONFIG_PATH = "/app/backend/.agent-workspace/extensions-config/extensions_config.json"
+RUNTIME_CONFIG_PATH = "/app/backend/.alpha/extensions-config/extensions_config.json"
 
 
 def _render_chart(*settings: str) -> list[dict]:
     helm = shutil.which("helm")
     if helm is None:
         pytest.skip("helm is unavailable")
-    command = [helm, "template", "agent-workspace", str(CHART)]
+    command = [helm, "template", "alpha", str(CHART)]
     for setting in settings:
         command.extend(["--set", setting])
     rendered = subprocess.run(command, check=True, capture_output=True, text=True).stdout
@@ -53,18 +53,18 @@ def test_rendered_helm_extensions_config_is_writable_and_seeded(persistence_enab
     init_extensions = _named(pod_spec["initContainers"], "init-extensions")
 
     env = {item["name"]: item for item in gateway["env"]}
-    assert env["AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH"]["value"] == RUNTIME_CONFIG_PATH
+    assert env["ALPHA_EXTENSIONS_CONFIG_PATH"]["value"] == RUNTIME_CONFIG_PATH
 
     seed_mount = _named(init_extensions["volumeMounts"], "extensions-seed")
     assert seed_mount["mountPath"] == "/extensions-seed"
     assert seed_mount["readOnly"] is True
     runtime_mount = _named(init_extensions["volumeMounts"], "home")
     assert runtime_mount["mountPath"] == "/extensions-runtime"
-    assert runtime_mount["subPath"] == "agent-workspace/extensions-config"
+    assert runtime_mount["subPath"] == "alpha/extensions-config"
 
     home_mount = _named(gateway["volumeMounts"], "home")
-    assert home_mount["mountPath"] == "/app/backend/.agent-workspace"
-    assert home_mount["subPath"] == "agent-workspace"
+    assert home_mount["mountPath"] == "/app/backend/.alpha"
+    assert home_mount["subPath"] == "alpha"
     assert "readOnly" not in home_mount
 
     volumes = {item["name"]: item for item in pod_spec["volumes"]}

@@ -77,17 +77,17 @@ def test_alembic_config_forwards_postgres_schema_option() -> None:
     # ``public`` while the ORM tables land in the custom schema.
     engine = _fake_engine("postgresql://a:b@h/d")
     cfg = _get_alembic_config(engine, postgres_schema="alpha")
-    assert cfg.get_main_option("agent_workspace_pg_schema") == "alpha"
+    assert cfg.get_main_option("alpha_pg_schema") == "alpha"
 
 
 def test_alembic_config_omits_schema_option_when_unset() -> None:
     engine = _fake_engine("postgresql://a:b@h/d")
     cfg = _get_alembic_config(engine)
-    assert cfg.get_main_option("agent_workspace_pg_schema") is None
+    assert cfg.get_main_option("alpha_pg_schema") is None
 
 
 def test_env_module_pins_search_path_from_schema_option() -> None:
-    """env.py must read ``agent_workspace_pg_schema`` and pin the alembic-spawned
+    """env.py must read ``alpha_pg_schema`` and pin the alembic-spawned
     engine's search_path. That engine is built from the bare URL and does not
     inherit the app engine's asyncpg ``server_settings``, so without this both
     ``alembic_version`` and migration DDL would land in ``public`` while the
@@ -98,5 +98,5 @@ def test_env_module_pins_search_path_from_schema_option() -> None:
 
     env_path = Path(__file__).resolve().parents[1] / "packages/harness/alpha/persistence/migrations/env.py"
     src = env_path.read_text(encoding="utf-8")
-    assert 'get_main_option("agent_workspace_pg_schema")' in src, "env.py must read the agent_workspace_pg_schema option set by _get_alembic_config"
+    assert 'get_main_option("alpha_pg_schema")' in src, "env.py must read the alpha_pg_schema option set by _get_alembic_config"
     assert "build_asyncpg_connect_args" in src, "env.py must pin the alembic engine's search_path via build_asyncpg_connect_args"

@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 DEFAULT_IMAGE = "python:3.12-slim"
-_BOX_NAME_PREFIX = "agent-workspace-boxlite-"
+_BOX_NAME_PREFIX = "alpha-boxlite-"
 _NO_ACTIVE_IDENTITY = object()
 # Alpha's virtual prefixes, materialised on the box rootfs at start so the
 # Sandbox file APIs (which address /mnt/user-data/...) resolve natively.
@@ -75,7 +75,7 @@ def _import_simplebox() -> type[SimpleBox]:
     try:
         from boxlite import SimpleBox
     except ImportError as e:  # pragma: no cover - depends on the optional dependency
-        raise ImportError("BoxliteProvider requires the optional 'boxlite' dependency. Install it with: pip install 'agent-workspace-harness[boxlite]' or pip install boxlite.") from e
+        raise ImportError("BoxliteProvider requires the optional 'boxlite' dependency. Install it with: pip install 'alpha-harness[boxlite]' or pip install boxlite.") from e
     return SimpleBox
 
 
@@ -84,7 +84,7 @@ def _import_sync_boxlite_runtime():
     try:
         from boxlite import SyncBoxlite
     except ImportError as e:  # pragma: no cover - depends on the optional dependency
-        raise ImportError("BoxliteProvider requires the optional 'boxlite' dependency. Install it with: pip install 'agent-workspace-harness[boxlite]' or pip install boxlite.") from e
+        raise ImportError("BoxliteProvider requires the optional 'boxlite' dependency. Install it with: pip install 'alpha-harness[boxlite]' or pip install boxlite.") from e
     return SyncBoxlite
 
 

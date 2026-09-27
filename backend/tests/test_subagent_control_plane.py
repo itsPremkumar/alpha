@@ -39,7 +39,7 @@ from alpha.tools.builtins.subagent_control_tool import subagent_control
 
 @pytest.fixture(autouse=True)
 def _isolated_subagent_home(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     life_mod._GLOBAL_LIFECYCLE_MANAGER = None
     res_mod._GLOBAL_RESILIENCE_ENGINE = None
     prom_mod._GLOBAL_PROMOTION_MANAGER = None

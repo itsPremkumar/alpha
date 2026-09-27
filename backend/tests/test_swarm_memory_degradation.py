@@ -26,7 +26,7 @@ import alpha.swarm.memory as memory_mod
 
 @pytest.fixture(autouse=True)
 def _isolated(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     coord_mod._GLOBAL_COORDINATOR = None
     yield
     coord_mod._GLOBAL_COORDINATOR = None

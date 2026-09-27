@@ -2055,7 +2055,7 @@ The architecture should be **plugin-first**, so you can remove or replace any in
 [16]: https://github.com/NousResearch/hermes-agent/blob/main/AGENTS.md?utm_source=chatgpt.com "hermes-agent/AGENTS.md at main · NousResearch/hermes-agent · GitHub"
 [17]: https://github.com/NousResearch/Hermes-Agent?utm_source=chatgpt.com "GitHub - NousResearch/hermes-agent: The agent that grows with you · GitHub"
 [18]: https://github.com/paperclipai/paperclip/blob/master/doc/PRODUCT.md?utm_source=chatgpt.com "paperclip/doc/PRODUCT.md at master · paperclipai/paperclip · GitHub"
-[19]: https://github.com/bytedance/agent-workspace/blob/main/frontend/src/content/en/introduction/index.mdx?utm_source=chatgpt.com "agent-workspace/frontend/src/content/en/introduction/index.mdx at main · bytedance/agent-workspace · GitHub"
+[19]: https://github.com/bytedance/agent-workspace/blob/main/frontend/src/content/en/introduction/index.mdx?utm_source=chatgpt.com "alpha/frontend/src/content/en/introduction/index.mdx at main · bytedance/agent-workspace · GitHub"
 [20]: https://github.com/foundationagents/metagpt?utm_source=chatgpt.com "GitHub - FoundationAgents/MetaGPT: 🌟 The Multi-Agent Framework: First AI Software Company, Towards Natural Language Programming · GitHub"
 [21]: https://microsoft.github.io/autogen/stable/user-guide/agentchat-user-guide/swarm.html?utm_source=chatgpt.com "Swarm — AutoGen"
 [22]: https://x.ai/news/introducing-grok-bot?utm_source=chatgpt.com "Introducing Grok Bot | SpaceXAI"

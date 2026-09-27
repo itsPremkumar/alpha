@@ -97,7 +97,7 @@ def test_skills_workshop_router_distill_and_publish():
 
 def test_skills_workshop_router_publish_valid(monkeypatch):
     with TemporaryDirectory() as tmp_dir:
-        monkeypatch.setenv("AGENT_WORKSPACE_PROJECT_ROOT", tmp_dir)
+        monkeypatch.setenv("ALPHA_PROJECT_ROOT", tmp_dir)
         req = DistillRequest(
             name="valid-router-skill",
             description="Valid skill created via router distill.",

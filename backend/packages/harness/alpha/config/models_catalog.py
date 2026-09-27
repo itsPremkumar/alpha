@@ -43,7 +43,7 @@ Resolution order for the file path mirrors
 :mod:`alpha.config.extensions_config` exactly:
 
 1. explicit ``config_path`` argument
-2. ``AGENT_WORKSPACE_MODELS_CONFIG_PATH`` environment variable
+2. ``ALPHA_MODELS_CONFIG_PATH`` environment variable
 3. ``models.yaml`` in the caller project root
 4. ``backend/models.yaml`` then the repository root (monorepo compatibility)
 5. ``None`` — the catalog is optional; a deployment may configure everything
@@ -81,8 +81,8 @@ logger = logging.getLogger(__name__)
 MODELS_CATALOG_VERSION: int = 1
 
 #: Env var that points at the catalog, mirroring
-#: ``AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH``.
-MODELS_CONFIG_PATH_ENV: str = "AGENT_WORKSPACE_MODELS_CONFIG_PATH"
+#: ``ALPHA_EXTENSIONS_CONFIG_PATH``.
+MODELS_CONFIG_PATH_ENV: str = "ALPHA_MODELS_CONFIG_PATH"
 
 #: Candidate file names, in resolution order.
 MODELS_CATALOG_FILENAMES: tuple[str, ...] = ("models.yaml", "models.yml")
@@ -246,7 +246,7 @@ def _existing_project_file(names: tuple[str, ...]) -> Path | None:
 def resolve_models_config_path(config_path: str | None = None) -> Path | None:
     """Resolve the ``models.yaml`` path, mirroring ``ExtensionsConfig``.
 
-    Priority: explicit ``config_path`` → ``AGENT_WORKSPACE_MODELS_CONFIG_PATH``
+    Priority: explicit ``config_path`` → ``ALPHA_MODELS_CONFIG_PATH``
     → project root → ``backend/`` and repository root → ``None``.
 
     An explicit argument or a set env var raises ``FileNotFoundError`` when the

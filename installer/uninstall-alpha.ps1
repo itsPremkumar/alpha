@@ -13,7 +13,7 @@
                 cloned source and the virtualenv. Your config.yaml, your .env
                 and your agent data are KEPT.
       -PurgeData additionally removes config.yaml, .env and the runtime data
-                directory (.agent-workspace). This destroys your settings and
+                directory (.alpha). This destroys your settings and
                 your generated secrets, which is why it needs its own switch on
                 top of -Yes.
 

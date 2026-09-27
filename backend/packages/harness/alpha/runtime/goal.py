@@ -234,7 +234,7 @@ def create_goal_evaluator_model(
 
     The evaluator runs from ``runtime/runs/worker.py`` after the main graph
     run has already completed, so — unlike ``make_lead_agent``/
-    ``AgentWorkspaceClient.stream``, which attach ``build_tracing_callbacks()`` at
+    ``AlphaClient.stream``, which attach ``build_tracing_callbacks()`` at
     the graph root and correctly pass ``attach_tracing=False`` to avoid
     double-attaching — there is no graph root here for the evaluator's model
     call to inherit tracing from. It must attach its own model-level tracing
@@ -292,7 +292,7 @@ def create_chat_model(*args: Any, **kwargs: Any) -> Any:
 
 
 def _resolve_environment() -> str | None:
-    return os.environ.get("AGENT_WORKSPACE_ENV") or os.environ.get("ENVIRONMENT")
+    return os.environ.get("ALPHA_ENV") or os.environ.get("ENVIRONMENT")
 
 
 async def _system_one_goal_completion(goal: GoalState, conversation: str) -> GoalEvaluation | None:
@@ -376,13 +376,13 @@ async def evaluate_goal_completion(
     app_config: Any | None = None,
     thread_id: str | None = None,
     user_id: str | None = None,
-    agent_workspace_trace_id: str | None = None,
+    alpha_trace_id: str | None = None,
     task_store: Any | None = None,
     extensions: Any | None = None,
 ) -> GoalEvaluation:
     """Ask a small non-thinking model whether the active goal is satisfied.
 
-    ``thread_id``/``user_id``/``agent_workspace_trace_id`` are forwarded to Langfuse
+    ``thread_id``/``user_id``/``alpha_trace_id`` are forwarded to Langfuse
     trace metadata only (mirrors ``oneshot_llm.run_oneshot_llm``): this is a
     standalone model call outside the main graph, so it must inject its own
     Langfuse session/user attribution instead of relying on graph-root
@@ -427,7 +427,7 @@ async def evaluate_goal_completion(
         assistant_id="goal_evaluator",
         model_name=model_name,
         environment=_resolve_environment(),
-        agent_workspace_trace_id=agent_workspace_trace_id,
+        alpha_trace_id=alpha_trace_id,
     )
     prompt_messages = [
         SystemMessage(content=system_instruction),
@@ -436,7 +436,7 @@ async def evaluate_goal_completion(
     if extensions is None:
         response = await model.ainvoke(prompt_messages, config=invoke_config)
     else:
-        from agent_workspace_extension_api import SystemOperationKind
+        from alpha_extension_api import SystemOperationKind
 
         from alpha.extensions.notify import observe_system_model_call
 
@@ -528,7 +528,7 @@ def make_goal_continuation_message(goal: GoalState, evaluation: GoalEvaluation) 
         content=content,
         additional_kwargs={
             "hide_from_ui": True,
-            "agent_workspace_goal_continuation": True,
+            "alpha_goal_continuation": True,
         },
     )
 

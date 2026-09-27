@@ -13,7 +13,7 @@ from alpha.projects.state import get_state, refresh_state, set_phase
 
 @pytest.fixture(autouse=True)
 def _home(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     yield
 
 

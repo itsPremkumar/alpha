@@ -292,7 +292,7 @@ def _probe_file_size(runtime: Any, resolved: str, thread_data: Mapping[str, Any]
         root = "/".join(resolved.split("/")[:4])  # the /mnt/user-data/{workspace|outputs} mount root
         output = sandbox.execute_command(
             f"/usr/bin/env -i /bin/sh -c {shlex.quote(_SIZE_PROBE_INNER_SCRIPT)} probe {shlex.quote(resolved)} {shlex.quote(root)}",
-            env={"_AGENT_WORKSPACE_SIZE_PROBE": "1"},
+            env={"_ALPHA_SIZE_PROBE": "1"},
         )
     except FileNotFoundError:
         raise
@@ -364,7 +364,7 @@ def _probe_file_readable(runtime: Any, resolved: str, thread_data: Mapping[str, 
         root = "/".join(resolved.split("/")[:4])  # the /mnt/user-data/{workspace|outputs} mount root
         output = sandbox.execute_command(
             f"/usr/bin/env -i /bin/sh -c {shlex.quote(_READ_PROBE_INNER_SCRIPT)} probe {shlex.quote(resolved)} {shlex.quote(root)}",
-            env={"_AGENT_WORKSPACE_SIZE_PROBE": "1"},
+            env={"_ALPHA_SIZE_PROBE": "1"},
         )
     except Exception:
         # Same failure-isolation precedent as _probe_file_size: best-effort

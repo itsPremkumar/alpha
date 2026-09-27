@@ -1679,7 +1679,7 @@ class TestUserIdForwarding:
         assert storage.load_calls == [(None, "user-99")]
         assert storage.save_calls == [(None, "user-99", 0)]
 
-    def test_sync_update_injects_agent_workspace_trace_metadata_when_langfuse_enabled(self, monkeypatch):
+    def test_sync_update_injects_alpha_trace_metadata_when_langfuse_enabled(self, monkeypatch):
         monkeypatch.setenv("LANGFUSE_TRACING", "true")
         monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
         monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
@@ -1718,7 +1718,7 @@ class TestUserIdForwarding:
         metadata = invoke_config["metadata"]
         # The update runs on a Timer thread that inherits no ContextVars, so the
         # id captured at enqueue time is what keeps this trace correlated.
-        assert metadata["agent_workspace_trace_id"] == "memory-trace-1"
+        assert metadata["alpha_trace_id"] == "memory-trace-1"
         assert metadata["langfuse_session_id"] == "thread-memory"
         assert metadata["langfuse_user_id"] == "user-42"
         assert metadata["langfuse_trace_name"] == "memory_agent"
@@ -1779,7 +1779,7 @@ class TestSyncUpdateBindsTraceContextVar:
         thread.join()
         return results[0]
 
-    def test_binds_agent_workspace_trace_id_into_contextvar(self) -> None:
+    def test_binds_alpha_trace_id_into_contextvar(self) -> None:
         captured: list[str | None] = []
         updater, model = self._make_updater_with_capturing_model(captured)
 

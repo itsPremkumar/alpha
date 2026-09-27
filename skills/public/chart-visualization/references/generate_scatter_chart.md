@@ -10,8 +10,8 @@ Plots relationship and correlation between two continuous variables across disti
 ### Optional
 - size: string, field driving bubble point diameter.
 - color: string, field driving categorical coloring.
-- 	heme: string, default default.
-- 	itle: string, scatter title.
+- theme: string, default default.
+- title: string, scatter title.
 
 ## Usage Recommendations
 Add trendlines or clustering indicators when analyzing statistical correlations.

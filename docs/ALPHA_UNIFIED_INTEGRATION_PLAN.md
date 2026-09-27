@@ -297,9 +297,9 @@ silently return:
 - GitHub webhook ingress.
 
 Auth-disabled local mode is **not** a global default. It requires
-`AGENT_WORKSPACE_AUTH_DISABLED=1` to be set explicitly
+`ALPHA_AUTH_DISABLED=1` to be set explicitly
 (`app/gateway/auth_disabled.py:31`), and it is force-ignored whenever
-`AGENT_WORKSPACE_ENV`/`ENVIRONMENT` is `prod`/`production` (`:35`). The Electron
+`ALPHA_ENV`/`ENVIRONMENT` is `prod`/`production` (`:35`). The Electron
 desktop app sets it for you (`electron/main.js:399`); the Docker/nginx stack and
 the shell/PowerShell launchers do not. Loopback-only binding is the shipped
 default (`BIND_HOST` defaults to `127.0.0.1`).

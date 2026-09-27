@@ -80,7 +80,7 @@ def _running_studio_server(
                 "http": {"app": "./auth_shim.py:langgraph_app"},
                 "env": {
                     "AUTH_JWT_SECRET": "test-secret-key-for-langgraph-route-tests-min-32",
-                    "AGENT_WORKSPACE_AUTH_DISABLED": "1",
+                    "ALPHA_AUTH_DISABLED": "1",
                     "LANGSMITH_TRACING": "false",
                 },
             }

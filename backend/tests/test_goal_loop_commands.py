@@ -28,9 +28,9 @@ _CTX = {"session_id": "reachability-session"}
 
 @pytest.fixture(autouse=True)
 def _isolated_home(tmp_path, monkeypatch):
-    home = tmp_path / "agent-workspace"
+    home = tmp_path / "alpha"
     home.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(home))
+    monkeypatch.setenv("ALPHA_HOME", str(home))
     reset_goal_store()
     yield
     reset_goal_store()

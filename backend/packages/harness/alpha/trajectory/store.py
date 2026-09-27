@@ -199,7 +199,7 @@ def get_trajectory_store(project_id: str = "default") -> TrajectoryStore:
     """Project-scoped singleton accessor for TrajectoryStore."""
     import os
     if project_id not in _PROJECT_TRAJECTORY_STORES:
-        base_dir = os.environ.get("AGENT_WORKSPACE_PROJECTS_DIR", ".agent_workspace_projects")
+        base_dir = os.environ.get("ALPHA_PROJECTS_DIR", ".alpha_projects")
         db_file = Path(base_dir) / project_id / "trajectory" / "audit.db"
         store = TrajectoryStore(db_path=db_file)
         # Seed initial baseline trajectory if empty

@@ -904,7 +904,7 @@ _PROBE_TOTAL_BUDGET_SECONDS = float(os.environ.get("ALPHA_DOCTOR_PROBE_TOTAL_BUD
 #: Escape hatch for an air-gapped or metered host. Construction still runs (it
 #: makes no request); only the live probe is skipped, and the report says so
 #: rather than quietly reporting Ready for something it never tried.
-SKIP_NETWORK_ENV = "AGENT_WORKSPACE_DOCTOR_NO_NETWORK"
+SKIP_NETWORK_ENV = "ALPHA_DOCTOR_NO_NETWORK"
 
 
 def _iter_reachable_models(app_config) -> list:
@@ -1164,7 +1164,7 @@ def main() -> int:
     # doctor refuse to say Ready for an unrunnable product.
     #
     # Both are counted as required below, and ``check_provider_reachable``
-    # honours ``AGENT_WORKSPACE_DOCTOR_NO_NETWORK`` for an air-gapped host --
+    # honours ``ALPHA_DOCTOR_NO_NETWORK`` for an air-gapped host --
     # construction still runs, only the request is skipped, and the report says
     # so rather than quietly reporting Ready for something it never tried.
     sections.append(

@@ -7,7 +7,7 @@ rule** (read before writing a backend):
       1. The :class:`MemoryManager` ABC method arguments (``manager.py``) --
          ``user_id`` / ``agent_name`` / ``thread_id`` / ``messages`` / etc.
       2. The ``backend_config`` dict (passed to ``__init__``).
-    It MUST NOT import agent-workspace modules or hardcode agent-workspace paths. The ONLY
+    It MUST NOT import alpha modules or hardcode alpha paths. The ONLY
     ``from alpha`` line allowed in the whole backend folder is the ABC
     contract import in ``<name>_manager.py``::
 
@@ -20,7 +20,7 @@ rule** (read before writing a backend):
 What the factory (``manager.py::get_memory_manager``) provides to each backend:
   - ``backend_config["storage_path"]`` (str): a writable state dir (the host's
     default, or whatever the user sets in config.yaml). **Use this as your
-    storage root** -- do NOT call a agent-workspace path helper yourself.
+    storage root** -- do NOT call a alpha path helper yourself.
   - host hooks (passed as kwargs to ``from_config``, NOT in backend_config):
     ``callbacks`` (a ``MemoryCallbacks`` for tracing via ``on_memory_llm_call``),
     ``should_keep_hidden_message``, ``trace_context_manager``, and

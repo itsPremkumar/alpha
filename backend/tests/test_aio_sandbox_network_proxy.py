@@ -43,8 +43,8 @@ def test_address_is_public_rejects_host_private_link_local_and_metadata() -> Non
 
 def test_policy_denial_and_temporary_or_sandbox_grants(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(network_proxy, "POLICY_DB", tmp_path / "policy.sqlite3")
-    monkeypatch.setenv("AGENT_WORKSPACE_NETWORK_MODE", "allowlist")
-    monkeypatch.setenv("AGENT_WORKSPACE_ALLOW_DOMAINS_JSON", json.dumps(["pypi.org"]))
+    monkeypatch.setenv("ALPHA_NETWORK_MODE", "allowlist")
+    monkeypatch.setenv("ALPHA_ALLOW_DOMAINS_JSON", json.dumps(["pypi.org"]))
 
     assert network_proxy.policy_allows("pypi.org", 443, now=100)
     assert not network_proxy.policy_allows("example.com", 443, now=100)
@@ -182,9 +182,9 @@ async def test_resolve_public_returns_every_validated_answer_and_open_retries(mo
 @pytest.mark.parametrize("mode", ["isolated", "allowlist"])
 async def test_denied_destination_is_rejected_without_dns_resolution(tmp_path, monkeypatch, mode: str) -> None:
     monkeypatch.setattr(network_proxy, "POLICY_DB", tmp_path / "policy.sqlite3")
-    monkeypatch.setenv("AGENT_WORKSPACE_NETWORK_MODE", mode)
-    monkeypatch.setenv("AGENT_WORKSPACE_ALLOW_DOMAINS_JSON", json.dumps(["allowed.example"]))
-    monkeypatch.delenv("AGENT_WORKSPACE_RECORD_DENIALS", raising=False)
+    monkeypatch.setenv("ALPHA_NETWORK_MODE", mode)
+    monkeypatch.setenv("ALPHA_ALLOW_DOMAINS_JSON", json.dumps(["allowed.example"]))
+    monkeypatch.delenv("ALPHA_RECORD_DENIALS", raising=False)
     resolutions: list[tuple[str, int]] = []
 
     async def fake_resolve_public(host: str, port: int):
@@ -314,7 +314,7 @@ async def test_sandbox_api_relay_requires_per_sandbox_token(monkeypatch) -> None
     upstream = await asyncio.start_server(upstream_handler, "127.0.0.1", 0)
     upstream_port = upstream.sockets[0].getsockname()[1]
     monkeypatch.setenv(network_proxy.RELAY_TOKEN_ENV, "test-relay-token")
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_TARGET", f"127.0.0.1:{upstream_port}")
+    monkeypatch.setenv("ALPHA_SANDBOX_TARGET", f"127.0.0.1:{upstream_port}")
     relay = await asyncio.start_server(network_proxy.handle_relay, "127.0.0.1", 0)
     relay_port = relay.sockets[0].getsockname()[1]
     try:
@@ -560,7 +560,7 @@ async def test_failed_relay_direction_leaves_no_task_and_no_half_open_socket(mon
 
     monkeypatch.setattr(network_proxy.asyncio, "open_connection", open_connection_to_the_paired_upstream)
     monkeypatch.setenv(network_proxy.RELAY_TOKEN_ENV, "test-relay-token")
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_TARGET", "127.0.0.1:1")
+    monkeypatch.setenv("ALPHA_SANDBOX_TARGET", "127.0.0.1:1")
 
     baseline = set(asyncio.all_tasks())
     try:
@@ -685,7 +685,7 @@ async def test_policy_decisions_never_run_on_the_event_loop_thread(monkeypatch) 
 
     monkeypatch.setattr(network_proxy, "policy_allows", fake_policy_allows)
     monkeypatch.setattr(network_proxy, "record_denial", fake_record_denial)
-    monkeypatch.setenv("AGENT_WORKSPACE_RECORD_DENIALS", "1")
+    monkeypatch.setenv("ALPHA_RECORD_DENIALS", "1")
 
     proxy = await asyncio.start_server(network_proxy.handle_proxy, "127.0.0.1", 0)
     proxy_port = proxy.sockets[0].getsockname()[1]

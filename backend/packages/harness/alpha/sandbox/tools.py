@@ -54,7 +54,7 @@ logger = logging.getLogger(__name__)
 # those entries share one live provider decision. Context variables are copied
 # into ``asyncio.to_thread`` workers, keeping the handoff task-local.
 _SANDBOX_AUTHORIZATION_CHECKED: ContextVar[bool] = ContextVar(
-    "agent_workspace_sandbox_authorization_checked",
+    "alpha_sandbox_authorization_checked",
     default=False,
 )
 
@@ -91,10 +91,10 @@ _DEFAULT_WRITE_FILE_ERROR_MAX_CHARS = 2000
 # because the tool-call JSON payload (which the model must emit as one
 # continuous stream) grows past the safe window. 80 KB ≈ 20K tokens, a
 # comfortable headroom under the factory-default 240s stream_chunk_timeout.
-# Deployments can override via env var AGENT_WORKSPACE_WRITE_FILE_MAX_BYTES; set to
+# Deployments can override via env var ALPHA_WRITE_FILE_MAX_BYTES; set to
 # 0 (or negative) to disable the guard entirely.
 _WRITE_FILE_CONTENT_MAX_BYTES = 80 * 1024
-_WRITE_FILE_MAX_BYTES_ENV = "AGENT_WORKSPACE_WRITE_FILE_MAX_BYTES"
+_WRITE_FILE_MAX_BYTES_ENV = "ALPHA_WRITE_FILE_MAX_BYTES"
 _LOCAL_BASH_CWD_COMMANDS = {"cd", "pushd"}
 _LOCAL_BASH_COMMAND_WRAPPERS = {"command", "builtin"}
 _LOCAL_BASH_COMMAND_PREFIX_KEYWORDS = {"!", "{", "case", "do", "elif", "else", "for", "if", "select", "then", "time", "until", "while"}
@@ -1926,7 +1926,7 @@ def _truncate_ls_output(output: str, max_chars: int) -> str:
 # Fixed env var exposing the IM-channel platform user id (Feishu open_id,
 # Slack Uxxx, ...) to sandbox commands, so skills can act on the current end
 # user's channel identity (#3914). An identifier, not a secret.
-CHANNEL_USER_ID_ENV = "AGENT_WORKSPACE_CHANNEL_USER_ID"
+CHANNEL_USER_ID_ENV = "ALPHA_CHANNEL_USER_ID"
 
 _CHANNEL_USER_ID_CONTEXT_KEY = "channel_user_id"
 
@@ -2523,7 +2523,7 @@ read_file_tool.coroutine = _read_file_tool_async
 def _effective_write_file_max_bytes() -> int:
     """Return the active size cap for non-append write_file calls.
 
-    Reads ``AGENT_WORKSPACE_WRITE_FILE_MAX_BYTES`` at call time (not import time)
+    Reads ``ALPHA_WRITE_FILE_MAX_BYTES`` at call time (not import time)
     so tests and runtime tweaks take effect without restart. Falls back to
     the default on missing/malformed values. A non-positive value disables
     the guard.
@@ -2576,7 +2576,7 @@ def write_file_tool(
          create the file; subsequent calls use append=True. The 80 KB cap does
          NOT apply to append=True calls.
 
-    Operators can override the cap via env var `AGENT_WORKSPACE_WRITE_FILE_MAX_BYTES`
+    Operators can override the cap via env var `ALPHA_WRITE_FILE_MAX_BYTES`
     (0 disables the guard entirely). Raising it risks streaming timeouts.
 
     Args:

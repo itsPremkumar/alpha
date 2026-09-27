@@ -458,7 +458,7 @@ def default_receipt_dir() -> Path:
 
         return runtime_home() / "governance" / "receipts"
     except Exception:
-        return Path(os.environ.get("AGENT_WORKSPACE_HOME", ".")) / "governance" / "receipts"
+        return Path(os.environ.get("ALPHA_HOME", ".")) / "governance" / "receipts"
 
 
 class ReceiptChain:

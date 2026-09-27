@@ -58,7 +58,7 @@ def _enable_langfuse_env(monkeypatch):
     monkeypatch.setenv("LANGFUSE_TRACING", "true")
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
-    monkeypatch.setenv("AGENT_WORKSPACE_ENV", "production")
+    monkeypatch.setenv("ALPHA_ENV", "production")
 
 
 SKILL_CONTENT = "---\nname: demo-skill\ndescription: demo\n---\n"

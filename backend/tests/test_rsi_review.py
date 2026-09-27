@@ -41,7 +41,7 @@ FIXED_CLOCK = 1_700_000_000.0
 @pytest.fixture(autouse=True)
 def isolated_workspace(tmp_path, monkeypatch):
     """Keep runtime_home() inside a temp dir (the env does not isolate it)."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
 
 
 def _fixed_clock() -> float:

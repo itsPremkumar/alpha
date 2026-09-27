@@ -11,8 +11,8 @@ from pathlib import Path
 
 from alpha.extensions.manager import ExtensionManager
 
-_NAME_ENV = "AGENT_WORKSPACE_EXTENSION_NAME"
-_SOURCE_ENV = "AGENT_WORKSPACE_EXTENSION_SOURCE"
+_NAME_ENV = "ALPHA_EXTENSION_NAME"
+_SOURCE_ENV = "ALPHA_EXTENSION_SOURCE"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -62,7 +62,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(list(argv) if argv is not None else None)
     try:
         root = find_project_root()
-        configured_path = os.environ.get("AGENT_WORKSPACE_CONFIG_PATH")
+        configured_path = os.environ.get("ALPHA_CONFIG_PATH")
         manager = ExtensionManager(root, config_path=configured_path)
         if args.command == "install":
             source = _source_argument(args)
@@ -138,16 +138,16 @@ def _source_argument(args: argparse.Namespace) -> str:
 
 
 def find_project_root() -> Path:
-    configured = os.environ.get("AGENT_WORKSPACE_PROJECT_ROOT")
+    configured = os.environ.get("ALPHA_PROJECT_ROOT")
     if configured:
         candidate = Path(configured).expanduser().resolve()
         if (candidate / "backend" / "pyproject.toml").is_file():
             return candidate
-        raise FileNotFoundError(f"AGENT_WORKSPACE_PROJECT_ROOT is not a Alpha checkout: {candidate}")
+        raise FileNotFoundError(f"ALPHA_PROJECT_ROOT is not a Alpha checkout: {candidate}")
 
     candidates = (Path.cwd(), *Path.cwd().parents)
     for candidate in candidates:
         candidate = candidate.resolve()
         if (candidate / "backend" / "pyproject.toml").is_file():
             return candidate
-    raise FileNotFoundError("could not find a Alpha checkout; set AGENT_WORKSPACE_PROJECT_ROOT")
+    raise FileNotFoundError("could not find a Alpha checkout; set ALPHA_PROJECT_ROOT")

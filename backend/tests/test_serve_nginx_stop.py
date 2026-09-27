@@ -34,7 +34,7 @@ def _is_repo_nginx_pid(
     command: str,
     args: str,
     repo_root: Path,
-    agent_workspace_pid: bool = False,
+    alpha_pid: bool = False,
 ) -> bool:
     bash = shutil.which("bash")
     if bash is None:
@@ -43,13 +43,13 @@ def _is_repo_nginx_pid(
     function = _extract_shell_function("_is_repo_nginx_pid")
     script = f"""
 REPO_ROOT={shlex.quote(str(repo_root))}
-AGENT_WORKSPACE_ROOTS={shlex.quote(str(repo_root))}
+ALPHA_ROOTS={shlex.quote(str(repo_root))}
 FAKE_COMMAND={shlex.quote(command)}
 FAKE_ARGS={shlex.quote(args)}
-FAKE_AGENT_WORKSPACE_PID={1 if agent_workspace_pid else 0}
+FAKE_ALPHA_PID={1 if alpha_pid else 0}
 
-_is_agent_workspace_pid() {{
-    [ "$FAKE_AGENT_WORKSPACE_PID" = "1" ]
+_is_alpha_pid() {{
+    [ "$FAKE_ALPHA_PID" = "1" ]
 }}
 
 ps() {{
@@ -69,7 +69,7 @@ _is_repo_nginx_pid 12345
 
 
 def test_repo_nginx_pid_accepts_macos_rewritten_master_command(tmp_path):
-    repo_root = tmp_path / "agent-workspace"
+    repo_root = tmp_path / "alpha"
     nginx_conf = repo_root / "docker" / "nginx" / "nginx.local.conf"
 
     assert _is_repo_nginx_pid(
@@ -80,32 +80,32 @@ def test_repo_nginx_pid_accepts_macos_rewritten_master_command(tmp_path):
 
 
 def test_repo_nginx_pid_accepts_macos_rewritten_worker_after_repo_check(tmp_path):
-    repo_root = tmp_path / "agent-workspace"
+    repo_root = tmp_path / "alpha"
 
     assert _is_repo_nginx_pid(
         command="nginx: worker process",
         args="nginx: worker process",
         repo_root=repo_root,
-        agent_workspace_pid=True,
+        alpha_pid=True,
     )
 
 
 @pytest.mark.parametrize(
-    ("command", "args", "agent_workspace_pid"),
+    ("command", "args", "alpha_pid"),
     [
         ("nginx: worker process", "nginx: worker process", False),
-        ("python", "python -m nginx /tmp/agent-workspace/docker/nginx/nginx.local.conf", True),
+        ("python", "python -m nginx /tmp/alpha/docker/nginx/nginx.local.conf", True),
     ],
 )
 def test_repo_nginx_pid_rejects_unowned_or_non_nginx_processes(
     tmp_path,
     command: str,
     args: str,
-    agent_workspace_pid: bool,
+    alpha_pid: bool,
 ):
     assert not _is_repo_nginx_pid(
         command=command,
         args=args,
-        repo_root=tmp_path / "agent-workspace",
-        agent_workspace_pid=agent_workspace_pid,
+        repo_root=tmp_path / "alpha",
+        alpha_pid=alpha_pid,
     )

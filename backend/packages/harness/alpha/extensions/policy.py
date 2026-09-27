@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from agent_workspace_extension_api import HostPolicySnapshot
+from alpha_extension_api import HostPolicySnapshot
 
 _UNSET = object()
 

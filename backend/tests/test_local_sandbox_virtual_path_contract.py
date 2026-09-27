@@ -44,9 +44,9 @@ def isolated_paths(monkeypatch, tmp_path):
     """Redirect ``get_paths().base_dir`` to ``tmp_path`` and reset its singleton.
 
     Without this, per-thread directories would be created under the developer's
-    real ``.agent-workspace/`` tree.
+    real ``.alpha/`` tree.
     """
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     from alpha.config import paths as paths_module
 
     monkeypatch.setattr(paths_module, "_paths", None)

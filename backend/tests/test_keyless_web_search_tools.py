@@ -76,7 +76,7 @@ class _FakeDDGS:
 
 @pytest.fixture(autouse=True)
 def _isolated_workspace(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
 
 
 def test_ok_results_from_duckduckgo_html(monkeypatch) -> None:

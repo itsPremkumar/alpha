@@ -228,7 +228,7 @@ async def test_llm_error_fallback_publishes_a_coded_error_event():
                     AIMessage(
                         content="The configured LLM provider is temporarily unavailable after multiple retries.",
                         additional_kwargs={
-                            "agent_workspace_error_fallback": True,
+                            "alpha_error_fallback": True,
                             "error_type": "APIConnectionError",
                             "error_reason": "transient",
                             "error_detail": "Connection error.",

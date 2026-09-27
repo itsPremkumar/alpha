@@ -25,7 +25,7 @@ def test_sandbox_info_does_not_serialize_or_repr_relay_credentials():
     info = SandboxInfo(
         sandbox_id="sandbox-id",
         sandbox_url="http://localhost:8080",
-        request_headers={"X-Agent-Workspace-Relay-Token": "secret-token"},
+        request_headers={"X-Alpha-Relay-Token": "secret-token"},
         requires_replacement=True,
     )
 
@@ -35,11 +35,11 @@ def test_sandbox_info_does_not_serialize_or_repr_relay_credentials():
 
 
 def test_format_container_mount_uses_mount_syntax_for_docker_windows_paths():
-    args = _format_container_mount("docker", "D:/agent-workspace/backend/.agent-workspace/threads", "/mnt/threads", False)
+    args = _format_container_mount("docker", "D:/alpha/backend/.alpha/threads", "/mnt/threads", False)
 
     assert args == [
         "--mount",
-        "type=bind,src=D:/agent-workspace/backend/.agent-workspace/threads,dst=/mnt/threads",
+        "type=bind,src=D:/alpha/backend/.alpha/threads,dst=/mnt/threads",
     ]
 
 
@@ -225,7 +225,7 @@ def test_darwin_open_keeps_docker_to_reconcile_restricted_sandbox(monkeypatch):
                     "alpha.network_mode": "allowlist",
                 },
                 "sandbox:latest",
-                frozenset({"agent-workspace-sandbox-net-old"}),
+                frozenset({"alpha-sandbox-net-old"}),
             )
         },
     )
@@ -451,15 +451,15 @@ def test_restricted_sandbox_has_no_published_port_and_forces_proxy_env(monkeypat
     backend._start_container(
         "sandbox-test",
         18080,
-        network_override="agent-workspace-sandbox-net-test",
+        network_override="alpha-sandbox-net-test",
         publish_port=False,
-        extra_environment={"HTTP_PROXY": "http://agent-workspace-netproxy-test:3128"},
+        extra_environment={"HTTP_PROXY": "http://alpha-netproxy-test:3128"},
     )
 
     assert "-p" not in captured_cmd
-    assert captured_cmd[captured_cmd.index("--network") + 1] == "agent-workspace-sandbox-net-test"
+    assert captured_cmd[captured_cmd.index("--network") + 1] == "alpha-sandbox-net-test"
     proxy_values = [captured_cmd[index + 1] for index, value in enumerate(captured_cmd) if value == "-e" and captured_cmd[index + 1].startswith("HTTP_PROXY=")]
-    assert proxy_values[-1] == "HTTP_PROXY=http://agent-workspace-netproxy-test:3128"
+    assert proxy_values[-1] == "HTTP_PROXY=http://alpha-netproxy-test:3128"
 
 
 def test_restricted_start_configures_shell_and_aio_browser_proxy(monkeypatch):
@@ -569,7 +569,7 @@ def test_network_proxy_uses_read_only_root_and_bounded_policy_storage(monkeypatc
     assert create[create.index("--tmpfs") + 1] == "/tmp:rw,noexec,nosuid,size=16m"
     assert "--cap-drop=ALL" in create
     assert "no-new-privileges" in create
-    assert "AGENT_WORKSPACE_RELAY_TOKEN=test-relay-token" in create
+    assert "ALPHA_RELAY_TOKEN=test-relay-token" in create
 
 
 def test_start_container_filters_nested_config_mounts_for_policy_scoped_skills(
@@ -641,16 +641,16 @@ def _capture_start_container_command(monkeypatch, backend: LocalContainerBackend
 
 
 def test_resolve_docker_bind_host_defaults_loopback_for_localhost(monkeypatch):
-    monkeypatch.delenv("AGENT_WORKSPACE_SANDBOX_BIND_HOST", raising=False)
-    monkeypatch.delenv("AGENT_WORKSPACE_SANDBOX_HOST", raising=False)
+    monkeypatch.delenv("ALPHA_SANDBOX_BIND_HOST", raising=False)
+    monkeypatch.delenv("ALPHA_SANDBOX_HOST", raising=False)
 
     assert _resolve_docker_bind_host() == "127.0.0.1"
 
 
 def test_resolve_docker_bind_host_follows_host_gateway_mapping_for_dood(monkeypatch):
     """The bind follows what host.docker.internal actually resolves to."""
-    monkeypatch.delenv("AGENT_WORKSPACE_SANDBOX_BIND_HOST", raising=False)
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_HOST", "host.docker.internal")
+    monkeypatch.delenv("ALPHA_SANDBOX_BIND_HOST", raising=False)
+    monkeypatch.setenv("ALPHA_SANDBOX_HOST", "host.docker.internal")
     monkeypatch.setattr(
         "alpha.community.aio_sandbox.local_backend._resolve_sandbox_host_address",
         lambda host: "192.168.64.1",
@@ -661,8 +661,8 @@ def test_resolve_docker_bind_host_follows_host_gateway_mapping_for_dood(monkeypa
 
 def test_resolve_docker_bind_host_brackets_ipv6_host_gateway(monkeypatch):
     """An IPv6 host-gateway mapping binds the bracketed IPv6 address."""
-    monkeypatch.delenv("AGENT_WORKSPACE_SANDBOX_BIND_HOST", raising=False)
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_HOST", "host.docker.internal")
+    monkeypatch.delenv("ALPHA_SANDBOX_BIND_HOST", raising=False)
+    monkeypatch.setenv("ALPHA_SANDBOX_HOST", "host.docker.internal")
     monkeypatch.setattr(
         "alpha.community.aio_sandbox.local_backend._resolve_sandbox_host_address",
         lambda host: "[fd00::1]",
@@ -678,23 +678,23 @@ def test_resolve_docker_bind_host_brackets_bare_ipv6_override(monkeypatch):
     (``[fd00::1]:port:8080``); operators writing the escape hatch naturally
     give the bare address, so it must be normalized before use.
     """
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_BIND_HOST", "fd00::1")
+    monkeypatch.setenv("ALPHA_SANDBOX_BIND_HOST", "fd00::1")
     assert _resolve_docker_bind_host() == "[fd00::1]"
 
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_BIND_HOST", "[fd00::1]")
+    monkeypatch.setenv("ALPHA_SANDBOX_BIND_HOST", "[fd00::1]")
     assert _resolve_docker_bind_host() == "[fd00::1]"
 
     # IPv4 literals pass through unchanged.
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_BIND_HOST", "192.168.64.1")
+    monkeypatch.setenv("ALPHA_SANDBOX_BIND_HOST", "192.168.64.1")
     assert _resolve_docker_bind_host() == "192.168.64.1"
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_BIND_HOST", "0.0.0.0")
+    monkeypatch.setenv("ALPHA_SANDBOX_BIND_HOST", "0.0.0.0")
     assert _resolve_docker_bind_host() == "0.0.0.0"
 
 
 def test_resolve_docker_bind_host_resolves_hostname_override(monkeypatch):
     """-p requires an IP literal as the host part, so a hostname override
     resolves to the address the daemon actually maps before use."""
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_BIND_HOST", "host.docker.internal")
+    monkeypatch.setenv("ALPHA_SANDBOX_BIND_HOST", "host.docker.internal")
     monkeypatch.setattr(
         "alpha.community.aio_sandbox.local_backend._resolve_sandbox_host_address",
         lambda host: "192.168.64.1" if host == "host.docker.internal" else None,
@@ -703,18 +703,18 @@ def test_resolve_docker_bind_host_resolves_hostname_override(monkeypatch):
 
 
 def test_resolve_docker_bind_host_rejects_unresolvable_hostname_override(monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_BIND_HOST", "not-a-resolvable-host.invalid")
+    monkeypatch.setenv("ALPHA_SANDBOX_BIND_HOST", "not-a-resolvable-host.invalid")
     monkeypatch.setattr(
         "alpha.community.aio_sandbox.local_backend._resolve_sandbox_host_address",
         lambda host: None,
     )
-    with pytest.raises(RuntimeError, match="AGENT_WORKSPACE_SANDBOX_BIND_HOST"):
+    with pytest.raises(RuntimeError, match="ALPHA_SANDBOX_BIND_HOST"):
         _resolve_docker_bind_host()
 
 
 def test_resolve_docker_bind_host_uses_discovered_bridge_gateway_when_resolution_fails(monkeypatch):
-    monkeypatch.delenv("AGENT_WORKSPACE_SANDBOX_BIND_HOST", raising=False)
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_HOST", "host.docker.internal")
+    monkeypatch.delenv("ALPHA_SANDBOX_BIND_HOST", raising=False)
+    monkeypatch.setenv("ALPHA_SANDBOX_HOST", "host.docker.internal")
     monkeypatch.setattr(
         "alpha.community.aio_sandbox.local_backend._resolve_sandbox_host_address",
         lambda host: None,
@@ -728,8 +728,8 @@ def test_resolve_docker_bind_host_uses_discovered_bridge_gateway_when_resolution
 
 
 def test_resolve_docker_bind_host_falls_back_to_static_bridge_gateway(monkeypatch):
-    monkeypatch.delenv("AGENT_WORKSPACE_SANDBOX_BIND_HOST", raising=False)
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_HOST", "host.docker.internal")
+    monkeypatch.delenv("ALPHA_SANDBOX_BIND_HOST", raising=False)
+    monkeypatch.setenv("ALPHA_SANDBOX_HOST", "host.docker.internal")
     monkeypatch.setattr(
         "alpha.community.aio_sandbox.local_backend._resolve_sandbox_host_address",
         lambda host: None,
@@ -743,8 +743,8 @@ def test_resolve_docker_bind_host_falls_back_to_static_bridge_gateway(monkeypatc
 
 
 def test_resolve_docker_bind_host_uses_ipv6_loopback_for_ipv6_sandbox_host(monkeypatch):
-    monkeypatch.delenv("AGENT_WORKSPACE_SANDBOX_BIND_HOST", raising=False)
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_HOST", "[::1]")
+    monkeypatch.delenv("ALPHA_SANDBOX_BIND_HOST", raising=False)
+    monkeypatch.setenv("ALPHA_SANDBOX_HOST", "[::1]")
 
     assert _resolve_docker_bind_host() == "[::1]"
 
@@ -758,32 +758,32 @@ def test_resolve_docker_bind_host_logs_selected_bind_reason(caplog):
 
 
 def test_resolve_docker_bind_host_allows_explicit_override(monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_HOST", "localhost")
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_BIND_HOST", "192.0.2.10")
+    monkeypatch.setenv("ALPHA_SANDBOX_HOST", "localhost")
+    monkeypatch.setenv("ALPHA_SANDBOX_BIND_HOST", "192.0.2.10")
 
     assert _resolve_docker_bind_host() == "192.0.2.10"
 
 
 def test_resolve_docker_bind_host_allows_restoring_legacy_broad_bind(monkeypatch):
-    """AGENT_WORKSPACE_SANDBOX_BIND_HOST=0.0.0.0 restores the pre-hardening bind."""
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_HOST", "host.docker.internal")
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_BIND_HOST", "0.0.0.0")
+    """ALPHA_SANDBOX_BIND_HOST=0.0.0.0 restores the pre-hardening bind."""
+    monkeypatch.setenv("ALPHA_SANDBOX_HOST", "host.docker.internal")
+    monkeypatch.setenv("ALPHA_SANDBOX_BIND_HOST", "0.0.0.0")
 
     assert _resolve_docker_bind_host() == "0.0.0.0"
 
 
 def _clear_hardening_env(monkeypatch):
     for var in (
-        "AGENT_WORKSPACE_SANDBOX_HOST",
-        "AGENT_WORKSPACE_SANDBOX_BIND_HOST",
-        "AGENT_WORKSPACE_SANDBOX_SECCOMP_UNCONFINED",
-        "AGENT_WORKSPACE_SANDBOX_SECCOMP_PROFILE",
-        "AGENT_WORKSPACE_SANDBOX_MEMORY",
-        "AGENT_WORKSPACE_SANDBOX_CPUS",
-        "AGENT_WORKSPACE_SANDBOX_PIDS_LIMIT",
-        "AGENT_WORKSPACE_SANDBOX_CONTAINER_USER",
-        "AGENT_WORKSPACE_SANDBOX_NETWORK",
-        "AGENT_WORKSPACE_SANDBOX_IMAGE_STARTUP_CAPS",
+        "ALPHA_SANDBOX_HOST",
+        "ALPHA_SANDBOX_BIND_HOST",
+        "ALPHA_SANDBOX_SECCOMP_UNCONFINED",
+        "ALPHA_SANDBOX_SECCOMP_PROFILE",
+        "ALPHA_SANDBOX_MEMORY",
+        "ALPHA_SANDBOX_CPUS",
+        "ALPHA_SANDBOX_PIDS_LIMIT",
+        "ALPHA_SANDBOX_CONTAINER_USER",
+        "ALPHA_SANDBOX_NETWORK",
+        "ALPHA_SANDBOX_IMAGE_STARTUP_CAPS",
     ):
         monkeypatch.delenv(var, raising=False)
 
@@ -796,8 +796,8 @@ def test_start_container_binds_local_docker_port_to_loopback_by_default(monkeypa
         config_mounts=[],
         environment={},
     )
-    monkeypatch.delenv("AGENT_WORKSPACE_SANDBOX_HOST", raising=False)
-    monkeypatch.delenv("AGENT_WORKSPACE_SANDBOX_BIND_HOST", raising=False)
+    monkeypatch.delenv("ALPHA_SANDBOX_HOST", raising=False)
+    monkeypatch.delenv("ALPHA_SANDBOX_BIND_HOST", raising=False)
 
     captured_cmd = _capture_start_container_command(monkeypatch, backend)
 
@@ -813,8 +813,8 @@ def test_start_container_brackets_bare_ipv6_bind_override(monkeypatch):
         config_mounts=[],
         environment={},
     )
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_HOST", "host.docker.internal")
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_BIND_HOST", "fd00::1")
+    monkeypatch.setenv("ALPHA_SANDBOX_HOST", "host.docker.internal")
+    monkeypatch.setenv("ALPHA_SANDBOX_BIND_HOST", "fd00::1")
 
     captured_cmd = _capture_start_container_command(monkeypatch, backend)
 
@@ -830,8 +830,8 @@ def test_start_container_binds_dood_port_to_bridge_gateway(monkeypatch):
         config_mounts=[],
         environment={},
     )
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_HOST", "host.docker.internal")
-    monkeypatch.delenv("AGENT_WORKSPACE_SANDBOX_BIND_HOST", raising=False)
+    monkeypatch.setenv("ALPHA_SANDBOX_HOST", "host.docker.internal")
+    monkeypatch.delenv("ALPHA_SANDBOX_BIND_HOST", raising=False)
     monkeypatch.setattr(
         "alpha.community.aio_sandbox.local_backend._resolve_sandbox_host_address",
         lambda host: None,
@@ -854,8 +854,8 @@ def test_start_container_binds_ipv6_sandbox_host_to_ipv6_loopback(monkeypatch):
         config_mounts=[],
         environment={},
     )
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_HOST", "[::1]")
-    monkeypatch.delenv("AGENT_WORKSPACE_SANDBOX_BIND_HOST", raising=False)
+    monkeypatch.setenv("ALPHA_SANDBOX_HOST", "[::1]")
+    monkeypatch.delenv("ALPHA_SANDBOX_BIND_HOST", raising=False)
 
     captured_cmd = _capture_start_container_command(monkeypatch, backend)
 
@@ -870,7 +870,7 @@ def test_start_container_keeps_apple_container_port_format(monkeypatch):
         config_mounts=[],
         environment={},
     )
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_BIND_HOST", "127.0.0.1")
+    monkeypatch.setenv("ALPHA_SANDBOX_BIND_HOST", "127.0.0.1")
 
     captured_cmd = _capture_start_container_command(monkeypatch, backend, runtime="container")
 
@@ -921,7 +921,7 @@ def test_start_container_seccomp_can_opt_out_to_default_profile(monkeypatch):
         environment={},
     )
     _clear_hardening_env(monkeypatch)
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_SECCOMP_UNCONFINED", "0")
+    monkeypatch.setenv("ALPHA_SANDBOX_SECCOMP_UNCONFINED", "0")
 
     captured_cmd = _capture_start_container_command(monkeypatch, backend)
 
@@ -942,7 +942,7 @@ def test_start_container_seccomp_profile_env_selects_custom_profile(monkeypatch)
         environment={},
     )
     _clear_hardening_env(monkeypatch)
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_SECCOMP_PROFILE", "/etc/docker/chromium-seccomp.json")
+    monkeypatch.setenv("ALPHA_SANDBOX_SECCOMP_PROFILE", "/etc/docker/chromium-seccomp.json")
 
     captured_cmd = _capture_start_container_command(monkeypatch, backend)
 
@@ -985,9 +985,9 @@ def test_start_container_resource_limits_env_override(monkeypatch):
         environment={},
     )
     _clear_hardening_env(monkeypatch)
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_MEMORY", "4g")
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_CPUS", "4")
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_PIDS_LIMIT", "1024")
+    monkeypatch.setenv("ALPHA_SANDBOX_MEMORY", "4g")
+    monkeypatch.setenv("ALPHA_SANDBOX_CPUS", "4")
+    monkeypatch.setenv("ALPHA_SANDBOX_PIDS_LIMIT", "1024")
 
     captured_cmd = _capture_start_container_command(monkeypatch, backend)
 
@@ -1005,9 +1005,9 @@ def test_start_container_resource_limits_can_be_disabled(monkeypatch):
         environment={},
     )
     _clear_hardening_env(monkeypatch)
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_MEMORY", "0")
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_CPUS", "none")
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_PIDS_LIMIT", "0")
+    monkeypatch.setenv("ALPHA_SANDBOX_MEMORY", "0")
+    monkeypatch.setenv("ALPHA_SANDBOX_CPUS", "none")
+    monkeypatch.setenv("ALPHA_SANDBOX_PIDS_LIMIT", "0")
 
     captured_cmd = _capture_start_container_command(monkeypatch, backend)
 
@@ -1025,13 +1025,13 @@ def test_start_container_passes_through_user_and_network(monkeypatch):
         environment={},
     )
     _clear_hardening_env(monkeypatch)
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_CONTAINER_USER", "1000:1000")
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_NETWORK", "agent-workspace-sandbox-egress")
+    monkeypatch.setenv("ALPHA_SANDBOX_CONTAINER_USER", "1000:1000")
+    monkeypatch.setenv("ALPHA_SANDBOX_NETWORK", "alpha-sandbox-egress")
 
     captured_cmd = _capture_start_container_command(monkeypatch, backend)
 
     assert captured_cmd[captured_cmd.index("--user") + 1] == "1000:1000"
-    assert captured_cmd[captured_cmd.index("--network") + 1] == "agent-workspace-sandbox-egress"
+    assert captured_cmd[captured_cmd.index("--network") + 1] == "alpha-sandbox-egress"
 
 
 def test_start_container_rejects_host_networking(monkeypatch):
@@ -1045,9 +1045,9 @@ def test_start_container_rejects_host_networking(monkeypatch):
         environment={},
     )
     _clear_hardening_env(monkeypatch)
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_NETWORK", "host")
+    monkeypatch.setenv("ALPHA_SANDBOX_NETWORK", "host")
 
-    with pytest.raises(RuntimeError, match="AGENT_WORKSPACE_SANDBOX_NETWORK"):
+    with pytest.raises(RuntimeError, match="ALPHA_SANDBOX_NETWORK"):
         _capture_start_container_command(monkeypatch, backend)
 
 
@@ -1060,9 +1060,9 @@ def test_start_container_rejects_shared_container_network_namespace(monkeypatch)
         environment={},
     )
     _clear_hardening_env(monkeypatch)
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_NETWORK", "container:gateway")
+    monkeypatch.setenv("ALPHA_SANDBOX_NETWORK", "container:gateway")
 
-    with pytest.raises(RuntimeError, match="AGENT_WORKSPACE_SANDBOX_NETWORK"):
+    with pytest.raises(RuntimeError, match="ALPHA_SANDBOX_NETWORK"):
         _capture_start_container_command(monkeypatch, backend)
 
 
@@ -1078,7 +1078,7 @@ def test_start_container_rejects_none_network(monkeypatch):
         environment={},
     )
     _clear_hardening_env(monkeypatch)
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_NETWORK", "none")
+    monkeypatch.setenv("ALPHA_SANDBOX_NETWORK", "none")
 
     with pytest.raises(RuntimeError, match="loopback-only"):
         _capture_start_container_command(monkeypatch, backend)
@@ -1094,7 +1094,7 @@ def test_start_container_does_not_add_docker_hardening_to_apple_container(monkey
         environment={},
     )
     _clear_hardening_env(monkeypatch)
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_BIND_HOST", "127.0.0.1")
+    monkeypatch.setenv("ALPHA_SANDBOX_BIND_HOST", "127.0.0.1")
 
     captured_cmd = _capture_start_container_command(monkeypatch, backend, runtime="container")
 
@@ -1218,7 +1218,7 @@ def test_restricted_discovery_uses_proxy_relay_port(monkeypatch):
     assert info is not None
     assert info.container_name == "sandbox-existing"
     assert info.sandbox_url == "http://localhost:18080"
-    assert info.request_headers == {"X-Agent-Workspace-Relay-Token": "test-relay-token-that-is-at-least-32-bytes"}
+    assert info.request_headers == {"X-Alpha-Relay-Token": "test-relay-token-that-is-at-least-32-bytes"}
     assert readiness == [{"timeout": 5, "headers": info.request_headers}]
 
 
@@ -1336,7 +1336,7 @@ def test_open_discovery_reports_restricted_sandbox_for_fenced_replacement(monkey
                     "alpha.network_mode": "allowlist",
                 },
                 "sandbox:latest",
-                frozenset({"agent-workspace-sandbox-net-old"}),
+                frozenset({"alpha-sandbox-net-old"}),
             )
         },
     )
@@ -1504,7 +1504,7 @@ def test_open_list_reports_restricted_sandbox_for_fenced_replacement(monkeypatch
                     "alpha.network_mode": "isolated",
                 },
                 "sandbox:latest",
-                frozenset({"agent-workspace-sandbox-net-old"}),
+                frozenset({"alpha-sandbox-net-old"}),
             )
         },
     )
@@ -1519,9 +1519,9 @@ def test_open_list_reports_restricted_sandbox_for_fenced_replacement(monkeypatch
 def test_restricted_list_running_excludes_sidecars_for_overlapping_custom_prefix(monkeypatch):
     backend = _backend_for_inspect_tests()
     backend._network_mode = "allowlist"
-    backend._container_prefix = "agent-workspace"
+    backend._container_prefix = "alpha"
     sandbox_id = "live"
-    sandbox_name = "agent-workspace-live"
+    sandbox_name = "alpha-live"
     proxy_name, _ = backend._resource_names(sandbox_id)
     commands: list[list[str]] = []
 
@@ -1644,7 +1644,7 @@ def test_deny_pending_network_policy_events_uses_atomic_proxy_command(monkeypatc
 
     assert backend.deny_pending_network_policy_events("existing") is True
     proxy_name, _ = backend._resource_names("existing")
-    assert commands == [["docker", "exec", proxy_name, "python", "/tmp/agent-workspace-network-proxy.py", "deny-pending"]]
+    assert commands == [["docker", "exec", proxy_name, "python", "/tmp/alpha-network-proxy.py", "deny-pending"]]
 
 
 def test_is_container_running_false_on_apple_container_not_found(monkeypatch):
@@ -1721,16 +1721,16 @@ def test_start_container_rejects_extended_network_syntax_host(monkeypatch):
     the raw string must not dodge the rejection."""
     backend = _backend_for_inspect_tests()
     _clear_hardening_env(monkeypatch)
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_NETWORK", "name=host")
+    monkeypatch.setenv("ALPHA_SANDBOX_NETWORK", "name=host")
 
-    with pytest.raises(RuntimeError, match="AGENT_WORKSPACE_SANDBOX_NETWORK"):
+    with pytest.raises(RuntimeError, match="ALPHA_SANDBOX_NETWORK"):
         _capture_start_container_command(monkeypatch, backend)
 
 
 def test_start_container_rejects_extended_network_syntax_none(monkeypatch):
     backend = _backend_for_inspect_tests()
     _clear_hardening_env(monkeypatch)
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_NETWORK", "name=none")
+    monkeypatch.setenv("ALPHA_SANDBOX_NETWORK", "name=none")
 
     with pytest.raises(RuntimeError, match="loopback-only"):
         _capture_start_container_command(monkeypatch, backend)
@@ -1739,9 +1739,9 @@ def test_start_container_rejects_extended_network_syntax_none(monkeypatch):
 def test_start_container_rejects_extended_network_syntax_container(monkeypatch):
     backend = _backend_for_inspect_tests()
     _clear_hardening_env(monkeypatch)
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_NETWORK", "name=container:gateway")
+    monkeypatch.setenv("ALPHA_SANDBOX_NETWORK", "name=container:gateway")
 
-    with pytest.raises(RuntimeError, match="AGENT_WORKSPACE_SANDBOX_NETWORK"):
+    with pytest.raises(RuntimeError, match="ALPHA_SANDBOX_NETWORK"):
         _capture_start_container_command(monkeypatch, backend)
 
 
@@ -1749,11 +1749,11 @@ def test_start_container_passes_extended_network_syntax_for_custom_networks(monk
     """The legit name=<custom-net> long form (and network IDs) keep working."""
     backend = _backend_for_inspect_tests()
     _clear_hardening_env(monkeypatch)
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_NETWORK", "name=agent-workspace-sandbox-egress")
+    monkeypatch.setenv("ALPHA_SANDBOX_NETWORK", "name=alpha-sandbox-egress")
 
     captured_cmd = _capture_start_container_command(monkeypatch, backend)
 
-    assert captured_cmd[captured_cmd.index("--network") + 1] == "name=agent-workspace-sandbox-egress"
+    assert captured_cmd[captured_cmd.index("--network") + 1] == "name=alpha-sandbox-egress"
 
 
 @pytest.mark.parametrize("sandbox_host", ["fd00::1", "[fd00::1]"])
@@ -1761,7 +1761,7 @@ def test_discover_brackets_ipv6_sandbox_host_for_url(monkeypatch, sandbox_host):
     """Both IPv6 input forms must yield the same bracketed URL authority:
     the bare form used to produce the malformed http://fd00::1:<port>."""
     backend = _backend_for_inspect_tests()
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_HOST", sandbox_host)
+    monkeypatch.setenv("ALPHA_SANDBOX_HOST", sandbox_host)
     monkeypatch.setattr(backend, "_is_container_running", lambda name: True)
     monkeypatch.setattr(
         backend,
@@ -1794,7 +1794,7 @@ def test_discover_brackets_ipv6_sandbox_host_for_url(monkeypatch, sandbox_host):
 @pytest.mark.parametrize("sandbox_host", ["fd00::1", "[fd00::1]"])
 def test_create_brackets_ipv6_sandbox_host_for_url(monkeypatch, sandbox_host):
     backend = _backend_for_inspect_tests()
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_HOST", sandbox_host)
+    monkeypatch.setenv("ALPHA_SANDBOX_HOST", sandbox_host)
     monkeypatch.setattr(
         backend,
         "_start_container",
@@ -1839,16 +1839,16 @@ def test_start_container_rejects_host_with_additional_long_syntax_fields(monkeyp
     select the host network and must not dodge the rejection."""
     backend = _backend_for_inspect_tests()
     _clear_hardening_env(monkeypatch)
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_NETWORK", network)
+    monkeypatch.setenv("ALPHA_SANDBOX_NETWORK", network)
 
-    with pytest.raises(RuntimeError, match="AGENT_WORKSPACE_SANDBOX_NETWORK"):
+    with pytest.raises(RuntimeError, match="ALPHA_SANDBOX_NETWORK"):
         _capture_start_container_command(monkeypatch, backend)
 
 
 def test_start_container_rejects_none_with_additional_long_syntax_fields(monkeypatch):
     backend = _backend_for_inspect_tests()
     _clear_hardening_env(monkeypatch)
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_NETWORK", "gw-priority=0,name=none")
+    monkeypatch.setenv("ALPHA_SANDBOX_NETWORK", "gw-priority=0,name=none")
 
     with pytest.raises(RuntimeError, match="loopback-only"):
         _capture_start_container_command(monkeypatch, backend)
@@ -1857,9 +1857,9 @@ def test_start_container_rejects_none_with_additional_long_syntax_fields(monkeyp
 def test_start_container_rejects_container_mode_with_additional_long_syntax_fields(monkeypatch):
     backend = _backend_for_inspect_tests()
     _clear_hardening_env(monkeypatch)
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_NETWORK", "name=container:gateway,gw-priority=0")
+    monkeypatch.setenv("ALPHA_SANDBOX_NETWORK", "name=container:gateway,gw-priority=0")
 
-    with pytest.raises(RuntimeError, match="AGENT_WORKSPACE_SANDBOX_NETWORK"):
+    with pytest.raises(RuntimeError, match="ALPHA_SANDBOX_NETWORK"):
         _capture_start_container_command(monkeypatch, backend)
 
 
@@ -1867,7 +1867,7 @@ def test_start_container_passes_long_syntax_custom_network_with_fields(monkeypat
     """A legit long-syntax value with extra fields keeps passing through verbatim."""
     backend = _backend_for_inspect_tests()
     _clear_hardening_env(monkeypatch)
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_NETWORK", "name=egressnet,gw-priority=1")
+    monkeypatch.setenv("ALPHA_SANDBOX_NETWORK", "name=egressnet,gw-priority=1")
 
     captured_cmd = _capture_start_container_command(monkeypatch, backend)
 
@@ -1976,7 +1976,7 @@ def test_default_image_starts_under_hardened_capabilities(monkeypatch):
     """
     _assert_image_starts_under_hardened_capabilities(
         monkeypatch,
-        image=os.environ.get("AGENT_WORKSPACE_SANDBOX_SMOKE_IMAGE", _DEFAULT_AIO_IMAGE),
+        image=os.environ.get("ALPHA_SANDBOX_SMOKE_IMAGE", _DEFAULT_AIO_IMAGE),
         sandbox_id="caps-smoke-default",
         failure_label="configured/default image",
     )
@@ -1992,7 +1992,7 @@ def test_aio_1_11_image_starts_with_fowner_capability(monkeypatch):
     """
     _assert_image_starts_under_hardened_capabilities(
         monkeypatch,
-        image=os.environ.get("AGENT_WORKSPACE_SANDBOX_FOWNER_SMOKE_IMAGE", _FOWNER_REGRESSION_AIO_IMAGE),
+        image=os.environ.get("ALPHA_SANDBOX_FOWNER_SMOKE_IMAGE", _FOWNER_REGRESSION_AIO_IMAGE),
         sandbox_id="caps-smoke-fowner-1-11",
         failure_label="AIO 1.11.0 FOWNER regression image",
     )
@@ -2004,7 +2004,7 @@ def test_restricted_network_proxy_enforces_and_approves_real_traffic(monkeypatch
     if not _docker_daemon_available():
         pytest.skip("requires a running Docker daemon")
 
-    image = os.environ.get("AGENT_WORKSPACE_SANDBOX_NETWORK_SMOKE_IMAGE", "python:3.12-alpine")
+    image = os.environ.get("ALPHA_SANDBOX_NETWORK_SMOKE_IMAGE", "python:3.12-alpine")
     backend = LocalContainerBackend(
         image=image,
         base_port=18310,
@@ -2019,7 +2019,7 @@ def test_restricted_network_proxy_enforces_and_approves_real_traffic(monkeypatch
             "proxy_image": image,
         },
     )
-    monkeypatch.delenv("AGENT_WORKSPACE_SANDBOX_BIND_HOST", raising=False)
+    monkeypatch.delenv("ALPHA_SANDBOX_BIND_HOST", raising=False)
     sandbox_id = "network-live"
     container_name = f"sandbox-policy-smoke-{sandbox_id}"
     proxy_name, network_name = backend._resource_names(sandbox_id)
@@ -2115,7 +2115,7 @@ def test_restricted_network_proxy_enforces_and_approves_real_traffic(monkeypatch
                     "--max-time",
                     "2",
                     "-H",
-                    f"X-Agent-Workspace-Relay-Token: {relay_token}",
+                    f"X-Alpha-Relay-Token: {relay_token}",
                     sandbox_url,
                 ],
                 capture_output=True,
@@ -2166,7 +2166,7 @@ def test_start_container_preinitialized_image_can_drop_startup_caps(monkeypatch)
     """A custom, pre-initialized non-root image never runs the root handoff,
     so CHOWN/FOWNER/SETUID/SETGID/DAC_OVERRIDE must not stay available for
     the container's lifetime (chown/chmod on bind mounts, UID/GID
-    impersonation). Opting out with AGENT_WORKSPACE_SANDBOX_IMAGE_STARTUP_CAPS=0
+    impersonation). Opting out with ALPHA_SANDBOX_IMAGE_STARTUP_CAPS=0
     drops every capability."""
     backend = LocalContainerBackend(
         image="my-preinitialized-sandbox:latest",
@@ -2176,7 +2176,7 @@ def test_start_container_preinitialized_image_can_drop_startup_caps(monkeypatch)
         environment={},
     )
     _clear_hardening_env(monkeypatch)
-    monkeypatch.setenv("AGENT_WORKSPACE_SANDBOX_IMAGE_STARTUP_CAPS", "0")
+    monkeypatch.setenv("ALPHA_SANDBOX_IMAGE_STARTUP_CAPS", "0")
 
     captured_cmd = _capture_start_container_command(monkeypatch, backend)
 

@@ -15,7 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DETECT_SCRIPT_PATH = REPO_ROOT / "scripts" / "detect_uv_extras.py"
 
 
-spec = importlib.util.spec_from_file_location("agent_workspace_detect_uv_extras", DETECT_SCRIPT_PATH)
+spec = importlib.util.spec_from_file_location("alpha_detect_uv_extras", DETECT_SCRIPT_PATH)
 assert spec is not None and spec.loader is not None
 detect = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(detect)
@@ -26,8 +26,8 @@ def isolated_cwd(tmp_path, monkeypatch):
     """Isolate `find_config_file()` from the real repo by chdir + clearing env."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("UV_EXTRAS", raising=False)
-    monkeypatch.delenv("AGENT_WORKSPACE_CONFIG_PATH", raising=False)
-    monkeypatch.delenv("AGENT_WORKSPACE_STREAM_BRIDGE_REDIS_URL", raising=False)
+    monkeypatch.delenv("ALPHA_CONFIG_PATH", raising=False)
+    monkeypatch.delenv("ALPHA_STREAM_BRIDGE_REDIS_URL", raising=False)
     return tmp_path
 
 
@@ -139,7 +139,7 @@ def test_detect_from_config_postgres_via_checkpointer(tmp_path):
 
 def test_detect_from_config_sqlite_returns_no_extras(tmp_path):
     cfg = tmp_path / "config.yaml"
-    cfg.write_text("database:\n  backend: sqlite\n  sqlite_dir: .agent-workspace/data\n")
+    cfg.write_text("database:\n  backend: sqlite\n  sqlite_dir: .alpha/data\n")
     assert detect.detect_from_config(cfg) == []
 
 
@@ -343,13 +343,13 @@ def test_resolve_extras_env_supports_multiple(isolated_cwd, monkeypatch):
 
 
 def test_resolve_extras_detects_redis_url_env_without_config(isolated_cwd, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_STREAM_BRIDGE_REDIS_URL", "redis://redis:6379/0")
+    monkeypatch.setenv("ALPHA_STREAM_BRIDGE_REDIS_URL", "redis://redis:6379/0")
     assert detect.resolve_extras() == ["redis"]
 
 
 def test_resolve_extras_combines_uv_extras_with_redis_url_env(isolated_cwd, monkeypatch):
     monkeypatch.setenv("UV_EXTRAS", "postgres")
-    monkeypatch.setenv("AGENT_WORKSPACE_STREAM_BRIDGE_REDIS_URL", "redis://redis:6379/0")
+    monkeypatch.setenv("ALPHA_STREAM_BRIDGE_REDIS_URL", "redis://redis:6379/0")
     assert detect.resolve_extras() == ["postgres", "redis"]
 
 
@@ -363,7 +363,7 @@ def test_resolve_extras_respects_explicit_config_path(tmp_path, monkeypatch):
     elsewhere = tmp_path / "elsewhere.yaml"
     elsewhere.write_text("database:\n  backend: postgres\n")
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("AGENT_WORKSPACE_CONFIG_PATH", str(elsewhere))
+    monkeypatch.setenv("ALPHA_CONFIG_PATH", str(elsewhere))
 
     assert detect.resolve_extras() == ["postgres"]
 

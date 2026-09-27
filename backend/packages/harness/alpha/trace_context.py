@@ -7,15 +7,15 @@ separate from Langfuse's own trace id and from Alpha run ids.
 run binds one first: the Gateway ``TraceMiddleware`` for HTTP, and
 :func:`ensure_trace_context` for the entry points that never touch ASGI --
 scheduled occurrences, MCP task notification runs, IM channel messages, and the
-embedded :class:`~alpha.client.AgentWorkspaceClient`. Downstream code can therefore
+embedded :class:`~alpha.client.AlphaClient`. Downstream code can therefore
 treat the trace id as a plain ``str`` and use :func:`ensure_trace_id` or
 :func:`resolve_trace_id` instead of the ``if trace_id:`` guards a nullable id
 used to require.
 
 Everything else that carries the id -- the ``X-Trace-Id`` response header,
-``runtime.context[AGENT_WORKSPACE_TRACE_METADATA_KEY]``, the run record's metadata,
+``runtime.context[ALPHA_TRACE_METADATA_KEY]``, the run record's metadata,
 log records -- is a **derived output, never read back as an input**. A caller
-that sends ``metadata.agent_workspace_trace_id`` on a run request has it replaced
+that sends ``metadata.alpha_trace_id`` on a run request has it replaced
 rather than honoured: reading it back would let the persisted run disagree with
 the header the same request already returned, and a trace id you cannot trust
 to match the logs is worse than no trace id at all. Callers that need to pin a
@@ -43,10 +43,10 @@ from contextvars import ContextVar, Token
 from typing import Final
 
 TRACE_ID_HEADER: Final[str] = "X-Trace-Id"
-AGENT_WORKSPACE_TRACE_METADATA_KEY: Final[str] = "agent_workspace_trace_id"
+ALPHA_TRACE_METADATA_KEY: Final[str] = "alpha_trace_id"
 _MAX_TRACE_ID_LENGTH: Final[int] = 512
 
-_current_trace_id: Final[ContextVar[str | None]] = ContextVar("agent_workspace_current_trace_id", default=None)
+_current_trace_id: Final[ContextVar[str | None]] = ContextVar("alpha_current_trace_id", default=None)
 
 
 def generate_trace_id() -> str:
@@ -122,7 +122,7 @@ def bind_trace_id(trace_id: str | None) -> Token[str | None]:
     """Bind *trace_id* in the current context; ``None`` clears the binding.
 
     The low-level pair for callers that cannot use the context managers: a
-    sync generator that must bind per step (``AgentWorkspaceClient.stream``), and
+    sync generator that must bind per step (``AlphaClient.stream``), and
     test harnesses restoring an unbound baseline. Values are normalized, and
     an unusable one clears rather than fabricating an id -- every caller here
     has already resolved the value it means to bind.

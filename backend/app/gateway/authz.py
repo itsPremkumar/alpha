@@ -145,7 +145,7 @@ async def require_thread_owner(request: Request, thread_id: str, *, require_exis
     * an existing row owned by a different user is a 404, never a 403, so the
       endpoint does not confirm that somebody else's thread exists;
     * a trusted internal caller (channel worker) is re-scoped to the owner in
-      ``X-Agent-Workspace-Owner-User-Id`` instead of bypassing the check.
+      ``X-Alpha-Owner-User-Id`` instead of bypassing the check.
 
     Raises:
         HTTPException 401: the request is unauthenticated.
@@ -214,7 +214,7 @@ def _make_test_request_stub() -> Any:
     Used when decorated route handlers are invoked without FastAPI's
     request injection. Includes fields accessed by auth helpers.
     """
-    return SimpleNamespace(state=SimpleNamespace(), cookies={}, _agent_workspace_test_bypass_auth=True)
+    return SimpleNamespace(state=SimpleNamespace(), cookies={}, _alpha_test_bypass_auth=True)
 
 
 def _get_route_authorization_config() -> AuthorizationConfig:
@@ -590,11 +590,7 @@ def _is_internal_caller(request: Request, user: Any) -> bool:
     if getattr(user, "system_role", None) == INTERNAL_SYSTEM_ROLE:
         return True
     # Decorator-only path: check the internal token header directly.
-    internal_token = (
-        (request.headers.get(INTERNAL_AUTH_HEADER_NAME) or request.headers.get(LEGACY_INTERNAL_AUTH_HEADER_NAME))
-        if hasattr(request, "headers")
-        else None
-    )
+    internal_token = (request.headers.get(INTERNAL_AUTH_HEADER_NAME) or request.headers.get(LEGACY_INTERNAL_AUTH_HEADER_NAME)) if hasattr(request, "headers") else None
     if internal_token and is_valid_internal_auth_token(internal_token):
         return True
     return False
@@ -635,7 +631,7 @@ def require_auth[**P, T](func: Callable[P, T]) -> Callable[P, T]:
                 raise ValueError("require_auth decorator requires 'request' parameter")
             request = kwargs["request"]
 
-        if getattr(request, "_agent_workspace_test_bypass_auth", False):
+        if getattr(request, "_alpha_test_bypass_auth", False):
             return await func(*args, **kwargs)
 
         # Authenticate and set context
@@ -694,16 +690,23 @@ def require_permission(
         @functools.wraps(func)
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
             request = kwargs.get("request")
+            # Callers that compose route handlers in-process (the OpenAI
+            # compat surface calls ``runs.wait`` directly) pass every argument
+            # positionally, so ``kwargs`` alone does not describe the call.
+            # Bind once against the real signature and consult it for both
+            # ``request`` and the owner-check ``thread_id``; FastAPI's own
+            # dispatch is all-keyword, so this only ever *adds* resolutions
+            # that keyword lookup already covered.
+            try:
+                bound = inspect.signature(func).bind_partial(*args, **kwargs)
+            except TypeError:
+                bound = None
             if request is None:
                 # Unit tests may call decorated route handlers directly — with
                 # or without constructing a FastAPI Request object — and may
                 # pass ``request`` positionally. Bind to the real signature
                 # first so a positional request is found rather than
                 # duplicated by the stub injection below.
-                try:
-                    bound = inspect.signature(func).bind_partial(*args, **kwargs)
-                except TypeError:
-                    bound = None
                 if bound is not None and "request" in bound.arguments:
                     request = bound.arguments["request"]
                 elif "request" in inspect.signature(func).parameters:
@@ -712,7 +715,7 @@ def require_permission(
                 else:
                     return await func(*args, **kwargs)
 
-            if getattr(request, "_agent_workspace_test_bypass_auth", False):
+            if getattr(request, "_alpha_test_bypass_auth", False):
                 return await func(*args, **kwargs)
 
             auth: AuthContext = getattr(request.state, "auth", None)
@@ -743,6 +746,8 @@ def require_permission(
                 from app.gateway.internal_auth import INTERNAL_OWNER_USER_ID_HEADER_NAME, INTERNAL_SYSTEM_ROLE
 
                 thread_id = kwargs.get("thread_id")
+                if thread_id is None and bound is not None:
+                    thread_id = bound.arguments.get("thread_id")
                 if thread_id is None:
                     raise ValueError("require_permission with owner_check=True requires 'thread_id' parameter")
 
@@ -756,7 +761,7 @@ def require_permission(
                 )
                 if not allowed and getattr(auth.user, "system_role", None) == INTERNAL_SYSTEM_ROLE:
                     # Trusted internal callers (channel workers) also act for
-                    # the connection owner carried in X-Agent-Workspace-Owner-User-Id.
+                    # the connection owner carried in X-Alpha-Owner-User-Id.
                     # Scope the check to that owner instead of bypassing it; a
                     # leaked internal token must not grant cross-user thread
                     # access. The header is honored only after ``auth`` proved

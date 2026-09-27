@@ -28,7 +28,7 @@ pytestmark = pytest.mark.asyncio
 
 
 async def test_ingest_inbound_files_does_not_block_event_loop(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     # Rebuild the cached Paths against the tmp home so uploads resolve under it.
     import alpha.config.paths as paths_mod
 

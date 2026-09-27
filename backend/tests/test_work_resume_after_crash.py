@@ -45,7 +45,7 @@ CHILD_SCRIPT = """
 import json, os, sys, time
 from pathlib import Path
 
-home = Path(os.environ["AGENT_WORKSPACE_HOME"])
+home = Path(os.environ["ALPHA_HOME"])
 ready = Path(sys.argv[1])
 
 from alpha.runtime.escalation import get_work_unit_store, process_identity
@@ -103,7 +103,7 @@ while True:
 
 @pytest.fixture(autouse=True)
 def _isolated_runtime_home(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path / "home"))
     monkeypatch.setattr("alpha.bots.registry._global_registry", None)
     monkeypatch.setattr("alpha.bots.registry._global_registry_path", None)
     monkeypatch.setattr(lifecycle_mod, "_GLOBAL_LIFECYCLE_MANAGER", None)
@@ -211,7 +211,7 @@ def test_a_killed_process_resumes_its_subagent_bot_and_swarm_work(tmp_path):
     # the work-unit journal keys its recovery on.
     assert _process_alive(child["owner"]) is False
     # 1. The subagent: still RUNNING on disk, lease dead, checkpoint intact.
-    manager = SubagentLifecycleManager(storage_dir=Path(os.environ["AGENT_WORKSPACE_HOME"]) / "subagents")
+    manager = SubagentLifecycleManager(storage_dir=Path(os.environ["ALPHA_HOME"]) / "subagents")
     stored = manager.get_subagent(child["subagent_id"])
     assert stored is not None
     assert stored.status == SubagentStatusEnum.RUNNING  # it died mid-flight

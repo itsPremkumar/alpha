@@ -62,7 +62,7 @@ from alpha.subagents.lifecycle import SubagentContract, SubagentLifecycleManager
 
 @pytest.fixture(autouse=True)
 def _isolated_runtime_home(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path / "home"))
     monkeypatch.setattr("alpha.bots.registry._global_registry", None)
     monkeypatch.setattr("alpha.bots.registry._global_registry_path", None)
     import alpha.subagents.lifecycle as lifecycle_mod

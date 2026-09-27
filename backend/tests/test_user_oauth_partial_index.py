@@ -1,6 +1,6 @@
 """Live PostgreSQL regression test for the ``users`` table's OAuth identity
 index (idx_users_oauth_identity) -- same opt-in pattern as
-test_pg_schema_integration.py (set AGENT_WORKSPACE_TEST_POSTGRES_URL to run).
+test_pg_schema_integration.py (set ALPHA_TEST_POSTGRES_URL to run).
 
 Confirms the index is created as a genuine PARTIAL index on Postgres
 (``postgresql_where``), matching the SQLite side (``sqlite_where``) and the
@@ -23,17 +23,17 @@ from sqlalchemy import text
 from alpha.config.database_config import DatabaseConfig
 from alpha.persistence.engine import close_engine, get_engine, init_engine_from_config
 
-POSTGRES_URL = os.getenv("AGENT_WORKSPACE_TEST_POSTGRES_URL")
+POSTGRES_URL = os.getenv("ALPHA_TEST_POSTGRES_URL")
 
 pytestmark = pytest.mark.skipif(
     not POSTGRES_URL,
-    reason="set AGENT_WORKSPACE_TEST_POSTGRES_URL to run live PostgreSQL tests",
+    reason="set ALPHA_TEST_POSTGRES_URL to run live PostgreSQL tests",
 )
 
 
 @pytest.mark.anyio
 async def test_oauth_identity_index_is_partial_on_postgres():
-    schema = f"agent_workspace_test_{uuid.uuid4().hex[:12]}"
+    schema = f"alpha_test_{uuid.uuid4().hex[:12]}"
     db_config = DatabaseConfig(backend="postgres", postgres_url=POSTGRES_URL or "", postgres_schema=schema)
 
     await init_engine_from_config(db_config)
@@ -64,7 +64,7 @@ async def test_oauth_identity_uniqueness_enforced_end_to_end():
     a genuine duplicate (provider, oauth_id) pair is rejected, and
     multiple plain-password accounts (both fields NULL) are allowed to
     coexist -- the two behaviours the index exists to guarantee."""
-    schema = f"agent_workspace_test_{uuid.uuid4().hex[:12]}"
+    schema = f"alpha_test_{uuid.uuid4().hex[:12]}"
     db_config = DatabaseConfig(backend="postgres", postgres_url=POSTGRES_URL or "", postgres_schema=schema)
 
     await init_engine_from_config(db_config)

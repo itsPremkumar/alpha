@@ -12,7 +12,7 @@ from alpha.projects.evidence import Evidence, check_completion
 
 @pytest.fixture(autouse=True)
 def _home(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     yield
 
 
@@ -66,7 +66,7 @@ def test_lock_overlap_detection_same_scope(tmp_path):
 
 
 def test_workspace_layout_and_branch_names(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     from alpha.projects.workspace import WORKSPACE_DIRS, branch_name, ensure_workspace, project_root
 
     root = ensure_workspace("proj-ws")

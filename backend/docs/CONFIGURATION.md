@@ -585,7 +585,7 @@ sandbox:
 Install the optional runtime before selecting this provider:
 
 ```bash
-pip install "agent-workspace-harness[boxlite]"
+pip install "alpha-harness[boxlite]"
 ```
 
 BoxLite boxes are named from the effective `(user_id, thread_id)` scope and are
@@ -657,14 +657,14 @@ sandbox:
      OPENAI_API_KEY: $OPENAI_API_KEY
 ```
 
-`e2b-code-interpreter` is bundled as a core dependency of `agent-workspace-harness`,
+`e2b-code-interpreter` is bundled as a core dependency of `alpha-harness`,
 so no extra install step is needed; just supply your API key and switch the
 provider in `config.yaml`.
 
 Notes specific to `E2BSandboxProvider`:
 
 - Each Alpha thread is bound to its E2B sandbox via metadata
-  (`agent_workspace_user`, `agent_workspace_thread`, `agent_workspace_skills_root`). Startup and
+  (`alpha_user`, `alpha_thread`, `alpha_skills_root`). Startup and
   periodic reconciliation probe every bounded candidate, adopt one healthy
   canonical sandbox, and reap duplicates after a grace period. A sandbox whose
   skills root differs from the provider's startup snapshot is never adopted and
@@ -717,7 +717,7 @@ sandbox:
 Install the optional SDK before selecting this provider:
 
 ```bash
-pip install "agent-workspace-harness[opensandbox]"
+pip install "alpha-harness[opensandbox]"
 ```
 
 The provider creates a sandbox per effective user/thread scope and parks it in
@@ -746,21 +746,21 @@ sandbox:
 
 `allow_host_bash` is intentionally `false` by default. Alpha's local sandbox is a host-side convenience mode, not a secure shell isolation boundary. If you need `bash`, prefer `AioSandboxProvider`. Only set `allow_host_bash: true` for fully trusted single-user local workflows.
 
-When `LocalSandboxProvider` runs under `make up`, it runs inside the `agent-workspace-gateway` container. In that mode, `sandbox.mounts[].host_path` is resolved from the gateway container's filesystem, not from your Docker host. If you need a local-sandbox custom mount in production Docker, bind the host directory into the gateway service first, then use the in-container path in `config.yaml`:
+When `LocalSandboxProvider` runs under `make up`, it runs inside the `alpha-gateway` container. In that mode, `sandbox.mounts[].host_path` is resolved from the gateway container's filesystem, not from your Docker host. If you need a local-sandbox custom mount in production Docker, bind the host directory into the gateway service first, then use the in-container path in `config.yaml`:
 
 ```yaml
 # docker/docker-compose.yaml or an override file
 services:
   gateway:
     volumes:
-      - ${AGENT_WORKSPACE_REPO_ROOT}/.agent-workspace/knowledge:/app/.agent-workspace/knowledge:ro
+      - ${ALPHA_REPO_ROOT}/.alpha/knowledge:/app/.alpha/knowledge:ro
 ```
 
 ```yaml
 sandbox:
   use: alpha.sandbox.local:LocalSandboxProvider
   mounts:
-    - host_path: /app/.agent-workspace/knowledge
+    - host_path: /app/.alpha/knowledge
       container_path: /mnt/knowledge
       read_only: true
 ```
@@ -773,7 +773,7 @@ sandbox:
   use: alpha.community.aio_sandbox:AioSandboxProvider
   port: 8080
   auto_start: true
-  container_prefix: agent-workspace-sandbox
+  container_prefix: alpha-sandbox
 
   # Optional: Additional mounts
   mounts:
@@ -871,23 +871,23 @@ require supply-chain pinning.
 
 #### Sandbox container network exposure and hardening
 
-The sandbox HTTP API (`/v1/shell/*` and friends) has no authentication: anyone who can reach a published sandbox port can execute arbitrary commands in that sandbox. For bare-metal Docker sandbox runs that use localhost, Alpha binds the sandbox port to `127.0.0.1` so it is not exposed on other host interfaces. For Docker-outside-of-Docker deployments that connect through `host.docker.internal`, the port is bound to the address that hostname actually resolves to — the daemon's `host-gateway-ip` mapping (customizable, possibly IPv6) — so the published port and the address the gateway connects to always match, and the port is no longer published on external network interfaces (previously it was bound to `0.0.0.0`). If resolution fails, the Docker default bridge gateway (via `docker network inspect bridge`, falling back to `172.17.0.1`) is used as a best-effort bind and a warning is logged. Set `AGENT_WORKSPACE_SANDBOX_BIND_HOST` explicitly if your deployment needs a different bind address; setting it to `0.0.0.0` restores the legacy broad bind, which re-exposes the unauthenticated exec API on every interface and should be paired with an external firewall.
+The sandbox HTTP API (`/v1/shell/*` and friends) has no authentication: anyone who can reach a published sandbox port can execute arbitrary commands in that sandbox. For bare-metal Docker sandbox runs that use localhost, Alpha binds the sandbox port to `127.0.0.1` so it is not exposed on other host interfaces. For Docker-outside-of-Docker deployments that connect through `host.docker.internal`, the port is bound to the address that hostname actually resolves to — the daemon's `host-gateway-ip` mapping (customizable, possibly IPv6) — so the published port and the address the gateway connects to always match, and the port is no longer published on external network interfaces (previously it was bound to `0.0.0.0`). If resolution fails, the Docker default bridge gateway (via `docker network inspect bridge`, falling back to `172.17.0.1`) is used as a best-effort bind and a warning is logged. Set `ALPHA_SANDBOX_BIND_HOST` explicitly if your deployment needs a different bind address; setting it to `0.0.0.0` restores the legacy broad bind, which re-exposes the unauthenticated exec API on every interface and should be paired with an external firewall.
 
 Local Docker sandbox containers are also hardened by default: all Linux capabilities are dropped (`--cap-drop=ALL`) except a five-capability compatibility allowlist — `CHOWN`, `FOWNER`, `SETUID`, `SETGID`, and `DAC_OVERRIDE` — while privilege escalation across exec stays blocked with `no-new-privileges` and CPU/memory/PID resources are bounded. `CHOWN`/`SETUID`/`SETGID` support the runtime user handoff and `DAC_OVERRIDE` supports the root nginx master's writes to gem-owned logs. `FOWNER` is specifically required by the newer AIO 1.11.x startup path (regression-tested against the recommended 1.11.0 image), which runs `chmod /run/user/1000` after capabilities are dropped. Images that do not perform that `chmod` do not need `FOWNER`; Alpha deliberately does not guess a smaller set from mutable tags, digests, or arbitrary custom images, so the default compatibility allowlist remains version-agnostic.
 
-A custom image that is already fully initialized as a non-root user and needs none of those compatibility capabilities should set `AGENT_WORKSPACE_SANDBOX_IMAGE_STARTUP_CAPS=0` to drop the whole set. This is an all-or-nothing opt-out, not a per-capability selector: an older or custom root-initialized image that does not need `FOWNER` may still require `CHOWN`, `SETUID`, `SETGID`, or `DAC_OVERRIDE` and should therefore leave the compatibility set enabled. Retained capabilities remain available for the container's lifetime and can let sandboxed code change ownership or mode on accessible bind-mounted paths, impersonate mounted-file UIDs/GIDs, or bypass discretionary access checks. `no-new-privileges` does **not** mitigate that existing-capability risk — it only blocks gaining new privileges across exec. One hardening knob is relaxed by default: the shipped AIO image runs with `seccomp=unconfined` because its Chromium browser does not start under Docker's default seccomp profile (syscall filtering is disabled — see the two seccomp variables below to change that). The following environment variables (set them in the gateway process, e.g. via `.env` loaded by docker-compose, or the gateway service `environment:`) tune or disable each knob:
+A custom image that is already fully initialized as a non-root user and needs none of those compatibility capabilities should set `ALPHA_SANDBOX_IMAGE_STARTUP_CAPS=0` to drop the whole set. This is an all-or-nothing opt-out, not a per-capability selector: an older or custom root-initialized image that does not need `FOWNER` may still require `CHOWN`, `SETUID`, `SETGID`, or `DAC_OVERRIDE` and should therefore leave the compatibility set enabled. Retained capabilities remain available for the container's lifetime and can let sandboxed code change ownership or mode on accessible bind-mounted paths, impersonate mounted-file UIDs/GIDs, or bypass discretionary access checks. `no-new-privileges` does **not** mitigate that existing-capability risk — it only blocks gaining new privileges across exec. One hardening knob is relaxed by default: the shipped AIO image runs with `seccomp=unconfined` because its Chromium browser does not start under Docker's default seccomp profile (syscall filtering is disabled — see the two seccomp variables below to change that). The following environment variables (set them in the gateway process, e.g. via `.env` loaded by docker-compose, or the gateway service `environment:`) tune or disable each knob:
 
 | Environment variable | Default | Purpose |
 | --- | --- | --- |
-| `AGENT_WORKSPACE_SANDBOX_BIND_HOST` | loopback / bridge gateway (see above) | Host interface for the sandbox `-p` publish. Must be an IP literal (bare or bracketed IPv6) or a hostname, which is resolved to an address first — Docker publish specs do not accept hostnames. `0.0.0.0` restores the legacy broad bind (risky). |
-| `AGENT_WORKSPACE_SANDBOX_SECCOMP_UNCONFINED` | on | The shipped AIO image's Chromium browser does not start under Docker's default seccomp profile (see the upstream agent-infra sandbox FAQ), so `seccomp=unconfined` remains the default. Set to `0` to run with the built-in profile — passed explicitly as `seccomp=builtin`, so a daemon configured with a different default cannot weaken the opt-out — and only for images verified to start and pass browser checks with it. |
-| `AGENT_WORKSPACE_SANDBOX_IMAGE_STARTUP_CAPS` | on | Keeps the five-capability compatibility set (`CHOWN`/`FOWNER`/`SETUID`/`SETGID`/`DAC_OVERRIDE`). `FOWNER` specifically covers the newer AIO 1.11.x startup `chmod /run/user/1000` path (tested with 1.11.0); images without that step do not need `FOWNER`, but Alpha does not infer per-image capability subsets from tags/digests/custom images. Set to `0` only for images that need none of the five — the switch drops the entire set. |
-| `AGENT_WORKSPACE_SANDBOX_SECCOMP_PROFILE` | unset | Path to a custom seccomp profile (e.g. a restricted, Chromium-compatible one built from Docker's default plus the namespace syscalls Chromium needs). Takes precedence over the unconfined default. |
-| `AGENT_WORKSPACE_SANDBOX_MEMORY` | `2g` | `--memory` limit per sandbox container. `0`/`none` disables the limit. |
-| `AGENT_WORKSPACE_SANDBOX_CPUS` | `2` | `--cpus` limit per sandbox container. `0`/`none` disables the limit. |
-| `AGENT_WORKSPACE_SANDBOX_PIDS_LIMIT` | `512` | `--pids-limit` per sandbox container (fork-bomb guard). `0`/`none` disables the limit. |
-| `AGENT_WORKSPACE_SANDBOX_CONTAINER_USER` | unset (image default) | Passed through as `--user` (e.g. `1000:1000`). The default AIO image's user is upstream-controlled, so Alpha does not force one; set this only if you know your image's runtime user. |
-| `AGENT_WORKSPACE_SANDBOX_NETWORK` | unset (daemon default network) | Legacy `open`-mode escape hatch passed through as `--network`. Prefer `sandbox.network` for managed isolation. `host`, `container:<name>`, and `none` are rejected at startup. Restricted modes ignore this variable and use their own per-sandbox internal network. |
+| `ALPHA_SANDBOX_BIND_HOST` | loopback / bridge gateway (see above) | Host interface for the sandbox `-p` publish. Must be an IP literal (bare or bracketed IPv6) or a hostname, which is resolved to an address first — Docker publish specs do not accept hostnames. `0.0.0.0` restores the legacy broad bind (risky). |
+| `ALPHA_SANDBOX_SECCOMP_UNCONFINED` | on | The shipped AIO image's Chromium browser does not start under Docker's default seccomp profile (see the upstream agent-infra sandbox FAQ), so `seccomp=unconfined` remains the default. Set to `0` to run with the built-in profile — passed explicitly as `seccomp=builtin`, so a daemon configured with a different default cannot weaken the opt-out — and only for images verified to start and pass browser checks with it. |
+| `ALPHA_SANDBOX_IMAGE_STARTUP_CAPS` | on | Keeps the five-capability compatibility set (`CHOWN`/`FOWNER`/`SETUID`/`SETGID`/`DAC_OVERRIDE`). `FOWNER` specifically covers the newer AIO 1.11.x startup `chmod /run/user/1000` path (tested with 1.11.0); images without that step do not need `FOWNER`, but Alpha does not infer per-image capability subsets from tags/digests/custom images. Set to `0` only for images that need none of the five — the switch drops the entire set. |
+| `ALPHA_SANDBOX_SECCOMP_PROFILE` | unset | Path to a custom seccomp profile (e.g. a restricted, Chromium-compatible one built from Docker's default plus the namespace syscalls Chromium needs). Takes precedence over the unconfined default. |
+| `ALPHA_SANDBOX_MEMORY` | `2g` | `--memory` limit per sandbox container. `0`/`none` disables the limit. |
+| `ALPHA_SANDBOX_CPUS` | `2` | `--cpus` limit per sandbox container. `0`/`none` disables the limit. |
+| `ALPHA_SANDBOX_PIDS_LIMIT` | `512` | `--pids-limit` per sandbox container (fork-bomb guard). `0`/`none` disables the limit. |
+| `ALPHA_SANDBOX_CONTAINER_USER` | unset (image default) | Passed through as `--user` (e.g. `1000:1000`). The default AIO image's user is upstream-controlled, so Alpha does not force one; set this only if you know your image's runtime user. |
+| `ALPHA_SANDBOX_NETWORK` | unset (daemon default network) | Legacy `open`-mode escape hatch passed through as `--network`. Prefer `sandbox.network` for managed isolation. `host`, `container:<name>`, and `none` are rejected at startup. Restricted modes ignore this variable and use their own per-sandbox internal network. |
 
 These hardening flags are Docker-only; Apple Container (`container` runtime) keeps its previous, unhardened invocation and therefore supports only `network.mode: open`. On macOS, an `open` Gateway normally prefers Apple Container, but it keeps using Docker while the configured sandbox prefix has managed Docker sandboxes so startup reconciliation can safely replace resources left by a restricted-mode deployment before the runtime changes.
 
@@ -970,7 +970,7 @@ same root. E2B also records the root in remote metadata and refuses to adopt a
 VM created for another root.
 
 **How Skills Work**:
-- Skills are stored in `agent-workspace/skills/{public,custom}/`
+- Skills are stored in `alpha/skills/{public,custom}/`
 - Each skill has a `SKILL.md` file with metadata
 - Skills are automatically discovered and loaded
 - Available in both local and Docker sandbox via path mapping
@@ -1042,24 +1042,24 @@ models:
 - `GROUNDROUTE_API_KEY` - GroundRoute meta-search API key for `web_search` and `web_fetch` (routes across Serper, Brave, Exa, Tavily, Firecrawl, Perplexity with gain-share pricing)
 - `SOFYA_API_KEY` - [Sofya](https://sofya.co) key for `web_search` and `web_fetch`
 - `BROWSERLESS_TOKEN` - Browserless Cloud token for `web_capture` (optional for self-hosted Browserless)
-- `AGENT_WORKSPACE_PROJECT_ROOT` - Project root for relative runtime paths
-- `AGENT_WORKSPACE_CONFIG_PATH` - Custom config file path
-- `AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH` - Custom extensions config file path
-- `AGENT_WORKSPACE_HOME` - Runtime state directory (defaults to `.agent-workspace` under the project root)
-- `AGENT_WORKSPACE_SKILLS_PATH` - Skills directory when `skills.path` is omitted
+- `ALPHA_PROJECT_ROOT` - Project root for relative runtime paths
+- `ALPHA_CONFIG_PATH` - Custom config file path
+- `ALPHA_EXTENSIONS_CONFIG_PATH` - Custom extensions config file path
+- `ALPHA_HOME` - Runtime state directory (defaults to `.alpha` under the project root)
+- `ALPHA_SKILLS_PATH` - Skills directory when `skills.path` is omitted
 - `GATEWAY_ENABLE_DOCS` - Set to `false` to disable Swagger UI (`/docs`), ReDoc (`/redoc`), and OpenAPI schema (`/openapi.json`) endpoints (default: `true`)
 
 ## Configuration Location
 
-The configuration file should be placed in the **project root directory** (`agent-workspace/config.yaml`). Set `AGENT_WORKSPACE_PROJECT_ROOT` when the process may start from another working directory, or set `AGENT_WORKSPACE_CONFIG_PATH` to point at a specific file.
+The configuration file should be placed in the **project root directory** (`alpha/config.yaml`). Set `ALPHA_PROJECT_ROOT` when the process may start from another working directory, or set `ALPHA_CONFIG_PATH` to point at a specific file.
 
 ## Configuration Priority
 
 Alpha searches for configuration in this order:
 
 1. Path specified in code via `config_path` argument
-2. Path from `AGENT_WORKSPACE_CONFIG_PATH` environment variable
-3. `config.yaml` under `AGENT_WORKSPACE_PROJECT_ROOT`, or under the current working directory when `AGENT_WORKSPACE_PROJECT_ROOT` is unset
+2. Path from `ALPHA_CONFIG_PATH` environment variable
+3. `config.yaml` under `ALPHA_PROJECT_ROOT`, or under the current working directory when `ALPHA_PROJECT_ROOT` is unset
 4. Legacy backend/repository-root locations for monorepo compatibility
 
 ## Security Notes
@@ -1144,7 +1144,7 @@ task.
 
 ## Best Practices
 
-1. **Place `config.yaml` in project root** - Set `AGENT_WORKSPACE_PROJECT_ROOT` if the runtime starts elsewhere
+1. **Place `config.yaml` in project root** - Set `ALPHA_PROJECT_ROOT` if the runtime starts elsewhere
 2. **Never commit `config.yaml`** - It's already in `.gitignore`
 3. **Use environment variables for secrets** - Don't hardcode API keys
 4. **Keep `config.example.yaml` updated** - Document all new options
@@ -1154,18 +1154,18 @@ task.
 ## Troubleshooting
 
 ### "Config file not found"
-- Ensure `config.yaml` exists in the **project root** directory (`agent-workspace/config.yaml`)
-- If the runtime starts outside the project root, set `AGENT_WORKSPACE_PROJECT_ROOT`
-- Alternatively, set `AGENT_WORKSPACE_CONFIG_PATH` environment variable to custom location
+- Ensure `config.yaml` exists in the **project root** directory (`alpha/config.yaml`)
+- If the runtime starts outside the project root, set `ALPHA_PROJECT_ROOT`
+- Alternatively, set `ALPHA_CONFIG_PATH` environment variable to custom location
 
 ### "Invalid API key"
 - Verify environment variables are set correctly
 - Check that `$` prefix is used for env var references
 
 ### "Skills not loading"
-- Check that `agent-workspace/skills/` directory exists
+- Check that `alpha/skills/` directory exists
 - Verify skills have valid `SKILL.md` files
-- Check `skills.path` or `AGENT_WORKSPACE_SKILLS_PATH` if using a custom path
+- Check `skills.path` or `ALPHA_SKILLS_PATH` if using a custom path
 
 ### "Docker sandbox fails to start"
 - Ensure Docker is running

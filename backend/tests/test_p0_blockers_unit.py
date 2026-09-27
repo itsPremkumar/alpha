@@ -165,9 +165,9 @@ def test_client_default_does_not_request_thinking(monkeypatch):
     """
     import inspect
 
-    from alpha.client import AgentWorkspaceClient
+    from alpha.client import AlphaClient
 
-    default = inspect.signature(AgentWorkspaceClient.__init__).parameters["thinking_enabled"].default
+    default = inspect.signature(AlphaClient.__init__).parameters["thinking_enabled"].default
     assert default is False, f"thinking_enabled defaults to {default!r}; a supports_thinking:false model cannot start"
 
     config = _non_thinking_config()
@@ -178,7 +178,7 @@ def test_client_default_does_not_request_thinking(monkeypatch):
         lambda *a, **k: None,
     )
 
-    client = AgentWorkspaceClient()
+    client = AlphaClient()
     runnable = client._get_runnable_config("t-p0")
     assert runnable["configurable"]["thinking_enabled"] is False
 
@@ -340,9 +340,9 @@ def _client_with_stream(chunks=None):
     """A client whose graph stream yields *chunks*, with no real model involved."""
     from unittest.mock import MagicMock
 
-    from alpha.client import AgentWorkspaceClient
+    from alpha.client import AlphaClient
 
-    client = AgentWorkspaceClient.__new__(AgentWorkspaceClient)
+    client = AlphaClient.__new__(AlphaClient)
     client._app_config = MagicMock()
     agent = MagicMock()
     agent.stream.return_value = iter(chunks or [])
@@ -365,7 +365,7 @@ def _client_with_stream(chunks=None):
 
 
 _LLM_FALLBACK = {
-    "agent_workspace_error_fallback": True,
+    "alpha_error_fallback": True,
     "error_type": "APIConnectionError",
     "error_reason": "transient",
     "error_detail": "connection reset by peer",
@@ -376,7 +376,7 @@ def test_llm_failure_emits_error_frame_and_raises_instead_of_end():
     """The reported lie: a failed run emitted a normal ``end`` and exited 0.
 
     The LLM error-handling middleware substitutes a placeholder ``AIMessage``
-    stamped with ``agent_workspace_error_fallback``. That message is
+    stamped with ``alpha_error_fallback``. That message is
     indistinguishable from an answer by content, so without reading the marker a
     failed run is indistinguishable from a successful one -- and this is exactly
     the case that shipped.

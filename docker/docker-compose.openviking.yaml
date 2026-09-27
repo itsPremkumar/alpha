@@ -3,7 +3,7 @@
 # First-time initialization:
 #   docker compose -f docker/docker-compose.yaml \
 #     -f docker/docker-compose.openviking.yaml up -d openviking
-#   docker exec -it agent-workspace-openviking openviking-server init
+#   docker exec -it alpha-openviking openviking-server init
 #
 # Full stack:
 #   docker compose -f docker/docker-compose.yaml \
@@ -21,7 +21,7 @@ x-bounded-logs: &bounded_logs
 services:
   openviking:
     image: ${OPENVIKING_IMAGE:-ghcr.io/volcengine/openviking:latest}
-    container_name: agent-workspace-openviking
+    container_name: alpha-openviking
     command: ["--without-bot"]
     logging: *bounded_logs
     ports:
@@ -29,7 +29,7 @@ services:
     volumes:
       - openviking-data:/app/.openviking
     networks:
-      - agent-workspace
+      - alpha
     restart: unless-stopped
     healthcheck:
       test:

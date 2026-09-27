@@ -1,7 +1,7 @@
 """JSONL file-backed RunEventStore implementation.
 
 Each run's events are stored in a single file:
-``.agent-workspace/threads/{thread_id}/runs/{run_id}.jsonl``
+``.alpha/threads/{thread_id}/runs/{run_id}.jsonl``
 
 All categories (message, trace, lifecycle) are in the same file.
 This backend is suitable for lightweight single-node deployments.
@@ -38,7 +38,7 @@ from alpha.runtime.events.search import (
     message_rank_group,
     normalize_query,
 )
-from alpha.runtime.events.store.base import RunEventStore, match_ai_message_run_id, normalize_message_ids
+from alpha.runtime.events.store.base import RunEventStore, match_ai_message_run_id, normalize_message_ids, take_latest
 from alpha.runtime.user_context import AUTO, _AutoSentinel
 from alpha.utils.thread_id import validate_thread_id
 
@@ -49,7 +49,7 @@ _SAFE_ID_PATTERN = re.compile(r"^[A-Za-z0-9_\-]+$")
 
 class JsonlRunEventStore(RunEventStore):
     def __init__(self, base_dir: str | Path | None = None):
-        self._base_dir = Path(base_dir) if base_dir else Path(".agent-workspace")
+        self._base_dir = Path(base_dir) if base_dir else Path(".alpha")
         self._seq_counters: dict[str, int] = {}  # thread_id -> current max seq
         # Per-thread asyncio.Lock — serialises concurrent writes within one process.
         self._write_locks: dict[str, asyncio.Lock] = {}
@@ -281,12 +281,12 @@ class JsonlRunEventStore(RunEventStore):
 
         if before_seq is not None:
             messages = [e for e in messages if e["seq"] < before_seq]
-            return messages[-limit:]
+            return take_latest(messages, limit)
         elif after_seq is not None:
             messages = [e for e in messages if e["seq"] > after_seq]
             return messages[:limit]
         else:
-            return messages[-limit:]
+            return take_latest(messages, limit)
 
     async def find_latest_ai_message_run_ids(
         self,
@@ -336,7 +336,7 @@ class JsonlRunEventStore(RunEventStore):
         if after_seq is not None:
             return filtered[:limit]
         else:
-            return filtered[-limit:] if len(filtered) > limit else filtered
+            return take_latest(filtered, limit)
 
     async def get_last_visible_ai_seq_by_run(self, thread_id, run_ids, *, user_id: str | None | _AutoSentinel = AUTO):
         def _scan() -> dict[str, int]:

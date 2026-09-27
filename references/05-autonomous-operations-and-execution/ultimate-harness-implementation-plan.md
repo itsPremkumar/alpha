@@ -3,7 +3,7 @@
 > Sources merged: (1) local deep-dives — Hermes Agent v0.20.2 (NousResearch),
 > OpenClaw 2026.9.4, Oh My OpenAgent v5.0.0-beta.18, Grok Bot (xAI docs), and
 > the operator's own harness lineage (`hermes-asi-master`, `hermes-harness-repo`,
-> `hermes-agi-asi-harness`); (2) `agent_workspace_ultimate_agent_harness_research_plan.docx`
+> `hermes-agi-asi-harness`); (2) `alpha_ultimate_agent_harness_research_plan.docx`
 > (ChatGPT deep research, ~25 references: Prime Agent RLM, Agent Prime council,
 > AlphaEvolve/AVO, AI Scientist-v2, Astra, Fable/Mythos, Kimi K3, Letta, Agent Zero,
 > OpenHands, Browser Use/Skyvern, Deep Agents, Goose, OpenAI SDK, Google ADK,
@@ -277,7 +277,7 @@ Union Alpha model configuration (`README.md`), Display-Identity contract
 (`backend/AGENTS.md`), owner-scoped goals contract
 (`backend/packages/harness/alpha/goals/AGENTS.md`, verified identical to ULT
 source so no copy was needed), root `verify` script (`package.json`), and
-recovery-policy scope notes. Sources: `agent-workspace-ultimate-harness` (ULT) and
+recovery-policy scope notes. Sources: `alpha-ultimate-harness` (ULT) and
 `rebrand-wt` (REBRAND Display-Identity hunk).
 
 Deferred (not ported in this docs pass): profile.py / templates.py /

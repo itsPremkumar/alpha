@@ -12,7 +12,7 @@ def _force_auth_enabled(monkeypatch):
     """Force auth ON so CSRF checks actually run.
 
     ``should_check_csrf`` returns False whenever ``is_auth_disabled()`` is true,
-    and the repository's ``.env`` ships ``AGENT_WORKSPACE_AUTH_DISABLED=1``
+    and the repository's ``.env`` ships ``ALPHA_AUTH_DISABLED=1``
     (loaded by ``load_dotenv``). Left ambient, every 403 assertion below would
     really be asserting a property of the developer's ``.env`` rather than of
     the middleware — and would flip depending on the machine.

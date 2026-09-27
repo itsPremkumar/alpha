@@ -290,12 +290,12 @@ def _find_bash() -> str | None:
 
 
 def _running_in_container() -> bool:
-    return bool(os.getenv("AGENT_WORKSPACE_IN_CONTAINER")) or Path("/.dockerenv").is_file()
+    return bool(os.getenv("ALPHA_IN_CONTAINER")) or Path("/.dockerenv").is_file()
 
 
 def _deployment_mode() -> str:
     """Classify the runtime that owns this checkout."""
-    configured = os.getenv("AGENT_WORKSPACE_DEPLOYMENT_MODE", "").strip().lower()
+    configured = os.getenv("ALPHA_DEPLOYMENT_MODE", "").strip().lower()
     if configured in {"docker", "container", "kubernetes", "helm", "electron", "local_source"}:
         return "local_source" if configured == "local_source" else configured
     if _running_in_container():

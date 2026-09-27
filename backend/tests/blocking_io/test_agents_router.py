@@ -39,13 +39,13 @@ pytestmark = pytest.mark.asyncio
 
 @pytest.fixture(autouse=True)
 def _isolate_agent_store_config(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.delenv("AGENT_WORKSPACE_CONFIG_PATH", raising=False)
-    monkeypatch.setenv("AGENT_WORKSPACE_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.delenv("ALPHA_CONFIG_PATH", raising=False)
+    monkeypatch.setenv("ALPHA_PROJECT_ROOT", str(tmp_path))
     monkeypatch.setattr("alpha.config.app_config._legacy_config_candidates", lambda: ())
 
 
 async def test_create_agent_does_not_block_event_loop(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     monkeypatch.setattr("alpha.config.paths._paths", None)
     load_agents_api_config_from_dict({"enabled": True})
     try:
@@ -61,7 +61,7 @@ async def test_create_agent_does_not_block_event_loop(tmp_path: Path, monkeypatc
 
 
 async def test_delete_agent_does_not_block_event_loop(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     monkeypatch.setattr("alpha.config.paths._paths", None)
     load_agents_api_config_from_dict({"enabled": True})
     try:
@@ -83,7 +83,7 @@ async def test_read_endpoints_do_not_block_event_loop(tmp_path: Path, monkeypatc
     # list/get/check read through the sync agent store; on the db backend each is
     # a DB round trip. They must offload via asyncio.to_thread, or the strict
     # Blockbuster gate raises BlockingError here (finding: reads on the loop).
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     monkeypatch.setattr("alpha.config.paths._paths", None)
     load_agents_api_config_from_dict({"enabled": True})
     try:
@@ -103,7 +103,7 @@ async def test_read_endpoints_do_not_block_event_loop(tmp_path: Path, monkeypatc
 
 
 async def test_update_agent_does_not_block_event_loop(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     monkeypatch.setattr("alpha.config.paths._paths", None)
     load_agents_api_config_from_dict({"enabled": True})
     try:

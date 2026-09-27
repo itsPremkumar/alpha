@@ -6,7 +6,7 @@ locally: the AI Gateway API plus the chat UI inside a single native window.
 
 ## Install (end users)
 
-1. Run **`Agent-Workspace-Setup-2.1.0.exe`** (in `electron/dist/` after a build).
+1. Run **`Alpha-Setup-2.1.0.exe`** (in `electron/dist/` after a build).
 2. If Windows SmartScreen warns about an unrecognized app (the installer is
    unsigned), choose **More info → Run anyway**. The installer works
    per-user — no administrator rights needed.
@@ -27,7 +27,7 @@ First launch in short:
 
 Your data (config, threads, memory, logs) lives per-user under Electron's
 `userData` directory, which the app resolves at runtime from
-`app.getPath('userData')` — `%APPDATA%\agent-workspace-desktop\` by default on
+`app.getPath('userData')` — `%APPDATA%\alpha-desktop\` by default on
 Windows. Read the exact path from the app's **User data** menu entry, which opens
 the folder directly, rather than hardcoding it:
 
@@ -48,7 +48,7 @@ The installer is verified end-to-end: silent `/S` install, first launch on a
 virgin machine profile (bundled Node + `uv`, auto-provisioned Python and
 venv, no login, chat opens), and silent uninstall. To publish:
 
-1. `npm run dist` and take `electron/dist/Agent-Workspace-Setup-<ver>.exe`.
+1. `npm run dist` and take `electron/dist/Alpha-Setup-<ver>.exe`.
 2. Create a GitHub Release (e.g. tag `v2.1.0`) and attach the exe.
    Anything that serves the file works too (company drive, S3, …).
 3. Tell users: download → **More info → Run anyway** (unsigned) → launch →
@@ -79,8 +79,8 @@ missing — verify `node_modules\electron\dist\electron.exe` exists before runni
 `npm run dist`, otherwise rerun the install on a less constrained machine.
 
 ```powershell
-git clone <repo-url> agent-workspace
-cd agent-workspace\electron
+git clone <repo-url> alpha
+cd alpha\electron
 npm install              # electron + electron-builder
 
 # Desktop Gateway (same files `make dev` needs, at the repo root):
@@ -121,7 +121,7 @@ npx electron . -- --verbose                              # mirror service logs t
 ### Make the installer
 
 ```powershell
-npm run dist       # fetch-runtime → build:frontend → Agent-Workspace-Setup-<ver>.exe into dist/
+npm run dist       # fetch-runtime → build:frontend → Alpha-Setup-<ver>.exe into dist/
 npm run dist:dir   # unpacked folder instead (faster smoke test)
 ```
 
@@ -221,7 +221,7 @@ make requests or persist conversation content.
 - **“process exited during startup (code=…)”** — the named service crashed;
   the tail of its log (`gateway.log` / `frontend.log`) has the cause.
 - **Login screen appears** — you attached to a Gateway that enforces login
-  (e.g. your own `:8001`), or a machine-wide `AGENT_WORKSPACE_ENV`/`ENVIRONMENT`
+  (e.g. your own `:8001`), or a machine-wide `ALPHA_ENV`/`ENVIRONMENT`
   is set to production (the app warns about this), or you passed
   `--require-login`.
 - **Port already in use** — the app reuses a verified-healthy Alpha

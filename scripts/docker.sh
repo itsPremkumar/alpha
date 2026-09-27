@@ -21,7 +21,7 @@ COMPOSE_FILE="docker-compose-dev.yaml"
 COMPOSE_BIN=(docker compose)
 
 _refresh_compose_cmd() {
-    COMPOSE_CMD="${COMPOSE_BIN[*]} -p agent-workspace-dev -f ${COMPOSE_FILE}"
+    COMPOSE_CMD="${COMPOSE_BIN[*]} -p alpha-dev -f ${COMPOSE_FILE}"
 }
 _refresh_compose_cmd
 
@@ -119,13 +119,13 @@ require_compose_version() {
     exit 1
 }
 
-# Compose interpolates ${AGENT_WORKSPACE_ROOT} into host-side paths
-# (AGENT_WORKSPACE_HOST_BASE_DIR, THREADS_HOST_PATH) that AIO/provisioner sandbox
-# modes bind-mount. Unset, those render as /backend/.agent-workspace — a plausible
+# Compose interpolates ${ALPHA_ROOT} into host-side paths
+# (ALPHA_HOST_BASE_DIR, THREADS_HOST_PATH) that AIO/provisioner sandbox
+# modes bind-mount. Unset, those render as /backend/.alpha — a plausible
 # looking absolute path on the wrong root, so mounts silently miss the checkout.
-ensure_agent_workspace_root() {
-    if [ -z "$AGENT_WORKSPACE_ROOT" ]; then
-        export AGENT_WORKSPACE_ROOT="$PROJECT_ROOT"
+ensure_alpha_root() {
+    if [ -z "$ALPHA_ROOT" ]; then
+        export ALPHA_ROOT="$PROJECT_ROOT"
     fi
 }
 
@@ -133,7 +133,7 @@ ensure_agent_workspace_root() {
 compose_preflight() {
     require_compose_file
     require_compose_version
-    ensure_agent_workspace_root
+    ensure_alpha_root
 }
 
 # Only `start` may create files. Compose env_file entries fail closed on Windows
@@ -333,7 +333,7 @@ start() {
     # the default (local) and provisioner modes never expose the host daemon.
     # Mounting the socket = root-equivalent host control; see SECURITY.md.
     if [ "$sandbox_mode" = "aio" ]; then
-        local docker_socket="${AGENT_WORKSPACE_DOCKER_SOCKET:-/var/run/docker.sock}"
+        local docker_socket="${ALPHA_DOCKER_SOCKET:-/var/run/docker.sock}"
         if [ ! -S "$docker_socket" ]; then
             # On Windows (Git Bash / MSYS), Docker Desktop mounts the default
             # /var/run/docker.sock into containers even though no host socket file exists.
@@ -359,7 +359,7 @@ start() {
     
     # Set by compose_preflight above; shown because the provisioner turns it into
     # host-side bind-mount paths.
-    echo -e "${BLUE}Using AGENT_WORKSPACE_ROOT=$AGENT_WORKSPACE_ROOT${NC}"
+    echo -e "${BLUE}Using ALPHA_ROOT=$ALPHA_ROOT${NC}"
     echo ""
 
     # Ensure config.yaml exists before starting.
@@ -462,7 +462,7 @@ stop() {
     echo "Stopping Docker development services..."
     cd "$DOCKER_DIR" && $COMPOSE_CMD down
     echo "Cleaning up sandbox containers..."
-    bash "$SCRIPT_DIR/cleanup-containers.sh" agent-workspace-sandbox 2>/dev/null || true
+    bash "$SCRIPT_DIR/cleanup-containers.sh" alpha-sandbox 2>/dev/null || true
     echo -e "${GREEN}✓ Docker services stopped${NC}"
 }
 

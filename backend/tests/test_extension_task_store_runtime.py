@@ -7,7 +7,7 @@ from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from agent_workspace_extension_api import EXTENSION_TASK_STORE_KEY, ExtensionData
+from alpha_extension_api import EXTENSION_TASK_STORE_KEY, ExtensionData
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
 

@@ -178,8 +178,8 @@ async def test_agent_eye_search_tool_returns_structured_results(
 def test_agent_eye_academic_sources_live_smoke() -> None:
     import os
 
-    if os.getenv("AGENT_WORKSPACE_RUN_LIVE_TESTS") != "1":
-        pytest.skip("Set AGENT_WORKSPACE_RUN_LIVE_TESTS=1 for live provider checks")
+    if os.getenv("ALPHA_RUN_LIVE_TESTS") != "1":
+        pytest.skip("Set ALPHA_RUN_LIVE_TESTS=1 for live provider checks")
 
     client = AgentEyeSearchClient(
         AgentEyeSettings(

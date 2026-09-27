@@ -182,7 +182,7 @@ def _http_server(env_repo: dict, *, ready_status: int):
                     status = ready_status
                     body = {
                         "status": "ready" if ready_status == 200 else "degraded",
-                        "service": "agent-workspace-gateway",
+                        "service": "alpha-gateway",
                         "database": "ok" if ready_status == 200 else "unreachable",
                         "checkpointer": "ok",
                     }

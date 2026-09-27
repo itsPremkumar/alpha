@@ -5,13 +5,13 @@ Illustrates conversion stages and attrition rates across multi-step processes (s
 
 ## Input Fields
 ### Required
-- data: array<object>, items with stage (string) and alue (number).
+- data: array<object>, items with stage (string) and value (number).
 
 ### Optional
-- 	heme: string, default default.
+- theme: string, default default.
 - width: number, default 600.
 - height: number, default 400.
-- 	itle: string, funnel title.
+- title: string, funnel title.
 
 ## Usage Recommendations
 Order data stages sequentially from top-of-funnel to conversion goal.

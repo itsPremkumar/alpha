@@ -79,7 +79,7 @@ from alpha.runtime.stream_bridge import StreamBridge
 from alpha.runtime.stream_modes import normalize_stream_modes, to_langgraph_stream_modes
 from alpha.runtime.user_context import get_current_user, get_effective_user_id, resolve_runtime_user_id
 from alpha.sandbox.lease import SANDBOX_SERVER_OWNED_CONTEXT_KEYS
-from alpha.trace_context import AGENT_WORKSPACE_TRACE_METADATA_KEY, ensure_trace_id
+from alpha.trace_context import ALPHA_TRACE_METADATA_KEY, ensure_trace_id
 from alpha.tracing import inject_langfuse_metadata
 from alpha.utils.assembly_io import run_assembly
 from alpha.utils.messages import message_to_text
@@ -203,7 +203,7 @@ def _release_run_scoped_references(
     except Exception:
         pass
     try:
-        from agent_workspace_extension_api import EXTENSION_TASK_STORE_KEY
+        from alpha_extension_api import EXTENSION_TASK_STORE_KEY
 
         internal_context_keys.add(EXTENSION_TASK_STORE_KEY)
     except Exception:
@@ -596,13 +596,13 @@ class _LargeFileToolChunkBatcher:
 # Runtime-context keys the worker owns outright. A same-named key in the
 # caller's ``config['context']`` is dropped rather than merged: the Gateway
 # strips ``__``-prefixed keys in build_run_config, but embedded harness callers
-# have no such filter and ``agent_workspace_trace_id`` carries no prefix to be caught
+# have no such filter and ``alpha_trace_id`` carries no prefix to be caught
 # by it anyway.
 _SERVER_OWNED_RUNTIME_CONTEXT_KEYS: Final[frozenset[str]] = (
     frozenset(
         {
             CURRENT_RUN_PRE_EXISTING_MESSAGE_IDS_KEY,
-            AGENT_WORKSPACE_TRACE_METADATA_KEY,
+            ALPHA_TRACE_METADATA_KEY,
         }
     )
     | SANDBOX_SERVER_OWNED_CONTEXT_KEYS
@@ -638,7 +638,7 @@ def _build_runtime_context(
     if app_config is not None:
         runtime_ctx["app_config"] = app_config
     if task_store is not None:
-        from agent_workspace_extension_api import EXTENSION_TASK_STORE_KEY
+        from alpha_extension_api import EXTENSION_TASK_STORE_KEY
 
         runtime_ctx[EXTENSION_TASK_STORE_KEY] = task_store
     # Publish the run's extension snapshot so work dispatched during graph
@@ -796,7 +796,7 @@ class _SubagentEventBuffer:
 def _bind_trace_id(config: dict[str, Any], runtime_ctx: dict[str, Any]) -> str:
     """Record the current request trace id on the runtime context and metadata.
 
-    The ContextVar is the only source. A ``agent_workspace_trace_id`` the caller sent
+    The ContextVar is the only source. A ``alpha_trace_id`` the caller sent
     in ``config["metadata"]`` is overwritten rather than read: honouring it
     would let the persisted run disagree with the ``X-Trace-Id`` and the log
     lines the same request already produced, which is the correlation the id
@@ -809,12 +809,12 @@ def _bind_trace_id(config: dict[str, Any], runtime_ctx: dict[str, Any]) -> str:
     finished run traceable after the fact.
     """
     trace_id = ensure_trace_id()
-    runtime_ctx[AGENT_WORKSPACE_TRACE_METADATA_KEY] = trace_id
+    runtime_ctx[ALPHA_TRACE_METADATA_KEY] = trace_id
     incoming_metadata = config.get("metadata")
     # Replaced rather than mutated through: this mapping can be shared with the
     # caller's request body.
     merged_metadata = dict(incoming_metadata) if isinstance(incoming_metadata, dict) else {}
-    merged_metadata[AGENT_WORKSPACE_TRACE_METADATA_KEY] = trace_id
+    merged_metadata[ALPHA_TRACE_METADATA_KEY] = trace_id
     config["metadata"] = merged_metadata
     return trace_id
 
@@ -876,7 +876,7 @@ async def run_agent(
     run_id = record.run_id
     thread_id = record.thread_id
 
-    from agent_workspace_extension_api import ExtensionData, TaskInfo
+    from alpha_extension_api import ExtensionData, TaskInfo
 
     from alpha.extensions import get_loaded_extensions
     from alpha.extensions.notify import (
@@ -907,14 +907,14 @@ async def run_agent(
     checkpoint_rollback_completed = False
     # Bound by ``_bind_trace_id`` once runtime context installation runs; the
     # initializer keeps early preflight failures correlatable too.
-    agent_workspace_trace_id: str | None = None
+    alpha_trace_id: str | None = None
     # Terminal ``error`` events are published at most once per run, the first
     # (most specific) code wins, and every ``RunStatus.error`` path must reach
     # one before ``publish_end`` closes the stream.
     terminal_error_published = False
     terminal_error_code: str | None = None
     # Message ids checkpointed *before* this run started. The stream loop uses
-    # this set to mask out ``agent_workspace_error_fallback`` markers that belong to
+    # this set to mask out ``alpha_error_fallback`` markers that belong to
     # earlier runs on the same thread — without it, one stale fallback in
     # history would mark every subsequent run on this thread as ``error``.
     pre_existing_message_ids: set[str] = set()
@@ -959,7 +959,7 @@ async def run_agent(
             thread_id=thread_id,
             code=code,
             message=message,
-            trace_id=agent_workspace_trace_id,
+            trace_id=alpha_trace_id,
             detail=detail,
         )
 
@@ -1164,7 +1164,7 @@ async def run_agent(
             task_store,
             extensions,
         )
-        agent_workspace_trace_id = _bind_trace_id(config, runtime_ctx)
+        alpha_trace_id = _bind_trace_id(config, runtime_ctx)
         # Expose the run-scoped journal under a sentinel key so middleware can
         # write audit events (e.g. SafetyFinishReasonMiddleware recording
         # suppressed tool calls). Double-underscore prefix marks it as a
@@ -1188,7 +1188,7 @@ async def run_agent(
 
         # Inject Langfuse trace-attribute metadata so the langchain CallbackHandler
         # can lift session_id / user_id / trace_name / tags onto the root trace.
-        # Shared helper with ``AgentWorkspaceClient.stream`` so both entry points stay
+        # Shared helper with ``AlphaClient.stream`` so both entry points stay
         # in sync; caller-provided metadata wins via setdefault inside the helper.
         inject_langfuse_metadata(
             config,
@@ -1196,8 +1196,8 @@ async def run_agent(
             user_id=resolve_runtime_user_id(runtime),
             assistant_id=record.assistant_id,
             model_name=record.model_name,
-            environment=os.environ.get("AGENT_WORKSPACE_ENV") or os.environ.get("ENVIRONMENT"),
-            agent_workspace_trace_id=agent_workspace_trace_id,
+            environment=os.environ.get("ALPHA_ENV") or os.environ.get("ENVIRONMENT"),
+            alpha_trace_id=alpha_trace_id,
         )
 
         # Resolve after runtime context installation so context/configurable reflect
@@ -1450,7 +1450,7 @@ async def run_agent(
                 evaluator_model_factory=_get_goal_evaluator_model,
                 abort_event=record.abort_event,
                 user_id=resolve_runtime_user_id(runtime),
-                agent_workspace_trace_id=agent_workspace_trace_id,
+                alpha_trace_id=alpha_trace_id,
                 task_store=task_store,
                 extensions=extensions,
             )
@@ -2069,7 +2069,7 @@ async def _prepare_goal_continuation_input(
     evaluator_model_factory: Any | None = None,
     abort_event: asyncio.Event | None = None,
     user_id: str | None = None,
-    agent_workspace_trace_id: str | None = None,
+    alpha_trace_id: str | None = None,
     task_store: Any | None = None,
     extensions: Any | None = None,
 ) -> dict[str, Any] | None:
@@ -2151,7 +2151,7 @@ async def _prepare_goal_continuation_input(
             app_config=app_config,
             thread_id=thread_id,
             user_id=user_id,
-            agent_workspace_trace_id=agent_workspace_trace_id,
+            alpha_trace_id=alpha_trace_id,
             task_store=task_store,
             extensions=extensions,
         )
@@ -2906,12 +2906,12 @@ def _try_extract_from_message(obj: Any, pre_existing_ids: set[str] | None = None
             return None
 
     additional_kwargs = getattr(obj, "additional_kwargs", None)
-    if isinstance(additional_kwargs, dict) and additional_kwargs.get("agent_workspace_error_fallback"):
+    if isinstance(additional_kwargs, dict) and additional_kwargs.get("alpha_error_fallback"):
         return _error_fallback_message_from_metadata(additional_kwargs, getattr(obj, "content", None))
 
     if isinstance(obj, dict):
         nested_kwargs = obj.get("additional_kwargs")
-        if isinstance(nested_kwargs, dict) and nested_kwargs.get("agent_workspace_error_fallback"):
+        if isinstance(nested_kwargs, dict) and nested_kwargs.get("alpha_error_fallback"):
             return _error_fallback_message_from_metadata(nested_kwargs, obj.get("content"))
     return None
 

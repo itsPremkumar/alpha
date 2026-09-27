@@ -1,4 +1,4 @@
-"""Tests for AgentWorkspaceClient."""
+"""Tests for AlphaClient."""
 
 import asyncio
 import concurrent.futures
@@ -16,7 +16,7 @@ from langchain_core.tools import StructuredTool
 
 from alpha.agents.middlewares.view_image_middleware import ViewImageMiddleware
 from alpha.agents.thread_state import DeltaThreadState, ThreadState
-from alpha.client import AgentWorkspaceClient
+from alpha.client import AlphaClient
 from alpha.config.authorization_config import AuthorizationConfig, AuthorizationProviderConfig
 from alpha.config.extensions_config import ExtensionsConfig, McpServerConfig
 from alpha.config.paths import Paths
@@ -62,13 +62,13 @@ def mock_app_config():
 
 @pytest.fixture
 def client(mock_app_config, tmp_path):
-    """Create a AgentWorkspaceClient with mocked config loading."""
+    """Create a AlphaClient with mocked config loading."""
     import alpha.skills.storage as _storage_mod
     from alpha.skills.storage.local_skill_storage import LocalSkillStorage
 
     _storage_mod._default_skill_storage = LocalSkillStorage(host_path=str(tmp_path))
     with patch("alpha.client.get_app_config", return_value=mock_app_config):
-        return AgentWorkspaceClient()
+        return AlphaClient()
 
 
 @pytest.fixture
@@ -108,7 +108,7 @@ class TestClientInit:
     def test_custom_params(self, mock_app_config):
         mock_middleware = MagicMock()
         with patch("alpha.client.get_app_config", return_value=mock_app_config):
-            c = AgentWorkspaceClient(model_name="gpt-4", thinking_enabled=False, subagent_enabled=True, plan_mode=True, agent_name="test-agent", available_skills={"skill1", "skill2"}, middlewares=[mock_middleware])
+            c = AlphaClient(model_name="gpt-4", thinking_enabled=False, subagent_enabled=True, plan_mode=True, agent_name="test-agent", available_skills={"skill1", "skill2"}, middlewares=[mock_middleware])
         assert c._model_name == "gpt-4"
         assert c._thinking_enabled is False
         assert c._subagent_enabled is True
@@ -120,16 +120,16 @@ class TestClientInit:
     def test_invalid_agent_name(self, mock_app_config):
         with patch("alpha.client.get_app_config", return_value=mock_app_config):
             with pytest.raises(ValueError, match="Invalid agent name"):
-                AgentWorkspaceClient(agent_name="invalid name with spaces!")
+                AlphaClient(agent_name="invalid name with spaces!")
             with pytest.raises(ValueError, match="Invalid agent name"):
-                AgentWorkspaceClient(agent_name="../path/traversal")
+                AlphaClient(agent_name="../path/traversal")
 
     def test_custom_config_path(self, mock_app_config):
         with (
             patch("alpha.client.reload_app_config") as mock_reload,
             patch("alpha.client.get_app_config", return_value=mock_app_config),
         ):
-            AgentWorkspaceClient(config_path="/tmp/custom.yaml")
+            AlphaClient(config_path="/tmp/custom.yaml")
             mock_reload.assert_called_once_with("/tmp/custom.yaml")
 
     def test_installs_process_subagent_capacity_from_frozen_config(self, mock_app_config):
@@ -139,13 +139,13 @@ class TestClientInit:
             patch("alpha.client.get_app_config", return_value=mock_app_config),
             patch("alpha.client.configure_subagent_execution_capacity") as configure,
         ):
-            AgentWorkspaceClient()
+            AlphaClient()
         configure.assert_called_once_with(runtime_config)
 
     def test_checkpointer_stored(self, mock_app_config):
         cp = MagicMock()
         with patch("alpha.client.get_app_config", return_value=mock_app_config):
-            c = AgentWorkspaceClient(checkpointer=cp)
+            c = AlphaClient(checkpointer=cp)
         assert c._checkpointer is cp
 
     def test_process_mode_is_frozen_from_app_config(self, mock_app_config, monkeypatch: pytest.MonkeyPatch):
@@ -153,7 +153,7 @@ class TestClientInit:
 
         monkeypatch.setattr(checkpoint_mode, "_frozen_checkpoint_channel_mode", None)
         with patch("alpha.client.get_app_config", return_value=mock_app_config):
-            client = AgentWorkspaceClient()
+            client = AlphaClient()
         assert client._checkpoint_channel_mode == "full"
 
         mock_app_config.database.checkpoint_channel_mode = "delta"
@@ -164,7 +164,7 @@ class TestClientInit:
                 match="restart",
             ),
         ):
-            AgentWorkspaceClient()
+            AlphaClient()
 
     def test_delta_snapshot_frequency_is_frozen_from_app_config(self, mock_app_config):
         from typing import get_type_hints
@@ -176,7 +176,7 @@ class TestClientInit:
         mock_app_config.database.checkpoint_channel_mode = "delta"
         mock_app_config.database.checkpoint_delta.snapshot_frequency = 7
         with patch("alpha.client.get_app_config", return_value=mock_app_config):
-            AgentWorkspaceClient()
+            AlphaClient()
 
         schema = thread_state.get_thread_state_schema("delta")
         hint = get_type_hints(schema, include_extras=True)["messages"]
@@ -319,7 +319,7 @@ class TestStream:
         agent.stream.assert_called_once()
         call_kwargs = agent.stream.call_args.kwargs
         # ``messages`` enables token-level streaming of AI text deltas;
-        # see AgentWorkspaceClient.stream() docstring and GitHub issue #1969.
+        # see AlphaClient.stream() docstring and GitHub issue #1969.
         assert call_kwargs["stream_mode"] == ["values", "messages", "custom"]
 
         assert events[0].type == "custom"
@@ -564,13 +564,13 @@ class TestStream:
     def test_messages_mode_emits_token_deltas(self, client):
         """stream() forwards LangGraph ``messages`` mode chunks as delta events.
 
-        Regression for bytedance/agent-workspace#1969 â€” before the fix the client
+        Regression for bytedance/agent-workspace#1969 — before the fix the client
         only subscribed to ``values`` mode, so LLM output was delivered as
         a single cumulative dump after each graph node finished instead of
         token-by-token deltas as the model generated them.
         """
         # Three AI chunks sharing the same id, followed by a terminal
-        # values snapshot with the fully assembled message â€” this matches
+        # values snapshot with the fully assembled message — this matches
         # the shape LangGraph emits when ``stream_mode`` includes both
         # ``messages`` and ``values``.
         assembled = AIMessage(content="Hel lo world!", id="ai-1", usage_metadata={"input_tokens": 3, "output_tokens": 4, "total_tokens": 7})
@@ -624,7 +624,7 @@ class TestStream:
         # The values snapshot itself is still emitted.
         assert any(e.type == "values" for e in events)
 
-        # stream_mode includes ``messages`` â€” the whole point of this fix.
+        # stream_mode includes ``messages`` — the whole point of this fix.
         call_kwargs = agent.stream.call_args.kwargs
         assert "messages" in call_kwargs["stream_mode"]
 
@@ -823,7 +823,7 @@ class TestStream:
     # ------------------------------------------------------------------
     # Refactor regression guards (PR #1974 follow-up safety)
     #
-    # The three tests below are not bug-fix tests â€” they exist to lock
+    # The three tests below are not bug-fix tests — they exist to lock
     # the *exact* contract of stream() so a future refactor (e.g. moving
     # to ``agent.astream()``, sharing a core with Gateway's run_agent,
     # changing the dedup strategy) cannot silently change behavior.
@@ -836,7 +836,7 @@ class TestStream:
         If a ``values`` snapshot arrives BEFORE its corresponding
         ``messages`` chunks for the same id, the values path falls
         through and synthesizes its own AI text event, then the
-        messages chunk emits another delta â€” consumers see the same
+        messages chunk emits another delta — consumers see the same
         id twice.
 
         Under normal LangGraph operation this never happens (messages
@@ -847,12 +847,12 @@ class TestStream:
         Gateway: if the ordering ever changes, this test fails and
         forces the refactor to either (a) preserve the ordering or
         (b) deliberately re-baseline to a stronger order-independent
-        dedup contract â€” and document the new contract here.
+        dedup contract — and document the new contract here.
         """
         agent = MagicMock()
         agent.stream.return_value = iter(
             [
-                # values arrives FIRST â€” streamed_ids still empty.
+                # values arrives FIRST — streamed_ids still empty.
                 ("values", {"messages": [HumanMessage(content="hi", id="h-1"), AIMessage(content="Hello", id="ai-1")]}),
                 # messages chunk for the same id arrives SECOND.
                 ("messages", (AIMessageChunk(content="Hello", id="ai-1"), {})),
@@ -867,7 +867,7 @@ class TestStream:
 
         ai_text_events = [e for e in events if e.type == "messages-tuple" and e.data.get("type") == "ai" and e.data.get("content")]
         # Current behavior: 2 events (values synthesis + messages delta).
-        # If a refactor makes dedup order-independent, this becomes 1 â€”
+        # If a refactor makes dedup order-independent, this becomes 1 —
         # update the assertion AND the docstring above to record the
         # new contract, do not silently fix this number.
         assert len(ai_text_events) == 2
@@ -883,17 +883,17 @@ class TestStream:
         preserved sequence or a deliberate re-baseline.
 
         Input shape:
-            messages chunk 1 â€” text "Hel", no usage
-            messages chunk 2 â€” text "lo",  with cumulative usage
-            values snapshot  â€” assembled AIMessage with same usage
+            messages chunk 1 — text "Hel", no usage
+            messages chunk 2 — text "lo",  with cumulative usage
+            values snapshot  — assembled AIMessage with same usage
 
         Locked behavior:
             * Two messages-tuple AI text events (one per chunk), each
-              carrying ONLY its own delta â€” not cumulative.
+              carrying ONLY its own delta — not cumulative.
             * ``usage_metadata`` attached only to the chunk that
               delivered it (not the first chunk).
             * The values event is still emitted, but its embedded
-              ``messages`` list is the *serialized* form â€” no
+              ``messages`` list is the *serialized* form — no
               synthesized messages-tuple events for the already-
               streamed id.
             * ``end`` event carries cumulative usage counted exactly
@@ -952,19 +952,19 @@ class TestStream:
         """``chat()`` must use a non-quadratic accumulation strategy.
 
         PR #1974 commit 2 replaced ``buffer = buffer + delta`` with
-        ``list[str].append`` + ``"".join`` to fix an O(nÂ²) regression
+        ``list[str].append`` + ``"".join`` to fix an O(n²) regression
         introduced in commit 1.  This test guards against a future
         refactor accidentally restoring the quadratic path.
 
         Threshold rationale (10,000 single-char chunks, 1 second):
             * Current O(n) implementation: ~50-200 ms total, including
               all mock + event yield overhead.
-            * O(nÂ²) regression at n=10,000: chat accumulation alone
+            * O(n²) regression at n=10,000: chat accumulation alone
               becomes ~500 ms-2 s (50 M character copies), reliably
               over the bound on any reasonable CI.
 
         If this test ever flakes on slow CI, do NOT raise the threshold
-        blindly â€” first confirm the implementation still uses
+        blindly — first confirm the implementation still uses
         ``"".join``, then consider whether the test should move to a
         benchmark suite that excludes mock overhead.
         """
@@ -995,7 +995,7 @@ class TestStream:
             elapsed = time.monotonic() - start
 
         assert result == "x" * n
-        assert elapsed < 1.0, f"chat() took {elapsed:.3f}s for {n} chunks â€” possible O(n^2) regression (see PR #1974 commit 2 for the original fix)"
+        assert elapsed < 1.0, f"chat() took {elapsed:.3f}s for {n} chunks — possible O(n^2) regression (see PR #1974 commit 2 for the original fix)"
 
     def test_none_id_chunks_produce_duplicates_known_limitation(self, client):
         """Documents a known dedup limitation: ``messages`` chunks with ``id=None``.
@@ -1007,7 +1007,7 @@ class TestStream:
         before adding), and a subsequent ``values`` snapshot whose
         reassembled ``AIMessage`` carries a real id will fall through
         the dedup check and synthesize a second AI text event for the
-        same logical message â€” consumers see duplicated text.
+        same logical message — consumers see duplicated text.
 
         Why this is documented rather than fixed
         ----------------------------------------
@@ -1018,7 +1018,7 @@ class TestStream:
         like ``f"_synth_{id(msg_chunk)}"`` only helps if the values
         snapshot uses the same fallback, which it does not.  A real
         fix requires either provider cooperation (always emit chunk
-        ids â€” out of scope for this PR) or content-based dedup (risks
+        ids — out of scope for this PR) or content-based dedup (risks
         false positives for two distinct short messages with identical
         text).
 
@@ -1061,7 +1061,7 @@ class TestStream:
         #      because of ``if msg_id:`` guard at client.py line ~522)
         #   2) from values-snapshot synthesis (ai-1 not in streamed_ids,
         #      so the skip-branch at line ~549 doesn't trigger)
-        # If this becomes 1, someone fixed the limitation â€” update this
+        # If this becomes 1, someone fixed the limitation — update this
         # test to a positive assertion and document the fix.
         assert len(ai_text_events) == 2
         assert ai_text_events[0].data["id"] is None
@@ -1109,7 +1109,7 @@ class TestChat:
 
 class TestExtractText:
     def test_string(self):
-        assert AgentWorkspaceClient._extract_text("hello") == "hello"
+        assert AlphaClient._extract_text("hello") == "hello"
 
     def test_list_text_blocks(self):
         content = [
@@ -1117,16 +1117,16 @@ class TestExtractText:
             {"type": "thinking", "thinking": "skip"},
             {"type": "text", "text": "second"},
         ]
-        assert AgentWorkspaceClient._extract_text(content) == "first\nsecond"
+        assert AlphaClient._extract_text(content) == "first\nsecond"
 
     def test_list_plain_strings(self):
-        assert AgentWorkspaceClient._extract_text(["a", "b"]) == "a\nb"
+        assert AlphaClient._extract_text(["a", "b"]) == "a\nb"
 
     def test_empty_list(self):
-        assert AgentWorkspaceClient._extract_text([]) == ""
+        assert AlphaClient._extract_text([]) == ""
 
     def test_other_type(self):
-        assert AgentWorkspaceClient._extract_text(42) == "42"
+        assert AlphaClient._extract_text(42) == "42"
 
 
 # ---------------------------------------------------------------------------
@@ -1422,7 +1422,7 @@ class TestEnsureAgent:
         config = client._get_runnable_config("t1")
         client._ensure_agent(config)
 
-        # Should still be the same mock â€” no recreation
+        # Should still be the same mock — no recreation
         assert client._agent is mock_agent
 
     def test_recreates_agent_when_subagent_limits_change(self, client):
@@ -1460,7 +1460,7 @@ class TestEnsureAgent:
 
     def test_deferred_skill_discovery_wired_when_enabled(self, client, mock_app_config):
         """When skills.deferred_discovery=True, skill_names reaches apply_prompt_template
-        (parity with agent.py â€” config flag must not be a silent no-op on the embedded path)."""
+        (parity with agent.py — config flag must not be a silent no-op on the embedded path)."""
         from pathlib import Path
 
         from alpha.skills.types import Skill, SkillCategory
@@ -1537,7 +1537,7 @@ class TestEnsureAgent:
     def test_mcp_routing_middleware_wired_when_tool_search_enabled(self, client, mock_app_config):
         """Embedded client builds McpRoutingMiddleware from routed deferred MCP tools.
 
-        RFC Â§10.3/Â§12.5 requires verifying the actual embedded-client builder path
+        RFC §10.3/§12.5 requires verifying the actual embedded-client builder path
         rather than assuming it inherits lead-agent behavior. Exercises the real
         assemble_deferred_tools + build_mcp_routing_middleware wiring and asserts a
         genuine McpRoutingMiddleware reaches build_middlewares.
@@ -1914,13 +1914,13 @@ class TestMcpConfig:
 
     def test_update_mcp_config_preserves_raw_sibling_keys(self, client, tmp_path, monkeypatch):
         """Only ``mcpServers`` is replaced; every other key keeps its on-disk ``$VAR`` form."""
-        monkeypatch.setenv("AGENT_WORKSPACE_TEST_GH_TOKEN", "ghp_live_secret_value")
+        monkeypatch.setenv("ALPHA_TEST_GH_TOKEN", "ghp_live_secret_value")
         config_file = tmp_path / "extensions_config.json"
         config_file.write_text(
             json.dumps(
                 {
                     "mcpServers": {"old": {"type": "stdio", "command": "npx"}},
-                    "mcpInterceptors": {"auth": "$AGENT_WORKSPACE_TEST_GH_TOKEN"},
+                    "mcpInterceptors": {"auth": "$ALPHA_TEST_GH_TOKEN"},
                     "skills": {"kept": {"enabled": False}},
                 }
             ),
@@ -1931,12 +1931,12 @@ class TestMcpConfig:
             patch("alpha.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
             patch("alpha.client.reload_extensions_config", return_value=ExtensionsConfig()),
         ):
-            client.update_mcp_config({"new": {"type": "stdio", "command": "uvx", "env": {"TOKEN": "$AGENT_WORKSPACE_TEST_GH_TOKEN"}}})
+            client.update_mcp_config({"new": {"type": "stdio", "command": "uvx", "env": {"TOKEN": "$ALPHA_TEST_GH_TOKEN"}}})
 
         written_text = config_file.read_text(encoding="utf-8")
         assert json.loads(written_text) == {
-            "mcpServers": {"new": {"type": "stdio", "command": "uvx", "env": {"TOKEN": "$AGENT_WORKSPACE_TEST_GH_TOKEN"}}},
-            "mcpInterceptors": {"auth": "$AGENT_WORKSPACE_TEST_GH_TOKEN"},
+            "mcpServers": {"new": {"type": "stdio", "command": "uvx", "env": {"TOKEN": "$ALPHA_TEST_GH_TOKEN"}}},
+            "mcpInterceptors": {"auth": "$ALPHA_TEST_GH_TOKEN"},
             "skills": {"kept": {"enabled": False}},
         }
         assert "ghp_live_secret_value" not in written_text
@@ -2044,8 +2044,8 @@ class TestSkillsManagement:
     @staticmethod
     def _config_with_placeholders() -> dict:
         return {
-            "mcpServers": {"github": {"type": "stdio", "command": "npx", "env": {"GITHUB_TOKEN": "$AGENT_WORKSPACE_TEST_GH_TOKEN", "OPTIONAL": "$AGENT_WORKSPACE_TEST_UNSET_VAR"}}},
-            "mcpInterceptors": {"auth": "$AGENT_WORKSPACE_TEST_GH_TOKEN"},
+            "mcpServers": {"github": {"type": "stdio", "command": "npx", "env": {"GITHUB_TOKEN": "$ALPHA_TEST_GH_TOKEN", "OPTIONAL": "$ALPHA_TEST_UNSET_VAR"}}},
+            "mcpInterceptors": {"auth": "$ALPHA_TEST_GH_TOKEN"},
             "skills": {},
         }
 
@@ -2056,8 +2056,8 @@ class TestSkillsManagement:
         ``public`` covers the shared-state path; ``custom`` with non-user-scoped
         storage covers the fallback that also writes ``extensions_config.json``.
         """
-        monkeypatch.setenv("AGENT_WORKSPACE_TEST_GH_TOKEN", "ghp_live_secret_value")
-        monkeypatch.delenv("AGENT_WORKSPACE_TEST_UNSET_VAR", raising=False)
+        monkeypatch.setenv("ALPHA_TEST_GH_TOKEN", "ghp_live_secret_value")
+        monkeypatch.delenv("ALPHA_TEST_UNSET_VAR", raising=False)
         config_file = tmp_path / "extensions_config.json"
         config_file.write_text(json.dumps(self._config_with_placeholders()), encoding="utf-8")
 
@@ -2618,7 +2618,7 @@ class TestScenarioToolChain:
     """Scenario: Agent chains multiple tool calls in sequence."""
 
     def test_multi_tool_chain(self, client):
-        """Agent calls bash â†’ reads output â†’ calls write_file â†’ responds."""
+        """Agent calls bash → reads output → calls write_file → responds."""
         ai_bash = AIMessage(
             content="",
             id="ai-1",
@@ -2665,10 +2665,10 @@ class TestScenarioToolChain:
 
 
 class TestScenarioFileLifecycle:
-    """Scenario: Upload files â†’ list them â†’ use in chat â†’ download artifact."""
+    """Scenario: Upload files → list them → use in chat → download artifact."""
 
     def test_upload_list_delete_lifecycle(self, client):
-        """Upload â†’ list â†’ verify â†’ delete â†’ list again."""
+        """Upload → list → verify → delete → list again."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             uploads_dir = tmp_path / "uploads"
@@ -2742,7 +2742,7 @@ class TestScenarioConfigManagement:
     """Scenario: Query and update configuration through a management session."""
 
     def test_model_and_skill_discovery(self, client):
-        """List models â†’ get specific model â†’ list skills â†’ get specific skill."""
+        """List models → get specific model → list skills → get specific skill."""
         # List models
         result = client.list_models()
         assert len(result["models"]) >= 1
@@ -2779,7 +2779,7 @@ class TestScenarioConfigManagement:
         assert detail["enabled"] is True
 
     def test_mcp_update_then_skill_toggle(self, client):
-        """Update MCP config â†’ toggle skill â†’ verify both invalidate agent."""
+        """Update MCP config → toggle skill → verify both invalidate agent."""
         with tempfile.TemporaryDirectory() as tmp:
             config_file = Path(tmp) / "extensions_config.json"
             config_file.write_text("{}")
@@ -3044,10 +3044,10 @@ class TestScenarioThreadIsolation:
 
 
 class TestScenarioMemoryWorkflow:
-    """Scenario: Memory query â†’ reload â†’ status check."""
+    """Scenario: Memory query → reload → status check."""
 
     def test_memory_full_lifecycle(self, client):
-        """get_memory â†’ reload â†’ get_status covers the full memory API."""
+        """get_memory → reload → get_status covers the full memory API."""
         initial_data = {"version": "1.0", "facts": [{"id": "f1", "content": "User likes Python"}]}
         updated_data = {
             "version": "1.0",
@@ -3086,10 +3086,10 @@ class TestScenarioMemoryWorkflow:
 
 
 class TestScenarioSkillInstallAndUse:
-    """Scenario: Install a skill â†’ verify it appears â†’ toggle it."""
+    """Scenario: Install a skill → verify it appears → toggle it."""
 
     def test_install_then_toggle(self, client, allow_skill_security_scan):
-        """Install .skill archive â†’ list to verify â†’ disable â†’ verify disabled."""
+        """Install .skill archive → list to verify → disable → verify disabled."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
 
@@ -3157,7 +3157,7 @@ class TestScenarioEdgeCases:
     """Scenario: Edge cases and error boundaries in realistic workflows."""
 
     def test_empty_stream_response(self, client):
-        """Agent produces no messages â€” only values + end events."""
+        """Agent produces no messages — only values + end events."""
         agent = _make_agent_mock([{"messages": []}])
 
         with (
@@ -3207,7 +3207,7 @@ class TestScenarioEdgeCases:
         assert values_events[2].data["title"] == "Second Title"
 
     def test_concurrent_tool_calls_in_single_message(self, client):
-        """Agent produces multiple tool_calls in one AIMessage â€” emitted as single messages-tuple."""
+        """Agent produces multiple tool_calls in one AIMessage — emitted as single messages-tuple."""
         ai = AIMessage(
             content="",
             id="ai-1",
@@ -3233,7 +3233,7 @@ class TestScenarioEdgeCases:
         assert {tc["id"] for tc in tool_calls} == {"tc-1", "tc-2", "tc-3"}
 
     def test_upload_convertible_file_conversion_failure(self, client):
-        """Upload a .pdf file where conversion fails â€” file still uploaded, no markdown."""
+        """Upload a .pdf file where conversion fails — file still uploaded, no markdown."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             uploads_dir = tmp_path / "uploads"
@@ -3258,12 +3258,12 @@ class TestScenarioEdgeCases:
 
 
 # ---------------------------------------------------------------------------
-# Gateway conformance â€” validate client output against Gateway Pydantic models
+# Gateway conformance — validate client output against Gateway Pydantic models
 # ---------------------------------------------------------------------------
 
 
 class TestGatewayConformance:
-    """Validate that AgentWorkspaceClient return dicts conform to Gateway Pydantic response models.
+    """Validate that AlphaClient return dicts conform to Gateway Pydantic response models.
 
     Each test calls a client method, then parses the result through the
     corresponding Gateway response model. If the client drifts (missing or
@@ -3282,7 +3282,7 @@ class TestGatewayConformance:
         mock_app_config.token_usage.enabled = True
 
         with patch("alpha.client.get_app_config", return_value=mock_app_config):
-            client = AgentWorkspaceClient()
+            client = AlphaClient()
 
         result = client.list_models()
         parsed = ModelsListResponse(**result)
@@ -3302,7 +3302,7 @@ class TestGatewayConformance:
         mock_app_config.get_model_config.return_value = model
 
         with patch("alpha.client.get_app_config", return_value=mock_app_config):
-            client = AgentWorkspaceClient()
+            client = AlphaClient()
 
         result = client.get_model("test-model")
         assert result is not None
@@ -3490,7 +3490,7 @@ class TestGatewayConformance:
 
 
 # ===========================================================================
-# Hardening â€” install_skill security gates
+# Hardening — install_skill security gates
 # ===========================================================================
 
 
@@ -3699,7 +3699,7 @@ class TestInstallSkillSecurity:
 
 
 # ===========================================================================
-# Hardening â€” _atomic_write_json error paths
+# Hardening — _atomic_write_json error paths
 # ===========================================================================
 
 
@@ -3713,7 +3713,7 @@ class TestAtomicWriteJson:
             bad_data = {"key": object()}
 
             with pytest.raises(TypeError):
-                AgentWorkspaceClient._atomic_write_json(target, bad_data)
+                AlphaClient._atomic_write_json(target, bad_data)
 
             # Target should not have been created.
             assert not target.exists()
@@ -3727,7 +3727,7 @@ class TestAtomicWriteJson:
             target = Path(tmp) / "out.json"
             data = {"key": "value", "nested": [1, 2, 3]}
 
-            AgentWorkspaceClient._atomic_write_json(target, data)
+            AlphaClient._atomic_write_json(target, data)
 
             assert target.exists()
             with open(target) as f:
@@ -3744,7 +3744,7 @@ class TestAtomicWriteJson:
 
             bad_data = {"key": object()}
             with pytest.raises(TypeError):
-                AgentWorkspaceClient._atomic_write_json(target, bad_data)
+                AlphaClient._atomic_write_json(target, bad_data)
 
             # Original content must survive.
             with open(target) as f:
@@ -3752,7 +3752,7 @@ class TestAtomicWriteJson:
 
 
 # ===========================================================================
-# Hardening â€” config update error paths
+# Hardening — config update error paths
 # ===========================================================================
 
 
@@ -3800,7 +3800,7 @@ class TestConfigUpdateErrors:
 
 
 # ===========================================================================
-# Hardening â€” stream / chat edge cases
+# Hardening — stream / chat edge cases
 # ===========================================================================
 
 
@@ -3962,14 +3962,14 @@ class TestStreamHardening:
 
 
 # ===========================================================================
-# Hardening â€” _serialize_message coverage
+# Hardening — _serialize_message coverage
 # ===========================================================================
 
 
 class TestSerializeMessage:
     def test_system_message(self):
         msg = SystemMessage(content="You are a helpful assistant.", id="sys-1")
-        result = AgentWorkspaceClient._serialize_message(msg)
+        result = AlphaClient._serialize_message(msg)
         assert result["type"] == "system"
         assert result["content"] == "You are a helpful assistant."
         assert result["id"] == "sys-1"
@@ -3981,7 +3981,7 @@ class TestSerializeMessage:
         msg.content = "something"
         # Not an instance of AIMessage/ToolMessage/HumanMessage/SystemMessage
         type(msg).__name__ = "CustomMessage"
-        result = AgentWorkspaceClient._serialize_message(msg)
+        result = AlphaClient._serialize_message(msg)
         assert result["type"] == "unknown"
         assert result["id"] == "unk-1"
 
@@ -3991,14 +3991,14 @@ class TestSerializeMessage:
             id="ai-tc",
             tool_calls=[{"name": "bash", "args": {"cmd": "ls"}, "id": "tc-1"}],
         )
-        result = AgentWorkspaceClient._serialize_message(msg)
+        result = AlphaClient._serialize_message(msg)
         assert result["type"] == "ai"
         assert len(result["tool_calls"]) == 1
         assert result["tool_calls"][0]["name"] == "bash"
 
     def test_tool_message_non_string_content(self):
         msg = ToolMessage(content={"key": "value"}, id="tm-1", tool_call_id="tc-1", name="tool")
-        result = AgentWorkspaceClient._serialize_message(msg)
+        result = AlphaClient._serialize_message(msg)
         assert result["type"] == "tool"
         assert isinstance(result["content"], str)
         assert "artifact" not in result
@@ -4013,7 +4013,7 @@ class TestSerializeMessage:
             artifact={"payload": marker},
         )
 
-        result = AgentWorkspaceClient._tool_message_event(msg)
+        result = AlphaClient._tool_message_event(msg)
 
         assert result.data["artifact"] is msg.artifact
 
@@ -4027,13 +4027,13 @@ class TestSerializeMessage:
             artifact={"payload": marker},
         )
 
-        result = AgentWorkspaceClient._serialize_message(msg)
+        result = AlphaClient._serialize_message(msg)
 
         assert result["artifact"] is msg.artifact
 
 
 # ===========================================================================
-# Hardening â€” upload / delete symlink attack
+# Hardening — upload / delete symlink attack
 # ===========================================================================
 
 
@@ -4073,7 +4073,7 @@ class TestUploadDeleteSymlink:
             uploads_dir = tmp_path / "uploads"
             uploads_dir.mkdir()
 
-            weird_name = "report 2024 æ•°æ®.txt"
+            weird_name = "report 2024 数据.txt"
             src_file = tmp_path / weird_name
             src_file.write_text("data")
 
@@ -4086,7 +4086,7 @@ class TestUploadDeleteSymlink:
 
 
 # ===========================================================================
-# Hardening â€” artifact edge cases
+# Hardening — artifact edge cases
 # ===========================================================================
 
 
@@ -4123,7 +4123,7 @@ class TestArtifactHardening:
 
 
 # ===========================================================================
-# BUG DETECTION â€” tests that expose real bugs in client.py
+# BUG DETECTION — tests that expose real bugs in client.py
 # ===========================================================================
 
 
@@ -4132,12 +4132,12 @@ class TestUploadDuplicateFilenames:
 
     Previously it silently overwrote the first file with the second,
     then reported both in the response while only one existed on disk.
-    Now duplicates are renamed (data.txt â†’ data_1.txt) and the response
+    Now duplicates are renamed (data.txt → data_1.txt) and the response
     includes original_filename so the agent / caller can see what happened.
     """
 
     def test_duplicate_filenames_auto_renamed(self, client):
-        """Two files with same basename â†’ second gets _1 suffix."""
+        """Two files with same basename → second gets _1 suffix."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             uploads_dir = tmp_path / "uploads"
@@ -4172,7 +4172,7 @@ class TestUploadDuplicateFilenames:
             assert (uploads_dir / "data_1.txt").read_text() == "version B"
 
     def test_triple_duplicate_increments_counter(self, client):
-        """Three files with same basename â†’ _1, _2 suffixes."""
+        """Three files with same basename → _1, _2 suffixes."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             uploads_dir = tmp_path / "uploads"
@@ -4241,7 +4241,7 @@ class TestBugArtifactPrefixMatchTooLoose:
 
 class TestBugListUploadsDeadCode:
     """Regression: list_uploads works even when called on a fresh thread
-    (directory does not exist yet â€” returns empty without creating it).
+    (directory does not exist yet — returns empty without creating it).
     """
 
     def test_list_uploads_on_fresh_thread(self, client):

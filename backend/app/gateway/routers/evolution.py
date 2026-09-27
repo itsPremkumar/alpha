@@ -57,7 +57,7 @@ class UpdateSkipRequest(BaseModel):
 
 async def _require_update_admin(request: Request) -> None:
     # Synthetic/internal callers are not update administrators.  In
-    # particular, AGENT_WORKSPACE_AUTH_DISABLED must not turn a local bypass
+    # particular, ALPHA_AUTH_DISABLED must not turn a local bypass
     # into unattended source mutation capability.
     from app.gateway.auth_disabled import AUTH_SOURCE_AUTH_DISABLED, AUTH_SOURCE_INTERNAL, AUTH_SOURCE_PAT
 

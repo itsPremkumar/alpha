@@ -36,11 +36,11 @@ class BatchTaskItem(BaseModel):
 
 _NO_EXPLICIT_BATCH_SUBMITTER = object()
 _explicit_batch_submitter: ContextVar[SubagentBatchSubmitter | None | object] = ContextVar(
-    "agent_workspace_explicit_subagent_batch_submitter",
+    "alpha_explicit_subagent_batch_submitter",
     default=_NO_EXPLICIT_BATCH_SUBMITTER,
 )
 _explicit_batch_app_config: ContextVar[Any | None] = ContextVar(
-    "agent_workspace_explicit_subagent_batch_app_config",
+    "alpha_explicit_subagent_batch_app_config",
     default=None,
 )
 

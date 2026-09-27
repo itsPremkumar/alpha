@@ -307,7 +307,7 @@ async def test_store_only_join_after_orphan_recovery_reports_the_recovered_outco
 async def test_synthesized_error_frame_correlates_with_the_run_metadata_trace_id():
     """The trace id is the one the run record was stamped with at admission, so
     the frame joins to the run's logs instead of minting an unrelated id."""
-    from alpha.trace_context import AGENT_WORKSPACE_TRACE_METADATA_KEY
+    from alpha.trace_context import ALPHA_TRACE_METADATA_KEY
     from app.gateway.services import sse_consumer
 
     async def run() -> None:
@@ -316,7 +316,7 @@ async def test_synthesized_error_frame_correlates_with_the_run_metadata_trace_id
         record = _record(
             status=RunStatus.error,
             error="workspace snapshot failed",
-            metadata={AGENT_WORKSPACE_TRACE_METADATA_KEY: "trace-stamped-at-admission"},
+            metadata={ALPHA_TRACE_METADATA_KEY: "trace-stamped-at-admission"},
         )
         await bridge.publish_end(record.run_id)
 

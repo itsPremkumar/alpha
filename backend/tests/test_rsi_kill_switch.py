@@ -15,7 +15,7 @@ from alpha.rsi.switchboard import guard_cycle_start, rsi_frozen
 def runtime_home(tmp_path, monkeypatch):
     """Isolate runtime_home() (STOP sentinel + kill-switch event log) and guarantee a clean switch state."""
     home = tmp_path / "agent-home"
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(home))
+    monkeypatch.setenv("ALPHA_HOME", str(home))
     set_global_kill_switch(False, reason="test setup")
     yield home.resolve()
     set_global_kill_switch(False, reason="test cleanup")

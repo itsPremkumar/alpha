@@ -1390,7 +1390,7 @@ with:
 
 # 20. Workspace and File System Model
 
-Classic AutoGPT already used an agent workspace and restricted agent file access. The current Platform also provides persistent workspaces and file tools.
+Classic AutoGPT already used an alpha and restricted agent file access. The current Platform also provides persistent workspaces and file tools.
 
 ### Alpha workspace hierarchy
 

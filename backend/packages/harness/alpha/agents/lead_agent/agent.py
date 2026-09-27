@@ -42,7 +42,7 @@ from alpha.agents.middlewares.memory_middleware import MemoryMiddleware
 from alpha.agents.middlewares.model_length_finish_reason_middleware import ModelLengthFinishReasonMiddleware
 from alpha.agents.middlewares.safety_finish_reason_middleware import SafetyFinishReasonMiddleware
 from alpha.agents.middlewares.subagent_limit_middleware import SubagentLimitMiddleware
-from alpha.agents.middlewares.summarization_middleware import AgentWorkspaceSummarizationMiddleware, create_summarization_middleware
+from alpha.agents.middlewares.summarization_middleware import AlphaSummarizationMiddleware, create_summarization_middleware
 from alpha.agents.middlewares.terminal_response_middleware import TerminalResponseMiddleware
 from alpha.agents.middlewares.title_middleware import TitleMiddleware
 from alpha.agents.middlewares.todo_middleware import TodoMiddleware
@@ -320,7 +320,7 @@ def _create_summarization_middleware(
     app_config: AppConfig | None = None,
     run_model_name: str | None = None,
     extensions=None,
-) -> AgentWorkspaceSummarizationMiddleware | None:
+) -> AlphaSummarizationMiddleware | None:
     """Create and configure the summarization middleware from config.
 
     ``run_model_name`` is the resolved run model; it is the source of truth for
@@ -501,7 +501,7 @@ def build_middlewares(
     """Build the lead-agent middleware chain based on runtime configuration.
 
     Public entry point for the lead agent's full middleware composition. Used by
-    ``make_lead_agent`` and by the embedded ``AgentWorkspaceClient`` (a lead-agent variant
+    ``make_lead_agent`` and by the embedded ``AlphaClient`` (a lead-agent variant
     that needs the identical chain). Keep this name stable: it is imported across a
     module boundary, so renames/signature changes ripple into ``client.py``.
 
@@ -800,14 +800,14 @@ def build_middlewares(
     # Doing it inside build_lead_runtime_middlewares() would place
     # MODEL_PHYSICAL contributions above the lead-specific middlewares appended
     # above, changing what "the final request" means for observers.
-    from agent_workspace_extension_api import AgentScope
+    from alpha_extension_api import AgentScope
 
     from alpha.extensions.stack import compose_with_extensions
 
     if not resolved_extensions.has_middleware_contributors:
         return compose_with_extensions(middlewares, AgentScope.LEAD, None, resolved_extensions)
 
-    from agent_workspace_extension_api import AgentBuildContext
+    from alpha_extension_api import AgentBuildContext
 
     from alpha.extensions.policy import project_host_policy
 

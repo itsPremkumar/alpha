@@ -3,7 +3,7 @@
 Laya is intentionally isolated from Alpha's normal Python environment. It brings
 PyTorch and Transformers, while Alpha's HTTP client only needs the stable
 Jev-compatible ``POST /v1/systemone`` protocol. Keeping the runtime under the
-ignored ``.agent-workspace/laya`` directory prevents a later ``uv sync`` from
+ignored ``.alpha/laya`` directory prevents a later ``uv sync`` from
 removing it and avoids expanding Alpha's core lockfile for an optional model.
 
 Typical setup (English checkpoint, CPU inference, loopback-only server)::
@@ -19,7 +19,7 @@ Other useful commands::
 
 The setup pins the Laya package version, but model weights are immutable Hub
 repositories rather than Python packages. Re-running ``download`` is safe and
-reuses ``.agent-workspace/laya/hf-cache``.
+reuses ``.alpha/laya/hf-cache``.
 """
 
 from __future__ import annotations
@@ -76,8 +76,8 @@ def resolve_torch_index(device: str) -> str | None:
 
 def default_home() -> Path:
     """Return the ignored project-local Laya runtime directory."""
-    configured = os.getenv("AGENT_WORKSPACE_HOME", "").strip()
-    root = Path(configured).expanduser() if configured else PROJECT_ROOT / ".agent-workspace"
+    configured = os.getenv("ALPHA_HOME", "").strip()
+    root = Path(configured).expanduser() if configured else PROJECT_ROOT / ".alpha"
     return root.resolve() / "laya"
 
 

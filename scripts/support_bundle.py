@@ -86,7 +86,7 @@ def _load_sibling(name: str) -> Any:
     if not path.is_file():
         return None
     try:
-        spec = importlib.util.spec_from_file_location(f"_agent_workspace_{name}", path)
+        spec = importlib.util.spec_from_file_location(f"_alpha_{name}", path)
         if spec is None or spec.loader is None:
             return None
         module = importlib.util.module_from_spec(spec)
@@ -448,17 +448,17 @@ def _validate_thread_id(thread_id: str) -> None:
 def _candidate_thread_data_dirs(project_root: Path, thread_id: str) -> list[Path]:
     _validate_thread_id(thread_id)
     candidates = [
-        project_root / ".agent-workspace" / "threads" / thread_id / "user-data",
+        project_root / ".alpha" / "threads" / thread_id / "user-data",
         project_root
         / "backend"
-        / ".agent-workspace"
+        / ".alpha"
         / "threads"
         / thread_id
         / "user-data",
     ]
     for base in (
-        project_root / ".agent-workspace" / "users",
-        project_root / "backend" / ".agent-workspace" / "users",
+        project_root / ".alpha" / "users",
+        project_root / "backend" / ".alpha" / "users",
     ):
         if base.exists():
             candidates.extend(
@@ -758,8 +758,8 @@ def _trace_candidate_paths(project_root: Path, config_summary: Any) -> list[Path
             ):
                 configured = Path(candidate.strip()).expanduser()
     roots = [
-        project_root / ".agent-workspace",
-        project_root / "backend" / ".agent-workspace",
+        project_root / ".alpha",
+        project_root / "backend" / ".alpha",
     ]
     if configured is not None:
         for base in (
@@ -1492,9 +1492,9 @@ def _default_out_path(project_root: Path) -> Path:
     timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     return (
         project_root
-        / ".agent-workspace"
+        / ".alpha"
         / "support-bundles"
-        / f"agent-workspace-support-bundle-{timestamp}.zip"
+        / f"alpha-support-bundle-{timestamp}.zip"
     )
 
 

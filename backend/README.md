@@ -77,7 +77,7 @@ Per-thread isolated execution with virtual path translation:
 - **Abstract interface**: `execute_command`, `read_file`, `write_file`, `list_dir`
 - **Providers**: `LocalSandboxProvider` (filesystem) and `AioSandboxProvider` (Docker, in community/). Async runtime paths use async sandbox lifecycle hooks so startup, readiness polling, and release do not block the event loop. `AioSandboxProvider` validates active-cache and warm-pool containers during acquire/reuse, dropping definitively dead entries so a thread can provision a fresh sandbox after an unexpected container exit while keeping `get()` as an in-memory lookup. Backend health-check failures are treated as unknown, not dead, and a container that cannot be verified during discovery is simply not adopted (acquire falls through to create instead of failing).
 - **Virtual paths**: `/mnt/user-data/{workspace,uploads,outputs}` → thread-specific physical directories
-- **Skills path**: `/mnt/skills` → `agent-workspace/skills/` directory
+- **Skills path**: `/mnt/skills` → `alpha/skills/` directory
 - **Skills loading**: Recursively discovers nested `SKILL.md` files under `skills/{public,custom}` and preserves nested container paths
 - **SkillScan**: Native offline deterministic scanning runs before the LLM skill scanner on installs and agent-managed skill writes; `CRITICAL` findings block and warning findings become LLM context
 - **File-write safety**: `str_replace` serializes read-modify-write per `(sandbox.id, path)` so isolated sandboxes keep concurrency even when virtual paths match
@@ -158,7 +158,7 @@ For Feishu card updates, Alpha stores the running card's `message_id` per inboun
 ### Installation
 
 ```bash
-cd agent-workspace
+cd alpha
 
 # Copy configuration files
 cp config.example.yaml config.yaml
@@ -221,7 +221,7 @@ Direct access: Gateway at http://localhost:8001
 no services required:
 
 ```bash
-uv pip install 'agent-workspace-harness[tui]'   # optional 'textual' dependency
+uv pip install 'alpha-harness[tui]'   # optional 'textual' dependency
 alpha                                 # launch the TUI
 alpha --print "summarize this repo"   # headless one-shot
 alpha --recursion-limit 250 --print "run a longer task"
@@ -236,7 +236,7 @@ Sessions opened in the TUI appear in the Web UI sidebar (it writes the shared
 
 ```
 backend/
-├── packages/harness/           # agent-workspace-harness package (import: alpha.*)
+├── packages/harness/           # alpha-harness package (import: alpha.*)
 │   └── alpha/
 │       ├── agents/             # Agent system
 │       │   ├── lead_agent/     # Main agent (factory, prompts)
@@ -390,8 +390,8 @@ deferred schemas before the model call.
 
 ### Environment Variables
 
-- `AGENT_WORKSPACE_CONFIG_PATH` - Override config.yaml location
-- `AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH` - Override extensions_config.json location
+- `ALPHA_CONFIG_PATH` - Override config.yaml location
+- `ALPHA_EXTENSIONS_CONFIG_PATH` - Override extensions_config.json location
 - Model API keys: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, etc.
 - Tool API keys: `TAVILY_API_KEY`, `GITHUB_TOKEN`, etc.
 
@@ -452,10 +452,10 @@ make detect-blocking-io  # Inventory blocking IO that may block the backend even
 make migrate-rev MSG="..."  # Autogenerate a new alembic revision against the live ORM models
 ```
 
-`make dev` pre-creates and excludes `AGENT_WORKSPACE_HOME` (by default
-`backend/.agent-workspace`) and `backend/sandbox` from Uvicorn's reload watcher. Use
+`make dev` pre-creates and excludes `ALPHA_HOME` (by default
+`backend/.alpha`) and `backend/sandbox` from Uvicorn's reload watcher. Use
 this target instead of a bare `uvicorn --reload`: agent tasks write Python and
-other runtime files under `AGENT_WORKSPACE_HOME`, and watching that directory can
+other runtime files under `ALPHA_HOME`, and watching that directory can
 restart the Gateway during an active run.
 
 ### Schema Migrations
@@ -501,7 +501,7 @@ make test
 # Strict blocking-I/O suite
 make test-blocking-io
 
-# Explicit real-API AgentWorkspaceClient integration suite
+# Explicit real-API AlphaClient integration suite
 make test-live
 ```
 
@@ -509,12 +509,12 @@ The live suite requires a valid root `config.yaml` and API credentials. It may
 incur API costs or create local sandboxes, artifacts, and files, so it is not
 part of default test runs or CI. Direct pytest invocation of
 `tests/test_client_live.py` also requires
-`AGENT_WORKSPACE_RUN_LIVE_TESTS=1`.
+`ALPHA_RUN_LIVE_TESTS=1`.
 
 `make detect-blocking-io` statically scans backend business code for blocking
 IO that may run on the backend event loop and is not test-coverage-bound. It
 prints a concise summary for human review and writes complete JSON findings to
-`.agent-workspace/blocking-io-findings.json` at the repository root (regardless of
+`.alpha/blocking-io-findings.json` at the repository root (regardless of
 whether the target is invoked from the repo root or from `backend/`). JSON
 findings include both broad IO category and review-oriented fields such as
 `priority`, `location`, `blocking_call`, `event_loop_exposure`, `reason`, and

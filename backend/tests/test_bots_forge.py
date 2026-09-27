@@ -43,7 +43,7 @@ from alpha.tools.builtins.bot_roster_tool import bot_roster_tool
 
 @pytest.fixture(autouse=True)
 def _isolated_home(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     bot_reg._global_registry = None
     bot_reg._global_registry_path = None
     clear_survey_cache()
@@ -415,7 +415,7 @@ def test_survey_never_walks_dependency_trees(tmp_path):
 
 def test_survey_operator_kill_switch_stops_the_scan(tmp_path, monkeypatch):
     (tmp_path / "README.md").write_text("reconciles invoices against the ledger", encoding="utf-8")
-    monkeypatch.setenv("AGENT_WORKSPACE_BOT_SURVEY", "0")
+    monkeypatch.setenv("ALPHA_BOT_SURVEY", "0")
     result = survey_workspace(soul="reconcile invoices", cwd=str(tmp_path), workspace_roots=[str(tmp_path)])
     assert result.findings == []
     assert result.roots_scanned == []
@@ -424,9 +424,9 @@ def test_survey_operator_kill_switch_stops_the_scan(tmp_path, monkeypatch):
 
 
 def test_survey_kill_switch_is_not_cached_as_a_real_result(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_BOT_SURVEY", "0")
+    monkeypatch.setenv("ALPHA_BOT_SURVEY", "0")
     disabled = survey_workspace(soul="x", cwd=str(tmp_path), workspace_roots=[str(tmp_path)])
-    monkeypatch.delenv("AGENT_WORKSPACE_BOT_SURVEY")
+    monkeypatch.delenv("ALPHA_BOT_SURVEY")
     enabled = survey_workspace(soul="x", cwd=str(tmp_path), workspace_roots=[str(tmp_path)])
     assert any("disabled by the operator" in step for step in disabled.next_steps)
     assert not any("disabled by the operator" in step for step in enabled.next_steps)

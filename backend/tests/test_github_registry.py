@@ -37,7 +37,7 @@ def base_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     freshly minted per test and the previous test's cache signature
     would otherwise survive into this one and short-circuit the scan.
     """
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     from alpha.config import paths as paths_module
 
     monkeypatch.setattr(paths_module, "_paths", None)

@@ -206,7 +206,7 @@ flowchart TB
     Artifact["_prepare_artifact_delivery(user_id=OWNER)"]:::bucket
     Memory["_resolve_memory_user_id<br/>(make_safe_user_id match)"]:::bucket
 
-    Bucket["backend/.agent-workspace/users/OWNER/.../user-data/{uploads,outputs}"]:::bucket
+    Bucket["backend/.alpha/users/OWNER/.../user-data/{uploads,outputs}"]:::bucket
 
     Inbound --> Resolve --> UserID
     UserID --> RunID

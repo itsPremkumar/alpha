@@ -126,7 +126,7 @@ def _messages() -> list[BaseMessage]:
 @pytest.fixture(autouse=True)
 def _isolated_governor(tmp_path, monkeypatch):
     """Point the cost governor at a private ledger and a private runtime home."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path / "runtime-home"))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path / "runtime-home"))
     monkeypatch.delenv(cost_governor_module.PROJECT_ID_ENV, raising=False)
     reset_cost_governor()
     yield

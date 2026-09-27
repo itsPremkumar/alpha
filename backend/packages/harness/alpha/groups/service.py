@@ -21,7 +21,7 @@ _DEFAULT_GROUPS_DIR = "groups"
 
 
 def _default_storage_path() -> Path:
-    """Resolve rooms.json under the writable runtime home (AGENT_WORKSPACE_HOME-aware)."""
+    """Resolve rooms.json under the writable runtime home (ALPHA_HOME-aware)."""
     try:
         from alpha.config.runtime_paths import runtime_home
 
@@ -202,7 +202,7 @@ _global_groups_path: str | None = None
 
 
 def get_group_chat_service(storage_path: str | Path | None = None) -> GroupChatService:
-    """Return the process-wide group chat service (AGENT_WORKSPACE_HOME-aware).
+    """Return the process-wide group chat service (ALPHA_HOME-aware).
 
     Same stale-path rebuild contract as get_bot_registry: an explicit path
     wins, otherwise the live runtime_home() location is used so import-time

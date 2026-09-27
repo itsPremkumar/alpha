@@ -36,7 +36,7 @@ from alpha.subagents.lifecycle import SubagentContract, SubagentLifecycleManager
 @pytest.fixture(autouse=True)
 def _isolated_runtime_home(tmp_path, monkeypatch):
     """Point every runtime-owned store at a private directory per test."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path / "home"))
     monkeypatch.setattr("alpha.bots.registry._global_registry", None)
     monkeypatch.setattr("alpha.bots.registry._global_registry_path", None)
     project_handoffs._stores.clear()

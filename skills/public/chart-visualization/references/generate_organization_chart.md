@@ -8,8 +8,8 @@ Displays formal hierarchical organizational structures, reporting lines, and dep
 - data: object, hierarchical tree containing employee or departmental nodes.
 
 ### Optional
-- 	heme: string, default default.
-- 	itle: string, org chart title.
+- theme: string, default default.
+- title: string, org chart title.
 
 ## Usage Recommendations
 Include role titles alongside names to clarify departmental hierarchy.

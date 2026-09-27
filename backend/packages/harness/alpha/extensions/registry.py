@@ -12,7 +12,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
 
-from agent_workspace_extension_api import (
+from alpha_extension_api import (
     AgentAssemblyObserver,
     ContextCompactionObserver,
     ExtensionData,
@@ -21,7 +21,7 @@ from agent_workspace_extension_api import (
     SystemModelCallObserver,
     TaskLifecycleContributor,
 )
-from agent_workspace_extension_api import ExtensionRegistry as ExtensionRegistryContract
+from alpha_extension_api import ExtensionRegistry as ExtensionRegistryContract
 
 _Entry = tuple[str, Any]
 

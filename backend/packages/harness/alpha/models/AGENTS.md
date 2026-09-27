@@ -205,7 +205,7 @@ them would retry otherwise. See `_pin_provider_retries_when_orchestrated`.
 
 ## System One / Laya provider boundary
 
-`system_one.provider` is a validated choice between hosted Jev (`vercel-gateway`, `typesafe`) and the self-hosted Apache-2.0 Laya decision model (`laya`). Laya speaks the same `/v1/systemone` wire protocol as TypeSafe Jev (`noul` for boolean questions) but is not a chat model and must not be inserted into the `models[]` catalog. Laya's runtime and weights live under the ignored project-local `.agent-workspace/laya` environment so its PyTorch/Transformers stack is not pulled into Alpha's core lockfile. The client permits keyless loopback Laya, never forwards cloud credentials to it, and abstains before HTTP when state, question count, or choice cardinality exceeds the configured safe budget. Keep the initial local rollout in `shadow_mode`; calibration records are partitioned by provider. Reproducible setup is `make system-one-laya-setup MODEL=english DEVICE=auto` followed by `make system-one-laya-serve` and `make system-one-laya-status`.
+`system_one.provider` is a validated choice between hosted Jev (`vercel-gateway`, `typesafe`) and the self-hosted Apache-2.0 Laya decision model (`laya`). Laya speaks the same `/v1/systemone` wire protocol as TypeSafe Jev (`noul` for boolean questions) but is not a chat model and must not be inserted into the `models[]` catalog. Laya's runtime and weights live under the ignored project-local `.alpha/laya` environment so its PyTorch/Transformers stack is not pulled into Alpha's core lockfile. The client permits keyless loopback Laya, never forwards cloud credentials to it, and abstains before HTTP when state, question count, or choice cardinality exceeds the configured safe budget. Keep the initial local rollout in `shadow_mode`; calibration records are partitioned by provider. Reproducible setup is `make system-one-laya-setup MODEL=english DEVICE=auto` followed by `make system-one-laya-serve` and `make system-one-laya-status`.
 
 ### System One / Laya
 
@@ -213,7 +213,7 @@ The System One client is provider-neutral across hosted Jev and the self-hosted
 Convai Innovations Laya decision model. Laya uses the Jev-compatible
 `/v1/systemone` contract, so it is configured under `system_one`, not `models[]`.
 Its PyTorch runtime/checkpoints are installed under ignored
-`.agent-workspace/laya`; Alpha's core dependency lock does not include the ML
+`.alpha/laya`; Alpha's core dependency lock does not include the ML
 stack. Laya is keyless only on loopback, never receives hosted credentials, and
 abstains before HTTP when its state/question/choice budgets are unsafe. Keep a
 new local provider in `shadow_mode` until its provider-specific calibration is

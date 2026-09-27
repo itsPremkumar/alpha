@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -19,6 +20,32 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 _GLOBAL_PROMOTION_MANAGER: SubagentPromotionManager | None = None
+
+#: A metric-role key and a promoted Bot profile name are both used as *single
+#: filename components* (``subagents/metrics/<role>.json`` and
+#: ``bots/profiles/<name>.json``), and both are supplied by a caller: ``role``
+#: and ``bot_name`` reach this module straight from the model-facing
+#: ``subagent_control`` tool. ``.lower().strip()`` removes neither a path
+#: separator nor ``..``, so ``"../../escaped"`` used to write a file outside the
+#: profile/metrics directory. The component is therefore restricted to a
+#: traversal-free charset that still admits every name this module itself
+#: generates (``bot-postgres-optimizer``) and the conventional Bot names an
+#: operator or model asks for.
+_SAFE_NAME_RE = re.compile(r"[a-z0-9][a-z0-9._-]*")
+
+
+def _safe_name_component(value: str, *, field_name: str) -> str:
+    """Return *value* as one lowercase, traversal-free path component.
+
+    Raises:
+        ValueError: the name is empty, starts with a dot, or contains anything
+            outside ``[a-z0-9._-]`` (which excludes ``/``, ``\\``, ``..`` and
+            every path-ambiguous character on any supported platform).
+    """
+    name = value.lower().strip()
+    if not _SAFE_NAME_RE.fullmatch(name):
+        raise ValueError(f"Invalid {field_name} {value!r}: expected a lowercase name of letters, digits, '-', '_' or '.' with no path separators")
+    return name
 
 
 @dataclass
@@ -68,7 +95,7 @@ class SubagentPromotionManager:
         if storage_dir:
             self.storage_dir = Path(storage_dir)
         else:
-            base = os.environ.get("AGENT_WORKSPACE_HOME", "~/.agent-workspace")
+            base = os.environ.get("ALPHA_HOME", "~/.alpha")
             self.storage_dir = Path(os.path.expanduser(base)) / "subagents" / "metrics"
 
         self.storage_dir.mkdir(parents=True, exist_ok=True)
@@ -96,8 +123,15 @@ class SubagentPromotionManager:
         skills: list[str] | None = None,
         tools: list[str] | None = None,
     ) -> SubagentRoleMetric:
-        """Records an execution outcome for a subagent role archetype."""
-        role_key = role.lower().strip()
+        """Records an execution outcome for a subagent role archetype.
+
+        Raises:
+            ValueError: *role* is not usable as a metric filename component
+                (see :func:`_safe_name_component`). The role is the
+                ``subagents/metrics/<role>.json`` filename, so an unvalidated
+                value would let a caller write outside the metrics directory.
+        """
+        role_key = _safe_name_component(role, field_name="role")
         if role_key not in self._metrics:
             self._metrics[role_key] = SubagentRoleMetric(role=role_key)
 
@@ -132,7 +166,12 @@ class SubagentPromotionManager:
         m = self._metrics.get(role_key)
         if not m:
             return
-        target = self.storage_dir / f"{role_key}.json"
+        # Defense in depth: ``role_key`` is validated at its entry points, and
+        # this re-checks that the joined path is still a plain child of the
+        # metrics directory before anything is written.
+        target = self.storage_dir / f"{_safe_name_component(role_key, field_name='role')}.json"
+        if target.parent.resolve() != self.storage_dir.resolve():
+            raise ValueError(f"Refusing to write subagent metric outside {self.storage_dir}")
         try:
             with open(target, "w", encoding="utf-8") as fp:
                 json.dump(m.to_dict(), fp, indent=2)
@@ -141,7 +180,7 @@ class SubagentPromotionManager:
 
     def check_promotion_eligibility(self, role: str) -> tuple[bool, dict[str, Any]]:
         """Checks if a role qualifies for promotion to a permanent Specialist Bot."""
-        role_key = role.lower().strip()
+        role_key = _safe_name_component(role, field_name="role")
         m = self._metrics.get(role_key)
         if not m:
             return False, {"reason": f"Role '{role}' has no recorded executions."}
@@ -172,21 +211,31 @@ class SubagentPromotionManager:
         display_name: str | None = None,
         description: str | None = None,
     ) -> dict[str, Any]:
-        """Materializes the subagent role into a permanent Specialist Bot definition."""
-        role_key = role.lower().strip()
+        """Materializes the subagent role into a permanent Specialist Bot definition.
+
+        The persisted profile's own history line reports ``success_count``, not
+        ``total_executions``: the latter includes every failed execution, so
+        quoting it as *"successful task executions"* overstated the track
+        record of any role promoted below 100% reliability (a role can be
+        promoted at 0.80, i.e. one failure in five).
+
+        Raises:
+            ValueError: *role* or *bot_name* is not usable as a filename
+                component (see :func:`_safe_name_component`).
+        """
+        role_key = _safe_name_component(role, field_name="role")
         m = self._metrics.get(role_key)
 
-        clean_name = (bot_name or f"bot-{role_key.replace('_', '-')}").lower().strip()
+        total_executions = m.total_executions if m is not None else 0
+        successful_executions = m.success_count if m is not None else 0
+        failed_executions = m.failure_count if m is not None else 0
+        history = f"{successful_executions} successful task executions out of {total_executions} recorded ({successful_executions}/{total_executions})" if total_executions else "no recorded executions"
+
+        clean_name = _safe_name_component(bot_name, field_name="bot_name") if bot_name else f"bot-{role_key.replace('_', '-')}"
         clean_display = display_name or f"{role.replace('_', ' ').title()} Bot"
         clean_desc = description or f"Promoted permanent Specialist Bot specializing in {role} operations."
 
-        system_prompt = (
-            f"You are {clean_display}, a permanent Specialist Bot.\n"
-            f"Role: {role}\n"
-            f"Description: {clean_desc}\n\n"
-            f"Historical background: Promoted from an autonomous subagent with "
-            f"{m.total_executions if m else 0} successful task executions."
-        )
+        system_prompt = f"You are {clean_display}, a permanent Specialist Bot.\nRole: {role}\nDescription: {clean_desc}\n\nHistorical background: Promoted from an autonomous subagent with {history}."
 
         bot_profile = {
             "name": clean_name,
@@ -197,14 +246,22 @@ class SubagentPromotionManager:
             "skills": m.common_skills if m else [],
             "tools": m.common_tools if m else [],
             "origin": "promoted_subagent",
+            "total_executions": total_executions,
+            "successful_executions": successful_executions,
+            "failed_executions": failed_executions,
             "promoted_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         }
 
         # Persist to permanent bots directory if configured
-        base = os.environ.get("AGENT_WORKSPACE_HOME", "~/.agent-workspace")
+        base = os.environ.get("ALPHA_HOME", "~/.alpha")
         bots_dir = Path(os.path.expanduser(base)) / "bots" / "profiles"
         bots_dir.mkdir(parents=True, exist_ok=True)
         bot_file = bots_dir / f"{clean_name}.json"
+        # Defense in depth: ``clean_name`` is already a validated component, so
+        # this can only fail if a name slipped past the guard above. Refuse
+        # rather than write outside the profile directory.
+        if bot_file.parent.resolve() != bots_dir.resolve():
+            raise ValueError(f"Invalid bot_name {bot_name!r}: refusing to write a profile outside {bots_dir}")
         try:
             with open(bot_file, "w", encoding="utf-8") as fp:
                 json.dump(bot_profile, fp, indent=2)

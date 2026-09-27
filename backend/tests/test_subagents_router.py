@@ -22,7 +22,7 @@ def _request(role: str):
 
 @pytest.fixture(autouse=True)
 def _environment(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     monkeypatch.setattr("alpha.config.paths._paths", None)
     set_app_config(AppConfig(sandbox=SandboxConfig(use="alpha.sandbox.local:LocalSandboxProvider")))
     store = FileManagedSubagentStore()

@@ -60,8 +60,8 @@ tests/
 electron/
 .workbuddy-ai/
 .agent/
-.agent_workspace_projects/
-backend/.agent_workspace_projects/
+.alpha_projects/
+backend/.alpha_projects/
 
 # Exclude directories not needed in Docker context
 # Frontend build only needs frontend/
@@ -81,7 +81,7 @@ backend/.coverage
 # sqlite database, per-user uploads and the JWT secret into the image and breaks
 # the build outright once the app has created directories owned by the container's
 # root that the build client cannot read.
-**/.agent-workspace/
+**/.alpha/
 backend/sandbox/
 *.md
 !README.md

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from agent_workspace_extension_api import AgentScope, MiddlewarePlacement, Placement
+from alpha_extension_api import AgentScope, MiddlewarePlacement, Placement
 from langchain.agents.middleware import AgentMiddleware
 
 from alpha.agents.lead_agent.agent import build_middlewares
@@ -85,7 +85,7 @@ def test_zero_extensions_skip_policy_projection(monkeypatch):
 
 
 def test_zero_extension_composition_reuses_the_built_stack():
-    from agent_workspace_extension_api import AgentBuildContext
+    from alpha_extension_api import AgentBuildContext
 
     from alpha.extensions.stack import compose_with_extensions
 

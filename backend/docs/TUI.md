@@ -1,7 +1,7 @@
 # Alpha Terminal Workbench (TUI)
 
 `alpha` is a terminal-native workbench for the Alpha harness. It runs
-**embedded** over `AgentWorkspaceClient` — no Gateway, frontend, nginx, or Docker
+**embedded** over `AlphaClient` — no Gateway, frontend, nginx, or Docker
 services required — while honoring the same `config.yaml`, checkpointer, skills,
 memory, MCP, and sandbox settings as the rest of Alpha.
 
@@ -12,7 +12,7 @@ memory, MCP, and sandbox settings as the rest of Alpha.
 The TUI ships as an optional extra so the core harness install stays lean:
 
 ```bash
-uv pip install 'agent-workspace-harness[tui]'    # or: pip install textual
+uv pip install 'alpha-harness[tui]'    # or: pip install textual
 ```
 
 Launch modes:
@@ -30,8 +30,8 @@ Launch modes:
 | `alpha --json "question"` | Headless newline-delimited `StreamEvent`s |
 | `alpha --recursion-limit 250 --print "question"` | Set the headless agent-loop super-step limit |
 | `echo "q" \| alpha --print` | Read the message from stdin |
-| `AGENT_WORKSPACE_TUI=1 alpha` | Force the TUI via environment |
-| `AGENT_WORKSPACE_TUI_TRANSPARENT=1 alpha` | Persist terminal-background rendering via environment |
+| `ALPHA_TUI=1 alpha` | Force the TUI via environment |
+| `ALPHA_TUI_TRANSPARENT=1 alpha` | Persist terminal-background rendering via environment |
 
 If no TTY is available and no headless flag is given, `alpha` prints guidance
 instead of hanging.
@@ -98,7 +98,7 @@ agent behavior.
 
 ```
 cli.py          launch-mode planning (pure) + headless print/json + entry point
-session.py      builds AgentWorkspaceClient (+ checkpointer) and the persistence writer
+session.py      builds AlphaClient (+ checkpointer) and the persistence writer
 runtime.py      StreamEvent  ->  reducer actions  (pure translate + threaded driver)
 view_state.py   ViewState + reduce(state, action)  (pure, the testable heart)
 message_format  compact tool summaries / truncation (pure)
@@ -111,7 +111,7 @@ app.py          Textual App: composes widgets, drives runs on a worker thread,
 persistence.py  writes threads_meta so sessions appear in the Web UI (below)
 ```
 
-`AgentWorkspaceClient.stream()` is a **synchronous** generator, so the app runs it on a
+`AlphaClient.stream()` is a **synchronous** generator, so the app runs it on a
 Textual worker *thread* and marshals each yielded action back to the UI thread
 via `call_from_thread`. The pure layers (everything except `app.py`) have no
 Textual dependency and are unit-tested directly with synthetic `StreamEvent`s.

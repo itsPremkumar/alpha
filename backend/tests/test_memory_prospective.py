@@ -391,7 +391,7 @@ def test_config_override_loader_uses_runtime_home(tmp_path: Path, monkeypatch: p
         "enabled: true\nmax_surfaced_per_recall: 4\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(home))
+    monkeypatch.setenv("ALPHA_HOME", str(home))
 
     config = load_prospective_config()
 

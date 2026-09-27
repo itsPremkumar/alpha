@@ -30,23 +30,23 @@ class TestLocalSandboxEnvInjection:
     def test_injected_env_visible_to_command(self):
         sandbox = LocalSandbox(id="local")
         out = sandbox.execute_command(
-            "echo $AGENT_WORKSPACE_TEST_SECRET",
-            env={"AGENT_WORKSPACE_TEST_SECRET": "s3cret-value"},
+            "echo $ALPHA_TEST_SECRET",
+            env={"ALPHA_TEST_SECRET": "s3cret-value"},
         )
         assert "s3cret-value" in out
 
     def test_env_none_keeps_inherited_environment(self, monkeypatch):
         """env=None preserves the legacy inherited-os.environ behaviour."""
-        monkeypatch.setenv("AGENT_WORKSPACE_INHERITED_VAR", "inherited-value")
+        monkeypatch.setenv("ALPHA_INHERITED_VAR", "inherited-value")
         sandbox = LocalSandbox(id="local")
-        out = sandbox.execute_command("echo $AGENT_WORKSPACE_INHERITED_VAR")
+        out = sandbox.execute_command("echo $ALPHA_INHERITED_VAR")
         assert "inherited-value" in out
 
     def test_injected_env_is_per_call_only(self):
         """Injected env must not leak into a subsequent call that does not pass it."""
         sandbox = LocalSandbox(id="local")
-        sandbox.execute_command("true", env={"AGENT_WORKSPACE_EPHEMERAL": "leaky"})
-        out = sandbox.execute_command("echo [$AGENT_WORKSPACE_EPHEMERAL]")
+        sandbox.execute_command("true", env={"ALPHA_EPHEMERAL": "leaky"})
+        out = sandbox.execute_command("echo [$ALPHA_EPHEMERAL]")
         assert "leaky" not in out
 
     def test_platform_secret_scrubbed_from_inherited_env(self, monkeypatch):
@@ -60,9 +60,9 @@ class TestLocalSandboxEnvInjection:
 
     def test_benign_env_still_inherited_after_scrub(self, monkeypatch):
         """Scrubbing platform secrets must not strip harmless vars that skills rely on."""
-        monkeypatch.setenv("AGENT_WORKSPACE_PLAIN_VAR", "harmless-value")
+        monkeypatch.setenv("ALPHA_PLAIN_VAR", "harmless-value")
         sandbox = LocalSandbox(id="local")
-        out = sandbox.execute_command("echo [$AGENT_WORKSPACE_PLAIN_VAR]")
+        out = sandbox.execute_command("echo [$ALPHA_PLAIN_VAR]")
         assert "harmless-value" in out
 
     def test_injected_secret_survives_scrub(self, monkeypatch):
@@ -218,7 +218,7 @@ class TestEnvPolicy:
             "TMPDIR",
             "VIRTUAL_ENV",
             "PYTHONPATH",
-            "AGENT_WORKSPACE_PLAIN_VAR",
+            "ALPHA_PLAIN_VAR",
             # Not a blanket *URL* block: a benign service URL a skill may legitimately
             # read is not treated as a credential.
             "NEXT_PUBLIC_BASE_URL",

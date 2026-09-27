@@ -10,9 +10,9 @@ odes: array<object>, list of step identifiers and labels.
 - edges: array<object>, transitions connecting source and target nodes.
 
 ### Optional
-- 	heme: string, default default.
+- theme: string, default default.
 - direction: string, TB (top-to-bottom) or LR (left-to-right).
-- 	itle: string, flowchart title.
+- title: string, flowchart title.
 
 ## Usage Recommendations
 Maintain clear directional flow without circular deadlocks.

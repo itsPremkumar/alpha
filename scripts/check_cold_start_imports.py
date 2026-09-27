@@ -91,7 +91,7 @@ EXIT_ERROR = 2
 #: an ``alpha``/``app`` directory (the extension API ships as an installed
 #: workspace distribution). Overriding the default keeps them out of the
 #: third-party allowlist, where they would be indistinguishable from ``numpy``.
-DEFAULT_FIRST_PARTY_ROOTS = ("alpha", "app", "agent_workspace_extension_api")
+DEFAULT_FIRST_PARTY_ROOTS = ("alpha", "app", "alpha_extension_api")
 
 
 class GateError(RuntimeError):

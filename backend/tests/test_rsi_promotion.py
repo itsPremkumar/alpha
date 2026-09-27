@@ -22,7 +22,7 @@ Honesty pins (plan §3 WP-C2 C2c assignment + §5 guardrails):
 - ``simulated`` never gates and ``unverified`` is a disclosed 0.5-neutral,
   never a pass — on the lineage record and in the bundle evidence kinds;
 - the positive path composes REAL modules end-to-end under a tmp
-  ``AGENT_WORKSPACE_HOME``: real measured holdout execution, real bundle
+  ``ALPHA_HOME``: real measured holdout execution, real bundle
   finalization + sha256 verification, real approval-queue human approval,
   real engine promotion (ledger event asserted);
 - generated decision output contains no invented confidence/score/rating
@@ -86,13 +86,13 @@ BASELINE = {"passed": 5, "failed": 0}
 
 @pytest.fixture(autouse=True)
 def isolated_workspace(tmp_path, monkeypatch):
-    """Temp AGENT_WORKSPACE_HOME + a fresh REAL evolution engine per test.
+    """Temp ALPHA_HOME + a fresh REAL evolution engine per test.
 
     The ``_engine = None`` reset is singleton STATE hygiene (so each test's
     ``get_evolution_engine()`` constructs a real engine bound to its own tmp
     home), restored automatically by monkeypatch — no gate is ever stubbed.
     """
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     monkeypatch.setattr(evolution_engine_module, "_engine", None)
     return tmp_path
 
@@ -411,7 +411,7 @@ def test_decide_promotion_entry_composes_through_the_evolution_surface():
 
 
 # ---------------------------------------------------------------------------
-# Positive path: REAL modules end-to-end under a tmp AGENT_WORKSPACE_HOME
+# Positive path: REAL modules end-to-end under a tmp ALPHA_HOME
 # ---------------------------------------------------------------------------
 
 

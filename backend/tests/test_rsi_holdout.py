@@ -37,7 +37,7 @@ UNVERIFIED_REASON = "holdout unverified — cannot gate on unverified evidence"
 @pytest.fixture(autouse=True)
 def isolated_workspace(tmp_path, monkeypatch):
     """Keep runtime_home() inside a temp dir (the env does not isolate it)."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
 
 
 def healthy_view() -> dict:

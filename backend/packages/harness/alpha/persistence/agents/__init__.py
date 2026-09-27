@@ -64,7 +64,7 @@ def get_agent_store() -> AgentStore:
     Defaults to the file backend only when search mode cannot find the main app
     config — the free functions in ``agents_config`` must keep working in
     lightweight contexts (CLI, tests, tools) that never load a full
-    ``config.yaml``. A missing explicit ``AGENT_WORKSPACE_CONFIG_PATH`` or a missing
+    ``config.yaml``. A missing explicit ``ALPHA_CONFIG_PATH`` or a missing
     nested config is an operator error and propagates instead of falling back.
     Only an explicit ``agent_storage.backend: db`` diverges from the file
     default once configuration resolves successfully.
@@ -85,7 +85,7 @@ def get_agent_store() -> AgentStore:
     try:
         config = get_app_config()
     except FileNotFoundError:
-        if os.getenv("AGENT_WORKSPACE_CONFIG_PATH"):
+        if os.getenv("ALPHA_CONFIG_PATH"):
             raise
         # ``get_app_config()`` also loads optional nested config files. Only
         # fall back when the main config itself is absent.

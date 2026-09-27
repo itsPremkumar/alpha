@@ -35,7 +35,7 @@ from app.gateway.routers.memory import SemanticBeliefCreateRequest
 @pytest.fixture(autouse=True)
 def _isolated_workspace(tmp_path, monkeypatch):
     """Keep any incidental workspace I/O inside a temp dir."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
 
 
 # --- 1. Request-model defaults: neutral 0.5, disclosed ----------------------

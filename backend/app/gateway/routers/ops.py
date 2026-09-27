@@ -6,8 +6,8 @@ deploy verification, dashboards, and monitoring gates beyond ``/health`` and
 ``/health/ready`` (which stay public for orchestrator probes).
 
 * ``GET /api/ops/version`` - service name plus the installed
-  ``agent-workspace-harness`` package version (the dist that carries the
-  release version; legacy ``alpha`` / ``agent-workspace`` names are tried as
+  ``alpha-harness`` package version (the dist that carries the
+  release version; legacy ``alpha`` / ``alpha`` names are tried as
   fallbacks, and ``"unknown"`` when package metadata is unavailable, e.g. an
   unpackaged source checkout).
 * ``GET /api/ops/status`` - liveness plus process uptime, current UTC time,
@@ -48,11 +48,11 @@ _PROCESS_START_MONOTONIC = time.monotonic()
 def _resolve_gateway_version() -> str:
     """Return the installed harness package version, or "unknown" without metadata.
 
-    ``agent-workspace-harness`` is the installed dist carrying the release
+    ``alpha-harness`` is the installed dist carrying the release
     version (kept in lockstep by scripts/bump_version.sh); the legacy names
     remain as fallbacks for older installs.
     """
-    for name in ("agent-workspace-harness", "alpha", "agent-workspace"):
+    for name in ("alpha-harness", "alpha", "alpha"):
         try:
             return metadata.version(name)
         except metadata.PackageNotFoundError:
@@ -64,7 +64,7 @@ class VersionResponse(BaseModel):
     """Deployed Gateway build identity."""
 
     service: str = Field(..., description="Gateway service name")
-    version: str = Field(..., description='Installed agent-workspace-harness version (legacy alpha/agent-workspace fallback), or "unknown" without package metadata')
+    version: str = Field(..., description='Installed alpha-harness version (legacy alpha/alpha fallback), or "unknown" without package metadata')
 
 
 class StatusResponse(BaseModel):
@@ -85,7 +85,7 @@ class StatusResponse(BaseModel):
 )
 async def ops_version() -> VersionResponse:
     """Return the deployed Gateway build identity."""
-    return VersionResponse(service="agent-workspace-gateway", version=_resolve_gateway_version())
+    return VersionResponse(service="alpha-gateway", version=_resolve_gateway_version())
 
 
 @router.get(
@@ -97,7 +97,7 @@ async def ops_version() -> VersionResponse:
 async def ops_status() -> StatusResponse:
     """Return Gateway runtime status."""
     return StatusResponse(
-        service="agent-workspace-gateway",
+        service="alpha-gateway",
         status="ok",
         uptime_seconds=int(time.monotonic() - _PROCESS_START_MONOTONIC),
         time_utc=datetime.now(UTC).isoformat(),

@@ -1,6 +1,6 @@
 """Alpha's extension mechanism (host side).
 
-The public contracts live in the separate `agent-workspace-extension-api` package;
+The public contracts live in the separate `alpha-extension-api` package;
 this module implements loading, registration, middleware injection and the
 hook-site plumbing.
 """
@@ -28,11 +28,11 @@ from alpha.extensions.registry import EMPTY_EXTENSIONS, ExtensionRegistry, Loade
 #: context is how the run reaches that later code. The double-underscore prefix
 #: marks it as host-internal: the Gateway strips caller-supplied ``__`` keys,
 #: and this snapshot is never part of the public extension contract.
-EXTENSION_SNAPSHOT_CONTEXT_KEY = "__agent_workspace_extension_snapshot"
+EXTENSION_SNAPSHOT_CONTEXT_KEY = "__alpha_extension_snapshot"
 
 _loaded: LoadedExtensions = EMPTY_EXTENSIONS
 _agent_build_extensions: ContextVar[LoadedExtensions | None] = ContextVar(
-    "agent_workspace_agent_build_extensions",
+    "alpha_agent_build_extensions",
     default=None,
 )
 

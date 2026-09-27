@@ -1,1 +1,1 @@
-"""Alpha terminal workbench (TUI), embedded over AgentWorkspaceClient."""
+"""Alpha terminal workbench (TUI), embedded over AlphaClient."""

@@ -311,7 +311,7 @@ contract.
     "directories": [
       "skills/public",
       "skills/custom",
-      ".agent-workspace/integrations/skills"
+      ".alpha/integrations/skills"
     ]
   }
 }
@@ -502,7 +502,7 @@ system_one:
 ```
 
 Laya uses the same `/v1/systemone` contract as Jev. Its weights and PyTorch runtime
-are stored under the ignored `.agent-workspace/laya` directory, so normal Alpha
+are stored under the ignored `.alpha/laya` directory, so normal Alpha
 installs do not download them. A keyless Laya URL must resolve to loopback. If the
 server is exposed beyond loopback, set `LAYA_API_KEY` in both the server environment
 and `system_one.api_key`; hosted credentials are never forwarded to Laya.

@@ -208,7 +208,7 @@ def test_build_subagent_runtime_middlewares_threads_app_config_to_llm_middleware
     assert isinstance(middlewares[1], ToolOutputBudgetMiddleware)
     assert any(isinstance(m, ToolErrorHandlingMiddleware) for m in middlewares)
     # The receipt layer wraps ToolErrorHandlingMiddleware so receipts read the
-    # agent_workspace_tool_meta status it stamps (guard-enforced, like ToolProgress).
+    # alpha_tool_meta status it stamps (guard-enforced, like ToolProgress).
     receipt_idx = next(i for i, m in enumerate(middlewares) if isinstance(m, ToolReceiptMiddleware))
     error_idx = next(i for i, m in enumerate(middlewares) if isinstance(m, ToolErrorHandlingMiddleware))
     assert receipt_idx < error_idx
@@ -247,7 +247,7 @@ def test_subagent_runtime_sandbox_does_not_own_lead_skill_projection() -> None:
 def test_tool_progress_middleware_is_outer_relative_to_error_handling(monkeypatch: pytest.MonkeyPatch):
     # ToolProgressMiddleware must have a lower index than ToolErrorHandlingMiddleware
     # so that the framework's "first in list = outermost" rule makes it outer.
-    # Only then can it read agent_workspace_tool_meta stamped by ToolErrorHandlingMiddleware.
+    # Only then can it read alpha_tool_meta stamped by ToolErrorHandlingMiddleware.
     from alpha.agents.middlewares.tool_progress_middleware import ToolProgressMiddleware
     from alpha.config.tool_progress_config import ToolProgressConfig
 
@@ -881,7 +881,7 @@ def test_subagent_compaction_injects_summary_before_assistant_tool_tail(monkeypa
     from langchain_core.outputs import ChatGeneration, ChatResult
 
     from alpha.agents.middlewares.durable_context_middleware import DurableContextMiddleware
-    from alpha.agents.middlewares.summarization_middleware import AgentWorkspaceSummarizationMiddleware
+    from alpha.agents.middlewares.summarization_middleware import AlphaSummarizationMiddleware
     from alpha.agents.middlewares.system_message_coalescing_middleware import SystemMessageCoalescingMiddleware
     from alpha.agents.thread_state import ThreadState
     from alpha.config.summarization_config import ContextSize, SummarizationConfig
@@ -933,7 +933,7 @@ def test_subagent_compaction_injects_summary_before_assistant_tool_tail(monkeypa
         model_name="test-model",
         agent_name="general-purpose",
     )
-    compaction_middlewares = [middleware for middleware in runtime_middlewares if isinstance(middleware, (DurableContextMiddleware, AgentWorkspaceSummarizationMiddleware, SystemMessageCoalescingMiddleware))]
+    compaction_middlewares = [middleware for middleware in runtime_middlewares if isinstance(middleware, (DurableContextMiddleware, AlphaSummarizationMiddleware, SystemMessageCoalescingMiddleware))]
     agent = create_agent(
         model=strict_model,
         tools=[],
@@ -1108,14 +1108,14 @@ def test_subagent_runtime_middlewares_omit_summarization_when_factory_returns_no
     """When ``summarization.enabled`` is False the shared factory returns None and
     the subagent chain must NOT carry a summarization middleware — the default
     state, since SummarizationConfig.enabled defaults to False."""
-    from alpha.agents.middlewares.summarization_middleware import AgentWorkspaceSummarizationMiddleware
+    from alpha.agents.middlewares.summarization_middleware import AlphaSummarizationMiddleware
 
     app_config = _make_app_config()  # summarization.enabled defaults to False
     _stub_runtime_middleware_imports(monkeypatch)
 
     middlewares = build_subagent_runtime_middlewares(app_config=app_config, model_name="test-model")
 
-    assert not any(isinstance(m, AgentWorkspaceSummarizationMiddleware) for m in middlewares)
+    assert not any(isinstance(m, AlphaSummarizationMiddleware) for m in middlewares)
 
 
 def test_lead_runtime_chain_finds_historical_uploads_under_lazy_init_false(tmp_path, monkeypatch):
@@ -1174,7 +1174,7 @@ def test_lead_runtime_chain_finds_historical_uploads_under_lazy_init_false(tmp_p
 
 def test_subagent_summarization_fires_mid_run_and_produces_usable_result(monkeypatch):
     """Integration coverage for #3875 Phase 3 review gap: drive the REAL
-    ``AgentWorkspaceSummarizationMiddleware`` (the exact instance the subagent chain
+    ``AlphaSummarizationMiddleware`` (the exact instance the subagent chain
     gets via ``create_summarization_middleware(skip_memory_flush=True)``) through
     a ``create_agent`` run, and assert that (a) compaction actually fires mid-run
     (messages channel contracts via ``RemoveMessage``) and (b) the run still
@@ -1191,7 +1191,7 @@ def test_subagent_summarization_fires_mid_run_and_produces_usable_result(monkeyp
     from langchain_core.outputs import ChatGeneration, ChatResult
 
     from alpha.agents.middlewares.summarization_middleware import (
-        AgentWorkspaceSummarizationMiddleware,
+        AlphaSummarizationMiddleware,
         create_summarization_middleware,
     )
     from alpha.agents.thread_state import ThreadState
@@ -1236,7 +1236,7 @@ def test_subagent_summarization_fires_mid_run_and_produces_usable_result(monkeyp
         app_config=app_config,
         skip_memory_flush=True,
     )
-    assert isinstance(middleware, AgentWorkspaceSummarizationMiddleware), "the real middleware must be built"
+    assert isinstance(middleware, AlphaSummarizationMiddleware), "the real middleware must be built"
     # Subagent invariant: skip_memory_flush means no durable-memory hook.
     assert not middleware._before_summarization_hooks
 
@@ -1259,9 +1259,9 @@ def test_subagent_summarization_fires_mid_run_and_produces_usable_result(monkeyp
     chunks = list(agent.stream({"messages": seed}, stream_mode="updates"))
 
     # (a) Compaction fired: the middleware's before_model emitted a summary + RemoveMessage.
-    before_model_chunks = [c for c in chunks if "AgentWorkspaceSummarizationMiddleware.before_model" in c]
+    before_model_chunks = [c for c in chunks if "AlphaSummarizationMiddleware.before_model" in c]
     assert before_model_chunks, "summarization before_model must fire when messages exceed the trigger"
-    summary_update = before_model_chunks[0]["AgentWorkspaceSummarizationMiddleware.before_model"]
+    summary_update = before_model_chunks[0]["AlphaSummarizationMiddleware.before_model"]
     assert summary_update.get("summary_text"), "a summary must be produced"
     emitted = summary_update["messages"]
     assert isinstance(emitted[0], RemoveMessage), "compaction must lead with RemoveMessage"

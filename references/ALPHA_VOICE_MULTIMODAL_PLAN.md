@@ -239,7 +239,7 @@ cd backend
 cd ../frontend  → tsc --noEmit (must stay clean) + node --test src/lib/voice.test.mjs
 ```
 
-Tests isolate `AGENT_WORKSPACE_HOME` to a temp dir (the test env does NOT isolate it).
+Tests isolate `ALPHA_HOME` to a temp dir (the test env does NOT isolate it).
 
 **Install attempt (allowed, results reported honestly per package):**
 

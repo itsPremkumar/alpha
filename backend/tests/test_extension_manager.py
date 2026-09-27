@@ -27,14 +27,14 @@ from alpha.extensions.manager import (
     _validate_locked_local_sources,
     _validate_remote_source,
 )
-from alpha.tui.cli import main as agent_workspace_main
+from alpha.tui.cli import main as alpha_main
 
 
 def _write_local_extension(
     source: Path,
     *,
     with_entry_point: bool = True,
-    distribution: str = "agent-workspace-extension-demo",
+    distribution: str = "alpha-extension-demo",
     entry_target: str = "demo_extension:install",
 ) -> None:
     package = source / "demo_extension"
@@ -168,14 +168,14 @@ def _assert_demo_entry_point_loads(backend: Path) -> None:
 
 def _write_demo_wheel(directory: Path, *, version: str = "1.0.0", marker: str | None = None) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
-    wheel = directory / f"agent_workspace_extension_demo-{version}-py3-none-any.whl"
-    dist_info = f"agent_workspace_extension_demo-{version}.dist-info"
+    wheel = directory / f"alpha_extension_demo-{version}-py3-none-any.whl"
+    dist_info = f"alpha_extension_demo-{version}.dist-info"
     init = "def install(registry, config):\n    return None\n"
     if marker is not None:
         init = f"MARKER = {marker!r}\n{init}"
     records = {
         "demo_extension/__init__.py": init,
-        f"{dist_info}/METADATA": (f"Metadata-Version: 2.1\nName: agent-workspace-extension-demo\nVersion: {version}\nRequires-Python: >=3.12\n"),
+        f"{dist_info}/METADATA": (f"Metadata-Version: 2.1\nName: alpha-extension-demo\nVersion: {version}\nRequires-Python: >=3.12\n"),
         f"{dist_info}/WHEEL": ("Wheel-Version: 1.0\nGenerator: alpha-extension-test\nRoot-Is-Purelib: true\nTag: py3-none-any\n"),
         f"{dist_info}/entry_points.txt": ("[alpha.extensions]\ndemo = demo_extension:install\n"),
     }
@@ -187,7 +187,7 @@ def _write_demo_wheel(directory: Path, *, version: str = "1.0.0", marker: str | 
 
 
 def test_install_local_directory_makes_it_deployable_and_enabled(tmp_path: Path) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
@@ -197,21 +197,21 @@ def test_install_local_directory_makes_it_deployable_and_enabled(tmp_path: Path)
     result = ExtensionManager(root).install(str(source), yes=True)
 
     assert result.name == "demo"
-    assert result.distribution == "agent-workspace-extension-demo"
+    assert result.distribution == "alpha-extension-demo"
     assert result.use == "demo_extension:install"
 
-    managed_source = root / "backend" / "extensions" / "sources" / "agent-workspace-extension-demo"
+    managed_source = root / "backend" / "extensions" / "sources" / "alpha-extension-demo"
     assert (managed_source / "demo_extension" / "__init__.py").is_file()
     project = tomllib.loads((root / "backend" / "pyproject.toml").read_text(encoding="utf-8"))
-    assert project["dependency-groups"]["extensions"] == ["agent-workspace-extension-demo"]
-    assert project["tool"]["uv"]["sources"]["agent-workspace-extension-demo"] == {"path": "extensions/sources/agent-workspace-extension-demo"}
+    assert project["dependency-groups"]["extensions"] == ["alpha-extension-demo"]
+    assert project["tool"]["uv"]["sources"]["alpha-extension-demo"] == {"path": "extensions/sources/alpha-extension-demo"}
     assert "workspace" not in project["tool"]["uv"]
 
     config = yaml.safe_load((root / "config.yaml").read_text(encoding="utf-8"))
     assert config["plugins"] == [
         {
             "name": "demo",
-            "package": "agent-workspace-extension-demo",
+            "package": "alpha-extension-demo",
             "use": "demo_extension:install",
             "enabled": True,
             "required": False,
@@ -223,7 +223,7 @@ def test_install_local_directory_makes_it_deployable_and_enabled(tmp_path: Path)
 
 
 def test_install_rejects_an_already_snapshotted_local_directory(tmp_path: Path) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
@@ -237,7 +237,7 @@ def test_install_rejects_an_already_snapshotted_local_directory(tmp_path: Path) 
 
 
 def test_upgrade_replaces_local_snapshot_and_preserves_private_config(tmp_path: Path) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
@@ -260,13 +260,13 @@ def test_upgrade_replaces_local_snapshot_and_preserves_private_config(tmp_path: 
     result = manager.upgrade(str(source), yes=True)
 
     assert result.name == "demo"
-    managed = root / "backend" / "extensions" / "sources" / "agent-workspace-extension-demo"
+    managed = root / "backend" / "extensions" / "sources" / "alpha-extension-demo"
     assert "MARKER = 'v2'" in (managed / "demo_extension" / "__init__.py").read_text(encoding="utf-8")
     plugins = yaml.safe_load(config_path.read_text(encoding="utf-8"))["plugins"]
     assert plugins == [
         {
             "name": "demo",
-            "package": "agent-workspace-extension-demo",
+            "package": "alpha-extension-demo",
             "use": "demo_extension:install",
             "enabled": False,
             "required": True,
@@ -277,7 +277,7 @@ def test_upgrade_replaces_local_snapshot_and_preserves_private_config(tmp_path: 
 
 
 def test_failed_upgrade_restores_the_previous_snapshot_and_config(tmp_path: Path) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
@@ -290,7 +290,7 @@ def test_failed_upgrade_restores_the_previous_snapshot_and_config(tmp_path: Path
     config["plugins"][0]["config"] = {"label": "keep-this"}
     original_config = yaml.safe_dump(config, sort_keys=False)
     config_path.write_text(original_config, encoding="utf-8")
-    original_init = (root / "backend" / "extensions" / "sources" / "agent-workspace-extension-demo" / "demo_extension" / "__init__.py").read_text(encoding="utf-8")
+    original_init = (root / "backend" / "extensions" / "sources" / "alpha-extension-demo" / "demo_extension" / "__init__.py").read_text(encoding="utf-8")
     original_pyproject = (root / "backend" / "pyproject.toml").read_bytes()
 
     broken = tmp_path / "broken-source"
@@ -300,7 +300,7 @@ def test_failed_upgrade_restores_the_previous_snapshot_and_config(tmp_path: Path
     with pytest.raises(ValueError, match="could not be loaded"):
         manager.upgrade(str(broken), yes=True)
 
-    managed = root / "backend" / "extensions" / "sources" / "agent-workspace-extension-demo"
+    managed = root / "backend" / "extensions" / "sources" / "alpha-extension-demo"
     assert (managed / "demo_extension" / "__init__.py").read_text(encoding="utf-8") == original_init
     assert (root / "backend" / "pyproject.toml").read_bytes() == original_pyproject
     assert yaml.safe_load(config_path.read_text(encoding="utf-8"))["plugins"][0]["config"] == {"label": "keep-this"}
@@ -308,35 +308,35 @@ def test_failed_upgrade_restores_the_previous_snapshot_and_config(tmp_path: Path
     assert leftover == []
 
 
-def test_agent_workspace_extensions_upgrade_exposes_the_local_replace_flow(
+def test_alpha_extensions_upgrade_exposes_the_local_replace_flow(
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
     _write_host_project(root)
     _write_local_extension(source)
-    monkeypatch.setenv("AGENT_WORKSPACE_PROJECT_ROOT", str(root))
-    assert agent_workspace_main(["extensions", "install", str(source), "--yes"]) == 0
+    monkeypatch.setenv("ALPHA_PROJECT_ROOT", str(root))
+    assert alpha_main(["extensions", "install", str(source), "--yes"]) == 0
     capsys.readouterr()
 
     (source / "demo_extension" / "__init__.py").write_text(
         "MARKER = 'v2'\ndef install(registry, config):\n    return None\n",
         encoding="utf-8",
     )
-    exit_code = agent_workspace_main(["extensions", "upgrade", str(source), "--yes"])
+    exit_code = alpha_main(["extensions", "upgrade", str(source), "--yes"])
 
     assert exit_code == 0
     assert "Upgraded demo" in capsys.readouterr().out
-    managed = root / "backend" / "extensions" / "sources" / "agent-workspace-extension-demo"
+    managed = root / "backend" / "extensions" / "sources" / "alpha-extension-demo"
     assert "MARKER = 'v2'" in (managed / "demo_extension" / "__init__.py").read_text(encoding="utf-8")
 
 
 def test_upgrade_rejects_a_local_source_that_is_not_installed(tmp_path: Path) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
@@ -346,21 +346,21 @@ def test_upgrade_rejects_a_local_source_that_is_not_installed(tmp_path: Path) ->
     with pytest.raises(ValueError, match="not installed"):
         ExtensionManager(root).upgrade(str(source), yes=True)
 
-    assert not (root / "backend" / "extensions" / "sources" / "agent-workspace-extension-demo").exists()
+    assert not (root / "backend" / "extensions" / "sources" / "alpha-extension-demo").exists()
     assert yaml.safe_load((root / "config.yaml").read_text(encoding="utf-8")).get("plugins") is None
 
 
 def test_upgrade_rejects_a_requirement_that_is_not_installed(tmp_path: Path) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     root.mkdir()
     _write_host_project(root)
 
     with pytest.raises(ValueError, match="not installed"):
-        ExtensionManager(root).upgrade("agent-workspace-extension-demo==2.0.0", yes=True)
+        ExtensionManager(root).upgrade("alpha-extension-demo==2.0.0", yes=True)
 
 
 def test_upgrade_rejects_a_git_source_that_is_not_installed(tmp_path: Path) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     root.mkdir()
     _write_host_project(root)
     pyproject = root / "backend" / "pyproject.toml"
@@ -368,7 +368,7 @@ def test_upgrade_rejects_a_git_source_that_is_not_installed(tmp_path: Path) -> N
 
     with pytest.raises(ValueError, match="not installed"):
         ExtensionManager(root).upgrade(
-            "git+https://github.com/acme/agent-workspace-extension-demo.git@main",
+            "git+https://github.com/acme/alpha-extension-demo.git@main",
             yes=True,
         )
 
@@ -377,7 +377,7 @@ def test_upgrade_rejects_a_git_source_that_is_not_installed(tmp_path: Path) -> N
 
 
 def test_upgrade_repins_an_installed_git_source_and_preserves_private_config(tmp_path: Path) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-git-source"
     root.mkdir()
     source.mkdir()
@@ -437,12 +437,12 @@ def test_upgrade_repins_an_installed_git_source_and_preserves_private_config(tmp
     assert result.name == "demo"
     assert marker == "v2"
     assert second_revision in (root / "backend" / "uv.lock").read_text(encoding="utf-8")
-    assert not (root / "backend" / "extensions" / "sources" / "agent-workspace-extension-demo").exists()
+    assert not (root / "backend" / "extensions" / "sources" / "alpha-extension-demo").exists()
     plugins = yaml.safe_load((root / "config.yaml").read_text(encoding="utf-8"))["plugins"]
     assert plugins == [
         {
             "name": "demo",
-            "package": "agent-workspace-extension-demo",
+            "package": "alpha-extension-demo",
             "use": "demo_extension:install",
             "enabled": False,
             "required": True,
@@ -460,9 +460,9 @@ def test_upgrade_repins_an_installed_requirement_and_preserves_private_config(
     added_names is empty; identification must take the added_specs fallback so
     private config/required/enabled survive the lock re-pin.
     """
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     simple_root = tmp_path / "simple"
-    package_dir = simple_root / "agent-workspace-extension-demo"
+    package_dir = simple_root / "alpha-extension-demo"
     root.mkdir()
     _write_host_project(root)
     _write_demo_wheel(package_dir, version="2.0.0", marker="v2")
@@ -471,8 +471,8 @@ def test_upgrade_repins_an_installed_requirement_and_preserves_private_config(
         """\
 <!DOCTYPE html>
 <html><body>
-<a href="agent_workspace_extension_demo-2.0.0-py3-none-any.whl">agent_workspace_extension_demo-2.0.0-py3-none-any.whl</a>
-<a href="agent_workspace_extension_demo-3.0.0-py3-none-any.whl">agent_workspace_extension_demo-3.0.0-py3-none-any.whl</a>
+<a href="alpha_extension_demo-2.0.0-py3-none-any.whl">alpha_extension_demo-2.0.0-py3-none-any.whl</a>
+<a href="alpha_extension_demo-3.0.0-py3-none-any.whl">alpha_extension_demo-3.0.0-py3-none-any.whl</a>
 </body></html>
 """,
         encoding="utf-8",
@@ -481,7 +481,7 @@ def test_upgrade_repins_an_installed_requirement_and_preserves_private_config(
     with _serve_directory(simple_root) as index_url:
         monkeypatch.setenv("UV_DEFAULT_INDEX", index_url)
         manager = ExtensionManager(root)
-        manager.install("agent-workspace-extension-demo==2.0.0", yes=True)
+        manager.install("alpha-extension-demo==2.0.0", yes=True)
         config_path = root / "config.yaml"
         config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
         config["plugins"][0]["required"] = True
@@ -489,7 +489,7 @@ def test_upgrade_repins_an_installed_requirement_and_preserves_private_config(
         config["plugins"][0]["enabled"] = False
         config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
 
-        result = manager.upgrade("agent-workspace-extension-demo==3.0.0", yes=True)
+        result = manager.upgrade("alpha-extension-demo==3.0.0", yes=True)
 
         _assert_demo_entry_point_loads(root / "backend")
         marker = subprocess.run(
@@ -507,15 +507,15 @@ def test_upgrade_repins_an_installed_requirement_and_preserves_private_config(
     lock = (root / "backend" / "uv.lock").read_text(encoding="utf-8")
     assert result.name == "demo"
     assert marker == "v3"
-    assert "agent-workspace-extension-demo==3.0.0" in pyproject
-    assert "agent-workspace-extension-demo==2.0.0" not in pyproject
-    assert re.search(r'name = "agent-workspace-extension-demo"\s+version = "3.0.0"', lock) is not None
-    assert not (root / "backend" / "extensions" / "sources" / "agent-workspace-extension-demo").exists()
+    assert "alpha-extension-demo==3.0.0" in pyproject
+    assert "alpha-extension-demo==2.0.0" not in pyproject
+    assert re.search(r'name = "alpha-extension-demo"\s+version = "3.0.0"', lock) is not None
+    assert not (root / "backend" / "extensions" / "sources" / "alpha-extension-demo").exists()
     plugins = yaml.safe_load((root / "config.yaml").read_text(encoding="utf-8"))["plugins"]
     assert plugins == [
         {
             "name": "demo",
-            "package": "agent-workspace-extension-demo",
+            "package": "alpha-extension-demo",
             "use": "demo_extension:install",
             "enabled": False,
             "required": True,
@@ -531,7 +531,7 @@ def test_failed_upgrade_leaves_snapshot_when_staging_rename_fails(tmp_path: Path
     that like a failed install would rmtree the original snapshot that was
     never replaced.
     """
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
@@ -543,7 +543,7 @@ def test_failed_upgrade_leaves_snapshot_when_staging_rename_fails(tmp_path: Path
     config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     config["plugins"][0]["config"] = {"label": "keep-this"}
     config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
-    managed = root / "backend" / "extensions" / "sources" / "agent-workspace-extension-demo"
+    managed = root / "backend" / "extensions" / "sources" / "alpha-extension-demo"
     original_init = (managed / "demo_extension" / "__init__.py").read_text(encoding="utf-8")
 
     (source / "demo_extension" / "__init__.py").write_text(
@@ -571,7 +571,7 @@ def test_failed_upgrade_restores_snapshot_when_a_concurrent_dependency_edit_bloc
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
@@ -579,7 +579,7 @@ def test_failed_upgrade_restores_snapshot_when_a_concurrent_dependency_edit_bloc
     _write_local_extension(source)
     manager = ExtensionManager(root)
     manager.install(str(source), yes=True)
-    original_init = (root / "backend" / "extensions" / "sources" / "agent-workspace-extension-demo" / "demo_extension" / "__init__.py").read_text(encoding="utf-8")
+    original_init = (root / "backend" / "extensions" / "sources" / "alpha-extension-demo" / "demo_extension" / "__init__.py").read_text(encoding="utf-8")
     pyproject_path = root / "backend" / "pyproject.toml"
 
     (source / "demo_extension" / "__init__.py").write_text(
@@ -599,7 +599,7 @@ def test_failed_upgrade_restores_snapshot_when_a_concurrent_dependency_edit_bloc
     with pytest.raises(RuntimeError, match="recovery.*dependency"):
         manager.upgrade(str(source), yes=True)
 
-    managed = root / "backend" / "extensions" / "sources" / "agent-workspace-extension-demo"
+    managed = root / "backend" / "extensions" / "sources" / "alpha-extension-demo"
     assert (managed / "demo_extension" / "__init__.py").read_text(encoding="utf-8") == original_init
     assert "# operator edit during upgrade" in pyproject_path.read_text(encoding="utf-8")
     assert list((root / "backend" / "extensions" / "sources").glob(".*.upgrade-*")) == []
@@ -609,7 +609,7 @@ def test_install_defaults_to_a_fail_open_plugin_record(tmp_path: Path) -> None:
     """A managed install must not silently choose the fail-closed side: with
     `required: true`, a later broken extension aborts Gateway startup entirely,
     and recovery needs shell access to run `extensions disable`."""
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
@@ -623,7 +623,7 @@ def test_install_defaults_to_a_fail_open_plugin_record(tmp_path: Path) -> None:
 
 
 def test_install_records_required_when_the_operator_opts_in(tmp_path: Path) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
@@ -637,15 +637,15 @@ def test_install_records_required_when_the_operator_opts_in(tmp_path: Path) -> N
 
 
 def test_cli_install_exposes_the_required_opt_in(tmp_path: Path, monkeypatch, capsys) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
     _write_host_project(root)
     _write_local_extension(source)
-    monkeypatch.setenv("AGENT_WORKSPACE_PROJECT_ROOT", str(root))
+    monkeypatch.setenv("ALPHA_PROJECT_ROOT", str(root))
 
-    assert agent_workspace_main(["extensions", "install", str(source), "--yes", "--required"]) == 0
+    assert alpha_main(["extensions", "install", str(source), "--yes", "--required"]) == 0
 
     capsys.readouterr()
     config = yaml.safe_load((root / "config.yaml").read_text(encoding="utf-8"))
@@ -672,7 +672,7 @@ def test_contended_lock_waits_instead_of_failing() -> None:
 
 
 def test_mutating_operations_are_serialized_for_one_checkout(tmp_path: Path, monkeypatch) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     root.mkdir()
     first_entered = threading.Event()
     release_first = threading.Event()
@@ -702,20 +702,20 @@ def test_mutating_operations_are_serialized_for_one_checkout(tmp_path: Path, mon
     assert second_entered.is_set()
 
 
-def test_agent_workspace_extensions_install_exposes_the_local_install_flow(
+def test_alpha_extensions_install_exposes_the_local_install_flow(
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
     _write_host_project(root)
     _write_local_extension(source)
-    monkeypatch.setenv("AGENT_WORKSPACE_PROJECT_ROOT", str(root))
+    monkeypatch.setenv("ALPHA_PROJECT_ROOT", str(root))
 
-    exit_code = agent_workspace_main(["extensions", "install", str(source), "--yes"])
+    exit_code = alpha_main(["extensions", "install", str(source), "--yes"])
 
     assert exit_code == 0
     assert "Installed and enabled demo" in capsys.readouterr().out
@@ -727,21 +727,21 @@ def test_hidden_source_env_option_reads_the_install_source_outside_the_shell_rec
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
     _write_host_project(root)
     _write_local_extension(source)
-    monkeypatch.setenv("AGENT_WORKSPACE_PROJECT_ROOT", str(root))
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSION_SOURCE", str(source))
+    monkeypatch.setenv("ALPHA_PROJECT_ROOT", str(root))
+    monkeypatch.setenv("ALPHA_EXTENSION_SOURCE", str(source))
 
-    exit_code = agent_workspace_main(
+    exit_code = alpha_main(
         [
             "extensions",
             "install",
             "--source-env",
-            "__agent_workspace_extension_source__",
+            "__alpha_extension_source__",
             "--yes",
         ]
     )
@@ -755,15 +755,15 @@ def test_explicit_invalid_project_root_does_not_fall_back_to_current_checkout(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    monkeypatch.setenv("AGENT_WORKSPACE_PROJECT_ROOT", str(tmp_path / "not-a-checkout"))
+    monkeypatch.setenv("ALPHA_PROJECT_ROOT", str(tmp_path / "not-a-checkout"))
     monkeypatch.chdir(Path(__file__).resolve().parents[2])
 
-    with pytest.raises(FileNotFoundError, match="AGENT_WORKSPACE_PROJECT_ROOT"):
+    with pytest.raises(FileNotFoundError, match="ALPHA_PROJECT_ROOT"):
         find_project_root()
 
 
 def test_install_git_source_discovers_and_enables_its_packaging_entry_point(tmp_path: Path) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-git-source"
     root.mkdir()
     source.mkdir()
@@ -783,10 +783,10 @@ def test_install_git_source_discovers_and_enables_its_packaging_entry_point(tmp_
 
     assert result == result.__class__(
         name="demo",
-        distribution="agent-workspace-extension-demo",
+        distribution="alpha-extension-demo",
         use="demo_extension:install",
     )
-    assert not (root / "backend" / "extensions" / "sources" / "agent-workspace-extension-demo").exists()
+    assert not (root / "backend" / "extensions" / "sources" / "alpha-extension-demo").exists()
     assert revision in (root / "backend" / "uv.lock").read_text(encoding="utf-8")
     config = yaml.safe_load((root / "config.yaml").read_text(encoding="utf-8"))
     assert config["plugins"][0]["name"] == "demo"
@@ -796,7 +796,7 @@ def test_install_rejects_a_pypi_requirement_resolved_from_an_external_local_whee
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     wheels = tmp_path / "wheels"
     root.mkdir()
     _write_host_project(root)
@@ -808,7 +808,7 @@ def test_install_rejects_a_pypi_requirement_resolved_from_an_external_local_whee
     before = (pyproject_path.read_bytes(), config_path.read_bytes())
 
     with pytest.raises(ValueError, match="build context"):
-        ExtensionManager(root).install("agent-workspace-extension-demo==1.0.0", yes=True)
+        ExtensionManager(root).install("alpha-extension-demo==1.0.0", yes=True)
 
     assert (pyproject_path.read_bytes(), config_path.read_bytes()) == before
     assert not (root / "backend" / "uv.lock").exists()
@@ -820,7 +820,7 @@ def test_install_rejects_a_local_wheel_directory_ignored_by_the_docker_context(
     monkeypatch,
     relative_wheels: str,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     root.mkdir()
     _write_host_project(root)
     wheels = root / "backend" / relative_wheels
@@ -833,7 +833,7 @@ def test_install_rejects_a_local_wheel_directory_ignored_by_the_docker_context(
     before = (pyproject_path.read_bytes(), config_path.read_bytes())
 
     with pytest.raises(ValueError, match="build context"):
-        ExtensionManager(root).install("agent-workspace-extension-demo==1.0.0", yes=True)
+        ExtensionManager(root).install("alpha-extension-demo==1.0.0", yes=True)
 
     assert (pyproject_path.read_bytes(), config_path.read_bytes()) == before
     assert not (root / "backend" / "uv.lock").exists()
@@ -843,7 +843,7 @@ def test_install_rejects_a_relative_find_links_wheelhouse_outside_the_build_cont
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     root.mkdir()
     _write_host_project(root)
     _write_demo_wheel(root / "backend" / "wheelhouse")
@@ -857,7 +857,7 @@ def test_install_rejects_a_relative_find_links_wheelhouse_outside_the_build_cont
     before = (pyproject_path.read_bytes(), config_path.read_bytes())
 
     with pytest.raises(ValueError, match="build context"):
-        ExtensionManager(root).install("agent-workspace-extension-demo==1.0.0", yes=True)
+        ExtensionManager(root).install("alpha-extension-demo==1.0.0", yes=True)
 
     assert (pyproject_path.read_bytes(), config_path.read_bytes()) == before
     assert not (root / "backend" / "uv.lock").exists()
@@ -866,7 +866,7 @@ def test_install_rejects_a_relative_find_links_wheelhouse_outside_the_build_cont
 def _write_audit_host(backend: Path) -> None:
     (backend / "packages" / "harness").mkdir(parents=True)
     (backend / "packages" / "extension-api").mkdir(parents=True)
-    (backend / "extensions" / "sources" / "agent-workspace-extension-demo").mkdir(parents=True)
+    (backend / "extensions" / "sources" / "alpha-extension-demo").mkdir(parents=True)
     (backend / "pyproject.toml").write_text(
         '[tool.uv.workspace]\nmembers = ["packages/harness", "packages/extension-api"]\n',
         encoding="utf-8",
@@ -889,22 +889,22 @@ version = "0.0.0"
 source = { virtual = "." }
 
 [package.metadata.requires-dev]
-extensions = [{ name = "agent-workspace-extension-demo", directory = "extensions/sources/agent-workspace-extension-demo" }]
+extensions = [{ name = "alpha-extension-demo", directory = "extensions/sources/alpha-extension-demo" }]
 
 [[package]]
-name = "agent-workspace-harness"
+name = "alpha-harness"
 version = "0.0.0"
 source = { editable = "packages/harness" }
 
 [[package]]
-name = "agent-workspace-extension-api"
+name = "alpha-extension-api"
 version = "0.0.0"
 source = { editable = "packages/extension-api" }
 
 [[package]]
-name = "agent-workspace-extension-demo"
+name = "alpha-extension-demo"
 version = "1.0.0"
-source = { directory = "extensions/sources/agent-workspace-extension-demo" }
+source = { directory = "extensions/sources/alpha-extension-demo" }
 
 [[package]]
 name = "git-extension"
@@ -1083,7 +1083,7 @@ version = "0.0.0"
 source = {{ virtual = "." }}
 
 [[package]]
-name = "agent-workspace-harness"
+name = "alpha-harness"
 version = "0.0.0"
 source = {{ editable = "{workspace_member.as_posix()}" }}
 """,
@@ -1095,7 +1095,7 @@ source = {{ editable = "{workspace_member.as_posix()}" }}
 
 
 def test_file_urls_are_rejected_because_they_cannot_enter_the_docker_build_context(tmp_path: Path) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     root.mkdir()
     _write_host_project(root)
 
@@ -1104,7 +1104,7 @@ def test_file_urls_are_rejected_because_they_cannot_enter_the_docker_build_conte
 
 
 def test_install_rolls_back_when_the_declared_entry_point_cannot_be_imported(tmp_path: Path) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
@@ -1118,23 +1118,23 @@ def test_install_rolls_back_when_the_declared_entry_point_cannot_be_imported(tmp
 
     assert pyproject.read_bytes() == original
     assert not (root / "backend" / "uv.lock").exists()
-    assert not (root / "backend" / "extensions" / "sources" / "agent-workspace-extension-demo").exists()
+    assert not (root / "backend" / "extensions" / "sources" / "alpha-extension-demo").exists()
     assert yaml.safe_load((root / "config.yaml").read_text(encoding="utf-8")).get("plugins") is None
 
 
 @pytest.mark.parametrize(
     "source",
     [
-        "agent-workspace-extension-demo @ ../outside",
-        "../outside/agent-workspace-extension-demo",
-        "agent-workspace-extension-demo @ /outside/demo.whl",
+        "alpha-extension-demo @ ../outside",
+        "../outside/alpha-extension-demo",
+        "alpha-extension-demo @ /outside/demo.whl",
     ],
 )
 def test_relative_or_absolute_direct_paths_must_use_the_managed_directory_snapshot(
     tmp_path: Path,
     source: str,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     root.mkdir()
     _write_host_project(root)
     pyproject = root / "backend" / "pyproject.toml"
@@ -1148,7 +1148,7 @@ def test_relative_or_absolute_direct_paths_must_use_the_managed_directory_snapsh
 
 
 def test_install_preserves_unrelated_config_comments_and_layout(tmp_path: Path) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
@@ -1181,7 +1181,7 @@ database:
 
 
 def test_toggle_preserves_the_next_section_header_and_crlf_style(tmp_path: Path) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     root.mkdir()
     _write_host_project(root)
     config_path = root / "config.yaml"
@@ -1189,7 +1189,7 @@ def test_toggle_preserves_the_next_section_header_and_crlf_style(tmp_path: Path)
         b"config_version: 1\r\n"
         b"plugins:\r\n"
         b"  - name: demo\r\n"
-        b"    package: agent-workspace-extension-demo\r\n"
+        b"    package: alpha-extension-demo\r\n"
         b"    use: demo_extension:install\r\n"
         b"    enabled: true\r\n"
         b"    config:\r\n"
@@ -1211,12 +1211,12 @@ def test_toggle_preserves_the_next_section_header_and_crlf_style(tmp_path: Path)
     assert parsed["plugins"][0]["enabled"] is False
 
 
-def test_agent_workspace_extensions_disable_keeps_the_plugin_configuration(
+def test_alpha_extensions_disable_keeps_the_plugin_configuration(
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     root.mkdir()
     _write_host_project(root)
     config_path = root / "config.yaml"
@@ -1226,7 +1226,7 @@ def test_agent_workspace_extensions_disable_keeps_the_plugin_configuration(
 config_version: 1
 plugins:
   - name: demo
-    package: agent-workspace-extension-demo
+    package: alpha-extension-demo
     use: demo_extension:install
     enabled: true
     required: true
@@ -1235,9 +1235,9 @@ plugins:
 """,
         encoding="utf-8",
     )
-    monkeypatch.setenv("AGENT_WORKSPACE_PROJECT_ROOT", str(root))
+    monkeypatch.setenv("ALPHA_PROJECT_ROOT", str(root))
 
-    exit_code = agent_workspace_main(["extensions", "disable", "demo"])
+    exit_code = alpha_main(["extensions", "disable", "demo"])
 
     assert exit_code == 0
     assert "Disabled demo" in capsys.readouterr().out
@@ -1245,7 +1245,7 @@ plugins:
     assert updated["plugins"] == [
         {
             "name": "demo",
-            "package": "agent-workspace-extension-demo",
+            "package": "alpha-extension-demo",
             "use": "demo_extension:install",
             "enabled": False,
             "required": True,
@@ -1259,23 +1259,23 @@ def test_hidden_name_env_option_reads_the_extension_name_outside_the_shell_recip
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     root.mkdir()
     _write_host_project(root)
     config_path = root / "config.yaml"
     config_path.write_text(
-        "plugins:\n  - name: demo\n    package: agent-workspace-extension-demo\n    use: demo_extension:install\n    enabled: true\n",
+        "plugins:\n  - name: demo\n    package: alpha-extension-demo\n    use: demo_extension:install\n    enabled: true\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("AGENT_WORKSPACE_PROJECT_ROOT", str(root))
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSION_NAME", "demo")
+    monkeypatch.setenv("ALPHA_PROJECT_ROOT", str(root))
+    monkeypatch.setenv("ALPHA_EXTENSION_NAME", "demo")
 
-    exit_code = agent_workspace_main(
+    exit_code = alpha_main(
         [
             "extensions",
             "disable",
             "--name-env",
-            "__agent_workspace_extension_name__",
+            "__alpha_extension_name__",
         ]
     )
 
@@ -1283,12 +1283,12 @@ def test_hidden_name_env_option_reads_the_extension_name_outside_the_shell_recip
     assert yaml.safe_load(config_path.read_text(encoding="utf-8"))["plugins"][0]["enabled"] is False
 
 
-def test_agent_workspace_extensions_enable_reactivates_a_configured_plugin(
+def test_alpha_extensions_enable_reactivates_a_configured_plugin(
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     root.mkdir()
     _write_host_project(root)
     config_path = root / "config.yaml"
@@ -1297,7 +1297,7 @@ def test_agent_workspace_extensions_enable_reactivates_a_configured_plugin(
 config_version: 1
 plugins:
   - name: demo
-    package: agent-workspace-extension-demo
+    package: alpha-extension-demo
     use: demo_extension:install
     enabled: false
     required: true
@@ -1305,9 +1305,9 @@ plugins:
 """,
         encoding="utf-8",
     )
-    monkeypatch.setenv("AGENT_WORKSPACE_PROJECT_ROOT", str(root))
+    monkeypatch.setenv("ALPHA_PROJECT_ROOT", str(root))
 
-    exit_code = agent_workspace_main(["extensions", "enable", "demo"])
+    exit_code = alpha_main(["extensions", "enable", "demo"])
 
     assert exit_code == 0
     assert "Enabled demo" in capsys.readouterr().out
@@ -1316,12 +1316,12 @@ plugins:
 
 
 def test_distribution_identifier_uses_pep_503_normalization(tmp_path: Path) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     root.mkdir()
     _write_host_project(root)
     config_path = root / "config.yaml"
     # ``Agent_Workspace.Extension_Demo`` is a PEP 503-equivalent spelling of the
-    # demo distribution ``agent-workspace-extension-demo``: lowercasing and
+    # demo distribution ``alpha-extension-demo``: lowercasing and
     # collapsing the ``-_.`` run yields the same normalized name. The test is
     # about *that* equivalence, so the two spellings must actually be equivalent
     # -- a different name here would silently test nothing.
@@ -1330,17 +1330,17 @@ def test_distribution_identifier_uses_pep_503_normalization(tmp_path: Path) -> N
         encoding="utf-8",
     )
 
-    ExtensionManager(root).set_enabled("agent-workspace-extension-demo", enabled=False)
+    ExtensionManager(root).set_enabled("alpha-extension-demo", enabled=False)
 
     assert yaml.safe_load(config_path.read_text(encoding="utf-8"))["plugins"][0]["enabled"] is False
 
 
-def test_agent_workspace_extensions_list_reports_activation_and_package(
+def test_alpha_extensions_list_reports_activation_and_package(
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     root.mkdir()
     _write_host_project(root)
     (root / "config.yaml").write_text(
@@ -1348,7 +1348,7 @@ def test_agent_workspace_extensions_list_reports_activation_and_package(
 config_version: 1
 plugins:
   - name: demo
-    package: agent-workspace-extension-demo
+    package: alpha-extension-demo
     use: demo_extension:install
     enabled: true
     required: true
@@ -1356,15 +1356,15 @@ plugins:
 """,
         encoding="utf-8",
     )
-    monkeypatch.setenv("AGENT_WORKSPACE_PROJECT_ROOT", str(root))
+    monkeypatch.setenv("ALPHA_PROJECT_ROOT", str(root))
 
-    exit_code = agent_workspace_main(["extensions", "list"])
+    exit_code = alpha_main(["extensions", "list"])
 
     assert exit_code == 0
     output = capsys.readouterr().out
     assert "demo" in output
     assert "enabled" in output
-    assert "agent-workspace-extension-demo" in output
+    assert "alpha-extension-demo" in output
     assert "demo_extension:install" in output
 
 
@@ -1373,13 +1373,13 @@ def test_cli_reports_invalid_config_without_a_traceback(
     monkeypatch,
     capsys,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     root.mkdir()
     _write_host_project(root)
     (root / "config.yaml").write_text("plugins: [\n", encoding="utf-8")
-    monkeypatch.setenv("AGENT_WORKSPACE_PROJECT_ROOT", str(root))
+    monkeypatch.setenv("ALPHA_PROJECT_ROOT", str(root))
 
-    exit_code = agent_workspace_main(["extensions", "list"])
+    exit_code = alpha_main(["extensions", "list"])
 
     captured = capsys.readouterr()
     assert exit_code == 1
@@ -1392,22 +1392,22 @@ def test_cli_reports_invalid_config_without_a_traceback(
     [42, {"name": "missing-use"}],
     ids=["non-mapping", "missing-use"],
 )
-def test_agent_workspace_extensions_list_rejects_entries_the_runtime_schema_rejects(
+def test_alpha_extensions_list_rejects_entries_the_runtime_schema_rejects(
     tmp_path: Path,
     monkeypatch,
     capsys,
     malformed_plugin: object,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     root.mkdir()
     _write_host_project(root)
     (root / "config.yaml").write_text(
         yaml.safe_dump({"config_version": 1, "plugins": [malformed_plugin]}, sort_keys=False),
         encoding="utf-8",
     )
-    monkeypatch.setenv("AGENT_WORKSPACE_PROJECT_ROOT", str(root))
+    monkeypatch.setenv("ALPHA_PROJECT_ROOT", str(root))
 
-    exit_code = agent_workspace_main(["extensions", "list"])
+    exit_code = alpha_main(["extensions", "list"])
 
     captured = capsys.readouterr()
     assert exit_code == 1
@@ -1416,21 +1416,21 @@ def test_agent_workspace_extensions_list_rejects_entries_the_runtime_schema_reje
     assert "Traceback" not in captured.err
 
 
-def test_agent_workspace_extensions_remove_uninstalls_dependency_source_and_activation(
+def test_alpha_extensions_remove_uninstalls_dependency_source_and_activation(
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
     _write_host_project(root)
     _write_local_extension(source)
     ExtensionManager(root).install(str(source), yes=True)
-    monkeypatch.setenv("AGENT_WORKSPACE_PROJECT_ROOT", str(root))
+    monkeypatch.setenv("ALPHA_PROJECT_ROOT", str(root))
 
-    exit_code = agent_workspace_main(["extensions", "remove", "demo"])
+    exit_code = alpha_main(["extensions", "remove", "demo"])
 
     assert exit_code == 0
     output = capsys.readouterr().out
@@ -1438,15 +1438,15 @@ def test_agent_workspace_extensions_remove_uninstalls_dependency_source_and_acti
     assert "Restart Alpha" in output
     config = yaml.safe_load((root / "config.yaml").read_text(encoding="utf-8"))
     assert config["plugins"] == []
-    assert not (root / "backend" / "extensions" / "sources" / "agent-workspace-extension-demo").exists()
+    assert not (root / "backend" / "extensions" / "sources" / "alpha-extension-demo").exists()
     pyproject = (root / "backend" / "pyproject.toml").read_text(encoding="utf-8")
-    assert "agent-workspace-extension-demo" not in pyproject
+    assert "alpha-extension-demo" not in pyproject
 
 
 def test_remove_one_configured_instance_keeps_its_shared_distribution_runnable(
     tmp_path: Path,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
@@ -1478,7 +1478,7 @@ def test_remove_one_configured_instance_keeps_its_shared_distribution_runnable(
     assert removed == "first"
     assert yaml.safe_load(config_path.read_text(encoding="utf-8"))["plugins"] == [second]
     assert (pyproject_path.read_bytes(), lock_path.read_bytes()) == dependency_files_before
-    assert (root / "backend" / "extensions" / "sources" / "agent-workspace-extension-demo").is_dir()
+    assert (root / "backend" / "extensions" / "sources" / "alpha-extension-demo").is_dir()
     _assert_demo_entry_point_loads(root / "backend")
 
 
@@ -1487,23 +1487,23 @@ def test_install_prompts_for_trust_when_yes_is_not_supplied(
     monkeypatch,
     capsys,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
     _write_host_project(root)
     _write_local_extension(source)
-    monkeypatch.setenv("AGENT_WORKSPACE_PROJECT_ROOT", str(root))
+    monkeypatch.setenv("ALPHA_PROJECT_ROOT", str(root))
     monkeypatch.setattr("builtins.input", lambda _prompt: "yes")
 
-    exit_code = agent_workspace_main(["extensions", "install", str(source)])
+    exit_code = alpha_main(["extensions", "install", str(source)])
 
     assert exit_code == 0
     assert "executes code with Gateway privileges" in capsys.readouterr().out
 
 
 def test_failed_entry_point_discovery_rolls_back_dependency_and_lock(tmp_path: Path) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "broken-git-source"
     root.mkdir()
     source.mkdir()
@@ -1529,7 +1529,7 @@ def test_failed_entry_point_discovery_rolls_back_dependency_and_lock(tmp_path: P
         [
             str(root / "backend" / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")),
             "-c",
-            "from importlib.metadata import PackageNotFoundError, version; \ntry: version('agent-workspace-extension-demo')\nexcept PackageNotFoundError: raise SystemExit(0)\nraise SystemExit(1)",
+            "from importlib.metadata import PackageNotFoundError, version; \ntry: version('alpha-extension-demo')\nexcept PackageNotFoundError: raise SystemExit(0)\nraise SystemExit(1)",
         ],
         check=False,
     )
@@ -1540,7 +1540,7 @@ def test_failed_install_does_not_overwrite_a_concurrent_operator_config_edit(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
@@ -1573,7 +1573,7 @@ def test_failed_install_preserves_a_concurrent_dependency_file_edit(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
@@ -1594,14 +1594,14 @@ def test_failed_install_preserves_a_concurrent_dependency_file_edit(
         ExtensionManager(root).install(str(source), yes=True)
 
     assert "# operator edit during install" in pyproject_path.read_text(encoding="utf-8")
-    assert (root / "backend" / "extensions" / "sources" / "agent-workspace-extension-demo").is_dir()
+    assert (root / "backend" / "extensions" / "sources" / "alpha-extension-demo").is_dir()
 
 
 def test_uv_add_partial_writes_are_rolled_back_when_the_command_fails(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
@@ -1630,12 +1630,12 @@ def test_uv_add_partial_writes_are_rolled_back_when_the_command_fails(
 
     assert (pyproject_path.read_bytes(), config_path.read_bytes()) == before
     assert not lock_path.exists()
-    assert not (root / "backend" / "extensions" / "sources" / "agent-workspace-extension-demo").exists()
+    assert not (root / "backend" / "extensions" / "sources" / "alpha-extension-demo").exists()
     assert uv_commands == ["add", "sync"]
 
 
 def test_local_install_rejects_symlinks_before_copying_or_resolving(tmp_path: Path) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
@@ -1655,7 +1655,7 @@ def test_local_install_rejects_symlinks_before_copying_or_resolving(tmp_path: Pa
 
 @pytest.mark.skipif(os.name == "nt", reason="named pipes are POSIX-specific")
 def test_local_install_rejects_special_files_before_snapshotting(tmp_path: Path) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
@@ -1677,7 +1677,7 @@ def test_local_install_rejects_likely_secret_files(
     tmp_path: Path,
     secret_name: str,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
@@ -1696,7 +1696,7 @@ def test_local_install_rejects_distribution_names_that_escape_the_managed_root(
     tmp_path: Path,
     distribution: str,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
@@ -1710,7 +1710,7 @@ def test_local_install_rejects_distribution_names_that_escape_the_managed_root(
 
 
 def test_install_adopts_an_existing_manual_plugin_instead_of_loading_it_twice(tmp_path: Path) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
@@ -1738,7 +1738,7 @@ plugins:
             "required": False,
             "config": {"label": "keep-this"},
             "name": "demo",
-            "package": "agent-workspace-extension-demo",
+            "package": "alpha-extension-demo",
             "enabled": True,
         }
     ]
@@ -1753,12 +1753,12 @@ plugins:
             "config": {"keep": True},
         },
         {
-            "package": "agent-workspace-extension-demo",
+            "package": "alpha-extension-demo",
             "use": "other_extension:install",
             "config": {"keep": True},
         },
         {
-            "package": "agent_workspace_extension.demo",
+            "package": "alpha_extension.demo",
             "use": "other_extension:install",
             "config": {"keep": True},
         },
@@ -1768,7 +1768,7 @@ def test_install_rejects_identity_collisions_with_a_different_entry_point(
     tmp_path: Path,
     configured_plugin: dict[str, object],
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
@@ -1785,12 +1785,12 @@ def test_install_rejects_identity_collisions_with_a_different_entry_point(
         ExtensionManager(root).install(str(source), yes=True)
 
     assert config_path.read_text(encoding="utf-8") == original
-    assert not (root / "backend" / "extensions" / "sources" / "agent-workspace-extension-demo").exists()
-    assert "agent-workspace-extension-demo" not in (root / "backend" / "pyproject.toml").read_text(encoding="utf-8")
+    assert not (root / "backend" / "extensions" / "sources" / "alpha-extension-demo").exists()
+    assert "alpha-extension-demo" not in (root / "backend" / "pyproject.toml").read_text(encoding="utf-8")
 
 
 def test_install_replaces_inline_empty_plugins_with_one_schema_valid_block(tmp_path: Path) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
@@ -1810,7 +1810,7 @@ def test_install_replaces_inline_empty_plugins_with_one_schema_valid_block(tmp_p
     assert config["log_level"] == "info"
     parsed = ExtensionSpec.model_validate(config["plugins"][0])
     assert parsed.name == "demo"
-    assert parsed.package == "agent-workspace-extension-demo"
+    assert parsed.package == "alpha-extension-demo"
     assert parsed.enabled is True
 
 
@@ -1822,12 +1822,12 @@ def test_disable_replaces_nonempty_flow_style_plugins_without_duplicate_key(
     tmp_path: Path,
     plugins_key: str,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     root.mkdir()
     _write_host_project(root)
     config_path = root / "config.yaml"
     config_path.write_text(
-        f'{plugins_key}: [{{name: demo, package: agent-workspace-extension-demo, use: "demo_extension:install", enabled: true}}]\nlog_level: info\n',
+        f'{plugins_key}: [{{name: demo, package: alpha-extension-demo, use: "demo_extension:install", enabled: true}}]\nlog_level: info\n',
         encoding="utf-8",
     )
 
@@ -1843,7 +1843,7 @@ def test_disable_replaces_nonempty_flow_style_plugins_without_duplicate_key(
 def test_toggle_rejects_duplicate_top_level_plugins_keys_without_mutating_config(
     tmp_path: Path,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     root.mkdir()
     _write_host_project(root)
     config_path = root / "config.yaml"
@@ -1852,7 +1852,7 @@ plugins: []
 log_level: info
 "plugins":
   - name: demo
-    package: agent-workspace-extension-demo
+    package: alpha-extension-demo
     use: demo_extension:install
     enabled: true
 """
@@ -1869,7 +1869,7 @@ def test_plugins_rewrite_preserves_the_next_quoted_or_plain_top_level_section(
     tmp_path: Path,
     next_key: str,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     root.mkdir()
     _write_host_project(root)
     config_path = root / "config.yaml"
@@ -1892,7 +1892,7 @@ def test_plugins_rewrite_preserves_a_following_section_with_an_unconventional_ke
 ) -> None:
     """`AppConfig` allows extra top-level keys, so the managed rewrite must not
     assume the next section is named like a Python identifier."""
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     root.mkdir()
     _write_host_project(root)
     config_path = root / "config.yaml"
@@ -1911,7 +1911,7 @@ def test_plugins_rewrite_preserves_a_following_section_with_an_unconventional_ke
 def test_plugins_rewrite_preserves_trailing_content_below_a_final_plugins_block(tmp_path: Path) -> None:
     """The manager appends `plugins:` at end of file, so the steady-state shape
     has no following key; trailing operator notes still must survive a toggle."""
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     root.mkdir()
     _write_host_project(root)
     config_path = root / "config.yaml"
@@ -1930,7 +1930,7 @@ def test_plugins_rewrite_preserves_trailing_content_below_a_final_plugins_block(
 
 
 def test_null_plugins_is_treated_as_the_runtime_default_and_can_be_managed(tmp_path: Path) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     root.mkdir()
     _write_host_project(root)
     config_path = root / "config.yaml"
@@ -1941,7 +1941,7 @@ def test_null_plugins_is_treated_as_the_runtime_default_and_can_be_managed(tmp_p
 
 
 def test_list_uses_the_same_boolean_coercion_as_the_runtime_loader(tmp_path: Path) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     root.mkdir()
     _write_host_project(root)
     (root / "config.yaml").write_text(
@@ -1973,7 +1973,7 @@ def test_cli_install_updates_the_runtime_selected_config_file(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     runtime_config = tmp_path / "deployment.yaml"
     root.mkdir()
@@ -1983,10 +1983,10 @@ def test_cli_install_updates_the_runtime_selected_config_file(
     root_config = root / "config.yaml"
     original_root_config = root_config.read_bytes()
     runtime_config.write_text("config_version: 1\n", encoding="utf-8")
-    monkeypatch.setenv("AGENT_WORKSPACE_PROJECT_ROOT", str(root))
-    monkeypatch.setenv("AGENT_WORKSPACE_CONFIG_PATH", str(runtime_config))
+    monkeypatch.setenv("ALPHA_PROJECT_ROOT", str(root))
+    monkeypatch.setenv("ALPHA_CONFIG_PATH", str(runtime_config))
 
-    assert agent_workspace_main(["extensions", "install", str(source), "--yes"]) == 0
+    assert alpha_main(["extensions", "install", str(source), "--yes"]) == 0
 
     assert root_config.read_bytes() == original_root_config
     runtime = yaml.safe_load(runtime_config.read_text(encoding="utf-8"))
@@ -1994,7 +1994,7 @@ def test_cli_install_updates_the_runtime_selected_config_file(
 
 
 def test_manager_falls_back_to_the_legacy_backend_config_path(tmp_path: Path) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     root.mkdir()
     _write_host_project(root)
     (root / "config.yaml").unlink()
@@ -2008,7 +2008,7 @@ def test_remove_rolls_back_package_lock_config_source_and_environment_when_confi
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
@@ -2019,7 +2019,7 @@ def test_remove_rolls_back_package_lock_config_source_and_environment_when_confi
     pyproject_path = root / "backend" / "pyproject.toml"
     lock_path = root / "backend" / "uv.lock"
     config_path = root / "config.yaml"
-    managed_source = root / "backend" / "extensions" / "sources" / "agent-workspace-extension-demo"
+    managed_source = root / "backend" / "extensions" / "sources" / "alpha-extension-demo"
     before = (
         pyproject_path.read_bytes(),
         lock_path.read_bytes(),
@@ -2040,7 +2040,7 @@ def test_remove_rolls_back_package_lock_config_source_and_environment_when_confi
         [
             str(root / "backend" / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")),
             "-c",
-            "from importlib.metadata import version; assert version('agent-workspace-extension-demo') == '1.0.0'",
+            "from importlib.metadata import version; assert version('alpha-extension-demo') == '1.0.0'",
         ],
         check=False,
     )
@@ -2051,7 +2051,7 @@ def test_failed_remove_preserves_a_concurrent_operator_config_edit(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
@@ -2083,14 +2083,14 @@ def test_failed_remove_preserves_a_concurrent_operator_config_edit(
         manager.remove("demo")
 
     assert config_path.read_text(encoding="utf-8") == operator_edit
-    assert (root / "backend" / "extensions" / "sources" / "agent-workspace-extension-demo").is_dir()
+    assert (root / "backend" / "extensions" / "sources" / "alpha-extension-demo").is_dir()
 
 
 def test_failed_remove_preserves_a_concurrent_dependency_file_edit(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
@@ -2113,7 +2113,7 @@ def test_failed_remove_preserves_a_concurrent_dependency_file_edit(
         manager.remove("demo")
 
     assert "# operator edit during remove" in pyproject_path.read_text(encoding="utf-8")
-    assert (root / "backend" / "extensions" / "sources" / "agent-workspace-extension-demo").is_dir()
+    assert (root / "backend" / "extensions" / "sources" / "alpha-extension-demo").is_dir()
     assert yaml.safe_load((root / "config.yaml").read_text(encoding="utf-8"))["plugins"] == []
 
 
@@ -2121,7 +2121,7 @@ def test_uv_remove_partial_writes_are_rolled_back_when_the_command_fails(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
@@ -2132,7 +2132,7 @@ def test_uv_remove_partial_writes_are_rolled_back_when_the_command_fails(
     pyproject_path = root / "backend" / "pyproject.toml"
     lock_path = root / "backend" / "uv.lock"
     config_path = root / "config.yaml"
-    managed_source = root / "backend" / "extensions" / "sources" / "agent-workspace-extension-demo"
+    managed_source = root / "backend" / "extensions" / "sources" / "alpha-extension-demo"
     before = (pyproject_path.read_bytes(), lock_path.read_bytes(), config_path.read_bytes())
     uv_commands: list[str] = []
 
@@ -2164,15 +2164,15 @@ def test_cli_reports_uv_install_failure_without_traceback_or_partial_state(
     monkeypatch,
     capsys,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     root.mkdir()
     _write_host_project(root)
     pyproject_path = root / "backend" / "pyproject.toml"
     config_path = root / "config.yaml"
     original = (pyproject_path.read_bytes(), config_path.read_bytes())
-    monkeypatch.setenv("AGENT_WORKSPACE_PROJECT_ROOT", str(root))
+    monkeypatch.setenv("ALPHA_PROJECT_ROOT", str(root))
 
-    exit_code = agent_workspace_main(["extensions", "install", "not a valid @ requirement @@", "--yes"])
+    exit_code = alpha_main(["extensions", "install", "not a valid @ requirement @@", "--yes"])
 
     captured = capsys.readouterr()
     assert exit_code == 1
@@ -2186,14 +2186,14 @@ def test_cli_reports_uv_install_failure_without_traceback_or_partial_state(
     [
         "git+https://token@example.com/acme/demo.git@0123456789012345678901234567890123456789",
         "https://user:password@example.com/demo.whl",
-        "agent-workspace-extension-demo @ https://user:password@example.com/demo.whl",
+        "alpha-extension-demo @ https://user:password@example.com/demo.whl",
     ],
 )
 def test_remote_sources_with_embedded_credentials_are_rejected_before_uv(
     tmp_path: Path,
     source: str,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     root.mkdir()
     _write_host_project(root)
     original = (root / "backend" / "pyproject.toml").read_bytes()
@@ -2257,16 +2257,16 @@ def test_benign_query_parameters_remain_installable(source: str) -> None:
 @pytest.mark.parametrize(
     "source",
     [
-        "git+ssh://git@github.com/acme/agent-workspace-extension-demo.git@main",
-        "agent-workspace-extension-demo @ git+ssh://git@github.com/acme/agent-workspace-extension-demo.git@main",
-        "ssh://git@github.com/acme/agent-workspace-extension-demo.git@main",
+        "git+ssh://git@github.com/acme/alpha-extension-demo.git@main",
+        "alpha-extension-demo @ git+ssh://git@github.com/acme/alpha-extension-demo.git@main",
+        "ssh://git@github.com/acme/alpha-extension-demo.git@main",
     ],
 )
 def test_remote_git_ssh_sources_are_rejected_before_uv(
     tmp_path: Path,
     source: str,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     root.mkdir()
     _write_host_project(root)
     pyproject_path = root / "backend" / "pyproject.toml"
@@ -2282,10 +2282,10 @@ def test_remote_git_ssh_sources_are_rejected_before_uv(
 @pytest.mark.parametrize(
     "source",
     [
-        "git@github.com:acme/agent-workspace-extension-demo.git",
-        "git+git@github.com:acme/agent-workspace-extension-demo.git",
-        "agent-workspace-extension-demo @ git+git@github.com:acme/agent-workspace-extension-demo.git",
-        "deploy@internal.example:acme/agent-workspace-extension-demo.git",
+        "git@github.com:acme/alpha-extension-demo.git",
+        "git+git@github.com:acme/alpha-extension-demo.git",
+        "alpha-extension-demo @ git+git@github.com:acme/alpha-extension-demo.git",
+        "deploy@internal.example:acme/alpha-extension-demo.git",
     ],
 )
 def test_git_ssh_shorthand_points_at_the_https_correction(source: str) -> None:
@@ -2305,18 +2305,18 @@ def test_cli_rejects_git_ssh_without_traceback_or_partial_state(
     monkeypatch,
     capsys,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     root.mkdir()
     _write_host_project(root)
     pyproject_path = root / "backend" / "pyproject.toml"
     original = pyproject_path.read_bytes()
-    monkeypatch.setenv("AGENT_WORKSPACE_PROJECT_ROOT", str(root))
+    monkeypatch.setenv("ALPHA_PROJECT_ROOT", str(root))
 
-    exit_code = agent_workspace_main(
+    exit_code = alpha_main(
         [
             "extensions",
             "install",
-            "git+ssh://git@github.com/acme/agent-workspace-extension-demo.git@main",
+            "git+ssh://git@github.com/acme/alpha-extension-demo.git@main",
             "--yes",
         ]
     )
@@ -2332,8 +2332,8 @@ def test_cli_rejects_git_ssh_without_traceback_or_partial_state(
 @pytest.mark.parametrize(
     "source",
     [
-        "git+https://github.com/acme/agent-workspace-extension-demo.git@0123456789012345678901234567890123456789",
-        "agent-workspace-extension-demo @ git+https://github.com/acme/agent-workspace-extension-demo.git@0123456789012345678901234567890123456789",
+        "git+https://github.com/acme/alpha-extension-demo.git@0123456789012345678901234567890123456789",
+        "alpha-extension-demo @ git+https://github.com/acme/alpha-extension-demo.git@0123456789012345678901234567890123456789",
     ],
 )
 def test_public_git_https_sources_remain_allowed(source: str) -> None:
@@ -2344,7 +2344,7 @@ def test_public_git_https_sources_remain_allowed(source: str) -> None:
     "source",
     [
         "http://packages.example/demo.whl",
-        "git+git://github.com/acme/agent-workspace-extension-demo.git@main",
+        "git+git://github.com/acme/alpha-extension-demo.git@main",
         "ftp://packages.example/demo.whl",
     ],
 )
@@ -2358,13 +2358,13 @@ def test_cli_never_echoes_rejected_source_credentials(
     monkeypatch,
     capsys,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     root.mkdir()
     _write_host_project(root)
-    monkeypatch.setenv("AGENT_WORKSPACE_PROJECT_ROOT", str(root))
+    monkeypatch.setenv("ALPHA_PROJECT_ROOT", str(root))
     source = "https://operator:super-secret@example.com/extension.whl"
 
-    assert agent_workspace_main(["extensions", "install", source, "--yes"]) == 1
+    assert alpha_main(["extensions", "install", source, "--yes"]) == 1
 
     output = capsys.readouterr()
     assert "super-secret" not in output.out
@@ -2376,7 +2376,7 @@ def test_install_uses_one_controlled_uv_project_and_deferred_sync(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
@@ -2408,7 +2408,7 @@ def test_install_uses_one_controlled_uv_project_and_deferred_sync(
     assert ["--project", backend] == add[add.index("--project") : add.index("--project") + 2]
     assert "--no-sync" in add
     assert "--no-workspace" in add
-    assert add[-2:] == ["--", "extensions/sources/agent-workspace-extension-demo"]
+    assert add[-2:] == ["--", "extensions/sources/alpha-extension-demo"]
     assert ["--project", backend] == sync[sync.index("--project") : sync.index("--project") + 2]
     assert "--locked" in sync
     assert "--no-sync" not in sync
@@ -2463,7 +2463,7 @@ def test_install_validates_the_config_before_running_third_party_build_hooks(
     """`uv add`/`uv sync` execute the package's build backend, so a config the
     manager can never write to must be rejected before that code runs — not
     after it, via rollback."""
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
@@ -2496,7 +2496,7 @@ def test_failed_recovery_sync_still_restores_the_dependency_files(
     """The recovery `uv sync` runs without `--locked` when the checkout had no
     lock, so uv writes one while resolving. If that sync then fails, the
     operator must not be left holding a lock file they never had."""
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
@@ -2514,7 +2514,7 @@ def test_failed_recovery_sync_still_restores_the_dependency_files(
             return subprocess.CompletedProcess(command, 0, stdout='[["demo", "demo_extension:install"]]\n')
         if command[1] == "add":
             pyproject_path.write_text(
-                original_pyproject.replace("extensions = []", 'extensions = ["agent-workspace-extension-demo"]'),
+                original_pyproject.replace("extensions = []", 'extensions = ["alpha-extension-demo"]'),
                 encoding="utf-8",
             )
             lock_path.write_text('version = 1\nrequires-python = ">=3.12"\n', encoding="utf-8")
@@ -2539,7 +2539,7 @@ def test_interrupt_during_install_restores_files_without_a_recovery_resolve(
     """Ctrl-C must not be answered by blocking on a full dependency resolve: a
     second interrupt during that sync would escape the handler and strand the
     checkout mid-transaction."""
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
@@ -2558,7 +2558,7 @@ def test_interrupt_during_install_restores_files_without_a_recovery_resolve(
             return subprocess.CompletedProcess(command, 0, stdout='[["demo", "demo_extension:install"]]\n')
         if command[1] == "add":
             pyproject_path.write_text(
-                original_pyproject.replace("extensions = []", 'extensions = ["agent-workspace-extension-demo"]'),
+                original_pyproject.replace("extensions = []", 'extensions = ["alpha-extension-demo"]'),
                 encoding="utf-8",
             )
             lock_path.write_text('version = 1\nrequires-python = ">=3.12"\n', encoding="utf-8")
@@ -2574,7 +2574,7 @@ def test_interrupt_during_install_restores_files_without_a_recovery_resolve(
     assert len(syncs) == 1
     assert not lock_path.exists()
     assert pyproject_path.read_text(encoding="utf-8") == original_pyproject
-    assert not (backend / "extensions" / "sources" / "agent-workspace-extension-demo").exists()
+    assert not (backend / "extensions" / "sources" / "alpha-extension-demo").exists()
 
 
 def test_entry_point_discovery_tolerates_interpreter_startup_output(
@@ -2583,7 +2583,7 @@ def test_entry_point_discovery_tolerates_interpreter_startup_output(
 ) -> None:
     """A `sitecustomize`/`.pth` banner on the child interpreter's stdout must
     not roll back an otherwise-successful install with a JSON parse error."""
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
@@ -2614,7 +2614,7 @@ def test_install_rejects_uv_versions_without_no_workspace_support(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     source = tmp_path / "demo-source"
     root.mkdir()
     source.mkdir()
@@ -2641,7 +2641,7 @@ def test_remove_uses_deferred_uv_mutation_then_the_same_controlled_sync(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    root = tmp_path / "agent-workspace"
+    root = tmp_path / "alpha"
     root.mkdir()
     _write_host_project(root)
     (root / "config.yaml").write_text(
@@ -2649,7 +2649,7 @@ def test_remove_uses_deferred_uv_mutation_then_the_same_controlled_sync(
 config_version: 1
 plugins:
   - name: demo
-    package: agent-workspace-extension-demo
+    package: alpha-extension-demo
     use: demo_extension:install
     enabled: true
     required: true
@@ -2679,7 +2679,7 @@ plugins:
     remove, sync = (uv_calls[0][0], uv_calls[1][0])
     assert ["--project", backend] == remove[remove.index("--project") : remove.index("--project") + 2]
     assert "--no-sync" in remove
-    assert remove[-2:] == ["--", "agent-workspace-extension-demo"]
+    assert remove[-2:] == ["--", "alpha-extension-demo"]
     assert ["--project", backend] == sync[sync.index("--project") : sync.index("--project") + 2]
     assert "--locked" in sync
     assert "--no-sync" not in sync
@@ -2708,8 +2708,8 @@ def test_dependency_sync_uses_the_same_configured_optional_extras_as_startup(
         encoding="utf-8",
     )
     monkeypatch.delenv("UV_EXTRAS", raising=False)
-    monkeypatch.delenv("AGENT_WORKSPACE_STREAM_BRIDGE_REDIS_URL", raising=False)
-    monkeypatch.delenv("AGENT_WORKSPACE_SANDBOX_OWNERSHIP_REDIS_URL", raising=False)
+    monkeypatch.delenv("ALPHA_STREAM_BRIDGE_REDIS_URL", raising=False)
+    monkeypatch.delenv("ALPHA_SANDBOX_OWNERSHIP_REDIS_URL", raising=False)
 
     assert _detect_extra_flags(repository_root, config_path) == [
         "--extra",

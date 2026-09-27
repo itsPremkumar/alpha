@@ -355,7 +355,7 @@ def measure_download_mbps(url: str = _SPEEDTEST_URL, max_bytes: int = 4_000_000)
     """Time a sustained download. Off by default — it consumes real bandwidth."""
     started = time.monotonic()
     try:
-        request = urllib.request.Request(url, headers={"User-Agent": "agent-workspace-monitor"})
+        request = urllib.request.Request(url, headers={"User-Agent": "alpha-monitor"})
         with urllib.request.urlopen(request, timeout=10.0) as response:
             total = 0
             while total < max_bytes:
@@ -698,4 +698,4 @@ def reset_caches() -> None:
 
 def enabled() -> bool:
     """Allow operators to switch advanced telemetry off entirely."""
-    return os.getenv("AGENT_WORKSPACE_ADVANCED_MONITOR", "1").strip().lower() not in ("0", "false", "no", "off")
+    return os.getenv("ALPHA_ADVANCED_MONITOR", "1").strip().lower() not in ("0", "false", "no", "off")

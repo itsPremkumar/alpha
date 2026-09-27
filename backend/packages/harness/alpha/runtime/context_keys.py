@@ -2,4 +2,4 @@
 
 from typing import Final
 
-CURRENT_RUN_PRE_EXISTING_MESSAGE_IDS_KEY: Final[str] = "__agent_workspace_pre_run_message_ids"
+CURRENT_RUN_PRE_EXISTING_MESSAGE_IDS_KEY: Final[str] = "__alpha_pre_run_message_ids"

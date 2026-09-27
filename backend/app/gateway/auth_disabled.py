@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 from alpha.runtime.user_context import DEFAULT_USER_ID
 
-AUTH_DISABLED_ENV_VAR = "AGENT_WORKSPACE_AUTH_DISABLED"
+AUTH_DISABLED_ENV_VAR = "ALPHA_AUTH_DISABLED"
 AUTH_DISABLED_USER_ID = DEFAULT_USER_ID
 AUTH_DISABLED_USER_EMAIL = "default@test.local"
 
@@ -17,7 +17,7 @@ AUTH_SOURCE_INTERNAL = "internal"
 AUTH_SOURCE_PAT = "pat"
 AUTH_SOURCE_AUTH_DISABLED = "auth_disabled"
 
-_PRODUCTION_ENV_VARS: tuple[str, ...] = ("AGENT_WORKSPACE_ENV", "ENVIRONMENT")
+_PRODUCTION_ENV_VARS: tuple[str, ...] = ("ALPHA_ENV", "ENVIRONMENT")
 _PRODUCTION_ENV_VALUES: frozenset[str] = frozenset({"prod", "production"})
 
 logger = logging.getLogger(__name__)

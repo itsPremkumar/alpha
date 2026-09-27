@@ -318,7 +318,7 @@ class EvolutionEvidenceConfig(BaseModel):
 
         An explicit ``provenance_root`` wins. Otherwise the directory is
         ``runtime_home()/evolution/evidence``; ``runtime_home()`` is imported
-        lazily (and resolved per call) so a test-set ``AGENT_WORKSPACE_HOME`` is
+        lazily (and resolved per call) so a test-set ``ALPHA_HOME`` is
         honoured without this module importing ``alpha.config`` at import time.
         The per-chain directory is :meth:`chain_dir`.
         """

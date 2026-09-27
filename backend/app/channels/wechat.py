@@ -23,11 +23,11 @@ import httpx
 from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
+from alpha.branding import DISPLAY_NAME
 from app.channels.base import Channel
 from app.channels.commands import is_known_channel_command
 from app.channels.connection_identity import attach_connection_identity
 from app.channels.message_bus import InboundMessage, InboundMessageType, MessageBus, OutboundMessage, ResolvedAttachment
-from alpha.branding import DISPLAY_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -435,7 +435,7 @@ class WechatChannel(Channel):
                 "msg": {
                     "from_user_id": "",
                     "to_user_id": msg.chat_id,
-                    "client_id": f"agent_workspace_img_{int(time.time() * 1000)}",
+                    "client_id": f"alpha_img_{int(time.time() * 1000)}",
                     "message_type": 2,
                     "message_state": 2,
                     "context_token": context_token,
@@ -525,7 +525,7 @@ class WechatChannel(Channel):
                 "msg": {
                     "from_user_id": "",
                     "to_user_id": msg.chat_id,
-                    "client_id": f"agent_workspace_file_{int(time.time() * 1000)}",
+                    "client_id": f"alpha_file_{int(time.time() * 1000)}",
                     "message_type": 2,
                     "message_state": 2,
                     "context_token": context_token,

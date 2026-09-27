@@ -87,7 +87,7 @@ PROVIDERS = ["openrouter", "openai", "groq", "custom", "gemini"]
 @pytest.fixture(autouse=True)
 def _isolated_runtime_home(tmp_path, monkeypatch):
     """Every test gets its own runtime home so no real credential store is touched."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path / "runtime-home"))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path / "runtime-home"))
     monkeypatch.delenv(provider_manager.PRIVATE_HOST_ALLOWLIST_ENV, raising=False)
     for env in ("OPENROUTER_API_KEY", "GROQ_API_KEY", "GEMINI_API_KEY", "CUSTOM_LLM_API_KEY", "ALPHA_TEST_PROVIDER_KEY"):
         monkeypatch.delenv(env, raising=False)

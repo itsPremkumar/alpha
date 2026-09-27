@@ -109,6 +109,31 @@ mane-vs-face crop rule, and the desktop/installer surfaces are in the
 
 ## Build discipline: `next build` and a running server cannot share `.next`
 
+**The dev server does not use `.next` at all.** `next.config.mjs` is a
+`(phase) => config` function and gives the development-server phase its own
+`distDir` of `.next/dev`; every other phase (production build, production
+server, export, typegen) keeps `.next`. This is not cosmetic. `next dev` deletes
+everything under its `distDir` except `cache/` when it starts (in this Next
+build, `dist/esm/server/dev/hot-reloader-webpack.js:581` calls `clean()`, which
+is `recursiveDelete(join(dir, distDir), /^cache/)`), so a single shared
+directory means **starting the dev server destroys the production build**. Two
+consequences follow, both measured on this repo:
+
+- `start.ps1:629` and `scripts/watchdog.ps1:436` gate the production path on
+  `Test-Path frontend\.next\BUILD_ID`. After any `next dev` run that file is
+  gone, so every boot silently falls back to `next dev` and pays its cold
+  compile (measured at ~880 s) instead of serving the build.
+- The next `next build` then consumes dev-written Pages Router bookkeeping and
+  dies in "Collecting page data" with
+  `PageNotFoundError: Cannot find module for page: /_document`.
+
+`.next/dev` rather than a sibling such as `.next-dev` deliberately: the shipped
+`.gitignore` already ignores `.next/` at any depth, so the split cannot leave an
+untracked build tree behind, and `tsconfig.json` includes both `.next/types` and
+`.next/dev/types`. **The production `distDir` must stay exactly `.next`** - it is
+the contract the launcher and watchdog read. Coverage:
+`src/lib/test_fe_audit_next_output_dirs.test.mjs`.
+
 A Next.js server (dev **or** `start`) and `next build` both read and write
 `.next/`. When they overlap, the build emits a bundle whose runtime references
 vendor chunks that were never written, and the failure surfaces as a misleading
@@ -177,7 +202,7 @@ server is up, because only `next build` writes `.next`.
 - `canApply` is read with `=== true`, never truthiness, and a missing or corrupt
   state file is a deny plus a disclosure.
 - The three mutating routes (`update-apply`, `update-skip`, `update-recover`)
-  are admin-only and 403 under `AGENT_WORKSPACE_AUTH_DISABLED`. Show that
+  are admin-only and 403 under `ALPHA_AUTH_DISABLED`. Show that
   refusal; do not retry, downgrade it to a notice, or present a queued-looking
   success.
 - The client may never send a URL, ref, commit, or archive — the server applies

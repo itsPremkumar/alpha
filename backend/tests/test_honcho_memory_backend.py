@@ -19,7 +19,7 @@ class TestHonchoConfig:
         cfg = HonchoConfig.from_backend_config(None)
         assert cfg.base_url == "http://localhost:8000"
         assert cfg.api_key is None
-        assert cfg.workspace_prefix == "agent-workspace-u-"
+        assert cfg.workspace_prefix == "alpha-u-"
         assert cfg.workspace_overrides == {}
         assert cfg.user_peer_overrides == {}
         assert cfg.assistant_peer == "alpha"
@@ -302,7 +302,7 @@ class TestHonchoManagerWrite:
         # hardcoded, so this test doesn't silently drift from the real
         # collision-resistant derivation (see TestHonchoIdentityDerivation).
         expected_peer = _stable_id("bob@example.com")
-        assert fake.calls[0] == ("peer", (f"agent-workspace-u-{expected_peer}", expected_peer))
+        assert fake.calls[0] == ("peer", (f"alpha-u-{expected_peer}", expected_peer))
 
     def test_add_swallows_backend_errors(self):
         mgr, fake = _manager()

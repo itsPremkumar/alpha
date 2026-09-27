@@ -530,7 +530,7 @@ def test_ls_tool_skills_path_uses_sandbox_mapping_user_id_not_contextvar(tmp_pat
     # Create two user-specific custom skill directories:
     # - user-abc: has a skill "my-skill"
     # - default: empty (the fallback when contextvar is unset)
-    base_dir = tmp_path / ".agent-workspace"
+    base_dir = tmp_path / ".alpha"
     user_abc_custom = base_dir / "users" / "user-abc" / "skills" / "custom"
     user_abc_custom.mkdir(parents=True)
     (user_abc_custom / "my-skill").mkdir()
@@ -620,7 +620,7 @@ def _make_skills_sandbox(tmp_path, monkeypatch, *, disabled: str):
         json.dumps({"mcpServers": {}, "skills": {disabled: {"enabled": False}, "open-skill": {"enabled": True}}}),
         encoding="utf-8",
     )
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(ext))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(ext))
 
     sandbox = LocalSandbox(
         id="local",
@@ -765,7 +765,7 @@ def _make_custom_skills_sandbox(tmp_path, monkeypatch, *, user_id: str, disabled
     """
     from alpha.skills.storage import reset_skill_storage
 
-    base_dir = tmp_path / ".agent-workspace"
+    base_dir = tmp_path / ".alpha"
     user_skills = base_dir / "users" / user_id / "skills"
     user_custom = user_skills / "custom"
     for name, body in [(disabled, "SECRET_PROCEDURE = step-1-step-2\n"), ("open-custom", "PUBLIC_PROCEDURE = hello\n")]:

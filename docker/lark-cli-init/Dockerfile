@@ -12,7 +12,7 @@
 #   /opt/lark-cli/bin/lark-cli            # arch-dispatch launcher (uname -m)
 #   /opt/lark-cli/linux-amd64/lark-cli
 #   /opt/lark-cli/linux-arm64/lark-cli
-#   /opt/lark-cli/.agent-workspace-lark-cli-runtime.json   # {"version": "vX.Y.Z"}
+#   /opt/lark-cli/.alpha-lark-cli-runtime.json   # {"version": "vX.Y.Z"}
 #
 # This layout is byte-identical to what the Gateway writer
 # (`_write_lark_cli_sandbox_launcher`) produces and what
@@ -26,7 +26,7 @@
 # independently of the upstream `all-in-one-sandbox` image.
 #
 # Build (defaults to the pinned version below):
-#   docker build -t agent-workspace/lark-cli-init:v1.0.65 \
+#   docker build -t alpha/lark-cli-init:v1.0.65 \
 #     --build-arg LARK_CLI_VERSION=v1.0.65 docker/lark-cli-init
 
 FROM debian:bookworm-slim AS builder

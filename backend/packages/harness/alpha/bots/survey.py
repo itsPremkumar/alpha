@@ -95,9 +95,9 @@ DEFAULT_BUDGET_SECONDS = 3.0
 #: Cache TTL in seconds.
 DEFAULT_CACHE_TTL = 600.0
 
-#: Operator kill switch for the whole survey. Set ``AGENT_WORKSPACE_BOT_SURVEY=0``
+#: Operator kill switch for the whole survey. Set ``ALPHA_BOT_SURVEY=0``
 #: to stop the forge from reading the workspace at a Bot's birth. Defaults to on.
-SURVEY_KILL_SWITCH = "AGENT_WORKSPACE_BOT_SURVEY"
+SURVEY_KILL_SWITCH = "ALPHA_BOT_SURVEY"
 
 _OFF_VALUES = frozenset({"0", "false", "off", "no", "disabled"})
 
@@ -552,7 +552,7 @@ def survey_workspace(
     if _survey_disabled():
         # Operator kill switch, checked before the cache so a disabled survey
         # can never be mistaken for (or be served as) a real one.
-        return SurveyResult(next_steps=["workspace survey disabled by the operator (AGENT_WORKSPACE_BOT_SURVEY=0) - ask where this work belongs"])
+        return SurveyResult(next_steps=["workspace survey disabled by the operator (ALPHA_BOT_SURVEY=0) - ask where this work belongs"])
 
     key = _cache_key(cwd, workspace_roots, query)
     if use_cache:

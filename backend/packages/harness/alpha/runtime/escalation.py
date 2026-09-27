@@ -713,7 +713,7 @@ _singletons_lock = threading.Lock()
 
 
 def default_ledger_root() -> Path:
-    """Root of the unified ledger artifacts (honours ``AGENT_WORKSPACE_HOME``)."""
+    """Root of the unified ledger artifacts (honours ``ALPHA_HOME``)."""
     override = os.getenv("ALPHA_HANDOFF_LEDGER_HOME")
     if override:
         return Path(override).expanduser()
@@ -1119,6 +1119,14 @@ def recover_swarm_work(*, now: float | None = None, limit: int = 50, start_runne
                     escalated.append(task.task_id)
                 continue
             if task.state in (TaskNodeState.RUNNING, TaskNodeState.STRAGGLING, TaskNodeState.QUEUED):
+                # Name the worker that died BEFORE the lease is released below.
+                # Reading ``task.lease_owner`` afterwards is always ``None``, so
+                # the ref silently degraded to the *assigning* dispatcher and
+                # the ledger could never identify the crashed worker. The
+                # escalation branch above builds the same ref from the same
+                # pair of fields and reads them first, which is the contract
+                # both paths have to share.
+                previous_owner = f"swarm:{plan.swarm_id}:{task.lease_owner or task.assigned_worker or 'worker'}"
                 # A resume must NOT charge a second attempt for the crash.
                 task.state = TaskNodeState.PENDING
                 task.lease_id = None
@@ -1128,7 +1136,7 @@ def recover_swarm_work(*, now: float | None = None, limit: int = 50, start_runne
                 record_resume(
                     DOMAIN_SWARM,
                     task.task_id,
-                    from_ref=f"swarm:{plan.swarm_id}:{task.lease_owner or task.assigned_worker or 'worker'}",
+                    from_ref=previous_owner,
                     to_ref=process_identity(),
                     reason="worker_crash",
                     attempt=task.attempts,
@@ -1139,13 +1147,18 @@ def recover_swarm_work(*, now: float | None = None, limit: int = 50, start_runne
 
         unpaused = plan.swarm_id in parked
         if unpaused:
+            # Same ordering rule as the task-level ref above: capture the parked
+            # reason before it is cleared, or the ``or 'previous_process'``
+            # fallback is dead code and every plan-level entry claims a
+            # previous_process that may not be what actually stopped the plan.
+            previous_plan_reason = plan.terminal_reason or "previous_process"
             plan.status = "running"
             plan.terminal_reason = None
             summary["resumed_plans"].append(plan.swarm_id)
             record_resume(
                 DOMAIN_SWARM,
                 plan.swarm_id,
-                from_ref=f"swarm:{plan.swarm_id}:{plan.terminal_reason or 'previous_process'}",
+                from_ref=f"swarm:{plan.swarm_id}:{previous_plan_reason}",
                 to_ref=process_identity(),
                 reason="worker_crash",
                 details={"swarm_id": plan.swarm_id, "scope": "plan", "goal": str(getattr(plan, "goal", ""))[:500]},

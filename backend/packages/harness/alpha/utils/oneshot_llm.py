@@ -27,7 +27,7 @@ from alpha.utils.llm_text import extract_response_text
 
 
 def _resolve_environment() -> str | None:
-    return os.environ.get("AGENT_WORKSPACE_ENV") or os.environ.get("ENVIRONMENT")
+    return os.environ.get("ALPHA_ENV") or os.environ.get("ENVIRONMENT")
 
 
 async def run_oneshot_llm(

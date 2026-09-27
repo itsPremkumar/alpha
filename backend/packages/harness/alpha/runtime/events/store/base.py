@@ -24,6 +24,24 @@ class IncompleteMessageRunLookupError(RuntimeError):
     """Raised when a store cannot prove that a targeted lookup is complete."""
 
 
+def take_latest[RowT](rows: Sequence[RowT], limit: int) -> list[RowT]:
+    """Return the last ``limit`` rows, in their original (ascending) order.
+
+    ``limit`` is a row *count*, and ``0`` means "no rows" -- that is what the SQL
+    backends' ``LIMIT 0`` returns, and what the ``list_messages`` /
+    ``list_messages_by_run`` contracts describe. ``rows[-limit:]`` cannot express
+    it: Python evaluates ``-0 == 0``, so ``rows[-0:]`` is ``rows[0:]`` and a
+    caller that asked for zero rows was handed the entire feed back. The non-SQL
+    backends therefore route every "latest page" slice through here, so the three
+    implementations of one interface cannot drift on the zero case.
+    """
+    if limit <= 0:
+        return []
+    if len(rows) <= limit:
+        return list(rows)
+    return list(rows[len(rows) - limit :])
+
+
 def normalize_message_ids(message_ids: set[str]) -> set[str]:
     """Return the non-empty string IDs that can participate in a lookup."""
     return {message_id for message_id in message_ids if isinstance(message_id, str) and message_id}

@@ -12,7 +12,7 @@ Pins (per ``references/ALPHA_WORKSWARM_GAPS_IMPLEMENTATION_PLAN.md`` §9.4):
 - endpoint payload honesty through direct router function calls (no app.py changes)
 - the ``/mode`` command row + handler honesty
 
-``AGENT_WORKSPACE_HOME`` is NOT isolated by the global test environment, so every
+``ALPHA_HOME`` is NOT isolated by the global test environment, so every
 test here pins it to a temp directory via the autouse fixture below.
 """
 
@@ -52,9 +52,9 @@ PLAN_REASON_CODE = "plan-mode:code.plan: side effects require exiting plan mode"
 
 @pytest.fixture(autouse=True)
 def _isolated_mode_home(tmp_path, monkeypatch):
-    """Pin AGENT_WORKSPACE_HOME to a temp dir (the suite does not isolate it)."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
-    monkeypatch.delenv("AGENT_WORKSPACE_PROJECT_ROOT", raising=False)
+    """Pin ALPHA_HOME to a temp dir (the suite does not isolate it)."""
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
+    monkeypatch.delenv("ALPHA_PROJECT_ROOT", raising=False)
     yield tmp_path
 
 
@@ -324,25 +324,25 @@ def test_resolve_plan_mode_sentinel_contract():
 
 @patch("alpha.agents.factory.create_agent")
 def test_factory_none_derives_from_global_mode(mock_create_agent):
-    from alpha.agents.factory import create_agent_workspace_agent
+    from alpha.agents.factory import create_alpha_agent
     from alpha.agents.features import RuntimeFeatures
 
     mock_create_agent.return_value = MagicMock(name="graph")
     model = MagicMock(name="model")
 
     set_mode("work.plan")
-    create_agent_workspace_agent(model, features=RuntimeFeatures(sandbox=False), plan_mode=None)
+    create_alpha_agent(model, features=RuntimeFeatures(sandbox=False), plan_mode=None)
     assert "TodoMiddleware" in _mw_names(mock_create_agent)
 
     set_mode("work.normal")
     mock_create_agent.reset_mock()
-    create_agent_workspace_agent(model, features=RuntimeFeatures(sandbox=False), plan_mode=None)
+    create_alpha_agent(model, features=RuntimeFeatures(sandbox=False), plan_mode=None)
     assert "TodoMiddleware" not in _mw_names(mock_create_agent)
 
 
 @patch("alpha.agents.factory.create_agent")
 def test_factory_explicit_overrides_win(mock_create_agent):
-    from alpha.agents.factory import create_agent_workspace_agent
+    from alpha.agents.factory import create_alpha_agent
     from alpha.agents.features import RuntimeFeatures
 
     mock_create_agent.return_value = MagicMock(name="graph")
@@ -350,13 +350,13 @@ def test_factory_explicit_overrides_win(mock_create_agent):
 
     # Explicit False wins over a persisted plan mode:
     set_mode("work.plan")
-    create_agent_workspace_agent(model, features=RuntimeFeatures(sandbox=False), plan_mode=False)
+    create_alpha_agent(model, features=RuntimeFeatures(sandbox=False), plan_mode=False)
     assert "TodoMiddleware" not in _mw_names(mock_create_agent)
 
     # Explicit True wins over a normal mode:
     set_mode("work.normal")
     mock_create_agent.reset_mock()
-    create_agent_workspace_agent(model, features=RuntimeFeatures(sandbox=False), plan_mode=True)
+    create_alpha_agent(model, features=RuntimeFeatures(sandbox=False), plan_mode=True)
     assert "TodoMiddleware" in _mw_names(mock_create_agent)
 
 
@@ -366,13 +366,13 @@ def test_factory_explicit_overrides_win(mock_create_agent):
 
 
 def _make_client(**kwargs):
-    from alpha.client import AgentWorkspaceClient
+    from alpha.client import AlphaClient
 
     cfg = MagicMock()
     cfg.database.checkpoint_channel_mode = "full"
     cfg.database.checkpoint_delta.snapshot_frequency = 10
     with patch("alpha.client.get_app_config", return_value=cfg):
-        return AgentWorkspaceClient(**kwargs)
+        return AlphaClient(**kwargs)
 
 
 def _is_plan_flag(client, thread_id="t1", **overrides):

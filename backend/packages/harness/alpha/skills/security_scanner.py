@@ -230,7 +230,7 @@ async def scan_skill_content(
                 user_id=get_effective_user_id(),
                 assistant_id="security_agent",
                 model_name=model_name,
-                environment=os.environ.get("AGENT_WORKSPACE_ENV") or os.environ.get("ENVIRONMENT"),
+                environment=os.environ.get("ALPHA_ENV") or os.environ.get("ENVIRONMENT"),
             )
         response = await model.ainvoke(
             [

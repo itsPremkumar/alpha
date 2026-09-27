@@ -24,7 +24,7 @@ pytestmark = pytest.mark.asyncio
 
 
 async def _reset_paths(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     import alpha.config.paths as paths_mod
 
     monkeypatch.setattr(paths_mod, "_paths", None)

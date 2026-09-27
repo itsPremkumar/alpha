@@ -1,6 +1,6 @@
 """Pure-argument factory for Alpha agents.
 
-``create_agent_workspace_agent`` accepts plain Python arguments — it does not load
+``create_alpha_agent`` accepts plain Python arguments — it does not load
 YAML or install process-global runtime dependencies. It is the SDK-level entry
 point sitting between the raw
 ``langchain.agents.create_agent`` primitive and the config-driven
@@ -63,7 +63,7 @@ _TODO_TOOL_DESCRIPTION = "Use this tool to create and manage a structured task l
 # ---------------------------------------------------------------------------
 
 
-def create_agent_workspace_agent(
+def create_alpha_agent(
     model: BaseChatModel,
     tools: list[BaseTool] | None = None,
     *,
@@ -125,7 +125,7 @@ def create_agent_workspace_agent(
     subagent_runtime:
         Explicit process runtime shared by direct SDK-created graphs. Required
         only when the caller needs non-default native-subagent capacity or a
-        caller-managed durable batch worker without Gateway/AgentWorkspaceClient
+        caller-managed durable batch worker without Gateway/AlphaClient
         startup. Requires ``features.subagent`` to be enabled.
 
     Raises
@@ -137,18 +137,18 @@ def create_agent_workspace_agent(
         raise ValueError("Cannot specify both 'middleware' and 'features'.  Use one or the other.")
     if checkpoint_channel_mode == "delta" and checkpointer is not None:
         raise ValueError(
-            "create_agent_workspace_agent does not support checkpoint_channel_mode='delta' with a checkpointer: "
+            "create_alpha_agent does not support checkpoint_channel_mode='delta' with a checkpointer: "
             "persisted graphs built here bypass checkpoint mode marker injection and the fail-closed "
             "compatibility gate (see alpha.runtime.checkpoint_mode), so a mixed-mode store would "
             "silently corrupt thread state.  Use the guarded application paths (make_lead_agent or "
-            "AgentWorkspaceClient) for delta persistence; delta without a checkpointer is ephemeral and allowed."
+            "AlphaClient) for delta persistence; delta without a checkpointer is ephemeral and allowed."
         )
     if middleware is not None and extra_middleware:
         raise ValueError("Cannot use 'extra_middleware' with 'middleware' (full takeover).")
     if subagent_runtime is not None and (middleware is not None or features is None or features.subagent is False):
         raise ValueError("subagent_runtime requires features.subagent to be enabled; it cannot be used with middleware full takeover")
     if subagent_runtime is not None and subagent_runtime.batch_config is not None and subagent_runtime.batch_submitter is None:
-        raise RuntimeError("The explicit durable batch worker is not running; await subagent_runtime.start() or enter it with 'async with' before calling create_agent_workspace_agent")
+        raise RuntimeError("The explicit durable batch worker is not running; await subagent_runtime.start() or enter it with 'async with' before calling create_alpha_agent")
     if extra_middleware:
         for mw in extra_middleware:
             if not isinstance(mw, AgentMiddleware):

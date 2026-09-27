@@ -53,7 +53,7 @@ def test_local_sandbox_client_forwards_trusted_relay_headers():
     from alpha.community.aio_sandbox.aio_sandbox import AioSandbox
 
     sentinel_httpx = MagicMock()
-    headers = {"X-Agent-Workspace-Relay-Token": "secret-token"}
+    headers = {"X-Alpha-Relay-Token": "secret-token"}
     with (
         patch("alpha.community.aio_sandbox.aio_sandbox.httpx.Client", return_value=sentinel_httpx),
         patch("alpha.community.aio_sandbox.aio_sandbox.AioSandboxClient") as sdk_cls,

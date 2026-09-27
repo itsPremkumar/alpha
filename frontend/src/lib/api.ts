@@ -59,8 +59,8 @@ function threadFromResponse(thread: any): Thread {
   if (Object.hasOwn(thread, "assistant_id")) {
     mapped.assistantId = typeof thread.assistant_id === "string" && thread.assistant_id ? thread.assistant_id : null;
   }
-  if (Object.hasOwn(metadata, "agent_workspace_project_id") || Object.hasOwn(thread, "project_id")) {
-    const projectId = metadata.agent_workspace_project_id ?? thread.project_id;
+  if (Object.hasOwn(metadata, "alpha_project_id") || Object.hasOwn(thread, "project_id")) {
+    const projectId = metadata.alpha_project_id ?? thread.project_id;
     mapped.projectId = typeof projectId === "string" && projectId ? projectId : null;
   }
   return mapped;
@@ -605,22 +605,29 @@ export async function fetchCommands(category?: string, coreOnly?: boolean): Prom
     if (category) params.append("category", category);
     if (coreOnly) params.append("core_only", "true");
     const res = await apiFetch(`/api/commands?${params.toString()}`);
-    if (!res.ok) return [];
     const data = await res.json();
     return data.commands || [];
-  } catch {
-    return [];
+  } catch (err) {
+    // A failed registry read is NOT "the server has no commands". `apiFetch`
+    // already rejects on every non-2xx and on a transport failure, carrying the
+    // gateway's own `detail`; resolving `[]` here collapsed a down backend and a
+    // 500 into the same value as a genuinely empty registry, so the composer
+    // silently kept its built-in list and disclosed nothing. Propagate instead.
+    // `lib/commands.ts` reads the same two routes and already does this.
+    throw err instanceof Error ? err : new ApiClientError("response");
   }
 }
 
 export async function searchCommands(q: string): Promise<SlashCommandInfo[]> {
   try {
     const res = await apiFetch(`/api/commands/search?q=${encodeURIComponent(q)}`);
-    if (!res.ok) return [];
     const data = await res.json();
     return data.commands || [];
-  } catch {
-    return [];
+  } catch (err) {
+    // Same contract as fetchCommands: a failed search must not render as
+    // "no command matches" — that is how a broken search looks like a real
+    // "there is no such command".
+    throw err instanceof Error ? err : new ApiClientError("response");
   }
 }
 

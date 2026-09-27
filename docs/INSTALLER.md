@@ -284,7 +284,7 @@ Also measured, same machine:
 
 | Artefact | Size | Files |
 |---|---:|---:|
-| `Agent-Workspace-Setup-2.1.0.exe` (NSIS installer) | **195.4 MB** | 1 |
+| `Alpha-Setup-2.1.0.exe` (NSIS installer) | **195.4 MB** | 1 |
 | `win-unpacked` (installed tree) | **585.8 MB** | 7,323 |
 | &nbsp;&nbsp;…of which portable Node + uv runtime | **121.9 MB** | 4 |
 | &nbsp;&nbsp;…of which prebuilt frontend | **78.5 MB** | 2,470 |
@@ -315,7 +315,7 @@ for imports.
 
 | Package / subtree | Size | Reached via | On a live path? |
 |---|---:|---|---|
-| `markitdown[all,xlsx]` subtree | **~120 MB** | `agent-workspace-harness` (core dep) | **Mostly not.** Pulls in `magika` (an ML file-type detector → `onnxruntime` 31.6 MB), `speechrecognition` 42.6 MB (audio transcription), `python-pptx`, `youtube-transcript-api` 8.6 MB, `pdfminer` 8.1 MB, `xlrd`, `xlsxwriter`. Alpha's own tools do not transcribe audio or read MP3s. **This is the single largest prune opportunity.** |
+| `markitdown[all,xlsx]` subtree | **~120 MB** | `alpha-harness` (core dep) | **Mostly not.** Pulls in `magika` (an ML file-type detector → `onnxruntime` 31.6 MB), `speechrecognition` 42.6 MB (audio transcription), `python-pptx`, `youtube-transcript-api` 8.6 MB, `pdfminer` 8.1 MB, `xlrd`, `xlsxwriter`. Alpha's own tools do not transcribe audio or read MP3s. **This is the single largest prune opportunity.** |
 | `langchain` subtree | ~55 MB | harness core | Partly. `sympy` 25.4 MB, `babel` 29.4 MB, `numpy` 18.8 + `numpy.libs` 20 MB are pulled in as transitive dependencies of the LLM client libraries, not used directly by Alpha |
 | `kubernetes` | 16.1 MB | harness core | Only for the Kubernetes sandbox provider. A local-only user never imports it |
 | `lark_oapi` | 16.6 MB | Alpha core dep | Live, but only if you use the Lark/Feishu channel |
@@ -359,7 +359,7 @@ accumulate megabytes.
 ```powershell
 # 1. The gateway's health endpoint
 curl http://127.0.0.1:8001/health
-# {"status":"healthy","service":"agent-workspace-gateway"}
+# {"status":"healthy","service":"alpha-gateway"}
 
 # 2. The readiness endpoint (probes the database and the checkpointer)
 curl http://127.0.0.1:8001/health/ready

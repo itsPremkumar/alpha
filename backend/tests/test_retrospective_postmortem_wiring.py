@@ -14,7 +14,7 @@ API:
 - an approval-queue failure is disclosed at WARNING with the real error
   text while synthesis still returns honestly.
 
-Deterministic: ``AGENT_WORKSPACE_HOME`` -> ``tmp_path``, unique project ids
+Deterministic: ``ALPHA_HOME`` -> ``tmp_path``, unique project ids
 (per-test engine caches), no network, no subprocesses.
 """
 
@@ -25,7 +25,7 @@ import uuid
 
 
 def test_real_postmortem_yields_proposal_with_real_error_summary(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     from alpha.evolution.retrospective_engine import RetrospectiveEngine
     from alpha.projects.postmortem import get_postmortem_engine
 
@@ -48,7 +48,7 @@ def test_real_postmortem_yields_proposal_with_real_error_summary(tmp_path, monke
 
 
 def test_postmortem_load_failure_logged_with_real_text(caplog, tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     from alpha.evolution.retrospective_engine import RetrospectiveEngine
 
     def _boom(_project_id):
@@ -69,7 +69,7 @@ def test_postmortem_load_failure_logged_with_real_text(caplog, tmp_path, monkeyp
 
 
 def test_approval_queue_failure_logged_with_real_text(caplog, tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     from alpha.evolution.retrospective_engine import RetrospectiveEngine
 
     def _queue_boom(_project_id):

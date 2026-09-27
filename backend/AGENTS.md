@@ -80,7 +80,7 @@ guide's [Service Topology](../AGENTS.md#service-topology).
 
 **Project structure**: `packages/harness/alpha/` (import `alpha.*`) is the agent
 framework; `app/gateway/` + `app/channels/` (import `app.*`) are the FastAPI Gateway
-and IM channels; `packages/extension-api/` (import `agent_workspace_extension_api.*`)
+and IM channels; `packages/extension-api/` (import `alpha_extension_api.*`)
 is the public extension contract; `extensions/sources/` holds installed extension
 snapshots; `tests/`, `scripts/` (including `check_tool_schemas.py`,
 `generate_feature_manifest.py`, `benchmark/`), and `docs/` hold tests, gates,
@@ -129,10 +129,10 @@ make format             # ruff format
 make migrate-rev MSG="..."  # Autogenerate a new alembic revision (see Schema Migrations section)
 ```
 
-The backend `make dev` target pre-creates and excludes `AGENT_WORKSPACE_HOME`
-(default: `backend/.agent-workspace`) and `backend/sandbox` from Uvicorn's reload
+The backend `make dev` target pre-creates and excludes `ALPHA_HOME`
+(default: `backend/.alpha`) and `backend/sandbox` from Uvicorn's reload
 watcher. Do not replace it with a bare `uvicorn --reload`: agent tasks write
-Python and other runtime files below `AGENT_WORKSPACE_HOME`, which would otherwise
+Python and other runtime files below `ALPHA_HOME`, which would otherwise
 restart the Gateway during an active run.
 
 More specific `AGENTS.md` files in backend code directories contain the subsystem sections split from this file. Follow the nearest file in the directory tree.
@@ -147,7 +147,7 @@ More specific `AGENTS.md` files in backend code directories contain the subsyste
 
 The backend is split into two layers with a strict dependency direction:
 
-- **Harness** (`packages/harness/alpha/`): Publishable agent framework package (`agent-workspace-harness`). Import prefix: `alpha.*`. Contains agent orchestration, tools, sandbox, models, MCP, skills, config — everything needed to build and run agents.
+- **Harness** (`packages/harness/alpha/`): Publishable agent framework package (`alpha-harness`). Import prefix: `alpha.*`. Contains agent orchestration, tools, sandbox, models, MCP, skills, config — everything needed to build and run agents.
 - **App** (`app/`): Unpublished application code. Import prefix: `app.*`. Contains the FastAPI Gateway API and IM channel integrations (Feishu, Slack, Telegram, DingTalk).
 
 **Dependency rule**: App imports alpha, but alpha never imports app. This boundary is enforced by `tests/test_harness_boundary.py` which runs in CI. Import conventions: `from alpha.agents import make_lead_agent` / `from alpha.models import create_chat_model` inside the harness; `from app.gateway.app import app` / `from app.channels.service import start_channel_service` inside the app; `from alpha.config import get_app_config` for the allowed App → Harness direction. A `from app.gateway.routers...` import inside the harness fails CI.
@@ -187,7 +187,7 @@ decisions — and `disable_clarification` is no milder than `non_interactive`.
 - If a module causes circular import issues in tests, add a `sys.modules` mock in `tests/conftest.py` (see existing example for `alpha.subagents.executor`)
 - Run a specific file with `PYTHONPATH=. uv run pytest tests/test_<feature>.py -v`
 
-Keep live tests opt-in via `AGENT_WORKSPACE_RUN_LIVE_TESTS=1`; guard POSIX-only
+Keep live tests opt-in via `ALPHA_RUN_LIVE_TESTS=1`; guard POSIX-only
 markers with `os.name` for Windows collection. Jina logging tests use dummy keys
 (`tests/test_jina_client.py`); Jina/Browserless/InfoQuest resolve URLs without
 rebuilding HTML; InfoQuest connect/read timeout is 30s, separate from crawl
@@ -215,7 +215,7 @@ reaches the backend through `NEXT_PUBLIC_LANGGRAPH_BASE_URL` (default
 `routers/system_monitor.py`) reports host CPU/RAM/disk/network/process state with
 best-effort, timeout-bounded, cached samplers. The four binding rules — never raise
 into the sampling tick, no unconsented bandwidth use, honest GPU-utilization
-attribution, and the `AGENT_WORKSPACE_ADVANCED_MONITOR=0` kill switch — are stated
+attribution, and the `ALPHA_ADVANCED_MONITOR=0` kill switch — are stated
 in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#gateway-host-system-monitor).
 
 ### Web Search Recency
@@ -260,7 +260,7 @@ Automatic conversation summarization near token limits, configured in
 `config.yaml` under `summarization`; trigger types are tokens, messages, or fraction of
 max input, and older messages are summarized while recent ones are kept. Manual
 compaction (`POST /api/threads/{id}/compact`) reuses the same
-`AgentWorkspaceSummarizationMiddleware`, writes a new checkpoint with updated `messages`
+`AlphaSummarizationMiddleware`, writes a new checkpoint with updated `messages`
 and `summary_text`, bumps only those channel versions, and goes through the shared
 `reserve_checkpoint_write()` boundary whose short-lived `checkpoint_write` thread
 operation shares the durable active-thread uniqueness constraint with run admission,

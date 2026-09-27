@@ -6,5 +6,5 @@ subclass) in its ``__init__``. The drop-in contract: folder name ==
 backend name == ``MemoryConfig.manager_class`` value.
 
 Add a new backend by dropping a new folder here and setting
-``manager_class: <name>`` -- no other agent-workspace code changes.
+``manager_class: <name>`` -- no other alpha code changes.
 """

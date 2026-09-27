@@ -22,7 +22,7 @@ Honesty pins (plan §3 WP-B2 test plan, §5 guardrails):
   for a ``None`` prior, and exploration never disabled (≥1 non-dominant
   operator always emitted with ``population >= 2``).
 
-Every test points ``AGENT_WORKSPACE_HOME`` at a temp dir (the environment
+Every test points ``ALPHA_HOME`` at a temp dir (the environment
 does not isolate it).
 """
 
@@ -48,8 +48,8 @@ VALID_EVIDENCE = [{"ref": "evidence://benchmark/run-1"}]
 
 @pytest.fixture(autouse=True)
 def rsi_home(tmp_path, monkeypatch):
-    """Run every test against a temp AGENT_WORKSPACE_HOME (env is global)."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    """Run every test against a temp ALPHA_HOME (env is global)."""
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     return tmp_path
 
 

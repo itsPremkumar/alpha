@@ -15,7 +15,7 @@ from alpha.runtime.checkpoint_cache.memory import MemoryCheckpointHistoryCache
 
 logger = logging.getLogger(__name__)
 
-_ENV_REDIS_URL = "AGENT_WORKSPACE_CHECKPOINT_CACHE_REDIS_URL"
+_ENV_REDIS_URL = "ALPHA_CHECKPOINT_CACHE_REDIS_URL"
 
 
 def _resolve_redis_url(config: Any) -> str:

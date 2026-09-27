@@ -9,7 +9,7 @@ home all see the same goal, the same turn counter, the same subgoals, and the
 same gates.
 
 Files land under ``<runtime_home()>/mission/goals/<session>.json`` and
-``runtime_home()`` honours ``AGENT_WORKSPACE_HOME``, which is what makes the
+``runtime_home()`` honours ``ALPHA_HOME``, which is what makes the
 whole loop testable against a throwaway directory instead of the developer's
 real workspace.
 

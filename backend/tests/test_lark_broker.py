@@ -270,7 +270,7 @@ def test_install_shim_writes_runtime_layout(tmp_path: Path) -> None:
     assert os.access(dest / "bin" / "lark-cli", os.X_OK)
     assert shim_body.read_text(encoding="utf-8") == lark_broker.LARK_CLI_BROKER_SHIM_SCRIPT
     assert os.access(shim_body, os.X_OK)
-    marker = json.loads((dest / ".agent-workspace-lark-cli-runtime.json").read_text())
+    marker = json.loads((dest / ".alpha-lark-cli-runtime.json").read_text())
     assert marker == {"version": "v1.0.65", "kind": "shim"}
 
 
@@ -300,7 +300,7 @@ def test_launcher_resolves_python_and_forwards(broker_server, tmp_path: Path) ->
 
 @requires_posix_launcher
 def test_launcher_can_pin_interpreter_via_env(broker_server, tmp_path: Path) -> None:
-    """AGENT_WORKSPACE_LARK_BROKER_PYTHON pins the interpreter for images with no python3
+    """ALPHA_LARK_BROKER_PYTHON pins the interpreter for images with no python3
     on PATH (the launcher must not silently ENOEXEC)."""
     host, port = broker_server
     dest = tmp_path / "runtime"

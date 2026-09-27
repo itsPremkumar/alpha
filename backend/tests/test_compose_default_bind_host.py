@@ -85,7 +85,7 @@ def test_dev_frontend_allows_default_loopback_origins():
     compose = yaml.safe_load(COMPOSE_PATHS["dev"].read_text(encoding="utf-8"))
     environment = compose["services"]["frontend"]["environment"]
 
-    assert "AGENT_WORKSPACE_DEV_ALLOWED_ORIGINS=${AGENT_WORKSPACE_DEV_ALLOWED_ORIGINS:-127.0.0.1,::1}" in environment
+    assert "ALPHA_DEV_ALLOWED_ORIGINS=${ALPHA_DEV_ALLOWED_ORIGINS:-127.0.0.1,::1}" in environment
 
 
 def _bind_address(mapping: str) -> str | None:

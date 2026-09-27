@@ -8,8 +8,8 @@ Combines box plots with kernel density estimation curves to show probability den
 - data: array<object>, records with category (string) and metric distributions.
 
 ### Optional
-- 	heme: string, default default.
-- 	itle: string, violin plot title.
+- theme: string, default default.
+- title: string, violin plot title.
 
 ## Usage Recommendations
 Use when understanding multi-modal distributions is critical.

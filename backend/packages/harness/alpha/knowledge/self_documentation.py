@@ -35,7 +35,7 @@ _CACHE_MAX_ENTRIES = 8
 _TEXT_SUFFIXES = frozenset({".md", ".markdown", ".rst", ".txt", ".yaml", ".yml", ".toml", ".json"})
 _MARKDOWN_SUFFIXES = frozenset({".md", ".markdown", ".rst"})
 _EXCLUDED_REL_PREFIXES = (
-    "backend/.agent-workspace/",
+    "backend/.alpha/",
     "backend/sandbox/",
     "frontend/.next/",
     "logs/",
@@ -44,7 +44,7 @@ _EXCLUDED_REL_PREFIXES = (
 )
 _EXCLUDED_DIR_NAMES = frozenset(
     {
-        ".agent-workspace",
+        ".alpha",
         ".git",
         ".hypothesis",
         ".mypy_cache",

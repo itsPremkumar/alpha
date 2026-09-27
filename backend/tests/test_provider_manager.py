@@ -19,7 +19,7 @@ def test_mask_secret():
 
 
 def test_providers_catalog_structure(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     catalog = get_providers_catalog()
     assert len(catalog) >= 15
 
@@ -48,7 +48,7 @@ def test_providers_catalog_structure(tmp_path, monkeypatch):
 
 
 def test_configure_and_remove_provider(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
 
     # Configure Groq
@@ -76,7 +76,7 @@ def test_configure_and_remove_provider(tmp_path, monkeypatch):
 
 
 def test_configure_custom_model(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
 
     res = configure_provider(
         provider_id="custom",
@@ -94,7 +94,7 @@ def test_configure_custom_model(tmp_path, monkeypatch):
 
 
 def test_dynamic_model_synthesis_in_app_config(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     monkeypatch.setenv("GROQ_API_KEY", "gsk_active_key_12345")
 
     cfg = AppConfig.model_validate(

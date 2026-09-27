@@ -69,8 +69,8 @@ TERMINAL = {
 
 
 @pytest.fixture(autouse=True)
-def _isolate_agent_workspace(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+def _isolate_alpha(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
 
 
 def _ok_runner(calls: list[str], fail_ids: frozenset[str] = frozenset(), mode: str = "ok"):

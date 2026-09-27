@@ -33,14 +33,14 @@ def _run(
     # venv) to the child shell instead of leaving the script without one.
     env["PATH"] = os.pathsep.join([str(Path(sys.executable).parent), env.get("PATH", "")])
     env.pop("UV_EXTRAS", None)
-    env.pop("AGENT_WORKSPACE_CONFIG_PATH", None)
-    env.pop("AGENT_WORKSPACE_STREAM_BRIDGE_REDIS_URL", None)
+    env.pop("ALPHA_CONFIG_PATH", None)
+    env.pop("ALPHA_STREAM_BRIDGE_REDIS_URL", None)
     if uv_extras is not None:
         env["UV_EXTRAS"] = uv_extras
     if config_path is not None:
-        env["AGENT_WORKSPACE_CONFIG_PATH"] = str(config_path)
+        env["ALPHA_CONFIG_PATH"] = str(config_path)
     if stream_bridge_redis_url is not None:
-        env["AGENT_WORKSPACE_STREAM_BRIDGE_REDIS_URL"] = stream_bridge_redis_url
+        env["ALPHA_STREAM_BRIDGE_REDIS_URL"] = stream_bridge_redis_url
     return subprocess.run(
         sh_argv(str(ENTRYPOINT), "--print-extras"),
         cwd=ENTRYPOINT.parent,
@@ -61,15 +61,15 @@ def test_entrypoint_script_exists_and_is_posix_sh():
 def test_entrypoint_excludes_runtime_state_from_uvicorn_reload():
     content = ENTRYPOINT.read_text(encoding="utf-8")
 
-    assert ': "${AGENT_WORKSPACE_HOME:=/app/backend/.agent-workspace}"' in content
-    # sandbox must be created too, not just .agent-workspace (#3459 / #3454).
-    assert 'mkdir -p "$AGENT_WORKSPACE_HOME" /app/backend/.agent-workspace /app/backend/sandbox' in content
+    assert ': "${ALPHA_HOME:=/app/backend/.alpha}"' in content
+    # sandbox must be created too, not just .alpha (#3459 / #3454).
+    assert 'mkdir -p "$ALPHA_HOME" /app/backend/.alpha /app/backend/sandbox' in content
     assert "--reload-include='*.yaml .env'" not in content
     assert "--reload-include='*.yaml'" in content
     assert "--reload-include='.env'" in content
     assert "--reload-exclude=/app/backend/sandbox" in content
-    assert '--reload-exclude="$AGENT_WORKSPACE_HOME"' in content
-    assert "--reload-exclude=/app/backend/.agent-workspace" in content
+    assert '--reload-exclude="$ALPHA_HOME"' in content
+    assert "--reload-exclude=/app/backend/.alpha" in content
 
 
 def test_failed_sync_recreates_a_clean_virtual_environment():

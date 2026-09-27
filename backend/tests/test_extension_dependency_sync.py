@@ -30,9 +30,9 @@ def test_extensions_dependency_group_is_part_of_the_default_sync() -> None:
 
 
 def test_the_app_layer_declares_the_contract_package_it_imports_directly() -> None:
-    """The app imports ``agent_workspace_extension_api`` itself, so it declares it.
+    """The app imports ``alpha_extension_api`` itself, so it declares it.
 
-    Only ``agent-workspace-harness`` guarantees the package transitively. That is the
+    Only ``alpha-harness`` guarantees the package transitively. That is the
     harness's own dependency to change, and the app's imports would break with
     it — the same argument the ``starlette`` entry in ``pyproject.toml`` spells
     out for a package FastAPI happens to pull in.
@@ -43,7 +43,7 @@ def test_the_app_layer_declares_the_contract_package_it_imports_directly() -> No
         str(path.relative_to(BACKEND_ROOT))
         for path in (BACKEND_ROOT / "app").rglob("*.py")
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
-        if (isinstance(node, ast.ImportFrom) and (node.module or "").split(".")[0] == "agent_workspace_extension_api") or (isinstance(node, ast.Import) and any(alias.name.split(".")[0] == "agent_workspace_extension_api" for alias in node.names))
+        if (isinstance(node, ast.ImportFrom) and (node.module or "").split(".")[0] == "alpha_extension_api") or (isinstance(node, ast.Import) and any(alias.name.split(".")[0] == "alpha_extension_api" for alias in node.names))
     )
     if not importers:
         pytest.skip("app no longer imports the contract package directly")
@@ -51,7 +51,7 @@ def test_the_app_layer_declares_the_contract_package_it_imports_directly() -> No
     project = tomllib.loads((BACKEND_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     declared = {re.split(r"[<>=!\[ ]", entry, maxsplit=1)[0] for entry in project["project"]["dependencies"]}
 
-    assert "agent-workspace-extension-api" in declared, f"imported directly by {importers} but only guaranteed transitively"
+    assert "alpha-extension-api" in declared, f"imported directly by {importers} but only guaranteed transitively"
 
 
 def test_backend_make_targets_never_mutate_the_extension_lock() -> None:
@@ -80,16 +80,16 @@ def test_root_makefile_exposes_extension_management_commands() -> None:
 
     install = _make_recipe(makefile, "extension-install")
     assert "alpha extensions install" in install
-    assert "--source-env __agent_workspace_extension_source__" in install
-    assert "AGENT_WORKSPACE_EXTENSION_SOURCE" not in install
+    assert "--source-env __alpha_extension_source__" in install
+    assert "ALPHA_EXTENSION_SOURCE" not in install
     assert "$(SOURCE)" not in install
     assert "uv run --frozen --no-group extensions" in install
     assert "--yes" not in install
 
     upgrade = _make_recipe(makefile, "extension-upgrade")
     assert "alpha extensions upgrade" in upgrade
-    assert "--source-env __agent_workspace_extension_source__" in upgrade
-    assert "AGENT_WORKSPACE_EXTENSION_SOURCE" not in upgrade
+    assert "--source-env __alpha_extension_source__" in upgrade
+    assert "ALPHA_EXTENSION_SOURCE" not in upgrade
     assert "$(SOURCE)" not in upgrade
     assert "uv run --frozen --no-group extensions" in upgrade
     assert "--yes" not in upgrade
@@ -226,11 +226,11 @@ def test_root_extension_shortcuts_reject_ambient_environment_arguments() -> None
 @pytest.mark.parametrize(
     ("target", "variable", "env_option"),
     [
-        ("extension-install", "SOURCE", "--source-env __agent_workspace_extension_source__"),
-        ("extension-upgrade", "SOURCE", "--source-env __agent_workspace_extension_source__"),
-        ("extension-enable", "NAME", "--name-env __agent_workspace_extension_name__"),
-        ("extension-disable", "NAME", "--name-env __agent_workspace_extension_name__"),
-        ("extension-remove", "NAME", "--name-env __agent_workspace_extension_name__"),
+        ("extension-install", "SOURCE", "--source-env __alpha_extension_source__"),
+        ("extension-upgrade", "SOURCE", "--source-env __alpha_extension_source__"),
+        ("extension-enable", "NAME", "--name-env __alpha_extension_name__"),
+        ("extension-disable", "NAME", "--name-env __alpha_extension_name__"),
+        ("extension-remove", "NAME", "--name-env __alpha_extension_name__"),
     ],
 )
 def test_root_extension_shortcuts_keep_command_line_arguments_out_of_the_shell_recipe(
@@ -252,18 +252,18 @@ def test_root_extension_shortcuts_keep_command_line_arguments_out_of_the_shell_r
     assert result.returncode == 0, result.stderr
     assert marker not in result.stdout
     assert env_option in result.stdout
-    assert "$AGENT_WORKSPACE_EXTENSION_" not in result.stdout
-    assert "%AGENT_WORKSPACE_EXTENSION_" not in result.stdout
+    assert "$ALPHA_EXTENSION_" not in result.stdout
+    assert "%ALPHA_EXTENSION_" not in result.stdout
 
 
 @pytest.mark.parametrize(
     ("target", "variable", "env_option"),
     [
-        ("extension-install", "SOURCE", "--source-env __agent_workspace_extension_source__"),
-        ("extension-upgrade", "SOURCE", "--source-env __agent_workspace_extension_source__"),
-        ("extension-enable", "NAME", "--name-env __agent_workspace_extension_name__"),
-        ("extension-disable", "NAME", "--name-env __agent_workspace_extension_name__"),
-        ("extension-remove", "NAME", "--name-env __agent_workspace_extension_name__"),
+        ("extension-install", "SOURCE", "--source-env __alpha_extension_source__"),
+        ("extension-upgrade", "SOURCE", "--source-env __alpha_extension_source__"),
+        ("extension-enable", "NAME", "--name-env __alpha_extension_name__"),
+        ("extension-disable", "NAME", "--name-env __alpha_extension_name__"),
+        ("extension-remove", "NAME", "--name-env __alpha_extension_name__"),
     ],
 )
 def test_root_extension_shortcuts_keep_values_out_of_the_cmd_recipe_on_windows(
@@ -292,8 +292,8 @@ def test_root_extension_shortcuts_keep_values_out_of_the_cmd_recipe_on_windows(
     assert result.returncode == 0, result.stderr
     assert marker not in result.stdout
     assert env_option in result.stdout
-    assert "$AGENT_WORKSPACE_EXTENSION_" not in result.stdout
-    assert "%AGENT_WORKSPACE_EXTENSION_" not in result.stdout
+    assert "$ALPHA_EXTENSION_" not in result.stdout
+    assert "%ALPHA_EXTENSION_" not in result.stdout
 
 
 def test_docker_dev_entrypoint_syncs_the_lock_before_runtime() -> None:

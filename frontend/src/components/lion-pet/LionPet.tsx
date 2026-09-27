@@ -105,6 +105,9 @@ function reducedMotionEnabled(): boolean {
 
 function desktopBridge(): DesktopBridge | null {
   if (typeof window === "undefined") return null;
+  // The preload exposes the bridge as `window.alpha`. `agentWorkspace` is the
+  // pre-rename name and stays readable as a fallback so an older desktop shell
+  // still drives the companion; it is the legacy spelling, not a second alias.
   const candidate = (window as Window & { alpha?: DesktopBridge; agentWorkspace?: DesktopBridge }).alpha
     || (window as Window & { alpha?: DesktopBridge; agentWorkspace?: DesktopBridge }).agentWorkspace;
   return candidate || null;

@@ -38,7 +38,7 @@ SECRET_MARKER = "SECRET_MARKER_c3f91a7d_CONTENT_NEVER_DISCLOSED"
 @pytest.fixture(autouse=True)
 def isolated_workspace(tmp_path, monkeypatch):
     """Keep runtime_home() inside a temp dir (the env does not isolate it)."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
 
 
 def _write_secret_file(tmp_path: Path, relative: str) -> Path:
@@ -115,7 +115,7 @@ def test_module_source_loads_rules_from_code_never_from_a_file():
 def test_policy_cannot_be_disabled_by_any_candidate_supplied_input(monkeypatch):
     # No flag/env clears the rules: even a hostile environment keeps them.
     monkeypatch.setenv("RSI_PROTECTED_PATHS_DISABLED", "1")
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(Path.cwd()))
+    monkeypatch.setenv("ALPHA_HOME", str(Path.cwd()))
     assert PROTECTED_RULES
     assert classify(".env")[0] == "deny"
 

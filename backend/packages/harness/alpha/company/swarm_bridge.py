@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 
 # Default location for agent installation on Windows/Posix
-DEFAULT_SWARM_DIR = Path(os.environ.get("AGENT_WORKSPACE_SWARM_HOME", os.environ.get("HERMES_HOME", Path.home() / ".hermes")))
+DEFAULT_SWARM_DIR = Path(os.environ.get("ALPHA_SWARM_HOME", os.environ.get("HERMES_HOME", Path.home() / ".hermes")))
 
 
 class SwarmBotMetadata(BaseModel):

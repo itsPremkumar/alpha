@@ -161,7 +161,7 @@ test("thread metadata merges field-wise, distinguishing an omitted field from an
   // server actually sent the field, and "" is the documented omission sentinel.
   const api = read("./api.ts");
   assert.match(api, /Empty optional strings let mergeThreads preserve a known local/);
-  assert.match(api, /Object\.hasOwn\(metadata, "agent_workspace_project_id"\) \|\| Object\.hasOwn\(thread, "project_id"\)/);
+  assert.match(api, /Object\.hasOwn\(metadata, "alpha_project_id"\) \|\| Object\.hasOwn\(thread, "project_id"\)/);
 });
 
 test("the whole server history is archived on this computer in bounded background batches", () => {

@@ -288,7 +288,7 @@ def test_missing_sdk_has_actionable_error(monkeypatch: pytest.MonkeyPatch) -> No
         "opensandbox.models.execd",
     ):
         monkeypatch.setitem(sys.modules, module_name, None)
-    with pytest.raises(ImportError, match=r"agent-workspace-harness\[opensandbox\]"):
+    with pytest.raises(ImportError, match=r"alpha-harness\[opensandbox\]"):
         _import_sdk()
 
 
@@ -338,9 +338,9 @@ def test_create_passes_connection_lifetime_scope_and_environment(monkeypatch: py
     assert call["ready_timeout"] == timedelta(seconds=18)
     assert call["env"] == {"BASE": "1", "FROM_ENV": "resolved", "MISSING_ENV": ""}
     assert call["metadata"] == {
-        "agent_workspace_provider": "opensandbox",
-        "agent_workspace_thread": "thread-1",
-        "agent_workspace_user": "user-1",
+        "alpha_provider": "opensandbox",
+        "alpha_thread": "thread-1",
+        "alpha_user": "user-1",
     }
     assert call["connection_config"].kwargs == {
         "api_key": "secret",

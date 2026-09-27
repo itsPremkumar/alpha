@@ -14,7 +14,7 @@ Covers, against the REAL ``alpha.bots.cloning`` / ``alpha.bots.ephemeral`` code
   ``check_leases()`` in the registry AND persisted as ``expired`` on disk
   (deterministic -- the lease clock is moved, no sleeps).
 
-Registry/lease state is isolated per test via ``AGENT_WORKSPACE_HOME`` ->
+Registry/lease state is isolated per test via ``ALPHA_HOME`` ->
 tmp_path plus singleton resets (same pattern as ``test_bot_cloning_lease``).
 """
 
@@ -35,7 +35,7 @@ from alpha.bots.registry import BotRegistry
 @pytest.fixture(autouse=True)
 def isolated_bot_state(tmp_path, monkeypatch):
     """Point every bot/ephemeral singleton at a per-test temp home."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
 
     import alpha.bots.ephemeral as ephemeral_mod
     import alpha.bots.registry as registry_mod

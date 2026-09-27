@@ -477,13 +477,13 @@ def _validate_materialized(case: BenchmarkCase, expected: list[BaseMessage], war
     return len(cold), cold_digest
 
 
-_HISTORY_CACHE_ENV = "AGENT_WORKSPACE_CHECKPOINT_BENCH_HISTORY_CACHE"
+_HISTORY_CACHE_ENV = "ALPHA_CHECKPOINT_BENCH_HISTORY_CACHE"
 
 
 def _wrap_history_cache(saver: Any) -> Any:
     """Wrap *saver* in a CachedHistorySaver with a fresh, unbounded memory cache.
 
-    Opt-in via AGENT_WORKSPACE_CHECKPOINT_BENCH_HISTORY_CACHE=1 so default rows are
+    Opt-in via ALPHA_CHECKPOINT_BENCH_HISTORY_CACHE=1 so default rows are
     byte-identical to the pre-cache benchmark. A fresh wrapper per phase keeps
     the cold read genuinely cold: the write-phase cache is discarded, mirroring
     a process restart (cache lifetime == checkpointer CM lifetime).

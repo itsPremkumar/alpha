@@ -32,7 +32,7 @@ from alpha.tools.builtins.bot_roster_tool import bot_roster_tool
 
 @pytest.fixture(autouse=True)
 def _isolated_home(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     bot_reg._global_registry = None
     bot_reg._global_registry_path = None
     yield

@@ -35,7 +35,7 @@ class _ModelConfig:
 
 @pytest.fixture(autouse=True)
 def _isolated_home(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     import alpha.bots.registry as bot_reg
     import alpha.groups.runner as runner
     import alpha.groups.service as grp_svc
@@ -48,9 +48,9 @@ def _isolated_home(tmp_path, monkeypatch):
     monkeypatch.setattr(runner, "_global_runner_path", None)
     # Deterministic: no chat models, so background execution fails fast with
     # a clear room receipt instead of calling providers.
-    import alpha.config as agent_workspace_config
+    import alpha.config as alpha_config
 
-    monkeypatch.setattr(agent_workspace_config, "get_app_config", lambda: _NoModelConfig())
+    monkeypatch.setattr(alpha_config, "get_app_config", lambda: _NoModelConfig())
     yield
 
 

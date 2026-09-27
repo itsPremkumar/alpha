@@ -29,7 +29,7 @@ Configuration example (``config.yaml``)::
 
 Install the optional SDK before selecting this provider::
 
-    pip install "agent-workspace-harness[tenki]"
+    pip install "alpha-harness[tenki]"
 
 Only the stable Tenki surface is used — sandbox create/terminate plus
 exec/shell/filesystem. Volumes, snapshots, and template builds are intentionally

@@ -2,7 +2,7 @@ import asyncio
 import copy
 
 import pytest
-from agent_workspace_extension_api import ExtensionData
+from alpha_extension_api import ExtensionData
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.base import empty_checkpoint, uuid6
 from langgraph.checkpoint.memory import InMemorySaver

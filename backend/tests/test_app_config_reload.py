@@ -197,12 +197,12 @@ def test_app_config_defaults_missing_database_to_sqlite(tmp_path, monkeypatch):
     _write_extensions_config(extensions_path)
     _write_config(config_path, model_name="first-model", supports_thinking=False)
 
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(extensions_path))
 
     config = AppConfig.from_file(str(config_path))
 
     assert config.database.backend == "sqlite"
-    assert config.database.sqlite_dir == ".agent-workspace/data"
+    assert config.database.sqlite_dir == ".alpha/data"
 
 
 def test_app_config_preserves_config_yaml_extension_middlewares(tmp_path, monkeypatch):
@@ -220,7 +220,7 @@ def test_app_config_preserves_config_yaml_extension_middlewares(tmp_path, monkey
             }
         },
     )
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(extensions_path))
 
     config = AppConfig.from_file(str(config_path))
 
@@ -255,7 +255,7 @@ def test_app_config_normalizes_config_yaml_extension_aliases_before_override(tmp
             }
         },
     )
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(extensions_path))
 
     config = AppConfig.from_file(str(config_path))
 
@@ -271,7 +271,7 @@ def test_app_config_loads_extension_middlewares_from_extensions_config(tmp_path,
         encoding="utf-8",
     )
     _write_config_with_sections(config_path)
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(extensions_path))
 
     config = AppConfig.from_file(str(config_path))
 
@@ -298,7 +298,7 @@ def test_app_config_loads_middleware_kwargs_from_config_yaml(tmp_path, monkeypat
             }
         },
     )
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(extensions_path))
 
     config = AppConfig.from_file(str(config_path))
 
@@ -323,12 +323,12 @@ def test_app_config_defaults_empty_database_to_sqlite(tmp_path, monkeypatch):
         encoding="utf-8",
     )
 
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(extensions_path))
 
     config = AppConfig.from_file(str(config_path))
 
     assert config.database.backend == "sqlite"
-    assert config.database.sqlite_dir == ".agent-workspace/data"
+    assert config.database.sqlite_dir == ".alpha/data"
 
 
 def test_app_config_coerces_commented_out_list_sections(tmp_path, monkeypatch):
@@ -352,7 +352,7 @@ def test_app_config_coerces_commented_out_list_sections(tmp_path, monkeypatch):
         ),
         encoding="utf-8",
     )
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(extensions_path))
 
     config = AppConfig.from_file(str(config_path))
 
@@ -384,7 +384,7 @@ def test_app_config_coerces_commented_out_object_sections(tmp_path, monkeypatch)
         ),
         encoding="utf-8",
     )
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(extensions_path))
 
     config = AppConfig.from_file(str(config_path))
 
@@ -408,7 +408,7 @@ def test_app_config_null_required_section_still_errors(tmp_path, monkeypatch):
     extensions_path = tmp_path / "extensions_config.json"
     _write_extensions_config(extensions_path)
     config_path.write_text(yaml.safe_dump({"sandbox": None}), encoding="utf-8")
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(extensions_path))
 
     with pytest.raises(ValidationError):
         AppConfig.from_file(str(config_path))
@@ -427,7 +427,7 @@ def test_app_config_warns_when_no_models_configured(tmp_path, monkeypatch, caplo
         ),
         encoding="utf-8",
     )
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(extensions_path))
 
     with caplog.at_level("WARNING", logger="alpha.config.app_config"):
         AppConfig.from_file(str(config_path))
@@ -441,8 +441,8 @@ def test_get_app_config_reloads_when_file_changes(tmp_path, monkeypatch):
     _write_extensions_config(extensions_path)
     _write_config(config_path, model_name="first-model", supports_thinking=False)
 
-    monkeypatch.setenv("AGENT_WORKSPACE_CONFIG_PATH", str(config_path))
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("ALPHA_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(extensions_path))
     reset_app_config()
 
     try:
@@ -466,8 +466,8 @@ def test_get_app_config_reloads_when_content_digest_changes_without_metadata(tmp
     _write_extensions_config(extensions_path)
     _write_config(config_path, model_name="model-a", supports_thinking=False)
 
-    monkeypatch.setenv("AGENT_WORKSPACE_CONFIG_PATH", str(config_path))
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("ALPHA_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(extensions_path))
     _reset_config_singletons()
 
     try:
@@ -507,15 +507,15 @@ def test_get_app_config_reloads_when_config_path_changes(tmp_path, monkeypatch):
     _write_config(config_a, model_name="model-a", supports_thinking=False)
     _write_config(config_b, model_name="model-b", supports_thinking=True)
 
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(extensions_path))
-    monkeypatch.setenv("AGENT_WORKSPACE_CONFIG_PATH", str(config_a))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("ALPHA_CONFIG_PATH", str(config_a))
     reset_app_config()
 
     try:
         first = get_app_config()
         assert first.models[0].name == "model-a"
 
-        monkeypatch.setenv("AGENT_WORKSPACE_CONFIG_PATH", str(config_b))
+        monkeypatch.setenv("ALPHA_CONFIG_PATH", str(config_b))
         second = get_app_config()
         assert second.models[0].name == "model-b"
         assert second is not first
@@ -534,8 +534,8 @@ def test_get_app_config_resets_agents_api_config_when_section_removed(tmp_path, 
         agents_api={"enabled": True},
     )
 
-    monkeypatch.setenv("AGENT_WORKSPACE_CONFIG_PATH", str(config_path))
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("ALPHA_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(extensions_path))
     reset_app_config()
 
     try:
@@ -576,8 +576,8 @@ def test_get_app_config_resets_singleton_configs_when_sections_removed(tmp_path,
         },
     )
 
-    monkeypatch.setenv("AGENT_WORKSPACE_CONFIG_PATH", str(config_path))
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("ALPHA_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(extensions_path))
     reset_app_config()
 
     try:
@@ -614,8 +614,8 @@ def test_get_app_config_resets_persistence_runtime_singletons_when_checkpointer_
     _write_extensions_config(extensions_path)
     _write_config_with_sections(config_path, {"checkpointer": {"type": "memory"}})
 
-    monkeypatch.setenv("AGENT_WORKSPACE_CONFIG_PATH", str(config_path))
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("ALPHA_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(extensions_path))
     reset_checkpointer()
     reset_store()
     reset_app_config()
@@ -650,8 +650,8 @@ def test_get_app_config_keeps_persistence_runtime_singletons_when_checkpointer_u
         },
     )
 
-    monkeypatch.setenv("AGENT_WORKSPACE_CONFIG_PATH", str(config_path))
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("ALPHA_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(extensions_path))
     _reset_config_singletons()
 
     try:
@@ -692,8 +692,8 @@ def test_get_app_config_does_not_reset_persistence_singletons_when_database_chan
         {"database": {"backend": "postgres", "postgres_url": "postgresql://localhost/db", "postgres_schema": "schema_a"}},
     )
 
-    monkeypatch.setenv("AGENT_WORKSPACE_CONFIG_PATH", str(config_path))
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("ALPHA_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(extensions_path))
     _reset_config_singletons()
 
     reset_calls = {"checkpointer": 0, "store": 0}
@@ -740,8 +740,8 @@ def test_get_app_config_does_not_mutate_singletons_when_reload_validation_fails(
         },
     )
 
-    monkeypatch.setenv("AGENT_WORKSPACE_CONFIG_PATH", str(config_path))
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("ALPHA_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(extensions_path))
     _reset_config_singletons()
 
     try:
@@ -787,8 +787,8 @@ def test_get_memory_config_self_syncs_without_prior_get_app_config(tmp_path, mon
 
     _write_config_with_sections(config_path, {"memory": {"enabled": False}})
 
-    monkeypatch.setenv("AGENT_WORKSPACE_CONFIG_PATH", str(config_path))
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("ALPHA_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(extensions_path))
     reset_app_config()
 
     try:
@@ -816,8 +816,8 @@ def test_get_memory_config_falls_back_on_broken_config(tmp_path, monkeypatch):
 
     _write_config_with_sections(config_path, {"memory": {"enabled": False}})
 
-    monkeypatch.setenv("AGENT_WORKSPACE_CONFIG_PATH", str(config_path))
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("ALPHA_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(extensions_path))
     reset_app_config()
 
     try:

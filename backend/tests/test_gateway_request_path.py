@@ -36,7 +36,7 @@ def _default_route_authorization_config(monkeypatch):
 @pytest.fixture(autouse=True)
 def _auth_enabled(monkeypatch):
     """Every case here is about the enabled-auth path."""
-    monkeypatch.delenv("AGENT_WORKSPACE_AUTH_DISABLED", raising=False)
+    monkeypatch.delenv("ALPHA_AUTH_DISABLED", raising=False)
 
 
 def _request(path: str, root_path: str = "", method: str = "GET") -> Request:

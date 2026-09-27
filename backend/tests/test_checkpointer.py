@@ -218,11 +218,11 @@ class TestHarnessPackaging:
         data = tomllib.loads(pyproject_path.read_text())
 
         optional_dependencies = data["project"]["optional-dependencies"]
-        assert optional_dependencies["postgres"] == ["agent-workspace-harness[postgres]"]
+        assert optional_dependencies["postgres"] == ["alpha-harness[postgres]"]
 
     def test_postgres_missing_dependency_messages_recommend_package_extra(self):
-        assert "agent-workspace-harness[postgres]" in POSTGRES_INSTALL
-        assert "agent-workspace-harness[postgres]" in POSTGRES_STORE_INSTALL
+        assert "alpha-harness[postgres]" in POSTGRES_INSTALL
+        assert "alpha-harness[postgres]" in POSTGRES_STORE_INSTALL
         assert "uv sync --all-packages --extra postgres" in POSTGRES_INSTALL
         assert "uv sync --all-packages --extra postgres" in POSTGRES_STORE_INSTALL
 
@@ -316,7 +316,7 @@ class TestGetCheckpointer:
         'sqlite3.OperationalError: unable to open database file' when the
         parent directory for the database file does not yet exist (e.g. when
         using the harness package from an external virtualenv where the
-        .agent-workspace directory has not been created).
+        .alpha directory has not been created).
         """
         load_checkpointer_config_from_dict({"type": "sqlite", "connection_string": "relative/test.db"})
 
@@ -899,7 +899,7 @@ class TestCheckpointerDatabaseConfig:
 
     Regression: ``get_checkpointer`` / ``checkpointer_context`` previously read
     only the legacy ``checkpointer`` section and fell back to ``InMemorySaver``,
-    silently ignoring ``database``. Embedded callers (``AgentWorkspaceClient``) and the
+    silently ignoring ``database``. Embedded callers (``AlphaClient``) and the
     TUI then persisted Store rows to sqlite/postgres while checkpoints went to an
     in-memory saver and were lost on exit.
     """
@@ -1180,16 +1180,16 @@ class TestAppConfigLoadsCheckpointer:
 
 
 # ---------------------------------------------------------------------------
-# AgentWorkspaceClient falls back to config checkpointer
+# AlphaClient falls back to config checkpointer
 # ---------------------------------------------------------------------------
 
 
 class TestClientCheckpointerFallback:
     def test_client_uses_config_checkpointer_when_none_provided(self):
-        """AgentWorkspaceClient._ensure_agent falls back to get_checkpointer() when checkpointer=None."""
+        """AlphaClient._ensure_agent falls back to get_checkpointer() when checkpointer=None."""
         from langgraph.checkpoint.memory import InMemorySaver
 
-        from alpha.client import AgentWorkspaceClient
+        from alpha.client import AlphaClient
 
         load_checkpointer_config_from_dict({"type": "memory"})
 
@@ -1217,9 +1217,9 @@ class TestClientCheckpointerFallback:
             patch("alpha.client.build_middlewares", return_value=[]),
             patch("alpha.client.apply_prompt_template", return_value=""),
             patch("alpha.client.get_enabled_skills_for_config", return_value=[]),
-            patch("alpha.client.AgentWorkspaceClient._get_tools", return_value=[]),
+            patch("alpha.client.AlphaClient._get_tools", return_value=[]),
         ):
-            client = AgentWorkspaceClient(checkpointer=None)
+            client = AlphaClient(checkpointer=None)
             config = client._get_runnable_config("test-thread")
             client._ensure_agent(config)
 
@@ -1228,7 +1228,7 @@ class TestClientCheckpointerFallback:
 
     def test_client_explicit_checkpointer_takes_precedence(self):
         """An explicitly provided checkpointer is used even when config checkpointer is set."""
-        from alpha.client import AgentWorkspaceClient
+        from alpha.client import AlphaClient
 
         load_checkpointer_config_from_dict({"type": "memory"})
 
@@ -1257,9 +1257,9 @@ class TestClientCheckpointerFallback:
             patch("alpha.client.build_middlewares", return_value=[]),
             patch("alpha.client.apply_prompt_template", return_value=""),
             patch("alpha.client.get_enabled_skills_for_config", return_value=[]),
-            patch("alpha.client.AgentWorkspaceClient._get_tools", return_value=[]),
+            patch("alpha.client.AlphaClient._get_tools", return_value=[]),
         ):
-            client = AgentWorkspaceClient(checkpointer=explicit_cp)
+            client = AlphaClient(checkpointer=explicit_cp)
             config = client._get_runnable_config("test-thread")
             client._ensure_agent(config)
 

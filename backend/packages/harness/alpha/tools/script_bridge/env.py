@@ -17,7 +17,7 @@ Two independent barriers, because each fails differently:
    credential by accident; that requires a deliberate code change here.
 
 ``os.environ`` is never iterated to build the result, so an operator adding
-``AGENT_WORKSPACE_SOMETHING`` to the host environment can never widen what a
+``ALPHA_SOMETHING`` to the host environment can never widen what a
 sandboxed script sees.
 """
 

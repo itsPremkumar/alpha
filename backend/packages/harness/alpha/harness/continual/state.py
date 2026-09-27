@@ -34,7 +34,7 @@ def _slug(raw: str, fallback: str) -> str:
 
 
 def get_default_global_dir() -> Path:
-    env_dir = os.environ.get("AGENT_WORKSPACE_GLOBAL_HARNESS_DIR")
+    env_dir = os.environ.get("ALPHA_GLOBAL_HARNESS_DIR")
     if env_dir and env_dir.strip():
         return Path(env_dir.strip()).expanduser().resolve()
     return Path.home() / ".alpha" / "harness"

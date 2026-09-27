@@ -64,7 +64,7 @@ exit 0
 
 
 def _reset_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path / "home"))
     monkeypatch.setattr(paths_module, "_paths", None)
 
 

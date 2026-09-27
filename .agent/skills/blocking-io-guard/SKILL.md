@@ -53,7 +53,7 @@ make detect-blocking-io
 ```
 
 Prints a summary and writes the complete structured finding list to
-`.agent-workspace/blocking-io-findings.json`. Work HIGH priority first; do not start
+`.alpha/blocking-io-findings.json`. Work HIGH priority first; do not start
 MEDIUM until every HIGH is dispositioned (fixed, guarded, or recorded
 NO-ACTION).
 

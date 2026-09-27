@@ -7,7 +7,7 @@ a build or local deployment:
 
 - Exact ``.env`` files hold deployment secrets at the repository root and in
   the backend/frontend projects.
-- ``AGENT_WORKSPACE_HOME`` (``backend/.agent-workspace`` by default) holds the sqlite database,
+- ``ALPHA_HOME`` (``backend/.alpha`` by default) holds the sqlite database,
   per-user agent definitions and uploads, and ``.jwt_secret``.
 - ``backend/sandbox`` is the local sandbox provider's workspace root, created by
   ``backend/Makefile`` and written by agent runs.
@@ -19,7 +19,7 @@ directories as root, the build client eventually cannot read them and the build
 fails outright::
 
     target gateway: failed to solve: error from sender:
-    open .../.agent-workspace/users/<uuid>/integrations/lark-cli: permission denied
+    open .../.alpha/users/<uuid>/integrations/lark-cli: permission denied
 
 None of these paths has tracked content, so excluding them costs the build nothing.
 """
@@ -39,10 +39,10 @@ HOST_LOCAL_PATHS = [
     ".env",
     "backend/.env",
     "frontend/.env",
-    ".agent-workspace/integrations/skills/provider/pack/SKILL.md",
-    "backend/.agent-workspace/data/alpha.db",
-    "backend/.agent-workspace/.jwt_secret",
-    "backend/.agent-workspace/users/some-user/agents/my-agent/config.yaml",
+    ".alpha/integrations/skills/provider/pack/SKILL.md",
+    "backend/.alpha/data/alpha.db",
+    "backend/.alpha/.jwt_secret",
+    "backend/.alpha/users/some-user/agents/my-agent/config.yaml",
     "backend/sandbox/some-thread/scratch.py",
 ]
 

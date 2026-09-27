@@ -14,7 +14,7 @@ Honesty pins (plan §3 WP-A1, §5.6):
   ``{measured, simulated, heuristic, unverified}`` — enforced at write and
   load, fail-closed otherwise.
 
-Every test points ``AGENT_WORKSPACE_HOME`` at a temp dir (the environment does
+Every test points ``ALPHA_HOME`` at a temp dir (the environment does
 not isolate it).
 """
 
@@ -35,8 +35,8 @@ EVIDENCE_WHITELIST = {"measured", "simulated", "heuristic", "unverified"}
 
 @pytest.fixture(autouse=True)
 def rsi_home(tmp_path, monkeypatch):
-    """Run every test against a temp AGENT_WORKSPACE_HOME (env is global)."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    """Run every test against a temp ALPHA_HOME (env is global)."""
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     return tmp_path
 
 

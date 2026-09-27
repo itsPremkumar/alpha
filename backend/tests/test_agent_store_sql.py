@@ -239,7 +239,7 @@ def test_delete_preserves_memory_only_dir_when_no_row(store, tmp_path, monkeypat
     # on-disk directory holds only memory/facts data (config lives in the row in
     # db mode), so delete must preserve it and report "not-custom-agent" instead
     # of rmtree-ing a user's memory.
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     from alpha.config import paths as paths_module
 
     monkeypatch.setattr(paths_module, "_paths", None)
@@ -258,7 +258,7 @@ def test_delete_preserves_memory_only_dir_when_no_row(store, tmp_path, monkeypat
 def test_delete_removes_memory_dir_when_row_exists(store, tmp_path, monkeypatch):
     # The complement: when the agent row exists, its co-located on-disk memory is
     # cleaned along with the row.
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     from alpha.config import paths as paths_module
 
     monkeypatch.setattr(paths_module, "_paths", None)

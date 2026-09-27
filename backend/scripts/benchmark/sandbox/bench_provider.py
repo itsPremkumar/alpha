@@ -24,7 +24,7 @@ Usage::
 Providers
 ---------
 ``boxlite``       BoxLite micro-VM sandbox (requires ``pip install boxlite``).
-``aio-docker``    AIO Docker sandbox (requires Docker daemon + ``agent-workspace-harness`` extras).
+``aio-docker``    AIO Docker sandbox (requires Docker daemon + ``alpha-harness`` extras).
 
 Scenarios
 ---------

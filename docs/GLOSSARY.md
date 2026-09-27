@@ -208,7 +208,7 @@ brainstorm, challenge assumptions, and produce a unified deliverable.
 **Hashline editing** — deterministic line-level reading and editing that prevents
 multi-line edit drift and merge conflicts.
 
-**Harness (agent-workspace-harness)** — the importable agent framework package
+**Harness (alpha-harness)** — the importable agent framework package
 (import name `alpha.*`) containing 89 engine modules. Alpha the product is built on
 top of it. → [backend/AGENTS.md](../backend/AGENTS.md)
 

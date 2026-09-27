@@ -717,7 +717,7 @@ class TestChannelManager:
         csrf_token = headers["X-CSRF-Token"]
         assert csrf_token
         assert headers["Cookie"] == f"csrf_token={csrf_token}"
-        assert headers["X-Agent-Workspace-Internal-Token"]
+        assert headers["X-Alpha-Internal-Token"]
 
     def test_concurrent_inbound_for_same_chat_reuses_single_thread(self):
         # Each inbound message is dispatched on its own task, so two messages
@@ -807,7 +807,7 @@ class TestChannelManager:
             assert reply == "Available models:\n• default"
             assert calls[0]["url"] == "http://gateway:8001/api/models"
             assert calls[0]["timeout"] == 10
-            assert calls[0]["headers"]["X-Agent-Workspace-Internal-Token"]
+            assert calls[0]["headers"]["X-Alpha-Internal-Token"]
 
         _run(go())
 
@@ -850,7 +850,7 @@ class TestChannelManager:
                 channel_name="slack",
                 chat_id="C123",
                 user_id="U-platform",
-                owner_user_id="agent-workspace-user-1",
+                owner_user_id="alpha-user-1",
                 connection_id="connection-1",
                 text="/memory",
                 msg_type=InboundMessageType.COMMAND,
@@ -859,7 +859,7 @@ class TestChannelManager:
             reply = await manager._fetch_gateway("/api/memory", "memory", msg=msg)
 
             assert reply == "Memory contains 1 fact(s)."
-            assert calls[0]["headers"][INTERNAL_OWNER_USER_ID_HEADER_NAME] == "agent-workspace-user-1"
+            assert calls[0]["headers"][INTERNAL_OWNER_USER_ID_HEADER_NAME] == "alpha-user-1"
 
         _run(go())
 
@@ -1788,7 +1788,7 @@ class TestChannelManager:
         """Conversation should continue after ask_clarification instead of resetting history."""
         from app.channels.manager import ChannelManager
 
-        monkeypatch.delenv("AGENT_WORKSPACE_AUTH_DISABLED", raising=False)
+        monkeypatch.delenv("ALPHA_AUTH_DISABLED", raising=False)
 
         async def go():
             bus = MessageBus()
@@ -3184,13 +3184,13 @@ class TestChannelManager:
                     channel_name="test",
                     chat_id="chat1",
                     user_id="platform-user",
-                    owner_user_id="agent-workspace-user-1",
+                    owner_user_id="alpha-user-1",
                     text="/agent list",
                     msg_type=InboundMessageType.COMMAND,
                 )
             )
 
-            assert seen_user_ids == ["agent-workspace-user-1"]
+            assert seen_user_ids == ["alpha-user-1"]
             assert outbound_received[0].text == ("Available agents:\n• lead_agent — Default agent\n• researcher — Researches sources\n• writer")
 
         _run(go())
@@ -3220,14 +3220,14 @@ class TestChannelManager:
                 channel_name="test",
                 chat_id="chat1",
                 user_id="platform-user",
-                owner_user_id="agent-workspace-user-1",
+                owner_user_id="alpha-user-1",
                 text="/agent use Researcher",
                 msg_type=InboundMessageType.COMMAND,
             )
 
             reply = await manager._handle_agent_command(msg, "use Researcher")
 
-            assert loaded == [("researcher", "agent-workspace-user-1")]
+            assert loaded == [("researcher", "alpha-user-1")]
             assert store.get_thread_id("test", "chat1") == "research-thread"
             create_kwargs = mock_client.threads.create.call_args.kwargs
             assert create_kwargs["metadata"]["channel_agent_name"] == "researcher"
@@ -3271,7 +3271,7 @@ class TestChannelManager:
                 channel_name="test",
                 chat_id="chat1",
                 user_id="platform-user",
-                owner_user_id="agent-workspace-user-1",
+                owner_user_id="alpha-user-1",
                 text="/agent use researcher",
                 msg_type=InboundMessageType.COMMAND,
             )
@@ -3317,7 +3317,7 @@ class TestChannelManager:
                 channel_name="test",
                 chat_id="chat1",
                 user_id="platform-user",
-                owner_user_id="agent-workspace-user-1",
+                owner_user_id="alpha-user-1",
                 text="Continue",
             )
 
@@ -3457,7 +3457,7 @@ class TestChannelManager:
         """Messages with the same topic_id should reuse the same Alpha thread."""
         from app.channels.manager import ChannelManager
 
-        monkeypatch.delenv("AGENT_WORKSPACE_AUTH_DISABLED", raising=False)
+        monkeypatch.delenv("ALPHA_AUTH_DISABLED", raising=False)
 
         async def go():
             bus = MessageBus()
@@ -3839,7 +3839,7 @@ class TestResolveRunParamsUserId:
 
     def test_safe_user_id_is_passed_through(self, monkeypatch):
         manager = self._manager()
-        monkeypatch.delenv("AGENT_WORKSPACE_AUTH_DISABLED", raising=False)
+        monkeypatch.delenv("ALPHA_AUTH_DISABLED", raising=False)
         msg = InboundMessage(channel_name="telegram", chat_id="c", user_id="123456", text="hi")
 
         _, _, run_context = manager._resolve_run_params(msg, "thread-1")
@@ -3870,7 +3870,7 @@ class TestResolveRunParamsUserId:
     @pytest.mark.parametrize(
         "kwargs",
         [
-            {"user_id": "U-platform", "owner_user_id": "agent-workspace-user-1"},  # bound
+            {"user_id": "U-platform", "owner_user_id": "alpha-user-1"},  # bound
             {"user_id": "U-platform"},  # unbound auth-enabled
             {"user_id": "feishu|ou_AbC/123"},  # unbound needing sanitization
         ],
@@ -3885,7 +3885,7 @@ class TestResolveRunParamsUserId:
         from app.channels.manager import _channel_storage_user_id
 
         manager = self._manager()
-        monkeypatch.delenv("AGENT_WORKSPACE_AUTH_DISABLED", raising=False)
+        monkeypatch.delenv("ALPHA_AUTH_DISABLED", raising=False)
         msg = InboundMessage(channel_name="slack", chat_id="C123", text="hi", **kwargs)
 
         _, _, run_context = manager._resolve_run_params(msg, "thread-1")
@@ -3894,19 +3894,19 @@ class TestResolveRunParamsUserId:
 
     def test_connection_owner_user_id_takes_precedence_over_platform_user_id(self, monkeypatch):
         manager = self._manager()
-        monkeypatch.delenv("AGENT_WORKSPACE_AUTH_DISABLED", raising=False)
+        monkeypatch.delenv("ALPHA_AUTH_DISABLED", raising=False)
         msg = InboundMessage(
             channel_name="slack",
             chat_id="C123",
             user_id="U-platform",
-            owner_user_id="agent-workspace-user-1",
+            owner_user_id="alpha-user-1",
             connection_id="connection-1",
             text="hi",
         )
 
         _, _, run_context = manager._resolve_run_params(msg, "thread-1")
 
-        assert run_context["user_id"] == "agent-workspace-user-1"
+        assert run_context["user_id"] == "alpha-user-1"
         assert run_context["channel_user_id"] == "U-platform"
 
     def test_github_channel_gets_raised_recursion_limit(self):
@@ -4025,7 +4025,7 @@ class TestResolveRunParamsUserId:
         from app.gateway.internal_auth import INTERNAL_OWNER_USER_ID_HEADER_NAME
 
         manager = self._manager()
-        monkeypatch.setenv("AGENT_WORKSPACE_AUTH_DISABLED", "1")
+        monkeypatch.setenv("ALPHA_AUTH_DISABLED", "1")
         msg = InboundMessage(channel_name="slack", chat_id="C123", user_id="U-platform", text="hi")
 
         _, _, run_context = manager._resolve_run_params(msg, "thread-1")
@@ -4043,7 +4043,7 @@ class TestResolveRunParamsUserId:
         from app.gateway.auth_disabled import AUTH_DISABLED_USER_ID
 
         manager = self._manager()
-        monkeypatch.setenv("AGENT_WORKSPACE_AUTH_DISABLED", "1")
+        monkeypatch.setenv("ALPHA_AUTH_DISABLED", "1")
         msg = InboundMessage(
             channel_name="slack",
             chat_id="C123",
@@ -4061,7 +4061,7 @@ class TestResolveRunParamsUserId:
         from app.channels.manager import _owner_headers
 
         manager = self._manager()
-        monkeypatch.delenv("AGENT_WORKSPACE_AUTH_DISABLED", raising=False)
+        monkeypatch.delenv("ALPHA_AUTH_DISABLED", raising=False)
         msg = InboundMessage(channel_name="slack", chat_id="C123", user_id="U-platform", text="hi")
 
         _, _, run_context = manager._resolve_run_params(msg, "thread-1")
@@ -4074,7 +4074,7 @@ class TestResolveRunParamsUserId:
         from alpha.config.paths import make_safe_user_id
 
         manager = self._manager()
-        monkeypatch.delenv("AGENT_WORKSPACE_AUTH_DISABLED", raising=False)
+        monkeypatch.delenv("ALPHA_AUTH_DISABLED", raising=False)
         raw = "user@example.com"
         msg = InboundMessage(channel_name="feishu", chat_id="c", user_id=raw, text="hi")
 
@@ -4094,7 +4094,7 @@ class TestResolveRunParamsUserId:
         monkeypatch.setattr("alpha.config.paths.get_paths", lambda: paths)
 
         manager = self._manager()
-        monkeypatch.delenv("AGENT_WORKSPACE_AUTH_DISABLED", raising=False)
+        monkeypatch.delenv("ALPHA_AUTH_DISABLED", raising=False)
         raw = "user@example.com"
         msg = InboundMessage(channel_name="feishu", chat_id="c", user_id=raw, text="hi")
 
@@ -4109,7 +4109,7 @@ class TestResolveRunParamsUserId:
     @pytest.mark.parametrize("raw_user_id", ["", None])
     def test_empty_or_none_user_id_is_not_injected(self, raw_user_id, monkeypatch):
         manager = self._manager()
-        monkeypatch.delenv("AGENT_WORKSPACE_AUTH_DISABLED", raising=False)
+        monkeypatch.delenv("ALPHA_AUTH_DISABLED", raising=False)
         msg = InboundMessage(channel_name="feishu", chat_id="c", user_id=raw_user_id, text="hi")
 
         _, _, run_context = manager._resolve_run_params(msg, "thread-1")
@@ -5058,7 +5058,7 @@ class TestChannelManagerBoundIdentityPolicy:
     def test_unbound_auth_enabled_chat_is_rejected_before_thread_or_run_creation(self, monkeypatch):
         from app.channels.manager import BOUND_IDENTITY_REQUIRED_MESSAGE, ChannelManager
 
-        monkeypatch.delenv("AGENT_WORKSPACE_AUTH_DISABLED", raising=False)
+        monkeypatch.delenv("ALPHA_AUTH_DISABLED", raising=False)
 
         async def go():
             bus = MessageBus()
@@ -5095,7 +5095,7 @@ class TestChannelManagerBoundIdentityPolicy:
     def test_bound_identity_repo_unavailable_uses_transient_failure_message(self, monkeypatch):
         from app.channels.manager import BOUND_IDENTITY_UNAVAILABLE_MESSAGE, ChannelManager
 
-        monkeypatch.delenv("AGENT_WORKSPACE_AUTH_DISABLED", raising=False)
+        monkeypatch.delenv("ALPHA_AUTH_DISABLED", raising=False)
 
         async def go():
             bus = MessageBus()
@@ -5114,7 +5114,7 @@ class TestChannelManagerBoundIdentityPolicy:
                     channel_name="slack",
                     chat_id="C123",
                     user_id="U-platform",
-                    owner_user_id="agent-workspace-user-1",
+                    owner_user_id="alpha-user-1",
                     connection_id="connection-1",
                     workspace_id="T123",
                     text="hi",
@@ -5133,7 +5133,7 @@ class TestChannelManagerBoundIdentityPolicy:
     def test_unbound_auth_enabled_chat_is_rejected_before_run_creation(self, monkeypatch):
         from app.channels.manager import BOUND_IDENTITY_REQUIRED_MESSAGE, ChannelManager
 
-        monkeypatch.delenv("AGENT_WORKSPACE_AUTH_DISABLED", raising=False)
+        monkeypatch.delenv("ALPHA_AUTH_DISABLED", raising=False)
 
         async def go():
             bus = MessageBus()
@@ -5171,7 +5171,7 @@ class TestChannelManagerBoundIdentityPolicy:
     def test_bound_auth_enabled_chat_is_allowed_when_bound_identity_is_required(self, monkeypatch):
         from app.channels.manager import ChannelManager
 
-        monkeypatch.delenv("AGENT_WORKSPACE_AUTH_DISABLED", raising=False)
+        monkeypatch.delenv("ALPHA_AUTH_DISABLED", raising=False)
 
         async def go():
             bus = MessageBus()
@@ -5180,7 +5180,7 @@ class TestChannelManagerBoundIdentityPolicy:
                 [
                     {
                         "id": "connection-1",
-                        "owner_user_id": "agent-workspace-user-1",
+                        "owner_user_id": "alpha-user-1",
                         "provider": "slack",
                         "external_account_id": "U-platform",
                         "workspace_id": "T123",
@@ -5196,7 +5196,7 @@ class TestChannelManagerBoundIdentityPolicy:
                     channel_name="slack",
                     chat_id="C123",
                     user_id="U-platform",
-                    owner_user_id="agent-workspace-user-1",
+                    owner_user_id="alpha-user-1",
                     connection_id="connection-1",
                     workspace_id="T123",
                     text="hi",
@@ -5206,7 +5206,7 @@ class TestChannelManagerBoundIdentityPolicy:
             mock_client.threads.create.assert_called_once()
             mock_client.runs.wait.assert_called_once()
             run_context = mock_client.runs.wait.call_args.kwargs["context"]
-            assert run_context["user_id"] == "agent-workspace-user-1"
+            assert run_context["user_id"] == "alpha-user-1"
             assert run_context["channel_user_id"] == "U-platform"
 
         _run(go())
@@ -5214,7 +5214,7 @@ class TestChannelManagerBoundIdentityPolicy:
     def test_bound_auth_enabled_message_checks_bound_identity_once_on_hot_path(self, monkeypatch):
         from app.channels.manager import ChannelManager
 
-        monkeypatch.delenv("AGENT_WORKSPACE_AUTH_DISABLED", raising=False)
+        monkeypatch.delenv("ALPHA_AUTH_DISABLED", raising=False)
 
         async def go():
             bus = MessageBus()
@@ -5223,7 +5223,7 @@ class TestChannelManagerBoundIdentityPolicy:
                 [
                     {
                         "id": "connection-1",
-                        "owner_user_id": "agent-workspace-user-1",
+                        "owner_user_id": "alpha-user-1",
                         "provider": "slack",
                         "external_account_id": "U-platform",
                         "workspace_id": "T123",
@@ -5240,7 +5240,7 @@ class TestChannelManagerBoundIdentityPolicy:
                         channel_name="slack",
                         chat_id="C123",
                         user_id="U-platform",
-                        owner_user_id="agent-workspace-user-1",
+                        owner_user_id="alpha-user-1",
                         connection_id="connection-1",
                         workspace_id="T123",
                         text="hi",
@@ -5264,7 +5264,7 @@ class TestChannelManagerBoundIdentityPolicy:
     def test_auth_enabled_chat_rejects_unverified_bound_identity(self, monkeypatch):
         from app.channels.manager import BOUND_IDENTITY_REQUIRED_MESSAGE, ChannelManager
 
-        monkeypatch.delenv("AGENT_WORKSPACE_AUTH_DISABLED", raising=False)
+        monkeypatch.delenv("ALPHA_AUTH_DISABLED", raising=False)
 
         async def go():
             bus = MessageBus()
@@ -5313,7 +5313,7 @@ class TestChannelManagerBoundIdentityPolicy:
         from app.channels.manager import ChannelManager
         from app.gateway.auth_disabled import AUTH_DISABLED_USER_ID
 
-        monkeypatch.setenv("AGENT_WORKSPACE_AUTH_DISABLED", "1")
+        monkeypatch.setenv("ALPHA_AUTH_DISABLED", "1")
 
         async def go():
             bus = MessageBus()
@@ -5342,7 +5342,7 @@ class TestChannelManagerBoundIdentityPolicy:
     def test_legacy_open_bot_mode_allows_unbound_auth_enabled_chat(self, monkeypatch):
         from app.channels.manager import ChannelManager
 
-        monkeypatch.delenv("AGENT_WORKSPACE_AUTH_DISABLED", raising=False)
+        monkeypatch.delenv("ALPHA_AUTH_DISABLED", raising=False)
 
         async def go():
             bus = MessageBus()
@@ -5371,7 +5371,7 @@ class TestChannelManagerBoundIdentityPolicy:
     def test_unbound_auth_enabled_new_command_is_rejected_before_thread_creation(self, monkeypatch):
         from app.channels.manager import BOUND_IDENTITY_REQUIRED_MESSAGE, ChannelManager
 
-        monkeypatch.delenv("AGENT_WORKSPACE_AUTH_DISABLED", raising=False)
+        monkeypatch.delenv("ALPHA_AUTH_DISABLED", raising=False)
 
         async def go():
             bus = MessageBus()
@@ -5408,7 +5408,7 @@ class TestChannelManagerBoundIdentityPolicy:
     def test_bound_auth_enabled_new_command_creates_thread(self, monkeypatch):
         from app.channels.manager import ChannelManager
 
-        monkeypatch.delenv("AGENT_WORKSPACE_AUTH_DISABLED", raising=False)
+        monkeypatch.delenv("ALPHA_AUTH_DISABLED", raising=False)
 
         async def go():
             bus = MessageBus()
@@ -5417,7 +5417,7 @@ class TestChannelManagerBoundIdentityPolicy:
                 [
                     {
                         "id": "connection-1",
-                        "owner_user_id": "agent-workspace-user-1",
+                        "owner_user_id": "alpha-user-1",
                         "provider": "slack",
                         "external_account_id": "U-platform",
                         "workspace_id": "T123",
@@ -5433,7 +5433,7 @@ class TestChannelManagerBoundIdentityPolicy:
                     channel_name="slack",
                     chat_id="C123",
                     user_id="U-platform",
-                    owner_user_id="agent-workspace-user-1",
+                    owner_user_id="alpha-user-1",
                     connection_id="connection-1",
                     workspace_id="T123",
                     text="/new",
@@ -5457,7 +5457,7 @@ class TestChannelManagerBoundIdentityPolicy:
         from app.channels.manager import ChannelManager
         from app.channels.run_policy import CHANNEL_RUN_POLICY, ChannelRunPolicy
 
-        monkeypatch.delenv("AGENT_WORKSPACE_AUTH_DISABLED", raising=False)
+        monkeypatch.delenv("ALPHA_AUTH_DISABLED", raising=False)
 
         # Save+restore so test parallelism / re-import side effects from
         # app.gateway.github.run_policy don't leak across tests.
@@ -5507,7 +5507,7 @@ class TestChannelManagerConnectionRouting:
         from app.gateway.internal_auth import INTERNAL_OWNER_USER_ID_HEADER_NAME
         from alpha.persistence.engine import close_engine
 
-        monkeypatch.delenv("AGENT_WORKSPACE_AUTH_DISABLED", raising=False)
+        monkeypatch.delenv("ALPHA_AUTH_DISABLED", raising=False)
 
         async def go():
             repo = await _make_channel_connection_repo(tmp_path)
@@ -7930,8 +7930,8 @@ class TestChannelService:
     def test_service_urls_fall_back_to_env(self, monkeypatch):
         from app.channels.service import ChannelService
 
-        monkeypatch.setenv("AGENT_WORKSPACE_CHANNELS_LANGGRAPH_URL", "http://gateway:8001/api")
-        monkeypatch.setenv("AGENT_WORKSPACE_CHANNELS_GATEWAY_URL", "http://gateway:8001")
+        monkeypatch.setenv("ALPHA_CHANNELS_LANGGRAPH_URL", "http://gateway:8001/api")
+        monkeypatch.setenv("ALPHA_CHANNELS_GATEWAY_URL", "http://gateway:8001")
 
         service = ChannelService(channels_config={})
 
@@ -7941,8 +7941,8 @@ class TestChannelService:
     def test_config_service_urls_override_env(self, monkeypatch):
         from app.channels.service import ChannelService
 
-        monkeypatch.setenv("AGENT_WORKSPACE_CHANNELS_LANGGRAPH_URL", "http://gateway:8001/api")
-        monkeypatch.setenv("AGENT_WORKSPACE_CHANNELS_GATEWAY_URL", "http://gateway:8001")
+        monkeypatch.setenv("ALPHA_CHANNELS_LANGGRAPH_URL", "http://gateway:8001/api")
+        monkeypatch.setenv("ALPHA_CHANNELS_GATEWAY_URL", "http://gateway:8001")
 
         service = ChannelService(
             channels_config={
@@ -7979,14 +7979,14 @@ class TestChannelService:
         from alpha.config import paths as paths_module
         from alpha.config.channel_connections_config import ChannelConnectionsConfig
 
-        monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+        monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
         monkeypatch.setattr(paths_module, "_paths", None)
         app_config = SimpleNamespace(
             model_extra={},
             channel_connections=ChannelConnectionsConfig.model_validate(
                 {
                     "enabled": True,
-                    "telegram": {"enabled": True, "bot_username": "agent_workspace_bot"},
+                    "telegram": {"enabled": True, "bot_username": "alpha_bot"},
                     "slack": {"enabled": True},
                     "discord": {"enabled": True},
                 }
@@ -8007,7 +8007,7 @@ class TestChannelService:
         from alpha.config import paths as paths_module
         from alpha.config.channel_connections_config import ChannelConnectionsConfig
 
-        monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+        monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
         monkeypatch.setattr(paths_module, "_paths", None)
         ChannelRuntimeConfigStore().set_provider_config(
             "slack",
@@ -8028,7 +8028,7 @@ class TestChannelService:
             channel_connections=ChannelConnectionsConfig.model_validate(
                 {
                     "enabled": True,
-                    "telegram": {"enabled": True, "bot_username": "agent_workspace_bot"},
+                    "telegram": {"enabled": True, "bot_username": "alpha_bot"},
                     "slack": {"enabled": True},
                     "discord": {"enabled": True},
                 }
@@ -8048,7 +8048,7 @@ class TestChannelService:
         from alpha.config import paths as paths_module
         from alpha.config.channel_connections_config import ChannelConnectionsConfig
 
-        monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+        monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
         monkeypatch.setattr(paths_module, "_paths", None)
         ChannelRuntimeConfigStore().set_provider_config(
             "slack",
@@ -8082,7 +8082,7 @@ class TestChannelService:
         from alpha.config import paths as paths_module
         from alpha.config.channel_connections_config import ChannelConnectionsConfig
 
-        monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+        monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
         monkeypatch.setattr(paths_module, "_paths", None)
         ChannelRuntimeConfigStore().set_provider_config(
             "feishu",
@@ -8335,7 +8335,7 @@ class TestChannelService:
         from alpha.config import paths as paths_module
         from alpha.config.channel_connections_config import ChannelConnectionsConfig
 
-        monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+        monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
         monkeypatch.setattr(paths_module, "_paths", None)
         ChannelRuntimeConfigStore().set_provider_config(
             "telegram",
@@ -8345,7 +8345,7 @@ class TestChannelService:
         def mock_get_app_config():
             return SimpleNamespace(
                 model_extra={"channels": {}},
-                channel_connections=ChannelConnectionsConfig.model_validate({"enabled": True, "telegram": {"enabled": True, "bot_username": "agent_workspace_bot"}}),
+                channel_connections=ChannelConnectionsConfig.model_validate({"enabled": True, "telegram": {"enabled": True, "bot_username": "alpha_bot"}}),
             )
 
         monkeypatch.setattr("alpha.config.app_config.get_app_config", mock_get_app_config)

@@ -58,12 +58,12 @@ def test_presence_lists_project_members(store):
 def test_singleton_rebuilds_when_home_moves(tmp_path, monkeypatch):
     first_home = tmp_path / "home1"
     second_home = tmp_path / "home2"
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(first_home))
+    monkeypatch.setenv("ALPHA_HOME", str(first_home))
     monkeypatch.setattr(membership_mod, "_store", None)
     monkeypatch.setattr(membership_mod, "_store_path", None)
     s1 = membership_mod.get_membership_store()
     s1.join("proj-a", "coder")
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(second_home))
+    monkeypatch.setenv("ALPHA_HOME", str(second_home))
     s2 = membership_mod.get_membership_store()
     assert s2 is not s1
     assert s2.member_count("proj-a") == 0

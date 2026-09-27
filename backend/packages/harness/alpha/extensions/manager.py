@@ -530,7 +530,7 @@ def _retry_until_locked(acquire: Callable[[], None], *, sleep: Callable[[float],
 @contextmanager
 def _manager_lock(project_root: Path) -> Iterator[None]:
     """Serialize extension mutations across processes for one checkout."""
-    lock_directory = project_root / ".agent-workspace"
+    lock_directory = project_root / ".alpha"
     lock_directory.mkdir(parents=True, exist_ok=True)
     lock_path = lock_directory / "extension-manager.lock"
     with lock_path.open("a+b") as stream:
@@ -1129,7 +1129,7 @@ def _detect_extra_flags(project_root: Path, config_path: Path) -> list[str]:
     if not detector.is_file():
         return []
     environment = _controlled_uv_environment()
-    environment["AGENT_WORKSPACE_CONFIG_PATH"] = str(config_path)
+    environment["ALPHA_CONFIG_PATH"] = str(config_path)
     completed = _run_bounded(
         [sys.executable, str(detector)],
         cwd=project_root,

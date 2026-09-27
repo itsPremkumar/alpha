@@ -244,7 +244,7 @@ def test_capture_new_step_messages_is_noop_on_values_reyield():
 
 
 def test_capture_new_step_messages_handles_history_contraction():
-    # Regression for #3875 Phase 3: AgentWorkspaceSummarizationMiddleware rewrites the
+    # Regression for #3875 Phase 3: AlphaSummarizationMiddleware rewrites the
     # messages channel via RemoveMessage(id=REMOVE_ALL_MESSAGES), which shrinks
     # len(messages) below the cursor we were tracking. Without a contraction
     # reset, every step appended AFTER the compaction is dropped until total

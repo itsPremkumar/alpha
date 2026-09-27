@@ -232,7 +232,7 @@ def install_fault_harness(
     result factory, for poll-timeline assertions) and
     ``harness.assembly_callables`` (what ``run_assembly`` was handed).
     """
-    import alpha.config as agent_workspace_config
+    import alpha.config as alpha_config
     import alpha.groups.runner as runner
     import alpha.utils.assembly_io as assembly_io
     from alpha.subagents import config as subagent_config
@@ -243,7 +243,7 @@ def install_fault_harness(
 
     # A truthy model layer gets past the no-models fail-fast gate without a
     # provider ever being contacted.
-    monkeypatch.setattr(agent_workspace_config, "get_app_config", lambda: SimpleNamespace(models=["stub-model"]))
+    monkeypatch.setattr(alpha_config, "get_app_config", lambda: SimpleNamespace(models=["stub-model"]))
     monkeypatch.setattr(subagent_config, "resolve_subagent_model_name", lambda *args, **kwargs: "stub-model")
 
     assembly_callables: list = []
@@ -273,7 +273,7 @@ def isolate_group_singletons(monkeypatch, tmp_path) -> None:
     import alpha.groups.runner as runner
     import alpha.groups.service as grp_svc
 
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     monkeypatch.setattr(bot_reg, "_global_registry", None)
     monkeypatch.setattr(bot_reg, "_global_registry_path", None)
     monkeypatch.setattr(grp_svc, "_global_groups", None)

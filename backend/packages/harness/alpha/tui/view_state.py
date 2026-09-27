@@ -9,7 +9,7 @@ tool cards, error rows) testable with plain ``pytest`` and a handful of
 synthetic actions, independent of any terminal.
 
 The runtime bridge (``alpha.tui.runtime``) is responsible for translating
-``AgentWorkspaceClient`` ``StreamEvent`` objects into these actions; the Textual app
+``AlphaClient`` ``StreamEvent`` objects into these actions; the Textual app
 renders ``ViewState`` into widgets. Both sides depend on this module, not on
 each other.
 """

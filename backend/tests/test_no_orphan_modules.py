@@ -19,7 +19,7 @@ HARNESS = BACKEND / "packages" / "harness"
 ALPHA = HARNESS / "alpha"
 APP = BACKEND / "app"
 
-SKIP_PARTS = {".venv", "node_modules", "__pycache__", ".agent-workspace", ".git", "htmlcov", ".ruff_cache", "logs"}
+SKIP_PARTS = {".venv", "node_modules", "__pycache__", ".alpha", ".git", "htmlcov", ".ruff_cache", "logs"}
 
 # Modules that are unreachable on purpose. Every entry needs a reason that a
 # reviewer can verify; entries without reasons fail this test.
@@ -102,10 +102,10 @@ SCAN_TEXT_FILES = [
 # captured groups, so a capturing prefix group silently truncates every match to
 # ``"alpha"``/``"app"`` and the whole scan finds nothing. See
 # ``test_dotted_string_references_are_indexed`` for the regression guard.
-_DOTTED_TARGET = re.compile(r"\b(?:alpha|app|agent_workspace)(?:\.[A-Za-z_]\w*)+")
+_DOTTED_TARGET = re.compile(r"\b(?:alpha|app|alpha)(?:\.[A-Za-z_]\w*)+")
 # File-path manifests (langgraph.json) address modules with slashes:
 # ``./app/gateway/langgraph_auth.py:auth``.
-_PATH_TARGET = re.compile(r"\b(?:alpha|app|agent_workspace)(?:/[A-Za-z_]\w*)+")
+_PATH_TARGET = re.compile(r"\b(?:alpha|app|alpha)(?:/[A-Za-z_]\w*)+")
 _QUOTED_TARGET = re.compile(r"[\"']([A-Za-z_][\w]*(?:\.[A-Za-z_]\w*)+)[\"']")
 
 

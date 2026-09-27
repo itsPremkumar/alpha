@@ -9,15 +9,15 @@
 #   - provisioner: (optional) Sandbox provisioner for Kubernetes mode
 #
 # Key environment variables (set via environment/.env or scripts/deploy.sh):
-#   AGENT_WORKSPACE_PROJECT_ROOT           â€” project root for relative runtime paths
-#   AGENT_WORKSPACE_HOME                   â€” runtime data dir, default .agent-workspace under $AGENT_WORKSPACE_PROJECT_ROOT (or cwd)
-#   AGENT_WORKSPACE_CONFIG_PATH            â€” path to config.yaml
-#   AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH â€” path to extensions_config.json
-#   AGENT_WORKSPACE_SKILLS_PATH            â€” skills dir, default $AGENT_WORKSPACE_PROJECT_ROOT/skills
-#   AGENT_WORKSPACE_DOCKER_SOCKET          â€” Docker socket path for aio/DooD mode, default /var/run/docker.sock (used only by the opt-in docker-compose.dood.yaml overlay)
-#   AGENT_WORKSPACE_REPO_ROOT              â€” repo root (used for skills host path in DooD)
+#   ALPHA_PROJECT_ROOT           â€” project root for relative runtime paths
+#   ALPHA_HOME                   â€” runtime data dir, default .alpha under $ALPHA_PROJECT_ROOT (or cwd)
+#   ALPHA_CONFIG_PATH            â€” path to config.yaml
+#   ALPHA_EXTENSIONS_CONFIG_PATH â€” path to extensions_config.json
+#   ALPHA_SKILLS_PATH            â€” skills dir, default $ALPHA_PROJECT_ROOT/skills
+#   ALPHA_DOCKER_SOCKET          â€” Docker socket path for aio/DooD mode, default /var/run/docker.sock (used only by the opt-in docker-compose.dood.yaml overlay)
+#   ALPHA_REPO_ROOT              â€” repo root (used for skills host path in DooD)
 #   BETTER_AUTH_SECRET               â€” required for frontend auth/session security
-#   AGENT_WORKSPACE_INTERNAL_AUTH_TOKEN    â€” shared internal Gateway auth token for multi-worker IM channels
+#   ALPHA_INTERNAL_AUTH_TOKEN    â€” shared internal Gateway auth token for multi-worker IM channels
 #
 # LangSmith tracing is disabled by default (LANGSMITH_TRACING=false).
 # Set LANGSMITH_TRACING=true and LANGSMITH_API_KEY in .env to enable it.
@@ -40,7 +40,7 @@ services:
   # â”€â”€ Redis Stream Bridge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   redis:
     image: redis:8-alpine
-    container_name: agent-workspace-redis
+    container_name: alpha-redis
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis-data:/data
@@ -50,14 +50,14 @@ services:
       timeout: 3s
       retries: 10
     networks:
-      - agent-workspace
+      - alpha
     logging: *bounded_logs
     restart: unless-stopped
 
   # â”€â”€ Reverse Proxy â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   nginx:
     image: nginx:alpine
-    container_name: agent-workspace-nginx
+    container_name: alpha-nginx
     # Loopback-only by default: Alpha's agent can execute commands, so the
     # documented default deployment is a local trusted environment. A bare
     # "${PORT}:2026" would bind 0.0.0.0 instead, which does not match that.
@@ -76,7 +76,7 @@ services:
       gateway:
         condition: service_healthy
     networks:
-      - agent-workspace
+      - alpha
     logging: *bounded_logs
     restart: unless-stopped
 
@@ -89,7 +89,7 @@ services:
       args:
         PNPM_STORE_PATH: ${PNPM_STORE_PATH:-/root/.local/share/pnpm/store}
         NPM_REGISTRY: ${NPM_REGISTRY:-}
-    container_name: agent-workspace-frontend
+    container_name: alpha-frontend
     environment:
       # Must be set HERE: install.sh writes NODE_ENV=development into
       # frontend/.env for local dev, and env_file beats the image's ENV, so
@@ -97,14 +97,14 @@ services:
       # development NODE_ENV. environment: > env_file in compose precedence.
       - NODE_ENV=production
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
-      - AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL=http://gateway:8001
+      - ALPHA_INTERNAL_GATEWAY_BASE_URL=http://gateway:8001
     # required:false keeps `docker compose up` working on a fresh clone that
     # has not created frontend/.env yet (deploy.sh generates what is needed).
     env_file:
       - path: ../frontend/.env
         required: false
     networks:
-      - agent-workspace
+      - alpha
     logging: *bounded_logs
     restart: unless-stopped
 
@@ -120,7 +120,7 @@ services:
         UV_EXTRAS: ${UV_EXTRAS:-}
         NPM_REGISTRY: ${NPM_REGISTRY:-}
         LARK_CLI_NPM_VERSION: ${LARK_CLI_NPM_VERSION:-1.0.65}
-    container_name: agent-workspace-gateway
+    container_name: alpha-gateway
     ports:
       # Optional LAN discovery beacon. Set BIND_HOST=0.0.0.0 only when this
       # installation is intentionally reachable by other Alpha peers.
@@ -136,13 +136,13 @@ services:
       # Defaults keep a fresh clone runnable without pre-exporting variables:
       # an UNSET variable used to expand to an empty bind source, which makes
       # Docker mount a directory where a file is expected (or fail outright).
-      - ${AGENT_WORKSPACE_CONFIG_PATH:-../config.yaml}:/app/backend/config.yaml:ro
+      - ${ALPHA_CONFIG_PATH:-../config.yaml}:/app/backend/config.yaml:ro
       # Writable on purpose: the Gateway edits this file at runtime (MCP
       # enable/disable, PUT/PATCH /api/mcp/config, skill updates). config.yaml
       # above stays read-only because no API writes it.
-      - ${AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH:-../extensions_config.json}:/app/backend/extensions_config.json
+      - ${ALPHA_EXTENSIONS_CONFIG_PATH:-../extensions_config.json}:/app/backend/extensions_config.json
       - ../skills:/app/skills:ro
-      - ${AGENT_WORKSPACE_HOME:-../.agent-workspace}:/app/backend/.agent-workspace
+      - ${ALPHA_HOME:-../.alpha}:/app/backend/.alpha
       # DooD: the host Docker socket is NOT mounted by default. It is added only
       # for aio (pure-DooD) sandbox mode via the opt-in docker-compose.dood.yaml
       # overlay (appended by scripts/deploy.sh). See backend/docs/CONFIGURATION.md
@@ -157,10 +157,10 @@ services:
     working_dir: /app
     environment:
       - CI=true
-      - AGENT_WORKSPACE_PROJECT_ROOT=/app
-      - AGENT_WORKSPACE_HOME=/app/backend/.agent-workspace
-      - AGENT_WORKSPACE_CONFIG_PATH=/app/backend/config.yaml
-      - AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH=/app/backend/extensions_config.json
+      - ALPHA_PROJECT_ROOT=/app
+      - ALPHA_HOME=/app/backend/.alpha
+      - ALPHA_CONFIG_PATH=/app/backend/config.yaml
+      - ALPHA_EXTENSIONS_CONFIG_PATH=/app/backend/extensions_config.json
       # The peer plane opens an inbound listener, so it stays OFF unless the
       # operator opts in. This previously defaulted to 1 here, which silently
       # overrode the code-level secure default and left every containerised
@@ -174,13 +174,13 @@ services:
       - ALPHA_PEER_NETWORK_GITHUB_BRANCH=${ALPHA_PEER_NETWORK_GITHUB_BRANCH:-main}
       - ALPHA_PEER_NETWORK_GITHUB_DIRECTORY=${ALPHA_PEER_NETWORK_GITHUB_DIRECTORY:-.alpha-network/peers}
       - ALPHA_PEER_NETWORK_GITHUB_TOKEN=${ALPHA_PEER_NETWORK_GITHUB_TOKEN:-}
-      - AGENT_WORKSPACE_STREAM_BRIDGE_REDIS_URL=${AGENT_WORKSPACE_STREAM_BRIDGE_REDIS_URL:-redis://redis:6379/0}
-      - AGENT_WORKSPACE_CHANNELS_LANGGRAPH_URL=${AGENT_WORKSPACE_CHANNELS_LANGGRAPH_URL:-http://gateway:8001/api}
-      - AGENT_WORKSPACE_CHANNELS_GATEWAY_URL=${AGENT_WORKSPACE_CHANNELS_GATEWAY_URL:-http://gateway:8001}
-      - AGENT_WORKSPACE_INTERNAL_AUTH_TOKEN=${AGENT_WORKSPACE_INTERNAL_AUTH_TOKEN}
+      - ALPHA_STREAM_BRIDGE_REDIS_URL=${ALPHA_STREAM_BRIDGE_REDIS_URL:-redis://redis:6379/0}
+      - ALPHA_CHANNELS_LANGGRAPH_URL=${ALPHA_CHANNELS_LANGGRAPH_URL:-http://gateway:8001/api}
+      - ALPHA_CHANNELS_GATEWAY_URL=${ALPHA_CHANNELS_GATEWAY_URL:-http://gateway:8001}
+      - ALPHA_INTERNAL_AUTH_TOKEN=${ALPHA_INTERNAL_AUTH_TOKEN}
       # DooD path/network translation
-      - AGENT_WORKSPACE_HOST_BASE_DIR=${AGENT_WORKSPACE_HOME:-../.agent-workspace}
-      - AGENT_WORKSPACE_SANDBOX_HOST=host.docker.internal
+      - ALPHA_HOST_BASE_DIR=${ALPHA_HOME:-../.alpha}
+      - ALPHA_SANDBOX_HOST=host.docker.internal
       # Proxy values (HTTP_PROXY/HTTPS_PROXY/ALL_PROXY) are inherited from ../.env via env_file.
       # Only NO_PROXY is declared here so internal service hostnames are always exempt from the proxy.
       # env_file not listed here: required:false (same fresh-clone reason as
@@ -205,7 +205,7 @@ services:
       retries: 30
       start_period: 20s
     networks:
-      - agent-workspace
+      - alpha
     logging: *bounded_logs
     restart: unless-stopped
 
@@ -217,14 +217,14 @@ services:
       args:
         APT_MIRROR: ${APT_MIRROR:-}
         PIP_INDEX_URL: ${PIP_INDEX_URL:-}
-    container_name: agent-workspace-provisioner
+    container_name: alpha-provisioner
     volumes:
       - ~/.kube/config:/root/.kube/config:ro
     environment:
-      - K8S_NAMESPACE=agent-workspace
+      - K8S_NAMESPACE=alpha
       - SANDBOX_IMAGE=enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest
       # Optional lark-cli init image (Pattern A). Empty â‡’ legacy runtime mount.
-      # Set to a published tag (e.g. agent-workspace/lark-cli-init:v1.0.65) to provision
+      # Set to a published tag (e.g. alpha/lark-cli-init:v1.0.65) to provision
       # the sandbox lark-cli runtime via an init container + emptyDir.
       - LARK_CLI_INIT_IMAGE=${LARK_CLI_INIT_IMAGE:-}
       # Optional lark-cli broker image (Pattern B, issue #4338). When set, the
@@ -232,8 +232,8 @@ services:
       # plaintext config/data are never mounted into the sandbox. Supersedes
       # LARK_CLI_INIT_IMAGE when both are set. Empty â‡’ broker off.
       - LARK_CLI_BROKER_IMAGE=${LARK_CLI_BROKER_IMAGE:-}
-      - THREADS_HOST_PATH=${AGENT_WORKSPACE_HOME:-../.agent-workspace}/threads
-      - AGENT_WORKSPACE_HOST_BASE_DIR=${AGENT_WORKSPACE_HOME:-../.agent-workspace}
+      - THREADS_HOST_PATH=${ALPHA_HOME:-../.alpha}/threads
+      - ALPHA_HOST_BASE_DIR=${ALPHA_HOME:-../.alpha}
       - KUBECONFIG_PATH=/root/.kube/config
       - NODE_HOST=host.docker.internal
       - K8S_API_SERVER=https://host.docker.internal:26443
@@ -243,7 +243,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
-      - agent-workspace
+      - alpha
     logging: *bounded_logs
     restart: unless-stopped
     healthcheck:
@@ -255,5 +255,5 @@ volumes:
   redis-data:
 
 networks:
-  agent-workspace:
+  alpha:
     driver: bridge

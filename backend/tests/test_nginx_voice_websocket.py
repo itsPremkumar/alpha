@@ -10,7 +10,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 CONFIGS = (
     REPO_ROOT / "docker/nginx/nginx.conf",
     REPO_ROOT / "docker/nginx/nginx.local.conf",
-    REPO_ROOT / "deploy/helm/agent-workspace/templates/configmap-nginx.yaml",
+    REPO_ROOT / "deploy/helm/alpha/templates/configmap-nginx.yaml",
 )
 
 

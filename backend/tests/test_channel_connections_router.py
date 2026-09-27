@@ -22,7 +22,7 @@ from app.gateway.routers import channel_connections
 @pytest.fixture(autouse=True)
 def _stub_app_config(monkeypatch):
     """Keep router tests independent from a developer-local config.yaml."""
-    monkeypatch.setenv("AGENT_WORKSPACE_AUTH_DISABLED", "0")
+    monkeypatch.setenv("ALPHA_AUTH_DISABLED", "0")
     set_app_config(AppConfig.model_validate({"sandbox": {"use": "alpha.sandbox.local:LocalSandboxProvider"}}))
     yield
     reset_app_config()
@@ -80,7 +80,7 @@ def _enabled_connections_config() -> ChannelConnectionsConfig:
     return ChannelConnectionsConfig.model_validate(
         {
             "enabled": True,
-            "telegram": {"enabled": True, "bot_username": "agent_workspace_bot"},
+            "telegram": {"enabled": True, "bot_username": "alpha_bot"},
             "slack": {"enabled": True},
             "discord": {"enabled": True},
             "feishu": {"enabled": True},
@@ -161,7 +161,7 @@ def test_get_providers_uses_existing_channels_config(tmp_path):
     assert by_provider["telegram"]["auth_mode"] == "deep_link"
     assert by_provider["telegram"]["credential_values"] == {
         "bot_token": "********",
-        "bot_username": "agent_workspace_bot",
+        "bot_username": "alpha_bot",
     }
     assert by_provider["slack"]["configured"] is True
     assert by_provider["slack"]["auth_mode"] == "binding_code"
@@ -216,8 +216,8 @@ def test_get_providers_degrades_when_persistence_is_unavailable(monkeypatch):
 def test_get_providers_reports_connected_without_binding_in_auth_disabled_mode(tmp_path, monkeypatch):
     import anyio
 
-    monkeypatch.setenv("AGENT_WORKSPACE_AUTH_DISABLED", "1")
-    monkeypatch.delenv("AGENT_WORKSPACE_ENV", raising=False)
+    monkeypatch.setenv("ALPHA_AUTH_DISABLED", "1")
+    monkeypatch.delenv("ALPHA_ENV", raising=False)
     monkeypatch.delenv("ENVIRONMENT", raising=False)
     repo = anyio.run(_make_repo, tmp_path)
     app = _make_app(_enabled_connections_config(), repo, _channels_config())
@@ -468,7 +468,7 @@ def test_connect_telegram_returns_deep_link_and_persists_state(tmp_path):
     body = response.json()
     assert body["provider"] == "telegram"
     assert body["mode"] == "deep_link"
-    assert body["url"].startswith("https://t.me/agent_workspace_bot?start=")
+    assert body["url"].startswith("https://t.me/alpha_bot?start=")
     assert body["code"]
     assert "/start" in body["instruction"]
 
@@ -1094,7 +1094,7 @@ def test_configure_provider_runtime_does_not_clobber_concurrent_config_update(tm
         {
             "enabled": True,
             "slack": {"enabled": True},
-            "telegram": {"enabled": True, "bot_username": "agent_workspace_bot"},
+            "telegram": {"enabled": True, "bot_username": "alpha_bot"},
         }
     )
     runtime_config_store = ChannelRuntimeConfigStore(tmp_path / "channels" / "runtime-config.json")

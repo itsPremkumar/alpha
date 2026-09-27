@@ -12,7 +12,7 @@ import pytest
 
 from alpha.config.app_config import AppConfig, reset_app_config, set_app_config
 from alpha.runtime.events.store.memory import MemoryRunEventStore
-from alpha.trace_context import AGENT_WORKSPACE_TRACE_METADATA_KEY
+from alpha.trace_context import ALPHA_TRACE_METADATA_KEY
 from app.gateway.auth_disabled import AUTH_SOURCE_INTERNAL
 
 
@@ -2145,8 +2145,8 @@ def test_start_run_preserves_ordinary_metadata(_stub_app_config):
         # the caller's own keys pass through untouched, and both metadata forks
         # agree. Thread metadata is not run-scoped -- one thread spans many
         # runs and many trace ids -- so it keeps only what the caller sent.
-        assert record.metadata[AGENT_WORKSPACE_TRACE_METADATA_KEY]
-        assert record.metadata == {**metadata, AGENT_WORKSPACE_TRACE_METADATA_KEY: record.metadata[AGENT_WORKSPACE_TRACE_METADATA_KEY]}
+        assert record.metadata[ALPHA_TRACE_METADATA_KEY]
+        assert record.metadata == {**metadata, ALPHA_TRACE_METADATA_KEY: record.metadata[ALPHA_TRACE_METADATA_KEY]}
         assert captured["config"]["metadata"] == record.metadata
         assert (await thread_store.get(thread_id))["metadata"] == metadata
 
@@ -3536,7 +3536,7 @@ async def test_start_run_rejects_invalid_thread_id_before_resolving_dependencies
 
 
 def test_normalize_input_strips_the_server_owned_message_seq():
-    """`agent_workspace_seq` is display metadata the Gateway attaches on the way out.
+    """`alpha_seq` is display metadata the Gateway attaches on the way out.
 
     A client replaying messages (regenerate / edit-and-rerun) would otherwise
     write it into the checkpoint, where it becomes wrong the moment the thread
@@ -3654,18 +3654,18 @@ async def test_start_run_replaces_a_caller_supplied_trace_id(_stub_app_config):
     """``body.metadata`` forks two ways: through ``build_run_config`` into the
     live run config, which the worker restamps, and through
     ``create_or_reject`` into the run record that the runs API echoes back.
-    Only the first is covered downstream, so a forged ``agent_workspace_trace_id``
+    Only the first is covered downstream, so a forged ``alpha_trace_id``
     used to survive on the most visible surface of the two.
     """
     from alpha.trace_context import request_trace_context
 
-    body = _run_create_request(metadata={AGENT_WORKSPACE_TRACE_METADATA_KEY: "forged-by-caller", "caller_key": "kept"})
+    body = _run_create_request(metadata={ALPHA_TRACE_METADATA_KEY: "forged-by-caller", "caller_key": "kept"})
 
     with request_trace_context("gateway-issued"):
         record, config = await _start_run_capturing_config(body, "thread-trace-forgery")
 
-    assert record.metadata[AGENT_WORKSPACE_TRACE_METADATA_KEY] == "gateway-issued"
-    assert config["metadata"][AGENT_WORKSPACE_TRACE_METADATA_KEY] == "gateway-issued"
+    assert record.metadata[ALPHA_TRACE_METADATA_KEY] == "gateway-issued"
+    assert config["metadata"][ALPHA_TRACE_METADATA_KEY] == "gateway-issued"
     # Only the server-owned key is replaced; the caller's own metadata stays.
     assert record.metadata["caller_key"] == "kept"
 
@@ -3681,8 +3681,8 @@ async def test_start_run_stamps_the_run_record_without_caller_metadata(_stub_app
     with request_trace_context("gateway-issued"):
         record, config = await _start_run_capturing_config(body, "thread-trace-stamp")
 
-    assert record.metadata[AGENT_WORKSPACE_TRACE_METADATA_KEY] == "gateway-issued"
-    assert config["metadata"][AGENT_WORKSPACE_TRACE_METADATA_KEY] == "gateway-issued"
+    assert record.metadata[ALPHA_TRACE_METADATA_KEY] == "gateway-issued"
+    assert config["metadata"][ALPHA_TRACE_METADATA_KEY] == "gateway-issued"
 
 
 def test_build_run_config_merges_metadata_onto_a_copy(_stub_app_config):
@@ -3695,16 +3695,16 @@ def test_build_run_config_merges_metadata_onto_a_copy(_stub_app_config):
     caller_metadata = {"caller_key": "kept"}
     request_config = {"metadata": caller_metadata}
 
-    config = build_run_config("thread-copy-merge", request_config, {AGENT_WORKSPACE_TRACE_METADATA_KEY: "gateway-issued"})
+    config = build_run_config("thread-copy-merge", request_config, {ALPHA_TRACE_METADATA_KEY: "gateway-issued"})
 
-    assert config["metadata"] == {"caller_key": "kept", AGENT_WORKSPACE_TRACE_METADATA_KEY: "gateway-issued"}
+    assert config["metadata"] == {"caller_key": "kept", ALPHA_TRACE_METADATA_KEY: "gateway-issued"}
     assert caller_metadata == {"caller_key": "kept"}
 
 
 @pytest.mark.anyio
 async def test_start_run_strips_forged_trace_id_from_the_kwargs_echo(_stub_app_config):
     """``create_or_reject`` persists ``body.config`` as ``runs.kwargs_json``,
-    which the runs API serves back. A forged ``agent_workspace_trace_id`` in
+    which the runs API serves back. A forged ``alpha_trace_id`` in
     ``config.metadata`` or ``config.context`` must neither survive there nor be
     replaced by a server value written through into the caller's request body:
     the id is ignored as an input on that surface, so any echo of it only
@@ -3712,11 +3712,11 @@ async def test_start_run_strips_forged_trace_id_from_the_kwargs_echo(_stub_app_c
     from alpha.trace_context import request_trace_context
 
     forged_config = {
-        "metadata": {AGENT_WORKSPACE_TRACE_METADATA_KEY: "forged-in-config", "caller_key": "kept"},
-        "context": {AGENT_WORKSPACE_TRACE_METADATA_KEY: "forged-in-context", "model_name": "default"},
+        "metadata": {ALPHA_TRACE_METADATA_KEY: "forged-in-config", "caller_key": "kept"},
+        "context": {ALPHA_TRACE_METADATA_KEY: "forged-in-context", "model_name": "default"},
     }
     body = _run_create_request(
-        metadata={AGENT_WORKSPACE_TRACE_METADATA_KEY: "forged-by-caller"},
+        metadata={ALPHA_TRACE_METADATA_KEY: "forged-by-caller"},
         config=forged_config,
     )
 
@@ -3724,10 +3724,10 @@ async def test_start_run_strips_forged_trace_id_from_the_kwargs_echo(_stub_app_c
         record, config = await _start_run_capturing_config(body, "thread-trace-echo")
 
     echoed = record.kwargs["config"]
-    assert AGENT_WORKSPACE_TRACE_METADATA_KEY not in echoed["metadata"]
-    assert AGENT_WORKSPACE_TRACE_METADATA_KEY not in echoed["context"]
+    assert ALPHA_TRACE_METADATA_KEY not in echoed["metadata"]
+    assert ALPHA_TRACE_METADATA_KEY not in echoed["context"]
     assert echoed["metadata"]["caller_key"] == "kept"
     # The caller's own request body is not mutated by the merge either.
-    assert forged_config["metadata"][AGENT_WORKSPACE_TRACE_METADATA_KEY] == "forged-in-config"
+    assert forged_config["metadata"][ALPHA_TRACE_METADATA_KEY] == "forged-in-config"
     # The live run config still carries the authoritative id.
-    assert config["metadata"][AGENT_WORKSPACE_TRACE_METADATA_KEY] == "gateway-issued"
+    assert config["metadata"][ALPHA_TRACE_METADATA_KEY] == "gateway-issued"

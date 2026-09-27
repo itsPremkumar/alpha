@@ -403,7 +403,7 @@ class AutonomousBenchmarkHarness:
     def _configure_git_identity(workspace: Path) -> None:
         """Set a deterministic commit identity for synthetic repositories."""
         AutonomousBenchmarkHarness._run_git(
-            ["config", "user.email", "benchmark@agent-workspace.local"], cwd=workspace
+            ["config", "user.email", "benchmark@alpha.local"], cwd=workspace
         )
         AutonomousBenchmarkHarness._run_git(
             ["config", "user.name", "Autonomous Benchmark Harness"], cwd=workspace

@@ -27,8 +27,8 @@ Thank you for your interest in contributing to Alpha! This document provides gui
 1. Fork the repository on GitHub
 2. Clone your fork locally:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/agent-workspace.git
-   cd agent-workspace
+   git clone https://github.com/YOUR_USERNAME/alpha.git
+   cd alpha
    ```
 
 ## Development Setup
@@ -64,7 +64,7 @@ make dev
 
 ```
 backend/
-├── packages/harness/alpha/  # agent-workspace-harness package (import: alpha.*)
+├── packages/harness/alpha/  # alpha-harness package (import: alpha.*)
 │   ├── agents/                 # Agent system
 │   │   ├── lead_agent/         # Main agent (agent.py factory, prompt.py)
 │   │   ├── middlewares/        # Agent middleware chain
@@ -321,10 +321,10 @@ followed by the optional safety guard, `DurableContextMiddleware`, optional
 `SummarizationMiddleware`, then `SubagentDateContextMiddleware` and
 `SystemMessageCoalescingMiddleware`. Treat middleware class paths as trusted
 operator configuration because loading one executes Python code.
-Embedded callers can instead use `AgentWorkspaceClient(middlewares=[...])`, which
+Embedded callers can instead use `AlphaClient(middlewares=[...])`, which
 builds the full lead-agent chain and places middleware before its
 terminal-response, model-length, safety, and clarification tail.
-`create_agent_workspace_agent(extra_middleware=[...])` instead builds a smaller
+`create_alpha_agent(extra_middleware=[...])` instead builds a smaller
 feature-based lead-agent chain; unanchored extras are placed immediately before
 `ClarificationMiddleware` (anchored extras follow their `@Next`/`@Prev`
 placement, but the anchor must be present in this smaller chain). Neither API

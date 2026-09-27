@@ -10,7 +10,7 @@ caller does provide flow through to the committed record unchanged.
 
 Harness mirrors ``test_projects_router.py`` (imported helpers: real
 SQL project repo on a temp sqlite engine + TestClient + stub auth).
-The AVO runner writes under ``AGENT_WORKSPACE_PROJECTS_DIR``, which is
+The AVO runner writes under ``ALPHA_PROJECTS_DIR``, which is
 redirected to a per-test temp dir so no repo state is touched.
 """
 
@@ -33,7 +33,7 @@ def _close_engine_after_test():
 
 def _client_with_project(tmp_path, monkeypatch, name: str):
     """Stub-authed app + client + a freshly created project id."""
-    monkeypatch.setenv("AGENT_WORKSPACE_PROJECTS_DIR", str(tmp_path / "avo_projects"))
+    monkeypatch.setenv("ALPHA_PROJECTS_DIR", str(tmp_path / "avo_projects"))
     app = _build_projects_app(tmp_path)
     client = TestClient(app)
     client.__enter__()

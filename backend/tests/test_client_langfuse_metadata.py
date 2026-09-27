@@ -1,8 +1,8 @@
-"""Tests for AgentWorkspaceClient's graph-root tracing wiring.
+"""Tests for AlphaClient's graph-root tracing wiring.
 
 Regression coverage for the Copilot review on PR #2944: when the title
 and summarization middlewares request ``attach_tracing=False`` we must
-make sure ``AgentWorkspaceClient`` injects the tracing callbacks at the graph
+make sure ``AlphaClient`` injects the tracing callbacks at the graph
 invocation root instead, otherwise those middlewares produce untraced
 LLM calls.
 """
@@ -14,9 +14,9 @@ from typing import Any
 
 import pytest
 
-from alpha.client import AgentWorkspaceClient
+from alpha.client import AlphaClient
 from alpha.config.authorization_config import AuthorizationConfig
-from alpha.trace_context import AGENT_WORKSPACE_TRACE_METADATA_KEY, request_trace_context
+from alpha.trace_context import ALPHA_TRACE_METADATA_KEY, request_trace_context
 
 
 class _FakeAgent:
@@ -56,11 +56,11 @@ def _stub_agent_creation(monkeypatch, fake_agent: _FakeAgent) -> dict[str, Any]:
         self._agent = fake_agent
         self._agent_config_key = ("stub",)
 
-    monkeypatch.setattr(AgentWorkspaceClient, "_ensure_agent", _stub_ensure_agent)
+    monkeypatch.setattr(AlphaClient, "_ensure_agent", _stub_ensure_agent)
     return captured
 
 
-def _make_client(_monkeypatch) -> AgentWorkspaceClient:
+def _make_client(_monkeypatch) -> AlphaClient:
     """Build a client without going through ``__init__`` so we never load
     config.yaml or perform any other side-effectful startup work.
     """
@@ -68,7 +68,7 @@ def _make_client(_monkeypatch) -> AgentWorkspaceClient:
         models=[SimpleNamespace(name="stub-model")],
         authorization=AuthorizationConfig(enabled=False),
     )
-    client = AgentWorkspaceClient.__new__(AgentWorkspaceClient)
+    client = AlphaClient.__new__(AlphaClient)
     client._app_config = fake_app_config
     client._checkpoint_channel_mode = "full"
     client._extensions_config = None
@@ -110,7 +110,7 @@ def test_stream_injects_langfuse_metadata_when_enabled(monkeypatch):
     metadata = config.get("metadata") or {}
     assert metadata.get("langfuse_session_id") == "thread-client-1"
     assert metadata.get("langfuse_trace_name") == "lead-agent"
-    assert metadata.get(AGENT_WORKSPACE_TRACE_METADATA_KEY)
+    assert metadata.get(ALPHA_TRACE_METADATA_KEY)
     # Default no-auth context falls back to ``"default"`` user.
     assert metadata.get("langfuse_user_id") in {"default", "test-user-autouse"}
     callbacks = config.get("callbacks") or []
@@ -148,25 +148,25 @@ def test_stream_preserves_caller_metadata_overrides(monkeypatch):
 
     # Drive stream with a pre-populated metadata so the worker-equivalent
     # ``setdefault`` semantics are exercised.
-    original_get_config = AgentWorkspaceClient._get_runnable_config
+    original_get_config = AlphaClient._get_runnable_config
 
     def patched_get_runnable_config(self, thread_id, **overrides):
         cfg = original_get_config(self, thread_id, **overrides)
         cfg["metadata"] = {
-            AGENT_WORKSPACE_TRACE_METADATA_KEY: "explicit-client-trace",
+            ALPHA_TRACE_METADATA_KEY: "explicit-client-trace",
             "langfuse_session_id": "explicit-session-override",
             "langfuse_user_id": "explicit-user",
         }
         return cfg
 
-    monkeypatch.setattr(AgentWorkspaceClient, "_get_runnable_config", patched_get_runnable_config)
+    monkeypatch.setattr(AlphaClient, "_get_runnable_config", patched_get_runnable_config)
     with request_trace_context("client-trace-3"):
         list(client.stream("hi", thread_id="thread-client-3"))
 
     metadata = captured["config"].get("metadata") or {}
     assert metadata["langfuse_session_id"] == "explicit-session-override"
     assert metadata["langfuse_user_id"] == "explicit-user"
-    assert metadata[AGENT_WORKSPACE_TRACE_METADATA_KEY] == "explicit-client-trace"
+    assert metadata[ALPHA_TRACE_METADATA_KEY] == "explicit-client-trace"
     # ``trace_name`` was not supplied by caller so the worker still fills it.
     assert metadata["langfuse_trace_name"] == "lead-agent"
 
@@ -192,10 +192,10 @@ def test_stream_always_binds_a_trace_id(monkeypatch):
 
     metadata = captured["config"].get("metadata") or {}
     assert metadata.get("langfuse_session_id") == "thread-client-bound"
-    assert metadata[AGENT_WORKSPACE_TRACE_METADATA_KEY]
+    assert metadata[ALPHA_TRACE_METADATA_KEY]
     # The same id reaches the runtime context, which is what carries it across
     # the boundaries the ContextVar does not survive.
-    assert captured["context"][AGENT_WORKSPACE_TRACE_METADATA_KEY] == metadata[AGENT_WORKSPACE_TRACE_METADATA_KEY]
+    assert captured["context"][ALPHA_TRACE_METADATA_KEY] == metadata[ALPHA_TRACE_METADATA_KEY]
 
 
 def test_stream_keeps_a_caller_bound_trace(monkeypatch):
@@ -218,7 +218,7 @@ def test_stream_keeps_a_caller_bound_trace(monkeypatch):
         list(client.stream("hi", thread_id="thread-client-pinned"))
 
     metadata = captured["config"].get("metadata") or {}
-    assert metadata.get(AGENT_WORKSPACE_TRACE_METADATA_KEY) == "caller-pinned"
+    assert metadata.get(ALPHA_TRACE_METADATA_KEY) == "caller-pinned"
 
 
 def test_stream_does_not_leak_trace_id_to_caller_context_between_yields(monkeypatch):

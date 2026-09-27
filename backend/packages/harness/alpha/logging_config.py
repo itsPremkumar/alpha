@@ -67,12 +67,12 @@ Environment overrides
 Two variables exist so an operator has **one** place to turn diagnostics up
 without a config edit and restart cycle per knob:
 
-``AGENT_WORKSPACE_LOG_LEVEL``
+``ALPHA_LOG_LEVEL``
     Overrides ``config.yaml`` ``log_level`` for the ``alpha``/``app``
     hierarchies. Applied by
     :func:`alpha.config.app_config.apply_logging_level`.
 
-``AGENT_WORKSPACE_LOG_REDACTION_POLICY``
+``ALPHA_LOG_REDACTION_POLICY``
     ``standard`` (default) or ``strict``. A value outside the closed
     :data:`~alpha.observability.redaction.REDACTION_POLICIES` set is reported
     and ignored, so a typo cannot silently downgrade or disable scrubbing.
@@ -133,9 +133,9 @@ TRACE_TEXT_LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - [trace_id=%(tr
 #: (``tests/test_logging_config.py`` pins that substring).
 LOG_CONTEXT_TEXT_LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - [run_id=%(run_id)s span_id=%(span_id)s agent=%(agent)s code=%(code)s] [trace_id=%(trace_id)s] - %(message)s"
 
-_TRACE_FILTER_NAME = "agent_workspace_trace_context_filter"
-_REDACTION_FILTER_NAME = "agent_workspace_log_redaction_filter"
-_LOG_CONTEXT_FILTER_NAME = "agent_workspace_log_context_filter"
+_TRACE_FILTER_NAME = "alpha_trace_context_filter"
+_REDACTION_FILTER_NAME = "alpha_log_redaction_filter"
+_LOG_CONTEXT_FILTER_NAME = "alpha_log_context_filter"
 
 #: The correlation fields stamped onto every record. ``code`` has no ambient
 #: source: an error/stop code is a per-call-site fact, so it is only ever set
@@ -151,7 +151,7 @@ LOG_CONTEXT_MISSING: Final[str] = "-"
 #: decide to pass the text through.
 REDACTION_FAIL_CLOSED: Final[str] = "[REDACTED:redaction_error]"
 
-LOG_REDACTION_POLICY_ENV: Final[str] = "AGENT_WORKSPACE_LOG_REDACTION_POLICY"
+LOG_REDACTION_POLICY_ENV: Final[str] = "ALPHA_LOG_REDACTION_POLICY"
 
 #: Cheap over-approximation of "this text may contain a credential".
 #:
@@ -224,7 +224,7 @@ _LOG_MAX_VALUE_CHARS: Final[int] = 65536
 _LOG_MAX_ITEMS: Final[int] = 4096
 _LOG_MAX_DEPTH: Final[int] = 16
 
-_log_context: ContextVar[Mapping[str, str]] = ContextVar("agent_workspace_log_context", default={})
+_log_context: ContextVar[Mapping[str, str]] = ContextVar("alpha_log_context", default={})
 
 
 # --------------------------------------------------------------------------- #
@@ -602,7 +602,7 @@ def _default_formatter() -> logging.Formatter:
 class JsonTraceFormatter(logging.Formatter):
     """Small JSON formatter used when ``logging.enhance.format=json``."""
 
-    _agent_workspace_trace_formatter = True
+    _alpha_trace_formatter = True
 
     def format(self, record: logging.LogRecord) -> str:
         if not hasattr(record, "trace_id"):
@@ -632,7 +632,7 @@ class JsonTraceFormatter(logging.Formatter):
 class TraceTextFormatter(logging.Formatter):
     """Marker subclass so trace formatting can be reverted cleanly in tests."""
 
-    _agent_workspace_trace_formatter = True
+    _alpha_trace_formatter = True
 
 
 def _trace_formatter(format_name: str | None) -> logging.Formatter:
@@ -680,7 +680,7 @@ def configure_logging(config: object) -> None:
         _install_safety_filters(handler, redactor)
         if enhanced:
             handler.setFormatter(_trace_formatter(getattr(enhance, "format", "text")))
-        elif getattr(handler.formatter, "_agent_workspace_trace_formatter", False):
+        elif getattr(handler.formatter, "_alpha_trace_formatter", False):
             handler.setFormatter(_default_formatter())
         elif _is_plain_default_formatter(handler):
             handler.setFormatter(TraceTextFormatter(LOG_CONTEXT_TEXT_LOG_FORMAT, datefmt=DEFAULT_LOG_DATE_FORMAT))

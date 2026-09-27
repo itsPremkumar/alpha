@@ -116,7 +116,7 @@ python -m app.gateway.auth.reset_admin
 python -m app.gateway.auth.reset_admin --email user@example.com
 ```
 
-This generates a cryptographically secure random password, updates `token_version`, flags `needs_setup=true`, and writes the credential to `.agent-workspace/admin_initial_credentials.txt` with `0600` permissions.
+This generates a cryptographically secure random password, updates `token_version`, flags `needs_setup=true`, and writes the credential to `.alpha/admin_initial_credentials.txt` with `0600` permissions.
 
 ## HTTP Authentication Boundaries
 
@@ -190,7 +190,7 @@ Virtual sandbox paths remain clean and uniform:
 | **Local Account** | `POST /api/v1/auth/login/local` | Yes | Email as `users.id` | `threads_meta.user_id = users.id` |
 | **OIDC / SSO** | `GET /api/v1/auth/oauth/{provider}` | Yes | IdP `sub` → `users.oauth_id` | `threads_meta.user_id = users.id` |
 | **IM Channel Binding** | Settings Connect + `/connect <code>` | Bound to existing user | `channel_connections` | `owner_user_id` → `users.id` |
-| **Internal Auth (HTTP)** | `X-Agent-Workspace-Internal-Token` + `X-Agent-Workspace-Owner-User-Id` | No (synthetic internal user) | Platform self-declares owner string | `threads_meta.user_id = owner` |
+| **Internal Auth (HTTP)** | `X-Alpha-Internal-Token` + `X-Alpha-Owner-User-Id` | No (synthetic internal user) | Platform self-declares owner string | `threads_meta.user_id = owner` |
 
 For detailed SSO configuration, see [SSO.md](SSO.md). For channel integration, see [IM_CHANNEL_CONNECTIONS.md](IM_CHANNEL_CONNECTIONS.md).
 
@@ -199,11 +199,11 @@ For detailed SSO configuration, see [SSO.md](SSO.md). For channel integration, s
 Designed for server-to-server integration where an upstream platform service proxies calls on behalf of authenticated users:
 
 ```bash
-export AGENT_WORKSPACE_INTERNAL_AUTH_TOKEN="<long-random-secret>"
+export ALPHA_INTERNAL_AUTH_TOKEN="<long-random-secret>"
 ```
 
 Headers:
-- `X-Agent-Workspace-Internal-Token`: Must match `AGENT_WORKSPACE_INTERNAL_AUTH_TOKEN`.
-- `X-Agent-Workspace-Owner-User-Id`: Platform user identifier (e.g. `slack_U12345`, `custom_user_99`). Falls back to `default` if omitted.
+- `X-Alpha-Internal-Token`: Must match `ALPHA_INTERNAL_AUTH_TOKEN`.
+- `X-Alpha-Owner-User-Id`: Platform user identifier (e.g. `slack_U12345`, `custom_user_99`). Falls back to `default` if omitted.
 
 Synthetic users created with `system_role="internal"` do not write to the `users` table. All thread metadata, runs, checkpoints, and files are partitioned under the specified owner.

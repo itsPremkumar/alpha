@@ -155,7 +155,7 @@ def test_model_failure_recovery_rewinds_only_the_marked_fallback_message() -> No
     head.values = {
         "messages": [
             SimpleNamespace(
-                additional_kwargs={"agent_workspace_error_fallback": True, "error_reason": "transient"},
+                additional_kwargs={"alpha_error_fallback": True, "error_reason": "transient"},
             )
         ]
     }
@@ -172,7 +172,7 @@ def test_non_model_recovery_never_rewinds_a_terminal_checkpoint() -> None:
     head.values = {
         "messages": [
             SimpleNamespace(
-                additional_kwargs={"agent_workspace_error_fallback": True, "error_reason": "transient"},
+                additional_kwargs={"alpha_error_fallback": True, "error_reason": "transient"},
             )
         ]
     }
@@ -190,7 +190,7 @@ def test_model_failure_rewind_reads_raw_full_checkpoint_message_dicts() -> None:
         "messages": [
             {
                 "additional_kwargs": {
-                    "agent_workspace_error_fallback": True,
+                    "alpha_error_fallback": True,
                     "error_reason": "transient",
                 }
             }
@@ -210,7 +210,7 @@ def test_non_transient_model_failure_is_not_retried() -> None:
         "messages": [
             SimpleNamespace(
                 additional_kwargs={
-                    "agent_workspace_error_fallback": True,
+                    "alpha_error_fallback": True,
                     "error_reason": "quota",
                 },
             )
@@ -233,7 +233,7 @@ async def test_recovery_service_does_not_retry_auth_or_quota_model_failures() ->
         "messages": [
             SimpleNamespace(
                 additional_kwargs={
-                    "agent_workspace_error_fallback": True,
+                    "alpha_error_fallback": True,
                     "error_reason": "quota",
                 }
             )
@@ -516,7 +516,7 @@ async def test_production_checkpoint_reader_rewinds_marked_model_fallback_to_par
     head.values = {
         "messages": [
             SimpleNamespace(
-                additional_kwargs={"agent_workspace_error_fallback": True, "error_reason": "transient"},
+                additional_kwargs={"alpha_error_fallback": True, "error_reason": "transient"},
             )
         ]
     }

@@ -223,12 +223,12 @@ _DOCKER_BRIDGE_GATEWAY_FALLBACK = "172.17.0.1"
 
 # Hardening defaults for sandbox containers. The sandbox executes untrusted,
 # model-authored code, so containers get bounded resources by default; every
-# value can be tuned or disabled through the corresponding AGENT_WORKSPACE_SANDBOX_*
+# value can be tuned or disabled through the corresponding ALPHA_SANDBOX_*
 # environment variable (see _start_container).
 _DEFAULT_SANDBOX_MEMORY = "2g"
 _DEFAULT_SANDBOX_CPUS = "2"
 _DEFAULT_SANDBOX_PIDS_LIMIT = "512"
-_NETWORK_PROXY_CONTAINER_SCRIPT = "/tmp/agent-workspace-network-proxy.py"
+_NETWORK_PROXY_CONTAINER_SCRIPT = "/tmp/alpha-network-proxy.py"
 _NETWORK_POLICY_DIGEST_LABEL = "alpha.network_policy_digest"
 _NETWORK_GATEWAY_MODE_IPV4 = "com.docker.network.bridge.gateway_mode_ipv4"
 _NETWORK_GATEWAY_MODE_IPV6 = "com.docker.network.bridge.gateway_mode_ipv6"
@@ -291,13 +291,13 @@ def _resolve_docker_bind_host(sandbox_host: str | None = None, bind_host: str | 
     when resolution fails does the default bridge gateway serve as a
     best-effort fallback (with a warning). Operators that genuinely need the
     old broad bind (e.g. remote clients connecting to the sandbox API
-    directly) can restore it with ``AGENT_WORKSPACE_SANDBOX_BIND_HOST=0.0.0.0`` —
+    directly) can restore it with ``ALPHA_SANDBOX_BIND_HOST=0.0.0.0`` —
     that re-exposes an unauthenticated shell endpoint and should be paired
     with an external firewall. When operators choose an IPv6 loopback
     sandbox host, bind Docker to IPv6 loopback as well so the advertised
     sandbox URL and published socket use the same address family.
     """
-    explicit_bind = bind_host if bind_host is not None else os.environ.get("AGENT_WORKSPACE_SANDBOX_BIND_HOST", "").strip()
+    explicit_bind = bind_host if bind_host is not None else os.environ.get("ALPHA_SANDBOX_BIND_HOST", "").strip()
     if explicit_bind:
         explicit_bind = _normalize_docker_bind_spec(explicit_bind)
         if explicit_bind and not _is_ip_bind_spec(explicit_bind):
@@ -308,7 +308,7 @@ def _resolve_docker_bind_host(sandbox_host: str | None = None, bind_host: str | 
             resolved = _resolve_sandbox_host_address(explicit_bind)
             if resolved is None:
                 raise RuntimeError(
-                    f"AGENT_WORKSPACE_SANDBOX_BIND_HOST={explicit_bind!r} is not an IP literal and could not be resolved; "
+                    f"ALPHA_SANDBOX_BIND_HOST={explicit_bind!r} is not an IP literal and could not be resolved; "
                     "Docker publish specs require an IP address as the host part. "
                     "Set an IPv4/IPv6 literal (bare or bracketed) or a resolvable hostname."
                 )
@@ -317,7 +317,7 @@ def _resolve_docker_bind_host(sandbox_host: str | None = None, bind_host: str | 
             logger.debug("Docker sandbox bind: %s (explicit bind host override)", explicit_bind)
             return explicit_bind
 
-    host = sandbox_host if sandbox_host is not None else os.environ.get("AGENT_WORKSPACE_SANDBOX_HOST", "localhost")
+    host = sandbox_host if sandbox_host is not None else os.environ.get("ALPHA_SANDBOX_HOST", "localhost")
     if _is_ipv6_loopback_sandbox_host(host):
         logger.debug("Docker sandbox bind: [::1] (IPv6 loopback sandbox host)")
         return "[::1]"
@@ -340,7 +340,7 @@ def _resolve_docker_bind_host(sandbox_host: str | None = None, bind_host: str | 
     # override when their host-gateway-ip is customized or IPv6.
     gateway = _docker_bridge_gateway_ip() or _DOCKER_BRIDGE_GATEWAY_FALLBACK
     logger.warning(
-        "Could not resolve sandbox host %r for the Docker bind; falling back to the default bridge gateway %s. If the daemon's host-gateway-ip is customized or IPv6, set AGENT_WORKSPACE_SANDBOX_BIND_HOST to that address explicitly.",
+        "Could not resolve sandbox host %r for the Docker bind; falling back to the default bridge gateway %s. If the daemon's host-gateway-ip is customized or IPv6, set ALPHA_SANDBOX_BIND_HOST to that address explicitly.",
         host,
         gateway,
     )
@@ -375,7 +375,7 @@ def _normalize_sandbox_host_for_url(host: str) -> str:
 
     ``http://fd00::1:8080`` is malformed — the URL authority form requires
     brackets around IPv6 (``http://[fd00::1]:8080``), while operators (and
-    AGENT_WORKSPACE_SANDBOX_HOST) may carry the address in either bare or
+    ALPHA_SANDBOX_HOST) may carry the address in either bare or
     bracketed form. Strip first, re-bracket once, so both inputs produce the
     same URL; IPv4 addresses and hostnames pass through unchanged.
     """
@@ -400,7 +400,7 @@ def _resolve_sandbox_host_address(host: str) -> str | None:
     None when the name cannot be resolved.
     """
     # getaddrinfo takes the bare form; a bracketed IPv6 literal (legal in
-    # AGENT_WORKSPACE_SANDBOX_HOST) would fail to resolve and silently fall back
+    # ALPHA_SANDBOX_HOST) would fail to resolve and silently fall back
     # to the IPv4 bridge gateway, splitting the bind from the URL address.
     lookup = _strip_ipv6_brackets(host)
     try:
@@ -526,7 +526,7 @@ class LocalContainerBackend(SandboxBackend):
         Args:
             image: Container image to use.
             base_port: Base port number to start searching for free ports.
-            container_prefix: Prefix for container names (e.g., "agent-workspace-sandbox").
+            container_prefix: Prefix for container names (e.g., "alpha-sandbox").
             config_mounts: Volume mount configurations from config (list of VolumeMountConfig).
             environment: Environment variables to inject into containers.
         """
@@ -557,17 +557,17 @@ class LocalContainerBackend(SandboxBackend):
 
     def _resource_names(self, sandbox_id: str) -> tuple[str, str]:
         digest = hashlib.sha256(f"{self._container_prefix}:{sandbox_id}".encode()).hexdigest()[:16]
-        return f"agent-workspace-netproxy-{digest}", f"agent-workspace-sandbox-net-{digest}"
+        return f"alpha-netproxy-{digest}", f"alpha-sandbox-net-{digest}"
 
     def _egress_network_name(self, sandbox_id: str) -> str:
         digest = hashlib.sha256(f"{self._container_prefix}:{sandbox_id}".encode()).hexdigest()[:16]
-        return f"agent-workspace-sandbox-egress-{digest}"
+        return f"alpha-sandbox-egress-{digest}"
 
     def _proxy_image(self) -> str:
         return str(
             self._network_config.get(
                 "proxy_image",
-                "ghcr.io/bytedance/agent-workspace-sandbox-network-proxy:latest",
+                "ghcr.io/itsPremkumar/alpha-sandbox-network-proxy:latest",
             )
         )
 
@@ -916,7 +916,7 @@ class LocalContainerBackend(SandboxBackend):
 
         # When running inside Docker (DooD), sandbox containers are reachable via
         # host.docker.internal rather than localhost (they run on the host daemon).
-        sandbox_host = _normalize_sandbox_host_for_url(os.environ.get("AGENT_WORKSPACE_SANDBOX_HOST", "localhost"))
+        sandbox_host = _normalize_sandbox_host_for_url(os.environ.get("ALPHA_SANDBOX_HOST", "localhost"))
         return SandboxInfo(
             sandbox_id=sandbox_id,
             sandbox_url=f"http://{sandbox_host}:{port}",
@@ -1087,15 +1087,15 @@ class LocalContainerBackend(SandboxBackend):
             proxy_name,
             *(item for key, value in labels.items() for item in ("--label", f"{key}={value}")),
             "-e",
-            f"AGENT_WORKSPACE_NETWORK_MODE={self._network_mode}",
+            f"ALPHA_NETWORK_MODE={self._network_mode}",
             "-e",
-            f"AGENT_WORKSPACE_ALLOW_DOMAINS_JSON={json.dumps(allow_domains, separators=(',', ':'))}",
+            f"ALPHA_ALLOW_DOMAINS_JSON={json.dumps(allow_domains, separators=(',', ':'))}",
             "-e",
-            f"AGENT_WORKSPACE_SANDBOX_TARGET={container_name}:8080",
+            f"ALPHA_SANDBOX_TARGET={container_name}:8080",
             "-e",
-            f"AGENT_WORKSPACE_ALLOW_SYNTHETIC_DNS={'1' if self._allow_synthetic_dns else '0'}",
+            f"ALPHA_ALLOW_SYNTHETIC_DNS={'1' if self._allow_synthetic_dns else '0'}",
             "-e",
-            f"AGENT_WORKSPACE_RECORD_DENIALS={'1' if self._network_mode == 'allowlist' and self._network_config.get('approval', 'prompt') == 'prompt' else '0'}",
+            f"ALPHA_RECORD_DENIALS={'1' if self._network_mode == 'allowlist' and self._network_config.get('approval', 'prompt') == 'prompt' else '0'}",
             "-e",
             f"{RELAY_TOKEN_ENV}={relay_token}",
             proxy_image,
@@ -1270,7 +1270,7 @@ class LocalContainerBackend(SandboxBackend):
                 requires_replacement=True,
             )
 
-        sandbox_host = _normalize_sandbox_host_for_url(os.environ.get("AGENT_WORKSPACE_SANDBOX_HOST", "localhost"))
+        sandbox_host = _normalize_sandbox_host_for_url(os.environ.get("ALPHA_SANDBOX_HOST", "localhost"))
         sandbox_url = f"http://{sandbox_host}:{port}"
         readiness_kwargs = {"headers": request_headers} if request_headers else {}
         if not wait_for_sandbox_ready(sandbox_url, timeout=5, **readiness_kwargs):
@@ -1366,7 +1366,7 @@ class LocalContainerBackend(SandboxBackend):
                     return []
 
         infos: list[SandboxInfo] = []
-        sandbox_host = _normalize_sandbox_host_for_url(os.environ.get("AGENT_WORKSPACE_SANDBOX_HOST", "localhost"))
+        sandbox_host = _normalize_sandbox_host_for_url(os.environ.get("ALPHA_SANDBOX_HOST", "localhost"))
         for container_name in container_names:
             data = inspections.get(container_name)
             if data is None:
@@ -1375,8 +1375,8 @@ class LocalContainerBackend(SandboxBackend):
             sandbox_id = container_name[len(self._container_prefix) + 1 :]
             persisted_mode = persisted_modes.get(container_name)
             if persisted_mode is None:
-                # A custom prefix such as ``agent-workspace`` also matches the fixed
-                # ``agent-workspace-netproxy-*`` sidecar names. Inspecting the stable
+                # A custom prefix such as ``alpha`` also matches the fixed
+                # ``alpha-netproxy-*`` sidecar names. Inspecting the stable
                 # role/id identity excludes them while still allowing legacy
                 # open sandboxes to be reported for a fenced mode transition.
                 continue
@@ -1635,11 +1635,11 @@ class LocalContainerBackend(SandboxBackend):
             # dropped, which is the bulk of the attack-surface reduction.
             # A pre-initialized non-root image that needs none of these
             # compatibility capabilities should opt out with
-            # AGENT_WORKSPACE_SANDBOX_IMAGE_STARTUP_CAPS=0 (see CONFIGURATION.md).
+            # ALPHA_SANDBOX_IMAGE_STARTUP_CAPS=0 (see CONFIGURATION.md).
             # That switch drops the whole set; it is intentionally not used
             # to infer or trim individual capabilities for older/custom root-
             # initialized images that may still need the remaining entries.
-            if _env_flag_disabled("AGENT_WORKSPACE_SANDBOX_IMAGE_STARTUP_CAPS"):
+            if _env_flag_disabled("ALPHA_SANDBOX_IMAGE_STARTUP_CAPS"):
                 cmd.extend(["--cap-drop=ALL", "--security-opt", "no-new-privileges"])
             else:
                 cmd.extend(
@@ -1662,16 +1662,16 @@ class LocalContainerBackend(SandboxBackend):
             # (Chromium needs namespace-related syscalls). Keep that option
             # as the default so the shipped image keeps working. Two ways to
             # tighten it for a known image:
-            #   AGENT_WORKSPACE_SANDBOX_SECCOMP_PROFILE=/path/to/profile.json
+            #   ALPHA_SANDBOX_SECCOMP_PROFILE=/path/to/profile.json
             #       → use a restricted, Chromium-compatible profile instead
             #         (Docker's default profile plus the needed syscalls);
-            #   AGENT_WORKSPACE_SANDBOX_SECCOMP_UNCONFINED=0
+            #   ALPHA_SANDBOX_SECCOMP_UNCONFINED=0
             #       → fall back to Docker's default profile, only for images
             #         verified to start and pass their browser checks with it.
-            seccomp_profile = os.environ.get("AGENT_WORKSPACE_SANDBOX_SECCOMP_PROFILE", "").strip()
+            seccomp_profile = os.environ.get("ALPHA_SANDBOX_SECCOMP_PROFILE", "").strip()
             if seccomp_profile:
                 cmd.extend(["--security-opt", f"seccomp={seccomp_profile}"])
-            elif not _env_flag_disabled("AGENT_WORKSPACE_SANDBOX_SECCOMP_UNCONFINED"):
+            elif not _env_flag_disabled("ALPHA_SANDBOX_SECCOMP_UNCONFINED"):
                 cmd.extend(["--security-opt", "seccomp=unconfined"])
             else:
                 # The documented opt-out must actually enable Docker's
@@ -1681,11 +1681,11 @@ class LocalContainerBackend(SandboxBackend):
                 # https://docs.docker.com/reference/cli/docker/container/run/#optional-security-options---security-opt
                 cmd.extend(["--security-opt", "seccomp=builtin"])
 
-            if memory := _docker_resource_limit("AGENT_WORKSPACE_SANDBOX_MEMORY", _DEFAULT_SANDBOX_MEMORY):
+            if memory := _docker_resource_limit("ALPHA_SANDBOX_MEMORY", _DEFAULT_SANDBOX_MEMORY):
                 cmd.extend(["--memory", memory])
-            if cpus := _docker_resource_limit("AGENT_WORKSPACE_SANDBOX_CPUS", _DEFAULT_SANDBOX_CPUS):
+            if cpus := _docker_resource_limit("ALPHA_SANDBOX_CPUS", _DEFAULT_SANDBOX_CPUS):
                 cmd.extend(["--cpus", cpus])
-            if pids_limit := _docker_resource_limit("AGENT_WORKSPACE_SANDBOX_PIDS_LIMIT", _DEFAULT_SANDBOX_PIDS_LIMIT):
+            if pids_limit := _docker_resource_limit("ALPHA_SANDBOX_PIDS_LIMIT", _DEFAULT_SANDBOX_PIDS_LIMIT):
                 cmd.extend(["--pids-limit", pids_limit])
 
             # No --user is forced by default: the default AIO sandbox image
@@ -1693,7 +1693,7 @@ class LocalContainerBackend(SandboxBackend):
             # a wrong user would break the sandbox server's home-directory
             # assumptions. Deployments that know their image's user (and the
             # UID/GID ownership of its mounts) can pass it through.
-            if container_user := os.environ.get("AGENT_WORKSPACE_SANDBOX_CONTAINER_USER", "").strip():
+            if container_user := os.environ.get("ALPHA_SANDBOX_CONTAINER_USER", "").strip():
                 cmd.extend(["--user", container_user])
 
             # Default: the daemon's default network (unchanged behavior).
@@ -1704,7 +1704,7 @@ class LocalContainerBackend(SandboxBackend):
             # protections.
             network = network_override
             if network is None:
-                network = os.environ.get("AGENT_WORKSPACE_SANDBOX_NETWORK", "").strip()
+                network = os.environ.get("ALPHA_SANDBOX_NETWORK", "").strip()
             if network:
                 # Validate the *effective* target: Docker accepts the extended
                 # "name=<network>" long syntax in addition to plain names and
@@ -1720,7 +1720,7 @@ class LocalContainerBackend(SandboxBackend):
                     # losing the bind.
                     # https://docs.docker.com/engine/network/drivers/host/
                     raise RuntimeError(
-                        f"AGENT_WORKSPACE_SANDBOX_NETWORK={network!r} resolves to the {target.split(':', 1)[0]!r} network, "
+                        f"ALPHA_SANDBOX_NETWORK={network!r} resolves to the {target.split(':', 1)[0]!r} network, "
                         "which would void the sandbox port bind (Docker drops -p/--publish in host mode and shares "
                         "the network namespace for container:<name>). Use a dedicated egress-controlled bridge "
                         "network instead."
@@ -1734,7 +1734,7 @@ class LocalContainerBackend(SandboxBackend):
                     # instead of failing opaquely on first use.
                     # https://docs.docker.com/engine/network/drivers/none/
                     raise RuntimeError(
-                        f"AGENT_WORKSPACE_SANDBOX_NETWORK={network!r} resolves to the 'none' network, which leaves the "
+                        f"ALPHA_SANDBOX_NETWORK={network!r} resolves to the 'none' network, which leaves the "
                         "container loopback-only, so the published sandbox API port cannot receive traffic (readiness "
                         "would time out and every acquisition would fail). Use a dedicated egress-controlled bridge "
                         "network instead."

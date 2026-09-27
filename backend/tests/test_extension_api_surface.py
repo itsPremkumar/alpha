@@ -1,6 +1,6 @@
 """The contract package's public surface must import cleanly and stay complete.
 
-A typo in a re-exported name breaks `import agent_workspace_extension_api` for every
+A typo in a re-exported name breaks `import alpha_extension_api` for every
 extension, which is a silent-until-startup failure for third parties.
 """
 
@@ -8,13 +8,13 @@ import importlib
 
 
 def test_public_surface_imports_and_matches_all():
-    module = importlib.import_module("agent_workspace_extension_api")
+    module = importlib.import_module("alpha_extension_api")
     for name in module.__all__:
         assert hasattr(module, name), f"__all__ advertises {name!r} but it is not exported"
 
 
 def test_runtime_deps_is_exported_under_its_documented_name():
-    from agent_workspace_extension_api import ExtensionRuntimeDeps
+    from alpha_extension_api import ExtensionRuntimeDeps
 
     assert ExtensionRuntimeDeps.__name__ == "ExtensionRuntimeDeps"
 
@@ -25,7 +25,7 @@ def test_api_version_matches_the_packaging_metadata():
     import tomllib
     from pathlib import Path
 
-    from agent_workspace_extension_api import API_VERSION
+    from alpha_extension_api import API_VERSION
 
     pyproject = Path(__file__).resolve().parents[1] / "packages" / "extension-api" / "pyproject.toml"
     declared = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]["version"]
@@ -33,7 +33,7 @@ def test_api_version_matches_the_packaging_metadata():
 
 
 def test_every_contract_kind_added_for_the_0_2_series_is_exported():
-    import agent_workspace_extension_api as api
+    import alpha_extension_api as api
 
     for name in (
         "AgentAssemblyDescriptor",
@@ -58,7 +58,7 @@ def test_every_contract_kind_added_for_the_0_2_series_is_exported():
 
 
 def test_registry_protocol_declares_every_registration_method():
-    from agent_workspace_extension_api import ExtensionRegistry
+    from alpha_extension_api import ExtensionRegistry
 
     for method in (
         "middlewares",

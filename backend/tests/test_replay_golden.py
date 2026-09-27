@@ -52,13 +52,13 @@ def test_replay_write_read_file_ultra_matches_golden(tmp_path: Path, monkeypatch
 
     home = tmp_path / "home"
     home.mkdir()
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(home))
-    monkeypatch.setenv("AGENT_WORKSPACE_REPLAY_FIXTURE", str(fixture_path))
+    monkeypatch.setenv("ALPHA_HOME", str(home))
+    monkeypatch.setenv("ALPHA_REPLAY_FIXTURE", str(fixture_path))
 
     cfg_path = tmp_path / "config.yaml"
     cfg_path.write_text(build_config_yaml(model_block=REPLAY_MODEL_BLOCK, home=home), encoding="utf-8")
-    monkeypatch.setenv("AGENT_WORKSPACE_CONFIG_PATH", str(cfg_path))
-    monkeypatch.setenv("AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH", str(prepare_hermetic_extras(home)))
+    monkeypatch.setenv("ALPHA_CONFIG_PATH", str(cfg_path))
+    monkeypatch.setenv("ALPHA_EXTENSIONS_CONFIG_PATH", str(prepare_hermetic_extras(home)))
 
     _reset_process_singletons(monkeypatch)
     from alpha.config import app_config as app_config_module
@@ -85,8 +85,8 @@ def test_replay_write_read_file_ultra_matches_golden(tmp_path: Path, monkeypatch
     assert not misses, f"replay miss ({len(misses)}): the fixture is stale vs the current system prompt or agent graph. Re-record it (see backend/docs/REPLAY_E2E.md). Missed hashes: {misses}"
 
     # Regenerate the committed golden after re-recording the fixture:
-    #   AGENT_WORKSPACE_WRITE_GOLDEN=1 uv run pytest tests/test_replay_golden.py
-    if os.environ.get("AGENT_WORKSPACE_WRITE_GOLDEN"):
+    #   ALPHA_WRITE_GOLDEN=1 uv run pytest tests/test_replay_golden.py
+    if os.environ.get("ALPHA_WRITE_GOLDEN"):
         events_path.write_text(json.dumps({"scenario": scenario, "mode": mode, "events": events}, ensure_ascii=False, indent=2), encoding="utf-8")
         return
 

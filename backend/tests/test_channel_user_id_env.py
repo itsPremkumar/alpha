@@ -4,7 +4,7 @@ Two halves:
 - Gateway: only an internally authenticated caller's top-level ``body.context``
   may supply ``channel_user_id``; free-form RunnableConfig values are cleared.
 - Sandbox: ``bash_tool`` exposes the id as the fixed env var
-  ``AGENT_WORKSPACE_CHANNEL_USER_ID`` via an ``export`` prefix on the command string.
+  ``ALPHA_CHANNEL_USER_ID`` via an ``export`` prefix on the command string.
   It must NOT ride the ``env=`` parameter: on ``AioSandbox`` a non-empty env
   switches execution to the ``bash.exec`` API, which requires image >= 1.9.3
   and abandons the persistent shell session — that channel is reserved for
@@ -20,9 +20,9 @@ from alpha.sandbox.tools import (
 )
 
 _THREAD_DATA = {
-    "workspace_path": "/tmp/agent-workspace/threads/t1/user-data/workspace",
-    "uploads_path": "/tmp/agent-workspace/threads/t1/user-data/uploads",
-    "outputs_path": "/tmp/agent-workspace/threads/t1/user-data/outputs",
+    "workspace_path": "/tmp/alpha/threads/t1/user-data/workspace",
+    "uploads_path": "/tmp/alpha/threads/t1/user-data/uploads",
+    "outputs_path": "/tmp/alpha/threads/t1/user-data/outputs",
 }
 
 

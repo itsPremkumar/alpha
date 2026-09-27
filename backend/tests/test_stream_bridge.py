@@ -1214,7 +1214,7 @@ async def test_memory_subscribe_replays_gap_when_buffer_empty_and_cursor_behind_
 async def test_make_stream_bridge_uses_docker_redis_env(monkeypatch):
     """Docker can enable Redis bridge without editing config.yaml."""
     set_stream_bridge_config(None)
-    monkeypatch.setenv("AGENT_WORKSPACE_STREAM_BRIDGE_REDIS_URL", "redis://redis:6379/0")
+    monkeypatch.setenv("ALPHA_STREAM_BRIDGE_REDIS_URL", "redis://redis:6379/0")
     try:
         async with make_stream_bridge() as bridge:
             assert isinstance(bridge, RedisStreamBridge)
@@ -1262,13 +1262,13 @@ async def test_make_stream_bridge_passes_redis_options(monkeypatch):
 #
 # Opt-in and self-skipping: when no Redis is reachable these are skipped so
 # `make test` stays green without Redis. Point at a server with
-# AGENT_WORKSPACE_TEST_REDIS_URL (defaults to redis://localhost:6379/15 — DB 15 to
+# ALPHA_TEST_REDIS_URL (defaults to redis://localhost:6379/15 — DB 15 to
 # avoid clobbering real data) and select with `pytest -m integration`. They
 # cover what _FakeRedis only approximates: real XADD/XREAD semantics, live-tail
 # reconnects for malformed Last-Event-ID values, the server <ms>-<seq> ID
 # format, and MAXLEN trimming.
 
-REDIS_TEST_URL = os.environ.get("AGENT_WORKSPACE_TEST_REDIS_URL", "redis://localhost:6379/15")
+REDIS_TEST_URL = os.environ.get("ALPHA_TEST_REDIS_URL", "redis://localhost:6379/15")
 
 
 def _redis_available() -> bool:

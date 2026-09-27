@@ -19,8 +19,8 @@ from alpha.multimodal.wav import WavError, bounded_pcm16, pcm16_to_wav, wav_to_p
 
 @pytest.fixture(autouse=True)
 def _isolate_workspace(tmp_path, monkeypatch):
-    """Plan §8: tests isolate AGENT_WORKSPACE_HOME to a temp dir."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    """Plan §8: tests isolate ALPHA_HOME to a temp dir."""
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
 
 
 def _frame(fill: int = 0) -> bytes:

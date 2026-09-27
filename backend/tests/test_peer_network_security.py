@@ -903,7 +903,7 @@ def public_plane(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
     from alpha.peer_network import service as service_module
 
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path / "workspace"))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path / "workspace"))
     saved = (service_module._service, service_module._service_path)
     service_module._service = None
     service_module._service_path = None

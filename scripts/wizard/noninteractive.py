@@ -4,32 +4,32 @@ Lets operators, Docker/Electron automation, and CI configure Alpha without
 a TTY. Every value comes from the environment; nothing prompts:
 
     LLM provider upright:
-      AGENT_WORKSPACE_SETUP_PROVIDER   Provider ``name`` (e.g. ``openai``, ``deepseek``,
+      ALPHA_SETUP_PROVIDER   Provider ``name`` (e.g. ``openai``, ``deepseek``,
                                  ``ollama_qwen``). When unset, the first provider
                                  whose API-key env var is already set wins; when
                                  none is set, a local Ollama daemon is probed.
-      AGENT_WORKSPACE_SETUP_MODEL      Model id (must belong to the provider).
+      ALPHA_SETUP_MODEL      Model id (must belong to the provider).
                                  Defaults to the provider's default model.
-      AGENT_WORKSPACE_SETUP_API_KEY    Explicit key (overrides the provider env var).
-      AGENT_WORKSPACE_SETUP_BASE_URL   Gateway URL for OpenAI-compatible providers.
-      AGENT_WORKSPACE_SETUP_THINKING   ``1``/``0`` for generic gateways that ask about
+      ALPHA_SETUP_API_KEY    Explicit key (overrides the provider env var).
+      ALPHA_SETUP_BASE_URL   Gateway URL for OpenAI-compatible providers.
+      ALPHA_SETUP_THINKING   ``1``/``0`` for generic gateways that ask about
                                  thinking support. Defaults to ``0``.
-      AGENT_WORKSPACE_SETUP_OLLAMA     ``1`` to force the local Ollama provider.
+      ALPHA_SETUP_OLLAMA     ``1`` to force the local Ollama provider.
 
     Web tools (names, ``skip``/empty to disable; defaults: ddg + jina_ai):
-      AGENT_WORKSPACE_SETUP_SEARCH     e.g. ``tavily`` (key read from its env var).
-      AGENT_WORKSPACE_SETUP_FETCH      e.g. ``jina_ai``.
+      ALPHA_SETUP_SEARCH     e.g. ``tavily`` (key read from its env var).
+      ALPHA_SETUP_FETCH      e.g. ``jina_ai``.
 
     Execution (automation-first defaults: the agent is meant to act):
-      AGENT_WORKSPACE_SETUP_SANDBOX    ``local`` (default) or ``container``.
-      AGENT_WORKSPACE_SETUP_BASH       ``1`` (default) or ``0``.
-      AGENT_WORKSPACE_SETUP_WRITE_TOOLS ``1`` (default) or ``0``.
+      ALPHA_SETUP_SANDBOX    ``local`` (default) or ``container``.
+      ALPHA_SETUP_BASH       ``1`` (default) or ``0``.
+      ALPHA_SETUP_WRITE_TOOLS ``1`` (default) or ``0``.
 
     IM channels (default: none):
-      AGENT_WORKSPACE_SETUP_CHANNELS   Comma-separated names, e.g. ``telegram,slack``.
+      ALPHA_SETUP_CHANNELS   Comma-separated names, e.g. ``telegram,slack``.
 
     Reconfigure guard:
-      AGENT_WORKSPACE_SETUP_RECONFIGURE ``1`` to overwrite an existing config.yaml.
+      ALPHA_SETUP_RECONFIGURE ``1`` to overwrite an existing config.yaml.
 
 Resolution reuses the interactive step result dataclasses so the writer phase
 stays identical between modes.
@@ -90,11 +90,11 @@ def _ollama_reachable(host: str = "127.0.0.1", port: int = 11434, timeout: float
 
 
 def _resolve_llm(env: Mapping[str, str]) -> LLMStepResult:
-    requested = (env.get("AGENT_WORKSPACE_SETUP_PROVIDER") or "").strip()
+    requested = (env.get("ALPHA_SETUP_PROVIDER") or "").strip()
     provider: LLMProvider | None = None
     if requested:
         provider = _find_llm_provider(requested)
-    elif _flag(env, "AGENT_WORKSPACE_SETUP_OLLAMA", False):
+    elif _flag(env, "ALPHA_SETUP_OLLAMA", False):
         provider = _find_llm_provider("ollama_qwen")
     else:
         # Auto-detect: first provider whose key is already exported.
@@ -106,9 +106,9 @@ def _resolve_llm(env: Mapping[str, str]) -> LLMStepResult:
             if _ollama_reachable():
                 provider = _find_llm_provider("ollama_qwen")
             else:
-                raise SetupError("No LLM provider configured. Set AGENT_WORKSPACE_SETUP_PROVIDER (e.g. openai, deepseek, ollama_qwen) or export the provider's API-key env var (e.g. OPENAI_API_KEY), or start a local Ollama daemon.")
+                raise SetupError("No LLM provider configured. Set ALPHA_SETUP_PROVIDER (e.g. openai, deepseek, ollama_qwen) or export the provider's API-key env var (e.g. OPENAI_API_KEY), or start a local Ollama daemon.")
 
-    model_name = (env.get("AGENT_WORKSPACE_SETUP_MODEL") or "").strip() or provider.default_model
+    model_name = (env.get("ALPHA_SETUP_MODEL") or "").strip() or provider.default_model
     if model_name not in provider.models:
         # Generic gateways accept arbitrary model ids via their model prompt.
         if provider.model_prompt or provider.name in {"openrouter", "vllm"}:
@@ -119,24 +119,24 @@ def _resolve_llm(env: Mapping[str, str]) -> LLMStepResult:
     base_url: str | None = None
     if provider.name in {"openrouter", "vllm"}:
         base_url = provider.extra_config.get("base_url")
-    override_base_url = (env.get("AGENT_WORKSPACE_SETUP_BASE_URL") or "").strip()
+    override_base_url = (env.get("ALPHA_SETUP_BASE_URL") or "").strip()
     if override_base_url:
         base_url = override_base_url
     elif provider.base_url_prompt:
-        raise SetupError(f"Provider '{provider.name}' needs AGENT_WORKSPACE_SETUP_BASE_URL ({provider.base_url_prompt}).")
+        raise SetupError(f"Provider '{provider.name}' needs ALPHA_SETUP_BASE_URL ({provider.base_url_prompt}).")
 
     if provider.ask_thinking_support:
-        provider = with_thinking_support(provider, _flag(env, "AGENT_WORKSPACE_SETUP_THINKING", False))
+        provider = with_thinking_support(provider, _flag(env, "ALPHA_SETUP_THINKING", False))
 
     api_key: str | None = None
     if provider.auth_hint:
         api_key = None
     else:
-        api_key = (env.get("AGENT_WORKSPACE_SETUP_API_KEY") or "").strip() or None
+        api_key = (env.get("ALPHA_SETUP_API_KEY") or "").strip() or None
         if api_key is None and provider.env_var:
             api_key = (env.get(provider.env_var) or "").strip() or None
         if not api_key:
-            raise SetupError(f"Provider '{provider.name}' needs an API key: set AGENT_WORKSPACE_SETUP_API_KEY or {provider.env_var}.")
+            raise SetupError(f"Provider '{provider.name}' needs an API key: set ALPHA_SETUP_API_KEY or {provider.env_var}.")
 
     return LLMStepResult(provider=provider, model_name=model_name, api_key=api_key, base_url=base_url)
 
@@ -152,8 +152,8 @@ def _resolve_search(env: Mapping[str, str]) -> SearchStepResult:
         known = ", ".join(i.name for i in names)
         raise SetupError(f"Unknown {kind} provider '{wanted}'. Known: {known}, skip")
 
-    search_provider = pick(SEARCH_PROVIDERS, env.get("AGENT_WORKSPACE_SETUP_SEARCH"), "ddg", "search")
-    fetch_provider = pick(WEB_FETCH_PROVIDERS, env.get("AGENT_WORKSPACE_SETUP_FETCH"), "jina_ai", "fetch")
+    search_provider = pick(SEARCH_PROVIDERS, env.get("ALPHA_SETUP_SEARCH"), "ddg", "search")
+    fetch_provider = pick(WEB_FETCH_PROVIDERS, env.get("ALPHA_SETUP_FETCH"), "jina_ai", "fetch")
 
     search_api_key: str | None = None
     if search_provider is not None and search_provider.env_var:
@@ -178,15 +178,15 @@ def _resolve_search(env: Mapping[str, str]) -> SearchStepResult:
 
 
 def _resolve_execution(env: Mapping[str, str]) -> ExecutionStepResult:
-    sandbox_raw = (env.get("AGENT_WORKSPACE_SETUP_SANDBOX") or "local").strip().lower()
+    sandbox_raw = (env.get("ALPHA_SETUP_SANDBOX") or "local").strip().lower()
     if sandbox_raw in {"local"}:
         sandbox_use = LOCAL_SANDBOX
     elif sandbox_raw in {"container"}:
         sandbox_use = CONTAINER_SANDBOX
     else:
-        raise SetupError("AGENT_WORKSPACE_SETUP_SANDBOX must be 'local' or 'container'.")
-    include_bash_tool = _flag(env, "AGENT_WORKSPACE_SETUP_BASH", True)
-    include_write_tools = _flag(env, "AGENT_WORKSPACE_SETUP_WRITE_TOOLS", True)
+        raise SetupError("ALPHA_SETUP_SANDBOX must be 'local' or 'container'.")
+    include_bash_tool = _flag(env, "ALPHA_SETUP_BASH", True)
+    include_write_tools = _flag(env, "ALPHA_SETUP_WRITE_TOOLS", True)
     return ExecutionStepResult(
         sandbox_use=sandbox_use,
         allow_host_bash=sandbox_use == LOCAL_SANDBOX and include_bash_tool,
@@ -196,7 +196,7 @@ def _resolve_execution(env: Mapping[str, str]) -> ExecutionStepResult:
 
 
 def _resolve_channels(env: Mapping[str, str]) -> ChannelConnectionsStepResult:
-    raw = (env.get("AGENT_WORKSPACE_SETUP_CHANNELS") or "").strip()
+    raw = (env.get("ALPHA_SETUP_CHANNELS") or "").strip()
     if not raw:
         return ChannelConnectionsStepResult(enabled_providers=[])
     known = {key for key, _, _ in CHANNEL_CONNECTION_OPTIONS}

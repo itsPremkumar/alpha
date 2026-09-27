@@ -156,7 +156,7 @@ A live smoke check is intentionally separate from the default suite because
 public providers are rate-limited and can be temporarily unavailable:
 
 ```powershell
-$env:AGENT_WORKSPACE_RUN_LIVE_TESTS="1"
+$env:ALPHA_RUN_LIVE_TESTS="1"
 uv run pytest tests/test_agent_eye_integration.py::test_agent_eye_academic_sources_live_smoke -q
 ```
 

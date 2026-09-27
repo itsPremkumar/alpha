@@ -37,23 +37,23 @@ def _raw_config_with_placeholders() -> dict:
                 "type": "stdio",
                 "command": "npx",
                 "args": ["-y", "@modelcontextprotocol/server-github"],
-                "env": {"GITHUB_TOKEN": "$AGENT_WORKSPACE_TEST_GH_TOKEN", "OPTIONAL": "$AGENT_WORKSPACE_TEST_UNSET_VAR"},
+                "env": {"GITHUB_TOKEN": "$ALPHA_TEST_GH_TOKEN", "OPTIONAL": "$ALPHA_TEST_UNSET_VAR"},
             },
             "remote": {
                 "type": "http",
                 "url": "https://mcp.example.com/mcp",
-                "headers": {"Authorization": "$AGENT_WORKSPACE_TEST_GH_TOKEN"},
+                "headers": {"Authorization": "$ALPHA_TEST_GH_TOKEN"},
             },
         },
-        "mcpInterceptors": {"auth": "$AGENT_WORKSPACE_TEST_GH_TOKEN"},
+        "mcpInterceptors": {"auth": "$ALPHA_TEST_GH_TOKEN"},
         "skills": {"existing-skill": {"enabled": True}},
     }
 
 
 @pytest.fixture
 def placeholder_env(monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_TEST_GH_TOKEN", SECRET)
-    monkeypatch.delenv("AGENT_WORKSPACE_TEST_UNSET_VAR", raising=False)
+    monkeypatch.setenv("ALPHA_TEST_GH_TOKEN", SECRET)
+    monkeypatch.delenv("ALPHA_TEST_UNSET_VAR", raising=False)
 
 
 def _write_json(path: Path, data: object) -> None:

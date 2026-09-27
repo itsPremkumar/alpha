@@ -60,7 +60,7 @@ class _RemoteProvider:
 
 
 def _reset_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
 
     import alpha.config.paths as paths_mod
 

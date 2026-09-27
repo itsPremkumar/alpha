@@ -40,12 +40,12 @@ services:
     # checkout over /app would silently undo the prebuild and force a `uv sync`
     # on first run, which is the exact cost this profile exists to avoid.
     environment:
-      AGENT_WORKSPACE_AUTH_DISABLED: "1"
-      AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL: "http://alpha-installer-gateway:8001"
+      ALPHA_AUTH_DISABLED: "1"
+      ALPHA_INTERNAL_GATEWAY_BASE_URL: "http://alpha-installer-gateway:8001"
     volumes:
       # Named volume, not a host bind: user data survives `down -v` only if the
       # operator asks for it, and never leaks host permissions into the container.
-      - alpha-installer-data:/app/.agent-workspace
+      - alpha-installer-data:/app/.alpha
     ports:
       - "8001:8001"
     healthcheck:

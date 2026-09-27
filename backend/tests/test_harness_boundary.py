@@ -1,6 +1,6 @@
 """Boundary check: harness layer must not import from app layer.
 
-The agent-workspace-harness package (packages/harness/alpha/) is a standalone,
+The alpha-harness package (packages/harness/alpha/) is a standalone,
 publishable agent framework. It must never depend on the app layer (app/).
 
 This test scans all Python files in the harness package and fails if any

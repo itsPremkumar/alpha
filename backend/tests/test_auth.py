@@ -376,7 +376,7 @@ def test_sqlite_round_trip_new_fields():
     """needs_setup and token_version survive create → read round-trip.
 
     Uses the shared persistence engine (same one threads_meta, runs,
-    run_events, and feedback use). The old separate .agent-workspace/users.db
+    run_events, and feedback use). The old separate .alpha/users.db
     file is gone.
     """
     import asyncio
@@ -563,7 +563,7 @@ def test_create_user_real_oauth_conflict_still_reported_correctly(tmp_path):
 # exception -- the end-to-end tests above cover the SQLite branch (real engine,
 # real IntegrityError). The Postgres/asyncpg branch needs a real Postgres and
 # its only e2e guard, test_oauth_identity_uniqueness_enforced_end_to_end, is
-# skipped in CI (no workflow sets AGENT_WORKSPACE_TEST_POSTGRES_URL). The stubs below
+# skipped in CI (no workflow sets ALPHA_TEST_POSTGRES_URL). The stubs below
 # pin it with no DB of either kind.
 #
 # The shape matters: SQLAlchemy's asyncpg dialect does NOT hand us the asyncpg
@@ -1031,7 +1031,7 @@ def test_oidc_login_blocked_by_existing_local_account_across_case(tmp_path):
             provider = LocalAuthProvider(SQLiteUserRepository(get_session_factory()))
             await provider.create_user(email="Victim@x.com", password="pw-abc-123!", system_role="user")
 
-            cfg = OIDCProviderConfig(display_name="Test SSO", issuer="https://issuer.example.com", client_id="agent-workspace", auto_create_users=True)
+            cfg = OIDCProviderConfig(display_name="Test SSO", issuer="https://issuer.example.com", client_id="alpha", auto_create_users=True)
             identity = OIDCIdentity(provider="keycloak", subject="sub-1", email="Victim@x.com", email_verified=True, name="Victim", claims={})
 
             with pytest.raises(HTTPException) as exc_info:

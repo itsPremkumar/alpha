@@ -20,7 +20,7 @@ from alpha.tools.builtins.setup_agent_tool import setup_agent
 @pytest.mark.parametrize("backend", ["file", "sql"])
 @pytest.mark.parametrize("display_name", ["代码审查助手", None])
 def test_bootstrap_preserves_owner_display_name(tmp_path, monkeypatch, backend, display_name):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     if backend == "file":
         store = FileAgentStore()
     else:
@@ -73,7 +73,7 @@ def test_invisible_only_labels_are_rejected(value):
 @pytest.mark.parametrize("backend", ["file", "sql"])
 @pytest.mark.parametrize("value", ["x" * 150, 123, "\u200b", "a\u200fb", ["invalid"]])
 def test_invalid_stored_label_does_not_hide_or_break_agent(tmp_path, monkeypatch, backend, value):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     owner = "test-user-autouse"
     raw = {"display_name": value, "description": "healthy", "model": "gpt-x"}
     if backend == "file":

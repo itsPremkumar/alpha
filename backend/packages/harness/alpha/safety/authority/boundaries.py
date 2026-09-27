@@ -230,7 +230,7 @@ INBOUND_ENTRY_POINTS: Final[tuple[InboundEntryPoint, ...]] = (
     InboundEntryPoint(
         name="gateway-http-internal-token",
         surface=SurfaceKind.GATEWAY_ROUTE,
-        path="(all paths, with X-Agent-Workspace-Internal-Token)",
+        path="(all paths, with X-Alpha-Internal-Token)",
         authentication=Authentication.INTERNAL_TOKEN,
         enforcement_site="backend/app/gateway/auth_middleware.py:120",
         kind=BoundaryKind.SECURITY,
@@ -258,7 +258,7 @@ INBOUND_ENTRY_POINTS: Final[tuple[InboundEntryPoint, ...]] = (
     InboundEntryPoint(
         name="gateway-http-auth-disabled",
         surface=SurfaceKind.GATEWAY_ROUTE,
-        path="(all paths, when AGENT_WORKSPACE_AUTH_DISABLED=1)",
+        path="(all paths, when ALPHA_AUTH_DISABLED=1)",
         authentication=Authentication.NONE,
         enforcement_site="backend/app/gateway/auth_disabled.py:34",
         kind=BoundaryKind.CONVENIENCE,

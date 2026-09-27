@@ -48,9 +48,9 @@ CATALOG_COMMANDS = frozenset(entry[0] for entry in get_default_catalog_entries()
 
 
 @pytest.fixture(autouse=True)
-def agent_workspace_home(tmp_path, monkeypatch):
+def alpha_home(tmp_path, monkeypatch):
     """Every test runs inside an isolated workspace (DY-R3 requirement)."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     monkeypatch.chdir(tmp_path)
     return tmp_path
 

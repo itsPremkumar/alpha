@@ -24,7 +24,7 @@ from packaging.version import Version
 
 logger = logging.getLogger(__name__)
 
-_PATCH_FLAG = "_agent_workspace_delta_history_patched"
+_PATCH_FLAG = "_alpha_delta_history_patched"
 # The patch was authored and verified against langgraph 1.2.9
 # (langgraph/checkpoint/memory/__init__.py::InMemorySaver.get_delta_channel_history).
 # On any newer LangGraph the override must be re-inspected before keeping the
@@ -100,7 +100,7 @@ def ensure_inmemory_delta_history_patch() -> None:
         logger.warning("Failed to apply the InMemorySaver delta-history patch; leaving the upstream implementation untouched.", exc_info=True)
 
 
-_BINOP_PATCH_FLAG = "_agent_workspace_overwrite_first_write_patched"
+_BINOP_PATCH_FLAG = "_alpha_overwrite_first_write_patched"
 _unpatched_binop_update = BinaryOperatorAggregate.update
 
 

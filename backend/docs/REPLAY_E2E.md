@@ -39,7 +39,7 @@ so only a *real frontend against a real backend* catches the desync.
 
 This scenario does **not** record a conversation. It uses a **test-only seeder**
 (`tests/seed_runs_router.py`, mounted on the replay gateway only when
-`AGENT_WORKSPACE_ENABLE_TEST_SEED=1`) to stand up a thread with ≥2 runs and per-run
+`ALPHA_ENABLE_TEST_SEED=1`) to stand up a thread with ≥2 runs and per-run
 message events — and deliberately **no checkpoint**, which is the #3352
 precondition: it forces the frontend's per-run reload path to be the sole source
 of truth so the ordering bug becomes observable. The seeder writes through the
@@ -82,7 +82,7 @@ browser sends; fixtures contain no API key.
 ```bash
 # 1. drive the real frontend against a real-model gateway, capturing model calls
 OPENAI_API_KEY=... OPENAI_API_BASE=<openai-compatible-endpoint>/v1 \
-  AGENT_WORKSPACE_RECORD_OUT=/tmp/rec/turns.jsonl RECORD_MODEL=<model> \
+  ALPHA_RECORD_OUT=/tmp/rec/turns.jsonl RECORD_MODEL=<model> \
   bash -c 'cd frontend && pnpm exec playwright test -c playwright.record.config.ts'
 
 # 2. stitch the capture into a fixture
@@ -91,7 +91,7 @@ cd backend && uv run python scripts/build_fixture_from_jsonl.py \
   --out tests/fixtures/replay/<scenario>.<mode>.json --model <model>
 
 # 3. regenerate the committed golden
-AGENT_WORKSPACE_WRITE_GOLDEN=1 PYTHONPATH=. uv run pytest tests/test_replay_golden.py
+ALPHA_WRITE_GOLDEN=1 PYTHONPATH=. uv run pytest tests/test_replay_golden.py
 ```
 
 ## Run (no key)

@@ -45,7 +45,7 @@ loader: `packages/harness/alpha/config/models_catalog.py`; tests:
   never field-merged, so exactly one file is authoritative for a given name —
   that is what makes a capability declared in one place.
 - **Path resolution mirrors `extensions_config.json`**: explicit `config_path` ->
-  `$AGENT_WORKSPACE_MODELS_CONFIG_PATH` -> project root -> `backend/` and repo
+  `$ALPHA_MODELS_CONFIG_PATH` -> project root -> `backend/` and repo
   root -> `None`. An explicit path or env var naming a missing file raises
   `FileNotFoundError`; only the fallback search returns `None` (the catalog is
   optional and a deployment may configure everything through `config.yaml`).
@@ -93,7 +93,7 @@ application repositories continue to use `database`.
 
 Configuration priority:
 1. Explicit `config_path` argument
-2. `AGENT_WORKSPACE_CONFIG_PATH` environment variable
+2. `ALPHA_CONFIG_PATH` environment variable
 3. `config.yaml` in current directory (backend/)
 4. `config.yaml` in parent directory (project root - **recommended location**)
 
@@ -105,24 +105,24 @@ Config values starting with `$` are resolved as environment variables (e.g., `$O
 MCP servers and skills are configured together in `extensions_config.json` in project root:
 
 Docker development mounts the project directory at `/app/project` and points
-`AGENT_WORKSPACE_CONFIG_PATH` / `AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH` into that directory.
+`ALPHA_CONFIG_PATH` / `ALPHA_EXTENSIONS_CONFIG_PATH` into that directory.
 Keep mutable config files behind a directory bind mount: single-file bind mounts
 can become stale or inaccessible when a host editor replaces a file on save.
 
 Configuration priority:
 1. Explicit `config_path` argument
-2. `AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH` environment variable
+2. `ALPHA_EXTENSIONS_CONFIG_PATH` environment variable
 3. `extensions_config.json` in current directory (backend/)
 4. `extensions_config.json` in parent directory (project root - **recommended location**)
 
-Extensions are optional only in the fallback *search* mode (priority 3-4 above): `ExtensionsConfig.resolve_config_path()` returns `None` when neither an explicit `config_path` nor `AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH` is given and the search locations find nothing. An explicit `config_path` argument or a set `AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH` (priority 1-2) is an operator assertion that one particular file must be used, so a missing file in either of those modes raises `FileNotFoundError` instead — including when the file existed earlier and has since been deleted. The MCP tools cache's staleness check (`alpha.mcp.cache._resolve_config_path`) is a narrow, deliberate exception to that rule: it catches that `FileNotFoundError` locally and treats it as "unconfigured" so a previously-valid config disappearing mid-run degrades the cache to serving its last-known-good tools instead of raising out of a per-request hot path (see the MCP System section below).
+Extensions are optional only in the fallback *search* mode (priority 3-4 above): `ExtensionsConfig.resolve_config_path()` returns `None` when neither an explicit `config_path` nor `ALPHA_EXTENSIONS_CONFIG_PATH` is given and the search locations find nothing. An explicit `config_path` argument or a set `ALPHA_EXTENSIONS_CONFIG_PATH` (priority 1-2) is an operator assertion that one particular file must be used, so a missing file in either of those modes raises `FileNotFoundError` instead — including when the file existed earlier and has since been deleted. The MCP tools cache's staleness check (`alpha.mcp.cache._resolve_config_path`) is a narrow, deliberate exception to that rule: it catches that `FileNotFoundError` locally and treats it as "unconfigured" so a previously-valid config disappearing mid-run degrades the cache to serving its last-known-good tools instead of raising out of a per-request hot path (see the MCP System section below).
 
 ### Config Schema
 
 **`config.yaml`** key sections:
 - `models[]` - LLM configs with `use` class path, `supports_thinking`, `supports_vision`, provider-specific fields
 - `models[].reasoning_efforts` / `default_reasoning_effort` / `reasoning_effort_style` - the declared reasoning-effort ladder (weakest first), the rung used when a run requests none, and the provider wire shape (`auto` detects from the client class). Declaring the ladder is what enables the chat-UI effort picker and is the **ceiling**: an unlisted rung is clamped and logged, never sent. A misspelled rung or style fails at config load, and a `default_reasoning_effort` outside the declared ladder is an error rather than a silent drop. The ladder vocabulary, aliases, and clamp live in `alpha/config/reasoning_effort.py` (dependency-free, so this file's validators cannot cycle through the factory); the wire translation and its four invariants are owned by [the models guide](../models/AGENTS.md#reasoning-effort-one-ladder-per-provider-wire-shapes)
-- `logging.enhance` - Log output only (`enabled`, `format`): whether log records carry a `trace_id` field, and in which format. Trace ids are issued unconditionally — the Gateway `X-Trace-Id` header and Langfuse `agent_workspace_trace_id` metadata are always present whatever this says (see the Request Trace Context section in `packages/harness/alpha/AGENTS.md`); restart-required
+- `logging.enhance` - Log output only (`enabled`, `format`): whether log records carry a `trace_id` field, and in which format. Trace ids are issued unconditionally — the Gateway `X-Trace-Id` header and Langfuse `alpha_trace_id` metadata are always present whatever this says (see the Request Trace Context section in `packages/harness/alpha/AGENTS.md`); restart-required
 - vLLM reasoning models should use `alpha.models.vllm_provider:VllmChatModel`; for Qwen-style parsers prefer `when_thinking_enabled.extra_body.chat_template_kwargs.enable_thinking`, and Alpha will also normalize the older `thinking` alias
 - `tools[]` - Tool configs with `use` variable path and `group`
 - `tool_groups[]` - Logical groupings for tools
@@ -145,6 +145,6 @@ Extensions are optional only in the fallback *search* mode (priority 3-4 above):
 - `skills` - Map of skill name → state (enabled)
 - `middlewares` - `AgentMiddleware` entries for lead and subagent runtime extension: class-path strings or `{class, kwargs}` objects. `kwargs` values must be JSON types; YAML dates and timestamps are coerced to ISO strings so they match JSON. `config.yaml -> extensions` can override these fields after validation; overrides are replace-per-field, not list concatenation.
 
-Gateway API endpoints and `AgentWorkspaceClient` methods can modify MCP servers and skill state at runtime; their `extensions_config.json` writes use the shared atomic replacement helper, while `middlewares` remains an operator-controlled config-file extension point.
+Gateway API endpoints and `AlphaClient` methods can modify MCP servers and skill state at runtime; their `extensions_config.json` writes use the shared atomic replacement helper, while `middlewares` remains an operator-controlled config-file extension point.
 
-Values beginning with `$` are resolved from the environment when the file is loaded, and an unset variable becomes `""`. Runtime writers (MCP router, skill toggle, `AgentWorkspaceClient`) therefore read the raw file with `read_raw_extensions_config`, merge into it (`set_raw_skill_enabled` for skill state), check the candidate with `validate_raw_extensions_config`, and write that raw dict. They never serialize an `ExtensionsConfig` model back to disk: its resolved values would persist secrets in plaintext and erase the references. When the file does not exist yet, the Gateway skill toggle seeds only the cached skill states. `tests/test_extensions_config_raw_writes.py` and the placeholder tests in `tests/test_client.py` pin this.
+Values beginning with `$` are resolved from the environment when the file is loaded, and an unset variable becomes `""`. Runtime writers (MCP router, skill toggle, `AlphaClient`) therefore read the raw file with `read_raw_extensions_config`, merge into it (`set_raw_skill_enabled` for skill state), check the candidate with `validate_raw_extensions_config`, and write that raw dict. They never serialize an `ExtensionsConfig` model back to disk: its resolved values would persist secrets in plaintext and erase the references. When the file does not exist yet, the Gateway skill toggle seeds only the cached skill states. `tests/test_extensions_config_raw_writes.py` and the placeholder tests in `tests/test_client.py` pin this.

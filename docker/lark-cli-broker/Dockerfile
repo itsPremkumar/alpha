@@ -27,7 +27,7 @@
 # shim can never drift from the Gateway's copy.
 #
 # Build (defaults to the pinned version below):
-#   docker build -t agent-workspace/lark-cli-broker:v1.0.65 \
+#   docker build -t alpha/lark-cli-broker:v1.0.65 \
 #     --build-arg LARK_CLI_VERSION=v1.0.65 \
 #     -f docker/lark-cli-broker/Dockerfile .
 #
@@ -68,11 +68,11 @@ RUN chmod +x /usr/local/bin/lark-cli-broker
 
 # serve mode: the sidecar runs the real arch-dispatch launcher and reads the
 # credential dirs the provisioner mounts into the sidecar only.
-ENV AGENT_WORKSPACE_LARK_BROKER_CLI=/opt/lark-cli/bin/lark-cli \
+ENV ALPHA_LARK_BROKER_CLI=/opt/lark-cli/bin/lark-cli \
     LARKSUITE_CLI_CONFIG_DIR=/var/lark/config \
     LARKSUITE_CLI_DATA_DIR=/var/lark/data \
-    AGENT_WORKSPACE_LARK_BROKER_HOST=127.0.0.1 \
-    AGENT_WORKSPACE_LARK_BROKER_PORT=8788 \
+    ALPHA_LARK_BROKER_HOST=127.0.0.1 \
+    ALPHA_LARK_BROKER_PORT=8788 \
     LARK_CLI_RUNTIME_DEST=/mnt/integrations/lark-cli/runtime
 
 ENTRYPOINT ["/usr/local/bin/lark-cli-broker"]

@@ -28,6 +28,16 @@ from app.gateway.deps import require_admin_user
 
 logger = logging.getLogger(__name__)
 _MAX_PUBLIC_BODY_BYTES = 512 * 1024
+# The public mutating paths this module caps. Exact, never a prefix: a prefix
+# would silently extend the ceiling to future routes under the namespace. Read
+# by ``app.gateway.public_body_limit_middleware`` so the *enforced* ceiling is
+# this constant rather than a second copy of it.
+_PUBLIC_BODY_LIMITED_PATHS: frozenset[str] = frozenset(
+    {
+        "/api/peer-network/remote/pair",
+        "/api/peer-network/inbound/messages",
+    }
+)
 # Every route whose response body carries the installation's INBOUND BEARER (the
 # pairing code that authorises a peer to deliver messages into this instance)
 # gates on this. `threads:read`/`threads:write` are deliberately low-privilege
@@ -51,6 +61,16 @@ def _service():
 
 
 def _check_public_body_size(request: Request) -> None:
+    """Fast pre-parse check of the caller-declared ``Content-Length``.
+
+    This is a *declared*-length check, so it is not a bound: the header is
+    absent for ``Transfer-Encoding: chunked`` and for ordinary HTTP/2 bodies.
+    ``PublicPeerBodyLimitMiddleware`` is what actually enforces the ceiling, by
+    counting the bytes that are actually received (see
+    ``app.gateway.public_body_limit_middleware``). Kept because it rejects an
+    honestly-declared oversize without reading the body at all, and because it
+    owns the 400 for a malformed ``Content-Length``.
+    """
     raw_length = request.headers.get("content-length")
     if not raw_length:
         return
@@ -304,4 +324,16 @@ async def peer_websocket(websocket: WebSocket) -> None:
         return
 
 
-__all__ = ["public_router", "router"]
+__all__ = ["public_router", "router", "public_peer_body_limit_middleware"]
+
+
+def public_peer_body_limit_middleware():
+    """Return the ASGI class enforcing this module's body ceiling.
+
+    Returned as a callable producing the middleware *class* so
+    ``app.gateway.app`` can register it with ``add_middleware`` while this
+    module stays the single owner of the limit value and the exact path set.
+    """
+    from app.gateway.public_body_limit_middleware import public_peer_body_limit_middleware as _build
+
+    return _build(_MAX_PUBLIC_BODY_BYTES, _PUBLIC_BODY_LIMITED_PATHS)

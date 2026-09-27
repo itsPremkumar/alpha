@@ -1,5 +1,5 @@
 [project]
-name = "agent-workspace-harness"
+name = "alpha-harness"
 version = "2.1.0"
 description = "Alpha agent harness framework"
 requires-python = ">=3.12"
@@ -13,7 +13,7 @@ dependencies = [
     # the contract version it implements, extensions declare ranges. A range
     # here would let pip resolve a newer contract package than this harness
     # implements, making newer extensions look supported at runtime.
-    "agent-workspace-extension-api==0.2.0",
+    "alpha-extension-api==0.2.0",
     "dotenv>=0.9.9",
     "exa-py>=1.0.0",
     "httpx>=0.28.0",
@@ -56,12 +56,11 @@ dependencies = [
     "e2b-code-interpreter>=2.8.0",
     # zoneinfo fallback: ZoneInfo reads the OS zone database first and this
     # wheel when the image has none (stripped containers, Windows without
-    # tzdata), keeping the AGENT_WORKSPACE_DATE_TIMEZONE knob portable.
+    # tzdata), keeping the ALPHA_DATE_TIMEZONE knob portable.
     "tzdata>=2025.1",
 ]
 
 [project.scripts]
-agent-workspace = "alpha.tui.cli:main"
 alpha = "alpha.tui.cli:main"
 
 [project.optional-dependencies]
@@ -69,7 +68,7 @@ alpha = "alpha.tui.cli:main"
 # the `alpha` console script degrades to headless help when textual is absent.
 tui = ["textual>=0.80"]
 # GroundRoute needs no extra packages (httpx is already a core dependency). This
-# empty extra exists so the documented `uv add 'agent-workspace-harness[groundroute]'`
+# empty extra exists so the documented `uv add 'alpha-harness[groundroute]'`
 # install command resolves cleanly without an "unknown extra" warning.
 groundroute = []
 ollama = ["langchain-ollama>=0.3.0"]

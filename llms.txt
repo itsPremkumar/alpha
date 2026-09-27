@@ -20,7 +20,7 @@ Alpha turns one prompt into a verified, multi-step execution: it plans, research
 delegates to subagents, runs sandboxed code, writes and edits files, verifies the
 result, and can deliver the output to Slack, Telegram, Feishu, or other channels.
 It is a finished product, not a library of primitives, and it can also be imported
-as a library (`agent-workspace-harness`, import name `alpha.*`).
+as a library (`alpha-harness`, import name `alpha.*`).
 
 ## When to use Alpha
 
@@ -80,7 +80,7 @@ https://github.com/itsPremkumar/alpha/blob/main/docs/COMPARISON.md
 - [API reference](https://github.com/itsPremkumar/alpha/blob/main/docs/API_REFERENCE.md): all 61 Gateway routers, authentication, and SSE event streaming.
 - [API overview](https://github.com/itsPremkumar/alpha/blob/main/docs/API.md): entry points, base URLs, and versioning.
 - [Extensions and MCP](https://github.com/itsPremkumar/alpha/blob/main/docs/EXTENSIONS.md): MCP over stdio/HTTP/SSE plus the Python extension contribution contract.
-- [Reference extension](https://github.com/itsPremkumar/alpha/blob/main/examples/agent-workspace-extension-example/): a runnable package demonstrating every contribution kind.
+- [Reference extension](https://github.com/itsPremkumar/alpha/blob/main/examples/alpha-extension-example/): a runnable package demonstrating every contribution kind.
 - [Feature manifest](https://github.com/itsPremkumar/alpha/blob/main/contracts/feature_manifest.json): the generated, machine-checked registry of tools, routers, middlewares, and loops.
 - [Integration health](https://github.com/itsPremkumar/alpha/blob/main/docs/DEVELOPMENT.md): `GET /api/ops/integration-health` reports live coverage and supervisor status.
 - OpenAI-compatible endpoint: `POST /api/compat/openai/chat/completions`.

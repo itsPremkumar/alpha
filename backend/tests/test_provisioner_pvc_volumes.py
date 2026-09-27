@@ -134,7 +134,7 @@ class TestBuildVolumes:
         """Controlled extra mounts should become extra hostPath volumes by default."""
         provisioner_module.SKILLS_PVC_NAME = ""
         provisioner_module.USERDATA_PVC_NAME = ""
-        provisioner_module.AGENT_WORKSPACE_HOST_BASE_DIR = "/state"
+        provisioner_module.ALPHA_HOST_BASE_DIR = "/state"
         extra_mounts = [
             provisioner_module.ExtraMount(
                 host_path="/state/users/alice/integrations/lark-cli/config",
@@ -156,7 +156,7 @@ class TestBuildVolumes:
         """PVC mode should use the same Alpha data PVC for runtime config mounts."""
         provisioner_module.SKILLS_PVC_NAME = ""
         provisioner_module.USERDATA_PVC_NAME = "userdata-pvc"
-        provisioner_module.AGENT_WORKSPACE_HOST_BASE_DIR = "/state"
+        provisioner_module.ALPHA_HOST_BASE_DIR = "/state"
         extra_mounts = [
             provisioner_module.ExtraMount(
                 host_path="/state/users/alice/integrations/lark-cli/config",
@@ -175,9 +175,9 @@ class TestBuildVolumes:
         assert extra_vol.persistent_volume_claim.claim_name == "userdata-pvc"
         assert extra_vol.host_path is None
 
-    def test_extra_mount_rejects_paths_outside_agent_workspace_state(self, provisioner_module):
+    def test_extra_mount_rejects_paths_outside_alpha_state(self, provisioner_module):
         """Provisioner must not accept arbitrary hostPath mounts from clients."""
-        provisioner_module.AGENT_WORKSPACE_HOST_BASE_DIR = "/state"
+        provisioner_module.ALPHA_HOST_BASE_DIR = "/state"
         extra_mounts = [
             provisioner_module.ExtraMount(
                 host_path="/etc",
@@ -197,7 +197,7 @@ class TestBuildVolumes:
     ):
         provisioner_module.SKILLS_PVC_NAME = ""
         provisioner_module.USERDATA_PVC_NAME = ""
-        provisioner_module.AGENT_WORKSPACE_HOST_BASE_DIR = "/state"
+        provisioner_module.ALPHA_HOST_BASE_DIR = "/state"
 
         volumes = provisioner_module._build_volumes(
             "thread-1",
@@ -215,7 +215,7 @@ class TestBuildVolumes:
     ):
         provisioner_module.SKILLS_PVC_NAME = ""
         provisioner_module.USERDATA_PVC_NAME = ""
-        provisioner_module.AGENT_WORKSPACE_HOST_BASE_DIR = "/state"
+        provisioner_module.ALPHA_HOST_BASE_DIR = "/state"
         skills_root = "/custom-skills"
 
         volumes = provisioner_module._build_volumes(
@@ -244,7 +244,7 @@ class TestBuildVolumes:
     ):
         provisioner_module.SKILLS_PVC_NAME = "skills-pvc"
         provisioner_module.USERDATA_PVC_NAME = "userdata-pvc"
-        provisioner_module.AGENT_WORKSPACE_HOST_BASE_DIR = "/state"
+        provisioner_module.ALPHA_HOST_BASE_DIR = "/state"
 
         volumes = provisioner_module._build_volumes(
             "thread-1",
@@ -352,24 +352,24 @@ class TestBuildVolumeMounts:
     def test_skills_pvc_can_use_user_scoped_subpath_template(self, provisioner_module):
         """Operators can opt into per-user/thread skills subPath for shared PVCs."""
         provisioner_module.SKILLS_PVC_NAME = "my-skills-pvc"
-        provisioner_module.SKILLS_PVC_SUBPATH_TEMPLATE = "agent-workspace/users/{user_id}/threads/{thread_id}/skills"
+        provisioner_module.SKILLS_PVC_SUBPATH_TEMPLATE = "alpha/users/{user_id}/threads/{thread_id}/skills"
         mounts = provisioner_module._build_volume_mounts("thread-42", user_id="user-7")
         skills_mount = mounts[0]
-        assert skills_mount.sub_path == "agent-workspace/users/user-7/threads/thread-42/skills"
+        assert skills_mount.sub_path == "alpha/users/user-7/threads/thread-42/skills"
 
     def test_pvc_sets_user_scoped_subpath(self, provisioner_module):
         """PVC mode should include user_id in the user-data subPath."""
         provisioner_module.USERDATA_PVC_NAME = "my-pvc"
         mounts = provisioner_module._build_volume_mounts("thread-42", user_id="user-7")
         userdata_mount = mounts[-1]
-        assert userdata_mount.sub_path == "agent-workspace/users/user-7/threads/thread-42/user-data"
+        assert userdata_mount.sub_path == "alpha/users/user-7/threads/thread-42/user-data"
 
     def test_pvc_defaults_to_default_user_subpath(self, provisioner_module):
         """Older callers should still land under a stable default user namespace."""
         provisioner_module.USERDATA_PVC_NAME = "my-pvc"
         mounts = provisioner_module._build_volume_mounts("thread-42")
         userdata_mount = mounts[-1]
-        assert userdata_mount.sub_path == "agent-workspace/users/default/threads/thread-42/user-data"
+        assert userdata_mount.sub_path == "alpha/users/default/threads/thread-42/user-data"
 
     # ── Managed integration extra mounts ───────────────────────────────
 
@@ -377,7 +377,7 @@ class TestBuildVolumeMounts:
         """Controlled extra mounts should be mounted at their requested container path."""
         provisioner_module.SKILLS_PVC_NAME = ""
         provisioner_module.USERDATA_PVC_NAME = ""
-        provisioner_module.AGENT_WORKSPACE_HOST_BASE_DIR = "/state"
+        provisioner_module.ALPHA_HOST_BASE_DIR = "/state"
         extra_mounts = [
             provisioner_module.ExtraMount(
                 host_path="/state/users/alice/integrations/lark-cli/config",
@@ -398,7 +398,7 @@ class TestBuildVolumeMounts:
         """PVC extra mounts should point at the same user-scoped Alpha path."""
         provisioner_module.SKILLS_PVC_NAME = ""
         provisioner_module.USERDATA_PVC_NAME = "userdata-pvc"
-        provisioner_module.AGENT_WORKSPACE_HOST_BASE_DIR = "/state"
+        provisioner_module.ALPHA_HOST_BASE_DIR = "/state"
         extra_mounts = [
             provisioner_module.ExtraMount(
                 host_path="/state/users/alice/integrations/lark-cli/config",
@@ -411,11 +411,11 @@ class TestBuildVolumeMounts:
 
         extra_mount = mounts[-1]
         assert extra_mount.name == "extra-0"
-        assert extra_mount.sub_path == "agent-workspace/users/alice/integrations/lark-cli/config"
+        assert extra_mount.sub_path == "alpha/users/alice/integrations/lark-cli/config"
 
     def test_extra_mount_rejects_unknown_container_path(self, provisioner_module):
         """Only first-party managed mount paths are accepted."""
-        provisioner_module.AGENT_WORKSPACE_HOST_BASE_DIR = "/state"
+        provisioner_module.ALPHA_HOST_BASE_DIR = "/state"
         extra_mounts = [
             provisioner_module.ExtraMount(
                 host_path="/state/users/alice/integrations/lark-cli/config",
@@ -435,7 +435,7 @@ class TestBuildVolumeMounts:
     ):
         provisioner_module.SKILLS_PVC_NAME = ""
         provisioner_module.USERDATA_PVC_NAME = ""
-        provisioner_module.AGENT_WORKSPACE_HOST_BASE_DIR = "/state"
+        provisioner_module.ALPHA_HOST_BASE_DIR = "/state"
 
         mounts = provisioner_module._build_volume_mounts(
             "thread-1",
@@ -459,7 +459,7 @@ class TestBuildVolumeMounts:
     ):
         provisioner_module.SKILLS_PVC_NAME = "skills-pvc"
         provisioner_module.USERDATA_PVC_NAME = "userdata-pvc"
-        provisioner_module.AGENT_WORKSPACE_HOST_BASE_DIR = "/state"
+        provisioner_module.ALPHA_HOST_BASE_DIR = "/state"
 
         mounts = provisioner_module._build_volume_mounts(
             "thread-1",
@@ -470,7 +470,7 @@ class TestBuildVolumeMounts:
         skill_mounts = [mount for mount in mounts if mount.mount_path.startswith("/mnt/skills/")]
         assert len(skill_mounts) == 4
         assert all(mount.name != "skills" for mount in mounts)
-        assert {mount.sub_path for mount in skill_mounts} == {f"agent-workspace/users/alice/threads/thread-1/skills_view/{category}" for category in ("public", "custom", "legacy", "integrations")}
+        assert {mount.sub_path for mount in skill_mounts} == {f"alpha/users/alice/threads/thread-1/skills_view/{category}" for category in ("public", "custom", "legacy", "integrations")}
 
     @pytest.mark.parametrize("use_userdata_pvc", [False, True])
     def test_custom_root_thread_skill_mounts_replace_every_default_path(
@@ -480,7 +480,7 @@ class TestBuildVolumeMounts:
     ):
         provisioner_module.SKILLS_PVC_NAME = "skills-pvc" if use_userdata_pvc else ""
         provisioner_module.USERDATA_PVC_NAME = "userdata-pvc" if use_userdata_pvc else ""
-        provisioner_module.AGENT_WORKSPACE_HOST_BASE_DIR = "/state"
+        provisioner_module.ALPHA_HOST_BASE_DIR = "/state"
         skills_root = "/custom-skills"
 
         mounts = provisioner_module._build_volume_mounts(
@@ -607,13 +607,13 @@ class TestBuildPodVolumes:
         assert pod.spec.volumes[0].persistent_volume_claim is not None
         assert pod.spec.volumes[-1].persistent_volume_claim is not None
         userdata_mount = pod.spec.containers[0].volume_mounts[-1]
-        assert userdata_mount.sub_path == "agent-workspace/users/user-7/threads/thread-1/user-data"
+        assert userdata_mount.sub_path == "alpha/users/user-7/threads/thread-1/user-data"
 
     def test_pod_includes_extra_mounts(self, provisioner_module):
         """Provisioner-created pods should include managed integration runtime mounts."""
         provisioner_module.SKILLS_PVC_NAME = ""
         provisioner_module.USERDATA_PVC_NAME = ""
-        provisioner_module.AGENT_WORKSPACE_HOST_BASE_DIR = "/state"
+        provisioner_module.ALPHA_HOST_BASE_DIR = "/state"
         extra_mounts = [
             provisioner_module.ExtraMount(
                 host_path="/state/users/alice/integrations/lark-cli/config",
@@ -657,11 +657,11 @@ class TestBuildPodVolumes:
     def test_pod_pvc_mode_can_use_user_scoped_skills_subpath(self, provisioner_module):
         """Pod should use a configured user-scoped subPath for PVC skills."""
         provisioner_module.SKILLS_PVC_NAME = "skills-pvc"
-        provisioner_module.SKILLS_PVC_SUBPATH_TEMPLATE = "agent-workspace/users/{user_id}/threads/{thread_id}/skills"
+        provisioner_module.SKILLS_PVC_SUBPATH_TEMPLATE = "alpha/users/{user_id}/threads/{thread_id}/skills"
         provisioner_module.USERDATA_PVC_NAME = "userdata-pvc"
         pod = provisioner_module._build_pod("sandbox-1", "thread-1", user_id="user-7")
         skills_mount = pod.spec.containers[0].volume_mounts[0]
-        assert skills_mount.sub_path == "agent-workspace/users/user-7/threads/thread-1/skills"
+        assert skills_mount.sub_path == "alpha/users/user-7/threads/thread-1/skills"
 
 
 class TestLarkCliInitContainer:
@@ -683,7 +683,7 @@ class TestLarkCliInitContainer:
     def test_no_init_container_when_flag_disabled(self, provisioner_module):
         provisioner_module.SKILLS_PVC_NAME = ""
         provisioner_module.USERDATA_PVC_NAME = ""
-        provisioner_module.LARK_CLI_INIT_IMAGE = "agent-workspace/lark-cli-init:v1.0.65"
+        provisioner_module.LARK_CLI_INIT_IMAGE = "alpha/lark-cli-init:v1.0.65"
         pod = provisioner_module._build_pod(
             "sandbox-1",
             "thread-1",
@@ -694,7 +694,7 @@ class TestLarkCliInitContainer:
     def test_init_container_and_emptydir_when_enabled(self, provisioner_module):
         provisioner_module.SKILLS_PVC_NAME = ""
         provisioner_module.USERDATA_PVC_NAME = ""
-        provisioner_module.LARK_CLI_INIT_IMAGE = "agent-workspace/lark-cli-init:v1.0.65"
+        provisioner_module.LARK_CLI_INIT_IMAGE = "alpha/lark-cli-init:v1.0.65"
         pod = provisioner_module._build_pod(
             "sandbox-1",
             "thread-1",
@@ -711,7 +711,7 @@ class TestLarkCliInitContainer:
         assert pod.spec.init_containers is not None
         assert len(pod.spec.init_containers) == 1
         init = pod.spec.init_containers[0]
-        assert init.image == "agent-workspace/lark-cli-init:v1.0.65"
+        assert init.image == "alpha/lark-cli-init:v1.0.65"
         init_mount = init.volume_mounts[0]
         assert init_mount.name == provisioner_module.LARK_CLI_RUNTIME_VOLUME_NAME
         assert init_mount.mount_path == provisioner_module.LARK_CLI_RUNTIME_CONTAINER_PATH
@@ -726,8 +726,8 @@ class TestLarkCliInitContainer:
     def test_runtime_extra_mount_dropped_when_init_container_enabled(self, provisioner_module):
         provisioner_module.SKILLS_PVC_NAME = ""
         provisioner_module.USERDATA_PVC_NAME = ""
-        provisioner_module.AGENT_WORKSPACE_HOST_BASE_DIR = "/state"
-        provisioner_module.LARK_CLI_INIT_IMAGE = "agent-workspace/lark-cli-init:v1.0.65"
+        provisioner_module.ALPHA_HOST_BASE_DIR = "/state"
+        provisioner_module.LARK_CLI_INIT_IMAGE = "alpha/lark-cli-init:v1.0.65"
         extra_mounts = [
             provisioner_module.ExtraMount(
                 host_path="/state/users/alice/integrations/lark-cli/config",
@@ -806,7 +806,7 @@ class TestLarkCliBrokerSidecar:
     def test_no_sidecar_when_flag_disabled(self, provisioner_module):
         provisioner_module.SKILLS_PVC_NAME = ""
         provisioner_module.USERDATA_PVC_NAME = ""
-        provisioner_module.LARK_CLI_BROKER_IMAGE = "agent-workspace/lark-cli-broker:v1.0.65"
+        provisioner_module.LARK_CLI_BROKER_IMAGE = "alpha/lark-cli-broker:v1.0.65"
         pod = provisioner_module._build_pod(
             "sandbox-1",
             "thread-1",
@@ -818,8 +818,8 @@ class TestLarkCliBrokerSidecar:
     def test_broker_sidecar_and_shim_when_enabled(self, provisioner_module):
         provisioner_module.SKILLS_PVC_NAME = ""
         provisioner_module.USERDATA_PVC_NAME = ""
-        provisioner_module.AGENT_WORKSPACE_HOST_BASE_DIR = "/state"
-        provisioner_module.LARK_CLI_BROKER_IMAGE = "agent-workspace/lark-cli-broker:v1.0.65"
+        provisioner_module.ALPHA_HOST_BASE_DIR = "/state"
+        provisioner_module.LARK_CLI_BROKER_IMAGE = "alpha/lark-cli-broker:v1.0.65"
         pod = provisioner_module._build_pod(
             "sandbox-1",
             "thread-1",
@@ -833,14 +833,14 @@ class TestLarkCliBrokerSidecar:
         assert len(pod.spec.init_containers) == 1
         init = pod.spec.init_containers[0]
         assert init.name == "lark-cli-shim-init"
-        assert init.image == "agent-workspace/lark-cli-broker:v1.0.65"
+        assert init.image == "alpha/lark-cli-broker:v1.0.65"
         assert init.args == ["install-shim", provisioner_module.LARK_CLI_RUNTIME_CONTAINER_PATH]
 
         # Broker sidecar alongside the sandbox container.
         sidecars = [c for c in pod.spec.containers if c.name == "lark-cli-broker"]
         assert len(sidecars) == 1
         sidecar = sidecars[0]
-        assert sidecar.image == "agent-workspace/lark-cli-broker:v1.0.65"
+        assert sidecar.image == "alpha/lark-cli-broker:v1.0.65"
         assert sidecar.args == ["serve"]
         # Credentials mounted into the sidecar only.
         sidecar_mount_order = [m.mount_path for m in sidecar.volume_mounts]
@@ -861,7 +861,7 @@ class TestLarkCliBrokerSidecar:
         assert "/mnt/integrations/lark-cli/config/locks" not in sandbox_paths
         assert "/mnt/integrations/lark-cli/data" not in sandbox_paths
         env = {e.name: e.value for e in (sandbox.env or [])}
-        assert env.get("AGENT_WORKSPACE_LARK_BROKER_URL") == provisioner_module.LARK_BROKER_URL
+        assert env.get("ALPHA_LARK_BROKER_URL") == provisioner_module.LARK_BROKER_URL
 
     def test_custom_skills_root_is_compatible_with_broker_credentials(
         self,
@@ -869,8 +869,8 @@ class TestLarkCliBrokerSidecar:
     ):
         provisioner_module.SKILLS_PVC_NAME = ""
         provisioner_module.USERDATA_PVC_NAME = ""
-        provisioner_module.AGENT_WORKSPACE_HOST_BASE_DIR = "/state"
-        provisioner_module.LARK_CLI_BROKER_IMAGE = "agent-workspace/lark-cli-broker:v1.0.65"
+        provisioner_module.ALPHA_HOST_BASE_DIR = "/state"
+        provisioner_module.LARK_CLI_BROKER_IMAGE = "alpha/lark-cli-broker:v1.0.65"
         skills_root = "/custom-skills"
 
         pod = provisioner_module._build_pod(
@@ -902,9 +902,9 @@ class TestLarkCliBrokerSidecar:
         """Both images set + both flags on → broker wins (shim init, sidecar)."""
         provisioner_module.SKILLS_PVC_NAME = ""
         provisioner_module.USERDATA_PVC_NAME = ""
-        provisioner_module.AGENT_WORKSPACE_HOST_BASE_DIR = "/state"
-        provisioner_module.LARK_CLI_INIT_IMAGE = "agent-workspace/lark-cli-init:v1.0.65"
-        provisioner_module.LARK_CLI_BROKER_IMAGE = "agent-workspace/lark-cli-broker:v1.0.65"
+        provisioner_module.ALPHA_HOST_BASE_DIR = "/state"
+        provisioner_module.LARK_CLI_INIT_IMAGE = "alpha/lark-cli-init:v1.0.65"
+        provisioner_module.LARK_CLI_BROKER_IMAGE = "alpha/lark-cli-broker:v1.0.65"
         pod = provisioner_module._build_pod(
             "sandbox-1",
             "thread-1",
@@ -917,13 +917,13 @@ class TestLarkCliBrokerSidecar:
         assert any(c.name == "lark-cli-broker" for c in pod.spec.containers)
 
     def test_broker_sidecar_forwards_subcommand_denylist_when_configured(self, provisioner_module):
-        """When AGENT_WORKSPACE_LARK_BROKER_DENY_SUBCOMMANDS is set on the provisioner,
+        """When ALPHA_LARK_BROKER_DENY_SUBCOMMANDS is set on the provisioner,
         it is forwarded to the broker sidecar so it can refuse secret-dump
         subcommands (issue #4338 hardening)."""
         provisioner_module.SKILLS_PVC_NAME = ""
         provisioner_module.USERDATA_PVC_NAME = ""
-        provisioner_module.AGENT_WORKSPACE_HOST_BASE_DIR = "/state"
-        provisioner_module.LARK_CLI_BROKER_IMAGE = "agent-workspace/lark-cli-broker:v1.0.65"
+        provisioner_module.ALPHA_HOST_BASE_DIR = "/state"
+        provisioner_module.LARK_CLI_BROKER_IMAGE = "alpha/lark-cli-broker:v1.0.65"
         provisioner_module.LARK_CLI_BROKER_DENY_SUBCOMMANDS = "config show, auth token"
         try:
             pod = provisioner_module._build_pod(
@@ -935,7 +935,7 @@ class TestLarkCliBrokerSidecar:
             )
             sidecar = next(c for c in pod.spec.containers if c.name == "lark-cli-broker")
             env = {e.name: e.value for e in (sidecar.env or [])}
-            assert env.get("AGENT_WORKSPACE_LARK_BROKER_DENY_SUBCOMMANDS") == "config show, auth token"
+            assert env.get("ALPHA_LARK_BROKER_DENY_SUBCOMMANDS") == "config show, auth token"
         finally:
             provisioner_module.LARK_CLI_BROKER_DENY_SUBCOMMANDS = ""
 
@@ -943,8 +943,8 @@ class TestLarkCliBrokerSidecar:
         """Empty denylist ⇒ no env var (nothing blocked, no behavior change)."""
         provisioner_module.SKILLS_PVC_NAME = ""
         provisioner_module.USERDATA_PVC_NAME = ""
-        provisioner_module.AGENT_WORKSPACE_HOST_BASE_DIR = "/state"
-        provisioner_module.LARK_CLI_BROKER_IMAGE = "agent-workspace/lark-cli-broker:v1.0.65"
+        provisioner_module.ALPHA_HOST_BASE_DIR = "/state"
+        provisioner_module.LARK_CLI_BROKER_IMAGE = "alpha/lark-cli-broker:v1.0.65"
         provisioner_module.LARK_CLI_BROKER_DENY_SUBCOMMANDS = ""
         pod = provisioner_module._build_pod(
             "sandbox-1",
@@ -955,4 +955,4 @@ class TestLarkCliBrokerSidecar:
         )
         sidecar = next(c for c in pod.spec.containers if c.name == "lark-cli-broker")
         env = {e.name for e in (sidecar.env or [])}
-        assert "AGENT_WORKSPACE_LARK_BROKER_DENY_SUBCOMMANDS" not in env
+        assert "ALPHA_LARK_BROKER_DENY_SUBCOMMANDS" not in env

@@ -125,7 +125,7 @@ def test_create_app_mounts_extension_routers_after_all_host_routes(monkeypatch):
     assert "host" in app.state.extension_diagnostics[0].message
 
     # Force auth ON for the request assertions below. The repository's `.env`
-    # ships ``AGENT_WORKSPACE_AUTH_DISABLED=1``; ``AuthMiddleware`` then injects
+    # ships ``ALPHA_AUTH_DISABLED=1``; ``AuthMiddleware`` then injects
     # a synthetic admin user for *every* request, so any ``/api/*`` route — not
     # just extension routes — answers 200. Leaving that ambient would make this
     # assertion a statement about the developer's `.env` instead of about
@@ -135,7 +135,7 @@ def test_create_app_mounts_extension_routers_after_all_host_routes(monkeypatch):
     client = TestClient(app)
     assert client.get("/health").json() == {
         "status": "healthy",
-        "service": "agent-workspace-gateway",
+        "service": "alpha-gateway",
     }
     assert client.get("/api/extension-test/ping").status_code == 401
 
@@ -236,7 +236,7 @@ def test_create_app_fails_closed_for_required_extension_with_malformed_api_marke
 
     monkeypatch.setattr(
         demo_extensions.install_ok,
-        "__agent_workspace_api__",
+        "__alpha_api__",
         _ExplodingAPIMarker(),
         raising=False,
     )

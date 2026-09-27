@@ -117,19 +117,19 @@ GATEWAY_PORT="8001"
 GATEWAY_WORKERS="4"          # >1 requires database.backend=postgres, run_events.backend=db
 
 # Frontend -> Gateway (SSR + /api rewrites; docker-compose already sets these)
-AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL="http://gateway:8001"
+ALPHA_INTERNAL_GATEWAY_BASE_URL="http://gateway:8001"
 NEXT_PUBLIC_GATEWAY_URL="http://localhost:2026"
 
 # Browser CORS allowlist for split-origin deployments (exact origins)
 GATEWAY_CORS_ORIGINS="http://localhost:3000,http://127.0.0.1:3000"
-AGENT_WORKSPACE_TRUSTED_ORIGINS="http://localhost:3000,http://localhost:2026"
+ALPHA_TRUSTED_ORIGINS="http://localhost:3000,http://localhost:2026"
 
 # Database / Redis: one URL each, not discrete POSTGRES_*/REDIS_PASSWORD keys
 DATABASE_URL="postgresql://alpha:password@postgres:5432/alpha"
 REDIS_URL="redis://redis:6379/0"
 
 # Sandbox: provider, image and limits live in config.yaml `sandbox:`
-# (cpu_cores, memory_mb, ...) or in AGENT_WORKSPACE_SANDBOX_* env overrides.
+# (cpu_cores, memory_mb, ...) or in ALPHA_SANDBOX_* env overrides.
 # There are no SANDBOX_MODE / SANDBOX_DOCKER_IMAGE / SANDBOX_CPU_LIMIT /
 # SANDBOX_MEMORY_LIMIT variables. Provisioner mode instead needs:
 # PROVISIONER_API_KEY="..."
@@ -256,7 +256,7 @@ helm repo add alpha https://charts.alpha.dev
 helm repo update
 
 # Or install from local
-cd deploy/helm/agent-workspace
+cd deploy/helm/alpha
 
 # Create namespace
 kubectl create namespace alpha
@@ -274,7 +274,7 @@ helm install alpha . \
 ### Values.yaml Configuration
 
 ```yaml
-# deploy/helm/agent-workspace/values.yaml
+# deploy/helm/alpha/values.yaml
 global:
   imageRegistry: ghcr.io
   imagePullSecrets: [ghcr-secret]
@@ -463,7 +463,7 @@ velero backup create alpha-backup --include-namespaces alpha
 
 ```bash
 # Upgrade chart
-helm upgrade alpha ./deploy/helm/agent-workspace \
+helm upgrade alpha ./deploy/helm/alpha \
   --namespace alpha \
   --values values.yaml \
   --set config.betterAuthSecret=... \
@@ -481,7 +481,7 @@ helm rollback alpha 1 -n alpha
 cd electron
 npm install
 npm run dist
-# Output: electron/dist/Agent-Workspace-Setup-2.1.0.exe
+# Output: electron/dist/Alpha-Setup-2.1.0.exe
 ```
 
 ### Distribution
@@ -492,9 +492,9 @@ npm run dist
 
 ### Installation
 
-1. Run `Agent-Workspace-Setup-2.1.0.exe`
+1. Run `Alpha-Setup-2.1.0.exe`
 2. Per-user install to `%LOCALAPPDATA%\Programs\Alpha`
-3. Data stored in Electron's `userData` directory (`%APPDATA%\agent-workspace-desktop\`
+3. Data stored in Electron's `userData` directory (`%APPDATA%\alpha-desktop\`
    by default; the app's **User data** menu entry reveals the exact path)
 4. Desktop Gateway runs on port 8201
 5. Frontend on port 3000 (internal)
@@ -573,7 +573,7 @@ make up
 helm rollback alpha <revision> -n alpha
 
 # Or re-deploy previous image tag
-helm upgrade alpha ./deploy/helm/agent-workspace \
+helm upgrade alpha ./deploy/helm/alpha \
   --set gateway.image.tag=2.0.0 \
   --set frontend.image.tag=2.0.0 \
   -n alpha

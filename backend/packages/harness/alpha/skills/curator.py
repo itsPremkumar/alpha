@@ -243,7 +243,7 @@ def should_run_curator(
 def curator_interval_hours() -> float:
     """Operator override via env; defaults to weekly."""
     try:
-        return max(0.0, float(os.environ.get("AGENT_WORKSPACE_CURATOR_INTERVAL_HOURS", DEFAULT_INTERVAL_HOURS)))
+        return max(0.0, float(os.environ.get("ALPHA_CURATOR_INTERVAL_HOURS", DEFAULT_INTERVAL_HOURS)))
     except (TypeError, ValueError):
         return DEFAULT_INTERVAL_HOURS
 

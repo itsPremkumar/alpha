@@ -8,7 +8,7 @@ observation point.
 
 from pathlib import Path
 
-from agent_workspace_extension_api import AgentAssemblyDescriptor, MiddlewareDescriptor, ToolDescriptor
+from alpha_extension_api import AgentAssemblyDescriptor, MiddlewareDescriptor, ToolDescriptor
 
 
 def test_fingerprint_is_stable_for_identical_assemblies():
@@ -184,7 +184,7 @@ class TestLeadAgentAssembly:
         assert assembly.descriptor.fingerprint
 
     def test_descriptor_hashes_the_same_scoped_prompt_passed_to_the_graph(self, monkeypatch):
-        from agent_workspace_extension_api import canonical_hash
+        from alpha_extension_api import canonical_hash
 
         from alpha.agents.lead_agent import agent as lead_agent_module
         from alpha.agents.lead_agent.agent import assemble_lead_agent

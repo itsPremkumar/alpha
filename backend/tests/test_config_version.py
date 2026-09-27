@@ -179,7 +179,7 @@ def test_version_26_config_upgrades_to_checkpoint_channel_mode(tmp_path, caplog)
 
     env = {
         **os.environ,
-        "AGENT_WORKSPACE_CONFIG_PATH": str(config_path),
+        "ALPHA_CONFIG_PATH": str(config_path),
         # Hand the real script an interpreter that already has PyYAML (the one
         # running this test module imported yaml at collection time). The
         # script's default `uv run python` bootstraps backend/.venv from

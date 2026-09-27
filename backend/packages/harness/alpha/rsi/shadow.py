@@ -19,7 +19,7 @@ Integrations (verified against the landed code, not assumed):
 - atomic persistence: ``alpha.evolution.identity.atomic_write_json`` — unique
   tmp name + ``os.replace`` (atomic on Windows and POSIX).
 - record location: ``alpha.config.runtime_paths.runtime_home()`` resolved at
-  call time (so ``AGENT_WORKSPACE_HOME`` isolation works per test).
+  call time (so ``ALPHA_HOME`` isolation works per test).
 - deliberately NOT imported: ``alpha.rsi.workspace`` (WP-B1) — this module
   executes no subprocess, so there is nothing for ``run_checks`` to guard;
   code-touching candidates keep their isolation seam there, and fixture

@@ -19,7 +19,7 @@ Honesty pins (plan §3 WP-D2 test plan + §5.6, binding):
   ``runtime_home()/rsi/state/cycle.json`` and round-trips; a state file
   without the key still loads (backward compatible).
 
-Tests pin ``AGENT_WORKSPACE_HOME`` to ``tmp_path`` (autouse) so nothing here
+Tests pin ``ALPHA_HOME`` to ``tmp_path`` (autouse) so nothing here
 touches the real runtime home.
 """
 
@@ -53,8 +53,8 @@ LIMITS: list[tuple[str, int]] = [
 
 @pytest.fixture(autouse=True)
 def _isolated_workspace(tmp_path, monkeypatch):
-    """Pin AGENT_WORKSPACE_HOME to a per-test temp dir (the env does not isolate it)."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    """Pin ALPHA_HOME to a per-test temp dir (the env does not isolate it)."""
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
 
 
 class _FakeClock:

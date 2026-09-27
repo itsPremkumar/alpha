@@ -24,7 +24,7 @@ Configuration example (``config.yaml``)::
 
 Install the optional runtime before selecting this provider::
 
-    pip install "agent-workspace-harness[boxlite]"
+    pip install "alpha-harness[boxlite]"
 
 Host requirement: BoxLite boots micro-VMs, so a Linux host needs KVM (nested
 virtualization when Alpha itself runs inside a cloud VM); macOS uses

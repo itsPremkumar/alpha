@@ -14,6 +14,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from starlette.responses import RedirectResponse
 
+from alpha.config.auth_config import OIDCProviderConfig
 from app.gateway.auth import (
     UserResponse,
     create_access_token,
@@ -37,7 +38,6 @@ from app.gateway.auth.session_cookie_state import SKIP_AUTH_CSRF_COOKIE_STATE_AT
 from app.gateway.auth.user_provisioning import get_or_provision_oidc_user
 from app.gateway.csrf_middleware import CSRF_COOKIE_NAME, _request_origin, auth_csrf_cookie_settings, generate_csrf_token, is_secure_request
 from app.gateway.deps import get_current_user_from_request, get_local_provider
-from alpha.config.auth_config import OIDCProviderConfig
 
 logger = logging.getLogger(__name__)
 
@@ -521,7 +521,7 @@ async def change_password(request: Request, response: Response, body: ChangePass
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=AuthErrorResponse(
                 code=AuthErrorCode.INVALID_CREDENTIALS,
-                message="Password changes are not available when AGENT_WORKSPACE_AUTH_DISABLED=1.",
+                message="Password changes are not available when ALPHA_AUTH_DISABLED=1.",
             ).model_dump(),
         )
 

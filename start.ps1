@@ -360,43 +360,18 @@ function Mark-DeadLauncherStatus {
 try {
 
 # -- 1. Locate uv and Node.js ------------------------------------------------
-# Resolving a bare name relies on PATHEXT, which is not reliable: when PATHEXT
-# is missing ".EXE" (or the tool simply is not on PATH), `Get-Command uv`
-# returns nothing even though uv.exe is installed and its directory is on PATH.
-# Resolve "<name>.exe" explicitly and fall back to the known install locations.
-function Resolve-Executable {
-    param(
-        [Parameter(Mandatory = $true)][string]$Name,
-        [string[]]$ExtraCandidates = @()
-    )
-    foreach ($candidate in @("$Name.exe", $Name)) {
-        $cmd = Get-Command $candidate -ErrorAction SilentlyContinue
-        if ($cmd) { return $cmd.Source }
-    }
-    foreach ($c in $ExtraCandidates) {
-        if ($c -and (Test-Path $c)) { return $c }
-    }
-    foreach ($root in @($env:LOCALAPPDATA, $env:ProgramFiles, ${env:ProgramFiles(x86)})) {
-        if (-not $root) { continue }
-        try {
-            $hit = Get-ChildItem -Path $root -Filter "$Name.exe" -Recurse -Depth 2 -ErrorAction SilentlyContinue |
-                Select-Object -First 1
-            if ($hit) { return $hit.FullName }
-        } catch {}
-    }
-    return $null
-}
+# Where uv, Node and pnpm live is decided in exactly one place:
+# `scripts/toolchain.ps1`. It pins every uv directory (install, cache, managed
+# Python, tool dir) inside this checkout, because uv's own defaults are per-user
+# globals shared with every other project on the machine, and it resolves tools
+# project-copy first, then PATH, then a fixed list of conventional directories.
+# This script used to carry its own copy of that logic, including a candidate
+# naming another product's private `bin` directory and a recursive scan of the
+# user profile, so on some machines Alpha silently ran a `uv` it did not own.
+. "$RepoRoot\scripts\toolchain.ps1"
+Initialize-AlphaToolchain
 
-$uvCandidates = @(
-    "$env:USERPROFILE\.cargo\bin\uv.exe",
-    "$env:APPDATA\uv\uv.exe",
-    "$env:LOCALAPPDATA\Programs\uv\uv.exe",
-    "$env:LOCALAPPDATA\hermes\bin\uv.exe",
-    "$env:USERPROFILE\.local\bin\uv.exe",
-    "$env:USERPROFILE\scoop\shims\uv.exe",
-    "$env:ProgramData\chocolatey\bin\uv.exe"
-)
-$uvPath = Resolve-Executable -Name "uv" -ExtraCandidates $uvCandidates
+$uvPath = Resolve-AlphaUv
 # Record a truthful FAILED state whenever we abort on a missing dependency:
 # a silent exit would leave a stale "healthy" heartbeat and confuse the chain.
 function Fail-Startup {
@@ -408,11 +383,9 @@ function Fail-Startup {
     exit 1
 }
 if (-not $uvPath) {
-    Write-Host "[!] 'uv' not found. Installing Astral uv package manager..." -ForegroundColor Yellow
+    Write-Host "[!] 'uv' not found. Installing Astral uv into $ToolchainRoot\bin ..." -ForegroundColor Yellow
     try {
-        powershell -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 | iex"
-        $env:PATH = "$env:USERPROFILE\.cargo\bin;" + $env:PATH
-        $uvPath = Resolve-Executable -Name "uv" -ExtraCandidates $uvCandidates
+        $uvPath = Install-AlphaUv
     } catch {
         Fail-Startup "dependency missing: uv (auto-install failed) - install from https://astral.sh/uv"
     }
@@ -423,13 +396,7 @@ if (-not $uvPath) {
 $env:PATH = (Split-Path $uvPath) + ";" + $env:PATH
 Write-Host "  uv: $uvPath" -ForegroundColor Gray
 
-$nodePath = Resolve-Executable -Name "node" -ExtraCandidates @(
-    "$env:ProgramFiles\nodejs\node.exe",
-    "${env:ProgramFiles(x86)}\nodejs\node.exe",
-    "$env:LOCALAPPDATA\Programs\nodejs\node.exe",
-    "$env:APPDATA\nvm\v22.22.2\node.exe",
-    "$env:LOCALAPPDATA\nvm4w\nodejs\node.exe"
-)
+$nodePath = Resolve-AlphaNode
 if (-not $nodePath) {
     Fail-Startup "dependency missing: Node.js v22+ - install from https://nodejs.org/"
 }
@@ -476,7 +443,7 @@ if (-not (Test-Path "$RepoRoot\.env")) {
     } else {
         New-Item -ItemType File -Path "$RepoRoot\.env" -Force | Out-Null
     }
-    Add-Content -Path "$RepoRoot\.env" -Value "`nBETTER_AUTH_SECRET=$secret`nAGENT_WORKSPACE_AUTH_DISABLED=1`n"
+    Add-Content -Path "$RepoRoot\.env" -Value "`nBETTER_AUTH_SECRET=$secret`nALPHA_AUTH_DISABLED=1`n"
 }
 
 
@@ -589,8 +556,8 @@ Free-PortOrExit -Port $FrontendPort
 Write-Host "  Ports $GatewayPort and $FrontendPort are free." -ForegroundColor Gray
 
 # -- 4. Set Environment for Single-User Direct Chat --------------------------
-$env:AGENT_WORKSPACE_AUTH_DISABLED = "1"
-$env:AGENT_WORKSPACE_INTERNAL_GATEWAY_BASE_URL = "http://127.0.0.1:$GatewayPort"
+$env:ALPHA_AUTH_DISABLED = "1"
+$env:ALPHA_INTERNAL_GATEWAY_BASE_URL = "http://127.0.0.1:$GatewayPort"
 $env:PORT = "$FrontendPort"
 $env:PYTHONPATH = "."
 

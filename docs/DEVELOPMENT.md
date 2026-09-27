@@ -100,7 +100,7 @@ alpha/
 │   │   │   │   ├── bots/        # Bot mode
 │   │   │   │   ├── scheduler/   # Scheduled tasks
 │   │   │   │   └── extensions/  # Extension system
-│   │   └── extension-api/   # Extension contract (agent_workspace_extension_api.*)
+│   │   └── extension-api/   # Extension contract (alpha_extension_api.*)
 │   ├── extensions/sources/  # Installed extension snapshots
 │   ├── tests/               # Backend tests
 │   └── scripts/             # Backend scripts
@@ -783,7 +783,7 @@ Canonical reference for the repository-root `Makefile`. Root targets drive the
 **single module**. Run from the repo root. `make help` prints the full list.
 
 ```bash
-make setup       # Interactive setup wizard (recommended for new users); unattended: make setup SETUP_ARGS=--non-interactive (AGENT_WORKSPACE_SETUP_* env)
+make setup       # Interactive setup wizard (recommended for new users); unattended: make setup SETUP_ARGS=--non-interactive (ALPHA_SETUP_* env)
 make doctor      # Check configuration and system requirements
 make prod-check  # Production readiness pre-flight (versions, config files, secrets)
 make support-bundle  # Generate redacted troubleshooting summary, AI issue draft, and optional zip
@@ -850,7 +850,7 @@ Production startup runs the image's pre-built environment (`uv run --no-sync`)
 and makes `make up` wait for the Gateway `/health` probe before printing its
 banner; a readiness failure must surface Compose status and recent Gateway logs
 rather than claim the stack is running. Docker log and restart commands resolve
-`AGENT_WORKSPACE_ROOT` from the current checkout before invoking Compose,
+`ALPHA_ROOT` from the current checkout before invoking Compose,
 matching the start and stop commands.
 
 ## Agent Guidance Reference: All Startup Modes

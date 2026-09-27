@@ -1,7 +1,7 @@
 """The Textual application — a terminal workbench over the embedded harness.
 
 The app keeps a single immutable :class:`ViewState` and re-renders it through the
-pure renderers. Agent runs execute on a worker *thread* (``AgentWorkspaceClient.stream``
+pure renderers. Agent runs execute on a worker *thread* (``AlphaClient.stream``
 is a synchronous generator); each yielded action is marshalled back onto the UI
 thread via ``call_from_thread`` and folded into the reducer.
 """
@@ -80,7 +80,7 @@ class SelectScreen(ModalScreen):
         self.dismiss(None)
 
 
-class AgentWorkspaceTUI(App):
+class AlphaTUI(App):
     CSS = f"""
     Screen {{
         background: {THEME.bg};
@@ -758,7 +758,7 @@ def run_tui(plan) -> int:
     from .session import open_session
 
     session = open_session()
-    app = AgentWorkspaceTUI(session, plan)
+    app = AlphaTUI(session, plan)
     try:
         app.run()
     finally:

@@ -79,7 +79,7 @@ _CANDIDATE_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")
 # Bounded file set for copy workspaces (plan: "bounded shutil.copytree"):
 # VCS metadata, caches, and state directories are excluded so a copy cannot
 # recursively include its own runtime home or megabytes of VCS/caches.
-_BASE_IGNORE_NAMES = (".git", "__pycache__", "*.pyc", "*.pyo", "node_modules", ".venv", ".worktrees", ".agent-workspace")
+_BASE_IGNORE_NAMES = (".git", "__pycache__", "*.pyc", "*.pyo", "node_modules", ".venv", ".worktrees", ".alpha")
 
 
 @dataclass(frozen=True)

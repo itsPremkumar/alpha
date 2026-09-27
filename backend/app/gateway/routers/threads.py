@@ -112,8 +112,8 @@ def _checkpoint_mode_http_error(exc: Exception, thread_id: str) -> HTTPException
 # row-level invariant is still ``threads_meta.user_id`` populated from
 # the auth contextvar; this list closes the metadata-blob echo gap.
 _SERVER_RESERVED_METADATA_KEYS: frozenset[str] = frozenset({"owner_id", "user_id", THREAD_PROJECT_METADATA_KEY})
-_SIDECAR_METADATA_KEY = "agent_workspace_sidecar"
-_BRANCH_METADATA_KEY = "agent_workspace_branch"
+_SIDECAR_METADATA_KEY = "alpha_sidecar"
+_BRANCH_METADATA_KEY = "alpha_branch"
 _BRANCH_TITLE_SEQUENCE_METADATA_KEY = "branch_title_sequence"
 # Thread-scoped runtime channels a branch must NOT inherit from its parent:
 # ``sandbox.sandbox_id`` binds path mappings and the release lifecycle to the
@@ -529,7 +529,7 @@ class ThreadPatchRequest(BaseModel):
     @classmethod
     def validate_archive_flag(cls, value: dict[str, Any]) -> dict[str, Any]:
         if THREAD_ARCHIVED_METADATA_KEY in value and not isinstance(value[THREAD_ARCHIVED_METADATA_KEY], bool):
-            raise ValueError("agent_workspace_archived must be a boolean")
+            raise ValueError("alpha_archived must be a boolean")
         return value
 
 
@@ -913,7 +913,7 @@ async def create_thread(body: ThreadCreateRequest, request: Request) -> ThreadRe
 
     logger.info("Thread created: %s", sanitize_log_param(thread_id))
     # Respond from the persisted record — the store stamps
-    # ``metadata.agent_workspace_project_id`` from the assigned project_id column, so
+    # ``metadata.alpha_project_id`` from the assigned project_id column, so
     # echoing ``body.metadata`` here would omit the membership the retry path
     # (``_existing_thread_response``) reports.
     return _existing_thread_response(thread_id, created_record)

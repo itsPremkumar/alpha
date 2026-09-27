@@ -155,11 +155,11 @@ def _install_stub_model(
     monkeypatch.setattr(runner, "_POLL_SECONDS", _FAST_POLL_SECONDS)
     monkeypatch.setattr(runner, "_RETRY_BACKOFF_CAP", _FAST_RETRY_BACKOFF_CAP)
 
-    import alpha.config as agent_workspace_config
+    import alpha.config as alpha_config
     import alpha.utils.assembly_io as assembly_io
     from alpha.subagents import config as subagent_config
 
-    monkeypatch.setattr(agent_workspace_config, "get_app_config", lambda: SimpleNamespace(models=["stub-model"]))
+    monkeypatch.setattr(alpha_config, "get_app_config", lambda: SimpleNamespace(models=["stub-model"]))
     monkeypatch.setattr(subagent_config, "resolve_subagent_model_name", lambda *args, **kwargs: "stub-model")
 
     async def _no_tools(*_args, **_kwargs):

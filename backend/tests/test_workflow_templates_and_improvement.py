@@ -42,7 +42,7 @@ from alpha.workflow.templates import (
 
 @pytest.fixture(autouse=True)
 def _isolate(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     store = TemplateStore(store_dir=tmp_path / "templates")
     set_template_store(store)
     yield store

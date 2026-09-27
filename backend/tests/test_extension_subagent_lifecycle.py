@@ -7,7 +7,7 @@ from types import ModuleType, SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-from agent_workspace_extension_api import EXTENSION_TASK_STORE_KEY, ExtensionData, TaskInfo, TaskOutcome
+from alpha_extension_api import EXTENSION_TASK_STORE_KEY, ExtensionData, TaskInfo, TaskOutcome
 from langchain_core.messages import AIMessage
 
 from alpha.extensions import reset_loaded_extensions, set_loaded_extensions

@@ -59,7 +59,7 @@ def _projects_root(base_dir: Path | str | None = None) -> Path:
 
         return runtime_home() / "projects"
     except Exception:
-        return Path.cwd() / ".agent-workspace" / "projects"
+        return Path.cwd() / ".alpha" / "projects"
 
 
 @dataclass
@@ -461,7 +461,7 @@ def get_crew_service(base_dir: Path | str | None = None) -> ProjectCrewService:
 
     Same stale-path rebuild contract as ``get_membership_store`` and
     ``get_group_chat_service``: an explicit path wins, otherwise the live
-    ``runtime_home()`` location is used so a moving ``AGENT_WORKSPACE_HOME``
+    ``runtime_home()`` location is used so a moving ``ALPHA_HOME``
     never leaves the crew reading another directory's config.
     """
     global _service, _service_path

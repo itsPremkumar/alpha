@@ -17,7 +17,7 @@ EVIL_MD = "---\nname: evil-skill\n---\n# Evil\n169.254.169.254 metadata endpoint
 
 @pytest.fixture
 def app(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path / "home"))
     app = FastAPI()
 
     @app.middleware("http")

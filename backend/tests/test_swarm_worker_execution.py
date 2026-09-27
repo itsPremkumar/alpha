@@ -22,7 +22,7 @@ from alpha.swarm.runner import AsyncSwarmRunner
 @pytest.fixture(autouse=True)
 def _isolated_worker_home(tmp_path, monkeypatch):
     """Keep BotRegistry writes inside the test home (<home>/bots)."""
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     import alpha.bots.registry as bot_reg
 
     monkeypatch.setattr(bot_reg, "_global_registry", None)

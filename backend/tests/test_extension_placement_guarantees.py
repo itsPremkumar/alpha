@@ -10,7 +10,7 @@ data.
 
 from __future__ import annotations
 
-from agent_workspace_extension_api import AgentScope, MiddlewarePlacement, Placement
+from alpha_extension_api import AgentScope, MiddlewarePlacement, Placement
 from langchain.agents.middleware import AgentMiddleware
 
 from alpha.agents.lead_agent.agent import build_middlewares

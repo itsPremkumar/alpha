@@ -6,14 +6,14 @@ Renders choropleth geographic maps visualizing metric distributions across admin
 ## Input Fields
 ### Required
 - data: array<object>, items with district or 
-egion (string) and alue (number).
+egion (string) and value (number).
 
 ### Optional
 - mapType: string, map boundary identifier.
-- 	heme: string, default default.
+- theme: string, default default.
 - width: number, default 600.
 - height: number, default 400.
-- 	itle: string, default empty string.
+- title: string, default empty string.
 
 ## Usage Recommendations
 Ensure regional naming conforms to ISO or standard regional nomenclatures.

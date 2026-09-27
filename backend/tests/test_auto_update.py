@@ -50,7 +50,7 @@ def source_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, 
     (repo / "config").mkdir()
     (repo / "backend" / "packages" / "harness").mkdir(parents=True)
     (repo / "backend" / "packages" / "harness" / "pyproject.toml").write_text(
-        '[project]\nname = "agent-workspace-harness"\nversion = "1.0.0"\n',
+        '[project]\nname = "alpha-harness"\nversion = "1.0.0"\n',
         encoding="utf-8",
     )
     (repo / "config" / "project-manifest.json").write_text(
@@ -77,8 +77,8 @@ def source_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, 
     _git(repo, "push", "-u", "origin", "main")
 
     home = tmp_path / "runtime-home"
-    monkeypatch.setenv("AGENT_WORKSPACE_PROJECT_ROOT", str(repo))
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(home))
+    monkeypatch.setenv("ALPHA_PROJECT_ROOT", str(repo))
+    monkeypatch.setenv("ALPHA_HOME", str(home))
     monkeypatch.setenv("ALPHA_PROJECT_MANIFEST", str(repo / "config" / "project-manifest.json"))
     return repo, remote
 
@@ -398,7 +398,7 @@ def test_unsafe_http_github_remote_is_rejected() -> None:
 
 
 def test_update_state_and_history_redact_credentials(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path / "home"))
     from alpha.evolution.update_state import StateWriter, history
 
     writer = StateWriter()

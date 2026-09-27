@@ -36,7 +36,7 @@ def _resolve_config_path() -> Path | None:
     """Resolve the extensions config file path, or ``None`` when unconfigured.
 
     ``ExtensionsConfig.resolve_config_path()`` raises ``FileNotFoundError``
-    when an explicit `config_path` or `AGENT_WORKSPACE_EXTENSIONS_CONFIG_PATH`
+    when an explicit `config_path` or `ALPHA_EXTENSIONS_CONFIG_PATH`
     points at a file that does not exist. That is deliberate for callers that
     load the config for actual use (e.g. ``ExtensionsConfig.from_file()`` via
     ``get_mcp_tools()``): an operator-asserted explicit path going missing is

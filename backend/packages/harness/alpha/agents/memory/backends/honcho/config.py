@@ -1,7 +1,7 @@
 """Honcho backend config — parses ``backend_config`` (see noop/config.py for the golden rule).
 
 The backend receives everything through the ABC method args and this dict; it
-imports nothing from agent-workspace. Self-hosted Honcho commonly runs auth-less over
+imports nothing from alpha. Self-hosted Honcho commonly runs auth-less over
 plain HTTP; a configured ``api_key`` over plain HTTP requires the explicit
 ``allow_insecure_http: true`` opt-in (same posture as the mem0 backend).
 """
@@ -38,7 +38,7 @@ def _parse_override_map(cfg: dict[str, Any], key: str) -> dict[str, str]:
 class HonchoConfig:
     base_url: str = "http://localhost:8000"
     api_key: str | None = None
-    workspace_prefix: str = "agent-workspace-u-"
+    workspace_prefix: str = "alpha-u-"
     workspace_overrides: dict[str, str] = field(default_factory=dict)
     user_peer_overrides: dict[str, str] = field(default_factory=dict)
     assistant_peer: str = "alpha"
@@ -74,7 +74,7 @@ class HonchoConfig:
         return cls(
             base_url=base_url,
             api_key=api_key,
-            workspace_prefix=str(cfg.get("workspace_prefix", "agent-workspace-u-")),
+            workspace_prefix=str(cfg.get("workspace_prefix", "alpha-u-")),
             workspace_overrides=_parse_override_map(cfg, "workspace_overrides"),
             user_peer_overrides=_parse_override_map(cfg, "user_peer_overrides"),
             assistant_peer=str(cfg.get("assistant_peer", "alpha")),

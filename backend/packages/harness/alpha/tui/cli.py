@@ -2,7 +2,7 @@
 
 ``plan_launch`` is a pure decision function (fully unit-tested): given argv, TTY
 state and the environment, it decides whether to open the terminal UI or run a
-headless one-shot. ``main`` wires that decision to the embedded ``AgentWorkspaceClient``
+headless one-shot. ``main`` wires that decision to the embedded ``AlphaClient``
 and lazily imports the Textual app only when actually launching the UI, so the
 ``alpha`` console script still runs headless commands without Textual present.
 """
@@ -48,7 +48,7 @@ def _positive_int(value: str) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="agent-workspace",
+        prog="alpha",
         description="Alpha terminal workbench — a TUI over the embedded Alpha harness.",
         epilog="Extension management: alpha extensions --help",
         add_help=True,
@@ -184,8 +184,8 @@ def plan_launch(
         )
 
     forced_tui = bool(args.tui)
-    transparent = bool(args.tui_transparent) or _truthy(env.get("AGENT_WORKSPACE_TUI_TRANSPARENT"))
-    if forced_tui or _truthy(env.get("AGENT_WORKSPACE_TUI")) or (stdin_isatty and stdout_isatty):
+    transparent = bool(args.tui_transparent) or _truthy(env.get("ALPHA_TUI_TRANSPARENT"))
+    if forced_tui or _truthy(env.get("ALPHA_TUI")) or (stdin_isatty and stdout_isatty):
         return LaunchPlan(
             mode="tui",
             message=positional,
@@ -487,7 +487,7 @@ def _run_tui(plan: LaunchPlan) -> int:
         from alpha.tui.app import run_tui
     except ModuleNotFoundError as exc:  # textual missing
         if getattr(exc, "name", "") == "textual" or "textual" in str(exc):
-            msg = "The terminal UI needs the optional 'textual' dependency.\nInstall it with:  uv pip install 'agent-workspace-harness[tui]'   (or: pip install textual)\n"
+            msg = "The terminal UI needs the optional 'textual' dependency.\nInstall it with:  uv pip install 'alpha-harness[tui]'   (or: pip install textual)\n"
             if plan.forced_tui:
                 print(msg, file=sys.stderr)
                 return 1

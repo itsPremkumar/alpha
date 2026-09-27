@@ -104,7 +104,7 @@ def _runtime_home() -> Path:
 
         return runtime_home() / _DEFAULT_HOME
     except Exception:
-        return Path.cwd() / ".agent-workspace" / _DEFAULT_HOME
+        return Path.cwd() / ".alpha" / _DEFAULT_HOME
 
 
 def _normalize_local_agent_id(service: PeerNetworkService, value: str | None) -> str:

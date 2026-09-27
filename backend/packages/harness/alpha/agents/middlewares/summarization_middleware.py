@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol, override, runtime_checkable
 
-from agent_workspace_extension_api import CompactionEvent, canonical_hash
+from alpha_extension_api import CompactionEvent, canonical_hash
 from langchain.agents import AgentState
 from langchain.agents.middleware import SummarizationMiddleware
 from langchain_core.messages import AnyMessage, HumanMessage, RemoveMessage, get_buffer_string, trim_messages
@@ -103,7 +103,7 @@ def _resolve_agent_name(runtime: Runtime) -> str | None:
     return agent_name
 
 
-class AgentWorkspaceSummarizationMiddleware(SummarizationMiddleware):
+class AlphaSummarizationMiddleware(SummarizationMiddleware):
     """Summarization middleware with pre-compression hook dispatch."""
 
     def __init__(
@@ -376,7 +376,7 @@ class AgentWorkspaceSummarizationMiddleware(SummarizationMiddleware):
             if extensions is None:
                 response = await model.ainvoke(prompt, config=invoke_config)
             else:
-                from agent_workspace_extension_api import SystemOperationKind
+                from alpha_extension_api import SystemOperationKind
 
                 from alpha.extensions.notify import observe_system_model_call
 
@@ -700,7 +700,7 @@ class AgentWorkspaceSummarizationMiddleware(SummarizationMiddleware):
         if prepared is None:
             return None
         messages_to_summarize, preserved_messages, previous_summary, total_tokens = prepared
-        from agent_workspace_extension_api import task_store_from_runtime
+        from alpha_extension_api import task_store_from_runtime
 
         source_content_hashes = self._freeze_compaction_sources(messages_to_summarize)
         summary = await self._asummarize_with(
@@ -911,7 +911,7 @@ def create_summarization_middleware(
     archive_task_history: bool = True,
     run_model_name: str | None = None,
     extensions=None,
-) -> AgentWorkspaceSummarizationMiddleware | None:
+) -> AlphaSummarizationMiddleware | None:
     """Create the configured summarization middleware.
 
     Both the lead-agent automatic path and the manual context-compaction path
@@ -1003,7 +1003,7 @@ def create_summarization_middleware(
 
         hooks.append(memory_flush_hook)
 
-    return AgentWorkspaceSummarizationMiddleware(
+    return AlphaSummarizationMiddleware(
         **kwargs,
         before_summarization=hooks,
         task_continuity_config=(resolved_app_config.task_continuity if archive_task_history and getattr(getattr(resolved_app_config, "task_continuity", None), "enabled", False) is True else None),

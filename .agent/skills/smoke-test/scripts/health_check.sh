@@ -53,7 +53,7 @@ detect_mode() {
             ;;
     esac
 
-    if docker_available && docker ps --format "{{.Names}}" | grep -q "agent-workspace"; then
+    if docker_available && docker ps --format "{{.Names}}" | grep -q "alpha"; then
         echo "docker"
     else
         echo "local"
@@ -68,7 +68,7 @@ echo ""
 if [ "$mode" = "docker" ]; then
     summary_hint="make docker-logs"
     print_step "1. Checking container status..."
-    if docker ps --format "{{.Names}}" | grep -q "agent-workspace"; then
+    if docker ps --format "{{.Names}}" | grep -q "alpha"; then
         echo "✓ Containers are running:"
         docker ps --format "  - {{.Names}} ({{.Status}})"
     else

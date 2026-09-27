@@ -30,7 +30,7 @@ def _definition(name: str = "researcher", **changes) -> ManagedSubagentDefinitio
 
 @pytest.fixture()
 def file_store(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(tmp_path))
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path))
     monkeypatch.setattr("alpha.config.paths._paths", None)
     return FileManagedSubagentStore()
 

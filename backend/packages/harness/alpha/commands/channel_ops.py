@@ -67,12 +67,12 @@ DEFAULT_RUNTIME_ROOT = "war_room"
 
 
 def runtime_root(base: str | Path | None = None) -> Path:
-    """Resolve the runtime root, honouring ``AGENT_WORKSPACE_HOME``."""
+    """Resolve the runtime root, honouring ``ALPHA_HOME``."""
     import os
 
     if base is not None:
         return Path(base)
-    home = os.getenv("AGENT_WORKSPACE_HOME", "").strip()
+    home = os.getenv("ALPHA_HOME", "").strip()
     if home:
         return Path(home) / DEFAULT_RUNTIME_ROOT
     try:

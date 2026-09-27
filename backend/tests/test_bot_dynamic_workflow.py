@@ -39,22 +39,22 @@ from app.gateway.routers.bots import (
 
 
 @pytest.fixture(scope="module", autouse=True)
-def _isolate_agent_workspace(tmp_path_factory):
-    """Point AGENT_WORKSPACE_HOME at one temp dir for this whole module.
+def _isolate_alpha(tmp_path_factory):
+    """Point ALPHA_HOME at one temp dir for this whole module.
 
     Module scope (not per test) because ``get_bot_clone_engine()`` caches the
     registry it was constructed with: a per-test env change would split the
     clone engine's registry away from ``get_bot_registry()``, breaking both
     the clone-exists assertion and the endpoint test's evolve step.
     """
-    workspace = tmp_path_factory.mktemp("agent_workspace")
-    previous = os.environ.get("AGENT_WORKSPACE_HOME")
-    os.environ["AGENT_WORKSPACE_HOME"] = str(workspace)
+    workspace = tmp_path_factory.mktemp("alpha")
+    previous = os.environ.get("ALPHA_HOME")
+    os.environ["ALPHA_HOME"] = str(workspace)
     yield
     if previous is None:
-        os.environ.pop("AGENT_WORKSPACE_HOME", None)
+        os.environ.pop("ALPHA_HOME", None)
     else:
-        os.environ["AGENT_WORKSPACE_HOME"] = previous
+        os.environ["ALPHA_HOME"] = previous
 
 
 def test_bot_clone_engine_exact_and_specialist_fork():
@@ -313,7 +313,7 @@ async def test_bot_workflow_route_uses_gateway_kernel_and_named_profile(monkeypa
     monkeypatch.setattr(bots_router, "_registry", lambda: SimpleNamespace(get_bot=lambda name: profile))
     request = SimpleNamespace(
         state=SimpleNamespace(user=SimpleNamespace(system_role="admin")),
-        _agent_workspace_test_bypass_auth=True,
+        _alpha_test_bypass_auth=True,
     )
 
     result = await run_bot_workflow_endpoint(

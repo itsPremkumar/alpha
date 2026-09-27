@@ -21,7 +21,7 @@ The following tests must be executed under each mode.
 
 ```bash
 # Clear existing data
-rm -f backend/.agent-workspace/data/alpha.db
+rm -f backend/.alpha/data/alpha.db
 
 # Start standard mode (Gateway embedded runtime)
 make dev
@@ -125,7 +125,7 @@ curl -s -X POST $BASE/api/v1/auth/change-password \
 ```bash
 cd backend
 python -m app.gateway.auth.reset_admin --email admin@example.com
-# Read reset password from .agent-workspace/admin_initial_credentials.txt
+# Read reset password from .alpha/admin_initial_credentials.txt
 
 curl -s -X POST $BASE/api/v1/auth/login/local \
   -d "username=admin@example.com&password=<credential_file_password>" \
@@ -519,7 +519,7 @@ curl -s -X POST $BASE/api/v1/auth/register \
 
 ```bash
 # Inspect database
-sqlite3 backend/.agent-workspace/data/alpha.db "SELECT email, password_hash FROM users LIMIT 3;"
+sqlite3 backend/.alpha/data/alpha.db "SELECT email, password_hash FROM users LIMIT 3;"
 ```
 
 **Expected:** `password_hash` starts with `$2b$` (bcrypt format)
@@ -629,7 +629,7 @@ sqlite3 backend/.agent-workspace/data/alpha.db "SELECT email, password_hash FROM
 #### TC-UI-15: Re-login After reset_admin
 
 1. Execute `cd backend && python -m app.gateway.auth.reset_admin`
-2. Read new password from `.agent-workspace/admin_initial_credentials.txt` and log in
+2. Read new password from `.alpha/admin_initial_credentials.txt` and log in
 3. **Expected:** Redirects to `/setup` page (`needs_setup` reset to true)
 4. Old session is invalidated
 
@@ -746,8 +746,8 @@ curl -s -X POST http://localhost:2026/api/threads/search \
 #### TC-UPG-05: Empty alpha.db Initializes Schema Without Default Users
 
 ```bash
-ls -la backend/.agent-workspace/data/alpha.db
-sqlite3 backend/.agent-workspace/data/alpha.db "SELECT COUNT(*) FROM users;"
+ls -la backend/.alpha/data/alpha.db
+sqlite3 backend/.alpha/data/alpha.db "SELECT COUNT(*) FROM users;"
 ```
 
 **Expected:** File exists, `sqlite3` shows `users` table with `needs_setup` and `token_version` columns; before calling `/initialize`, user count is 0
@@ -755,7 +755,7 @@ sqlite3 backend/.agent-workspace/data/alpha.db "SELECT COUNT(*) FROM users;"
 #### TC-UPG-06: alpha.db WAL Mode
 
 ```bash
-sqlite3 backend/.agent-workspace/data/alpha.db "PRAGMA journal_mode;"
+sqlite3 backend/.alpha/data/alpha.db "PRAGMA journal_mode;"
 ```
 
 **Expected:** Returns `wal`
@@ -829,7 +829,7 @@ make dev
 #### TC-UPG-13: Restart Without Initialized Admin Does Not Create Defaults
 
 ```bash
-rm -f backend/.agent-workspace/data/alpha.db
+rm -f backend/.alpha/data/alpha.db
 make dev
 make stop
 
@@ -846,8 +846,8 @@ curl -s $BASE/api/v1/auth/setup-status | jq .
 
 ```bash
 python -m app.gateway.auth.reset_admin --email admin@example.com
-ls -la backend/.agent-workspace/admin_initial_credentials.txt
-cat backend/.agent-workspace/admin_initial_credentials.txt
+ls -la backend/.alpha/admin_initial_credentials.txt
+cat backend/.alpha/admin_initial_credentials.txt
 ```
 
 **Expected:**
@@ -943,7 +943,7 @@ for i in 1 2 3; do
 done
 
 # Check admin count
-sqlite3 backend/.agent-workspace/data/alpha.db \
+sqlite3 backend/.alpha/data/alpha.db \
   "SELECT COUNT(*) FROM users WHERE system_role='admin';"
 ```
 
@@ -1088,7 +1088,7 @@ curl -s -X POST $BASE/api/v1/auth/register \
 wait
 
 # Verify user count
-sqlite3 backend/.agent-workspace/data/alpha.db \
+sqlite3 backend/.alpha/data/alpha.db \
   "SELECT COUNT(*) FROM users WHERE email='race@example.com';"
 ```
 
@@ -1198,16 +1198,16 @@ curl -s -w "%{http_code}" -X DELETE "$BASE/api/threads/$TID" \
 ```bash
 cd backend
 python -m app.gateway.auth.reset_admin
-cp .agent-workspace/admin_initial_credentials.txt /tmp/alpha-reset-p1.txt
+cp .alpha/admin_initial_credentials.txt /tmp/alpha-reset-p1.txt
 P1=$(awk -F': ' '/^password:/ {print $2}' /tmp/alpha-reset-p1.txt)
 
 python -m app.gateway.auth.reset_admin
-cp .agent-workspace/admin_initial_credentials.txt /tmp/alpha-reset-p2.txt
+cp .alpha/admin_initial_credentials.txt /tmp/alpha-reset-p2.txt
 P2=$(awk -F': ' '/^password:/ {print $2}' /tmp/alpha-reset-p2.txt)
 ```
 
 **Expected:**
-- [ ] `.agent-workspace/admin_initial_credentials.txt` is overwritten each time with mode `0600`
+- [ ] `.alpha/admin_initial_credentials.txt` is overwritten each time with mode `0600`
 - [ ] P1 != P2 (new random password generated each time)
 - [ ] P1 is invalid; only P2 is valid
 - [ ] `token_version` incremented by 2
@@ -1417,7 +1417,7 @@ done
 >
 > Prerequisites:
 > - Set `AUTH_JWT_SECRET` in `.env` (otherwise sessions are invalidated on every container restart)
-> - Mount `AGENT_WORKSPACE_HOME` to a host directory (persisting `alpha.db`)
+> - Mount `ALPHA_HOME` to a host directory (persisting `alpha.db`)
 
 #### TC-DOCKER-01: alpha.db Volume Persistence
 
@@ -1435,12 +1435,12 @@ curl -s -X POST $BASE/api/v1/auth/register \
   -d '{"email":"docker-test@example.com","password":"DockerTest1!"}' -w "\nHTTP %{http_code}"
 
 # Verify alpha.db on host filesystem
-ls -la ${AGENT_WORKSPACE_HOME:-backend/.agent-workspace}/data/alpha.db
-sqlite3 ${AGENT_WORKSPACE_HOME:-backend/.agent-workspace}/data/alpha.db \
+ls -la ${ALPHA_HOME:-backend/.alpha}/data/alpha.db
+sqlite3 ${ALPHA_HOME:-backend/.alpha}/data/alpha.db \
   "SELECT email FROM users WHERE email='docker-test@example.com';"
 ```
 
-**Expected:** alpha.db resides in the host `AGENT_WORKSPACE_HOME` directory, query shows newly registered users.
+**Expected:** alpha.db resides in the host `ALPHA_HOME` directory, query shows newly registered users.
 
 #### TC-DOCKER-02: Session Persistence Across Container Restarts
 
@@ -1491,7 +1491,7 @@ done
 # Request attaches process-local internal auth header and CSRF token
 
 # Verification: inspect gateway logs to verify channel manager requests contain no auth errors
-docker logs agent-workspace-gateway 2>&1 | grep -E "ChannelManager|channel" | head -10
+docker logs alpha-gateway 2>&1 | grep -E "ChannelManager|channel" | head -10
 ```
 
 **Expected:** No auth-related errors. Channels do not depend on browser cookies; the server routes requests into the `default` user bucket via internal auth headers.
@@ -1500,24 +1500,24 @@ docker logs agent-workspace-gateway 2>&1 | grep -E "ChannelManager|channel" | he
 
 ```bash
 # First boot does not generate admin password automatically. Reset admin to write credentials file.
-docker exec agent-workspace-gateway python -m app.gateway.auth.reset_admin --email docker-test@example.com
+docker exec alpha-gateway python -m app.gateway.auth.reset_admin --email docker-test@example.com
 
-ls -la ${AGENT_WORKSPACE_HOME:-backend/.agent-workspace}/admin_initial_credentials.txt
+ls -la ${ALPHA_HOME:-backend/.alpha}/admin_initial_credentials.txt
 # Expected file permissions: -rw------- (0600)
 
-cat ${AGENT_WORKSPACE_HOME:-backend/.agent-workspace}/admin_initial_credentials.txt
+cat ${ALPHA_HOME:-backend/.alpha}/admin_initial_credentials.txt
 # Expected content: email + password lines
 
 # Container log prints credentials file path, not plaintext password
-docker logs agent-workspace-gateway 2>&1 | grep -E "Credentials written to|Admin account"
+docker logs alpha-gateway 2>&1 | grep -E "Credentials written to|Admin account"
 # Expected output: "Credentials written to: /...../admin_initial_credentials.txt (mode 0600)"
 
 # Negative check: Plaintext password NEVER appears in logs
-docker logs agent-workspace-gateway 2>&1 | grep -iE "Password: .{15,}" && echo "FAIL: leaked" || echo "OK: not leaked"
+docker logs alpha-gateway 2>&1 | grep -iE "Password: .{15,}" && echo "FAIL: leaked" || echo "OK: not leaked"
 ```
 
 **Expected:**
-- Credential file exists under `AGENT_WORKSPACE_HOME`, permissions `0600`
+- Credential file exists under `ALPHA_HOME`, permissions `0600`
 - Container logs output the **path** (not the password itself), conforming to CodeQL `py/clear-text-logging-sensitive-data` rule
 - `grep "Password:"` in logs **should have no match** (legacy behavior deprecated; simplify pass removed log leakage paths)
 
@@ -1529,8 +1529,8 @@ docker logs agent-workspace-gateway 2>&1 | grep -iE "Password: .{15,}" && echo "
 sleep 15
 
 # Verify gateway container is running
-docker ps --filter name=agent-workspace-gateway --format '{{.Names}}'
-# Expected: agent-workspace-gateway
+docker ps --filter name=alpha-gateway --format '{{.Names}}'
+# Expected: alpha-gateway
 
 # Normal auth flow: unauthenticated protected endpoints return 401
 curl -s -w "%{http_code}" -o /dev/null $BASE/api/models

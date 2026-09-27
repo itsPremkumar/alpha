@@ -44,9 +44,9 @@ from alpha.mission.goalloop.verdict import JUDGE_UNAVAILABLE_REASON, JUDGE_UNREA
 @pytest.fixture(autouse=True)
 def _isolated_runtime_home(tmp_path, monkeypatch):
     """Point the goal store at a throwaway directory for every test."""
-    home = tmp_path / "agent-workspace"
+    home = tmp_path / "alpha"
     home.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(home))
+    monkeypatch.setenv("ALPHA_HOME", str(home))
     from alpha.mission.goalloop import state as state_module
 
     state_module.reset_goal_store()

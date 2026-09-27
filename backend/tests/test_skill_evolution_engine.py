@@ -12,7 +12,7 @@ Honesty rules pinned here:
 - absence of a moderation model records "not_configured" - never a pass.
 
 Isolation: engine tests pass store_dir/skills_root constructor params (no
-global env fixtures). The endpoint test monkeypatches AGENT_WORKSPACE_HOME
+global env fixtures). The endpoint test monkeypatches ALPHA_HOME
 (function-scoped) for runtime_home(). The ONLY stubbed function anywhere is
 the module-level invoke seam ``evolution_engine.moderation_invoke``.
 """
@@ -396,7 +396,7 @@ def test_rollback_refuses_when_active_modified_after_promotion(skills_root, stor
 
 def test_workshop_evolution_endpoints_full_flow(tmp_path, monkeypatch):
     home = tmp_path / "home"
-    monkeypatch.setenv("AGENT_WORKSPACE_HOME", str(home))
+    monkeypatch.setenv("ALPHA_HOME", str(home))
     skill_dir = home / "skills" / "demo-skill"
     skill_dir.mkdir(parents=True)
     (skill_dir / "SKILL.md").write_text(ACTIVE_MD, encoding="utf-8")

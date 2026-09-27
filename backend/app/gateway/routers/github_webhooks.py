@@ -13,7 +13,7 @@ the shared secret in the ``GITHUB_WEBHOOK_SECRET`` environment variable.
 **The route is fail-closed by default.** If ``GITHUB_WEBHOOK_SECRET`` is
 unset, the route is not mounted at all (`/api/webhooks/github` responds
 404) so a misconfigured deployment cannot accept forged deliveries. Set
-``AGENT_WORKSPACE_ALLOW_UNVERIFIED_GITHUB_WEBHOOKS=1`` to mount the route
+``ALPHA_ALLOW_UNVERIFIED_GITHUB_WEBHOOKS=1`` to mount the route
 anyway for local development or loopback testing — every delivery is
 then accepted unverified with a WARNING log line.
 
@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
 
 _SECRET_ENV_VAR = "GITHUB_WEBHOOK_SECRET"
-_ALLOW_UNVERIFIED_ENV_VAR = "AGENT_WORKSPACE_ALLOW_UNVERIFIED_GITHUB_WEBHOOKS"
+_ALLOW_UNVERIFIED_ENV_VAR = "ALPHA_ALLOW_UNVERIFIED_GITHUB_WEBHOOKS"
 
 # Events we explicitly recognise. Anything else still returns 200 (so
 # GitHub does not retry) but is logged as "unhandled" for visibility.
@@ -87,7 +87,7 @@ def is_route_enabled() -> bool:
 
     Mounted when either:
         * ``GITHUB_WEBHOOK_SECRET`` is set (production / staging path), or
-        * ``AGENT_WORKSPACE_ALLOW_UNVERIFIED_GITHUB_WEBHOOKS=1`` is set
+        * ``ALPHA_ALLOW_UNVERIFIED_GITHUB_WEBHOOKS=1`` is set
           (explicit dev/loopback opt-in for testing without a real secret).
 
     When neither is set the route is intentionally absent — a fresh

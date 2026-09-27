@@ -16,7 +16,7 @@ Usage:
 
     uv run python scripts/benchmark/concurrency/run_concurrency_bench.py \
         --backend postgres --workers 2,4,8,16 --ops-per-worker 50 --read-ratio 0.7 \
-        --pg-url postgresql+asyncpg://agent_workspace_test:agent_workspace_test_pw@localhost/agent_workspace_test
+        --pg-url postgresql+asyncpg://alpha_test:alpha_test_pw@localhost/alpha_test
 """
 
 from __future__ import annotations
@@ -50,17 +50,17 @@ WORKER_SCRIPT = Path(__file__).parent / "worker.py"
 # One absolute path, shared by the seeder (this file) and every worker
 # process (worker.py's make_session_factory). DatabaseConfig.sqlite_dir
 # resolves relative strings against the CALLER's CWD, not this file's
-# location -- passing the literal ".agent-workspace/bench_data" meant the
+# location -- passing the literal ".alpha/bench_data" meant the
 # orchestrator (running from wherever it was invoked) and the workers
 # (spawned with cwd=BACKEND_DIR) could silently resolve to two different
 # directories whenever this script is invoked from outside backend/,
 # leaving workers pointed at a DB the seeder never created (or already
 # removed).
-SQLITE_BENCH_DIR = str(BACKEND_DIR / ".agent-workspace" / "bench_data")
+SQLITE_BENCH_DIR = str(BACKEND_DIR / ".alpha" / "bench_data")
 # The orchestrator itself is already running under the correct interpreter
 # (`uv run python ...`, per this file's own usage docstring above) -- reuse
 # it for workers instead of a second hard-coded venv path that silently
-# assumes agent-workspace is checked out at /opt/agent-workspace.
+# assumes alpha is checked out at /opt/alpha.
 PYTHON = [sys.executable]
 
 
