@@ -266,7 +266,10 @@ def suggest_improvements(
     measure.
     """
     signals = collect_signals(engine, run_id)
-    graph = engine._run_graph_for(engine.get_run(run_id))  # type: ignore[arg-type]
+    run = engine.get_run(run_id)
+    if run is None:  # pragma: no cover - collect_signals already raised for this
+        raise KeyError(f"Run '{run_id}' not found.")
+    graph = engine._run_graph_for(run)
     samples = max(1, int(baseline_runs))
     suggestions: list[Suggestion] = []
 
@@ -412,26 +415,38 @@ def suggest_improvements(
                 )
             )
 
-    # 8. A single-node-per-wave graph has concurrency on the table.
+    # 8. One node per wave is only UNDERUSE if two of them could have shared a
+    #    wave. A linear chain is one-node-per-wave by construction, so without an
+    #    independence check this fires on every serial workflow and means nothing.
     if signals.completed_nodes > 1 and signals.waves_dispatched >= signals.completed_nodes:
-        suggestions.append(
-            Suggestion(
-                kind="wave_underuse",
-                subject=signals.workflow_id,
-                rationale=(
-                    f"{signals.completed_nodes} node(s) ran across {signals.waves_dispatched} wave(s), i.e. strictly one node "
-                    f"per wave; either the nodes are genuinely serial, or their write scopes (or a declared max_concurrency) are "
-                    f"serialising work that could overlap"
-                ),
-                evidence={
-                    "measured": "wave_dispatched",
-                    "waves": signals.waves_dispatched,
-                    "completed_nodes": signals.completed_nodes,
-                },
-                confidence=_confidence(samples),
-                samples=samples,
-            )
+        overlap_candidates = sorted(
+            {
+                nid
+                for nid in run.completed_nodes
+                if _independent_siblings(graph, nid, run)
+            }
         )
+        if overlap_candidates:
+            suggestions.append(
+                Suggestion(
+                    kind="wave_underuse",
+                    subject=signals.workflow_id,
+                    rationale=(
+                        f"{signals.completed_nodes} node(s) ran across {signals.waves_dispatched} wave(s), i.e. at most one "
+                        f"node per wave, yet {len(overlap_candidates)} of them ({', '.join(overlap_candidates)}) have an "
+                        f"independent sibling; either their write scopes overlap, or no max_concurrency is declared, so "
+                        f"work that could overlap is being serialised"
+                    ),
+                    evidence={
+                        "measured": "wave_dispatched",
+                        "waves": signals.waves_dispatched,
+                        "completed_nodes": signals.completed_nodes,
+                        "overlap_candidates": overlap_candidates,
+                    },
+                    confidence=_confidence(samples),
+                    samples=samples,
+                )
+            )
 
     truncated = len(suggestions) > MAX_SUGGESTIONS
     kept = suggestions[:MAX_SUGGESTIONS]

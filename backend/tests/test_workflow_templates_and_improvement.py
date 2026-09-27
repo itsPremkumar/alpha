@@ -59,9 +59,20 @@ def _no_evidence(node, run):
     return {"status": "completed", "output": {"node": node.id}, "evidence": "", "tokens_used": 0}
 
 
-def _chain(length: int = 2) -> WorkflowGraph:
-    nodes = {f"n{i}": WorkflowNode(id=f"n{i}", prompt=f"step {i}") for i in range(length)}
-    return nodes, WorkflowGraph(nodes=nodes, edges=[])
+def _chain(length: int = 2) -> dict[str, WorkflowNode]:
+    """A genuine linear chain: each node depends on the one before it."""
+    nodes: dict[str, WorkflowNode] = {}
+    for i in range(length):
+        node = WorkflowNode(id=f"n{i}", prompt=f"step {i}")
+        if i:
+            node.depends_on = [f"n{i - 1}"]
+        nodes[f"n{i}"] = node
+    return nodes
+
+
+def _fanout(*ids: str) -> dict[str, WorkflowNode]:
+    """Independent roots: no node depends on another, so they can overlap."""
+    return {nid: WorkflowNode(id=nid, prompt="p", write_scope=[nid]) for nid in ids}
 
 
 def _engine(nodes: dict[str, WorkflowNode], workflow_id: str = "wf") -> DynamicWorkflowEngine:
@@ -84,7 +95,7 @@ def _completed_run(engine: DynamicWorkflowEngine, steps: int = 3) -> str:
 
 def test_capture_always_yields_a_draft_even_for_a_successful_run():
     store = TemplateStore()
-    engine = _engine(_chain(2)[0])
+    engine = _engine(_chain(2))
     run_id = _completed_run(engine)
 
     template = store.capture_from_run(engine, run_id, template_id="t1")
@@ -98,7 +109,7 @@ def test_capture_always_yields_a_draft_even_for_a_successful_run():
 
 def test_a_draft_cannot_be_promoted():
     store = TemplateStore()
-    engine = _engine(_chain(2)[0])
+    engine = _engine(_chain(2))
     run_id = _completed_run(engine)
     store.capture_from_run(engine, run_id, template_id="t1")
 
@@ -108,7 +119,7 @@ def test_a_draft_cannot_be_promoted():
 
 def test_a_draft_cannot_be_instantiated():
     store = TemplateStore()
-    engine = _engine(_chain(2)[0])
+    engine = _engine(_chain(2))
     run_id = _completed_run(engine)
     store.capture_from_run(engine, run_id, template_id="t1")
 
@@ -118,7 +129,7 @@ def test_a_draft_cannot_be_instantiated():
 
 def test_verify_then_promote_walks_the_lifecycle_forward():
     store = TemplateStore()
-    engine = _engine(_chain(2)[0])
+    engine = _engine(_chain(2))
     run_id = _completed_run(engine)
     store.capture_from_run(engine, run_id, template_id="t1")
 
@@ -134,7 +145,7 @@ def test_verify_then_promote_walks_the_lifecycle_forward():
 
 def test_verify_refuses_a_run_that_did_not_complete():
     store = TemplateStore()
-    engine = _engine(_chain(2)[0])
+    engine = _engine(_chain(2))
     run = engine.start_run("wf")
     engine.execute_step(run.run_id, node_runner=lambda n, _r: {"status": "failed", "output": "no", "evidence": "", "tokens_used": 0})
     store.capture_from_run(engine, run.run_id, template_id="t1")
@@ -147,7 +158,7 @@ def test_verify_refuses_a_run_that_did_not_complete():
 def test_verify_refuses_a_run_of_a_different_graph():
     """A run can only vouch for the exact graph it executed."""
     store = TemplateStore()
-    engine = _engine(_chain(2)[0])
+    engine = _engine(_chain(2))
     run_id = _completed_run(engine)
     store.capture_from_run(engine, run_id, template_id="t1")
 
@@ -162,7 +173,7 @@ def test_verify_refuses_a_run_of_a_different_graph():
 
 def test_verify_refuses_a_completion_with_no_evidence():
     store = TemplateStore()
-    engine = _engine(_chain(1)[0])
+    engine = _engine(_chain(1))
     run = engine.start_run("wf")
     # The engine refuses an unevidenced completion outright, so the run fails and
     # can never be promoted: an unevidenced success cannot vouch for anything.
@@ -176,7 +187,7 @@ def test_verify_refuses_a_completion_with_no_evidence():
 
 def test_verify_twice_is_refused_because_state_moved_on():
     store = TemplateStore()
-    engine = _engine(_chain(2)[0])
+    engine = _engine(_chain(2))
     run_id = _completed_run(engine)
     store.capture_from_run(engine, run_id, template_id="t1")
     store.verify(engine, "t1", run_id)
@@ -187,7 +198,7 @@ def test_verify_twice_is_refused_because_state_moved_on():
 
 def test_instantiation_returns_an_independent_definition():
     store = TemplateStore()
-    engine = _engine(_chain(2)[0])
+    engine = _engine(_chain(2))
     run_id = _completed_run(engine)
     store.capture_from_run(engine, run_id, template_id="t1")
     store.verify(engine, "t1", run_id)
@@ -205,7 +216,7 @@ def test_instantiation_returns_an_independent_definition():
 
 def test_a_verified_but_unpromoted_template_says_so():
     store = TemplateStore()
-    engine = _engine(_chain(2)[0])
+    engine = _engine(_chain(2))
     run_id = _completed_run(engine)
     store.capture_from_run(engine, run_id, template_id="t1")
     store.verify(engine, "t1", run_id)
@@ -216,7 +227,7 @@ def test_a_verified_but_unpromoted_template_says_so():
 
 
 def test_store_survives_a_reload(tmp_path):
-    engine = _engine(_chain(2)[0])
+    engine = _engine(_chain(2))
     run_id = _completed_run(engine)
     path = tmp_path / "tpl"
     first = TemplateStore(store_dir=path)
@@ -245,7 +256,7 @@ def test_a_corrupt_library_is_a_loud_failure_not_a_silent_empty_start(tmp_path):
 
 def test_stats_reports_state_breakdown():
     store = TemplateStore()
-    engine = _engine(_chain(2)[0])
+    engine = _engine(_chain(2))
     run_id = _completed_run(engine)
     store.capture_from_run(engine, run_id, template_id="t1")
 
@@ -260,7 +271,7 @@ def test_stats_reports_state_breakdown():
 
 
 def test_collect_signals_measures_a_completed_run():
-    engine = _engine(_chain(3)[0])
+    engine = _engine(_chain(3))
     run_id = _completed_run(engine, steps=3)
 
     signals = collect_signals(engine, run_id)
@@ -275,13 +286,13 @@ def test_collect_signals_measures_a_completed_run():
 
 
 def test_collect_signals_of_an_unknown_run_raises():
-    engine = _engine(_chain(1)[0])
+    engine = _engine(_chain(1))
     with pytest.raises(KeyError):
         collect_signals(engine, "run_nope")
 
 
 def test_signals_report_a_failed_run_as_a_failure():
-    engine = _engine(_chain(2)[0])
+    engine = _engine(_chain(2))
     run = engine.start_run("wf")
     engine.execute_step(run.run_id, node_runner=lambda n, _r: {"status": "failed", "output": "nope", "evidence": "", "tokens_used": 0})
 
@@ -295,7 +306,7 @@ def test_signals_report_a_failed_run_as_a_failure():
 
 
 def test_a_clean_run_produces_no_suggestions():
-    engine = _engine(_chain(2)[0])
+    engine = _engine(_chain(2))
     run_id = _completed_run(engine)
 
     report = suggest_improvements(engine, run_id)
@@ -334,7 +345,7 @@ def test_stagnation_recovery_produces_a_deadlock_suggestion():
     requires a runtime-patched graph. Testing the ANALYSIS against the recorded
     metric isolates it from that construction problem.
     """
-    engine = _engine(_chain(2)[0])
+    engine = _engine(_chain(2))
     run = engine.start_run("wf")
     engine.execute_step(run.run_id, node_runner=_ok)
     run.metrics["stagnation_recovery_attempts"] = 2
@@ -354,7 +365,7 @@ def test_a_linear_chain_does_not_get_a_useless_parallelisation_hint():
     Suggesting concurrency there is noise, so the signal requires a real
     independent sibling before it fires.
     """
-    engine = _engine(_chain(3)[0])
+    engine = _engine(_chain(3))
     run_id = _completed_run(engine, steps=3)
 
     report = suggest_improvements(engine, run_id)
@@ -366,12 +377,7 @@ def test_an_independent_slow_sibling_does_get_a_parallelisation_hint():
     """Two roots with disjoint write scopes give the slow node a real sibling."""
     engine = DynamicWorkflowEngine()
     engine.events = WorkflowEventDispatcher(durable_sink=None)
-    graph = WorkflowGraph(
-        nodes={
-            "fast": WorkflowNode(id="fast", prompt="p", write_scope=["a"]),
-            "slow": WorkflowNode(id="slow", prompt="p", write_scope=["b"]),
-        }
-    )
+    graph = WorkflowGraph(nodes=_fanout("fast", "slow"))
     engine.register_definition(WorkflowDefinition(id="wf", name="wf", graph=graph, policies={}))
     run = engine.start_run("wf")
     import time
@@ -415,7 +421,7 @@ def test_every_suggestion_cites_a_measured_signal_and_is_marked_unapplied():
 
 
 def test_suggestions_do_not_mutate_the_run_or_its_graph():
-    engine = _engine(_chain(2)[0])
+    engine = _engine(_chain(2))
     run_id = _completed_run(engine)
     run = engine.get_run(run_id)
     before_status = run.status
@@ -451,7 +457,7 @@ def test_suggestions_are_capped():
 
 
 def test_corpus_reports_a_rate_with_its_sample_count():
-    engine = _engine(_chain(1)[0])
+    engine = _engine(_chain(1))
     run_ids = [_completed_run(engine, steps=1) for _ in range(3)]
 
     report = analyze_corpus(engine, run_ids, workflow_id="wf")
@@ -463,7 +469,7 @@ def test_corpus_reports_a_rate_with_its_sample_count():
 
 
 def test_corpus_with_no_measured_runs_reports_no_rate():
-    engine = _engine(_chain(1)[0])
+    engine = _engine(_chain(1))
 
     report = analyze_corpus(engine, ["run_nope"], workflow_id="wf")
 
@@ -489,7 +495,7 @@ def test_corpus_counts_an_unproven_success_separately():
 
 
 def test_template_json_is_readable_and_versioned(tmp_path):
-    engine = _engine(_chain(1)[0])
+    engine = _engine(_chain(1))
     run_id = _completed_run(engine, steps=1)
     store = TemplateStore(store_dir=tmp_path / "tpl")
     store.capture_from_run(engine, run_id, template_id="t1")

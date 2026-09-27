@@ -273,7 +273,7 @@ export async function getRunHistory(runId: string): Promise<RunHistory> {
   return {
     run_id: String(pick(d, ["run_id"], runId)),
     count: Number(pick(d, ["count"], 0)),
-    events: asList(d["events"]).map((raw) => {
+    events: asList(d, ["events"]).map((raw) => {
       const e = raw as Record<string, unknown>;
       return {
         index: Number(pick(e, ["index"], 0)),
@@ -337,6 +337,19 @@ export interface RunObservability {
   timeline: NodeTiming[];
 }
 
+export interface RunProvenance {
+  owner_id: string | null;
+  graph_version: number | null;
+  budget_limit: number | null;
+  execution_mode: string | null;
+}
+
+export interface RunDurability {
+  attached: boolean;
+  write_failures: number;
+  last_error: string | null;
+}
+
 export interface RunReport {
   run_id: string;
   workflow_id: string;
@@ -344,11 +357,11 @@ export interface RunReport {
   history_depth: number;
   first_event: RunHistoryEntry | null;
   last_event: RunHistoryEntry | null;
-  status_transitions: Record<string, unknown>[];
+  status_transitions: { from: string | null; to: string | null; timestamp: string | null; reason: string | null }[];
   applied_patches: number;
   observability: RunObservability;
-  durability: Record<string, unknown>;
-  provenance: Record<string, unknown>;
+  durability: RunDurability;
+  provenance: RunProvenance;
 }
 
 /**
@@ -362,8 +375,11 @@ export async function getRunReport(runId: string): Promise<RunReport> {
   const d = await get<Record<string, unknown>>(`/workflows/runs/${encodeURIComponent(runId)}/report`);
   const obs = (d["observability"] ?? {}) as Record<string, unknown>;
   const critical = (obs["critical_path"] ?? {}) as Record<string, unknown>;
+  const dur = (d["durability"] ?? {}) as Record<string, unknown>;
+  const prov = (d["provenance"] ?? {}) as Record<string, unknown>;
   const asNumber = (v: unknown, fallback = 0): number => (typeof v === "number" ? v : fallback);
   const asNumOrNull = (v: unknown): number | null => (typeof v === "number" ? v : null);
+  const asStrOrNull = (v: unknown): string | null => (typeof v === "string" ? v : null);
   return {
     run_id: String(pick(d, ["run_id"], runId)),
     workflow_id: String(pick(d, ["workflow_id"], "")),
@@ -371,7 +387,12 @@ export async function getRunReport(runId: string): Promise<RunReport> {
     history_depth: asNumber(d["history_depth"]),
     first_event: (d["first_event"] ?? null) as RunHistoryEntry | null,
     last_event: (d["last_event"] ?? null) as RunHistoryEntry | null,
-    status_transitions: asList(d["status_transitions"]) as Record<string, unknown>[],
+    status_transitions: (asList(d, ["status_transitions"]) as Record<string, unknown>[]).map((t) => ({
+      from: asStrOrNull(t["from"]),
+      to: asStrOrNull(t["to"]),
+      timestamp: asStrOrNull(t["timestamp"]),
+      reason: asStrOrNull(t["reason"]),
+    })),
     applied_patches: asNumber(d["applied_patches"]),
     observability: {
       run_id: String(pick(obs, ["run_id"], runId)),
@@ -382,11 +403,11 @@ export async function getRunReport(runId: string): Promise<RunReport> {
       nodes_failed: asNumber(obs["nodes_failed"]),
       nodes_waiting: asNumber(obs["nodes_waiting"]),
       waves_dispatched: asNumber(obs["waves_dispatched"]),
-      wave_metrics: asList(obs["wave_metrics"]).map((raw) => {
+      wave_metrics: asList(obs, ["wave_metrics"]).map((raw) => {
         const w = raw as Record<string, unknown>;
         return {
           wave_index: asNumOrNull(w["wave_index"]),
-          nodes: asList(w["nodes"]).map(String),
+          nodes: asList(w, ["nodes"]).map(String),
           node_count: asNumber(w["node_count"]),
           concurrency: asNumOrNull(w["concurrency"]),
           elapsed_seconds: asNumOrNull(w["elapsed_seconds"]),
@@ -398,7 +419,7 @@ export async function getRunReport(runId: string): Promise<RunReport> {
       timeline_source: String(pick(obs, ["timeline_source"], "unavailable")),
       timeline_complete: obs["timeline_complete"] === true,
       total_measured_seconds: asNumber(obs["total_measured_seconds"]),
-      slowest_nodes: asList(obs["slowest_nodes"]).map((raw) => {
+      slowest_nodes: asList(obs, ["slowest_nodes"]).map((raw) => {
         const s = raw as Record<string, unknown>;
         return {
           node_id: String(pick(s, ["node_id"], "")),
@@ -407,15 +428,15 @@ export async function getRunReport(runId: string): Promise<RunReport> {
           tokens_consumed: asNumber(s["tokens_consumed"]),
         };
       }),
-      timed_out_nodes: asList(obs["timed_out_nodes"]).map(String),
+      timed_out_nodes: asList(obs, ["timed_out_nodes"]).map(String),
       critical_path: {
-        path: asList(critical["path"]).map(String),
+        path: asList(critical, ["path"]).map(String),
         total_seconds: asNumber(critical["total_seconds"]),
         measured_nodes: asNumber(critical["measured_nodes"]),
         complete: critical["complete"] === true,
         reason: String(pick(critical, ["reason"], "")),
       },
-      timeline: asList(obs["timeline"]).map((raw) => {
+      timeline: asList(obs, ["timeline"]).map((raw) => {
         const t = raw as Record<string, unknown>;
         return {
           node_id: String(pick(t, ["node_id"], "")),
@@ -428,8 +449,17 @@ export async function getRunReport(runId: string): Promise<RunReport> {
         };
       }),
     },
-    durability: (d["durability"] ?? {}) as Record<string, unknown>,
-    provenance: (d["provenance"] ?? {}) as Record<string, unknown>,
+    durability: {
+      attached: dur["attached"] === true,
+      write_failures: asNumber(dur["write_failures"]),
+      last_error: asStrOrNull(dur["last_error"]),
+    },
+    provenance: {
+      owner_id: asStrOrNull(prov["owner_id"]),
+      graph_version: asNumOrNull(prov["graph_version"]),
+      budget_limit: asNumOrNull(prov["budget_limit"]),
+      execution_mode: asStrOrNull(prov["execution_mode"]),
+    },
   };
 }
 
@@ -471,10 +501,10 @@ export async function forkWorkflowRun(runId: string, req: ForkRequest = {}): Pro
     forked_at_event_id: String(pick(d, ["forked_at_event_id"], "")),
     forked_at_index: Number(pick(d, ["forked_at_index"], 0)),
     graph_version: Number(pick(d, ["graph_version"], 0)),
-    inherited_completed_nodes: asList(d["inherited_completed_nodes"]).map(String),
-    inherited_state_keys: asList(d["inherited_state_keys"]).map(String),
+    inherited_completed_nodes: asList(d, ["inherited_completed_nodes"]).map(String),
+    inherited_state_keys: asList(d, ["inherited_state_keys"]).map(String),
     replayed_events: Number(pick(d, ["replayed_events"], 0)),
-    notes: asList(d["notes"]).map(String),
+    notes: asList(d, ["notes"]).map(String),
   };
 }
 
@@ -509,12 +539,12 @@ export async function simulateWorkflow(opts: {
     run_id: String(pick(d, ["run_id"], "")),
     status: String(pick(d, ["status"], "")),
     waves: Number(pick(d, ["waves"], 0)),
-    nodes_visited: asList(d["nodes_visited"]).map(String),
+    nodes_visited: asList(d, ["nodes_visited"]).map(String),
     node_outcomes: (d["node_outcomes"] ?? {}) as Record<string, string>,
-    state_keys: asList(d["state_keys"]).map(String),
+    state_keys: asList(d, ["state_keys"]).map(String),
     simulated: d["simulated"] === true,
     execution_label: String(pick(d, ["execution_label"], "")),
-    notes: asList(d["notes"]).map(String),
+    notes: asList(d, ["notes"]).map(String),
   };
 }
 
@@ -554,8 +584,8 @@ export async function signalWorkflowRun(
   return {
     run: toRun(d["run"] as Record<string, unknown>),
     event: String(pick(d, ["event"], event)),
-    matched_nodes: asList(d["matched_nodes"]).map(String),
-    released_nodes: asList(d["released_nodes"]).map(String),
+    matched_nodes: asList(d, ["matched_nodes"]).map(String),
+    released_nodes: asList(d, ["released_nodes"]).map(String),
     unmatched: d["unmatched"] === true,
   };
 }
@@ -579,10 +609,10 @@ export interface ExecutorListing {
 export async function listWorkflowExecutors(): Promise<ExecutorListing> {
   const d = await get<Record<string, unknown>>("/workflows/system/executors");
   return {
-    bound: asList(d["bound"]).map(String),
+    bound: asList(d, ["bound"]).map(String),
     count: Number(pick(d, ["count"], 0)),
-    domain_executors: asList(d["domain_executors"]).map(String),
-    domain_bound: asList(d["domain_bound"]).map(String),
+    domain_executors: asList(d, ["domain_executors"]).map(String),
+    domain_bound: asList(d, ["domain_bound"]).map(String),
     note: String(pick(d, ["note"], "")),
   };
 }

@@ -59,11 +59,25 @@ execute), `POST /turns` with `dynamic=true` (compatibility turn seam), and the
 bot-mode `POST /api/bots/{name}/workflow` adapter. Definitions and runs are
 owner-scoped for real requests; request bodies cannot self-assert an owner.
 The registry endpoint is a bounded projection, not a live connection claim.
-The digest executor is labeled `local_digest_projection` and never satisfies
-domain acceptance. `workflows.py` also owns step/cancel/approval/patch/replan/
-compensation, append-only plan history, event/replay/projection/hydration, and
-fail-closed durable-sink status. The local event store is restart-recoverable
-for one process, not cross-process exactly-once coordination. See
+`workflows.py` also owns step/cancel/approval/patch/replan/compensation,
+append-only plan history, event/replay/projection/hydration, and fail-closed
+durable-sink status.
+
+The observability and control routes are declared **before `/{workflow_id}`** so
+the single-segment `/simulate` path is not swallowed by the definition-id
+catch-all: `GET /runs/{id}/history` (ordered replayable timeline with stable
+1-based indexes a fork can quote back), `GET /runs/{id}/report` (measured
+execution report plus provenance), `POST /runs/{id}/fork`,
+`POST /simulate`, `POST /runs/{id}/suspend`, `.../resume`, `.../signals`,
+`.../sweep-waits`, and `GET /system/executors`. Status mapping: a bad fork point
+is 400 with the real reason, an unknown run is 404, resuming a run that is not
+suspended is 409, and `ForkError` from an unregistered workflow is 404. The
+report and the simulation payload carry **no acceptance verdict** — a completed
+run is not a verified run, and a dry run is labelled `dry_run_simulation`.
+`/system/executors` distinguishes `bound` from `domain_bound` so the opt-in
+nature of the real model/tool/subagent executors stays visible. The local event
+store and the wave executor's concurrency are both restart-recoverable and
+process-local for one worker, not cross-process exactly-once coordination. See
 `docs/DYNAMIC_WORKFLOWS.md` and the dynamic workflow tests before changing these
 boundaries.
 

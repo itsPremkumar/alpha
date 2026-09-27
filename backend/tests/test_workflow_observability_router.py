@@ -243,12 +243,17 @@ async def test_simulate_of_an_unknown_workflow_is_404():
 
 
 async def test_simulate_rejects_a_hostile_wave_ceiling_at_the_boundary():
-    request = _request()
-    workflow_id, _ = await _register_two_step(request)
-    with pytest.raises(HTTPException) as excinfo:
-        await simulate_workflow(WorkflowSimulateRequest(workflow_id=workflow_id, max_waves=0), request)
-    # Pydantic rejects 0 before the handler runs.
-    assert excinfo.value.status_code in (400, 422)
+    """The bound is enforced by the request model, before the handler runs.
+
+    A client cannot reach the handler with ``max_waves: 0`` at all, which is the
+    stronger guarantee: there is no code path where an unbounded wave count is
+    accepted and only clamped later.
+    """
+    import pydantic
+
+    workflow_id, _ = await _register_two_step(_request())
+    with pytest.raises(pydantic.ValidationError):
+        WorkflowSimulateRequest(workflow_id=workflow_id, max_waves=0)
 
 
 # --------------------------------------------------------- suspend and resume

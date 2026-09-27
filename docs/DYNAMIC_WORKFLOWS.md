@@ -98,6 +98,144 @@ capability, tool, skill, MCP, subagent, and bot registries used by planning.
 Registry health and unavailable entries are returned as data; discovery does
 not imply that a provider is connected or authorized.
 
+## Bounded execution, concurrency, and measured time
+
+**Node deadlines are enforced.** `WorkflowNode.timeout_seconds` runs every
+executor call for that node under a real deadline. On expiry the node FAILS with
+the measured overrun and a `node_timeout` event; the in-flight call is *fenced,
+not killed*, and its late result is discarded rather than adopted. CPython
+cannot safely kill a thread, so the contract is disclosure, not a false
+"cancelled" claim. For a `MAP`/`REDUCE`/`RACE`/`QUORUM` child the bound is **per
+child execution**, not for the whole fan-out, so one pathological item cannot
+consume the entire budget.
+
+**Wave concurrency is opt-in.** The scheduler already partitions ready nodes
+into waves whose `write_scope` entries are pairwise disjoint, and the engine now
+executes a wave on a bounded thread pool so those disjoint scopes actually
+overlap. The limit comes from `policies.max_concurrency` (or graph
+`metadata.max_concurrency`); **an undeclared workflow runs sequentially**,
+because parallel waves reorder the event log relative to node order and would
+silently change the observable behaviour — and the replay, projection, and
+hydration built on that log — of every existing definition. A wave that cannot
+be fully admitted is admitted partially and the refusal is journalled. When a
+node's write scope does overlap another's, the later node is deferred to the next
+wave and a `wave_write_scope_serialized` event names the pairs, so the
+serialization is explained rather than silent.
+
+Shared run bookkeeping is guarded by a process-wide reentrant lock covering every
+read-modify-write (token charges, membership-guarded list appends, status
+transitions, timing updates). The executor call runs outside it, which is what
+delivers the parallelism; the lock only makes the microsecond-scale bookkeeping
+safe now that several nodes can be in flight at once.
+
+**Measured time is journalled, not held in run state.** Every node execution
+emits a `node_timed` event and every dispatched wave a `wave_dispatched` event.
+`build_run_observability` projects the per-node timeline, wave shape, slowest
+nodes, timed-out nodes, and the critical path from those events. They are events
+rather than `run.metrics` fields because the DWE guarantees everything in
+`run.metrics` is reconstructible from the journal, and a duration cannot be
+re-derived from the events that recorded the work. The useful consequence is that
+timings survive a restart and a durable hydration.
+
+`GET /api/workflows/runs/{run_id}/report` returns the combined history,
+observability, and provenance payload. It reports **execution only** and carries
+no acceptance verdict: a completed run is not a verified run.
+
+## Node kinds that need no executor
+
+These complete on a measurement the runtime takes itself, so they do not demand
+an executor for work the engine already did:
+
+| Kind | Behaviour |
+| --- | --- |
+| `CHECKPOINT` | Records a content-addressed SHA-256 snapshot of the run state. The evidence is recomputable, and it states that the append-only event log remains the authoritative durable record. |
+| `GOAL_GATE` | Evaluates declared `acceptance_criteria` with the same safe AST evaluator used for routing. A criterion that cannot be evaluated counts as NOT met, so a gate never passes on the strength of a check that did not run. Already protected from removal or replacement by the patch validator. |
+| `HANDOFF` | Publishes a handoff contract built from real run state. `decisions` stays empty because the engine journals none. |
+| `WAIT` | A bounded timer. The delay is clamped to a hard ceiling, and the MEASURED sleep is reported rather than the requested number. |
+| `EVENT_WAIT` | Parks the node until a named signal arrives, making `WAITING_EVENT` reachable. |
+| `PARALLEL` | Runs a named member set as one bounded wave. All-or-nothing: a single non-succeeded member fails the group. |
+| `SUBWORKFLOW` | Runs a registered child workflow to a terminal state through this same engine and adopts only a genuinely `completed` child. Self-recursion is refused. |
+
+## External events, suspension, and waiting
+
+- `POST /api/workflows/runs/{run_id}/signals` delivers a named signal. Only
+  nodes registered for exactly that event are released, and a released node
+  returns to `READY` (the scheduler admits only `PENDING`/`READY`, so a node left
+  in `WAITING` could never be re-dispatched). A signal nothing waits on is
+  journalled as unmatched and changes no node state, so a typo cannot silently
+  advance a run.
+- `POST /api/workflows/runs/{run_id}/sweep-waits` fails every external wait whose
+  declared deadline has passed, with the measured age, and then applies the same
+  fail-closed policy a wave does. A wait nobody satisfies must end as a failure
+  rather than leaving the run non-terminal and reporting no error.
+- `POST /api/workflows/runs/{run_id}/suspend` parks a live run in `SUSPENDED`
+  without inventing a terminal outcome; `.../resume` releases it. Stepping a
+  parked run returns its real status instead of continuing held work.
+
+## Forking, time travel, and dry runs
+
+- `GET /api/workflows/runs/{run_id}/history` returns the ordered, replayable
+  timeline with stable 1-based indexes, which a fork can quote back.
+- `POST /api/workflows/runs/{run_id}/fork` branches a NEW run from a point in
+  that history. Completed work at the fork point is **inherited rather than
+  repeated**, because replaying a model call or sandbox write would double a real
+  side effect; each fork gets its own workflow id and graph so two forks never
+  share mutable state; and the source is never mutated.
+  `reset_completed_nodes` re-runs that work deliberately and is disclosed as
+  dangerous, because idempotency keys are per-run and cannot protect a repeated
+  effect. An un-replayable prefix, an unknown event id, and an out-of-range index
+  are all rejected with the real reason.
+- `POST /api/workflows/simulate` dry-runs a registered workflow against a
+  recording executor on a **throwaway engine**, so it cannot touch the caller's
+  definitions, runs, durable sink, or token budgets. Every result is labelled
+  `dry_run_simulation`, charges zero tokens, and carries no acceptance verdict. A
+  graph that parks at a gate says so instead of projecting past it.
+
+## Real domain executors
+
+The registry previously shipped only `alpha.local.digest` (a hash) and six
+bounded local projections, so no node could invoke a model, tool, or subagent.
+`alpha.orchestrator.domain_executors` adds three that perform genuine work:
+
+| Key | What it really does |
+| --- | --- |
+| `alpha.local.model` | Resolves a real chat model through the model factory and invokes it, reporting the provider's own token usage (0 when none was reported — never an estimate). An unknown model name surfaces the factory's own error instead of silently falling back. |
+| `alpha.local.tool` | Dispatches through the real `ScriptDispatcher`, so a workflow node gets the same tool list and the same guardrail decision a model-issued call would get. |
+| `alpha.local.subagent` | Delegates through the real `SubagentExecutor`, mirroring `task_tool`'s construction. |
+
+They are **opt-in**: `bind_domain_executors()` must be called explicitly, because
+these spend money and reach the network and must never be bound merely by
+importing a module. The engine's node seam is synchronous while tool assembly is
+async, so the executors bridge through a dedicated worker loop and **refuse**
+when called from a thread with a running event loop rather than deadlocking.
+`GET /api/workflows/system/executors` reports what is actually bound and makes
+the opt-in nature visible.
+
+A tool that needs populated `runtime.state` (sandbox paths, thread outputs) has
+none on this seam, because it is not inside a LangGraph run. The tool's own real
+error is surfaced rather than fabricating that context.
+
+## Templates and improvement proposals
+
+`alpha.workflow.templates` stores reusable graphs with an enforced
+`draft -> verified -> promoted` lifecycle. `capture_from_run` always yields a
+draft — capturing a graph and vouching for it are separate acts. `verify`
+re-checks that a run COMPLETED, that the run's graph is structurally identical to
+the template's, and that every succeeded node carried real evidence. `promote`
+refuses a draft. `instantiate` deep-copies, so patching one caller's run cannot
+corrupt the library.
+
+`alpha.workflow.self_improvement` turns measured signals into typed proposals.
+**A suggestion is a proposal, never an action** — nothing in it mutates a run, a
+graph, or a template, and applying one produces a normal typed patch that must
+still pass `PatchValidator` and the run's optimistic-concurrency check. Every
+suggestion cites the measured signal that produced it, confidence is derived from
+sample count rather than asserted, and a completion asserted without evidence is
+reported as `unproven` instead of being folded into a success rate. Signals that
+would fire on every serial workflow (parallelisation, wave underuse) require a
+real independent sibling, because in a linear chain the last node always
+dominates and always has nothing to overlap with.
+
 ## Evidence, replay, and durability
 
 Every workflow event is appended to the durable JSONL sink before listeners are
@@ -137,13 +275,29 @@ create a second parent-run stream.
 ## Current boundaries
 
 The orchestration graph, scheduling, retries, approvals, conditional routing,
-bounded loops, patch OCC, replay, and compensation plumbing are implemented.
-Production domain work still requires a host-bound executor for the relevant
-node kind (model, tool, MCP, sandbox, bot, or external service). The default
-digest executor is intentionally projection-only. The current scheduler remains
-process-local; a multi-worker deployment must provide shared lease/coordination
-before claiming cross-process exactly-once execution or true concurrent wave
-parallelism.
+bounded loops, patch OCC, replay, and compensation plumbing are implemented, as
+are real node deadlines, opt-in wave concurrency, the seven executor-free node
+kinds, external-signal waits, operator suspend/resume, forking, dry-run
+simulation, measured observability, template promotion, and improvement
+proposals.
+
+What remains true and must keep being said plainly:
+
+- A deadline is enforced by **fencing**, not by cancelling: CPython cannot kill a
+  thread, so timed-out work may still be completing in the background and its
+  result is discarded rather than adopted.
+- Wave concurrency is **process-local**. Parallel waves overlap real threads in
+  one process; a multi-worker deployment still needs shared lease/coordination
+  before claiming cross-process exactly-once execution.
+- The template store and the durable event log are local and atomic for ONE
+  Gateway process. They are not a shared multi-worker repository.
+- `alpha.local.digest` remains a `local_digest_projection`. Binding a real
+  domain executor is an explicit host opt-in, and a run is only domain-complete
+  when a real executor produced its evidence.
+- A **dry run is a projection**. It shares no state with the caller's engine and
+  asserts nothing about acceptance.
+- An **improvement suggestion is a proposal**. Nothing in it has been shown to
+  work; only a re-measured run can show that.
 
 ## Regression coverage
 
@@ -151,5 +305,15 @@ The implementation is covered by `backend/tests/test_dynamic_workflow_service.py
 `test_dynamic_workflow_router.py`, `test_dynamic_workflow_engine.py`,
 `test_workflow_dag_edges.py`, `test_workflow_durability_router.py`,
 `test_orchestrator_kernel.py`, `test_orchestrator_mode_mapper.py`, and
-`test_bot_dynamic_workflow.py`, plus the frontend `workflows.test.mjs` client
+`test_bot_dynamic_workflow.py`, plus:
+
+- `test_workflow_runtime_correctness.py` — deadlines, opt-in concurrency,
+  executor-free node kinds, signals, suspend/resume, shared-state safety, and
+  the write-scope disclosure
+- `test_workflow_time_travel.py` — history, forking, and dry-run simulation
+- `test_workflow_templates_and_improvement.py` — the template lifecycle and
+  evidence-cited proposals
+- `test_workflow_observability_router.py` — the REST observability/control routes
+
+and the frontend `workflows.test.mjs` / `workflows-observability.test.mjs` client
 contract tests.
