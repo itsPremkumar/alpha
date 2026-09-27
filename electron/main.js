@@ -126,9 +126,12 @@ const configTemplatesDir = isPackaged
 
 const userDataRoot = app.getPath('userData');
 const projectDir = path.join(userDataRoot, 'project');
-const alphaHomeDir = fs.existsSync(path.join(userDataRoot, 'alpha-home'))
-  ? path.join(userDataRoot, 'alpha-home')
-  : path.join(userDataRoot, 'alpha-home');
+// The runtime state directory under the desktop app's own userData root. This
+// was an existsSync probe whose two branches were identical, so the check
+// decided nothing and any pre-rename state directory was never detected. The
+// detection itself is emitted after log()/mainLogFile are defined, below.
+const legacyAlphaHomeDir = path.join(userDataRoot, 'agent-workspace-home');
+const alphaHomeDir = path.join(userDataRoot, 'alpha-home');
 const logsDir = path.join(userDataRoot, 'logs');
 const mainLogFile = path.join(logsDir, 'main.log');
 // Per-user Python provisioning: the install directory stays read-only-safe
@@ -237,12 +240,22 @@ function log(message, detail) {
   }
 }
 
+// Reports a pre-rename state directory instead of silently ignoring it. Placed
+// after log() so it can actually be written, and it only reports: the move
+// relocates checkpoints, memory and per-user data, so it stays an explicit
+// operator action rather than something the app does behind their back.
+if (fs.existsSync(legacyAlphaHomeDir) && !fs.existsSync(alphaHomeDir)) {
+  log(
+    'Pre-rename state directory found',
+    `${legacyAlphaHomeDir} was not migrated to ${alphaHomeDir}. Rename it manually to keep existing threads, memory, and artifacts.`,
+  );
+}
+
 function broadcastStatus(message, detail) {
   log(message, detail);
   const payload = { message, detail: detail || '' };
   for (const win of BrowserWindow.getAllWindows()) {
     try {
-      win.webContents.send('alpha:status', payload);
       win.webContents.send('alpha:status', payload);
     } catch {
       // Window may be closing; ignore.

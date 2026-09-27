@@ -78,7 +78,9 @@ const bridgeApi = {
   },
 };
 
-// Exposed once. The renderer reads `window.alpha` and falls back to the
-// pre-rename `agentWorkspace` spelling; re-exposing the same key twice is a
-// leftover of that rename, and the second call is not a second bridge.
+// Exposed once, as `alpha`. The renderer reads only this key
+// (frontend/src/components/lion-pet/LionPet.tsx). A pre-rename
+// `agentWorkspace` alias was removed rather than left as a fallback: this file
+// never exposed it, so the fallback was unreachable and the comment claiming
+// old-shell support was not true of any shipped build.
 contextBridge.exposeInMainWorld('alpha', bridgeApi);
