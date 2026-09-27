@@ -25,7 +25,10 @@ services:
     command: ["--without-bot"]
     logging: *bounded_logs
     ports:
-      - "${OPENVIKING_PORT:-1933}:1933"
+      # Loopback-bound like every other published port in this repository. A bare
+      # "${OPENVIKING_PORT:-1933}:1933" binds 0.0.0.0, which would expose the
+      # memory backend's HTTP surface to the whole network from a dev machine.
+      - "127.0.0.1:${OPENVIKING_PORT:-1933}:1933"
     volumes:
       - openviking-data:/app/.openviking
     networks:

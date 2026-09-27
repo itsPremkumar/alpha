@@ -248,7 +248,12 @@ services:
       - ALPHA_HOME=/app/backend/.alpha
       - ALPHA_CONFIG_PATH=/app/project/config.yaml
       - ALPHA_EXTENSIONS_CONFIG_PATH=/app/project/extensions_config.json
-      - ALPHA_PEER_NETWORK_ENABLED=${ALPHA_PEER_NETWORK_ENABLED:-1}
+      # Off by default here too, matching docker-compose.yaml. The dev profile
+      # used to default this to 1 while production defaulted to 0, so the
+      # posture a developer tested against was not the posture that shipped -
+      # and the difference is an inbound listener, not a feature flag. Set
+      # ALPHA_PEER_NETWORK_ENABLED=1 to exercise the peer plane locally.
+      - ALPHA_PEER_NETWORK_ENABLED=${ALPHA_PEER_NETWORK_ENABLED:-0}
       - ALPHA_PEER_NETWORK_BIND_HOST=${ALPHA_PEER_NETWORK_BIND_HOST:-0.0.0.0}
       - ALPHA_PEER_NETWORK_DISCOVERY_PORT=${ALPHA_PEER_NETWORK_DISCOVERY_PORT:-8743}
       - ALPHA_PEER_NETWORK_ADVERTISED_BASE_URL=${ALPHA_PEER_NETWORK_ADVERTISED_BASE_URL:-}

@@ -32,6 +32,10 @@ COMPOSE_PATHS = {
     # so it is asserted loopback-only by the shared rule below rather than by
     # the nginx-port test.
     "installer": REPO_ROOT / "build" / "compose.installer.yaml",
+    # Overlay that publishes the OpenViking memory backend. It previously used a
+    # bare "${OPENVIKING_PORT:-1933}:1933", which binds 0.0.0.0 and exposed the
+    # backend's HTTP surface on every interface.
+    "openviking": REPO_ROOT / "docker" / "docker-compose.openviking.yaml",
 }
 
 EXPECTED_NGINX_PORT_MAPPING = "${BIND_HOST:-127.0.0.1}:${PORT:-2026}:2026"
@@ -94,6 +98,39 @@ def test_bind_address_remains_overridable(variant: str):
     mapping = published["nginx"][0]
 
     assert _bind_address(mapping) == "${BIND_HOST:-127.0.0.1}", f"{variant} compose must keep the bind address overridable via BIND_HOST; got: {mapping!r}"
+
+
+def test_peer_network_default_is_off_in_every_compose_profile():
+    """The peer plane opens an inbound listener, so no profile may enable it implicitly.
+
+    docker-compose.yaml already documented why this defaults to 0, but
+    docker-compose-dev.yaml defaulted to 1. That made the posture a developer
+    exercised locally differ from the posture that ships, and the difference is
+    an inbound listener rather than a feature flag.
+    """
+    offenders: list[str] = []
+    for variant in ("prod", "dev"):
+        compose = yaml.safe_load(COMPOSE_PATHS[variant].read_text(encoding="utf-8"))
+        for service_name, service in (compose.get("services") or {}).items():
+            environment = service.get("environment") if isinstance(service, dict) else None
+            if environment is None:
+                continue
+            # Compose accepts `environment` as either a mapping or a list of
+            # "KEY=VALUE" strings, and these files use the list form. Handling
+            # only the mapping form would make this test pass vacuously.
+            if isinstance(environment, dict):
+                pairs = list(environment.items())
+            else:
+                pairs = [
+                    tuple(entry.split("=", 1))  # type: ignore[misc]
+                    for entry in environment
+                    if isinstance(entry, str) and "=" in entry
+                ]
+            for key, value in pairs:
+                if key == "ALPHA_PEER_NETWORK_ENABLED" and not str(value).endswith(":-0}"):
+                    offenders.append(f"{variant}/{service_name}: {value}")
+
+    assert offenders == [], f"ALPHA_PEER_NETWORK_ENABLED must default to 0 in every profile: {offenders}"
 
 
 def test_dev_frontend_allows_default_loopback_origins():
