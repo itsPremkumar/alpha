@@ -22,6 +22,22 @@ invents backend facts.
 4. **Silence is not success.** A component that is loading, empty, or
    unavailable says which one it is.
 
+## Branding
+
+`src/assets/images/alpha.png` is the one real logo, and `src/lib/branding.ts` is
+the only place a display name or an icon path is written. `components/BrandLogo.tsx`
+and `BrandMark` render the logo for the in-app surfaces, and `app/layout.tsx` plus
+`app/manifest.ts` read `branding.icons` for the tab, the install and the Apple
+touch icon.
+
+The files in `public/` are **generated, not hand-made** — run
+`node scripts/generate-brand-assets.mjs` (repo root) after changing the logo and
+commit the result. Never edit one, and never add an icon file without adding it
+to `branding.icons`; `src/lib/branding.test.mjs` checks that the generator and
+`branding.icons` agree in both directions. The full generator contract, the
+mane-vs-face crop rule, and the desktop/installer surfaces are in the
+[brand assets section of the root guide](../AGENTS.md#brand-assets).
+
 ## Client rules
 
 - Clients live in `src/lib/*.ts` and wrap the shared `get`/`send` helpers from
@@ -90,6 +106,72 @@ invents backend facts.
   attach is not proof the bots joined. Presence rows are validated, project
   conversations are paginated, and moving a conversation re-reads the parent's
   thread list through `onThreadsChanged`.
+
+## Update control contract
+
+- `components/UpdateControl.tsx` is mounted in the `ChatView` header beside
+  `WorkspaceVitals`, so update state is always visible without opening
+  Settings. Settings → General keeps the fuller identity card; both read the
+  same client.
+- **Mount reads `getEvolutionUpdateState()` only** — a local file read. The
+  GitHub-reaching `checkForEvolutionUpdate()` runs solely from the click
+  handler. Never add an automatic check on load, on an interval, or on view
+  change.
+- **The control performs no version comparison of its own.** "An update exists"
+  comes from the server's `state === "UPDATE_AVAILABLE"` string, and applying
+  additionally requires `canApplyUpdate(state)` — the single predicate exported
+  from `lib/evolution.ts`. Gating on the state string alone is a defect.
+- `canApply` is read with `=== true`, never truthiness, and a missing or corrupt
+  state file is a deny plus a disclosure.
+- The three mutating routes (`update-apply`, `update-skip`, `update-recover`)
+  are admin-only and 403 under `AGENT_WORKSPACE_AUTH_DISABLED`. Show that
+  refusal; do not retry, downgrade it to a notice, or present a queued-looking
+  success.
+- The client may never send a URL, ref, commit, or archive — the server applies
+  only its own verified candidate. `skipEvolutionUpdate("")` refuses locally
+  rather than sending an empty version the route would 422.
+- Tests: `src/lib/evolution-update.test.mjs`.
+
+## Project crew, grouping, and quick-start contract
+
+- **The crew client** (`src/lib/projects.ts` -> `getCrew` / `updateCollaboration` /
+  `getProjectMemory`) reads the real `GET|PATCH /projects/{id}/{crew,collaboration}`
+  and `GET /projects/{id}/memory` routes. `GET /crew` is `ensure_crew`, a
+  *reconciling* read: it syncs membership against the group room as a side
+  effect, so polling it is the supported way to stay honest.
+- **Three room states that are not interchangeable.** `room === null` is a real
+  answer (a crew under 2 members has no room yet); `room.parked` means the room
+  kept its history and is inactive; an *unreadable* room is reported as an
+  error. `toCrewView` rejects rather than downgrading an unreadable `room` to
+  `null`, because those are opposite claims. Same rule for
+  `collaboration.orchestration_mode`, which is never defaulted.
+- **Unknown enum values are preserved verbatim** and offered back as an option
+  by the settings form, so a mode from a newer Gateway is displayed rather than
+  silently snapped to `moderated` on save.
+- **A settings save renders the server's reconciled response**, never the draft
+  the user typed, and sends only the keys that actually changed (an empty patch
+  is a 422). `saving` disables the control so a double-click cannot double-apply.
+  When a quick-start template's coordination policy fails to apply after the
+  project itself was created, the UI says exactly that instead of reporting a
+  clean creation.
+- **Quick-start templates declare agent *roles*, never bot names**
+  (`PROJECT_TEMPLATES`). Bots are runtime roster data, not configuration. The
+  picker matches roles to whatever bots the Gateway reports, names any role it
+  could not staff, and stays editable before creation. A template with no
+  `collaboration` keys must not fire an empty PATCH.
+- **The sidebar groups conversations by the server's `projectId`.** A thread with
+  no project is a real state and gets its own `No project` group; a project whose
+  name is not in the loaded list renders under its raw id rather than being
+  dropped. Group collapse state is keyed by project id and defaults to expanded.
+  Search results are not grouped.
+- `components/sections/ProjectCrewPanel.tsx` is rendered by `ProjectsSection`, so
+  it is reachable without a workspace-view registry entry. If it ever becomes its
+  own top-level view it must be registered in all three places the layout guide
+  names, or it is dead code.
+- Regression coverage lives in `src/lib/projects-crew.test.mjs` (routes/verbs,
+  the three room states, unknown-enum preservation, template shape, and the
+  sidebar-grouping and panel-wiring source pins) alongside
+  `src/lib/projects.test.mjs`.
 
 ## Testing (required for client changes)
 

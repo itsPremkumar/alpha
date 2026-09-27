@@ -61,7 +61,13 @@ export async function getEvolutionIdentity(): Promise<EvolutionIdentity> {
   };
 }
 
-/** Persisted update state from alpha.evolution.release_check.load_update_state(). */
+/**
+ * Persisted update state from alpha.evolution.release_check.load_update_state().
+ *
+ * The Phase-2 fields below are additive: the server's own comment is that they
+ * are "safe for old clients to ignore". They are *not* ignored here, because
+ * they are what decides whether an update may actually be applied.
+ */
 export interface EvolutionUpdateState {
   /** IDLE | CHECKING | UPDATE_AVAILABLE | UP_TO_DATE | CHECK_FAILED | RECOVERY_REQUIRED (or "unknown"). */
   state: string;
@@ -69,17 +75,62 @@ export interface EvolutionUpdateState {
   installedVersion: string | null;
   latestTag: string | null;
   error: string | null;
+  /** Version the engine verified as applicable; null until a check resolves one. */
+  availableVersion?: string | null;
+  /** True only when the engine's own safety checks all passed. Never inferred. */
+  canApply?: boolean;
+  /** Why an update is not applicable. Shown verbatim rather than replaced. */
+  reason?: string | null;
+  /** True when the deployment shape permits a source update at all. */
+  canSelfUpdate?: boolean;
+  /** e.g. "source" | "container" | "unknown" — how this install is deployed. */
+  deploymentMode?: string | null;
+  /** Versions the operator has chosen to ignore. */
+  skippedVersions?: string[];
+  /** Set when a transaction was staged but not verified; recovery is required. */
+  mutationStarted?: boolean;
+  /** True when the persisted state file could not be read and was not trusted. */
+  stateCorrupt?: boolean;
+  transactionId?: string | null;
+  backupRef?: string | null;
+  currentCommit?: string | null;
+  targetCommit?: string | null;
+  source?: string | null;
+  failedAttempts?: number;
+  lastAppliedAt?: string | null;
+  lastSuccessfulAt?: string | null;
   [key: string]: unknown;
 }
 
 function toUpdateState(raw: Record<string, unknown>): EvolutionUpdateState {
+  const str = (key: string): string | null =>
+    typeof raw[key] === "string" && raw[key] ? (raw[key] as string) : null;
   return {
     ...raw,
     state: String(pick(raw, ["state"], "unknown")),
-    checkedAt: typeof raw.checkedAt === "string" ? raw.checkedAt : null,
-    installedVersion: typeof raw.installedVersion === "string" ? raw.installedVersion : null,
-    latestTag: typeof raw.latestTag === "string" ? raw.latestTag : null,
-    error: typeof raw.error === "string" ? raw.error : null,
+    checkedAt: str("checkedAt"),
+    installedVersion: str("installedVersion"),
+    latestTag: str("latestTag"),
+    error: str("error"),
+    availableVersion: str("availableVersion"),
+    // `=== true`, never truthiness: a missing or unparsed flag is a deny.
+    canApply: raw.canApply === true,
+    reason: str("reason"),
+    canSelfUpdate: raw.canSelfUpdate === true,
+    deploymentMode: str("deploymentMode"),
+    skippedVersions: Array.isArray(raw.skippedVersions)
+      ? (raw.skippedVersions as unknown[]).map((v) => String(v))
+      : [],
+    mutationStarted: raw.mutationStarted === true,
+    stateCorrupt: raw.stateCorrupt === true,
+    transactionId: str("transactionId"),
+    backupRef: str("backupRef"),
+    currentCommit: str("currentCommit"),
+    targetCommit: str("targetCommit"),
+    source: str("source"),
+    failedAttempts: typeof raw.failedAttempts === "number" ? raw.failedAttempts : 0,
+    lastAppliedAt: str("lastAppliedAt"),
+    lastSuccessfulAt: str("lastSuccessfulAt"),
   };
 }
 
@@ -103,6 +154,38 @@ export async function checkForEvolutionUpdate(): Promise<EvolutionUpdateState> {
  */
 export async function requestEvolutionUpdate(force = false): Promise<Record<string, unknown>> {
   return send<Record<string, unknown>>("/evolution/update-apply", "POST", { force });
+}
+
+/**
+ * POST /api/evolution/update-skip — record a version to ignore.
+ *
+ * Local bookkeeping only: no source or remote state changes. A blank version is
+ * rejected here rather than sent, because the route answers 422/409 on it and
+ * an empty skip would be indistinguishable from a real one.
+ */
+export async function skipEvolutionUpdate(version: string): Promise<Record<string, unknown>> {
+  const trimmed = version.trim();
+  if (!trimmed) throw new Error("No version was supplied to skip.");
+  return send<Record<string, unknown>>("/evolution/update-skip", "POST", { version: trimmed });
+}
+
+/**
+ * POST /api/evolution/update-recover — restore the persisted backup ref after an
+ * update that staged but did not verify.
+ */
+export async function recoverEvolutionUpdate(): Promise<Record<string, unknown>> {
+  return send<Record<string, unknown>>("/evolution/update-recover", "POST", {});
+}
+
+/**
+ * Whether this install's own reported state permits applying an update.
+ *
+ * Kept as one predicate so the UI cannot apply on `state` alone: the engine
+ * gates on `canApply`, and a deployment that cannot self-update says so through
+ * `canSelfUpdate`. A state the server never sent is a deny, not a maybe.
+ */
+export function canApplyUpdate(state: EvolutionUpdateState | null | undefined): boolean {
+  return Boolean(state && state.state === "UPDATE_AVAILABLE" && state.canApply === true);
 }
 
 /** POST /api/evolution/candidates — propose an evolvable-surface candidate (201). */

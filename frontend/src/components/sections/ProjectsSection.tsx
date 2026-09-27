@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   listProjects,
   createProject,
@@ -13,14 +13,19 @@ import {
   confirmProjectAgents,
   attachProjectAgents,
   detachProjectAgent,
+  updateCollaboration,
+  getProjectTemplate,
+  PROJECT_TEMPLATES,
   Project,
+  ProjectAgentInput,
   ProjectMember,
 } from "@/lib/projects";
 import { moveThread } from "@/lib/threads-ext";
 import { Thread } from "@/types/chat";
 import { Section, EmptyState, ErrorBox, Notice, Btn, Badge, Field, SkeletonList, inputCls } from "@/components/ui";
 import { errMsg } from "@/lib/http";
-import { Plus, Archive, ArchiveRestore, Trash2, RefreshCw, Pencil, Users, UserPlus, X } from "lucide-react";
+import { Plus, Archive, ArchiveRestore, Trash2, RefreshCw, Pencil, Users, UserPlus, X, Sparkles } from "lucide-react";
+import { ProjectCrewPanel } from "@/components/sections/ProjectCrewPanel";
 
 export interface ProjectBot {
   name: string;
@@ -55,6 +60,46 @@ export function ProjectsSection(props: {
   const [memberRole, setMemberRole] = useState("worker");
   const [memberBusy, setMemberBusy] = useState<string | null>(null);
   const [creatingProject, setCreatingProject] = useState(false);
+  // Quick-start: a template fills the instructions and proposes a set of agent
+  // *roles*. Bots are runtime roster data, so the role→bot mapping is shown for
+  // confirmation and stays editable before anything is created.
+  const [templateId, setTemplateId] = useState("blank");
+  const [draftInstructions, setDraftInstructions] = useState("");
+  const [draftBots, setDraftBots] = useState<string[]>([]);
+  const [touchedDraft, setTouchedDraft] = useState(false);
+
+  const template = useMemo(() => getProjectTemplate(templateId), [templateId]);
+
+  /**
+   * The bots a template would staff, matched to its roles.
+   *
+   * A role is a request, not an identity: no bot is assumed to exist, and a
+   * role nothing matches is simply left unstaffed rather than filled with a
+   * fallback agent. The user can change every pick before creating.
+   */
+  const suggestBots = (roles: string[]): string[] => {
+    const available = props.bots.map((b) => b.name);
+    const taken = new Set<string>();
+    const picked: string[] = [];
+    for (const role of roles) {
+      const match = available.find(
+        (name) => !taken.has(name) && name.toLowerCase().includes(role.toLowerCase().split("-")[0]),
+      );
+      if (match) {
+        taken.add(match);
+        picked.push(match);
+      }
+    }
+    return picked;
+  };
+
+  const applyTemplate = (id: string) => {
+    setTemplateId(id);
+    const next = getProjectTemplate(id);
+    // Do not stomp on text the user already typed.
+    if (!touchedDraft) setDraftInstructions(next.instructions);
+    setDraftBots(suggestBots(next.roles));
+  };
 
   const botLabel = (botName: string | null): string => {
     if (!botName) return "Lead Agent";
@@ -157,9 +202,40 @@ export function ProjectsSection(props: {
     if (!projectName || creatingProject) return;
     setCreatingProject(true);
     try {
-      await createProject(projectName);
+      // Agents are sent with the project so the crew is provisioned in one
+      // transaction; adding them afterwards would create a project with no
+      // crew first and then patch it.
+      const agents: ProjectAgentInput[] = draftBots.map((botName) => ({
+        name: botName,
+        role: template.roles[0] || "worker",
+      }));
+      const created = await createProject(projectName, draftInstructions, agents);
+
+      // The project and its crew are now real. A template's coordination
+      // settings are a second, separate write, so apply them here and report
+      // honestly if that half failed — the project itself still exists.
+      if (Object.keys(template.collaboration).length > 0) {
+        try {
+          await updateCollaboration(created.id, template.collaboration);
+        } catch (err) {
+          flash(
+            `Project created, but its coordination settings were not applied. ${errMsg(err)}`,
+          );
+          await load();
+          return;
+        }
+      }
+
       setName("");
-      flash("Project created.");
+      setDraftInstructions("");
+      setDraftBots([]);
+      setTouchedDraft(false);
+      setTemplateId("blank");
+      flash(
+        agents.length > 0
+          ? `Project created with ${agents.length} agent${agents.length === 1 ? "" : "s"}.`
+          : "Project created.",
+      );
       await load();
     } catch (err) {
       setError(errMsg(err));
@@ -225,7 +301,46 @@ export function ProjectsSection(props: {
       {error && <ErrorBox message={error} onRetry={load} />}
       {notice && <Notice message={notice} />}
 
-      <div className="rounded-2xl border border-border/60 bg-card p-4">
+      <div className="rounded-2xl border border-border/60 bg-card p-4 space-y-3">
+        <Field
+          label="Start from a template"
+          hint="A template fills the instructions and suggests which roles to staff. Nothing is created until you press Create."
+        >
+          <div className="flex gap-2">
+            <select
+              value={templateId}
+              onChange={(e) => applyTemplate(e.target.value)}
+              className={`${inputCls} !w-auto font-medium`}
+              aria-label="Project template"
+            >
+              {PROJECT_TEMPLATES.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.name} — {option.summary}
+                </option>
+              ))}
+            </select>
+            <Btn variant="ghost" onClick={() => applyTemplate(templateId)} title="Re-apply this template's suggestions">
+              <Sparkles className="size-3.5" /> Apply
+            </Btn>
+          </div>
+        </Field>
+
+        {template.roles.length > 0 && (
+          <p className="text-[10px] text-muted-foreground">
+            Looks for: {template.roles.join(", ")}.
+            {suggestBots(template.roles).length < template.roles.length && (
+              <>
+                {" "}
+                No bot matched{" "}
+                {template.roles
+                  .filter((role) => !suggestBots(template.roles).some((bot) => bot.toLowerCase().includes(role.toLowerCase().split("-")[0])))
+                  .join(", ")}{" "}
+                — create or rename a bot with that role, or pick one by hand below.
+              </>
+            )}
+          </p>
+        )}
+
         <Field label="New project" hint="Example: Website redesign, Q4 planning, Customer support.">
           <div className="flex gap-2">
             <input
@@ -243,6 +358,59 @@ export function ProjectsSection(props: {
             </Btn>
           </div>
         </Field>
+
+        <Field
+          label="Project instructions"
+          hint="Every conversation inside this project follows these."
+        >
+          <textarea
+            value={draftInstructions}
+            onChange={(e) => {
+              setDraftInstructions(e.target.value);
+              setTouchedDraft(true);
+            }}
+            rows={2}
+            placeholder="Optional — what should the agent do in this project?"
+            className={inputCls}
+            aria-label="Project instructions"
+          />
+        </Field>
+
+        {props.bots.length > 0 && (
+          <Field
+            label={`Staff this project${draftBots.length > 0 ? ` (${draftBots.length} selected)` : ""}`}
+            hint="Two or more agents get a shared group room. One agent works solo."
+          >
+            <div className="grid sm:grid-cols-2 gap-1.5">
+              {props.bots.map((bot) => {
+                const checked = draftBots.includes(bot.name);
+                return (
+                  <label
+                    key={bot.name}
+                    className="flex items-center gap-2 rounded-lg border border-border/60 bg-card px-2.5 py-2 cursor-pointer hover:border-primary/40"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(event) =>
+                        setDraftBots((previous) =>
+                          event.target.checked
+                            ? [...previous, bot.name]
+                            : previous.filter((botName) => botName !== bot.name),
+                        )
+                      }
+                      className="accent-primary"
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-[11px] font-medium truncate">{bot.display_name || bot.name}</span>
+                      <span className="block text-[10px] text-muted-foreground font-mono truncate">@{bot.name}</span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </Field>
+        )}
       </div>
 
       {loading ? (
@@ -427,6 +595,13 @@ export function ProjectsSection(props: {
                         </Btn>
                       </div>
                     )}
+                  </div>
+
+                  <div className="rounded-xl border border-border/60 bg-muted/20 p-3 space-y-3">
+                    <ProjectCrewPanel
+                      projectId={p.id}
+                      projectName={p.name}
+                    />
                   </div>
 
                   <div>

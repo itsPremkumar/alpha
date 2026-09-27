@@ -131,9 +131,25 @@ interface ToolPillProps {
   toolCall: ToolCall;
   /** Start expanded. Optional; the collapsed pill is the default. */
   defaultOpen?: boolean;
+  /**
+   * Client-observed duration of this call, pre-formatted (e.g. `"4s"`).
+   * Empty/absent renders nothing — a duration this UI did not measure is
+   * never invented, so a call restored from history simply shows none.
+   */
+  duration?: string;
+  /**
+   * True while the run that issued this call is still in flight.
+   *
+   * A call with no reported result means two different things depending on
+   * that: still running, or finished without reporting. Only the run's own
+   * state can tell them apart, so `inFlight` decides which of the two already
+   * honest labels is correct. With it absent — every historical message — the
+   * call renders `not-reported`, exactly as before.
+   */
+  inFlight?: boolean;
 }
 
-export function ToolPill({ toolCall, defaultOpen = false }: ToolPillProps) {
+export function ToolPill({ toolCall, defaultOpen = false, duration, inFlight = false }: ToolPillProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const isA2A = toolCall.name === "message_agent";
   const isApproval = toolCall.name === "request_approval";
@@ -143,7 +159,10 @@ export function ToolPill({ toolCall, defaultOpen = false }: ToolPillProps) {
   const targetBot = isA2A ? String(toolCall.args?.target || "teammate") : null;
   const msgContent = isA2A ? String(toolCall.args?.message || "") : null;
 
-  const status = toolStatusView(toolCall.status);
+  // `running` is reachable only from the live path: the stream sets no status
+  // until a result arrives, so without `inFlight` this resolves to the
+  // honest "no result reported" that historical messages must keep.
+  const status = toolStatusView(toolCall.status === undefined && inFlight ? "running" : toolCall.status);
   const StatusIcon = STATUS_ICONS[status.state];
 
   return (
@@ -194,6 +213,11 @@ export function ToolPill({ toolCall, defaultOpen = false }: ToolPillProps) {
             </>
           )}
           <span className={`text-[10px] font-sans ${status.className}`}>{status.label}</span>
+          {duration && (
+            <span className="font-mono text-[10px] tabular-nums text-muted-foreground" title="Observed by this client">
+              {duration}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1.5">
           <StatusIcon className={`size-3 ${status.className}`} aria-label={status.label} role="img" />

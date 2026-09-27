@@ -128,6 +128,41 @@ uv run --no-sync python ../scripts/auto_update.py check --force --json
 
 ## API
 
+### In the web UI
+
+`UpdateControl` renders a small pill in the main chat header, next to
+`WorkspaceVitals` — the same "always visible instead of buried in settings"
+placement rule that vitals already follow. Settings → General keeps the fuller
+version/identity card.
+
+- **On mount it reads `GET /api/evolution/update-state` only.** That route is a
+  local file read; it performs no network access. A page load never phones home
+  to GitHub.
+- **Pressing the pill runs `POST /api/evolution/update-check`**, which is the
+  only call that reaches GitHub, and opens a panel showing installed version,
+  latest tag, state, check time, deployment mode, skipped versions, backup ref,
+  and transaction id.
+- The pill only claims an update exists when the server's own state string is
+  `UPDATE_AVAILABLE`. It performs no version comparison of its own, so a
+  mis-parsed or untrusted tag cannot manufacture an "update available".
+- **Apply requires the engine's `canApply`**, not merely a newer tag. When it is
+  false the button stays disabled and the server's `reason` is shown verbatim.
+  `canApplyUpdate()` in `lib/evolution.ts` is the single predicate so no caller
+  can gate on the state string alone.
+- `POST /api/evolution/update-skip` records a version to ignore (local
+  bookkeeping only). `POST /api/evolution/update-recover` restores the backup
+  ref after an update that staged but never verified (`RECOVERY_REQUIRED`).
+- All three mutating routes require a real interactive administrator session and
+  answer **403** under `AGENT_WORKSPACE_AUTH_DISABLED` or an internal/PAT
+  caller. The UI surfaces that refusal; it never retries it into a success.
+- A `CHECK_FAILED` state shows the server's real error, and a corrupt persisted
+  state file (`stateCorrupt`) is disclosed as "no update state claimed" rather
+  than read as up to date.
+
+Regression coverage: `frontend/src/lib/evolution-update.test.mjs` (route/verb
+pins, the `canApply` deny matrix, truthy-but-not-true `canApply`, corrupt-state
+handling, blank-skip refusal, and the component source pins).
+
 The authenticated Gateway exposes:
 
 - `POST /api/evolution/update-check` — read-only discovery; when the policy

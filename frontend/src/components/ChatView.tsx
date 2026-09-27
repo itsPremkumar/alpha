@@ -1,8 +1,12 @@
 "use client";
 
-import React, { useState, useEffect, useRef, lazy, Suspense } from "react";
+import React, { useState, useEffect, useMemo, useRef, lazy, Suspense } from "react";
 import { ThreadSidebar } from "@/components/ThreadSidebar";
 import { MessageItem } from "@/components/MessageItem";
+import { ActivityStatus } from "@/components/ActivityStatus";
+import { SubagentList } from "@/components/SubagentList";
+import type { SubagentTask } from "@/lib/sse-reducer";
+import { currentTurn, deriveActivity, silenceNotice } from "@/lib/activity";
 import { Composer } from "@/components/Composer";
 import { NavTabs, WorkspaceView } from "@/components/NavTabs";
 import { ChatMessage, Thread, AIModel } from "@/types/chat";
@@ -16,6 +20,7 @@ import { branding } from "@/lib/branding";
 import { BrandLogo } from "@/components/BrandLogo";
 import { LionPet, useLionPetActivity } from "@/components/lion-pet";
 import { WorkspaceVitals } from "@/components/WorkspaceVitals";
+import { UpdateControl } from "@/components/UpdateControl";
 import { fetchBots, touchBot } from "@/lib/bots";
 import { fetchFeatures, fetchOpsStatus, FeatureFlags } from "@/lib/workspace";
 import { listThreadRuns, cancelRun } from "@/lib/runs";
@@ -49,7 +54,7 @@ import { BotDetailPanel } from "@/components/bots/BotDetailPanel";
 import { ActiveBotPicker } from "@/components/bots/ActiveBotPicker";
 import { ErrorBox, SkeletonList } from "@/components/ui";
 import { errMsg } from "@/lib/http";
-import { Activity, Shrink, Target, ClipboardList, Settings } from "lucide-react";
+import { Shrink, Target, ClipboardList, Settings } from "lucide-react";
 
 // Sections load on demand so the first paint stays light.
 const BotOpsSection = lazy(() => import("@/components/sections/BotOpsSection").then((m) => ({ default: m.BotOpsSection })));
@@ -249,6 +254,53 @@ export default function ChatView() {
   const [offlineDismissed, setOfflineDismissed] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Live run status. The phase is derived from what the stream has actually
+  // reported for THIS turn only, so a previous turn's tool calls are never
+  // counted as current work. Absent (`null`) whenever no run is in flight.
+  const activity = useMemo(
+    () => (isLoading ? deriveActivity(messages.slice(currentTurn(messages))) : null),
+    [messages, isLoading],
+  );
+
+  // Client-observed elapsed time for the running turn. The wire carries no
+  // start timestamp, so this measures from when this client saw the run begin
+  // and is cleared the moment the run ends — it never persists a stale clock.
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const runStartedAtRef = useRef<number | null>(null);
+
+  // Client-observed silence: when this browser last received ANY byte of the
+  // current run's stream, heartbeat comments included. `null` means no reading
+  // exists yet, which renders no notice at all rather than "0s quiet".
+  const lastByteAtRef = useRef<number | null>(null);
+  const [silence, setSilence] = useState<string | null>(null);
+
+  // Subagent tasks folded from `task_*` custom events for the current turn.
+  // Cleared when a NEW run starts rather than when one ends, so the completed
+  // tasks stay on screen as the receipt for the answer that follows them.
+  const [subagentTasks, setSubagentTasks] = useState<SubagentTask[]>([]);
+
+  useEffect(() => {
+    if (!isLoading) {
+      runStartedAtRef.current = null;
+      lastByteAtRef.current = null;
+      setElapsedMs(0);
+      setSilence(null);
+      return;
+    }
+    if (runStartedAtRef.current === null) runStartedAtRef.current = Date.now();
+    if (lastByteAtRef.current === null) lastByteAtRef.current = Date.now();
+    const tick = () => {
+      const now = Date.now();
+      if (runStartedAtRef.current !== null) setElapsedMs(now - runStartedAtRef.current);
+      // Same value every second until silence crosses the threshold, so this
+      // costs no re-render in the normal case.
+      setSilence(silenceNotice(lastByteAtRef.current, now));
+    };
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [isLoading]);
   const activeRunRef = useRef(false);
   const [voiceConversationEnabled, setVoiceConversationEnabled] = useState(false);
   const voiceConversationEnabledRef = useRef(false);
@@ -373,6 +425,9 @@ export default function ChatView() {
     // Every user-initiated navigation goes through here, so this is the one
     // place that invalidates an in-flight run's React state writes.
     runGenerationRef.current += 1;
+    // Subagent progress is per-turn UI state; a receipt from the thread the
+    // user just left must not appear under the one they opened.
+    setSubagentTasks([]);
     if (voiceTurnRef.current) abortRef.current?.abort();
     voiceTurnGenerationRef.current += 1;
     voiceTurnRef.current = false;
@@ -768,6 +823,12 @@ export default function ChatView() {
     setInput("");
     setIsLoading(true);
     setRequestError(null);
+    // A new run starts from zero subagent tasks; the previous turn's receipt
+    // must not be read as live work for this one.
+    setSubagentTasks([]);
+    // Fresh silence baseline: a dead byte counter from the previous turn would
+    // announce a stall before this run has had a chance to speak.
+    lastByteAtRef.current = Date.now();
     updateLion("thinking", "Paw-sing the request...");
 
     let threadId = activeThreadId;
@@ -905,7 +966,9 @@ export default function ChatView() {
           // A transient browser/network drop must not cancel durable work;
           // the explicit Stop action remains the cancellation boundary.
           on_disconnect: "continue",
-          stream_mode: ["messages-tuple", "values"],
+          // `custom` carries the root-namespace `task_*` subagent events. Without
+          // it the transcript can show only a spinner while a delegation runs.
+          stream_mode: ["messages-tuple", "values", "custom"],
           input: {
             messages: [{ role: "user", content }],
           },
@@ -944,6 +1007,18 @@ export default function ChatView() {
         threadId: tid,
         signal: controller.signal,
         onUpdate: updateStream,
+        onTasks: (tasks) => {
+          // A run that outlived its conversation must not repaint the thread
+          // the user opened next.
+          if (!runIsCurrent()) return;
+          setSubagentTasks(tasks);
+        },
+        onActivity: () => {
+          // Same guard: a stale run's bytes must not keep a newer run's
+          // silence clock looking fresh.
+          if (!runIsCurrent()) return;
+          lastByteAtRef.current = Date.now();
+        },
         onEvent: (event) => {
           if (event.type === "replay-gap") flash("Some streamed events could not be replayed. This response is incomplete.");
         },
@@ -1115,6 +1190,7 @@ export default function ChatView() {
     );
     setInput("");
     setIsLoading(true);
+    setSubagentTasks([]);
     updateLion("working", "Running that shortcut...");
     const reply = async (content: string) => {
       const assistantMsg: ChatMessage = {
@@ -1464,7 +1540,12 @@ export default function ChatView() {
 
           {/* Live backend vitals: connectivity, usage and subsystem readiness,
               always visible on the main screen instead of buried in settings. */}
-          <WorkspaceVitals />
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <WorkspaceVitals />
+            {/* Small update control: reads the persisted state on mount and only
+                contacts GitHub when pressed. */}
+            <UpdateControl />
+          </div>
 
           {view === "chat" && (
             <div className="flex items-center gap-2 flex-wrap">
@@ -1847,6 +1928,7 @@ export default function ChatView() {
                     showRegenerate={msg.id === lastAssistantId && msg.role === "assistant"}
                     regenerating={isLoading}
                     onEdit={handleEditResend}
+                    streaming={isLoading && msg.role === "assistant" && msg.id === lastAssistantId}
                   />
                 ))
               )}
@@ -1870,12 +1952,23 @@ export default function ChatView() {
                 </div>
               )}
 
-              {isLoading && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground py-2 px-4 animate-pulse">
-                  <Activity className="size-4 animate-spin text-primary" />
-                  <span>
-                    {activeBot ? `${activeBot.display_name || activeBot.name} is generating response` : `${branding.assistantLabel} is generating response`} & verifying tools…
-                  </span>
+              {isLoading && activity && (
+                <div className="max-w-4xl mx-auto">
+                  <ActivityStatus
+                    state={activity}
+                    elapsedMs={elapsedMs}
+                    silence={silence}
+                    actor={activeBot ? activeBot.display_name || activeBot.name : branding.assistantLabel}
+                  />
+                </div>
+              )}
+
+              {/* Subagent progress survives the run that produced it, so the
+                  answer lands next to the receipt of the work behind it, and
+                  only the next prompt clears it. */}
+              {subagentTasks.length > 0 && (
+                <div className="max-w-4xl mx-auto">
+                  <SubagentList tasks={subagentTasks} />
                 </div>
               )}
               <div ref={messagesEndRef} />

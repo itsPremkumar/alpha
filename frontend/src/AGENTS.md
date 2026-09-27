@@ -72,6 +72,63 @@ The return path matters as much as the outbound one:
 When a frame or field is missing, render the honest unknown state. A partially
 received stream is not a successful one.
 
+## Live activity layer (what shows between prompt and answer)
+
+Four pieces, all inline in the transcript and quiet by default:
+
+| Piece | File | Role |
+| --- | --- | --- |
+| Phase + elapsed + tool counters + stream silence | `lib/activity.ts` | Pure derivation from what the stream reported |
+| Pinned status line | `components/ActivityStatus.tsx` | Spinner, phase, tool count, elapsed clock, silence notice |
+| Collapsed tool receipt | `components/ToolGroup.tsx` | `Used 4 tools · shell, exa` — auto-opens while a call is in flight |
+| Subagent rows | `components/SubagentList.tsx` | One row per delegated `task_*` |
+
+The rules this layer must keep:
+
+- **A phase describes the newest reported state, never a prediction.**
+  `deriveActivity()` reads only `content` / `thinking` / `toolCalls`. A call
+  whose result has not arrived is *running* — not failed, not completed, and
+  never counted as success.
+- **`stream_mode` must include `custom`.** Subagent progress rides
+  root-namespace `task_*` custom events
+  (`alpha/tools/builtins/task_tool.py`); requesting only `messages-tuple` and
+  `values` delivers no delegation signal at all.
+- **The first terminal `task_*` wins.** `withTaskEvent()` refuses to reopen or
+  downgrade a settled task, ignores an unrecognized `task_*` type instead of
+  guessing an outcome nobody reported, and never rewinds step numbers on an
+  out-of-order frame. It keeps `state.tasks` referentially stable so frames
+  carrying no subagent news do not re-render.
+- **No number is invented.** Durations are client-observed (`ToolTiming`), so a
+  call or task restored from history renders no duration rather than a `0s`; an
+  absent usage block stays absent rather than reading as zero tokens; a step
+  counter with no reported total renders `step 3`, never `0/0`.
+- **A streaming turn never looks finished.** `MessageItem` keeps a trailing
+  indicator up while `streaming`, because text already on screen followed by
+  silence reads as a hang.
+- **Silence is measured on bytes, not frames.** `consumeChatStream`'s
+  `onActivity` fires for every byte the reader gets, heartbeat comment lines
+  included; `onUpdate` fires only on parseable frames, which stop during
+  exactly the quiet period the notice exists to catch. `silenceNotice()` says
+  only `No update received for 32s` — never "stalled", "stuck" or
+  "disconnected", because a reconfigured
+  `stream_bridge.heartbeat_interval_seconds` (default 15s, two missed beats
+  trigger it), a wedged proxy, and a genuinely hung run are indistinguishable
+  from one client-side reading. `lastByteAtRef` is re-seeded at the start of
+  every run so a clock left dead by the last turn cannot announce a stall in
+  this one.
+- **Receipts are turn- and navigation-scoped.** `subagentTasks` clears in
+  `stopVoiceForNavigation()` and at the start of each run — deliberately *not*
+  when one ends, so the answer lands beside the receipt of the work behind it.
+
+`ToolPill`'s `inFlight` prop is what makes its defined-but-unreachable
+`running` state reachable: the stream sets no status until a result exists, so
+without it an in-flight call renders "no result reported", which wrongly
+implies the run finished without reporting one. Historical messages pass no
+`inFlight` and keep `not-reported` exactly as before.
+
+Coverage: `lib/activity.test.mjs`, `lib/subagent-events.test.mjs`, and the
+pre-existing `lib/tool-status-honesty.test.mjs`.
+
 ## Honesty patterns to copy
 
 - A control that is off by default renders as off, with the reason it is off.

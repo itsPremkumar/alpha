@@ -101,3 +101,30 @@ test("ChatView wires structured fields and a truthful replay-gap notice separate
   assert.match(source, /onEvent:[\s\S]*?replay-gap[\s\S]*?flash\("Some streamed events could not be replayed\. This response is incomplete\."\)/);
   assert.match(source, /<ErrorBox\s+message=\{requestError.message\}/);
 });
+
+test("a heartbeat comment is liveness without ever becoming a frame", async () => {
+  // The Gateway writes `: heartbeat` whenever no event has arrived for 15s.
+  // The decoder must discard it — but discarding it is exactly why the silence
+  // notice cannot listen for parsed frames: during the quiet period it exists
+  // to catch, those never fire.
+  let activity = 0;
+  const updates = [];
+  const result = await consumeChatStream(response(": heartbeat\n\n: heartbeat\n\n" + frame("end", "9", null)), {
+    threadId: "thread-1", signal: new AbortController().signal,
+    onUpdate: (messages) => updates.push(messages),
+    onActivity: () => { activity += 1; },
+    reconnect: async () => { throw new Error("Unexpected reconnect"); },
+  });
+  assert.ok(activity > 0, "a comment line is still a byte on the wire and must count as liveness");
+  assert.deepEqual(result.messages, [], "a comment must never become answer text");
+  assert.deepEqual(updates.at(-1), [], "nor an update");
+});
+
+test("onActivity is optional, so callers that do not measure silence are unaffected", async () => {
+  const result = await consumeChatStream(response(chunk("1", "Answer") + frame("end", "2", null)), {
+    threadId: "thread-1", signal: new AbortController().signal,
+    onUpdate: () => {},
+    reconnect: async () => { throw new Error("Unexpected reconnect"); },
+  });
+  assert.equal(result.messages[0].content, "Answer");
+});

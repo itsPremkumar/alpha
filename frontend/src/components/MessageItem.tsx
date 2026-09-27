@@ -6,7 +6,7 @@ import remarkGfm from "remark-gfm";
 import { Bot, User, Brain, Copy, Check, ThumbsUp, ThumbsDown, RotateCcw, Pencil, Users, ShieldCheck, FileDown } from "lucide-react";
 import { ChatMessage } from "@/types/chat";
 import { branding } from "@/lib/branding";
-import { ToolPill } from "./ToolPill";
+import { ToolGroup } from "./ToolGroup";
 import { TodoBlock } from "./TodoBlock";
 import { HumanApprovalCard } from "./HumanApprovalCard";
 import { Volume2, Loader2, AlertCircle } from "lucide-react";
@@ -24,9 +24,15 @@ interface MessageItemProps {
   regenerating?: boolean;
   /** Edit & resend for your messages. */
   onEdit?: (messageId: string, newContent: string) => void;
+  /**
+   * This message is the one currently streaming. Drives the live affordances
+   * — the pulsing thinking header, in-flight tool states, and the trailing
+   * cursor — which must all be gone once the run settles.
+   */
+  streaming?: boolean;
 }
 
-export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate, showRegenerate, regenerating, onEdit }: MessageItemProps) {
+export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate, showRegenerate, regenerating, onEdit, streaming = false }: MessageItemProps) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
   const [showThinking, setShowThinking] = useState(false);
@@ -373,11 +379,7 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
             )}
 
             {message.toolCalls && message.toolCalls.length > 0 && (
-              <div className="space-y-1 my-2">
-                {message.toolCalls.map((tc) => (
-                  <ToolPill key={tc.id} toolCall={tc} />
-                ))}
-              </div>
+              <ToolGroup toolCalls={message.toolCalls} live={streaming} />
             )}
 
             {displayContent && (
@@ -385,6 +387,17 @@ export function MessageItem({ message, onApprovalDecision, onRate, onRegenerate,
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
                   {displayContent}
                 </ReactMarkdown>
+              </div>
+            )}
+
+            {/* A streaming turn must never look finished. Content already on
+                screen followed by silence reads as a hang, so the turn keeps a
+                quiet trailing indicator until the run actually settles. */}
+            {streaming && (
+              <div className="flex items-center gap-1 pt-0.5" aria-hidden="true">
+                <span className="size-1.5 animate-pulse rounded-full bg-primary/60" />
+                <span className="size-1.5 animate-pulse rounded-full bg-primary/40 [animation-delay:150ms]" />
+                <span className="size-1.5 animate-pulse rounded-full bg-primary/25 [animation-delay:300ms]" />
               </div>
             )}
           </>
