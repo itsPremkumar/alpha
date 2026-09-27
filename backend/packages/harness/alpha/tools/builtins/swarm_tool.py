@@ -237,21 +237,14 @@ def swarm_tool(
         # disagree with what the plan actually ran under.
         strategy = dict(plan.metrics.get("strategy") or {})
         if not strategy:
-            return (
-                f"### Swarm Strategy: `{plan.swarm_id}`\n"
-                f"- **Recorded**: `no` — no mode selection has been recorded for this plan.\n"
-                f"- **Declared mode**: `{plan.mode.value}`\n"
-            )
+            return f"### Swarm Strategy: `{plan.swarm_id}`\n- **Recorded**: `no` — no mode selection has been recorded for this plan.\n- **Mode**: `{plan.mode.value}`\n"
+        # `plan_mode` is what the plan ran under; `source` is the signal that
+        # chose it, which is what separates an explicit request from an
+        # automatic one (the plan stores only the resolved mode).
         summary = {
             "swarm_id": plan.swarm_id,
-            "declared_mode": plan.mode.value,
-            "effective_mode": strategy.get("mode"),
-            "should_swarm": strategy.get("should_swarm"),
-            "tier": strategy.get("tier"),
-            "source": strategy.get("source"),
-            "confidence": strategy.get("confidence"),
-            "rationale": strategy.get("rationale"),
-            "considered": strategy.get("considered"),
+            "plan_mode": plan.mode.value,
+            **strategy,
             "candidates": plan.metrics.get("strategy_candidates") or [],
         }
         return json.dumps(summary, indent=2, ensure_ascii=False)

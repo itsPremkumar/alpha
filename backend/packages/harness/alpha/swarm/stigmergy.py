@@ -137,7 +137,7 @@ class StigmergicTraceStore:
 
     @staticmethod
     def trace_id_for(category: str, key: str) -> str:
-        digest = hashlib.sha256(f"{category}\x00{key}".encode("utf-8")).hexdigest()
+        digest = hashlib.sha256(f"{category}\x00{key}".encode()).hexdigest()
         return f"tr-{digest[:16]}"
 
     @staticmethod

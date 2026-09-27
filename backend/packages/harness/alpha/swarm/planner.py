@@ -124,12 +124,7 @@ def score_plan(plan: SwarmPlan, *, max_concurrency: int = 8, endorsed: bool = Fa
     complexity_term = 1.0 - min(1.0, mean_out_degree / 2.0)
     overhead_term = 1.0 - min(1.0, max(0, n - effective_concurrency) / n)
 
-    base = (
-        _WEIGHT_PARALLELISM * parallelism
-        + _WEIGHT_DEPTH * depth_term
-        + _WEIGHT_COMPLEXITY * complexity_term
-        + _WEIGHT_OVERHEAD * overhead_term
-    )
+    base = _WEIGHT_PARALLELISM * parallelism + _WEIGHT_DEPTH * depth_term + _WEIGHT_COMPLEXITY * complexity_term + _WEIGHT_OVERHEAD * overhead_term
     total = min(1.0, base + (_TOPOLOGY_ENDORSEMENT if endorsed else 0.0))
     return PlanScore(
         parallelism=round(parallelism, 4),

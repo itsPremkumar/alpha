@@ -30,6 +30,12 @@ from alpha.swarm.consensus import (
 )
 from alpha.swarm.coordinator import SwarmCoordinator, get_swarm_coordinator
 from alpha.swarm.decomposer import SwarmTaskDecomposer
+from alpha.swarm.deliberation import (
+    DeliberationPolicy,
+    DeliberationReport,
+    rounds_from_evidence,
+    run_deliberation,
+)
 from alpha.swarm.estimator import SwarmBenefitEstimator
 from alpha.swarm.governor import SwarmResourceGovernor, get_swarm_resource_governor
 from alpha.swarm.incidents import (
@@ -49,15 +55,6 @@ from alpha.swarm.models import (
     TaskNodeState,
     is_terminal_swarm_status,
 )
-from alpha.swarm.reflection import SwarmReflection, SwarmReflector
-from alpha.swarm.runner import AsyncSwarmRunner
-from alpha.swarm.scheduler import SwarmPlanValidationError, SwarmScheduler
-from alpha.swarm.deliberation import (
-    DeliberationPolicy,
-    DeliberationReport,
-    rounds_from_evidence,
-    run_deliberation,
-)
 from alpha.swarm.planner import (
     PlanCandidate,
     PlanScore,
@@ -65,6 +62,9 @@ from alpha.swarm.planner import (
     score_plan,
     select_best_candidate,
 )
+from alpha.swarm.reflection import SwarmReflection, SwarmReflector
+from alpha.swarm.runner import AsyncSwarmRunner
+from alpha.swarm.scheduler import SwarmPlanValidationError, SwarmScheduler
 from alpha.swarm.stigmergy import StigmergicTrace, StigmergicTraceStore, TraceCategory
 from alpha.swarm.strategy import ComplexityTier, StrategyResolution, resolve_strategy, tier_for
 from alpha.swarm.telemetry import BudgetPressure, SwarmTelemetry

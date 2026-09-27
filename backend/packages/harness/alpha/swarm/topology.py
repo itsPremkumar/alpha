@@ -241,10 +241,16 @@ def route_topology(
     Deterministic and ordered: the first matching rule wins, so a given shape
     always routes the same way and the rationale can name the deciding numbers.
     A cyclic or sub-minimal graph never claims a benefit it cannot justify.
+
+    ``max_concurrency`` is accepted and deliberately unused: routing is a
+    statement about the graph's shape, and how many workers happen to be
+    available changes how fast a shape runs, not what shape it is.  Capacity is
+    applied later, in ``alpha.swarm.planner``, which is where a plan's makespan
+    is scored.  Keeping the parameter means callers can pass their real limit
+    without the routing contract silently depending on it.
     """
 
     f = features
-    concurrency = max(1, int(max_concurrency))
 
     if f.cyclic:
         return TopologyRoute(
@@ -284,6 +290,31 @@ def route_topology(
             should_swarm=True,
             confidence=0.8,
             rationale=f"{f.component_count} disjoint components with max width {f.max_width}; each is an independent sub-swarm so results scatter and gather without cross-component messaging",
+            features=f,
+        )
+
+    if f.depth == 2 and f.leaf_count == 1 and f.root_count >= 2:
+        # A textbook single-sink fan-in: every root at level 0 feeds exactly one
+        # node at level 1, so there is nothing to coordinate between them and no
+        # second reducer competing for the result.
+        #
+        # This has to be recognised *before* the coupling rule below.  Edge
+        # density is exactly what a reduce produces: n leaves wired to one
+        # reducer is the densest acyclic shape there is, so calling it "densely
+        # coupled" measures the artifact of the fan-in rather than a structural
+        # property.  Routing it to a leader-sequenced chain would discard the
+        # concurrency the plan was shaped for and hand a 2-item batch a 5-node
+        # pipeline.  The single-sink test is what keeps a genuine mesh (K2,2,
+        # which has two sinks) on the coupling rule, where the leader call is
+        # correct.  Items are required for MAP_REDUCE: without an item list
+        # there is nothing to map over, so the same shape is a gather.
+        mode = SwarmMode.MAP_REDUCE if items else SwarmMode.SCATTER_GATHER
+        detail = f"item list present ({len(items)} entries)" if items else "no explicit item list"
+        return TopologyRoute(
+            mode=mode,
+            should_swarm=True,
+            confidence=0.85,
+            rationale=f"fan-in to a single sink: {f.root_count} roots converge on 1 reducer at depth {f.depth} ({detail}); every root maps concurrently with no intermediate stage",
             features=f,
         )
 

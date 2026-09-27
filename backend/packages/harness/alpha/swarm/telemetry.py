@@ -132,11 +132,7 @@ class SwarmTelemetry:
         objective_counts = Counter(normalized_signature(task.objective) for task in plan.tasks.values() if normalized_signature(task.objective))
         repeated_objectives = sorted(signature for signature, count in objective_counts.items() if count > 1)
 
-        result_counts = Counter(
-            normalized_signature(task.result_summary)
-            for task in plan.tasks.values()
-            if task.state in _COMPLETED and task.result_summary and normalized_signature(task.result_summary)
-        )
+        result_counts = Counter(normalized_signature(task.result_summary) for task in plan.tasks.values() if task.state in _COMPLETED and task.result_summary and normalized_signature(task.result_summary))
         repeated_results = sorted(signature for signature, count in result_counts.items() if count > 1)
 
         retried = sorted(task.task_id for task in plan.tasks.values() if task.attempts > 1)

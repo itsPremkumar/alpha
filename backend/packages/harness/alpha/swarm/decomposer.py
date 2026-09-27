@@ -29,11 +29,22 @@ class SwarmTaskDecomposer:
 
         An explicit *mode* is honored as given — a named topology is a
         requirement, not a suggestion.  ``SwarmMode.AUTO`` is different: it runs
-        the automated resolver, measures the candidate graphs it produces, and
-        keeps the decomposition that scores best under its own concurrency
-        limit.  The whole decision, including the losing candidates and why they
-        lost, is recorded in ``plan.metrics["strategy"]`` so the choice is
-        auditable after the fact rather than a silent default.
+        the automated resolver, measures the graph it produces, and keeps
+        iterating until the plan's own shape and the recorded decision agree.
+        The whole decision, including the losing candidates and why they lost,
+        is recorded in ``plan.metrics["strategy"]`` so the choice is auditable
+        after the fact rather than a silent default.
+
+        The first pass cannot see any structure — there is no plan yet — so it
+        routes on the goal text alone.  That estimate then *builds* a graph, and
+        the graph's measured shape can route somewhere else: a text heuristic
+        that picks ``parallel`` for a phased goal still produces a
+        research/architect/review chain, which measures as ``hierarchical``.
+        Recording the second answer without rebuilding would leave the plan
+        labelled ``parallel`` while its own metrics say ``hierarchical``, so the
+        plan is rebuilt from the measured route instead.  The loop is bounded
+        and, because the rebuild makes ``plan.mode`` equal the mode that was just
+        resolved, the two agree by construction once it exits.
         """
 
         sid = swarm_id or f"swm-{uuid.uuid4().hex[:8]}"
@@ -43,35 +54,61 @@ class SwarmTaskDecomposer:
         effective_mode = mode if mode != SwarmMode.AUTO else resolution.mode
 
         plan = cls._build_plan(goal, effective_mode, items, sid, max_concurrency)
-        features = compute_dag_features(plan.tasks)
-        resolved = resolve_strategy(
-            goal,
-            items=items,
-            mode=mode,
-            requires_consensus=requires_consensus,
-            features=features,
-            max_concurrency=max_concurrency,
-        )
+        plan, resolved = cls._settle(goal, items, mode, plan, sid, max_concurrency, requires_consensus=requires_consensus)
 
         if automatic and resolved.allows_candidate_planning:
             candidate = cls._select_candidate_plan(goal, items, sid, max_concurrency, resolved)
             if candidate is not None:
-                plan = candidate
-                features = compute_dag_features(plan.tasks)
-                resolved = resolve_strategy(
-                    goal,
-                    items=items,
-                    mode=mode,
-                    requires_consensus=requires_consensus,
-                    features=features,
-                    max_concurrency=max_concurrency,
-                )
+                plan, resolved = cls._settle(goal, items, mode, candidate, sid, max_concurrency, requires_consensus=requires_consensus)
 
         # Recorded for every plan, explicit or automatic: an operator looking at
         # a finished run can see which signal chose the mode and which tier gated
         # the coordination machinery.
         plan.metrics["strategy"] = resolved.to_dict()
         return plan
+
+    @classmethod
+    def _settle(
+        cls,
+        goal: str,
+        items: Sequence[str] | None,
+        mode: SwarmMode,
+        plan: SwarmPlan,
+        swarm_id: str,
+        max_concurrency: int,
+        *,
+        requires_consensus: bool = False,
+    ) -> tuple[SwarmPlan, StrategyResolution]:
+        """Rebuild until the plan's own mode and its measured route agree.
+
+        A mode chosen from goal text alone is an estimate until a graph exists
+        to measure, and measuring can route elsewhere.  When it does, the plan is
+        rebuilt under the measured route rather than left carrying a label its own
+        metrics contradict.  The loop is bounded, and because each rebuild adopts
+        the mode that was just resolved, the pair agrees by construction on exit.
+        """
+
+        automatic = mode == SwarmMode.AUTO
+        resolved = resolve_strategy(goal, items=items, mode=mode, requires_consensus=requires_consensus, max_concurrency=max_concurrency)
+        for _ in range(2):
+            features = compute_dag_features(plan.tasks)
+            resolved = resolve_strategy(
+                goal,
+                items=items,
+                mode=mode,
+                requires_consensus=requires_consensus,
+                features=features,
+                max_concurrency=max_concurrency,
+            )
+            if not automatic or resolved.mode == plan.mode:
+                break
+            recorded_candidates = plan.metrics.get("strategy_candidates")
+            plan = cls._build_plan(goal, resolved.mode, items, swarm_id, max_concurrency)
+            if recorded_candidates is not None:
+                # The scored-pool audit trail describes the pool, not the winner's
+                # label, so it has to survive a rebuild that only re-labels.
+                plan.metrics["strategy_candidates"] = recorded_candidates
+        return plan, resolved
 
     @classmethod
     def _build_plan(
