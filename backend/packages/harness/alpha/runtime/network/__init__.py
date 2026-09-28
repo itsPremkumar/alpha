@@ -81,6 +81,9 @@ from alpha.runtime.network.wait_registry import (
     NetworkWaitStore,
     ParkOutcome,
     ResumeOutcome,
+    get_network_wait_service,
+    park_session_if_available,
+    set_network_wait_service,
 )
 
 __all__ = [
@@ -111,8 +114,11 @@ __all__ = [
     "ScriptedProbe",
     "TcpConnectivityProbe",
     "classify_network_error",
+    "get_network_wait_service",
     "is_connected",
     "is_offline",
     "normalize_targets",
+    "park_session_if_available",
     "proves_link_unavailable",
+    "set_network_wait_service",
 ]

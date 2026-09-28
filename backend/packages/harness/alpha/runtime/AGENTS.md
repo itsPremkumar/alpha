@@ -23,14 +23,25 @@ each module's own `AGENTS.md` is the normative contract.
   anything except the very first one. `classify_network_error().proves_link_down`
   is true only for DNS failure / refused / explicit unreachable — a `TIMEOUT`
   proves nothing and must not park work. TCP-connect only, no payload, no user
-  data. `config.yaml -> network` is startup-only. Tests:
-  `tests/test_network_resilience.py`.
+  data. `config.yaml -> network` is startup-only. `wait_registry.py` owns the
+  durable record of parked sessions; the worker's terminal-exception handler calls
+  `park_session_if_available()` through the process-wide accessor, and a parked
+  run's `network_waiting` stop reason is in `RECOVERABLE_RUN_STOP_REASONS` so
+  `SafeRunRecoveryService` keeps it alive. `NetworkWaitService` takes its resume
+  launcher **by injection and the Gateway installs none**: the continuation path
+  belongs to the recovery service, and inventing a per-thread resume here would
+  create a second authority that bypasses the side-effect gate. Tests:
+  `tests/test_network_resilience.py`, `tests/test_network_wait_registry.py`,
+  `tests/test_network_wiring.py`.
 - **`runtime/side_effects/`** — the per-effect answer to "what might have
   happened?". `UNKNOWN` is first-class, durable and enumerable; a lost worker
   (expired lease) is what creates it, including from `PENDING`; `UNDETERMINED`
   *reopens* rather than settling, because recording "could not tell" as a
   failure is how a duplicate side effect gets created. Digests only, never
-  arguments or results. Tests: `tests/test_side_effect_ledger.py`.
+  arguments or results. The semantics live here; the durable SQL implementation
+  and its cross-process conditional transitions are in
+  `alpha.persistence.side_effects`. Tests: `tests/test_side_effect_ledger.py`,
+  `tests/test_side_effect_ledger_sql.py`.
 - **`runtime/supervisor/`** — a restart policy that cannot loop forever. Reuses
   `resilience.RetryPolicy` for the backoff maths but adds a **sliding-window**
   restart budget, because consecutive-failure counters cannot catch "crashes once

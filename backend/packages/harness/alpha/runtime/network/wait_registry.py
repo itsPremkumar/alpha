@@ -420,3 +420,59 @@ def _owner() -> str:
     import socket
 
     return f"{socket.gethostname()}:{uuid.uuid4().hex}"
+
+
+# ---------------------------------------------------------------------------
+# Process-wide registration
+# ---------------------------------------------------------------------------
+# The harness cannot import ``app.*`` (``tests/test_harness_boundary.py``), so a
+# harness-side worker that needs to park a session resolves the service through
+# these accessors rather than receiving it. The Gateway installs the instance at
+# startup. This is the same shape as ``alpha.events.bus.get_event_bus()`` and
+# ``alpha.orchestrator.restart.register_restart_hook()``.
+#
+# ``None`` is the normal case in a harness-only process, and every caller must
+# treat it as "parking is unavailable" rather than raising: a missing optional
+# service must never turn a run failure into a different run failure.
+
+_wait_service: NetworkWaitService | None = None
+
+
+def set_network_wait_service(service: NetworkWaitService | None) -> None:
+    """Install (or clear, with ``None``) the process-wide wait service."""
+    global _wait_service
+    _wait_service = service
+
+
+def get_network_wait_service() -> NetworkWaitService | None:
+    """Return the installed wait service, or ``None`` when there is none."""
+    return _wait_service
+
+
+async def park_session_if_available(
+    *,
+    thread_id: str,
+    run_id: str | None = None,
+    user_id: str | None = None,
+    reason: str = "connectivity_lost",
+    last_error: str | None = None,
+) -> bool:
+    """Park a session when a service is installed. Never raises.
+
+    Returns whether a park was actually recorded. A harness-only process, a
+    deployment with ``network.enabled: false``, and a store outage all return
+    ``False`` rather than propagating, because the caller's real failure has
+    already been recorded by the run ledger and this must not become a second,
+    noisier one.
+    """
+    service = get_network_wait_service()
+    if service is None:
+        return False
+    try:
+        await service.park(thread_id=thread_id, run_id=run_id, user_id=user_id, reason=reason, last_error=last_error)
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.warning("could not record a network wait for thread %s", thread_id, exc_info=True)
+        return False
+    return True

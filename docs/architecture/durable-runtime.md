@@ -226,6 +226,21 @@ the existing row), `claim_due` is a conditional `UPDATE` so two gateway instance
 cannot both take a row, and `max_claims_per_pass` stops a backlog stampeding the
 provider the instant the link returns.
 
+**The Gateway owns the lifecycle.** `langgraph_runtime()` builds the monitor from
+`config.yaml -> network`, runs the first probe *before* starting the poll loop (so
+a Gateway booting on a dead network reports `offline` rather than `unknown`), and
+stops both services at `ADMISSION_CLOSED` during the drain — before the run drain,
+because a probe in flight during shutdown would publish into a tearing-down
+process. Startup also reclaims waits whose claim lease outlived the previous
+process, so a crashed Gateway cannot strand its parked sessions. A `memory`
+database backend gets the monitor but not the registry, and says so in the log.
+
+A run that dies from a *definite* link failure is parked from the worker's
+terminal-exception handler, and its stop reason `network_waiting` is in
+`RECOVERABLE_RUN_STOP_REASONS` — which is the mechanism by which
+`SafeRunRecoveryService` keeps it alive. A **timeout does not park**: it proves
+nothing about the link, and parking on one would park healthy work.
+
 → `backend/packages/harness/alpha/persistence/network_waits/AGENTS.md`
 
 ### The side-effect ledger in SQL
@@ -322,7 +337,7 @@ Honesty about the boundary is part of the feature.
 |---|---|---|
 | Session lifecycle vocabulary | `alpha.runtime.sessions` | `tests/test_durable_session_state_machine.py` |
 | Connectivity state, probe, monitor | `alpha.runtime.network` | `tests/test_network_resilience.py` |
-| Durable parked sessions | `alpha.runtime.network.wait_registry`, `alpha.persistence.network_waits` | `tests/test_network_wait_registry.py` |
+| Durable parked sessions | `alpha.runtime.network.wait_registry`, `alpha.persistence.network_waits` | `tests/test_network_wait_registry.py`, `tests/test_network_wiring.py` |
 | Side-effect ledger (semantics) | `alpha.runtime.side_effects` | `tests/test_side_effect_ledger.py` |
 | Side-effect ledger (durable) | `alpha.persistence.side_effects` | `tests/test_side_effect_ledger_sql.py` |
 | Process supervision and crash-loop policy | `alpha.runtime.supervisor` | `tests/test_process_supervisor.py` |
@@ -343,11 +358,6 @@ make:
   tested library with a production-referenced contract, and the Gateway lifespan
   drain runs through `alpha.runtime.shutdown` — but `start.ps1` still owns process
   startup, so nothing yet restarts the backend automatically on Windows.
-- **`NetworkWaitService` has no Gateway wiring.** The repository, the service, the
-  bounded-resume contract and the `WAITING_NETWORK` session state all exist and
-  are tested, but the launcher callback is not yet injected in `deps.py` and the
-  monitor is not yet started by the lifespan. Until that happens, a park is
-  recorded by whatever calls `park()` and no pass runs automatically.
 - **No per-tool-call reconciliation API or UI.** The unknown set is queryable via
   `list_unknown()` and durable in SQL, but there is no route or frontend surface
   for a human to work the queue off.
@@ -356,6 +366,18 @@ make:
   feed is a message feed and audit trace, and nothing folds it back into a
   session state. `alpha.runtime.sessions` derives that state from live signals
   instead.
+- **The parked-session registry has no resume launcher.** The *continuation* path
+  exists and stays fail-closed: `SafeRunRecoveryService`'s scan is stop-reason
+  driven, and `network_waiting` is in `RECOVERABLE_RUN_STOP_REASONS`, so a
+  network-parked run is picked up by the service that already owns safe
+  continuation. What does not exist is a *per-thread* resume API, so the registry
+  records and bounds rather than launching. Inventing one here would create a
+  second continuation authority that bypasses the side-effect gate — which is why
+  `NetworkWaitService` takes its launcher by injection and the Gateway installs
+  none.
+- **A `memory` database backend gets no parked-session registry.** There is
+  nowhere durable to record a park, so only the connectivity measurement runs and
+  the degradation is logged rather than silently absorbed.
 - **`AWAITING` subagent reconciliation** is served by the existing
   `recovery_confirmation_required` stop reason, not by a dedicated per-subagent
   ledger.

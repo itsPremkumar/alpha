@@ -39,11 +39,17 @@ logger = logging.getLogger(__name__)
 ORPHAN_RECOVERY_STOP_REASON = "orphan_recovered"
 GATEWAY_SHUTDOWN_RECOVERY_REASON = "gateway_shutdown"
 MODEL_FAILURE_RECOVERY_REASON = "model_failure"
+#: The run died because the *link* died, so the session is parked rather than
+#: finished. Membership here is what tells ``SafeRunRecoveryService`` the terminal
+#: state is recoverable: without it a network-caused failure would be reported as
+#: a permanent one, which is exactly what the durable-runtime contract forbids.
+NETWORK_WAIT_RECOVERY_REASON = "network_waiting"
 RECOVERABLE_RUN_STOP_REASONS = frozenset(
     {
         ORPHAN_RECOVERY_STOP_REASON,
         GATEWAY_SHUTDOWN_RECOVERY_REASON,
         MODEL_FAILURE_RECOVERY_REASON,
+        NETWORK_WAIT_RECOVERY_REASON,
     }
 )
 STARTUP_ORPHAN_RECOVERY_ERROR = "Gateway restarted before this run reached a durable final state."

@@ -29,9 +29,18 @@ from langgraph.types import Checkpointer
 
 from alpha.community.browser_automation.session import browser_multi_worker_error
 from alpha.config.app_config import AppConfig, get_app_config
+from alpha.config.network_resilience_config import to_monitor_config
+from alpha.events.bus import get_event_bus
 from alpha.persistence.feedback import FeedbackRepository
+from alpha.persistence.network_waits import NetworkWaitRepository
 from alpha.runtime import ORPHAN_RECOVERY_STOP_REASON, STARTUP_ORPHAN_RECOVERY_ERROR, RunContext, RunManager, StreamBridge
 from alpha.runtime.events.store.base import RunEventStore
+from alpha.runtime.network import (
+    NetworkMonitor,
+    NetworkState,
+    NetworkWaitService,
+    set_network_wait_service,
+)
 from alpha.runtime.runs.store.base import RunStore
 from alpha.runtime.shutdown import PlannedShutdown, ShutdownPhase
 from app.gateway.run_recovery import SafeRunRecoveryService
@@ -47,6 +56,17 @@ logger = logging.getLogger(__name__)
 # them together if their sum must stay within the server's graceful-shutdown
 # timeout.
 _RUN_DRAIN_TIMEOUT_SECONDS = 5.0
+
+
+async def _reclaim_stale_network_leases(store: NetworkWaitRepository) -> None:
+    """Return waits whose claim lease outlived the process that took it."""
+    try:
+        reclaimed = await store.reclaim_expired_leases()
+    except Exception:
+        logger.warning("could not reclaim stale network-wait leases at startup", exc_info=True)
+        return
+    if reclaimed:
+        logger.warning("reclaimed %d parked session(s) whose claim lease outlived the previous process", reclaimed)
 
 
 def _browser_tools_enabled_in_config(config: AppConfig) -> bool:
@@ -624,6 +644,48 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
         # Start the lease heartbeat if enabled (multi-worker deployments).
         await app.state.run_manager.start_heartbeat()
 
+        # Connectivity monitoring, plus the durable record of parked sessions.
+        #
+        # Two independent concerns, deliberately wired together because they
+        # share a lifecycle. The monitor is a *measurement*; the wait registry is
+        # the *bookkeeping*. Neither decides whether work may continue -- that
+        # stays with SafeRunRecoveryService, which already resumes a run whose
+        # durable stop reason is ``network_waiting`` because that reason is in
+        # RECOVERABLE_RUN_STOP_REASONS.
+        app.state.network_monitor = None
+        app.state.network_waits = None
+        startup_network = getattr(startup_config, "network", None)
+        if startup_network is not None and startup_network.enabled:
+            monitor = NetworkMonitor(to_monitor_config(startup_network), targets=startup_network.to_probe_targets(), bus=get_event_bus())
+            app.state.network_monitor = monitor
+
+            # A ``memory`` database backend has no SQL repositories, so there is
+            # nowhere durable to record a park. The monitor still runs, so
+            # connectivity is observable; the registry does not, and
+            # park_session_if_available then reports False rather than pretending
+            # a park was recorded.
+            database_backend = getattr(getattr(startup_config, "database", None), "backend", "memory")
+            if database_backend != "memory":
+                # Reuses the one session factory every other repository took, so the registry shares the engine and its pool rather than opening another.
+                wait_store = NetworkWaitRepository(sf)
+                wait_service = NetworkWaitService(wait_store, network_state=lambda: monitor.state)
+                app.state.network_waits = wait_service
+                set_network_wait_service(wait_service)
+                # A pass that claimed a row and then died leaves it ``resuming``
+                # with no way back, so a crashed Gateway would otherwise strand
+                # its parked sessions until somebody noticed.
+                await _reclaim_stale_network_leases(wait_store)
+            else:
+                logger.info("network monitoring is active but parked-session durability is unavailable on a memory database backend")
+
+            # The first probe publishes immediately, so a Gateway booting on a
+            # dead network reports ``offline`` now rather than ``unknown`` one
+            # poll later. Deliberately awaited: a park decided before the first
+            # reading would act on a guess.
+            await monitor.check_once()
+            if monitor.state is not NetworkState.OFFLINE:
+                monitor.start()
+
         try:
             yield
         finally:
@@ -643,6 +705,30 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
             drain = PlannedShutdown(
                 overall_timeout_seconds=_RUN_DRAIN_TIMEOUT_SECONDS,
                 per_step_timeout_seconds=_RUN_DRAIN_TIMEOUT_SECONDS,
+            )
+            # Connectivity services stop before the run drain, not after: a probe
+            # in flight during shutdown would publish a transition into a
+            # tearing-down process.
+            wait_service = getattr(app.state, "network_waits", None)
+            network_monitor = getattr(app.state, "network_monitor", None)
+
+            async def stop_network_services() -> None:
+                if wait_service is not None:
+                    try:
+                        await wait_service.stop(timeout=1.0)
+                    finally:
+                        set_network_wait_service(None)
+                        app.state.network_waits = None
+                if network_monitor is not None:
+                    try:
+                        await network_monitor.stop(timeout=1.0)
+                    finally:
+                        app.state.network_monitor = None
+
+            drain.register(
+                ShutdownPhase.ADMISSION_CLOSED,
+                stop_network_services,
+                description="stop the connectivity monitor and the parked-session registry",
             )
 
             async def stop_recovery_service() -> None:
