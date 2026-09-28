@@ -74,6 +74,8 @@ from alpha.runtime.goal import (
     write_thread_goal,
 )
 from alpha.runtime.keyed_lock import AsyncKeyedLockTable
+from alpha.runtime.network.errors import classify_network_error
+from alpha.runtime.network.wait_registry import park_session_if_available
 from alpha.runtime.serialization import serialize
 from alpha.runtime.stream_bridge import StreamBridge
 from alpha.runtime.stream_modes import normalize_stream_modes, to_langgraph_stream_modes
@@ -86,7 +88,7 @@ from alpha.utils.messages import message_to_text
 from alpha.workspace_changes import capture_workspace_snapshot, get_changed_output_paths, record_workspace_changes
 from alpha.workspace_changes.types import WorkspaceSnapshot
 
-from .manager import GATEWAY_SHUTDOWN_RECOVERY_REASON, MODEL_FAILURE_RECOVERY_REASON, RunManager, RunRecord, RunStartOutcome
+from .manager import GATEWAY_SHUTDOWN_RECOVERY_REASON, MODEL_FAILURE_RECOVERY_REASON, NETWORK_WAIT_RECOVERY_REASON, RunManager, RunRecord, RunStartOutcome
 from .naming import resolve_root_run_name
 from .schemas import RunStatus
 
@@ -1576,6 +1578,21 @@ async def run_agent(
             error=error_msg,
             **terminal_status_kwargs,
         )
+        # A run that died because the *link* died is alive and parked, not
+        # finished, so the durable-runtime contract requires it to be recorded as
+        # such. Only a *definite* link failure qualifies: a timeout proves nothing
+        # about connectivity (a saturated link, a cold TLS path, and a slow
+        # provider all produce one), and parking on those would park healthy work.
+        # ``park_session_if_available`` never raises and returns False when no
+        # service is installed, so this adds no new failure path.
+        if cancel_action is None and classify_network_error(exc).proves_link_down:
+            await park_session_if_available(
+                thread_id=record.thread_id,
+                run_id=run_id,
+                user_id=record.user_id,
+                reason=NETWORK_WAIT_RECOVERY_REASON,
+                last_error=type(exc).__name__,
+            )
         if cancel_action is not None:
             await _finish_cancellation(cancel_action)
         else:

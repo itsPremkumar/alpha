@@ -29,10 +29,19 @@ from langgraph.types import Checkpointer
 
 from alpha.community.browser_automation.session import browser_multi_worker_error
 from alpha.config.app_config import AppConfig, get_app_config
+from alpha.config.network_resilience_config import to_monitor_config
+from alpha.events.bus import get_event_bus
 from alpha.persistence.feedback import FeedbackRepository
+from alpha.persistence.network_waits import NetworkWaitRepository
 from alpha.runtime import ORPHAN_RECOVERY_STOP_REASON, STARTUP_ORPHAN_RECOVERY_ERROR, RunContext, RunManager, StreamBridge
 from alpha.runtime.events.store.base import RunEventStore
+from alpha.runtime.network import (
+    NetworkMonitor,
+    NetworkWaitService,
+    set_network_wait_service,
+)
 from alpha.runtime.runs.store.base import RunStore
+from alpha.runtime.shutdown import PlannedShutdown, ShutdownPhase
 from app.gateway.run_recovery import SafeRunRecoveryService
 
 logger = logging.getLogger(__name__)
@@ -46,6 +55,17 @@ logger = logging.getLogger(__name__)
 # them together if their sum must stay within the server's graceful-shutdown
 # timeout.
 _RUN_DRAIN_TIMEOUT_SECONDS = 5.0
+
+
+async def _reclaim_stale_network_leases(store: NetworkWaitRepository) -> None:
+    """Return waits whose claim lease outlived the process that took it."""
+    try:
+        reclaimed = await store.reclaim_expired_leases()
+    except Exception:
+        logger.warning("could not reclaim stale network-wait leases at startup", exc_info=True)
+        return
+    if reclaimed:
+        logger.warning("reclaimed %d parked session(s) whose claim lease outlived the previous process", reclaimed)
 
 
 def _browser_tools_enabled_in_config(config: AppConfig) -> bool:
@@ -623,6 +643,53 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
         # Start the lease heartbeat if enabled (multi-worker deployments).
         await app.state.run_manager.start_heartbeat()
 
+        # Connectivity monitoring, plus the durable record of parked sessions.
+        #
+        # Two independent concerns, deliberately wired together because they
+        # share a lifecycle. The monitor is a *measurement*; the wait registry is
+        # the *bookkeeping*. Neither decides whether work may continue -- that
+        # stays with SafeRunRecoveryService, which already resumes a run whose
+        # durable stop reason is ``network_waiting`` because that reason is in
+        # RECOVERABLE_RUN_STOP_REASONS.
+        app.state.network_monitor = None
+        app.state.network_waits = None
+        startup_network = getattr(startup_config, "network", None)
+        if startup_network is not None and startup_network.enabled:
+            monitor = NetworkMonitor(to_monitor_config(startup_network), targets=startup_network.to_probe_targets(), bus=get_event_bus())
+            app.state.network_monitor = monitor
+
+            # A ``memory`` database backend has no SQL repositories, so there is
+            # nowhere durable to record a park. The monitor still runs, so
+            # connectivity is observable; the registry does not, and
+            # park_session_if_available then reports False rather than pretending
+            # a park was recorded.
+            database_backend = getattr(getattr(startup_config, "database", None), "backend", "memory")
+            if database_backend != "memory":
+                # Reuses the one session factory every other repository took, so the registry shares the engine and its pool rather than opening another.
+                wait_store = NetworkWaitRepository(sf)
+                wait_service = NetworkWaitService(wait_store, network_state=lambda: monitor.state)
+                app.state.network_waits = wait_service
+                set_network_wait_service(wait_service)
+                # A pass that claimed a row and then died leaves it ``resuming``
+                # with no way back, so a crashed Gateway would otherwise strand
+                # its parked sessions until somebody noticed.
+                await _reclaim_stale_network_leases(wait_store)
+            else:
+                logger.info("network monitoring is active but parked-session durability is unavailable on a memory database backend")
+
+            # The first probe publishes immediately, so a Gateway booting on a
+            # dead network reports ``offline`` now rather than ``unknown`` one
+            # poll later. Deliberately awaited: a park decided before the first
+            # reading would act on a guess.
+            await monitor.check_once()
+            # The loop starts unconditionally, *including* when the first
+            # reading is OFFLINE. Not polling while offline is exactly backwards:
+            # this loop is the only thing that can ever notice the link coming
+            # back, so a host that booted offline would sit there forever and no
+            # parked session would ever resume. Politeness about probing a dead
+            # link is the backoff ladder's job, and it is already bounded.
+            monitor.start()
+
         try:
             yield
         finally:
@@ -633,27 +700,88 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
             # raises PoolClosed (issue #3373).
             run_manager = getattr(app.state, "run_manager", None)
             recovery_service = getattr(app.state, "run_recovery_service", None)
-            if recovery_service is not None:
-                try:
-                    await recovery_service.stop(timeout=1.0)
-                finally:
-                    app.state.run_recovery_service = None
+            # The drain runs through alpha.runtime.shutdown.PlannedShutdown so its
+            # outcome is *reported* rather than assumed. The previous best-effort
+            # sequence could leave a run undrained while the process exited
+            # looking clean, and nothing downstream could tell. The steps and
+            # their order are unchanged; only the bookkeeping and the honesty
+            # are new.
+            drain = PlannedShutdown(
+                overall_timeout_seconds=_RUN_DRAIN_TIMEOUT_SECONDS,
+                per_step_timeout_seconds=_RUN_DRAIN_TIMEOUT_SECONDS,
+            )
+            wait_service = getattr(app.state, "network_waits", None)
+            network_monitor = getattr(app.state, "network_monitor", None)
+
+            # ONE step closes admission, and it does all three things. This is
+            # not tidiness: ``PlannedShutdown.register`` replaces an existing step
+            # for the same phase, so registering the network stop and the recovery
+            # stop as two ADMISSION_CLOSED steps silently dropped the first one --
+            # the network services were never stopped and the harness accessor
+            # kept pointing at a dead service. Compose instead.
+            async def close_admission() -> None:
+                # Recovery first: it is the component that launches new
+                # continuations, so nothing new may start while it drains.
+                if recovery_service is not None:
+                    try:
+                        await recovery_service.stop(timeout=1.0)
+                    finally:
+                        app.state.run_recovery_service = None
+                # Then connectivity. A probe in flight during shutdown would
+                # publish a transition into a tearing-down process, and a registry
+                # still claiming rows would act on services already going away.
+                if wait_service is not None:
+                    try:
+                        await wait_service.stop(timeout=1.0)
+                    finally:
+                        set_network_wait_service(None)
+                        app.state.network_waits = None
+                if network_monitor is not None:
+                    try:
+                        await network_monitor.stop(timeout=1.0)
+                    finally:
+                        app.state.network_monitor = None
+
+            # Admission closes first, so no new recovery pass can launch a
+            # continuation while the run manager is being drained.
+            drain.register(
+                ShutdownPhase.ADMISSION_CLOSED,
+                close_admission,
+                description="stop the safe-recovery service, the parked-session registry, and the connectivity monitor",
+            )
             if run_manager is not None:
-                shutdown_deadline = asyncio.get_running_loop().time() + _RUN_DRAIN_TIMEOUT_SECONDS
-                try:
+
+                async def drain_inflight_runs() -> None:
                     await _drain_inflight_runs(run_manager)
-                finally:
+
+                drain.register(
+                    ShutdownPhase.OPERATIONS_DRAINED,
+                    drain_inflight_runs,
+                    timeout_seconds=_RUN_DRAIN_TIMEOUT_SECONDS,
+                    description="drain in-flight run tasks before the checkpointer pool closes",
+                )
+
+                async def flush_recovered_stream_cleanups() -> None:
+                    # Unfinished stream cleanups become immediate deletes, so no
+                    # recovered run keeps a bridge entry alive.
                     await _flush_recovered_stream_cleanups(
                         app.state.stream_bridge,
                         recovered_stream_cleanup_tasks,
-                        timeout=min(
-                            1.0,
-                            max(
-                                0.0,
-                                shutdown_deadline - asyncio.get_running_loop().time(),
-                            ),
-                        ),
+                        timeout=1.0,
                     )
+
+                drain.register(
+                    ShutdownPhase.WORKERS_STOPPED,
+                    flush_recovered_stream_cleanups,
+                    timeout_seconds=1.0,
+                    description="release recovered-run stream bridge entries",
+                )
+
+            drain_report = await drain.shutdown()
+            if not drain_report.is_clean:
+                # A partial drain is the one thing an operator debugging a
+                # stuck restart needs, so it is logged in full.
+                logger.warning("Gateway drain incomplete:\n%s", drain_report.to_text())
 
 
 # ---------------------------------------------------------------------------

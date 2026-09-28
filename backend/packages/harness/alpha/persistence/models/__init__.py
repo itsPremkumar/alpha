@@ -25,11 +25,13 @@ from alpha.persistence.feedback.model import FeedbackRow
 from alpha.persistence.managed_subagents.model import ManagedSubagentRow
 from alpha.persistence.mcp_tasks.model import McpTaskRow
 from alpha.persistence.models.run_event import RunEventRow
+from alpha.persistence.network_waits.model import NetworkWaitRow
 from alpha.persistence.personal_access_tokens.model import PersonalAccessTokenRow
 from alpha.persistence.projects.model import ProjectRow
 from alpha.persistence.run.model import RunRow
 from alpha.persistence.scheduled_task_runs.model import ScheduledTaskRunRow
 from alpha.persistence.scheduled_tasks.model import ScheduledTaskRow
+from alpha.persistence.side_effects.model import ToolSideEffectRow
 from alpha.persistence.subagent_batches.model import SubagentBatchItemRow, SubagentBatchRow
 from alpha.persistence.thread_meta.model import ThreadMetaRow
 from alpha.persistence.user.model import UserRow
@@ -44,6 +46,7 @@ __all__ = [
     "FeedbackRow",
     "McpTaskRow",
     "ManagedSubagentRow",
+    "NetworkWaitRow",
     "PersonalAccessTokenRow",
     "ProjectRow",
     "RunEventRow",
@@ -52,6 +55,7 @@ __all__ = [
     "ScheduledTaskRunRow",
     "SubagentBatchRow",
     "SubagentBatchItemRow",
+    "ToolSideEffectRow",
     "ThreadMetaRow",
     "UserRow",
     "WebhookDeliveryRow",

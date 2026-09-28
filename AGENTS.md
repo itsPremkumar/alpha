@@ -250,6 +250,19 @@ in another layer; follow the pointer.
   give no multi-process coherence, retained persistent records (not display pages)
   belong in snapshots, and working memory stays ephemeral. See also
   **[docs/MEMORY.md](docs/MEMORY.md)**.
+- **Durable runtime** — the layer that makes "a process, UI, network, provider,
+  or Windows restart must not become a task failure" true. It is **additive**:
+  `RunManager` stays the sole lifecycle owner and `SafeRunRecoveryService` stays
+  the only safe-continuation authority, so nothing here is a second execution
+  path. It adds what was genuinely missing — an explicit session lifecycle
+  vocabulary (`runtime/sessions/`), connectivity as a first-class state
+  (`runtime/network/`), a per-effect `UNKNOWN` + reconciliation ledger
+  (`runtime/side_effects/`), a crash-loop-bounded process supervisor
+  (`runtime/supervisor/`), and an ordered, honestly-reported shutdown
+  (`runtime/shutdown.py`, which the Gateway lifespan drain runs through). Map and
+  the explicit **not-yet-implemented** list:
+  **[docs/architecture/durable-runtime.md](docs/architecture/durable-runtime.md)**;
+  normative contracts: the `AGENTS.md` beside each module.
 
 ## Cross-Cutting Conventions
 

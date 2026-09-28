@@ -4,7 +4,25 @@ FastAPI listens on port 8001; health: `GET /health` (liveness) and `GET /health/
 
 Durable MCP notifications use internal Agent runs. Keep their trusted delivery instruction outside the user-input boundary, and frame serialized remote events as untrusted before model invocation. Strict thread existence/ownership admission dead-letters events whose task outlives its deleted chat instead of recreating the thread.
 
-**Safe run continuation** is owned by `app/gateway/run_recovery.py`, not by `RunManager` or an individual router. `RunManager` remains the sole lifecycle owner and the only producer of orphan/shutdown terminal states; the Gateway service consumes those durable states, checks the current checkpoint through a graph-required `CheckpointStateAccessor` (raw full-mode blobs cannot prove `next`/`tasks` and are rejected for recovery), and launches continuation through the same trusted `start_run` boundary used by scheduled/internal work. Only pending model/agent nodes auto-resume. Tool, MCP, custom, shell, browser, write/delete, payment, unknown, ownerless, stale-thread, exhausted, or malformed-checkpoint cases become explicit CAS-fenced stop reasons and never replay automatically. Scheduled-task and durable MCP-notification rows are also excluded because their own queue/dispatcher owns occurrence identity and completion accounting; durable cancellation requests are excluded as an explicit stop fence even if shutdown writes a recoverable-looking reason. Each continuation has a deterministic idempotency key and a persisted attempt number, so a crash between checkpoint inspection and admission cannot create duplicate workers. Network-disconnected SSE clients do not cancel creator runs by default; `POST .../cancel` remains the explicit stop path. See `packages/harness/alpha/runtime/AGENTS.md` for the full state/reason contract.
+**Connectivity lifecycle.** `langgraph_runtime()` owns the network monitor and
+the durable parked-session registry, and stops both at `ShutdownPhase.ADMISSION_CLOSED`
+inside the planned drain - before the run drain, because a probe in flight during
+shutdown would publish a transition into a tearing-down process, and a registry
+still claiming rows would act on services that are already going away. The first
+probe is awaited *before* the poll loop starts, so a Gateway booting on a dead
+network reports `offline` rather than `unknown` one poll later. Startup reclaims
+waits whose claim lease outlived the previous process. A `database.backend:
+memory` deployment gets the monitor but not the registry - there is nowhere
+durable to record a park - and logs that degradation rather than absorbing it
+silently. The Gateway installs **no** resume launcher on `NetworkWaitService`:
+continuation belongs to `SafeRunRecoveryService`, whose stop-reason-driven scan
+already picks up a `network_waiting` run, and inventing a per-thread resume here
+would create a second continuation authority that bypasses the fail-closed
+side-effect gate. Owner map:
+[packages/harness/alpha/runtime/AGENTS.md](../packages/harness/alpha/runtime/AGENTS.md);
+user map: [docs/architecture/durable-runtime.md](../../../docs/architecture/durable-runtime.md).
+
+**Safe run continuation** is owned by `app/gateway/run_recovery.py`, not by`RunManager` or an individual router. `RunManager` remains the sole lifecycle owner and the only producer of orphan/shutdown terminal states; the Gateway service consumes those durable states, checks the current checkpoint through a graph-required `CheckpointStateAccessor` (raw full-mode blobs cannot prove `next`/`tasks` and are rejected for recovery), and launches continuation through the same trusted `start_run` boundary used by scheduled/internal work. Only pending model/agent nodes auto-resume. Tool, MCP, custom, shell, browser, write/delete, payment, unknown, ownerless, stale-thread, exhausted, or malformed-checkpoint cases become explicit CAS-fenced stop reasons and never replay automatically. Scheduled-task and durable MCP-notification rows are also excluded because their own queue/dispatcher owns occurrence identity and completion accounting; durable cancellation requests are excluded as an explicit stop fence even if shutdown writes a recoverable-looking reason. Each continuation has a deterministic idempotency key and a persisted attempt number, so a crash between checkpoint inspection and admission cannot create duplicate workers. Network-disconnected SSE clients do not cancel creator runs by default; `POST .../cancel` remains the explicit stop path. See `packages/harness/alpha/runtime/AGENTS.md` for the full state/reason contract.
 
 CORS is same-origin by default when requests enter through nginx on port 2026. Split-origin or port-forwarded browser clients must opt in with `GATEWAY_CORS_ORIGINS` (exact origins); Gateway `CORSMiddleware` and `CSRFMiddleware` both read that variable so browser CORS and auth-origin checks stay aligned. Those clients also need `CORS_EXPOSED_HEADERS` (`csrf_middleware.py`): run-creating routes return the run's id in `Content-Location`, which is not CORS-safelisted, so JS cannot read it unless it is exposed — and the LangGraph SDK resolves run metadata from that header alone, so withholding it breaks `useStream`'s `onCreated` and thread-gated actions.
 

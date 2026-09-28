@@ -54,9 +54,7 @@ STARTUP_ONLY_FIELDS: dict[str, str] = {
         "AioSandboxProvider and E2BSandboxProvider normalize and capture the skills mount root when their provider singleton starts; "
         "sandbox identity, mounts, remote metadata, and skill synchronization must keep using that one root until the Gateway restarts."
     ),
-    "log_level": (
-        "apply_logging_level() runs only during app.py startup; it sets the alpha/app logger levels and may lower root handler thresholds so configured messages can propagate. A freshly reloaded AppConfig does not retrigger it."
-    ),
+    "log_level": ("apply_logging_level() runs only during app.py startup; it sets the alpha/app logger levels and may lower root handler thresholds so configured messages can propagate. A freshly reloaded AppConfig does not retrigger it."),
     "logging": (
         "configure_logging() runs only during app.py startup; it installs/removes the trace-context filter and the enhanced formatter on root handlers, "
         "and a freshly reloaded AppConfig does not retrigger it, so a runtime edit to logging.enhance.* needs a Gateway restart. Only log output is "
@@ -89,6 +87,12 @@ STARTUP_ONLY_FIELDS: dict[str, str] = {
     "dedupe_storage": (
         "make_inbound_dedupe_store() resolves the inbound dedupe store once when ChannelService is constructed at startup; the store "
         "(in-process memory or shared Postgres) is captured onto ChannelManager and is not rebuilt on config.yaml edits."
+    ),
+    "network": (
+        "NetworkMonitor is constructed and its poll task started once during Gateway lifespan startup; the published connectivity state, "
+        "the in-flight backoff ladder, and the probe target set are captured into the monitor instance and are not rebuilt on config.yaml edits. "
+        "Changing probe endpoints, hysteresis thresholds, or the backoff ladder requires a Gateway restart, because a mid-flight swap would "
+        "split the process across two connectivity policies."
     ),
 }
 

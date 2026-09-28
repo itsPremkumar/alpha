@@ -33,6 +33,7 @@ from alpha.config.mcp_tasks_config import McpTasksConfig
 from alpha.config.memory_config import MemoryConfig, load_memory_config_from_dict
 from alpha.config.model_config import ModelConfig, ProviderConfig
 from alpha.config.model_routing_config import ModelRoutingConfig
+from alpha.config.network_resilience_config import NetworkResilienceConfig
 from alpha.config.read_before_write_config import ReadBeforeWriteConfig
 from alpha.config.reload_boundary import format_field_description
 from alpha.config.review_guard_config import ReviewGuardConfig
@@ -442,6 +443,13 @@ class AppConfig(BaseModel):
         description=format_field_description(
             "run_ownership",
             field_doc="Run ownership, lease, and safe checkpoint auto-resume configuration for single- and multi-worker deployments.",
+        ),
+    )
+    network: NetworkResilienceConfig = Field(
+        default_factory=NetworkResilienceConfig,
+        description=format_field_description(
+            "network",
+            field_doc="Internet-connectivity monitoring policy. Connectivity is a first-class runtime state: a run that needs the network parks as waiting_network instead of failing, and resumes automatically when the link returns.",
         ),
     )
     dedupe_storage: DedupeStorageConfig = Field(
