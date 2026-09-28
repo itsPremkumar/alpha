@@ -1287,12 +1287,26 @@ async def run_agent(
         # _resolve_model_name in agent.py may return the default model if the
         # requested name is not in the allowlist — this update ensures the
         # persisted model_name reflects the actual model used.
-        if record.model_name is not None:
-            resolved = getattr(agent, "metadata", {}) or {}
-            if isinstance(resolved, dict):
-                effective = resolved.get("model_name")
-                if effective and effective != record.model_name:
-                    await run_manager.update_model_name(record.run_id, effective)
+        #
+        # This runs even when the record has no model name yet. It used to be
+        # guarded on `record.model_name is not None`, which meant it could only
+        # *correct* a name that had already been recorded. A run that selected
+        # its model through the runtime config key (`config.configurable
+        # .model_name` — documented in the agents guide, and what the web client
+        # sends) rather than through `context.model_name` left the record null
+        # forever: the agent really did run on the requested model, but the row
+        # said `model: null`, per-model token attribution landed in a bucket
+        # literally named "unknown", and the console's per-model cost column
+        # could never be populated. The agent's own metadata is the authority
+        # here, so it is the source whenever it has an answer.
+        resolved = getattr(agent, "metadata", {}) or {}
+        if isinstance(resolved, dict):
+            effective = resolved.get("model_name")
+            # A string only: the model name is persisted as text and rendered as
+            # text, so a non-string here (an int, a list, a nested config dict
+            # from a custom factory) would write a value no reader can display.
+            if isinstance(effective, str) and effective and effective != record.model_name:
+                await run_manager.update_model_name(record.run_id, effective)
 
         # 4. Attach checkpointer and store
         if checkpointer is not None:
