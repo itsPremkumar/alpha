@@ -678,7 +678,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
         if getattr(app.state, "scheduled_task_service", None) is not None:
             try:
-                await app.state.scheduled_task_service.stop()
+                await asyncio.wait_for(
+                    app.state.scheduled_task_service.stop(),
+                    timeout=_SHUTDOWN_HOOK_TIMEOUT_SECONDS,
+                )
+            except TimeoutError:
+                logger.warning(
+                    "Scheduled task service shutdown exceeded %.1fs; proceeding with worker exit.",
+                    _SHUTDOWN_HOOK_TIMEOUT_SECONDS,
+                )
             except Exception:
                 logger.exception("Failed to stop scheduled task service")
 
@@ -707,7 +715,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         if getattr(app.state, "mcp_task_service", None) is not None:
             app.state.mcp_tasks_available = False
             try:
-                await app.state.mcp_task_service.stop()
+                await asyncio.wait_for(
+                    app.state.mcp_task_service.stop(),
+                    timeout=_SHUTDOWN_HOOK_TIMEOUT_SECONDS,
+                )
+            except TimeoutError:
+                # A wedged remote MCP server must not hold the worker open: the
+                # supervisor, channels and peers are already stopped, so the only
+                # thing this protects is the remaining teardown below.
+                logger.warning(
+                    "MCP task service shutdown exceeded %.1fs; proceeding with worker exit.",
+                    _SHUTDOWN_HOOK_TIMEOUT_SECONDS,
+                )
             except Exception:
                 logger.exception("Failed to stop MCP task service")
             finally:
@@ -721,7 +740,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         if getattr(app.state, "subagent_batch_service", None) is not None:
             app.state.subagent_batches_available = False
             try:
-                await app.state.subagent_batch_service.stop()
+                await asyncio.wait_for(
+                    app.state.subagent_batch_service.stop(),
+                    timeout=_SHUTDOWN_HOOK_TIMEOUT_SECONDS,
+                )
+            except TimeoutError:
+                logger.warning(
+                    "Subagent batch service shutdown exceeded %.1fs; proceeding with worker exit.",
+                    _SHUTDOWN_HOOK_TIMEOUT_SECONDS,
+                )
             except Exception:
                 logger.exception("Failed to stop subagent batch service")
             finally:

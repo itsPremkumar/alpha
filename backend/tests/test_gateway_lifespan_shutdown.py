@@ -122,9 +122,14 @@ async def _run_lifespan_with_hanging_stop() -> float:
         patch("alpha.agents.memory.get_memory_manager", return_value=MagicMock()),
     ):
         loop = asyncio.get_event_loop()
-        start = loop.time()
         async with lifespan(app):
-            pass
+            # Start the clock *inside* the body, so `elapsed` measures the
+            # teardown this test is about. Starting it before `async with` also
+            # timed startup - including the opt-in capability load, measured at
+            # ~2.2s on a loaded machine - and then asserted the sum against a
+            # bound written for a 5s shutdown alone, so the test failed at 7.20s
+            # for reasons that had nothing to do with the hang it targets.
+            start = loop.time()
         elapsed = loop.time() - start
 
     close_oidc_service.assert_awaited_once()
@@ -142,6 +147,106 @@ def test_shutdown_is_bounded_when_channel_stop_hangs():
     assert elapsed < _SHUTDOWN_HOOK_TIMEOUT_SECONDS + 2.0, f"Lifespan shutdown took {elapsed:.2f}s; expected <= {_SHUTDOWN_HOOK_TIMEOUT_SECONDS + 2.0:.1f}s"
     # Lower bound: the wait_for should actually have waited.
     assert elapsed >= _SHUTDOWN_HOOK_TIMEOUT_SECONDS - 0.5, f"Lifespan exited too quickly ({elapsed:.2f}s); wait_for may not have been invoked."
+
+
+# The scheduler, MCP task service and subagent batch service shipped their
+# shutdown as a bare `await service.stop()` while every neighbour in the same
+# block was wrapped in wait_for. A wedged scheduler poll or an unreachable remote
+# MCP server therefore held the whole lifespan open: uvicorn's graceful deadline
+# was blown and the container got SIGKILLed, so the memory flush and the browser
+# session close below it never ran. These pin the bounded behaviour per service.
+
+_HANGING_STOP_SERVICES = [
+    "scheduled_task_service",
+    "mcp_task_service",
+    "subagent_batch_service",
+]
+
+
+async def _run_lifespan_with_hanging_background_service(attr: str):
+    """Exit the lifespan with `attr`'s service whose stop() never returns."""
+    from app.gateway.app import lifespan
+
+    app = FastAPI()
+
+    @asynccontextmanager
+    async def runtime_with_a_wedged_service(_app, _startup_config):
+        # Pre-set so the lifespan's own construction (which is gated on a
+        # repository being present) leaves this value in place. Only the
+        # shutdown path reads it.
+        async def hang_forever():
+            await asyncio.Event().wait()
+
+        service = MagicMock()
+        service.stop = AsyncMock(side_effect=hang_forever)
+        setattr(_app.state, attr, service)
+        yield
+
+    startup_config = MagicMock()
+    startup_config.log_level = "INFO"
+    startup_config.memory.enabled = False
+    startup_config.memory.shutdown_flush_timeout_seconds = 5.0
+    startup_config.autonomy.enabled = False
+    fake_service = MagicMock()
+    fake_service.get_status = MagicMock(return_value={})
+
+    async def fake_start(_startup_config, **_kwargs):
+        return fake_service
+
+    with (
+        patch("app.gateway.app.get_app_config", return_value=startup_config),
+        patch("app.gateway.app.get_gateway_config", return_value=MagicMock(host="x", port=0)),
+        patch("app.gateway.app.langgraph_runtime", runtime_with_a_wedged_service),
+        patch("alpha.skills.projection.ensure_public_skill_projection"),
+        patch("app.gateway.app.auth.close_oidc_service", AsyncMock()),
+        patch("app.channels.service.start_channel_service", side_effect=fake_start),
+        patch("app.channels.service.stop_channel_service", AsyncMock()),
+        patch("alpha.agents.memory.get_memory_manager", return_value=MagicMock()),
+    ):
+        loop = asyncio.get_event_loop()
+        async with lifespan(app):
+            # Teardown only: see _run_lifespan_with_hanging_stop. Startup is not
+            # what this test measures, and including it makes the bound flaky.
+            start = loop.time()
+        return loop.time() - start
+
+
+@pytest.mark.parametrize("attr", _HANGING_STOP_SERVICES)
+def test_shutdown_is_bounded_when_a_background_service_stop_hangs(attr):
+    """A background service that never finishes stopping must not block exit."""
+    from app.gateway.app import _SHUTDOWN_HOOK_TIMEOUT_SECONDS
+
+    elapsed = asyncio.run(_run_lifespan_with_hanging_background_service(attr))
+
+    assert elapsed < _SHUTDOWN_HOOK_TIMEOUT_SECONDS + 2.0, f"{attr}.stop() hung: lifespan took {elapsed:.2f}s, expected <= {_SHUTDOWN_HOOK_TIMEOUT_SECONDS + 2.0:.1f}s"
+
+
+def test_no_unbounded_service_stop_remains_in_the_shutdown_path():
+    """Structural pin: every service stop after `yield` must be time-bounded.
+
+    The per-service tests above prove the three known cases. This one fails when
+    a *new* service is added to the teardown without a bound, which is how the
+    original three gaps appeared in the first place.
+    """
+    import re
+    from pathlib import Path
+
+    source = (Path(__file__).resolve().parents[1] / "app" / "gateway" / "app.py").read_text(encoding="utf-8")
+
+    teardown_offset = source.index("\n        yield\n")
+    teardown = source[teardown_offset:]
+    for match in re.finditer(r"await\s+[A-Za-z_][\w.]*\.stop\(\)", teardown):
+        line_start = teardown.rfind("\n", 0, match.start()) + 1
+        line_end = teardown.find("\n", match.start())
+        line = teardown[line_start:line_end]
+        # Multi-line calls put `.stop()` on a line with no "wait_for" text; the
+        # bound is on an earlier line of the same statement, so look back to the
+        # start of that statement.
+        statement_start = teardown.rfind("await asyncio.wait_for(", line_start, match.start())
+        preceding = teardown.rfind("\n            ", 0, line_start)
+        if statement_start == -1 and "wait_for" not in teardown[max(0, preceding) : line_start]:
+            line_number = source[: teardown_offset + line_start].count("\n") + 1
+            raise AssertionError(f"Unbounded shutdown await at app.py:{line_number}: {line.strip()}")
 
 
 async def _run_lifespan_with_upload_staging_cleanup():
