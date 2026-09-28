@@ -100,3 +100,112 @@ test("the pet is a fixed, local companion without a remote asset URL", () => {
   assert.doesNotMatch(componentSource, /threadId|data-thread-id/);
   assert.match(componentSource, /viewBox="0 0 220 210"/);
 });
+
+/**
+ * The companion's hit area sets `pointer-events: auto`, so wherever it sits it
+ * intercepts clicks meant for whatever is under it. Measured in a live browser,
+ * the pet's default position overlapped the chat composer, so it sat on the input
+ * box and swallowed clicks aimed at the one control the user cannot work around.
+ *
+ * These pin the keep-out arithmetic; the wiring pins below check that the travel
+ * commit, the drag handler and the mount/resize correction all go through it.
+ */
+test("lion-pet overlap detection honours a keep-out gap", () => {
+  const a = { left: 339, right: 529, top: 417, bottom: 610 };
+  assert.equal(pet.lionPetOverlaps(a, { left: 279, right: 889, top: 494, bottom: 530 }), true);
+
+  // Resting exactly against the edge, with no overlap, is clear.
+  assert.equal(pet.lionPetOverlaps(a, { left: 529, right: 900, top: 400, bottom: 600 }, 0), false);
+  // A gap widens the exclusion band.
+  assert.equal(pet.lionPetOverlaps(a, { left: 540, right: 900, top: 400, bottom: 600 }, 0), false);
+  assert.equal(pet.lionPetOverlaps(a, { left: 540, right: 900, top: 400, bottom: 600 }, 12), true);
+});
+
+test("a pet sitting on the composer is moved off it", () => {
+  // Real measured geometry: 1125x797 viewport, 190x193 pet, composer across the
+  // middle. The requested offset is the shipped default, which overlapped.
+  const composer = { left: 279, right: 889, top: 494, bottom: 530 };
+  const safe = pet.resolveLionPetSafeRight({
+    desiredRight: 596,
+    petWidth: 190,
+    petHeight: 193,
+    viewportWidth: 1125,
+    viewportHeight: 797,
+    petBottom: 187,
+    keepOut: composer,
+  });
+  const rect = (right) => ({
+    left: 1125 - right - 190,
+    right: 1125 - right,
+    top: 797 - 187 - 193,
+    bottom: 797 - 187,
+  });
+  assert.equal(pet.lionPetOverlaps(rect(safe), composer), false, `still overlapping at right=${safe}`);
+});
+
+test("a pet already clear is left exactly where it is", () => {
+  const out = pet.resolveLionPetSafeRight({
+    desiredRight: 12,
+    petWidth: 190,
+    petHeight: 193,
+    viewportWidth: 1125,
+    viewportHeight: 797,
+    petBottom: 12,
+    keepOut: { left: 279, right: 889, top: 494, bottom: 530 },
+  });
+  assert.equal(out, 12, "a clear position must not be nudged - that would make the pet drift on every resize");
+});
+
+test("no keep-out, or no viewport, leaves the requested position untouched", () => {
+  const base = {
+    desiredRight: 400,
+    petWidth: 190,
+    petHeight: 193,
+    viewportWidth: 1125,
+    viewportHeight: 797,
+    petBottom: 100,
+  };
+  assert.equal(pet.resolveLionPetSafeRight({ ...base, keepOut: null }), 400);
+  assert.equal(pet.resolveLionPetSafeRight({ ...base, viewportWidth: 0, keepOut: { left: 0, right: 10, top: 0, bottom: 10 } }), 400);
+});
+
+test("an unreachable keep-out does not hide the pet", () => {
+  // A keep-out wider than the viewport cannot be cleared. Returning the requested
+  // offset keeps the companion visible rather than snapping it somewhere odd.
+  const out = pet.resolveLionPetSafeRight({
+    desiredRight: 200,
+    petWidth: 190,
+    petHeight: 193,
+    viewportWidth: 400,
+    viewportHeight: 800,
+    petBottom: 10,
+    keepOut: { left: -500, right: 900, top: 0, bottom: 800 },
+  });
+  assert.equal(out, 200);
+});
+
+test("the safe offset never leaves the viewport", () => {
+  for (let desired = 0; desired <= 1000; desired += 37) {
+    const out = pet.resolveLionPetSafeRight({
+      desiredRight: desired,
+      petWidth: 190,
+      petHeight: 193,
+      viewportWidth: 1125,
+      viewportHeight: 797,
+      petBottom: 187,
+      keepOut: { left: 279, right: 889, top: 494, bottom: 530 },
+    });
+    assert.ok(out >= 0 && out <= 1125 - 190, `right=${out} out of range for desired=${desired}`);
+  }
+});
+
+test("the keep-out element is the composer, and every path that moves the pet goes through the guard", () => {
+  const composerSource = readFileSync(new URL("../components/Composer.tsx", import.meta.url), "utf8");
+  assert.match(composerSource, /data-lion-pet-keepout/, "the composer must be marked as a keep-out region");
+
+  // Travel commit, drag, and mount/resize must each be corrected - a single
+  // guarded path still lets the other two park the pet on the input.
+  assert.equal((componentSource.match(/resolveLionPetSafeRight\(/g) || []).length, 3, "expected travel, drag and mount correction");
+  assert.match(componentSource, /findLionPetKeepOut\(document\)/);
+  assert.match(componentSource, /addEventListener\("resize"/);
+});

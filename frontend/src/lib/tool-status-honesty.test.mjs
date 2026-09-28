@@ -24,6 +24,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 import ts from "typescript";
+import { moduleUrl } from "./test-modules.mjs";
 
 const require = createRequire(import.meta.url);
 const here = (relative) => fileURLToPath(new URL(relative, import.meta.url));
@@ -408,4 +409,78 @@ test("subgraph channels stay excluded and channel payloads stay bounded", () => 
   const latest = reduce([{ event: "custom", id: "100-4", data: { n: 4 } }], reduce([{ event: "custom", id: "100-3", data: { n: 3 } }]));
   assert.equal(latest.channels.custom.eventId, "100-4");
   assert.deepEqual(Object.keys(latest.channels), ["custom"]);
+});
+
+/* --- history: a reloaded tool call must not read as unfinished work --- */
+
+/**
+ * Found by looking at the real UI: after a successful run, every tool receipt in
+ * the reloaded transcript read "1 running" and "no result reported", while the
+ * results themselves were rendered a few lines below. The cause is that a
+ * persisted `tool_calls` entry carries only `{id, name, args, type}` - the
+ * outcome is journalled on the separate `llm.tool.result` row, and the history
+ * path never joined the two. A statusless call renders as still-running, so a
+ * completed turn was displayed as unfinished on every reload.
+ */
+// api.ts pulls in ./api-client, ./sse-reducer and ./http, so it is loaded through
+// the shared module loader that rewrites those specifiers to real file: URLs.
+const { indexToolResultStatuses } = await import(moduleUrl("api"));
+
+const callRow = (id, name) => ({
+  event_type: "llm.ai.response",
+  seq: 1,
+  content: { type: "ai", id: "ai-1", content: "", tool_calls: [{ id, name, args: {}, type: "tool_call" }] },
+});
+const resultRow = (callId, name, status) => ({
+  event_type: "llm.tool.result",
+  seq: 2,
+  content: { type: "tool", id: "t-1", name, tool_call_id: callId, content: "OK", ...(status ? { status } : {}) },
+});
+
+test("a tool result in the feed settles the call it answers", () => {
+  const statuses = indexToolResultStatuses([callRow("call-1", "write_file"), resultRow("call-1", "write_file", "success")]);
+  assert.equal(statuses.get("call-1"), "completed");
+});
+
+test("an errored tool result is recorded as failed, not completed", () => {
+  const statuses = indexToolResultStatuses([callRow("call-1", "read_file"), resultRow("call-1", "read_file", "error")]);
+  assert.equal(statuses.get("call-1"), "failed", "an Error: result must not settle as a success");
+});
+
+test("a result with no status still settles the call", () => {
+  // An older journal wrote no status. The row is still a result, so leaving the
+  // call open would keep showing running work that is demonstrably finished.
+  const statuses = indexToolResultStatuses([callRow("call-1", "bash"), resultRow("call-1", "bash")]);
+  assert.equal(statuses.get("call-1"), "completed");
+});
+
+test("a call with no result anywhere stays unset rather than being invented", () => {
+  const statuses = indexToolResultStatuses([callRow("call-1", "bash")]);
+  assert.equal(statuses.has("call-1"), false, "no result must mean unknown, not a fabricated outcome");
+});
+
+test("non-tool rows and malformed input are ignored without throwing", () => {
+  for (const rows of [[], [null], [undefined], [{ content: null }], [{ content: { type: "tool" } }], ["nope"]]) {
+    const statuses = indexToolResultStatuses(rows);
+    assert.equal(statuses.size, 0);
+  }
+});
+
+test("a later result for the same call is the more recent statement", () => {
+  const statuses = indexToolResultStatuses([
+    callRow("call-1", "glob"),
+    resultRow("call-1", "glob", "success"),
+    resultRow("call-1", "glob", "error"),
+  ]);
+  assert.equal(statuses.get("call-1"), "failed");
+});
+
+test("the history path threads the index into every call it renders", () => {
+  // Structural guard: the index must be built once and passed in, or the fix
+  // silently applies to the success path only and the partial-page path regresses.
+  const source = read("./api.ts");
+  const callSites = (source.match(/messageFromRow\(message, index\)/g) || []).length;
+  const threaded = (source.match(/messageFromRow\(message, index, toolStatuses\)/g) || []).length;
+  assert.equal(callSites, 0, `found ${callSites} call site(s) still without the index`);
+  assert.equal(threaded, 2, "both the complete and the partial-page history path must pass the index");
 });

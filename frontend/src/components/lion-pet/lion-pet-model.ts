@@ -115,6 +115,98 @@ export type LionPetPosition = {
   bottom: number;
 };
 
+/** A viewport-space rectangle. Same shape as a DOMRect, without needing one. */
+export type LionPetRect = {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+};
+
+/** Minimum gap, in px, kept between the companion and an element it must not cover. */
+export const LION_PET_KEEPOUT_GAP = 12;
+
+/**
+ * True when two rectangles overlap by more than the keep-out gap.
+ *
+ * A gap of 0 counts as clear, so a pet resting exactly against an edge is not
+ * treated as covering it.
+ */
+export function lionPetOverlaps(a: LionPetRect, b: LionPetRect, gap = LION_PET_KEEPOUT_GAP): boolean {
+  return a.left < b.right + gap && b.left < a.right + gap && a.top < b.bottom + gap && b.top < a.bottom + gap;
+}
+
+/**
+ * The `right` offset (in px) that keeps the companion clear of a keep-out rect.
+ *
+ * The companion is decorative but its hit area is not: `.lion-pet-hit-area` sets
+ * `pointer-events: auto`, so wherever the pet sits it intercepts clicks meant for
+ * whatever is underneath. When its horizontal travel range and the chat composer
+ * overlap, the pet can land on the input box and swallow clicks aimed at it - the
+ * one control the user cannot work around.
+ *
+ * Both the travel range and the composer's own position vary with the window, so
+ * the safe band has to be computed rather than assumed. Candidates are tried from
+ * the requested offset outward, nearest first, and the first one that clears the
+ * keep-out wins. If nothing clears it (a keep-out wider than the viewport) the
+ * requested offset is returned unchanged: this narrows where the pet may roam, it
+ * never hides it, and never invents a position the caller did not ask for.
+ */
+export function resolveLionPetSafeRight(args: {
+  /** The offset the caller wanted, in px from the right edge. */
+  desiredRight: number;
+  /** Pet width and height in px, and the viewport size. */
+  petWidth: number;
+  petHeight: number;
+  viewportWidth: number;
+  viewportHeight: number;
+  /** The pet's `bottom` offset in px, used to derive its vertical extent. */
+  petBottom: number;
+  /** The rectangle to stay clear of, or null when there is none. */
+  keepOut: LionPetRect | null;
+  gap?: number;
+}): number {
+  const { desiredRight, petWidth, petHeight, viewportWidth, viewportHeight, petBottom, keepOut, gap } = args;
+  if (!keepOut || viewportWidth <= 0) return desiredRight;
+
+  const maxRight = Math.max(0, viewportWidth - petWidth);
+  const start = Math.min(maxRight, Math.max(0, desiredRight));
+
+  const rectFor = (right: number): LionPetRect => ({
+    left: viewportWidth - right - petWidth,
+    right: viewportWidth - right,
+    top: viewportHeight - petBottom - petHeight,
+    bottom: viewportHeight - petBottom,
+  });
+
+  if (!lionPetOverlaps(rectFor(start), keepOut, gap)) return start;
+
+  // Nearest-first sweep over every reachable offset. The range is at most one
+  // viewport wide, so this is cheap and terminates on a definite answer.
+  for (let distance = 1; distance <= maxRight; distance += 1) {
+    for (const candidate of [start - distance, start + distance]) {
+      if (candidate < 0 || candidate > maxRight) continue;
+      if (!lionPetOverlaps(rectFor(candidate), keepOut, gap)) return candidate;
+    }
+  }
+  return start;
+}
+
+/**
+ * The composer's viewport rect, or null when it is absent or not laid out.
+ *
+ * Read from the document rather than passed in, because the composer moves with
+ * the window and with the transcript growing above it, and a stale rect would put
+ * the pet straight back on the input.
+ */
+export function findLionPetKeepOut(doc: Pick<Document, "querySelector"> | null | undefined): LionPetRect | null {
+  const el = doc?.querySelector?.("[data-lion-pet-keepout]") as HTMLElement | null;
+  if (!el || typeof el.getBoundingClientRect !== "function") return null;
+  const rect = el.getBoundingClientRect();
+  if (!rect || (rect.width === 0 && rect.height === 0)) return null;
+  return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+}
+
 export type LionPetSettings = {
   visible: boolean;
   scale: number;

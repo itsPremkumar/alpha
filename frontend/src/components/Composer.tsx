@@ -442,7 +442,13 @@ export function Composer({
         </div>
       )}
 
-      <div className="rounded-2xl border border-border bg-card shadow-sm focus-within:ring-1 focus-within:ring-primary/40 focus-within:border-primary/50 transition-all p-2.5">
+      {/* The lion companion reads this rect to stay off the composer. Without a
+          marked keep-out region the pet's own hit area (`pointer-events: auto`)
+          can land on the input and swallow clicks aimed at it. */}
+      <div
+        data-lion-pet-keepout=""
+        className="rounded-2xl border border-border bg-card shadow-sm focus-within:ring-1 focus-within:ring-primary/40 focus-within:border-primary/50 transition-all p-2.5"
+      >
         <textarea
           ref={textareaRef}
           value={input}

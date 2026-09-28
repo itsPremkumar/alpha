@@ -30,11 +30,13 @@ import {
   LionPetState,
   LionSkinId,
   getLionSkin,
+  findLionPetKeepOut,
   isLionPetAction,
   lionPetActionLabel,
   lionPetActionMessage,
   lionPetMessage,
   readLionPetSettings,
+  resolveLionPetSafeRight,
   sanitizeLionPetMessage,
   writeLionPetSettings,
 } from "./lion-pet-model";
@@ -353,6 +355,8 @@ export function LionPet({ state, message, onOpenChat }: LionPetProps) {
     bottom: number;
     maxRight: number;
     maxBottom: number;
+    petWidth: number;
+    petHeight: number;
   } | null>(null);
   const heartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const actionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -409,18 +413,29 @@ export function LionPet({ state, message, onOpenChat }: LionPetProps) {
     if (!shell || typeof window === "undefined") return;
     shell.style.setProperty("--lion-pet-travel-x", "0px");
     if (!commit || Math.abs(session.currentX) < 0.5) return;
-    const width = shell.getBoundingClientRect().width || shell.offsetWidth;
+    const rect = shell.getBoundingClientRect();
+    const width = rect.width || shell.offsetWidth;
+    const height = rect.height || shell.offsetHeight;
     const viewportWidth = window.innerWidth;
     const currentRightPx = (settingsRef.current.position.right / 100) * viewportWidth;
-    const nextRightPx = Math.min(
-      Math.max(0, viewportWidth - width),
-      Math.max(0, currentRightPx - session.currentX),
-    );
+    // The travel range is the full window, so a wander can land the pet on the
+    // composer - whose hit area intercepts clicks. Keep the committed position
+    // clear of it.
+    const nextRightPx = resolveLionPetSafeRight({
+      desiredRight: Math.max(0, currentRightPx - session.currentX),
+      petWidth: width,
+      petHeight: height,
+      viewportWidth,
+      viewportHeight: window.innerHeight,
+      petBottom: (settingsRef.current.position.bottom / 100) * window.innerHeight,
+      keepOut: findLionPetKeepOut(document),
+    });
+    const clamped = Math.min(Math.max(0, viewportWidth - width), nextRightPx);
     setSettings((current) => ({
       ...current,
       position: {
         ...current.position,
-        right: viewportWidth > 0 ? (nextRightPx / viewportWidth) * 100 : current.position.right,
+        right: viewportWidth > 0 ? (clamped / viewportWidth) * 100 : current.position.right,
       },
     }));
   }, []);
@@ -474,6 +489,65 @@ export function LionPet({ state, message, onOpenChat }: LionPetProps) {
   }, [action, finishMotion, startMotion]);
 
   useEffect(() => () => finishMotion(false), [finishMotion]);
+
+  // A stored position can already sit on the composer - it was saved before the
+  // keep-out existed, or the window was resized narrower than it was saved at.
+  // Re-check on mount and on resize so the pet never *starts* covering the input,
+  // and never keeps covering it after the layout moves under it.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const shell = shellRef.current;
+    if (!shell || !settings.visible || settings.desktopOverlay) return;
+
+    const nudgeClear = () => {
+      const rect = shell.getBoundingClientRect();
+      if (!rect.width && !rect.height) return;
+      const viewportWidth = window.innerWidth;
+      if (viewportWidth <= 0) return;
+      const currentRightPx = (settingsRef.current.position.right / 100) * viewportWidth;
+      const safeRight = resolveLionPetSafeRight({
+        desiredRight: currentRightPx,
+        petWidth: rect.width,
+        petHeight: rect.height,
+        viewportWidth,
+        viewportHeight: window.innerHeight,
+        petBottom: (settingsRef.current.position.bottom / 100) * window.innerHeight,
+        keepOut: findLionPetKeepOut(document),
+      });
+      // Only rewrite on a real move, so this never fights the drag handler.
+      if (Math.abs(safeRight - currentRightPx) < 1) return;
+      setSettings((current) => ({
+        ...current,
+        position: {
+          ...current.position,
+          right: (safeRight / viewportWidth) * 100,
+        },
+      }));
+    };
+
+    // A single deferred check is not enough. The composer is still unlaid-out on
+    // mount, so the first measurement finds no keep-out and does nothing; and its
+    // height keeps changing afterwards as the transcript grows, the model menu
+    // opens, or the voice row appears. Observed in the browser: the effect ran,
+    // measured a zero-height keep-out, skipped the correction, and never ran
+    // again - leaving the pet parked on the input.
+    //
+    // So observe the keep-out itself. It re-fires whenever the composer's box
+    // actually changes, which is exactly when the answer can have changed.
+    const keepOutEl = document.querySelector("[data-lion-pet-keepout]");
+    const observer = typeof ResizeObserver === "function" && keepOutEl
+      ? new ResizeObserver(() => nudgeClear())
+      : null;
+    if (observer && keepOutEl) observer.observe(keepOutEl);
+
+    const frame = requestAnimationFrame(nudgeClear);
+    window.addEventListener("resize", nudgeClear);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("resize", nudgeClear);
+      observer?.disconnect();
+    };
+  }, [settings.visible, settings.desktopOverlay]);
 
   useEffect(() => {
     const unsubscribe = desktopBridge()?.onLionPetVisibility?.(({ visible }) => {
@@ -576,6 +650,8 @@ export function LionPet({ state, message, onOpenChat }: LionPetProps) {
       bottom,
       maxRight: Math.max(0, window.innerWidth - rect.width),
       maxBottom: Math.max(0, window.innerHeight - rect.height),
+      petWidth: rect.width,
+      petHeight: rect.height,
     };
     event.currentTarget.setPointerCapture(event.pointerId);
   }, [finishMotion]);
@@ -588,8 +664,19 @@ export function LionPet({ state, message, onOpenChat }: LionPetProps) {
     if (Math.abs(dx) + Math.abs(dy) > 5) drag.moved = true;
     if (!drag.moved) return;
     setDragging(true);
-    const right = Math.min(drag.maxRight, Math.max(0, drag.right - dx));
     const bottom = Math.min(drag.maxBottom, Math.max(0, drag.bottom - dy));
+    // A drag is the user choosing a spot, so honour it - but never let them (or a
+    // stray drag) park the pet on the composer, which it would then intercept
+    // clicks from.
+    const right = resolveLionPetSafeRight({
+      desiredRight: Math.min(drag.maxRight, Math.max(0, drag.right - dx)),
+      petWidth: drag.petWidth,
+      petHeight: drag.petHeight,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      petBottom: bottom,
+      keepOut: findLionPetKeepOut(document),
+    });
     updateSettings({
       position: {
         right: (right / window.innerWidth) * 100,

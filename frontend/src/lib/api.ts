@@ -194,7 +194,37 @@ function textOf(content: unknown): string {
  */
 const HISTORY_PAGE_SIZE = 200;
 
-function messageFromRow(message: any, index: number): ChatMessage[] {
+/**
+ * Index every tool result in a feed by the call it answers.
+ *
+ * A persisted `tool_calls` entry carries only `{id, name, args, type}` - the
+ * backend journals the *call*, not its outcome, on the assistant message. The
+ * outcome lives on the separate `llm.tool.result` row, matched by
+ * `tool_call_id`. Without this index every call restored from history is
+ * statusless, and a statusless call renders as still-running with "no result
+ * reported" - so a run that completed successfully is displayed as unfinished
+ * work, on every reload, for every turn.
+ *
+ * The result row's own `status` is the authority, and the journal now writes an
+ * honest one (an `Error: ...` tool return is recorded as an error rather than a
+ * success). A result with no status at all is still a result, so it settles the
+ * call rather than leaving it open.
+ */
+export function indexToolResultStatuses(rows: any[]): Map<string, "completed" | "failed"> {
+  const statuses = new Map<string, "completed" | "failed">();
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const inner = row.content && typeof row.content === "object" ? row.content : row;
+    if (String(inner.type || "") !== "tool") continue;
+    const callId = typeof inner.tool_call_id === "string" ? inner.tool_call_id : "";
+    if (!callId) continue;
+    // A later row for the same call is the more recent statement about it.
+    statuses.set(callId, inner.status === "error" ? "failed" : "completed");
+  }
+  return statuses;
+}
+
+function messageFromRow(message: any, index: number, toolStatuses?: Map<string, "completed" | "failed">): ChatMessage[] {
   // Event-store row shape (current backend).
   if (message && typeof message === "object" && ("event_type" in message || "seq" in message)) {
     const inner = message.content && typeof message.content === "object" ? message.content : {};
@@ -219,6 +249,11 @@ function messageFromRow(message: any, index: number): ChatMessage[] {
             id: toolCall.id,
             name: toolCall.name,
             args: toolCall.args || {},
+            // Resolved from the matching result row; absent only when the run
+            // genuinely produced no result for this call.
+            ...(toolCall.id && toolStatuses?.has(toolCall.id)
+              ? { status: toolStatuses.get(toolCall.id) }
+              : {}),
           })),
           ...((inner.invalid_tool_calls || []) as any[]).map((toolCall: any, toolIndex: number) => ({
             id: toolCall.id || `invalid-${index}-${toolIndex}`,
@@ -250,6 +285,7 @@ function messageFromRow(message: any, index: number): ChatMessage[] {
         id: toolCall.id,
         name: toolCall.name,
         args: toolCall.args || {},
+        ...(toolCall.id && toolStatuses?.has(toolCall.id) ? { status: toolStatuses.get(toolCall.id) } : {}),
       })),
       createdAt: message.created_at || null,
       raw: message,
@@ -328,11 +364,12 @@ export async function fetchThreadHistoryResult(threadId: string): Promise<FetchR
       pages.push(page);
       beforeSeq = nextCursor;
     } catch (error) {
-      const partial = pages
+      const rows = pages
         .slice()
         .reverse()
-        .flat()
-        .flatMap((message, index) => messageFromRow(message, index));
+        .flat();
+      const toolStatuses = indexToolResultStatuses(rows);
+      const partial = rows.flatMap((message, index) => messageFromRow(message, index, toolStatuses));
       if (partial.length > 0) {
         return {
           ok: true,
@@ -348,15 +385,16 @@ export async function fetchThreadHistoryResult(threadId: string): Promise<FetchR
     }
   }
 
+  const rows = pages
+    .slice()
+    .reverse()
+    .flat();
+  // Built from every page fetched, so a call on page 1 still resolves against
+  // its result even when the result lands on page 2.
+  const toolStatuses = indexToolResultStatuses(rows);
   return {
     ok: true,
-    value: uniqueMessages(
-      pages
-        .slice()
-        .reverse()
-        .flat()
-        .flatMap((message, index) => messageFromRow(message, index)),
-    ),
+    value: uniqueMessages(rows.flatMap((message, index) => messageFromRow(message, index, toolStatuses))),
   };
 }
 
