@@ -405,12 +405,32 @@ else
 fi
 echo "Press [Ctrl+C] to stop all services."
 
-if [ "${ALPHA_NO_BROWSER:-0}" != "1" ]; then
-    if command -v xdg-open >/dev/null 2>&1; then
-        xdg-open "http://localhost:${FRONTEND_PORT}" >/dev/null 2>&1 &
-    elif command -v open >/dev/null 2>&1; then
-        open "http://localhost:${FRONTEND_PORT}" >/dev/null 2>&1 &
-    fi
+# Open the entry point that is actually serving, once it answers HTTP 200.
+#
+# This used to fire `xdg-open http://localhost:${FRONTEND_PORT}` immediately
+# after the port came up, which had two problems: it fired on port-bind rather
+# than on the UI serving, so a slow first compile showed a connection error at
+# the exact moment the user was looking for proof; and it silently did nothing
+# when no opener existed, so a headless box looked identical to a successful
+# launch.
+#
+# The frontend port, not :2026 - this launcher does not start nginx, so the
+# unified entry point is not listening here. (scripts/serve.sh is the launcher
+# that does, and it passes :2026.)
+#
+# scripts/open_alpha_ui.sh owns the HTTP gate, the opener, and the platform
+# differences, and is shared with scripts/serve.sh so the two launchers cannot
+# disagree about what "ready" means.
+#
+# Skipped entirely when the caller asked for no browser and did not ask for the
+# desktop app, so a headless launch pays no probe cost at all. The default wait
+# reuses ALPHA_READY_WAIT_SECONDS so one knob still governs "how long do we wait
+# for readiness" across this launcher.
+if [ "${ALPHA_NO_BROWSER:-0}" != "1" ] || [ "${ALPHA_LAUNCH_DESKTOP:-0}" = "1" ]; then
+    ALPHA_LAUNCH_DESKTOP="${ALPHA_LAUNCH_DESKTOP:-0}" \
+        bash ./scripts/open_alpha_ui.sh \
+        "http://localhost:${FRONTEND_PORT}" \
+        "${ALPHA_UI_READY_TIMEOUT:-${ALPHA_READY_WAIT_SECONDS:-300}}" || true
 fi
 
 wait

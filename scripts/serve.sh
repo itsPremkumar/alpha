@@ -238,11 +238,47 @@ _is_repo_nginx_pid() {
     esac
 
     args=$(ps -p "$pid" -o args= 2>/dev/null) || return 1
-    local root
+
+    # Compare with the backslashes removed from BOTH sides.
+    #
+    # `case` treats a backslash inside a pattern as an escape character, so a
+    # quoted variable holding a Windows path is not matched literally: the
+    # `\` characters are consumed while the pattern is being parsed and the
+    # remaining `*"$root"/*` no longer describes the subject. Verified in Git
+    # Bash - `*"C:\Users\x"/*` against a subject containing that same text
+    # returns "no", while the forward-slash form matches, and the space in a
+    # path is not the cause. So on Windows this branch never matched and the
+    # function fell through to `_is_alpha_pid`, which a killed-then-reused PID
+    # can satisfy - the exact case this guard exists to prevent.
+    #
+    # Stripping `\` is safe for this comparison: the conf filename and the path
+    # shape are all that matter here, and neither contains a literal backslash.
+    #
+    # The match is anchored on the trailing `docker/nginx/nginx.local.conf`
+    # component, so the conf file must appear in the args with this root above
+    # it. A bare `*"$root"/*` prefix would also claim a *sibling* directory whose
+    # name merely starts with this one - `C:\...\alpha` would match
+    # `C:\...\alpha-scratch`, whose nginx belongs to a different worktree and
+    # must not be reaped by this checkout's `make stop`.
+    #
+    # Note this narrows the match relative to the old `*"$root"/*` alternative,
+    # which accepted *any* argument mentioning the root. The conf is what makes
+    # a process ours: `-p "$REPO_ROOT"` is passed by our own launch command, but
+    # so is `-c /etc/nginx/nginx.conf` by a system nginx started by a human, and
+    # that one must never be reaped. Anything that legitimately needs to be
+    # reaped carries this conf, which is what nginx.local.conf is.
+    local flat_args flat_root
+    flat_args=${args//\\//}
     while IFS= read -r root; do
         [ -n "$root" ] || continue
-        case "$args" in
-            *"$root"/docker/nginx/nginx.local.conf*|*"$root"/*) return 0 ;;
+        flat_root=${root//\\//}
+        # Tolerate a root already recorded with a trailing separator.
+        while [ "${flat_root: -1}" = "/" ]; do
+            flat_root=${flat_root%/}
+        done
+        [ -n "$flat_root" ] || continue
+        case "$flat_args" in
+            *"$flat_root"/docker/nginx/nginx.local.conf*) return 0 ;;
         esac
     done <<< "$ALPHA_ROOTS"
 
@@ -588,6 +624,30 @@ fi
 echo ""
 echo "  📋 Logs: logs/{gateway,frontend,nginx}.log"
 echo ""
+
+# ── Make it visible ───────────────────────────────────────────────────────────
+# A running stack the user cannot see is not obviously a working stack. Open the
+# entry point that is actually serving - :2026 when nginx came up, otherwise the
+# frontend's own port - and only once it answers HTTP 200.
+#
+# The HTTP gate matters: the frontend binds :3000 and then spends ~50s compiling
+# `/`, so opening a browser at port-bind time shows a connection error at exactly
+# the moment the user is looking for proof. scripts/open_alpha_ui.sh owns the
+# wait, the opener, and the platform differences (Git Bash has no `xdg-open`),
+# and treats a timeout as a disclosure rather than a startup failure - the same
+# reasoning that makes nginx optional above.
+#
+# Opt out with ALPHA_NO_BROWSER=1 (headless / CI / remote shells). Add
+# ALPHA_LAUNCH_DESKTOP=1 to also open the Electron desktop app.
+if [ "${ALPHA_NO_BROWSER:-0}" != "1" ] || [ "${ALPHA_LAUNCH_DESKTOP:-0}" = "1" ]; then
+    if [ "$NGINX_SKIPPED" = "true" ]; then
+        UI_URL="http://localhost:3000"
+    else
+        UI_URL="http://localhost:2026"
+    fi
+    echo ""
+    bash ./scripts/open_alpha_ui.sh "$UI_URL" "${ALPHA_UI_READY_TIMEOUT:-${ALPHA_READY_WAIT_SECONDS:-300}}" || true
+fi
 
 if $DAEMON_MODE; then
     echo "  🛑 Stop: make stop"

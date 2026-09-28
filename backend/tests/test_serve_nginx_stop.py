@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shlex
 import shutil
 import subprocess
@@ -36,10 +37,6 @@ def _is_repo_nginx_pid(
     repo_root: Path,
     alpha_pid: bool = False,
 ) -> bool:
-    bash = shutil.which("bash")
-    if bash is None:
-        pytest.skip("bash is required to exercise serve.sh helpers")
-
     function = _extract_shell_function("_is_repo_nginx_pid")
     script = f"""
 REPO_ROOT={shlex.quote(str(repo_root))}
@@ -64,7 +61,36 @@ ps() {{
 
 _is_repo_nginx_pid 12345
 """
-    result = subprocess.run([bash, "-c", script], check=False)
+    # On Windows, `shutil.which("bash")` finds the WSL launcher
+    # (C:\Windows\System32\bash.exe) whenever WSL is installed, and that shim
+    # fails with "execvpe(/bin/bash) failed: No such file or directory" when no
+    # distro is present - so the test failed for a reason that had nothing to do
+    # with serve.sh. The repository already ships the correct resolver for this
+    # (scripts/run-with-git-bash.cmd, which is what the Makefile's
+    # RUN_SHELL_SCRIPT uses on Windows); use it so the test exercises the same
+    # bash the launcher actually runs under.
+    #
+    # The script goes in a file rather than an argument: the wrapper is a .cmd
+    # that forwards with `%*`, which does not re-quote, so a multi-line script
+    # containing spaces and shell metacharacters arrives split into many
+    # arguments. Passing a single path avoids that entirely.
+    if os.name == "nt":
+        # REPO_ROOT, not the `repo_root` parameter: that one is the throwaway
+        # fixture directory the script pretends to be running inside, so the real
+        # wrapper is not under it.
+        wrapper = REPO_ROOT / "scripts" / "run-with-git-bash.cmd"
+        if not wrapper.is_file():
+            pytest.skip(f"Git Bash wrapper not found at {wrapper}")
+        script_file = repo_root.parent / "probe.sh"
+        script_file.write_text(script, encoding="utf-8")
+        command_line = [str(wrapper), str(script_file)]
+    else:
+        bash = shutil.which("bash")
+        if bash is None:
+            pytest.skip("bash is required to exercise serve.sh helpers")
+        command_line = [bash, "-c", script]
+
+    result = subprocess.run(command_line, check=False)
     return result.returncode == 0
 
 
