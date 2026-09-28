@@ -41,6 +41,22 @@ fi
 
 _pick_python() {
     local candidate
+    # Prefer the project's own virtualenv first. `pnpm.py` is launched with this
+    # interpreter and then runs pnpm from the frontend directory, so using the
+    # same interpreter the backend runs under is the correct pairing -- and it is
+    # the only one that exists on a machine where Python was installed by uv
+    # into the project rather than onto PATH. Without this, a machine whose only
+    # PATH-visible python is the Windows Store `py` alias failed the whole
+    # launch with "Python 3 is required to run pnpm", even though a perfectly
+    # good 3.12 sat in backend/.venv.
+    local venv_py="$REPO_ROOT/backend/.venv/Scripts/python.exe"
+    [ -x "$venv_py" ] || venv_py="$REPO_ROOT/backend/.venv/bin/python"
+    if [ -x "$venv_py" ] \
+        && "$venv_py" -c 'import sys; raise SystemExit(0 if sys.version_info.major >= 3 else 1)' >/dev/null 2>&1; then
+        printf '%s\n' "$venv_py"
+        return 0
+    fi
+
     for candidate in python3 python py; do
         # Probe through `env` as well: the frontend is launched as
         # `env PORT=3000 "$ALPHA_PNPM_PYTHON" ...` (FRONTEND_CMD below), and on
@@ -482,9 +498,19 @@ run_service() {
         local logfile="logs/$(echo "$name" | tr '[:upper:]' '[:lower:]' | tr ' ' '-').log"
         echo "✗ $name failed to start."
         [ -f "$logfile" ] && tail -20 "$logfile"
+        # `optional` marks a service the stack can genuinely run without. Nginx
+        # is that one: it is the published :2026 entry point, but the Gateway and
+        # the frontend each serve their own port directly, so a machine with no
+        # nginx still has a working Alpha. Tearing down two healthy services
+        # because the edge proxy was missing left the user with nothing running
+        # and an error naming a binary they had never asked for.
+        if [ "${5:-}" = "optional" ]; then
+            return 1
+        fi
         cleanup 1
     }
     echo "✓ $name started on localhost:$port"
+    return 0
 }
 
 # ── Start services ───────────────────────────────────────────────────────────
@@ -502,10 +528,36 @@ run_service "Frontend" \
     "cd frontend && $FRONTEND_CMD > ../logs/frontend.log 2>&1" \
     3000 300
 
-# 3. Nginx
-run_service "Nginx" \
-    "nginx -g 'daemon off;' -c '$REPO_ROOT/docker/nginx/nginx.local.conf' -p '$REPO_ROOT' > logs/nginx.log 2>&1" \
-    2026 10
+# 3. Nginx — the published :2026 entry point.
+#
+# Optional. It is not a Python or Node dependency, so on a machine that never
+# installed it the Gateway and the frontend are still fully usable on 8001 and
+# 3000. Detecting it up front lets the failure be reported as a missing
+# prerequisite with a remedy, instead of a 10-second port timeout and a
+# misleading "Nginx failed to start".
+NGINX_BIN=""
+for _cand in nginx; do
+    if command -v "$_cand" >/dev/null 2>&1; then NGINX_BIN="$_cand"; break; fi
+done
+if [ -z "$NGINX_BIN" ]; then
+    echo ""
+    echo "==========================================" -ForegroundColor Yellow
+    echo "  ! nginx not found - skipping :2026" -ForegroundColor Yellow
+    echo "==========================================" -ForegroundColor Yellow
+    echo "  The Gateway and the frontend are running and usable without it."
+    echo "  Install nginx and re-run 'make dev' to also get the unified"
+    echo "  http://localhost:2026 entry point."
+    echo ""
+    NGINX_SKIPPED=true
+else
+    NGINX_SKIPPED=false
+fi
+
+if [ "$NGINX_SKIPPED" != "true" ]; then
+    run_service "Nginx" \
+        "nginx -g 'daemon off;' -c '$REPO_ROOT/docker/nginx/nginx.local.conf' -p '$REPO_ROOT' > logs/nginx.log 2>&1" \
+        2026 10 || true
+fi
 
 # ── Ready ────────────────────────────────────────────────────────────────────
 
@@ -514,11 +566,22 @@ echo "=========================================="
 echo "  ✓ Alpha is running!  [$MODE_LABEL]"
 echo "=========================================="
 echo ""
-echo "  🌐 http://localhost:2026"
-echo ""
-echo "  Routing: Frontend → Nginx → Gateway"
-echo "  API:     /api/langgraph/*  →  Gateway agent runtime"
-echo "           /api/*              →  Gateway REST API (8001)"
+if [ "$NGINX_SKIPPED" = "true" ]; then
+    # Do not advertise :2026 when nothing is listening on it. The two direct
+    # ports below are the real, working entry points in this configuration.
+    echo "  🌐 http://localhost:3000   (web UI)"
+    echo "  🔌 http://localhost:8001   (Gateway API)"
+    echo ""
+    echo "  nginx is not installed, so the unified :2026 entry point is absent."
+    echo "  Set NEXT_PUBLIC_GATEWAY_URL in frontend/.env to reach the Gateway"
+    echo "  from the browser, then reload."
+else
+    echo "  🌐 http://localhost:2026"
+    echo ""
+    echo "  Routing: Frontend → Nginx → Gateway"
+    echo "  API:     /api/langgraph/*  →  Gateway agent runtime"
+    echo "           /api/*              →  Gateway REST API (8001)"
+fi
 echo ""
 echo "  📋 Logs: logs/{gateway,frontend,nginx}.log"
 echo ""
