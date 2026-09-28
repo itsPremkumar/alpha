@@ -163,12 +163,171 @@ function Get-AlphaNodeWellKnownDirs {
     $dirs
 }
 
+function Get-AlphaNginxWellKnownDirs {
+    <#
+      Conventional nginx install directories.
+
+      nginx on Windows unpacks to a versioned directory holding conf/, html/
+      and logs/, with the executable in its sbin/. Only directories whose shape
+      actually matches that layout are offered, so an unrelated `sbin` on PATH
+      is not mistaken for a server.
+    #>
+    @(
+        "$env:ProgramFiles\nginx",
+        "${env:ProgramFiles(x86)}\nginx",
+        "$env:LOCALAPPDATA\nginx",
+        "$env:ProgramData\nginx"
+    )
+}
+
 function Resolve-AlphaUv {
     (Resolve-AlphaTool -Name "uv" -WellKnownDirs (Get-AlphaUvWellKnownDirs))
 }
 
 function Resolve-AlphaNode {
     (Resolve-AlphaTool -Name "node" -WellKnownDirs (Get-AlphaNodeWellKnownDirs))
+}
+
+function Resolve-AlphaNginx {
+    <#
+      Locate nginx, project-local copy first.
+
+      The project-local copy is a directory rather than a single binary: the
+      official Windows zip unpacks to a tree with conf/, html/ and sbin/, and
+      serve.sh launches it with `-p <prefix>` so its own conf/ and logs/ are
+      used. Resolve-AlphaTool cannot express that, so this is a separate
+      resolver that returns the sbin/nginx.exe path (what the caller needs to
+      build a command) after confirming the surrounding prefix exists.
+
+      Step 1 precedes PATH for the same reason as Resolve-AlphaTool: a stale
+      system-wide nginx must not shadow the pinned one.
+    #>
+    $candidates = @(
+        (Join-Path $ToolchainRoot "nginx"),
+        (Join-Path $UvBinDir "nginx")
+    )
+    foreach ($dir in $candidates) {
+        $exe = Join-Path $dir "sbin\nginx.exe"
+        if (Test-Path $exe -PathType Leaf) { return $exe }
+        # A flat layout (exe copied next to its conf/) is also accepted.
+        $flat = Join-Path $dir "nginx.exe"
+        if (Test-Path $flat -PathType Leaf) { return $flat }
+    }
+
+    $cmd = Get-Command "nginx.exe" -ErrorAction SilentlyContinue
+    if ($cmd -and $cmd.Source) { return $cmd.Source }
+
+    foreach ($dir in (Get-AlphaNginxWellKnownDirs)) {
+        if (-not $dir) { continue }
+        $exe = Join-Path $dir "sbin\nginx.exe"
+        if (Test-Path $exe -PathType Leaf) { return $exe }
+        $flat = Join-Path $dir "nginx.exe"
+        if (Test-Path $flat -PathType Leaf) { return $flat }
+    }
+
+    return $null
+}
+
+function Get-AlphaPinnedVersion {
+    <#
+      Read one pinned version out of installer/pins.json. The pins file is the
+      single source of truth for every version the installer downloads, and
+      installer/tests/test_installer_contract.py enforces that contract, so
+      nothing here hardcodes a version.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$Name
+    )
+
+    $pinsPath = Join-Path (Split-Path $PSScriptRoot -Parent) "installer\pins.json"
+    if (-not (Test-Path $pinsPath -PathType Leaf)) { return $null }
+    try {
+        $pins = Get-Content $pinsPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        return $null
+    }
+    $entry = $pins.$Name
+    if ($null -eq $entry) { return $null }
+    if ($entry -is [string]) { return $entry }
+    return $entry.version
+}
+
+function Install-AlphaNginx {
+    <#
+      Download the official nginx Windows build into THIS checkout.
+
+      Optional by contract. The caller must treat a failure here as a warning,
+      not a failure: scripts/serve.sh treats nginx as optional because the
+      Gateway (:8001) and the frontend (:3000) each serve their own port, so a
+      machine that cannot download nginx still gets a working Alpha. The only
+      thing it loses is the unified :2026 entry point.
+
+      The archive is expanded under .tools/ rather than installed system-wide:
+      it needs no administrator rights, it cannot collide with another
+      nginx on the machine, and deleting the checkout removes it.
+    #>
+    Initialize-AlphaToolchain
+
+    if (Resolve-AlphaNginx) { return (Resolve-AlphaNginx) }
+
+    $series = Get-AlphaPinnedVersion -Name "nginx"
+    if (-not $series) {
+        Write-Warning "installer/pins.json has no nginx entry; skipping nginx."
+        return $null
+    }
+
+    $base = "https://nginx.org/download/"
+    $index = $null
+    try {
+        $index = Invoke-WebRequest -Uri $base -UseBasicParsing -TimeoutSec 60 -ErrorAction Stop
+    } catch {
+        Write-Warning "Could not reach $base to discover an nginx build ($_). Skipping nginx."
+        return $null
+    }
+
+    # nginx names its downloads `nginx-<major>.<minor>.<patch>.zip`, and the
+    # index offers every patch in a series, so the pin carries the minor series
+    # and the highest available patch is taken here. Matching the filename
+    # shape rather than a path is deliberate: the index links both
+    # `nginx-1.27.5.zip` and a `nginx-1.27.5/` directory, and only the former
+    # is the Windows build.
+    $pattern = "nginx-($([regex]::Escape($series))\.\d+)\.zip"
+    $match = [regex]::Matches($index.Content, $pattern) |
+        Sort-Object { [version]$_.Groups[1].Value } -Descending |
+        Select-Object -First 1
+    if (-not $match) {
+        Write-Warning "No nginx $series Windows build found at $base. Skipping nginx."
+        return $null
+    }
+
+    $fileName = Split-Path $match.Value -Leaf
+    $zipPath = Join-Path $ToolchainRoot $fileName
+    $dest    = Join-Path $ToolchainRoot "nginx"
+
+    New-Item -ItemType Directory -Path $ToolchainRoot -Force | Out-Null
+    try {
+        Write-Host "  -> Downloading $fileName ..."
+        Invoke-WebRequest -Uri ($base + $fileName) -OutFile $zipPath -UseBasicParsing -TimeoutSec 600 -ErrorAction Stop
+        if (Test-Path $dest) { Remove-Item -LiteralPath $dest -Recurse -Force }
+        # The zip contains a top-level `nginx-<version>/` directory; expand and
+        # lift that directory so the prefix is `.tools/nginx`, not
+        # `.tools/nginx/nginx-<version>`.
+        $stage = Join-Path $ToolchainRoot "_nginx-stage"
+        if (Test-Path $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
+        Expand-Archive -LiteralPath $zipPath -DestinationPath $stage -Force
+        $inner = Get-ChildItem -LiteralPath $stage -Directory | Select-Object -First 1
+        if ($inner) { Move-Item -LiteralPath $inner.FullName -Destination $dest -Force }
+        else { Move-Item -LiteralPath $stage -Destination $dest -Force }
+        if (Test-Path $stage) { Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue }
+        Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
+    } catch {
+        Write-Warning "nginx download/extract failed ($_). Skipping nginx; Alpha will run without the :2026 entry point."
+        return $null
+    }
+
+    $resolved = Resolve-AlphaNginx
+    if ($resolved) { Write-Host "  [OK] nginx installed at $resolved" -ForegroundColor Green }
+    return $resolved
 }
 
 function Install-AlphaUv {

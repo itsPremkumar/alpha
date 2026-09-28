@@ -536,7 +536,10 @@ run_service "Frontend" \
 # prerequisite with a remedy, instead of a 10-second port timeout and a
 # misleading "Nginx failed to start".
 NGINX_BIN=""
-for _cand in nginx; do
+# Project-local copy first, for the same reason Resolve-AlphaTool prefers
+# .tools: a stale system-wide nginx must not shadow the pinned one, and
+# install.ps1 provisions the pinned copy for users who never installed one.
+for _cand in "$REPO_ROOT/.tools/nginx/nginx.exe" "$REPO_ROOT/.tools/nginx/sbin/nginx.exe" nginx; do
     if command -v "$_cand" >/dev/null 2>&1; then NGINX_BIN="$_cand"; break; fi
 done
 if [ -z "$NGINX_BIN" ]; then
@@ -555,7 +558,7 @@ fi
 
 if [ "$NGINX_SKIPPED" != "true" ]; then
     run_service "Nginx" \
-        "nginx -g 'daemon off;' -c '$REPO_ROOT/docker/nginx/nginx.local.conf' -p '$REPO_ROOT' > logs/nginx.log 2>&1" \
+        "'$NGINX_BIN' -g 'daemon off;' -c '$REPO_ROOT/docker/nginx/nginx.local.conf' -p '$REPO_ROOT' > logs/nginx.log 2>&1" \
         2026 10 || true
 fi
 

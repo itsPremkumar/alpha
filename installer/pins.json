@@ -63,6 +63,28 @@
     "version": "22.17.0",
     "$comment": "MUST equal electron/desktop-config.json nodeVersion. The frontend is a Next.js SERVER (next start), so a Node runtime is required at runtime; there is no static bundle."
   },
+  "nginx": {
+    "version": "1.27",
+    "$comment": [
+      "nginx is the published :2026 entry point. It is a genuine third-party",
+      "runtime, not a Python or Node package, so nothing installed it for the",
+      "user: on a clean machine `make dev` aborted because nginx was absent, and",
+      "the launcher then tore down the Gateway and frontend that had just",
+      "started. The installer now downloads the official Windows zip into",
+      ".tools/, and serve.sh resolves the project-local copy before PATH.",
+      "scripts/serve.sh treats it as OPTIONAL so a machine that declines the",
+      "download still gets a working Alpha on :8001 and :3000.",
+      "",
+      "`version` is the nginx MINOR SERIES, because that is how nginx names its",
+      "downloads: the index offers nginx-1.27.0.zip through nginx-1.27.5.zip and",
+      "never a '1.27.x' pattern. The installer takes the highest patch in the",
+      "series at install time and records the resolved build in the install",
+      "manifest, so this pin tracks a release line instead of rotting, and each",
+      "install stays traceable to the exact build it received."
+    ],
+    "windowsDownloadBase": "https://nginx.org/download/",
+    "minFreeDiskMB": 4
+  },
   "packageManager": {
     "pnpm": "10.26.2",
     "$comment": "MUST equal the root package.json packageManager field."

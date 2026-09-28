@@ -69,6 +69,35 @@ $env:PATH = ((Split-Path $nodePath) + ";" + $env:PATH)
 $nodeVersion = & $nodePath -v
 Write-Host "  [OK] Node.js $nodeVersion" -ForegroundColor Green
 
+# 2b. Provision nginx — the published :2026 entry point.
+#
+# Optional by contract. nginx is a real third-party runtime that no Python or
+# Node package installs, so on a clean machine it is simply absent; the launcher
+# previously treated that absence as a fatal error and tore down the Gateway and
+# frontend that had already started. It is now downloaded into .tools/ and, if
+# the download is refused or offline, Alpha still runs on :8001 and :3000.
+Write-Host "`n[2b/5] Checking nginx (the :2026 entry point)..." -ForegroundColor Yellow
+try {
+    if (Resolve-AlphaNginx) {
+        Write-Host "  [OK] $(Resolve-AlphaNginx)" -ForegroundColor Green
+    } else {
+        $previousEap = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        $nginxPath = Install-AlphaNginx
+        $ErrorActionPreference = $previousEap
+        if ($nginxPath) {
+            Write-Host "  [OK] installed $nginxPath" -ForegroundColor Green
+        } else {
+            Write-Host "  [WARN] nginx is unavailable; the :2026 entry point will be absent." -ForegroundColor Yellow
+            Write-Host "         Alpha still runs on http://localhost:3000 and :8001." -ForegroundColor Yellow
+            Write-Host "         Install nginx and re-run this script to enable :2026." -ForegroundColor Gray
+        }
+    }
+} catch {
+    Write-Host "  [WARN] nginx provisioning failed: $_" -ForegroundColor Yellow
+    Write-Host "         Continuing - Alpha runs without the :2026 entry point." -ForegroundColor Yellow
+}
+
 # 3. Setup configuration files
 Write-Host "`n[3/5] Setting up configuration files..." -ForegroundColor Yellow
 
