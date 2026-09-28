@@ -736,16 +736,18 @@ def _agent_graph(agent_result: Any) -> Any:
 def _resolved_model_name(assembly_result: Any) -> str | None:
     """The model name a factory result actually resolved to, if it reports one.
 
-    Read duck-typed off the returned object rather than importing the assembly
-    type, because a third-party graph factory may return a bare graph, a
-    subclass, or something else entirely. Anything that is not a usable string
-    name yields ``None`` so the caller records nothing rather than persisting a
-    value no reader can display.
+    ``LeadAgentAssembly.effective_model`` is populated on both of its return
+    paths, so it is available on a default install with no extensions. The
+    descriptor is *not* consulted: ``assemble_lead_agent`` only builds it when an
+    extension registered an assembly observer, so a default install returns
+    ``descriptor=None`` and reading the model from there recorded nothing - which
+    is how runs ended up with ``model: null`` and tokens attributed to ``unknown``.
+
+    Everything is read duck-typed and string-checked, so a third-party graph
+    factory returning a bare graph, a subclass, or anything else still works and
+    simply records nothing rather than persisting a value no reader can display.
     """
-    descriptor = getattr(assembly_result, "descriptor", None)
-    if descriptor is None:
-        return None
-    effective = getattr(descriptor, "effective_model", None)
+    effective = getattr(assembly_result, "effective_model", None)
     if isinstance(effective, str) and effective:
         return effective
     return None
@@ -1311,25 +1313,20 @@ async def run_agent(
         # Persist the model that actually served this run, so per-model token
         # attribution and the console's per-model cost column can report it.
         #
-        # The source is the assembly descriptor's `effective_model`, which is
-        # what the factory resolved: `_resolve_model_name` in
-        # agents/lead_agent/agent.py returns the default model when a requested
-        # name is not in the allowlist, so the requested name is not
-        # necessarily the one that ran.
+        # The source is `LeadAgentAssembly.effective_model`: what the factory
+        # *resolved*, which is deliberately not the requested name when that name
+        # was outside the allowlist and the factory fell back to the default.
         #
         # This previously read `getattr(agent, "metadata", {})` *after* the
         # assembly had been unwrapped to a bare compiled graph, which has no
         # `metadata` attribute at all — so it always read `{}` and the sync never
-        # fired. Guarded on `record.model_name is not None`, that also meant it
-        # could only correct a name that was already recorded. Net effect: a run
-        # that chose its model through the runtime config key
+        # fired. Guarded on `record.model_name is not None`, it could also only
+        # correct a name that was already recorded. Net effect: a run that chose
+        # its model through the runtime config key
         # (`config.configurable.model_name` — documented in the agents guide, and
         # what the web client sends) persisted `model: null`, its tokens landed in
         # a bucket literally named "unknown", and cost was never reportable.
         effective = _resolved_model_name(assembly_result)
-        # A string only: the model name is persisted and rendered as text, so a
-        # non-string here (an int, a list, a nested config dict from a custom
-        # factory) would write a value no reader can display.
         if effective and effective != record.model_name:
             await run_manager.update_model_name(record.run_id, effective)
 

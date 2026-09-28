@@ -73,11 +73,18 @@ class _FakeDescriptor:
 
 
 class _FakeAssembly:
-    """Mirrors ``LeadAgentAssembly``: a graph plus the descriptor that resolved it."""
+    """Mirrors ``LeadAgentAssembly``: graph, observer-gated descriptor, and the
+    always-populated ``effective_model`` the worker reads.
 
-    def __init__(self, effective_model) -> None:
+    ``descriptor`` is ``None`` on a default install with no extensions, which is
+    exactly the case that made this bug invisible: reading the model from the
+    descriptor recorded nothing at all.
+    """
+
+    def __init__(self, effective_model, *, with_observers: bool = False) -> None:
         self.graph = _FakeGraph()
-        self.descriptor = _FakeDescriptor(effective_model)
+        self.descriptor = _FakeDescriptor(effective_model) if with_observers else None
+        self.effective_model = effective_model
 
 
 class _BareGraphFactoryResult:
@@ -207,3 +214,15 @@ class TestNoNameIsInvented:
             result = _resolved_model_name(candidate)
             assert result is None or isinstance(result, str)
         assert _resolved_model_name(_FakeAssembly("ok")) == "ok"
+
+    @pytest.mark.asyncio
+    async def test_the_model_is_recorded_even_with_no_extension_observers(self) -> None:
+        """The default install: `assemble_lead_agent` returns `descriptor=None`.
+
+        This is the exact case that shipped the bug, so it is pinned explicitly
+        rather than left to the shape of the default fake.
+        """
+        without = await _run_with(record_model_name=None, factory_result=_FakeAssembly("alpha-free", with_observers=False))
+        with_observers = await _run_with(record_model_name=None, factory_result=_FakeAssembly("alpha-free", with_observers=True))
+        assert without == [("run-model-attribution", "alpha-free")], "run accounting must not depend on an extension being installed: assemble_lead_agent only builds a descriptor when an assembly observer is registered"
+        assert with_observers == without, "an installed observer must not change what gets recorded"

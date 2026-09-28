@@ -96,10 +96,19 @@ class LeadAgentAssembly:
     ``descriptor`` is typed loosely on purpose: this module is imported during
     LangGraph Server startup and must not pull the extension contract package
     into that import path.
+
+    ``effective_model`` is the model this factory actually resolved to, and is
+    populated on both return paths. It is deliberately *not* read off
+    ``descriptor``: the descriptor is only built when an extension registered an
+    assembly observer, so depending on it would make run accounting conditional
+    on an extension being installed. ``run_agent`` persists it onto the run row
+    so per-model token attribution and the console's per-model cost column can
+    report which model spent the money.
     """
 
     graph: Any
     descriptor: Any
+    effective_model: str | None = None
 
 
 def unwrap_agent_graph(agent_result: Any) -> Any:
@@ -954,7 +963,16 @@ def _complete_assembly(
 
     resolved_extensions = get_agent_build_extensions()
     if not resolved_extensions.has_agent_assembly_observers:
-        return LeadAgentAssembly(graph=graph, descriptor=None)
+        # The descriptor is an extension-observability projection, so it is only
+        # built when an observer wants it. The resolved model must NOT depend on
+        # that: it is the only record of which model a run actually used, and
+        # `run_agent` persists it for per-model token attribution and the
+        # console's per-model cost column. With `descriptor=None` on every
+        # default install, that value had nowhere to be read from, so runs
+        # persisted `model: null` and their tokens landed in a bucket named
+        # "unknown" - unattributable spend on the ordinary path, caused purely by
+        # an extension not being installed.
+        return LeadAgentAssembly(graph=graph, descriptor=None, effective_model=effective_model)
 
     from alpha.agents.assembly_descriptor import build_assembly_descriptor
     from alpha.extensions.notify import notify_agent_assembled
@@ -981,7 +999,7 @@ def _complete_assembly(
         effective_policies=resolved_policies,
     )
     notify_agent_assembled(descriptor, resolved_extensions)
-    return LeadAgentAssembly(graph=graph, descriptor=descriptor)
+    return LeadAgentAssembly(graph=graph, descriptor=descriptor, effective_model=effective_model)
 
 
 def _assemble_lead_agent(config: RunnableConfig, *, app_config: AppConfig) -> LeadAgentAssembly:
