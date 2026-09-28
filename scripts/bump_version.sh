@@ -8,6 +8,8 @@
 #   backend/pyproject.toml              (version = "...")
 #   backend/packages/harness/pyproject.toml (version = "...")
 #   frontend/package.json               ("version": "...")
+#   package.json                        ("version": "...")
+#   electron/package.json               ("version": "...")
 #   deploy/helm/alpha/Chart.yaml    (version: + appVersion:)
 #
 # This does NOT edit CHANGELOG.md or create/push a git tag — keep those manual.
@@ -32,20 +34,22 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PYPROJECT="$ROOT/backend/pyproject.toml"
 HARNESS="$ROOT/backend/packages/harness/pyproject.toml"
 PACKAGE="$ROOT/frontend/package.json"
+ROOT_PACKAGE="$ROOT/package.json"
+ELECTRON_PACKAGE="$ROOT/electron/package.json"
 CHART="$ROOT/deploy/helm/alpha/Chart.yaml"
 
-for f in "$PYPROJECT" "$HARNESS" "$PACKAGE" "$CHART"; do
+for f in "$PYPROJECT" "$HARNESS" "$PACKAGE" "$ROOT_PACKAGE" "$ELECTRON_PACKAGE" "$CHART"; do
   if [ ! -f "$f" ]; then
     echo "error: expected version file not found: $f" >&2
     exit 1
   fi
 done
 
-python3 - "$PYPROJECT" "$PACKAGE" "$CHART" "$HARNESS" "$VERSION" <<'PY'
+python3 - "$PYPROJECT" "$PACKAGE" "$CHART" "$HARNESS" "$ROOT_PACKAGE" "$ELECTRON_PACKAGE" "$VERSION" <<'PY'
 import re
 import sys
 
-pyproject, package, chart, harness, version = sys.argv[1:6]
+pyproject, package, chart, harness, root_package, electron_package, version = sys.argv[1:8]
 
 # backend/pyproject.toml — version = "..."
 with open(pyproject) as f:
@@ -89,6 +93,24 @@ if new == src:
     sys.exit(f"error: no top-level 'version' field in {harness}")
 with open(harness, "w") as f:
     f.write(new)
+
+# package.json and electron/package.json — "version": "..."
+# The Electron one names the shipped artifact (Alpha-Setup-${version}.exe), and
+# scripts/verify_versions.sh now gates on both, so a release that bumped only
+# the Python/frontend sources would be blocked at publish time.
+for manifest in (root_package, electron_package):
+    with open(manifest) as f:
+        src = f.read()
+    new = re.sub(
+        r'(?m)^(\s*)"version"\s*:\s*".*?"',
+        lambda m: f'{m.group(1)}"version": "{version}"',
+        src,
+        count=1,
+    )
+    if new == src:
+        sys.exit(f'error: no top-level "version" field in {manifest}')
+    with open(manifest, "w") as f:
+        f.write(new)
 PY
 
 echo "Bumped version to $VERSION in:"

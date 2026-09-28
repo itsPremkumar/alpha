@@ -6,6 +6,13 @@
 #   backend/pyproject.toml             — version
 #   backend/packages/harness/pyproject.toml — version
 #   frontend/package.json              — version
+#   package.json                        — version
+#   electron/package.json               — version
+#
+# The root and Electron manifests carry a version that decides the shipped
+# artifact name (`Alpha-Setup-${version}.exe`), so leaving them unchecked
+# meant a release could publish an installer named for a version the rest of
+# the project had moved past.
 #
 # Usage:
 #   scripts/verify_versions.sh             # all sources must be mutually equal
@@ -24,8 +31,10 @@ CHART="$ROOT/deploy/helm/alpha/Chart.yaml"
 PYPROJECT="$ROOT/backend/pyproject.toml"
 HARNESS="$ROOT/backend/packages/harness/pyproject.toml"
 PACKAGE="$ROOT/frontend/package.json"
+ROOT_PACKAGE="$ROOT/package.json"
+ELECTRON_PACKAGE="$ROOT/electron/package.json"
 
-for f in "$CHART" "$PYPROJECT" "$HARNESS" "$PACKAGE"; do
+for f in "$CHART" "$PYPROJECT" "$HARNESS" "$PACKAGE" "$ROOT_PACKAGE" "$ELECTRON_PACKAGE"; do
   if [ ! -f "$f" ]; then
     echo "::error::missing version file: $f" >&2
     exit 1
@@ -37,12 +46,16 @@ APP_VERSION=$(awk '/^appVersion:/ {gsub(/"/, ""); print $2; exit}' "$CHART")
 PY_VERSION=$(awk -F'"' '/^version[[:space:]]*=/ {print $2; exit}' "$PYPROJECT")
 HARNESS_VERSION=$(awk -F'"' '/^version[[:space:]]*=/ {print $2; exit}' "$HARNESS")
 JS_VERSION=$(grep -m1 '"version"' "$PACKAGE" | awk -F'"' '{print $4}')
+ROOT_JS_VERSION=$(grep -m1 '"version"' "$ROOT_PACKAGE" | awk -F'"' '{print $4}')
+ELECTRON_JS_VERSION=$(grep -m1 '"version"' "$ELECTRON_PACKAGE" | awk -F'"' '{print $4}')
 
 printf 'Chart.yaml version:     %s\n' "$CHART_VERSION"
 printf 'Chart.yaml appVersion:  %s\n' "$APP_VERSION"
 printf 'backend/pyproject.toml: %s\n' "$PY_VERSION"
 printf 'backend/packages/harness/pyproject.toml: %s\n' "$HARNESS_VERSION"
 printf 'frontend/package.json:  %s\n' "$JS_VERSION"
+printf 'package.json:           %s\n' "$ROOT_JS_VERSION"
+printf 'electron/package.json:  %s\n' "$ELECTRON_JS_VERSION"
 
 # mismatch <name> <actual> <expected>: prints a GitHub Actions annotation and
 # returns 1 when they differ, 0 when equal.
@@ -64,12 +77,16 @@ if [ -n "$EXPECTED" ]; then
   mismatch "backend/pyproject.toml" "$PY_VERSION"    "$EXPECTED" || status=1
   mismatch "backend/packages/harness/pyproject.toml" "$HARNESS_VERSION" "$EXPECTED" || status=1
   mismatch "frontend/package.json"  "$JS_VERSION"    "$EXPECTED" || status=1
+  mismatch "package.json"           "$ROOT_JS_VERSION"    "$EXPECTED" || status=1
+  mismatch "electron/package.json"  "$ELECTRON_JS_VERSION" "$EXPECTED" || status=1
 else
   echo
   mismatch "Chart.yaml appVersion"  "$APP_VERSION"  "$CHART_VERSION" || status=1
   mismatch "backend/pyproject.toml" "$PY_VERSION"   "$CHART_VERSION" || status=1
   mismatch "backend/packages/harness/pyproject.toml" "$HARNESS_VERSION" "$CHART_VERSION" || status=1
   mismatch "frontend/package.json"  "$JS_VERSION"   "$CHART_VERSION" || status=1
+  mismatch "package.json"           "$ROOT_JS_VERSION"    "$CHART_VERSION" || status=1
+  mismatch "electron/package.json"  "$ELECTRON_JS_VERSION" "$CHART_VERSION" || status=1
 fi
 
 if [ "$status" -ne 0 ]; then
