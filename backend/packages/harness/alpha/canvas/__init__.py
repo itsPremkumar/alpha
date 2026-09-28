@@ -1,4 +1,4 @@
-"""Interactive Canvas and Generative UI widgets inspired by OpenClaw."""
+"""Interactive Canvas and Generative UI widgets."""
 
 from alpha.canvas.manager import CanvasManager, get_canvas_manager
 from alpha.canvas.widget import CanvasWidget, WidgetKind

@@ -86,7 +86,7 @@ def get_subagent_promotion_manager(storage_dir: Path | str | None = None) -> Sub
 
 
 class SubagentPromotionManager:
-    """Tracks subagent role metrics and executes promotions to permanent Hermes Bots."""
+    """Tracks subagent role metrics and executes promotions to permanent specialist bots."""
 
     MIN_EXECUTIONS_FOR_PROMOTION = 5
     MIN_RELIABILITY_FOR_PROMOTION = 0.80
@@ -270,6 +270,3 @@ class SubagentPromotionManager:
             logger.warning(f"Failed to persist promoted bot profile {bot_file}: {exc}")
 
         return bot_profile
-
-    # Backward compatibility alias
-    promote_to_hermes_bot = promote_to_specialist_bot

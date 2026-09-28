@@ -1,4 +1,4 @@
-"""Micro-Compaction and Rolling Semantic Receipt Generator inspired by Hermes Agent."""
+"""Micro-Compaction and Rolling Semantic Receipt Generator."""
 
 from __future__ import annotations
 

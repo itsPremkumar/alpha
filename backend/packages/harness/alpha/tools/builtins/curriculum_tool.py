@@ -1,4 +1,4 @@
-"""Built-in curriculum tool inspired by hermes-asi-master."""
+"""Built-in curriculum tool."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Built-in delta_checkpoint tool inspired by hermes-asi-master."""
+"""Built-in delta_checkpoint tool."""
 
 from __future__ import annotations
 

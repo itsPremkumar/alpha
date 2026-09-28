@@ -24,7 +24,7 @@ def group_chat_tool(
 ) -> str:
     """Collaborate in multi-agent group chat rooms with adaptive speaker modes and voting.
 
-    Vastly expands on Hermes Bot Mode with 5 speaker selection strategies (mention,
+    Vastly expands on bot mode with 5 speaker selection strategies (mention,
     moderated, quorum, parallel, round_robin) and real-time room auto-provisioning.
 
     Args:

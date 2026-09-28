@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    One Trigger -> Action -> Deliver cycle (OpenClaw's basic automation unit).
+    One Trigger -> Action -> Deliver cycle (the basic automation unit).
 
 .DESCRIPTION
     Manual by default. Nothing is scheduled unless you explicitly ask with

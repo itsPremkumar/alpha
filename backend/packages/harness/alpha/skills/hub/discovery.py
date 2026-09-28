@@ -1,4 +1,4 @@
-"""Skills Hub discovery and secure installation engine inspired by Hermes."""
+"""Skills Hub discovery and secure installation engine."""
 
 from __future__ import annotations
 

@@ -1,6 +1,6 @@
 """S1 tests: skill-creation nudge cadence, hydration, and prompt honesty.
 
-Pins Hermes turn_finalizer.py:675-682 fire gate + turn_context.py:701-706
+Pins turn_finalizer.py:675-682 fire gate + turn_context.py:701-706
 hydration, and the honesty contract: real counts only, literal
 "no usage evidence recorded" for empty stats, no claimed improvements.
 """

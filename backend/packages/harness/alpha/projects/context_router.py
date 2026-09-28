@@ -1,4 +1,4 @@
-"""Three-Level Memory and Context Isolation Router (Hermes Bot Mode & Agent OS Architecture).
+"""Three-Level Memory and Context Isolation Router (bot-mode & Agent OS architecture).
 
 Enforces:
 1. Level 1: Global Bot Memory (~/.alpha/bots/<bot>/memory.json) - Persona, habits, style, learned lessons

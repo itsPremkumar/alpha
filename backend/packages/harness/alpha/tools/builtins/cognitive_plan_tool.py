@@ -4,7 +4,7 @@ Intercepts raw user prompts and evaluates:
 1. Execution Paradigm (Deep Research vs Deep Think vs Swarm vs MoA vs Bot Profile vs Subagents vs Direct)
 2. Swarm Strategy Mode (Map-Reduce, Debate, Ensemble, Coding Worktree, Hierarchical)
 3. Reasoning Tier (Standard, Extended Reflection, Adversarial Audit)
-4. Workforce Allocation (Permanent Hermes Bots vs Ephemeral Subagents vs Hybrid)
+4. Workforce Allocation (Permanent specialist bots vs Ephemeral Subagents vs Hybrid)
 5. Compute & Model Routing (Frontier, Fast, Local, Verifier)
 6. Workspace Isolation Backend (Shared, Git Worktree, Sandbox)
 7. Risk Tier (R1 Safe Read-only to R6 Destructive)

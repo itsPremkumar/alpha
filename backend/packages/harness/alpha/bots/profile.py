@@ -1,4 +1,4 @@
-"""Bot Profile and Capability Epoch Engine (inspired by Hermes Bot Mode, upgraded).
+"""Bot Profile and Capability Epoch Engine.
 
 Defines first-class Bot profiles with custom SOUL instructions, toolsets,
 skills, and deterministic 12-hex capability epoch fingerprinting.

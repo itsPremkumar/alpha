@@ -2,7 +2,7 @@
 
 Alpha already carries request secrets via config.context.secrets
 (runtime.secret_context.SECRETS_CONTEXT_KEY) and strips them from traces.
-OpenClaw 2.0 goes one step further: SecretRefs never enter model-visible
+The reference design goes one step further: SecretRefs never enter model-visible
 text at all — they are resolved at the transport (tool/MCP destination).
 
 This module adds the additive resolver:

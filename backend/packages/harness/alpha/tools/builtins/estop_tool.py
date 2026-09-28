@@ -1,4 +1,4 @@
-"""Built-in Emergency Stop (ESTOP) tool inspired by Hermes Agent."""
+"""Built-in Emergency Stop (ESTOP) tool."""
 
 from __future__ import annotations
 

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-# Safety bounds (Hermes session_search_tool port, backward-compatible additions):
+# Safety bounds (ported session_search_tool behavior, backward-compatible additions):
 # Sources NEVER surfaced by discovery (internal kanban/subagent/tool chatter).
 _HIDDEN_SESSION_SOURCES = ("kanban", "subagent", "tool")
 # Per-message content cap on read paths; longer content is cut here and the

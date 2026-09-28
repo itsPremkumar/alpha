@@ -170,7 +170,6 @@ def uv_executable() -> str | None:
         os.environ.get("ALPHA_UV"),
         shutil.which("uv"),
         str(Path.home() / ".cargo" / "bin" / "uv.exe"),
-        str(Path.home() / "AppData" / "Local" / "hermes" / "bin" / "uv.exe"),
     ):
         if candidate and Path(candidate).is_file():
             return candidate

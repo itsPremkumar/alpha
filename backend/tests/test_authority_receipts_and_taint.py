@@ -464,9 +464,9 @@ def test_the_source_enumeration_is_closed() -> None:
 
 
 def test_the_enumeration_covers_every_documented_inbound_content_path() -> None:
-    """The enum must name the paths OpenClaw's own limitation leaves out.
+    """The enum must name the paths the reference implementation's own limitation leaves out.
 
-    OpenClaw: "Turn taint covers network-sourced tool output; text arriving
+    Reference implementation: "Turn taint covers network-sourced tool output; text arriving
     through non-network tools does not taint the turn."  The non-network half is
     the hole, so those sources are asserted to be present here.
     """

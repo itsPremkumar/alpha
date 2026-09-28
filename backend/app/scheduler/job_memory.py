@@ -1,6 +1,6 @@
 """Durable, scoped memory journal for scheduled (cron) job runs.
 
-Hermes-style design: every scheduled job owns an append-only JSONL journal on
+Design: every scheduled job owns an append-only JSONL journal on
 disk (``<root>/job-<id>.jsonl``). Each launch appends one ``dispatched``
 entry *before* the run is created; each terminal observation appends one
 ``outcome`` entry. Before the next launch the service reads the prior journal

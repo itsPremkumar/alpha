@@ -1,6 +1,6 @@
 """Memory persistence nudges: remind long-running agents to save what they learned.
 
-Hermes-style periodic nudges, cooldown-guarded so they fire at most once per
+Periodic nudges, cooldown-guarded so they fire at most once per
 window and never interrupt an active exchange — the nudge is consumed at the
 next natural turn boundary by the caller.
 """

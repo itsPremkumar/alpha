@@ -1,4 +1,4 @@
-"""Universal Tool Search & Deferred Catalog Discovery inspired by OpenClaw."""
+"""Universal Tool Search & Deferred Catalog Discovery."""
 
 from alpha.tools.search.catalog import ToolCatalogEntry, UniversalToolCatalog, get_universal_catalog
 from alpha.tools.search.tools import catalog_call, catalog_describe, catalog_search

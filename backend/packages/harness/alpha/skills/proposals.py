@@ -1,4 +1,4 @@
-"""Agent-proposed skill queue with human approval (Hermes /learn + Workshop).
+"""Agent-proposed skill queue with human approval (skill proposals + Workshop).
 
 An agent (or user, via the API) proposes a skill as SKILL.md markdown. The
 proposal is statically scanned BEFORE anything is stored: blockers fail
@@ -48,7 +48,7 @@ _ID_RE = re.compile(r"^[0-9a-f]{32}$")
 
 
 def validate_proposal_name(name: str) -> str:
-    """Validate a proposed skill name (lowercase hyphenated, Hermes-compatible)."""
+    """Validate a proposed skill name (lowercase hyphenated)."""
     if not isinstance(name, str) or not _NAME_RE.match(name):
         raise ValueError("Skill name must be 1-64 chars of lowercase letters, digits, or hyphens (e.g. 'pdf-tables').")
     return name

@@ -1,4 +1,4 @@
-"""Built-in Learning Graph tool inspired by Hermes Agent."""
+"""Built-in Learning Graph tool."""
 
 from __future__ import annotations
 

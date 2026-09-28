@@ -1,4 +1,4 @@
-"""Hermes ports: review queue, MoA-lite, insights, kanban stop guard, bot retry."""
+"""Ported subsystems: review queue, MoA-lite, insights, kanban stop guard, bot retry."""
 
 from __future__ import annotations
 

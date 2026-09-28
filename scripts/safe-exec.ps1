@@ -4,7 +4,7 @@
     Run a whitelisted command only. Deny-by-default.
 
 .DESCRIPTION
-    An exec-approval gate in the OpenClaw sense: capability is granted
+    An exec-approval gate: capability is granted
     explicitly, never inferred. Anything not matching the allowlist is refused.
 
     - Dry-run is the DEFAULT (nothing executes without -Apply).

@@ -1061,7 +1061,7 @@ def register_all_backend_handlers() -> None:
 
 
 # ==============================================================================
-# 6. SELF-IMPROVEMENT WORKSHOP HANDLERS (Hermes /learn + MoA + usage)
+# 6. SELF-IMPROVEMENT WORKSHOP HANDLERS (skill proposals + MoA + usage)
 # ==============================================================================
 
 

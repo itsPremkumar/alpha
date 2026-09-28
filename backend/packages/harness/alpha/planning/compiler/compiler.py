@@ -137,7 +137,7 @@ class ExecutionPlanIR:
 
 class CognitiveCompiler:
     """
-    Hermes P0–P21 Pre-Execution Cognitive Compiler.
+    Pre-Execution Cognitive Compiler (phases P0–P21).
     Compiles a mission into an immutable, structured ExecutionPlanIR
     BEFORE committing any real tool calls or shell commands.
     """

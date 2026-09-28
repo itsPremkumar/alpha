@@ -7,7 +7,7 @@ from alpha.evaluation.benchmark import (
 
 def test_task_evaluation_runner_pass():
     spec = STANDARD_BENCHMARKS[0]  # research_001
-    agent_resp = "In this research, Hermes and OmO exhibit different architecture, memory models, and orchestration patterns."
+    agent_resp = "In this research, Alpha and OmO exhibit different architecture, memory models, and orchestration patterns."
     tool_calls = [{"tool_name": "search_web", "exit_code": 0}, {"tool_name": "read_url", "exit_code": 0}]
 
     res = EvaluationRunner.evaluate_task(

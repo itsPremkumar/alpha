@@ -4,7 +4,7 @@ Why this module exists
 ----------------------
 ``alpha/bots/authority_ceiling.py`` holds ONE global authority ceiling.  A
 single uniform ceiling is either too tight for a constrained agent or too loose
-for a powerful one, and OpenClaw's own evaluation notes the same shape of
+for a powerful one, and the reference implementation's own evaluation notes the same shape of
 problem when it says a feature table "does not establish the security model"
 (https://docs.openclaw.ai/start/why-openclaw).  A research bot that may read the
 web and a computer-use bot that may drive a screen do not belong in the same

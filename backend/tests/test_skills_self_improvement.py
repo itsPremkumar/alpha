@@ -87,7 +87,7 @@ def test_learn_prompt_covers_source_and_bar():
 
 
 def test_skill_draft_validator():
-    good_md = "# Ship It\nIntro line.\n## When to Use\nx\n## Prerequisites\ny\n## How to Run\n`hermes run`\n## Quick Reference\n- a\n## Procedure\n1. do\n## Pitfalls\nnone\n## Verification\nRun `make verify`.\n"
+    good_md = "# Ship It\nIntro line.\n## When to Use\nx\n## Prerequisites\ny\n## How to Run\n`alpha run`\n## Quick Reference\n- a\n## Procedure\n1. do\n## Pitfalls\nnone\n## Verification\nRun `make verify`.\n"
     assert validate_skill_draft("ship-it", "Ship services with one command.", good_md) == []
 
     findings = validate_skill_draft("Bad Name", "A comprehensive and powerful solution for everything " + "x" * 80, "# T\nno sections here\napi_key = 'secret12345'\n")

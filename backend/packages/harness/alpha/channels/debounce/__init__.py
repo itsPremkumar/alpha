@@ -1,4 +1,4 @@
-"""Inbound message debouncer and turn batcher inspired by OpenClaw."""
+"""Inbound message debouncer and turn batcher."""
 
 from alpha.channels.debounce.debouncer import BatchedTurn, InboundDebouncer
 

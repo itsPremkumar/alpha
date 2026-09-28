@@ -1,4 +1,4 @@
-"""Graceful Model Failover & Multi-Key Auth Rotation inspired by OpenClaw."""
+"""Graceful Model Failover & Multi-Key Auth Rotation."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""3-Phase Dreaming Memory Consolidation package inspired by OpenClaw."""
+"""3-Phase Dreaming Memory Consolidation package."""
 
 from alpha.memory.dreaming.phases import (
     ConsolidationInsight,

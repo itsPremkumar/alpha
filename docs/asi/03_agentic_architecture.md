@@ -1,22 +1,22 @@
 # Agentic Architecture Patterns That Work
 
 Collected 2026-09-26 from frontier lab architecture writing, evaluation research, and the two most
-substantial open agent systems (OpenClaw 2026.9.6, Hermes Agent v0.21.5). Each pattern states the problem,
+substantial open agent systems (reference implementation 2026.9.6, upstream agent v0.21.5). Each pattern states the problem,
 the mechanism, and the failure mode when it is skipped.
 
 ## 1. The trust boundary is architectural, not procedural
 
-**The single most important pattern.** OpenClaw's enterprise evaluation states it plainly:
+**The single most important pattern.** The reference implementation's enterprise evaluation states it plainly:
 
 > "A single trust envelope can put the agent loop, channel connections, credentials, and shell under one OS
 > user. Wrapping that entire application in a VM isolates it from the host, but does not separate those
 > components from each other."
 
-And, comparing against Hermes:
+And, comparing against the upstream system:
 
-> "The only security boundary against an adversarial LLM is the operating system." — Hermes `SECURITY.md`
+> "The only security boundary against an adversarial LLM is the operating system." — the upstream `SECURITY.md`
 
-OpenClaw's counter-architecture: **a trusted Gateway, untrusted and movable execution, policy enforced in
+The reference implementation's counter-architecture: **a trusted Gateway, untrusted and movable execution, policy enforced in
 code, versioned state.** Execution moves to a sandbox, a node, or a disposable cloud machine **without
 standing Gateway credentials**, and scoped worker credentials have a **separate lifecycle**.
 
@@ -38,7 +38,7 @@ reach around it. That misrepresentation is the failure this pattern exists to pr
 
 ## 2. Credential isolation — the agent never sees the secret
 
-OpenClaw's property 4, plus Hermes v0.21.2's password-blind vault: the agent signs in, pays, and fills
+The reference implementation's property 4, plus the upstream v0.21.2 password-blind vault: the agent signs in, pays, and fills
 addresses from 1Password / Bitwarden / a local vault **without ever seeing a secret**; 2FA comes from a
 stored authenticator key or the user's UI.
 
@@ -52,13 +52,13 @@ code does. They compose, but the second is strictly stronger for the exfiltratio
 **Failure modes:** secrets in logs; secrets in exception messages; secrets in truncated tool results. The
 last two are where they actually leak — audit error paths first.
 
-OpenClaw's related hardening, worth copying: the `HERMES_*` **prefix** passthrough was removed because it
+The reference implementation's related hardening, worth copying: the vendor-specific **prefix** passthrough was removed because it
 leaked non-secret configuration into arbitrary sandboxed code. Use an **exact-name allowlist** plus explicit
 per-skill opt-in.
 
 ## 3. Degrade the subsystem, never fail closed on a narrow fault
 
-Learned from OpenClaw's 44-issue `state.db` reliability campaign. Three generalisations:
+Learned from the reference implementation's 44-issue `state.db` reliability campaign. Three generalisations:
 
 **A. Scope damage classification to the damaged component.** An FTS-index error was classified as whole-file
 corruption and fail-closed the entire conversation. Correct behaviour: search degrades, the index rebuilds
@@ -76,13 +76,13 @@ Two more from the same campaign:
 - **A write lock must not be taken when nothing is written.** Opening the store stalled 4-20s. A read-only
   path opening a write handle is a defect.
 - **`doctor --fix` must refuse an action it cannot prove is safe**, and must not half-apply.
-- **Repair must not lose capability.** OpenClaw PR #136045: a doctor repair was dropping the bundled plugin
+- **Repair must not lose capability.** Reference implementation PR #136045: a doctor repair was dropping the bundled plugin
   inventory so default plugins vanished after restart. A repair that drops a capability is a failed repair.
   Recovery must also work from a *partial* state left by a prior bad version.
 
 ## 4. Provenance and verification evidence
 
-OpenClaw publishes, per release: `sha256` per asset, a release manifest, post-publish evidence, dependency
+The reference implementation publishes, per release: `sha256` per asset, a release manifest, post-publish evidence, dependency
 evidence, and separate CI lanes. And then the part no other project does — a **lane report naming each
 check, its real status, and who waived what**:
 
@@ -101,7 +101,7 @@ Related CI patterns worth adopting:
 - **Scope gates and changed-scope lane routing** — only run what changed
 - **Durable run ledger** — every update/upgrade writes reports and artifacts
 
-Provenance also needs **documented deletion limits**. OpenClaw is careful here: forgettable memories are
+Provenance also needs **documented deletion limits**. The reference implementation is careful here: forgettable memories are
 tracked and purgeable, but original transcripts, untracked writes, and external copies are separate and
 out of scope. A deletion claim without its limits is a false claim.
 
@@ -123,7 +123,7 @@ discussion or reasoning rounds, using fixed interaction structures."*
 
 Track that content from an untrusted source is untrusted — and propagate through derived work.
 
-**OpenClaw's admitted gap:** *"Turn taint covers network-sourced tool output; text arriving through
+**The reference implementation's admitted gap:** *"Turn taint covers network-sourced tool output; text arriving through
 non-network tools does not taint the turn."* That is a real hole.
 
 The complete design: taint is a property of the **turn**, not the tool call. Sources include web fetch, file
@@ -137,7 +137,7 @@ bookkeeping. And taint must be clearable only by a control that is not the model
 
 ## 7. Verification must be structural, and honesty is enforced by gates
 
-**Hermes `/goal` quality gates, run BEFORE the judge:**
+**Upstream `/goal` quality gates, run BEFORE the judge:**
 
 > "Gates run before the judge. If any gate fails, the judge is not called — a red gate is deterministic
 > evidence the goal isn't done. The gate's exit code and output tail (last ~3 KB) become the continuation
@@ -177,7 +177,7 @@ gate. And the reviewer is never the author.
   tool*. The room listens; it does not speak. Anti-spam by architecture.
 - **Presence that never leaks** — *"drafts stay ephemeral and never reach the model or the transcript."*
   Typing indicators must not enter model context.
-- **Bot loop protection** with defaults plus per-channel overrides. Hermes shipped
+- **Bot loop protection** with defaults plus per-channel overrides. Upstream shipped
   `bots_require_mention` specifically because bot-to-bot mention loops were happening. A dispatch-level loop
   guard is insufficient if the loop is in the **mention graph**.
 - **Broadcast groups** — bounded agent group threads, explicitly bounded.
@@ -191,16 +191,16 @@ gate. And the reviewer is never the author.
   nothing.
 - **Bound expensive reads and history queries** — an unbounded read is a DoS on yourself.
 - **Host-wide singleton with a rendezvous record** — a second process *attaches*, it does not spawn a
-  duplicate. OpenClaw fixed this after profile switches and roster ticks spawned duplicate primaries.
+  duplicate. The reference implementation fixed this after profile switches and roster ticks spawned duplicate primaries.
 - **A read-only UI inspection must not spawn a worker.** Hovering a bots roster row spawned a backend per
-  row in Hermes.
+  row in the upstream system.
 - **A blocked slow callback must not starve a lease refresh.** One blocked periodic callback stalled lease
   refresh.
 - **Per-entity stop/start/restart**, plus a standalone mode.
 
 ## 10. Honest self-documentation as a product feature
 
-OpenClaw's "What we do not claim" is the best security writing in any agent project:
+The reference implementation's "What we do not claim" is the best security writing in any agent project:
 
 - Sandboxing and exec approvals are **off by default**
 - One gateway is one trust domain; multi-tenancy means one **cell** per tenant, fleet still experimental

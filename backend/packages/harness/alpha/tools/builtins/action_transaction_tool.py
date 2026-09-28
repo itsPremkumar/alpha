@@ -1,4 +1,4 @@
-"""Built-in action_transaction tool inspired by hermes-agi-asi-harness."""
+"""Built-in action_transaction tool."""
 
 from __future__ import annotations
 

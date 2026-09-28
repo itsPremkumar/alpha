@@ -1,6 +1,6 @@
 """M2 tests: persistence nudge gate matrix, hydration, fire cycle, honesty.
 
-Pins Hermes turn_context.py:709-718 tick gates (capability present), the
+Pins turn_context.py:709-718 tick gates (capability present), the
 import-only seam onto alpha.learning.nudges.build_memory_nudge (no second
 divergent prompt string), the honest "evidence unknown" fallback, and
 should_suppress for autonomous forks.

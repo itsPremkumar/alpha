@@ -41,7 +41,7 @@ def company_engine():
 
 
 def test_group_chat_mesh_unlimited_bots(company_engine):
-    """Verifies that company all-hands group supports unlimited bots, breaking the Hermes 7-bot limitation."""
+    """Verifies that company all-hands group supports unlimited bots."""
     orgs = company_engine.list_companies()
     assert len(orgs) > 0
     state = orgs[0]
@@ -58,7 +58,7 @@ def test_group_chat_mesh_unlimited_bots(company_engine):
     # Verify no 7-bot limit! Has all company bots
     assert len(all_hands.member_bot_names) >= 9
 
-    # Check Cognition Council (inspired by Hermes Bot Mode AGI)
+    # Check Cognition Council
     council = chat.get_channel("cognition-council")
     assert council is not None
     assert "bot-ceo" in council.member_bot_names
@@ -289,7 +289,7 @@ def test_agent_kanban_check_in_and_task_lifecycle(company_engine):
     org_id = company_engine.list_companies()[0].org_id
 
     # 1. Sync company projects to kanban
-    company_engine.sync_company_to_hermes_kanban(org_id)
+    company_engine.sync_company_to_enterprise_kanban(org_id)
 
     # 2. Agent check-in for 'cto' (inspect tasks)
     check_in_res = company_engine.agent_kanban_check_in(

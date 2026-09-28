@@ -1,4 +1,4 @@
-"""Streaming Progress Draft Cards inspired by OpenClaw."""
+"""Streaming Progress Draft Cards."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Agent skill-proposal tool (Hermes /learn pattern, governed).
+"""Agent skill-proposal tool (skill-proposal pattern, governed).
 
 Propose a new skill as SKILL.md markdown. The proposal is statically scanned
 BEFORE anything is stored: blockers fail closed without persisting. Stored

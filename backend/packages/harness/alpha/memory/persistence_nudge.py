@@ -5,11 +5,11 @@ Owns the turn-counting gate; the reminder TEXT is NOT duplicated here —
 verbatim by :func:`build_persistence_nudge` (one canonical prompt string,
 never a second divergent copy). ``learning/**`` is a read-only dependency.
 
-Semantics mirror Hermes ``turn_context.py:709-718`` (``_tick_memory_nudge``):
+Semantics mirror the reference ``turn_context.py:709-718`` (``_tick_memory_nudge``):
 the counter only advances when the capability is actually present
 (``interval > 0`` AND the memory tool is available AND a store exists to
 write to); reaching ``interval`` resets the counter to 0 and fires exactly
-once. Resume mirrors Hermes ``turn_context.py:701-706`` (``prior % interval``).
+once. Resume mirrors the reference ``turn_context.py:701-706`` (``prior % interval``).
 Autonomous forks never nudge — :func:`should_suppress` is the single seam.
 """
 
@@ -43,7 +43,7 @@ def tick(turns_since: int, interval: int, *, memory_tool_available: bool, has_st
 
 
 def hydrate(prior_user_turn_count: int, interval: int) -> int:
-    """Resume the counter from persisted history (Hermes ``turn_context.py:701-706``).
+    """Resume the counter from persisted history (``turn_context.py:701-706``).
 
     ``prior % interval`` reconstructs the in-cycle position; non-positive
     history or a disabled interval resumes at 0 — never invented progress.

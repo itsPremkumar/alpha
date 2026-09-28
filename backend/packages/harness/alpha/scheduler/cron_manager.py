@@ -1,4 +1,4 @@
-"""Autonomous Background Cron & Periodic Task Scheduler inspired by Hermes Agent."""
+"""Autonomous Background Cron & Periodic Task Scheduler."""
 
 from __future__ import annotations
 

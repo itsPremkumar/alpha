@@ -534,7 +534,7 @@ This section accumulates work toward the **2.1.0** milestone
 
 - **observability:** Trace-id correlation with enhanced logging and agent
   observability via Monocle. ([#3902], [#4024])
-- **tooling:** A Hermes-like terminal workbench (`alpha` CLI) backed by
+- **tooling:** A terminal workbench (`alpha` CLI) backed by
   `AgentWorkspaceClient`, plus a redacted community support-bundle generator. ([#3760],
   [#3886])
 - **setup:** The setup wizard now asks whether OpenAI-compatible gateway models

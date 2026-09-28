@@ -42,7 +42,7 @@ def allowed_tool_names_for_skills(
 
     ``allow_all_when_undeclared=False`` closes a real gap: when *no* skill
     declares allowed-tools the union is empty by default, which historically
-    meant "no restriction". Under OpenClaw's rule that a Skill grants no
+    meant "no restriction". Under the rule that a Skill grants no
     permissions, an undeclared skill set should yield only the framework
     built-ins rather than the whole tool registry. Defaults to True so existing
     deployments keep their behaviour.

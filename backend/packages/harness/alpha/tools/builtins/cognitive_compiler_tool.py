@@ -1,4 +1,4 @@
-"""Built-in cognitive_compiler tool inspired by hermes-agi-asi-harness."""
+"""Built-in cognitive_compiler tool."""
 
 from __future__ import annotations
 

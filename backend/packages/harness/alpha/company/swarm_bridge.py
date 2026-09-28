@@ -11,7 +11,10 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
-# Default location for agent installation on Windows/Posix
+# Default location for local agent installation on Windows/Posix.
+# `ALPHA_SWARM_HOME` is the supported knob. The two legacy names below are read
+# only so an installation that predates the rename keeps resolving its bots
+# directory; they are deprecated and never documented as new configuration.
 DEFAULT_SWARM_DIR = Path(os.environ.get("ALPHA_SWARM_HOME", os.environ.get("HERMES_HOME", Path.home() / ".hermes")))
 
 
@@ -45,11 +48,6 @@ class SwarmLocalBridge:
     @property
     def is_swarm_installed(self) -> bool:
         return self._bots_dir.exists() and self._bots_dir.is_dir()
-
-    # Backwards compatibility property
-    @property
-    def is_hermes_installed(self) -> bool:
-        return self.is_swarm_installed
 
     def discover_local_bots(self) -> list[str]:
         """Returns sorted list of all available agent bot profile directory names."""
@@ -125,9 +123,3 @@ class SwarmLocalBridge:
         """Loads and returns metadata for all discovered local bot profiles."""
         bots = self.discover_local_bots()
         return {bot: self.get_bot_metadata(bot) for bot in bots}
-
-
-# Transparent aliases for backwards compatibility
-HermesBotMetadata = SwarmBotMetadata
-HermesLocalBridge = SwarmLocalBridge
-DEFAULT_HERMES_DIR = DEFAULT_SWARM_DIR

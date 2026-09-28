@@ -1,4 +1,4 @@
-"""PII and secret redaction filter for multi-model privacy safety inspired by Hermes."""
+"""PII and secret redaction filter for multi-model privacy safety."""
 
 from __future__ import annotations
 

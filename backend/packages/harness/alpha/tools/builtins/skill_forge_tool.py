@@ -1,4 +1,4 @@
-"""Built-in skill_forge tool inspired by hermes-asi-master."""
+"""Built-in skill_forge tool."""
 
 from __future__ import annotations
 

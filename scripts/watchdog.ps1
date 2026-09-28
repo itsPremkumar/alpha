@@ -292,7 +292,7 @@ function Invoke-Detached {
 # An exclusive open is used rather than a PID file because the OS releases it
 # when the holder exits, so a crashed supervisor cannot leave a lock that blocks
 # recovery forever. A second supervisor that cannot take the lock WAITS - it
-# never acts, and never kills. This mirrors openclaw's file-lock coordinator
+# never acts, and never kills. This mirrors a file-lock coordinator
 # (src/infra/gateway-lock.ts) rather than kill-then-start.
 $script:SupervisorLockStream = $null
 

@@ -6,7 +6,7 @@ Validates:
 3. Step checkpointing and hot-replacement restoring state from failed workers.
 4. Parent crash resilience: orphan queue registration and supervisor adoption.
 5. Specialist archetypes (Critic, Judge, Red-Team, Verifier) and dynamic role generation.
-6. Execution metrics tracking and automated promotion to permanent Hermes Bots.
+6. Execution metrics tracking and automated promotion to permanent specialist bots.
 7. Built-in subagent_control tool actions.
 8. Gateway REST endpoints.
 9. Strict architectural boundary firewall (zero imports from app.*).
@@ -206,8 +206,8 @@ def test_specialist_archetypes_and_dynamic_roles():
     assert code_contract.workspace_mode == "git_worktree"
 
 
-# 7. Sub-Agent Promotion to Permanent Hermes Bot
-def test_subagent_promotion_to_hermes_bot():
+# 7. Sub-Agent Promotion to Permanent Specialist Bot
+def test_subagent_promotion_to_specialist_bot():
     prom = SubagentPromotionManager()
 
     # Initially ineligible (< 5 executions)
@@ -230,8 +230,8 @@ def test_subagent_promotion_to_hermes_bot():
     assert eligible is True
     assert metrics["reliability"] == 1.0
 
-    # Promote to Permanent Hermes Bot
-    bot = prom.promote_to_hermes_bot("postgres_optimizer", bot_name="bot-postgres-optimizer")
+    # Promote to Permanent Specialist Bot
+    bot = prom.promote_to_specialist_bot("postgres_optimizer", bot_name="bot-postgres-optimizer")
     assert bot["name"] == "bot-postgres-optimizer"
     assert bot["origin"] == "promoted_subagent"
     assert "sql_explain" in bot["tools"]

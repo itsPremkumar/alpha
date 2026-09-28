@@ -1,4 +1,4 @@
-"""Smart Approvals & Guardian Review engine inspired by Hermes Agent."""
+"""Smart Approvals & Guardian Review engine."""
 
 from alpha.safety.guardian.circuit_breaker import DenialCircuitBreaker, get_denial_breaker
 from alpha.safety.guardian.floors import PermanentAllowlist, get_permanent_allowlist

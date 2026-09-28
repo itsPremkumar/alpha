@@ -1,4 +1,4 @@
-"""Built-in blackboard tools inspired by hermes-agi-asi-harness."""
+"""Built-in blackboard tools."""
 
 from __future__ import annotations
 

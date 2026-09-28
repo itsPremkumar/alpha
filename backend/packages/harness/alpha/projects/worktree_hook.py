@@ -1,4 +1,4 @@
-"""Automatic Worktree Execution Lifecycle Hook (Cursor & OpenClaw style).
+"""Automatic Worktree Execution Lifecycle Hook (reference style).
 
 Enables coding agents to automatically execute tasks in isolated Git worktrees,
 preventing parallel agents from clobbering each other's checkouts.

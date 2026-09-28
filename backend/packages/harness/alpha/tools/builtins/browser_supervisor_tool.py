@@ -1,4 +1,4 @@
-"""Built-in Browser Supervisor tool inspired by Hermes Agent.
+"""Built-in Browser Supervisor tool.
 
 The indexed-action-space pattern from ``browser-use/jev-ultrafast``: the model
 names an element **index** from an observed table, never a selector, coordinate

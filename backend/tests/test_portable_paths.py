@@ -14,12 +14,12 @@ holds it to them:
 
 2. **Machine-independent.** No tracked file may name this machine, another
    machine, or one specific vendor's private tool directory. The launcher used
-   to list ``%LOCALAPPDATA%\\hermes\\bin\\uv.exe`` as a ``uv`` candidate, so on
-   the machine this was written on, Alpha silently ran *another tool's* ``uv``
-   (measured: ``Get-Command uv`` -> ``...\\AppData\\Local\\hermes\\bin\\uv.exe``).
-   A last-resort ``Get-ChildItem -Recurse`` over ``%LOCALAPPDATA%`` and
-   ``%ProgramFiles%`` then widened that to "any ``uv.exe``/``node.exe`` anywhere
-   under the profile", in an unspecified order.
+   to list a third-party product's private ``bin\\uv.exe`` as a ``uv`` candidate,
+   so on the machine this was written on Alpha silently ran *another tool's*
+   ``uv``: ``Get-Command uv`` resolved to that vendor's copy rather than a
+   project-local one. A last-resort ``Get-ChildItem -Recurse`` over
+   ``%LOCALAPPDATA%`` and ``%ProgramFiles%`` then widened that to "any
+   ``uv.exe``/``node.exe`` anywhere under the profile", in an unspecified order.
 
 ``scripts/toolchain.ps1`` is the single source of truth: it pins all five uv
 directories inside ``.tools/`` and both launchers dot-source it. Each detector
@@ -48,7 +48,7 @@ INSTALL_SURFACE = [*TOOLCHAIN_FILES, "Makefile", "frontend/.npmrc", ".gitignore"
 # Each is a private install location belonging to some *other* product; a
 # launcher that lists one adopts that product's binary on any machine that
 # happens to have it.
-FOREIGN_VENDOR_TOOLS = ["hermes"]
+FOREIGN_VENDOR_TOOLS = ["foreignvendor"]
 
 # uv's own defaults when UV_* is unset. Every one of these is a per-user global
 # path, which is the exact thing this gate forbids.
@@ -226,10 +226,11 @@ def test_generated_autostart_launchers_are_gitignored_with_a_reason() -> None:
 def test_no_launcher_candidate_list_names_a_foreign_vendor_tool(rel: str, vendor: str) -> None:
     """Listing another product's private bin directory adopts that product's binary.
 
-    Measured on the machine this was written for: ``%LOCALAPPDATA%\\hermes\\bin
-    \\uv.exe`` existed, ``%USERPROFILE%\\.local\\bin\\uv.exe`` and
-    ``%USERPROFILE%\\.cargo\\bin\\uv.exe`` did not, and ``Get-Command uv``
-    resolved to the *hermes* copy -- so Alpha was running another tool's uv.
+    Measured on the machine this was written for: a third-party vendor's
+    ``%LOCALAPPDATA%\\<vendor>\\bin\\uv.exe`` existed while
+    ``%USERPROFILE%\\.local\\bin\\uv.exe`` and ``%USERPROFILE%\\.cargo\\bin\\uv.exe``
+    did not, and ``Get-Command uv`` resolved to the *vendor* copy -- so Alpha
+    was running another tool's uv.
     """
     offenders = [f"{rel}:{lineno}: {line.strip()!r}" for lineno, line in _code_lines(rel) if vendor in line.lower()]
     assert not offenders, "foreign vendor tool directory in a resolution path: " + "; ".join(offenders)
@@ -237,11 +238,11 @@ def test_no_launcher_candidate_list_names_a_foreign_vendor_tool(rel: str, vendor
 
 def test_the_vendor_detector_is_not_vacuous() -> None:
     """Positive control: the scan really would have caught the old line."""
-    old_line = '    "$env:LOCALAPPDATA\\hermes\\bin\\uv.exe",'
-    assert [ln for _, ln in _code_lines_from(old_line, ".ps1") if "hermes" in ln]
+    old_line = '    "$env:LOCALAPPDATA\\foreignvendor\\bin\\uv.exe",'
+    assert [ln for _, ln in _code_lines_from(old_line, ".ps1") if "foreignvendor" in ln]
     # ...and a comment naming it is tolerated, so the fix removed the candidate
     # rather than imposing a blanket ban on mentioning the incident.
-    assert not [ln for _, ln in _code_lines_from("# removed: hermes\\bin\\uv.exe", ".ps1") if "hermes" in ln]
+    assert not [ln for _, ln in _code_lines_from("# removed: foreignvendor\\bin\\uv.exe", ".ps1") if "foreignvendor" in ln]
 
 
 # --------------------------------------------------------------------------

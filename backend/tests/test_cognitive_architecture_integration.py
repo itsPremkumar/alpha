@@ -7,7 +7,7 @@ from alpha.rsi import RSIEngine, RSIStage
 from alpha.runtime.selfheal import SelfHealingWatchdog
 
 
-def test_full_hermes_agi_executive_lifecycle(tmp_path):
+def test_full_executive_lifecycle(tmp_path):
     # 1. Step 1: Compile complex, ambiguous objective into formal Mission Contract
     raw_prompt = "Refactor the payment gateway to add webhook idempotency. You must ensure backward compatibility. Never expose API secrets."
     compiler = MissionCompiler()

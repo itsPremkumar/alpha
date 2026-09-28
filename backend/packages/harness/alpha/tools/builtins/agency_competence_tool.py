@@ -1,4 +1,4 @@
-"""Built-in agency_competence tool inspired by hermes-asi-master."""
+"""Built-in agency_competence tool."""
 
 from __future__ import annotations
 

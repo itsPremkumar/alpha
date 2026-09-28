@@ -62,7 +62,7 @@ and unwired capability dispatch.
 ## Read this before quoting any of it
 
 The most common failure mode in this project is asserting a state that was never measured. That failure
-has a direct equivalent in the literature: OpenClaw publishes a "what we do not claim" section listing its
+has a direct equivalent in the literature: the reference implementation publishes a "what we do not claim" section listing its
 own holes, Anthropic footnotes its own flattering statistics ("8× lines of code is almost certainly an
 overstatement"), and Sakana notes that "all scores other than Fugu's are reported by the model providers."
 

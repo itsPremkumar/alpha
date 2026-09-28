@@ -1,4 +1,4 @@
-"""Self-Evolving Learning & Knowledge Graph inspired by Hermes Agent."""
+"""Self-Evolving Learning & Knowledge Graph."""
 
 from alpha.learning.curator import LearningGraphCurator
 from alpha.learning.graph import KnowledgeGraph, KnowledgeNode

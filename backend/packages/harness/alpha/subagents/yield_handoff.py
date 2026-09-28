@@ -1,4 +1,4 @@
-"""Subagent Yield & Settle Handoff Protocol inspired by OpenClaw."""
+"""Subagent Yield & Settle Handoff Protocol."""
 
 from __future__ import annotations
 

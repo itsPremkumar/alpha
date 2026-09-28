@@ -1,6 +1,6 @@
 """Standing goals: a loop that keeps working until the work is actually done.
 
-This is alpha's answer to the one thing Hermes' goal loop does better: a single
+This is alpha's answer to the one thing the upstream goal loop does better: a single
 session, one objective, an independent judge after every turn, and a
 deterministic command that has to exit 0 before "done" is even on the table.
 

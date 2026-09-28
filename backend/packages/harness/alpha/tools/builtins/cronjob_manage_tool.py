@@ -1,4 +1,4 @@
-"""Built-in Cron Job management tool inspired by Hermes Agent."""
+"""Built-in Cron Job management tool."""
 
 from __future__ import annotations
 

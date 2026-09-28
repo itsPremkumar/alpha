@@ -1,6 +1,6 @@
 """Wiki vault: git-friendly compiled knowledge layer for long-term memory.
 
-LLM-Wiki pattern (Karpathy / LangChain Wiki Memory / OpenClaw memory-wiki):
+LLM-Wiki pattern (Karpathy / LangChain Wiki Memory):
 raw sources are compiled once into dense Markdown files that future agents
 read instead of re-running RAG on raw chunks every query.
 

@@ -1,7 +1,7 @@
 """Child-environment construction for the script bridge.
 
 Design rule, learned the hard way upstream: **never pass variables through by
-prefix**.  A prefix passthrough (``HERMES_*`` / ``ALPHA_*``) leaks every future
+prefix**.  A prefix passthrough (``ALPHA_*`` / any product namespace) leaks every future
 non-secret config knob into arbitrary sandboxed code the moment somebody adds
 one.  This module therefore builds the child environment from an
 **exact-name allowlist** plus an **explicit per-skill opt-in**, and then applies

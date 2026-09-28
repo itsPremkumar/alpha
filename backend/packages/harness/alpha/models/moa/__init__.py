@@ -1,4 +1,4 @@
-"""Mixture-of-Agents (MoA) Multi-LLM Reasoning package inspired by Hermes Agent."""
+"""Mixture-of-Agents (MoA) Multi-LLM Reasoning package."""
 
 from alpha.models.moa.orchestrator import MoACandidate, MoAOrchestrator, MoAResult
 from alpha.models.moa.redact import redact_pii_and_secrets

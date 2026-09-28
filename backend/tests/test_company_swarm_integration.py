@@ -1,4 +1,4 @@
-"""Comprehensive tests for local Hermes bot integration, 8-stage production line, and kanban sync."""
+"""Comprehensive tests for local specialist bot integration, 8-stage production line, and kanban sync."""
 
 from __future__ import annotations
 
@@ -10,18 +10,18 @@ from fastapi.testclient import TestClient
 from app.gateway.routers.company import router as company_router
 from alpha.company import (
     AutonomousCompanyEngine,
-    HermesKanbanAdapter,
-    HermesLocalBridge,
+    EnterpriseKanbanAdapter,
+    SwarmLocalBridge,
     ProductionLineEngine,
     ProductionStage,
 )
 from alpha.tools.builtins.company_tool import company_tool
 
 
-def test_hermes_local_bridge_bot_discovery():
-    bridge = HermesLocalBridge()
-    # If .hermes exists on user's machine
-    if bridge.is_hermes_installed:
+def test_local_bridge_bot_discovery():
+    bridge = SwarmLocalBridge()
+    # If the local bots directory exists on this machine
+    if bridge.is_swarm_installed:
         bots = bridge.discover_local_bots()
         assert len(bots) >= 10
         assert "ceo" in bots
@@ -81,8 +81,8 @@ def test_eight_stage_production_line_pipeline():
     assert "08_documentation_release" in stage_names
 
 
-def test_hermes_kanban_adapter_sync():
-    adapter = HermesKanbanAdapter()
+def test_enterprise_kanban_adapter_sync():
+    adapter = EnterpriseKanbanAdapter()
     tasks = adapter.list_tasks(limit=10)
     # If the local board exists, it should have tasks
     if adapter.is_available:
@@ -95,7 +95,7 @@ def test_hermes_kanban_adapter_sync():
     assert sync_res["total_company_projects"] >= 2
 
 
-def test_company_tool_hermes_and_production_actions():
+def test_company_tool_swarm_and_production_actions():
     # 1. Bootstrap company
     res_boot = company_tool.invoke(
         {
@@ -106,8 +106,11 @@ def test_company_tool_hermes_and_production_actions():
     boot_data = json.loads(res_boot)
     org_id = boot_data["org_id"]
 
-    # 2. hermes_bots action
-    res_bots = company_tool.invoke({"action": "hermes_bots", "org_id": org_id})
+    # 2. swarm_bots action
+    res_bots = company_tool.invoke({"action": "swarm_bots", "org_id": org_id})
+    # ...and the pre-rename action name still resolves.
+    res_bots_legacy = company_tool.invoke({"action": "hermes_bots", "org_id": org_id})
+    assert res_bots_legacy == res_bots
     bots_data = json.loads(res_bots)
     assert "discovered_bots_count" in bots_data
 
@@ -141,13 +144,15 @@ def test_company_tool_hermes_and_production_actions():
     assert "total_company_projects" in sync_data
 
 
-def test_gateway_rest_hermes_and_production_endpoints():
+def test_gateway_rest_swarm_and_production_endpoints():
     app = FastAPI()
     app.include_router(company_router)
     client = TestClient(app)
 
-    # 1. GET /api/company/hermes/bots
-    res_bots = client.get("/api/company/hermes/bots")
+    # 1. GET /api/company/swarm/bots (and its deprecated alias)
+    res_bots = client.get("/api/company/swarm/bots")
+    res_bots_legacy = client.get("/api/company/hermes/bots")
+    assert res_bots_legacy.status_code == res_bots.status_code
     assert res_bots.status_code == 200
     assert "discovered_bots_count" in res_bots.json()
 

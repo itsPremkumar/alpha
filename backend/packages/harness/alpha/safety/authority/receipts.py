@@ -11,7 +11,7 @@ into a receipt, because the alternatives considered and the inputs weighed
 exist only in the moment of the decision and are gone afterwards.  Receipts
 must therefore be written AT decision time, by the code making the decision.
 
-This is the artefact OpenClaw's ``openclaw audit`` produces -- activity records
+This is the artefact an ``audit`` log produces -- activity records
 plus EXECUTION IDENTITY plus DECISION RECEIPTS
 (https://docs.openclaw.ai/start/why-openclaw).  alpha had the first of the
 three.  This module is the second and third.

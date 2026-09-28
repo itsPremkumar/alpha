@@ -16,13 +16,13 @@
 | **Bot** | ⚠️ Ambiguous — no canonical highly-starred repo by that name | Treated as OpenBot / Rakazo-class "persistent bot platform" |
 | **Comparable repos** | ⚠️ Ranking article only (stars as of Apr 2026) | AutoGPT 183k, Langflow 147k, Dify 136k, LangChain 132k, Gemini CLI 100k, browser-use 86k, RAGFlow 77k, LobeHub 75k, MetaGPT 67k, AutoGen 57k, **Mem0 52k**, Flowise 52k, CrewAI 48k, LocalAI 45k, Cherry Studio 43k, Agno 39k |
 
-**Stated limitation:** Hermes and the "Bot" entry are documented from public docs/search results only — no source files were read, so no code excerpts are given for them. Star counts are from a secondary ranking article, not from GitHub directly.
+**Stated limitation:** The competitor agent and the "Bot" entry are documented from public docs/search results only — no source files were read, so no code excerpts are given for them. Star counts are from a secondary ranking article, not from GitHub directly.
 
 ---
 
 ## 1. Project-by-project research
 
-### 1.1 OpenClaw — *"your assistant, on your devices, in your chats"*
+### 1.1 Reference implementation — *"your assistant, on your devices, in your chats"*
 
 **Purpose.** Self-hosted personal/team assistant. Runs on your own hardware; meets you in Discord, iMessage, Slack, Teams, Telegram, WhatsApp (20+ channels) plus native macOS/iOS/Android/Windows/Linux apps.
 
@@ -134,11 +134,11 @@ class ReActAgent(BaseAgent, ABC):
 
 ---
 
-### 1.5 Hermes Agent (docs only)
+### 1.5 Competitor agent (docs only)
 
 - Memory in two files: `MEMORY.md` + `USER.md`; pluggable providers (Honcho, Mem0, Hindsight, Supermemory …).
 - **Checkpoints:** auto-snapshot of the working dir *before* file changes, `/rollback` to restore.
-- Context files auto-discovered: `.hermes.md`, `AGENTS.md`, `CLAUDE.md`, `SOUL.md`, `.cursorrules`.
+- Context files auto-discovered: `AGENTS.md`, `CLAUDE.md`, `SOUL.md`, `.cursorrules`, plus a product-specific dotfile.
 - Subagents with **isolated context + restricted toolsets + own terminal sessions** (3 concurrent by default).
 - Event hooks for guardrails; cron in natural language; MCP stdio/HTTP with per-server filtering.
 - Credential pools rotate on rate limit; fallback providers fail over.
@@ -194,10 +194,10 @@ Legend — **Complexity:** S = days, M = 1–2 weeks, L = 3+ weeks. **Deps** = m
 
 | # | Capability | What | Why | Inspired by | Deps | Cx |
 |---|---|---|---|---|---|---|
-| 1 | **Retry with configurable backoff** | Backoff (fixed/exponential + jitter) in `self_healing_runner.run_with_self_healing` and any supervisor restart | Retries are currently immediate; a failing dependency gets hammered | OpenClaw `gateway` self-restart; `start.ps1` already has `min(30,3*n)` | none | S |
+| 1 | **Retry with configurable backoff** | Backoff (fixed/exponential + jitter) in `self_healing_runner.run_with_self_healing` and any supervisor restart | Retries are currently immediate; a failing dependency gets hammered | reference implementation `gateway` self-restart; `start.ps1` already has `min(30,3*n)` | none | S |
 | 2 | **Deterministic policy gateway** | One chokepoint that resolves target → evaluates policy → writes audit row → acts, or refuses **naming the rule** | OpenBot's core idea; turns scattered checks into auditable, testable policy | **OpenBot** | `authorization` | M |
 | 3 | **Step budget + stuck detection** | Hard `max_steps`, `AgentState`, explicit `terminate`; surface "terminated at max steps" as a first-class run outcome | Prevents runaway loops; makes completion observable | **OpenManus** `react.py` | none | S |
-| 4 | **`ask_human` / approval tool** | A tool the agent calls to request approval; surfaces in UI as a card | Human-in-the-loop as protocol, not UI hack | **OpenManus** `ask_human`; OpenClaw exec gate | HumanApprovalCard (exists) | M |
+| 4 | **`ask_human` / approval tool** | A tool the agent calls to request approval; surfaces in UI as a card | Human-in-the-loop as protocol, not UI hack | **OpenManus** `ask_human`; reference implementation exec gate | HumanApprovalCard (exists) | M |
 
 ```python
 # P0.1 sketch — backoff in the self-healing loop
@@ -217,26 +217,26 @@ else:
 
 | # | Capability | What | Why | Inspired by | Deps | Cx |
 |---|---|---|---|---|---|---|
-| 5 | **Skills grant no permissions** | Assert at load: a Skill may not widen `tools.*`; log + refuse violations | OpenClaw's best idea; stops "install a skill, silently gain access" | **OpenClaw** | skills loader | S |
-| 6 | **Bundled-skill allowlist** | `skills.allowBundled: [name, …]`, default deny | Auto-loading unreviewed skills is a real footgun | **OpenClaw** | #5 | S |
-| 7 | **Per-bot/per-agent toolset scoping** | Extend `agent_presets` so each bot declares its tool groups | Narrowest surface per worker; already 80% built via `agent_presets` + `disabled_tools` | OpenManus; Hermes subagents | existing | S |
-| 8 | **Narrow subagent toolsets** | Subagents inherit a *restricted* subset, not the parent's full set | Contain blast radius | **Hermes** | #7 | M |
+| 5 | **Skills grant no permissions** | Assert at load: a Skill may not widen `tools.*`; log + refuse violations | The reference implementation's best idea; stops "install a skill, silently gain access" | **reference implementation** | skills loader | S |
+| 6 | **Bundled-skill allowlist** | `skills.allowBundled: [name, …]`, default deny | Auto-loading unreviewed skills is a real footgun | **reference implementation** | #5 | S |
+| 7 | **Per-bot/per-agent toolset scoping** | Extend `agent_presets` so each bot declares its tool groups | Narrowest surface per worker; already 80% built via `agent_presets` + `disabled_tools` | OpenManus; competitor subagents | existing | S |
+| 8 | **Narrow subagent toolsets** | Subagents inherit a *restricted* subset, not the parent's full set | Contain blast radius | **Competitor agent** | #7 | M |
 
 ### P2 — Memory, context & continuity
 
 | # | Capability | What | Why | Inspired by | Deps | Cx |
 |---|---|---|---|---|---|---|
-| 9 | **Curated memory files** | `MEMORY.md` (project) + `USER.md` (user), bounded and curated, alongside existing memory | Cheap, inspectable, editable — and matches how agents already read this repo | **Hermes**; OpenClaw `memory_search/get` | memory subsystem | S |
-| 10 | **Checkpoint + rollback** | Snapshot before mutating file operations; `/rollback` | Reversible agent edits; huge trust win | **Hermes** | CLI layer (prototype done this session) | M |
-| 11 | **Context-file auto-discovery** | Auto-load `AGENTS.md`/`CLAUDE.md`/scoped `AGENTS.md` | Already partially true via AGENTS.md; make it explicit and budgeted | **Hermes** | `check-agent-guidance` | S |
+| 9 | **Curated memory files** | `MEMORY.md` (project) + `USER.md` (user), bounded and curated, alongside existing memory | Cheap, inspectable, editable — and matches how agents already read this repo | **Competitor agent**; reference implementation `memory_search/get` | memory subsystem | S |
+| 10 | **Checkpoint + rollback** | Snapshot before mutating file operations; `/rollback` | Reversible agent edits; huge trust win | **Competitor agent** | CLI layer (prototype done this session) | M |
+| 11 | **Context-file auto-discovery** | Auto-load `AGENTS.md`/`CLAUDE.md`/scoped `AGENTS.md` | Already partially true via AGENTS.md; make it explicit and budgeted | **Competitor agent** | `check-agent-guidance` | S |
 
 ### P3 — Autonomy & orchestration
 
 | # | Capability | What | Why | Inspired by | Deps | Cx |
 |---|---|---|---|---|---|---|
-| 12 | **Trigger → Action → Deliver** | First-class automation unit: cron/event trigger, allowlisted action, deliver to channel | The reusable shape behind every scheduled job | **OpenClaw**; prototype `scripts/run-trigger.ps1` shipped | #2 | M |
+| 12 | **Trigger → Action → Deliver** | First-class automation unit: cron/event trigger, allowlisted action, deliver to channel | The reusable shape behind every scheduled job | **reference implementation**; prototype `scripts/run-trigger.ps1` shipped | #2 | M |
 | 13 | **Bot routines** | Scheduled behaviour attached to a bot profile (not a global cron) | Makes bots persistent entities | **Rakazo** | #12, bots router | M |
-| 14 | **Session/subagent orchestration** | `sessions_spawn`/`sessions_send`-style fan-out with isolated contexts and result aggregation | Parallelism with isolation | **OpenClaw**; Hermes | #7, #8 | L |
+| 14 | **Session/subagent orchestration** | `sessions_spawn`/`sessions_send`-style fan-out with isolated contexts and result aggregation | Parallelism with isolation | **reference implementation**; competitor agent | #7, #8 | L |
 | 15 | **Flow/graph authoring UI** | Visual builder over existing flows | Visual builders dominate by stars; big adoption lever | Langflow/Dify | #14 | L |
 
 ### P4 — Surfaces & operations
@@ -269,8 +269,8 @@ Rationale: ship-blocking work first; then cheap safety wins that reduce incident
 
 ## 4. Highest-leverage takeaways
 
-1. **"Trusted gateway, untrusted execution, deterministic policy"** (OpenClaw) — adopt as an explicit architectural statement for our Gateway.
-2. **"Skills are manuals, not keys"** (OpenClaw) — enforce mechanically, not by convention.
+1. **"Trusted gateway, untrusted execution, deterministic policy"** (the reference implementation) — adopt as an explicit architectural statement for our Gateway.
+2. **"Skills are manuals, not keys"** (the reference implementation) — enforce mechanically, not by convention.
 3. **One policy chokepoint that records an audit row and names the rule on refusal** (OpenBot) — we have `authorization`; it needs to become the single path.
 4. **Explicit step budgets and explicit termination** (OpenManus) — cheap, and eliminates a whole class of runaway-run incidents.
-5. **Memory as a subsystem, not a dict** (Mem0/Hermes) — the top-20 validates it as a product layer.
+5. **Memory as a subsystem, not a dict** (Mem0 and the competitor agent) — the top-20 validates it as a product layer.

@@ -1,4 +1,4 @@
-"""Active Memory Two-Tier Escalation Engine inspired by OpenClaw."""
+"""Active Memory Two-Tier Escalation Engine."""
 
 from __future__ import annotations
 
