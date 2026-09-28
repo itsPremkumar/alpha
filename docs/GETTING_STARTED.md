@@ -1,50 +1,79 @@
 # Getting Started with Alpha
 
-## Prerequisites
+## The short version (Windows)
 
-### System Requirements
-- **OS**: Windows 10/11, macOS 12+, or Linux (Ubuntu 20.04+, Debian 11+)
+Two commands, in this order. Everything else on this page is a variation.
+
+```bat
+install.bat      :: provisions everything, then starts Alpha and verifies it
+start.bat        :: start later (double-click this any time)
+stop.bat         :: stop cleanly
+```
+
+Then open **<http://localhost:2026>**.
+
+`install.bat` does all of this for you, with no administrator rights and nothing
+installed outside the project folder:
+
+| Step | What it does |
+|------|--------------|
+| uv | Downloads a pinned uv into `.tools/` (never your user profile) and uses it to install CPython 3.12 |
+| Node.js | Resolves your existing install, or reports exactly what is missing |
+| nginx | Downloads the pinned Windows build into `.tools/` — this is the `:2026` entry point |
+| Dependencies | `uv sync --locked` for the backend, `pnpm install` for the frontend |
+| Config | Creates `config.yaml`, `models.yaml`, `.env`, `frontend/.env`, `extensions_config.json` from the tracked `*.example` templates, generating a secure `BETTER_AUTH_SECRET` |
+| Autostart | Offers to register the three Windows scheduled tasks (start at logon, health check every 5 min, tray status) |
+| Verification | Starts Alpha, waits for the Gateway and frontend, checks the health endpoint, the launcher process, and the watchdog chain — and **fails loudly rather than claiming success** if any of it is not healthy |
+
+To uninstall later: `uninstall.ps1`. To remove just the autostart tasks:
+`scripts\unregister_autostart.ps1`.
+
+## Requirements
+
+### System
+- **OS**: Windows 10/11 (one-click path), macOS 12+ or Linux for the manual paths
 - **CPU**: 4+ cores recommended
 - **RAM**: 8GB minimum, 16GB+ recommended
-- **Disk**: 10GB free space
-- **Network**: Internet access for model APIs and package downloads
+- **Disk**: 10GB free
+- **Network**: internet access for model APIs and the initial downloads
 
-### Required Software
-| Tool | Version | Purpose |
-|------|---------|---------|
-| Git | 2.40+ | Version control |
-| Python | 3.12+ | Backend runtime |
-| uv | 0.4+ | Python package manager |
-| Node.js | 22+ | Frontend/Electron runtime |
-| pnpm | 9+ | Frontend package manager |
-| Docker | 24+ | Container deployment (optional) |
-| Docker Compose | 2.20+ | Multi-container orchestration |
+### What you must already have
+| Tool | Why | Provided by `install.bat`? |
+|------|-----|----------------------------|
+| Git | you had to clone the repo | no — install before cloning |
+| PowerShell 5.1+ | runs the installer | built into Windows |
+| Git Bash | `make`/shell scripts | ships with Git for Windows |
 
-### Windows-Specific
-- **PowerShell**: 5.1+ (built-in) or PowerShell 7+
-- **Git Bash**: Required for some scripts
-- **Visual C++ Redistributable**: For native Python packages
+### What the installer provides for you
+| Tool | Version | Provisioned |
+|------|---------|-------------|
+| Python | 3.12 | yes, via uv into `.tools/` |
+| uv | 0.11.1 (pinned) | yes, into `.tools/` |
+| Node.js | 22+ | resolved; you install it yourself if absent |
+| pnpm | 10.26.2 (pinned) | yes, via Corepack |
+| nginx | 1.27.x (pinned series) | yes, into `.tools/` |
+
+Nothing is written to `C:\Program Files` or any shared location, so a checkout
+can be deleted to remove Alpha completely, and two checkouts never collide.
 
 ## Installation Methods
 
-### Method 1: Windows Desktop App (Easiest for End Users)
+### Method 1: One-click installer (recommended on Windows)
 
-#### Build the Installer
+Run `install.bat`, or from PowerShell:
+
 ```powershell
-cd electron
-npm install
-npm run dist
+.\install.ps1                 # interactive, with verification
+.\install.ps1 -SkipFrontend   # backend only
+.\install.ps1 -SkipVerification  # install, do not start
 ```
 
-#### Install and Run
-1. Run `electron/dist/Alpha-Setup-2.1.0.exe` (the artifact name is set by
-   `artifactName` in `electron/electron-builder.yml`)
-2. SmartScreen warning → "More info" → "Run anyway"
-3. Per-user install (no admin rights needed)
-4. First launch: Auto-provisions Python and backend (splash screen shows progress)
-5. Add a model API key to `<userData>\project\config.yaml` — the app opens this
-   folder for you, and its **User data** menu entry reveals the exact path
-6. Restart app and start chatting
+Then `start.bat`, or `make dev`, and open <http://localhost:2026>.
+
+If nginx could not be downloaded, Alpha still runs: the Gateway is on
+`http://localhost:8001` and the web UI on `http://localhost:3000`. The installer
+and the launcher both say so explicitly rather than advertising a port that is
+not listening.
 
 ### Method 2: Docker Deployment (Recommended for Servers)
 
