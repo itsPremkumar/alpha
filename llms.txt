@@ -37,7 +37,10 @@ https://github.com/itsPremkumar/alpha/blob/main/docs/COMPARISON.md
 
 ## Quick facts
 
-- First-time local setup: `make config`, then `make install`, then `make dev`.
+- Windows one-click: `install.bat` provisions uv, CPython, pnpm and nginx, installs
+  dependencies, creates config, starts Alpha and verifies it. `start.bat` / `stop.bat`
+  afterwards. Browser at http://localhost:2026.
+- Manual/macOS/Linux setup: `make config`, then `make install`, then `make dev`.
 - Containerized stack: `make up` (browser at http://localhost:2026); `make down` stops it.
 - Windows desktop: build the Electron installer in `electron/`, configure
   `%APPDATA%\alpha-desktop\project\config.yaml`.

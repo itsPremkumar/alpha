@@ -272,26 +272,45 @@ More, including research, ops, and content workflows:
 
 ## 60-second quickstart
 
-### Prerequisites
+### Windows — one click
 
-Python 3.12+ · Node.js 22+ · `uv` · `pnpm` · Git. Docker is optional (needed for
-the containerized stack and the Docker sandbox tier). Full matrix:
-[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md).
+```bat
+git clone https://github.com/itsPremkumar/alpha.git
+cd alpha
+install.bat
+```
 
-### Local development
+`install.bat` provisions everything itself — uv, CPython 3.12, pnpm, and the
+nginx build that provides the `:2026` entry point — installs both dependency
+trees, creates the config files with a generated secret, offers to register
+Windows autostart, then **starts Alpha and verifies it** (Gateway health, the
+launcher process, and the watchdog chain) before reporting success. No
+administrator rights; nothing is written outside this folder.
+
+Open **<http://localhost:2026>**. Later: `start.bat` and `stop.bat`.
+
+### macOS / Linux / manual
 
 ```bash
 git clone https://github.com/itsPremkumar/alpha.git
 cd alpha
 
-make config      # copy config.example.yaml -> config.yaml and the extensions template
-make install     # install backend + frontend dependencies
+make config      # config.yaml + models.yaml + .env + extensions_config.json from templates
+make install     # backend (uv) + frontend (pnpm) dependencies
 make dev         # start Gateway :8001, Frontend :3000, Nginx :2026
 ```
 
-Open **<http://localhost:2026>**, then add a model and an API key under `models:`
-in `config.yaml` (e.g. OpenRouter) and restart. Without `config.yaml` the services
-will not boot.
+You need Python 3.12+, Node.js 22+, `uv`, `pnpm` and Git first. Full matrix and
+the production paths: [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md).
+
+### Add a model
+
+Alpha boots with a placeholder model, so open **<http://localhost:2026>**, add a
+provider and API key under `models:` in `config.yaml` (e.g. OpenRouter), and
+restart. The file is created for you and is gitignored.
+
+If nginx could not be installed, Alpha still runs: Gateway on `:8001`, web UI on
+`:3000`. The launcher says which ports are live rather than advertising `:2026`.
 
 ### Docker (the whole stack, reproducibly)
 

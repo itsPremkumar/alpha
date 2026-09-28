@@ -47,6 +47,8 @@ Root `make` drives the whole stack; `backend/Makefile` and `frontend/` (`pnpm`)
 drive a single module.
 
 ```bash
+# Windows, one click: install.bat  (provisions uv, CPython, pnpm, nginx, deps,
+# config, then starts and verifies). start.bat / stop.bat afterwards.
 make setup            # interactive setup wizard; unattended: make setup SETUP_ARGS=--non-interactive
 make config           # copy config.example.yaml -> config.yaml and the extensions template
 make install          # install frontend + backend deps and pre-commit hooks
